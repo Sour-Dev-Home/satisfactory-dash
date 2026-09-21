@@ -36,6 +36,13 @@ module-scoped rules — those load automatically when working in that directory.
 6. **Contract changes are isolated changes.** A change to `packages/shared/` is a
    breaking-change candidate for both `frontend/` and `backend/`. Don't bundle it with
    unrelated work, and update every caller on both sides in the same change.
+7. **No PII or hardcoded local paths in committed files.** Never commit a real name
+   (as identifying data, not public branding), personal email, phone number, or an
+   absolute local filesystem path (e.g. `C:\Users\...`) into anything tracked by this
+   repo. Personal/career context files live outside the repo (see `../about-me.md` at
+   the workspace root) or in a git-ignored location — never inside `satisfactory-dash/`
+   itself. Before committing, check `git status`/`git diff` for anything that looks
+   like a leaked path or contact detail, not just for correctness.
 
 ## Team topology (Conway's Law)
 
