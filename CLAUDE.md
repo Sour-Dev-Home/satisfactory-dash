@@ -8,6 +8,9 @@ designed so its module boundaries can later be owned by separate agents.
 See also: `frontend/CLAUDE.md`, `backend/CLAUDE.md`, `packages/shared/CLAUDE.md` for
 module-scoped rules — those load automatically when working in that directory.
 
+This is a **public-facing** project per `../DEPLOYMENT.md` — public repo, Netlify
+hosting for `frontend/`. See that file before changing repo visibility or hosting.
+
 ## Ground rules
 
 1. **Ask before building.** Before implementing anything non-trivial, ask clarifying
