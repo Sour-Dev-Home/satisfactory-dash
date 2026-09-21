@@ -24,8 +24,9 @@ Monolith for now; designed so it can later scale to multiple game servers on AWS
    Only build a custom mod for metrics neither source provides. Keep that gap list at
    `docs-vault/wiki/data-gap-analysis.md`.
 5. **Isolate the game-server adapter.** All communication with a Satisfactory server
-   (vanilla API or FRM) goes through one adapter interface/module. No FRM- or
-   API-specific response shapes leak into React components or the database schema.
+   (vanilla API or FRM) goes through one adapter module in `backend/src/`. No FRM- or
+   API-specific response shapes leak into React components or the database schema —
+   the backend exposes its own clean REST/WebSocket contract to the frontend.
    This is what makes "one server now, many via AWS later" a config change, not a rewrite.
 
 ## Docs vault
@@ -38,12 +39,28 @@ Monolith for now; designed so it can later scale to multiple game servers on AWS
 
 ## Stack (current)
 
-- Next.js (App Router, TypeScript, Tailwind, ESLint) — `src/`
-- Backend logic lives in Next.js route handlers under `src/app/api/` for now
-  (monolith). No separate server process yet.
+Two separate npm projects, run together in dev, deployed as two processes:
+
+- `frontend/` — Vite + React + TypeScript SPA. Plain client-side React (hooks,
+  components) — no server components, no file-based routing magic.
+- `backend/` — Express + TypeScript API server (`backend/src/server.ts`). This is
+  where the Satisfactory-server adapter, polling, and REST/WebSocket endpoints for
+  the frontend live.
+
+This is a two-process monolith (frontend dev server + one backend process), not a
+single-process Next.js app. When "AWS later" comes up, it's the `backend/` process
+that scales out to talk to multiple game servers; `frontend/` stays as-is.
 
 ## Commands
 
-- `npm run dev` — start the dev server (http://localhost:3000)
-- `npm run build` / `npm start` — production build/run
-- `npm run lint` — lint
+Run from the project root (`satisfactory-dash/`):
+
+- `npm run install:all` — install deps for both `frontend/` and `backend/`
+- `npm run dev` — start both dev servers together (frontend on
+  http://localhost:5173, backend on http://localhost:3001)
+
+Or per-project, from inside `frontend/` or `backend/`:
+
+- `npm run dev` — start that project's dev server
+- `npm run build` — production build
+- `npm start` (backend only) — run the built server from `dist/`
