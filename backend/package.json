@@ -2,17 +2,21 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "API server for satisfactory-dash",
-  "main": "dist/server.js",
+  "main": "dist/server.cjs",
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js"
+    "build": "esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "type": "module",
+  "license": "MIT",
   "dependencies": {
+    "@satisfactory-dash/shared": "*",
     "cors": "^2.8.6",
     "dotenv": "^18.0.2",
     "express": "^5.2.1"
@@ -21,7 +25,12 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.2",
+    "@types/supertest": "^7.2.1",
+    "esbuild": "^0.28.2",
+    "oxlint": "^1.81.0",
+    "supertest": "^7.1.4",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.0.6"
   }
 }
