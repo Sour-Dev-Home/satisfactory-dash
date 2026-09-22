@@ -65,3 +65,15 @@ the bottom.
   5 new precise tests added pinning exact error messages/fields, not just error type.
   No new bug pattern found, so no `lessons-learned.md` counters changed. Full suite
   37/37 passing, typecheck and lint clean.
+- 2026-09-21 — Independent `test-hunter` review of `backend/src/services/` and
+  `backend/src/routes/` (built on top of `adapters/` on branch
+  `feature/backend-services-routes`). No business-logic bugs found in the
+  production/overflow/power-outage threshold math — tried to break it with
+  zero/negative/boundary inputs, all held or were already covered by the implementer's
+  own tests. Closed one real gap: added a test in `server.test.ts` exercising the real
+  service→router wiring against a genuine (not synthetic) adapter failure, confirming
+  all three business routes return a clean 503 rather than hanging or crashing.
+  Pushed to branch `review/backend-services-routes` for the implementer to merge.
+  Added one new `lessons-learned.md` entry (`backend/src/routes/`, `String(err)`
+  losing `AggregateError` detail) — minor debuggability gap, not a crash, flagged but
+  not fixed.

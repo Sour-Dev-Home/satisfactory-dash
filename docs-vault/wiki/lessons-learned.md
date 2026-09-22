@@ -19,3 +19,16 @@ counter instead of adding a new line. Only add a new line for a genuinely new pa
   response body, rather than assuming "not an error body" implies "safe to read `.data`
   off of." Found in `VanillaApiClient.call` (`vanillaApiClient.ts:135`, crashed with a
   raw `TypeError` on a 2xx body that was JSON `null`).
+
+## `backend/src/routes/`
+
+- (×1) `String(err)` is not a reliable way to build an HTTP error response's diagnostic
+  detail — it works for a plain `Error` (keeps the message) but silently drops all
+  useful content for a Node `AggregateError` (e.g. the dual-stack/happy-eyeballs
+  connect failure `https.request` throws when a host is unreachable), yielding a bare
+  `"AggregateError"` with no cause. Prefer formatting `err.message` plus, for
+  `AggregateError`, its `.errors` array, rather than blind `String(err)`. Found in
+  `/api/status`'s catch block in `status.ts` (contrast with `/api/factory` and
+  `/api/power`, whose underlying errors are plain `Error` subclasses and so still
+  produce a useful `detail` through the same `String(err)` pattern — not yet fixed,
+  flagged to the implementer as a minor debuggability gap, not a crash).
