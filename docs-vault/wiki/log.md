@@ -91,3 +91,14 @@ the bottom.
   Documented with a failing test on branch `confirm/services-routes-fix`, not fixed
   (non-blocking). Full suite 84/85 (with that one intentional failing test included),
   typecheck/lint/build all clean.
+- 2026-09-21 — Implementer applied the one-line recursive fix
+  (`err.errors.map((cause) => formatErrorDetail(cause))`) and pushed to
+  `feature/backend-services-routes` at `03956a3`. A third, narrow independent
+  `test-hunter` confirmation verified it's genuinely recursive (not a one-level special
+  case) via 3-4 level nesting and a 500-level synthetic chain, no regression on any
+  previously-verified case, and a sanity check that the only stack-overflow path
+  requires a deliberately-constructed circular reference unreachable from any real
+  Node API. **PASS — this closes the `backend/src/routes/` lessons-learned entry's
+  `(×2)` finding.** 94/94 tests, typecheck/lint clean. This closes out both rounds of
+  the `backend/src/services/` + `backend/src/routes/` review; all findings from this
+  slice are now fixed and confirmed.
