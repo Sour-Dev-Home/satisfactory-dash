@@ -1,0 +1,6 @@
+Captured: 2026-09-21, live server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3
+Method: POST https://localhost:7777/api/v1  body: {"function":"QueryServerState"}
+
+---
+
+{"data":{"serverGameState":{"activeSessionName":"docs-vault-spike","numConnectedPlayers":0,"playerLimit":4,"techTier":2,"activeSchematic":"None","gamePhase":"/Script/FactoryGame.FGGamePhase'/Game/FactoryGame/GamePhases/GP_Project_Assembly_Phase_0.GP_Project_Assembly_Phase_0'","isGameRunning":true,"totalGameDuration":29,"isGamePaused":false,"averageTickRate":29.885358810424805,"autoLoadSessionName":"docs-vault-spike","agreeToCrashUploadRequested":false}}}

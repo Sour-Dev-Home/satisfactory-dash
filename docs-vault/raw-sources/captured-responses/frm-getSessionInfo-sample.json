@@ -1,0 +1,6 @@
+Captured: 2026-09-21, live server, GameVersion 1.2.4.0, CL 502094
+Method: GET http://localhost:8080/getSessionInfo (FRM Web Server, uWS.Autostart=1)
+
+---
+
+{"SessionName":"docs-vault-spike","IsPaused":false,"DayLength":50,"NightLength":10,"PassedDays":0,"NumberOfDaysSinceLastDeath":0,"Hours":12,"Minutes":5,"Seconds":21.625,"IsDay":true,"TotalPlayDuration":29,"TotalPlayDurationText":"00:00:29","Seed":0,"SpaceElevatorCost":1,"RecipeCost":1,"PowerCost":1,"NodeRando":"Default","NodePurity":"Default"}

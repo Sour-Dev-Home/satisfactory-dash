@@ -1,0 +1,53 @@
+Source: https://docs.ficsit.app/ficsitremotemonitoring/latest/json/Read/getPower.html
+Captured: 2026-09-21
+
+---
+
+## Get Power
+
+Gets a list of all power circuits.
+
+## Response Body
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| CircuitGroupID | Integer | ID of the circuit. |
+| PowerProduction | Float | Power production of the circuit. |
+| PowerConsumed | Float | Power consumed on power circuit. |
+| PowerCapacity | Float | Power capacity on power circuit. |
+| PowerMaxConsumed | Float | Maximum Power that can be consumed on power circuit. |
+| BatteryInput | Float | The combined power input to all the batteries connected to this circuit. Negative values denote power output. |
+| BatteryOutput | Float | The combined power output from all the batteries connected to this circuit. |
+| BatteryDifferential | Float | Amount of power in excess/deficit going into or out of the batteries. Positive = Charges batteries, Negative = Drains batteries |
+| BatteryPercent | Float | Percentage of batteries. |
+| BatteryCapacity | Float | Total capacity of batteries. |
+| BatteryTimeEmpty | String | Time until Batteries are empty. Format: Hours:Minutes:Seconds |
+| BatteryTimeFull | String | Time until Batteries are full. Format: Hours:Minutes:Seconds |
+| AssociatedCircuits | Integer\[\] | All the circuit IDs that this group owns. |
+| FuseTriggered | Boolean | Has the fuse been triggered? |
+
+## Example Response
+
+```json
+[
+  {
+    "CircuitGroupID": 0,
+    "PowerProduction": 0,
+    "PowerConsumed": 0,
+    "PowerCapacity": 0,
+    "PowerMaxConsumed": 100,
+    "BatteryInput": 0,
+    "BatteryOutput": 0,
+    "BatteryDifferential": 0,
+    "BatteryPercent": 0,
+    "BatteryCapacity": 0,
+    "BatteryTimeEmpty": "00:00:00",
+    "BatteryTimeFull": "00:00:00",
+    "AssociatedCircuits": [
+      9,
+      1
+    ],
+    "FuseTriggered": false
+  }
+]
+```
