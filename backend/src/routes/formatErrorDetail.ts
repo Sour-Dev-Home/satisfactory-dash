@@ -9,7 +9,7 @@
 export function formatErrorDetail(err: unknown): string {
   if (err instanceof AggregateError) {
     const base = err.message ? `AggregateError: ${err.message}` : "AggregateError";
-    const causes = err.errors.map((cause) => String(cause));
+    const causes = err.errors.map((cause) => formatErrorDetail(cause));
     return causes.length > 0 ? `${base} (${causes.join("; ")})` : base;
   }
   return String(err);
