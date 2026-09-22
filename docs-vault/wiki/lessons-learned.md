@@ -22,13 +22,20 @@ counter instead of adding a new line. Only add a new line for a genuinely new pa
 
 ## `backend/src/routes/`
 
-- (×1) `String(err)` is not a reliable way to build an HTTP error response's diagnostic
+- (×2) `String(err)` is not a reliable way to build an HTTP error response's diagnostic
   detail — it works for a plain `Error` (keeps the message) but silently drops all
   useful content for a Node `AggregateError` (e.g. the dual-stack/happy-eyeballs
   connect failure `https.request` throws when a host is unreachable), yielding a bare
   `"AggregateError"` with no cause. Prefer formatting `err.message` plus, for
   `AggregateError`, its `.errors` array, rather than blind `String(err)`. Found in
-  `/api/status`'s catch block in `status.ts` (contrast with `/api/factory` and
-  `/api/power`, whose underlying errors are plain `Error` subclasses and so still
-  produce a useful `detail` through the same `String(err)` pattern — not yet fixed,
-  flagged to the implementer as a minor debuggability gap, not a crash).
+  `/api/status`'s catch block in `status.ts` (fixed with a shared `formatErrorDetail.ts`
+  helper used by all three routes). **Recurred one level deeper in the fix itself**:
+  `formatErrorDetail` unwraps `AggregateError.errors` with `.map((cause) => String(cause))`
+  — a plain `String()`, not a recursive `formatErrorDetail()` call — so a *nested*
+  `AggregateError` (one whose `.errors` contains another `AggregateError`) still
+  collapses back to a bare `"AggregateError"` one level down. Not reachable by any
+  current code path (no `Promise.any` usage in this codebase yet), so left as a
+  documented failing test rather than fixed. Lesson generalizes: when writing a fix
+  that recurses into a wrapper type's contents, actually recurse (call the same
+  formatter on each nested item), don't just call the one-level-shallower primitive
+  (`String()`) you're trying to replace.

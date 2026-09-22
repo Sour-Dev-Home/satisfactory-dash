@@ -77,3 +77,17 @@ the bottom.
   Added one new `lessons-learned.md` entry (`backend/src/routes/`, `String(err)`
   losing `AggregateError` detail) — minor debuggability gap, not a crash, flagged but
   not fixed.
+- 2026-09-21 — Implementer fixed the `AggregateError` detail bug with a shared
+  `formatErrorDetail.ts` helper used by all three routes, merged the confirmation
+  worktree's wiring test, and fixed the finding without being asked twice. A second
+  independent `test-hunter` confirmed the fix: correct and general (verified against a
+  plain `Error`, single- and multi-error `AggregateError`, zero-error `AggregateError`,
+  and non-`Error` thrown values), no regression to `/api/factory`/`/api/power`, and
+  confirmed against the real Node runtime's actual `AggregateError` shape (not a mock).
+  Found one real but currently-unreachable gap in the fix itself: the unwrap doesn't
+  recurse into a *nested* `AggregateError`, so incremented the existing
+  `lessons-learned.md` routes entry to `(×2)` instead of adding a new line, since it's
+  the same underlying pattern recurring one level deeper in the fix meant to close it.
+  Documented with a failing test on branch `confirm/services-routes-fix`, not fixed
+  (non-blocking). Full suite 84/85 (with that one intentional failing test included),
+  typecheck/lint/build all clean.
