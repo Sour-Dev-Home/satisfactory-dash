@@ -134,17 +134,44 @@ export class SatisfactoryServerAdapter {
 
   async getPowerCircuits(): Promise<PowerCircuit[]> {
     const raw = await this.frmApi.get<RawFrmPowerCircuit[]>("getPower");
-    return raw.map((circuit) => ({
-      circuitGroupId: circuit.CircuitGroupID,
-      powerProduction: circuit.PowerProduction,
-      powerConsumed: circuit.PowerConsumed,
-      powerCapacity: circuit.PowerCapacity,
-      maxPowerConsumed: circuit.PowerMaxConsumed,
-      fuseTriggered: circuit.FuseTriggered,
-      batteryPercent: circuit.BatteryPercent,
-      batteryDifferential: circuit.BatteryDifferential,
-      batteryCapacity: circuit.BatteryCapacity,
-    }));
+    return raw.map((circuit) => {
+      // Found by a review pass: PowerService's own null/non-object placeholder
+      // logic can only run if it's ever handed a raw circuit to inspect -- a
+      // null/non-object entry here used to throw (e.g. `circuit.CircuitGroupID`
+      // on `null`) before ever reaching that layer, crashing the whole
+      // /api/power call with a misleading "Could not reach the Satisfactory
+      // dedicated server" 503. Mapping it to NaN/false sentinels instead of
+      // dropping or crashing means classifyPowerCircuit's existing
+      // Number.isFinite/typeof-boolean guards correctly flag it as at_risk
+      // downstream, same as any other malformed circuit. [NEEDS VERIFICATION]
+      // whether FRM's getPower response can actually contain a null entry --
+      // not documented in docs-vault/raw-sources/frm-getPower.md -- but this is
+      // the layer meant to defend against unvalidated FRM data regardless.
+      if (circuit === null || typeof circuit !== "object") {
+        return {
+          circuitGroupId: Number.NaN,
+          powerProduction: Number.NaN,
+          powerConsumed: Number.NaN,
+          powerCapacity: Number.NaN,
+          maxPowerConsumed: Number.NaN,
+          fuseTriggered: false,
+          batteryPercent: Number.NaN,
+          batteryDifferential: Number.NaN,
+          batteryCapacity: Number.NaN,
+        };
+      }
+      return {
+        circuitGroupId: circuit.CircuitGroupID,
+        powerProduction: circuit.PowerProduction,
+        powerConsumed: circuit.PowerConsumed,
+        powerCapacity: circuit.PowerCapacity,
+        maxPowerConsumed: circuit.PowerMaxConsumed,
+        fuseTriggered: circuit.FuseTriggered,
+        batteryPercent: circuit.BatteryPercent,
+        batteryDifferential: circuit.BatteryDifferential,
+        batteryCapacity: circuit.BatteryCapacity,
+      };
+    });
   }
 
   async getPowerUsage(): Promise<BuildingPowerUsage[]> {

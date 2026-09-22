@@ -40,4 +40,48 @@ describe("buildServerUnreachableResponse", () => {
     const loggedArgs = errorSpy.mock.calls[0]?.join(" ") ?? "";
     expect(loggedArgs).toContain("ECONNREFUSED");
   });
+
+  // Found by a review pass: the original NODE_ENV === "production" check left
+  // detail exposed for anything else -- unset, "", "staging", "Production"
+  // (capitalized). Now an explicit allowlist (development/test), so anything
+  // unrecognized is redacted by default.
+  it("omits detail when NODE_ENV is unset, unlike the old opt-out-of-production check", () => {
+    delete process.env.NODE_ENV;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED 127.0.0.1:8080"));
+    expect(body).not.toHaveProperty("detail");
+  });
+
+  it("omits detail for an unrecognized NODE_ENV value like staging", () => {
+    process.env.NODE_ENV = "staging";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED 127.0.0.1:8080"));
+    expect(body).not.toHaveProperty("detail");
+  });
+
+  it("includes detail in development", () => {
+    process.env.NODE_ENV = "development";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED 127.0.0.1:8080"));
+    expect(body.detail).toContain("ECONNREFUSED");
+  });
+
+  // Found by a review pass: every failure previously got the same "Could not
+  // reach..." message, wrong for anything that isn't a connectivity problem.
+  it("describes an auth failure (401/403-style error) distinctly from an unreachable server", () => {
+    process.env.NODE_ENV = "test";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    class FakeStatusError extends Error {
+      status = 401;
+    }
+    const body = buildServerUnreachableResponse(new FakeStatusError("unauthorized"));
+    expect(body.error).toContain("rejected the request");
+  });
+
+  it("falls back to the generic connectivity message for a plain error with no status/errorCode", () => {
+    process.env.NODE_ENV = "test";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED"));
+    expect(body.error).toBe("Could not reach the Satisfactory dedicated server");
+  });
 });
