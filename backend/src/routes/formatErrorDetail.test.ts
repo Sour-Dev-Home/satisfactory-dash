@@ -32,10 +32,9 @@ describe("formatErrorDetail", () => {
   // general-purpose formatter "regardless of which error shape the adapter/service
   // threw", and a future `Promise.any([...])` over calls that each independently
   // throw AggregateError (e.g. two https.request-based adapter calls racing) would
-  // produce exactly this shape. `formatErrorDetail` maps over `.errors` with
-  // `String(cause)` rather than recursing into itself, so a nested AggregateError
-  // collapses back to the bare, undiagnostic "AggregateError" string one level down —
-  // the same failure mode this helper exists to fix, just not caught at the top level.
+  // produce exactly this shape. `formatErrorDetail` maps over `.errors` with itself
+  // (recursively) rather than `String(cause)`, so a nested AggregateError unwraps at
+  // every depth instead of collapsing back to a bare "AggregateError" one level down.
   it("recursively unwraps a nested AggregateError instead of collapsing it back to a bare string", () => {
     const inner = new AggregateError([new Error("ECONNREFUSED 127.0.0.1"), new Error("ECONNREFUSED ::1")], "");
     const outer = new AggregateError([inner, new Error("other failure")], "");
