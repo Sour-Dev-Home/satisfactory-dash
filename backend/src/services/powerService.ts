@@ -54,6 +54,21 @@ export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus 
   if (circuit.fuseTriggered) {
     return "outage";
   }
+  // Defensive: rawTypes.ts only declares these as `number` via a compile-time `as`
+  // cast (see the adapters-layer "unvalidated network responses" finding logged in
+  // docs-vault/wiki/lessons-learned.md) -- nothing validates them at runtime. Every
+  // comparison below is false for NaN, so a missing/malformed field from FRM would
+  // otherwise fall through to "ok" silently -- the worst failure mode for something
+  // meant to raise an alarm. [NEEDS VERIFICATION] whether FRM ever actually omits
+  // these fields; treat as at_risk rather than assume "ok" either way.
+  if (
+    !Number.isFinite(circuit.powerConsumed) ||
+    !Number.isFinite(circuit.powerCapacity) ||
+    !Number.isFinite(circuit.batteryDifferential) ||
+    !Number.isFinite(circuit.batteryPercent)
+  ) {
+    return "at_risk";
+  }
   if (circuit.powerConsumed > circuit.powerCapacity) {
     return "at_risk";
   }

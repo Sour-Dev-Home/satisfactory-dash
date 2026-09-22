@@ -128,4 +128,56 @@ describe("formatErrorDetail", () => {
     expect(detail).not.toContain("[circular]");
     expect(detail).toContain("Error: root");
   });
+
+  // Found by a second review pass: the same object appearing twice as unrelated
+  // SIBLINGS (not a real cycle) was mislabeled "[circular]" -- the earlier `seen`
+  // set persisted across the whole traversal instead of just the current recursion
+  // path. Plausible in practice: a dual-stack connect failure's two attempts could
+  // share an underlying error object.
+  it("does not mislabel a repeated sibling (not a real cycle) as circular", () => {
+    const shared = new Error("ECONNREFUSED");
+    const err = new AggregateError([shared, shared], "both attempts failed");
+    expect(formatErrorDetail(err)).toBe(
+      "AggregateError: both attempts failed (Error: ECONNREFUSED; Error: ECONNREFUSED)",
+    );
+  });
+
+  it("still detects a genuine cycle after fixing the sibling false-positive", () => {
+    const a: Error & { cause?: unknown } = new Error("a");
+    const b: Error & { cause?: unknown } = new Error("b", { cause: a });
+    a.cause = b;
+    expect(formatErrorDetail(a)).toContain("[circular]");
+  });
+
+  // Found by a second review pass: the doc comment promises this function "must
+  // never itself throw", but three adversarial inputs broke that promise --
+  // String(err) itself can throw (a null-prototype object has no toString), reading
+  // .cause can throw (a getter that throws), and a value's own toString() can throw.
+  // All three now fall back to a fixed string rather than propagating.
+  it("does not throw on a null-prototype object, where String() itself throws", () => {
+    const err: unknown = Object.create(null);
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    expect(formatErrorDetail(err)).toBe("[unformattable error]");
+  });
+
+  it("does not throw when reading .cause throws", () => {
+    const err = new Error("boom");
+    Object.defineProperty(err, "cause", {
+      get() {
+        throw new Error("cause getter exploded");
+      },
+    });
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    expect(formatErrorDetail(err)).toBe("[unformattable error]");
+  });
+
+  it("does not throw when a thrown value's toString() throws", () => {
+    const err = {
+      toString() {
+        throw new Error("toString exploded");
+      },
+    };
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    expect(formatErrorDetail(err)).toBe("[unformattable error]");
+  });
 });

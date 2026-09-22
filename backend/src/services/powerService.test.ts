@@ -94,6 +94,32 @@ describe("classifyPowerCircuit", () => {
   it("is ok, not outage, for an idle circuit with zero capacity and zero consumption (matches frm-getPower.md's example response)", () => {
     expect(classifyPowerCircuit(circuit({ powerConsumed: 0, powerCapacity: 0, powerProduction: 0 }))).toBe("ok");
   });
+
+  // Found by a second review pass: every comparison against NaN is false, so a
+  // missing/malformed numeric field from FRM (nothing validates rawTypes.ts's `as`
+  // cast at runtime -- see docs-vault/wiki/lessons-learned.md) used to fall through
+  // to "ok" silently instead of raising at_risk. Not fixTriggered's problem to catch
+  // (it's a separate boolean field) -- this covers the four numeric fields the
+  // function itself reads.
+  it("is at_risk, not ok, when powerConsumed is NaN rather than silently passing every comparison", () => {
+    expect(classifyPowerCircuit(circuit({ powerConsumed: Number.NaN }))).toBe("at_risk");
+  });
+
+  it("is at_risk, not ok, when powerCapacity is NaN", () => {
+    expect(classifyPowerCircuit(circuit({ powerCapacity: Number.NaN }))).toBe("at_risk");
+  });
+
+  it("is at_risk, not ok, when batteryDifferential is NaN", () => {
+    expect(classifyPowerCircuit(circuit({ batteryDifferential: Number.NaN }))).toBe("at_risk");
+  });
+
+  it("is at_risk, not ok, when batteryPercent is NaN", () => {
+    expect(classifyPowerCircuit(circuit({ batteryPercent: Number.NaN }))).toBe("at_risk");
+  });
+
+  it("a tripped fuse still wins over a NaN field elsewhere", () => {
+    expect(classifyPowerCircuit(circuit({ fuseTriggered: true, powerConsumed: Number.NaN }))).toBe("outage");
+  });
 });
 
 describe("PowerService", () => {

@@ -12,36 +12,55 @@
  *   exactly the diagnostic detail this helper exists to preserve.
  * Used by every route's error response so `detail` stays useful regardless of which
  * error shape the adapter/service threw.
+ *
+ * This is the last line of defense in every route's catch block, so it must never
+ * itself throw — the outer wrapper below guarantees that even against adversarial
+ * inputs (a null-prototype object, a `cause` getter that throws, a `toString()` that
+ * throws), falling back to a fixed string rather than propagating.
  */
-/**
- * @param seen Internal only — tracks objects already visited in this call's
- *   recursion so a cyclic `.cause`/`.errors` chain returns "[circular]" instead of
- *   overflowing the stack. This function is the last line of defense in every
- *   route's catch block, so it must never itself throw.
- */
-export function formatErrorDetail(err: unknown, seen: Set<unknown> = new Set()): string {
-  if (err !== null && typeof err === "object") {
-    if (seen.has(err)) {
-      return "[circular]";
-    }
-    seen.add(err);
+export function formatErrorDetail(err: unknown): string {
+  try {
+    return formatErrorDetailUnsafe(err, new Set());
+  } catch {
+    return "[unformattable error]";
   }
+}
 
-  if (err instanceof AggregateError) {
-    const base = err.message ? `AggregateError: ${err.message}` : "AggregateError";
-    const causes = err.errors.map((cause) => formatErrorDetail(cause, seen));
-    const withCauses = causes.length > 0 ? `${base} (${causes.join("; ")})` : base;
-    // AggregateError has its own .cause independent of .errors -- the previous
-    // version returned early inside this branch and never checked for it.
-    if (err.cause != null) {
-      return `${withCauses} (caused by: ${formatErrorDetail(err.cause, seen)})`;
+/**
+ * @param seen Tracks the *current recursion path* (objects whose formatting is
+ *   still in progress), not every object ever visited — each call removes itself
+ *   from `seen` before returning (see the `finally` below), so the same object
+ *   appearing twice as unrelated siblings (e.g. `new AggregateError([e, e])`) isn't
+ *   mistaken for a cycle. Only a genuine ancestor-to-descendant cycle returns
+ *   "[circular]".
+ */
+function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
+  if (err === null || typeof err !== "object") {
+    return String(err);
+  }
+  if (seen.has(err)) {
+    return "[circular]";
+  }
+  seen.add(err);
+  try {
+    if (err instanceof AggregateError) {
+      const base = err.message ? `AggregateError: ${err.message}` : "AggregateError";
+      const causes = err.errors.map((cause) => formatErrorDetailUnsafe(cause, seen));
+      const withCauses = causes.length > 0 ? `${base} (${causes.join("; ")})` : base;
+      // AggregateError has its own .cause independent of .errors -- an earlier
+      // version returned early inside this branch and never checked for it.
+      if (err.cause != null) {
+        return `${withCauses} (caused by: ${formatErrorDetailUnsafe(err.cause, seen)})`;
+      }
+      return withCauses;
     }
-    return withCauses;
+    // `!= null` (not `!== undefined`) so an explicit `{ cause: null }` -- a valid
+    // value to set -- doesn't recurse into formatting the literal string "null".
+    if (err instanceof Error && err.cause != null) {
+      return `${String(err)} (caused by: ${formatErrorDetailUnsafe(err.cause, seen)})`;
+    }
+    return String(err);
+  } finally {
+    seen.delete(err);
   }
-  // `!= null` (not `!== undefined`) so an explicit `{ cause: null }` -- a valid
-  // value to set -- doesn't recurse into formatting the literal string "null".
-  if (err instanceof Error && err.cause != null) {
-    return `${String(err)} (caused by: ${formatErrorDetail(err.cause, seen)})`;
-  }
-  return String(err);
 }
