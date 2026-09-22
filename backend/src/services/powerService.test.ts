@@ -23,8 +23,30 @@ describe("classifyPowerCircuit", () => {
     expect(classifyPowerCircuit(circuit({ fuseTriggered: true }))).toBe("outage");
   });
 
-  it("is outage when consumption exceeds capacity, even without a tripped fuse", () => {
-    expect(classifyPowerCircuit(circuit({ powerConsumed: 150, powerCapacity: 100 }))).toBe("outage");
+  // docs-vault/wiki/frm-api.md calls only FuseTriggered "a direct outage signal";
+  // over-capacity draw is described there as "heading toward an outage" (i.e.
+  // at_risk), since batteries may still be covering the gap. Classifying it as
+  // outage outright would make the at_risk branch below unreachable in any real
+  // deficit, since demand only outruns generation when consumption > capacity.
+  it("is at_risk (not outage) when consumption exceeds capacity but the fuse hasn't tripped", () => {
+    expect(classifyPowerCircuit(circuit({ powerConsumed: 150, powerCapacity: 100, fuseTriggered: false }))).toBe(
+      "at_risk",
+    );
+  });
+
+  it("is outage, not at_risk, once the fuse actually trips on an over-capacity circuit", () => {
+    expect(classifyPowerCircuit(circuit({ powerConsumed: 150, powerCapacity: 100, fuseTriggered: true }))).toBe(
+      "outage",
+    );
+  });
+
+  // The realistic version of "batteries draining": demand (150) outran generation
+  // (100), and batteries are covering the deficit (negative differential). This is
+  // the scenario the at_risk threshold exists for -- unlike a battery drain on a
+  // circuit with generation surplus, which can't happen on a real server.
+  it("is at_risk when a real deficit is being covered by draining batteries", () => {
+    const c = circuit({ powerProduction: 100, powerConsumed: 150, powerCapacity: 100, batteryDifferential: -50, batteryPercent: 10 });
+    expect(classifyPowerCircuit(c)).toBe("at_risk");
   });
 
   it("is at_risk when batteries are draining and below the threshold", () => {

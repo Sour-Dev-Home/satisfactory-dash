@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ServerStatusService } from "./serverStatusService.js";
 import type { ServerStatusAdapterLike } from "./serverStatusService.js";
+import type { ServerStatus } from "../adapters/domain.js";
 
 describe("ServerStatusService", () => {
   it("merges health and status into a single response", async () => {
@@ -80,5 +81,42 @@ describe("ServerStatusService", () => {
     };
     const service = new ServerStatusService(adapter);
     await expect(service.getStatus()).rejects.toThrow("connect ECONNREFUSED");
+  });
+
+  // Found by an independent CI review pass: getStatus used to build its return value
+  // with `{ healthy, ...status }`, which bypasses TypeScript's excess-property
+  // checking. This test simulates a future ServerStatus field the response type
+  // hasn't been updated for yet, and asserts it does NOT leak through -- with a
+  // spread it silently would have, with no compile error either.
+  it("does not leak an adapter-only field that isn't part of ServerStatusResponse", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: true }),
+      getServerStatus: async () =>
+        ({
+          sessionName: "my-save",
+          isGameRunning: true,
+          isPaused: false,
+          connectedPlayers: 2,
+          playerLimit: 4,
+          tickRate: 30,
+          totalGameDurationSeconds: 100,
+          internalDebugFlag: true,
+        }) as ServerStatus & { internalDebugFlag: boolean },
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status).not.toHaveProperty("internalDebugFlag");
+    expect(Object.keys(status).sort()).toEqual(
+      [
+        "healthy",
+        "sessionName",
+        "isGameRunning",
+        "isPaused",
+        "connectedPlayers",
+        "playerLimit",
+        "tickRate",
+        "totalGameDurationSeconds",
+      ].sort(),
+    );
   });
 });
