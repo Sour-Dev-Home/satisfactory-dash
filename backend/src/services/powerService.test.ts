@@ -120,6 +120,25 @@ describe("classifyPowerCircuit", () => {
   it("a tripped fuse still wins over a NaN field elsewhere", () => {
     expect(classifyPowerCircuit(circuit({ fuseTriggered: true, powerConsumed: Number.NaN }))).toBe("outage");
   });
+
+  // Found by a third review pass: the previous version used `if (circuit.
+  // fuseTriggered)`, which is truthy for the STRING "false" -- a malformed value
+  // from unvalidated FRM data (docs-vault/wiki/lessons-learned.md) would misread as
+  // a real outage. Now only a strict `=== true` counts as outage; anything else
+  // that isn't a real boolean falls into the defensive at_risk bucket instead.
+  it("is at_risk, not outage, when fuseTriggered is the truthy string 'false' rather than a real boolean", () => {
+    const c = { ...circuit(), fuseTriggered: "false" as unknown as boolean };
+    expect(classifyPowerCircuit(c)).toBe("at_risk");
+  });
+
+  it("is at_risk, not ok, when fuseTriggered is a non-boolean falsy value like 0", () => {
+    const c = { ...circuit(), fuseTriggered: 0 as unknown as boolean };
+    expect(classifyPowerCircuit(c)).toBe("at_risk");
+  });
+
+  it("a real fuseTriggered: false still reaches ok/at_risk logic normally", () => {
+    expect(classifyPowerCircuit(circuit({ fuseTriggered: false }))).toBe("ok");
+  });
 });
 
 describe("PowerService", () => {

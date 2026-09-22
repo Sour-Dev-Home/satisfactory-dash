@@ -59,7 +59,20 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
     if (err instanceof Error && err.cause != null) {
       return `${String(err)} (caused by: ${formatErrorDetailUnsafe(err.cause, seen)})`;
     }
-    return String(err);
+    if (err instanceof Error) {
+      return String(err);
+    }
+    // A non-Error object used directly as a `.cause` (e.g. `{ code: "ECONNRESET" }`)
+    // -- String() on these degrades to the useless "[object Object]". Try
+    // JSON.stringify for something actually diagnostic; if that itself throws (a
+    // BigInt, a getter that throws, its own cycle unrelated to `seen`), fall back to
+    // String() rather than let it propagate -- the outer wrapper would catch it
+    // anyway, but this keeps the fallback local and predictable.
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
   } finally {
     seen.delete(err);
   }

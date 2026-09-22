@@ -150,14 +150,19 @@ describe("formatErrorDetail", () => {
   });
 
   // Found by a second review pass: the doc comment promises this function "must
-  // never itself throw", but three adversarial inputs broke that promise --
-  // String(err) itself can throw (a null-prototype object has no toString), reading
+  // never itself throw", but three adversarial inputs broke that promise -- String()
+  // itself can throw (a null-prototype object has no inherited toString), reading
   // .cause can throw (a getter that throws), and a value's own toString() can throw.
-  // All three now fall back to a fixed string rather than propagating.
-  it("does not throw on a null-prototype object, where String() itself throws", () => {
+  // The first and third are now handled even better than "doesn't crash": since
+  // both inputs are non-Error objects, the JSON.stringify fallback added in a later
+  // pass (see below) produces real output ("{}" -- JSON.stringify neither needs
+  // toString() nor calls it) instead of needing the generic catch-all at all. The
+  // getter case still needs the catch-all, since the throw happens on property
+  // access, before any formatting branch runs.
+  it("does not throw on a null-prototype object, where String() itself would throw", () => {
     const err: unknown = Object.create(null);
     expect(() => formatErrorDetail(err)).not.toThrow();
-    expect(formatErrorDetail(err)).toBe("[unformattable error]");
+    expect(formatErrorDetail(err)).toBe("{}");
   });
 
   it("does not throw when reading .cause throws", () => {
@@ -171,13 +176,40 @@ describe("formatErrorDetail", () => {
     expect(formatErrorDetail(err)).toBe("[unformattable error]");
   });
 
-  it("does not throw when a thrown value's toString() throws", () => {
+  it("does not throw when a thrown value's toString() would throw (JSON.stringify never calls it)", () => {
     const err = {
       toString() {
         throw new Error("toString exploded");
       },
     };
     expect(() => formatErrorDetail(err)).not.toThrow();
-    expect(formatErrorDetail(err)).toBe("[unformattable error]");
+    expect(formatErrorDetail(err)).toBe("{}");
+  });
+
+  // A value JSON.stringify itself can't handle (e.g. a BigInt property) falls back
+  // to String() within the same branch -- which still succeeds for an ordinary
+  // object, so this never needs the outer catch-all at all.
+  it("falls back to String() when JSON.stringify itself throws on a non-Error value", () => {
+    const err = { value: 10n };
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    expect(formatErrorDetail(err)).toBe("[object Object]");
+  });
+
+  // Found by a third review pass: a non-Error value used directly as a `.cause`
+  // (e.g. a plain object some other library throws) went through String(), which
+  // degrades an object to the useless "[object Object]" -- the same kind of lost
+  // detail this whole helper exists to prevent. JSON.stringify gives something
+  // actually diagnostic instead.
+  it("JSON-stringifies a non-Error cause instead of degrading to '[object Object]'", () => {
+    const err = new Error("top", { cause: { code: "ECONNRESET", errno: -104 } });
+    expect(formatErrorDetail(err)).toBe('Error: top (caused by: {"code":"ECONNRESET","errno":-104})');
+  });
+
+  it("falls back to String() if a non-Error cause isn't JSON-serializable", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const err = new Error("top", { cause: cyclic });
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    expect(formatErrorDetail(err)).toContain("caused by:");
   });
 });

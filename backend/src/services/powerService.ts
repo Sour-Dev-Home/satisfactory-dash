@@ -51,17 +51,22 @@ const AT_RISK_BATTERY_PERCENT = 20;
  * choice worth someone signing off on once real `getPower` data exists.
  */
 export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus {
-  if (circuit.fuseTriggered) {
+  // A genuine tripped fuse always wins, regardless of any other field's validity --
+  // keep this strict-equality check ahead of the defensive block below so a NaN
+  // elsewhere on a real outage can't get downgraded to at_risk.
+  if (circuit.fuseTriggered === true) {
     return "outage";
   }
-  // Defensive: rawTypes.ts only declares these as `number` via a compile-time `as`
+  // Defensive: rawTypes.ts only declares these fields' types via a compile-time `as`
   // cast (see the adapters-layer "unvalidated network responses" finding logged in
-  // docs-vault/wiki/lessons-learned.md) -- nothing validates them at runtime. Every
-  // comparison below is false for NaN, so a missing/malformed field from FRM would
-  // otherwise fall through to "ok" silently -- the worst failure mode for something
-  // meant to raise an alarm. [NEEDS VERIFICATION] whether FRM ever actually omits
-  // these fields; treat as at_risk rather than assume "ok" either way.
+  // docs-vault/wiki/lessons-learned.md) -- nothing validates them at runtime. A
+  // malformed fuseTriggered (e.g. the string "false", which is truthy in JS) would
+  // otherwise misread via truthiness, and NaN numeric fields make every comparison
+  // below silently false, falling through to "ok" -- the worst failure mode for
+  // something meant to raise an alarm. [NEEDS VERIFICATION] whether FRM ever
+  // actually sends malformed fields; treat as at_risk rather than assume either way.
   if (
+    typeof circuit.fuseTriggered !== "boolean" ||
     !Number.isFinite(circuit.powerConsumed) ||
     !Number.isFinite(circuit.powerCapacity) ||
     !Number.isFinite(circuit.batteryDifferential) ||
