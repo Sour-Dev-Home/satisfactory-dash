@@ -40,21 +40,16 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
     expect(res.body).toHaveProperty("detail");
   });
 
-  // Documents a real gap found in this pass: the vanilla-API path (status route)
-  // rejects with a bare Node `AggregateError` (from the dual-stack DNS/connect
-  // failure inside `https.request`/Node's happy-eyeballs), and `String(err)` on an
-  // AggregateError does not include the wrapped errors' messages the way it does for
-  // a plain Error. So `/api/status`'s `detail` degrades to the literal string
-  // "AggregateError" with none of the underlying "why" (contrast with /api/factory
-  // and /api/power's `detail`, which retain the FRM endpoint name and cause via
-  // FrmApiRequestError's message). Not a crash and not a contract violation — the
-  // shared response shape doesn't promise anything about `detail`'s content — but it
-  // is a real, previously-untested asymmetry in error-message usefulness across the
-  // three routes. Flagged for the implementer rather than fixed here.
-  it("status: detail degrades to a near-useless 'AggregateError' string on a real connect failure (documents a gap, not a hard requirement)", async () => {
+  // The vanilla-API path (status route) rejects with a Node `AggregateError` (from
+  // the dual-stack DNS/connect failure inside `https.request`'s happy-eyeballs), which
+  // used to make `detail` degrade to the bare, undiagnostic string "AggregateError"
+  // since `String(err)` doesn't surface an AggregateError's wrapped `.errors` the way
+  // it does a plain Error's `.message`. routes/formatErrorDetail.ts now unwraps it.
+  it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
     const res = await request(app).get("/api/status");
     expect(res.status).toBe(503);
     expect(typeof res.body.detail).toBe("string");
-    expect(res.body.detail).toBe("AggregateError");
+    expect(res.body.detail).not.toBe("AggregateError");
+    expect(res.body.detail).toMatch(/^AggregateError \(.*ECONNREFUSED.*\)$/);
   });
 });
