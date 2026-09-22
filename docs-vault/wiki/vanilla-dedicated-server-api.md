@@ -42,7 +42,7 @@ outage detector.
 |---|---|---|
 | `HealthCheck` | `Health` ("healthy"/"slow"), `ServerCustomData` | No auth required. Good liveness probe. |
 | `QueryServerState` | `ActiveSessionName`, `NumConnectedPlayers`, `PlayerLimit`, `TechTier`, `GamePhase`, `IsGameRunning`, `TotalGameDuration`, `IsGamePaused`, `AverageTickRate`, `AutoLoadSessionName` | Server/session-level only — no per-building or per-factory data. |
-| `GetServerOptions` / `GetAdvancedGameSettings` | Server config maps | Config, not live production data. |
+| `GetServerOptions` / `GetAdvancedGameSettings` | Server config maps | Config, not live production data. **`GetServerOptions` output includes FRM's `uWS.AuthenticationToken` in plaintext** (observed 2026-09-22), so a vanilla admin token effectively grants the FRM token. See the rule in `backend/src/adapters/README.md`. |
 | `EnumerateSessions` | List of save files + headers | Admin only. |
 
 **Observation (directly from the function list, not inferred):** the vanilla HTTPS API
@@ -86,6 +86,25 @@ without cross-checking a live response:
 
 `HealthCheck` and `QueryServerState` (read-only, the two most relevant to this
 project) both worked exactly as documented aside from casing.
+
+## Confirmed against a live, populated server (2026-09-22)
+
+Same versions, a tier-6 save loaded. Captures:
+`raw-sources/captured-responses/vanilla-QueryServerState-2026-09-22-*.json` (session name
+replaced with a placeholder).
+
+- **`TotalGameDuration` is the save's cumulative play time, not "time the current save
+  has been loaded"** as `dedicated-server-api.md` describes it. Right after loading, the
+  save read `96589` seconds. [NEEDS VERIFICATION] how it behaves across a server
+  restart.
+- **`IsGamePaused` reflects the server's auto-pause.** With `FG.DSAutoPause=True` and no
+  players connected, the save loaded paused (`isGamePaused: true`); with auto-pause
+  switched off it ran (`false`), still with no players. While paused, FRM returns frozen
+  values (see `frm-api.md`).
+- **`GetServerOptions` exposes FRM's auth token.** Its output (deliberately not saved to
+  `raw-sources/`) included FRM's `uWS.AuthenticationToken` in plaintext alongside the
+  server options such as `FG.DSAutoPause`. Treat the response as a secret: see
+  `backend/src/adapters/README.md` for the allowlist-only rule.
 
 ## Full reference
 

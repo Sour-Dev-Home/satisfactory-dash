@@ -8,15 +8,16 @@ the summary.
 
 | Metric | Source | Status |
 |---|---|---|
-| Production rate per building | FRM `getFactory` (`production[].CurrentProd`/`MaxProd`/`ProdPercent`) | **Covered.** Schema confirmed from docs (`raw-sources/frm-getFactory.md`); endpoint reachable live and returns well-formed JSON, but the save had no buildings placed, so field values themselves aren't live-verified yet — schema-confirmed, not fully live-confirmed. |
-| Overflow (belt backed up) | FRM `getFactory` (`OutputInventory[].Amount` == `MaxAmount` while `IsProducing: true`) | **Covered, indirectly.** No direct "belt full" field exists anywhere, including `getBelts` (confirmed — see `frm-api.md`). The output-inventory-at-capacity proxy is inferred from documented fields, not itself documented as an overflow signal — validate against a real backed-up factory before relying on it. |
-| Power outage / deficit | FRM `getPower` (`FuseTriggered`, `PowerConsumed` vs `PowerCapacity`, `BatteryDifferential`, `BatteryPercent`) | **Covered.** Schema confirmed from docs; endpoint reachable live (empty response, no power circuits in the fresh save). FRM also has a built-in webhook (`DiscIT.OutageJSON`) that could be used instead of/alongside polling — undecided, see `frm-config.md`. |
+| Production rate per building | FRM `getFactory` (`production[].CurrentProd`/`MaxProd`/`ProdPercent`) | **Covered and live-verified (2026-09-22).** Per minute, clock speed already included, percent on a 0-100 scale; fluids in m³/min matching the game UI. See `frm-api.md`. Gap: `getFactory` gives no per-item solid-vs-fluid flag, so the unit (items/min vs m³/min) can't be labelled reliably yet ([NEEDS VERIFICATION] whether another FRM endpoint provides it). |
+| Overflow (belt backed up) | FRM `getFactory` (`OutputInventory[].Amount` == `MaxAmount`, machine configured and not paused) | **Covered, indirectly; live-checked 2026-09-22.** No direct "belt full" field exists anywhere, including `getBelts`. The original proxy also required `IsProducing: true`, which never matches: a machine with a full output stops producing (71 of 71 full-output machines read `IsProducing: false`). `OutputInventory` lists only non-empty slots, and fluid outputs do appear there, so refineries are probably covered too. [NEEDS VERIFICATION] with a deliberately blocked refinery before relying on it for fluids. |
+| Power outage / deficit | FRM `getPower` (`FuseTriggered`, `PowerConsumed` vs `PowerCapacity`, `PowerMaxConsumed`, battery fields) | **Covered and live-verified (2026-09-22).** MW values match the in-game panel; a tripped fuse reads `FuseTriggered: true` with production/consumption/capacity at 0; battery units confirmed. `getPower` is keyed by circuit *group* (`CircuitGroupID`), which differs from a building's `CircuitID` when a switch is involved. FRM also has a built-in webhook (`DiscIT.OutageJSON`) that could be used instead of/alongside polling — undecided, see `frm-config.md`. |
 | Player position/inventory | FRM `getPlayer` | **Covered.** Schema confirmed from docs; endpoint reachable live (empty, no players connected during the spike). |
 | Server health / uptime | Vanilla HTTPS API `HealthCheck` + `QueryServerState` | **Covered and live-confirmed.** Both hit successfully against the running server; response casing is camelCase in practice (docs show PascalCase) — see `vanilla-dedicated-server-api.md`. |
+| Simulation paused (values frozen) | Vanilla `QueryServerState` (`isGamePaused`) | **Covered and live-verified (2026-09-22).** True when the server's auto-pause has paused the game with no players connected; FRM values are frozen while it is. |
 
 No row currently needs a custom mod — every stated metric has a documented, reachable
-API source. The two open items are validating real (non-empty) responses once
-buildings/players exist in a save, and confirming whether FRM's tunneled Game Port
+API source. Open items: the blocked-refinery check for fluid overflow, a per-item
+solid/fluid source for labelling units, and confirming whether FRM's tunneled Game Port
 transport (documented as a fallback) actually works on this version — it returned
-`404` in this spike, so the adapter should target FRM's direct Web Server instead
+`404` in the 2026-09-21 spike, so the adapter targets FRM's direct Web Server instead
 (see `frm-api.md`).

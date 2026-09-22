@@ -1,0 +1,8 @@
+Captured: 2026-09-22T22:42:39Z, live dedicated server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3, tier-6 save with 338 factory buildings
+Method: GET http://localhost:8080/getPower (FRM Web Server, direct transport)
+Scenario: A second, separate power grid (circuit group 1) with its fuse tripped: production, consumption and capacity all read 0 while PowerMaxConsumed stays 60. Also one idle machine not connected to power with no recipe set (see frm-getFactory-2026-09-22-CJ-norecipe-fuse-trimmed.json).
+In-game UI at capture time: player reports one separate grid with its fuse currently tripped; one machine idle, not connected to power, no recipe set.
+
+---
+
+[{"CircuitGroupID":0,"PowerProduction":3633.33349609375,"PowerConsumed":2915.58447265625,"PowerCapacity":4083.33349609375,"PowerMaxConsumed":4606.46142578125,"BatteryInput":0,"BatteryOutput":0,"BatteryDifferential":0,"BatteryPercent":0,"BatteryCapacity":0,"BatteryTimeEmpty":"00:00:00","BatteryTimeFull":"00:00:00","AssociatedCircuits":[0],"FuseTriggered":false},{"CircuitGroupID":1,"PowerProduction":0,"PowerConsumed":0,"PowerCapacity":0,"PowerMaxConsumed":60,"BatteryInput":0,"BatteryOutput":0,"BatteryDifferential":0,"BatteryPercent":0,"BatteryCapacity":0,"BatteryTimeEmpty":"00:00:00","BatteryTimeFull":"00:00:00","AssociatedCircuits":[2],"FuseTriggered":true}]

@@ -1,0 +1,8 @@
+Captured: 2026-09-22T22:35:33Z, live dedicated server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3, tier-6 save with 338 factory buildings
+Method: GET http://localhost:8080/getPower (FRM Web Server, direct transport)
+Scenario: Auto-pause off, player connected, reading the power-pole info panel of the main grid.
+In-game UI at capture time: Production 3,633.3 MW (steady) | Consumption ~2,744 MW (fluctuating) | Max consumption 4,606.5 MW | Capacity 4,083.3 MW. Unit shown in game UI: MW.
+
+---
+
+[{"CircuitGroupID":0,"PowerProduction":3633.33349609375,"PowerConsumed":2692.111572265625,"PowerCapacity":4083.33349609375,"PowerMaxConsumed":4606.46142578125,"BatteryInput":0,"BatteryOutput":0,"BatteryDifferential":0,"BatteryPercent":0,"BatteryCapacity":0,"BatteryTimeEmpty":"00:00:00","BatteryTimeFull":"00:00:00","AssociatedCircuits":[0],"FuseTriggered":false}]

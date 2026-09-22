@@ -1,0 +1,8 @@
+Captured: 2026-09-22T22:46:55Z, live dedicated server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3, tier-6 save with 338 factory buildings
+Method: GET http://localhost:8080/getPower (FRM Web Server, direct transport)
+Scenario: One Power Storage (BatteryCapacity 100, MWh) connected to the main circuit through a Power Switch, charging at 100 MW. AssociatedCircuits lists both member circuits [0,3]. PowerConsumed excludes the battery's charging input.
+In-game UI at capture time: one Power Storage connected via a Power Switch to the main circuit; in-game charge shows ~1-2%.
+
+---
+
+[{"CircuitGroupID":0,"PowerProduction":3633.33349609375,"PowerConsumed":2693.314697265625,"PowerCapacity":4083.33349609375,"PowerMaxConsumed":4606.46142578125,"BatteryInput":100,"BatteryOutput":0,"BatteryDifferential":100,"BatteryPercent":2.3344869613647461,"BatteryCapacity":100,"BatteryTimeEmpty":"00:00:00","BatteryTimeFull":"00:58:35","AssociatedCircuits":[0,3],"FuseTriggered":false}]

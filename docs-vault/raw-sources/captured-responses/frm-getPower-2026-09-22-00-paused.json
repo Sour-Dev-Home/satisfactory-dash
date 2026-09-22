@@ -1,0 +1,8 @@
+Captured: 2026-09-22T22:16:00Z, live dedicated server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3, tier-6 save with 338 factory buildings
+Method: GET http://localhost:8080/getPower (FRM Web Server, direct transport)
+Scenario: Server just loaded the save with FG.DSAutoPause=True and 0 players connected, so the simulation is paused (see vanilla-QueryServerState-2026-09-22-00-paused.json, isGamePaused:true). No batteries anywhere: all battery fields read 0, not null.
+In-game UI at capture time: none (no player connected). Values are frozen while paused.
+
+---
+
+[{"CircuitGroupID":0,"PowerProduction":3633.33349609375,"PowerConsumed":3039.604736328125,"PowerCapacity":4083.33349609375,"PowerMaxConsumed":4606.46142578125,"BatteryInput":0,"BatteryOutput":0,"BatteryDifferential":0,"BatteryPercent":0,"BatteryCapacity":0,"BatteryTimeEmpty":"00:00:00","BatteryTimeFull":"00:00:00","AssociatedCircuits":[0],"FuseTriggered":false}]

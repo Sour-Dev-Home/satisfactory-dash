@@ -1,0 +1,8 @@
+Captured: about 20 s after 2026-09-22T22:46:55Z (the source filename reuses the first capture's stamp), live dedicated server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3, tier-6 save with 338 factory buildings
+Method: GET http://localhost:8080/getPower (FRM Web Server, direct transport)
+Scenario: Same as frm-getPower-2026-09-22-H-battery-charging.json, re-captured about 20 seconds later: BatteryPercent 2.33 -> 2.90 (100 MW x 20 s = 0.56 MWh = +0.56% of 100 MWh), BatteryTimeFull 00:58:35 -> 00:58:15.
+In-game UI at capture time: same as the previous capture (~1-2% charge).
+
+---
+
+[{"CircuitGroupID":0,"PowerProduction":3633.33349609375,"PowerConsumed":2666.786376953125,"PowerCapacity":4083.33349609375,"PowerMaxConsumed":4606.46142578125,"BatteryInput":100,"BatteryOutput":0,"BatteryDifferential":100,"BatteryPercent":2.8982968330383301,"BatteryCapacity":100,"BatteryTimeEmpty":"00:00:00","BatteryTimeFull":"00:58:15","AssociatedCircuits":[0,3],"FuseTriggered":false}]
