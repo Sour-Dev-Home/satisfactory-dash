@@ -73,4 +73,59 @@ describe("formatErrorDetail", () => {
   it("does not append a cause clause when .cause is explicitly undefined", () => {
     expect(formatErrorDetail(new Error("plain", { cause: undefined }))).toBe("Error: plain");
   });
+
+  // Found by a review pass: `{ cause: null }` is a valid, explicit value (distinct
+  // from omitting cause entirely) and the old `!== undefined` guard let it through,
+  // recursing into formatErrorDetail(null) and appending the literal "(caused by:
+  // null)" -- undiagnostic noise, not the absence-of-cause case it should be.
+  it("does not append a cause clause when .cause is explicitly null", () => {
+    expect(formatErrorDetail(new Error("plain", { cause: null }))).toBe("Error: plain");
+  });
+
+  // Found by a review pass: the AggregateError branch returned before ever checking
+  // err.cause, since AggregateError.cause is independent of its .errors array. An
+  // AggregateError can have both an empty .errors and its own .cause (e.g.
+  // constructed as `new AggregateError([], "msg", { cause })`).
+  it("includes an AggregateError's own .cause even when .errors is empty", () => {
+    const cause = new Error("root cause");
+    const err = new AggregateError([], "wrapper", { cause });
+    expect(formatErrorDetail(err)).toBe("AggregateError: wrapper (caused by: Error: root cause)");
+  });
+
+  it("includes an AggregateError's own .cause alongside its wrapped .errors", () => {
+    const cause = new Error("root cause");
+    const err = new AggregateError([new Error("a")], "wrapper", { cause });
+    expect(formatErrorDetail(err)).toBe("AggregateError: wrapper (Error: a) (caused by: Error: root cause)");
+  });
+
+  // Found by a review pass: the recursive .cause/.errors traversal had no cycle
+  // guard, so a cyclic chain (constructed here, but reachable if any future code
+  // path ever built one) would overflow the stack -- crashing the route uncaught
+  // instead of degrading gracefully, which defeats the entire point of this helper
+  // being "the last line of defense" in every route's catch block.
+  it("returns '[circular]' instead of overflowing the stack on a cyclic cause chain", () => {
+    const a: Error & { cause?: unknown } = new Error("a");
+    const b: Error & { cause?: unknown } = new Error("b", { cause: a });
+    a.cause = b;
+    expect(() => formatErrorDetail(a)).not.toThrow();
+    expect(formatErrorDetail(a)).toContain("[circular]");
+  });
+
+  it("returns '[circular]' for a cyclic AggregateError chain", () => {
+    const inner: AggregateError & { cause?: unknown } = new AggregateError([], "inner");
+    const outer = new AggregateError([inner], "outer");
+    inner.cause = outer;
+    expect(() => formatErrorDetail(outer)).not.toThrow();
+    expect(formatErrorDetail(outer)).toContain("[circular]");
+  });
+
+  it("still resolves a long, non-cyclic chain correctly (cycle guard doesn't misfire on depth alone)", () => {
+    let err: Error = new Error("root");
+    for (let i = 0; i < 50; i++) {
+      err = new Error(`level ${i}`, { cause: err });
+    }
+    const detail = formatErrorDetail(err);
+    expect(detail).not.toContain("[circular]");
+    expect(detail).toContain("Error: root");
+  });
 });

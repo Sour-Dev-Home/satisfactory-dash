@@ -40,17 +40,26 @@ describe("classifyPowerCircuit", () => {
     );
   });
 
-  // The realistic version of "batteries draining": demand (150) outran generation
-  // (100), and batteries are covering the deficit (negative differential). This is
-  // the scenario the at_risk threshold exists for -- unlike a battery drain on a
-  // circuit with generation surplus, which can't happen on a real server.
-  it("is at_risk when a real deficit is being covered by draining batteries", () => {
+  // Found by a review pass: this test used to combine powerConsumed > powerCapacity
+  // WITH draining batteries in one fixture, so it passed via the capacity branch
+  // regardless of the battery values -- it never actually exercised the battery
+  // branch below despite its name implying it did. Keeping the over-capacity-plus-
+  // battery-drain case (still a real, worth-covering scenario) but asserting via a
+  // fixture where the capacity branch demonstrably isn't what's firing.
+  it("is at_risk on a genuine deficit (over capacity, batteries also draining)", () => {
     const c = circuit({ powerProduction: 100, powerConsumed: 150, powerCapacity: 100, batteryDifferential: -50, batteryPercent: 10 });
     expect(classifyPowerCircuit(c)).toBe("at_risk");
   });
 
-  it("is at_risk when batteries are draining and below the threshold", () => {
-    expect(classifyPowerCircuit(circuit({ batteryDifferential: -5, batteryPercent: 10 }))).toBe("at_risk");
+  // Isolates the battery branch specifically: consumption is within nominal
+  // capacity, so the capacity check does NOT fire, yet batteries are still
+  // draining. See the reachability discussion on classifyPowerCircuit's doc
+  // comment -- this models PowerCapacity (nominal/rated) diverging from actual
+  // PowerProduction (e.g. a generator idle or fuel-starved), which nothing in
+  // docs-vault rules out.
+  it("is at_risk when batteries are draining and below the threshold, even though consumption is within nominal capacity", () => {
+    const c = circuit({ powerConsumed: 50, powerCapacity: 100, batteryDifferential: -5, batteryPercent: 10 });
+    expect(classifyPowerCircuit(c)).toBe("at_risk");
   });
 
   it("is ok when batteries are draining but still above the threshold", () => {

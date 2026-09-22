@@ -29,6 +29,26 @@ const AT_RISK_BATTERY_PERCENT = 20;
  *   docs-vault/raw-sources/frm-getPower.md: "Negative = Drains batteries") and
  *   below AT_RISK_BATTERY_PERCENT.
  * - "ok" otherwise.
+ *
+ * The battery-differential check runs even though `powerConsumed > powerCapacity`
+ * is checked first, and it's a real, separate signal rather than dead code: circuit
+ * has `PowerProduction`, `PowerConsumed`, and `PowerCapacity` as three distinct
+ * fields (frm-getPower.md), and nothing in docs-vault says `PowerCapacity` tracks
+ * *current* generation rather than generators' rated maximum. A generator sitting
+ * idle or fuel-starved would show consumption comfortably under nominal capacity
+ * while actual production has dropped below consumption, forcing a battery drain
+ * this function would otherwise miss entirely. [NEEDS VERIFICATION] — whether this
+ * gap is real depends on that undocumented relationship; until then, keep the
+ * branch rather than assume it away in either direction.
+ *
+ * IMPORTANT (flagged by a review pass, not yet resolved): `hasOutage` rests
+ * entirely on `FuseTriggered`. `getPower` returned `[]` in the Phase 2 spike and
+ * has never been checked against a populated save, and docs-vault says nothing
+ * about the fuse's latency/debounce, or whether it trips automatically on
+ * over-capacity draw at all. A circuit massively over capacity with drained
+ * batteries currently reports `hasOutage: false` until the fuse actually trips.
+ * The docs-vault grounding supports this classification, but it's a conscious
+ * choice worth someone signing off on once real `getPower` data exists.
  */
 export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus {
   if (circuit.fuseTriggered) {
