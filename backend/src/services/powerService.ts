@@ -104,7 +104,11 @@ export class PowerService {
   async getPowerOverview(): Promise<PowerOverviewResponse> {
     const circuits = await this.adapter.getPowerCircuits();
     const mapped: PowerCircuitResponse[] = circuits.map((circuit) => ({
-      circuitGroupId: circuit.circuitGroupId,
+      // -1 is FRM's own documented "not connected" sentinel for this ID
+      // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
+      // FactoryBuilding.circuitId in satisfactoryServerAdapter.ts -- 0 would be
+      // wrong here since it could collide with a real circuit 0.
+      circuitGroupId: finiteOr(circuit.circuitGroupId, -1),
       powerProduction: finiteOr(circuit.powerProduction, 0),
       powerConsumed: finiteOr(circuit.powerConsumed, 0),
       powerCapacity: finiteOr(circuit.powerCapacity, 0),

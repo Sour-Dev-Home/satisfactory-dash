@@ -265,4 +265,29 @@ describe("formatErrorDetail", () => {
     expect(typeof result).toBe("string");
     expect(result.startsWith("Error: level 19999")).toBe(true);
   });
+
+  // Found by a fifth review pass: .errors is a writable property, so
+  // `err.errors = null` is legal. The un-guarded .map() call then threw outside any
+  // formatChildSafely boundary of its own, propagating past this function and
+  // losing the base AggregateError message too -- exactly the class of bug the
+  // previous pass's fix was supposed to have closed everywhere.
+  it("keeps the base message when an AggregateError's .errors has been replaced by a non-array", () => {
+    const err = new AggregateError([new Error("a")], "wrapper message");
+    // @ts-expect-error -- deliberately corrupting .errors to test the guard
+    err.errors = null;
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    expect(formatErrorDetail(err)).toBe("AggregateError: wrapper message");
+  });
+
+  // Found by a fifth review pass: JSON.stringify serializes an Error to "{}" (its
+  // message/stack aren't enumerable own properties), so an Error nested INSIDE a
+  // plain-object cause (e.g. `{ inner: new Error(...) }`, rather than being the
+  // cause itself) silently lost its message. The replacer now expands any nested
+  // Error before stringifying.
+  it("keeps a nested Error's message when it's inside a plain-object cause, not the cause itself", () => {
+    const err = new Error("outer", { cause: { inner: new Error("ECONNRESET details") } });
+    const result = formatErrorDetail(err);
+    expect(result).toContain("ECONNRESET details");
+    expect(result).not.toContain('"inner":{}');
+  });
 });

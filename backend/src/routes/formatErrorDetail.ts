@@ -74,7 +74,13 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
   try {
     if (err instanceof AggregateError) {
       const base = err.message ? `AggregateError: ${err.message}` : "AggregateError";
-      const causes = err.errors.map((cause) => formatChildSafely(cause, seen));
+      // .errors is a writable property -- if it's ever been replaced with something
+      // non-array (e.g. `err.errors = null`), .map() on it throws, and since that
+      // throw isn't behind a formatChildSafely boundary of its own, it would
+      // otherwise propagate past this function entirely, losing `base` too.
+      // Treating a non-array as "no wrapped errors" keeps at least the base message.
+      const errors = Array.isArray(err.errors) ? err.errors : [];
+      const causes = errors.map((cause) => formatChildSafely(cause, seen));
       const withCauses = causes.length > 0 ? `${base} (${causes.join("; ")})` : base;
       // AggregateError has its own .cause independent of .errors -- an earlier
       // version returned early inside this branch and never checked for it.
@@ -101,9 +107,15 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
     // `undefined` (e.g. a `toJSON()` that returns `undefined` -- valid JS, and
     // JSON.stringify's real return type is `string | undefined` despite what its
     // TS signature claims), fall back to String() rather than silently return a
-    // non-string from a function whose whole contract is "always a string".
+    // non-string from a function whose whole contract is "always a string". The
+    // replacer expands any Error nested *inside* this object (e.g.
+    // `{ inner: new Error(...) }`) -- plain JSON.stringify serializes an Error to
+    // "{}" since .message/.stack aren't enumerable, silently dropping exactly the
+    // detail this whole function exists to keep.
     try {
-      const json = JSON.stringify(err);
+      const json = JSON.stringify(err, (_key, value) =>
+        value instanceof Error ? { name: value.name, message: value.message } : value,
+      );
       if (typeof json === "string") {
         return json;
       }

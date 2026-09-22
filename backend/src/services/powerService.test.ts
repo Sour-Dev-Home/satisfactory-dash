@@ -211,6 +211,21 @@ describe("PowerService", () => {
     expect(overview.circuits[0].status).toBe("at_risk");
   });
 
+  // Found by a fifth review pass: circuitGroupId went through every other field's
+  // finiteOr treatment except itself, so a NaN there still became JSON null on the
+  // wire despite PowerCircuitResponse declaring it a number. -1 (not 0) is the
+  // right fallback since 0 could collide with a real circuit's actual id -- FRM
+  // documents -1 as "not connected" for this exact field
+  // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
+  // FactoryBuilding.circuitId.
+  it("sanitizes a NaN circuitGroupId to -1 (FRM's own not-connected sentinel), not 0", async () => {
+    const bad = circuit({ circuitGroupId: Number.NaN });
+    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
+    const service = new PowerService(adapter);
+    const overview = await service.getPowerOverview();
+    expect(overview.circuits[0].circuitGroupId).toBe(-1);
+  });
+
   it("leaves well-formed values untouched", async () => {
     const adapter: PowerAdapterLike = { getPowerCircuits: async () => [circuit({ powerConsumed: 42, fuseTriggered: false })] };
     const service = new PowerService(adapter);
