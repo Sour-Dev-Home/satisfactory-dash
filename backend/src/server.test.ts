@@ -9,3 +9,47 @@ describe("GET /api/health", () => {
     expect(res.body).toEqual({ status: "ok" });
   });
 });
+
+// These exercise the *real* wiring in server.ts end to end (real adapter -> real
+// service -> real route), unlike routes/*.test.ts and services/*.test.ts, which each
+// substitute a fixture/fake one layer down. Nothing in the .env-less test environment
+// points at a live game server (config.ts defaults to localhost:7777 / :8080), so
+// every one of these is expected to fail to connect — which is exactly the case this
+// checks: that a real adapter connection failure propagates through the real service
+// and is turned into a clean 503 by the route, rather than the request crashing,
+// hanging, or an unhandled rejection escaping past Express's control flow.
+describe("GET /api/status, /api/factory, /api/power against an unreachable game server", () => {
+  it("status: resolves 503 with an error body instead of hanging or crashing", async () => {
+    const res = await request(app).get("/api/status");
+    expect(res.status).toBe(503);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body).toHaveProperty("detail");
+  });
+
+  it("factory: resolves 503 with an error body instead of hanging or crashing", async () => {
+    const res = await request(app).get("/api/factory");
+    expect(res.status).toBe(503);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body).toHaveProperty("detail");
+  });
+
+  it("power: resolves 503 with an error body instead of hanging or crashing", async () => {
+    const res = await request(app).get("/api/power");
+    expect(res.status).toBe(503);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body).toHaveProperty("detail");
+  });
+
+  // The vanilla-API path (status route) rejects with a Node `AggregateError` (from
+  // the dual-stack DNS/connect failure inside `https.request`'s happy-eyeballs), which
+  // used to make `detail` degrade to the bare, undiagnostic string "AggregateError"
+  // since `String(err)` doesn't surface an AggregateError's wrapped `.errors` the way
+  // it does a plain Error's `.message`. routes/formatErrorDetail.ts now unwraps it.
+  it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
+    const res = await request(app).get("/api/status");
+    expect(res.status).toBe(503);
+    expect(typeof res.body.detail).toBe("string");
+    expect(res.body.detail).not.toBe("AggregateError");
+    expect(res.body.detail).toMatch(/^AggregateError \(.*ECONNREFUSED.*\)$/);
+  });
+});
