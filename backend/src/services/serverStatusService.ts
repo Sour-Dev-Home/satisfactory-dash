@@ -6,6 +6,15 @@ export interface ServerStatusAdapterLike {
   getServerStatus(): Promise<ServerStatus>;
 }
 
+/** Coerces a value to a finite number, or `fallback` if it isn't one -- e.g. a NaN
+ *  from unvalidated vanilla-API data (see docs-vault/wiki/lessons-learned.md).
+ *  Without this, a NaN survives internally but silently becomes JSON `null` on the
+ *  wire, contradicting ServerStatusResponse's `number` fields. Same fix already
+ *  applied in powerService.ts. */
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export class ServerStatusService {
   constructor(private readonly adapter: ServerStatusAdapterLike) {}
 
@@ -22,10 +31,10 @@ export class ServerStatusService {
       sessionName: status.sessionName,
       isGameRunning: status.isGameRunning,
       isPaused: status.isPaused,
-      connectedPlayers: status.connectedPlayers,
-      playerLimit: status.playerLimit,
-      tickRate: status.tickRate,
-      totalGameDurationSeconds: status.totalGameDurationSeconds,
+      connectedPlayers: finiteOr(status.connectedPlayers, 0),
+      playerLimit: finiteOr(status.playerLimit, 0),
+      tickRate: finiteOr(status.tickRate, 0),
+      totalGameDurationSeconds: finiteOr(status.totalGameDurationSeconds, 0),
     };
   }
 }

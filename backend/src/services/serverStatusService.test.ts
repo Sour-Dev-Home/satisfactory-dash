@@ -119,4 +119,27 @@ describe("ServerStatusService", () => {
       ].sort(),
     );
   });
+
+  // Found by a seventh review pass: powerService.ts sanitizes NaN numeric fields
+  // (finiteOr) so they don't silently become JSON null on the wire, but
+  // serverStatusService.ts passed the adapter's numbers straight through despite
+  // reading from the same class of unvalidated vanilla-API data.
+  it("sanitizes a NaN numeric field to 0 instead of letting it become JSON null", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: true }),
+      getServerStatus: async () => ({
+        sessionName: "my-save",
+        isGameRunning: true,
+        isPaused: false,
+        connectedPlayers: 2,
+        playerLimit: 4,
+        tickRate: Number.NaN,
+        totalGameDurationSeconds: 100,
+      }),
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status.tickRate).toBe(0);
+    expect(Number.isFinite(status.tickRate)).toBe(true);
+  });
 });

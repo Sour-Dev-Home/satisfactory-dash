@@ -64,6 +64,28 @@ function readMessageSafely(err: Error): string {
   }
 }
 
+/** Reads `.errors` without letting a throwing getter propagate. Returns `[]` both
+ *  when `.errors` isn't an array and when reading it fails outright — either way
+ *  there's nothing to safely iterate. */
+function readErrorsSafely(err: AggregateError): unknown[] {
+  try {
+    return Array.isArray(err.errors) ? err.errors : [];
+  } catch {
+    return [];
+  }
+}
+
+/** `String(err)` for a plain Error, without letting a throwing `.message`/`.name`
+ *  getter propagate — used as the base message so a hostile Error still gets its
+ *  `.cause` formatted rather than losing everything. */
+function safeErrorString(err: Error): string {
+  try {
+    return String(err);
+  } catch {
+    return "[error reading message]";
+  }
+}
+
 /**
  * @param seen Tracks the *current recursion path* (objects whose formatting is
  *   still in progress), not every object ever visited — each call removes itself
@@ -90,11 +112,11 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
       const message = readMessageSafely(err);
       const base = message ? `AggregateError: ${message}` : "AggregateError";
       // .errors is a writable property -- if it's ever been replaced with something
-      // non-array (e.g. `err.errors = null`), .map() on it throws, and since that
-      // throw isn't behind a formatChildSafely boundary of its own, it would
-      // otherwise propagate past this function entirely, losing `base` too.
-      // Treating a non-array as "no wrapped errors" keeps at least the base message.
-      const errors = Array.isArray(err.errors) ? err.errors : [];
+      // non-array (e.g. `err.errors = null`), or is itself a throwing getter,
+      // reading/mapping it can throw, and since that throw isn't behind a
+      // formatChildSafely boundary of its own, it would otherwise propagate past
+      // this function entirely, losing `base` too. readErrorsSafely contains both.
+      const errors = readErrorsSafely(err);
       const causes = errors.map((cause) => formatChildSafely(cause, seen));
       const withCauses = causes.length > 0 ? `${base} (${causes.join("; ")})` : base;
       // AggregateError has its own .cause independent of .errors -- an earlier
@@ -106,7 +128,9 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
       return withCauses;
     }
     if (err instanceof Error) {
-      const base = String(err);
+      // safeErrorString, not String(err) directly -- a throwing .message/.name
+      // getter used to lose an otherwise-formattable .cause along with it.
+      const base = safeErrorString(err);
       // `!= null` (not `!== undefined`) so an explicit `{ cause: null }` -- a valid
       // value to set -- doesn't recurse into formatting the literal string "null".
       const cause = readCauseSafely(err);
@@ -118,21 +142,40 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
     // A non-Error object used directly as a `.cause` (e.g. `{ code: "ECONNRESET" }`)
     // -- String() on these degrades to the useless "[object Object]". Try
     // JSON.stringify for something actually diagnostic; if that itself throws (a
-    // BigInt, a getter that throws, its own cycle unrelated to `seen`) OR returns
-    // `undefined` (e.g. a `toJSON()` that returns `undefined` -- valid JS, and
-    // JSON.stringify's real return type is `string | undefined` despite what its
-    // TS signature claims), fall back to String() rather than silently return a
-    // non-string from a function whose whole contract is "always a string". The
-    // replacer expands any Error nested *inside* this object (e.g.
-    // `{ inner: new Error(...) }`) -- plain JSON.stringify serializes an Error to
-    // "{}" since .message/.stack aren't enumerable, silently dropping exactly the
-    // detail this whole function exists to keep. Including `cause` here means
-    // JSON.stringify re-applies this same replacer to it if it's itself an Error,
-    // so a nested Error's own cause chain expands too, not just its top message.
+    // BigInt, its own cycle unrelated to `seen`) OR returns `undefined` (e.g. a
+    // `toJSON()` that returns `undefined` -- valid JS, and JSON.stringify's real
+    // return type is `string | undefined` despite what its TS signature claims),
+    // fall back to String() rather than silently return a non-string from a
+    // function whose whole contract is "always a string".
+    //
+    // The replacer below expands any Error/AggregateError nested *inside* this
+    // object (e.g. `{ inner: new Error(...) }`) -- plain JSON.stringify serializes
+    // an Error to "{}" since .message/.stack/.errors aren't enumerable, silently
+    // dropping exactly the detail this whole function exists to keep. It tracks its
+    // own `jsonSeen` set rather than relying on JSON.stringify's native cycle
+    // detection: the replacer returns a *new* object literal for every Error it
+    // sees, so a self-referential `.cause` never presents the same object reference
+    // to JSON.stringify's own check and would otherwise recurse until the stack
+    // overflows, losing sibling fields the same way an uncaught throw would.
     try {
-      const json = JSON.stringify(err, (_key, value) =>
-        value instanceof Error ? { name: value.name, message: value.message, cause: value.cause } : value,
-      );
+      const jsonSeen = new WeakSet<object>();
+      const json = JSON.stringify(err, (_key: string, value: unknown) => {
+        if (!(value instanceof Error)) {
+          return value;
+        }
+        if (jsonSeen.has(value)) {
+          return "[circular]";
+        }
+        jsonSeen.add(value);
+        try {
+          if (value instanceof AggregateError) {
+            return { name: value.name, message: value.message, cause: value.cause, errors: readErrorsSafely(value) };
+          }
+          return { name: value.name, message: value.message, cause: value.cause };
+        } catch {
+          return "[error formatting nested value]";
+        }
+      });
       if (typeof json === "string") {
         return json;
       }

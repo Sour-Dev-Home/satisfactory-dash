@@ -104,7 +104,14 @@ export class PowerService {
 
   async getPowerOverview(): Promise<PowerOverviewResponse> {
     const circuits = await this.adapter.getPowerCircuits();
-    const mapped: PowerCircuitResponse[] = circuits.map((circuit) => ({
+    // Defensive against a null/non-object entry in the array itself, not just bad
+    // fields on an otherwise-real circuit -- the adapter isn't expected to ever
+    // produce this today, but this service already describes itself as guarding
+    // against unvalidated FRM data, so a null entry crashing the whole /api/power
+    // response (rather than just dropping that one unreadable circuit) is the same
+    // class of gap the rest of this method exists to close.
+    const validCircuits = circuits.filter((circuit): circuit is PowerCircuit => circuit !== null && typeof circuit === "object");
+    const mapped: PowerCircuitResponse[] = validCircuits.map((circuit) => ({
       // -1 is FRM's own documented "not connected" sentinel for this ID
       // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
       // FactoryBuilding.circuitId in satisfactoryServerAdapter.ts -- 0 would be

@@ -318,4 +318,64 @@ describe("formatErrorDetail", () => {
     expect(result).not.toBe("[unformattable error]");
     expect(result).toContain("ECONNREFUSED");
   });
+
+  // Found by a seventh review pass: the previous pass guarded a non-array .errors,
+  // but not a .errors GETTER that throws -- Array.isArray(err.errors) still reads
+  // the property, so the throw happened before it was ever checked, losing the
+  // base message the same way the already-fixed .message case did.
+  it("still shows the base message when an AggregateError's .errors getter throws", () => {
+    const err = new AggregateError([], "top-level-msg");
+    Object.defineProperty(err, "errors", {
+      get() {
+        throw new Error("errors getter exploded");
+      },
+    });
+    const result = formatErrorDetail(err);
+    expect(result).not.toBe("[unformattable error]");
+    expect(result).toContain("top-level-msg");
+  });
+
+  // Found by a seventh review pass: a plain Error's .message getter throwing used
+  // to lose its .cause too, since String(err) threw before .cause was ever read --
+  // the same class of bug already fixed on the AggregateError branch, on the other
+  // branch this time.
+  it("still formats .cause when a plain Error's .message getter throws", () => {
+    const err = new Error("boom", { cause: new Error("real-reason") });
+    Object.defineProperty(err, "message", {
+      get() {
+        throw new Error("message getter exploded");
+      },
+    });
+    const result = formatErrorDetail(err);
+    expect(result).not.toBe("[unformattable error]");
+    expect(result).toContain("real-reason");
+  });
+
+  // Found by a seventh review pass: the JSON.stringify replacer returns a NEW
+  // object literal for every Error it transforms, so a self-referential .cause
+  // never presents the same object reference to JSON.stringify's own cycle check
+  // and recursed until the stack overflowed -- losing sibling fields (here,
+  // code: "E1") the same way any uncaught throw would. The replacer now tracks its
+  // own jsonSeen set instead of relying on JSON's native detection.
+  it("does not overflow the stack on a self-referential Error inside a plain-object cause, and keeps its siblings", () => {
+    const selfRef: Error & { cause?: unknown } = new Error("self-referential");
+    selfRef.cause = selfRef;
+    const err = new Error("outer", { cause: { code: "E1", err: selfRef } });
+    expect(() => formatErrorDetail(err)).not.toThrow();
+    const result = formatErrorDetail(err);
+    expect(result).toContain("E1");
+    expect(result).toContain("[circular]");
+  });
+
+  // Found by a seventh review pass: the replacer only special-cased Error into
+  // { name, message, cause }, so an AggregateError nested inside a plain object
+  // (not the top-level err, and not the direct .cause) lost its .errors entirely --
+  // the same empty-message-AggregateError problem the top-level branch already
+  // handles, just unreachable from inside the non-Error object's replacer.
+  it("keeps a nested AggregateError's .errors when it's inside a plain-object cause", () => {
+    const nested = new AggregateError([new Error("child-detail")], "");
+    const err = new Error("outer", { cause: { wrapped: nested } });
+    const result = formatErrorDetail(err);
+    expect(result).toContain("child-detail");
+  });
 });

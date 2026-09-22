@@ -246,4 +246,19 @@ describe("PowerService", () => {
     expect(overview.circuits[0].powerConsumed).toBe(42);
     expect(overview.circuits[0].fuseTriggered).toBe(false);
   });
+
+  // Found by a seventh review pass: a null/non-object entry in the circuits array
+  // itself (not just a bad field on an otherwise-real circuit) crashed the whole
+  // overview via a TypeError, rather than just being unreadable on its own. Not
+  // reachable from today's real adapter, but this service already describes
+  // itself as defensive against unvalidated FRM data.
+  it("skips a null entry in the circuits array instead of crashing the whole overview", async () => {
+    const adapter: PowerAdapterLike = {
+      getPowerCircuits: async () => [circuit({ circuitGroupId: 0 }), null as unknown as PowerCircuit],
+    };
+    const service = new PowerService(adapter);
+    const overview = await service.getPowerOverview();
+    expect(overview.circuits).toHaveLength(1);
+    expect(overview.circuits[0].circuitGroupId).toBe(0);
+  });
 });
