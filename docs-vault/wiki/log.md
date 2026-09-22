@@ -58,3 +58,10 @@ the bottom.
   leaking past a client's typed-error contract on a malformed 2xx response — see that
   page for details). Reported to the implementer session for a fix; a confirmation
   `test-hunter` pass will follow once fixed.
+- 2026-09-21 — Confirmation pass complete: the implementer's fixes for both bugs in
+  `lessons-learned.md` verified correct by a second, independent `test-hunter` (targeted
+  fixes, no collateral changes to adjacent behavior — primitive-body resolution, 204
+  handling, non-ok-status wording, and network-error wording all confirmed unchanged).
+  5 new precise tests added pinning exact error messages/fields, not just error type.
+  No new bug pattern found, so no `lessons-learned.md` counters changed. Full suite
+  37/37 passing, typecheck and lint clean.
