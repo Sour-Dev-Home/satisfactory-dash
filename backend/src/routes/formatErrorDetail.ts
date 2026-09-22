@@ -151,22 +151,31 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
     // The replacer below expands any Error/AggregateError nested *inside* this
     // object (e.g. `{ inner: new Error(...) }`) -- plain JSON.stringify serializes
     // an Error to "{}" since .message/.stack/.errors aren't enumerable, silently
-    // dropping exactly the detail this whole function exists to keep. It tracks its
-    // own `jsonSeen` set rather than relying on JSON.stringify's native cycle
-    // detection: the replacer returns a *new* object literal for every Error it
-    // sees, so a self-referential `.cause` never presents the same object reference
-    // to JSON.stringify's own check and would otherwise recurse until the stack
-    // overflows, losing sibling fields the same way an uncaught throw would.
+    // dropping exactly the detail this whole function exists to keep.
+    //
+    // It caps the number of Errors it will expand rather than tracking "seen"
+    // objects: a first attempt used a WeakSet that only ever grew, which correctly
+    // stopped a self-referential cause from overflowing the stack but then
+    // wrongly labeled unrelated SIBLINGS sharing the same Error reference (e.g.
+    // `{ a: e, b: e }`) as "[circular]" too -- the exact sibling-vs-cycle mistake
+    // already fixed once for the main `seen` set above, reintroduced here because
+    // JSON.stringify's replacer API has no "done with this subtree" hook to delete
+    // an entry on exit the way `formatChildSafely`'s `finally` block does. A count
+    // cap sidesteps the distinction entirely: it still halts unbounded recursion
+    // (a genuine cycle re-expands the same Error over and over, so it hits the cap
+    // almost immediately), while a handful of unrelated sibling repeats -- nowhere
+    // near the cap -- are never mislabeled.
+    const MAX_JSON_ERROR_EXPANSIONS = 20;
     try {
-      const jsonSeen = new WeakSet<object>();
+      let expansions = 0;
       const json = JSON.stringify(err, (_key: string, value: unknown) => {
         if (!(value instanceof Error)) {
           return value;
         }
-        if (jsonSeen.has(value)) {
-          return "[circular]";
+        if (expansions >= MAX_JSON_ERROR_EXPANSIONS) {
+          return "[error tree too deep]";
         }
-        jsonSeen.add(value);
+        expansions++;
         try {
           if (value instanceof AggregateError) {
             return { name: value.name, message: value.message, cause: value.cause, errors: readErrorsSafely(value) };

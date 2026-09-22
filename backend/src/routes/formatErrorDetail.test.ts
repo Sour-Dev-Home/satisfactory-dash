@@ -355,8 +355,7 @@ describe("formatErrorDetail", () => {
   // object literal for every Error it transforms, so a self-referential .cause
   // never presents the same object reference to JSON.stringify's own cycle check
   // and recursed until the stack overflowed -- losing sibling fields (here,
-  // code: "E1") the same way any uncaught throw would. The replacer now tracks its
-  // own jsonSeen set instead of relying on JSON's native detection.
+  // code: "E1") the same way any uncaught throw would.
   it("does not overflow the stack on a self-referential Error inside a plain-object cause, and keeps its siblings", () => {
     const selfRef: Error & { cause?: unknown } = new Error("self-referential");
     selfRef.cause = selfRef;
@@ -364,7 +363,24 @@ describe("formatErrorDetail", () => {
     expect(() => formatErrorDetail(err)).not.toThrow();
     const result = formatErrorDetail(err);
     expect(result).toContain("E1");
-    expect(result).toContain("[circular]");
+    expect(result).toContain("[error tree too deep]");
+  });
+
+  // Found by an eighth review pass: the seventh pass's fix used an ever-growing
+  // WeakSet for cycle detection, which correctly stopped the overflow above but
+  // then mislabeled unrelated SIBLINGS sharing the same Error reference as
+  // "[circular]" too -- the same sibling-vs-cycle mistake already fixed once for
+  // the main `seen` set, reintroduced here because JSON.stringify's replacer API
+  // has no "done with this subtree" hook to delete an entry on exit. Replaced with
+  // a bounded expansion count instead, which doesn't need that distinction.
+  it("does not mislabel two unrelated sibling Errors (same reference) inside a plain-object cause as circular", () => {
+    const shared = new Error("shared instance");
+    const err = new Error("outer", { cause: { a: shared, b: shared } });
+    const result = formatErrorDetail(err);
+    expect(result).not.toContain("[circular]");
+    expect(result).not.toContain("[error tree too deep]");
+    const occurrences = result.split("shared instance").length - 1;
+    expect(occurrences).toBe(2);
   });
 
   // Found by a seventh review pass: the replacer only special-cased Error into

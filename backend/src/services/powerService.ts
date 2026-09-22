@@ -120,13 +120,16 @@ export class PowerService {
       powerProduction: finiteOr(circuit.powerProduction, 0),
       powerConsumed: finiteOr(circuit.powerConsumed, 0),
       powerCapacity: finiteOr(circuit.powerCapacity, 0),
-      // Fallback is `true`, not `false` -- for every other field, a safe-looking
-      // default (0, -1) is fine because the wrongness is caught by `status`
-      // separately. But `fuseTriggered: false` is an active claim of "no trip",
-      // and if a client reads this field directly instead of `status`, defaulting
-      // to false on malformed data would tell them the opposite of "we don't know"
-      // -- for an alarm signal, failing toward the alarm is the safer direction.
-      fuseTriggered: booleanOr(circuit.fuseTriggered, true),
+      // Fallback is `false` (reverted from `true` by an eighth review pass, which
+      // caught the actual problem with the earlier reasoning): defaulting to `true`
+      // made the response self-contradictory whenever fuseTriggered was malformed
+      // -- fuseTriggered: true alongside status: "at_risk" (not "outage") and
+      // hasOutage: false all disagree with each other, which is worse than a
+      // conservative false in either direction. `status` alone carries the actual
+      // alert for malformed data (see classifyPowerCircuit above); this raw field
+      // should stay consistent with it rather than independently asserting more
+      // confidence than the data supports.
+      fuseTriggered: booleanOr(circuit.fuseTriggered, false),
       batteryPercent: finiteOr(circuit.batteryPercent, 0),
       batteryDifferential: finiteOr(circuit.batteryDifferential, 0),
       // classifyPowerCircuit sees the RAW circuit, not these sanitized values, so a

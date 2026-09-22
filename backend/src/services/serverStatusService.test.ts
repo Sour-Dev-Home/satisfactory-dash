@@ -142,4 +142,30 @@ describe("ServerStatusService", () => {
     expect(status.tickRate).toBe(0);
     expect(Number.isFinite(status.tickRate)).toBe(true);
   });
+
+  // Found by an eighth review pass: the numeric sanitizing above was half-applied
+  // -- healthy/isGameRunning/isPaused passed straight through unchecked, so a
+  // malformed `healthy: "false"` (a truthy string) would reach the client as a
+  // string a naive check reads as true. Unlike PowerService's fuseTriggered, there
+  // is no separate `status` field here for a boolean default to contradict, so a
+  // plain fail-toward-false default is safe for all three.
+  it("sanitizes a malformed (non-boolean) healthy/isGameRunning/isPaused to false", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: "false" as unknown as boolean }),
+      getServerStatus: async () => ({
+        sessionName: "my-save",
+        isGameRunning: "true" as unknown as boolean,
+        isPaused: 1 as unknown as boolean,
+        connectedPlayers: 2,
+        playerLimit: 4,
+        tickRate: 30,
+        totalGameDurationSeconds: 100,
+      }),
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status.healthy).toBe(false);
+    expect(status.isGameRunning).toBe(false);
+    expect(status.isPaused).toBe(false);
+  });
 });

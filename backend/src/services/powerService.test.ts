@@ -201,15 +201,17 @@ describe("PowerService", () => {
   // `number`. That's a contract leak (ground rule 5): the response no longer
   // actually matches its own declared type at runtime. Sanitize to safe defaults
   // for the response while still classifying off the raw circuit. Fallback is
-  // `true` (not `false`, per a sixth review pass) -- see the comment at its call
-  // site in powerService.ts for why an alarm field's safe default is the opposite
-  // direction from a plain measurement field's.
-  it("sanitizes a malformed fuseTriggered to true (not false) in the response, while still classifying it as at_risk", async () => {
+  // `false` -- a sixth pass changed this to `true` reasoning an alarm field should
+  // fail toward the alarm, but an eighth pass caught that this made the response
+  // self-contradictory (fuseTriggered: true alongside status: "at_risk", not
+  // "outage", and hasOutage: false all disagreeing at once), which is worse than
+  // either single direction. Reverted; `status` alone carries the alert.
+  it("sanitizes a malformed fuseTriggered to false in the response, consistent with status: at_risk (not outage)", async () => {
     const bad = { ...circuit(), fuseTriggered: "false" as unknown as boolean };
     const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
     const service = new PowerService(adapter);
     const overview = await service.getPowerOverview();
-    expect(overview.circuits[0].fuseTriggered).toBe(true);
+    expect(overview.circuits[0].fuseTriggered).toBe(false);
     expect(typeof overview.circuits[0].fuseTriggered).toBe("boolean");
     expect(overview.circuits[0].status).toBe("at_risk");
   });

@@ -15,6 +15,14 @@ function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+/** Coerces a value to a real boolean, or `fallback` if it isn't one -- e.g. the
+ *  string "false" (truthy in JS) from unvalidated data. Same fix already applied
+ *  in powerService.ts; a review pass found the numeric-only sanitizing here was
+ *  half-applied since these boolean fields passed straight through unchecked. */
+function booleanOr(value: boolean, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 export class ServerStatusService {
   constructor(private readonly adapter: ServerStatusAdapterLike) {}
 
@@ -26,11 +34,14 @@ export class ServerStatusService {
     // Explicit field-by-field mapping, not `...status` — a spread bypasses excess-
     // property checking, so a future ServerStatus field would leak straight into the
     // API response with no compile error, unlike ProductionService/PowerService.
+    // Unlike PowerService's fuseTriggered, there's no separate `status` field here
+    // that a boolean fallback could contradict, so a plain fail-toward-caution
+    // default (false) is safe for all three without the same self-contradiction risk.
     return {
-      healthy: health.healthy,
+      healthy: booleanOr(health.healthy, false),
       sessionName: status.sessionName,
-      isGameRunning: status.isGameRunning,
-      isPaused: status.isPaused,
+      isGameRunning: booleanOr(status.isGameRunning, false),
+      isPaused: booleanOr(status.isPaused, false),
       connectedPlayers: finiteOr(status.connectedPlayers, 0),
       playerLimit: finiteOr(status.playerLimit, 0),
       tickRate: finiteOr(status.tickRate, 0),
