@@ -17,7 +17,7 @@ describe("buildServerUnreachableResponse", () => {
   it("omits detail in production, keeping only the generic error message", () => {
     process.env.NODE_ENV = "production";
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const err = new Error("connect ECONNREFUSED 127.0.0.1:8080");
+    const err = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8080"), { failureKind: "unreachable" });
     const body = buildServerUnreachableResponse(err);
     expect(body).toEqual({ error: "Could not reach the Satisfactory dedicated server" });
     expect(body).not.toHaveProperty("detail");
@@ -78,10 +78,52 @@ describe("buildServerUnreachableResponse", () => {
     expect(body.error).toContain("rejected the request");
   });
 
-  it("falls back to the generic connectivity message for a plain error with no status/errorCode", () => {
+  it('says "Could not reach" only for an error the adapter classified as unreachable', () => {
     process.env.NODE_ENV = "test";
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED"));
-    expect(body.error).toBe("Could not reach the Satisfactory dedicated server");
+    const err = Object.assign(new Error("FRM request to getPower failed"), { failureKind: "unreachable" });
+    expect(buildServerUnreachableResponse(err).error).toBe("Could not reach the Satisfactory dedicated server");
+  });
+
+  // Found by a review pass: a 200 response with malformed JSON, and any adapter
+  // crash, were both reported as "Could not reach..." even though the server
+  // had answered.
+  it("describes an invalid response distinctly from an unreachable server", () => {
+    process.env.NODE_ENV = "test";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = Object.assign(new Error("not valid JSON"), { failureKind: "invalid_response" });
+    expect(buildServerUnreachableResponse(err).error).toBe(
+      "Satisfactory dedicated server returned an invalid response",
+    );
+  });
+
+  it("uses a neutral message, not a connectivity claim, for an unclassified error like an adapter TypeError", () => {
+    process.env.NODE_ENV = "test";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = buildServerUnreachableResponse(new TypeError("Cannot read properties of null"));
+    expect(body.error).toBe("Request to the Satisfactory dedicated server failed");
+  });
+
+  // Found by a review pass: describeFailure read err.status unguarded, so a
+  // throwing getter made the route's catch block itself throw.
+  it("does not throw when reading the error's status throws", () => {
+    process.env.NODE_ENV = "test";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = new Error("hostile");
+    Object.defineProperty(err, "status", {
+      get() {
+        throw new Error("boom");
+      },
+    });
+    expect(buildServerUnreachableResponse(err).error).toBe("Request to the Satisfactory dedicated server failed");
+  });
+
+  // Found by a review pass: typeof === "number" accepted NaN, 0 and negatives,
+  // producing "request failed (status NaN)".
+  it.each([Number.NaN, 0, -1, 200.5, 1000])("ignores a non-HTTP status value %s", (status) => {
+    process.env.NODE_ENV = "test";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = Object.assign(new Error("bad status"), { status });
+    expect(buildServerUnreachableResponse(err).error).toBe("Request to the Satisfactory dedicated server failed");
   });
 });

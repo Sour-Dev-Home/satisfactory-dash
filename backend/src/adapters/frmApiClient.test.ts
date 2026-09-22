@@ -77,8 +77,9 @@ describe("FrmApiClient", () => {
     const client = buildClient(fetchImpl);
     await expect(client.get("getFactory")).rejects.toThrow(FrmApiRequestError);
     await expect(client.get("getFactory")).rejects.toMatchObject({
-      message: "FRM request to getFactory failed",
+      message: "FRM response from getFactory was not valid JSON",
       status: undefined,
+      failureKind: "invalid_response",
     });
   });
 
@@ -92,6 +93,24 @@ describe("FrmApiClient", () => {
     const fetchImpl = vi.fn().mockRejectedValue(original);
     const client = buildClient(fetchImpl);
     await expect(client.get("getPlayer")).rejects.toMatchObject({ cause: original });
+  });
+
+  it("classifies a fetch-level rejection as unreachable", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    const client = buildClient(fetchImpl);
+    await expect(client.get("getPlayer")).rejects.toMatchObject({ failureKind: "unreachable" });
+  });
+
+  it("classifies a non-SyntaxError while reading the body (e.g. a mid-body timeout) as unreachable", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    });
+    const client = buildClient(fetchImpl);
+    await expect(client.get("getPlayer")).rejects.toMatchObject({ failureKind: "unreachable" });
   });
 
   it("passes an AbortSignal derived from the configured timeout", async () => {

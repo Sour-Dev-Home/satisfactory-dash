@@ -45,11 +45,23 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
   // used to make `detail` degrade to the bare, undiagnostic string "AggregateError"
   // since `String(err)` doesn't surface an AggregateError's wrapped `.errors` the way
   // it does a plain Error's `.message`. routes/formatErrorDetail.ts now unwraps it.
+  // The transport now wraps it as the `.cause` of a VanillaApiRequestError tagged
+  // `failureKind: "unreachable"`, so it appears inside a "(caused by: ...)" clause.
   it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
     const res = await request(app).get("/api/status");
     expect(res.status).toBe(503);
     expect(typeof res.body.detail).toBe("string");
     expect(res.body.detail).not.toBe("AggregateError");
-    expect(res.body.detail).toMatch(/^AggregateError \(.*ECONNREFUSED.*\)$/);
+    expect(res.body.detail).toMatch(/\(caused by: AggregateError \(.*ECONNREFUSED.*\)\)$/);
   });
+
+  // A real refused connection, not a mock: confirms both transports classify it
+  // as unreachable end to end, so the message isn't the neutral fallback.
+  it.each(["/api/status", "/api/factory", "/api/power"])(
+    "%s: a refused connection is reported as unreachable",
+    async (path) => {
+      const res = await request(app).get(path);
+      expect(res.body.error).toBe("Could not reach the Satisfactory dedicated server");
+    },
+  );
 });

@@ -93,3 +93,9 @@ export interface SessionInfo {
   passedDays: number;
   totalPlayDurationSeconds: number;
 }
+
+/** Set on adapter request errors so callers (routes/errorResponse.ts) can tell
+ *  "the server couldn't be reached" apart from "it answered with something
+ *  unusable" without importing adapter-specific error classes. Absent means the
+ *  adapter didn't classify it (e.g. an HTTP status error, which carries `status`). */
+export type RequestFailureKind = "unreachable" | "invalid_response";

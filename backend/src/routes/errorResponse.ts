@@ -1,26 +1,55 @@
 import { formatErrorDetail } from "./formatErrorDetail.js";
 
+const UNREACHABLE_MESSAGE = "Could not reach the Satisfactory dedicated server";
+const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
+
 /** Loosely duck-typed rather than importing FrmApiRequestError/VanillaApiRequestError
  *  directly -- routes/ shouldn't need to know adapter-specific error classes, just
- *  that "something with a status or errorCode" implies a real server response was
- *  received (auth/validation failure), not a connectivity problem. Found by a
- *  review pass: every failure (unreachable server, a 401 from a bad token, a JSON
- *  parse error, an adapter crash) previously got the same "Could not reach..."
- *  message, which is actively wrong for anything that isn't a connectivity issue. */
+ *  the fields they carry: an HTTP `status`, a vanilla-API `errorCode`, or the
+ *  adapters' own `failureKind` classification (adapters/domain.ts).
+ *
+ *  Found by review passes: every failure (unreachable server, a 401 from a bad
+ *  token, a JSON parse error, an adapter crash) used to get the same "Could not
+ *  reach..." message, which is actively wrong for anything that isn't a
+ *  connectivity issue. So "Could not reach" now needs positive evidence
+ *  (`failureKind: "unreachable"`), and anything unclassified -- e.g. an adapter
+ *  bug throwing a TypeError -- gets a neutral message that's true either way. */
 function describeFailure(err: unknown): string {
-  if (err !== null && typeof err === "object") {
-    const status = "status" in err ? err.status : undefined;
-    if (typeof status === "number") {
-      return status === 401 || status === 403
-        ? "Satisfactory dedicated server rejected the request (check the configured auth token)"
-        : `Satisfactory dedicated server request failed (status ${status})`;
-    }
-    const errorCode = "errorCode" in err ? err.errorCode : undefined;
-    if (typeof errorCode === "string" && errorCode.length > 0) {
-      return `Satisfactory dedicated server request failed (${errorCode})`;
-    }
+  // This runs in every route's catch block, so it must not throw -- a later review
+  // pass found a hostile `status` getter made it do exactly that, turning the 503
+  // JSON body into Express's default non-JSON error page. formatErrorDetail.ts
+  // guards every read the same way.
+  try {
+    return describeFailureUnsafe(err);
+  } catch {
+    return FALLBACK_MESSAGE;
   }
-  return "Could not reach the Satisfactory dedicated server";
+}
+
+function describeFailureUnsafe(err: unknown): string {
+  if (err === null || typeof err !== "object") {
+    return FALLBACK_MESSAGE;
+  }
+  const status = "status" in err ? err.status : undefined;
+  // Number.isInteger + range, not typeof === "number": that accepted NaN, 0 and
+  // negatives, producing messages like "request failed (status NaN)".
+  if (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599) {
+    return status === 401 || status === 403
+      ? "Satisfactory dedicated server rejected the request (check the configured auth token)"
+      : `Satisfactory dedicated server request failed (status ${status})`;
+  }
+  const errorCode = "errorCode" in err ? err.errorCode : undefined;
+  if (typeof errorCode === "string" && errorCode.length > 0) {
+    return `Satisfactory dedicated server request failed (${errorCode})`;
+  }
+  const failureKind = "failureKind" in err ? err.failureKind : undefined;
+  if (failureKind === "unreachable") {
+    return UNREACHABLE_MESSAGE;
+  }
+  if (failureKind === "invalid_response") {
+    return "Satisfactory dedicated server returned an invalid response";
+  }
+  return FALLBACK_MESSAGE;
 }
 
 /** `detail` is safe to include only in these NODE_ENV values -- an explicit

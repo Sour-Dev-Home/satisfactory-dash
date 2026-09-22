@@ -164,6 +164,24 @@ describe("SatisfactoryServerAdapter", () => {
     expect(circuits[1].fuseTriggered).toBe(false);
   });
 
+  // Found by a review pass: every array endpoint `.map`-ed the body directly, so
+  // an object or null body threw a bare TypeError, reported to the user as
+  // "Could not reach the Satisfactory dedicated server" even though FRM answered.
+  it.each([
+    ["getFactory", (a: SatisfactoryServerAdapter) => a.getFactoryBuildings()],
+    ["getPower", (a: SatisfactoryServerAdapter) => a.getPowerCircuits()],
+    ["getPowerUsage", (a: SatisfactoryServerAdapter) => a.getPowerUsage()],
+    ["getPlayer", (a: SatisfactoryServerAdapter) => a.getPlayers()],
+  ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
+    for (const body of [null, {}, "nope"]) {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
+      await expect(call(adapter)).rejects.toMatchObject({
+        message: `FRM response from ${endpoint} was not an array`,
+        failureKind: "invalid_response",
+      });
+    }
+  });
+
   it("maps getPowerUsage buildings", async () => {
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([powerUsageBuildingFixture]) } });
     await expect(adapter.getPowerUsage()).resolves.toEqual([

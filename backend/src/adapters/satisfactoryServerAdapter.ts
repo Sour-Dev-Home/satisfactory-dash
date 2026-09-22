@@ -1,6 +1,6 @@
 import type { SatisfactoryServerConfig } from "./config.js";
 import { VanillaApiClient } from "./vanillaApiClient.js";
-import { FrmApiClient } from "./frmApiClient.js";
+import { FrmApiClient, FrmApiRequestError } from "./frmApiClient.js";
 import type {
   RawHealthCheckResponse,
   RawQueryServerStateResponse,
@@ -95,6 +95,22 @@ export class SatisfactoryServerAdapter {
     return new SatisfactoryServerAdapter(vanillaApi, frmApi);
   }
 
+  /** For FRM endpoints documented to return a JSON array (docs-vault/raw-sources/
+   *  frm-get*.md). Found by a review pass: every caller used to `.map` the body
+   *  directly, so an object or `null` body threw a bare TypeError that the routes
+   *  then reported as "Could not reach the Satisfactory dedicated server" -- wrong,
+   *  since the server did answer. [NEEDS VERIFICATION] whether FRM ever returns a
+   *  non-array here; this is the layer meant to defend against it regardless. */
+  private async getFrmArray<T>(endpoint: string): Promise<T[]> {
+    const raw = await this.frmApi.get<unknown>(endpoint);
+    if (!Array.isArray(raw)) {
+      throw new FrmApiRequestError(`FRM response from ${endpoint} was not an array`, undefined, {
+        failureKind: "invalid_response",
+      });
+    }
+    return raw as T[];
+  }
+
   async getServerHealth(): Promise<ServerHealth> {
     const raw = await this.vanillaApi.call<RawHealthCheckResponse>("HealthCheck", { ClientCustomData: "" });
     return { healthy: raw.health === "healthy" };
@@ -115,7 +131,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getFactoryBuildings(): Promise<FactoryBuilding[]> {
-    const raw = await this.frmApi.get<RawFrmFactoryBuilding[]>("getFactory");
+    const raw = await this.getFrmArray<RawFrmFactoryBuilding>("getFactory");
     return raw.map((building) => ({
       id: building.ID,
       name: building.Name,
@@ -133,7 +149,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getPowerCircuits(): Promise<PowerCircuit[]> {
-    const raw = await this.frmApi.get<RawFrmPowerCircuit[]>("getPower");
+    const raw = await this.getFrmArray<RawFrmPowerCircuit>("getPower");
     return raw.map((circuit) => {
       // Found by a review pass: PowerService's own null/non-object placeholder
       // logic can only run if it's ever handed a raw circuit to inspect -- a
@@ -175,7 +191,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getPowerUsage(): Promise<BuildingPowerUsage[]> {
-    const raw = await this.frmApi.get<RawFrmPowerUsageBuilding[]>("getPowerUsage");
+    const raw = await this.getFrmArray<RawFrmPowerUsageBuilding>("getPowerUsage");
     return raw.map((building) => ({
       id: building.ID,
       name: building.Name,
@@ -188,7 +204,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getPlayers(): Promise<Player[]> {
-    const raw = await this.frmApi.get<RawFrmPlayer[]>("getPlayer");
+    const raw = await this.getFrmArray<RawFrmPlayer>("getPlayer");
     return raw.map((player) => ({
       id: player.ID,
       name: player.Name,

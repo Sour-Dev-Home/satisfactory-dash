@@ -1,4 +1,5 @@
 import https from "node:https";
+import type { RequestFailureKind } from "./domain.js";
 
 /**
  * Low-level client for the vanilla Satisfactory Dedicated Server HTTPS API. One POST
@@ -38,13 +39,17 @@ export interface VanillaApiClientOptions {
 }
 
 export class VanillaApiRequestError extends Error {
+  readonly failureKind?: RequestFailureKind;
+
   constructor(
     message: string,
     public readonly errorCode?: string,
     public readonly errorData?: unknown,
+    options?: ErrorOptions & { failureKind?: RequestFailureKind },
   ) {
-    super(message);
+    super(message, options);
     this.name = "VanillaApiRequestError";
+    this.failureKind = options?.failureKind;
   }
 }
 
@@ -95,13 +100,29 @@ export const defaultVanillaApiTransport: VanillaApiTransport = ({
           try {
             resolve({ status, body: JSON.parse(raw) });
           } catch (err) {
-            reject(new Error(`Vanilla API returned non-JSON body: ${String(err)}`));
+            reject(
+              new VanillaApiRequestError("Vanilla API returned non-JSON body", undefined, undefined, {
+                cause: err,
+                failureKind: "invalid_response",
+              }),
+            );
           }
         });
       },
     );
     req.on("timeout", () => req.destroy(new Error("Vanilla API request timed out")));
-    req.on("error", reject);
+    // Classified here, where it's known to be a connection-level failure (refused,
+    // DNS, TLS, the timeout above), so routes/errorResponse.ts can say "Could not
+    // reach" only when that's actually what happened. The original error rides
+    // along as .cause for formatErrorDetail.ts to unwrap.
+    req.on("error", (err) =>
+      reject(
+        new VanillaApiRequestError("Vanilla API request failed", undefined, undefined, {
+          cause: err,
+          failureKind: "unreachable",
+        }),
+      ),
+    );
     req.write(payload);
     req.end();
   });

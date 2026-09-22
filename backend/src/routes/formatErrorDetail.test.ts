@@ -423,6 +423,20 @@ describe("formatErrorDetail", () => {
     expect(result.endsWith("...(truncated)")).toBe(true);
   });
 
+  // Found by a review pass: the suffix used to be appended after a full
+  // 2000-character slice, so the result was 2014 characters -- over the cap.
+  it("keeps the truncated result, suffix included, within the 2000-character cap", () => {
+    const result = formatErrorDetail(new Error("x".repeat(10_000)));
+    expect(result.length).toBe(2000);
+    expect(result.endsWith("...(truncated)")).toBe(true);
+  });
+
+  it("leaves a result of exactly 2000 characters untouched", () => {
+    const result = formatErrorDetail(new Error("x".repeat(2000 - "Error: ".length)));
+    expect(result.length).toBe(2000);
+    expect(result.endsWith("...(truncated)")).toBe(false);
+  });
+
   it("does not truncate a normal, well-under-the-limit result", () => {
     const result = formatErrorDetail(new Error("short message"));
     expect(result).toBe("Error: short message");
@@ -435,7 +449,9 @@ describe("formatErrorDetail", () => {
   // truncated string. Constructed so the pair's high surrogate lands exactly on
   // the cut boundary.
   it("does not split a surrogate pair (e.g. an emoji) at the truncation boundary", () => {
-    const message = `${"x".repeat(1992)}\u{1F600}${"y".repeat(50)}`; // "Error: " (7) + 1992 = boundary at 1999
+    // The cut lands at 2000 - "...(truncated)".length = 1986, so the high
+    // surrogate must sit at index 1985: "Error: " (7) + 1978 = 1985.
+    const message = `${"x".repeat(1978)}\u{1F600}${"y".repeat(50)}`;
     const err = new Error(message);
     const result = formatErrorDetail(err);
     expect(result.endsWith("...(truncated)")).toBe(true);

@@ -32,20 +32,24 @@
  *  objects/causes in the first place. */
 const MAX_DETAIL_LENGTH = 2000;
 
-/** `String.slice` cuts by UTF-16 code unit, so slicing exactly at
- *  `MAX_DETAIL_LENGTH` can land between a surrogate pair's two halves (e.g. an
- *  emoji), leaving a broken/invalid character at the end of the truncated string.
- *  Found by a review pass. Backs up one more unit when that would happen. */
+const TRUNCATION_SUFFIX = "...(truncated)";
+
+/** `String.slice` cuts by UTF-16 code unit, so slicing exactly at the cut point
+ *  can land between a surrogate pair's two halves (e.g. an emoji), leaving a
+ *  broken/invalid character at the end of the truncated string. Found by a review
+ *  pass. Backs up one more unit when that would happen. The suffix counts toward
+ *  `maxLength` -- a later pass caught that appending it after a full-length slice
+ *  made the result 14 characters over the cap it exists to enforce. */
 function truncateSafely(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
     return value;
   }
-  let end = maxLength;
+  let end = maxLength - TRUNCATION_SUFFIX.length;
   const boundaryCode = value.charCodeAt(end - 1);
   if (boundaryCode >= 0xd800 && boundaryCode <= 0xdbff) {
     end -= 1;
   }
-  return `${value.slice(0, end)}...(truncated)`;
+  return `${value.slice(0, end)}${TRUNCATION_SUFFIX}`;
 }
 
 export function formatErrorDetail(err: unknown): string {
