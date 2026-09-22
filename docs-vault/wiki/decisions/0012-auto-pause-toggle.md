@@ -1,6 +1,6 @@
 # ADR-0012: Auto-pause off by default, with a user toggle; paused state is visible
 
-Status: accepted (Leonardo), 2026-09-22
+Status: accepted (the project owner), 2026-09-22
 
 ## Context
 

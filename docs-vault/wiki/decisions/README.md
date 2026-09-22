@@ -3,7 +3,7 @@
 One file per decision (ADR), numbered in order. Each has a status, the context that
 forced it, the decision, its consequences, and a "Revisit when" trigger that says what
 would make it worth reopening. Decided 2026-09-22 by the architecture session under
-Leonardo's delegation (ADR-0001 to 0010) or with his approval (ADR-0011, 0012). Change
+the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011, 0012). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 
 | ADR | Decision |

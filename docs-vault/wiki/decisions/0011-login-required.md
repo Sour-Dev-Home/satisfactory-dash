@@ -1,6 +1,6 @@
 # ADR-0011: Login required (single operator now)
 
-Status: accepted (Leonardo), 2026-09-22
+Status: accepted (the project owner), 2026-09-22
 
 ## Context
 
@@ -30,5 +30,5 @@ with one operator, authenticated = allowed.
 ## Revisit when
 
 A second person needs their own login or servers. That is multi-tenant state:
-ADR-0009 fires (users + server ownership in Postgres, or a managed IdP such as Cognito; Leonardo
-decides). Add roles and 403 when view-only users exist.
+ADR-0009 fires (users + server ownership in Postgres, or a managed IdP such as Cognito; the project
+owner decides). Add roles and 403 when view-only users exist.

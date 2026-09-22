@@ -117,7 +117,7 @@ the bottom.
   allowlist rule to `backend/src/adapters/README.md`, since its output contains FRM's
   auth token in plaintext.
 - 2026-09-22 — Added `decisions/` with ADR-0001 to 0012, written by the architecture
-  session (0001-0010 under Leonardo's delegation, 0011-0012 approved by him) and
+  session (0001-0010 under the project owner's delegation, 0011-0012 approved by them) and
   reviewed against the code first: the review changed ADR-0003 (the error classifier's
   tests are updated, not dropped), ADR-0007 (expand/contract only once a deployed
   consumer exists), ADR-0012 (no duplicate `gamePaused`/`playerCount` fields; "editable"
