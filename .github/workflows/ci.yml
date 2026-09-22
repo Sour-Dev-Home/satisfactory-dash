@@ -31,15 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: DEBUG check for PII or hardcoded local paths
+      - name: Check for PII or hardcoded local paths
         run: |
-          FILES=$(git ls-files | grep -v '^\.github/' || true)
-          FILE_COUNT=$(echo "$FILES" | wc -l)
-          echo "::warning::DEBUG file count searched: $FILE_COUNT"
-          MATCHES=$(echo "$FILES" | xargs -r grep -n -iE "leonardo|nunez|leonunez9821|470.535.7258|C:\\\\Users|C:/Users" || true)
-          ENCODED=$(echo "$MATCHES" | sed ':a;N;$!ba;s/\n/%0A/g')
-          echo "::warning::DEBUG matches: [${ENCODED}]"
-          if [ -n "$MATCHES" ]; then
+          # CLAUDE.md files legitimately document these patterns as examples of what
+          # NOT to commit, and this file itself has to contain the pattern strings to
+          # check for them — both are excluded, not searched for real leaks.
+          EXCLUDE='^(\.github/|.*CLAUDE\.md$)'
+          FILES=$(git ls-files | grep -vE "$EXCLUDE" || true)
+          NAMES=$(echo "$FILES" | xargs -r grep -n -iF -e 'leonardo' -e 'nunez' -e 'leonunez9821' -e 'C:\Users' -e 'C:/Users' || true)
+          PHONE=$(echo "$FILES" | xargs -r grep -n -E '470.535.7258' || true)
+          if [ -n "$NAMES" ] || [ -n "$PHONE" ]; then
+            echo "$NAMES"
+            echo "$PHONE"
             echo "::error::Found a possible PII or hardcoded-path leak — see CLAUDE.md ground rule 7."
             exit 1
           fi
