@@ -183,4 +183,39 @@ describe("PowerService", () => {
     const service = new PowerService(adapter);
     await expect(service.getPowerOverview()).resolves.toEqual({ circuits: [], hasOutage: false });
   });
+
+  // Found by a fourth review pass: classifyPowerCircuit correctly treats malformed
+  // fields as at_risk, but getPowerOverview used to copy the RAW malformed values
+  // straight into PowerCircuitResponse -- a string in a field packages/shared
+  // declares as `boolean`, or a NaN that becomes JSON `null` in a field declared as
+  // `number`. That's a contract leak (ground rule 5): the response no longer
+  // actually matches its own declared type at runtime. Sanitize to safe defaults
+  // for the response while still classifying off the raw circuit.
+  it("sanitizes a malformed fuseTriggered to a real boolean in the response, while still classifying it as at_risk", async () => {
+    const bad = { ...circuit(), fuseTriggered: "false" as unknown as boolean };
+    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
+    const service = new PowerService(adapter);
+    const overview = await service.getPowerOverview();
+    expect(overview.circuits[0].fuseTriggered).toBe(false);
+    expect(typeof overview.circuits[0].fuseTriggered).toBe("boolean");
+    expect(overview.circuits[0].status).toBe("at_risk");
+  });
+
+  it("sanitizes a NaN numeric field to 0 in the response, while still classifying it as at_risk", async () => {
+    const bad = circuit({ powerConsumed: Number.NaN });
+    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
+    const service = new PowerService(adapter);
+    const overview = await service.getPowerOverview();
+    expect(overview.circuits[0].powerConsumed).toBe(0);
+    expect(Number.isFinite(overview.circuits[0].powerConsumed)).toBe(true);
+    expect(overview.circuits[0].status).toBe("at_risk");
+  });
+
+  it("leaves well-formed values untouched", async () => {
+    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [circuit({ powerConsumed: 42, fuseTriggered: false })] };
+    const service = new PowerService(adapter);
+    const overview = await service.getPowerOverview();
+    expect(overview.circuits[0].powerConsumed).toBe(42);
+    expect(overview.circuits[0].fuseTriggered).toBe(false);
+  });
 });

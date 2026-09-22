@@ -156,16 +156,18 @@ describe("formatErrorDetail", () => {
   // The first and third are now handled even better than "doesn't crash": since
   // both inputs are non-Error objects, the JSON.stringify fallback added in a later
   // pass (see below) produces real output ("{}" -- JSON.stringify neither needs
-  // toString() nor calls it) instead of needing the generic catch-all at all. The
-  // getter case still needs the catch-all, since the throw happens on property
-  // access, before any formatting branch runs.
+  // toString() nor calls it) instead of needing the generic catch-all at all.
   it("does not throw on a null-prototype object, where String() itself would throw", () => {
     const err: unknown = Object.create(null);
     expect(() => formatErrorDetail(err)).not.toThrow();
     expect(formatErrorDetail(err)).toBe("{}");
   });
 
-  it("does not throw when reading .cause throws", () => {
+  // Found by a fourth review pass: a single global try/catch meant ANY failure
+  // anywhere in the tree replaced the whole result with "[unformattable error]" --
+  // including a throwing .cause getter, which lost an otherwise-fine top-level
+  // message for no reason (readCauseSafely now contains that specific failure).
+  it("keeps the top-level message when reading .cause throws, instead of losing it entirely", () => {
     const err = new Error("boom");
     Object.defineProperty(err, "cause", {
       get() {
@@ -173,7 +175,7 @@ describe("formatErrorDetail", () => {
       },
     });
     expect(() => formatErrorDetail(err)).not.toThrow();
-    expect(formatErrorDetail(err)).toBe("[unformattable error]");
+    expect(formatErrorDetail(err)).toBe("Error: boom");
   });
 
   it("does not throw when a thrown value's toString() would throw (JSON.stringify never calls it)", () => {
@@ -211,5 +213,56 @@ describe("formatErrorDetail", () => {
     const err = new Error("top", { cause: cyclic });
     expect(() => formatErrorDetail(err)).not.toThrow();
     expect(formatErrorDetail(err)).toContain("caused by:");
+  });
+
+  // Found by a fourth review pass: JSON.stringify returns `undefined` (not a
+  // string, and without throwing) when a value's toJSON() returns undefined --
+  // legal JS, and JSON.stringify's real return type is `string | undefined`
+  // despite its TS signature. Left unguarded, this made formatErrorDetail itself
+  // return a non-string (breaking its "always a string" contract), and made a
+  // cause clause read the literal text "(caused by: undefined)".
+  it("falls back to String() rather than returning undefined when toJSON() returns undefined", () => {
+    const err = { toJSON: () => undefined };
+    const result = formatErrorDetail(err);
+    expect(typeof result).toBe("string");
+    expect(result).not.toBe("undefined");
+  });
+
+  it("does not render a literal 'undefined' cause clause when the cause's toJSON() returns undefined", () => {
+    const cause = { toJSON: () => undefined };
+    const err = new Error("top", { cause });
+    expect(formatErrorDetail(err)).not.toContain("caused by: undefined)");
+  });
+
+  // Found by a fourth review pass: the old single global try/catch meant one bad
+  // sibling in an AggregateError's .errors wiped out every other (good) sibling's
+  // detail too. Each child is now formatted independently via formatChildSafely.
+  it("keeps a good sibling's detail when another sibling in the same AggregateError fails to format", () => {
+    const badSibling = {
+      toJSON() {
+        throw new Error("toJSON exploded");
+      },
+      toString() {
+        throw new Error("toString exploded");
+      },
+    };
+    const err = new AggregateError([new Error("ECONNREFUSED"), badSibling], "");
+    const result = formatErrorDetail(err);
+    expect(result).toContain("ECONNREFUSED");
+    expect(result).toContain("[error formatting nested value]");
+  });
+
+  // Found by a fourth review pass: a very deep, non-cyclic cause chain overflows
+  // the stack, and the old single global catch turned that into total message
+  // loss. Each level's formatChildSafely now contains the overflow to just the
+  // nested piece where it happens, so shallower levels (including the top) survive.
+  it("keeps the top-level message when a very deep cause chain overflows the stack", () => {
+    let err: Error = new Error("root");
+    for (let i = 0; i < 20000; i++) {
+      err = new Error(`level ${i}`, { cause: err });
+    }
+    const result = formatErrorDetail(err);
+    expect(typeof result).toBe("string");
+    expect(result.startsWith("Error: level 19999")).toBe(true);
   });
 });

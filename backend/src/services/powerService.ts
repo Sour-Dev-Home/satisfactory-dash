@@ -83,6 +83,21 @@ export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus 
   return "ok";
 }
 
+/** Coerces a value to a finite number, or `fallback` if it isn't one -- e.g. a
+ *  string, NaN, or Infinity from unvalidated FRM data (see classifyPowerCircuit's
+ *  doc comment). Keeps PowerCircuitResponse's `number` fields honest: without this,
+ *  a NaN survives internally but silently becomes JSON `null` on the wire, and a
+ *  malformed value the adapter is supposed to intercept could reach it unchanged. */
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+/** Coerces a value to a real boolean, or `fallback` if it isn't one -- e.g. the
+ *  string "false" (truthy in JS) from unvalidated FRM data. */
+function booleanOr(value: boolean, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 export class PowerService {
   constructor(private readonly adapter: PowerAdapterLike) {}
 
@@ -90,12 +105,15 @@ export class PowerService {
     const circuits = await this.adapter.getPowerCircuits();
     const mapped: PowerCircuitResponse[] = circuits.map((circuit) => ({
       circuitGroupId: circuit.circuitGroupId,
-      powerProduction: circuit.powerProduction,
-      powerConsumed: circuit.powerConsumed,
-      powerCapacity: circuit.powerCapacity,
-      fuseTriggered: circuit.fuseTriggered,
-      batteryPercent: circuit.batteryPercent,
-      batteryDifferential: circuit.batteryDifferential,
+      powerProduction: finiteOr(circuit.powerProduction, 0),
+      powerConsumed: finiteOr(circuit.powerConsumed, 0),
+      powerCapacity: finiteOr(circuit.powerCapacity, 0),
+      fuseTriggered: booleanOr(circuit.fuseTriggered, false),
+      batteryPercent: finiteOr(circuit.batteryPercent, 0),
+      batteryDifferential: finiteOr(circuit.batteryDifferential, 0),
+      // classifyPowerCircuit sees the RAW circuit, not these sanitized values, so a
+      // malformed field still correctly forces at_risk rather than being laundered
+      // into a clean-looking "0" and read as "ok".
       status: classifyPowerCircuit(circuit),
     }));
     return {
