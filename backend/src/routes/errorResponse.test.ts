@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildServerUnreachableResponse } from "./errorResponse.js";
+import { VanillaApiClient } from "../adapters/index.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -125,5 +126,39 @@ describe("buildServerUnreachableResponse", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const err = Object.assign(new Error("bad status"), { status });
     expect(buildServerUnreachableResponse(err).error).toBe("Request to the Satisfactory dedicated server failed");
+  });
+
+  // Found by a review pass, using errors thrown by the real VanillaApiClient
+  // rather than hand-built ones: it never put the HTTP status on its errors, so
+  // /api/status with a bad token got a generic message instead of the auth hint.
+  describe("with errors from the real VanillaApiClient", () => {
+    async function responseFor(transportResult: { status: number; body: unknown }) {
+      process.env.NODE_ENV = "test";
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const client = new VanillaApiClient({
+        host: "localhost",
+        port: 7777,
+        timeoutMs: 1000,
+        allowSelfSignedCert: false,
+        transport: vi.fn().mockResolvedValue(transportResult),
+      });
+      const err = await client.call("QueryServerState").catch((e: unknown) => e);
+      return buildServerUnreachableResponse(err);
+    }
+
+    it("a 401 with no body gets the auth-token message", async () => {
+      expect((await responseFor({ status: 401, body: undefined })).error).toContain("check the configured auth token");
+    });
+
+    it("a 403 with an errorCode body still gets the auth-token message", async () => {
+      const body = await responseFor({ status: 403, body: { errorCode: "insufficient_scope" } });
+      expect(body.error).toContain("check the configured auth token");
+    });
+
+    it("a 500 with no body reports the status", async () => {
+      expect((await responseFor({ status: 500, body: undefined })).error).toBe(
+        "Satisfactory dedicated server request failed (status 500)",
+      );
+    });
   });
 });

@@ -40,16 +40,21 @@ export interface VanillaApiClientOptions {
 
 export class VanillaApiRequestError extends Error {
   readonly failureKind?: RequestFailureKind;
+  /** The HTTP status, when the server answered with >= 400. Found by a review
+   *  pass: without it, routes/errorResponse.ts could never tell a 401/403 (bad
+   *  token) on /api/status apart from any other failure. */
+  readonly status?: number;
 
   constructor(
     message: string,
     public readonly errorCode?: string,
     public readonly errorData?: unknown,
-    options?: ErrorOptions & { failureKind?: RequestFailureKind },
+    options?: ErrorOptions & { failureKind?: RequestFailureKind; status?: number },
   ) {
     super(message, options);
     this.name = "VanillaApiRequestError";
     this.failureKind = options?.failureKind;
+    this.status = options?.status;
   }
 }
 
@@ -100,6 +105,13 @@ export const defaultVanillaApiTransport: VanillaApiTransport = ({
           try {
             resolve({ status, body: JSON.parse(raw) });
           } catch (err) {
+            // A non-JSON error page (a proxy's HTML 502, a bare 401) still has a
+            // meaningful status -- hand it to call() rather than hiding it behind
+            // "invalid response". Found by a review pass.
+            if (status >= 400) {
+              resolve({ status, body: undefined });
+              return;
+            }
             reject(
               new VanillaApiRequestError("Vanilla API returned non-JSON body", undefined, undefined, {
                 cause: err,
@@ -145,10 +157,14 @@ export class VanillaApiClient {
     });
 
     if (isErrorBody(body)) {
-      throw new VanillaApiRequestError(body.errorMessage ?? body.errorCode, body.errorCode, body.errorData);
+      throw new VanillaApiRequestError(body.errorMessage ?? body.errorCode, body.errorCode, body.errorData, {
+        status: status >= 400 ? status : undefined,
+      });
     }
     if (status >= 400) {
-      throw new VanillaApiRequestError(`Vanilla API request failed with status ${status}`);
+      throw new VanillaApiRequestError(`Vanilla API request failed with status ${status}`, undefined, undefined, {
+        status,
+      });
     }
     if (status === 204 || body === undefined) {
       return undefined as T;
