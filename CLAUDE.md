@@ -12,6 +12,9 @@ This is a **public-facing** project per `../DEPLOYMENT.md` — public repo, Clou
 Pages hosting for `frontend/` (not yet connected). See that file before changing repo
 visibility or hosting.
 
+See `../WORKFLOW.md` for session roles, the branch/PR loop, and this repo's status
+against the workspace's security/CI baseline.
+
 ## Ground rules
 
 1. **Ask before building.** Before implementing anything non-trivial, ask clarifying
