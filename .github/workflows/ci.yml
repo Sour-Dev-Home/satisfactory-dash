@@ -25,3 +25,25 @@ jobs:
       - run: npm run test
 
       - run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for PII or hardcoded local paths
+        run: |
+          if git grep -n -iE "leonardo|nunez|leonunez9821|470.535.7258|C:\\\\Users|C:/Users" -- . ':!.github/workflows/ci.yml'; then
+            echo "::error::Found a possible PII or hardcoded-path leak — see CLAUDE.md ground rule 7."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
