@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ServerStatusService } from "./serverStatusService.js";
 import type { ServerStatusAdapterLike } from "./serverStatusService.js";
+import type { ServerStatus } from "../adapters/domain.js";
 
 describe("ServerStatusService", () => {
   it("merges health and status into a single response", async () => {
@@ -80,5 +81,91 @@ describe("ServerStatusService", () => {
     };
     const service = new ServerStatusService(adapter);
     await expect(service.getStatus()).rejects.toThrow("connect ECONNREFUSED");
+  });
+
+  // Found by an independent CI review pass: getStatus used to build its return value
+  // with `{ healthy, ...status }`, which bypasses TypeScript's excess-property
+  // checking. This test simulates a future ServerStatus field the response type
+  // hasn't been updated for yet, and asserts it does NOT leak through -- with a
+  // spread it silently would have, with no compile error either.
+  it("does not leak an adapter-only field that isn't part of ServerStatusResponse", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: true }),
+      getServerStatus: async () =>
+        ({
+          sessionName: "my-save",
+          isGameRunning: true,
+          isPaused: false,
+          connectedPlayers: 2,
+          playerLimit: 4,
+          tickRate: 30,
+          totalGameDurationSeconds: 100,
+          internalDebugFlag: true,
+        }) as ServerStatus & { internalDebugFlag: boolean },
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status).not.toHaveProperty("internalDebugFlag");
+    expect(Object.keys(status).sort()).toEqual(
+      [
+        "healthy",
+        "sessionName",
+        "isGameRunning",
+        "isPaused",
+        "connectedPlayers",
+        "playerLimit",
+        "tickRate",
+        "totalGameDurationSeconds",
+      ].sort(),
+    );
+  });
+
+  // Found by a seventh review pass: powerService.ts sanitizes NaN numeric fields
+  // (finiteOr) so they don't silently become JSON null on the wire, but
+  // serverStatusService.ts passed the adapter's numbers straight through despite
+  // reading from the same class of unvalidated vanilla-API data.
+  it("sanitizes a NaN numeric field to 0 instead of letting it become JSON null", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: true }),
+      getServerStatus: async () => ({
+        sessionName: "my-save",
+        isGameRunning: true,
+        isPaused: false,
+        connectedPlayers: 2,
+        playerLimit: 4,
+        tickRate: Number.NaN,
+        totalGameDurationSeconds: 100,
+      }),
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status.tickRate).toBe(0);
+    expect(Number.isFinite(status.tickRate)).toBe(true);
+  });
+
+  // Found by an eighth review pass: the numeric sanitizing above was half-applied
+  // -- healthy/isGameRunning/isPaused passed straight through unchecked, so a
+  // malformed `healthy: "false"` (a truthy string) would reach the client as a
+  // string a naive check reads as true. Unlike PowerService's fuseTriggered, there
+  // is no separate `status` field here for a boolean default to contradict, so a
+  // plain fail-toward-false default is safe for all three.
+  it("sanitizes a malformed (non-boolean) healthy/isGameRunning/isPaused to false", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: "false" as unknown as boolean }),
+      getServerStatus: async () => ({
+        sessionName: "my-save",
+        isGameRunning: "true" as unknown as boolean,
+        isPaused: 1 as unknown as boolean,
+        connectedPlayers: 2,
+        playerLimit: 4,
+        tickRate: 30,
+        totalGameDurationSeconds: 100,
+      }),
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status.healthy).toBe(false);
+    expect(status.isGameRunning).toBe(false);
+    expect(status.isPaused).toBe(false);
   });
 });
