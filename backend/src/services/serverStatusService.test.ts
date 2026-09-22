@@ -168,4 +168,27 @@ describe("ServerStatusService", () => {
     expect(status.isGameRunning).toBe(false);
     expect(status.isPaused).toBe(false);
   });
+
+  // Found by a ninth review pass: the "half-applied" sanitizing fixed in the
+  // eighth pass still left sessionName unchecked -- a malformed non-string value
+  // (e.g. null) would reach the client in a field ServerStatusResponse declares
+  // `string`.
+  it("sanitizes a malformed (non-string) sessionName to an empty string", async () => {
+    const adapter: ServerStatusAdapterLike = {
+      getServerHealth: async () => ({ healthy: true }),
+      getServerStatus: async () => ({
+        sessionName: null as unknown as string,
+        isGameRunning: true,
+        isPaused: false,
+        connectedPlayers: 2,
+        playerLimit: 4,
+        tickRate: 30,
+        totalGameDurationSeconds: 100,
+      }),
+    };
+    const service = new ServerStatusService(adapter);
+    const status = await service.getStatus();
+    expect(status.sessionName).toBe("");
+    expect(typeof status.sessionName).toBe("string");
+  });
 });

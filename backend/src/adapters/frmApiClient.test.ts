@@ -50,11 +50,15 @@ describe("FrmApiClient", () => {
     await expect(client.get("getPlayer")).rejects.toThrow(FrmApiRequestError);
   });
 
-  it("wraps a fetch-level rejection with a pass-through message and no status", async () => {
+  // Message no longer folds in String(err) (a second review pass found that once
+  // .cause started being unwrapped by formatErrorDetail, the message and the cause
+  // chain said the same thing twice) -- the original error's own text now lives
+  // only in .cause, which the next test covers.
+  it("wraps a fetch-level rejection with a plain message and no status", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
     const client = buildClient(fetchImpl);
     await expect(client.get("getPlayer")).rejects.toMatchObject({
-      message: "FRM request to getPlayer failed: Error: network down",
+      message: "FRM request to getPlayer failed",
       status: undefined,
     });
   });
@@ -73,9 +77,40 @@ describe("FrmApiClient", () => {
     const client = buildClient(fetchImpl);
     await expect(client.get("getFactory")).rejects.toThrow(FrmApiRequestError);
     await expect(client.get("getFactory")).rejects.toMatchObject({
-      message: "FRM request to getFactory failed: SyntaxError: Unexpected end of JSON input",
+      message: "FRM response from getFactory was not valid JSON",
       status: undefined,
+      failureKind: "invalid_response",
     });
+  });
+
+  // Found by an independent review pass: the wrapped error only carried the
+  // original error's String()-ified message, not the original error itself as
+  // .cause -- so formatErrorDetail.ts's .cause-unwrapping never actually had
+  // anything real to unwrap for FRM-backed routes in practice, despite existing
+  // specifically for that purpose (its own doc comment cites this exact client).
+  it("sets the original error as .cause on a fetch-level rejection", async () => {
+    const original = new TypeError("fetch failed", { cause: new Error("ECONNREFUSED") });
+    const fetchImpl = vi.fn().mockRejectedValue(original);
+    const client = buildClient(fetchImpl);
+    await expect(client.get("getPlayer")).rejects.toMatchObject({ cause: original });
+  });
+
+  it("classifies a fetch-level rejection as unreachable", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    const client = buildClient(fetchImpl);
+    await expect(client.get("getPlayer")).rejects.toMatchObject({ failureKind: "unreachable" });
+  });
+
+  it("classifies a non-SyntaxError while reading the body (e.g. a mid-body timeout) as unreachable", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    });
+    const client = buildClient(fetchImpl);
+    await expect(client.get("getPlayer")).rejects.toMatchObject({ failureKind: "unreachable" });
   });
 
   it("passes an AbortSignal derived from the configured timeout", async () => {

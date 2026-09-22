@@ -5,7 +5,7 @@
   "main": "dist/server.cjs",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
     "build": "esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "typecheck": "tsc --noEmit",
@@ -26,6 +26,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.2",
     "@types/supertest": "^7.2.1",
+    "cross-env": "^10.1.0",
     "esbuild": "^0.28.2",
     "oxlint": "^1.81.0",
     "supertest": "^7.1.4",

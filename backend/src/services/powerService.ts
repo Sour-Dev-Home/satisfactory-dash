@@ -104,39 +104,66 @@ export class PowerService {
 
   async getPowerOverview(): Promise<PowerOverviewResponse> {
     const circuits = await this.adapter.getPowerCircuits();
-    // Defensive against a null/non-object entry in the array itself, not just bad
-    // fields on an otherwise-real circuit -- the adapter isn't expected to ever
-    // produce this today, but this service already describes itself as guarding
-    // against unvalidated FRM data, so a null entry crashing the whole /api/power
-    // response (rather than just dropping that one unreadable circuit) is the same
-    // class of gap the rest of this method exists to close.
-    const validCircuits = circuits.filter((circuit): circuit is PowerCircuit => circuit !== null && typeof circuit === "object");
-    const mapped: PowerCircuitResponse[] = validCircuits.map((circuit) => ({
-      // -1 is FRM's own documented "not connected" sentinel for this ID
-      // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
-      // FactoryBuilding.circuitId in satisfactoryServerAdapter.ts -- 0 would be
-      // wrong here since it could collide with a real circuit 0.
-      circuitGroupId: finiteOr(circuit.circuitGroupId, -1),
-      powerProduction: finiteOr(circuit.powerProduction, 0),
-      powerConsumed: finiteOr(circuit.powerConsumed, 0),
-      powerCapacity: finiteOr(circuit.powerCapacity, 0),
-      // Fallback is `false` (reverted from `true` by an eighth review pass, which
-      // caught the actual problem with the earlier reasoning): defaulting to `true`
-      // made the response self-contradictory whenever fuseTriggered was malformed
-      // -- fuseTriggered: true alongside status: "at_risk" (not "outage") and
-      // hasOutage: false all disagree with each other, which is worse than a
-      // conservative false in either direction. `status` alone carries the actual
-      // alert for malformed data (see classifyPowerCircuit above); this raw field
-      // should stay consistent with it rather than independently asserting more
-      // confidence than the data supports.
-      fuseTriggered: booleanOr(circuit.fuseTriggered, false),
-      batteryPercent: finiteOr(circuit.batteryPercent, 0),
-      batteryDifferential: finiteOr(circuit.batteryDifferential, 0),
-      // classifyPowerCircuit sees the RAW circuit, not these sanitized values, so a
-      // malformed field still correctly forces at_risk rather than being laundered
-      // into a clean-looking "0" and read as "ok".
-      status: classifyPowerCircuit(circuit),
-    }));
+    // Array.from, not circuits.map directly -- .map() SKIPS holes in a sparse
+    // array (`[a, , c]`) rather than calling the callback with `undefined` for
+    // them, so a hole would bypass the null/non-object placeholder logic below
+    // entirely and come out the other side as a raw JSON `null` in `circuits`,
+    // contradicting this method's own rule that every malformed entry shows up as
+    // at_risk. Not reachable through the real adapter (JSON.parse can't produce a
+    // sparse array), but Array.from normalizing holes to real `undefined` values
+    // first is a one-line fix for defensive completeness. Found by a review pass.
+    const mapped: PowerCircuitResponse[] = Array.from(circuits).map((circuit) => {
+      // A null/non-object entry in the array itself is shown as at_risk with
+      // placeholder values, not silently dropped. Found by a review pass: an
+      // earlier version filtered these out entirely, so the circuit list quietly
+      // shrank with no signal -- every OTHER kind of malformed data in this method
+      // shows up as at_risk, and a vanishing circuit is the wrong direction for
+      // something meant to raise alarms, not hide them. Not reachable from today's
+      // real adapter, but this service already describes itself as defensive
+      // against unvalidated FRM data.
+      if (circuit === null || typeof circuit !== "object") {
+        return {
+          circuitGroupId: -1,
+          powerProduction: 0,
+          powerConsumed: 0,
+          powerCapacity: 0,
+          fuseTriggered: false,
+          batteryPercent: 0,
+          batteryDifferential: 0,
+          status: "at_risk",
+        };
+      }
+      return {
+        // -1 is FRM's own documented "not connected" sentinel for this ID
+        // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
+        // FactoryBuilding.circuitId in satisfactoryServerAdapter.ts -- 0 would be
+        // wrong here since it could collide with a real circuit 0. Note this means
+        // -1 isn't guaranteed unique across circuits (multiple genuinely
+        // unconnected circuits, or multiple malformed ones, can legitimately share
+        // it) -- a consumer needing a stable list key should use array index, not
+        // this field, when it's -1.
+        circuitGroupId: finiteOr(circuit.circuitGroupId, -1),
+        powerProduction: finiteOr(circuit.powerProduction, 0),
+        powerConsumed: finiteOr(circuit.powerConsumed, 0),
+        powerCapacity: finiteOr(circuit.powerCapacity, 0),
+        // Fallback is `false` (reverted from `true` by an eighth review pass, which
+        // caught the actual problem with the earlier reasoning): defaulting to `true`
+        // made the response self-contradictory whenever fuseTriggered was malformed
+        // -- fuseTriggered: true alongside status: "at_risk" (not "outage") and
+        // hasOutage: false all disagree with each other, which is worse than a
+        // conservative false in either direction. `status` alone carries the actual
+        // alert for malformed data (see classifyPowerCircuit above); this raw field
+        // should stay consistent with it rather than independently asserting more
+        // confidence than the data supports.
+        fuseTriggered: booleanOr(circuit.fuseTriggered, false),
+        batteryPercent: finiteOr(circuit.batteryPercent, 0),
+        batteryDifferential: finiteOr(circuit.batteryDifferential, 0),
+        // classifyPowerCircuit sees the RAW circuit, not these sanitized values, so a
+        // malformed field still correctly forces at_risk rather than being laundered
+        // into a clean-looking "0" and read as "ok".
+        status: classifyPowerCircuit(circuit),
+      };
+    });
     return {
       circuits: mapped,
       hasOutage: mapped.some((circuit) => circuit.status === "outage"),

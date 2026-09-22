@@ -23,6 +23,15 @@ function booleanOr(value: boolean, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+/** Coerces a value to a real string, or `fallback` if it isn't one. Found by a
+ *  ninth review pass: the "half-applied" sanitizing above still left sessionName
+ *  unchecked -- a malformed non-string value would reach the client in a field
+ *  ServerStatusResponse declares `string`, e.g. `null` breaking JSON.stringify's
+ *  expectations for consumers that assume a real string. */
+function stringOr(value: string, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
 export class ServerStatusService {
   constructor(private readonly adapter: ServerStatusAdapterLike) {}
 
@@ -39,7 +48,7 @@ export class ServerStatusService {
     // default (false) is safe for all three without the same self-contradiction risk.
     return {
       healthy: booleanOr(health.healthy, false),
-      sessionName: status.sessionName,
+      sessionName: stringOr(status.sessionName, ""),
       isGameRunning: booleanOr(status.isGameRunning, false),
       isPaused: booleanOr(status.isPaused, false),
       connectedPlayers: finiteOr(status.connectedPlayers, 0),

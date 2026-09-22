@@ -148,6 +148,40 @@ describe("SatisfactoryServerAdapter", () => {
     ]);
   });
 
+  // Found by a review pass: a null entry in getPower's response used to throw
+  // (circuit.CircuitGroupID on null) before PowerService's own defensive
+  // placeholder logic ever got a chance to run, crashing the whole /api/power
+  // call. Mapped to NaN/false sentinels instead -- classifyPowerCircuit's
+  // existing Number.isFinite/typeof-boolean guards then correctly read this as
+  // at_risk downstream, same as any other malformed circuit.
+  it("maps a null entry in getPower's response to a sentinel-invalid PowerCircuit instead of throwing", async () => {
+    const { adapter } = buildAdapter({
+      frm: { get: vi.fn().mockResolvedValue([powerCircuitFixture, null]) },
+    });
+    const circuits = await adapter.getPowerCircuits();
+    expect(circuits).toHaveLength(2);
+    expect(Number.isNaN(circuits[1].circuitGroupId)).toBe(true);
+    expect(circuits[1].fuseTriggered).toBe(false);
+  });
+
+  // Found by a review pass: every array endpoint `.map`-ed the body directly, so
+  // an object or null body threw a bare TypeError, reported to the user as
+  // "Could not reach the Satisfactory dedicated server" even though FRM answered.
+  it.each([
+    ["getFactory", (a: SatisfactoryServerAdapter) => a.getFactoryBuildings()],
+    ["getPower", (a: SatisfactoryServerAdapter) => a.getPowerCircuits()],
+    ["getPowerUsage", (a: SatisfactoryServerAdapter) => a.getPowerUsage()],
+    ["getPlayer", (a: SatisfactoryServerAdapter) => a.getPlayers()],
+  ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
+    for (const body of [null, {}, "nope"]) {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
+      await expect(call(adapter)).rejects.toMatchObject({
+        message: `FRM response from ${endpoint} was not an array`,
+        failureKind: "invalid_response",
+      });
+    }
+  });
+
   it("maps getPowerUsage buildings", async () => {
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([powerUsageBuildingFixture]) } });
     await expect(adapter.getPowerUsage()).resolves.toEqual([

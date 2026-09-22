@@ -51,6 +51,24 @@ describe("VanillaApiClient", () => {
     const transport = vi.fn().mockResolvedValue({ status: 500, body: undefined });
     const client = buildClient(transport);
     await expect(client.call("HealthCheck")).rejects.toThrow(VanillaApiRequestError);
+    await expect(client.call("HealthCheck")).rejects.toMatchObject({ status: 500 });
+  });
+
+  // Found by a review pass: the HTTP status was dropped, so a bad token (401)
+  // on /api/status never got the "check the configured auth token" message.
+  it("carries the HTTP status on an Error Response body sent with a >= 400 status", async () => {
+    const transport = vi.fn().mockResolvedValue({ status: 403, body: { errorCode: "insufficient_scope" } });
+    const client = buildClient(transport);
+    await expect(client.call("QueryServerState")).rejects.toMatchObject({
+      status: 403,
+      errorCode: "insufficient_scope",
+    });
+  });
+
+  it("leaves status unset on an Error Response body sent with a 2xx status", async () => {
+    const transport = vi.fn().mockResolvedValue({ status: 200, body: { errorCode: "wrong_password" } });
+    const client = buildClient(transport);
+    await expect(client.call("PasswordLogin")).rejects.toMatchObject({ status: undefined });
   });
 
   it("throws VanillaApiRequestError (not a raw TypeError) when a 2xx body is JSON null", async () => {
