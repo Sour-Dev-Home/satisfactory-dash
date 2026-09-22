@@ -363,7 +363,7 @@ describe("formatErrorDetail", () => {
     expect(() => formatErrorDetail(err)).not.toThrow();
     const result = formatErrorDetail(err);
     expect(result).toContain("E1");
-    expect(result).toContain("[error tree too deep]");
+    expect(result).toContain("[error tree too large to fully expand]");
   });
 
   // Found by an eighth review pass: the seventh pass's fix used an ever-growing
@@ -378,9 +378,24 @@ describe("formatErrorDetail", () => {
     const err = new Error("outer", { cause: { a: shared, b: shared } });
     const result = formatErrorDetail(err);
     expect(result).not.toContain("[circular]");
-    expect(result).not.toContain("[error tree too deep]");
+    expect(result).not.toContain("[error tree too large to fully expand]");
     const occurrences = result.split("shared instance").length - 1;
     expect(occurrences).toBe(2);
+  });
+
+  // Found by a ninth review pass: the cap counts every Error expanded across the
+  // whole call, not nesting depth -- a flat object with many unrelated sibling
+  // Errors hits it just as fast as a deep chain does. Confirms the label doesn't
+  // claim depth and that a realistic flat case (well under the cap) is unaffected.
+  it("does not cap a small number of unrelated sibling Errors, only a large flat or deep tree", () => {
+    const err = new Error("outer", {
+      cause: { a: new Error("a"), b: new Error("b"), c: new Error("c") },
+    });
+    const result = formatErrorDetail(err);
+    expect(result).not.toContain("[error tree too large to fully expand]");
+    expect(result).toContain('"message":"a"');
+    expect(result).toContain('"message":"b"');
+    expect(result).toContain('"message":"c"');
   });
 
   // Found by a seventh review pass: the replacer only special-cased Error into
@@ -393,5 +408,24 @@ describe("formatErrorDetail", () => {
     const err = new Error("outer", { cause: { wrapped: nested } });
     const result = formatErrorDetail(err);
     expect(result).toContain("child-detail");
+  });
+
+  // Found by a ninth review pass: `detail` ships in a public, unauthenticated 503
+  // response body, and the non-Error JSON.stringify fallback will faithfully dump
+  // whatever shape a future cause object has, with no field allowlist -- flagged
+  // as a risk to watch (not a confirmed leak: nothing in this codebase attaches
+  // credentials to an error today). This caps worst-case response size as a cheap
+  // backstop, not a substitute for keeping sensitive data off error causes.
+  it("truncates an excessively long result instead of returning it unbounded", () => {
+    const err = new Error("top", { cause: { data: "x".repeat(10_000) } });
+    const result = formatErrorDetail(err);
+    expect(result.length).toBeLessThan(2100);
+    expect(result.endsWith("...(truncated)")).toBe(true);
+  });
+
+  it("does not truncate a normal, well-under-the-limit result", () => {
+    const result = formatErrorDetail(new Error("short message"));
+    expect(result).toBe("Error: short message");
+    expect(result.endsWith("...(truncated)")).toBe(false);
   });
 });

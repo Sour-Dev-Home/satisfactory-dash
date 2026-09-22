@@ -78,6 +78,18 @@ describe("FrmApiClient", () => {
     });
   });
 
+  // Found by an independent review pass: the wrapped error only carried the
+  // original error's String()-ified message, not the original error itself as
+  // .cause -- so formatErrorDetail.ts's .cause-unwrapping never actually had
+  // anything real to unwrap for FRM-backed routes in practice, despite existing
+  // specifically for that purpose (its own doc comment cites this exact client).
+  it("sets the original error as .cause on a fetch-level rejection", async () => {
+    const original = new TypeError("fetch failed", { cause: new Error("ECONNREFUSED") });
+    const fetchImpl = vi.fn().mockRejectedValue(original);
+    const client = buildClient(fetchImpl);
+    await expect(client.get("getPlayer")).rejects.toMatchObject({ cause: original });
+  });
+
   it("passes an AbortSignal derived from the configured timeout", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     const client = buildClient(fetchImpl);

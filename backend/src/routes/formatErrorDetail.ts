@@ -22,9 +22,20 @@
  * reason — see `formatChildSafely` — with the outer `formatErrorDetail` as a last
  * resort for failures at the very top that no inner guard could contain.
  */
+/** `detail` ships in a public, unauthenticated 503 response body (see every route's
+ *  catch block). Flagged by a review pass as a risk to watch, not a confirmed leak:
+ *  no cause object in this codebase carries credentials/headers today, but the
+ *  non-Error JSON.stringify fallback below will faithfully dump whatever shape a
+ *  future cause object has, with no allowlist on its fields. This cap is a cheap,
+ *  blunt backstop -- it bounds worst-case response size and truncates any single
+ *  runaway dump, but it is NOT a substitute for keeping sensitive data off error
+ *  objects/causes in the first place. */
+const MAX_DETAIL_LENGTH = 2000;
+
 export function formatErrorDetail(err: unknown): string {
   try {
-    return formatErrorDetailUnsafe(err, new Set());
+    const result = formatErrorDetailUnsafe(err, new Set());
+    return result.length > MAX_DETAIL_LENGTH ? `${result.slice(0, MAX_DETAIL_LENGTH)}...(truncated)` : result;
   } catch {
     return "[unformattable error]";
   }
@@ -165,6 +176,11 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
     // (a genuine cycle re-expands the same Error over and over, so it hits the cap
     // almost immediately), while a handful of unrelated sibling repeats -- nowhere
     // near the cap -- are never mislabeled.
+    // MAX_JSON_ERROR_EXPANSIONS is a count of Errors expanded across the WHOLE
+    // call, not a nesting-depth limit -- a ninth review pass caught that the
+    // "too deep" label was misleading for what's actually a flat cap: 25 unrelated
+    // sibling Errors would hit it just as fast as a 25-level-deep chain, and both
+    // get the same message. Named/labeled accordingly rather than implying depth.
     const MAX_JSON_ERROR_EXPANSIONS = 20;
     try {
       let expansions = 0;
@@ -173,7 +189,7 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
           return value;
         }
         if (expansions >= MAX_JSON_ERROR_EXPANSIONS) {
-          return "[error tree too deep]";
+          return "[error tree too large to fully expand]";
         }
         expansions++;
         try {

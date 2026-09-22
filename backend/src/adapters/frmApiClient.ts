@@ -26,8 +26,9 @@ export class FrmApiRequestError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "FrmApiRequestError";
   }
 }
@@ -54,7 +55,14 @@ export class FrmApiClient {
       if (err instanceof FrmApiRequestError) {
         throw err;
       }
-      throw new FrmApiRequestError(`FRM request to ${endpoint} failed: ${String(err)}`);
+      // { cause: err } (not just String(err) in the message) so the real underlying
+      // reason -- e.g. fetch's own "TypeError: fetch failed" with an ECONNREFUSED
+      // .cause -- survives for formatErrorDetail.ts to unwrap. Found by an
+      // independent review pass: without this, formatErrorDetail's whole
+      // .cause-unwrapping mechanism never actually fired for /api/factory or
+      // /api/power in practice, since the cause was discarded right here before
+      // ever reaching that helper.
+      throw new FrmApiRequestError(`FRM request to ${endpoint} failed: ${String(err)}`, undefined, { cause: err });
     }
   }
 }
