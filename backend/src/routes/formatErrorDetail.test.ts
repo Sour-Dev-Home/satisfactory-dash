@@ -290,4 +290,32 @@ describe("formatErrorDetail", () => {
     expect(result).toContain("ECONNRESET details");
     expect(result).not.toContain('"inner":{}');
   });
+
+  // Found by a sixth review pass, extending the fifth pass's fix: the replacer
+  // projected a nested Error down to just { name, message }, dropping ITS OWN
+  // .cause -- the exact ECONNREFUSED-style detail this whole helper exists to
+  // keep, just one level deeper than the fifth pass's fix reached.
+  it("keeps a nested Error's own .cause, not just its message, inside a plain-object cause", () => {
+    const innerCause = new Error("ECONNREFUSED 127.0.0.1:8080");
+    const err = new Error("outer", { cause: { inner: new Error("fetch failed", { cause: innerCause }) } });
+    const result = formatErrorDetail(err);
+    expect(result).toContain("ECONNREFUSED 127.0.0.1:8080");
+  });
+
+  // Found by a sixth review pass: err.message was read directly in the
+  // AggregateError base-string construction. A throwing .message getter aborted
+  // that whole branch before .errors (which could still format fine on its own)
+  // was ever reached -- the same class of bug already fixed for .cause and
+  // .errors itself, just on the third property this branch reads.
+  it("still formats .errors when an AggregateError's own .message getter throws", () => {
+    const err = new AggregateError([new Error("ECONNREFUSED")], "");
+    Object.defineProperty(err, "message", {
+      get() {
+        throw new Error("message getter exploded");
+      },
+    });
+    const result = formatErrorDetail(err);
+    expect(result).not.toBe("[unformattable error]");
+    expect(result).toContain("ECONNREFUSED");
+  });
 });

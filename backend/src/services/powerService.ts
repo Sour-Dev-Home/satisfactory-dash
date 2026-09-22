@@ -67,6 +67,7 @@ export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus 
   // actually sends malformed fields; treat as at_risk rather than assume either way.
   if (
     typeof circuit.fuseTriggered !== "boolean" ||
+    !Number.isFinite(circuit.powerProduction) ||
     !Number.isFinite(circuit.powerConsumed) ||
     !Number.isFinite(circuit.powerCapacity) ||
     !Number.isFinite(circuit.batteryDifferential) ||
@@ -112,7 +113,13 @@ export class PowerService {
       powerProduction: finiteOr(circuit.powerProduction, 0),
       powerConsumed: finiteOr(circuit.powerConsumed, 0),
       powerCapacity: finiteOr(circuit.powerCapacity, 0),
-      fuseTriggered: booleanOr(circuit.fuseTriggered, false),
+      // Fallback is `true`, not `false` -- for every other field, a safe-looking
+      // default (0, -1) is fine because the wrongness is caught by `status`
+      // separately. But `fuseTriggered: false` is an active claim of "no trip",
+      // and if a client reads this field directly instead of `status`, defaulting
+      // to false on malformed data would tell them the opposite of "we don't know"
+      // -- for an alarm signal, failing toward the alarm is the safer direction.
+      fuseTriggered: booleanOr(circuit.fuseTriggered, true),
       batteryPercent: finiteOr(circuit.batteryPercent, 0),
       batteryDifferential: finiteOr(circuit.batteryDifferential, 0),
       // classifyPowerCircuit sees the RAW circuit, not these sanitized values, so a

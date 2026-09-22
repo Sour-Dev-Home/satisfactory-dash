@@ -53,6 +53,17 @@ function readCauseSafely(err: Error): unknown {
   }
 }
 
+/** Reads `.message` without letting a throwing getter propagate, so a hostile
+ *  AggregateError can't take its own still-formattable `.errors`/`.cause` down
+ *  with it by throwing before those are ever reached. */
+function readMessageSafely(err: Error): string {
+  try {
+    return err.message;
+  } catch {
+    return "";
+  }
+}
+
 /**
  * @param seen Tracks the *current recursion path* (objects whose formatting is
  *   still in progress), not every object ever visited — each call removes itself
@@ -73,7 +84,11 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
   seen.add(err);
   try {
     if (err instanceof AggregateError) {
-      const base = err.message ? `AggregateError: ${err.message}` : "AggregateError";
+      // Read via readMessageSafely, not err.message directly -- a throwing .message
+      // getter used to abort this whole branch before .errors/.cause were even
+      // reached, losing siblings that were perfectly formattable on their own.
+      const message = readMessageSafely(err);
+      const base = message ? `AggregateError: ${message}` : "AggregateError";
       // .errors is a writable property -- if it's ever been replaced with something
       // non-array (e.g. `err.errors = null`), .map() on it throws, and since that
       // throw isn't behind a formatChildSafely boundary of its own, it would
@@ -111,10 +126,12 @@ function formatErrorDetailUnsafe(err: unknown, seen: Set<unknown>): string {
     // replacer expands any Error nested *inside* this object (e.g.
     // `{ inner: new Error(...) }`) -- plain JSON.stringify serializes an Error to
     // "{}" since .message/.stack aren't enumerable, silently dropping exactly the
-    // detail this whole function exists to keep.
+    // detail this whole function exists to keep. Including `cause` here means
+    // JSON.stringify re-applies this same replacer to it if it's itself an Error,
+    // so a nested Error's own cause chain expands too, not just its top message.
     try {
       const json = JSON.stringify(err, (_key, value) =>
-        value instanceof Error ? { name: value.name, message: value.message } : value,
+        value instanceof Error ? { name: value.name, message: value.message, cause: value.cause } : value,
       );
       if (typeof json === "string") {
         return json;

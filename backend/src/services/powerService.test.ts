@@ -117,6 +117,16 @@ describe("classifyPowerCircuit", () => {
     expect(classifyPowerCircuit(circuit({ batteryPercent: Number.NaN }))).toBe("at_risk");
   });
 
+  // Found by a sixth review pass: the validation block covered every numeric field
+  // classifyPowerCircuit actually compares, but not powerProduction, which the
+  // function never compares against anything -- yet getPowerOverview separately
+  // sanitizes it to a clean-looking 0 in the response. A NaN there used to come
+  // back as status: "ok" with powerProduction: 0, exactly the "bad data read as
+  // ok" outcome this whole validation block exists to prevent.
+  it("is at_risk, not ok, when powerProduction is NaN even though it isn't otherwise compared", () => {
+    expect(classifyPowerCircuit(circuit({ powerProduction: Number.NaN }))).toBe("at_risk");
+  });
+
   it("a tripped fuse still wins over a NaN field elsewhere", () => {
     expect(classifyPowerCircuit(circuit({ fuseTriggered: true, powerConsumed: Number.NaN }))).toBe("outage");
   });
@@ -190,13 +200,16 @@ describe("PowerService", () => {
   // declares as `boolean`, or a NaN that becomes JSON `null` in a field declared as
   // `number`. That's a contract leak (ground rule 5): the response no longer
   // actually matches its own declared type at runtime. Sanitize to safe defaults
-  // for the response while still classifying off the raw circuit.
-  it("sanitizes a malformed fuseTriggered to a real boolean in the response, while still classifying it as at_risk", async () => {
+  // for the response while still classifying off the raw circuit. Fallback is
+  // `true` (not `false`, per a sixth review pass) -- see the comment at its call
+  // site in powerService.ts for why an alarm field's safe default is the opposite
+  // direction from a plain measurement field's.
+  it("sanitizes a malformed fuseTriggered to true (not false) in the response, while still classifying it as at_risk", async () => {
     const bad = { ...circuit(), fuseTriggered: "false" as unknown as boolean };
     const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
     const service = new PowerService(adapter);
     const overview = await service.getPowerOverview();
-    expect(overview.circuits[0].fuseTriggered).toBe(false);
+    expect(overview.circuits[0].fuseTriggered).toBe(true);
     expect(typeof overview.circuits[0].fuseTriggered).toBe("boolean");
     expect(overview.circuits[0].status).toBe("at_risk");
   });
