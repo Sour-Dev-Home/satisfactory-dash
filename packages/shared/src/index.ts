@@ -1,6 +1,20 @@
-export interface HealthResponse {
-  status: "ok";
-}
+export * from "./ids";
+export * from "./envelope";
+export * from "./errors";
+export * from "./health";
+export * from "./servers";
+export * from "./status";
+export * from "./factory";
+export * from "./power";
+export * from "./endpoints";
+
+// ---------------------------------------------------------------------------------
+// Legacy interfaces: the shapes today's backend routes still return. They're removed
+// in the same change that moves the backend onto the schemas above (server-scoped
+// routes + snapshot envelope + renames, see docs-vault/wiki/decisions/README.md), in
+// one step, since no deployed frontend consumes them yet (ADR-0007). Don't add
+// fields here; add them to the schemas.
+// ---------------------------------------------------------------------------------
 
 export interface ServerStatusResponse {
   healthy: boolean;
@@ -28,8 +42,10 @@ export interface FactoryBuildingResponse {
   recipe: string | null;
   isProducing: boolean;
   isPaused: boolean;
-  /** Closest available overflow signal (no direct "belt full" field exists in
-   *  either Satisfactory API) — true when producing but an output slot is full. */
+  /** Overflow signal. The intended rule (see FactoryBuildingSchema) is "an output slot
+   *  is at capacity, the machine isn't paused, and a recipe is configured". Today's
+   *  backend also requires isProducing, which never matches on a real save because a
+   *  machine with a full output stops producing (bug B1, docs-vault/wiki/decisions). */
   isBackedUp: boolean;
   production: ProductionRateResponse[];
 }
