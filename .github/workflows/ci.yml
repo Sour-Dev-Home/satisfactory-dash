@@ -33,7 +33,9 @@ jobs:
 
       - name: Check for PII or hardcoded local paths
         run: |
-          if git grep -n -iE "leonardo|nunez|leonunez9821|470.535.7258|C:\\\\Users|C:/Users" -- . ':!.github/workflows/ci.yml'; then
+          MATCHES=$(git grep -n -iE "leonardo|nunez|leonunez9821|470.535.7258|C:\\\\Users|C:/Users" -- . | grep -v '^\.github/workflows/ci\.yml:' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "$MATCHES"
             echo "::error::Found a possible PII or hardcoded-path leak — see CLAUDE.md ground rule 7."
             exit 1
           fi
