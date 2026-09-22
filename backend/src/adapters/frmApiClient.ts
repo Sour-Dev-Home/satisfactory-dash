@@ -55,14 +55,18 @@ export class FrmApiClient {
       if (err instanceof FrmApiRequestError) {
         throw err;
       }
-      // { cause: err } (not just String(err) in the message) so the real underlying
-      // reason -- e.g. fetch's own "TypeError: fetch failed" with an ECONNREFUSED
-      // .cause -- survives for formatErrorDetail.ts to unwrap. Found by an
-      // independent review pass: without this, formatErrorDetail's whole
+      // { cause: err }, not String(err) folded into the message -- the real
+      // underlying reason (e.g. fetch's own "TypeError: fetch failed" with an
+      // ECONNREFUSED .cause) survives for formatErrorDetail.ts to unwrap. Found by
+      // an independent review pass: without this, formatErrorDetail's whole
       // .cause-unwrapping mechanism never actually fired for /api/factory or
       // /api/power in practice, since the cause was discarded right here before
-      // ever reaching that helper.
-      throw new FrmApiRequestError(`FRM request to ${endpoint} failed: ${String(err)}`, undefined, { cause: err });
+      // ever reaching that helper. A second pass then caught that putting
+      // String(err) in the message TOO meant the same text appeared twice once
+      // .cause started being unwrapped ("...failed: TypeError: fetch failed
+      // (caused by: TypeError: fetch failed (caused by: ...))") -- message and
+      // cause should carry different information, not duplicate each other.
+      throw new FrmApiRequestError(`FRM request to ${endpoint} failed`, undefined, { cause: err });
     }
   }
 }

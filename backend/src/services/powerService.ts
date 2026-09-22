@@ -104,7 +104,15 @@ export class PowerService {
 
   async getPowerOverview(): Promise<PowerOverviewResponse> {
     const circuits = await this.adapter.getPowerCircuits();
-    const mapped: PowerCircuitResponse[] = circuits.map((circuit) => {
+    // Array.from, not circuits.map directly -- .map() SKIPS holes in a sparse
+    // array (`[a, , c]`) rather than calling the callback with `undefined` for
+    // them, so a hole would bypass the null/non-object placeholder logic below
+    // entirely and come out the other side as a raw JSON `null` in `circuits`,
+    // contradicting this method's own rule that every malformed entry shows up as
+    // at_risk. Not reachable through the real adapter (JSON.parse can't produce a
+    // sparse array), but Array.from normalizing holes to real `undefined` values
+    // first is a one-line fix for defensive completeness. Found by a review pass.
+    const mapped: PowerCircuitResponse[] = Array.from(circuits).map((circuit) => {
       // A null/non-object entry in the array itself is shown as at_risk with
       // placeholder values, not silently dropped. Found by a review pass: an
       // earlier version filtered these out entirely, so the circuit list quietly

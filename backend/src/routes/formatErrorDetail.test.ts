@@ -428,4 +428,21 @@ describe("formatErrorDetail", () => {
     expect(result).toBe("Error: short message");
     expect(result.endsWith("...(truncated)")).toBe(false);
   });
+
+  // Found by a tenth review pass: String.slice cuts by UTF-16 code unit, so
+  // slicing exactly at the length cap can land between a surrogate pair's two
+  // halves (e.g. an emoji), leaving a broken/unpaired code unit at the end of the
+  // truncated string. Constructed so the pair's high surrogate lands exactly on
+  // the cut boundary.
+  it("does not split a surrogate pair (e.g. an emoji) at the truncation boundary", () => {
+    const message = `${"x".repeat(1992)}\u{1F600}${"y".repeat(50)}`; // "Error: " (7) + 1992 = boundary at 1999
+    const err = new Error(message);
+    const result = formatErrorDetail(err);
+    expect(result.endsWith("...(truncated)")).toBe(true);
+    const truncatedPortion = result.slice(0, result.length - "...(truncated)".length);
+    const lastCode = truncatedPortion.charCodeAt(truncatedPortion.length - 1);
+    // A lone high surrogate (0xD800-0xDBFF) with no following low surrogate is
+    // the broken state this test guards against.
+    expect(lastCode < 0xd800 || lastCode > 0xdbff).toBe(true);
+  });
 });

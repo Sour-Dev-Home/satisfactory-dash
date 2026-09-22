@@ -268,4 +268,21 @@ describe("PowerService", () => {
     expect(overview.circuits[0].circuitGroupId).toBe(0);
     expect(overview.circuits[1]).toMatchObject({ circuitGroupId: -1, status: "at_risk" });
   });
+
+  // Found by a tenth review pass: Array.prototype.map SKIPS holes in a sparse
+  // array rather than calling the callback with undefined for them, so a hole
+  // bypassed the null/non-object placeholder logic entirely and came out as a raw
+  // JSON null in the response -- contradicting this method's own rule that every
+  // malformed entry shows up as at_risk. Not reachable through the real adapter
+  // (JSON.parse can't produce a sparse array), but worth closing defensively.
+  it("shows a hole in a sparse circuits array as a placeholder at_risk circuit too", async () => {
+    const sparse: PowerCircuit[] = [circuit({ circuitGroupId: 0 }), circuit({ circuitGroupId: 1 })];
+    delete (sparse as unknown[])[1]; // creates an actual array hole, not `undefined`
+    const adapter: PowerAdapterLike = { getPowerCircuits: async () => sparse };
+    const service = new PowerService(adapter);
+    const overview = await service.getPowerOverview();
+    expect(overview.circuits).toHaveLength(2);
+    expect(overview.circuits[1]).toMatchObject({ circuitGroupId: -1, status: "at_risk" });
+    expect(overview.circuits[1]).not.toBeNull();
+  });
 });

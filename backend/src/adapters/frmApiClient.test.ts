@@ -50,11 +50,15 @@ describe("FrmApiClient", () => {
     await expect(client.get("getPlayer")).rejects.toThrow(FrmApiRequestError);
   });
 
-  it("wraps a fetch-level rejection with a pass-through message and no status", async () => {
+  // Message no longer folds in String(err) (a second review pass found that once
+  // .cause started being unwrapped by formatErrorDetail, the message and the cause
+  // chain said the same thing twice) -- the original error's own text now lives
+  // only in .cause, which the next test covers.
+  it("wraps a fetch-level rejection with a plain message and no status", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
     const client = buildClient(fetchImpl);
     await expect(client.get("getPlayer")).rejects.toMatchObject({
-      message: "FRM request to getPlayer failed: Error: network down",
+      message: "FRM request to getPlayer failed",
       status: undefined,
     });
   });
@@ -73,7 +77,7 @@ describe("FrmApiClient", () => {
     const client = buildClient(fetchImpl);
     await expect(client.get("getFactory")).rejects.toThrow(FrmApiRequestError);
     await expect(client.get("getFactory")).rejects.toMatchObject({
-      message: "FRM request to getFactory failed: SyntaxError: Unexpected end of JSON input",
+      message: "FRM request to getFactory failed",
       status: undefined,
     });
   });
