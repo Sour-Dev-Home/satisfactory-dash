@@ -53,3 +53,52 @@ the bottom.
   -ini:Engine:[SystemSettings]:FG.DedicatedServer.AllowInsecureLocalAccess=1` from the
   install directory, it will
   auto-load the `docs-vault-spike` session.
+- 2026-09-21 — Added `lessons-learned.md` after an independent `test-hunter` review of
+  `backend/src/adapters/` found two real bugs (both unwrapped runtime exceptions
+  leaking past a client's typed-error contract on a malformed 2xx response — see that
+  page for details). Reported to the implementer session for a fix; a confirmation
+  `test-hunter` pass will follow once fixed.
+- 2026-09-21 — Confirmation pass complete: the implementer's fixes for both bugs in
+  `lessons-learned.md` verified correct by a second, independent `test-hunter` (targeted
+  fixes, no collateral changes to adjacent behavior — primitive-body resolution, 204
+  handling, non-ok-status wording, and network-error wording all confirmed unchanged).
+  5 new precise tests added pinning exact error messages/fields, not just error type.
+  No new bug pattern found, so no `lessons-learned.md` counters changed. Full suite
+  37/37 passing, typecheck and lint clean.
+- 2026-09-21 — Independent `test-hunter` review of `backend/src/services/` and
+  `backend/src/routes/` (built on top of `adapters/` on branch
+  `feature/backend-services-routes`). No business-logic bugs found in the
+  production/overflow/power-outage threshold math — tried to break it with
+  zero/negative/boundary inputs, all held or were already covered by the implementer's
+  own tests. Closed one real gap: added a test in `server.test.ts` exercising the real
+  service→router wiring against a genuine (not synthetic) adapter failure, confirming
+  all three business routes return a clean 503 rather than hanging or crashing.
+  Pushed to branch `review/backend-services-routes` for the implementer to merge.
+  Added one new `lessons-learned.md` entry (`backend/src/routes/`, `String(err)`
+  losing `AggregateError` detail) — minor debuggability gap, not a crash, flagged but
+  not fixed.
+- 2026-09-21 — Implementer fixed the `AggregateError` detail bug with a shared
+  `formatErrorDetail.ts` helper used by all three routes, merged the confirmation
+  worktree's wiring test, and fixed the finding without being asked twice. A second
+  independent `test-hunter` confirmed the fix: correct and general (verified against a
+  plain `Error`, single- and multi-error `AggregateError`, zero-error `AggregateError`,
+  and non-`Error` thrown values), no regression to `/api/factory`/`/api/power`, and
+  confirmed against the real Node runtime's actual `AggregateError` shape (not a mock).
+  Found one real but currently-unreachable gap in the fix itself: the unwrap doesn't
+  recurse into a *nested* `AggregateError`, so incremented the existing
+  `lessons-learned.md` routes entry to `(×2)` instead of adding a new line, since it's
+  the same underlying pattern recurring one level deeper in the fix meant to close it.
+  Documented with a failing test on branch `confirm/services-routes-fix`, not fixed
+  (non-blocking). Full suite 84/85 (with that one intentional failing test included),
+  typecheck/lint/build all clean.
+- 2026-09-21 — Implementer applied the one-line recursive fix
+  (`err.errors.map((cause) => formatErrorDetail(cause))`) and pushed to
+  `feature/backend-services-routes` at `03956a3`. A third, narrow independent
+  `test-hunter` confirmation verified it's genuinely recursive (not a one-level special
+  case) via 3-4 level nesting and a 500-level synthetic chain, no regression on any
+  previously-verified case, and a sanity check that the only stack-overflow path
+  requires a deliberately-constructed circular reference unreachable from any real
+  Node API. **PASS — this closes the `backend/src/routes/` lessons-learned entry's
+  `(×2)` finding.** 94/94 tests, typecheck/lint clean. This closes out both rounds of
+  the `backend/src/services/` + `backend/src/routes/` review; all findings from this
+  slice are now fixed and confirmed.
