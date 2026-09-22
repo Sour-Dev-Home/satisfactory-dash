@@ -39,3 +39,16 @@ counter instead of adding a new line. Only add a new line for a genuinely new pa
   that recurses into a wrapper type's contents, actually recurse (call the same
   formatter on each nested item), don't just call the one-level-shallower primitive
   (`String()`) you're trying to replace.
+
+## Domain assumptions (found by live captures, not review passes)
+
+- (×1) A derived signal built only from documented fields must be checked against a
+  live, populated response before it's trusted: the "backed up" rule required
+  `IsProducing: true` plus a full output slot, but a machine with a full output *stops*
+  producing, so the rule matched 0 of 71 backed-up machines on a real save. Found in
+  `isBackedUp` (`services/productionService.ts:15`) by the 2026-09-22 captures.
+- (×1) An empty list in an FRM response can mean "nothing right now" rather than
+  "never has any": `OutputInventory` omits empty slots, so a machine with `[]` can still
+  have an output buffer that fills up later. Don't infer a capability ("refineries have
+  no output inventory") from a single snapshot showing `[]`. Found while checking the
+  architecture brief's refinery claim against three 2026-09-22 captures.

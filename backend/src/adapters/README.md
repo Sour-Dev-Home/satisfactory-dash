@@ -29,11 +29,25 @@ which specific game server — the data came from. That indirection is what make
   `docs-vault/raw-sources/captured-responses/` (real captures) where available,
   otherwise the docs' own example responses.
 
+## Rule: `GetServerOptions` is a secret
+
+The vanilla `GetServerOptions` response contains FRM's `uWS.AuthenticationToken` in
+plaintext (observed live 2026-09-22), so a vanilla admin token effectively grants the
+FRM token. The backend must **never proxy, log, store or return** `GetServerOptions`
+output. It may call it only through one adapter function that parses an explicit
+allowlist of option keys (today: `FG.DSAutoPause` in `ServerOptions` and
+`PendingServerOptions`) and discards everything else before returning. Any test for
+that function should feed a fixture containing a fake token value and assert the value
+appears in no returned object and no log line. Never pass arbitrary option keys through.
+
 ## Known gaps (see `docs-vault/wiki/data-gap-analysis.md`)
 
-- `getFactory`/`getPower`/`getPowerUsage`/`getPlayer` mappings are schema-confirmed
-  from docs but not yet validated against a save with real buildings/players — the
-  Phase 2 spike's test save was empty.
+- `getFactory` and `getPower` were validated against a populated save on 2026-09-22
+  (see `docs-vault/wiki/frm-api.md`). That surfaced three mapping bugs not yet fixed:
+  `Recipe: "Unassigned"` is passed through as a real recipe, a building's `circuitId`
+  is taken from `PowerInfo.CircuitID` although `getPower` is keyed by `CircuitGroupID`
+  (also in the `getPowerUsage` mapping), and `rawTypes.ts` has no `IsConfigured` field.
+  `getPlayer` is still unvalidated against real players.
 - FRM's documented tunneled transport (through the vanilla API's port) 404s on this
   version; the adapter only implements FRM's direct Web Server.
 - The `X-FRM-Authorization` header name is documented but not live-verified — the

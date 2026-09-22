@@ -63,7 +63,9 @@ that cross-check is the Phase 2 spike's job (see `data-gap-analysis.md`).
   reasonable-but-indirect signal, sourced from documented fields — not
   [NEEDS VERIFICATION], since it's a direct reading of what's documented, but worth
   validating against a live save during the Phase 2 spike since it infers "backed up"
-  rather than reading it directly.
+  rather than reading it directly. **Update 2026-09-22: the live save proved the
+  `IsProducing: true` condition wrong** (a machine with a full output stops producing)
+  — see "Confirmed against a live, populated server" below.
 - **Power outage / deficit** → `getPower` (per-circuit: `PowerProduction`,
   `PowerConsumed`, `PowerCapacity`, `FuseTriggered`, plus battery fields
   `BatteryDifferential`, `BatteryPercent`, `BatteryTimeEmpty`) and `getPowerUsage`
@@ -127,6 +129,80 @@ which determines that path).
   this pass. Treat the field-level docs for these five endpoints as
   doc-sourced-but-not-live-verified, one step more trustworthy than
   [NEEDS VERIFICATION] but not as solid as `getSessionInfo`'s live-confirmed shape.
+
+## Confirmed against a live, populated server (2026-09-22)
+
+Same versions as above, on a tier-6 save with 338 factory buildings and a player
+connected, with readings compared field by field against the in-game UI. Evidence is in
+`raw-sources/captured-responses/*-2026-09-22-*` (each file's header names its scenario
+and what the game UI showed at the time). This supersedes the "not live-verified" caveat
+above for `getFactory` and `getPower`.
+
+**Production (`getFactory`)**
+- `ProdPercent` / `ConsPercent` are on a 0-100 scale and can exceed 100 through float
+  noise (e.g. `100.0000079`), so don't cap them.
+- `CurrentProd` / `MaxProd` are per minute, and `MaxProd` already includes clock speed:
+  a Stator assembler reads `MaxProd` 5 at 100% and 8 at 160% (`ManuSpeed`).
+- Fluid rates are m³/min, the same number the game UI shows (a Fuel refinery at 100%:
+  60 Crude Oil in, 40 Fuel + 30 Polymer Resin out).
+- `IsProducing` is instantaneous, while `CurrentProd`/`ProdPercent` look averaged: many
+  machines read `IsProducing: false` with a non-zero percent. Show percent; don't treat
+  `IsProducing` as "running".
+- `production[].Amount` is a number (`frm-getFactory.md` says String), and there is an
+  undocumented `MaxAmount` field.
+- An unconfigured machine reports `Recipe: "Unassigned"`, `RecipeClassName: ""`,
+  `IsConfigured: false`, and one placeholder `production` entry named "Unassigned" with
+  all zeros. `IsConfigured` is not in the docs.
+
+**Overflow (`getFactory` `OutputInventory`)**
+- **A machine whose output is full stops producing.** In the running capture, 71
+  machines had an output slot at `Amount == MaxAmount`, and every one of them had
+  `IsProducing: false`. So the documented proxy above ("`IsProducing: true` and output
+  at `MaxAmount`") never fires. The working signal is: an output slot at `MaxAmount`,
+  the machine not paused, and the machine configured.
+- **`OutputInventory` lists only non-empty slots.** Across three full captures (557
+  slots), no slot had `Amount` 0. `[]` means "output buffer empty right now", not "this
+  machine has no output inventory".
+- Fluid outputs do appear there when their buffer is non-empty: a Fuel refinery showed
+  `{Name: "Fuel", Amount: 3.2, MaxAmount: 50}`, and `[]` in the next capture. So a
+  blocked refinery should be detectable the same way. [NEEDS VERIFICATION] with a
+  deliberately blocked refinery.
+- `MaxAmount` is not a solid-vs-fluid signal: solids such as Motor and Smart Plating
+  also have `MaxAmount` 50. No per-item solid/fluid source has been found in
+  `getFactory`.
+
+**Power (`getPower`, `PowerInfo`)**
+- `PowerProduction` / `PowerConsumed` / `PowerCapacity` / `PowerMaxConsumed` are in MW
+  and match the in-game power-pole panel exactly (3633.3 / ~2744 / 4083.3 / 4606.5).
+- `PowerConsumed` excludes battery charging, which is reported separately as
+  `BatteryInput`.
+- A tripped fuse reads `FuseTriggered: true`, and production, consumption and capacity
+  all read 0 (`PowerMaxConsumed` keeps its value).
+- `getPower` reports circuit **groups**: `AssociatedCircuits` lists the member circuits
+  (a power switch gave `[0, 3]`). Buildings carry both `CircuitGroupID` and `CircuitID`,
+  and they differ when a switch or group is involved (a building read 1 vs 2), so join
+  buildings to `getPower` on `CircuitGroupID`. `-1` means not connected, as documented.
+- With no batteries, `BatteryPercent` / `BatteryDifferential` / `BatteryCapacity` are all
+  0, not null, so "0%" is ambiguous unless `BatteryCapacity` is also checked.
+- `BatteryPercent` is 0-100 (2.33 then 2.90 twenty seconds later, while the game UI
+  showed ~1-2%). `BatteryDifferential` / `BatteryInput` are MW, positive while charging;
+  `BatteryCapacity` is MWh. The numbers agree: 100 MW for 20 s = 0.56 MWh = +0.56% of
+  100 MWh. `BatteryTimeFull` / `BatteryTimeEmpty` are `"HH:MM:SS"` strings and count
+  down correctly.
+
+**Pause and clients**
+- With the server's `FG.DSAutoPause` on and no players connected, the simulation pauses
+  and FRM returns frozen values. The vanilla API's `isGamePaused` shows this (see
+  `vanilla-dedicated-server-api.md`).
+- FRM's `.uplugin` declares `RequiredOnRemote: false`, but a game client without FRM is
+  disconnected on join (client log: "Failed to resolve path ...
+  /Script/FicsitRemoteMonitoring"). Anyone joining an FRM server needs SML + FRM
+  installed too.
+
+Still [NEEDS VERIFICATION]: whether building IDs stay stable across a server restart;
+whether Polymer Resin is counted as items/min or m³/min; a reliable per-item
+solid-vs-fluid source (possibly an FRM item/recipe endpoint not yet captured); and the
+blocked-refinery case above.
 
 ## Full reference
 

@@ -1,0 +1,9 @@
+Captured: 2026-09-22T22:16:00Z, live dedicated server, GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3, tier-6 save with 338 factory buildings
+Method: POST https://localhost:7777/api/v1  body: {"function":"QueryServerState"}
+Scenario: Server just loaded the save with FG.DSAutoPause=True and 0 players connected: isGamePaused is true. totalGameDuration (96589) is the save's cumulative play time right after load, not time since load as dedicated-server-api.md describes (see wiki/vanilla-dedicated-server-api.md).
+In-game UI at capture time: none (no player connected).
+Redacted: the save's session name in activeSessionName and autoLoadSessionName was replaced with the placeholder "ExampleSession". Nothing else was changed.
+
+---
+
+{"data":{"serverGameState":{"activeSessionName":"ExampleSession","numConnectedPlayers":0,"playerLimit":4,"techTier":6,"activeSchematic":"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Schematics/Progression/Schematic_6-6.Schematic_6-6_C'","gamePhase":"/Script/FactoryGame.FGGamePhase'/Game/FactoryGame/GamePhases/GP_Project_Assembly_Phase_2.GP_Project_Assembly_Phase_2'","isGameRunning":true,"totalGameDuration":96589,"isGamePaused":true,"averageTickRate":21.814037322998047,"autoLoadSessionName":"ExampleSession","agreeToCrashUploadRequested":false}}}

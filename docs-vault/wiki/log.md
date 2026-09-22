@@ -102,3 +102,25 @@ the bottom.
   `(×2)` finding.** 94/94 tests, typecheck/lint clean. This closes out both rounds of
   the `backend/src/services/` + `backend/src/routes/` review; all findings from this
   slice are now fixed and confirmed.
+- 2026-09-22 — Live captures from a populated tier-6 save (338 buildings, player
+  connected, readings compared against the in-game UI) added to
+  `raw-sources/captured-responses/*-2026-09-22-*`: five `getPower`, two `getFactory`
+  trimmed to the buildings that demonstrate each finding, and two `QueryServerState`
+  with the session name replaced by a placeholder. `frm-api.md`,
+  `vanilla-dedicated-server-api.md` and `data-gap-analysis.md` now record the verified
+  units and semantics (MW/MWh, per-minute rates including clock speed, 0-100 percents,
+  circuit groups, battery fields, pause state, `TotalGameDuration` as cumulative play
+  time). Found three mapping bugs (backed-up rule never fires, "Unassigned" treated as a
+  recipe, building circuit keyed by `CircuitID` instead of `CircuitGroupID`), not yet
+  fixed. A fourth suspected blind spot (refineries exposing no output inventory) turned
+  out wrong: `OutputInventory` just omits empty slots. Added the `GetServerOptions`
+  allowlist rule to `backend/src/adapters/README.md`, since its output contains FRM's
+  auth token in plaintext.
+- 2026-09-22 — Added `decisions/` with ADR-0001 to 0012, written by the architecture
+  session (0001-0010 under the project owner's delegation, 0011-0012 approved by them) and
+  reviewed against the code first: the review changed ADR-0003 (the error classifier's
+  tests are updated, not dropped), ADR-0007 (expand/contract only once a deployed
+  consumer exists), ADR-0012 (no duplicate `gamePaused`/`playerCount` fields; "editable"
+  requires a verified Administrator token), and removed a suspected refinery blind spot
+  after the captures disproved it. Every line citation in the ADRs was checked against
+  the files on `main`.
