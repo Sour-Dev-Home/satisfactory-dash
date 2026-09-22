@@ -91,6 +91,17 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: TEMP - diagnose ANTHROPIC_API_KEY shape (no value ever printed)
+        if: steps.check.outputs.changed == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "length: ${#ANTHROPIC_API_KEY}"
+          echo "starts with sk-ant-: $([[ "$ANTHROPIC_API_KEY" == sk-ant-* ]] && echo yes || echo no)"
+          echo "has trailing CR (\\r): $([[ "$ANTHROPIC_API_KEY" == *$'\r' ]] && echo yes || echo no)"
+          echo "has trailing LF (\\n) beyond shell's own: $([[ "$ANTHROPIC_API_KEY" == *$'\n' ]] && echo yes || echo no)"
+          echo "has leading/trailing space: $([[ "$ANTHROPIC_API_KEY" != "$(echo "$ANTHROPIC_API_KEY" | xargs)" ]] && echo yes || echo no)"
+
       - name: Independent fresh-eyes review
         if: steps.check.outputs.changed == 'true'
         env:
