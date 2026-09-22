@@ -116,3 +116,11 @@ the bottom.
   out wrong: `OutputInventory` just omits empty slots. Added the `GetServerOptions`
   allowlist rule to `backend/src/adapters/README.md`, since its output contains FRM's
   auth token in plaintext.
+- 2026-09-22 — Added `decisions/` with ADR-0001 to 0012, written by the architecture
+  session (0001-0010 under Leonardo's delegation, 0011-0012 approved by him) and
+  reviewed against the code first: the review changed ADR-0003 (the error classifier's
+  tests are updated, not dropped), ADR-0007 (expand/contract only once a deployed
+  consumer exists), ADR-0012 (no duplicate `gamePaused`/`playerCount` fields; "editable"
+  requires a verified Administrator token), and removed a suspected refinery blind spot
+  after the captures disproved it. Every line citation in the ADRs was checked against
+  the files on `main`.
