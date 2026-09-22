@@ -13,3 +13,6 @@ added or removed.
 - [`data-gap-analysis.md`](./data-gap-analysis.md) — table of player-facing metrics vs.
   API coverage. Filled in from the Phase 2 live-server spike (2026-09-21): every
   stated metric is covered by the vanilla API or FRM, no custom mod needed yet.
+- [`lessons-learned.md`](./lessons-learned.md) — one-sentence-per-bug log of real bugs
+  found by independent `test-hunter` review passes, with a counter that increments
+  when the same pattern recurs, so repeated mistakes get visible sooner.

@@ -53,3 +53,8 @@ the bottom.
   -ini:Engine:[SystemSettings]:FG.DedicatedServer.AllowInsecureLocalAccess=1` from the
   install directory, it will
   auto-load the `docs-vault-spike` session.
+- 2026-09-21 — Added `lessons-learned.md` after an independent `test-hunter` review of
+  `backend/src/adapters/` found two real bugs (both unwrapped runtime exceptions
+  leaking past a client's typed-error contract on a malformed 2xx response — see that
+  page for details). Reported to the implementer session for a fix; a confirmation
+  `test-hunter` pass will follow once fixed.
