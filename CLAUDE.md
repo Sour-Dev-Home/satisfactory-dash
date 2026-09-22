@@ -96,8 +96,25 @@ lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 
 This is a two-process monolith (frontend dev server + one backend process), not a
 single-process framework app. When "AWS later" comes up, it's the `backend/` process
-that scales out to talk to multiple game servers; `frontend/` stays as-is (and is
-already deployed independently, to Netlify).
+that scales out to talk to multiple game servers; `frontend/` stays as-is. Not yet
+deployed anywhere — see `../DEPLOYMENT.md` for the plan (Cloudflare Pages).
+
+## Custom agents
+
+Three custom agents exist for this workspace: `security-reviewer`, `test-hunter`,
+`portfolio-updater`, defined at `~/.claude/agents/` (user-global — a workspace-root
+`.claude/agents/` was tried first and never actually worked, since `ReactApps/` isn't
+a git repo and Claude Code never scanned it).
+
+**Important, easy to relearn the hard way:** a custom agent is only discoverable by
+the Agent tool in sessions started *after* its definition file existed (same rule
+seems to apply to MCP servers). If `Agent type 'X' not found` shows up for an agent
+you know exists, that's not a bug to debug — it means this session predates the file
+(or a recent edit to it). Start a fresh session instead of investigating further.
+
+`test-hunter` specifically: invoke it as a fresh subagent (never a fork — a fork
+inherits full context, defeating the point) after a chunk of backend logic is written,
+so it reviews with genuinely no memory of why the code was built a certain way.
 
 ## Testing
 
@@ -108,6 +125,13 @@ already deployed independently, to Netlify).
   fixture data — no live game server required to run the suite.
 - `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` all run in CI
   (`.github/workflows/ci.yml`) on every push and PR; treat a red CI run as blocking.
+- **`fresh-eyes-review`** (same CI file): an automated, non-blocking version of
+  `test-hunter` — runs on PRs that touch `backend/src/`, posts findings as a PR
+  comment, never fails the build. Opt-in: does nothing until the `ANTHROPIC_API_KEY`
+  repo secret is set (GitHub repo Settings → Secrets and variables → Actions → New
+  repository secret). Each run is capped at $2 via `--max-budget-usd`. Institutes the
+  same "fresh eyes" principle as `test-hunter` as a guaranteed pipeline step instead of
+  something that has to be manually remembered to invoke.
 
 ## Commands
 
