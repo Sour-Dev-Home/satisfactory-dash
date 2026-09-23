@@ -168,6 +168,16 @@ describe("POST /api/auth/login", () => {
     expect(statuses.filter((status) => status === 429).length).toBeGreaterThanOrEqual(12 - MAX_FAILURES);
   });
 
+  // Found by the security review of PR #24: people type their password into the
+  // username field, so a failed login must not log the submitted username verbatim.
+  it("doesn't log the submitted username on a failed login, only whether it matched", async () => {
+    const { app, lines } = buildApp();
+    await login(app, { username: "Hunter2-MyRealPassw0rd", password: "whatever-else" });
+    const failure = lines.map((line) => JSON.parse(line)).find((line) => line.msg === "login failed");
+    expect(failure).toMatchObject({ usernameMatched: false });
+    expect(lines.join(" ")).not.toContain("Hunter2-MyRealPassw0rd");
+  });
+
   it("never logs the submitted password or the session cookie", async () => {
     const { app, lines } = buildApp();
     await login(app, { username: "operator", password: "wrong-password-xyz-123" });
@@ -262,5 +272,45 @@ describe("CORS (ADR-0011: allowlist, never a wildcard)", () => {
     const { app } = buildApp();
     const res = await request(app).get("/api/health").set("Origin", "https://evil.example");
     expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+});
+
+// Found by the security review of PR #24: an empty cross-site form POST to logout
+// signed the operator out (the JSON-only rule exempts body-less requests, and logout
+// needs no cookie, so SameSite=Lax didn't help). Any future body-less mutation would
+// have had the same gap, so cross-site mutations are refused outright.
+describe("cross-site mutations", () => {
+  const evilLogout = (app: ReturnType<typeof buildApp>["app"], headers: Record<string, string>) => {
+    let req = request(app).post(endpoints.auth.logout.path()).set("Content-Type", "application/x-www-form-urlencoded").set("Content-Length", "0");
+    for (const [name, value] of Object.entries(headers)) req = req.set(name, value);
+    return req;
+  };
+
+  it.each([
+    ["a cross-site Sec-Fetch-Site", { "Sec-Fetch-Site": "cross-site", Origin: "https://evil.example" }],
+    ["an unlisted Origin (older browser, no Sec-Fetch-Site)", { Origin: "https://evil.example" }],
+    ["a null Origin", { Origin: "null" }],
+  ])("refuses a body-less POST with %s, without clearing the cookie", async (_name, headers) => {
+    const { app } = buildApp();
+    const res = await evilLogout(app, headers);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("bad_request");
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it.each([
+    ["the frontend's own site (same-site)", { "Sec-Fetch-Site": "same-site", Origin: "https://satis-manager.com" }],
+    ["the Vite dev proxy (same-origin)", { "Sec-Fetch-Site": "same-origin", Origin: "http://localhost:5173" }],
+    ["an allowlisted Origin without Sec-Fetch-Site", { Origin: "https://satis-manager.com" }],
+    ["a non-browser client (no Origin, no Sec-Fetch-Site)", {}],
+  ])("allows %s", async (_name, headers) => {
+    const { app } = buildApp();
+    expect((await evilLogout(app, headers)).status).toBe(200);
+  });
+
+  it("still allows cross-site GETs (reads are guarded by the session and CORS instead)", async () => {
+    const { app } = buildApp();
+    const res = await request(app).get(endpoints.auth.session.path()).set("Sec-Fetch-Site", "cross-site");
+    expect(res.status).toBe(200);
   });
 });

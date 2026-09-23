@@ -2,7 +2,7 @@ import type { CookieOptions, NextFunction, Request, RequestHandler, Response } f
 import { parse as parseCookies } from "cookie";
 import type { Authenticator, AuthenticatedUser } from "../services/auth/authenticator.js";
 import { SESSION_TTL_SECONDS, createSessionToken, verifySessionToken } from "../services/auth/sessionToken.js";
-import { UnauthorizedError, UnsupportedMediaTypeError } from "./errorResponse.js";
+import { BadRequestError, UnauthorizedError, UnsupportedMediaTypeError } from "./errorResponse.js";
 
 export const SESSION_COOKIE = "sd_session";
 
@@ -86,4 +86,36 @@ export function requireJsonBody(req: Request, _res: Response, next: NextFunction
     return;
   }
   next();
+}
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+/** Sec-Fetch-Site values a legitimate mutation can carry: the frontend is same-site
+ *  in production (satis-manager.com -> api.satis-manager.com) and same-origin through
+ *  the Vite dev proxy; "none" is a user-initiated request. */
+const ALLOWED_FETCH_SITES = new Set(["same-origin", "same-site", "none"]);
+
+/**
+ * Refuses cross-site mutations (found by the security review of PR #24). SameSite=Lax
+ * and JSON-only don't cover a body-less mutation that needs no cookie -- an empty
+ * cross-site form POST to logout signed the operator out -- and any future body-less
+ * action would have had the same gap. So a non-GET request is refused when the browser
+ * says it's cross-site (Sec-Fetch-Site), or, for browsers that don't send that header,
+ * when its Origin isn't allowlisted. A client that sends neither (curl, scripts) isn't
+ * a browser and can't carry a victim's cookie, so it passes.
+ */
+export function createCrossSiteGuard(allowedOrigins: string[]): RequestHandler {
+  const allowed = new Set(allowedOrigins);
+  return (req, _res, next) => {
+    if (SAFE_METHODS.has(req.method)) {
+      next();
+      return;
+    }
+    const fetchSite = req.headers["sec-fetch-site"];
+    const origin = req.headers.origin;
+    const refused =
+      typeof fetchSite === "string"
+        ? !ALLOWED_FETCH_SITES.has(fetchSite)
+        : typeof origin === "string" && !allowed.has(origin);
+    next(refused ? new BadRequestError("Cross-site request refused") : undefined);
+  };
 }

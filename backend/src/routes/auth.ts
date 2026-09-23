@@ -60,8 +60,10 @@ export function createAuthRouter(deps: SessionDeps & { rateLimiter: LoginRateLim
     rateLimiter.recordFailure(ip);
     const user = await authenticator.verifyCredentials(parsed.data.username, parsed.data.password);
     if (!user) {
-      // Never log the submitted password.
-      req.log.warn({ ip, username: parsed.data.username }, "login failed");
+      // Never log the submitted password -- nor the submitted username, since people
+      // type their password into that field (found by the security review of PR #24).
+      // Whether it named the real account is enough to investigate.
+      req.log.warn({ ip, usernameMatched: authenticator.isActiveUser(parsed.data.username) }, "login failed");
       throw new UnauthorizedError("Invalid username or password");
     }
     rateLimiter.recordSuccess(ip);
