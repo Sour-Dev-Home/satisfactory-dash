@@ -35,7 +35,7 @@ against the workspace's security/CI baseline.
    Only build a custom mod for metrics neither source provides. Keep that gap list at
    `docs-vault/wiki/data-gap-analysis.md`.
 5. **Isolate the game-server adapter.** All communication with a Satisfactory server
-   (vanilla API or FRM) goes through `backend/src/adapters/`. No FRM- or
+   (vanilla API or FRM) goes through `backend/src/modules/gameserver/`. No FRM- or
    API-specific response shapes leak into React components or the database schema —
    the backend exposes its own clean REST/WebSocket contract, defined in
    `packages/shared/`, to the frontend.
@@ -59,9 +59,8 @@ boundaries without restructuring, once subagents are introduced:
 | Directory | Future agent | Depends on |
 |---|---|---|
 | `frontend/` | frontend agent | `packages/shared/` types + `backend/` REST/WS contract only |
-| `backend/src/routes/` | backend-api agent | `backend/src/services/`, exposes `packages/shared/` |
-| `backend/src/services/` | backend-logic agent | `backend/src/adapters/`, fixture data for tests |
-| `backend/src/adapters/` | data-adapter agent | `docs-vault/` only — never guesses |
+| `backend/src/modules/{telemetry,servers,identity}/` (routes and services inside each) | backend agents | `backend/src/modules/gameserver/` via its `index.ts`, fixture data for tests; expose `packages/shared/` |
+| `backend/src/modules/gameserver/` | data-adapter agent | `docs-vault/` only — never guesses |
 | `packages/shared/` | shared by all — changes here require review from whichever agent owns the other side of the change |
 
 The point of drawing these lines now, before multiple agents exist, is that Conway's
@@ -123,8 +122,9 @@ so it reviews with genuinely no memory of why the code was built a certain way.
 
 - `npm run test` from the root runs both workspaces' suites (Vitest everywhere;
   Supertest for backend route tests, React Testing Library for frontend components).
-- Every route in `backend/src/routes/` should have a test that hits the Express `app`
-  export directly. Every service in `backend/src/services/` should be testable with
+- Every route under `backend/src/modules/*/routes/` should have a test that hits the
+  Express `app` export directly. Every service under `backend/src/modules/*/services/`
+  should be testable with
   fixture data — no live game server required to run the suite.
 - `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` all run in CI
   (`.github/workflows/ci.yml`) on every push and PR; treat a red CI run as blocking.

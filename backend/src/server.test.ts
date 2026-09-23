@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import net from "node:net";
 import type { Express } from "express";
-import { hashPassword } from "./services/auth/passwordHash.js";
+import { hashPassword } from "./modules/identity/passwordHash.js";
 
 let app: Express;
 /** Session cookie for the real wiring's protected routes (ADR-0011). */

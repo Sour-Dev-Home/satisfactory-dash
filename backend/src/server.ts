@@ -1,21 +1,12 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
-import { createLogger } from "./logger.js";
-import { healthRouter } from "./routes/health.js";
-import { createServersRouter } from "./routes/servers.js";
-import { createStatusRouter } from "./routes/status.js";
-import { createFactoryRouter } from "./routes/factory.js";
-import { createPowerRouter } from "./routes/power.js";
-import { ConfigError, SatisfactoryServerAdapter, loadServerRegistryFromEnv } from "./adapters/index.js";
-import { ServerStatusService } from "./services/serverStatusService.js";
-import { ProductionService } from "./services/productionService.js";
-import { PowerService } from "./services/powerService.js";
-import { InMemoryServerDirectory } from "./services/serverDirectory.js";
-import { loadAuthConfigFromEnv } from "./services/auth/authConfig.js";
-import { SingleOperatorAuthenticator } from "./services/auth/authenticator.js";
-import { LoginRateLimiter } from "./services/auth/loginRateLimiter.js";
-import { createAuthRouter } from "./routes/auth.js";
-import { createSessionGuard } from "./routes/session.js";
+import { createLogger } from "./platform/logger.js";
+import { ConfigError } from "./platform/errors.js";
+import { healthRouter } from "./platform/health.js";
+import { createGameServerConnection, loadSatisfactoryServerConfigFromEnv } from "./modules/gameserver/index.js";
+import { InMemoryServerDirectory, createServersRouter, loadServerRegistryFromEnv } from "./modules/servers/index.js";
+import { createTelemetryRouters, createTelemetryServices } from "./modules/telemetry/index.js";
+import { createIdentityModule } from "./modules/identity/index.js";
 
 const port = Number(process.env.PORT || 3001);
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -38,40 +29,31 @@ function orExit<T>(load: () => T): T {
   }
 }
 
-// ADR-0001: one adapter and one set of services per registered game server.
+// ADR-0001: one connection and one bundle of module services per registered game server.
+// This file is the composition root (ADR-0014): the only place that knows every module.
 const directory = new InMemoryServerDirectory(
-  orExit(() => loadServerRegistryFromEnv()).map(({ id, displayName, config }) => {
-    const adapter = SatisfactoryServerAdapter.fromConfig(config);
-    return {
+  orExit(() => {
+    const registry = loadServerRegistryFromEnv();
+    // Single-server mode: every entry uses the one SATISFACTORY_* connection config.
+    // Per-server connection config arrives with the multi-server registry (ADR-0001).
+    const config = loadSatisfactoryServerConfigFromEnv();
+    return registry.map(({ id, displayName }) => ({
       id,
       displayName,
-      services: {
-        status: new ServerStatusService(adapter),
-        production: new ProductionService(adapter),
-        power: new PowerService(adapter),
-      },
-    };
+      services: { telemetry: createTelemetryServices(createGameServerConnection(config)) },
+    }));
   }),
 );
 
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
-const auth = orExit(() => loadAuthConfigFromEnv());
-const sessionDeps = {
-  authenticator: new SingleOperatorAuthenticator(auth.adminUser, auth.passwordHash),
-  sessionSecret: auth.sessionSecret,
-};
+const identity = orExit(() => createIdentityModule());
 
 export const app = createApp({
   logger,
-  allowedOrigins: auth.allowedOrigins,
-  routers: [healthRouter, createAuthRouter({ ...sessionDeps, rateLimiter: new LoginRateLimiter() })],
-  sessionGuard: createSessionGuard(sessionDeps),
-  protectedRouters: [
-    createServersRouter(directory),
-    createStatusRouter(directory),
-    createFactoryRouter(directory),
-    createPowerRouter(directory),
-  ],
+  allowedOrigins: identity.allowedOrigins,
+  routers: [healthRouter, identity.authRouter],
+  sessionGuard: identity.sessionGuard,
+  protectedRouters: [createServersRouter(directory), ...createTelemetryRouters(directory)],
 });
 
 if (process.env.NODE_ENV !== "test") {

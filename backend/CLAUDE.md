@@ -6,19 +6,27 @@ adapter). This module is the Express + TypeScript API server.
 
 ## Ownership boundary
 
-Three sub-boundaries inside this module, intended to map onto separate future agents:
+A modular monolith (ADR-0014): the source is split by domain into `platform/` plus
+`modules/`, and layers (adapters -> services -> routes) exist inside a module.
 
-- `src/adapters/` — all Satisfactory-server communication (vanilla HTTPS API, FRM).
-  The only place allowed to know FRM/vanilla-API response shapes. See its README.
-- `src/services/` — business logic (production math, overflow/outage detection).
-  Consumes adapters, never talks to a game server directly. See its README.
-- `src/routes/` — HTTP/WebSocket surface exposed to `frontend/`. Translates
-  `services/` output into the shapes defined in `@satisfactory-dash/shared`.
+- `src/platform/` — cross-cutting HTTP and ops: logger, request context, client IP,
+  the error taxonomy (`errors.ts`) and envelope, `httpPolicy.ts`. Imports no module.
+- `src/modules/gameserver/` — all communication with ONE Satisfactory server (vanilla
+  HTTPS API, FRM). The only place allowed to know FRM/vanilla-API response shapes; no
+  Express imports, so it can become the edge agent. See its README.
+- `src/modules/servers/` — the registry of servers and `:serverId` scoping (ADR-0001).
+- `src/modules/telemetry/` — status, factory and power: services (production math,
+  overflow/outage detection) and the routes that expose them. See its README.
+- `src/modules/identity/` — login, sessions and the session guard (ADR-0011).
+- Settings (auto-pause, ADR-0012) will be `src/modules/settings/`.
 
-`src/server.ts` only wires these together — it should stay thin. The middleware
-pipeline itself (request id, pino request logging, routes, the error envelope) is
-`src/app.ts`'s `createApp()`, which has no side effects so route tests build exactly
-what production runs.
+Modules import one another only through `index.ts`, and only along the edges listed in
+`src/architecture.test.ts`, which enforces the dependency rules; a new edge is a design
+change, so ask the architect. `src/server.ts` is the composition root (with
+`src/app.ts`): it builds the modules and wires the per-server bundle, and should stay
+thin. The middleware pipeline itself (request id, pino request logging, routes, the
+error envelope) is `src/app.ts`'s `createApp()`, which has no side effects so route
+tests build exactly what production runs.
 
 ## Conventions
 
