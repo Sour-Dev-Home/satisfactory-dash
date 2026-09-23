@@ -65,3 +65,32 @@ export const errorNotEditable = {
     requestId: "00000000-0000-4000-8000-000000000006",
   },
 } satisfies ApiErrorResponse;
+
+/** An unknown /api route (404). Not server_not_found, which means an unknown game-server
+ *  id and may make the frontend re-run server discovery. */
+export const errorNotFound = {
+  error: {
+    code: "not_found",
+    message: "No such API endpoint",
+    requestId: "00000000-0000-4000-8000-000000000007",
+  },
+} satisfies ApiErrorResponse;
+
+/** A request body over the size limit (413). */
+export const errorPayloadTooLarge = {
+  error: {
+    code: "payload_too_large",
+    message: "The request body is too large",
+    requestId: "00000000-0000-4000-8000-000000000008",
+  },
+} satisfies ApiErrorResponse;
+
+/** A mutation sent with a non-JSON body or an unsupported encoding (415). Mutations
+ *  accept application/json only (ADR-0011). */
+export const errorUnsupportedMediaType = {
+  error: {
+    code: "unsupported_media_type",
+    message: "Send the request body as application/json",
+    requestId: "00000000-0000-4000-8000-000000000009",
+  },
+} satisfies ApiErrorResponse;
