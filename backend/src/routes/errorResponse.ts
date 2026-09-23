@@ -1,7 +1,34 @@
+import type { ErrorRequestHandler } from "express";
+import type { Logger } from "pino";
+import type { ApiErrorResponse, KnownErrorCode } from "@satisfactory-dash/shared";
 import { formatErrorDetail } from "./formatErrorDetail.js";
+import { ContractViolationError } from "./sendValidated.js";
 
 const UNREACHABLE_MESSAGE = "Could not reach the Satisfactory dedicated server";
 const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
+
+export interface ClassifiedFailure {
+  code: KnownErrorCode;
+  message: string;
+}
+
+/**
+ * ADR-0003: the ONE place error codes map to HTTP status. Upstream problems are 502
+ * (the game server answered badly) or 503 (it couldn't be reached); only our own bugs
+ * are 500.
+ */
+export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
+  upstream_unreachable: 503,
+  upstream_auth_rejected: 502,
+  upstream_invalid_response: 502,
+  upstream_error: 502,
+  server_not_found: 404,
+  bad_request: 400,
+  unauthorized: 401,
+  not_editable: 409,
+  rate_limited: 429,
+  internal: 500,
+};
 
 /** Loosely duck-typed rather than importing FrmApiRequestError/VanillaApiRequestError
  *  directly -- routes/ shouldn't need to know adapter-specific error classes, just
@@ -13,79 +40,121 @@ const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
  *  reach..." message, which is actively wrong for anything that isn't a
  *  connectivity issue. So "Could not reach" now needs positive evidence
  *  (`failureKind: "unreachable"`), and anything unclassified -- e.g. an adapter
- *  bug throwing a TypeError -- gets a neutral message that's true either way. */
-function describeFailure(err: unknown): string {
-  // This runs in every route's catch block, so it must not throw -- a later review
-  // pass found a hostile `status` getter made it do exactly that, turning the 503
-  // JSON body into Express's default non-JSON error page. formatErrorDetail.ts
-  // guards every read the same way.
+ *  bug throwing a TypeError -- gets a neutral message that's true either way, with
+ *  code `internal`: until the adapter validates upstream data (PR 3), an
+ *  unclassified error is our own unhandled case. */
+export function describeFailure(err: unknown): ClassifiedFailure {
+  // This runs for every failed request, so it must not throw -- a review pass found
+  // a hostile `status` getter made it do exactly that, turning the JSON error body
+  // into Express's default non-JSON error page. formatErrorDetail.ts guards every
+  // read the same way.
   try {
     return describeFailureUnsafe(err);
   } catch {
-    return FALLBACK_MESSAGE;
+    return { code: "internal", message: FALLBACK_MESSAGE };
   }
 }
 
-function describeFailureUnsafe(err: unknown): string {
+function describeFailureUnsafe(err: unknown): ClassifiedFailure {
   if (err === null || typeof err !== "object") {
-    return FALLBACK_MESSAGE;
+    return { code: "internal", message: FALLBACK_MESSAGE };
   }
   const status = "status" in err ? err.status : undefined;
   // Number.isInteger + range, not typeof === "number": that accepted NaN, 0 and
   // negatives, producing messages like "request failed (status NaN)".
   if (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599) {
     return status === 401 || status === 403
-      ? "Satisfactory dedicated server rejected the request (check the configured auth token)"
-      : `Satisfactory dedicated server request failed (status ${status})`;
+      ? {
+          code: "upstream_auth_rejected",
+          message: "Satisfactory dedicated server rejected the request (check the configured auth token)",
+        }
+      : { code: "upstream_error", message: `Satisfactory dedicated server request failed (status ${status})` };
   }
   const errorCode = "errorCode" in err ? err.errorCode : undefined;
   if (typeof errorCode === "string" && errorCode.length > 0) {
-    return `Satisfactory dedicated server request failed (${errorCode})`;
+    return { code: "upstream_error", message: `Satisfactory dedicated server request failed (${errorCode})` };
   }
   const failureKind = "failureKind" in err ? err.failureKind : undefined;
   if (failureKind === "unreachable") {
-    return UNREACHABLE_MESSAGE;
+    return { code: "upstream_unreachable", message: UNREACHABLE_MESSAGE };
   }
   if (failureKind === "invalid_response") {
-    return "Satisfactory dedicated server returned an invalid response";
+    return { code: "upstream_invalid_response", message: "Satisfactory dedicated server returned an invalid response" };
   }
-  return FALLBACK_MESSAGE;
+  return { code: "internal", message: FALLBACK_MESSAGE };
+}
+
+/** A client-side problem with OUR request (e.g. express.json() rejecting a malformed
+ *  body). Those errors come from http-errors with `expose: true` and a 4xx
+ *  `statusCode`. They must be caught before describeFailure, whose `status` branch
+ *  would otherwise report them as the game server's fault. */
+function isClientRequestError(err: unknown): boolean {
+  try {
+    if (err === null || typeof err !== "object") {
+      return false;
+    }
+    const statusCode = "statusCode" in err ? err.statusCode : undefined;
+    return (
+      "expose" in err &&
+      err.expose === true &&
+      typeof statusCode === "number" &&
+      statusCode >= 400 &&
+      statusCode < 500
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function classifyRequestFailure(err: unknown): ClassifiedFailure {
+  if (err instanceof ContractViolationError) {
+    return { code: "internal", message: "Internal server error" };
+  }
+  if (isClientRequestError(err)) {
+    return { code: "bad_request", message: "The request was malformed" };
+  }
+  return describeFailure(err);
 }
 
 /** `detail` is safe to include only in these NODE_ENV values -- an explicit
- *  allowlist, not "anything except production", per the reasoning on
- *  `buildServerUnreachableResponse` below. `development` is `npm run dev`
+ *  allowlist, not "anything except production". `development` is `npm run dev`
  *  (package.json sets it explicitly via cross-env specifically so this doesn't
  *  have to treat "unset" as safe -- see that script). `test` is Vitest, which
- *  sets it automatically (see backend/CLAUDE.md) and existing route/service tests
- *  assert `detail` is present. */
+ *  sets it automatically (see backend/CLAUDE.md). */
 const DETAIL_SAFE_NODE_ENVS = new Set(["development", "test"]);
 
 /**
- * Shared 503 body for all three business routes. Found by a review pass: once
- * frmApiClient.ts started setting `{ cause: err }` (fixing the bug that made
- * formatErrorDetail's `.cause`-unwrapping do nothing in practice), `detail`
- * started faithfully including the internal FRM server's host:port from Node's own
- * `connect ECONNREFUSED <ip>:<port>` text — leaking infrastructure detail into a
- * public, unauthenticated response body. This project is meant to go public-facing
- * per DEPLOYMENT.md, so that's a real concern, not a hypothetical one.
+ * ADR-0003's error envelope, from Express's error middleware: every rejected route
+ * handler (Express 5 forwards them) and every thrown error lands here.
  *
- * Full `detail` is always logged server-side (for whoever's operating the
- * dashboard) but only included in the response for an allowlisted NODE_ENV. Opt-IN
- * to known-safe values, not opt-OUT of `production`: the original
- * `NODE_ENV === "production"` check left detail exposed for anything else (unset,
- * "", "prod", "Production", "staging") — only the Dockerfile's own explicit
- * `NODE_ENV=production` was actually safe. Any other way of starting the server
- * (bare `node dist/server.cjs`, a hosting platform, a staging setup with no
- * NODE_ENV set) would have silently kept leaking. Defaulting to redacted unless
- * explicitly recognized as safe is the safer failure direction.
+ * Found by a review pass: `detail` faithfully includes the internal FRM server's
+ * host:port (from Node's own `connect ECONNREFUSED <ip>:<port>` text), and the body
+ * is public. So the full detail always goes to the log, bound to the request id, but
+ * is only included in the body for an allowlisted NODE_ENV. Opt-IN to known-safe
+ * values, not opt-OUT of `production`: the original `NODE_ENV === "production"`
+ * check left detail exposed for anything else (unset, "", "prod", "staging").
+ *
+ * Express recognizes error middleware by arity, so this must keep exactly four
+ * parameters.
  */
-export function buildServerUnreachableResponse(err: unknown): { error: string; detail?: string } {
-  const error = describeFailure(err);
-  const detail = formatErrorDetail(err);
-  console.error(`[${error}]`, detail);
-  if (!DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
-    return { error };
-  }
-  return { error, detail };
+export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler {
+  return (err, req, res, next) => {
+    // Too late for a JSON body (e.g. a stream failed mid-response): Express's default
+    // handler closes the connection instead of writing a second response.
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    const { code, message } = classifyRequestFailure(err);
+    const detail = formatErrorDetail(err);
+    const log = req.log ?? fallbackLogger;
+    const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
+    log.error({ code, detail, requestId }, message);
+
+    const body: ApiErrorResponse = { error: { code, message, requestId } };
+    if (DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
+      body.error.detail = detail;
+    }
+    res.status(HTTP_STATUS_BY_CODE[code]).json(body);
+  };
 }

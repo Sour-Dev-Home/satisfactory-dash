@@ -1,140 +1,100 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { buildServerUnreachableResponse } from "./errorResponse.js";
+import { Router } from "express";
+import request from "supertest";
+import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
+import { createErrorHandler, describeFailure, HTTP_STATUS_BY_CODE } from "./errorResponse.js";
+import { ContractViolationError } from "./sendValidated.js";
+import { createApp } from "../app.js";
+import { createLogger } from "../logger.js";
 import { VanillaApiClient } from "../adapters/index.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 afterEach(() => {
   process.env.NODE_ENV = originalNodeEnv;
   vi.restoreAllMocks();
 });
 
-describe("buildServerUnreachableResponse", () => {
-  // Found by a review pass: once frmApiClient.ts started setting { cause: err },
-  // formatErrorDetail's .cause-unwrapping started faithfully including the
-  // internal FRM server's host:port (from Node's own "connect ECONNREFUSED
-  // <ip>:<port>" text) in detail -- which every route sends in a public,
-  // unauthenticated 503 body. detail is now omitted outside local dev.
-  it("omits detail in production, keeping only the generic error message", () => {
-    process.env.NODE_ENV = "production";
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const err = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8080"), { failureKind: "unreachable" });
-    const body = buildServerUnreachableResponse(err);
-    expect(body).toEqual({ error: "Could not reach the Satisfactory dedicated server" });
-    expect(body).not.toHaveProperty("detail");
+/** An app whose only route throws `err`, with every log line captured as parsed JSON. */
+function appThrowing(err: unknown) {
+  const lines: Record<string, unknown>[] = [];
+  const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(JSON.parse(line)) });
+  const router = Router();
+  router.get("/boom", async () => {
+    throw err;
   });
-
-  it("includes detail outside production", () => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const err = new Error("connect ECONNREFUSED 127.0.0.1:8080");
-    const body = buildServerUnreachableResponse(err);
-    expect(body.detail).toContain("ECONNREFUSED");
+  router.post("/echo", (req, res) => {
+    res.json(req.body);
   });
+  return { app: createApp({ logger, routers: [router] }), lines };
+}
 
-  it("always logs the full detail server-side, even in production", () => {
-    process.env.NODE_ENV = "production";
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const err = new Error("connect ECONNREFUSED 127.0.0.1:8080");
-    buildServerUnreachableResponse(err);
-    expect(errorSpy).toHaveBeenCalled();
-    const loggedArgs = errorSpy.mock.calls[0]?.join(" ") ?? "";
-    expect(loggedArgs).toContain("ECONNREFUSED");
-  });
+const unreachable = () =>
+  Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8080"), { failureKind: "unreachable" });
 
-  // Found by a review pass: the original NODE_ENV === "production" check left
-  // detail exposed for anything else -- unset, "", "staging", "Production"
-  // (capitalized). Now an explicit allowlist (development/test), so anything
-  // unrecognized is redacted by default.
-  it("omits detail when NODE_ENV is unset, unlike the old opt-out-of-production check", () => {
-    delete process.env.NODE_ENV;
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED 127.0.0.1:8080"));
-    expect(body).not.toHaveProperty("detail");
-  });
-
-  it("omits detail for an unrecognized NODE_ENV value like staging", () => {
-    process.env.NODE_ENV = "staging";
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED 127.0.0.1:8080"));
-    expect(body).not.toHaveProperty("detail");
-  });
-
-  it("includes detail in development", () => {
-    process.env.NODE_ENV = "development";
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const body = buildServerUnreachableResponse(new Error("connect ECONNREFUSED 127.0.0.1:8080"));
-    expect(body.detail).toContain("ECONNREFUSED");
-  });
-
-  // Found by a review pass: every failure previously got the same "Could not
-  // reach..." message, wrong for anything that isn't a connectivity problem.
+describe("describeFailure (classification; inputs and branches unchanged by ADR-0003)", () => {
+  // Found by a review pass: every failure used to get the same "Could not reach..."
+  // message, wrong for anything that isn't a connectivity problem.
   it("describes an auth failure (401/403-style error) distinctly from an unreachable server", () => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
     class FakeStatusError extends Error {
       status = 401;
     }
-    const body = buildServerUnreachableResponse(new FakeStatusError("unauthorized"));
-    expect(body.error).toContain("rejected the request");
+    expect(describeFailure(new FakeStatusError("unauthorized"))).toEqual({
+      code: "upstream_auth_rejected",
+      message: "Satisfactory dedicated server rejected the request (check the configured auth token)",
+    });
   });
 
   it('says "Could not reach" only for an error the adapter classified as unreachable', () => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const err = Object.assign(new Error("FRM request to getPower failed"), { failureKind: "unreachable" });
-    expect(buildServerUnreachableResponse(err).error).toBe("Could not reach the Satisfactory dedicated server");
+    expect(describeFailure(unreachable())).toEqual({
+      code: "upstream_unreachable",
+      message: "Could not reach the Satisfactory dedicated server",
+    });
   });
 
   // Found by a review pass: a 200 response with malformed JSON, and any adapter
   // crash, were both reported as "Could not reach..." even though the server
   // had answered.
   it("describes an invalid response distinctly from an unreachable server", () => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const err = Object.assign(new Error("not valid JSON"), { failureKind: "invalid_response" });
-    expect(buildServerUnreachableResponse(err).error).toBe(
-      "Satisfactory dedicated server returned an invalid response",
-    );
+    expect(describeFailure(err)).toEqual({
+      code: "upstream_invalid_response",
+      message: "Satisfactory dedicated server returned an invalid response",
+    });
   });
 
   it("uses a neutral message, not a connectivity claim, for an unclassified error like an adapter TypeError", () => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const body = buildServerUnreachableResponse(new TypeError("Cannot read properties of null"));
-    expect(body.error).toBe("Request to the Satisfactory dedicated server failed");
+    expect(describeFailure(new TypeError("Cannot read properties of null"))).toEqual({
+      code: "internal",
+      message: "Request to the Satisfactory dedicated server failed",
+    });
   });
 
   // Found by a review pass: describeFailure read err.status unguarded, so a
-  // throwing getter made the route's catch block itself throw.
+  // throwing getter made the route's error handling itself throw.
   it("does not throw when reading the error's status throws", () => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const err = new Error("hostile");
     Object.defineProperty(err, "status", {
       get() {
         throw new Error("boom");
       },
     });
-    expect(buildServerUnreachableResponse(err).error).toBe("Request to the Satisfactory dedicated server failed");
+    expect(describeFailure(err)).toEqual({ code: "internal", message: "Request to the Satisfactory dedicated server failed" });
   });
 
   // Found by a review pass: typeof === "number" accepted NaN, 0 and negatives,
   // producing "request failed (status NaN)".
   it.each([Number.NaN, 0, -1, 200.5, 1000])("ignores a non-HTTP status value %s", (status) => {
-    process.env.NODE_ENV = "test";
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const err = Object.assign(new Error("bad status"), { status });
-    expect(buildServerUnreachableResponse(err).error).toBe("Request to the Satisfactory dedicated server failed");
+    expect(describeFailure(err).code).toBe("internal");
   });
 
   // Found by a review pass, using errors thrown by the real VanillaApiClient
   // rather than hand-built ones: it never put the HTTP status on its errors, so
   // /api/status with a bad token got a generic message instead of the auth hint.
   describe("with errors from the real VanillaApiClient", () => {
-    async function responseFor(transportResult: { status: number; body: unknown }) {
-      process.env.NODE_ENV = "test";
-      vi.spyOn(console, "error").mockImplementation(() => {});
+    async function classify(transportResult: { status: number; body: unknown }) {
       const client = new VanillaApiClient({
         host: "localhost",
         port: 7777,
@@ -142,23 +102,136 @@ describe("buildServerUnreachableResponse", () => {
         allowSelfSignedCert: false,
         transport: vi.fn().mockResolvedValue(transportResult),
       });
-      const err = await client.call("QueryServerState").catch((e: unknown) => e);
-      return buildServerUnreachableResponse(err);
+      return describeFailure(await client.call("QueryServerState").catch((e: unknown) => e));
     }
 
     it("a 401 with no body gets the auth-token message", async () => {
-      expect((await responseFor({ status: 401, body: undefined })).error).toContain("check the configured auth token");
+      expect(await classify({ status: 401, body: undefined })).toMatchObject({ code: "upstream_auth_rejected" });
     });
 
     it("a 403 with an errorCode body still gets the auth-token message", async () => {
-      const body = await responseFor({ status: 403, body: { errorCode: "insufficient_scope" } });
-      expect(body.error).toContain("check the configured auth token");
+      const failure = await classify({ status: 403, body: { errorCode: "insufficient_scope" } });
+      expect(failure.message).toContain("check the configured auth token");
     });
 
     it("a 500 with no body reports the status", async () => {
-      expect((await responseFor({ status: 500, body: undefined })).error).toBe(
-        "Satisfactory dedicated server request failed (status 500)",
-      );
+      expect(await classify({ status: 500, body: undefined })).toEqual({
+        code: "upstream_error",
+        message: "Satisfactory dedicated server request failed (status 500)",
+      });
     });
+  });
+});
+
+describe("error middleware (ADR-0003 envelope)", () => {
+  it.each([
+    ["upstream unreachable", unreachable(), 503, "upstream_unreachable"],
+    ["upstream auth rejected", Object.assign(new Error("401"), { status: 401 }), 502, "upstream_auth_rejected"],
+    ["upstream invalid response", Object.assign(new Error("bad"), { failureKind: "invalid_response" }), 502, "upstream_invalid_response"],
+    ["our own bug", new TypeError("oops"), 500, "internal"],
+  ])("maps %s to HTTP %i with code %s, in a body that matches the shared schema", async (_name, err, status, code) => {
+    const { app } = appThrowing(err);
+    const res = await request(app).get("/api/boom");
+    expect(res.status).toBe(status);
+    expect(res.body.error.code).toBe(code);
+    expect(ApiErrorResponseSchema.parse(res.body)).toEqual(res.body);
+  });
+
+  it("puts the same fresh request id in the body, the X-Request-Id header and the log line", async () => {
+    const { app, lines } = appThrowing(unreachable());
+    const res = await request(app).get("/api/boom");
+    const id = res.headers["x-request-id"];
+    expect(id).toMatch(UUID);
+    expect(res.body.error.requestId).toBe(id);
+    expect(lines.some((line) => line.requestId === id && line.code === "upstream_unreachable")).toBe(true);
+  });
+
+  it("ignores an inbound X-Request-Id (it isn't trusted until a proxy we control sets it)", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).get("/api/boom").set("X-Request-Id", "attacker-chosen");
+    expect(res.headers["x-request-id"]).toMatch(UUID);
+    expect(res.body.error.requestId).not.toBe("attacker-chosen");
+  });
+
+  it("gives successful responses a request id too", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).post("/api/echo").send({ a: 1 });
+    expect(res.status).toBe(200);
+    expect(res.headers["x-request-id"]).toMatch(UUID);
+  });
+
+  // Found by a review pass: once frmApiClient.ts started setting { cause: err },
+  // detail started faithfully including the internal FRM server's host:port, and
+  // the error body is public. detail is omitted outside an allowlisted NODE_ENV.
+  it.each([["production"], ["staging"], [undefined]])("omits detail when NODE_ENV is %s", async (env) => {
+    if (env === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = env;
+    }
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).get("/api/boom");
+    expect(res.body.error).not.toHaveProperty("detail");
+    expect(JSON.stringify(res.body)).not.toContain("127.0.0.1");
+  });
+
+  it.each([["development"], ["test"]])("includes detail when NODE_ENV is %s", async (env) => {
+    process.env.NODE_ENV = env;
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).get("/api/boom");
+    expect(res.body.error.detail).toContain("ECONNREFUSED");
+  });
+
+  it("always logs the full detail server-side, even in production", async () => {
+    process.env.NODE_ENV = "production";
+    const { app, lines } = appThrowing(unreachable());
+    await request(app).get("/api/boom");
+    expect(lines.some((line) => String(line.detail).includes("ECONNREFUSED"))).toBe(true);
+  });
+
+  // Found while writing this middleware: express.json() rejects a malformed body with
+  // an http-errors error carrying status 400, which describeFailure's status branch
+  // would have blamed on the game server.
+  it("reports a malformed JSON request body as our 400 bad_request, not an upstream error", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).post("/api/echo").set("Content-Type", "application/json").send("{not json");
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("bad_request");
+  });
+
+  it("maps a contract violation to 500 internal with a generic message", async () => {
+    process.env.NODE_ENV = "production";
+    const { app, lines } = appThrowing(new ContractViolationError([{ code: "custom", path: ["status"], message: "bad", input: 1 }]));
+    const res = await request(app).get("/api/boom");
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatchObject({ code: "internal", message: "Internal server error" });
+    expect(lines.some((line) => String(line.detail).includes("status: bad"))).toBe(true);
+  });
+
+  it("redacts credentials from request logs", async () => {
+    const { app, lines } = appThrowing(unreachable());
+    await request(app)
+      .get("/api/boom")
+      .set("Authorization", "Bearer secret-api-token")
+      .set("Cookie", "session=secret-session")
+      .set("X-FRM-Authorization", "secret-frm-token");
+    const logged = JSON.stringify(lines);
+    expect(logged).toContain("[Redacted]");
+    for (const secret of ["secret-api-token", "secret-session", "secret-frm-token"]) {
+      expect(logged).not.toContain(secret);
+    }
+  });
+
+  // Express identifies error middleware by arity; a refactor that drops the unused
+  // fourth parameter would silently turn it into ordinary middleware.
+  it("keeps exactly four parameters so Express treats it as error middleware", () => {
+    expect(createErrorHandler(createLogger()).length).toBe(4);
+  });
+
+  it("maps every known error code to an HTTP status", () => {
+    for (const status of Object.values(HTTP_STATUS_BY_CODE)) {
+      expect(status).toBeGreaterThanOrEqual(400);
+      expect(status).toBeLessThan(600);
+    }
   });
 });

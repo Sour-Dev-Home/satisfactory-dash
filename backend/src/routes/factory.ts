@@ -1,15 +1,12 @@
 import { Router } from "express";
 import type { ProductionService } from "../services/productionService.js";
-import { buildServerUnreachableResponse } from "./errorResponse.js";
 
 export function createFactoryRouter(service: ProductionService): Router {
   const router = Router();
+  // No try/catch: Express 5 forwards a rejected handler to the error middleware
+  // (routes/errorResponse.ts), which builds the ADR-0003 error envelope.
   router.get("/factory", async (_req, res) => {
-    try {
-      res.json(await service.getFactoryOverview());
-    } catch (err) {
-      res.status(503).json(buildServerUnreachableResponse(err));
-    }
+    res.json(await service.getFactoryOverview());
   });
   return router;
 }

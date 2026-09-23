@@ -15,7 +15,10 @@ Three sub-boundaries inside this module, intended to map onto separate future ag
 - `src/routes/` — HTTP/WebSocket surface exposed to `frontend/`. Translates
   `services/` output into the shapes defined in `@satisfactory-dash/shared`.
 
-`src/server.ts` only wires these together — it should stay thin.
+`src/server.ts` only wires these together — it should stay thin. The middleware
+pipeline itself (request id, pino request logging, routes, the error envelope) is
+`src/app.ts`'s `createApp()`, which has no side effects so route tests build exactly
+what production runs.
 
 ## Conventions
 

@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
-import express from "express";
 import request from "supertest";
 import { createFactoryRouter } from "./factory.js";
+import { createApp } from "../app.js";
+import { createLogger } from "../logger.js";
 import type { ProductionService } from "../services/productionService.js";
 
 function buildApp(service: Pick<ProductionService, "getFactoryOverview">) {
-  const app = express();
-  app.use("/api", createFactoryRouter(service as ProductionService));
-  return app;
+  return createApp({ logger: createLogger(), routers: [createFactoryRouter(service as ProductionService)] });
 }
 
 describe("GET /api/factory", () => {
@@ -18,15 +17,15 @@ describe("GET /api/factory", () => {
     expect(res.body).toEqual({ buildings: [], backedUpCount: 0 });
   });
 
-  it("returns 503 with an error body when the service throws", async () => {
+  it("returns 503 upstream_unreachable when the game server can't be reached", async () => {
     const service = {
       getFactoryOverview: async () => {
-        throw new Error("server unreachable");
+        throw Object.assign(new Error("server unreachable"), { failureKind: "unreachable" });
       },
     };
     const res = await request(buildApp(service)).get("/api/factory");
     expect(res.status).toBe(503);
-    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
   });
 
   it("round-trips a populated overview through JSON, including a null recipe and isBackedUp", async () => {
