@@ -3,6 +3,7 @@ import request from "supertest";
 import { createPowerRouter } from "./power.js";
 import { createApp } from "../app.js";
 import { createLogger } from "../logger.js";
+import { UpstreamError } from "../adapters/index.js";
 import type { PowerService } from "../services/powerService.js";
 
 function buildApp(service: Pick<PowerService, "getPowerOverview">) {
@@ -20,7 +21,7 @@ describe("GET /api/power", () => {
   it("returns 503 upstream_unreachable when the game server can't be reached", async () => {
     const service = {
       getPowerOverview: async () => {
-        throw Object.assign(new Error("server unreachable"), { failureKind: "unreachable" });
+        throw new UpstreamError("server unreachable", { failureKind: "unreachable" });
       },
     };
     const res = await request(buildApp(service)).get("/api/power");

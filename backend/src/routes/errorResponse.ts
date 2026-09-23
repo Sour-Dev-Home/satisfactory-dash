@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import type { ApiErrorResponse, KnownErrorCode } from "@satisfactory-dash/shared";
 import { formatErrorDetail } from "./formatErrorDetail.js";
 import { ContractViolationError } from "./sendValidated.js";
+import { UpstreamError } from "../adapters/index.js";
 
 const UNREACHABLE_MESSAGE = "Could not reach the Satisfactory dedicated server";
 const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
@@ -33,19 +34,27 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   internal: 500,
 };
 
-/** Loosely duck-typed rather than importing FrmApiRequestError/VanillaApiRequestError
- *  directly -- routes/ shouldn't need to know adapter-specific error classes, just
- *  the fields they carry: an HTTP `status`, a vanilla-API `errorCode`, or the
- *  adapters' own `failureKind` classification (adapters/domain.ts).
+const INTERNAL_MESSAGE = "Internal server error";
+
+/** The vanilla API's errorCode reaches the public `message`, so bound what the game
+ *  server (or anything pretending to be it) can put there: at most 64 characters from
+ *  a safe set (issue #8, item 4). */
+function safeErrorCode(errorCode: string): string {
+  return errorCode.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64);
+}
+
+/**
+ * Maps an error to its ADR-0003 code. Upstream codes (502/503) come ONLY from an
+ * `UpstreamError` (adapters/domain.ts), the base class of every adapter transport,
+ * HTTP-status, error-body and validation failure. Anything else fails closed as our
+ * own `internal` 500, even if it carries a numeric `status` (architect ruling, PR 3):
+ * a review of PR #16 found Express's router throwing a URIError with `status: 400`
+ * that this function, then duck-typed, blamed on the game server.
  *
- *  Found by review passes: every failure (unreachable server, a 401 from a bad
- *  token, a JSON parse error, an adapter crash) used to get the same "Could not
- *  reach..." message, which is actively wrong for anything that isn't a
- *  connectivity issue. So "Could not reach" now needs positive evidence
- *  (`failureKind: "unreachable"`), and anything unclassified -- e.g. an adapter
- *  bug throwing a TypeError -- gets a neutral message that's true either way, with
- *  code `internal`: until the adapter validates upstream data (PR 3), an
- *  unclassified error is our own unhandled case. */
+ * Earlier review passes still apply inside the upstream branch: "Could not reach"
+ * needs positive evidence (`failureKind: "unreachable"`), a 401/403 gets the auth
+ * hint, and an out-of-range status is ignored.
+ */
 export function describeFailure(err: unknown): ClassifiedFailure {
   // This runs for every failed request, so it must not throw -- a review pass found
   // a hostile `status` getter made it do exactly that, turning the JSON error body
@@ -54,15 +63,15 @@ export function describeFailure(err: unknown): ClassifiedFailure {
   try {
     return describeFailureUnsafe(err);
   } catch {
-    return { code: "internal", message: FALLBACK_MESSAGE };
+    return { code: "internal", message: INTERNAL_MESSAGE };
   }
 }
 
 function describeFailureUnsafe(err: unknown): ClassifiedFailure {
-  if (err === null || typeof err !== "object") {
-    return { code: "internal", message: FALLBACK_MESSAGE };
+  if (!(err instanceof UpstreamError)) {
+    return { code: "internal", message: INTERNAL_MESSAGE };
   }
-  const status = "status" in err ? err.status : undefined;
+  const { status, errorCode, failureKind } = err;
   // Number.isInteger + range, not typeof === "number": that accepted NaN, 0 and
   // negatives, producing messages like "request failed (status NaN)".
   if (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599) {
@@ -73,18 +82,19 @@ function describeFailureUnsafe(err: unknown): ClassifiedFailure {
         }
       : { code: "upstream_error", message: `Satisfactory dedicated server request failed (status ${status})` };
   }
-  const errorCode = "errorCode" in err ? err.errorCode : undefined;
-  if (typeof errorCode === "string" && errorCode.length > 0) {
-    return { code: "upstream_error", message: `Satisfactory dedicated server request failed (${errorCode})` };
+  if (typeof errorCode === "string" && safeErrorCode(errorCode).length > 0) {
+    return {
+      code: "upstream_error",
+      message: `Satisfactory dedicated server request failed (${safeErrorCode(errorCode)})`,
+    };
   }
-  const failureKind = "failureKind" in err ? err.failureKind : undefined;
   if (failureKind === "unreachable") {
     return { code: "upstream_unreachable", message: UNREACHABLE_MESSAGE };
   }
   if (failureKind === "invalid_response") {
     return { code: "upstream_invalid_response", message: "Satisfactory dedicated server returned an invalid response" };
   }
-  return { code: "internal", message: FALLBACK_MESSAGE };
+  return { code: "upstream_error", message: FALLBACK_MESSAGE };
 }
 
 /** Thrown by the /api catch-all in app.ts for a path no router matched. */
@@ -116,7 +126,7 @@ function clientRequestErrorStatus(err: unknown): number | undefined {
 
 export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   if (err instanceof ContractViolationError) {
-    return { code: "internal", message: "Internal server error" };
+    return { code: "internal", message: INTERNAL_MESSAGE };
   }
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
