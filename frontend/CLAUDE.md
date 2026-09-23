@@ -24,6 +24,10 @@ contract needs to grow, not that this module should special-case a backend detai
   signed in. A 401 from any query or mutation (except login) signs out in one place,
   `createQueryClient`; screens never handle 401 themselves. Nothing auth-related goes in
   localStorage: the httpOnly cookie is the only credential.
+- Servers (ADR-0001): `src/servers/ServerGate.tsx` picks the server; views read it with
+  `useSelectedServer()` and key queries by its id. `server_not_found` from any query for
+  that server is handled there too (drop the selection, rediscover, never auto-select the
+  lost id again). Show errors with `components/ErrorNotice.tsx` so wording stays consistent.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.
