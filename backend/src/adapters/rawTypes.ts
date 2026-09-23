@@ -3,131 +3,40 @@
  * them. Private to this directory — only satisfactoryServerAdapter.ts should import
  * these; everything else uses domain.ts.
  *
- * Vanilla API fields are camelCase (confirmed live, differs from the docs' PascalCase
- * — see docs-vault/wiki/vanilla-dedicated-server-api.md). FRM fields are PascalCase
- * (matches the docs and was confirmed live for getSessionInfo — see
- * docs-vault/raw-sources/captured-responses/frm-getSessionInfo-sample.json).
+ * Derived from the runtime schemas in rawSchemas.ts, so the type and the validation
+ * can't drift apart. See that file for the shape notes (vanilla camelCase, FRM
+ * PascalCase, and what the 2026-09-22 captures settled).
  */
+import type { z } from "zod";
+import type {
+  RawHealthCheckResponseSchema,
+  RawServerGameStateSchema,
+  RawQueryServerStateResponseSchema,
+  RawFrmLocationSchema,
+  RawFrmProductionItemSchema,
+  RawFrmIngredientItemSchema,
+  RawFrmInventorySlotSchema,
+  RawFrmPowerInfoSchema,
+  RawFrmFactoryBuildingSchema,
+  RawFrmPowerCircuitSchema,
+  RawFrmPowerUsageBuildingSchema,
+  RawFrmPlayerSchema,
+  RawFrmSessionInfoSchema,
+} from "./rawSchemas.js";
 
 // --- Vanilla Dedicated Server HTTPS API ---
-
-export interface RawHealthCheckResponse {
-  health: string;
-  serverCustomData: string;
-}
-
-export interface RawServerGameState {
-  activeSessionName: string;
-  numConnectedPlayers: number;
-  playerLimit: number;
-  techTier: number;
-  activeSchematic: string;
-  gamePhase: string;
-  isGameRunning: boolean;
-  totalGameDuration: number;
-  isGamePaused: boolean;
-  averageTickRate: number;
-  autoLoadSessionName: string;
-  agreeToCrashUploadRequested: boolean;
-}
-
-export interface RawQueryServerStateResponse {
-  serverGameState: RawServerGameState;
-}
+export type RawHealthCheckResponse = z.infer<typeof RawHealthCheckResponseSchema>;
+export type RawServerGameState = z.infer<typeof RawServerGameStateSchema>;
+export type RawQueryServerStateResponse = z.infer<typeof RawQueryServerStateResponseSchema>;
 
 // --- FicsitRemoteMonitoring Web Server ---
-
-export interface RawFrmLocation {
-  x: number;
-  y: number;
-  z: number;
-  rotation?: number;
-}
-
-export interface RawFrmProductionItem {
-  Name: string;
-  ClassName: string;
-  Amount: number;
-  CurrentProd: number;
-  MaxProd: number;
-  ProdPercent: number;
-}
-
-export interface RawFrmIngredientItem {
-  Name: string;
-  ClassName: string;
-  Amount: number;
-  CurrentConsumed: number;
-  MaxConsumed: number;
-  ConsPercent: number;
-}
-
-export interface RawFrmInventorySlot {
-  Name: string;
-  ClassName: string;
-  Amount: number;
-  MaxAmount: number;
-}
-
-export interface RawFrmPowerInfo {
-  CircuitGroupID: number;
-  CircuitID: number;
-  FuseTriggered?: boolean;
-  PowerConsumed: number;
-  MaxPowerConsumed: number;
-}
-
-export interface RawFrmFactoryBuilding {
-  ID: string;
-  Name: string;
-  ClassName: string;
-  /** "Unassigned" (not absent) when no recipe is set; see IsConfigured. */
-  Recipe?: string;
-  /** "Is a recipe configured?" (frm-getFactory.md:57). Present on every building in
-   *  the 2026-09-22 live captures, and false exactly when Recipe is "Unassigned". */
-  IsConfigured?: boolean;
-  production?: RawFrmProductionItem[];
-  ingredients?: RawFrmIngredientItem[];
-  OutputInventory?: RawFrmInventorySlot[];
-  IsProducing: boolean;
-  IsPaused: boolean;
-  PowerInfo?: RawFrmPowerInfo;
-}
-
-export interface RawFrmPowerCircuit {
-  CircuitGroupID: number;
-  PowerProduction: number;
-  PowerConsumed: number;
-  PowerCapacity: number;
-  PowerMaxConsumed: number;
-  BatteryDifferential: number;
-  BatteryPercent: number;
-  BatteryCapacity: number;
-  FuseTriggered: boolean;
-}
-
-export interface RawFrmPowerUsageBuilding {
-  ID: string;
-  Name: string;
-  ClassName: string;
-  PowerInfo: RawFrmPowerInfo;
-}
-
-export interface RawFrmPlayer {
-  ID: string;
-  Name: string;
-  location: RawFrmLocation;
-  PlayerHP: number;
-  Online: boolean;
-  Dead: boolean;
-}
-
-export interface RawFrmSessionInfo {
-  SessionName: string;
-  IsPaused: boolean;
-  DayLength: number;
-  NightLength: number;
-  PassedDays: number;
-  IsDay: boolean;
-  TotalPlayDuration: number;
-}
+export type RawFrmLocation = z.infer<typeof RawFrmLocationSchema>;
+export type RawFrmProductionItem = z.infer<typeof RawFrmProductionItemSchema>;
+export type RawFrmIngredientItem = z.infer<typeof RawFrmIngredientItemSchema>;
+export type RawFrmInventorySlot = z.infer<typeof RawFrmInventorySlotSchema>;
+export type RawFrmPowerInfo = z.infer<typeof RawFrmPowerInfoSchema>;
+export type RawFrmFactoryBuilding = z.infer<typeof RawFrmFactoryBuildingSchema>;
+export type RawFrmPowerCircuit = z.infer<typeof RawFrmPowerCircuitSchema>;
+export type RawFrmPowerUsageBuilding = z.infer<typeof RawFrmPowerUsageBuildingSchema>;
+export type RawFrmPlayer = z.infer<typeof RawFrmPlayerSchema>;
+export type RawFrmSessionInfo = z.infer<typeof RawFrmSessionInfoSchema>;

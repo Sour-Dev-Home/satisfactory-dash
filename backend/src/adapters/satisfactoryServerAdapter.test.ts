@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 import type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
+import { UpstreamError } from "./domain.js";
 import {
   healthCheckFixture,
   queryServerStateFixture,
@@ -154,20 +155,18 @@ describe("SatisfactoryServerAdapter", () => {
     ]);
   });
 
-  // Found by a review pass: a null entry in getPower's response used to throw
-  // (circuit.CircuitGroupID on null) before PowerService's own defensive
-  // placeholder logic ever got a chance to run, crashing the whole /api/power
-  // call. Mapped to NaN/false sentinels instead -- classifyPowerCircuit's
-  // existing Number.isFinite/typeof-boolean guards then correctly read this as
-  // at_risk downstream, same as any other malformed circuit.
-  it("maps a null entry in getPower's response to a sentinel-invalid PowerCircuit instead of throwing", async () => {
+  // A null entry in getPower used to throw a bare TypeError; an earlier fix mapped it
+  // to NaN sentinels that PowerService turned into an at_risk placeholder row. The
+  // contract now says circuits never contain placeholder rows (PR 3): malformed
+  // upstream data fails validation as one upstream error instead.
+  it("rejects a getPower response with a null entry as an invalid response", async () => {
     const { adapter } = buildAdapter({
       frm: { get: vi.fn().mockResolvedValue([powerCircuitFixture, null]) },
     });
-    const circuits = await adapter.getPowerCircuits();
-    expect(circuits).toHaveLength(2);
-    expect(Number.isNaN(circuits[1].circuitGroupId)).toBe(true);
-    expect(circuits[1].fuseTriggered).toBe(false);
+    const err = await adapter.getPowerCircuits().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect(err).toMatchObject({ failureKind: "invalid_response" });
+    expect((err as Error).message).toContain("getPower response failed validation: 1:");
   });
 
   // Found by a review pass: every array endpoint `.map`-ed the body directly, so
@@ -181,10 +180,10 @@ describe("SatisfactoryServerAdapter", () => {
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
-      await expect(call(adapter)).rejects.toMatchObject({
-        message: `FRM response from ${endpoint} was not an array`,
-        failureKind: "invalid_response",
-      });
+      const err = await call(adapter).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(UpstreamError);
+      expect(err).toMatchObject({ failureKind: "invalid_response" });
+      expect((err as Error).message).toContain(`${endpoint} response failed validation`);
     }
   });
 
@@ -286,6 +285,87 @@ describe("SatisfactoryServerAdapter", () => {
       expect(building.outputInventory).toEqual([
         { name: "Reinforced Iron Plate", className: "Desc_IronPlateReinforced_C", amount: 100, maxAmount: 100 },
       ]);
+    });
+  });
+
+  // PR 3: raw responses are validated, so every shape problem becomes one upstream
+  // invalid_response (a 502) instead of a TypeError or a bad value reaching the
+  // contract. Also covers the gaps deferred from PR #12's review and issue #8.
+  describe("raw response validation", () => {
+    async function rejection(promise: Promise<unknown>) {
+      const err = await promise.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(UpstreamError);
+      expect(err).toMatchObject({ failureKind: "invalid_response" });
+      return (err as Error).message;
+    }
+
+    it("rejects an out-of-range value the contract forbids (negative battery percent)", async () => {
+      const bad = { ...powerCircuitFixture, BatteryPercent: -5 };
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+      expect(await rejection(adapter.getPowerCircuits())).toContain("0.BatteryPercent");
+    });
+
+    it("clamps float noise just below zero to 0 instead of rejecting it", async () => {
+      const noisy = { ...powerCircuitFixture, BatteryPercent: -0.0005 };
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([noisy]) } });
+      const [circuit] = await adapter.getPowerCircuits();
+      expect(circuit.batteryPercent).toBe(0);
+    });
+
+    it("rejects a negative production rate", async () => {
+      const bad = {
+        ...factoryBuildingFixture,
+        production: [{ ...factoryBuildingFixture.production![0], CurrentProd: -1 }],
+      };
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+      expect(await rejection(adapter.getFactoryBuildings())).toContain("CurrentProd");
+    });
+
+    it("rejects a null getFactory entry", async () => {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([factoryBuildingFixture, null]) } });
+      await rejection(adapter.getFactoryBuildings());
+    });
+
+    // Deferred from PR #12's review: an empty Recipe would get past the unconfigured check.
+    it("rejects an empty-string Recipe", async () => {
+      const bad = { ...factoryBuildingFixture, Recipe: "" };
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+      expect(await rejection(adapter.getFactoryBuildings())).toContain("Recipe");
+    });
+
+    it("rejects a getPowerUsage entry without PowerInfo", async () => {
+      const { PowerInfo: _omitted, ...bad } = powerUsageBuildingFixture;
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+      expect(await rejection(adapter.getPowerUsage())).toContain("PowerInfo");
+    });
+
+    // Issue #8, item 2: a 204/empty vanilla body used to crash on raw.serverGameState.
+    it.each([undefined, {}, { serverGameState: null }])("rejects an unusable QueryServerState body %j", async (body) => {
+      const { adapter } = buildAdapter({ vanilla: { call: vi.fn().mockResolvedValue(body) } });
+      await rejection(adapter.getServerStatus());
+    });
+
+    it("rejects a HealthCheck health value other than healthy/slow", async () => {
+      const { adapter } = buildAdapter({ vanilla: { call: vi.fn().mockResolvedValue({ health: "great" }) } });
+      await rejection(adapter.getServerHealth());
+    });
+
+    it("rejects a non-integer or negative player count", async () => {
+      for (const numConnectedPlayers of [-1, 1.5]) {
+        const body = {
+          ...queryServerStateFixture,
+          serverGameState: { ...queryServerStateFixture.serverGameState, numConnectedPlayers },
+        };
+        const { adapter } = buildAdapter({ vanilla: { call: vi.fn().mockResolvedValue(body) } });
+        expect(await rejection(adapter.getServerStatus())).toContain("numConnectedPlayers");
+      }
+    });
+
+    it("reports at most five failing paths in the message", async () => {
+      const bad = Array.from({ length: 20 }, () => null);
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(bad) } });
+      const message = await rejection(adapter.getPowerCircuits());
+      expect(message.split(";").length).toBe(5);
     });
   });
 });

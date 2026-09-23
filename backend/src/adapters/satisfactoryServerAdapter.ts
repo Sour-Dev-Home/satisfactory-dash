@@ -1,18 +1,17 @@
 import type { SatisfactoryServerConfig } from "./config.js";
 import { VanillaApiClient } from "./vanillaApiClient.js";
-import { FrmApiClient, FrmApiRequestError } from "./frmApiClient.js";
-import type {
-  RawHealthCheckResponse,
-  RawQueryServerStateResponse,
-  RawFrmFactoryBuilding,
-  RawFrmProductionItem,
-  RawFrmIngredientItem,
-  RawFrmInventorySlot,
-  RawFrmPowerCircuit,
-  RawFrmPowerUsageBuilding,
-  RawFrmPlayer,
-  RawFrmSessionInfo,
-} from "./rawTypes.js";
+import { z } from "zod";
+import { FrmApiClient } from "./frmApiClient.js";
+import {
+  RawHealthCheckResponseSchema,
+  RawQueryServerStateResponseSchema,
+  RawFrmFactoryBuildingSchema,
+  RawFrmPowerCircuitSchema,
+  RawFrmPowerUsageBuildingSchema,
+  RawFrmPlayerSchema,
+  RawFrmSessionInfoSchema,
+} from "./rawSchemas.js";
+import type { RawFrmProductionItem, RawFrmIngredientItem, RawFrmInventorySlot } from "./rawTypes.js";
 import type {
   ServerHealth,
   ServerStatus,
@@ -24,6 +23,32 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
+import { UpstreamError } from "./domain.js";
+
+const MAX_REPORTED_ISSUES = 5;
+
+/**
+ * The single place raw upstream data is validated (ADR-0002; PR 3). A response that
+ * doesn't match its schema -- wrong type, a missing field, a null entry in an array,
+ * an out-of-range value, a non-array body, an empty vanilla body -- becomes one
+ * UpstreamError(invalid_response), i.e. a 502 upstream_invalid_response, instead of a
+ * TypeError somewhere in the mapping below. The zod error rides along as `cause` for
+ * the logs; the message names the first few failing paths.
+ */
+function parseUpstream<S extends z.ZodType>(source: string, schema: S, raw: unknown): z.output<S> {
+  const result = schema.safeParse(raw);
+  if (result.success) {
+    return result.data;
+  }
+  const issues = result.error.issues
+    .slice(0, MAX_REPORTED_ISSUES)
+    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("; ");
+  throw new UpstreamError(`${source} response failed validation: ${issues}`, {
+    failureKind: "invalid_response",
+    cause: result.error,
+  });
+}
 
 /** Narrow interfaces so the adapter can be tested against fakes without a real
  *  network transport. VanillaApiClient/FrmApiClient satisfy these directly. */
@@ -95,29 +120,21 @@ export class SatisfactoryServerAdapter {
     return new SatisfactoryServerAdapter(vanillaApi, frmApi);
   }
 
-  /** For FRM endpoints documented to return a JSON array (docs-vault/raw-sources/
-   *  frm-get*.md). Found by a review pass: every caller used to `.map` the body
-   *  directly, so an object or `null` body threw a bare TypeError that the routes
-   *  then reported as "Could not reach the Satisfactory dedicated server" -- wrong,
-   *  since the server did answer. [NEEDS VERIFICATION] whether FRM ever returns a
-   *  non-array here; this is the layer meant to defend against it regardless. */
-  private async getFrmArray<T>(endpoint: string): Promise<T[]> {
-    const raw = await this.frmApi.get<unknown>(endpoint);
-    if (!Array.isArray(raw)) {
-      throw new FrmApiRequestError(`FRM response from ${endpoint} was not an array`, undefined, {
-        failureKind: "invalid_response",
-      });
-    }
-    return raw as T[];
-  }
-
   async getServerHealth(): Promise<ServerHealth> {
-    const raw = await this.vanillaApi.call<RawHealthCheckResponse>("HealthCheck", { ClientCustomData: "" });
+    const raw = parseUpstream(
+      "HealthCheck",
+      RawHealthCheckResponseSchema,
+      await this.vanillaApi.call<unknown>("HealthCheck", { ClientCustomData: "" }),
+    );
     return { healthy: raw.health === "healthy" };
   }
 
   async getServerStatus(): Promise<ServerStatus> {
-    const raw = await this.vanillaApi.call<RawQueryServerStateResponse>("QueryServerState");
+    const raw = parseUpstream(
+      "QueryServerState",
+      RawQueryServerStateResponseSchema,
+      await this.vanillaApi.call<unknown>("QueryServerState"),
+    );
     const state = raw.serverGameState;
     return {
       sessionName: state.activeSessionName,
@@ -131,7 +148,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getFactoryBuildings(): Promise<FactoryBuilding[]> {
-    const raw = await this.getFrmArray<RawFrmFactoryBuilding>("getFactory");
+    const raw = parseUpstream("getFactory", z.array(RawFrmFactoryBuildingSchema), await this.frmApi.get<unknown>("getFactory"));
     return raw.map((building) => {
       // B2 (2026-09-22 captures): FRM reports an unconfigured machine as Recipe
       // "Unassigned" plus a placeholder "Unassigned" production/ingredient entry, not
@@ -158,49 +175,22 @@ export class SatisfactoryServerAdapter {
   }
 
   async getPowerCircuits(): Promise<PowerCircuit[]> {
-    const raw = await this.getFrmArray<RawFrmPowerCircuit>("getPower");
-    return raw.map((circuit) => {
-      // Found by a review pass: PowerService's own null/non-object placeholder
-      // logic can only run if it's ever handed a raw circuit to inspect -- a
-      // null/non-object entry here used to throw (e.g. `circuit.CircuitGroupID`
-      // on `null`) before ever reaching that layer, crashing the whole
-      // /api/power call with a misleading "Could not reach the Satisfactory
-      // dedicated server" 503. Mapping it to NaN/false sentinels instead of
-      // dropping or crashing means classifyPowerCircuit's existing
-      // Number.isFinite/typeof-boolean guards correctly flag it as at_risk
-      // downstream, same as any other malformed circuit. [NEEDS VERIFICATION]
-      // whether FRM's getPower response can actually contain a null entry --
-      // not documented in docs-vault/raw-sources/frm-getPower.md -- but this is
-      // the layer meant to defend against unvalidated FRM data regardless.
-      if (circuit === null || typeof circuit !== "object") {
-        return {
-          circuitGroupId: Number.NaN,
-          powerProduction: Number.NaN,
-          powerConsumed: Number.NaN,
-          powerCapacity: Number.NaN,
-          maxPowerConsumed: Number.NaN,
-          fuseTriggered: false,
-          batteryPercent: Number.NaN,
-          batteryDifferential: Number.NaN,
-          batteryCapacity: Number.NaN,
-        };
-      }
-      return {
-        circuitGroupId: circuit.CircuitGroupID,
-        powerProduction: circuit.PowerProduction,
-        powerConsumed: circuit.PowerConsumed,
-        powerCapacity: circuit.PowerCapacity,
-        maxPowerConsumed: circuit.PowerMaxConsumed,
-        fuseTriggered: circuit.FuseTriggered,
-        batteryPercent: circuit.BatteryPercent,
-        batteryDifferential: circuit.BatteryDifferential,
-        batteryCapacity: circuit.BatteryCapacity,
-      };
-    });
+    const raw = parseUpstream("getPower", z.array(RawFrmPowerCircuitSchema), await this.frmApi.get<unknown>("getPower"));
+    return raw.map((circuit) => ({
+      circuitGroupId: circuit.CircuitGroupID,
+      powerProduction: circuit.PowerProduction,
+      powerConsumed: circuit.PowerConsumed,
+      powerCapacity: circuit.PowerCapacity,
+      maxPowerConsumed: circuit.PowerMaxConsumed,
+      fuseTriggered: circuit.FuseTriggered,
+      batteryPercent: circuit.BatteryPercent,
+      batteryDifferential: circuit.BatteryDifferential,
+      batteryCapacity: circuit.BatteryCapacity,
+    }));
   }
 
   async getPowerUsage(): Promise<BuildingPowerUsage[]> {
-    const raw = await this.getFrmArray<RawFrmPowerUsageBuilding>("getPowerUsage");
+    const raw = parseUpstream("getPowerUsage", z.array(RawFrmPowerUsageBuildingSchema), await this.frmApi.get<unknown>("getPowerUsage"));
     return raw.map((building) => ({
       id: building.ID,
       name: building.Name,
@@ -213,7 +203,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getPlayers(): Promise<Player[]> {
-    const raw = await this.getFrmArray<RawFrmPlayer>("getPlayer");
+    const raw = parseUpstream("getPlayer", z.array(RawFrmPlayerSchema), await this.frmApi.get<unknown>("getPlayer"));
     return raw.map((player) => ({
       id: player.ID,
       name: player.Name,
@@ -225,7 +215,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getSessionInfo(): Promise<SessionInfo> {
-    const raw = await this.frmApi.get<RawFrmSessionInfo>("getSessionInfo");
+    const raw = parseUpstream("getSessionInfo", RawFrmSessionInfoSchema, await this.frmApi.get<unknown>("getSessionInfo"));
     return {
       sessionName: raw.SessionName,
       isPaused: raw.IsPaused,
