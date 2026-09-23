@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints, type SettingsResponse } from "@satisfactory-dash/shared";
@@ -11,6 +12,7 @@ import {
   settingsEditable,
   settingsPending,
   settingsReadOnly,
+  statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
 import { POLL_MS, queries } from "../api/queries";
 import { ServerContext } from "../servers/ServerContext";
@@ -28,6 +30,12 @@ function renderView() {
 
 function settingsReturn(snapshot: SettingsResponse) {
   server.use(http.get(endpoints.settings.get.route, () => HttpResponse.json(snapshot)));
+}
+
+/** Stands in for StatusBanners: a mounted status query for the same server. */
+function StatusProbe() {
+  useQuery(queries.status("default"));
+  return null;
 }
 
 const checkbox = () => screen.getByRole("checkbox", { name: /Auto-pause when no players are connected/ });
@@ -76,6 +84,32 @@ describe("AutoPauseView", () => {
     await waitFor(() => expect(checkbox()).toBeChecked());
     expect(checkbox()).toBeEnabled();
     expect(body).toEqual(setAutoPauseRequestOn);
+  });
+
+  it("refreshes server status right after a successful change", async () => {
+    let statusReads = 0;
+    server.use(
+      http.get(endpoints.status.route, () => {
+        statusReads++;
+        return HttpResponse.json(statusRunning);
+      }),
+      http.put(endpoints.settings.setAutoPause.route, () =>
+        HttpResponse.json({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } }),
+      ),
+    );
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <StatusProbe />
+        <AutoPauseView />
+      </ServerContext>,
+    );
+    await screen.findByRole("checkbox");
+    await waitFor(() => expect(statusReads).toBe(1));
+
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(checkbox()).toBeChecked());
+    // Well inside the 10 s poll: only the invalidation can cause this second read.
+    await waitFor(() => expect(statusReads).toBe(2));
   });
 
   it("turns auto-pause off", async () => {

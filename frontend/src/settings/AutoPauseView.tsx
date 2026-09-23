@@ -18,7 +18,12 @@ export function AutoPauseView() {
   const settings = useQuery(settingsQuery);
   const save = useMutation({
     mutationFn: (enabled: boolean) => apiSend(endpoints.settings.setAutoPause, { enabled }, server.id),
-    onSuccess: (snapshot) => client.setQueryData(settingsQuery.queryKey, snapshot),
+    onSuccess: (snapshot) => {
+      client.setQueryData(settingsQuery.queryKey, snapshot);
+      // DSAutoPause applies immediately (ADR-0012), so gamePaused may already have flipped;
+      // refresh status now rather than letting the paused banner lag a full poll behind.
+      void client.invalidateQueries({ queryKey: queries.status(server.id).queryKey });
+    },
     onError: (error) => {
       // 409 not_editable: our copy of `editable` is out of date, so re-read it.
       if (classifyError(error) === "not_editable") void client.invalidateQueries({ queryKey: settingsQuery.queryKey });
