@@ -41,6 +41,10 @@ describe("password hashing", () => {
       ["scrypt", 3 * 2 ** 32, r, p, salt, hash].join("$"),
       ["scrypt", 2 ** 20, r, p, salt, hash].join("$"), // exceeds the scrypt memory cap
       ["scrypt", 2 ** 15, 1000, p, salt, hash].join("$"), // r far too large
+      // Found by the security review of PR #24: OpenSSL also requires N < 2^(16*r),
+      // so with r=1 these parsed fine and then every login failed with a 500.
+      ["scrypt", 2 ** 16, 1, p, salt, hash].join("$"),
+      ["scrypt", 2 ** 17, 1, 1, salt, hash].join("$"),
     ]) {
       expect(parsePasswordHash(bad), bad.slice(0, 20)).toBeNull();
     }
