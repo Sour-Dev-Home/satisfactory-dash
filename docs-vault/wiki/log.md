@@ -124,3 +124,8 @@ the bottom.
   requires a verified Administrator token), and removed a suspected refinery blind spot
   after the captures disproved it. Every line citation in the ADRs was checked against
   the files on `main`.
+- 2026-09-23 — Added ADR-0013 (deployment topology v1, accepted by the project owner):
+  frontend on Cloudflare Pages at satis-manager.com, backend on the game-server PC
+  published through a Cloudflare Tunnel at api.satis-manager.com, no port forwarding.
+  The tunnel stays off until PR 2b, 3 and 5 are merged, the FRM token is rotated and a
+  security review is done.

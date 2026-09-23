@@ -3,7 +3,7 @@
 One file per decision (ADR), numbered in order. Each has a status, the context that
 forced it, the decision, its consequences, and a "Revisit when" trigger that says what
 would make it worth reopening. Decided 2026-09-22 by the architecture session under
-the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011, 0012). Change
+the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0013). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 
 | ADR | Decision |
@@ -20,6 +20,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0010](./0010-request-through.md) | Request-through; no cache or poller yet |
 | [0011](./0011-login-required.md) | Login required on every `/api` route except health (single operator now) |
 | [0012](./0012-auto-pause-toggle.md) | Auto-pause off by default, with a user toggle; paused state is visible |
+| [0013](./0013-deployment-topology.md) | Deployment v1: frontend on Cloudflare Pages, backend on the game-server PC behind a Cloudflare Tunnel |
 
 ## Terms used in the ADRs
 
