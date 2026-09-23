@@ -41,6 +41,11 @@ which may make the frontend re-run server discovery). `payload_too_large` and
 `unsupported_media_type` come from the JSON body parser; mutations accept
 application/json only (ADR-0011). Additive, so no version change (ADR-0007).
 
+A wrong HTTP method on a known path (e.g. GET /api/auth/login) also answers 404
+`not_found`, the same as any unmatched method and path; there is no 405 (decided
+2026-09-23). With no external consumers (ADR-0007), one "not found" answer leaks less
+about which routes exist. Revisit only if a public API consumer appears.
+
 ## Revisit when
 
 Public API consumers exist (then consider RFC 9457 problem+json).

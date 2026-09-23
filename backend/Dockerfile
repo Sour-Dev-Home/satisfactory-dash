@@ -14,5 +14,9 @@ FROM node:22-slim AS runtime
 WORKDIR /app
 COPY --from=build /repo/backend/dist/server.cjs ./server.cjs
 ENV NODE_ENV=production
+# Inside a container, loopback is private to the container, so listen on all of its
+# interfaces; what's reachable from outside is decided by the port mapping. Outside a
+# container the backend defaults to 127.0.0.1 (ADR-0013).
+ENV HOST=0.0.0.0
 EXPOSE 3001
 CMD ["node", "server.cjs"]

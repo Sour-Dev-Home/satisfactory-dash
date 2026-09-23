@@ -17,7 +17,11 @@ import { LoginRateLimiter } from "./services/auth/loginRateLimiter.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createSessionGuard } from "./routes/session.js";
 
-const port = process.env.PORT ?? 3001;
+const port = Number(process.env.PORT || 3001);
+// ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
+// so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
+// container) needs an explicit HOST (go-live blocker, issue #19).
+const host = process.env.HOST?.trim() || "127.0.0.1";
 const logger = createLogger();
 
 /** A ConfigError means the backend must not start (e.g. a public game-server host, or
@@ -71,7 +75,7 @@ export const app = createApp({
 });
 
 if (process.env.NODE_ENV !== "test") {
-  app.listen(port, () => {
-    logger.info({ port }, "backend listening");
+  app.listen(port, host, () => {
+    logger.info({ host, port }, `backend listening on ${host}:${port}`);
   });
 }

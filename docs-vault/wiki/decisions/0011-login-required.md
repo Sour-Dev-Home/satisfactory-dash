@@ -30,6 +30,13 @@ logout, sent with Content-Length: 0) passes.
 
 ## Consequences
 
+Sessions are stateless, signed 12-hour tokens: logout clears the cookie, but a stolen
+token stays valid until it expires, and the only revocation is rotating SESSION_SECRET
+(which signs everyone out). Accepted for a single operator; multi-user accounts
+(ADR-0009) trigger server-side sessions. Behind the Cloudflare Tunnel (ADR-0013), the
+client IP for login rate limiting comes from CF-Connecting-IP, trusted only when the
+TCP peer is loopback, and the backend listens on 127.0.0.1 by default.
+
 The frontend needs a login screen and treats 401 as "go to login". No 403 yet:
 with one operator, authenticated = allowed.
 
