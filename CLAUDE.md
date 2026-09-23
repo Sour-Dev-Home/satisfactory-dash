@@ -136,6 +136,18 @@ so it reviews with genuinely no memory of why the code was built a certain way.
   same "fresh eyes" principle as `test-hunter` as a guaranteed pipeline step instead of
   something that has to be manually remembered to invoke.
 
+## Drafting PR descriptions and log entries with the local model
+
+Before writing a PR description or a `docs-vault/wiki/log.md` entry for a non-trivial PR,
+save the diff to a temp file (e.g. `git diff origin/main...HEAD > "$TMPDIR/pr.diff"`) and
+call the `local-worker` MCP tool `local_llm` on it, e.g. "Summarize what behavior changed
+per source file, list new exports, and note any config or contract changes." Use the
+result as a DRAFT only: check every claim against the diff and fix anything wrong. Never
+paste its output unreviewed. Don't use it for security or correctness judgments. If the
+tool isn't available (the session started before it was installed, or Ollama is down),
+write the description normally. This saves Claude tokens on large diffs; it isn't a
+quality gate.
+
 ## Commands
 
 Run from the project root (`satisfactory-dash/`):
