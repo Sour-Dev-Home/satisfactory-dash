@@ -52,7 +52,34 @@ const overloadedGrid = {
   status: "at_risk",
 } satisfies PowerCircuit;
 
-export const powerOk = { ...meta, data: { circuits: [mainGrid], hasOutage: false } } satisfies PowerResponse;
+/** SYNTHETIC (no capture has a discharging battery): 100 MWh at 60 % discharging 80 MW,
+ *  which stays ok because the charge is at or above the 20 % at_risk threshold. */
+const dischargingGrid = {
+  ...mainGrid,
+  productionMW: 2800,
+  consumptionMW: 2880,
+  batteryCapacityMWh: 100,
+  batteryPercent: 60,
+  batteryDifferentialMW: -80,
+  status: "ok",
+} satisfies PowerCircuit;
+
+/** SYNTHETIC: draining and below 20 % (12 %), so at_risk, even though consumption is
+ *  within capacity. */
+const drainingLowGrid = {
+  ...mainGrid,
+  circuitGroupId: 2,
+  productionMW: 300,
+  consumptionMW: 380,
+  capacityMW: 400,
+  maxConsumptionMW: 400,
+  batteryCapacityMWh: 100,
+  batteryPercent: 12,
+  batteryDifferentialMW: -80,
+  status: "at_risk",
+} satisfies PowerCircuit;
+
+export const powerOk ={ ...meta, data: { circuits: [mainGrid], hasOutage: false } } satisfies PowerResponse;
 export const powerOutage = {
   ...meta,
   data: { circuits: [mainGrid, trippedGrid], hasOutage: true },
@@ -60,6 +87,10 @@ export const powerOutage = {
 export const powerCharging = {
   ...meta,
   data: { circuits: [chargingGrid], hasOutage: false },
+} satisfies PowerResponse;
+export const powerDischarging = {
+  ...meta,
+  data: { circuits: [dischargingGrid, drainingLowGrid], hasOutage: false },
 } satisfies PowerResponse;
 export const powerAtRisk = {
   ...meta,

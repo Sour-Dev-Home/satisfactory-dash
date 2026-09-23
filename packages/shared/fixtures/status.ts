@@ -33,6 +33,29 @@ export const statusPaused = {
   },
 } satisfies StatusResponse;
 
+/**
+ * SYNTHETIC (no capture): the server is up but no save is loaded (isGameRunning false, per
+ * dedicated-server-api.md:386, "waiting for the session to be created"). What
+ * QueryServerState returns for the other fields in that state is [NEEDS VERIFICATION]:
+ * the empty session name, zero duration and zero tick rate are placeholders, and
+ * tickHealth "healthy" is a guess. Update from a real capture once one exists.
+ */
+export const statusNoGame = {
+  serverId: "default",
+  observedAt: "2026-09-22T22:25:04.000Z",
+  stale: false,
+  data: {
+    tickHealth: "healthy",
+    isGameRunning: false,
+    gamePaused: false,
+    sessionName: "",
+    connectedPlayers: 0,
+    playerLimit: 4,
+    tickRate: 0,
+    totalGameDurationSeconds: 0,
+  },
+} satisfies StatusResponse;
+
 /** SYNTHETIC: tick rate below 10/s. */
 export const statusSlow = {
   ...statusRunning,
