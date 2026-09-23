@@ -67,7 +67,14 @@ async function request<T>(method: string, path: string, schema: Schema<T>, body?
     throw new BackendUnreachableError(path, undefined, { cause });
   }
 
-  const json = await readJson(res);
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (cause) {
+    // The connection dropped mid-body: nothing usable arrived, same as no response.
+    throw new BackendUnreachableError(path, res.status, { cause });
+  }
+  const json = parseJson(text);
 
   if (res.ok) {
     if (json === NOT_JSON) throw new ContractDriftError(path, res.status, ["body is not JSON"]);
@@ -85,9 +92,9 @@ async function request<T>(method: string, path: string, schema: Schema<T>, body?
 
 const NOT_JSON = Symbol("not JSON");
 
-async function readJson(res: Response): Promise<unknown> {
+function parseJson(text: string): unknown {
   try {
-    return JSON.parse(await res.text());
+    return JSON.parse(text);
   } catch {
     return NOT_JSON;
   }
