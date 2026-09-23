@@ -1,7 +1,12 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { StatusResponse } from "@satisfactory-dash/shared";
-import { statusPaused, statusRunning, statusSlow, statusStale } from "@satisfactory-dash/shared/fixtures";
+import {
+  statusNoGame,
+  statusPaused,
+  statusRunning,
+  statusSlow,
+  statusStale,
+} from "@satisfactory-dash/shared/fixtures";
 import { StatusPanel } from "./StatusPanel";
 
 /** The <dd> that follows the <dt> with this label. */
@@ -42,11 +47,7 @@ describe("StatusPanel", () => {
   });
 
   it("hides save-specific values when no save is loaded", () => {
-    const noGame = {
-      ...statusRunning,
-      data: { ...statusRunning.data, isGameRunning: false, sessionName: "" },
-    } satisfies StatusResponse;
-    render(<StatusPanel snapshot={noGame} />);
+    render(<StatusPanel snapshot={statusNoGame} />);
     expect(valueOf("Save")).toHaveTextContent("No save loaded");
     expect(screen.queryByText("Total play time on this save")).not.toBeInTheDocument();
   });

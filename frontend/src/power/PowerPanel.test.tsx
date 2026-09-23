@@ -4,6 +4,7 @@ import type { PowerResponse } from "@satisfactory-dash/shared";
 import {
   powerAtRisk,
   powerCharging,
+  powerDischarging,
   powerEmpty,
   powerOk,
   powerOutage,
@@ -82,13 +83,11 @@ describe("PowerPanel", () => {
   });
 
   it("shows a discharging battery with a positive MW figure", () => {
-    const base = powerCharging.data.circuits[0];
-    const draining = {
-      ...powerCharging,
-      data: { ...powerCharging.data, circuits: [{ ...base, batteryDifferentialMW: -42.5 }] },
-    } satisfies PowerResponse;
-    render(<PowerPanel snapshot={draining} />);
-    expect(valueIn(circuit(0), "Battery flow")).toHaveTextContent("Discharging 42.5 MW");
+    render(<PowerPanel snapshot={powerDischarging} />);
+    expect(valueIn(circuit(0), "Battery flow")).toHaveTextContent("Discharging 80 MW");
+    // Draining below 20 % is at_risk per the backend, though consumption is within capacity.
+    expect(within(circuit(2)).getByText("At risk")).toBeInTheDocument();
+    expect(valueIn(circuit(2), "Battery charge")).toHaveTextContent("12%");
   });
 
   it("says so when there are no circuits", () => {

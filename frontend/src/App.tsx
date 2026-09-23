@@ -3,6 +3,7 @@ import { FactoryView } from "./factory/FactoryView";
 import { PowerView } from "./power/PowerView";
 import { StatusBanners } from "./components/StatusBanners";
 import { ServerGate } from "./servers/ServerGate";
+import { AutoPauseView } from "./settings/AutoPauseView";
 import { StatusView } from "./status/StatusView";
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <StatusView />
           <PowerView />
           <FactoryView />
+          <AutoPauseView />
         </ServerGate>
       </AuthGate>
     </main>

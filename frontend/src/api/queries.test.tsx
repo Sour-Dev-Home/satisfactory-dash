@@ -18,7 +18,7 @@ describe("query options", () => {
     expect(queries.status("default").refetchInterval).toBe(10_000);
     expect(queries.power("default").refetchInterval).toBe(10_000);
     expect(queries.factory("default").refetchInterval).toBe(30_000);
-    expect(POLL_MS).toEqual({ status: 10_000, power: 10_000, factory: 30_000 });
+    expect(POLL_MS).toEqual({ status: 10_000, power: 10_000, factory: 30_000, settingsPending: 10_000 });
   });
 
   it("keys server-scoped queries by server id", () => {

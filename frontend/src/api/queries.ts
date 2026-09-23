@@ -3,8 +3,8 @@ import { endpoints, type SessionResponse } from "@satisfactory-dash/shared";
 import { apiGet } from "./client";
 import { BackendUnreachableError, classifyError } from "./errors";
 
-/** ADR-0005 poll intervals. */
-export const POLL_MS = { status: 10_000, power: 10_000, factory: 30_000 } as const;
+/** ADR-0005 poll intervals. Settings poll only while a change is pending. */
+export const POLL_MS = { status: 10_000, power: 10_000, factory: 30_000, settingsPending: 10_000 } as const;
 
 /**
  * Retry at most once, and only when the backend itself couldn't be reached. An ApiError
@@ -83,5 +83,7 @@ export const queries = {
     queryOptions({
       queryKey: ["servers", serverId, "settings"],
       queryFn: () => apiGet(endpoints.settings.get, serverId),
+      // ADR-0012: the setting rarely changes; re-read it only until a pending change applies.
+      refetchInterval: (query) => (query.state.data?.data.pending ? POLL_MS.settingsPending : false),
     }),
 };
