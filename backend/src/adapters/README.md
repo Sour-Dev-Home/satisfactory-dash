@@ -31,7 +31,9 @@ which specific game server — the data came from. That indirection is what make
   `services/` should actually depend on. Maps raw → domain.
 - `config.ts` — env-var config (host/ports/tokens); see `backend/.env.example`. The
   vanilla API's TLS certificate is verified by default, except for loopback/private
-  hosts, where the game server's self-signed cert is expected.
+  hosts, where the game server's self-signed cert is expected. The backend refuses to
+  start (`ConfigError`) if the host isn't loopback/private at all: FRM is plain HTTP,
+  so its token may never cross a public network (ADR-0013).
 - `__fixtures__/rawFixtures.ts` — fixture data for tests, sourced from
   `docs-vault/raw-sources/captured-responses/` (real captures) where available,
   otherwise the docs' own example responses.

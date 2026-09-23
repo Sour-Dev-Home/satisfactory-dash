@@ -34,6 +34,14 @@ export interface SatisfactoryServerConfig {
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
+/** A configuration the backend refuses to start with. server.ts reports it and exits. */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
+
 function isPrivateIPv4(address: string): boolean {
   const [a, b] = address.split(".").map(Number);
   return (
@@ -77,7 +85,7 @@ export function isLoopbackOrPrivateHost(host: string): boolean {
  * always wins; any other value, including a typo, falls back to the host-based default
  * rather than silently disabling verification.
  */
-function allowSelfSignedCert(env: NodeJS.ProcessEnv, host: string): boolean {
+export function allowSelfSignedCert(env: NodeJS.ProcessEnv, host: string): boolean {
   const setting = env.SATISFACTORY_API_REJECT_UNAUTHORIZED?.trim().toLowerCase();
   if (setting === "true") {
     return false;
@@ -95,6 +103,19 @@ export function loadSatisfactoryServerConfigFromEnv(
   // The host is trimmed once so the TLS decision and the connection see the same
   // value (found by PR #17's fresh-eyes review).
   const host = env.SATISFACTORY_SERVER_HOST?.trim() || "localhost";
+  // FRM's web server is plain HTTP with no TLS option (frmApiClient.ts builds http://
+  // URLs; docs-vault/raw-sources/frm-config.md has no TLS setting), so its auth token
+  // and data may only travel on a loopback/private path. No opt-out: ADR-0013 runs the
+  // backend on the game-server machine, and FRM is never exposed directly. The host is
+  // shared with the vanilla API, so this also rules out a public vanilla host.
+  if (!isLoopbackOrPrivateHost(host)) {
+    throw new ConfigError(
+      `SATISFACTORY_SERVER_HOST "${host}" is not a loopback or private address. The FRM web server ` +
+        "speaks plain HTTP only, so its auth token and data must not cross a public network. Run " +
+        "the backend on the game-server machine or its private network, and use an IP address " +
+        "(a hostname other than localhost can't be verified as private).",
+    );
+  }
   return {
     host,
     apiPort: Number(env.SATISFACTORY_API_PORT || 7777),
