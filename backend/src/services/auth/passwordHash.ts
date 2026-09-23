@@ -1,4 +1,4 @@
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt as scryptCallback, scryptSync, timingSafeEqual } from "node:crypto";
 import type { ScryptOptions } from "node:crypto";
 
 /**
@@ -46,13 +46,21 @@ export function parsePasswordHash(encoded: string): ParsedPasswordHash | null {
   // fail every login with a 500 (both found by PR #24's fresh-eyes review).
   const powerOfTwo = Number.isSafeInteger(N) && N >= 2 ** 14 && Number.isInteger(Math.log2(N));
   const sane = Number.isInteger(r) && r >= 1 && r <= 32 && Number.isInteger(p) && p >= 1 && p <= 16;
-  if (!powerOfTwo || !sane || 128 * N * r >= MAX_MEMORY) {
+  // OpenSSL also requires N < 2^(16*r) (found by the security review of PR #24: r=1
+  // with N >= 2^16 parsed fine, then every login failed with a 500).
+  if (!powerOfTwo || !sane || 128 * N * r >= MAX_MEMORY || N >= 2 ** (16 * r)) {
     return null;
   }
   if (salt.length < SALT_BYTES || hash.length < 32) {
     return null;
   }
   return { N, r, p, salt, hash };
+}
+
+/** Runs scrypt once with a parsed hash's parameters, so ANY constraint OpenSSL enforces
+ *  fails at startup instead of on every login. About 70 ms with the default params. */
+export function assertScryptParamsUsable(stored: ParsedPasswordHash): void {
+  scryptSync("startup-check", stored.salt, 16, { N: stored.N, r: stored.r, p: stored.p, maxmem: MAX_MEMORY });
 }
 
 export async function hashPassword(password: string): Promise<string> {

@@ -138,3 +138,6 @@ the bottom.
 - 2026-09-23 — ADR-0011 clarified (issue #19): which routes need no session, the
   session check never returns 401, and the JSON-only rule applies only to requests
   with a body.
+- 2026-09-23 — ADR-0003: a wrong HTTP method answers 404 `not_found`, never 405.
+  ADR-0011: recorded the stateless-session trade-off, and that the login rate limit
+  trusts CF-Connecting-IP only from a loopback peer, with the backend on 127.0.0.1.
