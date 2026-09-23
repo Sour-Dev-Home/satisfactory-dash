@@ -243,6 +243,17 @@ describe("SatisfactoryServerAdapter", () => {
       expect(building.consumption).toEqual([]);
     });
 
+    // Found by the PR's fresh-eyes review: the IsConfigured-absent fallback kept
+    // "Unassigned" as a real recipe, which also let a leftover full slot on an
+    // unconfigured machine read as backed up.
+    it('treats Recipe "Unassigned" as unconfigured even when IsConfigured is absent', async () => {
+      const { IsConfigured: _omitted, ...withoutFlag } = capturedUnassignedAssembler;
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([withoutFlag]) } });
+      const [building] = await adapter.getFactoryBuildings();
+      expect(building.recipe).toBeNull();
+      expect(building.production).toEqual([]);
+    });
+
     it("still passes a configured machine's recipe and production through", async () => {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([capturedFuelRefinery]) } });
       const [building] = await adapter.getFactoryBuildings();

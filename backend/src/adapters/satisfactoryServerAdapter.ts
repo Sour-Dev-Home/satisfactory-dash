@@ -135,9 +135,10 @@ export class SatisfactoryServerAdapter {
     return raw.map((building) => {
       // B2 (2026-09-22 captures): FRM reports an unconfigured machine as Recipe
       // "Unassigned" plus a placeholder "Unassigned" production/ingredient entry, not
-      // as a missing recipe. IsConfigured is the explicit signal. When it's absent
-      // (not in frm-getFactory.md's field table), fall back to the old behavior.
-      const configured = building.IsConfigured !== false;
+      // as a missing recipe. IsConfigured (frm-getFactory.md:57) is the explicit
+      // signal; "Unassigned" is checked too so the mapping still holds if a response
+      // ever omits the flag (the PR's fresh-eyes review found that gap).
+      const configured = building.IsConfigured !== false && building.Recipe !== "Unassigned";
       return {
         id: building.ID,
         name: building.Name,
@@ -150,7 +151,7 @@ export class SatisfactoryServerAdapter {
         outputInventory: mapInventory(building.OutputInventory),
         // B3: the group id, which is what getPower is keyed by. See domain.ts.
         circuitGroupId: building.PowerInfo?.CircuitGroupID ?? -1,
-      powerConsumed: building.PowerInfo?.PowerConsumed ?? 0,
+        powerConsumed: building.PowerInfo?.PowerConsumed ?? 0,
         maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
       };
     });
