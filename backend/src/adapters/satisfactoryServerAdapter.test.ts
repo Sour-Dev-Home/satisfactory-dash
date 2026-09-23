@@ -10,6 +10,12 @@ import {
   playerFixture,
   sessionInfoFixture,
 } from "./__fixtures__/rawFixtures.js";
+import {
+  capturedBackedUpAssembler,
+  capturedFuelRefinery,
+  capturedTrippedGridRefinery,
+  capturedUnassignedAssembler,
+} from "./__fixtures__/capturedFixtures.js";
 
 function buildAdapter(overrides: { vanilla?: Partial<VanillaApiClientLike>; frm?: Partial<FrmApiClientLike> } = {}) {
   const vanillaApi: VanillaApiClientLike = {
@@ -68,7 +74,7 @@ describe("SatisfactoryServerAdapter", () => {
           { name: "Limestone", className: "Desc_Stone_C", currentPerMinute: 0, maxPerMinute: 4.949999809265137, percent: 0 },
         ],
         outputInventory: [{ name: "Concrete", className: "Desc_Cement_C", amount: 100, maxAmount: 100 }],
-        circuitId: 1,
+        circuitGroupId: 0,
         powerConsumed: 0.10000000149011612,
         maxPowerConsumed: 0.21619677543640137,
       },
@@ -112,7 +118,7 @@ describe("SatisfactoryServerAdapter", () => {
         production: [],
         consumption: [],
         outputInventory: [],
-        circuitId: -1,
+        circuitGroupId: -1,
         powerConsumed: 0,
         maxPowerConsumed: 0,
       },
@@ -189,7 +195,7 @@ describe("SatisfactoryServerAdapter", () => {
         id: "Build_OilRefinery_C_2147345255",
         name: "Refinery",
         className: "Build_OilRefinery_C",
-        circuitId: -1,
+        circuitGroupId: -1,
         powerConsumed: 0,
         maxPowerConsumed: 0,
         fuseTriggered: false,
@@ -221,6 +227,54 @@ describe("SatisfactoryServerAdapter", () => {
       nightLength: 10,
       passedDays: 0,
       totalPlayDurationSeconds: 29,
+    });
+  });
+
+  // Regressions found by the 2026-09-22 live captures (docs-vault/wiki/frm-api.md),
+  // run against real getFactory/getPowerUsage entries rather than doc-shaped ones.
+  describe("live-capture regressions", () => {
+    // B2: FRM reports an unconfigured machine as Recipe "Unassigned" with a placeholder
+    // production entry named "Unassigned", not as a missing recipe.
+    it("maps an unconfigured machine to recipe null with no production or consumption", async () => {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([capturedUnassignedAssembler]) } });
+      const [building] = await adapter.getFactoryBuildings();
+      expect(building.recipe).toBeNull();
+      expect(building.production).toEqual([]);
+      expect(building.consumption).toEqual([]);
+    });
+
+    it("still passes a configured machine's recipe and production through", async () => {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([capturedFuelRefinery]) } });
+      const [building] = await adapter.getFactoryBuildings();
+      expect(building.recipe).toBe("Fuel");
+      expect(building.production.map((p) => [p.name, p.maxPerMinute])).toEqual([
+        ["Fuel", 40],
+        ["Polymer Resin", 30],
+      ]);
+    });
+
+    // B3: getPower is keyed by CircuitGroupID; a building's CircuitID differs from it
+    // when a power switch is involved (this building: group 1, circuit 2).
+    it("keys a building to its circuit GROUP, the id getPower reports", async () => {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([capturedTrippedGridRefinery]) } });
+      const [building] = await adapter.getFactoryBuildings();
+      expect(building.circuitGroupId).toBe(1);
+    });
+
+    it("keys getPowerUsage entries to the circuit GROUP too", async () => {
+      const usage = { ...powerUsageBuildingFixture, PowerInfo: capturedTrippedGridRefinery.PowerInfo! };
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([usage]) } });
+      const [entry] = await adapter.getPowerUsage();
+      expect(entry.circuitGroupId).toBe(1);
+    });
+
+    it("maps a real backed-up machine's full output slot through unchanged", async () => {
+      const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([capturedBackedUpAssembler]) } });
+      const [building] = await adapter.getFactoryBuildings();
+      expect(building.isProducing).toBe(false);
+      expect(building.outputInventory).toEqual([
+        { name: "Reinforced Iron Plate", className: "Desc_IronPlateReinforced_C", amount: 100, maxAmount: 100 },
+      ]);
     });
   });
 });

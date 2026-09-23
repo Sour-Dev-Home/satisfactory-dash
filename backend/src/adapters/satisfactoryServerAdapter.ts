@@ -132,20 +132,28 @@ export class SatisfactoryServerAdapter {
 
   async getFactoryBuildings(): Promise<FactoryBuilding[]> {
     const raw = await this.getFrmArray<RawFrmFactoryBuilding>("getFactory");
-    return raw.map((building) => ({
-      id: building.ID,
-      name: building.Name,
-      className: building.ClassName,
-      recipe: building.Recipe ?? null,
-      isProducing: building.IsProducing,
-      isPaused: building.IsPaused,
-      production: mapProduction(building.production),
-      consumption: mapConsumption(building.ingredients),
-      outputInventory: mapInventory(building.OutputInventory),
-      circuitId: building.PowerInfo?.CircuitID ?? -1,
+    return raw.map((building) => {
+      // B2 (2026-09-22 captures): FRM reports an unconfigured machine as Recipe
+      // "Unassigned" plus a placeholder "Unassigned" production/ingredient entry, not
+      // as a missing recipe. IsConfigured is the explicit signal. When it's absent
+      // (not in frm-getFactory.md's field table), fall back to the old behavior.
+      const configured = building.IsConfigured !== false;
+      return {
+        id: building.ID,
+        name: building.Name,
+        className: building.ClassName,
+        recipe: configured ? (building.Recipe ?? null) : null,
+        isProducing: building.IsProducing,
+        isPaused: building.IsPaused,
+        production: configured ? mapProduction(building.production) : [],
+        consumption: configured ? mapConsumption(building.ingredients) : [],
+        outputInventory: mapInventory(building.OutputInventory),
+        // B3: the group id, which is what getPower is keyed by. See domain.ts.
+        circuitGroupId: building.PowerInfo?.CircuitGroupID ?? -1,
       powerConsumed: building.PowerInfo?.PowerConsumed ?? 0,
-      maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
-    }));
+        maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
+      };
+    });
   }
 
   async getPowerCircuits(): Promise<PowerCircuit[]> {
@@ -196,7 +204,7 @@ export class SatisfactoryServerAdapter {
       id: building.ID,
       name: building.Name,
       className: building.ClassName,
-      circuitId: building.PowerInfo.CircuitID,
+      circuitGroupId: building.PowerInfo.CircuitGroupID,
       powerConsumed: building.PowerInfo.PowerConsumed,
       maxPowerConsumed: building.PowerInfo.MaxPowerConsumed,
       fuseTriggered: building.PowerInfo.FuseTriggered ?? false,

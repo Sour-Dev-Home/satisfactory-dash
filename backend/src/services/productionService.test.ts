@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import { ProductionService, isBackedUp } from "./productionService.js";
 import type { ProductionAdapterLike } from "./productionService.js";
 import type { FactoryBuilding } from "../adapters/domain.js";
+import { SatisfactoryServerAdapter } from "../adapters/satisfactoryServerAdapter.js";
+import {
+  capturedBackedUpAssembler,
+  capturedFuelRefinery,
+  capturedUnassignedAssembler,
+} from "../adapters/__fixtures__/capturedFixtures.js";
 
 function building(overrides: Partial<FactoryBuilding> = {}): FactoryBuilding {
   return {
@@ -14,7 +20,7 @@ function building(overrides: Partial<FactoryBuilding> = {}): FactoryBuilding {
     production: [],
     consumption: [],
     outputInventory: [],
-    circuitId: 1,
+    circuitGroupId: 1,
     powerConsumed: 4,
     maxPowerConsumed: 4,
     ...overrides,
@@ -22,8 +28,21 @@ function building(overrides: Partial<FactoryBuilding> = {}): FactoryBuilding {
 }
 
 describe("isBackedUp", () => {
-  it("is false when not producing, even with a full output slot", () => {
+  // B1, found by the 2026-09-22 live captures: a machine whose output is full STOPS
+  // producing (71 of 71 full-output machines read IsProducing false), so requiring
+  // isProducing meant this never fired. The old test here asserted the bug.
+  it("is true when not producing because the output slot is full", () => {
     const b = building({ isProducing: false, outputInventory: [{ name: "x", className: "x", amount: 100, maxAmount: 100 }] });
+    expect(isBackedUp(b)).toBe(true);
+  });
+
+  it("is false for a paused machine, even with a full output slot", () => {
+    const b = building({ isPaused: true, outputInventory: [{ name: "x", className: "x", amount: 100, maxAmount: 100 }] });
+    expect(isBackedUp(b)).toBe(false);
+  });
+
+  it("is false for an unconfigured machine (no recipe), even with a full output slot", () => {
+    const b = building({ recipe: null, outputInventory: [{ name: "x", className: "x", amount: 100, maxAmount: 100 }] });
     expect(isBackedUp(b)).toBe(false);
   });
 
@@ -51,19 +70,35 @@ describe("isBackedUp", () => {
     expect(isBackedUp(b)).toBe(true);
   });
 
-  // docs-vault/raw-sources/frm-getFactory.md describes OutputInventory's MaxAmount as
-  // "Stack size of the item" — for a real produced item that's always > 0, so a
-  // {amount: 0, maxAmount: 0} slot isn't expected to occur per the documented shape.
-  // FLAGGED, NOT CONFIRMED: if the FRM's live response ever includes such a slot (e.g.
-  // an unconfigured/empty output slot represented as a zeroed entry rather than being
-  // omitted — this isn't verified against a live populated save per
-  // docs-vault/wiki/frm-api.md's "doc-sourced-but-not-live-verified" caveat), `amount
-  // >= maxAmount` (0 >= 0) reads as backed-up when it should mean "no item here at
-  // all." This test documents the current (possibly undesired) behavior so a future
-  // live-verification pass notices if it changes.
-  it("documents current behavior: a zeroed {amount:0, maxAmount:0} slot reads as backed up", () => {
+  // This used to be flagged as unverified behavior (0 >= 0 read as backed up). The
+  // 2026-09-22 captures settled it: FRM omits empty slots entirely (557 slots, none
+  // with Amount 0), so a zero-capacity slot never means "full". Guarded explicitly.
+  it("is false for a zeroed {amount:0, maxAmount:0} slot", () => {
     const b = building({ outputInventory: [{ name: "x", className: "x", amount: 0, maxAmount: 0 }] });
-    expect(isBackedUp(b)).toBe(true);
+    expect(isBackedUp(b)).toBe(false);
+  });
+});
+
+// End to end from real captured getFactory entries through the real adapter mapping.
+describe("isBackedUp on live-captured buildings", () => {
+  async function overviewOf(...raw: unknown[]) {
+    const adapter = new SatisfactoryServerAdapter(
+      { call: async () => undefined as never },
+      { get: async () => raw as never },
+    );
+    return new ProductionService(adapter).getFactoryOverview();
+  }
+
+  it("flags the captured backed-up assembler (output 100/100, IsProducing false)", async () => {
+    const overview = await overviewOf(capturedBackedUpAssembler);
+    expect(overview.buildings[0].isBackedUp).toBe(true);
+    expect(overview.backedUpCount).toBe(1);
+  });
+
+  it("doesn't flag a producing refinery whose fluid slot has room, or an unconfigured machine", async () => {
+    const overview = await overviewOf(capturedFuelRefinery, capturedUnassignedAssembler);
+    expect(overview.buildings.map((b) => b.isBackedUp)).toEqual([false, false]);
+    expect(overview.buildings[1]).toMatchObject({ recipe: null, production: [] });
   });
 });
 

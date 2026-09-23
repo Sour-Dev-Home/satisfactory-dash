@@ -7,12 +7,22 @@ export interface ProductionAdapterLike {
 
 /**
  * A building is treated as backed up — the closest available overflow signal, see
- * docs-vault/wiki/frm-api.md — when it's actively producing but at least one output
- * slot is already sitting at capacity, i.e. downstream (the belt/pipe/container it
- * feeds) can't keep up. Deterministic threshold check, not an LLM call (ground rule 3).
+ * docs-vault/wiki/frm-api.md — when at least one output slot is sitting at capacity,
+ * i.e. downstream (the belt/pipe/container it feeds) can't keep up. Deterministic
+ * threshold check, not an LLM call (ground rule 3).
+ *
+ * Deliberately NOT gated on isProducing (B1, 2026-09-22 captures): a machine whose
+ * output is full stops producing, so all 71 backed-up machines on a real save read
+ * IsProducing false and the old rule matched none of them. Paused and unconfigured
+ * machines are excluded instead, since a full slot there doesn't mean a blocked belt.
+ * maxAmount > 0 guards a zero-capacity slot; FRM omits empty slots, so one would
+ * never mean "full".
  */
 export function isBackedUp(building: FactoryBuilding): boolean {
-  return building.isProducing && building.outputInventory.some((slot) => slot.amount >= slot.maxAmount);
+  if (building.isPaused || building.recipe === null) {
+    return false;
+  }
+  return building.outputInventory.some((slot) => slot.maxAmount > 0 && slot.amount >= slot.maxAmount);
 }
 
 export class ProductionService {

@@ -232,7 +232,7 @@ describe("PowerService", () => {
   // right fallback since 0 could collide with a real circuit's actual id -- FRM
   // documents -1 as "not connected" for this exact field
   // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
-  // FactoryBuilding.circuitId.
+  // FactoryBuilding.circuitGroupId.
   it("sanitizes a NaN circuitGroupId to -1 (FRM's own not-connected sentinel), not 0", async () => {
     const bad = circuit({ circuitGroupId: Number.NaN });
     const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };

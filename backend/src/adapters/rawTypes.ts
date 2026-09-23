@@ -81,7 +81,11 @@ export interface RawFrmFactoryBuilding {
   ID: string;
   Name: string;
   ClassName: string;
+  /** "Unassigned" (not absent) when no recipe is set; see IsConfigured. */
   Recipe?: string;
+  /** Not in frm-getFactory.md's field table, but present on every building in the
+   *  2026-09-22 live captures; false exactly when Recipe is "Unassigned". */
+  IsConfigured?: boolean;
   production?: RawFrmProductionItem[];
   ingredients?: RawFrmIngredientItem[];
   OutputInventory?: RawFrmInventorySlot[];
