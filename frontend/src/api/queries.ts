@@ -27,7 +27,20 @@ const signedOut: SessionResponse = { authenticated: false };
  */
 export function signOutLocally(client: QueryClient): void {
   client.setQueryData(SESSION_KEY, signedOut);
+  dropSessionData(client);
+}
+
+function dropSessionData(client: QueryClient): void {
   client.removeQueries({ predicate: (query) => !keyEquals(query.queryKey, SESSION_KEY) });
+}
+
+/**
+ * True once the cached session says signed out (unknown is not signed out). A write that
+ * finishes after sign-out (e.g. a slow PUT) checks this so it doesn't put the old session's
+ * data back into the cache.
+ */
+export function isSignedOut(client: QueryClient): boolean {
+  return client.getQueryData<SessionResponse>(SESSION_KEY)?.authenticated === false;
 }
 
 function keyEquals(key: QueryKey | undefined, expected: QueryKey): boolean {
@@ -41,7 +54,17 @@ export function createQueryClient(): QueryClient {
     if (classifyError(error) === "unauthorized") signOutLocally(client);
   };
   const client = new QueryClient({
-    queryCache: new QueryCache({ onError: onUnauthorized }),
+    queryCache: new QueryCache({
+      onError: onUnauthorized,
+      // A session check can also end the session without any 401 (e.g. a focus refetch after
+      // the cookie expired). Drop the old session's data then too. setQueryData doesn't pass
+      // through here, so signOutLocally can't recurse.
+      onSuccess: (data, query) => {
+        if (keyEquals(query.queryKey, SESSION_KEY) && (data as SessionResponse).authenticated === false) {
+          dropSessionData(client);
+        }
+      },
+    }),
     mutationCache: new MutationCache({
       onError: (error, _variables, _context, mutation) => {
         if (!keyEquals(mutation.options.mutationKey, LOGIN_MUTATION_KEY)) onUnauthorized(error);

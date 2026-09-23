@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { endpoints, type LoginRequest } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
@@ -10,16 +10,29 @@ export function LoginForm() {
   const client = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // The credentials go to mutationFn through this ref, not as mutation variables: TanStack
+  // keeps a mutation's variables in its cache for minutes, and the password shouldn't live
+  // there. The ref is cleared as soon as the request is built.
+  const credentials = useRef<LoginRequest | null>(null);
   const login = useMutation({
     mutationKey: LOGIN_MUTATION_KEY,
-    mutationFn: (body: LoginRequest) => apiSend(endpoints.auth.login, body),
+    mutationFn: () => {
+      const body = credentials.current;
+      credentials.current = null;
+      if (!body) throw new Error("login submitted without credentials");
+      return apiSend(endpoints.auth.login, body);
+    },
     onSuccess: (session) => client.setQueryData(SESSION_KEY, session),
     onError: () => setPassword(""),
   });
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    login.mutate({ username, password });
+    // login.isPending only updates on the next render, so a fast double Enter would send two
+    // POSTs (and count twice against the rate limit). isMutating updates synchronously.
+    if (client.isMutating({ mutationKey: LOGIN_MUTATION_KEY }) > 0) return;
+    credentials.current = { username, password };
+    login.mutate();
   }
 
   return (

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { classifyError } from "../api/errors";
-import { queries } from "../api/queries";
+import { isSignedOut, queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useSelectedServer } from "../servers/ServerContext";
 import { AutoPausePanel } from "./AutoPausePanel";
@@ -27,6 +27,8 @@ export function AutoPauseView() {
       // Same for a read that started while the PUT was in flight (focus refetch, pending poll):
       // the server may have answered it before applying the change.
       await client.cancelQueries({ queryKey: settingsQuery.queryKey });
+      // Signed out while the PUT was in flight: don't put this session's data back in the cache.
+      if (isSignedOut(client)) return;
       client.setQueryData(settingsQuery.queryKey, snapshot);
       // DSAutoPause applies immediately (ADR-0012), so gamePaused may already have flipped;
       // refresh status now rather than letting the paused banner lag a full poll behind.
