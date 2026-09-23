@@ -2,9 +2,9 @@ import express from "express";
 import type { Express, RequestHandler, Router } from "express";
 import cors from "cors";
 import type { Logger } from "pino";
-import { assignRequestId, createRequestLogger } from "./routes/requestContext.js";
-import { createErrorHandler, RouteNotFoundError } from "./routes/errorResponse.js";
-import { createCrossSiteGuard, requireJsonBody } from "./routes/session.js";
+import { assignRequestId, createRequestLogger } from "./platform/requestContext.js";
+import { createErrorHandler, RouteNotFoundError } from "./platform/errorResponse.js";
+import { createCrossSiteGuard, requireJsonBody } from "./platform/httpPolicy.js";
 
 export interface AppOptions {
   logger: Logger;

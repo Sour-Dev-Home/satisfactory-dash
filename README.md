@@ -23,7 +23,7 @@ npm workspaces monorepo:
 - `frontend/` — Vite + React + TypeScript SPA
 - `backend/` — Express + TypeScript API server; this is where the Satisfactory
   dedicated-server / FicsitRemoteMonitoring adapter will live
-  (`backend/src/adapters/`)
+  (`backend/src/modules/gameserver/`)
 - `packages/shared/` — TypeScript types shared between frontend and backend (the API
   contract)
 - `docs-vault/raw-sources/` — immutable copies of Satisfactory API docs and sample

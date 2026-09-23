@@ -8,7 +8,7 @@
  */
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
-import { hashPassword } from "../src/services/auth/passwordHash.js";
+import { hashPassword } from "../src/modules/identity/passwordHash.js";
 
 async function readPassword(): Promise<string> {
   if (!process.stdin.isTTY) {

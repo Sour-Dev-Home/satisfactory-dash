@@ -42,7 +42,7 @@ outage detector.
 |---|---|---|
 | `HealthCheck` | `Health` ("healthy"/"slow"), `ServerCustomData` | No auth required. Good liveness probe. |
 | `QueryServerState` | `ActiveSessionName`, `NumConnectedPlayers`, `PlayerLimit`, `TechTier`, `GamePhase`, `IsGameRunning`, `TotalGameDuration`, `IsGamePaused`, `AverageTickRate`, `AutoLoadSessionName` | Server/session-level only — no per-building or per-factory data. |
-| `GetServerOptions` / `GetAdvancedGameSettings` | Server config maps | Config, not live production data. **`GetServerOptions` output includes FRM's `uWS.AuthenticationToken` in plaintext** (observed 2026-09-22), so a vanilla admin token effectively grants the FRM token. See the rule in `backend/src/adapters/README.md`. |
+| `GetServerOptions` / `GetAdvancedGameSettings` | Server config maps | Config, not live production data. **`GetServerOptions` output includes FRM's `uWS.AuthenticationToken` in plaintext** (observed 2026-09-22), so a vanilla admin token effectively grants the FRM token. See the rule in `backend/src/modules/gameserver/README.md`. |
 | `EnumerateSessions` | List of save files + headers | Admin only. |
 
 **Observation (directly from the function list, not inferred):** the vanilla HTTPS API
@@ -104,7 +104,7 @@ replaced with a placeholder).
 - **`GetServerOptions` exposes FRM's auth token.** Its output (deliberately not saved to
   `raw-sources/`) included FRM's `uWS.AuthenticationToken` in plaintext alongside the
   server options such as `FG.DSAutoPause`. Treat the response as a secret: see
-  `backend/src/adapters/README.md` for the allowlist-only rule.
+  `backend/src/modules/gameserver/README.md` for the allowlist-only rule.
 
 ## Full reference
 
