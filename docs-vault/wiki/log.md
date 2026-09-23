@@ -132,3 +132,6 @@ the bottom.
   published through a Cloudflare Tunnel at api.satis-manager.com, no port forwarding.
   The tunnel stays off until PR 2b, 3 and 5 are merged, the FRM token is rotated and a
   security review is done.
+- 2026-09-23 — Amended ADR-0013: the frontend is served by Cloudflare Workers static
+  assets instead of Pages (the account's Git deploy offers Workers only). Added
+  `frontend/wrangler.jsonc`; domain and cookie model unchanged.
