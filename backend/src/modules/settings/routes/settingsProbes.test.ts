@@ -183,9 +183,11 @@ describe("error paths", () => {
     expect(s.calls.map((c) => c.fn)).not.toContain("ApplyServerOptions");
   });
 
-  it("a failing VerifyAuthenticationToken (upstream 500) on PUT is an upstream error, not a write and not not_editable", async () => {
+  it("a failing token check (upstream 500) on PUT is an upstream error, not a write and not not_editable", async () => {
+    // The token check is the first GetServerOptions call in the PUT flow.
+    let optionCalls = 0;
     const s = server((fn) => {
-      if (fn === "VerifyAuthenticationToken") {
+      if (fn === "GetServerOptions" && ++optionCalls === 1) {
         throw new UpstreamError("boom", { status: 500 });
       }
     });
@@ -294,8 +296,9 @@ describe("token shapes for editable", () => {
   });
 
   it("a token whose claim is Administrator but which the server 403s is not editable and PUT is 409", async () => {
+    let optionCalls = 0;
     const s = server((fn) => {
-      if (fn === "VerifyAuthenticationToken") {
+      if (fn === "GetServerOptions" && ++optionCalls === 1) {
         throw new UpstreamError("forbidden", { status: 403 });
       }
     });

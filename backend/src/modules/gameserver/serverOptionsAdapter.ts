@@ -100,9 +100,10 @@ export interface AutoPauseState {
 export interface ServerOptionsPort {
   readAutoPause(): Promise<AutoPauseState>;
   applyAutoPause(enabled: boolean): Promise<void>;
-  /** ADR-0012 `editable`: a token is configured AND the server accepts it AND its
-   *  privilege level is Administrator or APIToken (an application token). A rejected
-   *  token is `false`, not an error; an unreachable server still throws an UpstreamError. */
+  /** ADR-0012 `editable`: a token is configured AND the server accepts it (an
+   *  authenticated call isn't answered 401/403) AND its privilege level is Administrator
+   *  or APIToken (an application token). A rejected token is `false`, not an error; an
+   *  unreachable server still throws an UpstreamError. */
   canEditOptions(): Promise<boolean>;
 }
 
@@ -140,8 +141,14 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
     if (level === undefined || !EDITING_PRIVILEGE_LEVELS.has(level)) {
       return false;
     }
+    // The server must accept the token. The documented way, VerifyAuthenticationToken
+    // (dedicated-server-api.md:313-316, "no parameters"), doesn't work on the live server:
+    // it answers `missing_params` (authenticationToken, privilegeLevel) and then 401 for
+    // even a working token (checked live 2026-09-23). An authenticated call does: a bad
+    // token gets 401 invalid_token and a working one is accepted, so the read we already
+    // make is the check, and its result is dropped here.
     try {
-      await scrubbed("VerifyAuthenticationToken", () => this.vanillaApi.call("VerifyAuthenticationToken"));
+      await scrubbed("GetServerOptions", () => this.vanillaApi.call("GetServerOptions"));
       return true;
     } catch (err) {
       if (err instanceof UpstreamError && (err.status === 401 || err.status === 403)) {
