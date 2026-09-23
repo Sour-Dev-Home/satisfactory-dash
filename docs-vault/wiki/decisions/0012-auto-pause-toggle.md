@@ -49,8 +49,24 @@ dashboard is a third-party application, and the docs tell those to use applicati
 (`server.GenerateAPIToken`; do not expire; `server.InvalidateAPITokens` revokes them;
 dedicated-server-api.md:279-284), whose privilege level is `APIToken` (:248-268).
 
-Still [NEEDS VERIFICATION], with a real application token on a server that enforces
-authentication: that GetServerOptions is readable with it, and that ApplyServerOptions
-accepts it. If the write is refused, `APIToken` leaves the editable set and that becomes the
-recorded fact. The privilege GetServerOptions requires is also unverified (the local server
-needed no token).
+Verified live 2026-09-23 with a real application token (`pl` = `APIToken`, from
+`server.GenerateAPIToken`) on the local server: GetServerOptions is readable with it, and
+ApplyServerOptions accepts it (204; the value changed and was restored). A wrong token is
+answered 401 `invalid_token` even with AllowInsecureLocalAccess, so the header is checked.
+
+Amended 2026-09-23 (found by that live check): **VerifyAuthenticationToken does not work as
+documented** (dedicated-server-api.md:313-316 says no parameters and 204). On the live
+server it answers HTTP 200 with `errorCode: missing_params` (missing `authenticationToken`
+and `privilegeLevel`), and with those supplied it answers 401 `token_validation_failed` for
+every privilege level, even for the working token. So `editable` no longer uses it: the
+"server accepts the token" test is that an authenticated GetServerOptions call is not
+answered 401/403. `editable` = apiToken configured AND `pl` in {"Administrator",
+"APIToken"} AND the server accepts the token. A write the server still refuses with
+401/403 is a 409 `not_editable`, not a 502. GetServerOptions was also readable without any
+token on this server (AllowInsecureLocalAccess), so on such a server the accept check is
+trivially true and does not prove the token's privilege; on an auth-enforcing server the
+write itself is the proof, and its refusal maps to 409.
+
+Still [NEEDS VERIFICATION]: the privilege GetServerOptions and ApplyServerOptions require on
+an auth-enforcing server (that a non-admin token is refused), and what
+VerifyAuthenticationToken's `privilegeLevel` parameter expects.

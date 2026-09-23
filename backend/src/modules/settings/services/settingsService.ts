@@ -1,6 +1,7 @@
 import type { Settings } from "@satisfactory-dash/shared";
 import type { ServerOptionsPort } from "../../gameserver/index.js";
 import { NotEditableError } from "../../../platform/errorResponse.js";
+import { UpstreamError } from "../../../platform/errors.js";
 
 /** ADR-0012: the auto-pause setting, as `{ autoPause, pending, editable }`. */
 export class SettingsService {
@@ -27,7 +28,15 @@ export class SettingsService {
       throw new NotEditableError();
     }
     const from = (await this.options.readAutoPause()).autoPause;
-    await this.options.applyAutoPause(enabled);
+    try {
+      await this.options.applyAutoPause(enabled);
+    } catch (err) {
+      // The server refused the write for lack of privilege: not editable, not a fault.
+      if (err instanceof UpstreamError && (err.status === 401 || err.status === 403)) {
+        throw new NotEditableError();
+      }
+      throw err;
+    }
     onApplied({ from, to: enabled });
     const state = await this.options.readAutoPause();
     return { ...state, editable: true };
