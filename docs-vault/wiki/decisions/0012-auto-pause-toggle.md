@@ -43,8 +43,14 @@ value, PendingServerOptions stayed empty). Response keys are camelCase (`serverO
 is PascalCase as documented. The `pending` field still reflects PendingServerOptions in
 case a server does queue the change.
 
-Still [NEEDS VERIFICATION]: the privilege GetServerOptions requires (the local server
-needed no token), and whether an application token, whose privilege level the docs list as
-`APIToken` (dedicated-server-api.md:248-268), is accepted by ApplyServerOptions. The
-`editable` rule above requires `pl == "Administrator"`, so an application token reads as
-not editable until that is verified with a real token.
+Amended 2026-09-23 (architect): `editable` accepts `pl` in {"Administrator", "APIToken"}
+(never "InitialAdmin", "Client" or "NotAuthenticated"), not `Administrator` alone. The
+dashboard is a third-party application, and the docs tell those to use application tokens
+(`server.GenerateAPIToken`; do not expire; `server.InvalidateAPITokens` revokes them;
+dedicated-server-api.md:279-284), whose privilege level is `APIToken` (:248-268).
+
+Still [NEEDS VERIFICATION], with a real application token on a server that enforces
+authentication: that GetServerOptions is readable with it, and that ApplyServerOptions
+accepts it. If the write is refused, `APIToken` leaves the editable set and that becomes the
+recorded fact. The privilege GetServerOptions requires is also unverified (the local server
+needed no token).

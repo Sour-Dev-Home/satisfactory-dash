@@ -23,12 +23,11 @@ export function createSettingsRouter(directory: ServerDirectory<SettingsScope>):
     if (!body.success) {
       throw new BadRequestError("Body must be { enabled: boolean }");
     }
-    const { before, settings } = await services.settings.setAutoPause(body.data.enabled);
-    // ADR-0012: one audit line per change. req.log is bound to the request id (ADR-0008).
-    req.log.info(
-      { audit: "auto-pause", serverId, user: res.locals.user?.name, from: before, to: settings.autoPause },
-      "auto-pause changed",
-    );
+    const settings = await services.settings.setAutoPause(body.data.enabled, ({ from, to }) => {
+      // ADR-0012: one audit line per change, written as soon as the write succeeds.
+      // req.log is bound to the request id (ADR-0008); the user comes from the session guard.
+      req.log.info({ audit: "auto-pause", serverId, user: res.locals.user?.name, from, to }, "auto-pause changed");
+    });
     sendValidated(res, SettingsResponseSchema, snapshot(serverId, settings));
   });
 

@@ -55,6 +55,29 @@ function privilegeLevelOf(token: string): string | undefined {
   }
 }
 
+/**
+ * Every call in this file goes through here. The shared vanilla client can attach a
+ * `cause` (e.g. the JSON.parse SyntaxError for a truncated 2xx body, whose message may
+ * quote a snippet of the body) and pass an upstream error's `errorData` along; either
+ * could carry option values, so an UpstreamError is rebuilt with only its message,
+ * kind, status and error code. (Security review of PR 6.)
+ */
+async function scrubbed<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof UpstreamError) {
+      throw new UpstreamError(err.message, { failureKind: err.failureKind, status: err.status, errorCode: err.errorCode });
+    }
+    throw err;
+  }
+}
+
+/** Token privilege levels that may change server options (dedicated-server-api.md:248-268).
+ *  `APIToken` is an application token (`server.GenerateAPIToken`), which third-party
+ *  apps are told to use (:279-284). Never InitialAdmin, Client or NotAuthenticated. */
+const EDITING_PRIVILEGE_LEVELS = new Set(["Administrator", "APIToken"]);
+
 export interface AutoPauseState {
   /** The applied FG.DSAutoPause value. */
   autoPause: boolean;
@@ -67,9 +90,9 @@ export interface AutoPauseState {
 export interface ServerOptionsPort {
   readAutoPause(): Promise<AutoPauseState>;
   applyAutoPause(enabled: boolean): Promise<void>;
-  /** ADR-0012 `editable`: a token is configured AND the server accepts it AND it carries
-   *  the Administrator privilege. A rejected token is `false`, not an error; an
-   *  unreachable server still throws an UpstreamError. */
+  /** ADR-0012 `editable`: a token is configured AND the server accepts it AND its
+   *  privilege level is Administrator or APIToken (an application token). A rejected
+   *  token is `false`, not an error; an unreachable server still throws an UpstreamError. */
   canEditOptions(): Promise<boolean>;
 }
 
@@ -80,7 +103,8 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
   ) {}
 
   async readAutoPause(): Promise<AutoPauseState> {
-    const parsed = RawServerOptionsSchema.safeParse(await this.vanillaApi.call<unknown>("GetServerOptions"));
+    const raw = await scrubbed(() => this.vanillaApi.call<unknown>("GetServerOptions"));
+    const parsed = RawServerOptionsSchema.safeParse(raw);
     if (!parsed.success) {
       throw invalidResponse("the response is not { serverOptions, pendingServerOptions }");
     }
@@ -98,15 +122,16 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
     // Request keys are PascalCase, as in the docs (dedicated-server-api.md:541-551);
     // verified live 2026-09-23: this shape returns 204 and applies immediately.
     const updated: Record<(typeof WRITABLE_OPTION_KEYS)[number], string> = { [AUTO_PAUSE_KEY]: enabled ? "True" : "False" };
-    await this.vanillaApi.call("ApplyServerOptions", { UpdatedServerOptions: updated });
+    await scrubbed(() => this.vanillaApi.call("ApplyServerOptions", { UpdatedServerOptions: updated }));
   }
 
   async canEditOptions(): Promise<boolean> {
-    if (!this.apiToken || privilegeLevelOf(this.apiToken) !== "Administrator") {
+    const level = this.apiToken ? privilegeLevelOf(this.apiToken) : undefined;
+    if (level === undefined || !EDITING_PRIVILEGE_LEVELS.has(level)) {
       return false;
     }
     try {
-      await this.vanillaApi.call("VerifyAuthenticationToken");
+      await scrubbed(() => this.vanillaApi.call("VerifyAuthenticationToken"));
       return true;
     } catch (err) {
       if (err instanceof UpstreamError && (err.status === 401 || err.status === 403)) {

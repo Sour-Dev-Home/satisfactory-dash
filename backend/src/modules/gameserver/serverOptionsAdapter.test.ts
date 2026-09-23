@@ -76,6 +76,41 @@ describe("readAutoPause", () => {
   });
 });
 
+// Security review of PR 6: the shared vanilla client can attach a `cause` (a JSON.parse
+// SyntaxError quoting the body) or pass an upstream `errorData` along; neither may escape.
+describe("upstream errors carry no cause and no errorData", () => {
+  const leaky = () =>
+    Object.assign(new UpstreamError("Vanilla API returned non-JSON body", { failureKind: "invalid_response", status: 500, cause: new SyntaxError(`Unexpected token in {"uWS.AuthenticationToken":"${FAKE_FRM_TOKEN}`) }), {
+      errorData: { echoed: FAKE_FRM_TOKEN },
+    });
+  const adapter = () =>
+    new ServerOptionsAdapter(
+      fakeApi(() => {
+        throw leaky();
+      }).api,
+      tokenWithPrivilege("Administrator"),
+    );
+
+  it.each([
+    ["readAutoPause", () => adapter().readAutoPause()],
+    ["applyAutoPause", () => adapter().applyAutoPause(true)],
+  ])("%s rethrows a clean UpstreamError, keeping kind and status", async (_name, run) => {
+    const err = (await run().catch((e: unknown) => e)) as UpstreamError & { errorData?: unknown };
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect(err.cause).toBeUndefined();
+    expect(err.errorData).toBeUndefined();
+    expect(err.status).toBe(500);
+    expect(err.failureKind).toBe("invalid_response");
+    expect(describeError(err)).not.toContain(FAKE_FRM_TOKEN);
+  });
+
+  it("canEditOptions rethrows a clean error for a non-401/403 failure", async () => {
+    const err = (await adapter().canEditOptions().catch((e: unknown) => e)) as UpstreamError;
+    expect(err.cause).toBeUndefined();
+    expect(describeError(err)).not.toContain(FAKE_FRM_TOKEN);
+  });
+});
+
 describe("applyAutoPause", () => {
   it.each([
     [true, "True"],
@@ -94,13 +129,15 @@ describe("canEditOptions", () => {
     expect(calls).toEqual([]);
   });
 
-  it("is true for an Administrator token the server verifies", async () => {
+  // Administrator, and APIToken: an application token from server.GenerateAPIToken, which
+  // third-party apps are told to use (dedicated-server-api.md:279-284).
+  it.each(["Administrator", "APIToken"])("is true for a %s token the server verifies", async (pl) => {
     const { api, calls } = fakeApi(() => undefined);
-    expect(await new ServerOptionsAdapter(api, tokenWithPrivilege("Administrator")).canEditOptions()).toBe(true);
+    expect(await new ServerOptionsAdapter(api, tokenWithPrivilege(pl)).canEditOptions()).toBe(true);
     expect(calls).toEqual([{ fn: "VerifyAuthenticationToken", data: undefined }]);
   });
 
-  it.each(["Client", "APIToken", "InitialAdmin", "NotAuthenticated", "administrator"])(
+  it.each(["Client", "InitialAdmin", "NotAuthenticated", "administrator", "apitoken"])(
     "is false for a %s token, without asking the server",
     async (pl) => {
       const { api, calls } = fakeApi(() => undefined);

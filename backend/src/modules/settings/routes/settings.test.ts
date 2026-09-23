@@ -15,13 +15,18 @@ const ADMIN_TOKEN = `${Buffer.from(JSON.stringify({ pl: "Administrator" })).toSt
 
 /** A game server that keeps FG.DSAutoPause in memory, always returns the fake FRM token
  *  in GetServerOptions (as the real one does), and records every call. */
-function fakeGameServer(opts: { queueChanges?: boolean; rejectToken?: boolean; garbage?: unknown } = {}) {
+function fakeGameServer(
+  opts: { queueChanges?: boolean; rejectToken?: boolean; verifyFails?: boolean; failReadAfterApply?: boolean; garbage?: unknown } = {},
+) {
   const state = { autoPause: "False", pending: undefined as string | undefined };
   const calls: string[] = [];
   const api: VanillaApiClientLike = {
     call: async <T>(fn: string, data?: unknown) => {
       calls.push(fn);
       if (fn === "GetServerOptions") {
+        if (opts.failReadAfterApply && calls.includes("ApplyServerOptions")) {
+          throw new UpstreamError("down", { failureKind: "unreachable" });
+        }
         if (opts.garbage !== undefined) {
           return opts.garbage as T;
         }
@@ -40,6 +45,9 @@ function fakeGameServer(opts: { queueChanges?: boolean; rejectToken?: boolean; g
         return undefined as T;
       }
       if (fn === "VerifyAuthenticationToken") {
+        if (opts.verifyFails) {
+          throw new UpstreamError("Vanilla API request failed with status 500", { status: 500 });
+        }
         if (opts.rejectToken) {
           throw new UpstreamError("Vanilla API request failed with status 401", { status: 401 });
         }
@@ -101,6 +109,12 @@ describe("GET /api/servers/:serverId/settings", () => {
     expect(res.body.data.editable).toBe(false);
   });
 
+  it("degrades to read-only, not an error, when the token check itself fails", async () => {
+    const res = await get(buildApp(fakeGameServer({ verifyFails: true })).app);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ autoPause: false, pending: false, editable: false });
+  });
+
   it("answers 404 server_not_found for an unknown server id", async () => {
     const res = await request(buildApp(fakeGameServer()).app).get(endpoints.settings.get.path("nope"));
     expect(res.status).toBe(404);
@@ -131,6 +145,17 @@ describe("PUT /api/servers/:serverId/settings/auto-pause", () => {
     const audit = lines.map((l) => JSON.parse(l)).filter((l) => l.audit === "auto-pause");
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ serverId: "default", user: "operator", from: false, to: true, req: { id: res.headers["x-request-id"] } });
+  });
+
+  it("still writes the audit line when the re-read after the write fails", async () => {
+    const server = fakeGameServer({ failReadAfterApply: true });
+    const { app, lines } = buildApp(server);
+    const res = await put(app, { enabled: true });
+    expect(res.status).toBe(503);
+    expect(server.state.autoPause).toBe("True");
+    const audit = lines.map((l) => JSON.parse(l)).filter((l) => l.audit === "auto-pause");
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ user: "operator", from: false, to: true });
   });
 
   it("answers 409 not_editable, and never writes, when no token is configured", async () => {

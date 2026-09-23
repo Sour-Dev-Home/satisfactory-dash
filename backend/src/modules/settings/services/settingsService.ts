@@ -7,22 +7,29 @@ export class SettingsService {
   constructor(private readonly options: ServerOptionsPort) {}
 
   async getSettings(): Promise<Settings> {
-    const [state, editable] = await Promise.all([this.options.readAutoPause(), this.options.canEditOptions()]);
+    // A failed token check degrades to read-only instead of failing the whole read: the
+    // value itself was readable. (If the server is really down, the read fails anyway.)
+    const [state, editable] = await Promise.all([
+      this.options.readAutoPause(),
+      this.options.canEditOptions().catch(() => false),
+    ]);
     return { ...state, editable };
   }
 
   /**
-   * Applies the change, re-reads it from the server and returns the new settings with the
-   * previous value (for the audit log). A server the dashboard can't edit gets
-   * NotEditableError (409 not_editable) before anything is written.
+   * Applies the change, re-reads it from the server and returns the new settings. A server
+   * the dashboard can't edit gets NotEditableError (409 not_editable) before anything is
+   * written. `onApplied` runs right after the write succeeds, before the re-read, so the
+   * audit line exists even if the re-read then fails (ADR-0012: one line per change).
    */
-  async setAutoPause(enabled: boolean): Promise<{ before: boolean; settings: Settings }> {
+  async setAutoPause(enabled: boolean, onApplied: (change: { from: boolean; to: boolean }) => void): Promise<Settings> {
     if (!(await this.options.canEditOptions())) {
       throw new NotEditableError();
     }
-    const before = (await this.options.readAutoPause()).autoPause;
+    const from = (await this.options.readAutoPause()).autoPause;
     await this.options.applyAutoPause(enabled);
+    onApplied({ from, to: enabled });
     const state = await this.options.readAutoPause();
-    return { before, settings: { ...state, editable: true } };
+    return { ...state, editable: true };
   }
 }
