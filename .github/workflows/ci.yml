@@ -45,8 +45,9 @@ jobs:
             echo "::warning::PII_PATTERNS variable is not set (e.g. a fork PR); only checking for local paths."
           fi
           # This file and CLAUDE.md files (which document the path patterns as examples of
-          # what NOT to commit) are excluded.
-          HITS=$(git ls-files | grep -vE '^(\.github/|.*CLAUDE\.md$)' | xargs -r grep -n -iF -f "$PATTERNS" | cut -d: -f1,2 || true)
+          # what NOT to commit) are excluded. -H is required: with a single file grep omits
+          # the filename, and `cut -f1,2` would then keep the matched text and print it.
+          HITS=$(git ls-files | grep -vE '^(\.github/|.*CLAUDE\.md$)' | xargs -r grep -H -n -iF -f "$PATTERNS" | cut -d: -f1,2 || true)
           if [ -n "$HITS" ]; then
             echo "$HITS"
             echo "::error::Possible PII or hardcoded-path leak at the file:line locations above (see CLAUDE.md ground rule 7)."
