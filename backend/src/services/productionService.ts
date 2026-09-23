@@ -1,4 +1,4 @@
-import type { FactoryBuildingResponse, FactoryOverviewResponse } from "@satisfactory-dash/shared";
+import type { Factory, FactoryBuilding as FactoryBuildingResponse } from "@satisfactory-dash/shared";
 import type { FactoryBuilding } from "../adapters/domain.js";
 
 export interface ProductionAdapterLike {
@@ -28,7 +28,7 @@ export function isBackedUp(building: FactoryBuilding): boolean {
 export class ProductionService {
   constructor(private readonly adapter: ProductionAdapterLike) {}
 
-  async getFactoryOverview(): Promise<FactoryOverviewResponse> {
+  async getFactoryOverview(): Promise<Factory> {
     const buildings = await this.adapter.getFactoryBuildings();
     const mapped: FactoryBuildingResponse[] = buildings.map((building) => ({
       id: building.id,

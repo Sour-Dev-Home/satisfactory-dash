@@ -1,4 +1,4 @@
-import type { PowerCircuitResponse, PowerCircuitStatus, PowerOverviewResponse } from "@satisfactory-dash/shared";
+import type { Power, PowerCircuit as PowerCircuitResponse } from "@satisfactory-dash/shared";
 import type { PowerCircuit } from "../adapters/domain.js";
 
 export interface PowerAdapterLike {
@@ -9,12 +9,8 @@ export interface PowerAdapterLike {
  *  than "ok". Not sourced from docs-vault — FRM's own DiscIT.Battery webhook config
  *  (docs-vault/raw-sources/frm-config.md) takes an arbitrary comma-separated list of
  *  thresholds rather than a single documented default, so this is our own choice,
- *  not a documented value. Adjust freely; it's not grounded in anything besides
- *  "seems reasonable." [NEEDS VERIFICATION] — this also assumes BatteryPercent is a
- *  0-100 scale; frm-getPower.md only documents it as "Float | Percentage of
- *  batteries" with no stated range, and every observed value so far (the doc's own
- *  example, this project's fixtures) has been 0. If FRM actually reports a 0-1
- *  fraction, this threshold is wrong and `at_risk` would fire on almost any drain. */
+ *  not a documented value. Adjust freely. BatteryPercent's 0-100 scale was verified
+ *  live on 2026-09-22 (ADR-0006, docs-vault/wiki/frm-api.md). */
 const AT_RISK_BATTERY_PERCENT = 20;
 
 /**
@@ -50,21 +46,17 @@ const AT_RISK_BATTERY_PERCENT = 20;
  * The docs-vault grounding supports this classification, but it's a conscious
  * choice worth someone signing off on once real `getPower` data exists.
  */
-export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus {
+export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitResponse["status"] {
   // A genuine tripped fuse always wins, regardless of any other field's validity --
   // keep this strict-equality check ahead of the defensive block below so a NaN
   // elsewhere on a real outage can't get downgraded to at_risk.
   if (circuit.fuseTriggered === true) {
     return "outage";
   }
-  // Defensive: rawTypes.ts only declares these fields' types via a compile-time `as`
-  // cast (see the adapters-layer "unvalidated network responses" finding logged in
-  // docs-vault/wiki/lessons-learned.md) -- nothing validates them at runtime. A
-  // malformed fuseTriggered (e.g. the string "false", which is truthy in JS) would
-  // otherwise misread via truthiness, and NaN numeric fields make every comparison
-  // below silently false, falling through to "ok" -- the worst failure mode for
-  // something meant to raise an alarm. [NEEDS VERIFICATION] whether FRM ever
-  // actually sends malformed fields; treat as at_risk rather than assume either way.
+  // Defense in depth: the adapter validates every field (adapters/rawSchemas.ts), so
+  // this shouldn't fire. If a malformed value ever did slip through, a NaN would make
+  // every comparison below silently false and fall through to "ok" -- the worst
+  // failure mode for something meant to raise an alarm -- so fail toward at_risk.
   if (
     typeof circuit.fuseTriggered !== "boolean" ||
     !Number.isFinite(circuit.powerProduction) ||
@@ -84,86 +76,31 @@ export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitStatus 
   return "ok";
 }
 
-/** Coerces a value to a finite number, or `fallback` if it isn't one -- e.g. a
- *  string, NaN, or Infinity from unvalidated FRM data (see classifyPowerCircuit's
- *  doc comment). Keeps PowerCircuitResponse's `number` fields honest: without this,
- *  a NaN survives internally but silently becomes JSON `null` on the wire, and a
- *  malformed value the adapter is supposed to intercept could reach it unchanged. */
-function finiteOr(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
-}
-
-/** Coerces a value to a real boolean, or `fallback` if it isn't one -- e.g. the
- *  string "false" (truthy in JS) from unvalidated FRM data. */
-function booleanOr(value: boolean, fallback: boolean): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
+/**
+ * Maps the adapter's circuits to the contract's Power (packages/shared/src/power.ts):
+ * MW/MWh unit names, and the two fields that tell the frontend more than the old
+ * shape did -- maxConsumptionMW ("could overload" when above capacity) and
+ * batteryCapacityMWh (tells "0%" apart from "no batteries"). The adapter validates
+ * every circuit, so there are no placeholder rows: a malformed getPower response is
+ * a 502 upstream_invalid_response instead (contract rule, PR 3).
+ */
 export class PowerService {
   constructor(private readonly adapter: PowerAdapterLike) {}
 
-  async getPowerOverview(): Promise<PowerOverviewResponse> {
+  async getPowerOverview(): Promise<Power> {
     const circuits = await this.adapter.getPowerCircuits();
-    // Array.from, not circuits.map directly -- .map() SKIPS holes in a sparse
-    // array (`[a, , c]`) rather than calling the callback with `undefined` for
-    // them, so a hole would bypass the null/non-object placeholder logic below
-    // entirely and come out the other side as a raw JSON `null` in `circuits`,
-    // contradicting this method's own rule that every malformed entry shows up as
-    // at_risk. Not reachable through the real adapter (JSON.parse can't produce a
-    // sparse array), but Array.from normalizing holes to real `undefined` values
-    // first is a one-line fix for defensive completeness. Found by a review pass.
-    const mapped: PowerCircuitResponse[] = Array.from(circuits).map((circuit) => {
-      // A null/non-object entry in the array itself is shown as at_risk with
-      // placeholder values, not silently dropped. Found by a review pass: an
-      // earlier version filtered these out entirely, so the circuit list quietly
-      // shrank with no signal -- every OTHER kind of malformed data in this method
-      // shows up as at_risk, and a vanishing circuit is the wrong direction for
-      // something meant to raise alarms, not hide them. Not reachable from today's
-      // real adapter, but this service already describes itself as defensive
-      // against unvalidated FRM data.
-      if (circuit === null || typeof circuit !== "object") {
-        return {
-          circuitGroupId: -1,
-          powerProduction: 0,
-          powerConsumed: 0,
-          powerCapacity: 0,
-          fuseTriggered: false,
-          batteryPercent: 0,
-          batteryDifferential: 0,
-          status: "at_risk",
-        };
-      }
-      return {
-        // -1 is FRM's own documented "not connected" sentinel for this ID
-        // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
-        // FactoryBuilding.circuitGroupId in satisfactoryServerAdapter.ts -- 0 would be
-        // wrong here since it could collide with a real circuit 0. Note this means
-        // -1 isn't guaranteed unique across circuits (multiple genuinely
-        // unconnected circuits, or multiple malformed ones, can legitimately share
-        // it) -- a consumer needing a stable list key should use array index, not
-        // this field, when it's -1.
-        circuitGroupId: finiteOr(circuit.circuitGroupId, -1),
-        powerProduction: finiteOr(circuit.powerProduction, 0),
-        powerConsumed: finiteOr(circuit.powerConsumed, 0),
-        powerCapacity: finiteOr(circuit.powerCapacity, 0),
-        // Fallback is `false` (reverted from `true` by an eighth review pass, which
-        // caught the actual problem with the earlier reasoning): defaulting to `true`
-        // made the response self-contradictory whenever fuseTriggered was malformed
-        // -- fuseTriggered: true alongside status: "at_risk" (not "outage") and
-        // hasOutage: false all disagree with each other, which is worse than a
-        // conservative false in either direction. `status` alone carries the actual
-        // alert for malformed data (see classifyPowerCircuit above); this raw field
-        // should stay consistent with it rather than independently asserting more
-        // confidence than the data supports.
-        fuseTriggered: booleanOr(circuit.fuseTriggered, false),
-        batteryPercent: finiteOr(circuit.batteryPercent, 0),
-        batteryDifferential: finiteOr(circuit.batteryDifferential, 0),
-        // classifyPowerCircuit sees the RAW circuit, not these sanitized values, so a
-        // malformed field still correctly forces at_risk rather than being laundered
-        // into a clean-looking "0" and read as "ok".
-        status: classifyPowerCircuit(circuit),
-      };
-    });
+    const mapped: PowerCircuitResponse[] = circuits.map((circuit) => ({
+      circuitGroupId: circuit.circuitGroupId,
+      productionMW: circuit.powerProduction,
+      consumptionMW: circuit.powerConsumed,
+      capacityMW: circuit.powerCapacity,
+      maxConsumptionMW: circuit.maxPowerConsumed,
+      fuseTriggered: circuit.fuseTriggered,
+      batteryCapacityMWh: circuit.batteryCapacity,
+      batteryPercent: circuit.batteryPercent,
+      batteryDifferentialMW: circuit.batteryDifferential,
+      status: classifyPowerCircuit(circuit),
+    }));
     return {
       circuits: mapped,
       hasOutage: mapped.some((circuit) => circuit.status === "outage"),

@@ -126,7 +126,7 @@ export class SatisfactoryServerAdapter {
       RawHealthCheckResponseSchema,
       await this.vanillaApi.call<unknown>("HealthCheck", { ClientCustomData: "" }),
     );
-    return { healthy: raw.health === "healthy" };
+    return { tickHealth: raw.health };
   }
 
   async getServerStatus(): Promise<ServerStatus> {

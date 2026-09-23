@@ -35,7 +35,7 @@ describe("SatisfactoryServerAdapter", () => {
     const { adapter, vanillaApi } = buildAdapter({
       vanilla: { call: vi.fn().mockResolvedValue(healthCheckFixture) },
     });
-    await expect(adapter.getServerHealth()).resolves.toEqual({ healthy: true });
+    await expect(adapter.getServerHealth()).resolves.toEqual({ tickHealth: "healthy" });
     expect(vanillaApi.call).toHaveBeenCalledWith("HealthCheck", { ClientCustomData: "" });
   });
 
