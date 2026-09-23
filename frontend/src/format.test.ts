@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatTickRate, formatTime } from "./format";
+import { formatDuration, formatMW, formatMWh, formatPercent, formatTickRate, formatTime } from "./format";
 
 describe("formatDuration", () => {
   it.each([
@@ -21,6 +21,21 @@ describe("formatTickRate", () => {
   it("rounds to one decimal and keeps the unit", () => {
     expect(formatTickRate(21.415126800537109)).toBe("21.4 ticks/s");
     expect(formatTickRate(8.2)).toBe("8.2 ticks/s");
+  });
+});
+
+describe("power formatters", () => {
+  it("keeps MW as MW, with grouping and at most one decimal", () => {
+    expect(formatMW(3633.3)).toBe("3,633.3 MW");
+    expect(formatMW(60)).toBe("60 MW");
+    expect(formatMW(0)).toBe("0 MW");
+    expect(formatMW(12_345.67)).toBe("12,345.7 MW");
+  });
+
+  it("formats battery storage and charge", () => {
+    expect(formatMWh(100)).toBe("100 MWh");
+    expect(formatPercent(2.33)).toBe("2.3%");
+    expect(formatPercent(100)).toBe("100%");
   });
 });
 

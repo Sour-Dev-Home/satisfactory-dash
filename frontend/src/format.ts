@@ -22,3 +22,21 @@ export function formatDuration(totalSeconds: number): string {
 export function formatTickRate(ticksPerSecond: number): string {
   return `${ticksPerSecond.toFixed(1)} ticks/s`;
 }
+
+// Fixed en-US grouping so values read the same everywhere (and in tests): "3,633.3".
+const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+
+/** Megawatts, as the contract reports them (never rescaled to GW). */
+export function formatMW(megawatts: number): string {
+  return `${oneDecimal.format(megawatts)} MW`;
+}
+
+/** Megawatt-hours of battery storage. */
+export function formatMWh(megawattHours: number): string {
+  return `${oneDecimal.format(megawattHours)} MWh`;
+}
+
+/** A 0-100 percentage. */
+export function formatPercent(percent: number): string {
+  return `${oneDecimal.format(percent)}%`;
+}

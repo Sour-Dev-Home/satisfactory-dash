@@ -1,4 +1,5 @@
 import { AuthGate } from "./auth/AuthGate";
+import { PowerView } from "./power/PowerView";
 import { StatusBanners } from "./components/StatusBanners";
 import { ServerGate } from "./servers/ServerGate";
 import { StatusView } from "./status/StatusView";
@@ -11,6 +12,7 @@ function App() {
         <ServerGate>
           <StatusBanners />
           <StatusView />
+          <PowerView />
         </ServerGate>
       </AuthGate>
     </main>
