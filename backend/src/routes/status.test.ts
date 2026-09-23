@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
-import express from "express";
 import request from "supertest";
 import { createStatusRouter } from "./status.js";
+import { createApp } from "../app.js";
+import { createLogger } from "../logger.js";
 import type { ServerStatusService } from "../services/serverStatusService.js";
 
 function buildApp(service: Pick<ServerStatusService, "getStatus">) {
-  const app = express();
-  app.use("/api", createStatusRouter(service as ServerStatusService));
-  return app;
+  return createApp({ logger: createLogger(), routers: [createStatusRouter(service as ServerStatusService)] });
 }
 
 describe("GET /api/status", () => {
@@ -29,15 +28,15 @@ describe("GET /api/status", () => {
     expect(res.body.sessionName).toBe("save");
   });
 
-  it("returns 503 with an error body when the service throws", async () => {
+  it("returns 503 upstream_unreachable when the game server can't be reached", async () => {
     const service = {
       getStatus: async () => {
-        throw new Error("server unreachable");
+        throw Object.assign(new Error("server unreachable"), { failureKind: "unreachable" });
       },
     };
     const res = await request(buildApp(service)).get("/api/status");
     expect(res.status).toBe(503);
-    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
   });
 
   // A reachable-but-slow server (vanilla API HealthCheck's "slow" state, per

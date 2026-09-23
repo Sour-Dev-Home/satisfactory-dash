@@ -22,22 +22,22 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
   it("status: resolves 503 with an error body instead of hanging or crashing", async () => {
     const res = await request(app).get("/api/status");
     expect(res.status).toBe(503);
-    expect(res.body).toHaveProperty("error");
-    expect(res.body).toHaveProperty("detail");
+    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
+    expect(res.body.error).toHaveProperty("detail");
   });
 
   it("factory: resolves 503 with an error body instead of hanging or crashing", async () => {
     const res = await request(app).get("/api/factory");
     expect(res.status).toBe(503);
-    expect(res.body).toHaveProperty("error");
-    expect(res.body).toHaveProperty("detail");
+    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
+    expect(res.body.error).toHaveProperty("detail");
   });
 
   it("power: resolves 503 with an error body instead of hanging or crashing", async () => {
     const res = await request(app).get("/api/power");
     expect(res.status).toBe(503);
-    expect(res.body).toHaveProperty("error");
-    expect(res.body).toHaveProperty("detail");
+    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
+    expect(res.body.error).toHaveProperty("detail");
   });
 
   // The vanilla-API path (status route) rejects with a Node `AggregateError` (from
@@ -50,9 +50,9 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
   it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
     const res = await request(app).get("/api/status");
     expect(res.status).toBe(503);
-    expect(typeof res.body.detail).toBe("string");
-    expect(res.body.detail).not.toBe("AggregateError");
-    expect(res.body.detail).toMatch(/\(caused by: AggregateError \(.*ECONNREFUSED.*\)\)$/);
+    expect(typeof res.body.error.detail).toBe("string");
+    expect(res.body.error.detail).not.toBe("AggregateError");
+    expect(res.body.error.detail).toMatch(/\(caused by: AggregateError \(.*ECONNREFUSED.*\)\)$/);
   });
 
   // A real refused connection, not a mock: confirms both transports classify it
@@ -61,7 +61,7 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
     "%s: a refused connection is reported as unreachable",
     async (path) => {
       const res = await request(app).get(path);
-      expect(res.body.error).toBe("Could not reach the Satisfactory dedicated server");
+      expect(res.body.error.message).toBe("Could not reach the Satisfactory dedicated server");
     },
   );
 });

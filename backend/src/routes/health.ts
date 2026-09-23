@@ -1,9 +1,9 @@
 import { Router } from "express";
-import type { HealthResponse } from "@satisfactory-dash/shared";
+import { HealthResponseSchema } from "@satisfactory-dash/shared";
+import { sendValidated } from "./sendValidated.js";
 
 export const healthRouter = Router();
 
 healthRouter.get("/health", (_req, res) => {
-  const body: HealthResponse = { status: "ok" };
-  res.json(body);
+  sendValidated(res, HealthResponseSchema, { status: "ok" });
 });

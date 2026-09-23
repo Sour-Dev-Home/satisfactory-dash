@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
-import express from "express";
 import request from "supertest";
 import { createPowerRouter } from "./power.js";
+import { createApp } from "../app.js";
+import { createLogger } from "../logger.js";
 import type { PowerService } from "../services/powerService.js";
 
 function buildApp(service: Pick<PowerService, "getPowerOverview">) {
-  const app = express();
-  app.use("/api", createPowerRouter(service as PowerService));
-  return app;
+  return createApp({ logger: createLogger(), routers: [createPowerRouter(service as PowerService)] });
 }
 
 describe("GET /api/power", () => {
@@ -18,15 +17,15 @@ describe("GET /api/power", () => {
     expect(res.body).toEqual({ circuits: [], hasOutage: false });
   });
 
-  it("returns 503 with an error body when the service throws", async () => {
+  it("returns 503 upstream_unreachable when the game server can't be reached", async () => {
     const service = {
       getPowerOverview: async () => {
-        throw new Error("server unreachable");
+        throw Object.assign(new Error("server unreachable"), { failureKind: "unreachable" });
       },
     };
     const res = await request(buildApp(service)).get("/api/power");
     expect(res.status).toBe(503);
-    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
   });
 
   it("round-trips a populated overview through JSON, including at_risk circuits not tripping hasOutage", async () => {
