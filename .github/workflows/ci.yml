@@ -32,18 +32,24 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Check for PII or hardcoded local paths
+        # The identifiers to look for live in the PII_PATTERNS repo variable (one fixed
+        # string per line), not in this public file, and only file:line is printed, so
+        # neither the workflow nor its logs publish what they protect.
+        env:
+          PII_PATTERNS: ${{ vars.PII_PATTERNS }}
         run: |
-          # CLAUDE.md files legitimately document these patterns as examples of what
-          # NOT to commit, and this file itself has to contain the pattern strings to
-          # check for them — both are excluded, not searched for real leaks.
-          EXCLUDE='^(\.github/|.*CLAUDE\.md$)'
-          FILES=$(git ls-files | grep -vE "$EXCLUDE" || true)
-          NAMES=$(echo "$FILES" | xargs -r grep -n -iF -e 'leonardo' -e 'nunez' -e 'leonunez9821' -e 'C:\Users' -e 'C:/Users' || true)
-          PHONE=$(echo "$FILES" | xargs -r grep -n -E '470.535.7258' || true)
-          if [ -n "$NAMES" ] || [ -n "$PHONE" ]; then
-            echo "$NAMES"
-            echo "$PHONE"
-            echo "::error::Found a possible PII or hardcoded-path leak — see CLAUDE.md ground rule 7."
+          PATTERNS=$(mktemp)
+          printf '%s\n' "$PII_PATTERNS" | sed '/^[[:space:]]*$/d' > "$PATTERNS"
+          printf '%s\n' 'C:\Users' 'C:/Users' '/home/' '/Users/' >> "$PATTERNS"
+          if [ -z "$PII_PATTERNS" ]; then
+            echo "::warning::PII_PATTERNS variable is not set (e.g. a fork PR); only checking for local paths."
+          fi
+          # This file and CLAUDE.md files (which document the path patterns as examples of
+          # what NOT to commit) are excluded.
+          HITS=$(git ls-files | grep -vE '^(\.github/|.*CLAUDE\.md$)' | xargs -r grep -n -iF -f "$PATTERNS" | cut -d: -f1,2 || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
+            echo "::error::Possible PII or hardcoded-path leak at the file:line locations above (see CLAUDE.md ground rule 7)."
             exit 1
           fi
 
