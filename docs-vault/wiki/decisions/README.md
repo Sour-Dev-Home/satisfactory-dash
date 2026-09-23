@@ -20,7 +20,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0010](./0010-request-through.md) | Request-through; no cache or poller yet |
 | [0011](./0011-login-required.md) | Login required on every `/api` route except health (single operator now) |
 | [0012](./0012-auto-pause-toggle.md) | Auto-pause off by default, with a user toggle; paused state is visible |
-| [0013](./0013-deployment-topology.md) | Deployment v1: frontend on Cloudflare Pages, backend on the game-server PC behind a Cloudflare Tunnel |
+| [0013](./0013-deployment-topology.md) | Deployment v1: frontend on Cloudflare Workers static assets (was Pages; amended 2026-09-23), backend on the game-server PC behind a Cloudflare Tunnel |
 
 ## Terms used in the ADRs
 
