@@ -136,7 +136,7 @@ export class PowerService {
       return {
         // -1 is FRM's own documented "not connected" sentinel for this ID
         // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
-        // FactoryBuilding.circuitId in satisfactoryServerAdapter.ts -- 0 would be
+        // FactoryBuilding.circuitGroupId in satisfactoryServerAdapter.ts -- 0 would be
         // wrong here since it could collide with a real circuit 0. Note this means
         // -1 isn't guaranteed unique across circuits (multiple genuinely
         // unconnected circuits, or multiple malformed ones, can legitimately share
