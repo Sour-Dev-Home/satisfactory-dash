@@ -43,6 +43,7 @@ export const PowerSchema = z.object({
 });
 export const PowerResponseSchema = snapshotEnvelope(PowerSchema);
 
+export type PowerCircuitStatus = z.infer<typeof PowerCircuitStatusSchema>;
 export type PowerCircuit = z.infer<typeof PowerCircuitSchema>;
 export type Power = z.infer<typeof PowerSchema>;
 export type PowerResponse = z.infer<typeof PowerResponseSchema>;

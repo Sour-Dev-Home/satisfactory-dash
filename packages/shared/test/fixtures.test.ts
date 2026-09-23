@@ -14,6 +14,7 @@ import {
   StatusResponseSchema,
   endpoints,
 } from "../src/index";
+import type { PowerCircuitStatus } from "../src/index";
 
 // Every fixture is matched to its schema by name prefix, so a fixture added later can't
 // be skipped by forgetting to list it here: an unmatched export fails the first test.
@@ -47,6 +48,28 @@ describe("fixtures", () => {
   it.each(cases)("%s parses and round-trips unchanged", (name, fixture) => {
     const schema = schemaFor(name);
     expect(schema?.parse(fixture)).toEqual(fixture);
+  });
+});
+
+describe("scenario fixtures show what their names say", () => {
+  it("statusNoGame is a server with no save loaded", () => {
+    expect(fixtures.statusNoGame.data.isGameRunning).toBe(false);
+  });
+
+  it("powerDischarging has a draining battery, ok at 20 % or more and at_risk below it", () => {
+    const [ok, low] = fixtures.powerDischarging.data.circuits;
+    for (const circuit of [ok, low]) {
+      expect(circuit.batteryCapacityMWh).toBeGreaterThan(0);
+      expect(circuit.batteryDifferentialMW).toBeLessThan(0);
+    }
+    expect([ok.batteryPercent >= 20, ok.status]).toEqual([true, "ok"]);
+    expect([low.batteryPercent < 20, low.status]).toEqual([true, "at_risk"]);
+    expect(fixtures.powerDischarging.data.hasOutage).toBe(false);
+  });
+
+  it("exports the circuit status type (compile-time check)", () => {
+    const status: PowerCircuitStatus = fixtures.powerOk.data.circuits[0].status;
+    expect(["ok", "at_risk", "outage"]).toContain(status);
   });
 });
 
