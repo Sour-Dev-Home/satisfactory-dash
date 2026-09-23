@@ -106,6 +106,30 @@ replaced with a placeholder).
   server options such as `FG.DSAutoPause`. Treat the response as a secret: see
   `backend/src/modules/gameserver/README.md` for the allowlist-only rule.
 
+## Confirmed against a live server with an application token (2026-09-23)
+
+Local server, AllowInsecureLocalAccess on, token from `server.GenerateAPIToken` (its `pl`
+claim is `APIToken`). Documented-vs-observed:
+
+- **`VerifyAuthenticationToken` does not behave as documented.** `dedicated-server-api.md:313-316`
+  says it takes no parameters and returns 204 for a valid token. Live, it answers
+  **HTTP 200 with `errorCode: missing_params`** (missing `authenticationToken` and
+  `privilegeLevel`, whether or not a token is sent). With both supplied it answers **401
+  `token_validation_failed` for every privilege level, even for the working token**. The
+  backend therefore doesn't use it (ADR-0012). [NEEDS VERIFICATION] what `privilegeLevel`
+  expects.
+- **A wrong Bearer token is rejected even with AllowInsecureLocalAccess** (401
+  `invalid_token`); no token at all is accepted on this loopback server. So an
+  authenticated call not being answered 401/403 shows the header was accepted.
+- **An application token can read and write server options.** `GetServerOptions` returned
+  the options, and `ApplyServerOptions` with `{ "UpdatedServerOptions": { "FG.DSAutoPause":
+  "True" } }` returned 204; the next read showed the new value, with `PendingServerOptions`
+  empty (it applies immediately). Response keys are camelCase (`serverOptions`,
+  `pendingServerOptions`); the request key is PascalCase as documented.
+- Not proven: that a non-admin token is refused, or how a server WITHOUT
+  AllowInsecureLocalAccess behaves; the go-live checklist re-runs the check with
+  enforcement on.
+
 ## Full reference
 
 For exact request/response field types and error codes, see
