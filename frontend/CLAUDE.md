@@ -20,6 +20,10 @@ contract needs to grow, not that this module should special-case a backend detai
   an entry from `endpoints`; they parse every body with the shared schema and throw
   `ApiError`, `ContractDriftError` or `BackendUnreachableError` (`src/api/errors.ts`).
   Components read data through the TanStack Query options in `src/api/queries.ts`.
+- Auth (ADR-0011): `src/auth/AuthGate.tsx` shows the app only when the session query says
+  signed in. A 401 from any query or mutation (except login) signs out in one place,
+  `createQueryClient`; screens never handle 401 themselves. Nothing auth-related goes in
+  localStorage: the httpOnly cookie is the only credential.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.
