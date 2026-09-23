@@ -34,5 +34,23 @@ security-reviewer before merge.
 ## Revisit when
 
 More settings need toggles. Generalize to an allowlisted settings map, never a
-passthrough. [NEEDS VERIFICATION]: DSAutoPause applying immediately rather than going to Pending;
-the privilege GetServerOptions requires.
+passthrough.
+
+Verified live 2026-09-23 (local server, AllowInsecureLocalAccess): DSAutoPause applies
+immediately (ApplyServerOptions returned 204, the next GetServerOptions showed the new
+value, PendingServerOptions stayed empty). Response keys are camelCase (`serverOptions`,
+`pendingServerOptions`), not the docs' PascalCase; the request key `UpdatedServerOptions`
+is PascalCase as documented. The `pending` field still reflects PendingServerOptions in
+case a server does queue the change.
+
+Amended 2026-09-23 (architect): `editable` accepts `pl` in {"Administrator", "APIToken"}
+(never "InitialAdmin", "Client" or "NotAuthenticated"), not `Administrator` alone. The
+dashboard is a third-party application, and the docs tell those to use application tokens
+(`server.GenerateAPIToken`; do not expire; `server.InvalidateAPITokens` revokes them;
+dedicated-server-api.md:279-284), whose privilege level is `APIToken` (:248-268).
+
+Still [NEEDS VERIFICATION], with a real application token on a server that enforces
+authentication: that GetServerOptions is readable with it, and that ApplyServerOptions
+accepts it. If the write is refused, `APIToken` leaves the editable set and that becomes the
+recorded fact. The privilege GetServerOptions requires is also unverified (the local server
+needed no token).

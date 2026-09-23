@@ -3,7 +3,12 @@ import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
 import { ConfigError } from "./platform/errors.js";
 import { healthRouter } from "./platform/health.js";
-import { createGameServerConnection, loadSatisfactoryServerConfigFromEnv } from "./modules/gameserver/index.js";
+import {
+  createGameServerConnection,
+  createServerOptionsPort,
+  loadSatisfactoryServerConfigFromEnv,
+} from "./modules/gameserver/index.js";
+import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import { InMemoryServerDirectory, createServersRouter, loadServerRegistryFromEnv } from "./modules/servers/index.js";
 import { createTelemetryRouters, createTelemetryServices } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
@@ -40,7 +45,10 @@ const directory = new InMemoryServerDirectory(
     return registry.map(({ id, displayName }) => ({
       id,
       displayName,
-      services: { telemetry: createTelemetryServices(createGameServerConnection(config)) },
+      services: {
+        telemetry: createTelemetryServices(createGameServerConnection(config)),
+        settings: createSettingsServices(createServerOptionsPort(config)),
+      },
     }));
   }),
 );
@@ -53,7 +61,11 @@ export const app = createApp({
   allowedOrigins: identity.allowedOrigins,
   routers: [healthRouter, identity.authRouter],
   sessionGuard: identity.sessionGuard,
-  protectedRouters: [createServersRouter(directory), ...createTelemetryRouters(directory)],
+  protectedRouters: [
+    createServersRouter(directory),
+    ...createTelemetryRouters(directory),
+    ...createSettingsRouters(directory),
+  ],
 });
 
 if (process.env.NODE_ENV !== "test") {

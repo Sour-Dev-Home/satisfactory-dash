@@ -139,6 +139,15 @@ export class UnsupportedMediaTypeError extends Error {
   }
 }
 
+/** ADR-0012: the dashboard holds no verified Administrator token for this server, so the
+ *  setting can be shown but not changed. */
+export class NotEditableError extends Error {
+  constructor() {
+    super("This setting can't be changed from the dashboard for this server");
+    this.name = "NotEditableError";
+  }
+}
+
 /** A request body that doesn't match its contract schema. */
 export class BadRequestError extends Error {
   constructor(message: string) {
@@ -192,6 +201,9 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   }
   if (err instanceof BadRequestError) {
     return { code: "bad_request", message: err.message };
+  }
+  if (err instanceof NotEditableError) {
+    return { code: "not_editable", message: err.message };
   }
   if (err instanceof InvalidServerIdError) {
     return { code: "bad_request", message: "Invalid server id" };

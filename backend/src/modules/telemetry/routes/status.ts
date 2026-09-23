@@ -4,7 +4,7 @@ import type { ServerDirectory } from "../../servers/index.js";
 import { resolveServer } from "../../servers/index.js";
 import { routePath } from "../../../platform/routePath.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
-import { snapshot } from "../snapshot.js";
+import { snapshot } from "../../../platform/snapshot.js";
 import type { TelemetryScope } from "../telemetryServices.js";
 
 export function createStatusRouter(directory: ServerDirectory<TelemetryScope>): Router {

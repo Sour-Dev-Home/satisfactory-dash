@@ -23,6 +23,15 @@ which specific game server — the data came from. That indirection is what make
   `BuildingPowerUsage`, `Player`, `SessionInfo`. Every adapter failure extends
   `UpstreamError` (`platform/errors.ts`). Only an `UpstreamError` becomes an
   `upstream_*` error code (502/503); any other error is treated as our own bug.
+- `serverOptionsAdapter.ts` — `ServerOptionsPort` (ADR-0012), the ONLY caller of
+  `GetServerOptions`; see the rule below. Exposes just the auto-pause read, the
+  auto-pause write (`ApplyServerOptions` with only `FG.DSAutoPause`) and `canEditOptions`
+  (token configured, `VerifyAuthenticationToken` accepts it, and its `pl` claim is
+  `Administrator` or `APIToken`). Configure `SATISFACTORY_API_TOKEN` with an application
+  token from `server.GenerateAPIToken`, which third-party apps are told to use
+  (`dedicated-server-api.md:279-284`), not a password-login token. Every upstream error
+  from this file is rebuilt without its `cause` or `errorData`. Consumed by
+  `modules/settings`.
 - `rawSchemas.ts` — zod schemas for every raw response, grounded in
   `docs-vault/raw-sources/` and corrected against live responses (see
   `docs-vault/wiki/vanilla-dedicated-server-api.md` and `frm-api.md` — notably: vanilla
