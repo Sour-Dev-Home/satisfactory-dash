@@ -5,7 +5,11 @@ import {
   ApiErrorResponseSchema,
   FactoryResponseSchema,
   HealthResponseSchema,
+  LoginRequestSchema,
   PowerResponseSchema,
+  SessionResponseSchema,
+  SetAutoPauseRequestSchema,
+  SettingsResponseSchema,
   ServerListResponseSchema,
   StatusResponseSchema,
   endpoints,
@@ -20,6 +24,10 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["servers", ServerListResponseSchema],
   ["error", ApiErrorResponseSchema],
   ["health", HealthResponseSchema],
+  ["loginRequest", LoginRequestSchema],
+  ["session", SessionResponseSchema],
+  ["settings", SettingsResponseSchema],
+  ["setAutoPauseRequest", SetAutoPauseRequestSchema],
 ];
 
 function schemaFor(name: string): z.ZodType | undefined {
@@ -86,16 +94,70 @@ describe("schemas accept what the contract allows", () => {
   });
 });
 
+describe("auth and settings schemas", () => {
+  it("rejects an authenticated session without a user", () => {
+    expect(SessionResponseSchema.safeParse({ authenticated: true }).success).toBe(false);
+  });
+
+  it("never passes a token through a session response, even if one is added by mistake", () => {
+    const leaky = { ...fixtures.sessionAuthenticated, token: "secret-session-token" };
+    expect(SessionResponseSchema.parse(leaky)).toEqual(fixtures.sessionAuthenticated);
+  });
+
+  it("rejects an empty or oversized login field", () => {
+    for (const body of [
+      { username: "", password: "x" },
+      { username: "operator", password: "" },
+      { username: "operator" },
+      { username: "operator", password: "x".repeat(1025) },
+      { username: "x".repeat(129), password: "x" },
+    ]) {
+      expect(LoginRequestSchema.safeParse(body).success, JSON.stringify(body).slice(0, 60)).toBe(false);
+    }
+  });
+
+  it("requires a real boolean to toggle auto-pause (no string or number coercion)", () => {
+    for (const enabled of ["true", 1, null]) {
+      expect(SetAutoPauseRequestSchema.safeParse({ enabled }).success).toBe(false);
+    }
+  });
+});
+
+type Endpoint = { method: string; route: string; path: (serverId: string) => string };
+
+// Flattens the nested groups (auth, settings) into "group.name" entries.
+function flatEndpoints(): [string, Endpoint][] {
+  return Object.entries(endpoints).flatMap(([name, value]): [string, Endpoint][] =>
+    "route" in value
+      ? [[name, value as Endpoint]]
+      : Object.entries(value).map(([inner, endpoint]): [string, Endpoint] => [`${name}.${inner}`, endpoint as Endpoint]),
+  );
+}
+
 describe("endpoints", () => {
   it("builds server-scoped paths and URL-encodes the server id", () => {
     expect(endpoints.power.path("default")).toBe("/api/servers/default/power");
     expect(endpoints.status.path("a b")).toBe("/api/servers/a%20b/status");
     expect(endpoints.health.path()).toBe("/api/health");
+    expect(endpoints.settings.setAutoPause.path("default")).toBe("/api/servers/default/settings/auto-pause");
   });
 
   it("keeps each route pattern consistent with its path builder", () => {
-    for (const [name, endpoint] of Object.entries(endpoints)) {
+    const all = flatEndpoints();
+    expect(all.length).toBe(10);
+    for (const [name, endpoint] of all) {
       expect(endpoint.path("default"), name).toBe(endpoint.route.replace(":serverId", "default"));
     }
+  });
+
+  it("gives every endpoint that takes a body a request schema, and no GET a body", () => {
+    for (const [name, endpoint] of flatEndpoints()) {
+      const hasRequest = "request" in endpoint;
+      if (endpoint.method === "GET") {
+        expect(hasRequest, name).toBe(false);
+      }
+    }
+    expect("request" in endpoints.auth.login).toBe(true);
+    expect("request" in endpoints.settings.setAutoPause).toBe(true);
   });
 });

@@ -28,3 +28,40 @@ export const errorUnknownCode = {
     requestId: "00000000-0000-4000-8000-000000000001",
   },
 } satisfies ApiErrorResponse;
+
+/** POST /api/auth/login with a wrong username or password (401). The message doesn't
+ *  say which one was wrong. */
+export const errorLoginFailed = {
+  error: {
+    code: "unauthorized",
+    message: "Invalid username or password",
+    requestId: "00000000-0000-4000-8000-000000000003",
+  },
+} satisfies ApiErrorResponse;
+
+/** Any protected route without a valid session cookie (401): the frontend goes to login. */
+export const errorSessionRequired = {
+  error: {
+    code: "unauthorized",
+    message: "Sign in to continue",
+    requestId: "00000000-0000-4000-8000-000000000004",
+  },
+} satisfies ApiErrorResponse;
+
+/** Too many login attempts from one IP (429). */
+export const errorRateLimited = {
+  error: {
+    code: "rate_limited",
+    message: "Too many login attempts. Try again later.",
+    requestId: "00000000-0000-4000-8000-000000000005",
+  },
+} satisfies ApiErrorResponse;
+
+/** PUT .../settings/auto-pause when no verified Administrator token is configured (409). */
+export const errorNotEditable = {
+  error: {
+    code: "not_editable",
+    message: "This server's settings can't be changed: no administrator token is configured",
+    requestId: "00000000-0000-4000-8000-000000000006",
+  },
+} satisfies ApiErrorResponse;
