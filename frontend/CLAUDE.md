@@ -16,8 +16,16 @@ contract needs to grow, not that this module should special-case a backend detai
 
 - Plain client-side React (hooks, components) — no server components, no file-based
   routing framework.
-- `VITE_API_URL` (see `.env.example`) points at the backend; never hardcode
-  `localhost:3001`.
+- `src/api/client.ts` is the only place that calls `fetch`. Use `apiGet`/`apiSend` with
+  an entry from `endpoints`; they parse every body with the shared schema and throw
+  `ApiError`, `ContractDriftError` or `BackendUnreachableError` (`src/api/errors.ts`).
+  Components read data through the TanStack Query options in `src/api/queries.ts`.
+- `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
+  development, where Vite proxies `/api` to the local backend. Never hardcode
+  `localhost:3001` in `src/`.
 - Tests: Vitest + React Testing Library (`npm run test`). New components should get a
   test that renders them and asserts on user-visible behavior, not implementation
-  details.
+  details. API calls are mocked with MSW (`src/test/`), using handlers built only from
+  `@satisfactory-dash/shared/fixtures`. Override a route per test with `server.use(...)`.
+- Fixtures never reach production code: `oxlint` rejects any import of
+  `@satisfactory-dash/shared/fixtures` outside `src/test/` and `*.test.*` files.
