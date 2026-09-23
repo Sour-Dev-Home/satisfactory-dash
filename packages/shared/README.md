@@ -15,7 +15,7 @@ retyping one is breaking (ADR-0007).
 
 - `src/` — the schemas: `envelope.ts` (the `{ serverId, observedAt, stale, data }`
   snapshot wrapper), `errors.ts` (error envelope and `KnownErrorCode`), one file per
-  resource (`health`, `servers`, `status`, `factory`, `power`), and `endpoints.ts`
+  resource (`health`, `servers`, `status`, `factory`, `power`, `auth`, `settings`), and `endpoints.ts`
   mapping each route to its path builder and response schema. Every field's unit and
   range is in its `.describe()` text (ADR-0006). `index.ts` still exports the legacy
   interfaces the current backend routes return, until the backend moves onto the
@@ -23,7 +23,7 @@ retyping one is breaking (ADR-0007).
 - `fixtures/` — example responses built from real 2026-09-22 captures, exported as
   `@satisfactory-dash/shared/fixtures`. For tests and mock servers only; production code
   must never import them.
-- `test/fixtures.test.ts` — every exported fixture must parse against its schema and
+- `test/fixtures.test.ts` — every exported fixture (responses and request bodies) must parse against its schema and
   round-trip unchanged. A fixture with no matching schema fails the test.
 
 `npm run test -w packages/shared` (also part of the root `npm run test`).
