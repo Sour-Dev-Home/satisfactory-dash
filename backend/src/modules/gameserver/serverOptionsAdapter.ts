@@ -62,14 +62,24 @@ function privilegeLevelOf(token: string): string | undefined {
  * could carry option values, so an UpstreamError is rebuilt with only its message,
  * kind, status and error code. (Security review of PR 6.)
  */
-async function scrubbed<T>(run: () => Promise<T>): Promise<T> {
+async function scrubbed<T>(fn: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (err) {
+    // The message is rebuilt too: for an error response it is the server's own
+    // errorMessage text, which could quote option values. Only the function name and the
+    // status (a number) go into it; kind, status and error code stay as properties.
     if (err instanceof UpstreamError) {
-      throw new UpstreamError(err.message, { failureKind: err.failureKind, status: err.status, errorCode: err.errorCode });
+      const status = err.status === undefined ? "" : ` with status ${err.status}`;
+      throw new UpstreamError(`${fn} failed${status}`, {
+        failureKind: err.failureKind,
+        status: err.status,
+        errorCode: err.errorCode,
+      });
     }
-    throw err;
+    // Not an upstream failure, i.e. a bug of ours: still a 500, but with no message or
+    // cause that could carry response content into the logs.
+    throw new Error(`${fn} failed unexpectedly`);
   }
 }
 
@@ -103,7 +113,7 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
   ) {}
 
   async readAutoPause(): Promise<AutoPauseState> {
-    const raw = await scrubbed(() => this.vanillaApi.call<unknown>("GetServerOptions"));
+    const raw = await scrubbed("GetServerOptions", () => this.vanillaApi.call<unknown>("GetServerOptions"));
     const parsed = RawServerOptionsSchema.safeParse(raw);
     if (!parsed.success) {
       throw invalidResponse("the response is not { serverOptions, pendingServerOptions }");
@@ -122,7 +132,7 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
     // Request keys are PascalCase, as in the docs (dedicated-server-api.md:541-551);
     // verified live 2026-09-23: this shape returns 204 and applies immediately.
     const updated: Record<(typeof WRITABLE_OPTION_KEYS)[number], string> = { [AUTO_PAUSE_KEY]: enabled ? "True" : "False" };
-    await scrubbed(() => this.vanillaApi.call("ApplyServerOptions", { UpdatedServerOptions: updated }));
+    await scrubbed("ApplyServerOptions", () => this.vanillaApi.call("ApplyServerOptions", { UpdatedServerOptions: updated }));
   }
 
   async canEditOptions(): Promise<boolean> {
@@ -131,7 +141,7 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
       return false;
     }
     try {
-      await scrubbed(() => this.vanillaApi.call("VerifyAuthenticationToken"));
+      await scrubbed("VerifyAuthenticationToken", () => this.vanillaApi.call("VerifyAuthenticationToken"));
       return true;
     } catch (err) {
       if (err instanceof UpstreamError && (err.status === 401 || err.status === 403)) {
