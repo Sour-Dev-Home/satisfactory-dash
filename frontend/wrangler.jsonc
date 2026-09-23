@@ -3,6 +3,10 @@
 {
   "name": "satisfactory-dash",
   "compatibility_date": "2026-09-01",
+  // Serve only on the custom domain; no *.workers.dev copy or preview URLs. With no
+  // `routes` key, the custom domains attached in the dashboard are kept.
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     // Relative to this file. Produced by `npm run build -w frontend`.
     "directory": "./dist/",

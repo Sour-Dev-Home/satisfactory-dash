@@ -5,7 +5,8 @@ import { ApiError, BackendUnreachableError, ContractDriftError } from "./errors"
 // schema (ADR-0002), so a shape mismatch surfaces as ContractDriftError, not a crash later.
 
 // Empty in development: Vite proxies /api to the backend, so the browser sees one origin.
-const BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+// Trimmed because a stray space in the build variable would otherwise end up in every URL.
+const BASE_URL = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
 
 const MAX_ISSUES = 5;
 
