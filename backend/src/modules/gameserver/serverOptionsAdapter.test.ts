@@ -131,10 +131,11 @@ describe("canEditOptions", () => {
 
   // Administrator, and APIToken: an application token from server.GenerateAPIToken, which
   // third-party apps are told to use (dedicated-server-api.md:279-284).
-  it.each(["Administrator", "APIToken"])("is true for a %s token the server verifies", async (pl) => {
-    const { api, calls } = fakeApi(() => undefined);
+  it.each(["Administrator", "APIToken"])("is true for a %s token the server accepts", async (pl) => {
+    const { api, calls } = fakeApi(() => optionsResponse());
     expect(await new ServerOptionsAdapter(api, tokenWithPrivilege(pl)).canEditOptions()).toBe(true);
-    expect(calls).toEqual([{ fn: "VerifyAuthenticationToken", data: undefined }]);
+    // An authenticated call is the check (VerifyAuthenticationToken doesn't work live).
+    expect(calls).toEqual([{ fn: "GetServerOptions", data: undefined }]);
   });
 
   it.each(["Client", "InitialAdmin", "NotAuthenticated", "administrator", "apitoken"])(
