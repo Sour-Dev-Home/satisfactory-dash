@@ -124,3 +124,6 @@ the bottom.
   requires a verified Administrator token), and removed a suspected refinery blind spot
   after the captures disproved it. Every line citation in the ADRs was checked against
   the files on `main`.
+- 2026-09-23 — ADR-0003 amended: error codes `not_found` (404), `payload_too_large`
+  (413) and `unsupported_media_type` (415), keeping one status per code. Prompted by a
+  fresh-eyes review of the error middleware.

@@ -15,7 +15,9 @@ Every non-2xx body is { error: { code, message, requestId, detail? } }.
 code -> HTTP, mapped only in the backend's Express error middleware:
 upstream_unreachable 503, upstream_auth_rejected 502, upstream_invalid_response 502,
 upstream_error 502, server_not_found 404, bad_request 400, unauthorized 401 (ADR-0011),
-not_editable 409 (ADR-0012), rate_limited 429 (ADR-0011), internal 500.
+not_editable 409 (ADR-0012), rate_limited 429 (ADR-0011), internal 500,
+not_found 404, payload_too_large 413, unsupported_media_type 415 (amendment below).
+Each code maps to exactly one status; nothing else changes the status of a response.
 `code` is z.string() on the wire, with KnownErrorCode exported; clients handle unknown codes
 generically, so adding a code is non-breaking. `detail` keeps the existing dev/test-only rule.
 requestId is crypto.randomUUID() from middleware, echoed in X-Request-Id and bound to every log
@@ -29,6 +31,15 @@ handlers; confirm in the Express docs when implementing).
 
 Users see a safe message plus an id they can report; the full error lives in logs
 under the same id. The frontend switches on `code`, not status text.
+
+## Amendment, 2026-09-23
+
+Added three codes after a review found an unknown /api route returned Express's HTML
+404 page, and body-parser 413/415 errors were collapsed into a 400. `not_found` is an
+unknown /api route; it is distinct from `server_not_found` (an unknown game-server id,
+which may make the frontend re-run server discovery). `payload_too_large` and
+`unsupported_media_type` come from the JSON body parser; mutations accept
+application/json only (ADR-0011). Additive, so no version change (ADR-0007).
 
 ## Revisit when
 
