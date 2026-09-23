@@ -7,7 +7,7 @@ import { ApiErrorResponseSchema, SessionResponseSchema, endpoints } from "@satis
 import { createApp } from "../app.js";
 import { createLogger } from "../logger.js";
 import { healthRouter } from "./health.js";
-import { createAuthRouter } from "./auth.js";
+import { LOGIN_REQUESTS_PER_WINDOW, createAuthRouter } from "./auth.js";
 import { createSessionGuard, SESSION_COOKIE } from "./session.js";
 import { SingleOperatorAuthenticator } from "../services/auth/authenticator.js";
 import { hashPassword, parsePasswordHash } from "../services/auth/passwordHash.js";
@@ -139,6 +139,20 @@ describe("POST /api/auth/login", () => {
     const res = await login(app, { username: "operator", password: PASSWORD });
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe("rate_limited");
+    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  // Found by CodeQL on PR #24 (js/missing-rate-limiting): the failure counter above
+  // doesn't cap malformed or repeated successful requests, so the route also has an
+  // outer per-IP cap on every login request.
+  it(`caps all login requests per IP at ${LOGIN_REQUESTS_PER_WINDOW}, not just failures`, async () => {
+    const { app } = buildApp();
+    for (let i = 0; i < LOGIN_REQUESTS_PER_WINDOW; i++) {
+      expect((await login(app, { nonsense: i })).status).toBe(400); // malformed, not a failure
+    }
+    const res = await login(app, { nonsense: "one too many" });
+    expect(res.status).toBe(429);
+    expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("rate_limited");
     expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
   });
 
