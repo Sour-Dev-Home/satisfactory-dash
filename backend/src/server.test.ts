@@ -1,6 +1,39 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
-import { app } from "./server.js";
+import net from "node:net";
+import type { Express } from "express";
+
+let app: Express;
+
+/** A port that nothing is listening on: bind an ephemeral port, then release it. No
+ *  host, so it's reserved dual-stack (both ::1 and 127.0.0.1, which "localhost"
+ *  resolves to). */
+async function closedPort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const { port } = server.address() as net.AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+// server.ts reads its config when imported, so pin every game-server setting first.
+// These tests used to rely on nothing listening on the defaults (7777/8080) and failed
+// on any machine running a real dedicated server. server.ts also loads backend/.env,
+// but dotenv never overrides a variable that's already set, so setting all of them
+// here keeps a developer's local .env out of the test (found by PR #20's review).
+beforeAll(async () => {
+  const port = String(await closedPort());
+  // "localhost" resolves to both ::1 and 127.0.0.1, which is what produces the
+  // AggregateError the detail test below checks.
+  process.env.SATISFACTORY_SERVER_HOST = "localhost";
+  process.env.SATISFACTORY_API_PORT = port;
+  process.env.FRM_WEB_PORT = port;
+  process.env.SATISFACTORY_REQUEST_TIMEOUT_MS = "2000";
+  process.env.SATISFACTORY_API_TOKEN = "";
+  process.env.FRM_AUTH_TOKEN = "";
+  process.env.SATISFACTORY_API_REJECT_UNAUTHORIZED = "";
+  ({ app } = await import("./server.js"));
+});
 
 describe("GET /api/health", () => {
   it("returns ok status", async () => {
@@ -12,9 +45,8 @@ describe("GET /api/health", () => {
 
 // These exercise the *real* wiring in server.ts end to end (real adapter -> real
 // service -> real route), unlike routes/*.test.ts and services/*.test.ts, which each
-// substitute a fixture/fake one layer down. Nothing in the .env-less test environment
-// points at a live game server (config.ts defaults to localhost:7777 / :8080), so
-// every one of these is expected to fail to connect — which is exactly the case this
+// substitute a fixture/fake one layer down. Both game-server ports point at a closed
+// port (see beforeAll above), so every one of these is expected to fail to connect — which is exactly the case this
 // checks: that a real adapter connection failure propagates through the real service
 // and is turned into a clean 503 by the route, rather than the request crashing,
 // hanging, or an unhandled rejection escaping past Express's control flow.

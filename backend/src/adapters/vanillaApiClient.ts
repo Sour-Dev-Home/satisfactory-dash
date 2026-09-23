@@ -64,17 +64,14 @@ function isErrorBody(body: unknown): body is VanillaApiErrorBody {
   return typeof body === "object" && body !== null && "errorCode" in body;
 }
 
-export const defaultVanillaApiTransport: VanillaApiTransport = ({
-  host,
-  port,
-  authToken,
-  timeoutMs,
-  allowSelfSignedCert,
-  requestBody,
-}) =>
+/** The request function is injectable so the transport's event handling can be tested
+ *  against a real local socket (vanillaTransport.test.ts). */
+export const createVanillaApiTransport =
+  (request: typeof https.request = https.request): VanillaApiTransport =>
+  ({ host, port, authToken, timeoutMs, allowSelfSignedCert, requestBody }) =>
   new Promise((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(requestBody), "utf-8");
-    const req = https.request(
+    const req = request(
       {
         host,
         port,
@@ -90,6 +87,24 @@ export const defaultVanillaApiTransport: VanillaApiTransport = ({
       },
       (res) => {
         const chunks: Buffer[] = [];
+        // Issue #8, item 1: if the connection drops after the headers arrived, neither
+        // "end" nor the request's "error" fires, so the promise never settled and
+        // /api/status hung (the timeout doesn't help once the socket is gone). The
+        // response's own "error", and a "close" before the body was complete, both mean
+        // the server became unreachable mid-response. Rejecting twice is harmless.
+        const dropped = (cause?: unknown) =>
+          reject(
+            new VanillaApiRequestError("Vanilla API connection dropped mid-response", undefined, undefined, {
+              cause,
+              failureKind: "unreachable",
+            }),
+          );
+        res.on("error", dropped);
+        res.on("close", () => {
+          if (!res.complete) {
+            dropped();
+          }
+        });
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
           const status = res.statusCode ?? 0;
@@ -134,6 +149,8 @@ export const defaultVanillaApiTransport: VanillaApiTransport = ({
     req.write(payload);
     req.end();
   });
+
+export const defaultVanillaApiTransport: VanillaApiTransport = createVanillaApiTransport();
 
 export class VanillaApiClient {
   private readonly transport: VanillaApiTransport;
