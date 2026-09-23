@@ -14,17 +14,24 @@ which specific game server — the data came from. That indirection is what make
 
 - `domain.ts` — the only types `routes/` and `services/` should import from here:
   `ServerHealth`, `ServerStatus`, `FactoryBuilding`, `PowerCircuit`,
-  `BuildingPowerUsage`, `Player`, `SessionInfo`.
-- `rawTypes.ts` — private raw response shapes, grounded in `docs-vault/raw-sources/`
-  and corrected against what the live Phase 2 spike actually returned (see
-  `docs-vault/wiki/vanilla-dedicated-server-api.md` and `frm-api.md` for the
-  discrepancies from the docs — notably: vanilla API fields are camelCase, not the
-  docs' PascalCase).
+  `BuildingPowerUsage`, `Player`, `SessionInfo`, plus `UpstreamError`, the base class
+  of every adapter failure. Only an `UpstreamError` becomes an `upstream_*` error code
+  (502/503); any other error is treated as our own bug.
+- `rawSchemas.ts` — zod schemas for every raw response, grounded in
+  `docs-vault/raw-sources/` and corrected against live responses (see
+  `docs-vault/wiki/vanilla-dedicated-server-api.md` and `frm-api.md` — notably: vanilla
+  API fields are camelCase, not the docs' PascalCase). `satisfactoryServerAdapter.ts`
+  validates every response through one `parseUpstream()` call, so a malformed or
+  out-of-range response is an `UpstreamError` (502), never a `TypeError`. Every
+  `>= 0` range the public contract asserts is enforced here.
+- `rawTypes.ts` — private raw types, derived from `rawSchemas.ts` with `z.infer`.
 - `vanillaApiClient.ts` / `frmApiClient.ts` — low-level HTTP clients, one per API.
   Both take an injectable transport/fetch so they're testable without a real socket.
 - `satisfactoryServerAdapter.ts` — `SatisfactoryServerAdapter`, the class
   `services/` should actually depend on. Maps raw → domain.
-- `config.ts` — env-var config (host/ports/tokens); see `backend/.env.example`.
+- `config.ts` — env-var config (host/ports/tokens); see `backend/.env.example`. The
+  vanilla API's TLS certificate is verified by default, except for loopback/private
+  hosts, where the game server's self-signed cert is expected.
 - `__fixtures__/rawFixtures.ts` — fixture data for tests, sourced from
   `docs-vault/raw-sources/captured-responses/` (real captures) where available,
   otherwise the docs' own example responses.

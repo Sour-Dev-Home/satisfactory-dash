@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadSatisfactoryServerConfigFromEnv } from "./config.js";
+import { isLoopbackOrPrivateHost, loadSatisfactoryServerConfigFromEnv } from "./config.js";
 
 describe("loadSatisfactoryServerConfigFromEnv", () => {
   it("applies documented defaults when no env vars are set", () => {
@@ -36,22 +36,48 @@ describe("loadSatisfactoryServerConfigFromEnv", () => {
     });
   });
 
-  it("treats any value other than the literal string 'true' as 'allow self-signed'", () => {
-    // The env var name (SATISFACTORY_API_REJECT_UNAUTHORIZED) is the inverse of the
-    // config field it feeds (apiAllowSelfSignedCert) -- only the exact string "true"
-    // flips it to reject. Documenting the inversion and its exact-match behavior.
-    expect(
-      loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_REJECT_UNAUTHORIZED: "false" })
-        .apiAllowSelfSignedCert,
-    ).toBe(true);
-    expect(
-      loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_REJECT_UNAUTHORIZED: "TRUE" })
-        .apiAllowSelfSignedCert,
-    ).toBe(true); // case-sensitive: "TRUE" does NOT match "true"
-    expect(
-      loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_REJECT_UNAUTHORIZED: "1" })
-        .apiAllowSelfSignedCert,
-    ).toBe(true); // "1" does NOT match "true" either
+  // Security finding #2: verification used to be OFF for any host unless the variable
+  // was exactly "true". It's now ON by default, relaxed only for loopback/private hosts.
+  describe("TLS certificate verification (apiAllowSelfSignedCert)", () => {
+    const allow = (env: NodeJS.ProcessEnv) => loadSatisfactoryServerConfigFromEnv(env).apiAllowSelfSignedCert;
+
+    it("verifies by default for a public host", () => {
+      expect(allow({ SATISFACTORY_SERVER_HOST: "game.example.com" })).toBe(false);
+      expect(allow({ SATISFACTORY_SERVER_HOST: "8.8.8.8" })).toBe(false);
+    });
+
+    it("allows the game server's self-signed cert by default on loopback or a private network", () => {
+      expect(allow({})).toBe(true); // host defaults to localhost
+      expect(allow({ SATISFACTORY_SERVER_HOST: "192.168.1.20" })).toBe(true);
+    });
+
+    it("lets an explicit setting win in either direction (case-insensitive)", () => {
+      expect(allow({ SATISFACTORY_API_REJECT_UNAUTHORIZED: "true" })).toBe(false);
+      expect(allow({ SATISFACTORY_API_REJECT_UNAUTHORIZED: "TRUE" })).toBe(false);
+      expect(allow({ SATISFACTORY_SERVER_HOST: "game.example.com", SATISFACTORY_API_REJECT_UNAUTHORIZED: "false" })).toBe(true);
+    });
+
+    it("falls back to the host-based default for an unrecognized value instead of disabling verification", () => {
+      for (const value of ["1", "yes", "flase", ""]) {
+        expect(allow({ SATISFACTORY_SERVER_HOST: "game.example.com", SATISFACTORY_API_REJECT_UNAUTHORIZED: value })).toBe(false);
+      }
+    });
+  });
+
+  describe("isLoopbackOrPrivateHost", () => {
+    it.each(["localhost", "LOCALHOST", "dash.localhost", "127.0.0.1", "127.8.9.1", "10.0.0.5", "172.16.0.1", "172.31.255.254", "192.168.0.10", "169.254.1.1", "::1", "[::1]", "fd12:3456::1", "fe80::1", "::ffff:10.1.2.3"])(
+      "%s is loopback/private",
+      (host) => {
+        expect(isLoopbackOrPrivateHost(host)).toBe(true);
+      },
+    );
+
+    it.each(["game.example.com", "gamepc.lan", "8.8.8.8", "172.15.0.1", "172.32.0.1", "192.169.0.1", "2001:db8::1", "::ffff:8.8.8.8", "localhost.example.com", ""])(
+      "%s is not",
+      (host) => {
+        expect(isLoopbackOrPrivateHost(host)).toBe(false);
+      },
+    );
   });
 
   it("treats an empty-string token as present-but-empty rather than falling back to undefined", () => {
