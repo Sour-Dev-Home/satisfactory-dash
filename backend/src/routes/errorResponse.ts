@@ -121,6 +121,13 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
   }
+  // Express's router throws a URIError (with a bare `status: 400`, no `expose`) for a
+  // broken percent-encoded route parameter. Without this, describeFailure's status
+  // branch would blame our client's bad URL on the game server (found by PR #16's
+  // fresh-eyes review).
+  if (err instanceof URIError) {
+    return { code: "bad_request", message: "The request URL is malformed" };
+  }
   // Each body-parser status gets its own code, so the code alone decides the HTTP
   // status (ADR-0003 amendment); anything else is a generic 400.
   switch (clientRequestErrorStatus(err)) {
@@ -129,7 +136,10 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
     case 413:
       return { code: "payload_too_large", message: "The request body is too large" };
     case 415:
-      return { code: "unsupported_media_type", message: "Send the request body as application/json" };
+      return {
+        code: "unsupported_media_type",
+        message: "The request body's content type or encoding isn't supported; send uncompressed application/json",
+      };
     default:
       return { code: "bad_request", message: "The request was malformed" };
   }

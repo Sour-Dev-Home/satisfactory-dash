@@ -27,6 +27,9 @@ function appThrowing(err: unknown) {
   router.post("/echo", (req, res) => {
     res.json(req.body);
   });
+  router.get("/items/:id", (req, res) => {
+    res.json({ id: req.params.id });
+  });
   return { app: createApp({ logger, routers: [router] }), lines };
 }
 
@@ -201,6 +204,17 @@ describe("error middleware (ADR-0003 envelope)", () => {
 
   // Found by PR #13's fresh-eyes review: body-parser 4xx errors were all flattened
   // to 400. Each now has its own code, and each code keeps one status (ADR-0003).
+  // Found by PR #16's fresh-eyes review: Express's router throws a URIError with a
+  // bare `status: 400` (no `expose`) for a broken percent-encoded route parameter, and
+  // describeFailure's status branch blamed it on the game server as a 502. Latent
+  // until the first parameterised route (server-scoped routes, ADR-0001).
+  it("reports a malformed percent-encoded route parameter as our 400 bad_request, not a 502", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).get("/api/items/%E0%A4%A");
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("bad_request");
+  });
+
   it("reports an oversized JSON body as 413 payload_too_large", async () => {
     const { app } = appThrowing(unreachable());
     const res = await request(app)
