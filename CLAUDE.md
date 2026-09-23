@@ -128,13 +128,12 @@ so it reviews with genuinely no memory of why the code was built a certain way.
   fixture data — no live game server required to run the suite.
 - `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` all run in CI
   (`.github/workflows/ci.yml`) on every push and PR; treat a red CI run as blocking.
-- **`fresh-eyes-review`** (same CI file): an automated, non-blocking version of
-  `test-hunter` — runs on PRs that touch `backend/src/`, posts findings as a PR
-  comment, never fails the build. Opt-in: does nothing until the `ANTHROPIC_API_KEY`
-  repo secret is set (GitHub repo Settings → Secrets and variables → Actions → New
-  repository secret). Each run is capped at $2 via `--max-budget-usd`. Institutes the
-  same "fresh eyes" principle as `test-hunter` as a guaranteed pipeline step instead of
-  something that has to be manually remembered to invoke.
+- **Fresh-eyes step** (see `../WORKFLOW.md`): any PR that adds or changes real logic is
+  opened as a DRAFT. Before `gh pr ready`, spawn a fresh `test-hunter` subagent (never a
+  fork, which would inherit your context) scoped to the changed files, land its tests
+  and any fixes on the same branch, and repeat until it stops finding real bugs.
+  Docs-only and config-only PRs skip it. (This replaced a CI job of the same purpose,
+  which ran on API credit and was retired.)
 
 ## Commands
 
