@@ -1,7 +1,5 @@
-import type { PowerCircuit, PowerResponse } from "@satisfactory-dash/shared";
+import type { PowerCircuit, PowerCircuitStatus, PowerResponse } from "@satisfactory-dash/shared";
 import { formatMW, formatMWh, formatPercent, formatTime } from "../format";
-
-type PowerCircuitStatus = PowerCircuit["status"];
 
 const STATUS_ORDER: Record<PowerCircuitStatus, number> = { outage: 0, at_risk: 1, ok: 2 };
 const STATUS_LABEL: Record<PowerCircuitStatus, string> = {
