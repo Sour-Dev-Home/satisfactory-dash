@@ -135,3 +135,6 @@ the bottom.
 - 2026-09-23 — Amended ADR-0013: the frontend is served by Cloudflare Workers static
   assets instead of Pages (the account's Git deploy offers Workers only). Added
   `frontend/wrangler.jsonc`; domain and cookie model unchanged.
+- 2026-09-23 — ADR-0011 clarified (issue #19): which routes need no session, the
+  session check never returns 401, and the JSON-only rule applies only to requests
+  with a body.

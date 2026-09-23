@@ -10,21 +10,25 @@
     "start": "node dist/server.cjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "hash-password": "tsx scripts/hash-password.ts"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@satisfactory-dash/shared": "*",
+    "cookie": "^0.7.2",
     "cors": "^2.8.6",
     "dotenv": "^18.0.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/cookie": "^0.6.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.2",

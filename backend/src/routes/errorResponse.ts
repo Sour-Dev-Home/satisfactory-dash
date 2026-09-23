@@ -114,6 +114,39 @@ export class ServerNotFoundError extends Error {
   }
 }
 
+/** No valid session (ADR-0011), or failed credentials. The message is shown to the
+ *  user, so for a failed login it must not say which part was wrong. */
+export class UnauthorizedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** Too many failed logins from one IP (ADR-0011). Sets Retry-After. */
+export class RateLimitedError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("Too many login attempts. Try again later.");
+    this.name = "RateLimitedError";
+  }
+}
+
+/** A mutation whose body isn't JSON (ADR-0011: mutations accept JSON only). */
+export class UnsupportedMediaTypeError extends Error {
+  constructor() {
+    super("Send the request body as application/json");
+    this.name = "UnsupportedMediaTypeError";
+  }
+}
+
+/** A request body that doesn't match its contract schema. */
+export class BadRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BadRequestError";
+  }
+}
+
 /** Thrown by the /api catch-all in app.ts for a path no router matched. */
 export class RouteNotFoundError extends Error {
   constructor() {
@@ -147,6 +180,18 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   }
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
+  }
+  if (err instanceof UnauthorizedError) {
+    return { code: "unauthorized", message: err.message };
+  }
+  if (err instanceof RateLimitedError) {
+    return { code: "rate_limited", message: err.message };
+  }
+  if (err instanceof UnsupportedMediaTypeError) {
+    return { code: "unsupported_media_type", message: err.message };
+  }
+  if (err instanceof BadRequestError) {
+    return { code: "bad_request", message: err.message };
   }
   if (err instanceof InvalidServerIdError) {
     return { code: "bad_request", message: "Invalid server id" };
@@ -213,6 +258,9 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
     log.error({ code, detail, requestId }, message);
 
+    if (err instanceof RateLimitedError) {
+      res.setHeader("Retry-After", String(err.retryAfterSeconds));
+    }
     const body: ApiErrorResponse = { error: { code, message, requestId } };
     if (DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
       body.error.detail = detail;
