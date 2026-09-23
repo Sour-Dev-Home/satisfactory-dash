@@ -18,7 +18,8 @@ A modular monolith (ADR-0014): the source is split by domain into `platform/` pl
 - `src/modules/telemetry/` — status, factory and power: services (production math,
   overflow/outage detection) and the routes that expose them. See its README.
 - `src/modules/identity/` — login, sessions and the session guard (ADR-0011).
-- Settings (auto-pause, ADR-0012) will be `src/modules/settings/`.
+- `src/modules/settings/` — the auto-pause toggle (ADR-0012), the dashboard's only write
+  to a game server. Reads and writes only through gameserver's `ServerOptionsPort`.
 
 Modules import one another only through `index.ts`, and only along the edges listed in
 `src/architecture.test.ts`, which enforces the dependency rules; a new edge is a design

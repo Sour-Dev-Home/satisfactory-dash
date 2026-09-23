@@ -34,5 +34,17 @@ security-reviewer before merge.
 ## Revisit when
 
 More settings need toggles. Generalize to an allowlisted settings map, never a
-passthrough. [NEEDS VERIFICATION]: DSAutoPause applying immediately rather than going to Pending;
-the privilege GetServerOptions requires.
+passthrough.
+
+Verified live 2026-09-23 (local server, AllowInsecureLocalAccess): DSAutoPause applies
+immediately (ApplyServerOptions returned 204, the next GetServerOptions showed the new
+value, PendingServerOptions stayed empty). Response keys are camelCase (`serverOptions`,
+`pendingServerOptions`), not the docs' PascalCase; the request key `UpdatedServerOptions`
+is PascalCase as documented. The `pending` field still reflects PendingServerOptions in
+case a server does queue the change.
+
+Still [NEEDS VERIFICATION]: the privilege GetServerOptions requires (the local server
+needed no token), and whether an application token, whose privilege level the docs list as
+`APIToken` (dedicated-server-api.md:248-268), is accepted by ApplyServerOptions. The
+`editable` rule above requires `pl == "Administrator"`, so an application token reads as
+not editable until that is verified with a real token.
