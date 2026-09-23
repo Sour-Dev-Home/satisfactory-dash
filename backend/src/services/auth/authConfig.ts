@@ -1,5 +1,5 @@
 import { ConfigError } from "../../adapters/index.js";
-import { parsePasswordHash } from "./passwordHash.js";
+import { assertScryptParamsUsable, parsePasswordHash } from "./passwordHash.js";
 import type { ParsedPasswordHash } from "./passwordHash.js";
 
 export interface AuthConfig {
@@ -40,6 +40,13 @@ export function loadAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Aut
   if (!passwordHash) {
     throw new ConfigError(
       "DASHBOARD_ADMIN_PASSWORD_HASH must be set to a scrypt hash. Generate one with `npm run hash-password -w backend`.",
+    );
+  }
+  try {
+    assertScryptParamsUsable(passwordHash);
+  } catch {
+    throw new ConfigError(
+      "DASHBOARD_ADMIN_PASSWORD_HASH has scrypt parameters this system can't use. Regenerate it with `npm run hash-password -w backend`.",
     );
   }
   const sessionSecret = env.SESSION_SECRET ?? "";

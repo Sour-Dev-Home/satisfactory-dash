@@ -4,7 +4,7 @@ import cors from "cors";
 import type { Logger } from "pino";
 import { assignRequestId, createRequestLogger } from "./routes/requestContext.js";
 import { createErrorHandler, RouteNotFoundError } from "./routes/errorResponse.js";
-import { requireJsonBody } from "./routes/session.js";
+import { createCrossSiteGuard, requireJsonBody } from "./routes/session.js";
 
 export interface AppOptions {
   logger: Logger;
@@ -42,6 +42,7 @@ export function createApp({
   // ADR-0011: never a wildcard. Only the listed origins get CORS headers, with
   // credentials so the session cookie is sent. The Vite dev proxy is same-origin.
   app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : false, credentials: true }));
+  app.use("/api", createCrossSiteGuard(allowedOrigins));
   app.use("/api", requireJsonBody);
   app.use(express.json());
   for (const router of routers) {
