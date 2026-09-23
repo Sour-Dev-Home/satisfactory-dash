@@ -135,6 +135,23 @@ export const RawFrmPowerCircuitSchema = z.object({
   AssociatedCircuits: z.array(z.number().int()).optional(),
 });
 
+/** The whole getPower body. getPower reports circuit GROUPS, and the public contract
+ *  promises circuitGroupId is unique within one response, so a repeated id is a
+ *  malformed response (found by PR #22's fresh-eyes review). */
+export const RawFrmPowerResponseSchema = z.array(RawFrmPowerCircuitSchema).superRefine((circuits, ctx) => {
+  const seen = new Set<number>();
+  circuits.forEach((circuit, index) => {
+    if (seen.has(circuit.CircuitGroupID)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [index, "CircuitGroupID"],
+        message: `duplicate circuit group id ${circuit.CircuitGroupID}`,
+      });
+    }
+    seen.add(circuit.CircuitGroupID);
+  });
+});
+
 export const RawFrmPowerUsageBuildingSchema = z.object({
   ID: z.string().min(1),
   Name: z.string(),

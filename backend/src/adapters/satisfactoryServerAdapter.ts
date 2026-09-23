@@ -6,7 +6,7 @@ import {
   RawHealthCheckResponseSchema,
   RawQueryServerStateResponseSchema,
   RawFrmFactoryBuildingSchema,
-  RawFrmPowerCircuitSchema,
+  RawFrmPowerResponseSchema,
   RawFrmPowerUsageBuildingSchema,
   RawFrmPlayerSchema,
   RawFrmSessionInfoSchema,
@@ -177,7 +177,7 @@ export class SatisfactoryServerAdapter {
   }
 
   async getPowerCircuits(): Promise<PowerCircuit[]> {
-    const raw = parseUpstream("getPower", z.array(RawFrmPowerCircuitSchema), await this.frmApi.get<unknown>("getPower"));
+    const raw = parseUpstream("getPower", RawFrmPowerResponseSchema, await this.frmApi.get<unknown>("getPower"));
     return raw.map((circuit) => ({
       circuitGroupId: circuit.CircuitGroupID,
       powerProduction: circuit.PowerProduction,
