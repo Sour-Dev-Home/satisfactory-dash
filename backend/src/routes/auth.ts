@@ -54,9 +54,12 @@ export function createAuthRouter(deps: SessionDeps & { rateLimiter: LoginRateLim
     if (!parsed.success) {
       throw new BadRequestError("Send a username and a password");
     }
+    // Count the attempt BEFORE the slow password check and clear it on success.
+    // Counting only after a failure let parallel guesses all get through before any
+    // was recorded (found by PR #24's fresh-eyes review).
+    rateLimiter.recordFailure(ip);
     const user = await authenticator.verifyCredentials(parsed.data.username, parsed.data.password);
     if (!user) {
-      rateLimiter.recordFailure(ip);
       // Never log the submitted password.
       req.log.warn({ ip, username: parsed.data.username }, "login failed");
       throw new UnauthorizedError("Invalid username or password");

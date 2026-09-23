@@ -1,3 +1,16 @@
+import { ipKeyGenerator } from "express-rate-limit";
+
+/** Addresses in one IPv6 /56 share a bucket (a client usually controls a whole block,
+ *  so per-address keys would give it fresh attempts; found by PR #24's fresh-eyes
+ *  review). The same grouping express-rate-limit uses for the outer request cap. */
+function keyFor(ip: string): string {
+  try {
+    return ipKeyGenerator(ip, 56);
+  } catch {
+    return ip;
+  }
+}
+
 /**
  * ADR-0011: in-process rate limit on login attempts, per client IP. After
  * MAX_FAILURES failed attempts inside the window, every attempt from that IP is
@@ -24,7 +37,7 @@ export class LoginRateLimiter {
 
   /** Seconds until this IP may try again, or 0 if it may try now. */
   retryAfterSeconds(ip: string): number {
-    const bucket = this.current(ip);
+    const bucket = this.current(keyFor(ip));
     if (!bucket || bucket.failures < MAX_FAILURES) {
       return 0;
     }
@@ -32,7 +45,8 @@ export class LoginRateLimiter {
   }
 
   recordFailure(ip: string): void {
-    const bucket = this.current(ip);
+    const key = keyFor(ip);
+    const bucket = this.current(key);
     if (bucket) {
       bucket.failures += 1;
       return;
@@ -40,11 +54,11 @@ export class LoginRateLimiter {
     if (this.buckets.size >= MAX_TRACKED_IPS) {
       this.prune();
     }
-    this.buckets.set(ip, { failures: 1, resetAt: this.now() + WINDOW_MS });
+    this.buckets.set(key, { failures: 1, resetAt: this.now() + WINDOW_MS });
   }
 
   recordSuccess(ip: string): void {
-    this.buckets.delete(ip);
+    this.buckets.delete(keyFor(ip));
   }
 
   private current(ip: string): Bucket | undefined {

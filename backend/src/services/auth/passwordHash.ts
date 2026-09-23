@@ -40,8 +40,13 @@ export function parsePasswordHash(encoded: string): ParsedPasswordHash | null {
   const [N, r, p] = parts.slice(1, 4).map(Number);
   const salt = Buffer.from(parts[4], "base64");
   const hash = Buffer.from(parts[5], "base64");
-  const powerOfTwo = Number.isInteger(N) && N >= 2 ** 14 && (N & (N - 1)) === 0;
-  if (!powerOfTwo || !Number.isInteger(r) || r < 1 || !Number.isInteger(p) || p < 1) {
+  // Math.log2, not the `N & (N - 1)` trick: bitwise operators truncate to 32 bits, so
+  // e.g. 2^32 + 2^14 used to pass. The memory bound is scrypt's own (about 128 * N * r
+  // bytes must fit under maxmem); a hash that breaks it would start the server and then
+  // fail every login with a 500 (both found by PR #24's fresh-eyes review).
+  const powerOfTwo = Number.isSafeInteger(N) && N >= 2 ** 14 && Number.isInteger(Math.log2(N));
+  const sane = Number.isInteger(r) && r >= 1 && r <= 32 && Number.isInteger(p) && p >= 1 && p <= 16;
+  if (!powerOfTwo || !sane || 128 * N * r >= MAX_MEMORY) {
     return null;
   }
   if (salt.length < SALT_BYTES || hash.length < 32) {

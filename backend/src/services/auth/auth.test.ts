@@ -35,6 +35,12 @@ describe("password hashing", () => {
       ["scrypt", 1024, r, p, salt, hash].join("$"), // N below 2^14
       ["scrypt", 30000, r, p, salt, hash].join("$"), // N not a power of two
       ["scrypt", 2 ** 15, r, p, "c2FsdA==", hash].join("$"), // 4-byte salt
+      // Found by PR #24's fresh-eyes review: these passed the startup check, and then
+      // every login failed with a 500.
+      ["scrypt", 2 ** 32 + 2 ** 14, r, p, salt, hash].join("$"), // not a power of two (32-bit bitwise check)
+      ["scrypt", 3 * 2 ** 32, r, p, salt, hash].join("$"),
+      ["scrypt", 2 ** 20, r, p, salt, hash].join("$"), // exceeds the scrypt memory cap
+      ["scrypt", 2 ** 15, 1000, p, salt, hash].join("$"), // r far too large
     ]) {
       expect(parsePasswordHash(bad), bad.slice(0, 20)).toBeNull();
     }
@@ -92,6 +98,15 @@ describe("LoginRateLimiter", () => {
     expect(limiter.retryAfterSeconds("5.6.7.8")).toBe(0); // per IP
     now += WINDOW_MS;
     expect(limiter.retryAfterSeconds("1.2.3.4")).toBe(0);
+  });
+
+  // Found by PR #24's fresh-eyes review: a client could rotate addresses inside its own
+  // IPv6 block for fresh attempts. Addresses in one /56 share a bucket.
+  it("counts addresses in the same IPv6 /56 block together", () => {
+    const limiter = new LoginRateLimiter();
+    for (let i = 0; i < MAX_FAILURES; i++) limiter.recordFailure(`2001:db8:0:1::${i + 1}`);
+    expect(limiter.retryAfterSeconds("2001:db8:0:1::ffff")).toBeGreaterThan(0);
+    expect(limiter.retryAfterSeconds("2001:db8:0:ff00::1")).toBe(0); // a different /56
   });
 
   it("clears an IP's failures after a successful login", () => {

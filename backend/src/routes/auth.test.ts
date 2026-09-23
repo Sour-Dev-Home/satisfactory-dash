@@ -156,6 +156,18 @@ describe("POST /api/auth/login", () => {
     expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
   });
 
+  // Found by PR #24's fresh-eyes review: failures were counted only after the slow
+  // password check, so parallel guesses all got through before any was counted.
+  it(`stops parallel guessing at ${MAX_FAILURES} attempts`, async () => {
+    const { app } = buildApp();
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => login(app, { username: "operator", password: `parallel-wrong-${i}` })),
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((status) => status === 401).length).toBeLessThanOrEqual(MAX_FAILURES);
+    expect(statuses.filter((status) => status === 429).length).toBeGreaterThanOrEqual(12 - MAX_FAILURES);
+  });
+
   it("never logs the submitted password or the session cookie", async () => {
     const { app, lines } = buildApp();
     await login(app, { username: "operator", password: "wrong-password-xyz-123" });
