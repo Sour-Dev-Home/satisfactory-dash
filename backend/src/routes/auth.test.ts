@@ -168,6 +168,24 @@ describe("POST /api/auth/login", () => {
     expect(statuses.filter((status) => status === 429).length).toBeGreaterThanOrEqual(12 - MAX_FAILURES);
   });
 
+  // Go-live blocker (issue #19): behind the tunnel every request comes from loopback,
+  // like supertest's here. Visitors must be told apart by CF-Connecting-IP, or one
+  // attacker's failures would lock everyone out.
+  it("keeps separate lockout counts per tunnel visitor (CF-Connecting-IP)", async () => {
+    const { app } = buildApp();
+    const loginAs = (visitor: string, password: string) =>
+      request(app)
+        .post(endpoints.auth.login.path())
+        .set("Content-Type", "application/json")
+        .set("CF-Connecting-IP", visitor)
+        .send(JSON.stringify({ username: "operator", password }));
+    for (let i = 0; i < MAX_FAILURES; i++) {
+      expect((await loginAs("203.0.113.5", `attacker-${i}`)).status).toBe(401);
+    }
+    expect((await loginAs("203.0.113.5", PASSWORD)).status).toBe(429);
+    expect((await loginAs("198.51.100.7", PASSWORD)).status).toBe(200); // the owner still gets in
+  });
+
   // Found by the security review of PR #24: people type their password into the
   // username field, so a failed login must not log the submitted username verbatim.
   it("doesn't log the submitted username on a failed login, only whether it matched", async () => {
