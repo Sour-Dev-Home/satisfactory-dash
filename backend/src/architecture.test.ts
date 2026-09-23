@@ -47,9 +47,11 @@ export function importSpecifiers(source: string): string[] {
   return specifiers;
 }
 
-/** "modules/telemetry/routes/status.ts" -> "telemetry"; anything else -> null. */
+/** "modules/telemetry/routes/status.ts" -> "telemetry"; anything else -> null. A folder
+ *  import ("../telemetry" resolves to telemetry/index under moduleResolution "bundler")
+ *  has no trailing slash, so "modules/telemetry" counts too. */
 function moduleOf(file: string): string | null {
-  return /^modules\/([^/]+)\//.exec(file)?.[1] ?? null;
+  return /^modules\/([^/]+)(?:\/|$)/.exec(file)?.[1] ?? null;
 }
 
 /** Resolves a relative specifier to a src-relative path without extension, or null for a package. */
@@ -57,7 +59,8 @@ function resolveRelative(fromFile: string, specifier: string): string | null {
   if (!specifier.startsWith(".")) {
     return null;
   }
-  return path.posix.join(path.posix.dirname(fromFile), specifier).replace(/\.js$/, "");
+  // A trailing slash ("../telemetry/") is a folder import too; join keeps it, so drop it.
+  return path.posix.join(path.posix.dirname(fromFile), specifier).replace(/\.js$/, "").replace(/\/$/, "");
 }
 
 /** Checks the rules against a map of src-relative path -> source. Returns readable violations. */
@@ -89,7 +92,7 @@ export function findViolations(files: Map<string, string>): string[] {
         fail("rule 1: platform/ must not import a module");
       }
       if (fromModule && toModule && fromModule !== toModule) {
-        if (target !== `modules/${toModule}/index`) {
+        if (target !== `modules/${toModule}/index` && target !== `modules/${toModule}`) {
           fail(`rule 2: import module "${toModule}" only through its index.ts`);
         }
         if (!(ALLOWED_MODULE_EDGES[fromModule] ?? []).includes(toModule)) {
@@ -125,6 +128,11 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     expect(findViolations(files)).toEqual([]);
   });
 
+  it("only app.ts and server.ts sit at the top of src/ (rule 5: they are exempt, so nothing else may be)", () => {
+    const rootFiles = [...readSources().keys()].filter((f) => !f.includes("/")).sort();
+    expect(rootFiles).toEqual(["app.ts", "server.ts"]);
+  });
+
   // The checker itself must be able to fail: each case is a deliberate violation.
   const bad: [string, string, string, RegExp][] = [
     ["platform importing a module", "platform/x.ts", `import { a } from "../modules/servers/index.js";`, /rule 1/],
@@ -135,7 +143,11 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     ["a module importing the composition root", "modules/identity/x.ts", `import { app } from "../../app.js";`, /rule 5/],
     ["servers importing an unlisted package", "modules/servers/x.ts", `import cors from "cors";`, /rule 4/],
     ["a multi-line import", "platform/x.ts", `import {\n  a,\n  b,\n} from "../modules/identity/index.js";`, /rule 1/],
-    ["a dynamic import", "platform/x.ts", `const m = await import("../modules/identity/index.js");`, /rule 1/],
+    ["a folder import into a module (platform)", "platform/x.ts", `import { a } from "../modules/identity";`, /rule 1/],
+    ["a folder import along a forbidden edge", "modules/servers/x.ts", `import { a } from "../telemetry";`, /rule 4/],
+    ["a folder import from gameserver", "modules/gameserver/x.ts", `import { a } from "../servers";`, /rule 4/],
+    ["a trailing-slash folder import", "modules/servers/x.ts", `import { a } from "../telemetry/";`, /rule 4/],
+    ["a dynamic import","platform/x.ts", `const m = await import("../modules/identity/index.js");`, /rule 1/],
   ];
   it.each(bad)("fails on %s", (_name, file, source, expected) => {
     const violations = findViolations(new Map([[file, source]]));

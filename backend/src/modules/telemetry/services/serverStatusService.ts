@@ -9,7 +9,7 @@ export interface ServerStatusAdapterLike {
 /**
  * Merges the vanilla API's HealthCheck and QueryServerState into the contract's
  * Status (packages/shared/src/status.ts). The adapter validates both responses
- * (adapters/rawSchemas.ts), so the values here are already well-formed; the
+ * (gameserver/rawSchemas.ts), so the values here are already well-formed; the
  * response is validated once more against the contract on the way out (ADR-0002).
  */
 export class ServerStatusService {
