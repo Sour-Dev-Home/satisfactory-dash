@@ -2,20 +2,22 @@ import "dotenv/config";
 import { createApp } from "./app.js";
 import { createLogger } from "./logger.js";
 import { healthRouter } from "./routes/health.js";
+import { createServersRouter } from "./routes/servers.js";
 import { createStatusRouter } from "./routes/status.js";
 import { createFactoryRouter } from "./routes/factory.js";
 import { createPowerRouter } from "./routes/power.js";
-import { ConfigError, SatisfactoryServerAdapter, loadSatisfactoryServerConfigFromEnv } from "./adapters/index.js";
+import { ConfigError, SatisfactoryServerAdapter, loadServerRegistryFromEnv } from "./adapters/index.js";
 import { ServerStatusService } from "./services/serverStatusService.js";
 import { ProductionService } from "./services/productionService.js";
 import { PowerService } from "./services/powerService.js";
+import { InMemoryServerDirectory } from "./services/serverDirectory.js";
 
 const port = process.env.PORT ?? 3001;
 const logger = createLogger();
 
-function loadConfigOrExit() {
+function loadRegistryOrExit() {
   try {
-    return loadSatisfactoryServerConfigFromEnv();
+    return loadServerRegistryFromEnv();
   } catch (err) {
     if (err instanceof ConfigError) {
       logger.fatal(err.message);
@@ -25,15 +27,30 @@ function loadConfigOrExit() {
   }
 }
 
-const adapter = SatisfactoryServerAdapter.fromConfig(loadConfigOrExit());
+// ADR-0001: one adapter and one set of services per registered game server.
+const directory = new InMemoryServerDirectory(
+  loadRegistryOrExit().map(({ id, displayName, config }) => {
+    const adapter = SatisfactoryServerAdapter.fromConfig(config);
+    return {
+      id,
+      displayName,
+      services: {
+        status: new ServerStatusService(adapter),
+        production: new ProductionService(adapter),
+        power: new PowerService(adapter),
+      },
+    };
+  }),
+);
 
 export const app = createApp({
   logger,
   routers: [
     healthRouter,
-    createStatusRouter(new ServerStatusService(adapter)),
-    createFactoryRouter(new ProductionService(adapter)),
-    createPowerRouter(new PowerService(adapter)),
+    createServersRouter(directory),
+    createStatusRouter(directory),
+    createFactoryRouter(directory),
+    createPowerRouter(directory),
   ],
 });
 

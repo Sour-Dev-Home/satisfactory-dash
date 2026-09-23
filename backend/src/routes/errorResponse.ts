@@ -97,6 +97,23 @@ function describeFailureUnsafe(err: unknown): ClassifiedFailure {
   return { code: "upstream_error", message: FALLBACK_MESSAGE };
 }
 
+/** A :serverId that isn't a valid server id (ADR-0001: ^[a-z0-9-]{1,32}$). */
+export class InvalidServerIdError extends Error {
+  constructor() {
+    super("Invalid server id");
+    this.name = "InvalidServerIdError";
+  }
+}
+
+/** A well-formed :serverId that no configured server has. The frontend may react by
+ *  re-running server discovery, which is why this is not `not_found`. */
+export class ServerNotFoundError extends Error {
+  constructor() {
+    super("No server with that id");
+    this.name = "ServerNotFoundError";
+  }
+}
+
 /** Thrown by the /api catch-all in app.ts for a path no router matched. */
 export class RouteNotFoundError extends Error {
   constructor() {
@@ -130,6 +147,12 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   }
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
+  }
+  if (err instanceof InvalidServerIdError) {
+    return { code: "bad_request", message: "Invalid server id" };
+  }
+  if (err instanceof ServerNotFoundError) {
+    return { code: "server_not_found", message: "No server with that id" };
   }
   // Express's router throws a URIError (with a bare `status: 400`, no `expose`) for a
   // broken percent-encoded route parameter. Without this, describeFailure's status

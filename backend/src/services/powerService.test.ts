@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { PowerSchema } from "@satisfactory-dash/shared";
 import { PowerService, classifyPowerCircuit } from "./powerService.js";
 import type { PowerAdapterLike } from "./powerService.js";
 import type { PowerCircuit } from "../adapters/domain.js";
@@ -152,6 +153,36 @@ describe("classifyPowerCircuit", () => {
 });
 
 describe("PowerService", () => {
+  it("maps circuits to the contract's MW/MWh shape, including the new capacity fields", async () => {
+    const adapter: PowerAdapterLike = {
+      getPowerCircuits: async () => [
+        circuit({
+          powerProduction: 3633.3,
+          powerConsumed: 2744,
+          powerCapacity: 4083.3,
+          maxPowerConsumed: 4606.5,
+          batteryCapacity: 100,
+          batteryPercent: 2.33,
+          batteryDifferential: 100,
+        }),
+      ],
+    };
+    const overview = await new PowerService(adapter).getPowerOverview();
+    expect(overview.circuits[0]).toEqual({
+      circuitGroupId: 0,
+      productionMW: 3633.3,
+      consumptionMW: 2744,
+      capacityMW: 4083.3,
+      maxConsumptionMW: 4606.5,
+      fuseTriggered: false,
+      batteryCapacityMWh: 100,
+      batteryPercent: 2.33,
+      batteryDifferentialMW: 100,
+      status: "ok",
+    });
+    expect(PowerSchema.parse(overview)).toEqual(overview);
+  });
+
   it("maps circuits and flags hasOutage when any circuit is in outage", async () => {
     const adapter: PowerAdapterLike = {
       getPowerCircuits: async () => [circuit({ circuitGroupId: 0 }), circuit({ circuitGroupId: 1, fuseTriggered: true })],
@@ -171,10 +202,9 @@ describe("PowerService", () => {
     await expect(service.getPowerOverview()).resolves.toMatchObject({ hasOutage: false });
   });
 
-  // hasOutage is defined (services/powerService.ts) as `.some(status === "outage")` —
-  // an all-at_risk fleet of circuits (batteries draining, none tripped/over-capacity
-  // yet) must NOT set hasOutage, even though every circuit is degraded. Confirms the
-  // route/UI can't conflate "at risk" with "outage" via this flag.
+  // hasOutage is `.some(status === "outage")`: an all-at_risk set of circuits
+  // (batteries draining, none tripped yet) must NOT set it, so the UI can't conflate
+  // "at risk" with "outage" via this flag.
   it("does not flag hasOutage when every circuit is at_risk but none is an outage", async () => {
     const adapter: PowerAdapterLike = {
       getPowerCircuits: async () => [
@@ -192,97 +222,5 @@ describe("PowerService", () => {
     const adapter: PowerAdapterLike = { getPowerCircuits: async () => [] };
     const service = new PowerService(adapter);
     await expect(service.getPowerOverview()).resolves.toEqual({ circuits: [], hasOutage: false });
-  });
-
-  // Found by a fourth review pass: classifyPowerCircuit correctly treats malformed
-  // fields as at_risk, but getPowerOverview used to copy the RAW malformed values
-  // straight into PowerCircuitResponse -- a string in a field packages/shared
-  // declares as `boolean`, or a NaN that becomes JSON `null` in a field declared as
-  // `number`. That's a contract leak (ground rule 5): the response no longer
-  // actually matches its own declared type at runtime. Sanitize to safe defaults
-  // for the response while still classifying off the raw circuit. Fallback is
-  // `false` -- a sixth pass changed this to `true` reasoning an alarm field should
-  // fail toward the alarm, but an eighth pass caught that this made the response
-  // self-contradictory (fuseTriggered: true alongside status: "at_risk", not
-  // "outage", and hasOutage: false all disagreeing at once), which is worse than
-  // either single direction. Reverted; `status` alone carries the alert.
-  it("sanitizes a malformed fuseTriggered to false in the response, consistent with status: at_risk (not outage)", async () => {
-    const bad = { ...circuit(), fuseTriggered: "false" as unknown as boolean };
-    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
-    const service = new PowerService(adapter);
-    const overview = await service.getPowerOverview();
-    expect(overview.circuits[0].fuseTriggered).toBe(false);
-    expect(typeof overview.circuits[0].fuseTriggered).toBe("boolean");
-    expect(overview.circuits[0].status).toBe("at_risk");
-  });
-
-  it("sanitizes a NaN numeric field to 0 in the response, while still classifying it as at_risk", async () => {
-    const bad = circuit({ powerConsumed: Number.NaN });
-    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
-    const service = new PowerService(adapter);
-    const overview = await service.getPowerOverview();
-    expect(overview.circuits[0].powerConsumed).toBe(0);
-    expect(Number.isFinite(overview.circuits[0].powerConsumed)).toBe(true);
-    expect(overview.circuits[0].status).toBe("at_risk");
-  });
-
-  // Found by a fifth review pass: circuitGroupId went through every other field's
-  // finiteOr treatment except itself, so a NaN there still became JSON null on the
-  // wire despite PowerCircuitResponse declaring it a number. -1 (not 0) is the
-  // right fallback since 0 could collide with a real circuit's actual id -- FRM
-  // documents -1 as "not connected" for this exact field
-  // (docs-vault/raw-sources/frm-getFactory.md), already used the same way for
-  // FactoryBuilding.circuitGroupId.
-  it("sanitizes a NaN circuitGroupId to -1 (FRM's own not-connected sentinel), not 0", async () => {
-    const bad = circuit({ circuitGroupId: Number.NaN });
-    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [bad] };
-    const service = new PowerService(adapter);
-    const overview = await service.getPowerOverview();
-    expect(overview.circuits[0].circuitGroupId).toBe(-1);
-  });
-
-  it("leaves well-formed values untouched", async () => {
-    const adapter: PowerAdapterLike = { getPowerCircuits: async () => [circuit({ powerConsumed: 42, fuseTriggered: false })] };
-    const service = new PowerService(adapter);
-    const overview = await service.getPowerOverview();
-    expect(overview.circuits[0].powerConsumed).toBe(42);
-    expect(overview.circuits[0].fuseTriggered).toBe(false);
-  });
-
-  // Found by a seventh review pass: a null/non-object entry in the circuits array
-  // itself (not just a bad field on an otherwise-real circuit) crashed the whole
-  // overview via a TypeError, rather than just being unreadable on its own. Not
-  // reachable from today's real adapter, but this service already describes
-  // itself as defensive against unvalidated FRM data. A ninth pass caught that the
-  // first fix (filtering the null out) made it vanish silently -- the wrong
-  // direction for an alarm, since every other malformed-data case here shows up
-  // as at_risk instead of disappearing. It's now shown as a placeholder at_risk
-  // entry rather than skipped.
-  it("shows a null entry in the circuits array as a placeholder at_risk circuit, instead of dropping it or crashing", async () => {
-    const adapter: PowerAdapterLike = {
-      getPowerCircuits: async () => [circuit({ circuitGroupId: 0 }), null as unknown as PowerCircuit],
-    };
-    const service = new PowerService(adapter);
-    const overview = await service.getPowerOverview();
-    expect(overview.circuits).toHaveLength(2);
-    expect(overview.circuits[0].circuitGroupId).toBe(0);
-    expect(overview.circuits[1]).toMatchObject({ circuitGroupId: -1, status: "at_risk" });
-  });
-
-  // Found by a tenth review pass: Array.prototype.map SKIPS holes in a sparse
-  // array rather than calling the callback with undefined for them, so a hole
-  // bypassed the null/non-object placeholder logic entirely and came out as a raw
-  // JSON null in the response -- contradicting this method's own rule that every
-  // malformed entry shows up as at_risk. Not reachable through the real adapter
-  // (JSON.parse can't produce a sparse array), but worth closing defensively.
-  it("shows a hole in a sparse circuits array as a placeholder at_risk circuit too", async () => {
-    const sparse: PowerCircuit[] = [circuit({ circuitGroupId: 0 }), circuit({ circuitGroupId: 1 })];
-    delete (sparse as unknown[])[1]; // creates an actual array hole, not `undefined`
-    const adapter: PowerAdapterLike = { getPowerCircuits: async () => sparse };
-    const service = new PowerService(adapter);
-    const overview = await service.getPowerOverview();
-    expect(overview.circuits).toHaveLength(2);
-    expect(overview.circuits[1]).toMatchObject({ circuitGroupId: -1, status: "at_risk" });
-    expect(overview.circuits[1]).not.toBeNull();
   });
 });

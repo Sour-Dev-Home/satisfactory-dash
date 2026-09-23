@@ -35,7 +35,7 @@ describe("SatisfactoryServerAdapter", () => {
     const { adapter, vanillaApi } = buildAdapter({
       vanilla: { call: vi.fn().mockResolvedValue(healthCheckFixture) },
     });
-    await expect(adapter.getServerHealth()).resolves.toEqual({ healthy: true });
+    await expect(adapter.getServerHealth()).resolves.toEqual({ tickHealth: "healthy" });
     expect(vanillaApi.call).toHaveBeenCalledWith("HealthCheck", { ClientCustomData: "" });
   });
 
@@ -377,5 +377,21 @@ describe("SatisfactoryServerAdapter", () => {
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([noRecipe]) } });
     const [building] = await adapter.getFactoryBuildings();
     expect(building).toMatchObject({ recipe: null, production: [], consumption: [] });
+  });
+
+  // Found by PR #22's fresh-eyes review: the contract says circuitGroupId is unique
+  // within one response, and every contract constraint is enforced in the adapter.
+  it("rejects a getPower response that repeats a circuit group id", async () => {
+    const dup = [powerCircuitFixture, { ...powerCircuitFixture }];
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(dup) } });
+    const err = await adapter.getPowerCircuits().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("duplicate circuit group id");
+  });
+
+  it("accepts distinct circuit group ids", async () => {
+    const two = [powerCircuitFixture, { ...powerCircuitFixture, CircuitGroupID: 1 }];
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(two) } });
+    await expect(adapter.getPowerCircuits()).resolves.toHaveLength(2);
   });
 });

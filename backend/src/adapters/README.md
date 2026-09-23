@@ -29,7 +29,9 @@ which specific game server — the data came from. That indirection is what make
   Both take an injectable transport/fetch so they're testable without a real socket.
 - `satisfactoryServerAdapter.ts` — `SatisfactoryServerAdapter`, the class
   `services/` should actually depend on. Maps raw → domain.
-- `config.ts` — env-var config (host/ports/tokens); see `backend/.env.example`. The
+- `config.ts` — env-var config (host/ports/tokens) and the server registry
+  (`loadServerRegistryFromEnv`, ADR-0001: a registry of one today); see
+  `backend/.env.example`. The
   vanilla API's TLS certificate is verified by default, except for loopback/private
   hosts, where the game server's self-signed cert is expected. The backend refuses to
   start (`ConfigError`) if the host isn't loopback/private at all: FRM is plain HTTP,
@@ -52,11 +54,9 @@ appears in no returned object and no log line. Never pass arbitrary option keys 
 ## Known gaps (see `docs-vault/wiki/data-gap-analysis.md`)
 
 - `getFactory` and `getPower` were validated against a populated save on 2026-09-22
-  (see `docs-vault/wiki/frm-api.md`). That surfaced three mapping bugs not yet fixed:
-  `Recipe: "Unassigned"` is passed through as a real recipe, a building's `circuitId`
-  is taken from `PowerInfo.CircuitID` although `getPower` is keyed by `CircuitGroupID`
-  (also in the `getPowerUsage` mapping), and `rawTypes.ts` has no `IsConfigured` field.
-  `getPlayer` is still unvalidated against real players.
+  (see `docs-vault/wiki/frm-api.md`), and the three mapping bugs that surfaced (B1-B3:
+  the backed-up rule, "Unassigned" recipes, circuit keying by `CircuitGroupID`) are
+  fixed. `getPlayer` is still unvalidated against real players.
 - FRM's documented tunneled transport (through the vanilla API's port) 404s on this
   version; the adapter only implements FRM's direct Web Server.
 - The `X-FRM-Authorization` header name is documented but not live-verified — the

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
+import { ApiErrorResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import { createApp } from "../app.js";
 import { createLogger } from "../logger.js";
 import { SatisfactoryServerAdapter } from "../adapters/index.js";
@@ -13,6 +13,7 @@ import {
 import { ServerStatusService } from "../services/serverStatusService.js";
 import { ProductionService } from "../services/productionService.js";
 import { PowerService } from "../services/powerService.js";
+import { InMemoryServerDirectory } from "../services/serverDirectory.js";
 import { createStatusRouter } from "./status.js";
 import { createFactoryRouter } from "./factory.js";
 import { createPowerRouter } from "./power.js";
@@ -28,13 +29,20 @@ function appWithUpstream({ vanilla, frm }: { vanilla?: (fn: string) => unknown; 
     { call: async (fn: string) => vanilla?.(fn) as never },
     { get: async (endpoint: string) => frm?.(endpoint) as never },
   );
+  const directory = new InMemoryServerDirectory([
+    {
+      id: "default",
+      displayName: "Test server",
+      services: {
+        status: new ServerStatusService(adapter),
+        production: new ProductionService(adapter),
+        power: new PowerService(adapter),
+      },
+    },
+  ]);
   return createApp({
     logger: createLogger(),
-    routers: [
-      createStatusRouter(new ServerStatusService(adapter)),
-      createFactoryRouter(new ProductionService(adapter)),
-      createPowerRouter(new PowerService(adapter)),
-    ],
+    routers: [createStatusRouter(directory), createFactoryRouter(directory), createPowerRouter(directory)],
   });
 }
 
@@ -45,31 +53,31 @@ async function expectInvalidUpstream(app: ReturnType<typeof appWithUpstream>, pa
 }
 
 describe("out-of-range upstream data is a 502, not a 500", () => {
-  it("/api/status: a negative player count", async () => {
+  it("status: a negative player count", async () => {
     const badState = {
       ...queryServerStateFixture,
       serverGameState: { ...queryServerStateFixture.serverGameState, numConnectedPlayers: -3 },
     };
     const app = appWithUpstream({ vanilla: (fn) => (fn === "HealthCheck" ? healthCheckFixture : badState) });
-    await expectInvalidUpstream(app, "/api/status");
+    await expectInvalidUpstream(app, endpoints.status.path("default"));
   });
 
-  it("/api/factory: a negative production rate", async () => {
+  it("factory: a negative production rate", async () => {
     const bad = {
       ...factoryBuildingFixture,
       production: [{ ...factoryBuildingFixture.production![0], MaxProd: -10 }],
     };
-    await expectInvalidUpstream(appWithUpstream({ frm: () => [bad] }), "/api/factory");
+    await expectInvalidUpstream(appWithUpstream({ frm: () => [bad] }), endpoints.factory.path("default"));
   });
 
-  it("/api/power: a negative battery capacity", async () => {
+  it("power: a negative battery capacity", async () => {
     const bad = { ...powerCircuitFixture, BatteryCapacity: -100 };
-    await expectInvalidUpstream(appWithUpstream({ frm: () => [bad] }), "/api/power");
+    await expectInvalidUpstream(appWithUpstream({ frm: () => [bad] }), endpoints.power.path("default"));
   });
 
   it("valid upstream data still returns 200 through the same pipeline", async () => {
     const app = appWithUpstream({ frm: () => [powerCircuitFixture] });
-    const res = await request(app).get("/api/power");
+    const res = await request(app).get(endpoints.power.path("default"));
     expect(res.status).toBe(200);
   });
 });

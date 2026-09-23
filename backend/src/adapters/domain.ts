@@ -5,7 +5,9 @@
  */
 
 export interface ServerHealth {
-  healthy: boolean;
+  /** Vanilla HealthCheck: "healthy" above 10 ticks/s, else "slow"
+   *  (docs-vault/raw-sources/dedicated-server-api.md:310). */
+  tickHealth: "healthy" | "slow";
 }
 
 export interface ServerStatus {

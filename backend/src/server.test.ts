@@ -50,23 +50,23 @@ describe("GET /api/health", () => {
 // checks: that a real adapter connection failure propagates through the real service
 // and is turned into a clean 503 by the route, rather than the request crashing,
 // hanging, or an unhandled rejection escaping past Express's control flow.
-describe("GET /api/status, /api/factory, /api/power against an unreachable game server", () => {
+describe("GET /api/servers/default/{status,factory,power} against an unreachable game server", () => {
   it("status: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/status");
+    const res = await request(app).get("/api/servers/default/status");
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
     expect(res.body.error).toHaveProperty("detail");
   });
 
   it("factory: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/factory");
+    const res = await request(app).get("/api/servers/default/factory");
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
     expect(res.body.error).toHaveProperty("detail");
   });
 
   it("power: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/power");
+    const res = await request(app).get("/api/servers/default/power");
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
     expect(res.body.error).toHaveProperty("detail");
@@ -80,7 +80,7 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
   // The transport now wraps it as the `.cause` of a VanillaApiRequestError tagged
   // `failureKind: "unreachable"`, so it appears inside a "(caused by: ...)" clause.
   it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
-    const res = await request(app).get("/api/status");
+    const res = await request(app).get("/api/servers/default/status");
     expect(res.status).toBe(503);
     expect(typeof res.body.error.detail).toBe("string");
     expect(res.body.error.detail).not.toBe("AggregateError");
@@ -89,7 +89,7 @@ describe("GET /api/status, /api/factory, /api/power against an unreachable game 
 
   // A real refused connection, not a mock: confirms both transports classify it
   // as unreachable end to end, so the message isn't the neutral fallback.
-  it.each(["/api/status", "/api/factory", "/api/power"])(
+  it.each(["/api/servers/default/status", "/api/servers/default/factory", "/api/servers/default/power"])(
     "%s: a refused connection is reported as unreachable",
     async (path) => {
       const res = await request(app).get(path);
