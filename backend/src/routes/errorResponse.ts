@@ -87,25 +87,30 @@ function describeFailureUnsafe(err: unknown): ClassifiedFailure {
   return { code: "internal", message: FALLBACK_MESSAGE };
 }
 
-/** A client-side problem with OUR request (e.g. express.json() rejecting a malformed
- *  body). Those errors come from http-errors with `expose: true` and a 4xx
- *  `statusCode`. They must be caught before describeFailure, whose `status` branch
- *  would otherwise report them as the game server's fault. */
-function isClientRequestError(err: unknown): boolean {
+/** Thrown by the /api catch-all in app.ts for a path no router matched. */
+export class RouteNotFoundError extends Error {
+  constructor() {
+    super("No such API endpoint");
+    this.name = "RouteNotFoundError";
+  }
+}
+
+/** A client-side problem with OUR request (e.g. express.json() rejecting a malformed,
+ *  oversized or wrongly encoded body). Those errors come from http-errors with
+ *  `expose: true` and a 4xx `statusCode`. They must be caught before describeFailure,
+ *  whose `status` branch would otherwise report them as the game server's fault.
+ *  Returns the status, or undefined when `err` isn't one. */
+function clientRequestErrorStatus(err: unknown): number | undefined {
   try {
-    if (err === null || typeof err !== "object") {
-      return false;
+    if (err === null || typeof err !== "object" || !("expose" in err) || err.expose !== true) {
+      return undefined;
     }
     const statusCode = "statusCode" in err ? err.statusCode : undefined;
-    return (
-      "expose" in err &&
-      err.expose === true &&
-      typeof statusCode === "number" &&
-      statusCode >= 400 &&
-      statusCode < 500
-    );
+    return typeof statusCode === "number" && Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 500
+      ? statusCode
+      : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -113,10 +118,21 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   if (err instanceof ContractViolationError) {
     return { code: "internal", message: "Internal server error" };
   }
-  if (isClientRequestError(err)) {
-    return { code: "bad_request", message: "The request was malformed" };
+  if (err instanceof RouteNotFoundError) {
+    return { code: "not_found", message: "No such API endpoint" };
   }
-  return describeFailure(err);
+  // Each body-parser status gets its own code, so the code alone decides the HTTP
+  // status (ADR-0003 amendment); anything else is a generic 400.
+  switch (clientRequestErrorStatus(err)) {
+    case undefined:
+      return describeFailure(err);
+    case 413:
+      return { code: "payload_too_large", message: "The request body is too large" };
+    case 415:
+      return { code: "unsupported_media_type", message: "Send the request body as application/json" };
+    default:
+      return { code: "bad_request", message: "The request was malformed" };
+  }
 }
 
 /** `detail` is safe to include only in these NODE_ENV values -- an explicit
