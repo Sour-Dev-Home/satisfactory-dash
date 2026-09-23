@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatMW, formatMWh, formatPercent, formatTickRate, formatTime } from "./format";
+import {
+  formatDuration,
+  formatMW,
+  formatMWh,
+  formatPercent,
+  formatRate,
+  formatTickRate,
+  formatTime,
+} from "./format";
 
 describe("formatDuration", () => {
   it.each([
@@ -36,6 +44,20 @@ describe("power formatters", () => {
     expect(formatMWh(100)).toBe("100 MWh");
     expect(formatPercent(2.33)).toBe("2.3%");
     expect(formatPercent(100)).toBe("100%");
+  });
+});
+
+describe("formatRate", () => {
+  it("shows current / max per minute with no unit word", () => {
+    expect(formatRate(5.647059440612793, 60)).toBe("5.6 / 60 per min");
+    expect(formatRate(0, 5)).toBe("0 / 5 per min");
+    expect(formatRate(1234.56, 2000)).toBe("1,234.6 / 2,000 per min");
+    expect(formatRate(1, 2, null)).toBe("1 / 2 per min");
+  });
+
+  it("uses the unit once one is known", () => {
+    expect(formatRate(30, 30, "items/min")).toBe("30 / 30 items/min");
+    expect(formatRate(40, 40, "m3/min")).toBe("40 / 40 m³/min");
   });
 });
 
