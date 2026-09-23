@@ -141,3 +141,6 @@ the bottom.
 - 2026-09-23 — ADR-0003: a wrong HTTP method answers 404 `not_found`, never 405.
   ADR-0011: recorded the stateless-session trade-off, and that the login rate limit
   trusts CF-Connecting-IP only from a loopback peer, with the backend on 127.0.0.1.
+- 2026-09-23 — ADR-0014 added (accepted by the project owner): target architecture is a
+  modular monolith now, then service-based with an edge agent. Step 1 is the backend
+  domain partition, guarded by an architecture test.
