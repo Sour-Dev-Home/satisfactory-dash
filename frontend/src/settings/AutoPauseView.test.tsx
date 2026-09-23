@@ -1,10 +1,12 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { endpoints, type SettingsResponse } from "@satisfactory-dash/shared";
 import {
   errorNotEditable,
+  errorServerNotFound,
+  errorSessionRequired,
   errorUpstreamUnreachable,
   serversSingle,
   setAutoPauseRequestOff,
@@ -14,8 +16,9 @@ import {
   settingsReadOnly,
   statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
-import { POLL_MS, queries } from "../api/queries";
+import { POLL_MS, queries, SESSION_KEY } from "../api/queries";
 import { ServerContext } from "../servers/ServerContext";
+import { ServerGate } from "../servers/ServerGate";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { AutoPauseView } from "./AutoPauseView";
@@ -191,5 +194,169 @@ describe("AutoPauseView", () => {
     );
     renderView();
     expect(await screen.findByRole("alert")).toHaveTextContent("Game server unreachable.");
+  });
+});
+
+// Independent review probes (fresh-eyes pass): races, auth, and lifecycle of the saving state.
+describe("AutoPauseView edge cases", () => {
+  const autoPauseOn = { ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } } satisfies SettingsResponse;
+
+  it("sends one PUT for a rapid double click", async () => {
+    let puts = 0;
+    server.use(
+      http.put(endpoints.settings.setAutoPause.route, async () => {
+        puts++;
+        await delay(30);
+        return HttpResponse.json(autoPauseOn);
+      }),
+    );
+    renderView();
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(checkbox()).toBeChecked());
+    await delay(50);
+    expect(puts).toBe(1);
+  });
+
+  it("keeps the PUT's value when an older settings read resolves after it", async () => {
+    // A GET that started before the change (a pending poll or an invalidation) must not
+    // overwrite the value the PUT returned with the pre-change one.
+    let reads = 0;
+    server.use(
+      http.get(endpoints.settings.get.route, async () => {
+        reads++;
+        if (reads > 1) await delay(80);
+        return HttpResponse.json(settingsEditable);
+      }),
+      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(autoPauseOn)),
+    );
+    const { client } = renderView();
+    await screen.findByRole("checkbox");
+    void client.invalidateQueries({ queryKey: queries.settings("default").queryKey });
+    await waitFor(() => expect(reads).toBe(2));
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(checkbox()).toBeChecked());
+    await delay(120);
+    expect(checkbox()).toBeChecked();
+  });
+
+  it("signs out on a 401 from the PUT (handled in createQueryClient, not the view)", async () => {
+    server.use(
+      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(errorSessionRequired, { status: 401 })),
+    );
+    const { client } = renderView();
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(client.getQueryData(SESSION_KEY)).toEqual({ authenticated: false }));
+  });
+
+  it("clears a previous save error once a retry succeeds", async () => {
+    let puts = 0;
+    server.use(
+      http.put(endpoints.settings.setAutoPause.route, () => {
+        puts++;
+        return puts === 1
+          ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 })
+          : HttpResponse.json(autoPauseOn);
+      }),
+    );
+    renderView();
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    await screen.findByRole("alert");
+    expect(checkbox()).toBeEnabled();
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(checkbox()).toBeChecked());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("starts re-reading when the PUT itself reports a pending change, and stops once applied", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      let reads = 0;
+      server.use(
+        http.get(endpoints.settings.get.route, () => {
+          reads++;
+          return HttpResponse.json(reads === 1 ? settingsEditable : autoPauseOn);
+        }),
+        http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsPending)),
+      );
+      renderView();
+      await screen.findByRole("checkbox");
+      fireEvent.click(checkbox());
+      await screen.findByText("Change pending: the server will apply it.");
+      expect(reads).toBe(1);
+
+      vi.advanceTimersByTime(POLL_MS.settingsPending);
+      await waitFor(() => expect(reads).toBe(2));
+      await waitFor(() => expect(screen.queryByText(/Change pending/)).not.toBeInTheDocument());
+      vi.advanceTimersByTime(POLL_MS.settingsPending * 3);
+      await delay(30);
+      expect(reads).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not poll settings when nothing is pending", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      let reads = 0;
+      server.use(
+        http.get(endpoints.settings.get.route, () => {
+          reads++;
+          return HttpResponse.json(settingsEditable);
+        }),
+      );
+      renderView();
+      await screen.findByRole("checkbox");
+      vi.advanceTimersByTime(POLL_MS.settingsPending * 5);
+      await delay(30);
+      expect(reads).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops the server selection when the PUT answers server_not_found", async () => {
+    // CLAUDE.md: server_not_found for the selected server is handled in ServerGate. The
+    // mutation's error isn't a query error, so the view has to route it back through a query.
+    server.use(
+      http.get(endpoints.servers.route, () => HttpResponse.json(serversSingle)),
+      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(errorServerNotFound, { status: 404 })),
+    );
+    renderWithClient(
+      <ServerGate>
+        <AutoPauseView />
+      </ServerGate>,
+    );
+    await screen.findByRole("checkbox");
+    server.use(
+      http.get(endpoints.settings.get.route, () => HttpResponse.json(errorServerNotFound, { status: 404 })),
+    );
+    fireEvent.click(checkbox());
+    expect(await screen.findByText("The selected server is no longer available.")).toBeInTheDocument();
+  });
+
+  it("gives the read-only reason as part of the checkbox's accessible description", async () => {
+    settingsReturn(settingsReadOnly);
+    renderView();
+    await screen.findByRole("checkbox");
+    expect(checkbox()).toHaveAccessibleDescription(/Read-only: the backend has no verified admin token/);
+  });
+
+  it("rejects a contract-drifted PUT response without changing the checkbox", async () => {
+    server.use(
+      http.put(endpoints.settings.setAutoPause.route, () =>
+        HttpResponse.json({ ...settingsEditable, data: { autoPause: "yes" } }),
+      ),
+    );
+    renderView();
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(checkbox()).not.toBeChecked();
+    expect(checkbox()).toBeEnabled();
   });
 });

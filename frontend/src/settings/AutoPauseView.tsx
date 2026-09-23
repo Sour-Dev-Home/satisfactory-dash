@@ -16,8 +16,13 @@ export function AutoPauseView() {
   const client = useQueryClient();
   const settingsQuery = queries.settings(server.id);
   const settings = useQuery(settingsQuery);
+  const saveKey = [...settingsQuery.queryKey, "auto-pause"];
   const save = useMutation({
+    mutationKey: saveKey,
     mutationFn: (enabled: boolean) => apiSend(endpoints.settings.setAutoPause, { enabled }, server.id),
+    // A settings read already in flight (pending poll, invalidation) would otherwise land
+    // after the PUT and overwrite its value with the pre-change one.
+    onMutate: () => client.cancelQueries({ queryKey: settingsQuery.queryKey }),
     onSuccess: (snapshot) => {
       client.setQueryData(settingsQuery.queryKey, snapshot);
       // DSAutoPause applies immediately (ADR-0012), so gamePaused may already have flipped;
@@ -26,16 +31,25 @@ export function AutoPauseView() {
     },
     onError: (error) => {
       // 409 not_editable: our copy of `editable` is out of date, so re-read it.
-      if (classifyError(error) === "not_editable") void client.invalidateQueries({ queryKey: settingsQuery.queryKey });
+      // server_not_found: re-read too, so the query error reaches ServerGate, which only
+      // watches queries, and the lost server is dropped now rather than at the next poll.
+      const kind = classifyError(error);
+      if (kind === "not_editable" || kind === "server_not_found") {
+        void client.invalidateQueries({ queryKey: settingsQuery.queryKey });
+      }
     },
   });
+  // save.isPending only updates on the next render, so a fast double click would send two PUTs.
+  const onChange = (enabled: boolean) => {
+    if (client.isMutating({ mutationKey: saveKey }) === 0) save.mutate(enabled);
+  };
 
   if (settings.isPending) return <p role="status">Loading settings…</p>;
   return (
     <>
       {settings.isError && <ErrorNotice error={settings.error} />}
       {settings.data && (
-        <AutoPausePanel snapshot={settings.data} saving={save.isPending} onChange={(enabled) => save.mutate(enabled)} />
+        <AutoPausePanel snapshot={settings.data} saving={save.isPending} onChange={onChange} />
       )}
       {save.isError && <ErrorNotice error={save.error} />}
     </>
