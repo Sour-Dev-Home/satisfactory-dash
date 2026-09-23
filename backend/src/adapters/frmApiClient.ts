@@ -10,6 +10,7 @@
  * this client only implements the direct Web Server transport.
  */
 
+import { UpstreamError } from "./domain.js";
 import type { RequestFailureKind } from "./domain.js";
 
 export type FrmApiFetch = (url: string, init: RequestInit) => Promise<Response>;
@@ -24,17 +25,14 @@ export interface FrmApiClientOptions {
   fetchImpl?: FrmApiFetch;
 }
 
-export class FrmApiRequestError extends Error {
-  readonly failureKind?: RequestFailureKind;
-
+export class FrmApiRequestError extends UpstreamError {
   constructor(
     message: string,
-    public readonly status?: number,
+    status?: number,
     options?: ErrorOptions & { failureKind?: RequestFailureKind },
   ) {
-    super(message, options);
+    super(message, { ...options, status });
     this.name = "FrmApiRequestError";
-    this.failureKind = options?.failureKind;
   }
 }
 

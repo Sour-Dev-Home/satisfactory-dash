@@ -1,4 +1,5 @@
 import https from "node:https";
+import { UpstreamError } from "./domain.js";
 import type { RequestFailureKind } from "./domain.js";
 
 /**
@@ -38,23 +39,18 @@ export interface VanillaApiClientOptions {
   transport?: VanillaApiTransport;
 }
 
-export class VanillaApiRequestError extends Error {
-  readonly failureKind?: RequestFailureKind;
-  /** The HTTP status, when the server answered with >= 400. Found by a review
-   *  pass: without it, routes/errorResponse.ts could never tell a 401/403 (bad
-   *  token) on /api/status apart from any other failure. */
-  readonly status?: number;
-
+/** `status` is the HTTP status when the server answered with >= 400. Found by a
+ *  review pass: without it, routes/errorResponse.ts could never tell a 401/403 (bad
+ *  token) on /api/status apart from any other failure. */
+export class VanillaApiRequestError extends UpstreamError {
   constructor(
     message: string,
-    public readonly errorCode?: string,
+    errorCode?: string,
     public readonly errorData?: unknown,
     options?: ErrorOptions & { failureKind?: RequestFailureKind; status?: number },
   ) {
-    super(message, options);
+    super(message, { ...options, errorCode });
     this.name = "VanillaApiRequestError";
-    this.failureKind = options?.failureKind;
-    this.status = options?.status;
   }
 }
 

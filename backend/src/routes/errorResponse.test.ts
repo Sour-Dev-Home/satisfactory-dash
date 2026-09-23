@@ -6,7 +6,7 @@ import { createErrorHandler, describeFailure, HTTP_STATUS_BY_CODE } from "./erro
 import { ContractViolationError } from "./sendValidated.js";
 import { createApp } from "../app.js";
 import { createLogger } from "../logger.js";
-import { VanillaApiClient } from "../adapters/index.js";
+import { UpstreamError, VanillaApiClient } from "../adapters/index.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -34,16 +34,13 @@ function appThrowing(err: unknown) {
 }
 
 const unreachable = () =>
-  Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8080"), { failureKind: "unreachable" });
+  new UpstreamError("connect ECONNREFUSED 127.0.0.1:8080", { failureKind: "unreachable" });
 
 describe("describeFailure (classification; inputs and branches unchanged by ADR-0003)", () => {
   // Found by a review pass: every failure used to get the same "Could not reach..."
   // message, wrong for anything that isn't a connectivity problem.
   it("describes an auth failure (401/403-style error) distinctly from an unreachable server", () => {
-    class FakeStatusError extends Error {
-      status = 401;
-    }
-    expect(describeFailure(new FakeStatusError("unauthorized"))).toEqual({
+    expect(describeFailure(new UpstreamError("unauthorized", { status: 401 }))).toEqual({
       code: "upstream_auth_rejected",
       message: "Satisfactory dedicated server rejected the request (check the configured auth token)",
     });
@@ -60,37 +57,57 @@ describe("describeFailure (classification; inputs and branches unchanged by ADR-
   // crash, were both reported as "Could not reach..." even though the server
   // had answered.
   it("describes an invalid response distinctly from an unreachable server", () => {
-    const err = Object.assign(new Error("not valid JSON"), { failureKind: "invalid_response" });
+    const err = new UpstreamError("not valid JSON", { failureKind: "invalid_response" });
     expect(describeFailure(err)).toEqual({
       code: "upstream_invalid_response",
       message: "Satisfactory dedicated server returned an invalid response",
     });
   });
 
-  it("uses a neutral message, not a connectivity claim, for an unclassified error like an adapter TypeError", () => {
+  it("treats a non-upstream error like a TypeError as our own internal failure", () => {
     expect(describeFailure(new TypeError("Cannot read properties of null"))).toEqual({
       code: "internal",
-      message: "Request to the Satisfactory dedicated server failed",
+      message: "Internal server error",
     });
+  });
+
+  // Architect acceptance tests for PR 3: only an UpstreamError can become an upstream
+  // code. A plain Error carrying a numeric status fails closed as 500, never 502 --
+  // that duck-typing is how PR #16's URIError got blamed on the game server.
+  it("fails closed for a plain Error with a numeric status: internal, not upstream", () => {
+    expect(describeFailure(Object.assign(new Error("x"), { status: 404 })).code).toBe("internal");
+    expect(describeFailure(Object.assign(new Error("x"), { failureKind: "unreachable" })).code).toBe("internal");
+  });
+
+  it("maps an UpstreamError with no status, errorCode or failureKind to upstream_error", () => {
+    expect(describeFailure(new UpstreamError("something upstream")).code).toBe("upstream_error");
+  });
+
+  // Issue #8 item 4: the vanilla API's errorCode lands in the public message, so it's
+  // bounded to 64 characters from a safe set.
+  it("bounds and sanitizes the server-supplied errorCode in the message", () => {
+    const hostile = "<script>" + "a".repeat(10_000);
+    const { message } = describeFailure(new UpstreamError("x", { errorCode: hostile }));
+    expect(message).not.toContain("<");
+    expect(message.length).toBeLessThan(120);
   });
 
   // Found by a review pass: describeFailure read err.status unguarded, so a
   // throwing getter made the route's error handling itself throw.
   it("does not throw when reading the error's status throws", () => {
-    const err = new Error("hostile");
+    const err = new UpstreamError("hostile");
     Object.defineProperty(err, "status", {
       get() {
         throw new Error("boom");
       },
     });
-    expect(describeFailure(err)).toEqual({ code: "internal", message: "Request to the Satisfactory dedicated server failed" });
+    expect(describeFailure(err)).toEqual({ code: "internal", message: "Internal server error" });
   });
 
   // Found by a review pass: typeof === "number" accepted NaN, 0 and negatives,
   // producing "request failed (status NaN)".
   it.each([Number.NaN, 0, -1, 200.5, 1000])("ignores a non-HTTP status value %s", (status) => {
-    const err = Object.assign(new Error("bad status"), { status });
-    expect(describeFailure(err).code).toBe("internal");
+    expect(describeFailure(new UpstreamError("bad status", { status })).code).toBe("upstream_error");
   });
 
   // Found by a review pass, using errors thrown by the real VanillaApiClient
@@ -129,10 +146,11 @@ describe("describeFailure (classification; inputs and branches unchanged by ADR-
 describe("error middleware (ADR-0003 envelope)", () => {
   it.each([
     ["upstream unreachable", unreachable(), 503, "upstream_unreachable"],
-    ["upstream auth rejected", Object.assign(new Error("401"), { status: 401 }), 502, "upstream_auth_rejected"],
-    ["upstream invalid response", Object.assign(new Error("bad"), { failureKind: "invalid_response" }), 502, "upstream_invalid_response"],
+    ["upstream auth rejected", new UpstreamError("401", { status: 401 }), 502, "upstream_auth_rejected"],
+    ["upstream invalid response", new UpstreamError("bad", { failureKind: "invalid_response" }), 502, "upstream_invalid_response"],
     ["our own bug", new TypeError("oops"), 500, "internal"],
-  ])("maps %s to HTTP %i with code %s, in a body that matches the shared schema", async (_name, err, status, code) => {
+    ["a plain Error with a numeric status", Object.assign(new Error("x"), { status: 503 }), 500, "internal"],
+  ])("maps %s to its HTTP status and code, in a body that matches the shared schema", async (_name, err, status, code) => {
     const { app } = appThrowing(err);
     const res = await request(app).get("/api/boom");
     expect(res.status).toBe(status);

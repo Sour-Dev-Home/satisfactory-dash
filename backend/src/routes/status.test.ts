@@ -3,6 +3,7 @@ import request from "supertest";
 import { createStatusRouter } from "./status.js";
 import { createApp } from "../app.js";
 import { createLogger } from "../logger.js";
+import { UpstreamError } from "../adapters/index.js";
 import type { ServerStatusService } from "../services/serverStatusService.js";
 
 function buildApp(service: Pick<ServerStatusService, "getStatus">) {
@@ -31,7 +32,7 @@ describe("GET /api/status", () => {
   it("returns 503 upstream_unreachable when the game server can't be reached", async () => {
     const service = {
       getStatus: async () => {
-        throw Object.assign(new Error("server unreachable"), { failureKind: "unreachable" });
+        throw new UpstreamError("server unreachable", { failureKind: "unreachable" });
       },
     };
     const res = await request(buildApp(service)).get("/api/status");
