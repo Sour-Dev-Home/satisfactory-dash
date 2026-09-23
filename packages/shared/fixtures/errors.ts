@@ -94,3 +94,23 @@ export const errorUnsupportedMediaType = {
     requestId: "00000000-0000-4000-8000-000000000009",
   },
 } satisfies ApiErrorResponse;
+
+/** A well-formed server id that no configured server has (404). The frontend may
+ *  re-run server discovery on this code. Message as the backend sends it. */
+export const errorServerNotFound = {
+  error: {
+    code: "server_not_found",
+    message: "No server with that id",
+    requestId: "00000000-0000-4000-8000-000000000010",
+  },
+} satisfies ApiErrorResponse;
+
+/** The game server rejected the backend's configured token (502). Message as the
+ *  backend sends it. */
+export const errorUpstreamAuthRejected = {
+  error: {
+    code: "upstream_auth_rejected",
+    message: "Satisfactory dedicated server rejected the request (check the configured auth token)",
+    requestId: "00000000-0000-4000-8000-000000000011",
+  },
+} satisfies ApiErrorResponse;
