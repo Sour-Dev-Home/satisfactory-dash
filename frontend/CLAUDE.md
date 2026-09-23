@@ -20,6 +20,14 @@ contract needs to grow, not that this module should special-case a backend detai
   an entry from `endpoints`; they parse every body with the shared schema and throw
   `ApiError`, `ContractDriftError` or `BackendUnreachableError` (`src/api/errors.ts`).
   Components read data through the TanStack Query options in `src/api/queries.ts`.
+- Auth (ADR-0011): `src/auth/AuthGate.tsx` shows the app only when the session query says
+  signed in. A 401 from any query or mutation (except login) signs out in one place,
+  `createQueryClient`; screens never handle 401 themselves. Nothing auth-related goes in
+  localStorage: the httpOnly cookie is the only credential.
+- Servers (ADR-0001): `src/servers/ServerGate.tsx` picks the server; views read it with
+  `useSelectedServer()` and key queries by its id. `server_not_found` from any query for
+  that server is handled there too (drop the selection, rediscover, never auto-select the
+  lost id again). Show errors with `components/ErrorNotice.tsx` so wording stays consistent.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.
@@ -31,3 +39,9 @@ contract needs to grow, not that this module should special-case a backend detai
   `@satisfactory-dash/shared/fixtures` outside `src/test/` and `*.test.*` files.
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
+  Served on the custom domain only (`workers_dev` and `preview_urls` are off).
+- Security headers (CSP, HSTS, etc.) live in `public/_headers` and apply in production
+  only. A new external origin (API, font, image) must be added to the CSP there. Never
+  add long-cache or `immutable` headers for `/assets/*` while `not_found_handling` is
+  `single-page-application`: a missing hashed asset returns 200 `index.html`, and that
+  HTML would be cached for a year.

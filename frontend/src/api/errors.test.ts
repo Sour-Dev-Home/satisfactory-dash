@@ -10,7 +10,13 @@ import {
   errorUpstreamUnreachable,
   errorWithDetail,
 } from "@satisfactory-dash/shared/fixtures";
-import { ApiError, BackendUnreachableError, ContractDriftError, classifyError } from "./errors";
+import {
+  ApiError,
+  BackendUnreachableError,
+  ContractDriftError,
+  RequestValidationError,
+  classifyError,
+} from "./errors";
 
 const apiError = (body: { error: ConstructorParameters<typeof ApiError>[1] }, status = 500) =>
   new ApiError(status, body.error);
@@ -47,6 +53,7 @@ describe("classifyError", () => {
   it("classifies the client's own error types", () => {
     expect(classifyError(new ContractDriftError("/api/x", 200, []))).toBe("contract_drift");
     expect(classifyError(new BackendUnreachableError("/api/x"))).toBe("backend_unreachable");
+    expect(classifyError(new RequestValidationError("/api/x", []))).toBe("client_bug");
     expect(classifyError(new Error("boom"))).toBe("unknown");
   });
 });

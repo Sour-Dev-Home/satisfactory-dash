@@ -15,7 +15,7 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { server } from "../test/server";
 import { apiGet, apiSend } from "./client";
-import { ApiError, BackendUnreachableError, ContractDriftError } from "./errors";
+import { ApiError, BackendUnreachableError, ContractDriftError, RequestValidationError } from "./errors";
 
 /** Resolves to whatever apiGet/apiSend threw, failing the test if it didn't throw. */
 async function caught(promise: Promise<unknown>): Promise<unknown> {
@@ -170,5 +170,20 @@ describe("apiSend", () => {
     const error = await caught(apiSend(endpoints.auth.login, loginRequestValid));
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 401, code: "unauthorized", message: "Invalid username or password" });
+  });
+
+  it("rejects a body that fails the request schema without sending it", async () => {
+    let sent = false;
+    server.use(
+      http.post(endpoints.auth.login.route, () => {
+        sent = true;
+        return HttpResponse.json(sessionAuthenticated);
+      }),
+    );
+    const error = await caught(apiSend(endpoints.auth.login, { username: "", password: "x" }));
+    expect(error).toBeInstanceOf(RequestValidationError);
+    expect(error).toMatchObject({ path: "/api/auth/login" });
+    expect((error as RequestValidationError).issues).toEqual([expect.stringMatching(/^username: /)]);
+    expect(sent).toBe(false);
   });
 });

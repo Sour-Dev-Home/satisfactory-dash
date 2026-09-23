@@ -1,11 +1,12 @@
 import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
-import { ApiError, BackendUnreachableError, ContractDriftError } from "./errors";
+import { ApiError, BackendUnreachableError, ContractDriftError, RequestValidationError } from "./errors";
 
 // The only module that calls fetch. Every body is parsed with the endpoint's shared
 // schema (ADR-0002), so a shape mismatch surfaces as ContractDriftError, not a crash later.
 
 // Empty in development: Vite proxies /api to the backend, so the browser sees one origin.
-const BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+// Trimmed because a stray space in the build variable would otherwise end up in every URL.
+const BASE_URL = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
 
 const MAX_ISSUES = 5;
 
@@ -35,13 +36,21 @@ export function apiGet<T, A extends unknown[]>(endpoint: GetEndpoint<T, A>, ...a
   return request(endpoint.method, endpoint.path(...args), endpoint.response);
 }
 
-/** For endpoints without a request schema (logout), pass `undefined` as the body. */
-export function apiSend<T, B, A extends unknown[]>(
+/**
+ * For endpoints without a request schema (logout), pass `undefined` as the body. When the
+ * endpoint has one, the body is checked first and a mismatch rejects without sending.
+ */
+export async function apiSend<T, B, A extends unknown[]>(
   endpoint: SendEndpoint<T, B, A>,
   body: B,
   ...args: A
 ): Promise<T> {
-  return request(endpoint.method, endpoint.path(...args), endpoint.response, body);
+  const path = endpoint.path(...args);
+  if (endpoint.request) {
+    const parsed = endpoint.request.safeParse(body);
+    if (!parsed.success) throw new RequestValidationError(path, formatIssues(parsed.error.issues));
+  }
+  return request(endpoint.method, path, endpoint.response, body);
 }
 
 async function request<T>(method: string, path: string, schema: Schema<T>, body?: unknown): Promise<T> {
