@@ -1,25 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
-import { queries } from "./api/queries";
 import { AuthGate } from "./auth/AuthGate";
+import { StatusBanners } from "./components/StatusBanners";
+import { ServerGate } from "./servers/ServerGate";
 
 function App() {
   return (
     <main>
       <h1>Satis Manager</h1>
       <AuthGate>
-        <BackendHealth />
+        <ServerGate>
+          <StatusBanners />
+        </ServerGate>
       </AuthGate>
     </main>
-  );
-}
-
-function BackendHealth() {
-  const health = useQuery(queries.health());
-  return (
-    <p>
-      Backend:{" "}
-      {health.isError ? "Could not reach backend" : health.data ? `status: ${health.data.status}` : "checking..."}
-    </p>
   );
 }
 
