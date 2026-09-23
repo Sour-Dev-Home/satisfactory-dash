@@ -60,7 +60,7 @@ function resolveRelative(fromFile: string, specifier: string): string | null {
     return null;
   }
   // A trailing slash ("../telemetry/") is a folder import too; join keeps it, so drop it.
-  return path.posix.join(path.posix.dirname(fromFile), specifier).replace(/\.js$/, "").replace(/\/$/, "");
+  return path.posix.join(path.posix.dirname(fromFile), specifier).replace(/\.(js|ts)$/, "").replace(/\/$/, "");
 }
 
 /** Checks the rules against a map of src-relative path -> source. Returns readable violations. */
@@ -69,7 +69,11 @@ export function findViolations(files: Map<string, string>): string[] {
   for (const [file, source] of files) {
     const fromModule = moduleOf(file);
     const inPlatform = file.startsWith("platform/");
-    const isRoot = !fromModule && !inPlatform;
+    // Only the composition root is exempt from the rules, so it is exactly these two files.
+    const isRoot = file === "app.ts" || file === "server.ts";
+    if (!fromModule && !inPlatform && !isRoot) {
+      violations.push(`${file}: rule 5: source files must live in platform/, modules/, or be app.ts / server.ts`);
+    }
     for (const specifier of importSpecifiers(source)) {
       const target = resolveRelative(file, specifier);
       const fail = (rule: string) => violations.push(`${file} imports "${specifier}": ${rule}`);
@@ -99,8 +103,10 @@ export function findViolations(files: Map<string, string>): string[] {
           fail(`rule 4: edge ${fromModule} -> ${toModule} is not allowed`);
         }
       }
-      if (fromModule === "gameserver" && target.startsWith("platform/") && target !== "platform/errors") {
-        fail("rule 3: gameserver may import only platform/errors.ts from platform/");
+      // Liftable into the edge agent: inside itself, plus platform/errors.ts, nothing else
+      // (not another module, not a helper folder that could pull in Express indirectly).
+      if (fromModule === "gameserver" && toModule !== "gameserver" && target !== "platform/errors") {
+        fail("rule 3: gameserver may import only its own files and platform/errors.ts");
       }
     }
   }
@@ -147,7 +153,10 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     ["a folder import along a forbidden edge", "modules/servers/x.ts", `import { a } from "../telemetry";`, /rule 4/],
     ["a folder import from gameserver", "modules/gameserver/x.ts", `import { a } from "../servers";`, /rule 4/],
     ["a trailing-slash folder import", "modules/servers/x.ts", `import { a } from "../telemetry/";`, /rule 4/],
-    ["a dynamic import","platform/x.ts", `const m = await import("../modules/identity/index.js");`, /rule 1/],
+    ["a file outside platform/ and modules/ reaching into a module", "routes/x.ts", `import { a } from "../modules/gameserver/domain.js";`, /rule 5/],
+    ["gameserver importing a helper folder", "modules/gameserver/x.ts", `import { h } from "../../lib/httpHelpers.js";`, /rule 3/],
+    ["a deep import written with a .ts extension", "modules/telemetry/x.ts", `import { b } from "../gameserver/domain.ts";`, /rule 2/],
+    ["a dynamic import", "platform/x.ts", `const m = await import("../modules/identity/index.js");`, /rule 1/],
   ];
   it.each(bad)("fails on %s", (_name, file, source, expected) => {
     const violations = findViolations(new Map([[file, source]]));
