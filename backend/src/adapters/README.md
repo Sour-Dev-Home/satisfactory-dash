@@ -29,7 +29,9 @@ which specific game server — the data came from. That indirection is what make
   Both take an injectable transport/fetch so they're testable without a real socket.
 - `satisfactoryServerAdapter.ts` — `SatisfactoryServerAdapter`, the class
   `services/` should actually depend on. Maps raw → domain.
-- `config.ts` — env-var config (host/ports/tokens); see `backend/.env.example`. The
+- `config.ts` — env-var config (host/ports/tokens) and the server registry
+  (`loadServerRegistryFromEnv`, ADR-0001: a registry of one today); see
+  `backend/.env.example`. The
   vanilla API's TLS certificate is verified by default, except for loopback/private
   hosts, where the game server's self-signed cert is expected. The backend refuses to
   start (`ConfigError`) if the host isn't loopback/private at all: FRM is plain HTTP,

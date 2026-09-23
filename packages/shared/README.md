@@ -17,9 +17,7 @@ retyping one is breaking (ADR-0007).
   snapshot wrapper), `errors.ts` (error envelope and `KnownErrorCode`), one file per
   resource (`health`, `servers`, `status`, `factory`, `power`, `auth`, `settings`), and `endpoints.ts`
   mapping each route to its path builder and response schema. Every field's unit and
-  range is in its `.describe()` text (ADR-0006). `index.ts` still exports the legacy
-  interfaces the current backend routes return, until the backend moves onto the
-  schemas.
+  range is in its `.describe()` text (ADR-0006).
 - `fixtures/` — example responses built from real 2026-09-22 captures, exported as
   `@satisfactory-dash/shared/fixtures`. For tests and mock servers only; production code
   must never import them.
