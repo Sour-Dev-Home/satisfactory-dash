@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import type { Request } from "express";
+import type { IncomingMessage } from "node:http";
 
 function isLoopback(address: string): boolean {
   const plain = address.startsWith("::ffff:") ? address.slice(7) : address;
@@ -17,7 +17,7 @@ function isLoopback(address: string): boolean {
  * it. Express's `trust proxy` is deliberately left off, so `req.ip` stays the socket
  * address everywhere else.
  */
-export function clientIp(req: Request): string {
+export function clientIp(req: IncomingMessage): string {
   const peer = req.socket.remoteAddress ?? "";
   if (isLoopback(peer)) {
     const header = req.headers["cf-connecting-ip"];
