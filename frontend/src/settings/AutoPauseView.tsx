@@ -23,7 +23,10 @@ export function AutoPauseView() {
     // A settings read already in flight (pending poll, invalidation) would otherwise land
     // after the PUT and overwrite its value with the pre-change one.
     onMutate: () => client.cancelQueries({ queryKey: settingsQuery.queryKey }),
-    onSuccess: (snapshot) => {
+    onSuccess: async (snapshot) => {
+      // Same for a read that started while the PUT was in flight (focus refetch, pending poll):
+      // the server may have answered it before applying the change.
+      await client.cancelQueries({ queryKey: settingsQuery.queryKey });
       client.setQueryData(settingsQuery.queryKey, snapshot);
       // DSAutoPause applies immediately (ADR-0012), so gamePaused may already have flipped;
       // refresh status now rather than letting the paused banner lag a full poll behind.
