@@ -56,6 +56,22 @@ export class BackendUnreachableError extends Error {
 }
 
 /**
+ * A request body failed the endpoint's shared request schema, so it was never sent. Mirrors
+ * the backend's validation so the contract is checked in both directions.
+ */
+export class RequestValidationError extends Error {
+  readonly path: string;
+  readonly issues: string[];
+
+  constructor(path: string, issues: string[]) {
+    super(`Request body for ${path} doesn't match the contract`);
+    this.name = "RequestValidationError";
+    this.path = path;
+    this.issues = issues;
+  }
+}
+
+/**
  * How the UI should treat a thrown error. Unknown codes fall through to "unknown"
  * (ADR-0003: adding a code is non-breaking, so clients handle unknown codes generically).
  */
@@ -92,6 +108,7 @@ const kindByCode = {
 export function classifyError(error: unknown): ErrorKind {
   if (error instanceof ContractDriftError) return "contract_drift";
   if (error instanceof BackendUnreachableError) return "backend_unreachable";
+  if (error instanceof RequestValidationError) return "client_bug";
   if (error instanceof ApiError) {
     return Object.hasOwn(kindByCode, error.code) ? kindByCode[error.code as KnownErrorCode] : "unknown";
   }

@@ -8,8 +8,9 @@ import { renderWithClient } from "./test/render";
 import { server } from "./test/server";
 
 describe("App", () => {
-  it("renders the backend status once the health check resolves", async () => {
+  it("renders the product title and, once signed in, the backend status", async () => {
     renderWithClient(<App />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Satis Manager");
     expect(await screen.findByText(/status: ok/i)).toBeInTheDocument();
   });
 
