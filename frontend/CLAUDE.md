@@ -35,3 +35,9 @@ contract needs to grow, not that this module should special-case a backend detai
   `@satisfactory-dash/shared/fixtures` outside `src/test/` and `*.test.*` files.
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
+  Served on the custom domain only (`workers_dev` and `preview_urls` are off).
+- Security headers (CSP, HSTS, etc.) live in `public/_headers` and apply in production
+  only. A new external origin (API, font, image) must be added to the CSP there. Never
+  add long-cache or `immutable` headers for `/assets/*` while `not_found_handling` is
+  `single-page-application`: a missing hashed asset returns 200 `index.html`, and that
+  HTML would be cached for a year.
