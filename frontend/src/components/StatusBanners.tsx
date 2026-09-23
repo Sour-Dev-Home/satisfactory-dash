@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
+import { formatTime } from "../format";
 import { useSelectedServer } from "../servers/ServerContext";
 import { ErrorNotice } from "./ErrorNotice";
 
@@ -30,9 +31,4 @@ export function StatusBanners() {
       )}
     </>
   );
-}
-
-/** observedAt is UTC (ADR-0004); show it in the viewer's local time. */
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString();
 }

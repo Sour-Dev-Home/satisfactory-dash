@@ -28,6 +28,12 @@ contract needs to grow, not that this module should special-case a backend detai
   `useSelectedServer()` and key queries by its id. `server_not_found` from any query for
   that server is handled there too (drop the selection, rediscover, never auto-select the
   lost id again). Show errors with `components/ErrorNotice.tsx` so wording stays consistent.
+- Views (e.g. `src/status/`): a presentational component that takes schema types as
+  props (`StatusPanel({ snapshot })`), plus a thin container that runs the `useQuery`.
+  Views read data only through the query layer, never their own fetch, so a future push
+  path (ADR-0014) can fill the same cache keys. Display formatting lives in the pure
+  helpers in `src/format.ts`; they round, never change units (ADR-0006). No view
+  registry or plug-in contract until map work starts.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.

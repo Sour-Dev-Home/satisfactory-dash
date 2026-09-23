@@ -2,21 +2,20 @@ import { fireEvent, screen } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import { endpoints, type ApiErrorResponse, type ServerListResponse } from "@satisfactory-dash/shared";
-import { errorUpstreamUnreachable, serversNone, serversSingle, statusRunning } from "@satisfactory-dash/shared/fixtures";
+import { endpoints, type ServerListResponse } from "@satisfactory-dash/shared";
+import {
+  errorServerNotFound,
+  errorUpstreamUnreachable,
+  serversMultiple,
+  serversNone,
+  serversSingle,
+  statusRunning,
+} from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { useSelectedServer } from "./ServerContext";
 import { ServerGate } from "./ServerGate";
-
-// Derived from the shared fixtures; there is no multi-server or server_not_found fixture yet.
-const serversTwo = {
-  servers: [...serversSingle.servers, { id: "second", displayName: "Second server" }],
-} satisfies ServerListResponse;
-const errorServerNotFound = {
-  error: { code: "server_not_found", message: "Unknown server", requestId: "00000000-0000-4000-8000-0000000000a1" },
-} satisfies ApiErrorResponse;
 
 /** Stands in for the views: polls status for the selected server. */
 function SelectedStatus() {
@@ -58,7 +57,7 @@ describe("ServerGate", () => {
   });
 
   it("shows a picker when there are several servers, and switches on request", async () => {
-    listServers(serversTwo);
+    listServers(serversMultiple);
     server.use(
       http.get(endpoints.status.route, ({ params }) =>
         HttpResponse.json({ ...statusRunning, serverId: String(params.serverId) }),
@@ -66,8 +65,8 @@ describe("ServerGate", () => {
     );
     renderGate();
     expect(await screen.findByRole("heading", { name: "Choose a game server" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Second server" }));
-    expect(await screen.findByText("status for second")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Creative test world" }));
+    expect(await screen.findByText("status for creative-test")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Change server" }));
     fireEvent.click(await screen.findByRole("button", { name: "Satisfactory server" }));

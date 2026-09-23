@@ -1,10 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import { endpoints, type ApiErrorResponse } from "@satisfactory-dash/shared";
+import { endpoints } from "@satisfactory-dash/shared";
 import {
   errorNotFound,
   errorUnknownCode,
+  errorUpstreamAuthRejected,
   errorUpstreamUnreachable,
   errorWithDetail,
   serversSingle,
@@ -17,10 +18,6 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { ServerContext } from "../servers/ServerContext";
 import { StatusBanners } from "./StatusBanners";
-
-const errorUpstreamAuthRejected = {
-  error: { ...errorUpstreamUnreachable.error, code: "upstream_auth_rejected", message: "Rejected" },
-} satisfies ApiErrorResponse;
 
 function renderBanners() {
   return renderWithClient(

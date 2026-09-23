@@ -1,6 +1,7 @@
 import { AuthGate } from "./auth/AuthGate";
 import { StatusBanners } from "./components/StatusBanners";
 import { ServerGate } from "./servers/ServerGate";
+import { StatusView } from "./status/StatusView";
 
 function App() {
   return (
@@ -9,6 +10,7 @@ function App() {
       <AuthGate>
         <ServerGate>
           <StatusBanners />
+          <StatusView />
         </ServerGate>
       </AuthGate>
     </main>
