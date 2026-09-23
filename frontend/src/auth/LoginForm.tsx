@@ -22,7 +22,12 @@ export function LoginForm() {
       if (!body) throw new Error("login submitted without credentials");
       return apiSend(endpoints.auth.login, body);
     },
-    onSuccess: (session) => client.setQueryData(SESSION_KEY, session),
+    onSuccess: async (session) => {
+      // A session check sent before the cookie existed (e.g. a focus refetch) would land after
+      // this and sign the operator straight back out, so drop it first.
+      await client.cancelQueries({ queryKey: SESSION_KEY });
+      client.setQueryData(SESSION_KEY, session);
+    },
     onError: () => setPassword(""),
   });
 
