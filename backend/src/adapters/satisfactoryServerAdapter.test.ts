@@ -368,4 +368,14 @@ describe("SatisfactoryServerAdapter", () => {
       expect(message.split(";").length).toBe(5);
     });
   });
+
+  // Found by PR #17's fresh-eyes review: with no Recipe but a production array, the
+  // building came out recipe:null with production filled in, contradicting the
+  // contract ("production is empty when no recipe is configured").
+  it("treats a building with no Recipe field as unconfigured, dropping any production", async () => {
+    const { Recipe: _omitted, ...noRecipe } = factoryBuildingFixture;
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([noRecipe]) } });
+    const [building] = await adapter.getFactoryBuildings();
+    expect(building).toMatchObject({ recipe: null, production: [], consumption: [] });
+  });
 });

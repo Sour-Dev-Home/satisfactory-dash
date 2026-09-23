@@ -92,14 +92,25 @@ describe("loadSatisfactoryServerConfigFromEnv", () => {
     expect(config.frmToken).toBe("");
   });
 
-  describe("numeric env vars with no validation", () => {
-    it("coerces an empty-string port to 0 rather than falling back to the default", () => {
-      // env vars are always strings when set (even "set to empty"), so `?? 7777` never
-      // fires for SATISFACTORY_API_PORT="" -- Number("") is 0, not NaN, so this
-      // silently produces an unusable port instead of erroring or defaulting.
-      const config = loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_PORT: "" });
-      expect(config.apiPort).toBe(0);
+  // Found by PR #17's fresh-eyes review: `??` only defaults undefined, so a variable
+  // set to "" (as .env.example ships several) became port 0, timeout 0 or host "".
+  it("treats an empty-string host, port or timeout as unset and uses the default", () => {
+    const config = loadSatisfactoryServerConfigFromEnv({
+      SATISFACTORY_SERVER_HOST: "",
+      SATISFACTORY_API_PORT: "",
+      FRM_WEB_PORT: "",
+      SATISFACTORY_REQUEST_TIMEOUT_MS: "",
     });
+    expect(config).toMatchObject({ host: "localhost", apiPort: 7777, frmPort: 8080, requestTimeoutMs: 5000 });
+  });
+
+  it("trims the host once, so the TLS decision and the connection use the same value", () => {
+    const config = loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_SERVER_HOST: " 192.168.1.5 " });
+    expect(config.host).toBe("192.168.1.5");
+    expect(config.apiAllowSelfSignedCert).toBe(true);
+  });
+
+  describe("numeric env vars with no validation", () => {
 
     it("produces NaN for a non-numeric port with no validation or error", () => {
       const config = loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_PORT: "not-a-port" });

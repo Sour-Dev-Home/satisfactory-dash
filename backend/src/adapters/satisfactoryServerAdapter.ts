@@ -154,8 +154,10 @@ export class SatisfactoryServerAdapter {
       // "Unassigned" plus a placeholder "Unassigned" production/ingredient entry, not
       // as a missing recipe. IsConfigured (frm-getFactory.md:57) is the explicit
       // signal; "Unassigned" is checked too so the mapping still holds if a response
-      // ever omits the flag (the PR's fresh-eyes review found that gap).
-      const configured = building.IsConfigured !== false && building.Recipe !== "Unassigned";
+      // ever omits the flag (the PR's fresh-eyes review found that gap), and a missing
+      // Recipe counts as unconfigured so recipe and production can't disagree (PR #17).
+      const configured =
+        building.IsConfigured !== false && building.Recipe !== undefined && building.Recipe !== "Unassigned";
       return {
         id: building.ID,
         name: building.Name,

@@ -91,14 +91,17 @@ function allowSelfSignedCert(env: NodeJS.ProcessEnv, host: string): boolean {
 export function loadSatisfactoryServerConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): SatisfactoryServerConfig {
-  const host = env.SATISFACTORY_SERVER_HOST ?? "localhost";
+  // `||`, not `??`: a variable set to "" (.env.example ships several) means unset.
+  // The host is trimmed once so the TLS decision and the connection see the same
+  // value (found by PR #17's fresh-eyes review).
+  const host = env.SATISFACTORY_SERVER_HOST?.trim() || "localhost";
   return {
     host,
-    apiPort: Number(env.SATISFACTORY_API_PORT ?? 7777),
+    apiPort: Number(env.SATISFACTORY_API_PORT || 7777),
     apiToken: env.SATISFACTORY_API_TOKEN,
     apiAllowSelfSignedCert: allowSelfSignedCert(env, host),
-    frmPort: Number(env.FRM_WEB_PORT ?? 8080),
+    frmPort: Number(env.FRM_WEB_PORT || 8080),
     frmToken: env.FRM_AUTH_TOKEN,
-    requestTimeoutMs: Number(env.SATISFACTORY_REQUEST_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS),
+    requestTimeoutMs: Number(env.SATISFACTORY_REQUEST_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
   };
 }
