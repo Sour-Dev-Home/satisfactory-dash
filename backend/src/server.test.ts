@@ -2,8 +2,12 @@ import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import net from "node:net";
 import type { Express } from "express";
+import { hashPassword } from "./services/auth/passwordHash.js";
 
 let app: Express;
+/** Session cookie for the real wiring's protected routes (ADR-0011). */
+let session: string;
+const PASSWORD = "server-test-password";
 
 /** A port that nothing is listening on: bind an ephemeral port, then release it. No
  *  host, so it's reserved dual-stack (both ::1 and 127.0.0.1, which "localhost"
@@ -32,7 +36,17 @@ beforeAll(async () => {
   process.env.SATISFACTORY_API_TOKEN = "";
   process.env.FRM_AUTH_TOKEN = "";
   process.env.SATISFACTORY_API_REJECT_UNAUTHORIZED = "";
+  // ADR-0011: the backend refuses to start without login settings.
+  process.env.DASHBOARD_ADMIN_USER = "operator";
+  process.env.DASHBOARD_ADMIN_PASSWORD_HASH = await hashPassword(PASSWORD);
+  process.env.SESSION_SECRET = "server-test-session-secret-0123456789abcdef";
+  process.env.CORS_ALLOWED_ORIGINS = "";
   ({ app } = await import("./server.js"));
+  const res = await request(app)
+    .post("/api/auth/login")
+    .set("Content-Type", "application/json")
+    .send(JSON.stringify({ username: "operator", password: PASSWORD }));
+  session = [res.headers["set-cookie"]].flat()[0].split(";")[0];
 });
 
 describe("GET /api/health", () => {
@@ -40,6 +54,23 @@ describe("GET /api/health", () => {
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok" });
+  });
+});
+
+// ADR-0011, checked against the real wiring rather than a test pipeline.
+describe("the real wiring requires a session", () => {
+  it.each(["/api/servers", "/api/servers/default/status", "/api/servers/default/power"])(
+    "answers %s with 401 when signed out",
+    async (path) => {
+      const res = await request(app).get(path);
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe("unauthorized");
+    },
+  );
+
+  it("serves the server list once signed in", async () => {
+    const res = await request(app).get("/api/servers").set("Cookie", session);
+    expect(res.status).toBe(200);
   });
 });
 
@@ -52,21 +83,21 @@ describe("GET /api/health", () => {
 // hanging, or an unhandled rejection escaping past Express's control flow.
 describe("GET /api/servers/default/{status,factory,power} against an unreachable game server", () => {
   it("status: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/servers/default/status");
+    const res = await request(app).get("/api/servers/default/status").set("Cookie", session);
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
     expect(res.body.error).toHaveProperty("detail");
   });
 
   it("factory: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/servers/default/factory");
+    const res = await request(app).get("/api/servers/default/factory").set("Cookie", session);
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
     expect(res.body.error).toHaveProperty("detail");
   });
 
   it("power: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/servers/default/power");
+    const res = await request(app).get("/api/servers/default/power").set("Cookie", session);
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
     expect(res.body.error).toHaveProperty("detail");
@@ -80,7 +111,7 @@ describe("GET /api/servers/default/{status,factory,power} against an unreachable
   // The transport now wraps it as the `.cause` of a VanillaApiRequestError tagged
   // `failureKind: "unreachable"`, so it appears inside a "(caused by: ...)" clause.
   it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
-    const res = await request(app).get("/api/servers/default/status");
+    const res = await request(app).get("/api/servers/default/status").set("Cookie", session);
     expect(res.status).toBe(503);
     expect(typeof res.body.error.detail).toBe("string");
     expect(res.body.error.detail).not.toBe("AggregateError");
@@ -92,7 +123,7 @@ describe("GET /api/servers/default/{status,factory,power} against an unreachable
   it.each(["/api/servers/default/status", "/api/servers/default/factory", "/api/servers/default/power"])(
     "%s: a refused connection is reported as unreachable",
     async (path) => {
-      const res = await request(app).get(path);
+      const res = await request(app).get(path).set("Cookie", session);
       expect(res.body.error.message).toBe("Could not reach the Satisfactory dedicated server");
     },
   );

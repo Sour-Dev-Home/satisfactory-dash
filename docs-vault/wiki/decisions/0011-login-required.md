@@ -22,6 +22,12 @@ an Authenticator interface (services/auth/), with the middleware in routes/.
 Deploy constraint: frontend and API on the same site (one registrable domain, or the API proxied
 under the Pages domain). Auth ships before the backend is reachable from outside the machine.
 
+Clarified 2026-09-23 (issue #19): the session is not required for GET /api/health,
+POST /api/auth/login, POST /api/auth/logout or GET /api/auth/session, and the session
+check answers 200 { authenticated: false } when signed out, never 401. "Mutations
+accept JSON only" applies only to a request that has a body: a body-less POST (e.g.
+logout, sent with Content-Length: 0) passes.
+
 ## Consequences
 
 The frontend needs a login screen and treats 401 as "go to login". No 403 yet:
