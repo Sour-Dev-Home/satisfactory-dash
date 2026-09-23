@@ -27,6 +27,9 @@ function appThrowing(err: unknown) {
   router.post("/echo", (req, res) => {
     res.json(req.body);
   });
+  router.get("/items/:id", (req, res) => {
+    res.json({ id: req.params.id });
+  });
   return { app: createApp({ logger, routers: [router] }), lines };
 }
 
@@ -197,6 +200,62 @@ describe("error middleware (ADR-0003 envelope)", () => {
     const res = await request(app).post("/api/echo").set("Content-Type", "application/json").send("{not json");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("bad_request");
+  });
+
+  // Found by PR #13's fresh-eyes review: body-parser 4xx errors were all flattened
+  // to 400. Each now has its own code, and each code keeps one status (ADR-0003).
+  // Found by PR #16's fresh-eyes review: Express's router throws a URIError with a
+  // bare `status: 400` (no `expose`) for a broken percent-encoded route parameter, and
+  // describeFailure's status branch blamed it on the game server as a 502. Latent
+  // until the first parameterised route (server-scoped routes, ADR-0001).
+  it("reports a malformed percent-encoded route parameter as our 400 bad_request, not a 502", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).get("/api/items/%E0%A4%A");
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("bad_request");
+  });
+
+  it("reports an oversized JSON body as 413 payload_too_large", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app)
+      .post("/api/echo")
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ blob: "x".repeat(200_000) }));
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe("payload_too_large");
+  });
+
+  it("reports an unsupported body encoding as 415 unsupported_media_type", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app)
+      .post("/api/echo")
+      .set("Content-Type", "application/json")
+      .set("Content-Encoding", "x-not-a-real-encoding")
+      .send("{}");
+    expect(res.status).toBe(415);
+    expect(res.body.error.code).toBe("unsupported_media_type");
+  });
+
+  // Also from that review: an unknown /api route got Express's HTML 404 page, which
+  // the frontend's error parsing can't read.
+  it.each([
+    ["GET", "/api/does-not-exist"],
+    ["POST", "/api/boom"],
+    ["GET", "/api"],
+  ])("answers %s %s (no such route) with a 404 not_found envelope, never HTML", async (method, path) => {
+    const { app } = appThrowing(unreachable());
+    const res = method === "GET" ? await request(app).get(path) : await request(app).post(path).send({});
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body.error.code).toBe("not_found");
+    expect(ApiErrorResponseSchema.parse(res.body)).toEqual(res.body);
+  });
+
+  it("leaves paths outside /api to Express's default 404", async () => {
+    const { app } = appThrowing(unreachable());
+    const res = await request(app).get("/not-api");
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).not.toMatch(/application\/json/);
   });
 
   it("maps a contract violation to 500 internal with a generic message", async () => {
