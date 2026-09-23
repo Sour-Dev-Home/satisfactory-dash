@@ -1,0 +1,12 @@
+// Cloudflare Workers static assets (ADR-0013 amendment, 2026-09-23). No `main`: there is
+// no Worker script, only the built SPA. `name` must match the Cloudflare project.
+{
+  "name": "satisfactory-dash",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    // Relative to this file. Produced by `npm run build -w frontend`.
+    "directory": "./dist/",
+    // Unknown paths serve index.html, so deep links load the app.
+    "not_found_handling": "single-page-application"
+  }
+}

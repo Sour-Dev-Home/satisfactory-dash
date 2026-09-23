@@ -29,3 +29,5 @@ contract needs to grow, not that this module should special-case a backend detai
   `@satisfactory-dash/shared/fixtures`. Override a route per test with `server.use(...)`.
 - Fixtures never reach production code: `oxlint` rejects any import of
   `@satisfactory-dash/shared/fixtures` outside `src/test/` and `*.test.*` files.
+- Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
+  `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.

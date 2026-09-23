@@ -45,3 +45,9 @@ setup is Business/Enterprise only):
   the dashboard needs to be up while the PC is off. Then: the backend to AWS (ECS Fargate or App
   Runner) with secrets in SSM/Secrets Manager, logs to CloudWatch (ADR-0008). Reaching game
   servers from AWS needs its own security decision (never expose FRM directly).
+
+## Amendment, 2026-09-23
+
+The frontend is served by Cloudflare Workers static assets instead of Pages (the account's Git
+deploy offers Workers only); same domain, same-site cookie model, no other change. Config:
+`frontend/wrangler.jsonc` (assets only, no Worker script, SPA fallback to index.html).
