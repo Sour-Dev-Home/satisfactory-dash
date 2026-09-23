@@ -3,6 +3,23 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@satisfactory-dash/shared/fixtures", "@satisfactory-dash/shared/fixtures/*"],
+            "message": "Fixtures are for tests and MSW mocks only (src/test/ and *.test.*), never production code."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/test/**", "**/*.test.ts", "**/*.test.tsx"],
+      "rules": { "no-restricted-imports": "off" }
+    }
+  ]
 }
