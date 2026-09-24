@@ -94,7 +94,9 @@ jobs:
 
       - name: Run e2e (regenerate baselines)
         if: steps.mode.outputs.update == 'true'
-        run: npm run e2e -w frontend -- --update-snapshots
+        # `=all` rewrites every image; the default ("changed") skips diffs that fall
+        # under the toHaveScreenshot tolerance, which silently kept stale baselines (#60).
+        run: npm run e2e -w frontend -- --update-snapshots=all
 
       - name: Upload regenerated baselines
         if: steps.mode.outputs.update == 'true'
