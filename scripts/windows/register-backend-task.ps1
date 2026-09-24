@@ -3,10 +3,10 @@
   Registers a Scheduled Task that starts the satisfactory-dash backend at logon.
 
 .DESCRIPTION
-  Runs `node dist\server.cjs` from the backend folder (so dotenv finds backend\.env) with
-  NODE_ENV=production, restarts it if it exits with a failure (3 tries, one minute apart, so
-  a configuration error doesn't loop forever), and appends its output to a log file OUTSIDE
-  the repository. Build first: `npm run build -w backend`.
+  Runs run-backend.ps1, which runs `node dist\server.cjs` from the backend folder (so dotenv
+  finds backend\.env) with NODE_ENV=production, restarts it if it exits with a failure (3
+  tries, one minute apart, so a configuration error doesn't loop forever), and appends its
+  output to a log file OUTSIDE the repository. Build first: `npm run build -w backend`.
 
   LIMITS: the task starts when YOU log on and runs in your session, in a visible console
   window (closing that window stops the backend). It does not start after a reboot until you
@@ -57,21 +57,23 @@ $node = (Get-Command node -ErrorAction Stop).Source
 # cmd.exe resolves a relative path against backend\, so make the log path absolute.
 $LogDir = [System.IO.Path]::GetFullPath($LogDir)
 $log = Join-Path $LogDir "backend.log"
+if (-not (Test-Path (Join-Path $PSScriptRoot "run-backend.ps1"))) {
+  throw "Missing run-backend.ps1 next to this script."
+}
 
-# cmd.exe does the log redirection; the working directory makes dotenv find backend\.env.
-# NODE_ENV=production is set explicitly so a machine-wide NODE_ENV=development can't turn
-# on error `detail` in responses (the same quoting pattern as `cmd /c ""x" y"`, no space
-# before && so the value has none).
-$action = New-ScheduledTaskAction -Execute "cmd.exe" `
-  -Argument "/c `"set NODE_ENV=production&& `"$node`" dist\server.cjs >> `"$log`" 2>&1`"" `
+# run-backend.ps1 runs node from backend\ (so dotenv finds backend\.env) with
+# NODE_ENV=production, appends to the log, and restarts node after a failure. Task Scheduler's
+# own restart-on-failure did not restart a killed backend (tested), hence the wrapper.
+$wrapper = Join-Path $PSScriptRoot "run-backend.ps1"
+$action = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapper`" -BackendDir `"$backendDir`" -Node `"$node`" -Log `"$log`"" `
   -WorkingDirectory $backendDir
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 
-# Restart after a crash (a non-zero exit) up to 3 times, a minute apart; never stop it for
-# running long; ignore a second start.
+# Restarts after a crash are handled by run-backend.ps1 (3 tries, a minute apart), not by
+# Task Scheduler. Never stop it for running long; ignore a second start.
 $settings = New-ScheduledTaskSettingsSet `
-  -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
   -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
   -StartWhenAvailable -MultipleInstances IgnoreNew

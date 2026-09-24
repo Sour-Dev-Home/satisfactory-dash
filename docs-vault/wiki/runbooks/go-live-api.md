@@ -204,8 +204,10 @@ What the task does, and its limits:
   without limit; check its size now and then (rotation is a later improvement).
 - Remove it with `.\scripts\windows\unregister-backend-task.ps1`.
 
-**Prove the restart works** (Task Scheduler's restart-on-failure with a `cmd.exe` action
-hasn't been tested here): find the backend's process and kill it, then wait about 90 seconds.
+**Prove the restart works.** Task Scheduler's own restart-on-failure did NOT restart a
+killed backend when tested (2026-09-24), so the task runs `run-backend.ps1`, which restarts
+node itself; its lines in the log start with `[run-backend`. Find the backend's node process
+and kill it, then wait about 90 seconds.
 
 ```powershell
 $p = (Get-NetTCPConnection -LocalPort 3001 -State Listen).OwningProcess
