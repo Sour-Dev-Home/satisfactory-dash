@@ -1,7 +1,17 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { useSelectedServer } from "../servers/ServerContext";
-import { factoryHealth, overallHealth, powerHealth, serverHealth, type SectionHealth, type SectionState } from "./health";
+import { useDismissedWarning } from "./dismissal";
+import {
+  canDismiss,
+  factoryHealth,
+  overallHealth,
+  powerHealth,
+  serverHealth,
+  warningKey,
+  type SectionHealth,
+  type SectionState,
+} from "./health";
 import { OverviewPanel } from "./OverviewPanel";
 
 /** Data wins over an error: a failed background refetch keeps showing the last snapshot. */
@@ -21,5 +31,15 @@ export function OverviewView() {
     { name: "Power", to: "/app/power", state: stateOf(useQuery(queries.power(server.id)), powerHealth) },
     { name: "Factory", to: "/app/factory", state: stateOf(useQuery(queries.factory(server.id)), factoryHealth) },
   ];
-  return <OverviewPanel overall={overallHealth(sections.map((s) => s.state))} sections={sections} />;
+  const overall = overallHealth(sections.map((s) => s.state));
+  const dismissible = canDismiss(overall.health);
+  const dismissal = useDismissedWarning(server.id, warningKey(sections), overall.health === "ok");
+  return (
+    <OverviewPanel
+      overall={overall}
+      sections={sections}
+      bannerHidden={dismissible && dismissal.hidden}
+      onDismiss={dismissible ? dismissal.dismiss : undefined}
+    />
+  );
 }

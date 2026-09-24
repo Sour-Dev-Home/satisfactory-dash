@@ -48,9 +48,15 @@ function shown(state: SectionState): { health: Shown; summary: string } {
 export function OverviewPanel({
   overall,
   sections,
+  bannerHidden = false,
+  onDismiss,
 }: {
   overall: { health: Shown; headline: string };
   sections: OverviewSection[];
+  /** The operator dismissed this banner (a warning only; see canDismiss). */
+  bannerHidden?: boolean;
+  /** Shows the × when given: "hide until something changes". */
+  onDismiss?: () => void;
 }) {
   const allClear = overall.health === "ok";
   return (
@@ -59,15 +65,28 @@ export function OverviewPanel({
       <h2 id="overview-heading" tabIndex={-1} className="sr-only">
         Overview
       </h2>
-      <p
-        role="status"
-        className={cn("flex items-center gap-3 rounded-card px-5 py-4 text-lg font-semibold sm:text-xl", BANNER[overall.health])}
-      >
-        <span aria-hidden="true" className="grid size-7 flex-none place-items-center rounded-full bg-white/20 text-base">
-          {allClear ? "✓" : overall.health === "pending" ? "…" : "!"}
-        </span>
-        {overall.headline}
-      </p>
+      {/* A slim bar (the owner's call): one line, the colour carries the level. */}
+      {!bannerHidden && (
+        <div className={cn("flex items-center gap-3 rounded-card py-1 pr-1 pl-4 font-semibold", BANNER[overall.health])}>
+          <span aria-hidden="true" className="grid size-5 flex-none place-items-center rounded-full bg-white/20 text-xs">
+            {allClear ? "✓" : overall.health === "pending" ? "…" : "!"}
+          </span>
+          <p role="status" className="min-h-11 flex-1 content-center">
+            {overall.headline}
+          </p>
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label="Hide this warning until something changes"
+              title="Hide until something changes"
+              className="grid min-w-11 flex-none place-items-center border-0 bg-transparent px-0 text-lg text-inherit hover:bg-white/15"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
       <ul aria-label="Sections" className="divide-y divide-line rounded-card border border-line bg-surface">
         {sections.map((section) => {
           const { health, summary } = shown(section.state);
