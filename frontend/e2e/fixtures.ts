@@ -8,19 +8,6 @@ declare global {
   }
 }
 
-/**
- * The one tolerated violation: zod v4 probes `new Function("")` once to decide whether it may
- * compile fast validators; script-src 'self' blocks it and zod falls back safely. It goes away
- * when packages/shared sets `z.config({ jitless: true })` (a separate contract-owner change);
- * remove this exception then. Anything else blocked by script-src still fails.
- */
-function isKnownZodEvalProbe(violation: string): boolean {
-  return (
-    violation === "script-src blocked eval" ||
-    /Refused to evaluate a string as JavaScript because 'unsafe-eval'/.test(violation)
-  );
-}
-
 interface Fixtures {
   /** Answers every /api request from the named scenario (src/test/scenarios.ts). */
   mockApi: (scenario: ScenarioName) => Promise<void>;
@@ -57,9 +44,7 @@ export const test = base.extend<Fixtures & { unmocked: string[] }>({
       await use();
 
       const events = await page.evaluate(() => window.__cspViolations ?? []).catch(() => [] as string[]);
-      expect([...events, ...consoleCsp].filter((v) => !isKnownZodEvalProbe(v)), "CSP violations (ADR-0016 item 8)").toEqual(
-        [],
-      );
+      expect([...events, ...consoleCsp], "CSP violations (ADR-0016 item 8)").toEqual([]);
       expect(unmocked, "requests to /api with no mock").toEqual([]);
     },
     { auto: true },

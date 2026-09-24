@@ -50,8 +50,9 @@ contract needs to grow, not that this module should special-case a backend detai
     The MSW worker is served by a Vite plugin in mock mode only, never from `public/`.
   - `npm run e2e -w frontend` (ADR-0016 item 5): Playwright against the production build,
     served by `vite preview` with `public/_headers`, at 1440 and 390 px. Every test fails on
-    a CSP violation or an unmocked `/api` call (one tolerated exception, zod's eval probe,
-    documented in `e2e/fixtures.ts`). axe runs report-only until ADR-0016 step 4. Screenshot
+    a CSP violation or an unmocked `/api` call, with no exceptions: zod's eval probe is off
+    because `main.tsx` imports `@satisfactory-dash/shared/browser` first (keep it first; a
+    test enforces it). axe runs report-only until ADR-0016 step 4. Screenshot
     comparisons run only with `PLAYWRIGHT_SNAPSHOTS=1` (CI's Linux image; fonts differ per OS).
   A new UI state gets a scenario and a case in `e2e/states.spec.ts`.
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
