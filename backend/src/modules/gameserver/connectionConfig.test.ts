@@ -150,14 +150,66 @@ describe("loadSatisfactoryServerConfigFromEnv", () => {
     expect(config.apiAllowSelfSignedCert).toBe(true);
   });
 
-  // Still unvalidated (only the request timeout is validated so far); a follow-up may add ports.
-  describe("port env vars with no validation", () => {
+  // A non-numeric port used to become NaN (no validation, no error) and fail every request while
+  // the backend looked healthy. Now: a whole number from 1 to 65535, or the backend won't start.
+  describe.each([
+    ["SATISFACTORY_API_PORT", "apiPort", 7777],
+    ["FRM_WEB_PORT", "frmPort", 8080],
+  ] as const)("%s", (name, field, defaultPort) => {
+    const load = (value: string | undefined) =>
+      loadSatisfactoryServerConfigFromEnv(value === undefined ? {} : { [name]: value });
 
-    it("produces NaN for a non-numeric port with no validation or error", () => {
-      const config = loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_PORT: "not-a-port" });
-      expect(config.apiPort).toBeNaN();
+    it.each([undefined, "", "  "])(`uses the default of ${defaultPort} when it is %j`, (value) => {
+      expect(load(value)[field]).toBe(defaultPort);
     });
 
+    it.each([
+      ["the lowest port", "1", 1],
+      ["the highest port", "65535", 65535],
+      ["a typical port", "9999", 9999],
+      ["a port with surrounding whitespace", " 8081 ", 8081],
+      ["a port with a leading zero", "08081", 8081],
+    ])("accepts %s", (_name, value, expected) => {
+      expect(load(value)[field]).toBe(expected);
+    });
+
+    it.each([
+      ["a word", "not-a-port"],
+      ["zero", "0"],
+      ["a negative", "-1"],
+      ["one above the highest port", "65536"],
+      ["a huge number", "99999999999"],
+      ["a decimal", "8080.5"],
+      ["scientific notation", "8e3"],
+      ["hex", "0x1F90"],
+      ["a host:port pair", "localhost:8080"],
+      ["a value with a unit", "8080/tcp"],
+      ["a plus sign", "+8080"],
+      ["Infinity", "Infinity"],
+      ["NaN", "NaN"],
+      ["dotenv quotes left in", '"8080"'],
+    ])("refuses %s, so the backend does not start", (_name, value) => {
+      expect(() => load(value)).toThrow(ConfigError);
+      expect(() => load(value)).toThrow(new RegExp(`^${name} must be a whole number from 1 to 65535`));
+    });
+
+    it("the error names the variable, the range and the default, and does not echo the value", () => {
+      const message = (() => {
+        try {
+          load("secret-looking-value");
+        } catch (err) {
+          return (err as Error).message;
+        }
+      })();
+      expect(message).toBe(`${name} must be a whole number from 1 to 65535 (or unset for ${defaultPort}).`);
+      expect(message).not.toContain("secret-looking-value");
+    });
+  });
+
+  it("a bad port is refused even when the other settings are fine", () => {
+    expect(() =>
+      loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_SERVER_HOST: "127.0.0.1", FRM_WEB_PORT: "http", SATISFACTORY_API_PORT: "7777" }),
+    ).toThrow(/FRM_WEB_PORT/);
   });
 
   // AbortSignal.timeout(NaN) throws, which made every FRM call fail as "unreachable" while the

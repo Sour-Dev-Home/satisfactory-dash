@@ -40,25 +40,50 @@ export const MIN_REQUEST_TIMEOUT_MS = 1000;
 export const MAX_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
- * SATISFACTORY_REQUEST_TIMEOUT_MS as a whole number of milliseconds in range. Unset or empty
- * means the default. Anything else that is not a plain integer in range (words, 0, negatives,
- * decimals, "1e3", a huge value) is a ConfigError, so the backend refuses to start instead of
- * running with NaN (AbortSignal.timeout(NaN) throws, which made every FRM call fail as
- * "unreachable").
+ * An environment variable that must be a plain whole number in a range. Unset or empty means
+ * the default. Anything else (words, 0, negatives, decimals, "1e3", hex, units, a huge value)
+ * is a ConfigError, so the backend refuses to start (fail fast) instead of running with NaN.
+ * The message names the variable and the range and never echoes the offending value.
  */
-export function parseRequestTimeoutMs(raw: string | undefined): number {
+function parseIntegerEnv(
+  name: string,
+  raw: string | undefined,
+  { min, max, defaultValue, unit }: { min: number; max: number; defaultValue: number; unit?: string },
+): number {
   const text = raw?.trim();
   if (!text) {
-    return DEFAULT_TIMEOUT_MS;
+    return defaultValue;
   }
   const value = /^\d{1,9}$/.test(text) ? Number(text) : Number.NaN;
-  if (!Number.isInteger(value) || value < MIN_REQUEST_TIMEOUT_MS || value > MAX_REQUEST_TIMEOUT_MS) {
+  if (!Number.isInteger(value) || value < min || value > max) {
     throw new ConfigError(
-      `SATISFACTORY_REQUEST_TIMEOUT_MS must be a whole number of milliseconds from ${MIN_REQUEST_TIMEOUT_MS} to ` +
-        `${MAX_REQUEST_TIMEOUT_MS} (or unset for ${DEFAULT_TIMEOUT_MS}).`,
+      `${name} must be a whole number${unit ? ` ${unit}` : ""} from ${min} to ${max} (or unset for ${defaultValue}).`,
     );
   }
   return value;
+}
+
+/**
+ * SATISFACTORY_REQUEST_TIMEOUT_MS as a whole number of milliseconds in range. A bad value
+ * used to become NaN, and AbortSignal.timeout(NaN) throws, which made every FRM call fail as
+ * "unreachable" while the backend looked healthy.
+ */
+export function parseRequestTimeoutMs(raw: string | undefined): number {
+  return parseIntegerEnv("SATISFACTORY_REQUEST_TIMEOUT_MS", raw, {
+    min: MIN_REQUEST_TIMEOUT_MS,
+    max: MAX_REQUEST_TIMEOUT_MS,
+    defaultValue: DEFAULT_TIMEOUT_MS,
+    unit: "of milliseconds",
+  });
+}
+
+const DEFAULT_API_PORT = 7777;
+const DEFAULT_FRM_PORT = 8080;
+
+/** A TCP port from an environment variable: a whole number from 1 to 65535, or the default
+ *  when unset or empty. A non-numeric port used to become NaN and fail every request. */
+export function parsePortEnv(name: string, raw: string | undefined, defaultValue: number): number {
+  return parseIntegerEnv(name, raw, { min: 1, max: 65535, defaultValue });
 }
 
 function isPrivateIPv4(address: string): boolean {
@@ -137,10 +162,10 @@ export function loadSatisfactoryServerConfigFromEnv(
   }
   return {
     host,
-    apiPort: Number(env.SATISFACTORY_API_PORT || 7777),
+    apiPort: parsePortEnv("SATISFACTORY_API_PORT", env.SATISFACTORY_API_PORT, DEFAULT_API_PORT),
     apiToken: env.SATISFACTORY_API_TOKEN,
     apiAllowSelfSignedCert: allowSelfSignedCert(env, host),
-    frmPort: Number(env.FRM_WEB_PORT || 8080),
+    frmPort: parsePortEnv("FRM_WEB_PORT", env.FRM_WEB_PORT, DEFAULT_FRM_PORT),
     frmToken: env.FRM_AUTH_TOKEN,
     requestTimeoutMs: parseRequestTimeoutMs(env.SATISFACTORY_REQUEST_TIMEOUT_MS),
   };

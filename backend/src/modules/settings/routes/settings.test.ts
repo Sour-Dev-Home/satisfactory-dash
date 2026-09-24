@@ -22,10 +22,16 @@ function fakeGameServer(
     verifyFails?: boolean;
     refuseApply?: boolean;
     failReadAfterApply?: boolean;
+    /** The write's response is lost (a deadline or a dropped connection): before the server
+     *  applied anything, or after it applied the value. */
+    dropApply?: "before-write" | "after-write";
+    /** The write fails with a plain HTTP 500 (no transport failure). */
+    apply500?: boolean;
+    initialAutoPause?: "True" | "False";
     garbage?: unknown;
   } = {},
 ) {
-  const state = { autoPause: "False", pending: undefined as string | undefined };
+  const state = { autoPause: (opts.initialAutoPause ?? "False") as string, pending: undefined as string | undefined };
   const calls: string[] = [];
   let optionCalls = 0;
   const api: VanillaApiClientLike = {
@@ -55,11 +61,20 @@ function fakeGameServer(
         if (opts.refuseApply) {
           throw new UpstreamError("Vanilla API request failed with status 403", { status: 403 });
         }
+        if (opts.apply500) {
+          throw new UpstreamError("Vanilla API request failed with status 500", { status: 500 });
+        }
+        if (opts.dropApply === "before-write") {
+          throw new UpstreamError("Vanilla API request failed", { failureKind: "unreachable" });
+        }
         const value = (data as { UpdatedServerOptions: Record<string, string> }).UpdatedServerOptions["FG.DSAutoPause"];
         if (opts.queueChanges) {
           state.pending = value;
         } else {
           state.autoPause = value;
+        }
+        if (opts.dropApply === "after-write") {
+          throw new UpstreamError("Vanilla API request failed", { failureKind: "unreachable" });
         }
         return undefined as T;
       }
@@ -166,6 +181,112 @@ describe("PUT /api/servers/:serverId/settings/auto-pause", () => {
     const audit = lines.map((l) => JSON.parse(l)).filter((l) => l.audit === "auto-pause");
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ user: "operator", from: false, to: true });
+  });
+
+  // The request deadline is overall now, so a slow-but-steady write response can be cut after
+  // the server applied it. Setting the option is idempotent: one read-back decides the outcome.
+  describe("when the write's response is lost (a deadline or a dropped connection)", () => {
+    const auditLines = (lines: string[]) => lines.map((l) => JSON.parse(l)).filter((l) => l.audit === "auto-pause");
+
+    it("answers 200 when a re-read shows the requested value: the write landed", async () => {
+      const server = fakeGameServer({ dropApply: "after-write" });
+      const { app } = buildApp(server);
+      const res = await put(app, { enabled: true });
+      expect(res.status).toBe(200);
+      expect(SettingsResponseSchema.parse(res.body)).toEqual(res.body);
+      expect(res.body.data).toEqual({ autoPause: true, pending: false, editable: true });
+      expect(server.state.autoPause).toBe("True");
+      expect(server.calls.filter((c) => c === "ApplyServerOptions")).toHaveLength(1); // the write is never retried
+      // token check + the read before the write + exactly ONE read-back (no second re-read)
+      expect(server.calls.filter((c) => c === "GetServerOptions")).toHaveLength(3);
+    });
+
+    it("writes one audit line that says the outcome was confirmed by the re-read", async () => {
+      const { app, lines } = buildApp(fakeGameServer({ dropApply: "after-write" }));
+      const res = await put(app, { enabled: true });
+      const audit = auditLines(lines);
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        serverId: "default",
+        user: "operator",
+        requested: true,
+        observed: true,
+        previous: false,
+        outcome: "confirmed by re-read",
+        req: { id: res.headers["x-request-id"] },
+      });
+      expect(audit[0].msg).toMatch(/response lost.*outcome confirmed by re-read/);
+    });
+
+    // The line must not claim a change it can't know about: a lost write may not be what
+    // changed the value, so it records what was asked and observed, never from -> to.
+    it("does not claim a from -> to change: the line has requested, observed and previous, not from or to", async () => {
+      const { app, lines } = buildApp(fakeGameServer({ dropApply: "after-write" }));
+      await put(app, { enabled: true });
+      const [line] = auditLines(lines);
+      expect(line).not.toHaveProperty("from");
+      expect(line).not.toHaveProperty("to");
+      expect(line.msg).not.toMatch(/changed/);
+    });
+
+    it("a normal success has no outcome field on its audit line", async () => {
+      const { app, lines } = buildApp(fakeGameServer());
+      await put(app, { enabled: true });
+      const [line] = auditLines(lines);
+      expect(line).not.toHaveProperty("outcome");
+      expect(line.msg).toBe("auto-pause changed");
+    });
+
+    it("stays the 503 upstream_unreachable when the re-read shows the OLD value: the write did not land", async () => {
+      const server = fakeGameServer({ dropApply: "before-write" });
+      const { app, lines } = buildApp(server);
+      const res = await put(app, { enabled: true });
+      expect(res.status).toBe(503);
+      expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("upstream_unreachable");
+      expect(server.state.autoPause).toBe("False");
+      expect(auditLines(lines)).toEqual([]); // nothing changed, so nothing is audited
+    });
+
+    it("stays the 503 when the re-read fails too, with no audit line (the outcome is unknown)", async () => {
+      const server = fakeGameServer({ dropApply: "after-write", failReadAfterApply: true });
+      const { app, lines } = buildApp(server);
+      const res = await put(app, { enabled: true });
+      expect(res.status).toBe(503);
+      expect(res.body.error.code).toBe("upstream_unreachable");
+      expect(auditLines(lines)).toEqual([]);
+    });
+
+    it("a change the server queued as pending does not count as landed: the applied value is still the old one", async () => {
+      const server = fakeGameServer({ dropApply: "after-write", queueChanges: true });
+      const res = await put(buildApp(server).app, { enabled: true });
+      expect(res.status).toBe(503);
+    });
+
+    it("if the option already held the requested value, a lost write is a success (the wanted end state is in effect)", async () => {
+      const server = fakeGameServer({ dropApply: "before-write", initialAutoPause: "True" });
+      const { app, lines } = buildApp(server);
+      const res = await put(app, { enabled: true });
+      expect(res.status).toBe(200);
+      expect(res.body.data.autoPause).toBe(true);
+      // Nothing changed here, and the line says so honestly: previous equals observed.
+      expect(auditLines(lines)[0]).toMatchObject({ requested: true, observed: true, previous: true, outcome: "confirmed by re-read" });
+    });
+
+    it("works the same for turning auto-pause off", async () => {
+      const server = fakeGameServer({ dropApply: "after-write", initialAutoPause: "True" });
+      const res = await put(buildApp(server).app, { enabled: false });
+      expect(res.status).toBe(200);
+      expect(res.body.data.autoPause).toBe(false);
+    });
+
+    it("does NOT re-read after a write the server answered with a plain HTTP error", async () => {
+      const server = fakeGameServer({ apply500: true });
+      const { app, lines } = buildApp(server);
+      const res = await put(app, { enabled: true });
+      expect(res.status).not.toBe(200);
+      expect(server.calls.filter((c) => c === "GetServerOptions")).toHaveLength(2); // token check + the read before
+      expect(auditLines(lines)).toEqual([]);
+    });
   });
 
   it("answers 409 not_editable, with no audit line, when the server refuses the write for lack of privilege", async () => {
