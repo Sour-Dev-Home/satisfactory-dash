@@ -27,7 +27,7 @@ The CLA is a draft that a lawyer has not reviewed yet.
 - Changes to real logic need tests. Changes to `packages/shared/` are changes to the API
   contract and should be their own pull request.
 - Never commit personal information (real names as data, emails, phone numbers) or local
-  file paths such as `C:\Users\...`; CI scans for them.
+  file paths that point into your own home folder; CI scans for them.
 - Security problems: please don't open a public issue. Contact the maintainer privately
   through GitHub instead.
 
