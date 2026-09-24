@@ -6,7 +6,7 @@ single file the CI PII scan excludes); contact `privacy@satis-manager.com` (live
 alias); audit retention 1 year; log retention 14 days; legal review before publishing: yes.
 Still open: the country (it decides the applicable law). Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
 consent screen requires a privacy policy URL, and gate B starts storing emails). The frontend page
-comes later. `[OWNER]` = Leonardo decides; `[LEGAL]` = get legal review before publishing;
+comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before publishing;
 `[BUILD]` = the policy promises something the code doesn't do yet (a prerequisite, not text).
 
 ## A. Privacy policy
