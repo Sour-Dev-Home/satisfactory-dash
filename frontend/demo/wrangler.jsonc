@@ -1,0 +1,20 @@
+// The DEMO site (ADR-0026): demo.satis-manager.com, a second Workers static-assets project
+// next to the app's (frontend/wrangler.jsonc). No `main`: only the built demo SPA.
+// Workers Builds: root directory `frontend`, build command `npm run build:demo`,
+// deploy command `npx wrangler deploy --config demo/wrangler.jsonc`.
+// The demo needs no VITE_API_URL: its build has no network transport at all.
+{
+  "name": "satisfactory-dash-demo",
+  "compatibility_date": "2026-09-01",
+  // Custom domain only (demo.satis-manager.com, attached in the dashboard); no workers.dev
+  // copy or preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    // Relative to this file. Produced by `npm run build:demo`, including the demo's own
+    // _headers (demo/_headers: connect-src 'self').
+    "directory": "../dist-demo/",
+    // Unknown paths serve index.html, so deep links load the demo.
+    "not_found_handling": "single-page-application"
+  }
+}
