@@ -17,3 +17,6 @@ build/
 
 # logs
 npm-debug.log*
+
+# Structurizr exports from the architecture CI job (ADR-0024)
+docs-vault/architecture-out/
