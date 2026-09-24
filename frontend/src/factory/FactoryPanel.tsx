@@ -99,7 +99,9 @@ function BuildingRow({ building }: { building: FactoryBuilding }) {
             {/* Index in the key: nothing in the contract says output class names are unique. */}
             {building.production.map((rate, i) => (
               <li key={`${i}-${rate.className}`}>
-                {rate.name}: {formatRate(rate.currentPerMinute, rate.maxPerMinute)} ({formatPercent(rate.percent)})
+                {/* unit is optional (ADR-0015): missing or null = unknown, shown as "per min". */}
+                {`${rate.name}: ${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit ?? null)}`}{" "}
+                ({formatPercent(rate.percent)})
               </li>
             ))}
           </ul>
