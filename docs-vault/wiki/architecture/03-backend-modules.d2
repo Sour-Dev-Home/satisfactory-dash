@@ -1,0 +1,33 @@
+# Alt text: "Backend modules: a composition root wires the identity, servers, telemetry, settings and gameserver modules; telemetry and settings depend on gameserver and servers; all modules use a shared platform layer; the rules are enforced by an architecture test."
+# C4 level 3: backend components (modular monolith). Sources: ADR-0014 step 1 (PR #31),
+# backend/src/architecture.test.ts (dependency rules enforced as a fitness function).
+direction: down
+
+root: "Composition root\napp.ts · server.ts\n(only place that wires everything)"
+
+modules: "modules/" {
+  identity: "identity\nlogin, sessions,\nrate limits"
+  servers: "servers\nregistry, request scoping\n(ServerDirectory<T>)"
+  telemetry: "telemetry\nstatus · power · factory\npower-history poller\nitem-unit catalog"
+  settings: "settings\nauto-pause toggle\n(allowlisted write)"
+  gameserver: "gameserver\nvanilla + FRM clients,\nraw zod schemas\n(no Express; future edge agent)"
+}
+
+platform: "platform/\nlogger · error taxonomy · request ids\nsendValidated · httpPolicy (CSRF, JSON-only)"
+
+
+modules.telemetry -> modules.gameserver: "ports"
+modules.telemetry -> modules.servers
+modules.settings -> modules.gameserver: "ServerOptionsPort"
+modules.settings -> modules.servers
+
+root -> modules: "wires every module"
+modules -> platform: "all modules may use" {style.stroke-dash: 3}
+
+rules: |md
+  **Enforced by a test** (architecture.test.ts)
+  - platform imports no module
+  - modules import each other only via index.ts
+  - gameserver: no Express, only platform/errors
+  - backend code imports only the bare shared package
+|

@@ -1,0 +1,38 @@
+# Alt text: "Deployed architecture: the browser loads a React app from Cloudflare Workers and calls api.satis-manager.com, which reaches the backend on the owner's PC only through an outbound Cloudflare Tunnel; the backend, bound to localhost, talks to the game API and FRM on loopback, and a poller samples power every 5 seconds."
+# C4 level 2: containers as deployed today. Sources: ADR-0013 (+ Workers amendment, PR #21),
+# ADR-0019 (edge rate limit, headers), ADR-0022 (power history poller, PR #81),
+# PRs #25/#63-#65 (loopback bind, token enforcement), FRM firewall rule.
+direction: down
+
+browser: Browser {shape: person}
+
+cloudflare: Cloudflare edge {
+  site: "satis-manager.com\nWorkers static assets\nReact SPA · CSP script-src 'self'"
+  api: "api.satis-manager.com\nTLS termination\nlogin rate limit (WAF rule)"
+}
+
+ci: "GitHub Actions\nlint · typecheck · tests · build\nPlaywright e2e + axe · CodeQL · PII scan"
+
+pc: "Owner's gaming PC (no inbound ports open)" {
+  cloudflared: "cloudflared\noutbound-only tunnel"
+  backend: "Backend process · Node.js + Express · 127.0.0.1:3001" {
+    api: "REST API\nlogin + sessions\nzod-validated JSON"
+    poller: "Power history poller\n5 s samples · 5 min ring buffer"
+  }
+  server: "Satisfactory dedicated server" {
+    vanilla: "Game HTTPS API :7777\ntoken enforced"
+    frm: "FRM HTTP API :8080\nLAN blocked by firewall"
+  }
+}
+
+shared: "packages/shared\nzod contract + fixtures" {shape: page}
+
+browser -> cloudflare.site: "HTML / JS"
+browser -> cloudflare.api: "HTTPS JSON + HttpOnly cookie"
+cloudflare.api -> pc.cloudflared: "via tunnel"
+pc.cloudflared -> pc.backend.api: "HTTP (loopback)"
+pc.backend.api -> pc.server.vanilla: "HTTPS + app token"
+pc.backend.api -> pc.server.frm: "HTTP + FRM token"
+pc.backend.poller -> pc.server.frm: "getPower / 5 s"
+ci -> cloudflare.site: "deploys on merge"
+shared -> ci: "one contract for\nfrontend + backend" {style.stroke-dash: 3}

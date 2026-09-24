@@ -1,0 +1,48 @@
+# Alt text: "Planned multi-user architecture: players use a Cloudflare-hosted app and an AWS web API with live updates, backed by PostgreSQL and Google sign-in; edge agents beside self-hosted and managed game servers connect outbound to send snapshots and receive commands; managed servers are provisioned on EC2 and read only their own secret."
+# Target architecture (planned, built only when each trigger fires). Sources: ADR-0014 (style),
+# ADR-0017 (credentials), ADR-0020 (multi-user data model), ADR-0021 (public pages / ads room).
+direction: down
+
+players: Players {shape: person}
+
+site: "satis-manager.com (Cloudflare)\n/app SPA  ·  public pages"
+
+aws: "AWS (planned)" {
+  api: "Web API + SSE push\nECS, stateless"
+  google: "Google Sign-In\n(OIDC)"
+  db: "PostgreSQL (RDS)\nusers · sessions · servers\nmemberships · snapshots · commands" {shape: cylinder}
+  prov: "Provisioning\nasync jobs"
+  secrets: "Secrets Manager\nmanaged servers only" {shape: stored_data}
+  api -> google: "sign-in"
+  api -> db: "ACID CRUD · upserts"
+  prov -> secrets: "creates per-server secret"
+}
+
+hosts: "Game hosts: agents connect outbound only" {
+  self: "Self-hosted (user's network)" {
+    agent: "Edge agent"
+    game: "Dedicated server + FRM"
+    agent -> game: "loopback"
+  }
+  managed: "Managed (EC2)" {
+    agent: "Edge agent"
+    game: "Dedicated server + FRM"
+    agent -> game: "loopback"
+  }
+}
+
+players -> site: "loads app"
+players -> aws.api: "HTTPS + cookie · live SSE"
+aws.api <-> hosts.self.agent: "snapshots ↑ · commands ↓"
+aws.api <-> hosts.managed.agent: "snapshots ↑ · commands ↓"
+aws.prov -> hosts.managed: "provision"
+aws.secrets -> hosts.managed.agent: "own secret via IAM role" {style.stroke-dash: 3}
+
+principles: |md
+  **Principles**
+  - game credentials never leave the game host
+  - viewers read the database, never the game server
+  - agents speed up only while someone is watching
+|
+
+principles.near: bottom-center

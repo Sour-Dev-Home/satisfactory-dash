@@ -1,0 +1,27 @@
+# Alt text: "System context: the server owner uses Satis Manager over HTTPS; Satis Manager reads game state from a Satisfactory dedicated server with the FRM mod and writes one allowlisted setting; GitHub deploys it on merge."
+# C4 level 1: system context (as deployed today). Sources: ADR-0011, ADR-0013, ADR-0014.
+direction: right
+
+owner: Server owner {
+  shape: person
+  tooltip: Logs in to monitor and control their Satisfactory dedicated server
+}
+
+satis: Satis Manager {
+  style.font-size: 20
+  label: "Satis Manager\nLive monitoring dashboard\nfor a Satisfactory dedicated server"
+}
+
+game: Satisfactory dedicated server {
+  label: "Satisfactory dedicated server\n+ Ficsit Remote Monitoring (FRM) mod"
+  style.stroke-dash: 3
+}
+
+github: GitHub {
+  label: "GitHub\nsource, CI, reviews"
+  style.stroke-dash: 3
+}
+
+owner -> satis: "views status, power, factory;\ntoggles auto-pause (HTTPS)"
+satis -> game: "reads game state + power;\nwrites one allowlisted setting"
+github -> satis: "deploys on merge"
