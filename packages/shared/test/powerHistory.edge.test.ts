@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import * as fixtures from "../fixtures/index";
-import { PowerHistoryResponseSchema, PowerHistorySchema } from "../src/index";
+import { PowerHistoryResponseSchema } from "../src/index";
 
 const histories = Object.entries(fixtures).filter(([name]) => name.startsWith("powerHistory"));
 const good = fixtures.powerHistoryNormal;
@@ -67,20 +66,8 @@ describe("power history schema edge cases (what the poller can really produce)",
   });
 });
 
-describe("power history fixtures are identical in jitless and normal zod mode", () => {
-  it.each(histories)("%s", (_name, fixture) => {
-    const normal = PowerHistoryResponseSchema.parse(fixture);
-    z.config({ jitless: true });
-    try {
-      // A fresh schema instance is needed for the flag to matter; re-parse via a new object.
-      const fresh = z.object({ data: PowerHistorySchema }).parse({ data: (fixture as { data: unknown }).data });
-      expect(fresh.data).toEqual(normal.data);
-    } finally {
-      z.config({ jitless: false });
-    }
-    expect(normal).toEqual(fixture);
-  });
-});
+// Jitless parsing of these fixtures is covered by browser.noeval.test.ts, which loads
+// shared/browser first and parses every exported fixture against every schema.
 
 describe("power history fixtures are deterministic", () => {
   it("serialize identically across two imports of the module", async () => {
