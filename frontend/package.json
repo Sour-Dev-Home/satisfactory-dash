@@ -13,6 +13,7 @@
     "lint": "oxlint && node scripts/check-network-lint.mjs",
     "test": "vitest run",
     "e2e": "playwright test",
+    "demo:video": "playwright test -c playwright.video.config.ts && node scripts/encode-demo-video.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

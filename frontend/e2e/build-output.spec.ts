@@ -35,6 +35,9 @@ test.describe("production build", () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("style-src 'self'");
     expect(response.headers()["x-frame-options"]).toBe("DENY");
+    // No includeSubDomains or preload: status.satis-manager.com is a third-party CNAME.
+    // The demo's headers are these plus its own connect-src (checked below), so HSTS too.
+    expect(response.headers()["strict-transport-security"]).toBe("max-age=86400");
   });
 
   test("contains none of the demo build's code or text (ADR-0026)", () => {
