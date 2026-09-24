@@ -25,7 +25,7 @@ beforeAll(async () => {
 });
 
 /** The production pipeline with a stand-in protected route and captured logs. */
-function buildApp() {
+function buildApp(signInMethods?: string[]) {
   const lines: string[] = [];
   const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(line) });
   const authenticator = new SingleOperatorAuthenticator("operator", passwordHash);
@@ -40,7 +40,7 @@ function buildApp() {
   const app = createApp({
     logger,
     allowedOrigins: ["https://satis-manager.com"],
-    routers: [healthRouter, createAuthRouter({ ...deps, rateLimiter: new LoginRateLimiter() })],
+    routers: [healthRouter, createAuthRouter({ ...deps, rateLimiter: new LoginRateLimiter(), signInMethods })],
     sessionGuard: createSessionGuard({ store: deps.store }),
     protectedRouters: [protectedRouter],
   });
@@ -495,5 +495,28 @@ describe("cross-site mutations", () => {
     const { app } = buildApp();
     const res = await request(app).get(endpoints.auth.session.path()).set("Sec-Fetch-Site", "cross-site");
     expect(res.status).toBe(200);
+  });
+});
+
+// ADR-0025: signInMethods rides on every SessionResponse, signed in or out, with Google on.
+describe("signInMethods with Google configured", () => {
+  const METHODS = ["password", "google"];
+
+  it("is sent on login, session (in and out), logout and logout-all", async () => {
+    const { app } = buildApp(METHODS);
+    const loginRes = await login(app, { username: "operator", password: PASSWORD });
+    expect(loginRes.body).toEqual({ authenticated: true, signInMethods: METHODS, user: { name: "operator" } });
+    const cookie = await signIn(app);
+    const inRes = await request(app).get(endpoints.auth.session.path()).set("Cookie", cookie);
+    expect(inRes.body).toEqual({ authenticated: true, signInMethods: METHODS, user: { name: "operator" } });
+    expect((await request(app).get(endpoints.auth.session.path())).body).toEqual({ authenticated: false, signInMethods: METHODS });
+    const out = await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie);
+    expect(out.body).toEqual({ authenticated: false, signInMethods: METHODS });
+    const cookie2 = await signIn(app);
+    const all = await request(app).post(endpoints.auth.logoutAll.path()).set("Cookie", cookie2);
+    expect(all.body).toEqual({ authenticated: false, signInMethods: METHODS });
+    // No session at all: still the same answer.
+    const anon = await request(app).post(endpoints.auth.logoutAll.path());
+    expect(anon.body).toEqual({ authenticated: false, signInMethods: METHODS });
   });
 });
