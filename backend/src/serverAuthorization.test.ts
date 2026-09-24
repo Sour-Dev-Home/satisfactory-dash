@@ -14,6 +14,8 @@ import { InMemoryServerDirectory, createServersRouter } from "./modules/servers/
 import type { ServerAccess } from "./modules/servers/index.js";
 import { createTelemetryRouters } from "./modules/telemetry/index.js";
 import { createSettingsRouters } from "./modules/settings/index.js";
+import { scopedEndpoints } from "../test-support/scopedEndpoints.js";
+import type { Method } from "../test-support/scopedEndpoints.js";
 
 /**
  * ADR-0025 PR 6: the IDOR tests are GENERATED from the shared `endpoints` list, so a new
@@ -22,25 +24,6 @@ import { createSettingsRouters } from "./modules/settings/index.js";
  * shipping unguarded. The app is the real one: real telemetry and settings routers behind the
  * real membership middleware, with stub services and an in-memory membership table.
  */
-
-type Method = "GET" | "PUT" | "POST" | "PATCH" | "DELETE";
-interface Scoped {
-  name: string;
-  method: Method;
-  route: string;
-}
-
-/** Every endpoint whose route is server-scoped, found by walking the (nested) contract. */
-function scopedEndpoints(node: unknown, path: string[] = []): Scoped[] {
-  if (typeof node !== "object" || node === null) {
-    return [];
-  }
-  const entry = node as { method?: Method; route?: string };
-  if (typeof entry.route === "string" && entry.method) {
-    return entry.route.includes("/servers/:serverId/") ? [{ name: path.join("."), method: entry.method, route: entry.route }] : [];
-  }
-  return Object.entries(node).flatMap(([key, value]) => scopedEndpoints(value, [...path, key]));
-}
 
 const SCOPED = scopedEndpoints(endpoints);
 const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId);
