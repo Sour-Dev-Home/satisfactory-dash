@@ -8,7 +8,13 @@ import {
   StatusResponseSchema,
   endpoints,
 } from "@satisfactory-dash/shared";
-import { factoryMixed, powerOutage, statusRunning, statusSlow } from "@satisfactory-dash/shared/fixtures";
+import {
+  factoryMixed,
+  powerHistoryNormal,
+  powerOutage,
+  statusRunning,
+  statusSlow,
+} from "@satisfactory-dash/shared/fixtures";
 import type { z } from "zod";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
@@ -26,6 +32,9 @@ function stubServices(overrides: Partial<ServerServices> = {}): ServerServices {
     status: { getStatus: async () => statusRunning.data },
     production: { getFactoryOverview: async () => factoryMixed.data },
     power: { getPowerOverview: async () => powerOutage.data },
+    powerHistory: {
+      getPowerHistory: () => ({ data: powerHistoryNormal.data, observedAt: powerHistoryNormal.observedAt, stale: false }),
+    },
     ...overrides,
   };
 }

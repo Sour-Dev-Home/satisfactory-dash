@@ -42,22 +42,26 @@ const resolveUnit = createUnitResolver((className) =>
 
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
-const directory = new InMemoryServerDirectory(
-  orExit(() => {
-    const registry = loadServerRegistryFromEnv();
-    // Single-server mode: every entry uses the one SATISFACTORY_* connection config.
-    // Per-server connection config arrives with the multi-server registry (ADR-0001).
-    const config = loadSatisfactoryServerConfigFromEnv();
-    return registry.map(({ id, displayName }) => ({
-      id,
-      displayName,
-      services: {
-        telemetry: createTelemetryServices(createGameServerConnection(config), resolveUnit),
-        settings: createSettingsServices(createServerOptionsPort(config)),
-      },
-    }));
-  }),
-);
+const entries = orExit(() => {
+  const registry = loadServerRegistryFromEnv();
+  // Single-server mode: every entry uses the one SATISFACTORY_* connection config.
+  // Per-server connection config arrives with the multi-server registry (ADR-0001).
+  const config = loadSatisfactoryServerConfigFromEnv();
+  return registry.map(({ id, displayName }) => ({
+    id,
+    displayName,
+    services: {
+      telemetry: createTelemetryServices(createGameServerConnection(config), resolveUnit, {
+        logger: logger.child({ worker: "power-history", serverId: id }),
+      }),
+      settings: createSettingsServices(createServerOptionsPort(config)),
+    },
+  }));
+});
+const directory = new InMemoryServerDirectory(entries);
+// ADR-0022: the background workers (the power history poller per server). Started only once
+// the server is listening, and stopped on shutdown.
+const workers = entries.flatMap((entry) => entry.services.telemetry.workers);
 
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
 const identity = orExit(() => createIdentityModule());
@@ -75,7 +79,37 @@ export const app = createApp({
 });
 
 if (process.env.NODE_ENV !== "test") {
-  app.listen(port, host, () => {
+  const httpServer = app.listen(port, host, () => {
     logger.info({ host, port }, `backend listening on ${host}:${port}`);
+    for (const worker of workers) {
+      worker.start();
+    }
   });
+
+  // Graceful shutdown (Ctrl+C, or a container's SIGTERM): stop the workers, let in-flight
+  // requests finish, then exit 0 (the Scheduled Task wrapper treats 0 as a deliberate stop).
+  // A hard kill (Stop-ScheduledTask) skips this and is fine: nothing here needs flushing.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    logger.info({ signal }, "shutting down");
+    const forceExit = setTimeout(() => process.exit(1), 10_000);
+    forceExit.unref();
+    // Workers get a short window to stop: their in-flight polls are bounded, but on exit their
+    // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
+    const workersStopped = Promise.race([
+      Promise.allSettled(workers.map((worker) => worker.stop())),
+      new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
+    ]);
+    // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never
+    // finishes is cut after a grace period, otherwise close() would never complete.
+    httpServer.close(() => void workersStopped.then(() => process.exit(0)));
+    httpServer.closeIdleConnections();
+    setTimeout(() => httpServer.closeAllConnections(), 5_000).unref();
+  };
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
 }
