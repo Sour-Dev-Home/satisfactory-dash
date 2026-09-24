@@ -127,9 +127,9 @@ describe.skipIf(!available)("identity repositories against a real Postgres", () 
 
       const revoked = newSessionId();
       await createSession(pool, { idHash: revoked.idHash, userId: user.id, ttlSeconds: 3600 });
-      expect(await revokeSession(pool, revoked.idHash)).toBe(true);
+      expect(await revokeSession(pool, revoked.idHash)).toBe(user.id); // the user id, for the audit row
       expect(await findActiveSession(pool, revoked.idHash)).toBeUndefined();
-      expect(await revokeSession(pool, revoked.idHash)).toBe(false); // already revoked
+      expect(await revokeSession(pool, revoked.idHash)).toBeUndefined(); // already revoked
 
       const expired = newSessionId();
       await createSession(pool, { idHash: expired.idHash, userId: user.id, ttlSeconds: 3600 });
@@ -180,16 +180,23 @@ describe.skipIf(!available)("identity repositories against a real Postgres", () 
       expect(await findActiveSession(pool, sessions[2].idHash)).toBeUndefined();
     });
 
-    it("housekeeping drops only sessions that expired more than a day ago", async () => {
+    it("housekeeping drops only sessions that expired more than 30 days ago, in batches", async () => {
       const user = await createUser(pool, { displayName: "Old" });
       const old = newSessionId();
       const recent = newSessionId();
       await createSession(pool, { idHash: old.idHash, userId: user.id, ttlSeconds: 3600 });
       await createSession(pool, { idHash: recent.idHash, userId: user.id, ttlSeconds: 3600 });
-      await admin.query("UPDATE identity.sessions SET created_at = now() - interval '3 days', expires_at = now() - interval '2 days' WHERE id_hash = $1", [old.idHash]);
-      await admin.query("UPDATE identity.sessions SET created_at = now() - interval '3 hours', expires_at = now() - interval '1 hour' WHERE id_hash = $1", [recent.idHash]);
-      expect(await deleteExpiredSessions(pool)).toBeGreaterThanOrEqual(1);
+      await admin.query("UPDATE identity.sessions SET created_at = now() - interval '40 days', expires_at = now() - interval '31 days' WHERE id_hash = $1", [old.idHash]);
+      await admin.query("UPDATE identity.sessions SET created_at = now() - interval '20 days', expires_at = now() - interval '10 days' WHERE id_hash = $1", [recent.idHash]);
+      // A batch of one leaves the rest for the next call.
+      const extra = newSessionId();
+      await createSession(pool, { idHash: extra.idHash, userId: user.id, ttlSeconds: 3600 });
+      await admin.query("UPDATE identity.sessions SET created_at = now() - interval '50 days', expires_at = now() - interval '45 days' WHERE id_hash = $1", [extra.idHash]);
+      expect(await deleteExpiredSessions(pool, 1)).toBe(1);
+      expect(await deleteExpiredSessions(pool, 1)).toBe(1);
+      expect(await deleteExpiredSessions(pool, 1)).toBe(0);
       expect((await admin.query("SELECT 1 FROM identity.sessions WHERE id_hash = $1", [old.idHash])).rows).toEqual([]);
+      expect((await admin.query("SELECT 1 FROM identity.sessions WHERE id_hash = $1", [extra.idHash])).rows).toEqual([]);
       expect((await admin.query("SELECT 1 FROM identity.sessions WHERE id_hash = $1", [recent.idHash])).rows).toHaveLength(1);
     });
 

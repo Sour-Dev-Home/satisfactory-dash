@@ -303,7 +303,9 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
       res.setHeader("Retry-After", String(err.retryAfterSeconds));
     }
     const body: ApiErrorResponse = { error: { code, message, requestId } };
-    if (DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
+    // A service_unavailable cause is a database error (host, port, driver text): never in a body,
+    // even in development. The full cause is in the log line above.
+    if (code !== "service_unavailable" && DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
       body.error.detail = detail;
     }
     res.status(HTTP_STATUS_BY_CODE[code]).json(body);

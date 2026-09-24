@@ -72,3 +72,26 @@ must be running.
 
 The compose file for dev and the native Windows service install for production are owned by the
 coordinator session (ADR-0025 build plan, PR 2).
+
+## Sessions (ADR-0025 PR 5)
+
+With `DATABASE_URL` set, sign-in sessions live in `identity.sessions` instead of signed tokens: the
+cookie (same name and flags) holds a 32-byte random id and the table only its sha256, with the same
+8-hour lifetime and a new id on every login. Without `DATABASE_URL` the original signed-token
+sessions keep working. At the first start with a database, everyone signs in once (old cookies are
+answered as signed out and cleared).
+
+- **The operator account** is created on first login with a fixed key (`local` / `operator`); the
+  `.env` username is only its display name, so renaming it never creates a second account.
+- **A database outage is a 503**, never a 401: the frontend must not treat it as "signed out".
+- **Revoking sessions** (replaces rotating `SESSION_SECRET`), run on the PC with `DATABASE_URL` set:
+
+```powershell
+npm run admin -- revoke-sessions --all                # sign everyone out
+npm run admin -- revoke-sessions --user <user-id>     # one account, everywhere
+```
+
+  Each writes an audit row (`sessions.revoke_all` / `sessions.revoke_user`, no actor, counts and ids
+  only). Users can sign out everywhere themselves with `POST /api/auth/logout-all`.
+- **Retention:** sessions expired more than 30 days ago and stale login attempts are purged at
+  startup and then hourly, in batches. Sign-in logs carry the user id, never the username.

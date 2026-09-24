@@ -212,6 +212,19 @@ describe("error middleware (ADR-0003 envelope)", () => {
     expect(res.body.error.detail).toContain("ECONNREFUSED");
   });
 
+  it.each([["development"], ["test"]])("never puts detail in a service_unavailable body, even when NODE_ENV is %s", async (env) => {
+    process.env.NODE_ENV = env;
+    const err = new ServiceUnavailableError();
+    err.cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), { code: "ECONNREFUSED" });
+    const { app, lines } = appThrowing(err);
+    const res = await request(app).get("/api/boom");
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("service_unavailable");
+    expect(res.body.error).not.toHaveProperty("detail");
+    expect(JSON.stringify(res.body)).not.toMatch(/ECONNREFUSED|127\.0\.0\.1/);
+    expect(lines.some((line) => String(line.detail).includes("ECONNREFUSED"))).toBe(true);
+  });
+
   it("always logs the full detail server-side, even in production", async () => {
     process.env.NODE_ENV = "production";
     const { app, lines } = appThrowing(unreachable());

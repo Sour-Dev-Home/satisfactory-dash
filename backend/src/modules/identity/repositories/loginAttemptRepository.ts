@@ -75,11 +75,16 @@ export async function consumeLoginAttempt(db: Queryable, idHash: Buffer): Promis
 
 const DELETE_EXPIRED_ATTEMPTS = `
   DELETE FROM identity.login_attempts
-  WHERE expires_at < now()
+  WHERE id_hash IN (
+    SELECT id_hash FROM identity.login_attempts
+    WHERE expires_at < now()
+    LIMIT $1
+  )
   RETURNING 1 AS deleted`;
 
-/** Housekeeping for attempts nobody came back for. Returns the count. */
-export async function deleteExpiredLoginAttempts(db: Queryable): Promise<number> {
-  const result = await db.query(DELETE_EXPIRED_ATTEMPTS);
+/** Housekeeping for attempts nobody came back for: up to `batchSize` per call (call until it
+ *  returns fewer). Returns the count. */
+export async function deleteExpiredLoginAttempts(db: Queryable, batchSize = 1000): Promise<number> {
+  const result = await db.query(DELETE_EXPIRED_ATTEMPTS, [Math.max(1, Math.trunc(batchSize))]);
   return result.rows.length;
 }

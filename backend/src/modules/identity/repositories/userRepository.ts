@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { isUniqueViolation } from "../../../platform/db/errors.js";
 import { parseFirst, parseOne } from "../../../platform/db/rows.js";
+import { withTransaction } from "../../../platform/db/transaction.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 
 /**
@@ -91,6 +93,63 @@ export async function addIdentity(
 ): Promise<string> {
   const result = await db.query(INSERT_IDENTITY, [input.userId, input.provider, input.subject]);
   return parseOne(IdentityIdRowSchema, result.rows, "identity.addIdentity").id;
+}
+
+const SELECT_PROVIDERS = `
+  SELECT provider
+  FROM identity.auth_identities
+  WHERE user_id = $1
+  ORDER BY provider`;
+
+const ProviderRowSchema = z.object({ provider: z.enum(["local", "google"]) });
+
+/** How the account can sign in, as the contract names it: "password" (the local operator
+ *  identity) and/or "google". */
+export async function authMethodsForUser(db: Queryable, userId: string): Promise<string[]> {
+  const result = await db.query(SELECT_PROVIDERS, [userId]);
+  const methods = result.rows.map((row) => ProviderRowSchema.parse(row).provider);
+  return methods.map((provider) => (provider === "local" ? "password" : provider));
+}
+
+const UPDATE_DISPLAY_NAME = `
+  UPDATE identity.users
+  SET display_name = $2
+  WHERE id = $1 AND display_name <> $2`;
+
+/**
+ * The single operator (ADR-0025): ensures a user with a LOCAL identity whose subject is a FIXED
+ * key (not the username), creating both in one transaction on first use. The .env username is
+ * only the display name, refreshed when it changes, so renaming it can never fork a second account
+ * that loses ownership. Safe under concurrent first logins (a lost race re-reads the winner).
+ */
+export async function ensureLocalUser(
+  pool: Queryable & Parameters<typeof withTransaction>[0],
+  input: { subject: string; displayName: string },
+): Promise<User> {
+  const find = async (db: Queryable) => findUserByIdentity(db, "local", input.subject);
+  const existing = await find(pool);
+  if (existing !== undefined) {
+    if (existing.displayName !== input.displayName.trim()) {
+      await (pool).query(UPDATE_DISPLAY_NAME, [existing.id, input.displayName.trim()]);
+      return { ...existing, displayName: input.displayName.trim() };
+    }
+    return existing;
+  }
+  try {
+    return await withTransaction(pool, async (client) => {
+      const user = await createUser(client, { displayName: input.displayName });
+      await addIdentity(client, { userId: user.id, provider: "local", subject: input.subject });
+      return user;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      const winner = await find(pool);
+      if (winner !== undefined) {
+        return winner;
+      }
+    }
+    throw err;
+  }
 }
 
 const UPDATE_STATUS = `

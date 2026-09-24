@@ -1,10 +1,14 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { verifyPassword } from "./passwordHash.js";
 import type { ParsedPasswordHash } from "./passwordHash.js";
+import type { Principal } from "./sessionStore.js";
 
-export interface AuthenticatedUser {
-  name: string;
-}
+/** The single operator's FIXED account key. The .env username is only the display name, so
+ *  renaming it never forks a second account (ADR-0025). */
+export const OPERATOR_SUBJECT = "operator";
+
+/** Who just proved their identity: a stable subject and a display name. */
+export type AuthenticatedUser = Principal;
 
 /**
  * ADR-0011: routes depend on this interface, so a later account store or a managed
@@ -37,7 +41,7 @@ export class SingleOperatorAuthenticator implements Authenticator {
     // time doesn't reveal whether the username exists.
     const passwordOk = await verifyPassword(password, this.passwordHash);
     const usernameOk = sameString(username, this.username);
-    return passwordOk && usernameOk ? { name: this.username } : null;
+    return passwordOk && usernameOk ? { subject: OPERATOR_SUBJECT, name: this.username } : null;
   }
 
   isActiveUser(name: string): boolean {

@@ -1,9 +1,6 @@
 import type { CookieOptions, Request, RequestHandler, Response } from "express";
 import { parse as parseCookies } from "cookie";
-import type { Authenticator, AuthenticatedUser } from "./authenticator.js";
-import type { SessionDenylist } from "./sessionDenylist.js";
-import { SESSION_TTL_SECONDS, createSessionToken, readSessionToken } from "./sessionToken.js";
-import type { VerifiedSession } from "./sessionToken.js";
+import type { SessionStore, SessionUser } from "./sessionStore.js";
 import { UnauthorizedError } from "../../platform/errorResponse.js";
 
 export const SESSION_COOKIE = "sd_session";
@@ -21,62 +18,64 @@ const COOKIE_OPTIONS: CookieOptions = {
 };
 
 export interface SessionDeps {
-  authenticator: Authenticator;
-  sessionSecret: string;
-  /** Sessions signed out before their token expired (ADR-0019). */
-  denylist: SessionDenylist;
+  /** Where sessions live: the database (deploy A onward) or the original signed tokens. */
+  store: SessionStore;
 }
 
-export function setSessionCookie(res: Response, user: AuthenticatedUser, secret: string): void {
-  res.cookie(SESSION_COOKIE, createSessionToken(user.name, secret), {
-    ...COOKIE_OPTIONS,
-    maxAge: SESSION_TTL_SECONDS * 1000,
-  });
+export function setSessionCookie(res: Response, cookieValue: string, maxAgeSeconds: number): void {
+  res.cookie(SESSION_COOKIE, cookieValue, { ...COOKIE_OPTIONS, maxAge: maxAgeSeconds * 1000 });
 }
 
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE, COOKIE_OPTIONS);
 }
 
-/** The verified, not-signed-out session this request carries, or null. Never throws. */
-function requestSession(req: Request, { sessionSecret, denylist }: SessionDeps): VerifiedSession | null {
+/** The raw session cookie value, or undefined. Never throws (a malformed Cookie header is "none"). */
+export function readSessionCookie(req: Request): string | undefined {
   try {
-    const token = parseCookies(req.headers.cookie ?? "")[SESSION_COOKIE];
-    if (!token) {
-      return null;
-    }
-    const session = readSessionToken(token, sessionSecret);
-    return session !== null && !denylist.isRevoked(session.jti) ? session : null;
+    return parseCookies(req.headers.cookie ?? "")[SESSION_COOKIE] || undefined;
   } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The signed-in user for this request, or null. A cookie that this store does not recognize (an
+ * old signed token after deploy A, a foreign value) is answered as "signed out" AND cleared, so the
+ * browser stops sending it. A database outage throws ServiceUnavailableError (a 503), never null.
+ */
+export async function currentUser(req: Request, res: Response, deps: SessionDeps): Promise<SessionUser | null> {
+  const cookieValue = readSessionCookie(req);
+  if (cookieValue === undefined) {
     return null;
   }
-}
-
-/** The signed-in user for this request, or null. Never throws. */
-export function currentUser(req: Request, deps: SessionDeps): AuthenticatedUser | null {
-  const session = requestSession(req, deps);
-  return session !== null && deps.authenticator.isActiveUser(session.sub) ? { name: session.sub } : null;
-}
-
-/** Signs out the session this request carries, if any: its token stops working even if
- *  someone copied the cookie. A missing, invalid or already-expired token is a no-op. */
-export function revokeCurrentSession(req: Request, deps: SessionDeps): void {
-  const session = requestSession(req, deps);
-  if (session !== null) {
-    deps.denylist.revoke(session.jti, session.exp);
+  const user = await deps.store.resolve(cookieValue);
+  if (user === null && !deps.store.recognizes(cookieValue)) {
+    clearSessionCookie(res);
   }
+  return user;
+}
+
+/** Signs out the session this request carries, if any. Unknown or expired: a no-op. */
+export async function revokeCurrentSession(req: Request, deps: SessionDeps): Promise<void> {
+  await deps.store.revoke(readSessionCookie(req));
 }
 
 /** Guards every protected /api route (ADR-0011): no valid session means 401
- *  unauthorized, which the frontend treats as "go to login". */
+ *  unauthorized, which the frontend treats as "go to login"; an unavailable session store is a
+ *  503, which the frontend must not treat as signed out. */
 export function createSessionGuard(deps: SessionDeps): RequestHandler {
-  return (req, res, next) => {
-    const user = currentUser(req, deps);
-    if (!user) {
-      next(new UnauthorizedError("Sign in to continue"));
-      return;
+  return async (req, res, next) => {
+    try {
+      const user = await currentUser(req, res, deps);
+      if (!user) {
+        next(new UnauthorizedError("Sign in to continue"));
+        return;
+      }
+      res.locals.user = user;
+      next();
+    } catch (err) {
+      next(err);
     }
-    res.locals.user = user;
-    next();
   };
 }
