@@ -5,6 +5,21 @@ import { expect, test } from "./fixtures";
 // resizes and takes new data with zero CSP violations. The guards fixture fails the test on
 // any violation, so each step below runs under the production CSP (style-src 'self').
 
+test("the chart's code (uPlot) loads only with the Power page, not with the app", async ({ page, mockApi }) => {
+  const chartChunks: string[] = [];
+  page.on("request", (request) => {
+    if (/\/assets\/PowerChart-[^/]+\.js$/.test(request.url())) chartChunks.push(request.url());
+  });
+  await mockApi("default");
+  await page.goto("/app");
+  await expect(page.getByRole("list", { name: "Sections" })).toBeVisible();
+  expect(chartChunks, "chart chunk requested on the Overview").toEqual([]);
+
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Power" }).click();
+  await expect(page.locator(".power-chart canvas").first()).toBeVisible();
+  expect(chartChunks).toHaveLength(1);
+});
+
 test("the live power chart renders, hovers, resizes and appends under the strict CSP", async ({ page, mockApi }) => {
   await mockApi("default");
   await page.goto("/app/power");

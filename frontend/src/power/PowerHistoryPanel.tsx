@@ -1,7 +1,42 @@
+import { lazy, Suspense } from "react";
 import type { PowerHistory } from "@satisfactory-dash/shared";
 import { formatMW, formatTime } from "../format";
 import { fuseTrips, seriesStats, toChartData, type LivePart, type Range } from "./history";
-import { PowerChart } from "./PowerChart";
+
+// uPlot is about 50 kB and only this page needs it, so it's a separate chunk, loaded when the
+// first chart renders (same origin, so script-src 'self' allows it). The summary and table
+// don't wait for it.
+// React.lazy caches a failed import for good, so the section's Try again could never
+// recover: on failure, swap in a fresh lazy component, and the retry imports again.
+// Whether a browser refetches a module that failed to load is [NEEDS VERIFICATION]; after a
+// deploy removes the old chunk only a page reload helps.
+const loadChart = () =>
+  import("./PowerChart").then(
+    (m) => ({ default: m.PowerChart }),
+    (error: unknown) => {
+      PowerChart = lazy(loadChart);
+      throw error;
+    },
+  );
+let PowerChart = lazy(loadChart);
+
+/**
+ * Holds the chart's place (plot plus legend) while its chunk loads, so nothing jumps. The
+ * label says "loading" even with motion off, so it never reads as an empty chart. Hidden from
+ * screen readers like the chart itself: they get the summary and table, already there.
+ */
+function ChartPlaceholder() {
+  return (
+    <div
+      aria-hidden="true"
+      data-chart-loading=""
+      // Measured chart heights: 250 px, 279 px at phone width where the legend wraps.
+      className="grid h-[279px] place-items-center rounded-md bg-surface-2 text-sm text-muted motion-safe:animate-pulse sm:h-[250px]"
+    >
+      Loading chart…
+    </div>
+  );
+}
 
 const iso = (t: number) => new Date(t).toISOString();
 
@@ -52,10 +87,12 @@ export function PowerHistoryPanel({ history, live }: { history: PowerHistory; li
               {series.points.length < 2 ? (
                 <p className="text-sm text-muted">Collecting readings. The chart starts after the next poll.</p>
               ) : (
-                <PowerChart
-                  data={toChartData(series.points, history.intervalSeconds, live)}
-                  pausedRanges={history.pausedRanges}
-                />
+                <Suspense fallback={<ChartPlaceholder />}>
+                  <PowerChart
+                    data={toChartData(series.points, history.intervalSeconds, live)}
+                    pausedRanges={history.pausedRanges}
+                  />
+                </Suspense>
               )}
               {fuseTrips(series.points).map((trip) => (
                 <p key={trip.fromT} className="text-sm text-bad">
