@@ -56,6 +56,60 @@ function Write-Log([string]$message) {
   Add-Content -Path $Log -Value $line -Encoding utf8
 }
 
+# Put this process in a Job Object that kills every process in it when the job closes. Node
+# (a child) joins the job automatically, so if this wrapper is killed, for example by
+# Stop-ScheduledTask, node dies with it instead of being orphaned and holding the port
+# (tested: without this, Stop-ScheduledTask left node running). This works under Windows
+# PowerShell 5.1 (powershell.exe, which the Scheduled Task uses). Under PowerShell 7 the
+# child does not join the job, so node can still be orphaned there; don't run the task
+# with pwsh.
+if (-not ("KillOnCloseJob" -as [type])) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class KillOnCloseJob {
+  [StructLayout(LayoutKind.Sequential)]
+  struct BasicLimits {
+    public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit;
+    public uint LimitFlags; public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize;
+    public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct IoCounters {
+    public ulong ReadOperationCount; public ulong WriteOperationCount; public ulong OtherOperationCount;
+    public ulong ReadTransferCount; public ulong WriteTransferCount; public ulong OtherTransferCount;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct ExtendedLimits {
+    public BasicLimits Basic; public IoCounters Io;
+    public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit;
+    public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed;
+  }
+  [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr CreateJobObject(IntPtr attrs, string name);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint size);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+  [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+  static IntPtr job; // kept for the life of the process: closing it is what kills the members
+  public static bool Enable() {
+    job = CreateJobObject(IntPtr.Zero, null);
+    if (job == IntPtr.Zero) return false;
+    ExtendedLimits limits = new ExtendedLimits();
+    limits.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    int size = Marshal.SizeOf(typeof(ExtendedLimits));
+    IntPtr buffer = Marshal.AllocHGlobal(size);
+    try {
+      Marshal.StructureToPtr(limits, buffer, false);
+      if (!SetInformationJobObject(job, 9, buffer, (uint)size)) return false; // 9 = extended limit info
+    } finally { Marshal.FreeHGlobal(buffer); }
+    return AssignProcessToJobObject(job, GetCurrentProcess());
+  }
+}
+"@
+}
+if (-not [KillOnCloseJob]::Enable()) {
+  Write-Log "warning: could not create the kill-on-close job; if this wrapper is killed, node may keep running"
+}
+
 $restarts = 0
 while ($true) {
   Write-Log "starting $Bundle (restarts used: $restarts of $MaxRestarts)"

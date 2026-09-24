@@ -94,6 +94,17 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register Scheduled Task (node $node, bun
     Start-Sleep -Seconds 2
     $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
     if ($busy) {
+      # A leftover backend from an earlier run of this task (or a backend started by hand) is
+      # ours to stop; anything else holding the port is not.
+      $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($busy[0].OwningProcess)" -ErrorAction SilentlyContinue
+      if ($owner -and $owner.Name -eq "node.exe" -and $owner.CommandLine -match "server\.cjs") {
+        Write-Host "Stopping the leftover backend (process id $($owner.ProcessId)) that still holds port $Port."
+        Stop-Process -Id $owner.ProcessId -Force
+        Start-Sleep -Seconds 2
+        $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+      }
+    }
+    if ($busy) {
       throw "Port $Port is still in use by process id $($busy[0].OwningProcess). Stop that process first (a foreground backend, or a dev server), then run this again with -Start."
     }
     Start-ScheduledTask -TaskName $TaskName
