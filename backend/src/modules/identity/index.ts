@@ -3,8 +3,15 @@
  * that protects every other /api route (ADR-0011). Site-wide HTTP policy (cross-site
  * guard, JSON-only) is not identity's; it lives in platform/httpPolicy.ts.
  */
-import type { RequestHandler, Router } from "express";
+import { Router } from "express";
+import type { RequestHandler } from "express";
+import { ConfigError } from "../../platform/errors.js";
 import { loadAuthConfigFromEnv } from "./authConfig.js";
+import { loadGoogleConfigFromEnv } from "./googleConfig.js";
+import { createGoogleOidc } from "./googleOidc.js";
+import type { GoogleOidcOptions } from "./googleOidc.js";
+import { createGoogleSignIn } from "./googleSignIn.js";
+import { createGoogleAuthRouter, createGoogleDisabledRouter } from "./routes/googleAuth.js";
 import { OPERATOR_SUBJECT, SingleOperatorAuthenticator } from "./authenticator.js";
 import { ensureLocalUser } from "./repositories/userRepository.js";
 import { LoginRateLimiter } from "./loginRateLimiter.js";
@@ -42,6 +49,8 @@ export interface IdentityOptions {
   /** The database (ADR-0025). Without it, sessions are the original signed tokens. */
   db?: Db;
   logger?: PurgeLogger;
+  /** Test-only: point Google sign-in at a local fake issuer. Never read from the environment. */
+  googleOidc?: GoogleOidcOptions;
 }
 
 /** Throws ConfigError when the login settings are missing or invalid (backend must not start). */
@@ -56,8 +65,24 @@ export function createIdentityModule(
     : createStatelessSessionStore({ authenticator, sessionSecret: auth.sessionSecret, denylist: new SessionDenylist() });
   const sessionDeps = { store };
   const noopLogger: PurgeLogger = { info: () => {}, warn: () => {} };
+  // ADR-0025 decisions 3 and 5: all-or-nothing Google settings; unset means /api/auth/google/* is 404.
+  const googleConfig = loadGoogleConfigFromEnv(env, auth.allowedOrigins);
+  if (googleConfig && !options.db) {
+    throw new ConfigError("Google sign-in needs the database: set DATABASE_URL, or unset the GOOGLE_* settings.");
+  }
+  const authRouter = Router().use(createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter() }));
+  authRouter.use(
+    googleConfig && options.db
+      ? createGoogleAuthRouter({
+          config: googleConfig,
+          oidc: createGoogleOidc(googleConfig, options.googleOidc),
+          signIn: createGoogleSignIn(options.db, googleConfig.bootstrapOwnerEmail),
+          db: options.db,
+        })
+      : createGoogleDisabledRouter(),
+  );
   return {
-    authRouter: createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter() }),
+    authRouter,
     sessionGuard: createSessionGuard(sessionDeps),
     allowedOrigins: auth.allowedOrigins,
     workers: options.db ? [createSessionPurgeWorker(options.db, options.logger ?? noopLogger)] : [],
