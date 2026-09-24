@@ -20,7 +20,8 @@ export function StickFigure({ filled, className }: { filled: boolean; className?
       strokeLinejoin="round"
     >
       <circle cx="12" cy="6.5" r="4.5" fill={filled ? "currentColor" : "none"} />
-      {/* Body, arms, legs: one path, so a filled figure is a solid silhouette. */}
+      {/* Body, arms, legs: one stroked path. Connected reads three ways: a solid head, heavier
+          limbs, and the stronger colour the caller gives it. */}
       <path
         d="M12 12v11M5 16.5l7-2.5 7 2.5M12 23l-5 10M12 23l5 10"
         strokeWidth={filled ? 3 : 2}

@@ -12,7 +12,12 @@ export type PlayersState = { status: Status } | "pending" | "error";
  */
 export function PlayersCard({ state, headingRef }: { state: PlayersState; headingRef?: Ref<HTMLHeadingElement> }) {
   return (
-    <section aria-labelledby="players-heading" className="grid content-start gap-3 rounded-card border border-line bg-surface p-5">
+    // Spans the row while it's the only card under Health (half a row next to nothing read as
+    // unfinished); cards PR 3 puts the tick-rate card beside it and drops md:col-span-2.
+    <section
+      aria-labelledby="players-heading"
+      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:col-span-2"
+    >
       {/* tabIndex -1: focus lands here after the Health card is dismissed (OverviewPanel). */}
       <h3 id="players-heading" ref={headingRef} tabIndex={-1} className="mb-0">
         Players
