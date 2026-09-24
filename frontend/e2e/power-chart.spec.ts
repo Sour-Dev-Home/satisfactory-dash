@@ -42,6 +42,11 @@ test("the live power chart renders, hovers, resizes and appends under the strict
   expect(await canvasWidth()).toBeLessThanOrEqual(resized);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(resized);
 
+  // The readings table scrolls in its own box: opening it never widens the page.
+  await chart.getByText("Readings table").click();
+  await expect(chart.getByRole("table")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(resized);
+
   // Append: a newer regular power poll lands on the chart without refetching the history.
   const last = powerHistoryNormal.data.series[0].points.at(-1)!;
   const newer = {

@@ -107,9 +107,9 @@ export const queries = {
     }),
   // ADR-0022: loaded once per mount (and on refocus); regular power polls are appended to it
   // client-side (PowerHistoryView), so it has no refetchInterval of its own.
-  powerHistory: (serverId: string) =>
+  powerHistory: (serverId: string, sessionName?: string) =>
     queryOptions({
-      queryKey: ["servers", serverId, "power", "history"],
+      queryKey: ["servers", serverId, "power", "history", sessionName],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.powerHistory, serverId),
     }),
   factory: (serverId: string) =>

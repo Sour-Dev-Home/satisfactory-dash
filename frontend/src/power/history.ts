@@ -76,11 +76,28 @@ export function appendReading(history: PowerHistory, reading: PowerResponse): Po
   const series = [...byId]
     .map(([circuitGroupId, points]) => ({ circuitGroupId, points: points.filter((p) => p.t > oldestKept) }))
     .filter((s) => s.points.length > 0);
+  // Same array when nothing aged out, so the chart doesn't redraw its shading on every poll.
+  const kept = history.pausedRanges.filter((r) => r.toT > oldestKept);
   return {
     ...history,
     series,
-    pausedRanges: history.pausedRanges.filter((r) => r.toT > oldestKept),
+    pausedRanges: kept.length === history.pausedRanges.length ? history.pausedRanges : kept,
   };
+}
+
+/**
+ * The stretches where a circuit's fuse was tripped, for the caption under its chart (the
+ * drop to 0 MW alone doesn't say why). toT is the first sample back to normal, or null while
+ * it's still tripped.
+ */
+export function fuseTrips(points: readonly PowerHistoryPoint[]): { fromT: number; toT: number | null }[] {
+  const trips: { fromT: number; toT: number | null }[] = [];
+  for (const p of points) {
+    const open = trips.at(-1);
+    if (p.fuseTriggered && (!open || open.toT !== null)) trips.push({ fromT: p.t, toT: null });
+    else if (!p.fuseTriggered && open && open.toT === null) open.toT = p.t;
+  }
+  return trips;
 }
 
 export interface Range {

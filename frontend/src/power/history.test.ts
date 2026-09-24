@@ -7,7 +7,7 @@ import {
   powerOutage,
 } from "@satisfactory-dash/shared/fixtures";
 import type { PowerHistory, PowerHistoryPoint } from "@satisfactory-dash/shared";
-import { appendReading, seriesStats, toChartData } from "./history";
+import { appendReading, fuseTrips, seriesStats, toChartData } from "./history";
 
 const point = (t: number, productionMW = 10): PowerHistoryPoint => ({
   t,
@@ -108,6 +108,27 @@ describe("appendReading", () => {
     const before = JSON.stringify(history);
     appendReading(history, next(5000));
     expect(JSON.stringify(history)).toBe(before);
+  });
+});
+
+describe("fuseTrips", () => {
+  const tripped = (t: number) => ({ ...point(t, 0), consumptionMW: 0, capacityMW: 0, fuseTriggered: true });
+
+  it("finds each stretch where the fuse was tripped, with when it came back", () => {
+    const points = [point(1), tripped(2), tripped(3), point(4), tripped(5)];
+    expect(fuseTrips(points)).toEqual([
+      { fromT: 2, toT: 4 },
+      { fromT: 5, toT: null },
+    ]);
+  });
+
+  it("is empty when the fuse never tripped", () => {
+    expect(fuseTrips([point(1), point(2)])).toEqual([]);
+  });
+
+  it("matches the fuse-trip fixture: tripped from the halfway point to now", () => {
+    const side = powerHistoryFuseTrip.data.series[1].points;
+    expect(fuseTrips(side)).toEqual([{ fromT: side[30].t, toT: null }]);
   });
 });
 

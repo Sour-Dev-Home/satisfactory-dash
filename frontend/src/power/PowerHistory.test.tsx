@@ -12,6 +12,7 @@ import {
   powerHistoryPaused,
   powerOk,
   serversSingle,
+  statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
@@ -61,6 +62,9 @@ describe("PowerHistoryView", () => {
     renderView();
     const tripped = await screen.findByRole("article", { name: "Circuit 1 history" });
     expect(within(tripped).getAllByText("Tripped").length).toBeGreaterThan(0);
+    // The drop to 0 MW gets a caption saying why, like the paused stretches do.
+    expect(within(tripped).getByText(/^Fuse tripped at .*, still tripped\.$/)).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "Circuit 0 history" })).queryByText(/Fuse tripped/)).toBeNull();
     expect(screen.getByRole("article", { name: "Circuit 0 history" })).toBeInTheDocument();
   });
 
@@ -103,6 +107,27 @@ describe("PowerHistoryView", () => {
     await waitFor(() => expect(summaryValue(circuit, "Production")).toHaveTextContent(/^1,234\.5 MW/));
     expect(plots().at(-1)!.data[1].at(-1)).toBe(1234.5);
     expect(historyReads).toBe(1);
+  });
+
+  it("reloads the history when the loaded save changes, so a series never spans a reload", async () => {
+    let historyReads = 0;
+    server.use(
+      http.get(endpoints.powerHistory.route, () => {
+        historyReads++;
+        return HttpResponse.json(historyReads === 1 ? powerHistoryNormal : powerHistoryEmpty);
+      }),
+    );
+    const { client } = renderView();
+    await screen.findByRole("article", { name: "Circuit 0 history" });
+    expect(historyReads).toBe(1);
+
+    server.use(
+      http.get(endpoints.status.route, () =>
+        HttpResponse.json({ ...statusRunning, data: { ...statusRunning.data, sessionName: "New save" } }),
+      ),
+    );
+    await act(() => client.refetchQueries({ queryKey: ["servers", "default", "status"], exact: true }));
+    await waitFor(() => expect(historyReads).toBe(2));
   });
 
   it("says when the history is behind", async () => {

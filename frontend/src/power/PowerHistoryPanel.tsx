@@ -1,6 +1,6 @@
 import type { PowerHistory } from "@satisfactory-dash/shared";
 import { formatMW, formatTime } from "../format";
-import { seriesStats, toChartData, type LivePart, type Range } from "./history";
+import { fuseTrips, seriesStats, toChartData, type LivePart, type Range } from "./history";
 import { PowerChart } from "./PowerChart";
 
 const iso = (t: number) => new Date(t).toISOString();
@@ -57,10 +57,24 @@ export function PowerHistoryPanel({ history, live }: { history: PowerHistory; li
                   pausedRanges={history.pausedRanges}
                 />
               )}
+              {fuseTrips(series.points).map((trip) => (
+                <p key={trip.fromT} className="text-sm text-bad">
+                  Fuse tripped at <time dateTime={iso(trip.fromT)}>{formatTime(iso(trip.fromT))}</time>
+                  {trip.toT === null ? (
+                    ", still tripped."
+                  ) : (
+                    <>
+                      , back at <time dateTime={iso(trip.toT)}>{formatTime(iso(trip.toT))}</time>.
+                    </>
+                  )}
+                </p>
+              ))}
               <details>
                 <summary className="cursor-pointer text-sm text-muted">Readings table</summary>
-                <div className="overflow-x-auto">
-                  <table>
+                {/* Its own scroll box, both ways: a full window is 60+ rows per circuit, and
+                    contain: inline-size stops the table's width from widening the page. */}
+                <div className="mt-2 max-h-72 overflow-auto rounded-md border border-line [contain:inline-size]">
+                  <table className="readings">
                     <thead>
                       <tr>
                         <th scope="col">Time</th>

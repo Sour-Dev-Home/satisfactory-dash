@@ -2,8 +2,12 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { PausedRange } from "@satisfactory-dash/shared";
+import { formatMW } from "../format";
 
 const HEIGHT = 220;
+
+/** Legend value: "–" off the data (a gap), else MW like the rest of the page. */
+const mw = (_u: uPlot, value: number | null) => (value == null ? "–" : formatMW(value));
 
 /** Shades each paused stretch (ADR-0012), under the lines. */
 function shadePaused(u: uPlot, ranges: readonly PausedRange[], fill: string) {
@@ -52,10 +56,11 @@ export function PowerChart({ data, pausedRanges }: { data: uPlot.AlignedData; pa
         scales: { x: { time: true } },
         series: [
           {},
-          // Lines only, stock-chart style: no dot per sample.
-          { label: "Production", stroke: token("--color-ok"), fill: token("--color-ok-soft"), width: 2, points: { show: false } },
-          { label: "Consumption", stroke: token("--color-accent"), width: 2, points: { show: false } },
-          { label: "Capacity", stroke: token("--color-muted"), width: 1, dash: [6, 4], points: { show: false } },
+          // Lines only, stock-chart style: no dot per sample. Legend values use the same
+          // formatter as the rest of the page (ADR-0006: rounded, never rescaled).
+          { label: "Production", stroke: token("--color-ok"), fill: token("--color-ok-soft"), width: 2, points: { show: false }, value: mw },
+          { label: "Consumption", stroke: token("--color-accent"), width: 2, points: { show: false }, value: mw },
+          { label: "Capacity", stroke: token("--color-muted"), width: 1, dash: [6, 4], points: { show: false }, value: mw },
         ],
         axes: [axis(), { ...axis(), size: 72, values: (_u, ticks) => ticks.map((v) => `${v} MW`) }],
         cursor: { drag: { x: false, y: false } },
