@@ -303,3 +303,6 @@ the bottom.
   approved to build, and it builds only after ADR-0025 gate A (everything in it needs Postgres).
   Its Context references were checked against the code (power.ts, factory.ts, frm-api.md,
   rawSchemas.ts) and match.
+- 2026-09-25 — ADR-0027 accepted by the owner (all seven owner decisions as recommended, relayed
+  by the coordinator 2026-09-24): status, an "Owner decisions (answered)" section and the README
+  row updated. It still builds only after ADR-0025 gate A.

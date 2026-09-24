@@ -1,7 +1,7 @@
 # ADR-0027: Production history and alerts (Discord first)
 
-Status: proposed (architect), 2026-09-24. Owner decisions at the end. Builds only after ADR-0025
-gate A (everything here needs Postgres).
+Status: accepted (project owner), 2026-09-24. All seven owner decisions were taken as recommended
+(see the end). Builds only after ADR-0025 gate A (everything here needs Postgres).
 
 ## Context
 - Alerts are the project's original purpose (roadmap #4). History (#5) is its foundation:
@@ -137,7 +137,12 @@ gate A (everything here needs Postgres).
 - A second host (edge agent): evaluate at the edge and send only events and rollups to the cloud.
 - Alert noise shows up in the log: tune the defaults from the data; don't add rule kinds first.
 
-## Decisions for the owner
+## Owner decisions (answered 2026-09-24)
+1 yes, build after gate A. 2 A: 48 h / 30 d / 1 y. 3 A: one Discord webhook per server.
+4 outage and fuse ON; stalls and targets opt-in. 5 A: hourly repeat. 6 yes, SES email later.
+7 yes, suppress while paused.
+
+## Decisions as proposed
 1. Build this after ADR-0025 gate A (it needs the database)? **Recommend yes.**
 2. Retention: **A: raw 48 h, 1-minute rollups 30 days, hourly rollups 1 year (recommended)** / B: longer (costs only disk on the PC).
 3. Discord destination: **A: one webhook per server, set by owner/admin (recommended)** / B: per user.
