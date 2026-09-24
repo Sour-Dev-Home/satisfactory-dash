@@ -54,7 +54,7 @@ if (-not (Test-Path (Join-Path $backendDir ".env"))) {
   throw "Missing backend\.env. Create it first (see the go-live runbook, section 1)."
 }
 $node = (Get-Command node -ErrorAction Stop).Source
-# cmd.exe resolves a relative path against backend\, so make the log path absolute.
+# run-backend.ps1 changes directory to backend\, so make the log path absolute.
 $LogDir = [System.IO.Path]::GetFullPath($LogDir)
 $log = Join-Path $LogDir "backend.log"
 if (-not (Test-Path (Join-Path $PSScriptRoot "run-backend.ps1"))) {
