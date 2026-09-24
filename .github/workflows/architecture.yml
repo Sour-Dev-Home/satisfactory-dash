@@ -127,18 +127,19 @@ jobs:
             docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
               -v "$PWD/docs-vault:/usr/local/structurizr" "$STRUCTURIZR_IMAGE" "$@"
           }
-          run export -workspace workspace.dsl -format svg -output .architecture-out/svg
-          run export -workspace workspace.dsl -format mermaid -output .architecture-out/mermaid
-          run export -workspace workspace.dsl -format plantuml/c4plantuml -output .architecture-out/c4plantuml
-          run export -workspace workspace.dsl -format static -output .architecture-out/site
-          mv inspect.txt docs-vault/.architecture-out/
-          echo "Exported:"; find docs-vault/.architecture-out -maxdepth 2 -type f -name '*.svg' | sort
+          # Not a dot-directory: upload-artifact skips hidden paths by default.
+          run export -workspace workspace.dsl -format svg -output architecture-out/svg
+          run export -workspace workspace.dsl -format mermaid -output architecture-out/mermaid
+          run export -workspace workspace.dsl -format plantuml/c4plantuml -output architecture-out/c4plantuml
+          run export -workspace workspace.dsl -format static -output architecture-out/site
+          mv inspect.txt docs-vault/architecture-out/
+          echo "Exported:"; find docs-vault/architecture-out -maxdepth 2 -type f -name '*.svg' | sort
 
       - name: Upload diagrams
         if: steps.model.outputs.present == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: architecture-diagrams
-          path: docs-vault/.architecture-out/
+          path: docs-vault/architecture-out/
           if-no-files-found: error
           retention-days: 30
