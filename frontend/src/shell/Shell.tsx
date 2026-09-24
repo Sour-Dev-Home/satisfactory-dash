@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router";
+import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AccountMenu } from "../auth/AccountMenu";
 import { CrashProbe } from "../components/CrashProbe";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -51,6 +51,7 @@ const TABS = [
 export function Shell() {
   const pages = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
+  const onOverview = useMatch("/app") !== null;
   const shownPath = useRef(pathname);
   // A link that navigates away from itself (an Overview row) is removed with its page, which
   // drops focus to <body>. Then move it to the new page's heading, so keyboard and screen
@@ -93,7 +94,8 @@ export function Shell() {
       {/* Hidden when there's no banner, loading status or error, so it adds no gap. */}
       <div className="grid gap-3 [&:not(:has(p,[role]))]:hidden">
         <Section label="Server banners" probe="banners">
-          <StatusBanners />
+          {/* The owner's call: on the Overview, its Server row carries "paused". */}
+          <StatusBanners showPaused={!onOverview} />
         </Section>
       </div>
 

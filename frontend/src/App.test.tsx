@@ -7,14 +7,45 @@ import App from "./App";
 import { renderWithClient } from "./test/render";
 import { server } from "./test/server";
 
+const PAUSED_BANNER = "Paused: no players connected, values are frozen.";
+
 describe("App", () => {
   it("signs in, selects the only server and shows its status banners and panel", async () => {
     server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusPaused)));
+    window.history.pushState(null, "", "/app/power");
     renderWithClient(<App />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Satis Manager");
     expect(await screen.findByText(serversSingle.servers[0].displayName)).toBeInTheDocument();
-    expect(await screen.findByText("Paused: no players connected, values are frozen.")).toBeInTheDocument();
+    expect(await screen.findByText(PAUSED_BANNER)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Overview" }));
     expect(await screen.findByRole("region", { name: "Server status" })).toHaveTextContent("ExampleSession");
+  });
+});
+
+describe("the paused banner", () => {
+  it("is left out of the Overview, whose Server row already says the game is paused", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusPaused)));
+    renderWithClient(<App />);
+    const rows = await screen.findByRole("list", { name: "Sections" });
+    expect(await within(rows).findByText("Paused: no players connected")).toBeInTheDocument();
+    expect(screen.queryByText(PAUSED_BANNER)).not.toBeInTheDocument();
+  });
+
+  it("is left out of the Overview at /app/ too", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusPaused)));
+    window.history.pushState(null, "", "/app/");
+    renderWithClient(<App />);
+    const rows = await screen.findByRole("list", { name: "Sections" });
+    expect(await within(rows).findByText("Paused: no players connected")).toBeInTheDocument();
+    expect(screen.queryByText(PAUSED_BANNER)).not.toBeInTheDocument();
+  });
+
+  it("comes back on the other pages", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusPaused)));
+    renderWithClient(<App />);
+    await screen.findByRole("list", { name: "Sections" });
+    fireEvent.click(screen.getByRole("link", { name: "Factory" }));
+    expect(await screen.findByText(PAUSED_BANNER)).toBeInTheDocument();
   });
 });
 

@@ -34,7 +34,9 @@ const CASES: StateCase[] = [
   { scenario: "login-rate-limited", shows: "Try again later", act: signIn },
   { scenario: "no-servers", shows: "No game servers are configured." },
   { scenario: "server-picker", shows: "Choose a game server" },
-  { scenario: "paused", shows: "Paused: no players connected, values are frozen." },
+  // The Overview says "paused" in its Server row; the banner is on the other pages only.
+  { scenario: "paused", shows: "Paused: no players connected" },
+  { scenario: "paused", name: "paused-power", path: "/app/power", shows: "Paused: no players connected, values are frozen." },
   { scenario: "stale", shows: /Showing last known data from/ },
   { scenario: "slow-tick", shows: /Slow \(/ },
   { scenario: "no-game", shows: "No save loaded" },
