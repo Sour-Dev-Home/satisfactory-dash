@@ -153,6 +153,18 @@ describe.skipIf(!available)("identity repositories against a real Postgres", () 
       expect(await touchSession(pool, idHash)).toBe(false); // a revoked session is not "seen"
     });
 
+    // test-hunter (needs CI, not run locally): an expired session is not "seen".
+    it("touchSession does not write to an expired session", async () => {
+      const user = await createUser(pool, { displayName: "TouchExpired" });
+      const { idHash } = newSessionId();
+      await createSession(pool, { idHash, userId: user.id, ttlSeconds: 3600 });
+      await admin.query(
+        "UPDATE identity.sessions SET created_at = now() - interval '2 hours', expires_at = now() - interval '1 hour' WHERE id_hash = $1",
+        [idHash],
+      );
+      expect(await touchSession(pool, idHash)).toBe(false);
+    });
+
     it("sign out everywhere revokes one user's sessions only; revoke-all revokes everyone's", async () => {
       const a = await createUser(pool, { displayName: "A" });
       const b = await createUser(pool, { displayName: "B" });

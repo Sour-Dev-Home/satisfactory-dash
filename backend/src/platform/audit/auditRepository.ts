@@ -71,7 +71,9 @@ export async function listRecentAuditEvents(
   db: Queryable,
   options: { serverId?: string; limit?: number } = {},
 ): Promise<AuditEvent[]> {
-  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 500);
+  const requested = Math.trunc(options.limit ?? 50);
+  // NaN survives Math.min/max and would reach Postgres as 'NaN'; treat it as the default.
+  const limit = Math.min(Math.max(Number.isNaN(requested) ? 50 : requested, 1), 500);
   const result = await db.query(LIST_RECENT, [options.serverId ?? null, limit]);
   return parseRows(AuditEventRowSchema, result.rows, "audit.listRecentAuditEvents").map(toEvent);
 }

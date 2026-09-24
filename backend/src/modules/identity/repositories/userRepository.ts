@@ -37,12 +37,13 @@ const toUser = (row: z.output<typeof UserRowSchema>): User => ({
 
 const INSERT_USER = `
   INSERT INTO identity.users (display_name, email)
-  VALUES ($1, $2)
+  VALUES ($1, lower($2::text))
   RETURNING id, display_name, email, status, created_at`;
 
-/** `email` is stored lowercase (the table refuses anything else), trimmed, and never a key. */
+/** `email` is trimmed here and lowercased BY POSTGRES (`lower()`), the same function the table's
+ *  CHECK uses, so the two can never disagree about a unicode edge case. Never a key. */
 export async function createUser(db: Queryable, input: { displayName: string; email?: string | null }): Promise<User> {
-  const email = input.email?.trim().toLowerCase() || null;
+  const email = input.email?.trim() || null;
   const result = await db.query(INSERT_USER, [input.displayName.trim(), email]);
   return toUser(parseOne(UserRowSchema, result.rows, "identity.createUser"));
 }

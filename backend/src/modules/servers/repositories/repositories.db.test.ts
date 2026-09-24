@@ -47,6 +47,20 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       await expect(upsertConfiguredServer(pool, { publicId: "Bad Id", displayName: "x" })).rejects.toMatchObject({ code: "23514" });
     });
 
+    it("soft delete removes every membership, so re-registering the id never revives old access", async () => {
+      const [owner, member] = await users(2);
+      const server = await upsertConfiguredServer(pool, { publicId: "revive-1", displayName: "Revive" });
+      await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" });
+      await addMember(pool, { serverId: server.id, userId: member.id, role: "admin" });
+      expect(await softDeleteServer(pool, "revive-1")).toBe(true);
+      expect((await admin.query("SELECT 1 FROM servers.server_members WHERE server_id = $1", [server.id])).rows).toEqual([]);
+      const again = await upsertConfiguredServer(pool, { publicId: "revive-1", displayName: "Revive" });
+      expect(again.id).toBe(server.id);
+      expect(await getMemberRole(pool, { publicId: "revive-1", userId: owner.id })).toBeUndefined();
+      expect(await getMemberRole(pool, { publicId: "revive-1", userId: member.id })).toBeUndefined();
+      expect((await listServersForUser(pool, owner.id)).map((s) => s.publicId)).not.toContain("revive-1");
+    });
+
     it("an unknown or soft-deleted server is not found, and re-registering brings it back", async () => {
       expect(await findServerByPublicId(pool, "nope")).toBeUndefined();
       const server = await upsertConfiguredServer(pool, { publicId: "soft-1", displayName: "Soft" });
@@ -185,7 +199,7 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
 
     it("transferring to yourself is refused and changes nothing", async () => {
       const { server, owner } = await setup("tr-5");
-      expect(await transferOwnership(pool, { serverId: server.id, fromUserId: owner.id, toUserId: owner.id })).toBe("target_not_member");
+      expect(await transferOwnership(pool, { serverId: server.id, fromUserId: owner.id, toUserId: owner.id })).toBe("same_user");
       expect(await ownersOf(server.id)).toEqual([owner.id]);
     });
 

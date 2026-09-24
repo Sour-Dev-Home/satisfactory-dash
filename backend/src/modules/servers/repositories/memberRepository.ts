@@ -95,7 +95,7 @@ export async function removeMember(db: Queryable, input: { serverId: string; use
   return result.rows.length > 0;
 }
 
-export type TransferOwnershipResult = "transferred" | "not_owner" | "target_not_member";
+export type TransferOwnershipResult = "transferred" | "not_owner" | "target_not_member" | "same_user";
 
 const DEMOTE_OWNER = `
   UPDATE servers.server_members
@@ -125,7 +125,7 @@ export async function transferOwnership(
   input: { serverId: string; fromUserId: string; toUserId: string },
 ): Promise<TransferOwnershipResult> {
   if (input.fromUserId === input.toUserId) {
-    return "target_not_member"; // transferring to yourself is a no-op the caller should not request
+    return "same_user"; // a no-op the caller should not request; nothing is touched
   }
   try {
     await withTransaction(pool, async (client) => {

@@ -34,6 +34,9 @@ const ActiveSessionRowSchema = z.object({
   expires_at: z.date(),
 });
 
+/** One year; far above any real session lifetime and well inside int4. */
+export const MAX_TTL_SECONDS = 365 * 24 * 3600;
+
 const INSERT_SESSION = `
   INSERT INTO identity.sessions (id_hash, user_id, expires_at)
   VALUES ($1, $2, now() + make_interval(secs => $3::int))`;
@@ -44,7 +47,13 @@ export async function createSession(
   db: Queryable,
   input: { idHash: Buffer; userId: string; ttlSeconds: number },
 ): Promise<void> {
-  await db.query(INSERT_SESSION, [input.idHash, input.userId, Math.trunc(input.ttlSeconds)]);
+  const ttl = Math.trunc(input.ttlSeconds);
+  // NaN, 0, negatives (the expires_at > created_at CHECK) and values past int4 (make_interval
+  // overflow) would otherwise surface as raw database errors; refuse them up front.
+  if (!Number.isInteger(ttl) || ttl < 1 || ttl > MAX_TTL_SECONDS) {
+    throw new RangeError(`Session ttlSeconds must be between 1 and ${MAX_TTL_SECONDS}.`);
+  }
+  await db.query(INSERT_SESSION, [input.idHash, input.userId, ttl]);
 }
 
 const SELECT_ACTIVE_SESSION = `
@@ -71,6 +80,7 @@ const TOUCH_SESSION = `
   SET last_seen_at = now()
   WHERE id_hash = $1
     AND revoked_at IS NULL
+    AND expires_at > now()
     AND (last_seen_at IS NULL OR last_seen_at < now() - interval '1 minute')
   RETURNING 1 AS touched`;
 

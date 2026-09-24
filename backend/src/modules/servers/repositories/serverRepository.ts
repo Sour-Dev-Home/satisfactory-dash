@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseFirst, parseOne, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { withTransaction } from "../../../platform/db/transaction.js";
 
 /**
  * The server registry in Postgres (ADR-0020, ADR-0025): the public id used in every
@@ -96,8 +97,30 @@ const SOFT_DELETE = `
   WHERE public_id = $1 AND deleted_at IS NULL
   RETURNING id`;
 
-/** Soft delete (the row stays for the audit trail). False if unknown or already deleted. */
-export async function softDeleteServer(db: Queryable, publicId: string): Promise<boolean> {
-  const result = await db.query(SOFT_DELETE, [publicId]);
-  return result.rows.length > 0;
+const DELETE_MEMBERS = `
+  DELETE FROM servers.server_members
+  WHERE server_id = $1`;
+
+const IdRowSchema = z.object({ id: z.string() });
+
+/**
+ * Soft delete: the server row stays (for the audit trail) but every membership goes, in the same
+ * transaction. That matters because a configured server that is registered again keeps its row
+ * and uuid; without this, re-registering a public id would hand every old member, including the
+ * old owner, their old role back. False if the server is unknown or already deleted. Takes a pool,
+ * not a Queryable, because the two statements must be atomic.
+ */
+export async function softDeleteServer(
+  pool: Parameters<typeof withTransaction>[0],
+  publicId: string,
+): Promise<boolean> {
+  return withTransaction(pool, async (client) => {
+    const deleted = await client.query(SOFT_DELETE, [publicId]);
+    const row = parseFirst(IdRowSchema, deleted.rows, "servers.softDeleteServer");
+    if (row === undefined) {
+      return false;
+    }
+    await client.query(DELETE_MEMBERS, [row.id]);
+    return true;
+  });
 }
