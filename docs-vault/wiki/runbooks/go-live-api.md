@@ -44,13 +44,20 @@ not a loopback or private address.
 Until now the server has trusted any request from this PC, so nothing proved its tokens
 work. Turn that off:
 
-1. Stop the dedicated server. Find how you launch it (a shortcut, a `.bat`, a service) and
-   **remove** the `-ini:Engine:[SystemSettings]:FG.DedicatedServer.AllowInsecureLocalAccess=1`
-   argument (`dedicated-server-api.md:287-289`). If the setting is in an `Engine.ini` under
-   `[SystemSettings]` instead, remove that line. [NEEDS VERIFICATION: how this install sets it.]
-2. Start it with a **visible console** so you can see it come up (for the Windows server,
-   the `-log` launch argument opens one) [NEEDS VERIFICATION]. Anyone connected is
-   disconnected by the restart [NEEDS VERIFICATION: not in docs-vault; assume so].
+1. Save the game, then stop the dedicated server. Either use the vanilla API (`SaveGame`
+   with a `SaveName`, then `Shutdown`) while insecure local access still works, or type
+   `server.SaveGame <name>` then `server.Shutdown` in the server's console. The
+   `-ini:Engine:[SystemSettings]:FG.DedicatedServer.AllowInsecureLocalAccess=1` argument
+   (`dedicated-server-api.md:287-289`) exists only on the running process's command line
+   if you started the server by hand; there may be no launcher file to edit. Check the
+   running process's command line, or wherever you launch it from (a shortcut, a `.bat`, a
+   service), and make sure the new launch does not include it.
+2. Start it with a **visible console** so you can see it come up. A launcher script kept
+   outside the repo, in the dedicated server install folder, works well:
+   `& "<install folder>\FactoryServer.exe" -log` (`-log` opens the console; verified on
+   the Windows server). The saved game loads on its own: confirm with `QueryServerState`
+   (`isGameRunning` true, the expected session name). Anyone connected is disconnected by
+   the restart [NEEDS VERIFICATION: not in docs-vault; assume so].
 3. Prove the game API now refuses an unauthenticated call and accepts the token. The token is
    read from `.env` without being printed:
 
@@ -68,7 +75,13 @@ Remove-Item $body; Remove-Variable tok
    Expect `401` (or `403`) without the token and `200` with it. If the no-token call still
    gives `200`, enforcement is not on; go back to item 1 of this section.
 
-4. Same for FRM (`FRM_AUTH_TOKEN`). [NEEDS VERIFICATION: FRM's behavior with enforcement on.]
+4. Same for FRM (`FRM_AUTH_TOKEN`). Verified 2026-09-24: FRM's **read** endpoints
+   (`getPower` and the other `get*` pages) answer 200 with no token, a wrong token, or
+   from the machine's own LAN address; only certain endpoints check the token. A write
+   endpoint does: `POST /sendChatMessage` gave 401 with no token or a wrong token and 200
+   with the right one in the `X-FRM-Authorization` header. So the `getPower` check below
+   proves the token is *accepted*, not that it is *required*; it will show 200 both ways.
+   Keep the Windows Firewall block on TCP 8080 in place.
 
 ```powershell
 $m = Select-String -Path backend\.env -Pattern '^FRM_AUTH_TOKEN=(.+)$'
@@ -80,8 +93,10 @@ Remove-Variable frm
 ```
 
 Then build and start the backend (section 3) and run its **flip and restore** check with
-enforcement on. Do not skip it: it settles ADR-0012's open question (a refused token gets
-401/403, which the backend maps to `not_editable`).
+enforcement on. Do not skip it: it proves the settings flow works against an enforcing
+server. (Run 2026-09-24: login 200, status live, settings `editable: true`, auto-pause
+flipped and restored, both 200.) The refused-token path (401/403 mapped to `not_editable`)
+stays untested; it needs a run with a deliberately wrong application token.
 
 ## 3. Build and run the backend
 

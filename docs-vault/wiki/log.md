@@ -172,3 +172,9 @@ the bottom.
   `securitypolicyviolation` fails a test (item 8). Build order: this docs step, then
   tooling with no visual change, then a chosen design direction, then the foundation, then
   one restyled view per PR.
+- 2026-09-24 — Go-live runbook sections 2 and 3 run against an auth-enforcing server: game
+  API 403 without a token, 200 with it; backend login, status, settings and the auto-pause
+  flip/restore all passed (recorded in ADR-0012). FRM: read endpoints are open by design,
+  write endpoints enforce `X-FRM-Authorization` (401 without or with a wrong token, 200 with
+  the right one), which settles the header-name question. FRM token rotated (old token now
+  401). Runbook section 2 corrected: there may be no launcher file to edit.
