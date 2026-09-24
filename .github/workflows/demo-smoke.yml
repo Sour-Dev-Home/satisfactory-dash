@@ -1,0 +1,49 @@
+name: Demo smoke
+
+# ADR-0026: proves the LIVE demo at https://demo.satis-manager.com/ is served with its own strict
+# CSP. e2e.yml proves the _headers file; only this proves Cloudflare actually applies it. It fails
+# unless the page answers 200 and its Content-Security-Policy contains `connect-src 'self'` and
+# does NOT mention api.satis-manager.com (the demo must never be able to reach the real API).
+#
+# Workers Builds deploys the demo on its own after a push to main, so this can't hook into that
+# deploy. It runs after pushes that touch the frontend (retrying while the new build rolls out),
+# daily, and on demand. A failure is the signal to check the demo project; rollback is redeploying
+# the previous version in the Cloudflare dashboard.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/demo-smoke.yml"
+  schedule:
+    - cron: "17 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check the live demo's status and CSP
+        run: |
+          url="https://demo.satis-manager.com/"
+          # A push-triggered run may start before the new build is live: retry for ~10 minutes.
+          for attempt in $(seq 1 20); do
+            headers=$(curl -sS -D - -o /dev/null --max-time 20 "$url" || true)
+            status=$(printf '%s' "$headers" | head -1 | awk '{print $2}')
+            csp=$(printf '%s' "$headers" | grep -i '^content-security-policy:' | tr -d '\r' || true)
+            if [ "$status" = "200" ] \
+              && printf '%s' "$csp" | grep -q "connect-src 'self'" \
+              && ! printf '%s' "$csp" | grep -qi 'api\.satis-manager\.com'; then
+              echo "OK (attempt $attempt): 200, $csp"
+              exit 0
+            fi
+            echo "attempt $attempt: status=${status:-none}; csp=${csp:-missing}"
+            sleep 30
+          done
+          echo "::error::The live demo is not serving 200 with a CSP of connect-src 'self' (and no API origin). Check the satisfactory-dash-demo Workers project."
+          exit 1
