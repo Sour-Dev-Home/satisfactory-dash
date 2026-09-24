@@ -38,6 +38,9 @@ jobs:
           path-to-document: https://github.com/${{ github.repository }}/blob/main/CLA.md
           branch: cla-signatures
           # The maintainer account and bots that never need to sign live in the CLA_ALLOWLIST
-          # repository variable (comma separated), not in this public file.
-          allowlist: ${{ vars.CLA_ALLOWLIST }}
+          # repository SECRET (comma separated), not in this public file. A secret, never a
+          # variable: Actions prints a step's inputs at the top of its log and only secrets
+          # are masked there. Never put a `*` entry in it (the action treats it as an
+          # unanchored pattern).
+          allowlist: ${{ secrets.CLA_ALLOWLIST }}
           lock-pullrequest-aftermerge: false
