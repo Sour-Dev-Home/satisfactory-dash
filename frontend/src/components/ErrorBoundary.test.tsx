@@ -76,4 +76,46 @@ describe("ErrorBoundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByRole("alert", { name: "Power error" })).toBeInTheDocument();
   });
+
+  it("moves focus into the recovered part on Try again", () => {
+    render(
+      <ErrorBoundary label="Power">
+        <Flaky />
+      </ErrorBoundary>,
+    );
+    shouldThrow = false;
+    const button = screen.getByRole("button", { name: "Try again" });
+    button.focus();
+    fireEvent.click(button);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toContainElement(screen.getByText("recovered content"));
+  });
+
+  it("moves focus to the notice if the part fails again", () => {
+    render(
+      <ErrorBoundary label="Power">
+        <Flaky />
+      </ErrorBoundary>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByRole("alert", { name: "Power error" })).toHaveFocus();
+  });
+
+  it("does not take focus when nobody pressed Try again", () => {
+    render(
+      <ErrorBoundary label="Power">
+        <Flaky />
+      </ErrorBoundary>,
+    );
+    expect(document.body).toHaveFocus();
+  });
+
+  it("shows extra actions in the notice", () => {
+    render(
+      <ErrorBoundary label="Power" actions={<button type="button">Log out</button>}>
+        <Flaky />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("alert")).toContainElement(screen.getByRole("button", { name: "Log out" }));
+  });
 });

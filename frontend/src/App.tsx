@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AuthGate } from "./auth/AuthGate";
+import { LogoutButton } from "./auth/LogoutButton";
 import { CrashProbe } from "./components/CrashProbe";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FactoryView } from "./factory/FactoryView";
@@ -25,8 +26,9 @@ function App() {
     <>
       <main>
         <h1>Satis Manager</h1>
-        {/* The outer boundary keeps the title and the footer's source link on any crash. */}
-        <ErrorBoundary label="The dashboard">
+        {/* The outer boundary keeps the title and the footer's source link on any crash,
+            and offers Log out, since the crash takes AuthGate's button with it. */}
+        <ErrorBoundary label="The dashboard" actions={<LogoutButton />}>
           <CrashProbe section="app" />
           <AuthGate>
             <ServerGate>
