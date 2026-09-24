@@ -9,9 +9,11 @@ const crashed = new Set<string>();
 export function CrashProbe({ section }: { section: string }) {
   if (import.meta.env.MODE !== "mock") return null;
   const requested = new URLSearchParams(window.location.search).get("crash");
-  // Throw only the first time, so "Try again" visibly recovers.
+  // Throw only during the first render pass, so "Try again" visibly recovers. React retries a
+  // failed render synchronously once before showing the fallback, so the mark is set after
+  // this pass ends, not on the first throw (else the retry succeeds and no fallback shows).
   if (requested === section && !crashed.has(section)) {
-    crashed.add(section);
+    queueMicrotask(() => crashed.add(section));
     throw new Error(`[crash probe] ${section}`);
   }
   return null;
