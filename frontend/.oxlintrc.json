@@ -4,6 +4,13 @@
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-restricted-globals": [
+      "error",
+      {
+        "name": "fetch",
+        "message": "Only src/api/transport.ts sends requests (ADR-0026: the demo build swaps it out). Use apiGet/apiSend."
+      }
+    ],
     "no-restricted-imports": [
       "error",
       {
@@ -19,7 +26,11 @@
   "overrides": [
     {
       "files": ["src/test/**", "e2e/**", "**/*.test.ts", "**/*.test.tsx"],
-      "rules": { "no-restricted-imports": "off" }
+      "rules": { "no-restricted-imports": "off", "no-restricted-globals": "off" }
+    },
+    {
+      "files": ["src/api/transport.ts"],
+      "rules": { "no-restricted-globals": "off" }
     },
     {
       "files": ["e2e/**"],

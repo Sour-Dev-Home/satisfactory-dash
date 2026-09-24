@@ -31,7 +31,9 @@ contract needs to grow, not that this module should special-case a backend detai
 - The Overview's status-page summary (`src/overview/health.ts`) only aggregates what the
   backend classified. Its one rule of its own: Factory is degraded above
   `BACKED_UP_DEGRADED_SHARE` (25%, the owner's pick).
-- `src/api/client.ts` is the only place that calls `fetch`. Use `apiGet`/`apiSend` with
+- `src/api/client.ts` builds every API request and `src/api/transport.ts` sends it, the
+  only place that calls `fetch` (oxlint's `no-restricted-globals` enforces it; ADR-0026's
+  demo build swaps the transport). Use `apiGet`/`apiSend` with
   an entry from `endpoints`; they parse every body with the shared schema and throw
   `ApiError`, `ContractDriftError` or `BackendUnreachableError` (`src/api/errors.ts`).
   Components read data through the TanStack Query options in `src/api/queries.ts`.

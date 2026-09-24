@@ -1,12 +1,10 @@
 import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
 import { ApiError, BackendUnreachableError, ContractDriftError, RequestValidationError } from "./errors";
+import { transport } from "./transport";
 
-// The only module that calls fetch. Every body is parsed with the endpoint's shared
-// schema (ADR-0002), so a shape mismatch surfaces as ContractDriftError, not a crash later.
-
-// Empty in development: Vite proxies /api to the backend, so the browser sees one origin.
-// Trimmed because a stray space in the build variable would otherwise end up in every URL.
-const BASE_URL = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+// The only module that builds API requests; transport.ts sends them (ADR-0026). Every body is
+// parsed with the endpoint's shared schema (ADR-0002), so a shape mismatch surfaces as
+// ContractDriftError, not a crash later.
 
 const MAX_ISSUES = 5;
 
@@ -80,7 +78,7 @@ async function request<T>(
 
   let res: Response;
   try {
-    res = await fetch(BASE_URL + path, init);
+    res = await transport(path, init);
   } catch (cause) {
     // Our own cancellation, not a dead backend: pass the AbortError through untouched.
     if (signal?.aborted) throw cause;
