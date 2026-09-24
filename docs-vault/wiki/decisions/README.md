@@ -33,6 +33,7 @@ The diagrams these decisions produce live in [`../architecture/`](../architectur
 | [0022](./0022-power-history.md) | Live power history: the backend's first background poller (5 s) feeding an in-memory 5-minute ring buffer, and the additive `power/history` contract |
 | [0023](./0023-live-map.md) | Live factory map: optional building `location` and `circuitGroupId` in the contract, Leaflet with CRS.Simple, a swappable base-map config, and a map-layer plug-in contract |
 | [0024](./0024-architecture-as-code.md) | Architecture as code: one Structurizr model (`docs-vault/workspace.dsl`) that is AI-authored, CI-validated and drift-checked against the backend's module imports |
+| [0025](./0025-postgres-and-google-sign-in.md) | **Proposed, not approved:** Postgres, Google sign-in and the DB registry, the ADR-0020 phase 1 build plan; awaits the owner's decisions |
 
 ## Terms used in the ADRs
 
