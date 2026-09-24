@@ -29,7 +29,8 @@ const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, si
 
 /** Rounds to the one decimal the formatters display, so labels can match what's shown. */
 export function roundForDisplay(value: number): number {
-  const rounded = Math.round(value * 10) / 10;
+  // Round the magnitude: Intl rounds half away from zero, Math.round(-0.5) is -0.
+  const rounded = (Math.sign(value) * Math.round(Math.abs(value) * 10)) / 10;
   return rounded === 0 ? 0 : rounded;
 }
 

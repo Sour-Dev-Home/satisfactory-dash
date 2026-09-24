@@ -109,7 +109,9 @@ export const queries = {
     queryOptions({
       queryKey: ["servers", serverId, "settings"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.settings.get, serverId),
-      // ADR-0012: the setting rarely changes; re-read it only until a pending change applies.
-      refetchInterval: (query) => (query.state.data?.data.pending ? POLL_MS.settingsPending : false),
+      // ADR-0012: the setting rarely changes; re-read it only until a pending change applies,
+      // or while it's stale (the toggle is held until a fresh read arrives).
+      refetchInterval: (query) =>
+        query.state.data?.data.pending || query.state.data?.stale ? POLL_MS.settingsPending : false,
     }),
 };
