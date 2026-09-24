@@ -392,5 +392,27 @@ describe("PowerHistoryPoller (fake time)", () => {
       await poller.stop();
       await poller.stop();
     });
+
+    it("start() after stop() does not resurrect it (shutdown racing the listen callback)", async () => {
+      const { poller, state } = setup();
+      await poller.stop(); // shutdown began before the server finished listening
+      poller.start(); // the listen callback then fires
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(state.polls).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(poller.startedAt()).toBeUndefined();
+    });
+
+    it("start() after a running poller was stopped stays stopped (restart is not supported)", async () => {
+      const { poller, state } = setup();
+      poller.start();
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
+      await poller.stop();
+      const polls = state.polls;
+      poller.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(state.polls).toBe(polls);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });

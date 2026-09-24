@@ -80,11 +80,12 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   }
 
   start(): void {
-    if (this.started) {
+    // A stopped poller stays stopped (not restartable): stop() may run before start() when a
+    // shutdown signal races the server's listen callback, and it must not be undone.
+    if (this.started || this.stopped) {
       return;
     }
     this.started = true;
-    this.stopped = false;
     this.startedAtMs = this.now();
     this.nextTickAt = this.startedAtMs;
     this.schedule();
