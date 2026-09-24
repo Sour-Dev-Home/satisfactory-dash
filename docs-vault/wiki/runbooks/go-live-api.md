@@ -204,8 +204,10 @@ What the task does, and its limits:
   without limit; check its size now and then (rotation is a later improvement).
 - Remove it with `.\scripts\windows\unregister-backend-task.ps1`.
 
-**Prove the restart works** (Task Scheduler's restart-on-failure with a `cmd.exe` action
-hasn't been tested here): find the backend's process and kill it, then wait about 90 seconds.
+**Prove the restart works.** Task Scheduler's own restart-on-failure did NOT restart a
+killed backend when tested (2026-09-23), so the task runs `run-backend.ps1`, which restarts
+node itself; its lines in the log start with `[run-backend`. Find the backend's node process
+and kill it, then wait about 90 seconds.
 
 ```powershell
 $p = (Get-NetTCPConnection -LocalPort 3001 -State Listen).OwningProcess
@@ -213,6 +215,10 @@ Stop-Process -Id $p -Force
 Start-Sleep -Seconds 90
 Invoke-RestMethod http://127.0.0.1:3001/api/health     # expect status : ok again
 ```
+
+Kill only the node process on the port, not the `powershell.exe` running `run-backend.ps1`:
+if that wrapper is killed alone, its node child keeps running (orphaned) and holds port 3001.
+Use `Stop-ScheduledTask` to stop the whole thing, and check port 3001 is free afterwards.
 
 If it doesn't come back, the restart isn't working: start it with
 `Start-ScheduledTask -TaskName SatisfactoryDashBackend` and tell the architect.
