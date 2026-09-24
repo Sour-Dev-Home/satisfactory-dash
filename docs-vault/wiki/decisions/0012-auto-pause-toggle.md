@@ -67,6 +67,13 @@ token on this server (AllowInsecureLocalAccess), so on such a server the accept 
 trivially true and does not prove the token's privilege; on an auth-enforcing server the
 write itself is the proof, and its refusal maps to 409.
 
+Live check on an auth-enforcing server (2026-09-24, go-live runbook section 3): with
+AllowInsecureLocalAccess removed, the game API answered 403 without a token and 200 with the
+application token (`pl` = APIToken). Through the built backend, `editable` was true, and the
+auto-pause flip (false to true) and restore both returned 200; the game server's
+`FG.DSAutoPause` read back as its original value. The refused-token path (a token the server
+refuses giving 401/403, mapped to 409 `not_editable`) was not exercised and stays untested.
+
 Still [NEEDS VERIFICATION]: the privilege GetServerOptions and ApplyServerOptions require on
 an auth-enforcing server (that a non-admin token is refused), and what
 VerifyAuthenticationToken's `privilegeLevel` parameter expects.
