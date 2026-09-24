@@ -1,0 +1,133 @@
+name: Architecture
+
+# Architecture as code (ADR-0024): validates the Structurizr model in
+# docs-vault/workspace.dsl and publishes its diagrams as an artifact.
+#
+# Phase 2 (now): REPORT-ONLY for `inspect`. Only a `validate` failure (the DSL doesn't
+# parse or a reference is broken) fails the job; `inspect` findings are printed as
+# warnings, since two "missing documentation/decisions" findings are expected until
+# phase 4 adds `!adrs wiki/decisions`. Phase 3 adds the dependency-cruiser drift check
+# to this job, and then it can become a REQUIRED check: the workflow already triggers on
+# every PR (no `paths` filter) with a cheap `changes` job, the same pattern as e2e.yml.
+#
+# Image: structurizr/structurizr (the consolidated tooling; structurizr/cli is
+# deprecated and gets no updates). The -playwright variant is the one that can export
+# SVG with Structurizr's own renderer, which applies the model's styles (C4-PlantUML
+# ignores the "External" colour). Pinned by tag AND multi-arch index digest. To upgrade:
+# bump the tag and digest together (Docker Hub API: /v2/repositories/structurizr/
+# structurizr/tags/<tag> -> "digest").
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  STRUCTURIZR_IMAGE: structurizr/structurizr:2026.09.19-playwright@sha256:c89b54231c42da90484e6bf4e398f36a40123cb4b12c9d5f09c27eef3dc9644c
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.diff.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Did the model or the code it describes change?
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;;
+          esac
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=$(git diff --name-only "$base" HEAD)
+          if echo "$changed" | grep -qE '^(docs-vault/workspace\.dsl$|docs-vault/wiki/decisions/|backend/src/modules/|\.github/workflows/architecture\.yml$)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No model, decision or backend-module changes; architecture skipped (reports success)."
+          fi
+
+  architecture:
+    needs: changes
+    # Fail safe: if `changes` itself fails, run anyway rather than report a skip (success).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.relevant == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Find the model
+        id: model
+        run: |
+          if [ -f docs-vault/workspace.dsl ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::docs-vault/workspace.dsl doesn't exist yet (ADR-0024 phase 2); nothing to check."
+          fi
+
+      # Every structurizr call runs in the pinned image with docs-vault/ mounted as the
+      # working directory, as the invoking user so the exported files are writable here.
+      - name: Validate (fails the job on errors)
+        if: steps.model.outputs.present == 'true'
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$PWD/docs-vault:/usr/local/structurizr" "$STRUCTURIZR_IMAGE" \
+            validate -workspace workspace.dsl
+
+      - name: Inspect (report-only until phase 4)
+        if: steps.model.outputs.present == 'true'
+        run: |
+          # The exit code is the number of violations shown, so it's captured, not trusted.
+          set +e
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$PWD/docs-vault:/usr/local/structurizr" "$STRUCTURIZR_IMAGE" \
+            inspect -workspace workspace.dsl -severity error,warning | tee inspect.txt
+          count=${PIPESTATUS[0]}
+          set -e
+          if [ "$count" -gt 0 ]; then
+            echo "::warning::structurizr inspect reported $count finding(s); report-only until ADR-0024 phase 4."
+          fi
+
+      - name: Export diagrams (SVG, Mermaid, C4-PlantUML, static site)
+        if: steps.model.outputs.present == 'true'
+        run: |
+          run() {
+            docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+              -v "$PWD/docs-vault:/usr/local/structurizr" "$STRUCTURIZR_IMAGE" "$@"
+          }
+          run export -workspace workspace.dsl -format svg -output .architecture-out/svg
+          run export -workspace workspace.dsl -format mermaid -output .architecture-out/mermaid
+          run export -workspace workspace.dsl -format plantuml/c4plantuml -output .architecture-out/c4plantuml
+          run export -workspace workspace.dsl -format static -output .architecture-out/site
+          mv inspect.txt docs-vault/.architecture-out/
+          echo "Exported:"; find docs-vault/.architecture-out -maxdepth 2 -type f -name '*.svg' | sort
+
+      - name: Upload diagrams
+        if: steps.model.outputs.present == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: architecture-diagrams
+          path: docs-vault/.architecture-out/
+          if-no-files-found: error
+          retention-days: 30
