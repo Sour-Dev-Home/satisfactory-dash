@@ -37,6 +37,7 @@ The diagrams these decisions produce live in [`../architecture/`](../architectur
 | [0026](./0026-demo-mode.md) | **Accepted:** demo mode, a public offline demo (demo.satis-manager.com) that can never reach the real API; the frontend builds it from its own curated world |
 | [0027](./0027-history-and-alerts.md) | **Accepted:** production history and alerts (Discord first); builds only after ADR-0025 gate A, since everything in it needs Postgres |
 | [0028](./0028-uptime-monitoring.md) | **Accepted:** external uptime monitoring and a public status page (Better Stack, an ops@ alias), in place at ADR-0025 gate A; the monitor and the status page depend on `/api/health` and `/api/health/ready`, which stay detail-free |
+| [0029](./0029-connected-players.md) | **Accepted:** showing who is connected: a members-only players route with the minimum data (`name`, `online`; no location, HP, inventory or "dead" marker), names never logged, and a privacy-outline row for third-party player names |
 
 ## Terms used in the ADRs
 

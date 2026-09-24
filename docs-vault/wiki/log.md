@@ -398,3 +398,10 @@ the bottom.
   could not bind 5432 because the TCP dynamic port range started at 1024 and Hyper-V reserved
   5358-5457; fix: reset the dynamic range to 49152/16384 and, optionally, an administered
   exclusion for 5432).
+- 2026-09-25 — ADR-0029 (showing who is connected, minimal data) copied verbatim from the
+  architect's draft and marked accepted (owner, relayed by reactapps-dc, 2026-09-24): README row
+  and index entry. The overview cards brief (Players, Tick rate, Health) is added as
+  `architecture/overview-cards.md`. The database runbook gains a "Gate B checklist: Google
+  sign-in" section, including the bootstrap-trust note (a verified email equal to
+  `BOOTSTRAP_OWNER_EMAIL`, no hosted-domain check, so the address must be one only the owner
+  controls, with 2-step verification).
