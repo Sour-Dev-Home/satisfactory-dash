@@ -237,7 +237,7 @@ What the task does, and its limits:
 **Logs and the 14-day retention (`LOG_DIR`).** Set `LOG_DIR` in `backend\.env` (for example
 `%LOCALAPPDATA%\satisfactory-dash\backend-logs`, an absolute path; it is created if missing). The
 backend then writes its JSON logs, which include client IPs, to one file per UTC day,
-`backend-YYYY-MM-DD.log`, and **deletes any such file dated more than 13 days before today**: at
+`backend-YYYY-MM-DD.log` (files roll at UTC midnight, not local midnight), and **deletes any such file dated more than 13 days before today**: at
 most 14 files, so nothing is kept longer than 14 days (the privacy policy's promise), even if
 the backend was stopped for weeks (old files are removed at the next start). Only files named
 exactly `backend-YYYY-MM-DD.log` are ever deleted. A `LOG_DIR` that can't be created or written
