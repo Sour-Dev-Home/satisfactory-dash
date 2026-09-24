@@ -42,6 +42,13 @@ export const test = base.extend<Fixtures & { unmocked: string[] }>({
           window.__cspViolations?.push(`${e.effectiveDirective} blocked ${e.blockedURI || "inline"}`);
         });
       });
+      // Catch-all for tests that never call mockApi: otherwise vite preview proxies /api to
+      // whatever backend is on localhost:3001. mockApi's route, registered later, runs first.
+      await page.route("**/api/**", (route) => {
+        const request = route.request();
+        unmocked.push(`${request.method()} ${new URL(request.url()).pathname}`);
+        return route.abort();
+      });
       const consoleCsp: string[] = [];
       page.on("console", (message) => {
         if (/Content[- ]Security[- ]Policy/i.test(message.text())) consoleCsp.push(message.text());

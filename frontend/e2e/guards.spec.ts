@@ -23,4 +23,11 @@ test.describe("guards", () => {
     await page.getByRole("heading", { name: "Sign in" }).waitFor();
     await page.evaluate(() => fetch("/api/not-a-real-route").catch(() => undefined));
   });
+
+  test.fail("an /api request in a test that never calls mockApi fails the test", async ({ page }) => {
+    // The app's own session check is the unmocked request.
+    const sessionCheck = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/auth/session");
+    await page.goto("/");
+    await sessionCheck;
+  });
 });

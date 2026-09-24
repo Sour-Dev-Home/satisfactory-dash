@@ -35,13 +35,15 @@ const CASES: StateCase[] = [
   { scenario: "at-risk", shows: "1 circuit is at risk." },
   { scenario: "battery-charging", shows: /Charging 100 MW/ },
   { scenario: "battery-discharging", shows: /Discharging 80 MW/ },
-  { scenario: "unknown-units", shows: /per min/ },
+  // Every rate says "per min" today, so match the fixture's modded item, not the unit label.
+  { scenario: "unknown-units", shows: /Modded Widget: .* per min/ },
   { scenario: "settings-read-only", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", shows: "Change pending: the server will apply it." },
   { scenario: "upstream-unreachable", shows: "Game server unreachable." },
   { scenario: "upstream-auth-rejected", shows: /credentials for the game server were rejected/ },
   { scenario: "upstream-invalid", shows: "The game server returned an error." },
-  { scenario: "unknown-error-code", shows: /Request ID:/ },
+  // The envelope's own message (the generic branch). "Request ID:" shows for every API error.
+  { scenario: "unknown-error-code", shows: /^Something went wrong$/ },
   { scenario: "backend-unreachable", shows: "Couldn't reach the dashboard backend." },
   { scenario: "contract-drift", shows: /doesn't understand/ },
 ];

@@ -45,7 +45,8 @@ export default defineConfig({
     // VITE_API_URL stays empty, so the app calls same-origin /api, which the tests mock.
     command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
+    // Always a fresh build: reusing a server already on 4173 could test a stale dist/.
+    reuseExistingServer: false,
     timeout: 180_000,
   },
 });

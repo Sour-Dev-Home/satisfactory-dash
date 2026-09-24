@@ -42,22 +42,28 @@ function mockServiceWorker(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => ({
-  plugins: [react(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
-  server: {
-    // Dev only: the browser calls /api on the Vite origin and Vite forwards it to the
-    // backend, so cookies and CORS behave like production's single site (ADR-0013).
-    // Mock mode answers /api in the browser instead, so it needs no backend.
-    proxy: mode === 'mock' ? undefined : { '/api': 'http://localhost:3001' },
-  },
-  preview: {
-    headers: productionHeaders(),
-  },
-  test: {
-    environment: 'jsdom',
-    setupFiles: ['./src/vitest-setup.ts'],
-    globals: true,
-    // Playwright specs run in a real browser via `npm run e2e`, not in Vitest.
-    exclude: ['**/node_modules/**', 'e2e/**'],
-  },
-}))
+export default defineConfig(({ command, mode }) => {
+  // Mock mode is dev-only: a mock build would ship MSW with no worker file (a blank page).
+  if (command === 'build' && mode === 'mock') {
+    throw new Error('Mock mode is for `vite` (dev) only; build without --mode mock.')
+  }
+  return {
+    plugins: [react(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
+    server: {
+      // Dev only: the browser calls /api on the Vite origin and Vite forwards it to the
+      // backend, so cookies and CORS behave like production's single site (ADR-0013).
+      // Mock mode answers /api in the browser instead, so it needs no backend.
+      proxy: mode === 'mock' ? undefined : { '/api': 'http://localhost:3001' },
+    },
+    preview: {
+      headers: productionHeaders(),
+    },
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./src/vitest-setup.ts'],
+      globals: true,
+      // Playwright specs run in a real browser via `npm run e2e`, not in Vitest.
+      exclude: ['**/node_modules/**', 'e2e/**'],
+    },
+  }
+})
