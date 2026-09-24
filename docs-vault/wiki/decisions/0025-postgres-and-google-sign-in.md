@@ -5,7 +5,7 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
 ## Context
 - ADR-0020 fixes the data model (users, auth_identities, sessions, servers, server_members) but
   not where Postgres runs, the tooling, or the order of work. This ADR does.
-- Today: one operator from .env with a password hash (`identity/authenticator.ts:29`); a stateless
+- Today: one operator from .env with a password hash (`identity/authenticator.ts:28`); a stateless
   HMAC cookie with an in-memory logout denylist, where rotating SESSION_SECRET is the revoke-all
   (`identity/sessionToken.ts:3-12`, `identity/sessionDenylist.ts`); a registry of one from env
   (`servers/serverRegistry.ts:14`); `ServerDirectory` maps a server id to live connection services
@@ -20,16 +20,24 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
    `audit`), per ADR-0014.
    - Dev: Docker Compose, bound to 127.0.0.1.
    - CI and tests: Testcontainers; Docker is preinstalled on ubuntu-latest, so no service block.
-   - Prod (phase 1): **local on the game PC** (Docker, loopback only). The DB sits beside the only
-     process that uses it. It adds no new network exposure, costs $0, and is up exactly when the
-     API is. Backups go off-machine (item 6).
+   - Prod (phase 1): **local on the game PC, as the native PostgreSQL 18 Windows service**
+     (starts automatically at boot, `listen_addresses = 'localhost'`, scram-sha-256 in
+     pg_hba.conf). The DB sits beside the only process that uses it. It adds no new network
+     exposure and costs $0. Backups go off-machine (item 7). Docker Desktop is not used in prod: it
+     is set not to start at sign-in (to save RAM), so after a reboot a Docker-hosted DB would stay
+     down while the backend's Scheduled Task starts without it.
+     - Parity with dev/CI (Linux containers): the same major version, and every database created
+       with `LOCALE_PROVIDER builtin` and `BUILTIN_LOCALE 'C.UTF-8'` in all three environments, so
+       sorting and comparison don't differ between Windows and Linux. Minor updates (18.x, roughly
+       quarterly, often security fixes) are a runbook step.
    - Portable by construction: `DATABASE_URL` only, TLS-capable (`sslmode=verify-full` when
      remote), no Docker-only features. Moving to RDS is pg_dump/restore plus a connection string,
      done **together with** the API's move to AWS (ADR-0014 target), not before.
 
    | Prod option | Cost | Ops burden | Fit with the tunnel topology |
    |---|---|---|---|
-   | Local Docker (recommended) | $0 | backups and upgrades are ours; Docker Desktop must be running | loopback, nothing new exposed |
+   | Local, native Windows service (recommended) | $0 | backups and minor upgrades are ours; starts at boot | loopback, nothing new exposed |
+   | Local, Docker Desktop | $0 | as above, plus Docker Desktop must auto-start at sign-in (it holds a WSL2 VM's RAM) and the backend task must wait for it | loopback; boot-order fragile |
    | Neon free | $0: 0.5 GB, 100 CU-h/month, scales to zero after 5 min | minimal | DB over the internet; a session lookup per request pays a WAN round trip plus cold starts [NEEDS VERIFICATION: measure] |
    | Supabase free | $0 | minimal | bundles its own auth/platform we wouldn't use; no gain over Neon |
    | RDS db.t4g.micro | ~$12/month on demand + storage (accounts made after 2025-07-15 get a credit-based free plan of up to 6 months) | low | poor today: needs a public endpoint allowlisted to a dynamic home IP. The right choice once the API runs in AWS |
@@ -89,7 +97,26 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
    - The password identity is removed only after the owner confirms Google sign-in works (PR 9).
    - Break-glass: `npm run admin -- grant-owner --email ...`, run locally against the DB. Shell
      access to the PC is the trust boundary.
-6. **Backups**: a nightly `pg_dump` (Windows scheduled task), encrypted, to a private S3 bucket
+6. **DB availability: startup, runtime, health**
+   - Startup classifies the first connection error:
+     - **Retry with backoff** only on transient errors: connection refused/reset, and SQLSTATE
+       57P03 ("the database system is starting up", the boot race). Backoff runs 1 s doubling to
+       30 s, with a 5-minute deadline, logging each attempt. After the deadline it exits 1, so the
+       Scheduled Task's "restart on failure" setting takes over and a broken setup still fails loudly.
+     - **Fail fast (exit 1, clear message)** on configuration errors: a malformed DATABASE_URL,
+       bad credentials (28P01), a missing database (3D000), or **a schema behind the code**. The
+       app compares the migrations table with the newest migration bundled in the build and says
+       "run npm run db:migrate". It never migrates itself.
+   - Liveness answers from the start, so the process is visibly up while waiting.
+   - Runtime: the backend never exits on DB errors. The pg pool reconnects on demand. DB-dependent
+     requests return **503 `service_unavailable`** (a new additive error code). A session lookup
+     that fails because the DB is down is a 503, **never a 401**: an outage must not look like
+     "signed out" to the frontend.
+   - Health: `/api/health` stays liveness (process up). The new `/api/health/ready` returns 200 or
+     503 with `{ status: "ok" | "unavailable" }` from a `SELECT 1` with a 1 s timeout. The body
+     gives no detail about which dependency failed (it's public). The planned uptime monitor
+     watches `/ready`.
+7. **Backups**: a nightly `pg_dump` (Windows scheduled task), encrypted, to a private S3 bucket
    with SSE and a 30-day lifecycle rule, uploaded by a put-only IAM user (cents per month; the
    first AWS resource). A restore is rehearsed once before deploy B.
 
@@ -97,12 +124,12 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
 | # | PR | Owner | Test-hunter |
 |---|---|---|---|
 | 0 | This ADR (docs) | dev commits | skip |
-| 1 | Multiple servers from config: connection entries keyed by server id feed `ServerDirectory` (no DB) | dev | QUICK |
-| 2 | DB foundation: compose file (dc), `platform/db` pool + env validation, node-pg-migrate + roles, Testcontainers harness, readiness checks the DB, workspace.dsl gains the Database container (the drift check runs) | dev + dc | QUICK |
+| 1 | Multiple servers from config: one git-ignored JSON file (`SATISFACTORY_SERVERS_FILE`, the same protection as .env), with per-server id, name, host, ports and tokens, zod-validated at startup, replacing the single SATISFACTORY_* config shared by the registry in server.ts. Each entry keeps its own telemetry bundle and power-history poller (no DB) | dev | QUICK |
+| 2 | DB foundation: compose file for dev (dc), `platform/db` pool + env validation, startup classification and backoff, schema-version check, `/api/health/ready`, node-pg-migrate + roles, Testcontainers harness, workspace.dsl gains the Database container (the drift check runs). Prod install of the native service and the runbook start order (dc) | dev + dc | FULL (startup error classification is logic) |
 | 3 | Schema + repositories: users, auth_identities, login_attempts, sessions, servers, server_members (one-owner partial unique index), audit_events; constraint tests | dev | FULL |
-| 4 | Contract (additive, optional fields): `forbidden` error code, SessionResponse gains `email?` and `authMethods?`, revoke-all endpoint schema | dev | skip |
-| 5 | DB sessions behind the existing session interface; operator seeded; admin CLI (revoke-sessions); denylist removed | dev | FULL + security-reviewer |
-| 6 | DB registry + membership authorization in `resolveServer` (non-member 404, wrong role 403); configured servers upserted at startup | dev | FULL + security-reviewer |
+| 4 | Contract (additive, optional fields): `forbidden` and `service_unavailable` error codes, the readiness response schema, SessionResponse gains `email?` and `authMethods?`, revoke-all endpoint schema | dev | skip |
+| 5 | DB sessions. The HTTP contract and IdentityModule's public shape stay; inside, the session lookup (requestSession, currentUser, isActiveUser) becomes async, and createIdentityModule receives the pool from server.ts (the composition root). `res.locals.user` gains `id` (additive; PR 6 needs it). Operator seeded; admin CLI (revoke-sessions); denylist removed | dev | FULL + security-reviewer |
+| 6 | DB registry + membership: an async `authorizeServer` middleware mounted on `/api/servers/:serverId` looks up the membership (non-member 404, which doesn't reveal existence) and sets `res.locals.serverRole`; `resolveServer` stays synchronous, so its 6 call sites don't change; writes check the role (403 `forbidden`); `GET /api/servers` becomes a per-user list. Configured servers are upserted at startup. **IDOR tests are generated from the shared endpoints list**, so a new server-scoped route can't skip the check | dev | FULL + security-reviewer |
 | | **Gate A: owner approves, then deploy A (DB, password login still)** | | |
 | 7 | Google OIDC start/callback, bootstrap link, closed sign-up, rate limit on /start | dev | FULL + security-reviewer |
 | 8 | Login page: "Sign in with Google" (a plain navigation); account menu with "sign out everywhere" | fe | QUICK + ui-reviewer |
@@ -139,7 +166,8 @@ fold its interface change into PR 6.
 ## Decisions for the owner
 1. Go ahead with phase 1 now? **Recommend yes**: the trigger is "the first account beyond the
    owner", and sharing (1b) is what makes that happen.
-2. Prod Postgres: **A local Docker on the game PC (recommended)** / B Neon / C RDS now.
+2. Prod Postgres: **A local, native Windows service (recommended; "2A-bis")** / A2 local Docker
+   Desktop set to auto-start, plus a backend task that waits for it / B Neon / C RDS now.
 3. Two-stage rollout (deploy A, then deploy B)? **Recommend yes**.
 4. Sign-up: **A closed: owner plus invited emails (recommended)** / B open to any Google account.
    Open sign-up waits for the agent, since there's nothing to show a stranger yet.
