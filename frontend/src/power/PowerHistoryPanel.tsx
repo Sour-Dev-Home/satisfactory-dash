@@ -1,7 +1,23 @@
+import { lazy, Suspense } from "react";
 import type { PowerHistory } from "@satisfactory-dash/shared";
 import { formatMW, formatTime } from "../format";
 import { fuseTrips, seriesStats, toChartData, type LivePart, type Range } from "./history";
-import { PowerChart } from "./PowerChart";
+
+// uPlot is about 50 kB and only this page needs it, so it's a separate chunk, loaded when the
+// first chart renders (same origin, so script-src 'self' allows it). The summary and table
+// don't wait for it.
+const PowerChart = lazy(() => import("./PowerChart").then((m) => ({ default: m.PowerChart })));
+
+/** Holds the chart's place (plot plus legend) while its chunk loads, so nothing jumps. */
+function ChartPlaceholder() {
+  return (
+    <div
+      aria-hidden="true"
+      data-chart-loading=""
+      className="h-[250px] rounded-md bg-surface-2 motion-safe:animate-pulse"
+    />
+  );
+}
 
 const iso = (t: number) => new Date(t).toISOString();
 
@@ -52,10 +68,12 @@ export function PowerHistoryPanel({ history, live }: { history: PowerHistory; li
               {series.points.length < 2 ? (
                 <p className="text-sm text-muted">Collecting readings. The chart starts after the next poll.</p>
               ) : (
-                <PowerChart
-                  data={toChartData(series.points, history.intervalSeconds, live)}
-                  pausedRanges={history.pausedRanges}
-                />
+                <Suspense fallback={<ChartPlaceholder />}>
+                  <PowerChart
+                    data={toChartData(series.points, history.intervalSeconds, live)}
+                    pausedRanges={history.pausedRanges}
+                  />
+                </Suspense>
               )}
               {fuseTrips(series.points).map((trip) => (
                 <p key={trip.fromT} className="text-sm text-bad">

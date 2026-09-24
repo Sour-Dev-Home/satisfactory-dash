@@ -73,6 +73,9 @@ for (const { scenario, shows, path = "/app", name = scenario, act } of CASES) {
       await act(page);
     }
     await expect(page.getByText(shows).first()).toBeVisible();
+    // The power chart is a lazy chunk: screenshot it drawn, not its placeholder. A longer
+    // wait than usual: that chunk is one more request, and a loaded machine can stall it.
+    await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });
     // AGPL §13 (ADR-0018): the source link is reachable in every state, signed in or not.
     await expect(page.getByRole("contentinfo").getByRole("link", { name: "Source code (AGPL-3.0)" })).toBeVisible();
 

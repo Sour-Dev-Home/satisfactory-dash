@@ -45,7 +45,8 @@ describe("PowerHistoryView", () => {
     expect(summaryValue(circuit, "Production")).toHaveTextContent(
       `min ${Math.min(...productions).toLocaleString("en-US", { minimumFractionDigits: 1 })} MW`,
     );
-    expect(circuit.querySelector(".power-chart")).toHaveAttribute("aria-hidden", "true");
+    // The chart is a lazy chunk: the summary above is already there, the chart follows.
+    await waitFor(() => expect(circuit.querySelector(".power-chart")).toHaveAttribute("aria-hidden", "true"));
     expect(within(circuit).getAllByRole("row")).toHaveLength(points.length + 1);
     const plot = plots().at(-1)!;
     expect(plot.data[0]).toHaveLength(points.length);
@@ -145,9 +146,12 @@ describe("PowerHistoryView", () => {
   });
 
   it("destroys the chart when the view goes away", async () => {
+    const before = plots().length;
     const { unmount } = renderView();
-    await screen.findByRole("article", { name: "Circuit 0 history" });
+    // Wait for this test's own chart (a lazy chunk), not one left over from an earlier test.
+    await waitFor(() => expect(plots().length).toBeGreaterThan(before));
     const plot = plots().at(-1)!;
+    expect(plot.destroyed).toBe(false);
     unmount();
     expect(plot.destroyed).toBe(true);
   });
