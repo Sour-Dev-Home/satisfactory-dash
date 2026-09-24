@@ -37,14 +37,15 @@ const SERVERS_ALLOWED_PACKAGES = [/^node:/, /^express$/, /^zod$/, /^@satisfactor
 /** Any subpath of the shared package: "@satisfactory-dash/shared/browser", "/fixtures", "/src/..." */
 const SHARED_SUBPATH = /^@satisfactory-dash\/shared\//;
 
-/** Every import specifier in a source file: static, re-export, side-effect and dynamic. */
+/** Every import specifier in a source file: static, re-export, side-effect, dynamic and require(). */
 export function importSpecifiers(source: string): string[] {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const specifiers: string[] = [];
   const patterns = [
     /\b(?:import|export)\s[^;]*?\bfrom\s*["']([^"']+)["']/g,
     /\bimport\s*["']([^"']+)["']/g,
-    /\bimport\(\s*["']([^"']+)["']\s*\)/g,
+    // import("x"), import(`x`), import("x", { with: ... }), require("x"), import x = require("x")
+    /\b(?:import|require)\(\s*["'`]([^"'`]+)["'`]\s*[,)]/g,
   ];
   for (const pattern of patterns) {
     for (const match of code.matchAll(pattern)) {
@@ -173,6 +174,11 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     ["the composition root importing shared/browser", "server.ts", `import "@satisfactory-dash/shared/browser";`, /rule 6/],
     ["shared/browser as a named import", "modules/identity/x.ts", `import { z } from "@satisfactory-dash/shared/browser";`, /rule 6/],
     ["shared/browser as a dynamic import", "modules/settings/x.ts", `const m = await import("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via require()", "modules/identity/x.ts", `const b = require("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via import = require()", "modules/identity/x.ts", `import b = require("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via a template-literal dynamic import", "modules/identity/x.ts", "const m = await import(`@satisfactory-dash/shared/browser`);", /rule 6/],
+    ["shared/browser via a dynamic import with options", "modules/identity/x.ts", `const m = await import("@satisfactory-dash/shared/browser", { with: {} });`, /rule 6/],
+    ["a trailing-slash shared subpath", "modules/identity/x.ts", `import a from "@satisfactory-dash/shared/";`, /rule 6/],
     ["shared/browser as a re-export", "platform/x.ts", `export * from "@satisfactory-dash/shared/browser";`, /rule 6/],
     ["production code importing shared fixtures", "modules/telemetry/x.ts", `import { f } from "@satisfactory-dash/shared/fixtures";`, /rule 6/],
     ["a deep path into shared", "modules/identity/x.ts", `import { a } from "@satisfactory-dash/shared/src/auth";`, /rule 6/],
