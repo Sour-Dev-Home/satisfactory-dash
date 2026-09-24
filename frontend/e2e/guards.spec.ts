@@ -17,6 +17,24 @@ test.describe("guards", () => {
     await page.waitForTimeout(100);
   });
 
+  // The zod eval-probe exception is gone, so a caught `new Function` (exactly what zod's probe
+  // did) must fail the test again. Without this case nothing proves the guard sees evals at all.
+  test.fail("a caught `new Function` (zod's old eval probe) fails the test", async ({ page, mockApi }) => {
+    await mockApi("login");
+    await page.goto("/");
+    await page.getByRole("heading", { name: "Sign in" }).waitFor();
+    // page.evaluate runs outside the page's CSP (a `new Function` there succeeds), so the probe
+    // has to be a real same-origin script, which script-src 'self' loads and then governs.
+    await page.route("**/eval-probe.js", (route) =>
+      route.fulfill({
+        contentType: "text/javascript",
+        body: 'try { const F = Function; new F(""); } catch { /* swallowed, as zod does */ }',
+      }),
+    );
+    await page.addScriptTag({ url: "/eval-probe.js" });
+    await page.waitForTimeout(100);
+  });
+
   test.fail("an /api request with no mock fails the test", async ({ page, mockApi }) => {
     await mockApi("login");
     await page.goto("/");
