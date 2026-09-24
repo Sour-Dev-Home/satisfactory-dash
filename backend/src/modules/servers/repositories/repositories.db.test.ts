@@ -164,6 +164,51 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
     });
   });
 
+  describe("every membership change is audited, in the same statement or transaction", () => {
+    const auditFor = async (serverId: string) =>
+      (await admin.query("SELECT action, actor_user_id, detail FROM audit.audit_events WHERE server_id = $1 ORDER BY id", [serverId])).rows;
+
+    it("writes one row per successful change, with ids and roles only, and none for a refused one", async () => {
+      const [owner, member, actor] = await users(3);
+      const server = await upsertConfiguredServer(pool, { publicId: "aud-1", displayName: "Aud" });
+      await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" }); // the system: no actor
+      await addMember(pool, { serverId: server.id, userId: member.id, role: "viewer", actorUserId: actor.id });
+      await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "admin", actorUserId: actor.id });
+      await removeMember(pool, { serverId: server.id, userId: member.id, actorUserId: actor.id });
+      expect(await auditFor(server.id)).toEqual([
+        { action: "member_added", actor_user_id: null, detail: { userId: owner.id, role: "owner" } },
+        { action: "member_added", actor_user_id: actor.id, detail: { userId: member.id, role: "viewer" } },
+        { action: "member_role_changed", actor_user_id: actor.id, detail: { userId: member.id, role: "admin" } },
+        { action: "member_removed", actor_user_id: actor.id, detail: { userId: member.id, role: "admin" } },
+      ]);
+      // Refusals leave no trace: a duplicate, a second owner, an owner role change, an owner removal,
+      // a removal that matches nobody.
+      const before = (await auditFor(server.id)).length;
+      expect(await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" })).toBe("already_member");
+      expect(await addMember(pool, { serverId: server.id, userId: actor.id, role: "owner" })).toBe("owner_exists");
+      expect(await setMemberRole(pool, { serverId: server.id, userId: owner.id, role: "viewer" })).toBe(false);
+      expect(await removeMember(pool, { serverId: server.id, userId: owner.id })).toBe(false);
+      expect(await removeMember(pool, { serverId: server.id, userId: member.id })).toBe(false);
+      expect((await auditFor(server.id)).length).toBe(before);
+    });
+
+    it("records an ownership transfer with the old owner as actor, and nothing when it is refused", async () => {
+      const [owner, admin2, outsider] = await users(3);
+      const server = await upsertConfiguredServer(pool, { publicId: "aud-2", displayName: "Aud2" });
+      await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" });
+      await addMember(pool, { serverId: server.id, userId: admin2.id, role: "admin" });
+      expect(await transferOwnership(pool, { serverId: server.id, fromUserId: owner.id, toUserId: outsider.id })).toBe("target_not_member");
+      expect(await transferOwnership(pool, { serverId: server.id, fromUserId: admin2.id, toUserId: owner.id })).toBe("not_owner");
+      expect((await auditFor(server.id)).map((r) => r.action)).toEqual(["member_added", "member_added"]);
+      expect(await transferOwnership(pool, { serverId: server.id, fromUserId: owner.id, toUserId: admin2.id })).toBe("transferred");
+      expect((await auditFor(server.id)).at(-1)).toEqual({
+        action: "ownership_transferred",
+        actor_user_id: owner.id,
+        detail: { toUserId: admin2.id },
+      });
+    });
+  });
+
   describe("transferOwnership", () => {
     const setup = async (publicId: string) => {
       const [owner, admin2, viewer, outsider] = await users(4);

@@ -31,7 +31,11 @@ export interface CreatedSession {
 }
 
 export interface SessionStore {
-  create(principal: Principal): Promise<CreatedSession>;
+  /** Starts a session with a fresh id. `replacing` is the session cookie the browser sent with
+   *  the login: that session ends in the same step ("rotated on login"), so a copied old cookie
+   *  does not survive a re-login. An unknown, malformed or already-ended value is ignored. (The
+   *  stateless store keeps no such state and ignores it.) */
+  create(principal: Principal, replacing?: string): Promise<CreatedSession>;
   /** The signed-in user for this cookie value, or null (missing, malformed, unknown, revoked,
    *  expired, or a disabled account). Throws ServiceUnavailableError when the store's backing
    *  database is down: an outage must never look like "signed out". */

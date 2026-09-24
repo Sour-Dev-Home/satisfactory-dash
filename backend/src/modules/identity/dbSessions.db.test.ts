@@ -184,6 +184,47 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     });
   });
 
+  describe("rotation on login", () => {
+    const loginWithCookie = (app: ReturnType<typeof build>["app"], cookie: string) =>
+      request(app).post(endpoints.auth.login.path()).set("Content-Type", "application/json").set("Cookie", cookie).send(JSON.stringify({ username: "operator", password: PASSWORD }));
+    const status = async (app: ReturnType<typeof build>["app"], cookie: string) =>
+      (await request(app).get("/api/servers").set("Cookie", cookie)).status;
+
+    it("logging in with a session cookie ends that session, in the same step the new one starts", async () => {
+      const { app } = build();
+      const old = cookieOf(await loginRequest(app));
+      expect(await status(app, old)).toBe(200);
+      const res = await loginWithCookie(app, old);
+      expect(res.status).toBe(200);
+      const fresh = cookieOf(res);
+      expect(fresh).not.toBe(old);
+      expect(await status(app, old)).toBe(401); // a copied old cookie does not survive a re-login
+      expect(await status(app, fresh)).toBe(200);
+    });
+
+    it("only the presented session ends: another browser's session stays valid", async () => {
+      const { app } = build();
+      const laptop = cookieOf(await loginRequest(app));
+      const phone = cookieOf(await loginRequest(app)); // no cookie sent: rotates nothing
+      expect(await status(app, laptop)).toBe(200);
+      const laptopAgain = cookieOf(await loginWithCookie(app, laptop));
+      expect(await status(app, laptop)).toBe(401);
+      expect(await status(app, phone)).toBe(200);
+      expect(await status(app, laptopAgain)).toBe(200);
+    });
+
+    it("an unknown, malformed or already-revoked cookie is ignored and the login still works", async () => {
+      const { app } = build();
+      const gone = cookieOf(await loginRequest(app));
+      await request(app).post(endpoints.auth.logout.path()).set("Cookie", gone);
+      for (const cookie of [`${SESSION_COOKIE}=${"A".repeat(43)}`, `${SESSION_COOKIE}=not-a-session`, gone]) {
+        const res = await loginWithCookie(app, cookie);
+        expect(res.status).toBe(200);
+        expect(await status(app, cookieOf(res))).toBe(200);
+      }
+    });
+  });
+
   it("renaming the operator in .env does not fork the account: same user, new display name", async () => {
     const first = build({ adminUser: "old-name" });
     const idBefore = (await admin.query("SELECT count(*)::int AS n FROM identity.users WHERE display_name = 'old-name'")).rows[0].n;

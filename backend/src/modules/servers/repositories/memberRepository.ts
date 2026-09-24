@@ -43,18 +43,31 @@ export async function getMemberRole(
 
 export type AddMemberResult = "added" | "already_member" | "owner_exists" | "unknown_server_or_user";
 
+/*
+ * Every membership change writes its audit row IN THE SAME STATEMENT (a data-modifying CTE), so
+ * the row exists exactly when the change happened: no window between the two, and a refused
+ * change (a constraint violation, nothing matched) leaves no row. `detail` holds ids and roles
+ * only (the audit rule); `$n` for the actor is NULL for the system (startup registration).
+ */
 const INSERT_MEMBER = `
-  INSERT INTO servers.server_members (server_id, user_id, role)
-  VALUES ($1, $2, $3)`;
+  WITH added AS (
+    INSERT INTO servers.server_members (server_id, user_id, role)
+    VALUES ($1, $2, $3)
+    RETURNING server_id, user_id, role
+  )
+  INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
+  SELECT $4::uuid, server_id, 'member_added', jsonb_build_object('userId', user_id, 'role', role)
+  FROM added`;
 
 /** Adds a member. The outcome comes from the database's own constraints, not a racy pre-check:
- *  a duplicate is `already_member`, a second owner is `owner_exists`. */
+ *  a duplicate is `already_member`, a second owner is `owner_exists`. `actorUserId` is who did it
+ *  (omit it for the system, e.g. startup registration of the bootstrap owner). */
 export async function addMember(
   db: Queryable,
-  input: { serverId: string; userId: string; role: MemberRole },
+  input: { serverId: string; userId: string; role: MemberRole; actorUserId?: string },
 ): Promise<AddMemberResult> {
   try {
-    await db.query(INSERT_MEMBER, [input.serverId, input.userId, input.role]);
+    await db.query(INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId ?? null]);
     return "added";
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -74,29 +87,46 @@ export async function addMember(
 }
 
 const SET_ROLE = `
-  UPDATE servers.server_members
-  SET role = $3
-  WHERE server_id = $1 AND user_id = $2 AND role <> 'owner'
-  RETURNING 1 AS updated`;
+  WITH changed AS (
+    UPDATE servers.server_members
+    SET role = $3
+    WHERE server_id = $1 AND user_id = $2 AND role <> 'owner'
+    RETURNING server_id, user_id, role
+  ), audited AS (
+    INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
+    SELECT $4::uuid, server_id, 'member_role_changed', jsonb_build_object('userId', user_id, 'role', role)
+    FROM changed
+  )
+  SELECT 1 AS updated FROM changed`;
 
 /** Changes an admin or viewer's role. The owner's role is never changed here (and nobody becomes
  *  owner here): that is transferOwnership, which keeps exactly one owner throughout. */
 export async function setMemberRole(
   db: Queryable,
-  input: { serverId: string; userId: string; role: Exclude<MemberRole, "owner"> },
+  input: { serverId: string; userId: string; role: Exclude<MemberRole, "owner">; actorUserId?: string },
 ): Promise<boolean> {
-  const result = await db.query(SET_ROLE, [input.serverId, input.userId, input.role]);
+  const result = await db.query(SET_ROLE, [input.serverId, input.userId, input.role, input.actorUserId ?? null]);
   return result.rows.length > 0;
 }
 
 const REMOVE_MEMBER = `
-  DELETE FROM servers.server_members
-  WHERE server_id = $1 AND user_id = $2 AND role <> 'owner'
-  RETURNING 1 AS removed`;
+  WITH removed AS (
+    DELETE FROM servers.server_members
+    WHERE server_id = $1 AND user_id = $2 AND role <> 'owner'
+    RETURNING server_id, user_id, role
+  ), audited AS (
+    INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
+    SELECT $3::uuid, server_id, 'member_removed', jsonb_build_object('userId', user_id, 'role', role)
+    FROM removed
+  )
+  SELECT 1 AS removed FROM removed`;
 
 /** Removes a non-owner member. The owner can't be removed (transfer ownership first). */
-export async function removeMember(db: Queryable, input: { serverId: string; userId: string }): Promise<boolean> {
-  const result = await db.query(REMOVE_MEMBER, [input.serverId, input.userId]);
+export async function removeMember(
+  db: Queryable,
+  input: { serverId: string; userId: string; actorUserId?: string },
+): Promise<boolean> {
+  const result = await db.query(REMOVE_MEMBER, [input.serverId, input.userId, input.actorUserId ?? null]);
   return result.rows.length > 0;
 }
 
@@ -113,6 +143,10 @@ const PROMOTE_TARGET = `
   SET role = 'owner'
   WHERE server_id = $1 AND user_id = $2
   RETURNING 1 AS promoted`;
+
+const AUDIT_TRANSFER = `
+  INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
+  VALUES ($1::uuid, $2::uuid, 'ownership_transferred', jsonb_build_object('toUserId', $3::text))`;
 
 class RollBack extends Error {
   constructor(readonly outcome: TransferOwnershipResult) {
@@ -142,6 +176,9 @@ export async function transferOwnership(
       if (promoted.rows.length === 0) {
         throw new RollBack("target_not_member");
       }
+      // In the same transaction as the swap: the audit row and the ownership change stand or
+      // fall together. The server id here is the internal uuid, as in every audit row.
+      await client.query(AUDIT_TRANSFER, [input.fromUserId, input.serverId, input.toUserId]);
     });
     return "transferred";
   } catch (err) {

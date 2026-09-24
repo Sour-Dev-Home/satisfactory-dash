@@ -40,6 +40,20 @@ describe.skipIf(!available)("registering the configured servers at startup", () 
     ]);
   });
 
+  it("audits the bootstrap owner grant once, with no actor; a restart adds no rows", async () => {
+    const operator = await createUser(pool, { displayName: "op-audit" });
+    const rowsFor = async () =>
+      (
+        await pool.query(
+          "SELECT a.action, a.actor_user_id, a.detail FROM audit.audit_events a JOIN servers.servers s ON s.id = a.server_id WHERE s.public_id = 'audited'",
+        )
+      ).rows;
+    await registerConfiguredServers(pool, [{ id: "audited", displayName: "Audited" }], operator.id);
+    expect(await rowsFor()).toEqual([{ action: "member_added", actor_user_id: null, detail: { userId: operator.id, role: "owner" } }]);
+    await registerConfiguredServers(pool, [{ id: "audited", displayName: "Audited" }], operator.id);
+    expect(await rowsFor()).toHaveLength(1);
+  });
+
   it("never re-adds the operator as a second owner after ownership moved to someone else", async () => {
     const [operator, other] = await Promise.all([createUser(pool, { displayName: "op2" }), createUser(pool, { displayName: "other" })]);
     await registerConfiguredServers(pool, [{ id: "moved", displayName: "Moved" }], operator.id);
