@@ -148,6 +148,11 @@ the bottom.
 - 2026-09-23 — ADR-0014 added (accepted by the project owner): target architecture is a
   modular monolith now, then service-based with an edge agent. Step 1 is the backend
   domain partition, guarded by an architecture test.
+- 2026-09-23 — ADR-0017 added (accepted by the project owner): the credential lifecycle.
+  Game-server secrets (FRM token, vanilla application token, admin password) never leave
+  the game host; the cloud holds only a hashed per-server agent credential; managed
+  servers keep their secrets in a secrets store. Nothing is built yet; the triggers are in
+  the ADR.
 - 2026-09-23 — Added `runbooks/go-live-api.md` and `scripts/windows/` (register and
   unregister a Scheduled Task for the backend): the ordered go-live steps for issue #19.
 - 2026-09-23 — ADR-0018 added (accepted by the project owner): the repo is relicensed from
