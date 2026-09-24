@@ -106,6 +106,50 @@ describe("session tokens", () => {
   });
 });
 
+describe("session token boundaries and odd payloads", () => {
+  const signed = (payload: unknown) => {
+    const p = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    return `${p}.${createHmac("sha256", SECRET).update(p).digest("base64url")}`;
+  };
+  const nowMs = 1_700_000_000_000;
+  const nowS = Math.floor(nowMs / 1000);
+
+  it("is valid one second before exp and invalid at exp", () => {
+    const token = signed({ sub: "operator", exp: nowS + 1, jti: "j" });
+    expect(readSessionToken(token, SECRET, nowMs)).not.toBeNull();
+    expect(readSessionToken(token, SECRET, nowMs + 1000)).toBeNull();
+  });
+
+  it.each([
+    ["a string exp", { sub: "operator", exp: "9999999999", jti: "j" }],
+    ["a non-string sub", { sub: 5, exp: 9_999_999_999, jti: "j" }],
+    ["an array payload", [1, 2]],
+    ["a null payload", null],
+    ["an array jti", { sub: "operator", exp: 9_999_999_999, jti: ["j"] }],
+  ])("rejects a signed token with %s", (_n, payload) => {
+    expect(readSessionToken(signed(payload), SECRET, nowMs)).toBeNull();
+  });
+
+  it("treats prototype-ish session ids as ordinary ids in the denylist", () => {
+    const list = new SessionDenylist();
+    expect(list.isRevoked("__proto__", nowMs)).toBe(false);
+    expect(list.isRevoked("constructor", nowMs)).toBe(false);
+    list.revoke("__proto__", nowS + 60, nowMs);
+    expect(list.isRevoked("__proto__", nowMs)).toBe(true);
+    expect(list.isRevoked("toString", nowMs)).toBe(false);
+  });
+
+  it("re-revoking moves a session to the newest position so eviction drops others first", () => {
+    const list = new SessionDenylist(2);
+    list.revoke("a", nowS + 100, nowMs);
+    list.revoke("b", nowS + 100, nowMs);
+    list.revoke("a", nowS + 100, nowMs);
+    list.revoke("c", nowS + 100, nowMs);
+    expect(list.isRevoked("a", nowMs)).toBe(true);
+    expect(list.isRevoked("b", nowMs)).toBe(false);
+  });
+});
+
 describe("SessionDenylist (ADR-0019)", () => {
   const now = 1_700_000_000_000;
   const later = (seconds: number) => Math.floor(now / 1000) + seconds;

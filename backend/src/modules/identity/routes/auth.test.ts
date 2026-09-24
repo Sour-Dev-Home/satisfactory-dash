@@ -324,6 +324,85 @@ describe("security headers", () => {
   });
 });
 
+describe("security headers on framework-generated failures", () => {
+  const expectHeaders = (headers: Record<string, unknown>) => {
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["cache-control"]).toBe("no-store");
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(headers["content-security-policy"]).toBe("default-src 'none'; frame-ancestors 'none'");
+  };
+
+  it("sets them on a malformed JSON body (400), an oversized body (413) and a 415", async () => {
+    const { app } = buildApp();
+    const bad = await request(app).post(endpoints.auth.login.path()).set("Content-Type", "application/json").send("{not json");
+    expect(bad.status).toBe(400);
+    expectHeaders(bad.headers);
+    const big = await request(app)
+      .post(endpoints.auth.login.path())
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ username: "x".repeat(300_000), password: "y" }));
+    expect(big.status).toBe(413);
+    expectHeaders(big.headers);
+    const wrongType = await request(app).post(endpoints.auth.login.path()).set("Content-Type", "text/plain").send("hi");
+    expect(wrongType.status).toBe(415);
+    expectHeaders(wrongType.headers);
+  });
+
+  it("sets them on a cross-site refusal and on a 429 rate-limit answer", async () => {
+    const { app } = buildApp();
+    const refused = await request(app).post(endpoints.auth.logout.path()).set("Sec-Fetch-Site", "cross-site");
+    expect(refused.status).toBe(400);
+    expectHeaders(refused.headers);
+    let last = await login(app, { username: "operator", password: "wrong" });
+    for (let i = 0; i < MAX_FAILURES; i++) last = await login(app, { username: "operator", password: "wrong" });
+    expect(last.status).toBe(429);
+    expect(last.headers["retry-after"]).toBeDefined();
+    expectHeaders(last.headers);
+  });
+});
+
+describe("logout revocation edge cases", () => {
+  it("a forged signature is a no-op and does not revoke the real session", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    const [payload] = cookie.slice(`${SESSION_COOKIE}=`.length).split(".");
+    const forged = `${SESSION_COOKIE}=${payload}.AAAA`;
+    expect((await request(app).post(endpoints.auth.logout.path()).set("Cookie", forged)).status).toBe(200);
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(200);
+  });
+
+  it("a revoked cookie stays rejected on repeated use, and a new sign-in still works", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie);
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
+    }
+    const fresh = await signIn(app);
+    expect((await request(app).get("/api/servers").set("Cookie", fresh)).status).toBe(200);
+  });
+});
+
+describe("cross-site guard across methods", () => {
+  it.each(["put", "delete", "post"] as const)("refuses a sibling-subdomain %s and allows the frontend's", async (method) => {
+    const { app } = buildApp();
+    const sibling = await request(app)[method]("/api/anything").set("Sec-Fetch-Site", "same-site").set("Origin", "https://blog.satis-manager.com");
+    expect(sibling.status).toBe(400);
+    const cross = await request(app)[method]("/api/anything").set("Sec-Fetch-Site", "cross-site");
+    expect(cross.status).toBe(400);
+    // Allowed through the guard: fails later (401 from the session guard), not 400.
+    const ok = await request(app)[method]("/api/anything").set("Sec-Fetch-Site", "same-site").set("Origin", "https://satis-manager.com");
+    expect(ok.status).toBe(401);
+  });
+
+  it("does not hold OPTIONS or GET to the guard", async () => {
+    const { app } = buildApp();
+    const res = await request(app).options("/api/health").set("Sec-Fetch-Site", "cross-site").set("Origin", "https://evil.example");
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+});
+
 describe("the session guard", () => {
   // Issue #19: health and the three auth routes work without a session.
   it.each([
