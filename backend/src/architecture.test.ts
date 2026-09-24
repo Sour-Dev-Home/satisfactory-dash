@@ -42,10 +42,10 @@ export function importSpecifiers(source: string): string[] {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const specifiers: string[] = [];
   const patterns = [
-    /\b(?:import|export)\s[^;]*?\bfrom\s*["']([^"']+)["']/g,
+    /\b(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']/g,
     /\bimport\s*["']([^"']+)["']/g,
-    // import("x"), import(`x`), import("x", { with: ... }), require("x"), import x = require("x")
-    /\b(?:import|require)\(\s*["'`]([^"'`]+)["'`]\s*[,)]/g,
+    // import("x"), import (`x`), import("x", { with: ... }), require("x"), import x = require("x")
+    /\b(?:import|require)\s*\(\s*["'`]([^"'`]+)["'`]\s*[,)]/g,
   ];
   for (const pattern of patterns) {
     for (const match of code.matchAll(pattern)) {
@@ -178,6 +178,11 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     ["shared/browser via import = require()", "modules/identity/x.ts", `import b = require("@satisfactory-dash/shared/browser");`, /rule 6/],
     ["shared/browser via a template-literal dynamic import", "modules/identity/x.ts", "const m = await import(`@satisfactory-dash/shared/browser`);", /rule 6/],
     ["shared/browser via a dynamic import with options", "modules/identity/x.ts", `const m = await import("@satisfactory-dash/shared/browser", { with: {} });`, /rule 6/],
+    ["shared/browser via a dynamic import with a space before the paren", "modules/identity/x.ts", `const m = await import ( "@satisfactory-dash/shared/browser" );`, /rule 6/],
+    ["shared/browser via a multi-line dynamic import", "modules/identity/x.ts", `const m = await import(\n  "@satisfactory-dash/shared/browser",\n);`, /rule 6/],
+    ["shared/browser via a typeof import() type query", "modules/identity/x.ts", `type T = typeof import("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via export * as", "platform/x.ts", `export * as ns from "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["shared/browser via a minified import", "platform/x.ts", `import{a}from"@satisfactory-dash/shared/browser";`, /rule 6/],
     ["a trailing-slash shared subpath", "modules/identity/x.ts", `import a from "@satisfactory-dash/shared/";`, /rule 6/],
     ["shared/browser as a re-export", "platform/x.ts", `export * from "@satisfactory-dash/shared/browser";`, /rule 6/],
     ["production code importing shared fixtures", "modules/telemetry/x.ts", `import { f } from "@satisfactory-dash/shared/fixtures";`, /rule 6/],
