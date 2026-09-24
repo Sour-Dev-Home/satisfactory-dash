@@ -86,6 +86,17 @@ jobs:
             echo "::notice::docs-vault/workspace.dsl doesn't exist yet (ADR-0024 phase 2); nothing to check."
           fi
 
+      - name: No remote themes (fails the job)
+        if: steps.model.outputs.present == 'true'
+        run: |
+          # The Structurizr cloud service (static.structurizr.com, which hosts the
+          # built-in themes) reaches end of life on 2026-09-30, and any remote theme is
+          # a network dependency of the build. Styles belong inline in the model.
+          if grep -nE '^[[:space:]]*themes?[[:space:]]' docs-vault/workspace.dsl; then
+            echo "::error file=docs-vault/workspace.dsl::Remote 'theme'/'themes' found; define styles inline in the model instead."
+            exit 1
+          fi
+
       # Every structurizr call runs in the pinned image with docs-vault/ mounted as the
       # working directory, as the invoking user so the exported files are writable here.
       - name: Validate (fails the job on errors)
