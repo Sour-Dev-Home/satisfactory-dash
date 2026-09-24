@@ -48,7 +48,8 @@ export default defineConfig({
   ],
   webServer: {
     // VITE_API_URL stays empty, so the app calls same-origin /api, which the tests mock.
-    command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
+    // The demo build (dist-demo/) is built too, for build-output.spec.ts's checks on it.
+    command: `npm run build && node e2e/build-demo.mjs && npx vite preview --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     // Always a fresh build: reusing a server already on 4173 could test a stale dist/.
     reuseExistingServer: false,

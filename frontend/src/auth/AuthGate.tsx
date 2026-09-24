@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { DemoEntry } from "../demo/DemoEntry";
+import { IS_DEMO } from "../demo/mode";
 import { LoginForm } from "./LoginForm";
 import { SignedInUser } from "./SignedInUser";
 
@@ -15,7 +17,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Check data before error: a failed background refetch keeps the last known session
   // rather than throwing the operator out of the app.
   if (session.data) {
-    if (!session.data.authenticated) return <LoginForm />;
+    // The demo build (ADR-0026) has one "Enter demo" button instead of a credential form.
+    if (!session.data.authenticated) return IS_DEMO ? <DemoEntry /> : <LoginForm />;
     // The account name and Log out render in the shell's top bar (AccountMenu).
     return <SignedInUser value={session.data.user}>{children}</SignedInUser>;
   }
