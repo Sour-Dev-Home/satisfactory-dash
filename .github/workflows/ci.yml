@@ -48,10 +48,12 @@ jobs:
           fi
           # This file and CLAUDE.md files (which document the path patterns as examples of
           # what NOT to commit) are excluded. LICENSE deliberately names the copyright holder
-          # (ADR-0018), so exactly that file is excluded too. -H is required: with a single
+          # (ADR-0018), so exactly that file is excluded too, and so is exactly the privacy
+          # page, which names the owner as data controller (decided 2026-09-24; the terms
+          # page never carries the name and stays scanned). -H is required: with a single
           # file grep omits the filename, and `cut -f1,2` would then keep the matched text
           # and print it.
-          HITS=$(git ls-files | grep -vE '^(\.github/|.*CLAUDE\.md$|LICENSE$)' | xargs -r grep -H -n -iF -f "$PATTERNS" | cut -d: -f1,2 || true)
+          HITS=$(git ls-files | grep -vE '^(\.github/|.*CLAUDE\.md$|LICENSE$|frontend/public/privacy\.html$)' | xargs -r grep -H -n -iF -f "$PATTERNS" | cut -d: -f1,2 || true)
           if [ -n "$HITS" ]; then
             echo "$HITS"
             echo "::error::Possible PII or hardcoded-path leak at the file:line locations above (see CLAUDE.md ground rule 7)."
