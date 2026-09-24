@@ -216,9 +216,13 @@ Start-Sleep -Seconds 90
 Invoke-RestMethod http://127.0.0.1:3001/api/health     # expect status : ok again
 ```
 
-Kill only the node process on the port, not the `powershell.exe` running `run-backend.ps1`:
-if that wrapper is killed alone, its node child keeps running (orphaned) and holds port 3001.
-Use `Stop-ScheduledTask` to stop the whole thing, and check port 3001 is free afterwards.
+Kill only the node process on the port, not the `powershell.exe` running `run-backend.ps1`.
+The wrapper puts itself in a kill-on-close Job Object, so if it is stopped
+(`Stop-ScheduledTask`) node dies with it; without that, a stopped wrapper left node running
+and holding port 3001 (tested 2026-09-24). This holds for Windows PowerShell 5.1, which the
+task uses; check port 3001 is free after a `Stop-ScheduledTask`. If a leftover backend still
+holds the port, `register-backend-task.ps1 -Start` stops it (only a `node.exe` running
+`server.cjs`) before starting the task.
 
 If it doesn't come back, the restart isn't working: start it with
 `Start-ScheduledTask -TaskName SatisfactoryDashBackend` and tell the architect.
