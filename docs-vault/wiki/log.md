@@ -228,6 +228,13 @@ the bottom.
   re-read" when the value landed, else the 503 stands (ADR-0012 note); and
   `SATISFACTORY_API_PORT` / `FRM_WEB_PORT` must be whole numbers from 1 to 65535, otherwise the
   backend refuses to start (they used to become NaN).
+- 2026-09-24 — Architecture diagrams added to `docs-vault/wiki/architecture/` (four D2 sources
+  and rendered SVGs, README with the ADRs each reflects and the D2 v0.9.0 render command),
+  linked from `decisions/README.md` and the wiki index. Rule going forward: a PR that changes
+  what a diagram shows (topology, module edges) updates the `.d2` and re-renders in the same PR.
+  Same PR: ADR-0023 (live factory map) committed as `decisions/0023-live-map.md`, accepted by
+  the owner 2026-09-24; its coordinate unit (centimetres) stays [NEEDS VERIFICATION] until an
+  in-game distance check.
 - 2026-09-24 — ADR-0023 step 2 (shared contract): `FactoryBuilding` gains optional
   `location { xM, yM, zM, rotationDeg }` (rotation in [0, 360)) and optional `circuitGroupId`
   (-1 = unconnected). Both optional per the deploy-skew rule. Fixtures carry real coordinates from

@@ -23,3 +23,5 @@ added or removed.
   from 2026-09-22): contract, errors, units, versioning, logging, storage, caching,
   login, the auto-pause toggle, deployment, target architecture, the item-form catalog,
   frontend UI architecture and the license. The README table lists every ADR.
+- [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
+  containers, backend modules, target) with rendered SVGs and re-render instructions.
