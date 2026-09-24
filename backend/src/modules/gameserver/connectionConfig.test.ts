@@ -200,6 +200,27 @@ describe("loadSatisfactoryServerConfigFromEnv", () => {
       expect(() => load(value)).toThrow(/SATISFACTORY_REQUEST_TIMEOUT_MS.*1000.*60000/);
     });
 
+    it.each([
+      ["leading zeros", "05000", 5000],
+      ["a trailing CRLF (a .env edited on Windows)", "5000\r\n", 5000],
+      ["surrounding tabs", "\t5000\t", 5000],
+      ["a leading byte-order mark", "﻿5000", 5000],
+    ])("accepts %s", (_name, value, expected) => {
+      expect(load(value).requestTimeoutMs).toBe(expected);
+    });
+
+    it.each([
+      ["an underscore separator", "5_000"],
+      ["whitespace inside the number", "50 00"],
+      ["a newline inside the number", "50\n00"],
+      ["quote characters left in the value", '"5000"'],
+      ["an inline comment left in the value", "5000 # ms"],
+      ["only a sign", "-"],
+    ])("refuses %s, without echoing the value in the message", (_name, value) => {
+      expect(() => load(value)).toThrow(ConfigError);
+      expect(() => load(value)).not.toThrow(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    });
+
     it("the error names the variable and the range, and offers the default", () => {
       expect(() => load("soon")).toThrow(
         "SATISFACTORY_REQUEST_TIMEOUT_MS must be a whole number of milliseconds from 1000 to 60000 (or unset for 5000).",
