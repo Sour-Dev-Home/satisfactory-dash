@@ -36,14 +36,18 @@ jobs:
             headers=$(curl -sS -D - -o /dev/null --max-time 20 "$url" || true)
             status=$(printf '%s' "$headers" | head -1 | awk '{print $2}')
             csp=$(printf '%s' "$headers" | grep -i '^content-security-policy:' | tr -d '\r' || true)
+            # HSTS ramp (ADR-0026 follow-up): at least one day, never shorter.
+            hsts=$(printf '%s' "$headers" | grep -i '^strict-transport-security:' | tr -d '\r' || true)
+            maxage=$(printf '%s' "$hsts" | grep -o -i 'max-age=[0-9]*' | cut -d= -f2)
             if [ "$status" = "200" ] \
               && printf '%s' "$csp" | grep -q "connect-src 'self'" \
-              && ! printf '%s' "$csp" | grep -qi 'api\.satis-manager\.com'; then
-              echo "OK (attempt $attempt): 200, $csp"
+              && ! printf '%s' "$csp" | grep -qi 'api\.satis-manager\.com' \
+              && [ "${maxage:-0}" -ge 86400 ]; then
+              echo "OK (attempt $attempt): 200, $csp; $hsts"
               exit 0
             fi
-            echo "attempt $attempt: status=${status:-none}; csp=${csp:-missing}"
+            echo "attempt $attempt: status=${status:-none}; csp=${csp:-missing}; hsts=${hsts:-missing}"
             sleep 30
           done
-          echo "::error::The live demo is not serving 200 with a CSP of connect-src 'self' (and no API origin). Check the satisfactory-dash-demo Workers project."
+          echo "::error::The live demo is not serving 200 with a CSP of connect-src 'self' (no API origin) and HSTS max-age >= 86400. Check the satisfactory-dash-demo Workers project."
           exit 1

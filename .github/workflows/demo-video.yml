@@ -41,6 +41,23 @@ jobs:
       - name: Record the walkthrough
         run: npm run demo:video -w frontend
 
+      # Locally the script SKIPS the MP4 without ffmpeg; in CI that must be a failure.
+      - name: Verify the outputs
+        working-directory: frontend/demo-video
+        run: |
+          for f in walkthrough.mp4 poster.png; do
+            [ -s "$f" ] || { echo "::error::$f is missing or empty"; exit 1; }
+          done
+          duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 walkthrough.mp4)
+          size=$(stat -c %s walkthrough.mp4)
+          echo "duration=${duration}s size=${size} bytes"
+          # 60-90 s per ADR-0026.
+          awk -v d="$duration" 'BEGIN { exit !(d >= 60 && d <= 90) }' \
+            || { echo "::error::walkthrough.mp4 is ${duration}s, outside 60-90 s"; exit 1; }
+          # Workers static assets: 25 MiB per file (Free plan), since the landing page self-hosts it.
+          [ "$size" -lt $((25 * 1024 * 1024)) ] \
+            || { echo "::error::walkthrough.mp4 is ${size} bytes, over the 25 MiB Workers asset limit"; exit 1; }
+
       - name: Upload the video and poster
         uses: actions/upload-artifact@v7
         with:
@@ -48,5 +65,6 @@ jobs:
           path: |
             frontend/demo-video/walkthrough.mp4
             frontend/demo-video/poster.png
+            frontend/demo-video/walkthrough.webm
           if-no-files-found: error
           retention-days: 30
