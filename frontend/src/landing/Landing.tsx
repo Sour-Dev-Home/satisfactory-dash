@@ -78,7 +78,7 @@ export function Landing() {
           A React single-page app on Cloudflare, a Node and Express API reached through a Cloudflare Tunnel, Postgres,
           and one shared zod contract that both sides validate against.
         </p>
-        <ul className="flex flex-wrap gap-x-6">
+        <ul className="flex flex-wrap gap-x-6 gap-y-2">
           <li>
             <a href={REPO_URL} className="inline-flex min-h-[44px] items-center">Source on GitHub</a>
           </li>
