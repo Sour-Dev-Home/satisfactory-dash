@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import http from "node:http";
 import type https from "node:https";
+import net from "node:net";
 import type { AddressInfo, Socket } from "node:net";
 import { createVanillaApiTransport } from "./vanillaApiClient.js";
 
@@ -28,11 +29,11 @@ async function serve(handler: http.RequestListener): Promise<number> {
   return (server!.address() as AddressInfo).port;
 }
 
-function call(port: number) {
+function call(port: number, timeoutMs = 5_000) {
   return transport({
     host: "127.0.0.1",
     port,
-    timeoutMs: 5_000,
+    timeoutMs,
     allowSelfSignedCert: true,
     requestBody: { function: "QueryServerState" },
   });
@@ -58,4 +59,94 @@ describe("vanilla API transport", () => {
     });
     await expect(call(port)).rejects.toMatchObject({ failureKind: "unreachable" });
   }, 3_000);
+
+  // Node's `timeout` option is an IDLE-socket timeout: it never fires while bytes keep
+  // arriving. The overall deadline (AbortSignal.timeout, like FRM's) is what stops a game
+  // server that accepts the connection and then trickles, from holding a request, or the
+  // power history poller, open forever.
+  describe("the overall per-request deadline", () => {
+    const timed = async (run: () => Promise<unknown>) => {
+      const started = Date.now();
+      const outcome = await run().then(
+        () => ({ ok: true as const }),
+        (err: unknown) => ({ ok: false as const, err }),
+      );
+      return { ...outcome, ms: Date.now() - started };
+    };
+
+    it("rejects as unreachable when the body trickles in forever (the idle timeout never fires)", async () => {
+      const port = await serve((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" }); // chunked: no Content-Length
+        res.write('{"data": ');
+        const drip = setInterval(() => res.write(" "), 20);
+        res.on("close", () => clearInterval(drip));
+      });
+      const result = await timed(() => call(port, 300));
+      expect(result.ok).toBe(false);
+      expect((result as { err: unknown }).err).toMatchObject({ failureKind: "unreachable" });
+      expect(result.ms).toBeGreaterThanOrEqual(250);
+      expect(result.ms).toBeLessThan(3_000);
+    }, 6_000);
+
+    it("rejects as unreachable when the response HEADERS trickle in forever", async () => {
+      const slow = net.createServer((socket) => {
+        socket.on("error", () => {});
+        socket.write("HTTP/1.1 200 OK\r\n");
+        const drip = setInterval(() => socket.write("X-Slow: yes\r\n"), 20); // the head never ends
+        socket.on("close", () => clearInterval(drip));
+      });
+      await new Promise<void>((resolve) => slow.listen(0, "127.0.0.1", resolve));
+      try {
+        const port = (slow.address() as AddressInfo).port;
+        const result = await timed(() => call(port, 300));
+        expect(result.ok).toBe(false);
+        expect((result as { err: unknown }).err).toMatchObject({ failureKind: "unreachable" });
+        expect(result.ms).toBeLessThan(3_000);
+      } finally {
+        await new Promise<void>((resolve) => slow.close(() => resolve()));
+      }
+    }, 6_000);
+
+    it("rejects as unreachable when the server accepts the connection and never answers", async () => {
+      const port = await serve(() => {
+        /* never respond */
+      });
+      const result = await timed(() => call(port, 300));
+      expect(result.ok).toBe(false);
+      expect((result as { err: unknown }).err).toMatchObject({ failureKind: "unreachable" });
+      expect(result.ms).toBeLessThan(3_000);
+    }, 6_000);
+
+    it("leaves a response that completes in time alone", async () => {
+      const port = await serve((_req, res) => {
+        setTimeout(() => {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ data: { ok: true } }));
+        }, 100);
+      });
+      await expect(call(port, 2_000)).resolves.toEqual({ status: 200, body: { data: { ok: true } } });
+    }, 6_000);
+
+    it("a slow but steady response that finishes inside the deadline still resolves", async () => {
+      const port = await serve((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.write('{"data": ');
+        setTimeout(() => res.write('{"ok": '), 80);
+        setTimeout(() => res.end("true}}"), 160);
+      });
+      await expect(call(port, 2_000)).resolves.toEqual({ status: 200, body: { data: { ok: true } } });
+    }, 6_000);
+
+    it("every request gets a fresh deadline: an earlier timeout does not make later ones fail instantly", async () => {
+      const port = await serve(() => {
+        /* never respond */
+      });
+      const first = await timed(() => call(port, 300));
+      const second = await timed(() => call(port, 300));
+      for (const result of [first, second]) {
+        expect(result.ok).toBe(false);
+        expect(result.ms).toBeGreaterThanOrEqual(250); // each waited out its own deadline
+      }
+    }, 6_000);
+  });
 });

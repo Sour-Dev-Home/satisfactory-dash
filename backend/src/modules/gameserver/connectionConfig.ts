@@ -34,6 +34,32 @@ export interface SatisfactoryServerConfig {
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+/** Bounds for SATISFACTORY_REQUEST_TIMEOUT_MS. Below 1 s a healthy game server can miss its
+ *  own deadline; above 60 s a dead one would freeze every request for a minute (ADR-0022). */
+export const MIN_REQUEST_TIMEOUT_MS = 1000;
+export const MAX_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * SATISFACTORY_REQUEST_TIMEOUT_MS as a whole number of milliseconds in range. Unset or empty
+ * means the default. Anything else that is not a plain integer in range (words, 0, negatives,
+ * decimals, "1e3", a huge value) is a ConfigError, so the backend refuses to start instead of
+ * running with NaN (AbortSignal.timeout(NaN) throws, which made every FRM call fail as
+ * "unreachable").
+ */
+export function parseRequestTimeoutMs(raw: string | undefined): number {
+  const text = raw?.trim();
+  if (!text) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  const value = /^\d{1,9}$/.test(text) ? Number(text) : Number.NaN;
+  if (!Number.isInteger(value) || value < MIN_REQUEST_TIMEOUT_MS || value > MAX_REQUEST_TIMEOUT_MS) {
+    throw new ConfigError(
+      `SATISFACTORY_REQUEST_TIMEOUT_MS must be a whole number of milliseconds from ${MIN_REQUEST_TIMEOUT_MS} to ` +
+        `${MAX_REQUEST_TIMEOUT_MS} (or unset for ${DEFAULT_TIMEOUT_MS}).`,
+    );
+  }
+  return value;
+}
 
 function isPrivateIPv4(address: string): boolean {
   const [a, b] = address.split(".").map(Number);
@@ -116,6 +142,6 @@ export function loadSatisfactoryServerConfigFromEnv(
     apiAllowSelfSignedCert: allowSelfSignedCert(env, host),
     frmPort: Number(env.FRM_WEB_PORT || 8080),
     frmToken: env.FRM_AUTH_TOKEN,
-    requestTimeoutMs: Number(env.SATISFACTORY_REQUEST_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
+    requestTimeoutMs: parseRequestTimeoutMs(env.SATISFACTORY_REQUEST_TIMEOUT_MS),
   };
 }
