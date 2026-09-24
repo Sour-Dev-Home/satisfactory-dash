@@ -152,6 +152,31 @@ export const factoryUnknownItem = {
   },
 } satisfies FactoryResponse;
 
+/** SYNTHETIC: what a backend that predates `unit` sends (the field is absent), so a newly
+ *  deployed frontend must still parse it and show just "per minute" (ADR-0007). */
+export const factoryOldBackend = {
+  serverId: "default",
+  observedAt: "2026-09-22T22:25:04.000Z",
+  stale: false,
+  data: {
+    buildings: [
+      {
+        id: "Build_ConstructorMk1_C_2140000002",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Iron Plate",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        production: [
+          { name: "Iron Plate", className: "Desc_IronPlate_C", currentPerMinute: 20, maxPerMinute: 20, percent: 100 },
+        ],
+      },
+    ],
+    backedUpCount: 0,
+  },
+} satisfies FactoryResponse;
+
 export const factoryEmpty = {
   serverId: "default",
   observedAt: "2026-09-22T22:25:04.000Z",

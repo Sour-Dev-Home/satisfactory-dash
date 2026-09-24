@@ -12,10 +12,13 @@ export const ProductionRateSchema = z.object({
   unit: z
     .enum(["items/min", "m3/min"])
     .nullable()
+    .optional()
     .describe(
       "The unit of currentPerMinute and maxPerMinute, from the game's own item data (ADR-0015): " +
-        "items/min for solids, m3/min for liquids and gases. null = an unknown item (not in the " +
-        "backend's catalog, e.g. a modded item), so the client shows just 'per minute'.",
+        "items/min for solids, m3/min for liquids and gases. Missing or null = unknown (an item " +
+        "not in the backend's catalog, e.g. a modded item, or a backend that predates this field), " +
+        "so the client shows just 'per minute'. Optional so a newly deployed frontend still parses " +
+        "an older backend's responses (ADR-0007); current backends always send it.",
     ),
   maxPerMinute: z
     .number()

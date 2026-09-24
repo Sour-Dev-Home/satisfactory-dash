@@ -102,10 +102,18 @@ describe("ProductionRate.unit (ADR-0015)", () => {
     }
   });
 
-  it("rejects any other unit, and a missing unit (null must be explicit)", () => {
-    for (const unit of ["kg/min", "m³/min", "", 0, undefined]) {
+  it("rejects any other unit", () => {
+    for (const unit of ["kg/min", "m³/min", "", 0]) {
       expect(withUnit(unit).success, String(unit)).toBe(false);
     }
+  });
+
+  // Deploy skew (ADR-0007): the frontend deploys on every merge, a backend is updated by
+  // hand, so a response from a backend that predates the field must still parse.
+  it("accepts a missing unit (an older backend), and factoryOldBackend has none", () => {
+    expect(withUnit(undefined).success).toBe(true);
+    const rate = fixtures.factoryOldBackend.data.buildings[0].production[0];
+    expect("unit" in rate).toBe(false);
   });
 });
 
