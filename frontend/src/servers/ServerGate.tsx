@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyError } from "../api/errors";
 import { queries } from "../api/queries";
@@ -21,6 +21,16 @@ export function ServerGate({ children }: { children: ReactNode }) {
   const current =
     list.find((s) => s.id === selectedId) ?? (list.length === 1 && !lostIds.has(list[0].id) ? list[0] : undefined);
   const currentId = current?.id;
+
+  // "Change server" lives in the shell, which the picker replaces, so focus would fall to
+  // <body>. Move it to the picker's heading instead.
+  const changeRequested = useRef(false);
+  const pickerHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (!changeRequested.current || currentId) return;
+    changeRequested.current = false;
+    pickerHeading.current?.focus();
+  }, [currentId]);
 
   // Any query scoped to the current server that answers server_not_found (ADR-0003) drops
   // the selection and re-runs discovery. Views don't handle it themselves.
@@ -73,7 +83,9 @@ export function ServerGate({ children }: { children: ReactNode }) {
         aria-labelledby="picker-heading"
         className="mx-auto mt-6 grid w-full max-w-md gap-4 rounded-card border border-line bg-surface p-6"
       >
-        <h2 id="picker-heading">Choose a game server</h2>
+        <h2 id="picker-heading" ref={pickerHeading} tabIndex={-1}>
+          Choose a game server
+        </h2>
         {lostIds.size > 0 && <p role="alert">The selected server is no longer available.</p>}
         <ul className="grid gap-2 [&_button]:w-full [&_button]:text-left">
           {list.map((server) => (
@@ -91,7 +103,15 @@ export function ServerGate({ children }: { children: ReactNode }) {
   return (
     <ServerContext value={current}>
       {/* The name and "Change server" render in the shell's top bar (ServerSwitcher). */}
-      <ServerSwitchContext value={{ serverCount: list.length, change: () => setSelectedId(null) }}>
+      <ServerSwitchContext
+        value={{
+          serverCount: list.length,
+          change: () => {
+            changeRequested.current = true;
+            setSelectedId(null);
+          },
+        }}
+      >
         {children}
       </ServerSwitchContext>
     </ServerContext>

@@ -56,7 +56,7 @@ export function factoryHealth({ data, stale }: FactoryResponse): SectionHealth {
   const total = data.buildings.length;
   const backedUp = data.backedUpCount;
   if (total > 0 && backedUp / total > BACKED_UP_DEGRADED_SHARE) {
-    return { health: "degraded", summary: `${backedUp} of ${total} machines backed up` };
+    return { health: "degraded", summary: `${backedUp} of ${plural(total, "machine", "machines")} backed up` };
   }
   if (stale) return { health: "degraded", summary: "Showing last known factory data" };
   if (total === 0) return { health: "ok", summary: "No machines yet" };
@@ -85,6 +85,6 @@ export function overallHealth(sections: SectionState[]): { health: Health | "pen
     const health = section === "error" ? "unavailable" : section.health;
     if (RANK[health] > RANK[worst]) worst = health;
   }
-  if (pending && RANK[worst] < RANK.degraded) return { health: "pending", headline: "Checking…" };
+  if (pending && worst === "ok") return { health: "pending", headline: "Checking…" };
   return { health: worst, headline: HEADLINE[worst] };
 }

@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { NavLink, Route, Routes } from "react-router";
+import { useEffect, useRef, type ReactNode } from "react";
+import { NavLink, Route, Routes, useLocation } from "react-router";
 import { AccountMenu } from "../auth/AccountMenu";
 import { CrashProbe } from "../components/CrashProbe";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -29,7 +29,9 @@ function Section({ label, probe, children }: { label: string; probe: string; chi
 function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="grid gap-4">
-      <h2 className="sr-only">{title}</h2>
+      <h2 tabIndex={-1} className="sr-only">
+        {title}
+      </h2>
       {children}
     </div>
   );
@@ -47,6 +49,20 @@ const TABS = [
  * free (ADR-0021). Renders inside AuthGate and ServerGate.
  */
 export function Shell() {
+  const pages = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
+  const shownPath = useRef(pathname);
+  // A link that navigates away from itself (an Overview row) is removed with its page, which
+  // drops focus to <body>. Then move it to the new page's heading, so keyboard and screen
+  // reader users continue from there. Not on first load (compared by path, so StrictMode's
+  // repeated mount effect doesn't count as a navigation), and not when focus is still on
+  // something (a tab link survives the navigation).
+  useEffect(() => {
+    if (shownPath.current === pathname) return;
+    shownPath.current = pathname;
+    if (document.activeElement === document.body) pages.current?.querySelector<HTMLElement>("h2")?.focus();
+  }, [pathname]);
+
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
@@ -58,7 +74,8 @@ export function Shell() {
               end={tab.end}
               className={({ isActive }) =>
                 [
-                  "inline-flex min-h-11 flex-none items-center rounded-md px-3 font-medium no-underline",
+                  // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
+                  "inline-flex min-h-11 flex-none items-center rounded-md px-3 font-medium no-underline focus-visible:-outline-offset-2",
                   isActive ? "bg-surface-2 text-fg-strong" : "text-muted hover:text-fg-strong",
                 ].join(" ")
               }
@@ -83,6 +100,7 @@ export function Shell() {
       {/* Each page has its own key: pages share a component shape, so without one React would
           reuse the last page's section boundaries, and a crash on one tab would stick to the
           next tab opened. */}
+      <div ref={pages}>
       <Routes>
         <Route
           index
@@ -129,6 +147,7 @@ export function Shell() {
         />
         <Route path="*" element={<ToApp />} />
       </Routes>
+      </div>
     </div>
   );
 }

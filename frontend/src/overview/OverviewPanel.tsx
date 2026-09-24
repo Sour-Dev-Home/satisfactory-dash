@@ -55,7 +55,8 @@ export function OverviewPanel({
   const allClear = overall.health === "ok";
   return (
     <section aria-labelledby="overview-heading" className="grid gap-4">
-      <h2 id="overview-heading" className="sr-only">
+      {/* tabIndex -1: the shell moves focus here after navigation (Shell.tsx). */}
+      <h2 id="overview-heading" tabIndex={-1} className="sr-only">
         Overview
       </h2>
       <p

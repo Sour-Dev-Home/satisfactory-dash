@@ -81,7 +81,15 @@ export { expect };
  * item 5; failing since step 4). The full result is attached to the report either way.
  */
 export async function expectNoAxeViolations(page: Page, testInfo: TestInfo): Promise<void> {
-  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    // axe's preload copies the page's CSS into <style> elements for css-orientation-lock
+    // (WCAG 1.3.4), and the strict CSP reports each one, so the CSP guard failed at random,
+    // depending on when that report landed. Our CSS has no orientation media queries, so the
+    // rule has nothing to find: skip it and the preload. Re-enable both if one is ever added.
+    .disableRules(["css-orientation-lock"])
+    .options({ preload: false })
+    .analyze();
   await testInfo.attach("axe-violations.json", {
     body: JSON.stringify(result.violations, null, 2),
     contentType: "application/json",
