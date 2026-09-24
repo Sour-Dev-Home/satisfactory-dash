@@ -385,6 +385,14 @@ describe("PowerHistoryPoller (fake time)", () => {
       expect(store.window(T0 + 10_000).series).toEqual([]);
     });
 
+    it.each([0, -5, 1.5, Number.NaN])("refuses to be built with an interval of %s seconds", (intervalSeconds) => {
+      const { ports } = fakePorts();
+      const { logger } = captureLogs();
+      expect(() => new PowerHistoryPoller(ports, new InMemoryPowerHistoryStore(), { logger, intervalSeconds })).toThrow(
+        /positive integer/,
+      );
+    });
+
     it("stopping a poller that never started, or stopping twice, is fine", async () => {
       const { poller } = setup();
       await poller.stop();

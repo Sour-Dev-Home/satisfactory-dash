@@ -66,7 +66,12 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
     private readonly store: PowerHistoryStore,
     options: PowerHistoryPollerOptions,
   ) {
-    this.intervalMs = (options.intervalSeconds ?? POWER_HISTORY_INTERVAL_SECONDS) * 1000;
+    const intervalSeconds = options.intervalSeconds ?? POWER_HISTORY_INTERVAL_SECONDS;
+    if (!Number.isInteger(intervalSeconds) || intervalSeconds <= 0) {
+      // A fractional interval would stamp non-integer times, which the store rejects.
+      throw new Error("intervalSeconds must be a positive integer");
+    }
+    this.intervalMs = intervalSeconds * 1000;
     this.now = options.now ?? Date.now;
     this.logger = options.logger;
   }
