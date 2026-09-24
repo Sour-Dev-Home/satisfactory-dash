@@ -217,3 +217,9 @@ the bottom.
   `server.ts` starts the workers once the server is listening and stops them on
   SIGINT/SIGTERM. The producer guarantees the ordering, paused-range and cap rules the schema
   does not enforce, and a route test proves them over fake time with gaps, a pause and resets.
+- 2026-09-24 — Request-timeout hardening (architect follow-up to ADR-0022): the backend now
+  refuses to start unless `SATISFACTORY_REQUEST_TIMEOUT_MS` is unset or a whole number from
+  1000 to 60000 (a non-numeric value used to become NaN, which made every FRM call fail as
+  "unreachable"), and the vanilla API transport has an overall per-request deadline
+  (`AbortSignal.timeout`, like FRM) on top of its idle-socket timeout, so a game server that
+  trickles bytes forever ends as a 503 `upstream_unreachable` instead of holding a request open.

@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../../platform/errors.js";
-import { allowSelfSignedCert, isLoopbackOrPrivateHost, loadSatisfactoryServerConfigFromEnv } from "./connectionConfig.js";
+import {
+  allowSelfSignedCert,
+  isLoopbackOrPrivateHost,
+  loadSatisfactoryServerConfigFromEnv,
+  parseRequestTimeoutMs,
+} from "./connectionConfig.js";
 
 describe("loadSatisfactoryServerConfigFromEnv", () => {
   it("applies documented defaults when no env vars are set", () => {
@@ -145,18 +150,87 @@ describe("loadSatisfactoryServerConfigFromEnv", () => {
     expect(config.apiAllowSelfSignedCert).toBe(true);
   });
 
-  describe("numeric env vars with no validation", () => {
+  // Still unvalidated (only the request timeout is validated so far); a follow-up may add ports.
+  describe("port env vars with no validation", () => {
 
     it("produces NaN for a non-numeric port with no validation or error", () => {
       const config = loadSatisfactoryServerConfigFromEnv({ SATISFACTORY_API_PORT: "not-a-port" });
       expect(config.apiPort).toBeNaN();
     });
 
-    it("produces NaN for a non-numeric request timeout with no validation or error", () => {
-      const config = loadSatisfactoryServerConfigFromEnv({
-        SATISFACTORY_REQUEST_TIMEOUT_MS: "soon",
-      });
-      expect(config.requestTimeoutMs).toBeNaN();
+  });
+
+  // AbortSignal.timeout(NaN) throws, which made every FRM call fail as "unreachable" while the
+  // backend looked healthy: a bad timeout now stops the backend from starting (fail fast).
+  describe("SATISFACTORY_REQUEST_TIMEOUT_MS", () => {
+    const load = (value: string | undefined) =>
+      loadSatisfactoryServerConfigFromEnv(value === undefined ? {} : { SATISFACTORY_REQUEST_TIMEOUT_MS: value });
+
+    it.each([undefined, "", "   "])("uses the default of 5000 when it is %j", (value) => {
+      expect(load(value).requestTimeoutMs).toBe(5000);
+    });
+
+    it.each([
+      ["the lower bound", "1000", 1000],
+      ["the upper bound", "60000", 60000],
+      ["a typical value", "10000", 10000],
+      ["a value with surrounding whitespace", " 7500 ", 7500],
+    ])("accepts %s", (_name, value, expected) => {
+      expect(load(value).requestTimeoutMs).toBe(expected);
+    });
+
+    it.each([
+      ["a word", "soon"],
+      ["zero", "0"],
+      ["a negative", "-5000"],
+      ["below the lower bound", "999"],
+      ["above the upper bound", "60001"],
+      ["a huge value", "999999999"],
+      ["an absurdly long number", "99999999999999999999"],
+      ["a decimal", "1500.5"],
+      ["scientific notation", "1e4"],
+      ["a hex number", "0x1388"],
+      ["a value with a unit", "5000ms"],
+      ["a plus sign", "+5000"],
+      ["Infinity", "Infinity"],
+      ["NaN", "NaN"],
+      ["non-ASCII digits", "５０００"],
+    ])("refuses %s, so the backend does not start", (_name, value) => {
+      expect(() => load(value)).toThrow(ConfigError);
+      expect(() => load(value)).toThrow(/SATISFACTORY_REQUEST_TIMEOUT_MS.*1000.*60000/);
+    });
+
+    it.each([
+      ["leading zeros", "05000", 5000],
+      ["a trailing CRLF (a .env edited on Windows)", "5000\r\n", 5000],
+      ["surrounding tabs", "\t5000\t", 5000],
+      ["a leading byte-order mark", "﻿5000", 5000],
+    ])("accepts %s", (_name, value, expected) => {
+      expect(load(value).requestTimeoutMs).toBe(expected);
+    });
+
+    it.each([
+      ["an underscore separator", "5_000"],
+      ["whitespace inside the number", "50 00"],
+      ["a newline inside the number", "50\n00"],
+      ["quote characters left in the value", '"5000"'],
+      ["an inline comment left in the value", "5000 # ms"],
+      ["only a sign", "-"],
+    ])("refuses %s, without echoing the value in the message", (_name, value) => {
+      expect(() => load(value)).toThrow(ConfigError);
+      expect(() => load(value)).not.toThrow(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    });
+
+    it("the error names the variable and the range, and offers the default", () => {
+      expect(() => load("soon")).toThrow(
+        "SATISFACTORY_REQUEST_TIMEOUT_MS must be a whole number of milliseconds from 1000 to 60000 (or unset for 5000).",
+      );
+    });
+
+    it("parseRequestTimeoutMs is the same rule without an environment", () => {
+      expect(parseRequestTimeoutMs(undefined)).toBe(5000);
+      expect(parseRequestTimeoutMs("2000")).toBe(2000);
+      expect(() => parseRequestTimeoutMs("0")).toThrow(ConfigError);
     });
   });
 });

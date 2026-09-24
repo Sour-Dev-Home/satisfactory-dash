@@ -77,7 +77,13 @@ export const createVanillaApiTransport =
         port,
         path: "/api/v1",
         method: "POST",
+        // Two limits, deliberately. `timeout` is an IDLE-socket timeout: it never fires while a
+        // server keeps sending bytes. `signal` is an OVERALL deadline for the whole request
+        // and response, like FRM's (frmApiClient.ts), so a server that trickles bytes forever
+        // can't hold a request, or the power history poller, open. Hitting it destroys the
+        // request; the handlers below classify that as unreachable (-> 503).
         timeout: timeoutMs,
+        signal: AbortSignal.timeout(timeoutMs),
         rejectUnauthorized: !allowSelfSignedCert,
         headers: {
           "Content-Type": "application/json",
