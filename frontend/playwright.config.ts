@@ -15,7 +15,10 @@ export default defineConfig({
   // differently per OS. Elsewhere, screenshot comparisons are skipped; the rest still runs.
   ignoreSnapshots: !process.env.PLAYWRIGHT_SNAPSHOTS,
   snapshotPathTemplate: "{testDir}/__screenshots__/{projectName}/{arg}{ext}",
-  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: "disabled" } },
+  // Strict: baselines and runs come from the same pinned Linux image, so there is no font or
+  // antialiasing noise to absorb. A ratio tolerance (it was 1%, about 13k pixels at 1440x900)
+  // let a whole missing line of text pass, and made `--update-snapshots` skip real changes.
+  expect: { toHaveScreenshot: { maxDiffPixels: 0, animations: "disabled" } },
   use: {
     baseURL: `http://localhost:${PORT}`,
     // Fixed so rendered timestamps and number formats are identical on every machine.

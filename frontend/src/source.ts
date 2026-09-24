@@ -6,8 +6,9 @@ export const REPO_URL = "https://github.com/Sour-Dev-Home/satisfactory-dash";
 /**
  * The source link for a build. `commitSha` comes from Cloudflare Workers Builds
  * (WORKERS_CI_COMMIT_SHA, see vite.config.ts); anything that isn't a commit hash, including
- * the empty value in local dev and GitHub CI, falls back to the repository root.
+ * the empty value in local dev and GitHub CI, falls back to the repository root. Lowercase
+ * only: that's what git and Cloudflare produce.
  */
 export function sourceUrl(commitSha: string): string {
-  return /^[0-9a-f]{7,40}$/i.test(commitSha) ? `${REPO_URL}/tree/${commitSha}` : REPO_URL;
+  return /^[0-9a-f]{7,40}$/.test(commitSha) ? `${REPO_URL}/tree/${commitSha}` : REPO_URL;
 }

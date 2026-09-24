@@ -23,6 +23,8 @@ describe("sourceUrl", () => {
     expect(sourceUrl("main")).toBe(REPO_URL);
     expect(sourceUrl("0f6c73f/../evil")).toBe(REPO_URL);
     expect(sourceUrl("abc")).toBe(REPO_URL);
+    // git and Cloudflare produce lowercase; GitHub's handling of uppercase isn't verified.
+    expect(sourceUrl(SHA.toUpperCase())).toBe(REPO_URL);
   });
 });
 
@@ -38,9 +40,10 @@ describe("SourceFooter", () => {
     expect(link()).toHaveAttribute("href", REPO_URL);
   });
 
-  it("uses the build's commit by default (empty in tests)", () => {
+  it("uses the build's commit by default", () => {
     render(<SourceFooter />);
-    expect(link()).toHaveAttribute("href", REPO_URL);
+    // Empty locally and in CI; the Cloudflare build's commit if tests ever run there.
+    expect(link()).toHaveAttribute("href", sourceUrl(__COMMIT_SHA__));
   });
 
   it("is on the login screen, for visitors who aren't signed in", async () => {
