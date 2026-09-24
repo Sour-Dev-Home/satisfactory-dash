@@ -298,3 +298,8 @@ the bottom.
   never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
   frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
   fixtures are not changed for it.
+- 2026-09-25 — ADR-0027 (production history and alerts, Discord first) added as
+  `decisions/0027-history-and-alerts.md`, status PROPOSED by the architect: nothing in it is
+  approved to build, and it builds only after ADR-0025 gate A (everything in it needs Postgres).
+  Its Context references were checked against the code (power.ts, factory.ts, frm-api.md,
+  rawSchemas.ts) and match.
