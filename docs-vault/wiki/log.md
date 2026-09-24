@@ -148,6 +148,11 @@ the bottom.
 - 2026-09-23 — ADR-0014 added (accepted by the project owner): target architecture is a
   modular monolith now, then service-based with an edge agent. Step 1 is the backend
   domain partition, guarded by an architecture test.
+- 2026-09-23 — ADR-0018 added (accepted by the project owner): the repo is relicensed from
+  MIT to AGPL-3.0-only. `LICENSE` holds the AGPL text and names the copyright holder (the
+  one exception to the no-personal-names rule; CI excludes only that file). Versions up to
+  the last MIT commit stay MIT. `CONTRIBUTING.md` says outside contributions wait for a
+  CLA or DCO.
 - 2026-09-23 — ADR-0015 added (accepted by the project owner): a solid/fluid item catalog
   generated from the game's own `CommunityResources` data, and an additive
   `ProductionRate.unit`. Resolves the Polymer Resin question in `frm-api.md` and ADR-0006:

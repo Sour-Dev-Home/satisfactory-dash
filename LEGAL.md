@@ -6,8 +6,31 @@ default.
 
 ## This repo's own code
 
-Licensed MIT (see `LICENSE`). Permissive, doesn't lock in a business model, standard
-choice for this kind of tool.
+Licensed **AGPL-3.0-only** (see `LICENSE` and ADR-0018) from the relicensing commit on.
+Anyone who runs a modified version as a network service must offer its source to that
+service's users (AGPL §13). Not legal advice.
+
+- **Earlier versions stay MIT.** Commits up to and including
+  `b9edbdb7e0ddb574ebcc574d9566ca666256dde2` (the last commit before the relicensing)
+  were released under the MIT license, and anyone who already has them keeps that grant;
+  it can't be revoked.
+- **Dual licensing is still possible.** The copyright holder (named in `LICENSE`) can also
+  offer commercial terms. Outside contributions would need a CLA, or a DCO sign-off plus a
+  written relicensing grant, to keep that option, so none are accepted until one is set up
+  (`CONTRIBUTING.md`, TODO for the owner).
+- **Network use (§13):** the live site should link to this repository's source. That is a
+  follow-up in the frontend, not part of the relicensing commit.
+- **Still open, as before:** Satisfactory's EULA and Content Usage Guidelines, and FRM's
+  license (see below). Relicensing doesn't settle either.
+
+### Authorship evidence
+
+Commits made after commit signing was enabled on 2026-09-23 are SSH-signed and show as
+"Verified" on GitHub; earlier commits are by the GitHub account SourE-dev and aren't
+signed. The relicensing commit gets a signed tag and a GitHub release, and the repository
+is to be archived at Software Heritage. TODO before selling a license: register the
+copyright with the US Copyright Office and confirm with counsel how AI-assisted commits
+affect authorship.
 
 ## Dependency: FicsitRemoteMonitoring (FRM)
 
@@ -37,5 +60,5 @@ plan.**
 - Never use Coffee Stain's trademarks/branding in this project's name, logo, or
   marketing.
 - Treat "can I charge for this" as an open question, not a blocker for building it —
-  the code and its license (MIT) don't depend on the answer. Revisit this file with
+  the code and its license (AGPL-3.0-only) don't depend on the answer. Revisit this file with
   real sources (not a web search) before turning on billing.

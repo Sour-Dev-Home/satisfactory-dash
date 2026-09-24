@@ -16,7 +16,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@satisfactory-dash/shared": "*",
     "cookie": "^0.7.2",

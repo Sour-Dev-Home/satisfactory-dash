@@ -2,6 +2,7 @@
   "name": "satisfactory-dash",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Dashboard + backend for a live Satisfactory dedicated server.",
   "workspaces": [
     "frontend",
