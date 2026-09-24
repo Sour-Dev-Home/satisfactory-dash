@@ -18,6 +18,8 @@ dist-ssr
 test-results
 playwright-report
 .playwright-mcp
+# `npm run demo:video` output (the walkthrough video and its poster)
+demo-video
 
 # Editor directories and files
 .vscode/*
