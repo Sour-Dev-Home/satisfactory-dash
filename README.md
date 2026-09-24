@@ -43,3 +43,8 @@ npm workspaces monorepo:
   `npm run build -w frontend`, publish directory `frontend/dist`)
 - **Backend** → not yet deployed anywhere. Has a `Dockerfile` ready for
   Render/Railway/AWS when there's real logic worth deploying.
+
+## License
+
+GNU Affero General Public License v3.0 only (`AGPL-3.0-only`); see [`LICENSE`](LICENSE) and
+[`LEGAL.md`](LEGAL.md). Versions up to the last MIT commit remain available under MIT.

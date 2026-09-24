@@ -50,6 +50,9 @@ against the workspace's security/CI baseline.
    the workspace root) or in a git-ignored location — never inside `satisfactory-dash/`
    itself. Before committing, check `git status`/`git diff` for anything that looks
    like a leaked path or contact detail, not just for correctness.
+   **One deliberate exception (ADR-0018):** the root `LICENSE` file names the copyright
+   holder, and CI's PII scan excludes exactly that file. The name appears nowhere else;
+   don't "fix" it, and don't add it to any other file.
 
 ## Team topology (Conway's Law)
 
@@ -79,7 +82,8 @@ built around them than to set up correctly now, while the codebase is still smal
 
 ## Legal
 
-See `LEGAL.md`. Short version: code in this repo is MIT-licensed; monetization
+See `LEGAL.md`. Short version: code in this repo is AGPL-3.0-only (relicensed from MIT,
+ADR-0018; earlier versions stay MIT); monetization
 strategy is undecided and gated on verifying FicsitRemoteMonitoring's actual license
 and Satisfactory's EULA directly — don't assume either is settled.
 
