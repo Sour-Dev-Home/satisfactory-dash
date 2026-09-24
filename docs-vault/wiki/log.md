@@ -360,3 +360,8 @@ the bottom.
   `.env` user never forks an account. `POST /api/auth/logout-all` is served, sign-in logs carry the
   user id, a purge worker keeps retention (sessions 30 days after expiry, stale login attempts;
   hourly, batched) and `npm run admin -- revoke-sessions` is the audited break-glass.
+- 2026-09-25 — Log levels: one rule (`platform/logLevel.ts`) for both the request line and the
+  failure line, so error tracking and log-based alerting see only real failures: 5xx (or an error
+  with a non-error status) is `error`, a 401 ("Sign in to continue", routine while signed out) is
+  `info`, 429 and every other 4xx is `warn`, the rest `info`. Before, every classified failure
+  was logged at level 50, including 401s.

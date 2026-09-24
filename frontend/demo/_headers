@@ -1,0 +1,12 @@
+# Security headers for the DEMO site (ADR-0026): demo.satis-manager.com, built with
+# `vite build --mode demo` into dist-demo/, where the build writes this file as _headers.
+# Identical to public/_headers except connect-src: 'self' only, so even a bug that tried to
+# reach the real API (api.satis-manager.com) would be blocked by the browser.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'
+  Strict-Transport-Security: max-age=300
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin

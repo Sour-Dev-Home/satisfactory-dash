@@ -71,7 +71,7 @@ export function OverviewPanel({
           <span aria-hidden="true" className="grid size-5 flex-none place-items-center rounded-full bg-white/20 text-xs">
             {allClear ? "✓" : overall.health === "pending" ? "…" : "!"}
           </span>
-          <p role="status" className="min-h-11 flex-1 content-center">
+          <p role="status" className="min-h-[44px] flex-1 content-center">
             {overall.headline}
           </p>
           {onDismiss && (
@@ -80,9 +80,9 @@ export function OverviewPanel({
               onClick={onDismiss}
               aria-label="Hide this warning until something changes"
               title="Hide until something changes"
-              // 44 x 44 hit area (min-w-11 plus the base button min-height). The faint chip
+              // 44 x 44 hit area (min-w-[44px] plus the base button min-height). The faint chip
               // makes it read as a control on the coloured bar, not an icon.
-              className="grid min-w-11 flex-none place-items-center rounded-md border-0 bg-white/10 px-0 text-lg text-inherit hover:bg-white/20"
+              className="grid min-w-[44px] flex-none place-items-center rounded-md border-0 bg-white/10 px-0 text-lg text-inherit hover:bg-white/20"
             >
               ×
             </button>
@@ -104,7 +104,7 @@ export function OverviewPanel({
               </span>
             </>
           );
-          const row = "flex min-h-11 items-center gap-4 px-5 py-4";
+          const row = "flex min-h-[44px] items-center gap-4 px-5 py-4";
           return (
             <li key={section.name}>
               {section.to ? (
