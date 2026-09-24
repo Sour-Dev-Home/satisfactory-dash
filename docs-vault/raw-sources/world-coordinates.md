@@ -23,7 +23,10 @@ north -3750 m, south 3750 m. That is a 7,500 m square.
 
 ## Source B: a community answer on Reddit
 
-- Pasted into the project by the owner. URL: [NEEDS VERIFICATION] (asked of the owner).
+- Pasted into the project by the owner. URL:
+  https://www.reddit.com/r/SatisfactoryGame/comments/xe8nrv/how_do_the_ingame_map_coordinates_work/
+  (URL supplied by the owner 2026-09-24; content as he pasted it; reddit blocks automated
+  fetches, so not machine-verified).
   Author names are deliberately not recorded here.
 - Claims: `coordinates / 100 = metres`; +x is right (east) and +y is down (south); on the
   5000 x 5000 px map, 1 px = 1.5 m, and the origin (0, 0) is at pixel (2163, 2500).
