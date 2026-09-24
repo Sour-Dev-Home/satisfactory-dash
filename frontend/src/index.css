@@ -52,6 +52,10 @@
     color: var(--color-fg);
     background: var(--color-canvas);
     -webkit-font-smoothing: antialiased;
+    /* Always keep room for a classic scrollbar, so the centred layout doesn't jump sideways
+       between a page that scrolls and one that doesn't (e2e/layout.spec.ts). No effect with
+       overlay scrollbars (phones, macOS by default). */
+    scrollbar-gutter: stable;
   }
   body {
     min-height: 100svh;
