@@ -294,10 +294,31 @@ the bottom.
   `npm run db:migrate`), a Testcontainers Postgres 18 harness that fails (never skips) in CI when
   Docker is missing, a guard against SQL built from input, and `runbooks/database.md`. Optional:
   without DATABASE_URL the backend behaves exactly as before.
+- 2026-09-25 — ADR-0025 PR 3 (schema and repositories, no wiring yet): migration
+  `1790294400000_core_tables` creates `identity.users`, `auth_identities`, `login_attempts`
+  (relative /app return paths only, enforced by a CHECK), `sessions` (only sha256 of the id),
+  `servers.servers`, `servers.server_members` (a partial unique index allows one owner per server)
+  and the append-only `audit.audit_events` (satis_app can insert and read, never update or
+  delete). Hand-written, parameterized SQL repositories with zod-parsed rows: identity
+  (users/identities, sessions, login attempts with a single-use guarded DELETE), servers
+  (registry, per-user list, membership lookups scoped by user, atomic ownership transfer) and
+  `platform/audit`. Nothing calls them yet: sessions (PR 5) and authorization (PR 6) come next.
+  The real-Postgres tests cover every constraint and the concurrency cases. The login return
+  path is an ASCII-only allowlist (RFC 3986 characters) written once in
+  `identity/returnPath.ts` and used verbatim by the CHECK constraint and the zod schema; a test
+  asserts they agree.
 - 2026-09-25 — ADR-0026 (demo mode: a public, offline demo at demo.satis-manager.com that can
   never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
   frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
   fixtures are not changed for it.
+- 2026-09-25 — ADR-0027 (production history and alerts, Discord first) added as
+  `decisions/0027-history-and-alerts.md`, status PROPOSED by the architect: nothing in it is
+  approved to build, and it builds only after ADR-0025 gate A (everything in it needs Postgres).
+  Its Context references were checked against the code (power.ts, factory.ts, frm-api.md,
+  rawSchemas.ts) and match.
+- 2026-09-25 — ADR-0027 accepted by the owner (all seven owner decisions as recommended, relayed
+  by the coordinator 2026-09-24): status, an "Owner decisions (answered)" section and the README
+  row updated. It still builds only after ADR-0025 gate A.
 - 2026-09-25 — Privacy policy and terms outline added as `legal/privacy-terms-outline.md` (the
   architect's draft, verbatim): an outline with [OWNER]/[LEGAL]/[BUILD] markers, not the published
   policy and not legal advice; it contains no personal data (the controller identity is an owner
