@@ -3,7 +3,9 @@ import { expect, expectNoAxeViolations, test } from "../fixtures";
 
 // The built demo site (ADR-0026), served with demo/_headers: every screen works with no
 // network at all. The guards fixture already fails on a CSP violation or any /api request;
-// these tests also fail on any request that leaves the demo's own origin.
+// these tests also fail on any request that leaves the demo's own origin. With the demo CSP
+// intact, Chromium blocks such a fetch before it becomes a request, so the guards' CSP check
+// is what fails; this recorder catches the case where the CSP is missing too.
 const API_ORIGIN = "https://api.satis-manager.com";
 
 /** Records every request the page makes, and aborts (and records) any to the real API. */
