@@ -98,10 +98,17 @@ if (process.env.NODE_ENV !== "test") {
     logger.info({ signal }, "shutting down");
     const forceExit = setTimeout(() => process.exit(1), 10_000);
     forceExit.unref();
-    void Promise.allSettled(workers.map((worker) => worker.stop())).then(() => {
-      httpServer.close(() => process.exit(0));
-      httpServer.closeIdleConnections();
-    });
+    // Workers get a short window to stop: their in-flight polls are bounded, but on exit their
+    // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
+    const workersStopped = Promise.race([
+      Promise.allSettled(workers.map((worker) => worker.stop())),
+      new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
+    ]);
+    // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never
+    // finishes is cut after a grace period, otherwise close() would never complete.
+    httpServer.close(() => void workersStopped.then(() => process.exit(0)));
+    httpServer.closeIdleConnections();
+    setTimeout(() => httpServer.closeAllConnections(), 5_000).unref();
   };
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));

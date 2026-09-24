@@ -27,9 +27,14 @@ export interface PollerHealth {
 export interface PowerHistoryPollerOptions {
   logger: Logger;
   intervalSeconds?: number;
+  /** A poll that takes longer than this is abandoned and counted as a failed poll. */
+  pollTimeoutMs?: number;
   /** Injectable clock, so tests run on fake time. */
   now?: () => number;
 }
+
+/** Comfortably above the adapters' own 5 s request timeout, so it only fires on a stall they miss. */
+const DEFAULT_POLL_TIMEOUT_MS = 20_000;
 
 /**
  * Samples one game server's power circuits every few seconds into a `PowerHistoryStore`,
@@ -48,6 +53,7 @@ export interface PowerHistoryPollerOptions {
  */
 export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   private readonly intervalMs: number;
+  private readonly pollTimeoutMs: number;
   private readonly now: () => number;
   private readonly logger: Logger;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -73,6 +79,10 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
       throw new Error("intervalSeconds must be a positive integer");
     }
     this.intervalMs = intervalSeconds * 1000;
+    this.pollTimeoutMs = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+    if (!Number.isInteger(this.pollTimeoutMs) || this.pollTimeoutMs <= 0) {
+      throw new Error("pollTimeoutMs must be a positive integer");
+    }
     this.now = options.now ?? Date.now;
     this.logger = options.logger;
   }
@@ -152,14 +162,28 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   private async poll(tickAt: number): Promise<void> {
     let status: ServerStatus;
     let circuits: PowerCircuit[];
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      [status, circuits] = await Promise.all([this.ports.getServerStatus(), this.ports.getPowerCircuits()]);
+      // A deadline per poll: a game server that accepts the connection and then drips or
+      // stalls must not freeze the loop (the next tick is scheduled only after this poll
+      // settles) or make stop() wait forever. The abandoned request is left to the
+      // adapter's own timeouts; Promise.race keeps its late result from going unhandled.
+      const timedOut = new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => reject(new Error(`poll timed out after ${this.pollTimeoutMs} ms`)), this.pollTimeoutMs);
+        deadline.unref?.();
+      });
+      [status, circuits] = await Promise.race([
+        Promise.all([this.ports.getServerStatus(), this.ports.getPowerCircuits()]),
+        timedOut,
+      ]);
     } catch (err) {
       this.consecutiveFailures++;
       if (this.consecutiveFailures === 1) {
         this.logger.warn({ err: formatErrorDetail(err) }, "power history poll failed; leaving a gap");
       }
       return;
+    } finally {
+      clearTimeout(deadline);
     }
     if (this.stopped) {
       return; // shutting down: don't touch the store

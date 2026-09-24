@@ -40,6 +40,7 @@ function fakePorts() {
     failWith: undefined as unknown,
     failStatusOnly: false,
     delayMs: 0,
+    hang: false,
     polls: 0,
     concurrent: 0,
     maxConcurrent: 0,
@@ -48,6 +49,9 @@ function fakePorts() {
     state.concurrent++;
     state.maxConcurrent = Math.max(state.maxConcurrent, state.concurrent);
     try {
+      if (state.hang) {
+        await new Promise<void>(() => {}); // a game server that accepted the connection and never answers
+      }
       if (state.delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, state.delayMs));
       }
@@ -225,6 +229,87 @@ describe("PowerHistoryPoller (fake time)", () => {
   });
 
   describe("timing", () => {
+    describe("the per-poll deadline", () => {
+      it("abandons a poll that never answers: one warning, a gap, and polling resumes when the server answers", async () => {
+        const { poller, store, state, lines } = setup();
+        state.hang = true;
+        poller.start();
+        await vi.advanceTimersByTimeAsync(20_000); // the first poll hits the 20 s deadline
+        expect(lines.filter((l) => l.level === 40)).toHaveLength(1);
+        expect(lines[lines.length - 1].msg).toMatch(/leaving a gap/);
+        await vi.advanceTimersByTimeAsync(60_000); // still hung: more abandoned polls, no more warnings
+        expect(lines.filter((l) => l.level >= 40)).toHaveLength(1);
+        expect(store.window(Date.now()).series).toEqual([]);
+        state.hang = false;
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(times(store, Date.now()).length).toBeGreaterThanOrEqual(3); // it never froze
+        expect(lines.some((l) => /recovered/.test(l.msg))).toBe(true);
+        await poller.stop();
+      });
+
+      it("a hung poll cannot make stop() wait longer than the deadline", async () => {
+        const { poller, state } = setup();
+        state.hang = true;
+        poller.start();
+        await vi.advanceTimersByTimeAsync(1000);
+        let stopped = false;
+        const stopping = poller.stop().then(() => {
+          stopped = true;
+        });
+        await vi.advanceTimersByTimeAsync(18_999);
+        expect(stopped).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await stopping;
+        expect(stopped).toBe(true);
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it("honours a custom deadline", async () => {
+        const { ports, state } = fakePorts();
+        const { logger, lines } = captureLogs();
+        const poller = new PowerHistoryPoller(ports, new InMemoryPowerHistoryStore(), { logger, pollTimeoutMs: 2000 });
+        state.hang = true;
+        poller.start();
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(lines).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(lines.filter((l) => l.level === 40)).toHaveLength(1);
+        await poller.stop();
+      });
+
+      it("the abandoned poll's late failure is not an unhandled rejection", async () => {
+        const { logger } = captureLogs();
+        const ports: PowerHistoryPorts = {
+          getServerStatus: () => new Promise((_resolve, reject) => setTimeout(() => reject(new Error("late boom")), 30_000)),
+          getPowerCircuits: async () => [circuit(0, 1)],
+        };
+        const poller = new PowerHistoryPoller(ports, new InMemoryPowerHistoryStore(), { logger });
+        poller.start();
+        await vi.advanceTimersByTimeAsync(60_000); // an unhandled rejection would fail the run
+        const stopping = poller.stop(); // a poll is in flight: it is abandoned at its deadline
+        await vi.advanceTimersByTimeAsync(20_000);
+        await stopping;
+        await vi.advanceTimersByTimeAsync(60_000); // every abandoned request has now failed late
+      });
+
+      it.each([0, -1, 1.5, Number.NaN])("refuses a poll timeout of %s ms", (pollTimeoutMs) => {
+        const { ports } = fakePorts();
+        const { logger } = captureLogs();
+        expect(() => new PowerHistoryPoller(ports, new InMemoryPowerHistoryStore(), { logger, pollTimeoutMs })).toThrow(
+          /positive integer/,
+        );
+      });
+
+      it("a poll that answers in time clears its deadline timer (no timer left behind)", async () => {
+        const { poller, state } = setup();
+        poller.start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(vi.getTimerCount()).toBe(1); // only the next tick, not the 20 s deadline
+        expect(state.polls).toBe(1);
+        await poller.stop();
+      });
+    });
+
     it("never runs two polls at once: a slow poll delays the next one", async () => {
       const { poller, state } = setup();
       state.delayMs = 12_000; // longer than two intervals
