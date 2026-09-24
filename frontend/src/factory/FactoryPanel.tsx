@@ -50,7 +50,7 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
               </button>
             ))}
           </div>
-          <label>
+          <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
             Search machines
             <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
           </label>

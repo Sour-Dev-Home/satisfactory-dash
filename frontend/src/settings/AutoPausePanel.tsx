@@ -20,14 +20,14 @@ export function AutoPausePanel({ snapshot, onChange, saving }: Props) {
   return (
     <section aria-labelledby="settings-heading" className="panel">
       <h3 id="settings-heading">Server settings</h3>
-      <label>
+      <label className="flex items-center gap-3">
         <input
           type="checkbox"
           checked={autoPause}
           disabled={!editable || stale || saving}
           aria-describedby={describedBy}
           onChange={(e) => onChange(e.target.checked)}
-        />{" "}
+        />
         Auto-pause when no players are connected
       </label>
       <p id="auto-pause-help">Pausing doesn't lower hosting cost and freezes live values, alerts and history.</p>
