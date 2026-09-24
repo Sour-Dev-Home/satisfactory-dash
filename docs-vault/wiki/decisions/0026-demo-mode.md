@@ -39,6 +39,13 @@ Status: accepted (project owner), 2026-09-24, including the demo.satis-manager.c
    - The demo reuses MSW's handler format and `getResponse`, **not** #55's test scenarios.
      Separate demo handlers serve the curated demo world; the test scenarios keep their error
      cases and markers, test-only.
+   - *Amendment (#113, 2026-09-24):* an in-house router (`frontend/src/demo/router.ts`) with the
+     same handler shape replaces `getResponse`. MSW core pulls in tough-cookie and the public
+     suffix list, which would add about 330 kB to the demo chunk (786 kB vs 459 kB). An unmatched
+     request returns a visible 404 and a handler error a 500, both in the contract's error shape;
+     there is no network path. Additional guards: a transport-name marker (present in the prod
+     bundle, absent from the demo), a build error on any other import of the real transport, and
+     the rule that the CSP and the build, not lint, are the boundary for indirect forms.
    - `MODE` stays a build-time constant, so each bundle contains only its own transport.
 3. **"Never calls the real API": four independent layers, each tested**
    1. Build: the demo build defines no `VITE_API_URL`. A build-output test fails if the demo
