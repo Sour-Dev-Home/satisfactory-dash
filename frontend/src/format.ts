@@ -1,5 +1,6 @@
 // Pure display formatters, shared by views (and later by map layers). They round for
 // display only; they never change a value's unit or meaning (ADR-0006).
+import type { ProductionRate } from "@satisfactory-dash/shared";
 
 /** An ADR-0004 observedAt (UTC ISO string) in the viewer's local time. */
 export function formatTime(iso: string): string {
@@ -49,8 +50,8 @@ export function formatPercent(percent: number): string {
   return `${oneDecimal.format(percent)}%`;
 }
 
-/** A rate's unit, once the contract carries one (proposed ADR-0015); null = unknown item. */
-export type RateUnit = "items/min" | "m3/min";
+/** A rate's unit from the contract (ADR-0015); formatRate treats null/undefined as unknown. */
+export type RateUnit = NonNullable<ProductionRate["unit"]>;
 
 const UNIT_LABEL: Record<RateUnit, string> = { "items/min": "items/min", "m3/min": "m³/min" };
 
