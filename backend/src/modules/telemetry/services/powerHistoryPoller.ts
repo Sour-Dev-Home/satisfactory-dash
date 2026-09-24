@@ -1,0 +1,187 @@
+import type { Logger } from "pino";
+import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
+import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import type { PowerHistoryStore, PowerSample } from "./powerHistoryStore.js";
+import { POWER_HISTORY_INTERVAL_SECONDS } from "./powerHistoryStore.js";
+
+/** A long-running task the composition root starts once the server is listening and stops
+ *  on shutdown (ADR-0022: the backend's first background worker). */
+export interface BackgroundWorker {
+  start(): void;
+  /** Stops scheduling and resolves once any poll in flight has finished. */
+  stop(): Promise<void>;
+}
+
+/** What the poller reads from one game server: the gameserver adapter satisfies this. */
+export interface PowerHistoryPorts {
+  getServerStatus(): Promise<ServerStatus>;
+  getPowerCircuits(): Promise<PowerCircuit[]>;
+}
+
+/** What the read side needs to decide `stale` (ADR-0022: last success older than 3 intervals). */
+export interface PollerHealth {
+  startedAt(): number | undefined;
+  lastSuccessAt(): number | undefined;
+}
+
+export interface PowerHistoryPollerOptions {
+  logger: Logger;
+  intervalSeconds?: number;
+  /** Injectable clock, so tests run on fake time. */
+  now?: () => number;
+}
+
+/**
+ * Samples one game server's power circuits every few seconds into a `PowerHistoryStore`,
+ * whether or not anyone is watching (ADR-0022). It is written so it can never take the
+ * process down and never pile up:
+ *
+ * - One poll at a time: the next tick is scheduled only after the current poll settles.
+ * - Nominal ticks: each sample is stamped with its scheduled time, so on-time samples are
+ *   exactly `interval` apart and only a real failure or a stall leaves a gap. If the
+ *   process falls a whole interval behind (a sleeping laptop, a long pause) it skips the
+ *   missed ticks instead of firing them back to back.
+ * - Failures are logged and leave a gap; the loop keeps going. Only state changes are
+ *   logged (first failure, recovery), so a game server that is off doesn't fill the log.
+ * - A new game session, or the game clock going backwards, clears the history: circuit ids
+ *   are not known to survive a reload, so a series must never span one (ADR-0006).
+ */
+export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
+  private readonly intervalMs: number;
+  private readonly now: () => number;
+  private readonly logger: Logger;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private inFlight: Promise<void> | undefined;
+  private started = false;
+  private stopped = false;
+  private nextTickAt = 0;
+  private startedAtMs: number | undefined;
+  private lastSuccessAtMs: number | undefined;
+  private consecutiveFailures = 0;
+  private lastSessionName: string | undefined;
+  private lastGameDuration: number | undefined;
+
+  constructor(
+    private readonly ports: PowerHistoryPorts,
+    private readonly store: PowerHistoryStore,
+    options: PowerHistoryPollerOptions,
+  ) {
+    this.intervalMs = (options.intervalSeconds ?? POWER_HISTORY_INTERVAL_SECONDS) * 1000;
+    this.now = options.now ?? Date.now;
+    this.logger = options.logger;
+  }
+
+  startedAt(): number | undefined {
+    return this.startedAtMs;
+  }
+
+  lastSuccessAt(): number | undefined {
+    return this.lastSuccessAtMs;
+  }
+
+  start(): void {
+    if (this.started) {
+      return;
+    }
+    this.started = true;
+    this.stopped = false;
+    this.startedAtMs = this.now();
+    this.nextTickAt = this.startedAtMs;
+    this.schedule();
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    await this.inFlight;
+  }
+
+  private schedule(): void {
+    if (this.stopped) {
+      return;
+    }
+    let delay = this.nextTickAt - this.now();
+    if (delay > this.intervalMs) {
+      // The wall clock moved backwards: don't sleep for the difference, restart the cadence.
+      this.nextTickAt = this.now();
+      delay = 0;
+    }
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      this.inFlight = this.tick();
+    }, Math.max(0, delay));
+    this.timer.unref?.();
+  }
+
+  private async tick(): Promise<void> {
+    const tickAt = this.nextTickAt;
+    try {
+      await this.poll(tickAt);
+    } catch (err) {
+      // poll() handles its own failures; this is the last line of defense for the loop.
+      this.logger.error({ err: formatErrorDetail(err) }, "power history poll crashed unexpectedly");
+    } finally {
+      this.nextTickAt += this.intervalMs;
+      if (this.now() - this.nextTickAt >= this.intervalMs) {
+        this.nextTickAt = this.now(); // fell a whole interval behind: skip, don't burst
+      }
+      this.inFlight = undefined;
+      this.schedule();
+    }
+  }
+
+  private async poll(tickAt: number): Promise<void> {
+    let status: ServerStatus;
+    let circuits: PowerCircuit[];
+    try {
+      [status, circuits] = await Promise.all([this.ports.getServerStatus(), this.ports.getPowerCircuits()]);
+    } catch (err) {
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures === 1) {
+        this.logger.warn({ err: formatErrorDetail(err) }, "power history poll failed; leaving a gap");
+      }
+      return;
+    }
+    if (this.stopped) {
+      return; // shutting down: don't touch the store
+    }
+
+    if (this.consecutiveFailures > 0) {
+      this.logger.info({ failedPolls: this.consecutiveFailures }, "power history polling recovered");
+      this.consecutiveFailures = 0;
+    }
+    this.lastSuccessAtMs = this.now();
+
+    if (
+      this.lastSessionName !== undefined &&
+      (status.sessionName !== this.lastSessionName || status.totalGameDurationSeconds < (this.lastGameDuration ?? 0))
+    ) {
+      this.logger.info("game session changed or the game clock went backwards; clearing power history");
+      this.store.reset();
+    }
+    this.lastSessionName = status.sessionName;
+    this.lastGameDuration = status.totalGameDurationSeconds;
+
+    const sample: PowerSample = {
+      t: tickAt,
+      gamePaused: status.isPaused,
+      circuits: circuits.map((circuit) => ({
+        circuitGroupId: circuit.circuitGroupId,
+        productionMW: circuit.powerProduction,
+        consumptionMW: circuit.powerConsumed,
+        capacityMW: circuit.powerCapacity,
+        batteryPercent: circuit.batteryPercent,
+        fuseTriggered: circuit.fuseTriggered,
+      })),
+    };
+    if (!this.store.append(sample)) {
+      // Not newer than the newest sample: the wall clock stepped backwards. Start over.
+      this.logger.warn("power history sample was not newer than the last one; clearing history");
+      this.store.reset();
+      this.store.append(sample);
+    }
+  }
+}

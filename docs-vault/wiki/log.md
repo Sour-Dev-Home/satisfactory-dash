@@ -208,3 +208,12 @@ the bottom.
   a reset rule on session change or a game-time rewind and an additive
   `GET /api/servers/:serverId/power/history` contract. No database yet. Build order: this
   docs step, then the shared contract, then the backend poller, store and route.
+- 2026-09-24 — ADR-0022 built on the backend (steps 2-3): the shared power-history contract
+  (#80) and the telemetry module's `PowerHistoryStore` (an in-memory ring buffer, 60 points
+  per circuit), a `PowerHistoryPoller` (the backend's first background worker: one poll at a
+  time, nominal 5 s ticks, failures leave gaps and are logged on state change only, reset on
+  a session change or a game-clock rewind), a `PowerHistoryService` (stale = last success
+  older than 3 intervals) and `GET /api/servers/:serverId/power/history`, served from memory.
+  `server.ts` starts the workers once the server is listening and stops them on
+  SIGINT/SIGTERM. The producer guarantees the ordering, paused-range and cap rules the schema
+  does not enforce, and a route test proves them over fake time with gaps, a pause and resets.
