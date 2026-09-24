@@ -12,8 +12,8 @@ what the CLA does. You keep the copyright in your work.
 1. Open a pull request. A bot comments with a link to [CLA.md](CLA.md).
 2. Read it, then reply on the pull request with exactly:
    `I have read the CLA Document and I hereby sign the CLA`
-3. The bot records your GitHub username and the date in this repository's public signature
-   list (nothing else about you) and the check turns green. You sign once; it covers your
+3. The bot records your GitHub username, numeric user ID and the date in this repository's
+   public signature list (nothing else about you) and the check turns green. You sign once; it covers your
    later pull requests too. Comment `recheck` if the check doesn't update.
 
 The CLA is a draft that a lawyer has not reviewed yet.

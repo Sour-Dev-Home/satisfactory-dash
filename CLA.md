@@ -59,5 +59,6 @@ section 4). The Project Owner does not have to accept, keep or use any Contribut
 
 ## 6. Personal data
 
-Signing records Your GitHub username, and the pull request and date of signing, in this
-repository's public signature list. It contains nothing else about You.
+Signing records Your GitHub username and numeric GitHub user ID, and the pull request and
+date of signing, in this repository's public signature list. It contains nothing else about
+You.
