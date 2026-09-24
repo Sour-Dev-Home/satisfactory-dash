@@ -26,7 +26,8 @@ function PlayersBody({ state }: { state: PlayersState }) {
   if (state === "pending") return <p className="text-muted">Loading…</p>;
   if (state === "error") return <p className="text-muted">Couldn't load the player count.</p>;
   const { status } = state;
-  if (!status.isGameRunning || status.playerLimit === 0) return <p className="text-muted">No game running.</p>;
+  if (!status.isGameRunning) return <p className="text-muted">No game running.</p>;
+  if (status.playerLimit === 0) return <p className="text-muted">The server allows no players.</p>;
 
   const slots = Math.min(status.playerLimit, MAX_FIGURES);
   const filled = Math.min(status.connectedPlayers, slots);

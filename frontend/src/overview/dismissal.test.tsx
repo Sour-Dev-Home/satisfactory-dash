@@ -61,6 +61,19 @@ describe("dismissing the warnings banner", () => {
     expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
   });
 
+  it("does not steal focus to the Players heading on a reload with an already-stored dismissal", async () => {
+    // The focus move belongs only to a user's dismiss click. A remount that starts with the
+    // banner already hidden (a stored dismissal from a previous visit) must not autofocus.
+    const first = renderOverview();
+    fireEvent.click(await screen.findByRole("button", DISMISS));
+    first.unmount();
+
+    renderOverview();
+    await screen.findByText("2 of 5 machines backed up");
+    const playersHeading = screen.getByRole("heading", { name: "Players" });
+    expect(document.activeElement).not.toBe(playersHeading);
+  });
+
   it("comes back when another section starts warning", async () => {
     const { client } = renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
