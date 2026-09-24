@@ -50,8 +50,23 @@ describe("the paused banner", () => {
 });
 
 describe("App routing (ADR-0016 item 4, ADR-0021)", () => {
-  it("sends / to /app and keeps the query string", async () => {
-    window.history.pushState(null, "", "/?scenario=outage");
+  it("shows the landing page at /, and makes no API request", async () => {
+    const requests: string[] = [];
+    const record = ({ request }: { request: Request }) => requests.push(request.url);
+    server.events.on("request:start", record);
+    window.history.pushState(null, "", "/");
+    renderWithClient(<App />);
+    expect(screen.getByRole("heading", { name: /A live dashboard for your Satisfactory dedicated server/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/app");
+    // Give any query that a gate might start a chance to fire.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    server.events.removeListener("request:start", record);
+    expect(requests).toEqual([]);
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it("sends any other path outside the app to /app and keeps the query string", async () => {
+    window.history.pushState(null, "", "/elsewhere?scenario=outage");
     renderWithClient(<App />);
     await screen.findByRole("region", { name: "Overview" });
     expect(window.location.pathname).toBe("/app");
