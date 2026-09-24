@@ -61,6 +61,23 @@ describe("Database", () => {
     await expect(database.isReady()).resolves.toBe(true);
   });
 
+  it("a close() that lands while start() is succeeding leaves it not started and silent", async () => {
+    const info = vi.fn();
+    let database: Database;
+    database = new Database(
+      config,
+      { warn: vi.fn(), error: vi.fn(), info },
+      immediately,
+      fakePool(async () => {
+        await database.close(); // the shutdown arrives during the attempt
+        return { rows: [{}] };
+      }),
+    );
+    await expect(database.start()).resolves.toBeUndefined();
+    expect(info).not.toHaveBeenCalled();
+    await expect(database.isReady()).resolves.toBe(false);
+  });
+
   it("isReady() is false when SELECT 1 fails after startup, and never throws", async () => {
     let healthy = true;
     const database = new Database(

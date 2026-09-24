@@ -50,6 +50,9 @@ export class Database {
       }
       throw err;
     }
+    if (this.closed) {
+      return; // closed while the last attempt was succeeding: not started, and nothing to announce
+    }
     this.started = true;
     this.logger.info({}, "database connected and schema current");
   }
