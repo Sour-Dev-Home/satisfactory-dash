@@ -25,7 +25,11 @@ const DocsSchema = z.array(
  *  BOM) is accepted too, so a re-saved copy still works. */
 export function decodeDocsFile(bytes: Buffer): string {
   if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-    return bytes.subarray(2).toString("utf16le");
+    const body = bytes.subarray(2);
+    if (body.length % 2 !== 0) {
+      throw new Error("The Docs file is truncated (UTF-16 needs an even number of bytes).");
+    }
+    return body.toString("utf16le");
   }
   const text = bytes.toString("utf8");
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -44,6 +48,11 @@ export function parseItemForms(docsJson: unknown): Record<string, ItemForm> {
     for (const item of group.Classes) {
       const form = item.mForm === undefined ? undefined : FORM_BY_RESOURCE_FORM[item.mForm];
       if (form) {
+        // The same className with two different forms means the data isn't what we assume
+        // (a bad merge, or a format change): fail instead of silently keeping the last one.
+        if (Object.hasOwn(forms, item.ClassName) && forms[item.ClassName] !== form) {
+          throw new Error(`The Docs file gives ${item.ClassName} conflicting forms; not guessing.`);
+        }
         forms[item.ClassName] = form;
       }
     }

@@ -38,7 +38,10 @@ const versionFlag = args.indexOf("--game-version");
 const explicitVersion = versionFlag === -1 ? undefined : args[versionFlag + 1];
 // The path can also come from ITEM_DOCS_PATH: on Windows, `npm run` mangles a path that
 // contains spaces (e.g. "Program Files (x86)"), and an environment variable avoids that.
-const docsFile = args.find((arg, i) => !arg.startsWith("--") && i !== versionFlag + 1) ?? process.env.ITEM_DOCS_PATH;
+// Positional = not a flag and not the value right after --game-version. (With no flag,
+// versionFlag is -1, so the value index must be excluded only when the flag exists.)
+const docsFile =
+  args.find((arg, i) => !arg.startsWith("--") && (versionFlag === -1 || i !== versionFlag + 1)) ?? process.env.ITEM_DOCS_PATH;
 if (!docsFile) {
   console.error(
     'Usage: npm run update-item-forms -w backend -- "<path to CommunityResources/Docs/en-US.json>" [--game-version X]\n' +

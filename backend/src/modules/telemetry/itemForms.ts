@@ -51,7 +51,11 @@ export function createUnitResolver(
     }
     if (!reported.has(className)) {
       reported.add(className);
-      onUnknown(className);
+      try {
+        onUnknown(className);
+      } catch {
+        // A failing logger must not turn a factory response into a 500: the unit is just null.
+      }
     }
     return null;
   };
