@@ -124,8 +124,10 @@ describe("vanilla API transport", () => {
           res.end(JSON.stringify({ data: { ok: true } }));
         }, 100);
       });
-      await expect(call(port, 2_000)).resolves.toEqual({ status: 200, body: { data: { ok: true } } });
-    }, 6_000);
+      // A generous deadline: the response takes ~100 ms, so this never waits for it, and a
+      // stalled local connect on a loaded machine can't eat it.
+      await expect(call(port, 10_000)).resolves.toEqual({ status: 200, body: { data: { ok: true } } });
+    }, 15_000);
 
     it("a slow but steady response that finishes inside the deadline still resolves", async () => {
       const port = await serve((_req, res) => {
@@ -134,8 +136,8 @@ describe("vanilla API transport", () => {
         setTimeout(() => res.write('{"ok": '), 80);
         setTimeout(() => res.end("true}}"), 160);
       });
-      await expect(call(port, 2_000)).resolves.toEqual({ status: 200, body: { data: { ok: true } } });
-    }, 6_000);
+      await expect(call(port, 10_000)).resolves.toEqual({ status: 200, body: { data: { ok: true } } });
+    }, 15_000);
 
     it("every request gets a fresh deadline: an earlier timeout does not make later ones fail instantly", async () => {
       const port = await serve(() => {

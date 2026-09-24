@@ -64,19 +64,5 @@ describe("a game server that trickles bytes forever", () => {
     expect(took).toBeGreaterThanOrEqual(250);
     expect(took).toBeLessThan(3_000);
   }, 8_000);
-
-  it("the next request after a timeout is served normally once the server behaves", async () => {
-    const port = await trickleServer();
-    const app = appAgainst(port, 300);
-    expect((await request(app).get(endpoints.status.path("default"))).status).toBe(503);
-    // Swap the server's behavior: it now answers properly.
-    server!.removeAllListeners("request");
-    server!.on("request", (req, res) => {
-      req.resume();
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ data: { health: "healthy", numSlowTicks: 0 } }));
-    });
-    const res = await request(app).get(endpoints.status.path("default"));
-    expect(res.status).not.toBe(503); // reachable again (any other outcome is about the payload shape)
-  }, 8_000);
+  // "Every request gets a fresh deadline" is covered against the transport in vanillaTransport.test.ts.
 });
