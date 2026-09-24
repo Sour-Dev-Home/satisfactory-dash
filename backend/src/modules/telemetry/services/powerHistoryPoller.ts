@@ -58,6 +58,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   private startedAtMs: number | undefined;
   private lastSuccessAtMs: number | undefined;
   private consecutiveFailures = 0;
+  private consecutiveCrashes = 0;
   private lastSessionName: string | undefined;
   private lastGameDuration: number | undefined;
 
@@ -126,9 +127,18 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
     const tickAt = this.nextTickAt;
     try {
       await this.poll(tickAt);
+      if (this.consecutiveCrashes > 0) {
+        this.logger.info({ crashedPolls: this.consecutiveCrashes }, "power history polling recovered from a crash");
+        this.consecutiveCrashes = 0;
+      }
     } catch (err) {
       // poll() handles its own failures; this is the last line of defense for the loop.
-      this.logger.error({ err: formatErrorDetail(err) }, "power history poll crashed unexpectedly");
+      // Logged on the first crash of a run only (like poll failures), so a store that keeps
+      // throwing doesn't write a line every interval, forever.
+      this.consecutiveCrashes++;
+      if (this.consecutiveCrashes === 1) {
+        this.logger.error({ err: formatErrorDetail(err) }, "power history poll crashed unexpectedly");
+      }
     } finally {
       this.nextTickAt += this.intervalMs;
       if (this.now() - this.nextTickAt >= this.intervalMs) {

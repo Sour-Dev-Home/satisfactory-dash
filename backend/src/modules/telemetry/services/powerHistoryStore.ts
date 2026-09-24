@@ -16,6 +16,22 @@ export interface PowerSample {
   circuits: PowerSampleCircuit[];
 }
 
+/** Whether a reading passes what the shared PowerHistoryResponseSchema requires (finite numbers,
+ *  an integer id, battery >= 0, a boolean fuse). The store serves what it holds through that
+ *  schema, so a reading that fails it would make the route error for every viewer until the
+ *  sample aged out; it is dropped at the door instead. */
+function isServable(c: PowerSampleCircuit): boolean {
+  return (
+    Number.isSafeInteger(c.circuitGroupId) &&
+    Number.isFinite(c.productionMW) &&
+    Number.isFinite(c.consumptionMW) &&
+    Number.isFinite(c.capacityMW) &&
+    Number.isFinite(c.batteryPercent) &&
+    c.batteryPercent >= 0 &&
+    typeof c.fuseTriggered === "boolean"
+  );
+}
+
 /**
  * The source-agnostic store behind the power history route (ADR-0022). Today the poller
  * feeds it; agent ingest (ADR-0020) will feed the same interface later.
@@ -72,6 +88,9 @@ export class InMemoryPowerHistoryStore implements PowerHistoryStore {
     // keep one reading per circuit (a duplicate id would put two points at one time).
     const byCircuit = new Map<number, PowerSampleCircuit>();
     for (const circuit of sample.circuits) {
+      if (!isServable(circuit)) {
+        continue; // one bad reading must not poison the buffer: the route would 500 for everyone
+      }
       byCircuit.set(circuit.circuitGroupId, { ...circuit });
     }
     const stored: PowerSample = { t: sample.t, gamePaused: sample.gamePaused, circuits: [...byCircuit.values()] };
