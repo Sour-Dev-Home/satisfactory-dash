@@ -63,7 +63,7 @@ describe("POST /api/auth/login", () => {
     const { app } = buildApp();
     const res = await login(app, { username: "operator", password: PASSWORD });
     expect(res.status).toBe(200);
-    expect(SessionResponseSchema.parse(res.body)).toEqual({ authenticated: true, user: { name: "operator" } });
+    expect(SessionResponseSchema.parse(res.body)).toEqual({ authenticated: true, signInMethods: ["password"], user: { name: "operator" } });
     const cookie = [res.headers["set-cookie"]].flat().join("\n");
     expect(cookie).toMatch(new RegExp(`${SESSION_COOKIE}=`));
     for (const flag of ["HttpOnly", "Secure", "SameSite=Lax", "Path=/api", "Max-Age="]) {
@@ -220,21 +220,21 @@ describe("GET /api/auth/session", () => {
     const { app } = buildApp();
     const res = await request(app).get(endpoints.auth.session.path());
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ authenticated: false });
+    expect(res.body).toEqual({ authenticated: false, signInMethods: ["password"] });
   });
 
   it("reports the signed-in user", async () => {
     const { app } = buildApp();
     const cookie = await signIn(app);
     const res = await request(app).get(endpoints.auth.session.path()).set("Cookie", cookie);
-    expect(res.body).toEqual({ authenticated: true, user: { name: "operator" } });
+    expect(res.body).toEqual({ authenticated: true, signInMethods: ["password"], user: { name: "operator" } });
   });
 
   it("treats a tampered cookie as signed out", async () => {
     const { app } = buildApp();
     const cookie = await signIn(app);
     const res = await request(app).get(endpoints.auth.session.path()).set("Cookie", `${cookie}x`);
-    expect(res.body).toEqual({ authenticated: false });
+    expect(res.body).toEqual({ authenticated: false, signInMethods: ["password"] });
   });
 });
 
@@ -246,7 +246,7 @@ describe("POST /api/auth/logout", () => {
     // Content-Length: 0 is what a browser sends for fetch(url, { method: "POST" }).
     const res = await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie).set("Content-Length", "0");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ authenticated: false });
+    expect(res.body).toEqual({ authenticated: false, signInMethods: ["password"] });
     expect([res.headers["set-cookie"]].flat().join("\n")).toMatch(new RegExp(`${SESSION_COOKIE}=;.*Expires=Thu, 01 Jan 1970`));
   });
 });
@@ -260,7 +260,7 @@ describe("logout revokes the session", () => {
     expect((await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie)).status).toBe(200);
     expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
     const session = await request(app).get(endpoints.auth.session.path()).set("Cookie", cookie);
-    expect(session.body).toEqual({ authenticated: false });
+    expect(session.body).toEqual({ authenticated: false, signInMethods: ["password"] });
   });
 
   it("revokes only the session that signed out, not another sign-in", async () => {
