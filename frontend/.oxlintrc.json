@@ -18,8 +18,15 @@
   },
   "overrides": [
     {
-      "files": ["src/test/**", "**/*.test.ts", "**/*.test.tsx"],
+      "files": ["src/test/**", "e2e/**", "**/*.test.ts", "**/*.test.tsx"],
       "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      "files": ["e2e/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "no-empty-pattern": "off"
+      }
     }
   ]
 }

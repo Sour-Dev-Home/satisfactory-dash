@@ -1,20 +1,63 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+/**
+ * The `/*` rules from public/_headers (the production security headers, ADR-0016 item 8),
+ * so `vite preview` serves the built app under the same CSP as Workers static assets.
+ */
+function productionHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
+  let inAllPaths = false
+  for (const line of readFileSync(new URL('./public/_headers', import.meta.url), 'utf8').split(/\r?\n/)) {
+    if (line.startsWith('#') || !line.trim()) continue
+    if (!/^\s/.test(line)) {
+      inAllPaths = line.trim() === '/*'
+      continue
+    }
+    const match = /^\s+([^:]+):\s*(.+)$/.exec(line)
+    if (inAllPaths && match) headers[match[1].trim()] = match[2].trim()
+  }
+  return headers
+}
+
+/**
+ * Dev mock mode only: serves MSW's service worker from node_modules at the path MSW
+ * expects, so the file is never copied into public/ and never deployed.
+ */
+function mockServiceWorker(): Plugin {
+  const workerPath = createRequire(import.meta.url).resolve('msw/mockServiceWorker.js')
+  return {
+    name: 'mock-service-worker',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/mockServiceWorker.js', (_req, res) => {
+        res.setHeader('Content-Type', 'text/javascript')
+        res.end(readFileSync(workerPath))
+      })
+    },
+  }
+}
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
   server: {
     // Dev only: the browser calls /api on the Vite origin and Vite forwards it to the
     // backend, so cookies and CORS behave like production's single site (ADR-0013).
-    proxy: {
-      '/api': 'http://localhost:3001',
-    },
+    // Mock mode answers /api in the browser instead, so it needs no backend.
+    proxy: mode === 'mock' ? undefined : { '/api': 'http://localhost:3001' },
+  },
+  preview: {
+    headers: productionHeaders(),
   },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/vitest-setup.ts'],
     globals: true,
+    // Playwright specs run in a real browser via `npm run e2e`, not in Vitest.
+    exclude: ['**/node_modules/**', 'e2e/**'],
   },
-})
+}))

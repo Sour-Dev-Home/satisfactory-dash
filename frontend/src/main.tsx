@@ -5,12 +5,21 @@ import './index.css'
 import App from './App.tsx'
 import { createQueryClient } from './api/queries'
 
-const queryClient = createQueryClient()
+// Dev mock mode (`npm run dev:mock`) serves the shared fixtures in the browser. MODE is a
+// build-time constant, so a production build drops this branch and never emits the mock code.
+async function startMocksIfEnabled(): Promise<void> {
+  if (import.meta.env.MODE !== 'mock') return
+  const { startMockApi } = await import('./test/browser')
+  await startMockApi(window.location.search)
+}
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>,
-)
+void startMocksIfEnabled().then(() => {
+  const queryClient = createQueryClient()
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+})
