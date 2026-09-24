@@ -289,6 +289,24 @@ describe("Google sign-in routes", () => {
       expect(complete).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: "true" }), undefined);
     });
 
+    it("refuses an unusable subject (empty or over 255 characters) without calling the sign-in service", async () => {
+      for (const sub of ["x".repeat(256), ""]) {
+        const { app, complete } = build();
+        const begun = await beginGoogleSignIn(app);
+        const res = await completeGoogleSignIn(app, issuer, begun, { claims: { ...claims, sub } });
+        expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=failed`);
+        expect(complete).not.toHaveBeenCalled();
+      }
+    });
+
+    it("treats a malformed attempt cookie as expired, without querying the database", async () => {
+      const { app, db } = build();
+      const spy = vi.spyOn(db, "query");
+      const res = await request(app).get("/api/auth/google/callback?code=x&state=y").set("Cookie", `${LOGIN_ATTEMPT_COOKIE}=not-a-valid-id`);
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=expired`);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
     it("logs a code and no claims, cookies or provider text on failure", async () => {
       const { app, lines } = build();
       const begun = await beginGoogleSignIn(app);

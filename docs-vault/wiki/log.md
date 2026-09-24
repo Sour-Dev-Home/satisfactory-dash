@@ -413,3 +413,8 @@ the bottom.
   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, BOOTSTRAP_OWNER_EMAIL,
   FRONTEND_ORIGIN (all-or-nothing, validated at startup). The per-IP request cap was extracted
   from the password route so both share it.
+- 2026-09-25 — ADR-0025 PR 7 review follow-ups: the request log no longer records the Google
+  callback's query (its one-time code and state); the bootstrap link writes an `identity_link`
+  audit row (ids and codes only); note for the runbook: the bootstrap trust rests on the verified
+  email equalling `BOOTSTRAP_OWNER_EMAIL` with no hosted-domain check, so use an address whose
+  mailbox you alone control (a consumer address, not one on a domain others administer).

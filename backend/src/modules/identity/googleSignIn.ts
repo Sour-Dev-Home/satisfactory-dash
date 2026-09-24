@@ -59,6 +59,8 @@ export function createGoogleSignIn(db: Db, bootstrapOwnerEmail: string): GoogleS
     }
     await addIdentity(client, { userId: operator.id, provider: "google", subject: claims.sub });
     await setUserEmail(client, operator.id, claims.email);
+    // The one-time link leaves its own trace (ids and codes only, never the email).
+    await recordAuditEvent(client, { action: "identity_link", actorUserId: operator.id, detail: { provider: "google" } });
     return { ...operator, email: claims.email.trim().toLowerCase() };
   };
 

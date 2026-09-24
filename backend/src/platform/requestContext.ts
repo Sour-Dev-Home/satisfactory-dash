@@ -28,5 +28,15 @@ export function createRequestLogger(logger: Logger): RequestHandler {
     // spoofed CF-Connecting-IP visible as a mismatch (architect request, go-live).
     customProps: (req) => ({ clientIp: clientIp(req) }),
     customLogLevel: (_req, res, err) => requestLogLevel(res.statusCode, err),
+    // pino-http wraps this: it receives the standard serialized request (id, method, url, ...).
+    serializers: {
+      req: (req: { url: string; query?: unknown }) =>
+        isGoogleCallback(req.url) ? { ...req, url: GOOGLE_CALLBACK_PATH, query: undefined } : req,
+    },
   });
 }
+
+/** The Google sign-in callback's query holds a one-time authorization code and the state: the log
+ *  keeps the path only (security review of ADR-0025 PR 7). */
+const GOOGLE_CALLBACK_PATH = "/api/auth/google/callback";
+const isGoogleCallback = (url: string): boolean => url.startsWith(GOOGLE_CALLBACK_PATH);
