@@ -37,7 +37,8 @@ export function parseWorkspace(rawDsl) {
   let depth = 0; // brace depth, so a later element's "code" is never given to the last component
   let currentDepth = 0;
   for (const line of dsl.split("\n")) {
-    const braces = line.replace(/"[^"]*"/g, "");
+    // Braces inside quoted strings (with \" escapes) or trailing // and # comments don't count.
+    const braces = line.replace(/"(?:[^"\\]|\\.)*"/g, "").replace(/(\/\/|#).*$/, "");
     const opens = (braces.match(/\{/g) ?? []).length;
     const closes = (braces.match(/\}/g) ?? []).length;
     const declaration = line.match(/^\s*(\w+)\s*=\s*component\b/);

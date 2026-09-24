@@ -213,3 +213,31 @@ container "Anonymous" {
   assert.deepEqual([...codes], [["telemetry", "modules/telemetry"]]);
   assert.deepEqual(duplicates, []);
 });
+
+test("parseWorkspace: a brace in a trailing // comment does not extend a component block", () => {
+  const dsl = [
+    'a = component "A" { // {',
+    "  properties {",
+    '    "code" "modules/a"',
+    "  }",
+    "}",
+    'x = container "X" {',
+    '  "code" "modules/zzz"',
+    "}",
+  ].join("\n");
+  assert.deepEqual([...parseWorkspace(dsl).codes], [["a", "modules/a"]]);
+});
+
+test("parseWorkspace: an escaped quote in a name does not confuse brace counting", () => {
+  const dsl = [
+    'a = component "A \\" {" {',
+    "  properties {",
+    '    "code" "modules/a"',
+    "  }",
+    "}",
+    'x = person "X" {',
+    '  "code" "modules/zzz"',
+    "}",
+  ].join("\n");
+  assert.deepEqual([...parseWorkspace(dsl).codes], [["a", "modules/a"]]);
+});
