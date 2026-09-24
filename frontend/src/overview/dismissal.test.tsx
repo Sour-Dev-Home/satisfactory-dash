@@ -41,6 +41,16 @@ describe("dismissing the warnings banner", () => {
     expect(screen.getByRole("list", { name: "Sections" })).toHaveTextContent("Degraded");
   });
 
+  it("moves keyboard focus to the next card's heading, never leaving it on <body>", async () => {
+    renderOverview();
+    const button = await screen.findByRole("button", DISMISS);
+    button.focus();
+    fireEvent.click(button);
+    expect(button).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Players" }));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("stays hidden on a reload while the same warnings last", async () => {
     const first = renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
