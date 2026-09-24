@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../../platform/errors.js";
-import { loadConfiguredServersFromFile } from "./serversFile.js";
+import { ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
 
 const load = (content: unknown, env: NodeJS.ProcessEnv = { SATISFACTORY_SERVERS_FILE: "servers.json" }) =>
   loadConfiguredServersFromFile(env, () => (typeof content === "string" ? content : JSON.stringify(content)));
@@ -28,6 +28,25 @@ describe("loadConfiguredServersFromFile edge cases (test-hunter)", () => {
     expect(() => load({ servers: [{ id: "a", host: "8.8.8.8", verifyApiCertificate: false }] })).toThrow(ConfigError);
     expect(() => load({ servers: [{ id: "a", host: "10.0.0.1 evil" }] })).toThrow(ConfigError);
     expect(() => load({ servers: [{ id: "A" }] })).toThrow(ConfigError);
+  });
+});
+
+describe("ignoredSingleServerEnvNames", () => {
+  it("is empty without a servers file, whatever else is set", () => {
+    expect(ignoredSingleServerEnvNames({ SATISFACTORY_SERVER_HOST: "127.0.0.1" })).toEqual([]);
+    expect(ignoredSingleServerEnvNames({ SATISFACTORY_SERVERS_FILE: "  ", FRM_WEB_PORT: "1" })).toEqual([]);
+  });
+
+  it("names, never values, the set single-server variables and skips blank ones", () => {
+    const env = {
+      SATISFACTORY_SERVERS_FILE: "servers.json",
+      SATISFACTORY_SERVER_HOST: "127.0.0.1",
+      FRM_AUTH_TOKEN: "secret",
+      SATISFACTORY_API_TOKEN: "",
+      SATISFACTORY_API_PORT: "  ",
+      PORT: "3001",
+    };
+    expect(ignoredSingleServerEnvNames(env)).toEqual(["SATISFACTORY_SERVER_HOST", "FRM_AUTH_TOKEN"]);
   });
 });
 

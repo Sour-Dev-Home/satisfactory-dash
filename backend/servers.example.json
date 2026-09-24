@@ -11,8 +11,8 @@
     },
     {
       "id": "second",
-      "name": "Second server",
-      "host": "192.168.1.50",
+      "name": "Second server (another instance on this PC)",
+      "host": "127.0.0.1",
       "apiPort": 7778,
       "apiToken": "replace-with-the-application-token-for-this-server",
       "frmPort": 8081

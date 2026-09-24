@@ -58,6 +58,11 @@ are then ignored. Nothing changes if the variable is unset or blank.
 | `requestTimeoutMs` | 1000-60000 (optional) | `SATISFACTORY_REQUEST_TIMEOUT_MS` |
 | `verifyApiCertificate` | `true` to verify the game server's TLS certificate even on a loopback or private host (optional) | `SATISFACTORY_API_REJECT_UNAUTHORIZED` |
 
+A `host` on your private network (a LAN IP) is accepted, but the FRM web server speaks plain HTTP
+only, so its token and data would cross the LAN unencrypted; prefer `127.0.0.1` with the backend
+running on the game PC. When the file is in use, any still-set single-server variables (for
+example `SATISFACTORY_SERVER_HOST`) are ignored, and the backend logs one warning naming them.
+
 The file is validated at startup: an unreadable file, invalid JSON, an unknown field, a duplicate
 id or a bad value stops the backend with a message that names the field and the server id (never a
 value). Each server gets its own connection, its own power-history poller and its own data routes.

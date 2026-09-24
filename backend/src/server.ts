@@ -6,6 +6,7 @@ import { healthRouter } from "./platform/health.js";
 import {
   createGameServerConnection,
   createServerOptionsPort,
+  ignoredSingleServerEnvNames,
   loadConfiguredServersFromFile,
   loadSatisfactoryServerConfigFromEnv,
   parsePortEnv,
@@ -37,6 +38,16 @@ function orExit<T>(load: () => T): T {
 
 // A bad PORT used to become NaN (listen(NaN) picks a random port); now the backend refuses to start.
 const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
+
+// A servers file replaces the single-server variables; naming any that are still set (names
+// only, never values) keeps a half-migrated .env from being confusing.
+const ignoredEnvNames = ignoredSingleServerEnvNames();
+if (ignoredEnvNames.length > 0) {
+  logger.warn(
+    { ignored: ignoredEnvNames },
+    "SATISFACTORY_SERVERS_FILE is set, so these single-server variables are ignored",
+  );
+}
 
 // ADR-0015: one resolver for the whole process, so each unknown item (a modded item, or
 // one newer than the committed catalog) is logged once, not once per request or server.

@@ -72,6 +72,30 @@ function envFor(entry: ServerFileEntry): NodeJS.ProcessEnv {
   return env;
 }
 
+/** The single-server variables a servers file replaces (ADR-0025 PR 1). */
+const SINGLE_SERVER_ENV_NAMES = [
+  "SATISFACTORY_SERVER_ID",
+  "SATISFACTORY_SERVER_NAME",
+  "SATISFACTORY_SERVER_HOST",
+  "SATISFACTORY_API_PORT",
+  "SATISFACTORY_API_TOKEN",
+  "SATISFACTORY_API_REJECT_UNAUTHORIZED",
+  "FRM_WEB_PORT",
+  "FRM_AUTH_TOKEN",
+  "SATISFACTORY_REQUEST_TIMEOUT_MS",
+] as const;
+
+/**
+ * Names (never values) of the single-server variables that are set but ignored because a
+ * servers file is in use, so a half-migrated .env is not confusing. Empty when no file is set.
+ */
+export function ignoredSingleServerEnvNames(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (!env.SATISFACTORY_SERVERS_FILE?.trim()) {
+    return [];
+  }
+  return SINGLE_SERVER_ENV_NAMES.filter((name) => (env[name] ?? "").trim() !== "");
+}
+
 /** Field names as the file spells them, for messages from the shared env validators. */
 const FILE_FIELD_FOR_ENV_NAME: Record<string, string> = {
   SATISFACTORY_SERVER_HOST: "host",
