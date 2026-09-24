@@ -223,3 +223,8 @@ the bottom.
   "unreachable"), and the vanilla API transport has an overall per-request deadline
   (`AbortSignal.timeout`, like FRM) on top of its idle-socket timeout, so a game server that
   trickles bytes forever ends as a 503 `upstream_unreachable` instead of holding a request open.
+- 2026-09-24 — Follow-up to that (architect ruling): a lost auto-pause write response is read
+  back once (idempotent option), answering 200 with an audit line "outcome confirmed by
+  re-read" when the value landed, else the 503 stands (ADR-0012 note); and
+  `SATISFACTORY_API_PORT` / `FRM_WEB_PORT` must be whole numbers from 1 to 65535, otherwise the
+  backend refuses to start (they used to become NaN).

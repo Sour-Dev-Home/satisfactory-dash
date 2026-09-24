@@ -23,10 +23,22 @@ export function createSettingsRouter(directory: ServerDirectory<SettingsScope>):
     if (!body.success) {
       throw new BadRequestError("Body must be { enabled: boolean }");
     }
-    const settings = await services.settings.setAutoPause(body.data.enabled, ({ from, to }) => {
+    const settings = await services.settings.setAutoPause(body.data.enabled, ({ from, to, confirmedByReread }) => {
       // ADR-0012: one audit line per change, written as soon as the write succeeds.
       // req.log is bound to the request id (ADR-0008); the user comes from the session guard.
-      req.log.info({ audit: "auto-pause", serverId, user: res.locals.user?.name, from, to }, "auto-pause changed");
+      // When the write's response was lost (a timeout or a dropped connection) and a re-read
+      // showed the requested value, the line says so instead of claiming a clean success.
+      req.log.info(
+        {
+          audit: "auto-pause",
+          serverId,
+          user: res.locals.user?.name,
+          from,
+          to,
+          ...(confirmedByReread ? { outcome: "confirmed by re-read" } : {}),
+        },
+        confirmedByReread ? "auto-pause changed (outcome confirmed by re-read)" : "auto-pause changed",
+      );
     });
     sendValidated(res, SettingsResponseSchema, snapshot(serverId, settings));
   });
