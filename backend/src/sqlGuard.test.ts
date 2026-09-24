@@ -67,8 +67,8 @@ function firstArgument(code: string, open: number): string {
         break;
       }
       depth--;
-    } else if (ch === "," && depth === 0) {
-      break;
+    } else if ((ch === "," || ch === ";") && depth === 0) {
+      break; // the argument ends at a top-level comma, and a declaration's value at its ";"
     }
   }
   return code.slice(open, i);
@@ -166,6 +166,10 @@ describe("SQL guard (ADR-0025)", () => {
       ["a named constant", "db.query(APPLIED_QUERY, [latest])"],
       ["a commented-out unsafe call", "// db.query(`SELECT ${x}`)"],
       ["a plus sign inside the SQL string", 'db.query("SELECT a + b FROM t")'],
+      [
+        "a SQL constant followed by an unrelated interpolated template",
+        "const Q = `SELECT 1`;\nfunction f() { throw new Error(`bad ${x}`); }\ndb.query(Q)",
+      ],
       ["an escaped dollar in a template", "db.query(`SELECT \\${x}`)"],
       ["a plus in a trailing comment", 'db.query("SELECT 1", [a]) // x + y'],
     ])("allows %s", (_label, source) => {
