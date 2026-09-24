@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ProductionService, isBackedUp } from "./productionService.js";
+import { createUnitResolver } from "../itemForms.js";
 import type { ProductionAdapterLike } from "./productionService.js";
 import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
 import type { FactoryBuilding } from "../../gameserver/index.js";
@@ -142,15 +143,41 @@ describe("ProductionService", () => {
     await expect(service.getFactoryOverview()).resolves.toMatchObject({ backedUpCount: 1 });
   });
 
-  // The catalog that fills `unit` arrives in the next PR (ADR-0015); until then it is null.
-  it("passes production entries through with unit null (same shape as ProductionRateResponse)", async () => {
+  it("passes production entries through with a unit from the catalog (same shape as ProductionRateResponse)", async () => {
     const rate = { name: "Concrete", className: "Desc_Cement_C", currentPerMinute: 0, maxPerMinute: 1.65, percent: 0 };
     const adapter: ProductionAdapterLike = {
       getFactoryBuildings: async () => [building({ production: [rate] })],
     };
     const service = new ProductionService(adapter);
     const overview = await service.getFactoryOverview();
-    expect(overview.buildings[0].production).toEqual([{ ...rate, unit: null }]);
+    expect(overview.buildings[0].production).toEqual([{ ...rate, unit: "items/min" }]); // Concrete is a solid
+  });
+
+  describe("unit resolution (ADR-0015)", () => {
+    const rateOf = (className: string) => ({ name: className, className, currentPerMinute: 1, maxPerMinute: 2, percent: 50 });
+    const serviceWith = (classNames: string[], resolveUnit: ConstructorParameters<typeof ProductionService>[1]) =>
+      new ProductionService(
+        { getFactoryBuildings: async () => [building({ production: classNames.map(rateOf) })] },
+        resolveUnit,
+      );
+
+    it("uses the injected resolver for every rate", async () => {
+      const service = serviceWith(["Desc_A_C", "Desc_B_C"], (className) => (className === "Desc_A_C" ? "m3/min" : null));
+      const overview = await service.getFactoryOverview();
+      expect(overview.buildings[0].production.map((p) => p.unit)).toEqual(["m3/min", null]);
+    });
+
+    it("an unknown item gets unit null, and the warning fires once per className across requests", async () => {
+      const warned: string[] = [];
+      const service = serviceWith(
+        ["Desc_Modded_C", "Desc_Modded_C", "Desc_Other_C", "Desc_Stator_C"],
+        createUnitResolver((className) => warned.push(className)),
+      );
+      const first = await service.getFactoryOverview();
+      await service.getFactoryOverview();
+      expect(first.buildings[0].production.map((p) => p.unit)).toEqual([null, null, null, "items/min"]);
+      expect(warned).toEqual(["Desc_Modded_C", "Desc_Other_C"]);
+    });
   });
 
   it("passes a null recipe through unchanged (unconfigured building)", async () => {
