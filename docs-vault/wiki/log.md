@@ -148,5 +148,9 @@ the bottom.
 - 2026-09-23 — ADR-0014 added (accepted by the project owner): target architecture is a
   modular monolith now, then service-based with an edge agent. Step 1 is the backend
   domain partition, guarded by an architecture test.
+- 2026-09-23 — ADR-0015 added (accepted by the project owner): a solid/fluid item catalog
+  generated from the game's own `CommunityResources` data, and an additive
+  `ProductionRate.unit`. Resolves the Polymer Resin question in `frm-api.md` and ADR-0006:
+  it is solid, items/min.
 - 2026-09-23 — ADR-0012 built (PR 6): `modules/settings` and gameserver's allowlisted
   `ServerOptionsPort`. Live check recorded in the ADR: DSAutoPause applies immediately.

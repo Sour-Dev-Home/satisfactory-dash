@@ -51,7 +51,8 @@ The 0-100 battery range is now verified, which resolves the [NEEDS VERIFICATION]
 AT_RISK_BATTERY_PERCENT (services/powerService.ts:13-17).
 A production `unit: "items/min" | "m3/min"` field is added only once a per-item solid/fluid source
 is found (MaxAmount doesn't distinguish them: Motor and Smart Plating slots also have 50). Until
-then the frontend must not guess.
+then the frontend must not guess. The source is now found (the game's own item data, ADR-0015),
+which also settles Polymer Resin: it is solid, so items/min.
 
 ## Consequences
 
