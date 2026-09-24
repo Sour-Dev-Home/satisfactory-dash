@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
+import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
@@ -21,7 +22,19 @@ import { createIdentityModule } from "./modules/identity/index.js";
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
 // container) needs an explicit HOST (go-live blocker, issue #19).
 const host = process.env.HOST?.trim() || "127.0.0.1";
-const logger = createLogger();
+// LOG_DIR (game PC): daily log files kept 14 days instead of stdout. It is resolved before the
+// logger exists, so a bad directory is reported on stderr and stops the backend.
+let logDir: string | undefined;
+try {
+  logDir = resolveLogDir();
+} catch (err) {
+  if (err instanceof ConfigError) {
+    console.error(err.message);
+    process.exit(1);
+  }
+  throw err;
+}
+const logger = createLogger({ logDir });
 
 /** A ConfigError means the backend must not start (e.g. a public game-server host, or
  *  missing login settings, ADR-0011): log it and exit instead of crashing. */
