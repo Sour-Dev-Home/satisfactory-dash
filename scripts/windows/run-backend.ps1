@@ -38,7 +38,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$BackendDir = (Resolve-Path $BackendDir).Path
+$BackendDir = (Resolve-Path -LiteralPath $BackendDir).Path
+# Node writes UTF-8; decode it as UTF-8 (the default is the OEM code page, which garbles it).
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 if (-not $Node) { $Node = (Get-Command node -ErrorAction Stop).Source }
 $Log = [System.IO.Path]::GetFullPath($Log)
 New-Item -ItemType Directory -Force -Path (Split-Path $Log) | Out-Null
@@ -60,12 +62,22 @@ while ($true) {
   $started = Get-Date
   # Native stderr becomes error records under 2>&1; they must not stop the script.
   $ErrorActionPreference = "Continue"
-  & $Node $Bundle 2>&1 | ForEach-Object {
-    $text = "$_"
-    Write-Host $text
-    Add-Content -Path $Log -Value $text -Encoding utf8
+  # A launch failure (bad -Node path) leaves $LASTEXITCODE stale or null, and `exit $null` is
+  # exit 0, so start from null and treat "never set" as a failure below.
+  $global:LASTEXITCODE = $null
+  try {
+    & $Node $Bundle 2>&1 | ForEach-Object {
+      # Windows PowerShell 5.1 renders an empty stderr line as "...RemoteException".
+      $text = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+      if ($text -eq "System.Management.Automation.RemoteException") { $text = "" }
+      Write-Host $text
+      Add-Content -Path $Log -Value $text -Encoding utf8
+    }
+  } catch {
+    Write-Log "could not launch ${Node}: $($_.Exception.Message)"
   }
   $code = $LASTEXITCODE
+  if ($null -eq $code) { $code = 1 }
   $ErrorActionPreference = "Stop"
   $uptime = [int]((Get-Date) - $started).TotalSeconds
 
