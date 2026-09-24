@@ -23,8 +23,11 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 export function serverHealth({ data, stale }: StatusResponse): SectionHealth {
   if (!data.isGameRunning) return { health: "degraded", summary: "No save loaded" };
-  if (stale) return { health: "degraded", summary: "Showing last known data" };
-  if (data.tickHealth === "slow") return { health: "degraded", summary: "Server tick is slow" };
+  // The Overview has no paused banner (the owner's call), so this row is the only place it
+  // says "paused": keep saying it when a worse state wins.
+  const alsoPaused = data.gamePaused ? " · game paused" : "";
+  if (stale) return { health: "degraded", summary: `Showing last known data${alsoPaused}` };
+  if (data.tickHealth === "slow") return { health: "degraded", summary: `Server tick is slow${alsoPaused}` };
   if (data.gamePaused) return { health: "paused", summary: "Paused: no players connected" };
   return {
     health: "ok",
