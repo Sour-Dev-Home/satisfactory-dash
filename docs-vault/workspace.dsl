@@ -88,6 +88,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.telemetry -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.settings -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.gameserver -> satis.api.platform "Uses error types" "In-process call" "platform-use"
+        satis.api.root -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.gameserver -> game "Calls the game and FRM APIs" "HTTPS :7777, HTTP :8080 (loopback)"
 
         # Planned relationships (ADR-0014, ADR-0017, ADR-0020)
