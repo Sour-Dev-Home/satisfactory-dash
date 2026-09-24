@@ -66,8 +66,8 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         # Current relationships
         owner -> satis.spa "Uses" "HTTPS"
         satis.spa -> satis.api "Calls the API" "HTTPS JSON, HttpOnly session cookie"
-        satis.api -> game "Reads server state; writes auto-pause" "Game HTTPS API :7777, application token"
-        satis.api -> game "Reads factory, power and buildings" "FRM HTTP API :8080 (loopback), FRM token"
+        satis.api -> game "Reads server state; writes auto-pause" "Game HTTPS API :7777, application token" "direct-game-access"
+        satis.api -> game "Reads factory, power and buildings" "FRM HTTP API :8080 (loopback), FRM token" "direct-game-access"
         github -> satis "Builds, tests and deploys" "GitHub Actions, Workers Builds"
 
         satis.spa -> satis.api.identity "Signs in / out" "HTTPS JSON"
@@ -120,30 +120,34 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         }
 
         deploymentEnvironment "Target" {
+            cloud = deploymentGroup "Cloud"
+            managedGroup = deploymentGroup "Managed"
+            selfGroup = deploymentGroup "Self-hosted"
+
             cloudflareT = deploymentNode "Cloudflare" "Edge network: static hosting, TLS, WAF." "Cloudflare" {
                 workersT = deploymentNode "Workers static assets" "/app SPA and public pages." "Cloudflare Workers" {
-                    containerInstance satis.spa
+                    containerInstance satis.spa "cloud"
                 }
             }
             aws = deploymentNode "AWS" "Cloud hosting for the multi-user service." "Amazon Web Services" "planned" {
                 ecs = deploymentNode "ECS" "Stateless API tasks" "Fargate" "planned" {
-                    containerInstance satis.api
-                    containerInstance satis.provisioning
+                    containerInstance satis.api "cloud,managedGroup,selfGroup"
+                    containerInstance satis.provisioning "cloud,managedGroup"
                 }
                 rds = deploymentNode "RDS" "Managed PostgreSQL, one small instance (<=5,000 users)." "Amazon RDS for PostgreSQL" "planned" {
-                    containerInstance satis.database
+                    containerInstance satis.database "cloud"
                 }
                 secrets = infrastructureNode "Secrets Manager" "Per-server secrets for managed servers only (ADR-0017)." "AWS" "planned"
             }
             selfHosted = deploymentNode "User's network" "Self-hosted game server behind home NAT." "Home network" "planned" {
                 selfHost = deploymentNode "Game host" "The user's PC or server running the game." "Windows or Linux" "planned" {
-                    containerInstance satis.agent
-                    softwareSystemInstance game
+                    containerInstance satis.agent "selfGroup"
+                    softwareSystemInstance game "selfGroup"
                 }
             }
             managed = deploymentNode "Managed server" "Paid hosting; stopped when idle." "Amazon EC2" "planned" {
-                managedAgent = containerInstance satis.agent
-                softwareSystemInstance game
+                managedAgent = containerInstance satis.agent "managedGroup"
+                softwareSystemInstance game "managedGroup"
             }
             aws.secrets -> managed.managedAgent "Provides only its own secret" "IAM instance role" "planned"
         }
@@ -182,17 +186,41 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
 
         deployment satis "Today" "DeploymentToday" "Deployed today (ADR-0013)." {
             include *
-            autolayout lr
+            autolayout lr 300 150
         }
 
         deployment satis "Target" "DeploymentTarget" "Planned deployment (ADR-0014, ADR-0017, ADR-0020)." {
             include *
-            autolayout lr
+            exclude "relationship.tag==direct-game-access"
+            autolayout lr 300 150
         }
 
         styles {
+            element "Element" {
+                color #ffffff
+                stroke #1f3a5f
+            }
             element "Person" {
                 shape person
+                background #08427b
+            }
+            element "Software System" {
+                background #1168bd
+            }
+            element "Container" {
+                background #438dd5
+            }
+            element "Component" {
+                background #85bbf0
+                color #000000
+            }
+            element "Infrastructure Node" {
+                background #ffffff
+                color #000000
+            }
+            element "Deployment Node" {
+                background #ffffff
+                color #000000
             }
             element "Web Browser" {
                 shape WebBrowser
@@ -213,7 +241,5 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                 opacity 60
             }
         }
-
-        theme default
     }
 }
