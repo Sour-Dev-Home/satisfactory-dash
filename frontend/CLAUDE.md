@@ -18,7 +18,7 @@ contract needs to grow, not that this module should special-case a backend detai
   routing framework.
 - Routing (ADR-0016 item 4, ADR-0021): React Router in declarative mode (`BrowserRouter` in
   `App.tsx`). The signed-in app lives under `/app/*` (`src/shell/Shell.tsx`: tabs Overview,
-  Power, Factory, Settings). `/` is the static landing page (`src/landing/`, main site only;
+  Power, Factory, Map, Settings). `/` is the static landing page (`src/landing/`, main site only;
   the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
   string. Keep `/` and future public paths (`/guides/*`, `/changelog`) free of app code: no
   queries, no auth, no API calls (`e2e/landing.spec.ts`). Its link-preview tags are static
@@ -54,7 +54,16 @@ contract needs to grow, not that this module should special-case a backend detai
   Views read data only through the query layer, never their own fetch, so a future push
   path (ADR-0014) can fill the same cache keys. Display formatting lives in the pure
   helpers in `src/format.ts`; they round, never change units (ADR-0006). No view
-  registry or plug-in contract until map work starts.
+  registry; the map has the only plug-in contract.
+- Map (ADR-0023, `src/map/`): Leaflet with CRS.Simple, in a lazy chunk (`MapCanvas.tsx`) that
+  only the Map page loads. `projection.ts` is the one world-to-map mapping (`[lat, lng] =
+  [-yM, xM]`; bounds cited from docs-vault/raw-sources/world-coordinates.md); base maps are
+  configs (v1: a neutral grid, no game art). A layer is a `MapLayer` (`layers.ts`): it gets
+  Leaflet through its `MapContext` (never imports it at runtime), draws on the shared canvas
+  renderer, returns its cleanup, and supplies a legend and a text `describe`. Tooltip content
+  is built from text nodes, never an HTML string (names come from the game server). Every
+  layer's data is also shown as text (the buildings-in-view table). `e2e/map.spec.ts` is the
+  CSP gate (pan, zoom, hover, toggle); Leaflet overrides in `index.css` are unlayered.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.

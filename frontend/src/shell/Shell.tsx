@@ -5,6 +5,7 @@ import { CrashProbe } from "../components/CrashProbe";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
+import { MapView } from "../map/MapView";
 import { OverviewView } from "../overview/OverviewView";
 import { PowerHistoryView } from "../power/PowerHistoryView";
 import { PowerView } from "../power/PowerView";
@@ -43,6 +44,7 @@ const TABS = [
   { to: "/app", label: "Overview", end: true },
   { to: "/app/power", label: "Power" },
   { to: "/app/factory", label: "Factory" },
+  { to: "/app/map", label: "Map" },
   { to: "/app/settings", label: "Settings" },
 ];
 
@@ -140,6 +142,17 @@ export function Shell() {
             <Page key="factory" title="Factory">
               <Section label="Factory" probe="factory">
                 <FactoryView />
+              </Section>
+            </Page>
+          }
+        />
+        <Route
+          path="map"
+          element={
+            <Page key="map" title="Map">
+              <Section label="Factory map" probe="map">
+                {/* Keyed by server: the first view fits that server's factory. */}
+                <MapView key={server.id} />
               </Section>
             </Page>
           }

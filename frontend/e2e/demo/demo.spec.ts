@@ -51,6 +51,13 @@ test("every screen works offline: enter, overview, power, factory, settings, log
   await expect(page.getByText("9 machines · 1 backed up · 0 paused · 0 without a recipe")).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
 
+  // The map draws the demo world's own building positions (ADR-0026 item 6).
+  await nav.getByRole("link", { name: "Map" }).click();
+  await expect(page.getByRole("application", { name: /Factory map/ })).toBeVisible();
+  await expect(page.getByText(/^9 buildings on the map:/)).toBeVisible();
+  await expect(page.getByRole("table", { name: /Buildings in view/ })).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
   await nav.getByRole("link", { name: "Settings" }).click();
   const toggle = page.getByRole("checkbox", { name: "Auto-pause when no players are connected" });
   await expect(toggle).toBeEnabled();
