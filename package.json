@@ -14,7 +14,7 @@
     "build": "npm run build -w packages/shared --if-present && npm run build -w frontend && npm run build -w backend",
     "lint": "npm run lint -w packages/shared && npm run lint -w frontend && npm run lint -w backend",
     "typecheck": "npm run typecheck -w packages/shared && npm run typecheck -w frontend && npm run typecheck -w backend",
-    "test": "npm run test -w packages/shared && npm run test -w frontend && npm run test -w backend",
+    "test": "npm run test -w packages/shared && npm run test -w frontend && npm run test -w backend && npm run test:scripts",
     "architecture:check": "node scripts/architecture-drift.mjs",
     "test:scripts": "node --test scripts/architecture-drift.test.mjs"
   },
