@@ -148,6 +148,8 @@ the bottom.
 - 2026-09-23 — ADR-0014 added (accepted by the project owner): target architecture is a
   modular monolith now, then service-based with an edge agent. Step 1 is the backend
   domain partition, guarded by an architecture test.
+- 2026-09-23 — Added `runbooks/go-live-api.md` and `scripts/windows/` (register and
+  unregister a Scheduled Task for the backend): the ordered go-live steps for issue #19.
 - 2026-09-23 — ADR-0018 added (accepted by the project owner): the repo is relicensed from
   MIT to AGPL-3.0-only. `LICENSE` holds the AGPL text and names the copyright holder (the
   one exception to the no-personal-names rule; CI excludes only that file). Versions up to
