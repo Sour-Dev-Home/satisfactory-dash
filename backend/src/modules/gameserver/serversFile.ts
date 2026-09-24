@@ -106,7 +106,7 @@ export function loadConfiguredServersFromFile(
   }
   let json: unknown;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text.replace(/^﻿/, ""));
   } catch {
     throw new ConfigError("The servers file is not valid JSON.");
   }

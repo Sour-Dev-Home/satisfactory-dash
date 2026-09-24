@@ -14,6 +14,23 @@ const twoServers = {
   ],
 };
 
+describe("loadConfiguredServersFromFile edge cases (test-hunter)", () => {
+  it("accepts a file saved with a UTF-8 BOM (Windows Notepad does this)", () => {
+    const servers = load("﻿" + JSON.stringify(twoServers));
+    expect(servers?.map((s) => s.id)).toEqual(["main", "test-2"]);
+  });
+  it("rejects an empty file, __proto__ keys, out-of-range and odd numbers, and a public host", () => {
+    expect(() => load("")).toThrow(ConfigError);
+    expect(() => load('{"servers":[{"id":"a","__proto__":{"host":"8.8.8.8"}}]}')).toThrow(ConfigError);
+    expect(() => load({ servers: [{ id: "a", apiPort: 1e21 }] })).toThrow(ConfigError);
+    expect(() => load({ servers: [{ id: "a", apiPort: -0 }] })).toThrow(ConfigError);
+    expect(() => load({ servers: [{ id: "a", requestTimeoutMs: 999 }] })).toThrow(ConfigError);
+    expect(() => load({ servers: [{ id: "a", host: "8.8.8.8", verifyApiCertificate: false }] })).toThrow(ConfigError);
+    expect(() => load({ servers: [{ id: "a", host: "10.0.0.1 evil" }] })).toThrow(ConfigError);
+    expect(() => load({ servers: [{ id: "A" }] })).toThrow(ConfigError);
+  });
+});
+
 describe("loadConfiguredServersFromFile", () => {
   it("returns undefined when the variable is unset or blank, so the single-server env still works", () => {
     expect(loadConfiguredServersFromFile({})).toBeUndefined();
