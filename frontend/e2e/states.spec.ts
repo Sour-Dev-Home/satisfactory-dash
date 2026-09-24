@@ -44,6 +44,11 @@ const CASES: StateCase[] = [
   { scenario: "outage", shows: /Power outage$/ },
   { scenario: "outage", name: "outage-power", path: "/app/power", shows: /Power outage: 1 circuit has a tripped fuse/ },
   { scenario: "at-risk", path: "/app/power", shows: "1 circuit is at risk." },
+  // The live power chart (ADR-0022). default-power above is the normal case.
+  { scenario: "history-paused", path: "/app/power", shows: /Paused \(shaded\):/ },
+  // Empty history right after the backend starts: the first regular poll is the only point.
+  { scenario: "history-empty", path: "/app/power", shows: "Collecting readings. The chart starts after the next poll." },
+  { scenario: "history-fuse-trip", path: "/app/power", shows: "Circuit 1" },
   { scenario: "battery-charging", path: "/app/power", shows: /Charging 100 MW/ },
   { scenario: "battery-discharging", path: "/app/power", shows: /Discharging 80 MW/ },
   // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
