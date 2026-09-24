@@ -59,8 +59,9 @@ export interface FrmApiClientLike {
   get<T>(endpoint: string): Promise<T>;
 }
 
-/** FRM positions are believed to be Unreal centimetres (333 of 338 captured buildings sit on a
- *  100-unit grid; ADR-0023) [NEEDS VERIFICATION: an in-game distance check]. The contract is
+/** FRM positions are Unreal centimetres: 333 of 338 captured buildings sit on a 100-unit grid
+ *  (ADR-0023), and two community sources agree (docs-vault/raw-sources/world-coordinates.md,
+ *  themselves approximate); the owner's in-game check is still pending. The contract is
  *  metres (ADR-0006) and the yaw is normalized to [0, 360); FRM's pitch is dropped. */
 const CM_PER_M = 100;
 function mapLocation(location: RawFrmLocation): NonNullable<FactoryBuilding["location"]> {
