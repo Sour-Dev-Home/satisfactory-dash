@@ -1,3 +1,6 @@
+// Must stay the first import: it turns on zod's jitless mode before any schema is built, so zod
+// never probes `new Function("")`, which the strict CSP reports. main.test.ts enforces this.
+import '@satisfactory-dash/shared/browser'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
