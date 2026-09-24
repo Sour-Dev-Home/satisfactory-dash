@@ -79,6 +79,8 @@ export type ErrorKind =
   | "unauthorized"
   | "rate_limited"
   | "server_not_found"
+  | "forbidden"
+  | "service_unavailable"
   | "not_editable"
   | "upstream_unreachable"
   | "upstream_auth_rejected"
@@ -92,6 +94,10 @@ const kindByCode = {
   unauthorized: "unauthorized",
   rate_limited: "rate_limited",
   server_not_found: "server_not_found",
+  // ADR-0025: a member whose role doesn't allow the action, and a required dependency being down.
+  // A non-member gets server_not_found, so "forbidden" never reveals a server's existence.
+  forbidden: "forbidden",
+  service_unavailable: "service_unavailable",
   not_editable: "not_editable",
   upstream_unreachable: "upstream_unreachable",
   upstream_auth_rejected: "upstream_auth_rejected",

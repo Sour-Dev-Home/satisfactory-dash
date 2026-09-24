@@ -5,7 +5,9 @@ import {
   ApiErrorResponseSchema,
   FactoryResponseSchema,
   HealthResponseSchema,
+  KnownErrorCode,
   LoginRequestSchema,
+  ReadinessResponseSchema,
   PowerHistoryResponseSchema,
   PowerResponseSchema,
   SessionResponseSchema,
@@ -28,6 +30,7 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["servers", ServerListResponseSchema],
   ["error", ApiErrorResponseSchema],
   ["health", HealthResponseSchema],
+  ["readiness", ReadinessResponseSchema],
   ["loginRequest", LoginRequestSchema],
   ["session", SessionResponseSchema],
   ["settings", SettingsResponseSchema],
@@ -164,6 +167,51 @@ describe("schemas accept what the contract allows", () => {
   });
 });
 
+// ADR-0025 PR 4: additive contract pieces. Each one must leave an older peer's messages valid.
+describe("ADR-0025 additive contract", () => {
+  it("adds the forbidden and service_unavailable error codes without removing any", () => {
+    for (const code of ["forbidden", "service_unavailable"]) {
+      expect(KnownErrorCode.options).toContain(code);
+    }
+    expect(KnownErrorCode.options).toContain("unauthorized");
+    expect(KnownErrorCode.options).toContain("server_not_found");
+  });
+
+  it("an error body with the new codes parses, and so does one with a code from the future", () => {
+    expect(ApiErrorResponseSchema.safeParse(fixtures.errorForbidden).success).toBe(true);
+    expect(ApiErrorResponseSchema.safeParse(fixtures.errorServiceUnavailable).success).toBe(true);
+    expect(ApiErrorResponseSchema.safeParse(fixtures.errorUnknownCode).success).toBe(true);
+  });
+
+  it("readiness is exactly ok or unavailable, and nothing else can be smuggled in", () => {
+    expect(ReadinessResponseSchema.safeParse({ status: "ok" }).success).toBe(true);
+    expect(ReadinessResponseSchema.safeParse({ status: "unavailable" }).success).toBe(true);
+    expect(ReadinessResponseSchema.safeParse({ status: "degraded" }).success).toBe(false);
+    expect(ReadinessResponseSchema.safeParse({}).success).toBe(false);
+    expect(ReadinessResponseSchema.parse({ status: "unavailable", dependency: "postgres://u:p@h/d" })).toEqual({ status: "unavailable" });
+  });
+
+  it("a session with email and authMethods parses, and an older one without them still does", () => {
+    expect(SessionResponseSchema.parse(fixtures.sessionAuthenticatedWithAccount)).toEqual(fixtures.sessionAuthenticatedWithAccount);
+    expect(SessionResponseSchema.safeParse(fixtures.sessionAuthenticated).success).toBe(true);
+    expect(SessionResponseSchema.safeParse(fixtures.sessionAnonymous).success).toBe(true);
+  });
+
+  it("tolerates an auth method added later (a plain string array, not an enum)", () => {
+    const future = { authenticated: true, user: { name: "Ann", authMethods: ["google", "passkey"] } };
+    expect(SessionResponseSchema.safeParse(future).success).toBe(true);
+    expect(SessionResponseSchema.safeParse({ authenticated: true, user: { name: "Ann", authMethods: "google" } }).success).toBe(false);
+    expect(SessionResponseSchema.safeParse({ authenticated: true, user: { name: "Ann", email: 5 } }).success).toBe(false);
+  });
+
+  it("declares the readiness and sign-out-everywhere endpoints with the right methods and paths", () => {
+    expect(endpoints.healthReady).toMatchObject({ method: "GET", route: "/api/health/ready" });
+    expect(endpoints.healthReady.path()).toBe("/api/health/ready");
+    expect(endpoints.auth.logoutAll).toMatchObject({ method: "POST", route: "/api/auth/logout-all" });
+    expect("request" in endpoints.auth.logoutAll).toBe(false);
+  });
+});
+
 describe("auth and settings schemas", () => {
   it("rejects an authenticated session without a user", () => {
     expect(SessionResponseSchema.safeParse({ authenticated: true }).success).toBe(false);
@@ -216,7 +264,7 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(11);
+    expect(all.length).toBe(13);
     for (const [name, endpoint] of all) {
       expect(endpoint.path("default"), name).toBe(endpoint.route.replace(":serverId", "default"));
     }

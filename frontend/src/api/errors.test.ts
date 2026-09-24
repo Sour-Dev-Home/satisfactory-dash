@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  errorForbidden,
   errorLoginFailed,
   errorNotEditable,
   errorNotFound,
   errorPayloadTooLarge,
   errorRateLimited,
+  errorServiceUnavailable,
   errorUnknownCode,
   errorUnsupportedMediaType,
   errorUpstreamUnreachable,
@@ -26,6 +28,8 @@ describe("classifyError", () => {
     [errorLoginFailed, "unauthorized"],
     [errorRateLimited, "rate_limited"],
     [errorNotEditable, "not_editable"],
+    [errorForbidden, "forbidden"],
+    [errorServiceUnavailable, "service_unavailable"],
     [errorUpstreamUnreachable, "upstream_unreachable"],
     [errorWithDetail, "upstream"],
     [errorNotFound, "client_bug"],

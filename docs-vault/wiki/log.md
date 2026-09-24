@@ -298,3 +298,13 @@ the bottom.
   never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
   frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
   fixtures are not changed for it.
+- 2026-09-25 — ADR-0025 PR 4 (contract, additive): `KnownErrorCode` gains `forbidden` (403, a
+  member whose role doesn't allow the action; a non-member still gets `server_not_found`) and
+  `service_unavailable` (503; a session lookup failing because the database is down is this,
+  never a 401). New `ReadinessResponseSchema` (`ok` | `unavailable`) and the `healthReady`
+  endpoint (`GET /api/health/ready`); the backend's readiness route now parses its body with it.
+  `SessionResponse.user` gains optional `email` and `authMethods` (a plain string array, so a
+  method added later doesn't break an older frontend), and the `auth.logoutAll` endpoint
+  (`POST /api/auth/logout-all`, answers like logout) is declared: the backend serves it in PR 5.
+  Callers updated on both sides: the backend status map, `ForbiddenError` and
+  `ServiceUnavailableError`, and the frontend's error-kind map.

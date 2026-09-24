@@ -29,8 +29,10 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   payload_too_large: 413,
   unsupported_media_type: 415,
   unauthorized: 401,
+  forbidden: 403,
   not_editable: 409,
   rate_limited: 429,
+  service_unavailable: 503,
   internal: 500,
 };
 
@@ -123,6 +125,25 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/** ADR-0025: a signed-in MEMBER whose role doesn't allow the action (403). A non-member is
+ *  answered with ServerNotFoundError (404) instead, so a server's existence isn't revealed. */
+export class ForbiddenError extends Error {
+  constructor(message = "You don't have permission to do that on this server") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+/** ADR-0025 decision 6: a dependency the backend needs (the database) is down or too slow (503).
+ *  A session lookup that fails because the database is down is THIS, never a 401: an outage must
+ *  not look like "signed out". The message is fixed and public; the cause stays in the logs. */
+export class ServiceUnavailableError extends Error {
+  constructor() {
+    super("The service is temporarily unavailable");
+    this.name = "ServiceUnavailableError";
+  }
+}
+
 /** Too many failed logins from one IP (ADR-0011). Sets Retry-After. */
 export class RateLimitedError extends Error {
   constructor(readonly retryAfterSeconds: number) {
@@ -192,6 +213,12 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   }
   if (err instanceof UnauthorizedError) {
     return { code: "unauthorized", message: err.message };
+  }
+  if (err instanceof ForbiddenError) {
+    return { code: "forbidden", message: err.message };
+  }
+  if (err instanceof ServiceUnavailableError) {
+    return { code: "service_unavailable", message: err.message };
   }
   if (err instanceof RateLimitedError) {
     return { code: "rate_limited", message: err.message };

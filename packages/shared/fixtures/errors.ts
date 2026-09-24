@@ -1,6 +1,32 @@
-import type { ApiErrorResponse, HealthResponse } from "../src/index";
+import type { ApiErrorResponse, HealthResponse, ReadinessResponse } from "../src/index";
 
 export const healthOk = { status: "ok" } satisfies HealthResponse;
+
+/** GET /api/health/ready (ADR-0025): 200 when the dependencies answer... */
+export const readinessOk = { status: "ok" } satisfies ReadinessResponse;
+
+/** ...and 503 with this body when they don't. It never says which dependency failed. */
+export const readinessUnavailable = { status: "unavailable" } satisfies ReadinessResponse;
+
+/** A signed-in user whose role doesn't allow the action (403). A non-member of the server gets
+ *  server_not_found instead, so the server's existence isn't revealed (ADR-0025). */
+export const errorForbidden = {
+  error: {
+    code: "forbidden",
+    message: "You don't have permission to do that on this server",
+    requestId: "00000000-0000-4000-8000-000000000012",
+  },
+} satisfies ApiErrorResponse;
+
+/** The database (or another required dependency) is unavailable (503). A session lookup that
+ *  fails because the database is down is this, never a 401 (ADR-0025 decision 6). */
+export const errorServiceUnavailable = {
+  error: {
+    code: "service_unavailable",
+    message: "The service is temporarily unavailable",
+    requestId: "00000000-0000-4000-8000-000000000013",
+  },
+} satisfies ApiErrorResponse;
 
 export const errorUpstreamUnreachable = {
   error: {
