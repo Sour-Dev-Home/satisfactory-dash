@@ -226,7 +226,8 @@ describe.skipIf(!available)("Google sign-in against Postgres", () => {
     await admin.query("UPDATE identity.login_attempts SET created_at = now() - interval '1 hour', expires_at = now() - interval '50 minutes'");
     const expired = await completeGoogleSignIn(app, issuer, stale, { claims: owner });
     expect(expired.headers.location).toBe(`${FRONTEND}/app/login?error=expired`);
-    expect(await count("SELECT count(*) AS n FROM identity.login_attempts")).toBe(0);
+    // The expired row is left for the purge worker; nothing live remains.
+    expect(await count("SELECT count(*) AS n FROM identity.login_attempts WHERE expires_at > now()")).toBe(0);
   });
 
   it("a wrong state and a wrong nonce end in error=failed and create no session", async () => {

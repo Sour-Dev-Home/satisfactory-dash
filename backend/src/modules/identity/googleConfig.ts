@@ -50,7 +50,8 @@ export function loadGoogleConfigFromEnv(env: NodeJS.ProcessEnv, allowedOrigins: 
     throw new ConfigError("BOOTSTRAP_OWNER_EMAIL must be an email address.");
   }
   const frontendOrigin = value("FRONTEND_ORIGIN") || DEFAULT_FRONTEND_ORIGIN;
-  if (!allowedOrigins.includes(frontendOrigin)) {
+  // An exact match against the list (whole-string equality, not a substring test).
+  if (!allowedOrigins.some((allowed) => allowed === frontendOrigin)) {
     throw new ConfigError("FRONTEND_ORIGIN must be one of CORS_ALLOWED_ORIGINS (exact match).");
   }
   return {
