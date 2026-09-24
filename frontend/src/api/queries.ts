@@ -1,6 +1,6 @@
 import { MutationCache, QueryCache, QueryClient, queryOptions, type QueryKey } from "@tanstack/react-query";
 import { endpoints, type SessionResponse } from "@satisfactory-dash/shared";
-import { apiGet } from "./client";
+import { apiGetAbortable } from "./client";
 import { BackendUnreachableError, classifyError } from "./errors";
 
 /** ADR-0005 poll intervals. Settings poll only while a change is pending. */
@@ -81,31 +81,34 @@ export function createQueryClient(): QueryClient {
 // TanStack Query dedupes by key, so each query has at most one request in flight: an
 // interval tick that lands while a fetch is still running joins it instead of starting another.
 export const queries = {
-  health: () => queryOptions({ queryKey: ["health"], queryFn: () => apiGet(endpoints.health) }),
-  session: () => queryOptions({ queryKey: SESSION_KEY, queryFn: () => apiGet(endpoints.auth.session) }),
-  servers: () => queryOptions({ queryKey: ["servers"], queryFn: () => apiGet(endpoints.servers) }),
+  health: () =>
+    queryOptions({ queryKey: ["health"], queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.health) }),
+  session: () =>
+    queryOptions({ queryKey: SESSION_KEY, queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.auth.session) }),
+  servers: () =>
+    queryOptions({ queryKey: ["servers"], queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.servers) }),
   status: (serverId: string) =>
     queryOptions({
       queryKey: ["servers", serverId, "status"],
-      queryFn: () => apiGet(endpoints.status, serverId),
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.status, serverId),
       refetchInterval: POLL_MS.status,
     }),
   power: (serverId: string) =>
     queryOptions({
       queryKey: ["servers", serverId, "power"],
-      queryFn: () => apiGet(endpoints.power, serverId),
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.power, serverId),
       refetchInterval: POLL_MS.power,
     }),
   factory: (serverId: string) =>
     queryOptions({
       queryKey: ["servers", serverId, "factory"],
-      queryFn: () => apiGet(endpoints.factory, serverId),
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.factory, serverId),
       refetchInterval: POLL_MS.factory,
     }),
   settings: (serverId: string) =>
     queryOptions({
       queryKey: ["servers", serverId, "settings"],
-      queryFn: () => apiGet(endpoints.settings.get, serverId),
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.settings.get, serverId),
       // ADR-0012: the setting rarely changes; re-read it only until a pending change applies.
       refetchInterval: (query) => (query.state.data?.data.pending ? POLL_MS.settingsPending : false),
     }),

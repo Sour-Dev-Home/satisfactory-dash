@@ -37,6 +37,18 @@ export function apiGet<T, A extends unknown[]>(endpoint: GetEndpoint<T, A>, ...a
 }
 
 /**
+ * apiGet that aborts the network request when `signal` fires. Queries pass TanStack's
+ * signal, so a cancelled or unmounted query stops its fetch instead of discarding the result.
+ */
+export function apiGetAbortable<T, A extends unknown[]>(
+  signal: AbortSignal,
+  endpoint: GetEndpoint<T, A>,
+  ...args: A
+): Promise<T> {
+  return request(endpoint.method, endpoint.path(...args), endpoint.response, undefined, signal);
+}
+
+/**
  * For endpoints without a request schema (logout), pass `undefined` as the body. When the
  * endpoint has one, the body is checked first and a mismatch rejects without sending.
  */
@@ -53,8 +65,14 @@ export async function apiSend<T, B, A extends unknown[]>(
   return request(endpoint.method, path, endpoint.response, body);
 }
 
-async function request<T>(method: string, path: string, schema: Schema<T>, body?: unknown): Promise<T> {
-  const init: RequestInit = { method, credentials: "include" };
+async function request<T>(
+  method: string,
+  path: string,
+  schema: Schema<T>,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  const init: RequestInit = { method, credentials: "include", signal };
   if (body !== undefined) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(body);
@@ -64,6 +82,8 @@ async function request<T>(method: string, path: string, schema: Schema<T>, body?
   try {
     res = await fetch(BASE_URL + path, init);
   } catch (cause) {
+    // Our own cancellation, not a dead backend: pass the AbortError through untouched.
+    if (signal?.aborted) throw cause;
     throw new BackendUnreachableError(path, undefined, { cause });
   }
 
@@ -71,6 +91,7 @@ async function request<T>(method: string, path: string, schema: Schema<T>, body?
   try {
     text = await res.text();
   } catch (cause) {
+    if (signal?.aborted) throw cause;
     // The connection dropped mid-body: nothing usable arrived, same as no response.
     throw new BackendUnreachableError(path, res.status, { cause });
   }

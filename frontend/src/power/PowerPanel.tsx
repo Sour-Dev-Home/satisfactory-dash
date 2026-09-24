@@ -1,5 +1,5 @@
 import type { PowerCircuit, PowerCircuitStatus, PowerResponse } from "@satisfactory-dash/shared";
-import { formatMW, formatMWh, formatPercent, formatTime } from "../format";
+import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
 
 const STATUS_ORDER: Record<PowerCircuitStatus, number> = { outage: 0, at_risk: 1, ok: 2 };
 const STATUS_LABEL: Record<PowerCircuitStatus, string> = {
@@ -26,7 +26,10 @@ export function PowerPanel({ snapshot }: { snapshot: PowerResponse }) {
       <h3 id="power-heading">Power</h3>
       {hasOutage && (
         <p role="alert" className="banner banner-alarm">
-          Power outage: {outages} {outages === 1 ? "circuit has" : "circuits have"} a tripped fuse.
+          {/* hasOutage is the alarm; the count is detail, so never print "0 circuits". */}
+          {outages > 0
+            ? `Power outage: ${outages} ${outages === 1 ? "circuit has" : "circuits have"} a tripped fuse.`
+            : "Power outage reported."}
         </p>
       )}
       {atRisk > 0 && (
@@ -83,7 +86,8 @@ function CircuitCard({ circuit }: { circuit: PowerCircuit }) {
 }
 
 function Battery({ circuit }: { circuit: PowerCircuit }) {
-  const flow = circuit.batteryDifferentialMW;
+  // Label from the displayed value, so -0.03 MW reads "Idle", not "Discharging 0 MW".
+  const flow = roundForDisplay(circuit.batteryDifferentialMW);
   return (
     <dl className="battery">
       <dt>Battery storage</dt>

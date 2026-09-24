@@ -96,8 +96,9 @@ function BuildingRow({ building }: { building: FactoryBuilding }) {
         ) : (
           <ul>
             {/* Activity is the averaged percent, never the instantaneous isProducing flag. */}
-            {building.production.map((rate) => (
-              <li key={rate.className}>
+            {/* Index in the key: nothing in the contract says output class names are unique. */}
+            {building.production.map((rate, i) => (
+              <li key={`${i}-${rate.className}`}>
                 {rate.name}: {formatRate(rate.currentPerMinute, rate.maxPerMinute)} ({formatPercent(rate.percent)})
               </li>
             ))}

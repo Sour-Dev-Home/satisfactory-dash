@@ -124,7 +124,8 @@ describe("session lifecycle", () => {
     expect(factoryReads).toBe(1);
     submitLogin();
     await screen.findByRole("button", { name: "Log out" });
-    await delay(200);
+    // Inside act: the re-login's own queries resolve during this wait and update the tree.
+    await act(() => delay(200));
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
   });
