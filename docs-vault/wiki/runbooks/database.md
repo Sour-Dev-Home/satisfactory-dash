@@ -52,7 +52,12 @@ fails if the two disagree.
   `/api/health/ready` runs `SELECT 1` with a 1 s timeout and answers `200 {"status":"ok"}` or
   `503 {"status":"unavailable"}` with no detail (it is public). With no `DATABASE_URL` it answers
   200. Its schema joins the shared contract in PR 4.
-- Logs carry error codes only, never the URL, the password or the driver's message.
+- Logs: the pool and startup paths carry error codes only, never the URL or the password. The
+  request error handler is different: it logs the full cause chain with the request id, so a
+  database outage line includes the driver's message (for example a refused connection to
+  `127.0.0.1:5432`). The driver's messages do not contain the password or the connection string,
+  and that detail is never in a response body (a `service_unavailable` body has none, in any
+  environment). Log files stay on the game PC (14-day retention); treat them as internal.
 
 ## Tests
 

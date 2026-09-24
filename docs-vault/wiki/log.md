@@ -376,3 +376,9 @@ the bottom.
   upserted with the operator as owner (a no-op after ownership moves), and scoped routes answer
   503 until then; `/api/health/ready` includes it. A database outage is a 503, never a 404.
   Without `DATABASE_URL` nothing changes. `resolveServer` and its six call sites are untouched.
+- 2026-09-25 — Docs: ADR-0025 re-copied from the architect's draft (adds "Considered and rejected:
+  Supabase Auth") and ADR-0026 (the in-house demo router replaced the msw `getResponse` path,
+  #113), both verbatim. The database runbook's log-hygiene sentence is corrected after the gate A
+  security review (L3): the pool and startup paths log codes only, but the request error handler
+  logs the cause chain, so a database outage line includes the driver's message (never the
+  password or URL, never in a response body).
