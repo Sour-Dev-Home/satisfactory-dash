@@ -229,6 +229,10 @@ If it doesn't come back, the restart isn't working: start it with
 
 After a rebuild (`npm run build -w backend`), restart the task: `Stop-ScheduledTask
 -TaskName SatisfactoryDashBackend; Start-ScheduledTask -TaskName SatisfactoryDashBackend`.
+Then confirm it came back: `Get-NetTCPConnection -LocalPort 3001 -State Listen` (retry for a
+few seconds). Once (2026-09-24) a start issued 4 seconds after the stop left the task
+`Ready` with nothing listening; if that happens, run `Start-ScheduledTask` again. If it
+recurs, have the wrapper log its start and stop so we can see which side dropped it.
 
 ## 5. Create the Cloudflare Tunnel (in the Cloudflare dashboard)
 
