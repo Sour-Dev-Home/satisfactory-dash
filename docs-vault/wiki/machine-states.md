@@ -8,7 +8,10 @@ and how much evidence stands behind each rule. Decision: [ADR-0027](./decisions/
 
 1. **paused**: `IsPaused`.
 2. **unpowered**: `CircuitGroupID` is -1 (not connected), or the building's `PowerInfo.FuseTriggered` is
-   true (the whole circuit is dead).
+   true (the whole circuit is dead). The fuse flag is read from the building itself, not from a
+   `getPower` lookup: the 2026-09-22 CJ capture shows it true for a building on the tripped grid, so no
+   second upstream call or circuit join is needed and the classifier stays a pure function of one building
+   (architect-accepted deviation from the ADR's "building, circuit" signature).
 3. **idle**: no recipe (FRM reports an unconfigured machine as recipe "Unassigned"; the adapter maps it to null).
 4. **backedUp**: the existing overflow signal (`isBackedUp`: an output slot is at capacity).
 5. **starved**: powered, configured, not backed up, and the best averaged output percent is below
