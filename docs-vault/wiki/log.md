@@ -266,3 +266,8 @@ the bottom.
   missing edge fails. It found one gap on its first run: the model had no `root -> platform`
   edge although app.ts and server.ts import platform/ (added, tagged platform-use, hidden from
   the readable view). `npm run test:scripts` covers the script. Not yet wired into CI.
+- 2026-09-24 — ADR-0024 phase 3 wired into CI: the Architecture job now installs the repo and runs
+  `npm run architecture:check` as a REPORT-ONLY step (a finding warns, never fails the job); its
+  report ships in the diagrams artifact as `architecture-out/drift-report.txt`. The job's path
+  filter also triggers on `backend/src/platform/`, `app.ts`, `server.ts` and the drift script. It
+  becomes a required check after about a week of green runs on main.

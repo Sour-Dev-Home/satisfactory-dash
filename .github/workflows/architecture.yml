@@ -60,7 +60,7 @@ jobs:
             echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
-          if echo "$changed" | grep -qE '^(docs-vault/workspace\.dsl$|docs-vault/wiki/decisions/|backend/src/modules/|\.github/workflows/architecture\.yml$)'; then
+          if echo "$changed" | grep -qE '^(docs-vault/workspace\.dsl$|docs-vault/wiki/decisions/|backend/src/(modules/|platform/|app\.ts$|server\.ts$)|scripts/architecture-drift|\.github/workflows/architecture\.yml$)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -134,6 +134,32 @@ jobs:
           run export -workspace workspace.dsl -format static -output architecture-out/site
           mv inspect.txt docs-vault/architecture-out/
           echo "Exported:"; find docs-vault/architecture-out -maxdepth 2 -type f -name '*.svg' | sort
+
+      # Phase 3 (ADR-0024): backend imports vs the model's component relationships.
+      # REPORT-ONLY for now (the architect's rule): it becomes required after about a
+      # week of green runs on main. The report ships in the diagrams artifact.
+      - uses: actions/setup-node@v7
+        if: steps.model.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.model.outputs.present == 'true'
+        run: npm ci
+
+      - name: Drift check (report-only)
+        if: steps.model.outputs.present == 'true'
+        run: |
+          mkdir -p docs-vault/architecture-out
+          # The exit code is captured, not trusted, so a finding warns instead of failing.
+          set +e
+          npm run --silent architecture:check 2>&1 | tee docs-vault/architecture-out/drift-report.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "::warning::architecture drift check failed (exit $code); report-only until it has been green on main for about a week."
+          fi
 
       - name: Upload diagrams
         if: steps.model.outputs.present == 'true'
