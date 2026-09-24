@@ -318,6 +318,16 @@ the bottom.
   pino transports run in a worker thread that the esbuild single-file bundle cannot carry, and an
   async stream can lose the fatal line written just before `process.exit(1)`. Unset, logs go to
   stdout as before; an unusable `LOG_DIR` stops the backend at startup. Runbook updated.
+- 2026-09-25 — ADR-0025 PR 4 (contract, additive): `KnownErrorCode` gains `forbidden` (403, a
+  member whose role doesn't allow the action; a non-member still gets `server_not_found`) and
+  `service_unavailable` (503; a session lookup failing because the database is down is this,
+  never a 401). New `ReadinessResponseSchema` (`ok` | `unavailable`) and the `healthReady`
+  endpoint (`GET /api/health/ready`); the backend's readiness route now parses its body with it.
+  `SessionResponse.user` gains optional `email` and `authMethods` (a plain string array, so a
+  method added later doesn't break an older frontend), and the `auth.logoutAll` endpoint
+  (`POST /api/auth/logout-all`, answers like logout) is declared: the backend serves it in PR 5.
+  Callers updated on both sides: the backend status map, `ForbiddenError` and
+  `ServiceUnavailableError`, and the frontend's error-kind map.
 - 2026-09-25 — ADR-0027 (production history and alerts, Discord first) added as
   `decisions/0027-history-and-alerts.md`, status PROPOSED by the architect: nothing in it is
   approved to build, and it builds only after ADR-0025 gate A (everything in it needs Postgres).
@@ -337,3 +347,8 @@ the bottom.
   the contact mailbox is privacy@, retention is decided (audit events 1 year, logs 14 days), and the
   published pages will be `frontend/public/privacy.html` and `terms.html`. The owner is named only
   on the published page, never in the repo docs.
+- 2026-09-25 — ADR-0028 (external uptime monitoring and a public status page) added as
+  `decisions/0028-uptime-monitoring.md`, accepted by the owner: Better Stack, a public status
+  page and the ops@ alias; in place at ADR-0025 gate A. Rule for the backend: `/api/health` and
+  `/api/health/ready` stay detail-free forever, since an external monitor and a public status
+  page depend on them.

@@ -16,7 +16,21 @@ export const SessionResponseSchema = z
   .discriminatedUnion("authenticated", [
     z.object({
       authenticated: z.literal(true),
-      user: z.object({ name: z.string().describe("The operator's username") }),
+      user: z.object({
+        name: z.string().describe("The account's display name (the operator's username for password login)"),
+        // ADR-0025 (additive and optional per the deploy-skew rule: an older backend sends neither).
+        email: z
+          .string()
+          .optional()
+          .describe("The account's email, when it has one (Google sign-in). For the account menu only."),
+        authMethods: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "How this account can sign in: \"password\" and/or \"google\". A plain string array, " +
+              "not an enum, so a method added later doesn't fail an already-deployed frontend's parse.",
+          ),
+      }),
     }),
     z.object({ authenticated: z.literal(false) }),
   ])

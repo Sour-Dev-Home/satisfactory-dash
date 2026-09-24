@@ -1,4 +1,4 @@
-import { HealthResponseSchema } from "./health";
+import { HealthResponseSchema, ReadinessResponseSchema } from "./health";
 import { ServerListResponseSchema } from "./servers";
 import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
@@ -19,6 +19,14 @@ const scoped = (resource: string) => (serverId: string) =>
  */
 export const endpoints = {
   health: { method: "GET", route: "/api/health", path: () => "/api/health", response: HealthResponseSchema },
+  // ADR-0025 decision 6: readiness (the database answers), public like health. A 503 body has
+  // the same shape, so the response schema is used for both.
+  healthReady: {
+    method: "GET",
+    route: "/api/health/ready",
+    path: () => "/api/health/ready",
+    response: ReadinessResponseSchema,
+  },
   servers: { method: "GET", route: "/api/servers", path: () => "/api/servers", response: ServerListResponseSchema },
   status: {
     method: "GET",
@@ -55,6 +63,15 @@ export const endpoints = {
       response: SessionResponseSchema,
     },
     logout: { method: "POST", route: "/api/auth/logout", path: () => "/api/auth/logout", response: SessionResponseSchema },
+    // ADR-0025 decision 4: "sign out everywhere". Revokes every session of the signed-in user
+    // (this one included) and answers like logout: `authenticated: false`. The admin CLI's
+    // revoke-all for everyone is not an HTTP endpoint.
+    logoutAll: {
+      method: "POST",
+      route: "/api/auth/logout-all",
+      path: () => "/api/auth/logout-all",
+      response: SessionResponseSchema,
+    },
     session: { method: "GET", route: "/api/auth/session", path: () => "/api/auth/session", response: SessionResponseSchema },
   },
   // ADR-0012.
