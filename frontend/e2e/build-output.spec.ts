@@ -22,8 +22,9 @@ test.describe("production build", () => {
       .filter((f) => /\.(js|html|css)$/.test(f))
       .map((f) => readFileSync(f, "utf8"))
       .join("\n");
-    // Markers of msw's browser runtime, the mock-mode module and a fixture-only value.
-    for (const marker of ["setupWorker", "[mock api]", "ExampleSession", "example-password"]) {
+    // Markers of msw's browser runtime, the mock-mode module, the mock-only crash probe and
+    // fixture-only values.
+    for (const marker of ["setupWorker", "[mock api]", "[crash probe]", "ExampleSession", "example-password"]) {
       expect(text, `production bundle contains ${marker}`).not.toContain(marker);
     }
   });
