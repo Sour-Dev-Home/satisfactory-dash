@@ -126,3 +126,20 @@ After the reboot, `show excludedportrange` should no longer list a range contain
 Postgres should bind `127.0.0.1:5432` (keep it loopback-only: `listen_addresses`, and `netstat`
 showing 5432 on 127.0.0.1 / ::1 only). If Hyper-V, WSL or Docker Desktop is enabled later, re-run
 the check, since they can add reservations.
+
+## Gate B checklist: Google sign-in (ADR-0025)
+
+Before the owner approves gate B:
+
+- **The bootstrap owner's address must be a Google account only the owner controls, with 2-step
+  verification on.** The one-time link that attaches Google to the seeded operator trusts a
+  verified email equal to `BOOTSTRAP_OWNER_EMAIL` and nothing else: there is no hosted-domain
+  (`hd`) check. An address on a domain other people administer would let whoever controls that
+  domain's mail claim the operator account, memberships included.
+- Set all of `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` and
+  `BOOTSTRAP_OWNER_EMAIL` (and `FRONTEND_ORIGIN` if it is not `https://satis-manager.com`), or none
+  of them: a partial set stops the backend from starting, and none leaves Google sign-in off
+  (`/api/auth/google/*` answers 404).
+- Test the whole sign-in on localhost first, then in production: the first sign-in with the
+  bootstrap address links to the operator; any other Google account must land on
+  `/app/login?error=not_invited` and create nothing.

@@ -25,9 +25,10 @@ added or removed.
   frontend UI architecture and the license. The README table lists every ADR (ADR-0025,
   Postgres and Google sign-in, is accepted; ADR-0026, the offline demo mode, is accepted; ADR-0027, production history and alerts, is
   accepted, and builds only after ADR-0025 gate A; ADR-0028, external uptime monitoring and a
-  public status page, is accepted).
+  public status page, is accepted; ADR-0029, showing who is connected with minimal data, is accepted).
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
-  containers, backend modules, target) with rendered SVGs and re-render instructions.
+  containers, backend modules, target) with rendered SVGs and re-render instructions, and the
+  [overview cards brief](./architecture/overview-cards.md) (Players, Tick rate, Health).
 - [`legal/privacy-terms-outline.md`](./legal/privacy-terms-outline.md) — an outline (not the
   published policy, not legal advice) for the privacy policy and terms, with `[OWNER]`, `[LEGAL]`
   and `[BUILD]` markers; roadmap 2b, needed before ADR-0025 gate B.
