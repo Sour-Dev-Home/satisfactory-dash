@@ -101,6 +101,11 @@ test.describe("demo build", () => {
     expect(bundleText(DIST_DEMO)).not.toContain(NETWORK_TRANSPORT_MARKER);
   });
 
+  test("doesn't carry the landing page's video (the demo has no landing)", () => {
+    expect(allFiles(DIST)).toContain(join(DIST, "demo", "walkthrough.mp4"));
+    expect(allFiles(DIST_DEMO).filter((f) => f.endsWith(".mp4"))).toEqual([]);
+  });
+
   test("ships no mock tooling or test fixtures", () => {
     const files = allFiles(DIST_DEMO);
     expect(files.some((f) => f.endsWith("mockServiceWorker.js"))).toBe(false);

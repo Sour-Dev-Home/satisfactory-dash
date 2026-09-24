@@ -426,3 +426,4 @@ the bottom.
   email equalling `BOOTSTRAP_OWNER_EMAIL` with no hosted-domain check, so use an address whose
   mailbox you alone control (a consumer address, not one on a domain others administer).
 - 2026-09-25 — The privacy and terms outline is re-copied from the architect's location-neutral draft (it no longer names a state: "a US-based operator"; the state-specific notes are kept private). A repo-wide search for the old wording found no other hit. Git history keeps the earlier text.
+- 2026-09-25 — `SessionResponse.signInMethods` (additive, optional string array) tells a signed-out login screen which methods to offer: `["password"]`, or `["password", "google"]` when Google sign-in is configured; `endpoints.auth.googleStart` names the redirect path (no response schema). Distinct from `authMethods`, which is what an account has linked.

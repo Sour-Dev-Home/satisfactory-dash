@@ -73,6 +73,10 @@ export const endpoints = {
       response: SessionResponseSchema,
     },
     session: { method: "GET", route: "/api/auth/session", path: () => "/api/auth/session", response: SessionResponseSchema },
+    // ADR-0025 decision 3: the "Sign in with Google" button is a full-page navigation to this
+    // path, optionally with `?return=/app/...`; the answer is a 302, never JSON, so there is no
+    // response schema. Offer it only when `signInMethods` includes "google" (Google off = 404).
+    googleStart: { method: "GET", route: "/api/auth/google/start", path: () => "/api/auth/google/start" },
   },
   // ADR-0012.
   settings: {

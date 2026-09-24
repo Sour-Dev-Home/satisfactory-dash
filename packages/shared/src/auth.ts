@@ -12,10 +12,23 @@ export const LoginRequestSchema = z.object({
   password: z.string().min(1).max(1024),
 });
 
+/** ADR-0025 (additive and optional per the deploy-skew rule: an older backend omits it). */
+const SignInMethodsSchema = z
+  .array(z.string())
+  .optional()
+  .describe(
+    "How anyone can sign in to this backend right now, e.g. [\"password\"] or [\"password\", \"google\"]: " +
+      "what the login screen may offer. Always sent by a current backend on a signed-out response, " +
+      "optional on a signed-in one. Distinct from authMethods (what this account has linked). A plain " +
+      "string array, not an enum, so a method added later doesn't fail an already-deployed " +
+      "frontend's parse.",
+  );
+
 export const SessionResponseSchema = z
   .discriminatedUnion("authenticated", [
     z.object({
       authenticated: z.literal(true),
+      signInMethods: SignInMethodsSchema,
       user: z.object({
         name: z.string().describe("The account's display name (the operator's username for password login)"),
         // ADR-0025 (additive and optional per the deploy-skew rule: an older backend sends neither).
@@ -32,7 +45,7 @@ export const SessionResponseSchema = z
           ),
       }),
     }),
-    z.object({ authenticated: z.literal(false) }),
+    z.object({ authenticated: z.literal(false), signInMethods: SignInMethodsSchema }),
   ])
   .describe(
     "Returned by login, logout and the session check. A failed login is a 401 unauthorized " +
