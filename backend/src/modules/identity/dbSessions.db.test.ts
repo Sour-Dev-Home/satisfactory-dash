@@ -79,7 +79,11 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     const cookie = cookieOf(res);
     const id = cookie.slice(`${SESSION_COOKIE}=`.length);
     expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(SessionResponseSchema.parse(res.body)).toEqual({ authenticated: true, user: { name: "operator", authMethods: ["password"] } });
+    expect(SessionResponseSchema.parse(res.body)).toEqual({
+      authenticated: true,
+      signInMethods: ["password"],
+      user: { name: "operator", authMethods: ["password"] },
+    });
     expect(JSON.stringify(res.body)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/); // no internal id in the body
     const rows = await admin.query("SELECT id_hash, expires_at, created_at FROM identity.sessions");
     expect(rows.rows).toHaveLength(1);
@@ -126,7 +130,7 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     const cookie = cookieOf(await loginRequest(app));
     const out = await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie);
     expect(out.status).toBe(200);
-    expect(out.body).toEqual({ authenticated: false });
+    expect(out.body).toEqual({ authenticated: false, signInMethods: ["password"] });
     expect(cleared(out)).toBe(true);
     expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
     expect((await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie)).status).toBe(200);
@@ -139,7 +143,7 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     const b = cookieOf(await loginRequest(app));
     const res = await request(app).post(endpoints.auth.logoutAll.path()).set("Cookie", a);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ authenticated: false });
+    expect(res.body).toEqual({ authenticated: false, signInMethods: ["password"] });
     expect(cleared(res)).toBe(true);
     expect((await request(app).get("/api/servers").set("Cookie", a)).status).toBe(401);
     expect((await request(app).get("/api/servers").set("Cookie", b)).status).toBe(401);
@@ -164,7 +168,7 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
       const oldToken = createSessionToken("operator", SECRET);
       const res = await request(app).get(endpoints.auth.session.path()).set("Cookie", `${SESSION_COOKIE}=${oldToken}`);
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ authenticated: false });
+      expect(res.body).toEqual({ authenticated: false, signInMethods: ["password"] });
       expect(cleared(res)).toBe(true);
     });
 

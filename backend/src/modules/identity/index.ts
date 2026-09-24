@@ -70,7 +70,10 @@ export function createIdentityModule(
   if (googleConfig && !options.db) {
     throw new ConfigError("Google sign-in needs the database: set DATABASE_URL, or unset the GOOGLE_* settings.");
   }
-  const authRouter = Router().use(createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter() }));
+  const signInMethods = googleConfig ? ["password", "google"] : ["password"];
+  const authRouter = Router().use(
+    createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter(), signInMethods }),
+  );
   authRouter.use(
     googleConfig && options.db
       ? createGoogleAuthRouter({

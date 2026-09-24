@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -53,7 +53,8 @@ function mockServiceWorker(): Plugin {
  * The demo build (`--mode demo`, ADR-0026):
  * - client.ts's `./transport` resolves to src/demo/transport.ts (in-process answers, no
  *   network), so the network transport never reaches the demo bundle;
- * - demo/_headers replaces public/_headers in the output, after Vite copies public/.
+ * - demo/_headers replaces public/_headers in the output, after Vite copies public/;
+ * - public/demo/ (the landing page's walkthrough video) is dropped: the demo has no landing.
  */
 function demoBuild(): Plugin {
   const demoTransport = fileURLToPath(new URL('./src/demo/transport.ts', import.meta.url))
@@ -74,7 +75,9 @@ function demoBuild(): Plugin {
       this.error(`${importer} imports src/api/transport.ts; only client.ts may (ADR-0026 demo build).`)
     },
     closeBundle() {
-      if (outDir) writeFileSync(join(outDir, '_headers'), readFileSync(DEMO_HEADERS, 'utf8'))
+      if (!outDir) return
+      writeFileSync(join(outDir, '_headers'), readFileSync(DEMO_HEADERS, 'utf8'))
+      rmSync(join(outDir, 'demo'), { recursive: true, force: true })
     },
   }
 }
