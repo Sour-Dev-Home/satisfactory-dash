@@ -27,6 +27,31 @@ const TOUCH_AFTER_MS = 60_000;
 export type Db = Queryable & Parameters<typeof withTransaction>[0];
 
 /**
+ * Starts a session for `userId` on `client` (the caller's open transaction) and returns the cookie
+ * value. Rotation: the browser's previous session ends with the new one starting (one transaction,
+ * so there is no moment with both, and a failure leaves the old one alone). The login audit row
+ * says so (`rotated: true`) only when a live session really ended; `detail` adds context such as
+ * the provider. Shared by password login and Google sign-in.
+ */
+export async function startSession(
+  client: Queryable,
+  userId: string,
+  replacing: string | undefined,
+  detail: Record<string, unknown> = {},
+): Promise<string> {
+  const { id, idHash } = newSessionId();
+  await createSession(client, { idHash, userId, ttlSeconds: SESSION_TTL_SECONDS });
+  const ended = replacing && SESSION_ID_SHAPE.test(replacing) ? await revokeSession(client, hashSessionId(replacing)) : undefined;
+  const fullDetail = ended !== undefined ? { ...detail, rotated: true } : detail;
+  await recordAuditEvent(client, {
+    action: "login",
+    actorUserId: userId,
+    ...(Object.keys(fullDetail).length > 0 ? { detail: fullDetail } : {}),
+  });
+  return id;
+}
+
+/**
  * ADR-0025 decision 4: server-side sessions. The cookie holds a 32-byte random id, the table only
  * its sha256; a new id on every login (no fixation); the same 8-hour lifetime; time is the
  * database's. A database failure while answering is a 503 (ServiceUnavailableError), NEVER a 401:
@@ -53,20 +78,7 @@ export function createDbSessionStore(db: Db): SessionStore {
           // A disabled account cannot sign in; the answer is the same as a wrong password.
           throw new UnauthorizedError("Invalid username or password");
         }
-        const { id, idHash } = newSessionId();
-        await withTransaction(db, async (client) => {
-          await createSession(client, { idHash, userId: user.id, ttlSeconds: SESSION_TTL_SECONDS });
-          // Rotation: the browser's previous session ends with the new one starting (one
-          // transaction, so there is no moment with both, and a failure leaves the old one alone).
-          // The login row says so (`rotated: true`) only when a live session really ended.
-          const ended =
-            replacing && SESSION_ID_SHAPE.test(replacing) ? await revokeSession(client, hashSessionId(replacing)) : undefined;
-          await recordAuditEvent(client, {
-            action: "login",
-            actorUserId: user.id,
-            ...(ended !== undefined ? { detail: { rotated: true } } : {}),
-          });
-        });
+        const id = await withTransaction(db, (client) => startSession(client, user.id, replacing));
         const authMethods = await authMethodsForUser(db, user.id);
         return {
           cookieValue: id,

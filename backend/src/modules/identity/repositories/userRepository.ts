@@ -152,6 +152,16 @@ export async function ensureLocalUser(
   }
 }
 
+const UPDATE_EMAIL = `
+  UPDATE identity.users
+  SET email = lower($2::text)
+  WHERE id = $1`;
+
+/** Stores the account's email (lowercased by Postgres, like createUser). Never a key. */
+export async function setUserEmail(db: Queryable, userId: string, email: string): Promise<void> {
+  await db.query(UPDATE_EMAIL, [userId, email.trim()]);
+}
+
 const UPDATE_STATUS = `
   UPDATE identity.users
   SET status = $2

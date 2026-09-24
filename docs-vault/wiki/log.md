@@ -398,3 +398,23 @@ the bottom.
   could not bind 5432 because the TCP dynamic port range started at 1024 and Hyper-V reserved
   5358-5457; fix: reset the dynamic range to 49152/16384 and, optionally, an administered
   exclusion for 5432).
+- 2026-09-25 — ADR-0025 PR 7: Google sign-in (backend only; deploys at gate B, and with the
+  GOOGLE_* settings unset it is off and `/api/auth/google/*` answers 404). `GET
+  /api/auth/google/start` creates an `identity.login_attempts` row (state, nonce, PKCE verifier,
+  validated return path) and redirects to Google with an S256 challenge; the browser holds only
+  the random attempt id in a Lax, path-scoped cookie. `GET /api/auth/google/callback` consumes
+  the attempt once, exchanges the code (openid-client v6, lazy cached discovery, a Google outage
+  is a 503 on `/start` only), requires `email_verified === true`, finds the account by
+  `(google, sub)` and never by email, and in ONE transaction starts the session (rotating the
+  presented one) and writes the audit row. The one email lookup is the one-time bootstrap link to
+  the seeded operator; any other account is refused (no user row, no email stored, audit
+  `signin.refused`). Every redirect is the configured frontend origin plus a stored path or a
+  fixed error code (`denied`, `expired`, `failed`, `not_invited`, `unavailable`). New settings:
+  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, BOOTSTRAP_OWNER_EMAIL,
+  FRONTEND_ORIGIN (all-or-nothing, validated at startup). The per-IP request cap was extracted
+  from the password route so both share it.
+- 2026-09-25 — ADR-0025 PR 7 review follow-ups: the request log no longer records the Google
+  callback's query (its one-time code and state); the bootstrap link writes an `identity_link`
+  audit row (ids and codes only); note for the runbook: the bootstrap trust rests on the verified
+  email equalling `BOOTSTRAP_OWNER_EMAIL` with no hosted-domain check, so use an address whose
+  mailbox you alone control (a consumer address, not one on a domain others administer).
