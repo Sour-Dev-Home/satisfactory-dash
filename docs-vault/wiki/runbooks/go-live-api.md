@@ -228,9 +228,22 @@ What the task does, and its limits:
 - If the backend exits with a failure it is restarted **3 times, a minute apart**, then it
   stays down (so a bad `.env` doesn't loop forever). Read the log to see why.
 - It runs from `backend\` with `NODE_ENV=production` and appends to
-  `%LOCALAPPDATA%\satisfactory-dash\logs\backend.log`, outside the repo. That file grows
-  without limit; check its size now and then (rotation is a later improvement).
+  `%LOCALAPPDATA%\satisfactory-dash\logs\backend.log`, outside the repo. **That wrapper file
+  grows without limit and carries whatever the backend prints**, so turn on the backend's own
+  rotated logs (next section) and it stays small: with `LOG_DIR` set the backend prints
+  nothing to stdout except dotenv's one-line startup notice.
 - Remove it with `.\scripts\windows\unregister-backend-task.ps1`.
+
+**Logs and the 14-day retention (`LOG_DIR`).** Set `LOG_DIR` in `backend\.env` (for example
+`%LOCALAPPDATA%\satisfactory-dash\backend-logs`, an absolute path; it is created if missing). The
+backend then writes its JSON logs, which include client IPs, to one file per UTC day,
+`backend-YYYY-MM-DD.log`, and **deletes any such file dated more than 13 days before today**: at
+most 14 files, so nothing is kept longer than 14 days (the privacy policy's promise), even if
+the backend was stopped for weeks (old files are removed at the next start). Only files named
+exactly `backend-YYYY-MM-DD.log` are ever deleted. A `LOG_DIR` that can't be created or written
+to stops the backend at startup with a message on stderr. Unset, logs go to stdout as before
+(dev, CI, containers). The wrapper's own `backend.log` then holds only its restart lines and the
+dotenv notice; check its size now and then, or trim it.
 
 **Prove the restart works.** Task Scheduler's own restart-on-failure did NOT restart a
 killed backend when tested (2026-09-23), so the task runs `run-backend.ps1`, which restarts

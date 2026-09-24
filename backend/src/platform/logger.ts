@@ -1,9 +1,11 @@
 import pino from "pino";
 import type { DestinationStream, Logger } from "pino";
+import { DailyLogStream } from "./logFiles.js";
 
 /**
  * ADR-0008: structured JSON logs to stdout (on AWS, container stdout goes to CloudWatch
- * Logs with no code change). Full error detail goes here, never to a client outside
+ * Logs with no code change). On the game PC, LOG_DIR sends them to daily files instead, kept
+ * 14 days (logFiles.ts). Full error detail goes here, never to a client outside
  * dev/test. Never log tokens, passwords, cookies or GetServerOptions output; the
  * redact paths below cover what pino-http serializes from each request/response.
  */
@@ -22,12 +24,20 @@ function defaultLevel(): string {
   return process.env.NODE_ENV === "test" ? "silent" : "info";
 }
 
-export function createLogger(options: { level?: string } = {}, destination?: DestinationStream): Logger {
+/**
+ * `logDir` (from resolveLogDir, i.e. LOG_DIR) sends the logs to daily files with a 14-day
+ * retention instead of stdout; an explicit `destination` (tests) wins over it.
+ */
+export function createLogger(
+  options: { level?: string; logDir?: string } = {},
+  destination?: DestinationStream,
+): Logger {
+  const target = destination ?? (options.logDir ? new DailyLogStream({ dir: options.logDir }) : undefined);
   return pino(
     {
       level: options.level ?? defaultLevel(),
       redact: { paths: REDACT_PATHS, censor: "[Redacted]" },
     },
-    destination,
+    target,
   );
 }

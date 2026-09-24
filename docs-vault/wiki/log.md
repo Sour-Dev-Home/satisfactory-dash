@@ -311,3 +311,10 @@ the bottom.
   never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
   frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
   fixtures are not changed for it.
+- 2026-09-25 — Log rotation with a 14-day retention (privacy policy): with `LOG_DIR` set the backend
+  writes JSON logs to one file per UTC day (`backend-YYYY-MM-DD.log`) and deletes its own files
+  dated more than 13 days before today, at start and at every rotation (so a long outage cannot
+  leave old logs behind). It is a small synchronous, dependency-free stream instead of pino-roll:
+  pino transports run in a worker thread that the esbuild single-file bundle cannot carry, and an
+  async stream can lose the fatal line written just before `process.exit(1)`. Unset, logs go to
+  stdout as before; an unusable `LOG_DIR` stops the backend at startup. Runbook updated.
