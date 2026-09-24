@@ -4,6 +4,7 @@ import type { ApiErrorResponse, KnownErrorCode } from "@satisfactory-dash/shared
 import { formatErrorDetail } from "./formatErrorDetail.js";
 import { ContractViolationError } from "./sendValidated.js";
 import { UpstreamError } from "./errors.js";
+import { requestLogLevel } from "./logLevel.js";
 
 const UNREACHABLE_MESSAGE = "Could not reach the Satisfactory dedicated server";
 const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
@@ -295,7 +296,8 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     const detail = formatErrorDetail(err);
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
-    log.error({ code, detail, requestId }, message);
+    // Only real failures are errors (a 401 is routine while signed out, other 4xx are warnings).
+    log[requestLogLevel(HTTP_STATUS_BY_CODE[code], err)]({ code, detail, requestId }, message);
 
     if (err instanceof RateLimitedError) {
       res.setHeader("Retry-After", String(err.retryAfterSeconds));

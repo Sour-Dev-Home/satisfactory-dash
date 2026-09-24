@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { pinoHttp } from "pino-http";
+import { requestLogLevel } from "./logLevel.js";
 import type { Logger } from "pino";
 import { clientIp } from "./clientIp.js";
 
@@ -26,11 +27,6 @@ export function createRequestLogger(logger: Logger): RequestHandler {
     // everyone, so each line also names the resolved caller. Keeping both makes a
     // spoofed CF-Connecting-IP visible as a mismatch (architect request, go-live).
     customProps: (req) => ({ clientIp: clientIp(req) }),
-    customLogLevel: (_req, res, err) => {
-      if (err || res.statusCode >= 500) {
-        return "error";
-      }
-      return res.statusCode >= 400 ? "warn" : "info";
-    },
+    customLogLevel: (_req, res, err) => requestLogLevel(res.statusCode, err),
   });
 }
