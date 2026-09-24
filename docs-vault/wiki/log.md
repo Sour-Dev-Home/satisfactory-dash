@@ -303,4 +303,11 @@ the bottom.
   (users/identities, sessions, login attempts with a single-use guarded DELETE), servers
   (registry, per-user list, membership lookups scoped by user, atomic ownership transfer) and
   `platform/audit`. Nothing calls them yet: sessions (PR 5) and authorization (PR 6) come next.
-  The real-Postgres tests cover every constraint and the concurrency cases.
+  The real-Postgres tests cover every constraint and the concurrency cases. The login return
+  path is an ASCII-only allowlist (RFC 3986 characters) written once in
+  `identity/returnPath.ts` and used verbatim by the CHECK constraint and the zod schema; a test
+  asserts they agree.
+- 2026-09-25 — ADR-0026 (demo mode: a public, offline demo at demo.satis-manager.com that can
+  never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
+  frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
+  fixtures are not changed for it.
