@@ -32,15 +32,20 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  *  in production (satis-manager.com -> api.satis-manager.com) and same-origin through
  *  the Vite dev proxy; "none" is a user-initiated request. */
 const ALLOWED_FETCH_SITES = new Set(["same-origin", "same-site", "none"]);
+/** Sec-Fetch-Site values that prove the request came from the API's own origin or from
+ *  the user directly, so a sibling subdomain can't be behind them. */
+const OWN_ORIGIN_FETCH_SITES = new Set(["same-origin", "none"]);
 
 /**
- * Refuses cross-site mutations (found by the security review of PR #24). SameSite=Lax
- * and JSON-only don't cover a body-less mutation that needs no cookie -- an empty
- * cross-site form POST to logout signed the operator out -- and any future body-less
- * action would have had the same gap. So a non-GET request is refused when the browser
- * says it's cross-site (Sec-Fetch-Site), or, for browsers that don't send that header,
- * when its Origin isn't allowlisted. A client that sends neither (curl, scripts) isn't
- * a browser and can't carry a victim's cookie, so it passes.
+ * Refuses cross-site mutations (found by the security review of PR #24, tightened by
+ * ADR-0019). SameSite=Lax and JSON-only don't cover a body-less mutation that needs no
+ * cookie -- an empty cross-site form POST to logout signed the operator out -- and any
+ * future body-less action would have had the same gap. So a non-GET request is refused
+ * when the browser says it's cross-site (Sec-Fetch-Site). `same-site` is not enough on its
+ * own: it includes any sibling subdomain of the frontend's site, so unless the request is
+ * same-origin or user-initiated, an Origin header that is present must be allowlisted.
+ * A client that sends neither header (curl, scripts) isn't a browser and can't carry a
+ * victim's cookie, so it passes.
  */
 export function createCrossSiteGuard(allowedOrigins: string[]): RequestHandler {
   const allowed = new Set(allowedOrigins);
@@ -51,10 +56,23 @@ export function createCrossSiteGuard(allowedOrigins: string[]): RequestHandler {
     }
     const fetchSite = req.headers["sec-fetch-site"];
     const origin = req.headers.origin;
-    const refused =
-      typeof fetchSite === "string"
-        ? !ALLOWED_FETCH_SITES.has(fetchSite)
-        : typeof origin === "string" && !allowed.has(origin);
-    next(refused ? new BadRequestError("Cross-site request refused") : undefined);
+    const fetchSiteRefused = typeof fetchSite === "string" && !ALLOWED_FETCH_SITES.has(fetchSite);
+    const ownOrigin = typeof fetchSite === "string" && OWN_ORIGIN_FETCH_SITES.has(fetchSite);
+    const originRefused = !ownOrigin && typeof origin === "string" && !allowed.has(origin);
+    next(fetchSiteRefused || originRefused ? new BadRequestError("Cross-site request refused") : undefined);
   };
 }
+
+/**
+ * ADR-0019: headers on every /api response. The API only serves JSON, so nothing needs to
+ * be sniffed, framed, cached or leaked through a referrer, and the CSP forbids everything
+ * in case a response is ever rendered. `no-store` matters most: it stops Cloudflare and
+ * browsers keeping authenticated factory data.
+ */
+export const securityHeaders: RequestHandler = (_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  next();
+};

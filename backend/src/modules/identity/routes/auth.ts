@@ -5,7 +5,7 @@ import type { ClientRateLimitInfo } from "express-rate-limit";
 import { LoginRequestSchema, SessionResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { LoginRateLimiter } from "../loginRateLimiter.js";
 import { BadRequestError, RateLimitedError, UnauthorizedError } from "../../../platform/errorResponse.js";
-import { clearSessionCookie, currentUser, setSessionCookie } from "../session.js";
+import { clearSessionCookie, currentUser, revokeCurrentSession, setSessionCookie } from "../session.js";
 import type { SessionDeps } from "../session.js";
 import { routePath } from "../../../platform/routePath.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
@@ -81,13 +81,14 @@ export function createAuthRouter(deps: SessionDeps & { rateLimiter: LoginRateLim
 
   // Works with or without a session, and with no request body (the frontend sends
   // none), so signing out is always possible.
-  router.post(routePath(endpoints.auth.logout.route), (_req, res) => {
+  router.post(routePath(endpoints.auth.logout.route), (req, res) => {
+    revokeCurrentSession(req, deps);
     clearSessionCookie(res);
     sendValidated(res, SessionResponseSchema, { authenticated: false });
   });
 
   router.get(routePath(endpoints.auth.session.route), (req, res) => {
-    const user = currentUser(req, { authenticator, sessionSecret });
+    const user = currentUser(req, deps);
     sendValidated(res, SessionResponseSchema, user ? { authenticated: true, user } : { authenticated: false });
   });
 

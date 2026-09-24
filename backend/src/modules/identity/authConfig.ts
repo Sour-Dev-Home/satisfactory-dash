@@ -10,7 +10,23 @@ export interface AuthConfig {
   allowedOrigins: string[];
 }
 
-const MIN_SECRET_LENGTH = 32;
+/** ADR-0019: 32 random bytes is 43 base64 characters (44 with padding). */
+const MIN_SECRET_LENGTH = 43;
+/** Fewer distinct characters than this in a 43+ character secret means it's repeated or
+ *  patterned, not random (32 random bytes in base64 has around 30; a random hex string
+ *  has at most 16, and virtually always 14 or more). */
+const MIN_DISTINCT_CHARACTERS = 12;
+const PLACEHOLDER_SECRET = /change.?me|placeholder|example|your.?secret|replace.?me|password/i;
+
+/** A length-and-variety screen, not an entropy proof: it rejects short values, repeated
+ *  or patterned ones ("aaaa...", "abcabc..."), and obvious placeholders. */
+function isStrongSecret(secret: string): boolean {
+  return (
+    secret.length >= MIN_SECRET_LENGTH &&
+    new Set(secret).size >= MIN_DISTINCT_CHARACTERS &&
+    !PLACEHOLDER_SECRET.test(secret)
+  );
+}
 /** ADR-0013: the frontend's production origin. */
 const DEFAULT_ALLOWED_ORIGINS = ["https://satis-manager.com"];
 
@@ -50,9 +66,9 @@ export function loadAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Aut
     );
   }
   const sessionSecret = env.SESSION_SECRET ?? "";
-  if (sessionSecret.length < MIN_SECRET_LENGTH) {
+  if (!isStrongSecret(sessionSecret)) {
     throw new ConfigError(
-      `SESSION_SECRET must be at least ${MIN_SECRET_LENGTH} characters of random data (e.g. \`openssl rand -base64 48\`).`,
+      `SESSION_SECRET must be at least ${MIN_SECRET_LENGTH} characters of random data, 32 random bytes or more, and not a placeholder (e.g. \`openssl rand -base64 48\`).`,
     );
   }
   const allowedOrigins = env.CORS_ALLOWED_ORIGINS?.trim()

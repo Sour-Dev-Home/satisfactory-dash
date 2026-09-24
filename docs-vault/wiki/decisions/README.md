@@ -3,7 +3,7 @@
 One file per decision (ADR), numbered in order. Each has a status, the context that
 forced it, the decision, its consequences, and a "Revisit when" trigger that says what
 would make it worth reopening. Decided 2026-09-22 by the architecture session under
-the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0018). Change
+the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0019). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 
 | ADR | Decision |
@@ -26,6 +26,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0016](./0016-frontend-ui-architecture.md) | Frontend UI: Tailwind v4 tokens + shadcn/ui, React Router app shell, Playwright screenshots + axe, a read-only ui-reviewer; strict CSP kept |
 | [0017](./0017-credential-lifecycle.md) | Credential lifecycle: game-server secrets never leave the game host; the cloud holds only a hashed per-server agent credential; managed servers use a secrets store |
 | [0018](./0018-license-agpl.md) | License: AGPL-3.0-only, relicensed from MIT; earlier versions stay MIT; the owner is named in `LICENSE` only |
+| [0019](./0019-api-security-posture.md) | API security posture at go-live (headers, 8 h sessions with a logout denylist, Origin check on writes, secret strength, edge rate limit) and what changes when it scales |
 
 ## Terms used in the ADRs
 

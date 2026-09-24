@@ -178,3 +178,9 @@ the bottom.
   write endpoints enforce `X-FRM-Authorization` (401 without or with a wrong token, 200 with
   the right one), which settles the header-name question. FRM token rotated (old token now
   401). Runbook section 2 corrected: there may be no launcher file to edit.
+- 2026-09-24 — Added ADR-0019 (API security posture, accepted by the architect under the
+  owner's delegation) after a read-only security review of the exposed surface: response
+  headers, 8 h sessions with a logout denylist, Origin check on writes, SESSION_SECRET
+  strength, a Cloudflare login rate-limit rule, and the table of what changes at scale.
+  Implemented in the same change; runbook section 5 gains the rate-limit step and the
+  emergency revoke-all.

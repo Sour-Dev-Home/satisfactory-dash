@@ -30,6 +30,10 @@ logout, sent with Content-Length: 0) passes.
 
 ## Consequences
 
+(Updated by ADR-0019: sessions are now 8 hours, and logout adds the session id to an
+in-memory denylist, so a copied cookie stops working after logout. The rest of this
+paragraph is the original decision.)
+
 Sessions are stateless, signed 12-hour tokens: logout clears the cookie, but a stolen
 token stays valid until it expires, and the only revocation is rotating SESSION_SECRET
 (which signs everyone out). Accepted for a single operator; multi-user accounts
