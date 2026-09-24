@@ -69,20 +69,19 @@ export function Landing() {
         <figcaption className="text-sm text-muted">
           A one-minute walkthrough of the live demo's made-up factory. No sound.
         </figcaption>
-        {/* The video has no narration: this is its text alternative (WCAG 1.2.1). */}
-        <details className="text-sm">
-          <summary className="inline-flex min-h-[44px] cursor-pointer items-center text-accent">
-            What the video shows
-          </summary>
+        {/* The video has no narration: this is its text alternative (WCAG 1.2.1). Always
+            rendered: in a closed <details>, browsers drop the video's aria-describedby. */}
+        <div className="grid gap-1 text-sm">
+          <h3 className="mb-0 text-sm">What the video shows</h3>
           <ol id="walkthrough-transcript" className="grid list-decimal gap-1 pl-5 text-muted">
-            <li>The demo opens with "Enter demo": no sign-in.</li>
+            <li>The demo opens with one button: no sign-in.</li>
             <li>The Overview: all systems operational, with the server, power and factory rows.</li>
             <li>Power: each circuit's production, consumption and capacity, and the five-minute history charts.</li>
             <li>Factory: every machine with its recipe and output rate, one of them backed up.</li>
             <li>Settings: auto-pause is turned on, and the change shows as pending until the server applies it.</li>
             <li>Back to the Overview.</li>
           </ol>
-        </details>
+        </div>
       </figure>
 
       <section aria-labelledby="features-heading" className="grid gap-4">

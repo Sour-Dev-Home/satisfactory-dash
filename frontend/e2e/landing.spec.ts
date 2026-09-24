@@ -48,3 +48,17 @@ test("serves the walkthrough video as MP4, seekable, under the static-asset size
   expect(total).toBeGreaterThan(0);
   expect(total).toBeLessThan(20 * 1024 * 1024);
 });
+
+// The transcript must be rendered for the video's aria-describedby to count: Chrome drops a
+// description whose target isn't rendered (the fresh-eyes pass on #129 found it hidden in a
+// closed <details>). axe can't see this (the id reference itself is valid), and neither can
+// jsdom, so this reads Chrome's own accessibility tree.
+test("the video's text alternative (WCAG 1.2.1) is its accessible description", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForSelector("video");
+  const client = await page.context().newCDPSession(page);
+  await client.send("Accessibility.enable");
+  const { nodes } = await client.send("Accessibility.getFullAXTree");
+  const video = nodes.find((node) => node.role?.value === "Video");
+  expect(String(video?.description?.value ?? ""), "the video's accessible description").toContain("Back to the Overview");
+});
