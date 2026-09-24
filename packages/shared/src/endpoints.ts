@@ -3,6 +3,7 @@ import { ServerListResponseSchema } from "./servers";
 import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
 import { PowerResponseSchema } from "./power";
+import { PowerHistoryResponseSchema } from "./powerHistory";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
 
@@ -36,6 +37,13 @@ export const endpoints = {
     route: "/api/servers/:serverId/power",
     path: scoped("power"),
     response: PowerResponseSchema,
+  },
+  // ADR-0022: the last few minutes of power readings, sampled by the backend.
+  powerHistory: {
+    method: "GET",
+    route: "/api/servers/:serverId/power/history",
+    path: (serverId: string) => `${scoped("power")(serverId)}/history`,
+    response: PowerHistoryResponseSchema,
   },
   // ADR-0011. Every /api route except health requires the session cookie these set.
   auth: {

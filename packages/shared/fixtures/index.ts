@@ -4,5 +4,6 @@ export * from "./servers";
 export * from "./status";
 export * from "./factory";
 export * from "./power";
+export * from "./powerHistory";
 export * from "./auth";
 export * from "./settings";
