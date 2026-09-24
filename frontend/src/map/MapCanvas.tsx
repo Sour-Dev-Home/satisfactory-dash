@@ -24,11 +24,13 @@ const color = (token: string) => getComputedStyle(document.documentElement).getP
 function drawGrid(map: L.Map, renderer: L.Canvas, config: BaseMapConfig) {
   const { minX, maxX, minY, maxY } = config.worldBoundsM;
   const step = config.gridStepM;
-  const line = { renderer, color: color("--color-line"), weight: 1, interactive: false };
+  // The muted token at 65 % over the canvas is about 3.3:1: visible as a scale (WCAG 1.4.11's
+  // 3:1), yet quieter than the full-strength world border and the markers.
+  const line = { renderer, color: color("--color-muted"), opacity: 0.65, weight: 1, interactive: false };
   const at = (x: number, y: number) => project(config, x, y);
   for (let x = Math.ceil(minX / step) * step; x <= maxX; x += step) L.polyline([at(x, minY), at(x, maxY)], line).addTo(map);
   for (let y = Math.ceil(minY / step) * step; y <= maxY; y += step) L.polyline([at(minX, y), at(maxX, y)], line).addTo(map);
-  L.rectangle(mapBounds(config), { ...line, color: color("--color-muted"), fill: false }).addTo(map);
+  L.rectangle(mapBounds(config), { ...line, opacity: 1, fill: false }).addTo(map);
 }
 
 /**
