@@ -2,7 +2,8 @@ import "dotenv/config";
 import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
 import { ConfigError } from "./platform/errors.js";
-import { healthRouter } from "./platform/health.js";
+import { createReadinessRouter, healthRouter } from "./platform/health.js";
+import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
   createGameServerConnection,
   createServerOptionsPort,
@@ -83,13 +84,23 @@ const directory = new InMemoryServerDirectory(entries);
 // the server is listening, and stopped on shutdown.
 const workers = entries.flatMap((entry) => entry.services.telemetry.workers);
 
+// ADR-0025: the database is optional until deploy A. Without DATABASE_URL nothing changes (and
+// /api/health/ready answers 200); with it, the process listens first, then connects in the
+// background (retrying transient errors), and /api/health/ready reports 503 until it is up.
+const databaseConfig = orExit(() => loadDatabaseConfig());
+const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
+
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
 const identity = orExit(() => createIdentityModule());
 
 export const app = createApp({
   logger,
   allowedOrigins: identity.allowedOrigins,
-  routers: [healthRouter, identity.authRouter],
+  routers: [
+    healthRouter,
+    createReadinessRouter(() => (database ? database.isReady() : Promise.resolve(true))),
+    identity.authRouter,
+  ],
   sessionGuard: identity.sessionGuard,
   protectedRouters: [
     createServersRouter(directory),
@@ -104,6 +115,20 @@ if (process.env.NODE_ENV !== "test") {
     for (const worker of workers) {
       worker.start();
     }
+    // ADR-0025 decision 6: a transient outage is retried with backoff (up to 5 minutes), then
+    // (and for any setup error, e.g. a schema behind this build) the process exits 1, so the
+    // Scheduled Task's restart-on-failure takes over and a broken setup still fails loudly.
+    database?.start().catch((err: unknown) => {
+      if (shuttingDown) {
+        return; // a deliberate stop is exit 0, never a startup failure
+      }
+      if (err instanceof ConfigError) {
+        logger.fatal(err.message);
+      } else {
+        logger.fatal({ code: errorCode(err) }, "database startup failed");
+      }
+      process.exit(1);
+    });
   });
 
   // Graceful shutdown (Ctrl+C, or a container's SIGTERM): stop the workers, let in-flight
@@ -121,7 +146,7 @@ if (process.env.NODE_ENV !== "test") {
     // Workers get a short window to stop: their in-flight polls are bounded, but on exit their
     // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
     const workersStopped = Promise.race([
-      Promise.allSettled(workers.map((worker) => worker.stop())),
+      Promise.allSettled([...workers.map((worker) => worker.stop()), database?.close()]),
       new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
     ]);
     // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never

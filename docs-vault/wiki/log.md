@@ -286,3 +286,11 @@ the bottom.
 - 2026-09-24 — ADR-0025 decision 7 answered by the owner: hand-written parameterized SQL through
   `pg`, every row set parsed by zod, no query builder (Decision 2 rewritten with the guardrails).
   ADR-0025 is now fully accepted; PR 3 onward is unblocked.
+- 2026-09-24 — ADR-0025 PR 2 (database foundation, no query layer): `platform/db` (pg pool, the
+  DATABASE_URL config, startup error classification with backoff, schema-version check,
+  withTransaction, central pg error helpers), `/api/health/ready` (`SELECT 1`, 1 s timeout, no
+  detail; its schema joins the contract in PR 4), node-pg-migrate `.sql` migrations with the
+  satis_migrator/satis_app roles and the builtin C.UTF-8 locale (`npm run db:init`,
+  `npm run db:migrate`), a Testcontainers Postgres 18 harness that fails (never skips) in CI when
+  Docker is missing, a guard against SQL built from input, and `runbooks/database.md`. Optional:
+  without DATABASE_URL the backend behaves exactly as before.
