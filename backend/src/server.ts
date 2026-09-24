@@ -14,7 +14,13 @@ import {
   parsePortEnv,
 } from "./modules/gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
-import { InMemoryServerDirectory, createServersRouter, loadServerRegistryFromEnv } from "./modules/servers/index.js";
+import {
+  InMemoryServerDirectory,
+  createDbServerAccess,
+  createServersRouter,
+  loadServerRegistryFromEnv,
+  registerConfiguredServers,
+} from "./modules/servers/index.js";
 import { createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
@@ -109,17 +115,24 @@ const database = databaseConfig ? new Database(databaseConfig, logger) : undefin
 const identity = orExit(() => createIdentityModule(process.env, { db: database?.pool, logger }));
 workers.push(...identity.workers);
 
+// ADR-0025 PR 6: with a database, every /api/servers/:serverId route needs a membership (a
+// non-member gets the same 404 as an unknown server; a viewer's write is a 403) and the list is
+// per user. The configured servers are registered, with the operator as owner, once the database
+// is up; until then those routes answer 503. Without a database nothing changes.
+let serversRegistered = database === undefined;
+const serverAccess = database ? createDbServerAccess(database.pool) : undefined;
+
 export const app = createApp({
   logger,
   allowedOrigins: identity.allowedOrigins,
   routers: [
     healthRouter,
-    createReadinessRouter(() => (database ? database.isReady() : Promise.resolve(true))),
+    createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered : true)),
     identity.authRouter,
   ],
   sessionGuard: identity.sessionGuard,
   protectedRouters: [
-    createServersRouter(directory),
+    createServersRouter(directory, serverAccess, { isReady: () => serversRegistered }),
     ...createTelemetryRouters(directory),
     ...createSettingsRouters(directory),
   ],
@@ -134,17 +147,32 @@ if (process.env.NODE_ENV !== "test") {
     // ADR-0025 decision 6: a transient outage is retried with backoff (up to 5 minutes), then
     // (and for any setup error, e.g. a schema behind this build) the process exits 1, so the
     // Scheduled Task's restart-on-failure takes over and a broken setup still fails loudly.
-    database?.start().catch((err: unknown) => {
-      if (shuttingDown) {
-        return; // a deliberate stop is exit 0, never a startup failure
-      }
-      if (err instanceof ConfigError) {
-        logger.fatal(err.message);
-      } else {
-        logger.fatal({ code: errorCode(err) }, "database startup failed");
-      }
-      process.exit(1);
-    });
+    database
+      ?.start()
+      .then(async () => {
+        const ownerId = await identity.ensureOperatorUserId?.();
+        if (ownerId === undefined) {
+          throw new Error("identity has no operator account in database mode");
+        }
+        const { registered } = await registerConfiguredServers(
+          database.pool,
+          entries.map(({ id, displayName }) => ({ id, displayName })),
+          ownerId,
+        );
+        serversRegistered = true;
+        logger.info({ registered }, "configured servers registered");
+      })
+      .catch((err: unknown) => {
+        if (shuttingDown) {
+          return; // a deliberate stop is exit 0, never a startup failure
+        }
+        if (err instanceof ConfigError) {
+          logger.fatal(err.message);
+        } else {
+          logger.fatal({ code: errorCode(err) }, "database startup failed");
+        }
+        process.exit(1);
+      });
   });
 
   // Graceful shutdown (Ctrl+C, or a container's SIGTERM): stop the workers, let in-flight

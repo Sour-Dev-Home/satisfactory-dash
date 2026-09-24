@@ -5,7 +5,8 @@
  */
 import type { RequestHandler, Router } from "express";
 import { loadAuthConfigFromEnv } from "./authConfig.js";
-import { SingleOperatorAuthenticator } from "./authenticator.js";
+import { OPERATOR_SUBJECT, SingleOperatorAuthenticator } from "./authenticator.js";
+import { ensureLocalUser } from "./repositories/userRepository.js";
 import { LoginRateLimiter } from "./loginRateLimiter.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createSessionGuard } from "./session.js";
@@ -32,6 +33,9 @@ export interface IdentityModule {
   allowedOrigins: string[];
   /** Background housekeeping (database mode only): started once the server is listening. */
   workers: IdentityWorker[];
+  /** Database mode only: makes sure the operator's account exists and returns its id, so the
+   *  composition root can seed it as the owner of the configured servers (ADR-0025 PR 6). */
+  ensureOperatorUserId?: () => Promise<string>;
 }
 
 export interface IdentityOptions {
@@ -57,5 +61,9 @@ export function createIdentityModule(
     sessionGuard: createSessionGuard(sessionDeps),
     allowedOrigins: auth.allowedOrigins,
     workers: options.db ? [createSessionPurgeWorker(options.db, options.logger ?? noopLogger)] : [],
+    ...(options.db && {
+      ensureOperatorUserId: async () =>
+        (await ensureLocalUser(options.db!, { subject: OPERATOR_SUBJECT, displayName: auth.adminUser })).id,
+    }),
   };
 }

@@ -8,4 +8,7 @@ export type { ServerDirectory, ServerDirectoryEntry } from "./serverDirectory.js
 export { loadServerRegistryFromEnv } from "./serverRegistry.js";
 export type { ServerRegistryEntry } from "./serverRegistry.js";
 export { resolveServer } from "./serverScope.js";
+export { createAuthorizeServer, createDbServerAccess } from "./serverAccess.js";
+export type { AuthorizeServerOptions, ServerAccess } from "./serverAccess.js";
+export { registerConfiguredServers } from "./registerConfiguredServers.js";
 export { createServersRouter } from "./serversRouter.js";

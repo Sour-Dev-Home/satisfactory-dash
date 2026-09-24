@@ -365,3 +365,14 @@ the bottom.
   with a non-error status) is `error`, a 401 ("Sign in to continue", routine while signed out) is
   `info`, 429 and every other 4xx is `warn`, the rest `info`. Before, every classified failure
   was logged at level 50, including 401s.
+- 2026-09-25 — ADR-0025 PR 6 (server authorization): with a database, one middleware
+  (`createAuthorizeServer`, mounted by the servers router on `/servers/:serverId`) looks up the
+  signed-in user's membership. A non-member gets the same 404 `server_not_found` as an unknown
+  server (existence is not revealed), a viewer's write (any method but GET/HEAD/OPTIONS) is 403
+  `forbidden`, and the role is set on `res.locals.serverRole`. Because it is one mount, a new
+  server-scoped route cannot skip it, and the IDOR tests (`serverAuthorization.test.ts`) are
+  generated from the shared `endpoints` list. `GET /api/servers` is per user (their servers that
+  this process can also reach). At startup, once the database is up, the configured servers are
+  upserted with the operator as owner (a no-op after ownership moves), and scoped routes answer
+  503 until then; `/api/health/ready` includes it. A database outage is a 503, never a 404.
+  Without `DATABASE_URL` nothing changes. `resolveServer` and its six call sites are untouched.
