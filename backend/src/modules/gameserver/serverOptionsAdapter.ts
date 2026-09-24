@@ -44,7 +44,8 @@ function toBoolean(value: unknown, where: string): boolean {
 
 /** The privilege level (`pl`) inside a vanilla API token: Base64 JSON, then ".", then a
  *  hex fingerprint (docs-vault/raw-sources/dedicated-server-api.md, "Authentication").
- *  Only reads the claim; the server verifies the fingerprint (VerifyAuthenticationToken). */
+ *  Only reads the claim; the server verifies the fingerprint on every call (canEditOptions explains why not
+ *  VerifyAuthenticationToken). */
 function privilegeLevelOf(token: string): string | undefined {
   try {
     const payload = JSON.parse(Buffer.from(token.split(".")[0] ?? "", "base64").toString("utf8")) as unknown;

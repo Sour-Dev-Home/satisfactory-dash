@@ -11,7 +11,7 @@ import {
   RawFrmPlayerSchema,
   RawFrmSessionInfoSchema,
 } from "./rawSchemas.js";
-import type { RawFrmProductionItem, RawFrmIngredientItem, RawFrmInventorySlot } from "./rawTypes.js";
+import type { RawFrmProductionItem, RawFrmIngredientItem, RawFrmInventorySlot, RawFrmLocation } from "./rawTypes.js";
 import type {
   ServerHealth,
   ServerStatus,
@@ -57,6 +57,20 @@ export interface VanillaApiClientLike {
 }
 export interface FrmApiClientLike {
   get<T>(endpoint: string): Promise<T>;
+}
+
+/** FRM positions are believed to be Unreal centimetres (333 of 338 captured buildings sit on a
+ *  100-unit grid; ADR-0023) [NEEDS VERIFICATION: an in-game distance check]. The contract is
+ *  metres (ADR-0006) and the yaw is normalized to [0, 360); FRM's pitch is dropped. */
+const CM_PER_M = 100;
+function mapLocation(location: RawFrmLocation): NonNullable<FactoryBuilding["location"]> {
+  const yaw = (((location.rotation ?? 0) % 360) + 360) % 360;
+  return {
+    xM: location.x / CM_PER_M,
+    yM: location.y / CM_PER_M,
+    zM: location.z / CM_PER_M,
+    rotationDeg: yaw,
+  };
 }
 
 function mapProduction(items: RawFrmProductionItem[] | undefined): ProductionRate[] {
@@ -172,6 +186,7 @@ export class SatisfactoryServerAdapter {
         circuitGroupId: building.PowerInfo?.CircuitGroupID ?? -1,
         powerConsumed: building.PowerInfo?.PowerConsumed ?? 0,
         maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
+        ...(building.location ? { location: mapLocation(building.location) } : {}),
       };
     });
   }

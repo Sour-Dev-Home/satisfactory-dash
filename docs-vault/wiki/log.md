@@ -234,3 +234,9 @@ the bottom.
   the 2026-09-22 capture, converted to metres. The centimetres assumption stays
   [NEEDS VERIFICATION] pending the owner's in-game distance check. The backend fills the fields in
   the next PR (step 3).
+- 2026-09-24 — ADR-0023 step 3 (backend): the game-server adapter maps FRM's building `location`
+  from centimetres to metres (a documented assumption, still [NEEDS VERIFICATION] pending the
+  owner's in-game distance check) and normalizes the yaw to [0, 360); the factory overview now
+  sends `location` and `circuitGroupId` per building. Also: `PORT` is validated like the game
+  server ports (a whole number 1-65535, else the backend refuses to start), and a stale
+  `VerifyAuthenticationToken` comment in the options adapter was corrected.
