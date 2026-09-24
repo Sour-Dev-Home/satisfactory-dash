@@ -6,7 +6,9 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { OverviewView } from "../overview/OverviewView";
+import { PowerHistoryView } from "../power/PowerHistoryView";
 import { PowerView } from "../power/PowerView";
+import { useSelectedServer } from "../servers/ServerContext";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { StatusView } from "../status/StatusView";
@@ -49,6 +51,7 @@ const TABS = [
  * free (ADR-0021). Renders inside AuthGate and ServerGate.
  */
 export function Shell() {
+  const server = useSelectedServer();
   const pages = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const onOverview = useMatch("/app") !== null;
@@ -123,6 +126,10 @@ export function Shell() {
             <Page key="power" title="Power">
               <Section label="Power" probe="power">
                 <PowerView />
+              </Section>
+              <Section label="Power history" probe="power-history">
+                {/* Keyed by server: its polls must never carry over to another server's chart. */}
+                <PowerHistoryView key={server.id} />
               </Section>
             </Page>
           }

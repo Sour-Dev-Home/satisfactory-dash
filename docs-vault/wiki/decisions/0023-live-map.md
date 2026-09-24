@@ -8,8 +8,10 @@ positions, with switchable layers (factory status, power, later belts and trains
 - FRM gives every factory building `location { x, y, z, rotation }` (frm-getFactory.md:23-27; units
   not documented). In the 2026-09-22 capture, all 338 buildings have it; 333 sit exactly on a
   100-unit grid; rotations are mostly 0/90/180/270; the base spans about 264,000 x 141,500 units.
-  That's consistent with Unreal centimetres (buildings snapping to 1 m)
-  [NEEDS VERIFICATION: confirm with two buildings a known distance apart in game].
+  That's consistent with Unreal centimetres (buildings snapping to 1 m). Corroborated (amendment
+  2026-09-24) by SCIM's world bounds in the same game units and by community measurements
+  (docs-vault/raw-sources/world-coordinates.md); the owner's in-game check is now a confirmation,
+  not a blocker.
 - The contract's FactoryBuilding has no location and no circuit group today (packages/shared/src/factory.ts).
 - The base map image is the owner's decision (ADR-0014): community-map style, pluggable, served
   from our own assets.
@@ -32,9 +34,17 @@ positions, with switchable layers (factory status, power, later belts and trains
    - Gate: a spike proves zero CSP violations (pan, zoom, marker hover, layer toggle) before it's adopted.
 3. **Coordinate mapping, owned by the map core:** a base-map config
    `{ tilesUrlTemplate | imageUrl, worldBoundsM: { minX, maxX, minY, maxY }, yAxis: "down"|"up" }`
-   maps world metres to map coordinates. The axis orientation and bounds are calibrated with 2-3
-   known in-game landmarks [NEEDS VERIFICATION]. The config is swappable, so a self-drawn map is a
+   maps world metres to map coordinates. The config is swappable, so a self-drawn map is a
    config change (ADR-0014 owner decision).
+   - *Amendment 2026-09-24:* the mapped world is a 7,500 m square, `worldBoundsM = { minX: -3246.99,
+     maxX: 4253.02, minY: -3750, maxY: 3750 }` (SCIM GameMap.js bounds in game units / 100; the
+     community "5000 px at 1.5 m/px, origin at px (2163, 2500)" agrees to ~2 m). `yAxis: "down"`:
+     +x = east, +y = south. In Leaflet CRS.Simple (lat grows north) the one projection function is
+     `[lat, lng] = [-yM, xM]`. These are the grid base map's bounds; a future image base map carries
+     its own bounds in its config. Only numbers are taken from SCIM, never its tiles or code.
+     The quoted "7.97 x 6.8 km world" is a different extent and is not used.
+   - Verification: a projection unit test (fixture building at xM -1957, yM -1056 lands north-west
+     of the origin) plus one owner check on the spike: his factory appears where he knows it is.
 4. **Base map asset:** a tile pyramid (not one huge image), generated offline from the chosen source
    image and served as our own static assets (Workers static assets, or R2 if file-count/size limits
    bite [NEEDS VERIFICATION: current Workers asset limits]). Never hotlinked. Until the image is

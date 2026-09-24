@@ -13,7 +13,7 @@ import { VanillaApiClient } from "./vanillaApiClient.js";
 export * from "./domain.js";
 export { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 export type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
-export { loadSatisfactoryServerConfigFromEnv } from "./connectionConfig.js";
+export { loadSatisfactoryServerConfigFromEnv, parsePortEnv } from "./connectionConfig.js";
 export type { SatisfactoryServerConfig } from "./connectionConfig.js";
 export { VanillaApiClient, VanillaApiRequestError } from "./vanillaApiClient.js";
 export { FrmApiClient, FrmApiRequestError } from "./frmApiClient.js";

@@ -7,13 +7,13 @@ import {
   createGameServerConnection,
   createServerOptionsPort,
   loadSatisfactoryServerConfigFromEnv,
+  parsePortEnv,
 } from "./modules/gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import { InMemoryServerDirectory, createServersRouter, loadServerRegistryFromEnv } from "./modules/servers/index.js";
 import { createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
-const port = Number(process.env.PORT || 3001);
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
 // container) needs an explicit HOST (go-live blocker, issue #19).
@@ -33,6 +33,9 @@ function orExit<T>(load: () => T): T {
     throw err;
   }
 }
+
+// A bad PORT used to become NaN (listen(NaN) picks a random port); now the backend refuses to start.
+const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
 
 // ADR-0015: one resolver for the whole process, so each unknown item (a modded item, or
 // one newer than the committed catalog) is logged once, not once per request or server.

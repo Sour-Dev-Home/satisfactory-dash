@@ -30,6 +30,14 @@ export const ProductionRateSchema = z.object({
     .describe("0-100. Can slightly exceed 100 from float noise, so there is no max."),
 });
 
+/** Where a building stands in the world (ADR-0023). Metres per ADR-0006. */
+export const BuildingLocationSchema = z.object({
+  xM: z.number().describe("World X in metres"),
+  yM: z.number().describe("World Y in metres"),
+  zM: z.number().describe("World Z (height) in metres"),
+  rotationDeg: z.number().min(0).lt(360).describe("Yaw in degrees, normalized to [0, 360)"),
+});
+
 export const FactoryBuildingSchema = z.object({
   id: z
     .string()
@@ -50,6 +58,20 @@ export const FactoryBuildingSchema = z.object({
         "refinery [NEEDS VERIFICATION].",
     ),
   production: z.array(ProductionRateSchema).describe("Empty when no recipe is configured"),
+  location: BuildingLocationSchema.optional().describe(
+    "World position (ADR-0023). Optional so a newly deployed frontend still parses an older " +
+      "backend's responses (ADR-0007); current backends always send it. The backend converts " +
+      "FRM's centimetres to metres (docs-vault/raw-sources/world-coordinates.md; the owner's " +
+      "in-game check is pending).",
+  ),
+  circuitGroupId: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "Power circuit group the building is wired to; -1 = not connected (ADR-0023). Matches " +
+        "PowerCircuit.circuitGroupId from the power endpoint. Optional for the same deploy-skew reason as location.",
+    ),
 });
 
 export const FactorySchema = z.object({

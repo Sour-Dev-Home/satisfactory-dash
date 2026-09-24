@@ -112,6 +112,9 @@ export const RawFrmFactoryBuildingSchema = z.object({
   IsProducing: z.boolean(),
   IsPaused: z.boolean(),
   PowerInfo: RawFrmPowerInfoSchema.optional(),
+  /** World position (frm-getFactory.md:23-27; units not documented, believed centimetres:
+   *  ADR-0023). Optional so a building without it still maps, just without a location. */
+  location: RawFrmLocationSchema.optional(),
 });
 
 export const RawFrmPowerCircuitSchema = z.object({

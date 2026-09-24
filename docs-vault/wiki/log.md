@@ -235,6 +235,25 @@ the bottom.
   Same PR: ADR-0023 (live factory map) committed as `decisions/0023-live-map.md`, accepted by
   the owner 2026-09-24; its coordinate unit (centimetres) stays [NEEDS VERIFICATION] until an
   in-game distance check.
+- 2026-09-24 — ADR-0023 step 2 (shared contract): `FactoryBuilding` gains optional
+  `location { xM, yM, zM, rotationDeg }` (rotation in [0, 360)) and optional `circuitGroupId`
+  (-1 = unconnected). Both optional per the deploy-skew rule. Fixtures carry real coordinates from
+  the 2026-09-22 capture, converted to metres. The centimetres assumption stays
+  [NEEDS VERIFICATION] pending the owner's in-game distance check. The backend fills the fields in
+  the next PR (step 3).
+- 2026-09-24 — ADR-0023 step 3 (backend): the game-server adapter maps FRM's building `location`
+  from centimetres to metres (a documented assumption, still [NEEDS VERIFICATION] pending the
+  owner's in-game distance check) and normalizes the yaw to [0, 360); the factory overview now
+  sends `location` and `circuitGroupId` per building. Also: `PORT` is validated like the game
+  server ports (a whole number 1-65535, else the backend refuses to start), and a stale
+  `VerifyAuthenticationToken` comment in the options adapter was corrected.
+- 2026-09-24 — ADR-0023 amendment (units and world bounds): new source note
+  `raw-sources/world-coordinates.md` (SCIM's map bounds, numbers only, and a community answer,
+  both approximate) corroborates that FRM locations are centimetres, +x east, +y south, in a
+  7,500 m square world; ADR-0023 now carries `worldBoundsM { minX -3246.99, maxX 4253.02,
+  minY -3750, maxY 3750 }` and the Leaflet mapping `[lat, lng] = [-yM, xM]`. The in-game check is
+  now a confirmation, not a blocker. The units note in the shared `location` description and the
+  adapter comment cite the source (comments only; no schema or behaviour change).
 - 2026-09-24 — ADR-0024 (architecture as code) committed as `decisions/0024-architecture-as-code.md`,
   accepted by the owner. The Structurizr model lives at `docs-vault/workspace.dsl` (the docs-vault
   root, because `!adrs` only accepts a subdirectory of the DSL file's folder); it is the source of

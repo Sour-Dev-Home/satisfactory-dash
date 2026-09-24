@@ -57,6 +57,8 @@ export interface FactoryBuilding {
   circuitGroupId: number;
   powerConsumed: number;
   maxPowerConsumed: number;
+  /** World position in metres, rotation in [0, 360) (ADR-0023). Absent when FRM sent none. */
+  location?: { xM: number; yM: number; zM: number; rotationDeg: number };
 }
 
 export interface PowerCircuit {
