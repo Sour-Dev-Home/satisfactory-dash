@@ -4,6 +4,7 @@ import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
 import { PowerResponseSchema } from "./power";
 import { PowerHistoryResponseSchema } from "./powerHistory";
+import { ServerPlayersResponseSchema } from "./players";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
 
@@ -45,6 +46,13 @@ export const endpoints = {
     route: "/api/servers/:serverId/power",
     path: scoped("power"),
     response: PowerResponseSchema,
+  },
+  // ADR-0029: who is connected (name and online only), members of the server only.
+  players: {
+    method: "GET",
+    route: "/api/servers/:serverId/players",
+    path: scoped("players"),
+    response: ServerPlayersResponseSchema,
   },
   // ADR-0022: the last few minutes of power readings, sampled by the backend.
   powerHistory: {

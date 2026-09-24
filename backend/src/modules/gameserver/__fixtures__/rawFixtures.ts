@@ -91,8 +91,10 @@ export const powerUsageBuildingFixture: RawFrmPowerUsageBuilding = {
   PowerInfo: { CircuitGroupID: -1, CircuitID: -1, FuseTriggered: false, PowerConsumed: 0, MaxPowerConsumed: 0 },
 };
 
-// Documented example: docs-vault/raw-sources/frm-getPlayer.md
-export const playerFixture: RawFrmPlayer = {
+// Documented example: docs-vault/raw-sources/frm-getPlayer.md. Deliberately NOT typed as
+// RawFrmPlayer (which declares only Name and Online): it is what FRM really sends, so tests can
+// prove the extra fields are dropped at the boundary (ADR-0029).
+export const playerFixture = {
   ID: "Char_Player_C_2147452680",
   Name: "derpierre65",
   location: { x: -57604.6796875, y: 260436.1875, z: -3018.36083984375, rotation: 115.5536737696151 },

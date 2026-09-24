@@ -12,6 +12,9 @@ import { createStatusRouter } from "./routes/status.js";
 import { createFactoryRouter } from "./routes/factory.js";
 import { createPowerRouter } from "./routes/power.js";
 import { createPowerHistoryRouter } from "./routes/powerHistory.js";
+import { createPlayersRouter } from "./routes/players.js";
+import { PlayersService } from "./services/playersService.js";
+import type { PlayersAdapterLike } from "./services/playersService.js";
 import { ServerStatusService } from "./services/serverStatusService.js";
 import type { ServerStatusAdapterLike } from "./services/serverStatusService.js";
 import { ProductionService } from "./services/productionService.js";
@@ -33,7 +36,7 @@ export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 export type { BackgroundWorker } from "./services/powerHistoryPoller.js";
 export { createUnitResolver } from "./itemForms.js";
 
-export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike;
+export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike & PlayersAdapterLike;
 
 export interface TelemetryOptions {
   /** Where the background workers log; silent when omitted. */
@@ -70,6 +73,7 @@ export function createTelemetryServices(
     production: new ProductionService(ports, resolveUnit),
     power: new PowerService(ports),
     powerHistory: new PowerHistoryService(store, poller, { intervalSeconds, now: options.now }),
+    players: new PlayersService(ports),
     workers: [poller],
   };
 }
@@ -81,5 +85,6 @@ export function createTelemetryRouters(directory: ServerDirectory<TelemetryScope
     createFactoryRouter(directory),
     createPowerRouter(directory),
     createPowerHistoryRouter(directory),
+    createPlayersRouter(directory),
   ];
 }
