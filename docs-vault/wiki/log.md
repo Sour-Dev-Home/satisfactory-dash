@@ -298,3 +298,10 @@ the bottom.
   never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
   frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
   fixtures are not changed for it.
+- 2026-09-25 — Privacy policy and terms outline added as `legal/privacy-terms-outline.md` (the
+  architect's draft, verbatim): an outline with [OWNER]/[LEGAL]/[BUILD] markers, not the published
+  policy and not legal advice; it contains no personal data (the controller identity is an owner
+  decision). Roadmap 2b: it must be live before ADR-0025 gate B. Its [BUILD] prerequisites for the
+  backend are log rotation with 14-day retention, user ids instead of usernames in sign-in logs
+  after PR 5, a purge job for expired sessions and stale login attempts, and account deletion
+  before member invites.

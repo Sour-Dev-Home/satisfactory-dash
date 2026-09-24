@@ -26,3 +26,6 @@ added or removed.
   Postgres and Google sign-in, is accepted; ADR-0026, the offline demo mode, is accepted).
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions.
+- [`legal/privacy-terms-outline.md`](./legal/privacy-terms-outline.md) — an outline (not the
+  published policy, not legal advice) for the privacy policy and terms, with `[OWNER]`, `[LEGAL]`
+  and `[BUILD]` markers; roadmap 2b, needed before ADR-0025 gate B.
