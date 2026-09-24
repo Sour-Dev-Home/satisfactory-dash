@@ -1,7 +1,6 @@
 # ADR-0025: Postgres, Google sign-in and the DB registry (ADR-0020 phase 1)
 
-Status: accepted (project owner), 2026-09-24, except decision 7 (query layer), which is open.
-PRs 1-2 may start; PR 3 onward waits on decision 7.
+Status: accepted (project owner), 2026-09-24.
 
 ## Context
 - ADR-0020 fixes the data model (users, auth_identities, sessions, servers, server_members) but
@@ -45,9 +44,26 @@ PRs 1-2 may start; PR 3 onward waits on decision 7.
 
 2. **Tooling**
    - `pg` (node-postgres): the standard driver, one pool in `platform/db`.
-   - **Kysely** as the query layer: typed SQL that still reads as SQL, with no ORM runtime or
-     codegen engine. Prisma hides the SQL, which is the skill we want visible. Drizzle is close,
-     but its migrations are generated from a TS schema; we want the DDL written by hand.
+   - **No query builder: hand-written, parameterized SQL through `pg`, with every row set parsed
+     by a zod schema** (owner decision 7, 2026-09-24). Why:
+     - Access pattern: the hot path is point reads by key (the session by id hash, the membership
+       by server and user), and the writes are small fixed-shape transactions. A builder's main
+       benefit, composing queries at runtime, goes unused.
+     - Consistency: correctness lives in single statements and constraints (the guarded
+       `DELETE/UPDATE ... RETURNING` consumes, the `ON CONFLICT ... WHERE` newer-wins upsert, the
+       one-owner partial unique index mapped from 23505). As literal SQL, each guarantee is
+       reviewable as written, and READ COMMITTED is enough: no SERIALIZABLE, no retry loops.
+     - Reliability: no difference. A builder would run on the same `pg` pool; reliability comes
+       from timeouts, startup classification and the 503 mapping (Decision 6).
+     - Common use: SQL through node-postgres is the baseline across Node shops, and the skill
+       transfers to any builder later.
+   - Guardrails: SQL lives only in each module's repository files; parameters only, never
+     concatenated (a lint/grep guard); one `withTransaction(pool, fn)` helper in `platform/db`; a
+     typo'd column fails the Testcontainers integration tests in CI, not in prod.
+   - Rejected for now: Kysely (compile-time column checks, but a TS copy of the schema to keep in
+     sync); Prisma (hides the SQL); Drizzle (its migrations are generated from a TS schema, and we
+     want hand-written DDL). **Revisit when** the first query needs runtime composition (search,
+     admin lists with optional filters): adopt Kysely for that module only, on the same pool.
    - **node-pg-migrate with plain `.sql` migrations**: forward-only in prod, run as an explicit
      `npm run db:migrate` step (never at app startup).
    - **Two roles**: `satis_migrator` (DDL) and `satis_app` (DML on the three schemas only).
@@ -186,8 +202,7 @@ fold its interface change into PR 6.
 ## Owner decisions (answered 2026-09-24)
 1 yes (start phase 1). 2 A: native Windows service; Docker Desktop now starts at sign-in, understood as a dev convenience (being confirmed).
 3 yes (two-stage rollout). 4 A: closed sign-up. 5 no permanent password fallback. 6 yes, as
-owner-performed steps (Decision 7). 7 OPEN (Kysely vs raw pg; the owner is discussing it with
-the architect). 8 yes, PR 1 is its own PR.
+owner-performed steps (Decision 7). 7 B: raw `pg` + zod-parsed rows (Decision 2). 8 yes, PR 1 is its own PR.
 
 ## Decisions as proposed
 1. Go ahead with phase 1 now? **Recommend yes**: the trigger is "the first account beyond the
@@ -199,7 +214,7 @@ the architect). 8 yes, PR 1 is its own PR.
    Open sign-up waits for the agent, since there's nothing to show a stranger yet.
 5. Keep password login as a permanent fallback? **Recommend no**: the local admin CLI is the break-glass.
 6. Nightly encrypted backups to S3 (cents per month)? **Recommend yes**.
-7. Query layer: **A Kysely (recommended)** / B raw `pg` SQL with zod-parsed rows (fewer deps, more boilerplate).
+7. Query layer: A Kysely / **B raw `pg` SQL with zod-parsed rows (chosen; the recommendation was revised from A to B after weighing access pattern and consistency)**.
 8. PR 1 (multiple servers from config): will a second game server exist soon? If yes, keep it; if no, fold it into PR 6.
 
 ## Consequences

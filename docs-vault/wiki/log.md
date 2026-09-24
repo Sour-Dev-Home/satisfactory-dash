@@ -277,3 +277,6 @@ the bottom.
 - 2026-09-24 — ADR-0025 accepted by the owner except decision 7 (query layer, still open): status
   line, the owner's answers, the AWS backup steps as owner-performed and a new PR row 8b (backup
   script and runbook) added. PRs 1-2 may start; PR 3 onward waits on decision 7.
+- 2026-09-24 — ADR-0025 decision 7 answered by the owner: hand-written parameterized SQL through
+  `pg`, every row set parsed by zod, no query builder (Decision 2 rewritten with the guardrails).
+  ADR-0025 is now fully accepted; PR 3 onward is unblocked.
