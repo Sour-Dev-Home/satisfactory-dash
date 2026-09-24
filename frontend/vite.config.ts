@@ -49,6 +49,12 @@ export default defineConfig(({ command, mode }) => {
   }
   return {
     plugins: [react(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
+    define: {
+      // The deployed commit for the AGPL source link (src/source.ts). Cloudflare Workers
+      // Builds sets WORKERS_CI_COMMIT_SHA; it's empty locally and in GitHub CI, so the link
+      // falls back to the repo root and e2e screenshots stay stable.
+      __COMMIT_SHA__: JSON.stringify(process.env.WORKERS_CI_COMMIT_SHA ?? ''),
+    },
     server: {
       // Dev only: the browser calls /api on the Vite origin and Vite forwards it to the
       // backend, so cookies and CORS behave like production's single site (ADR-0013).
