@@ -425,3 +425,4 @@ the bottom.
   audit row (ids and codes only); note for the runbook: the bootstrap trust rests on the verified
   email equalling `BOOTSTRAP_OWNER_EMAIL` with no hosted-domain check, so use an address whose
   mailbox you alone control (a consumer address, not one on a domain others administer).
+- 2026-09-25 — `SessionResponse.signInMethods` (additive, optional string array) tells a signed-out login screen which methods to offer: `["password"]`, or `["password", "google"]` when Google sign-in is configured; `endpoints.auth.googleStart` names the redirect path (no response schema). Distinct from `authMethods`, which is what an account has linked.

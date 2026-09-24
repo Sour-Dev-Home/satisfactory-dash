@@ -101,7 +101,7 @@ describe("Google sign-in in the identity module", () => {
     }
     const session = await request(app).get("/api/auth/session");
     expect(session.status).toBe(200);
-    expect(session.body).toEqual({ authenticated: false });
+    expect(session.body).toEqual({ authenticated: false, signInMethods: ["password"] });
   });
 
   it("with Google configured and a database, /start is served (and never contacts Google at startup)", async () => {
@@ -116,6 +116,9 @@ describe("Google sign-in in the identity module", () => {
     });
     // The provider is unreachable, so /start is a 503, not a 404 and not a crash.
     expect((await request(app).get("/api/auth/google/start")).status).toBe(503);
-    expect((await request(app).get("/api/auth/session")).status).toBe(200);
+    const session = await request(app).get("/api/auth/session");
+    expect(session.status).toBe(200);
+    // The login screen may offer Google exactly when it is configured.
+    expect(session.body).toEqual({ authenticated: false, signInMethods: ["password", "google"] });
   });
 });

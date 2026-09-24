@@ -27,8 +27,16 @@ export { LOGIN_REQUESTS_PER_WINDOW } from "./loginRequestCap.js";
  * and GET /api/auth/session answers 200 { authenticated: false } when signed out,
  * never 401: it's how the frontend decides whether to show the login screen.
  */
-export function createAuthRouter(deps: SessionDeps & { authenticator: Authenticator; rateLimiter: LoginRateLimiter }): Router {
+export function createAuthRouter(
+  deps: SessionDeps & {
+    authenticator: Authenticator;
+    rateLimiter: LoginRateLimiter;
+    /** What the login screen may offer (SessionResponse.signInMethods). Password is always there until ADR-0025 PR 9. */
+    signInMethods?: string[];
+  },
+): Router {
   const { authenticator, store, rateLimiter } = deps;
+  const signInMethods = deps.signInMethods ?? ["password"];
   const router = Router();
 
   // Two layers. The LoginRateLimiter below blocks an IP after repeated FAILED logins,
@@ -66,7 +74,7 @@ export function createAuthRouter(deps: SessionDeps & { authenticator: Authentica
     setSessionCookie(res, session.cookieValue, session.maxAgeSeconds);
     // The account id, never the username (privacy policy: sign-in logs carry ids).
     req.log.info({ ip, userId: session.user.id }, "login succeeded");
-    sendValidated(res, SessionResponseSchema, { authenticated: true, user: publicUser(session.user) });
+    sendValidated(res, SessionResponseSchema, { authenticated: true, signInMethods, user: publicUser(session.user) });
   });
 
   // Works with or without a session, and with no request body (the frontend sends
@@ -74,7 +82,7 @@ export function createAuthRouter(deps: SessionDeps & { authenticator: Authentica
   router.post(routePath(endpoints.auth.logout.route), async (req, res) => {
     await revokeCurrentSession(req, deps);
     clearSessionCookie(res);
-    sendValidated(res, SessionResponseSchema, { authenticated: false });
+    sendValidated(res, SessionResponseSchema, { authenticated: false, signInMethods });
   });
 
   // "Sign out everywhere" (ADR-0025 decision 4): ends every session of the signed-in user, this
@@ -87,12 +95,16 @@ export function createAuthRouter(deps: SessionDeps & { authenticator: Authentica
     }
     await revokeCurrentSession(req, deps);
     clearSessionCookie(res);
-    sendValidated(res, SessionResponseSchema, { authenticated: false });
+    sendValidated(res, SessionResponseSchema, { authenticated: false, signInMethods });
   });
 
   router.get(routePath(endpoints.auth.session.route), async (req, res) => {
     const user = await currentUser(req, res, deps);
-    sendValidated(res, SessionResponseSchema, user ? { authenticated: true, user: publicUser(user) } : { authenticated: false });
+    sendValidated(
+      res,
+      SessionResponseSchema,
+      user ? { authenticated: true, signInMethods, user: publicUser(user) } : { authenticated: false, signInMethods },
+    );
   });
 
   return router;
