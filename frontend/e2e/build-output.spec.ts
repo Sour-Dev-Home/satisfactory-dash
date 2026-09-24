@@ -48,6 +48,7 @@ test.describe("production build", () => {
 // The demo site (ADR-0026), built by e2e/build-demo.mjs with the production API URL set.
 const DIST_DEMO = join(import.meta.dirname, "..", "dist-demo");
 const API_ORIGIN = "api.satis-manager.com";
+const NETWORK_TRANSPORT_MARKER = "satisManagerNetworkTransport";
 /** Text only the demo build has. The prod check above fails if any of it leaks there. */
 const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] no demo data", "Demo World"];
 
@@ -66,6 +67,12 @@ test.describe("demo build", () => {
 
   test("never mentions the real API, though its URL was set for the build: no network transport", () => {
     expect(bundleText(DIST_DEMO)).not.toContain(API_ORIGIN);
+  });
+
+  test("holds no network transport, by its marker (present in production, so the check is real)", () => {
+    // src/api/transport.ts names its function; this holds however it gets its base URL.
+    expect(bundleText(DIST)).toContain(NETWORK_TRANSPORT_MARKER);
+    expect(bundleText(DIST_DEMO)).not.toContain(NETWORK_TRANSPORT_MARKER);
   });
 
   test("ships no mock tooling or test fixtures", () => {

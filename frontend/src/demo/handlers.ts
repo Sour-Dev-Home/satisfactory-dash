@@ -63,7 +63,12 @@ export const demoHandlers = [
   get(endpoints.settings.get.route, ({ params }) => guarded(params, () => Response.json(settingsNow()))),
   // A simulated write: in memory only, pending for a moment, then applied. Never sent anywhere.
   put(endpoints.settings.setAutoPause.route, async ({ params, request }) => {
-    const body = (await request.json()) as SetAutoPauseRequest;
+    let body: SetAutoPauseRequest;
+    try {
+      body = (await request.json()) as SetAutoPauseRequest;
+    } catch {
+      return error(400, "bad_request", "The request body isn't valid JSON.");
+    }
     return guarded(params, () => {
       state.autoPause = body.enabled;
       state.pendingUntil = Date.now() + PENDING_MS;

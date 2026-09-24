@@ -60,6 +60,13 @@ describe("the demo transport", () => {
     expect(console.error).toHaveBeenCalledWith("[demo] no demo data for GET /api/servers/demo/something-new");
   });
 
+  it("answers a malformed %-escape with the demo's 404, not a crash", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await enter();
+    const res = await call("GET", "/api/servers/%E0%A4%A/status");
+    expect(res.status).toBe(404);
+  });
+
   it("matches the method too: a GET to a PUT-only route has no demo data", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     await enter();
@@ -92,6 +99,17 @@ describe("the demo transport", () => {
     await enter();
     await call("POST", endpoints.auth.logout.path());
     expect((await call("GET", endpoints.status.path(DEMO_SERVER_ID))).status).toBe(401);
+  });
+
+  it("answers a PUT body that isn't valid JSON with a 400 bad_request, like the real API", async () => {
+    // test-hunter: it used to throw out of the handler and surface as BackendUnreachableError.
+    const res = await transport(endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "{not json",
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("bad_request");
   });
 
   it("honours an aborted request like fetch would", async () => {

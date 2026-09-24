@@ -32,7 +32,11 @@ function match(routePattern: string, pathname: string): Params | null {
   for (let i = 0; i < want.length; i++) {
     if (want[i].startsWith(":")) {
       if (!got[i]) return null;
-      params[want[i].slice(1)] = decodeURIComponent(got[i]);
+      try {
+        params[want[i].slice(1)] = decodeURIComponent(got[i]);
+      } catch {
+        return null; // A malformed %-escape matches nothing: the demo's 404, not a crash.
+      }
     } else if (want[i] !== got[i]) {
       return null;
     }

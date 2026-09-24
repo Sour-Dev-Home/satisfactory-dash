@@ -81,6 +81,9 @@ contract needs to grow, not that this module should special-case a backend detai
   UI never reaches the production bundle; `e2e/build-output.spec.ts` checks both builds.
   Every new screen or endpoint ships with its demo data and handler. The demo world is
   ours; never reuse the test fixtures there (they're edge cases with test markers).
+  The boundary is the demo CSP plus the build (the demo build fails if anything but
+  `client.ts` imports `api/transport.ts`); the network lint only keeps new code honest and
+  can't see indirect forms like `Reflect.get(window, "fetch")`, which the CSP blocks.
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
   Served on the custom domain only (`workers_dev` and `preview_urls` are off).

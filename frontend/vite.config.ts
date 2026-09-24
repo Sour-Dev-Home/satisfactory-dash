@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -65,9 +65,13 @@ function demoBuild(): Plugin {
       outDir = config.build.outDir
     },
     resolveId(source, importer) {
-      if (source === './transport' && importer && /[\\/]src[\\/]api[\\/]client\.ts$/.test(importer)) {
-        return demoTransport
-      }
+      if (!importer || !source.startsWith('.')) return
+      const target = resolve(dirname(importer), source)
+      if (!/[\\/]src[\\/]api[\\/]transport(\.ts)?$/.test(target)) return
+      if (/[\\/]src[\\/]api[\\/]client\.ts$/.test(importer)) return demoTransport
+      // Any other route to the network transport would put it in the demo bundle: fail the
+      // build instead. (A type-only import is erased before this and never gets here.)
+      this.error(`${importer} imports src/api/transport.ts; only client.ts may (ADR-0026 demo build).`)
     },
     closeBundle() {
       if (outDir) writeFileSync(join(outDir, '_headers'), readFileSync(DEMO_HEADERS, 'utf8'))

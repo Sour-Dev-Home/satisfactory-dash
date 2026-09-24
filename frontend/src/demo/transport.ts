@@ -20,7 +20,17 @@ export const transport: Transport = async (path, init) => {
     body: init.body,
     signal: init.signal ?? undefined,
   });
-  const response = await resolve(demoHandlers, request);
+  let response: Response | undefined;
+  try {
+    response = await resolve(demoHandlers, request);
+  } catch (cause) {
+    // A handler bug is a server error, like the real API's 500, not "unreachable".
+    console.error(`[demo] handler failed for ${request.method} ${path}`, cause);
+    return Response.json(
+      { error: { code: "internal", message: "The demo hit an error answering this.", requestId: "demo" } },
+      { status: 500 },
+    );
+  }
   if (response) return response;
 
   console.error(`[demo] no demo data for ${request.method} ${path}`);

@@ -14,3 +14,7 @@ export type Transport = (path: string, init: RequestInit) => Promise<Response>;
 const BASE_URL = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
 
 export const transport: Transport = (path, init) => fetch(BASE_URL + path, init);
+
+// A string the minifier can't drop, so e2e/build-output.spec.ts can prove this module is in the
+// production bundle and absent from the demo one, whatever it does with the base URL.
+Object.defineProperty(transport, "name", { value: "satisManagerNetworkTransport" });
