@@ -6,6 +6,7 @@ import { healthRouter } from "./platform/health.js";
 import {
   createGameServerConnection,
   createServerOptionsPort,
+  loadConfiguredServersFromFile,
   loadSatisfactoryServerConfigFromEnv,
   parsePortEnv,
 } from "./modules/gameserver/index.js";
@@ -46,11 +47,16 @@ const resolveUnit = createUnitResolver((className) =>
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
 const entries = orExit(() => {
-  const registry = loadServerRegistryFromEnv();
-  // Single-server mode: every entry uses the one SATISFACTORY_* connection config.
-  // Per-server connection config arrives with the multi-server registry (ADR-0001).
-  const config = loadSatisfactoryServerConfigFromEnv();
-  return registry.map(({ id, displayName }) => ({
+  // ADR-0025 PR 1: SATISFACTORY_SERVERS_FILE names any number of servers, each with its own
+  // connection config. Without it, single-server mode: a registry of one that uses the
+  // SATISFACTORY_* env (unchanged, so the running deploy needs no new config).
+  const configured =
+    loadConfiguredServersFromFile() ??
+    (() => {
+      const config = loadSatisfactoryServerConfigFromEnv();
+      return loadServerRegistryFromEnv().map(({ id, displayName }) => ({ id, displayName, config }));
+    })();
+  return configured.map(({ id, displayName, config }) => ({
     id,
     displayName,
     services: {

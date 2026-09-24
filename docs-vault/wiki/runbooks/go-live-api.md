@@ -39,6 +39,29 @@ Copy `backend\.env.example` to `backend\.env` if you haven't, then set these. Le
 The backend refuses to start if a login value is missing, and if the game-server host is
 not a loopback or private address.
 
+### Optional: several game servers (`SATISFACTORY_SERVERS_FILE`, ADR-0025)
+
+By default the backend serves one game server from the `SATISFACTORY_*` values above. To serve
+several, copy `backend\servers.example.json` to `backend\servers.json` (git-ignored, like `.env`,
+because it holds tokens) and set `SATISFACTORY_SERVERS_FILE=servers.json` in `.env` (a relative
+path is resolved from where the backend starts, `backend\`). The file wins over
+`SATISFACTORY_SERVER_ID`, `SATISFACTORY_SERVER_NAME` and the other single-server variables, which
+are then ignored. Nothing changes if the variable is unset or blank.
+
+| Field | Meaning | Same rule as |
+|---|---|---|
+| `id` | Public server id: 1-32 lowercase letters, digits or dashes, unique. Never a host or port | `SATISFACTORY_SERVER_ID` |
+| `name` | Shown by the dashboard (optional, default "Satisfactory server") | `SATISFACTORY_SERVER_NAME` |
+| `host` | Loopback or private IP only (the backend refuses to start otherwise) | `SATISFACTORY_SERVER_HOST` |
+| `apiPort`, `frmPort` | Whole numbers 1-65535 (JSON numbers) | `SATISFACTORY_API_PORT`, `FRM_WEB_PORT` |
+| `apiToken`, `frmToken` | This server's tokens; never inherited from the environment | `SATISFACTORY_API_TOKEN`, `FRM_AUTH_TOKEN` |
+| `requestTimeoutMs` | 1000-60000 (optional) | `SATISFACTORY_REQUEST_TIMEOUT_MS` |
+| `verifyApiCertificate` | `true` to verify the game server's TLS certificate even on a loopback or private host (optional) | `SATISFACTORY_API_REJECT_UNAUTHORIZED` |
+
+The file is validated at startup: an unreadable file, invalid JSON, an unknown field, a duplicate
+id or a bad value stops the backend with a message that names the field and the server id (never a
+value). Each server gets its own connection, its own power-history poller and its own data routes.
+
 ## 2. Restart the game server WITHOUT AllowInsecureLocalAccess, then prove enforcement
 
 Until now the server has trusted any request from this PC, so nothing proved its tokens

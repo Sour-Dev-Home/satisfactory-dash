@@ -10,6 +10,9 @@ build/
 .env.*
 !.env.example
 
+# per-server connection config with tokens (ADR-0025); commit servers.example.json instead
+backend/servers.json
+
 # misc
 .DS_Store
 *.pem

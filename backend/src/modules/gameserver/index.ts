@@ -15,6 +15,8 @@ export { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 export type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
 export { loadSatisfactoryServerConfigFromEnv, parsePortEnv } from "./connectionConfig.js";
 export type { SatisfactoryServerConfig } from "./connectionConfig.js";
+export { loadConfiguredServersFromFile } from "./serversFile.js";
+export type { ConfiguredServer } from "./serversFile.js";
 export { VanillaApiClient, VanillaApiRequestError } from "./vanillaApiClient.js";
 export { FrmApiClient, FrmApiRequestError } from "./frmApiClient.js";
 
