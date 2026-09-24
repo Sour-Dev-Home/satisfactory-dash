@@ -71,7 +71,13 @@ export function createQueryClient(): QueryClient {
       },
     }),
     defaultOptions: {
-      queries: { retry: shouldRetry },
+      queries: {
+        retry: shouldRetry,
+        // Once signed out, only the session check may run. A view still mounted for one more
+        // render after sign-out would otherwise re-create a dropped query and send it with the
+        // expired session (a view reading several queries re-renders on any of them).
+        enabled: (query) => keyEquals(query.queryKey, SESSION_KEY) || !isSignedOut(client),
+      },
       mutations: { retry: false },
     },
   });

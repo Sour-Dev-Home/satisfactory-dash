@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { LoginForm } from "./LoginForm";
-import { LogoutButton } from "./LogoutButton";
+import { SignedInUser } from "./SignedInUser";
 
 /**
  * Shows the app only for a signed-in operator (ADR-0011). The session query is the single
@@ -16,14 +16,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // rather than throwing the operator out of the app.
   if (session.data) {
     if (!session.data.authenticated) return <LoginForm />;
-    return (
-      <>
-        <div className="account">
-          <span>Signed in as {session.data.user.name}</span> <LogoutButton />
-        </div>
-        {children}
-      </>
-    );
+    // The account name and Log out render in the shell's top bar (AccountMenu).
+    return <SignedInUser value={session.data.user}>{children}</SignedInUser>;
   }
   if (session.isError) {
     return (

@@ -15,6 +15,7 @@ import { ServerContext } from "../servers/ServerContext";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
+import { AccountMenu } from "./AccountMenu";
 import { AuthGate } from "./AuthGate";
 
 const PASSWORD = "example-password";
@@ -119,6 +120,7 @@ describe("auth hardening", () => {
     );
     const { client } = renderWithClient(
       <AuthGate>
+        <AccountMenu />
         <ServerContext value={serversSingle.servers[0]}>
           <AutoPauseView />
         </ServerContext>

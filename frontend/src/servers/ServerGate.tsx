@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyError } from "../api/errors";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
-import { ServerContext } from "./ServerContext";
+import { ServerContext, ServerSwitchContext } from "./ServerContext";
 
 /**
  * Server discovery (ADR-0001): auto-selects when there's exactly one server, otherwise
@@ -69,10 +69,13 @@ export function ServerGate({ children }: { children: ReactNode }) {
 
   if (!current) {
     return (
-      <section aria-labelledby="picker-heading">
+      <section
+        aria-labelledby="picker-heading"
+        className="mx-auto mt-6 grid w-full max-w-md gap-4 rounded-card border border-line bg-surface p-6"
+      >
         <h2 id="picker-heading">Choose a game server</h2>
         {lostIds.size > 0 && <p role="alert">The selected server is no longer available.</p>}
-        <ul>
+        <ul className="grid gap-2 [&_button]:w-full [&_button]:text-left">
           {list.map((server) => (
             <li key={server.id}>
               <button type="button" onClick={() => pick(server.id)}>
@@ -87,15 +90,10 @@ export function ServerGate({ children }: { children: ReactNode }) {
 
   return (
     <ServerContext value={current}>
-      <div className="server-bar">
-        <h2>{current.displayName}</h2>
-        {list.length > 1 && (
-          <button type="button" onClick={() => setSelectedId(null)}>
-            Change server
-          </button>
-        )}
-      </div>
-      {children}
+      {/* The name and "Change server" render in the shell's top bar (ServerSwitcher). */}
+      <ServerSwitchContext value={{ serverCount: list.length, change: () => setSelectedId(null) }}>
+        {children}
+      </ServerSwitchContext>
     </ServerContext>
   );
 }

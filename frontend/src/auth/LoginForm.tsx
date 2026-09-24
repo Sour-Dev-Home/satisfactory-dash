@@ -41,9 +41,13 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} aria-labelledby="login-heading">
+    <form
+      onSubmit={onSubmit}
+      aria-labelledby="login-heading"
+      className="mx-auto mt-6 grid w-full max-w-sm gap-4 rounded-card border border-line bg-surface p-6"
+    >
       <h2 id="login-heading">Sign in</h2>
-      <label>
+      <label className="grid gap-1.5 text-sm">
         Username
         <input
           name="username"
@@ -54,7 +58,7 @@ export function LoginForm() {
           onChange={(e) => setUsername(e.target.value)}
         />
       </label>
-      <label>
+      <label className="grid gap-1.5 text-sm">
         Password
         <input
           name="password"
@@ -66,7 +70,11 @@ export function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
         />
       </label>
-      <button type="submit" disabled={login.isPending}>
+      <button
+        type="submit"
+        disabled={login.isPending}
+        className="mt-1 border-accent bg-accent font-semibold text-on-accent hover:border-accent"
+      >
         {login.isPending ? "Signing in…" : "Sign in"}
       </button>
       {login.isError && <LoginError error={login.error} />}

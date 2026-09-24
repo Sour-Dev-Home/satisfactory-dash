@@ -1,0 +1,128 @@
+import { describe, expect, it } from "vitest";
+import {
+  factoryEmpty,
+  factoryMixed,
+  powerAtRisk,
+  powerEmpty,
+  powerOk,
+  powerOutage,
+  powerStale,
+  statusNoGame,
+  statusPaused,
+  statusRunning,
+  statusSlow,
+  statusStale,
+} from "@satisfactory-dash/shared/fixtures";
+import type { FactoryResponse } from "@satisfactory-dash/shared";
+import { factoryHealth, overallHealth, powerHealth, serverHealth } from "./health";
+
+function factoryWith(total: number, backedUp: number): FactoryResponse {
+  const building = factoryMixed.data.buildings[0];
+  const buildings = Array.from({ length: total }, (_, i) => ({ ...building, id: `b${i}`, isBackedUp: i < backedUp }));
+  return { ...factoryMixed, data: { buildings, backedUpCount: backedUp } };
+}
+
+describe("serverHealth", () => {
+  it("is ok for a running game, with players and save in the summary", () => {
+    const h = serverHealth(statusRunning);
+    expect(h.health).toBe("ok");
+    expect(h.summary).toContain(statusRunning.data.sessionName);
+  });
+
+  it.each([
+    ["no save loaded", statusNoGame, "degraded", "No save loaded"],
+    ["stale data", statusStale, "degraded", "Showing last known data"],
+    ["a slow tick", statusSlow, "degraded", "Server tick is slow"],
+    ["a paused game", statusPaused, "paused", "Paused: no players connected"],
+  ] as const)("flags %s", (_, snapshot, health, summary) => {
+    expect(serverHealth(snapshot)).toEqual({ health, summary });
+  });
+});
+
+describe("powerHealth", () => {
+  it("is an outage when a fuse has tripped", () => {
+    expect(powerHealth(powerOutage)).toEqual({ health: "outage", summary: "1 circuit has a tripped fuse" });
+  });
+
+  it("is degraded when a circuit is at risk", () => {
+    expect(powerHealth(powerAtRisk)).toEqual({ health: "degraded", summary: "1 circuit is at risk" });
+  });
+
+  it("is ok otherwise, with production and capacity", () => {
+    const h = powerHealth(powerOk);
+    expect(h.health).toBe("ok");
+    expect(h.summary).toMatch(/^1 circuit · .+ MW of .+ MW capacity$/);
+  });
+
+  it("is ok with no circuits yet", () => {
+    expect(powerHealth(powerEmpty)).toEqual({ health: "ok", summary: "No power circuits yet" });
+  });
+
+  it("is degraded when an otherwise healthy snapshot is stale", () => {
+    expect(powerHealth({ ...powerStale, data: powerOk.data })).toEqual({
+      health: "degraded",
+      summary: "Showing last known power data",
+    });
+  });
+
+  it("keeps an outage an outage even when stale", () => {
+    expect(powerHealth({ ...powerOutage, stale: true }).health).toBe("outage");
+  });
+});
+
+describe("factoryHealth", () => {
+  it("is ok at or below a quarter of machines backed up", () => {
+    expect(factoryHealth(factoryWith(8, 2))).toEqual({ health: "ok", summary: "8 machines · 2 backed up" });
+  });
+
+  it("is degraded above a quarter of machines backed up", () => {
+    expect(factoryHealth(factoryWith(8, 3))).toEqual({ health: "degraded", summary: "3 of 8 machines backed up" });
+  });
+
+  it("is ok with no machines", () => {
+    expect(factoryHealth(factoryEmpty)).toEqual({ health: "ok", summary: "No machines yet" });
+  });
+
+  it("uses the singular for one machine", () => {
+    expect(factoryHealth(factoryWith(1, 0)).summary).toBe("1 machine · 0 backed up");
+  });
+
+  it("is degraded when an otherwise healthy snapshot is stale", () => {
+    expect(factoryHealth({ ...factoryWith(4, 0), stale: true })).toEqual({
+      health: "degraded",
+      summary: "Showing last known factory data",
+    });
+  });
+});
+
+describe("overallHealth", () => {
+  const ok = { health: "ok", summary: "" } as const;
+
+  it("is operational when every section is ok", () => {
+    expect(overallHealth([ok, ok, ok])).toEqual({ health: "ok", headline: "All systems operational" });
+  });
+
+  it("takes the worst section", () => {
+    expect(overallHealth([ok, { health: "paused", summary: "" }, { health: "degraded", summary: "" }])).toEqual({
+      health: "degraded",
+      headline: "Running with warnings",
+    });
+    expect(overallHealth(["error", { health: "outage", summary: "" }])).toEqual({
+      health: "outage",
+      headline: "Power outage",
+    });
+  });
+
+  it("counts a section that failed to load as unavailable", () => {
+    expect(overallHealth([ok, "error"])).toEqual({ health: "unavailable", headline: "Some data is unavailable" });
+  });
+
+  it("says the game is paused when that's the only thing going on", () => {
+    expect(overallHealth([ok, { health: "paused", summary: "" }])).toEqual({ health: "paused", headline: "Game paused" });
+  });
+
+  it("is still checking while any section is loading and nothing is worse yet", () => {
+    expect(overallHealth([ok, "pending"])).toEqual({ health: "pending", headline: "Checking…" });
+    expect(overallHealth(["pending", { health: "outage", summary: "" }]).health).toBe("outage");
+  });
+});
