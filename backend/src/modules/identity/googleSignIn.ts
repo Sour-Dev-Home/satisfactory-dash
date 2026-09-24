@@ -53,9 +53,14 @@ export function createGoogleSignIn(db: Db, bootstrapOwnerEmail: string): GoogleS
       return undefined;
     }
     const operator = await findUserByIdentity(client, "local", OPERATOR_SUBJECT);
-    // Not linkable when the operator is disabled or already has a (different) Google identity.
-    if (operator === undefined || operator.status !== "active" || (await authMethodsForUser(client, operator.id)).includes("google")) {
+    if (operator === undefined || operator.status !== "active") {
       return undefined;
+    }
+    if ((await authMethodsForUser(client, operator.id)).includes("google")) {
+      // Already linked. Usually to a different Google account (refused), but a sign-in racing this
+      // one may have just linked THIS sub between the lookup above and now (each statement sees
+      // what committed before it): look again.
+      return findUserByIdentity(client, "google", claims.sub);
     }
     await addIdentity(client, { userId: operator.id, provider: "google", subject: claims.sub });
     await setUserEmail(client, operator.id, claims.email);
