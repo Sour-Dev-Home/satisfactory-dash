@@ -1,10 +1,11 @@
 # Lessons learned
 
-Append-only list of real bugs found by independent `test-hunter` review passes, one
-sentence per distinct bug so the same mistake isn't repeated in future code written
-for this project. Each entry carries a `(×N)` counter: when a *later* review finds the
-same underlying pattern recurring (even in a different file), increment that entry's
-counter instead of adding a new line. Only add a new line for a genuinely new pattern.
+Append-only list of real bugs and security findings found by independent `test-hunter`
+and `security-reviewer` review passes, one sentence per distinct issue so the same
+mistake isn't repeated in future code written for this project. Each entry carries a
+`(×N)` counter: when a *later* review finds the same underlying pattern recurring
+(even in a different file), increment that entry's counter instead of adding a new
+line. Only add a new line for a genuinely new pattern.
 
 ## `backend/src/adapters/`
 
@@ -19,6 +20,27 @@ counter instead of adding a new line. Only add a new line for a genuinely new pa
   response body, rather than assuming "not an error body" implies "safe to read `.data`
   off of." Found in `VanillaApiClient.call` (`vanillaApiClient.ts:135`, crashed with a
   raw `TypeError` on a 2xx body that was JSON `null`).
+- (×1) **Fixed in #17.** A TypeScript `as` cast on parsed JSON from a network response
+  is compile-time only — it provides zero runtime safety, so code past that cast that
+  dereferences fields or calls array methods without a shape guard will throw an
+  uncaught `TypeError` on any malformed/unexpected response, rather than a typed,
+  catchable error. Found in `satisfactoryServerAdapter.ts`: `getServerStatus()` read
+  `raw.serverGameState.activeSessionName` unconditionally, and
+  `getFactoryBuildings()`/`getPowerCircuits()`/`getPowerUsage()` all called
+  `raw.map(...)` assuming FRM returned an array, with no guard against a response that
+  didn't match the assumed shape. Fixed with zod schemas in `adapters/rawSchemas.ts`
+  and a single `parseUpstream()` throw site that turns any mismatch into
+  `UpstreamError(invalid_response)` → 502. (Found by `security-reviewer`.)
+- (×1) **Fixed in #17.** A boolean security-relevant config flag that inverts an env
+  var's name (e.g. `SATISFACTORY_API_REJECT_UNAUTHORIZED !== "true"` deciding *whether
+  to allow* self-signed certs) defaulted to the permissive/insecure behavior unless the
+  operator explicitly opted out, and wasn't scoped to when it's actually safe (e.g.
+  only for a loopback/private host) — a config footgun once this project's stated
+  "AWS later" non-local deployment happens. Found in `config.ts:41` →
+  `vanillaApiClient.ts:78` (`rejectUnauthorized: !allowSelfSignedCert`, no host check).
+  Fixed by flipping the default to verify-by-default, relaxed only for loopback/private
+  address ranges; an explicit `"true"`/`"false"` (any case) still always wins. (Found by
+  `security-reviewer`.)
 
 ## `backend/src/routes/`
 

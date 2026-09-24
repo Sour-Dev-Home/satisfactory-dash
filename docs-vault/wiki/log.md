@@ -184,3 +184,11 @@ the bottom.
   strength, a Cloudflare login rate-limit rule, and the table of what changes at scale.
   Implemented in the same change; runbook section 5 gains the rate-limit step and the
   emergency revoke-all.
+- 2026-09-24 — Backfilled two `lessons-learned.md` entries from the first
+  `security-reviewer` pass on `backend/src/adapters/` (2026-09-22) that never landed on
+  `main`: the commit adding them was pushed to a since-deleted branch
+  (`worktree-lessons-learned`) but never entered a PR, so it was orphaned when PR #5
+  merged an earlier commit on that branch. Confirmed the gap with
+  `git merge-base --is-ancestor` against `origin/main`. Both findings — unvalidated
+  upstream responses and the non-host-scoped self-signed-cert default — are already
+  fixed by PR #17, so backfilled marked `Fixed in #17` rather than as open findings.
