@@ -60,6 +60,14 @@ export default function MapCanvas({
   useEffect(() => {
     const el = host.current!;
     const renderer = L.canvas({ padding: 0.5 });
+    const fit = initialFit.current;
+    const world = L.latLngBounds(mapBounds(config));
+    const target = fit
+      ? L.latLngBounds([project(config, fit.minX, fit.minY), project(config, fit.maxX, fit.maxY)]).pad(0.15)
+      : world;
+    // Panning stops a little past the world, or past the factory if it lies outside: the
+    // world bounds are approximate (world-coordinates.md), and a clamp to them would snap the
+    // first view to an empty corner instead of showing the buildings.
     const map = L.map(el, {
       crs: L.CRS.Simple,
       renderer,
@@ -67,14 +75,10 @@ export default function MapCanvas({
       maxZoom: 3,
       zoomSnap: 0.25,
       attributionControl: false,
-      maxBounds: L.latLngBounds(mapBounds(config)).pad(0.1),
+      maxBounds: L.latLngBounds(world.getSouthWest(), world.getNorthEast()).extend(target).pad(0.1),
       maxBoundsViscosity: 1,
     });
     drawGrid(map, renderer, config);
-    const fit = initialFit.current;
-    const target = fit
-      ? L.latLngBounds([project(config, fit.minX, fit.minY), project(config, fit.maxX, fit.maxY)]).pad(0.15)
-      : L.latLngBounds(mapBounds(config));
     map.fitBounds(target, { maxZoom: 1 });
 
     const report = () => {
