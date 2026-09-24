@@ -73,6 +73,42 @@ describe("scenario fixtures show what their names say", () => {
   });
 });
 
+describe("ProductionRate.unit (ADR-0015)", () => {
+  const rateOf = (className: string) =>
+    fixtures.factoryMixed.data.buildings.flatMap((b) => b.production).find((p) => p.className === className);
+
+  it("the fixtures carry real units: fluids m3/min, solids items/min", () => {
+    expect(rateOf("Desc_LiquidFuel_C")?.unit).toBe("m3/min");
+    expect(rateOf("Desc_Stator_C")?.unit).toBe("items/min");
+    expect(rateOf("Desc_PolymerResin_C")?.unit).toBe("items/min");
+  });
+
+  it("factoryUnknownItem shows the null case", () => {
+    expect(fixtures.factoryUnknownItem.data.buildings[0].production[0].unit).toBeNull();
+  });
+
+  const withUnit = (unit: unknown) => {
+    const building = { ...fixtures.factoryUnknownItem.data.buildings[0] };
+    building.production = [{ ...building.production[0], unit }] as never;
+    return FactoryResponseSchema.safeParse({
+      ...fixtures.factoryUnknownItem,
+      data: { ...fixtures.factoryUnknownItem.data, buildings: [building] },
+    });
+  };
+
+  it("accepts the two units and null", () => {
+    for (const unit of ["items/min", "m3/min", null]) {
+      expect(withUnit(unit).success, String(unit)).toBe(true);
+    }
+  });
+
+  it("rejects any other unit, and a missing unit (null must be explicit)", () => {
+    for (const unit of ["kg/min", "m³/min", "", 0, undefined]) {
+      expect(withUnit(unit).success, String(unit)).toBe(false);
+    }
+  });
+});
+
 describe("schemas reject what the contract rules out", () => {
   it("rejects a server id that isn't lowercase alphanumeric/dash", () => {
     for (const serverId of ["Default", "a/b", "", "x".repeat(33), "host:7777"]) {
