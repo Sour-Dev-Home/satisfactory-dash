@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../test-support/testDb.js";
@@ -117,7 +118,8 @@ describe.skipIf(!available)("core schema constraints", () => {
     const insert = (returnPath: string, overrides: { state?: string; verifier?: string; idHash?: Buffer } = {}) =>
       admin.query(
         "INSERT INTO identity.login_attempts (id_hash, state, nonce, code_verifier, return_path, expires_at) VALUES ($1, $2, $3, $4, $5, now() + interval '10 minutes')",
-        [overrides.idHash ?? Buffer.alloc(32, Math.floor(Math.random() * 250) + 1), overrides.state ?? LONG("s", 32), LONG("n", 32), overrides.verifier ?? LONG("v", 43), returnPath],
+        // A fresh 32-byte key per row: a key drawn from a small space collided across cases (the flake).
+        [overrides.idHash ?? randomBytes(32), overrides.state ?? LONG("s", 32), LONG("n", 32), overrides.verifier ?? LONG("v", 43), returnPath],
       );
 
     // The same cases the zod schema is tested with (test-support/returnPathCases.ts), so the

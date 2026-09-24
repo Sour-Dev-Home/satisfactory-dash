@@ -318,3 +318,22 @@ the bottom.
   pino transports run in a worker thread that the esbuild single-file bundle cannot carry, and an
   async stream can lose the fatal line written just before `process.exit(1)`. Unset, logs go to
   stdout as before; an unusable `LOG_DIR` stops the backend at startup. Runbook updated.
+- 2026-09-25 — ADR-0027 (production history and alerts, Discord first) added as
+  `decisions/0027-history-and-alerts.md`, status PROPOSED by the architect: nothing in it is
+  approved to build, and it builds only after ADR-0025 gate A (everything in it needs Postgres).
+  Its Context references were checked against the code (power.ts, factory.ts, frm-api.md,
+  rawSchemas.ts) and match.
+- 2026-09-25 — ADR-0027 accepted by the owner (all seven owner decisions as recommended, relayed
+  by the coordinator 2026-09-24): status, an "Owner decisions (answered)" section and the README
+  row updated. It still builds only after ADR-0025 gate A.
+- 2026-09-25 — Privacy policy and terms outline added as `legal/privacy-terms-outline.md` (the
+  architect's draft, verbatim): an outline with [OWNER]/[LEGAL]/[BUILD] markers, not the published
+  policy and not legal advice; it contains no personal data (the controller identity is an owner
+  decision). Roadmap 2b: it must be live before ADR-0025 gate B. Its [BUILD] prerequisites for the
+  backend are log rotation with 14-day retention, user ids instead of usernames in sign-in logs
+  after PR 5, a purge job for expired sessions and stale login attempts, and account deletion
+  before member invites.
+- 2026-09-25 — Privacy/terms outline updated with the owner's answers (relayed by the coordinator):
+  the contact mailbox is privacy@, retention is decided (audit events 1 year, logs 14 days), and the
+  published pages will be `frontend/public/privacy.html` and `terms.html`. The owner is named only
+  on the published page, never in the repo docs.
