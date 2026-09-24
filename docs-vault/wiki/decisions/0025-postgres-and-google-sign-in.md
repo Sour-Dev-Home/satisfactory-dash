@@ -116,8 +116,10 @@ Status: accepted (project owner), 2026-09-24.
      access to the PC is the trust boundary.
 6. **DB availability: startup, runtime, health**
    - Startup classifies the first connection error:
-     - **Retry with backoff** only on transient errors: connection refused/reset, and SQLSTATE
-       57P03 ("the database system is starting up", the boot race). Backoff runs 1 s doubling to
+     - **Retry with backoff** only on transient errors: connection refused/reset, SQLSTATE
+       57P03 ("the database system is starting up", the boot race), and the network-not-ready
+       errors of a booting machine (EAI_AGAIN, EHOSTUNREACH, ENETUNREACH). Unknown errors fail fast.
+       The deadline also bounds a single hung attempt (PR 2, #103). Backoff runs 1 s doubling to
        30 s, with a 5-minute deadline, logging each attempt. After the deadline it exits 1, so the
        Scheduled Task's "restart on failure" setting takes over and a broken setup still fails loudly.
      - **Fail fast (exit 1, clear message)** on configuration errors: a malformed DATABASE_URL,
