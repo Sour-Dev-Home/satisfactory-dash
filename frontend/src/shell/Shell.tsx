@@ -6,6 +6,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { OverviewView } from "../overview/OverviewView";
+import { PowerHistoryView } from "../power/PowerHistoryView";
 import { PowerView } from "../power/PowerView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
@@ -123,6 +124,9 @@ export function Shell() {
             <Page key="power" title="Power">
               <Section label="Power" probe="power">
                 <PowerView />
+              </Section>
+              <Section label="Power history" probe="power-history">
+                <PowerHistoryView />
               </Section>
             </Page>
           }
