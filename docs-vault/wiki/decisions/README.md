@@ -3,7 +3,7 @@
 One file per decision (ADR), numbered in order. Each has a status, the context that
 forced it, the decision, its consequences, and a "Revisit when" trigger that says what
 would make it worth reopening. Decided 2026-09-22 by the architecture session under
-the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0020). Change
+the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0021). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 
 | ADR | Decision |
@@ -28,6 +28,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0018](./0018-license-agpl.md) | License: AGPL-3.0-only, relicensed from MIT; earlier versions stay MIT; the owner is named in `LICENSE` only |
 | [0019](./0019-api-security-posture.md) | API security posture at go-live (headers, 8 h sessions with a logout denylist, Origin check on writes, secret strength, edge rate limit) and what changes when it scales |
 | [0020](./0020-multi-user-data-model.md) | Multi-user accounts (Google OIDC, Postgres sessions), server onboarding and roles, the data model, sync vs async, and a 5,000-user scale envelope; nothing built until its trigger |
+| [0021](./0021-advertising.md) | Advertising: none on the dashboard or any authenticated page; ads only on separate public content pages if ever wanted; `/app/*` reserved for the app |
 
 ## Terms used in the ADRs
 

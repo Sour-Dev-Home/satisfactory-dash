@@ -198,3 +198,7 @@ the bottom.
   enrollment codes, last-write-wins `latest_snapshots`, async ingest/SSE/commands, and a
   5,000-user envelope with viewer-driven agent cadence. Docs only: nothing is built until
   its triggers fire (the first account beyond the owner).
+- 2026-09-24 — Added ADR-0021 (advertising, accepted by the project owner): no ads on any
+  authenticated page and no ad scripts in the SPA; if ads are ever wanted, only on separate
+  static public pages with their own CSP and a certified CMP; `/app/*` is reserved for the
+  authenticated app so `/` and public paths stay free. Docs only.
