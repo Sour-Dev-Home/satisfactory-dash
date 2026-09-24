@@ -35,7 +35,7 @@ const CASES: StateCase[] = [
   { scenario: "at-risk", shows: "1 circuit is at risk." },
   { scenario: "battery-charging", shows: /Charging 100 MW/ },
   { scenario: "battery-discharging", shows: /Discharging 80 MW/ },
-  // Every rate says "per min" today, so match the fixture's modded item, not the unit label.
+  // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
   { scenario: "unknown-units", shows: /Modded Widget: .* per min/ },
   { scenario: "settings-read-only", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", shows: "Change pending: the server will apply it." },
@@ -57,6 +57,8 @@ for (const { scenario, shows, act } of CASES) {
       await act(page);
     }
     await expect(page.getByText(shows).first()).toBeVisible();
+    // AGPL §13 (ADR-0018): the source link is reachable in every state, signed in or not.
+    await expect(page.getByRole("contentinfo").getByRole("link", { name: "Source code (AGPL-3.0)" })).toBeVisible();
 
     await reportAxe(page, testInfo);
     await expect(page).toHaveScreenshot(`${scenario}.png`, { fullPage: true });
