@@ -4,7 +4,33 @@ Status: architect draft, 2026-09-24. Owner answers (2026-09-24): the controller 
 personally, named **only** on the published privacy page (`frontend/public/privacy.html`, the
 single file the CI PII scan excludes); contact `privacy@satis-manager.com` (live, a forwarding
 alias); audit retention 1 year; log retention 14 days; legal review before publishing: yes.
-Still open: the country (it decides the applicable law). Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
+Country (2026-09-24): **United States, state of Georgia**. Only the state and country go on the
+page, never a street address.
+
+## Which laws plausibly apply (for the reviewer to confirm; the page must not over-claim)
+Stance: **describe what we actually do and offer the core rights to everyone**, without claiming
+compliance with any statute that doesn't apply. (This isn't legal advice, just the questions for
+the reviewer.)
+| Law | Applies? | What the policy does |
+|---|---|---|
+| Georgia | **No comprehensive privacy law** (SB 111 failed again in 2026). Georgia's breach-notification statute targets information brokers and government collectors [LEGAL: confirm it doesn't reach us] | Commit voluntarily to notifying affected users of a breach without undue delay |
+| **CalOPPA** (California) | **Likely yes**: no size threshold; any commercial site collecting personal information from California residents [LEGAL: does a free, non-monetized service count as "commercial"?] | Include its required elements: categories collected, third parties, how to review/correct, how changes are notified, the effective date, **how we respond to Do Not Track** (we don't track across sites, so DNT changes nothing), and whether third parties track users over time (no) |
+| CCPA/CPRA (California) | **No**: thresholds are revenue > $26.625M, 100,000+ California consumers, or 50%+ of revenue from selling/sharing data; a free service with <=5,000 users meets none | Don't claim CCPA rights; the voluntary rights section covers access and deletion anyway |
+| Other state comprehensive laws (e.g. Virginia, Colorado, Texas, Florida, Tennessee) | **Probably no**: most have user-count thresholds far above ours; Texas/Nebraska-style laws use a small-business exemption instead [LEGAL: check Texas/Nebraska for a non-commercial individual] | Same voluntary stance; we never sell data or do targeted ads |
+| **COPPA** (federal) | Applies only if the site is directed at under-13s or we have actual knowledge of under-13 users | Minimum age **13** (Google accounts also require 13+ in the US); delete an account on learning its user is under 13 |
+| GDPR / UK GDPR | **Unclear**: a non-EU controller is covered when *offering* services to people in the EU (Art. 3(2)), and mere accessibility isn't enough (Recital 23). With English only, no EU targeting and closed, invite-only sign-up, probably not; inviting EU friends makes it greyer [LEGAL: decide; if yes, also the Art. 27 representative question and the EU age of consent, 13-16 by country] | Rights offered to everyone; the processors and transfers (US providers) listed plainly |
+| CAN-SPAM | Only for commercial email. Alert emails (later, via SES) are transactional/relationship messages | Every alert email carries an unsubscribe/disable link anyway |
+
+**Pre-publication review checklist** `[LEGAL]`:
+1. Whether a free, non-monetized site counts as "commercial" for CalOPPA.
+2. The GDPR Art. 3(2) position given invite-only EU users.
+3. The Georgia breach statute's scope.
+4. The Texas/Nebraska small-business exemption for an individual.
+5. The age wording (13 US; the EU age of consent if GDPR is in scope).
+6. That the page names the controller by name, state and country, plus the privacy@ contact,
+   with no street address.
+7. The terms' liability limits and governing law (Georgia) and a venue clause.
+8. The game EULA and FRM items from LEGAL.md. Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
 consent screen requires a privacy policy URL, and gate B starts storing emails). The frontend page
 comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before publishing;
 `[BUILD]` = the policy promises something the code doesn't do yet (a prerequisite, not text).
@@ -59,7 +85,10 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
 7. **Security (in plain words):** Google sign-in (no passwords stored), hashed session ids,
    encrypted backups and webhook secrets, least-privilege database roles, a strict Content
    Security Policy, and the API reachable only through Cloudflare. No guarantees, but best efforts.
-8. **Children:** not directed at children under 16 `[LEGAL: the age threshold per country]`.
+8. **Children:** not directed at children; minimum age 13 (COPPA). An account is deleted on
+   learning its user is under 13 `[LEGAL: the EU age wording if GDPR is in scope]`.
+8b. **Do Not Track (CalOPPA):** we don't track users across sites or allow third-party tracking,
+   so DNT signals change nothing. **Breach notice:** affected users are told without undue delay.
 9. **Changes:** the "last updated" date; notice on the site for material changes.
 
 ## B. Terms of use (outline)
@@ -84,7 +113,7 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
 8. **Liability:** limited to the extent the law allows `[LEGAL]`; no liability for game-server
    outages or missed alerts. **Alerts are best effort and run only while the operator's machine
    is up** (ADR-0027).
-9. **Governing law and disputes:** `[OWNER][LEGAL]`.
+9. **Governing law and disputes:** the laws of the State of Georgia, USA; venue `[LEGAL]`.
 10. **Changes** and **contact.**
 
 ## C. Prerequisites before publishing (so the policy is true on day one)
@@ -93,7 +122,7 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
    PR 5 lands.
 2. `[BUILD]` Purge jobs: expired sessions after 30 days, stale login attempts (ADR-0025 PR 5/7).
 3. `[BUILD]` Account deletion (before 1b) and an export-by-request process.
-4. `[OWNER]` The country is still open. (Controller, contact and retention are answered above.)
+4. Owner answers are complete (controller, US/Georgia, contact, retention).
 5. `[LEGAL]` A review of both documents, the cookie statement, international transfers, and the
    game/mod items.
 6. Frontend: two **static HTML files**, `frontend/public/privacy.html` and
