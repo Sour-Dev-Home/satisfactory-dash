@@ -2,7 +2,15 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { Router } from "express";
 import request from "supertest";
 import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
-import { createErrorHandler, describeFailure, HTTP_STATUS_BY_CODE } from "./errorResponse.js";
+import {
+  classifyRequestFailure,
+  createErrorHandler,
+  describeFailure,
+  ForbiddenError,
+  HTTP_STATUS_BY_CODE,
+  ServerNotFoundError,
+  ServiceUnavailableError,
+} from "./errorResponse.js";
 import { ContractViolationError } from "./sendValidated.js";
 import { createApp } from "../app.js";
 import { createLogger } from "./logger.js";
@@ -304,6 +312,37 @@ describe("error middleware (ADR-0003 envelope)", () => {
   // fourth parameter would silently turn it into ordinary middleware.
   it("keeps exactly four parameters so Express treats it as error middleware", () => {
     expect(createErrorHandler(createLogger()).length).toBe(4);
+  });
+
+  // ADR-0025 PR 4: the two new codes, end to end through the real error middleware.
+  it("answers a ForbiddenError with 403 forbidden, a contract-valid body and no server detail", async () => {
+    const { app } = appThrowing(new ForbiddenError());
+    const res = await request(app).get("/api/boom");
+    expect(res.status).toBe(403);
+    expect(ApiErrorResponseSchema.safeParse(res.body).success).toBe(true);
+    expect(res.body.error).toMatchObject({ code: "forbidden", message: "You don't have permission to do that on this server" });
+  });
+
+  it("answers a ServiceUnavailableError with 503 service_unavailable and a fixed public message, never the cause", async () => {
+    const cause = new Error("connect ECONNREFUSED postgres://satis_app:hunter2@127.0.0.1:5432/satis");
+    const failure = Object.assign(new ServiceUnavailableError(), { cause });
+    const { app, lines } = appThrowing(failure);
+    const res = await request(app).get("/api/boom");
+    expect(res.status).toBe(503);
+    expect(ApiErrorResponseSchema.safeParse(res.body).success).toBe(true);
+    expect(res.body.error).toMatchObject({ code: "service_unavailable", message: "The service is temporarily unavailable" });
+    // The public message is fixed. (`detail` is only ever included in development and test.)
+    process.env.NODE_ENV = "production";
+    const prod = await request(appThrowing(failure).app).get("/api/boom");
+    expect(JSON.stringify(prod.body)).not.toMatch(/hunter2|postgres:|ECONNREFUSED/);
+    expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it("maps the new codes to 403 and 503, and a non-member's 404 stays a different code", () => {
+    expect(HTTP_STATUS_BY_CODE.forbidden).toBe(403);
+    expect(HTTP_STATUS_BY_CODE.service_unavailable).toBe(503);
+    expect(HTTP_STATUS_BY_CODE.server_not_found).toBe(404);
+    expect(classifyRequestFailure(new ForbiddenError()).code).not.toBe(classifyRequestFailure(new ServerNotFoundError()).code);
   });
 
   it("maps every known error code to an HTTP status", () => {
