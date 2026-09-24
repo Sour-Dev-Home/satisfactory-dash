@@ -4,7 +4,7 @@ import cors from "cors";
 import type { Logger } from "pino";
 import { assignRequestId, createRequestLogger } from "./platform/requestContext.js";
 import { createErrorHandler, RouteNotFoundError } from "./platform/errorResponse.js";
-import { createCrossSiteGuard, requireJsonBody } from "./platform/httpPolicy.js";
+import { createCrossSiteGuard, requireJsonBody, securityHeaders } from "./platform/httpPolicy.js";
 
 export interface AppOptions {
   logger: Logger;
@@ -37,7 +37,10 @@ export function createApp({
     throw new Error("createApp: protectedRouters require a sessionGuard");
   }
   const app = express();
+  app.disable("x-powered-by");
   app.use(assignRequestId);
+  // Before CORS so a preflight answer carries them too (ADR-0019).
+  app.use("/api", securityHeaders);
   app.use(createRequestLogger(logger));
   // ADR-0011: never a wildcard. Only the listed origins get CORS headers, with
   // credentials so the session cookie is sent. The Vite dev proxy is same-origin.

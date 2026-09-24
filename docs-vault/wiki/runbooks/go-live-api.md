@@ -232,8 +232,22 @@ After a rebuild (`npm run build -w backend`), restart the task: `Stop-ScheduledT
 
 ## 5. Create the Cloudflare Tunnel (in the Cloudflare dashboard)
 
-Do this only after steps 1 to 4 pass.
+Do this only after steps 1 to 4 pass, and after the ADR-0019 security changes are merged
+and running (the backend sends the `no-store` and related headers, and refuses a weak
+`SESSION_SECRET`).
 
+0. **Add the login rate-limit rule first** (ADR-0019; the Free plan allows exactly one rate
+   limiting rule). In the dashboard for the `satis-manager.com` zone open **Security > WAF >
+   Rate limiting rules > Create rule** [NEEDS VERIFICATION: menu labels move; find "rate
+   limiting rules" under the zone's security or WAF section]. Name it e.g. `login-rate-limit`:
+   - When incoming requests match: **Hostname** equals `api.satis-manager.com` AND **URI Path**
+     equals `/api/auth/login`.
+   - Characteristics: **IP**. Requests: **5**, period: **10 seconds**.
+   - Action: **Block**, duration: **10 seconds**.
+
+   The backend's own 15-minute limits stay authoritative; this only slows guessing at the
+   edge. Also make sure there is **no cache rule and no CORS-header rule** on the API
+   hostname (the backend sends `Cache-Control: no-store` and its own CORS allowlist).
 1. Cloudflare dashboard, the account that owns `satis-manager.com`: **Networking > Tunnels >
    Create a tunnel** (Cloudflared).
 2. Name it, then choose **Windows** and run the install command it shows in an
@@ -245,6 +259,12 @@ Do this only after steps 1 to 4 pass.
 4. Confirm the service is running: `Get-Service cloudflared`.
 
 The backend keeps listening only on `127.0.0.1`; the tunnel reaches it from the same machine.
+
+**Emergency: sign everyone out / a cookie was stolen.** Sessions last 8 hours. Logout revokes
+that one session, but only until the backend restarts (the denylist is in memory). To revoke
+every session at once, put a new `SESSION_SECRET` in `backend\.env`
+(`[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))`)
+and restart the task (`Stop-ScheduledTask` then `Start-ScheduledTask`, then check port 3001).
 
 ## 6. Go-live tests (through the tunnel)
 

@@ -1,7 +1,9 @@
 import type { CookieOptions, Request, RequestHandler, Response } from "express";
 import { parse as parseCookies } from "cookie";
 import type { Authenticator, AuthenticatedUser } from "./authenticator.js";
-import { SESSION_TTL_SECONDS, createSessionToken, verifySessionToken } from "./sessionToken.js";
+import type { SessionDenylist } from "./sessionDenylist.js";
+import { SESSION_TTL_SECONDS, createSessionToken, readSessionToken } from "./sessionToken.js";
+import type { VerifiedSession } from "./sessionToken.js";
 import { UnauthorizedError } from "../../platform/errorResponse.js";
 
 export const SESSION_COOKIE = "sd_session";
@@ -21,6 +23,8 @@ const COOKIE_OPTIONS: CookieOptions = {
 export interface SessionDeps {
   authenticator: Authenticator;
   sessionSecret: string;
+  /** Sessions signed out before their token expired (ADR-0019). */
+  denylist: SessionDenylist;
 }
 
 export function setSessionCookie(res: Response, user: AuthenticatedUser, secret: string): void {
@@ -34,17 +38,32 @@ export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE, COOKIE_OPTIONS);
 }
 
-/** The signed-in user for this request, or null. Never throws. */
-export function currentUser(req: Request, { authenticator, sessionSecret }: SessionDeps): AuthenticatedUser | null {
+/** The verified, not-signed-out session this request carries, or null. Never throws. */
+function requestSession(req: Request, { sessionSecret, denylist }: SessionDeps): VerifiedSession | null {
   try {
     const token = parseCookies(req.headers.cookie ?? "")[SESSION_COOKIE];
     if (!token) {
       return null;
     }
-    const name = verifySessionToken(token, sessionSecret);
-    return name !== null && authenticator.isActiveUser(name) ? { name } : null;
+    const session = readSessionToken(token, sessionSecret);
+    return session !== null && !denylist.isRevoked(session.jti) ? session : null;
   } catch {
     return null;
+  }
+}
+
+/** The signed-in user for this request, or null. Never throws. */
+export function currentUser(req: Request, deps: SessionDeps): AuthenticatedUser | null {
+  const session = requestSession(req, deps);
+  return session !== null && deps.authenticator.isActiveUser(session.sub) ? { name: session.sub } : null;
+}
+
+/** Signs out the session this request carries, if any: its token stops working even if
+ *  someone copied the cookie. A missing, invalid or already-expired token is a no-op. */
+export function revokeCurrentSession(req: Request, deps: SessionDeps): void {
+  const session = requestSession(req, deps);
+  if (session !== null) {
+    deps.denylist.revoke(session.jti, session.exp);
   }
 }
 

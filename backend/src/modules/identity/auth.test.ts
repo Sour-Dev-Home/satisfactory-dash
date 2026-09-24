@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { hashPassword, parsePasswordHash, verifyPassword } from "./passwordHash.js";
 import type { ParsedPasswordHash } from "./passwordHash.js";
-import { SESSION_TTL_SECONDS, createSessionToken, verifySessionToken } from "./sessionToken.js";
+import { createHmac, randomBytes } from "node:crypto";
+import { SESSION_TTL_SECONDS, createSessionToken, readSessionToken, verifySessionToken } from "./sessionToken.js";
+import { SessionDenylist } from "./sessionDenylist.js";
 import { LoginRateLimiter, MAX_FAILURES, WINDOW_MS } from "./loginRateLimiter.js";
 import { SingleOperatorAuthenticator } from "./authenticator.js";
 import { loadAuthConfigFromEnv } from "./authConfig.js";
 import { ConfigError } from "../../platform/errors.js";
 
-const SECRET = "s".repeat(48);
+const SECRET = "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt0=";
 let stored: ParsedPasswordHash;
 let encoded: string;
 
@@ -73,6 +75,132 @@ describe("session tokens", () => {
 
   it.each(["", "garbage", "a.b.c", ".", "e30.x"])("rejects malformed token %j without throwing", (token) => {
     expect(verifySessionToken(token, SECRET)).toBeNull();
+  });
+
+  // ADR-0019: 8 hours, and every token carries its own random session id.
+  it("lasts 8 hours", () => {
+    expect(SESSION_TTL_SECONDS).toBe(8 * 60 * 60);
+    const now = Date.now();
+    const session = readSessionToken(createSessionToken("operator", SECRET, now), SECRET, now)!;
+    expect(session.exp - Math.floor(now / 1000)).toBe(SESSION_TTL_SECONDS);
+  });
+
+  it("gives every token a different session id", () => {
+    const a = readSessionToken(createSessionToken("operator", SECRET), SECRET)!;
+    const b = readSessionToken(createSessionToken("operator", SECRET), SECRET)!;
+    expect(a.jti).not.toBe(b.jti);
+    expect(a.jti.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("rejects a correctly signed token that has no session id (issued before ADR-0019)", () => {
+    const payload = Buffer.from(JSON.stringify({ sub: "operator", exp: 9_999_999_999 })).toString("base64url");
+    const signature = createHmac("sha256", SECRET).update(payload).digest("base64url");
+    expect(readSessionToken(`${payload}.${signature}`, SECRET)).toBeNull();
+    expect(verifySessionToken(`${payload}.${signature}`, SECRET)).toBeNull();
+  });
+
+  it.each([{ jti: "" }, { jti: 7 }, { jti: null }])("rejects a signed token whose session id is %j", (extra) => {
+    const payload = Buffer.from(JSON.stringify({ sub: "operator", exp: 9_999_999_999, ...extra })).toString("base64url");
+    const signature = createHmac("sha256", SECRET).update(payload).digest("base64url");
+    expect(readSessionToken(`${payload}.${signature}`, SECRET)).toBeNull();
+  });
+});
+
+describe("session token boundaries and odd payloads", () => {
+  const signed = (payload: unknown) => {
+    const p = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    return `${p}.${createHmac("sha256", SECRET).update(p).digest("base64url")}`;
+  };
+  const nowMs = 1_700_000_000_000;
+  const nowS = Math.floor(nowMs / 1000);
+
+  it("is valid one second before exp and invalid at exp", () => {
+    const token = signed({ sub: "operator", exp: nowS + 1, jti: "j" });
+    expect(readSessionToken(token, SECRET, nowMs)).not.toBeNull();
+    expect(readSessionToken(token, SECRET, nowMs + 1000)).toBeNull();
+  });
+
+  it.each([
+    ["a string exp", { sub: "operator", exp: "9999999999", jti: "j" }],
+    ["a non-string sub", { sub: 5, exp: 9_999_999_999, jti: "j" }],
+    ["an array payload", [1, 2]],
+    ["a null payload", null],
+    ["an array jti", { sub: "operator", exp: 9_999_999_999, jti: ["j"] }],
+  ])("rejects a signed token with %s", (_n, payload) => {
+    expect(readSessionToken(signed(payload), SECRET, nowMs)).toBeNull();
+  });
+
+  it("treats prototype-ish session ids as ordinary ids in the denylist", () => {
+    const list = new SessionDenylist();
+    expect(list.isRevoked("__proto__", nowMs)).toBe(false);
+    expect(list.isRevoked("constructor", nowMs)).toBe(false);
+    list.revoke("__proto__", nowS + 60, nowMs);
+    expect(list.isRevoked("__proto__", nowMs)).toBe(true);
+    expect(list.isRevoked("toString", nowMs)).toBe(false);
+  });
+
+  it("re-revoking moves a session to the newest position so eviction drops others first", () => {
+    const list = new SessionDenylist(2);
+    list.revoke("a", nowS + 100, nowMs);
+    list.revoke("b", nowS + 100, nowMs);
+    list.revoke("a", nowS + 100, nowMs);
+    list.revoke("c", nowS + 100, nowMs);
+    expect(list.isRevoked("a", nowMs)).toBe(true);
+    expect(list.isRevoked("b", nowMs)).toBe(false);
+  });
+});
+
+describe("SessionDenylist (ADR-0019)", () => {
+  const now = 1_700_000_000_000;
+  const later = (seconds: number) => Math.floor(now / 1000) + seconds;
+
+  it("remembers a revoked session until its token expires", () => {
+    const list = new SessionDenylist();
+    list.revoke("a", later(60), now);
+    expect(list.isRevoked("a", now)).toBe(true);
+    expect(list.isRevoked("b", now)).toBe(false);
+    expect(list.isRevoked("a", now + 59_000)).toBe(true);
+    expect(list.isRevoked("a", now + 61_000)).toBe(false);
+    expect(list.size).toBe(0); // the expired entry was dropped on lookup
+  });
+
+  it("does not store a session that has already expired", () => {
+    const list = new SessionDenylist();
+    list.revoke("a", later(-1), now);
+    list.revoke("b", later(0), now);
+    expect(list.size).toBe(0);
+  });
+
+  it("prunes expired entries", () => {
+    const list = new SessionDenylist();
+    list.revoke("old", later(10), now);
+    list.revoke("new", later(1000), now);
+    list.prune(now + 20_000);
+    expect(list.size).toBe(1);
+    expect(list.isRevoked("new", now + 20_000)).toBe(true);
+  });
+
+  it("stays bounded: prunes expired entries first, then drops the oldest", () => {
+    const list = new SessionDenylist(3);
+    list.revoke("expiring", later(5), now);
+    list.revoke("b", later(1000), now);
+    list.revoke("c", later(1000), now);
+    list.revoke("d", later(1000), now + 10_000); // over the cap: "expiring" has expired, so it goes
+    expect(list.size).toBe(3);
+    expect(list.isRevoked("expiring", now + 10_000)).toBe(false);
+    list.revoke("e", later(1000), now + 10_000); // still over: the oldest live entry ("b") goes
+    expect(list.size).toBe(3);
+    expect(list.isRevoked("b", now + 10_000)).toBe(false);
+    for (const jti of ["c", "d", "e"]) expect(list.isRevoked(jti, now + 10_000)).toBe(true);
+  });
+
+  it("revoking the same session twice does not grow it", () => {
+    const list = new SessionDenylist(2);
+    list.revoke("a", later(100), now);
+    list.revoke("a", later(100), now);
+    list.revoke("b", later(100), now);
+    expect(list.size).toBe(2);
+    expect(list.isRevoked("a", now)).toBe(true);
   });
 });
 
@@ -157,6 +285,35 @@ describe("loadAuthConfigFromEnv", () => {
     })();
     expect(err).toBeInstanceOf(ConfigError);
     expect(err!.message).not.toContain("too-short-secret-value");
+  });
+
+  // ADR-0019: at least 32 random bytes (43 base64 characters), and not a placeholder.
+  it.each([
+    ["42 characters (one short of 32 bytes in base64)", "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt"],
+    ["a long run of one character", "a".repeat(64)],
+    ["a repeating pattern", "abcdef".repeat(12)],
+    ["a placeholder", "change-me-to-a-long-random-secret-0123456789ABCDEF"],
+    ["a placeholder in another case", "PLACEHOLDER-value-q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5"],
+  ])("refuses a weak session secret: %s", (_name, secret) => {
+    const err = (() => {
+      try {
+        loadAuthConfigFromEnv({ ...valid(), SESSION_SECRET: secret });
+      } catch (e) {
+        return e as Error;
+      }
+    })();
+    expect(err).toBeInstanceOf(ConfigError);
+    expect(err!.message).toContain("SESSION_SECRET");
+    expect(err!.message).not.toContain(secret);
+  });
+
+  it.each([
+    ["32 random bytes as base64 (44 characters)", randomBytes(32).toString("base64")],
+    ["32 random bytes as base64url (43 characters)", randomBytes(32).toString("base64url")],
+    ["48 random bytes as base64 (the runbook command)", randomBytes(48).toString("base64")],
+    ["64 hex characters", randomBytes(32).toString("hex")],
+  ])("accepts a strong session secret: %s", (_name, secret) => {
+    expect(loadAuthConfigFromEnv({ ...valid(), SESSION_SECRET: secret }).sessionSecret).toBe(secret);
   });
 
   it.each(["*", "http://evil.example", "https://satis-manager.com/path", "not a url"])(

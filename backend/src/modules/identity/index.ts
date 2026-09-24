@@ -9,6 +9,7 @@ import { SingleOperatorAuthenticator } from "./authenticator.js";
 import { LoginRateLimiter } from "./loginRateLimiter.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createSessionGuard } from "./session.js";
+import { SessionDenylist } from "./sessionDenylist.js";
 
 export interface IdentityModule {
   /** Login, logout and session status: mounted with no session required. */
@@ -25,6 +26,7 @@ export function createIdentityModule(env: NodeJS.ProcessEnv = process.env): Iden
   const sessionDeps = {
     authenticator: new SingleOperatorAuthenticator(auth.adminUser, auth.passwordHash),
     sessionSecret: auth.sessionSecret,
+    denylist: new SessionDenylist(),
   };
   return {
     authRouter: createAuthRouter({ ...sessionDeps, rateLimiter: new LoginRateLimiter() }),

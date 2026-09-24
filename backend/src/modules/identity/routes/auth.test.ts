@@ -9,13 +9,14 @@ import { createLogger } from "../../../platform/logger.js";
 import { healthRouter } from "../../../platform/health.js";
 import { LOGIN_REQUESTS_PER_WINDOW, createAuthRouter } from "./auth.js";
 import { createSessionGuard, SESSION_COOKIE } from "../session.js";
+import { SessionDenylist } from "../sessionDenylist.js";
 import { SingleOperatorAuthenticator } from "../authenticator.js";
 import { hashPassword, parsePasswordHash } from "../passwordHash.js";
 import type { ParsedPasswordHash } from "../passwordHash.js";
 import { LoginRateLimiter, MAX_FAILURES } from "../loginRateLimiter.js";
 
 const PASSWORD = "correct horse battery staple";
-const SECRET = "s".repeat(48);
+const SECRET = "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt0=";
 let passwordHash: ParsedPasswordHash;
 
 beforeAll(async () => {
@@ -26,7 +27,11 @@ beforeAll(async () => {
 function buildApp() {
   const lines: string[] = [];
   const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(line) });
-  const deps = { authenticator: new SingleOperatorAuthenticator("operator", passwordHash), sessionSecret: SECRET };
+  const deps = {
+    authenticator: new SingleOperatorAuthenticator("operator", passwordHash),
+    sessionSecret: SECRET,
+    denylist: new SessionDenylist(),
+  };
   const protectedRouter = Router();
   protectedRouter.get("/servers", (_req, res) => {
     res.json({ servers: [] });
@@ -245,6 +250,159 @@ describe("POST /api/auth/logout", () => {
   });
 });
 
+// ADR-0019: logout adds the session's id to a denylist, so a copied cookie stops working.
+describe("logout revokes the session", () => {
+  it("rejects the old cookie after logout, on the guard and on the session route", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(200);
+    expect((await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie)).status).toBe(200);
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
+    const session = await request(app).get(endpoints.auth.session.path()).set("Cookie", cookie);
+    expect(session.body).toEqual({ authenticated: false });
+  });
+
+  it("revokes only the session that signed out, not another sign-in", async () => {
+    const { app } = buildApp();
+    const first = await signIn(app);
+    const second = await signIn(app);
+    await request(app).post(endpoints.auth.logout.path()).set("Cookie", first);
+    expect((await request(app).get("/api/servers").set("Cookie", first)).status).toBe(401);
+    expect((await request(app).get("/api/servers").set("Cookie", second)).status).toBe(200);
+  });
+
+  it("logging out with no cookie or a garbage cookie is still a 200 no-op", async () => {
+    const { app } = buildApp();
+    expect((await request(app).post(endpoints.auth.logout.path())).status).toBe(200);
+    const garbage = await request(app).post(endpoints.auth.logout.path()).set("Cookie", `${SESSION_COOKIE}=not-a-token`);
+    expect(garbage.status).toBe(200);
+  });
+
+  it("logging out twice with the same cookie stays 200", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie);
+    expect((await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie)).status).toBe(200);
+  });
+});
+
+// ADR-0019: JSON is never cached, sniffed, framed or leaked through a referrer.
+describe("security headers", () => {
+  const expectHeaders = (headers: Record<string, unknown>) => {
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["cache-control"]).toBe("no-store");
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(headers["content-security-policy"]).toBe("default-src 'none'; frame-ancestors 'none'");
+    expect(headers["x-powered-by"]).toBeUndefined();
+  };
+
+  it("sets them on a public route", async () => {
+    const { app } = buildApp();
+    expectHeaders((await request(app).get("/api/health")).headers);
+  });
+
+  it("sets them on a protected route, an error response and a 404", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    expectHeaders((await request(app).get("/api/servers").set("Cookie", cookie)).headers);
+    expectHeaders((await request(app).get("/api/servers")).headers); // 401
+    expectHeaders((await request(app).get("/api/no-such-route").set("Cookie", cookie)).headers); // 404
+  });
+
+  it("sets them on the login response that carries the session cookie", async () => {
+    const { app } = buildApp();
+    expectHeaders((await login(app, { username: "operator", password: PASSWORD })).headers);
+  });
+
+  it("sets them on a CORS preflight answer", async () => {
+    const { app } = buildApp();
+    const res = await request(app)
+      .options(endpoints.auth.login.path())
+      .set("Origin", "https://satis-manager.com")
+      .set("Access-Control-Request-Method", "POST");
+    expectHeaders(res.headers);
+  });
+});
+
+describe("security headers on framework-generated failures", () => {
+  const expectHeaders = (headers: Record<string, unknown>) => {
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["cache-control"]).toBe("no-store");
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(headers["content-security-policy"]).toBe("default-src 'none'; frame-ancestors 'none'");
+  };
+
+  it("sets them on a malformed JSON body (400), an oversized body (413) and a 415", async () => {
+    const { app } = buildApp();
+    const bad = await request(app).post(endpoints.auth.login.path()).set("Content-Type", "application/json").send("{not json");
+    expect(bad.status).toBe(400);
+    expectHeaders(bad.headers);
+    const big = await request(app)
+      .post(endpoints.auth.login.path())
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ username: "x".repeat(300_000), password: "y" }));
+    expect(big.status).toBe(413);
+    expectHeaders(big.headers);
+    const wrongType = await request(app).post(endpoints.auth.login.path()).set("Content-Type", "text/plain").send("hi");
+    expect(wrongType.status).toBe(415);
+    expectHeaders(wrongType.headers);
+  });
+
+  it("sets them on a cross-site refusal and on a 429 rate-limit answer", async () => {
+    const { app } = buildApp();
+    const refused = await request(app).post(endpoints.auth.logout.path()).set("Sec-Fetch-Site", "cross-site");
+    expect(refused.status).toBe(400);
+    expectHeaders(refused.headers);
+    let last = await login(app, { username: "operator", password: "wrong" });
+    for (let i = 0; i < MAX_FAILURES; i++) last = await login(app, { username: "operator", password: "wrong" });
+    expect(last.status).toBe(429);
+    expect(last.headers["retry-after"]).toBeDefined();
+    expectHeaders(last.headers);
+  });
+});
+
+describe("logout revocation edge cases", () => {
+  it("a forged signature is a no-op and does not revoke the real session", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    const [payload] = cookie.slice(`${SESSION_COOKIE}=`.length).split(".");
+    const forged = `${SESSION_COOKIE}=${payload}.AAAA`;
+    expect((await request(app).post(endpoints.auth.logout.path()).set("Cookie", forged)).status).toBe(200);
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(200);
+  });
+
+  it("a revoked cookie stays rejected on repeated use, and a new sign-in still works", async () => {
+    const { app } = buildApp();
+    const cookie = await signIn(app);
+    await request(app).post(endpoints.auth.logout.path()).set("Cookie", cookie);
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
+    }
+    const fresh = await signIn(app);
+    expect((await request(app).get("/api/servers").set("Cookie", fresh)).status).toBe(200);
+  });
+});
+
+describe("cross-site guard across methods", () => {
+  it.each(["put", "delete", "post"] as const)("refuses a sibling-subdomain %s and allows the frontend's", async (method) => {
+    const { app } = buildApp();
+    const sibling = await request(app)[method]("/api/anything").set("Sec-Fetch-Site", "same-site").set("Origin", "https://blog.satis-manager.com");
+    expect(sibling.status).toBe(400);
+    const cross = await request(app)[method]("/api/anything").set("Sec-Fetch-Site", "cross-site");
+    expect(cross.status).toBe(400);
+    // Allowed through the guard: fails later (401 from the session guard), not 400.
+    const ok = await request(app)[method]("/api/anything").set("Sec-Fetch-Site", "same-site").set("Origin", "https://satis-manager.com");
+    expect(ok.status).toBe(401);
+  });
+
+  it("does not hold OPTIONS or GET to the guard", async () => {
+    const { app } = buildApp();
+    const res = await request(app).options("/api/health").set("Sec-Fetch-Site", "cross-site").set("Origin", "https://evil.example");
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+});
+
 describe("the session guard", () => {
   // Issue #19: health and the three auth routes work without a session.
   it.each([
@@ -308,6 +466,10 @@ describe("cross-site mutations", () => {
     ["a cross-site Sec-Fetch-Site", { "Sec-Fetch-Site": "cross-site", Origin: "https://evil.example" }],
     ["an unlisted Origin (older browser, no Sec-Fetch-Site)", { Origin: "https://evil.example" }],
     ["a null Origin", { Origin: "null" }],
+    // ADR-0019: same-site includes any sibling subdomain of the frontend's site.
+    ["a sibling subdomain (same-site, Origin not allowlisted)", { "Sec-Fetch-Site": "same-site", Origin: "https://blog.satis-manager.com" }],
+    ["a same-site request with a null Origin", { "Sec-Fetch-Site": "same-site", Origin: "null" }],
+    ["an unknown Sec-Fetch-Site value", { "Sec-Fetch-Site": "bogus", Origin: "https://satis-manager.com" }],
   ])("refuses a body-less POST with %s, without clearing the cookie", async (_name, headers) => {
     const { app } = buildApp();
     const res = await evilLogout(app, headers);
@@ -321,6 +483,8 @@ describe("cross-site mutations", () => {
     ["the Vite dev proxy (same-origin)", { "Sec-Fetch-Site": "same-origin", Origin: "http://localhost:5173" }],
     ["an allowlisted Origin without Sec-Fetch-Site", { Origin: "https://satis-manager.com" }],
     ["a non-browser client (no Origin, no Sec-Fetch-Site)", {}],
+    ["a same-site request with no Origin header", { "Sec-Fetch-Site": "same-site" }],
+    ["a user-initiated request (none), whatever its Origin", { "Sec-Fetch-Site": "none", Origin: "null" }],
   ])("allows %s", async (_name, headers) => {
     const { app } = buildApp();
     expect((await evilLogout(app, headers)).status).toBe(200);
