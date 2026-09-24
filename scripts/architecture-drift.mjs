@@ -10,7 +10,7 @@
 //
 // Usage: node scripts/architecture-drift.mjs   (from the repo root; exit 1 on drift)
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,27 +22,53 @@ const ROOT_FILES = new Set(["app.ts", "server.ts"]);
 
 /** DSL text -> { codes: Map<componentId, code>, edges: Set<"fromCode->toCode"> } for the
  *  components inside the Backend API container. */
-export function parseWorkspace(dsl) {
+export function parseWorkspace(rawDsl) {
+  // Commented-out lines must not count: a commented relationship would otherwise still
+  // "model" an edge, and a commented declaration would still define a component.
+  const dsl = rawDsl
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ""))
+    .split(/\r?\n/)
+    .map((line) => (/^\s*(\/\/|#)/.test(line) ? "" : line))
+    .join("\n");
   const codes = new Map();
+  const duplicates = [];
+  const seenIds = new Set();
   let current = null;
-  for (const line of dsl.split(/\r?\n/)) {
+  let depth = 0; // brace depth, so a later element's "code" is never given to the last component
+  let currentDepth = 0;
+  for (const line of dsl.split("\n")) {
+    const braces = line.replace(/"[^"]*"/g, "");
+    const opens = (braces.match(/\{/g) ?? []).length;
+    const closes = (braces.match(/\}/g) ?? []).length;
     const declaration = line.match(/^\s*(\w+)\s*=\s*component\b/);
     if (declaration) {
       current = declaration[1];
+      currentDepth = depth;
+      if (seenIds.has(current)) {
+        duplicates.push(`component id declared twice: ${current}`);
+      }
+      seenIds.add(current);
       if (current === ROOT_ID) {
         codes.set(current, ROOT_CODE);
       }
-      continue;
+    } else {
+      const code = line.match(/^\s*"code"\s+"([^"]+)"/);
+      if (code && current) {
+        if ([...codes].some(([id, c]) => c === code[1] && id !== current)) {
+          duplicates.push(`code "${code[1]}" is mapped by more than one component`);
+        }
+        codes.set(current, code[1]);
+      }
     }
-    const code = line.match(/^\s*"code"\s+"([^"]+)"/);
-    if (code && current) {
-      codes.set(current, code[1]);
+    depth += opens - closes;
+    if (current !== null && depth <= currentDepth) {
+      current = null; // the component's block closed (or it had none)
     }
   }
   const edges = new Set();
   const unresolved = [];
   const relationship = /^\s*([\w.]+)\s*->\s*([\w.]+)\b/;
-  for (const line of dsl.split(/\r?\n/)) {
+  for (const line of dsl.split("\n")) {
     const match = line.match(relationship);
     if (!match || !match[1].startsWith(API_PREFIX) || !match[2].startsWith(API_PREFIX)) {
       continue;
@@ -54,7 +80,37 @@ export function parseWorkspace(dsl) {
     }
     edges.add(`${codes.get(from)}->${codes.get(to)}`);
   }
-  return { codes, edges, unresolved };
+  return { codes, edges, unresolved, duplicates };
+}
+
+/** Relative specifiers of `export type { X } from "..."` / `export type * from "..."`.
+ *  dependency-cruiser does not report these type-only re-exports, so they are scanned here. */
+export function typeOnlyReExports(text) {
+  const found = [];
+  const re = /\bexport\s+type\s*(?:\{[^}]*\}|\*(?:\s+as\s+\w+)?)\s*from\s*["']([^"']+)["']/g;
+  for (const match of text.matchAll(re)) {
+    if (match[1].startsWith(".")) {
+      found.push(match[1]);
+    }
+  }
+  return found;
+}
+
+/** Components that have source files but no `code` mapping in the model, and vice versa. */
+export function compareComponents(modelCodes, codeComponents) {
+  const lines = [];
+  const modelled = new Set(modelCodes);
+  for (const c of [...codeComponents].sort()) {
+    if (!modelled.has(c)) {
+      lines.push(`component in code, not in workspace.dsl: ${c}`);
+    }
+  }
+  for (const c of [...modelled].sort()) {
+    if (!codeComponents.has(c)) {
+      lines.push(`component in workspace.dsl, no source files in code: ${c}`);
+    }
+  }
+  return lines;
 }
 
 /** "backend/src/modules/telemetry/x.ts" -> "modules/telemetry"; platform files -> "platform";
@@ -123,6 +179,25 @@ export function compareEdges(modelled, imported) {
   return lines;
 }
 
+/** A pass must mean something: an empty model, an empty cruise or no edges at all (e.g. a DSL
+ *  format change plus a cruise that found nothing) would otherwise print "matches: 0". */
+export function vacuityProblems({ componentCount, modelEdgeCount, codeEdgeCount, cruisedSources }) {
+  const problems = [];
+  if (componentCount === 0) {
+    problems.push('vacuous check: workspace.dsl yielded no components with a "code" property');
+  }
+  if (modelEdgeCount === 0) {
+    problems.push("vacuous check: workspace.dsl yielded no relationships between Backend API components");
+  }
+  if (codeEdgeCount === 0) {
+    problems.push("vacuous check: no module-to-module imports were found in backend/src");
+  }
+  if (!cruisedSources.some((source) => source.replaceAll("\\", "/").startsWith(`${BACKEND_SRC}/`))) {
+    problems.push(`vacuous check: dependency-cruiser returned no ${BACKEND_SRC} files`);
+  }
+  return problems;
+}
+
 function productionFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.posix.join(dir, entry.name);
@@ -147,10 +222,28 @@ async function main() {
   { extensions: [".ts", ".js"], extensionAlias: { ".js": [".ts", ".js"] } });
 
   const model = parseWorkspace(readFileSync("docs-vault/workspace.dsl", "utf8"));
-  const code = codeEdges(output.modules);
+  const files = productionFiles(BACKEND_SRC);
+  const extra = files.map((file) => ({
+    source: file,
+    dependencies: typeOnlyReExports(readFileSync(file, "utf8")).map((spec) => {
+      const base = path.posix.join(path.posix.dirname(file), spec.replace(/\.js$/, ""));
+      const resolved = [`${base}.ts`, `${base}/index.ts`].find((candidate) => existsSync(candidate));
+      return resolved ? { module: spec, resolved } : { module: spec, couldNotResolve: true };
+    }),
+  }));
+  const code = codeEdges([...output.modules, ...extra]);
+  const codeComponents = new Set(files.map(componentOf).filter((c) => c !== null));
   const problems = [
+    ...vacuityProblems({
+      componentCount: model.codes.size,
+      modelEdgeCount: model.edges.size,
+      codeEdgeCount: code.edges.size,
+      cruisedSources: output.modules.map((m) => m.source),
+    }),
     ...model.unresolved.map((r) => `workspace.dsl relationship names a component without a "code" property: ${r}`),
-    ...code.problems,
+    ...model.duplicates.map((d) => `workspace.dsl: ${d}`),
+    ...new Set(code.problems),
+    ...compareComponents(model.codes.values(), codeComponents),
     ...compareEdges(model.edges, code.edges),
   ];
   if (problems.length > 0) {

@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { codeEdges, compareEdges, componentOf, parseWorkspace } from "./architecture-drift.mjs";
+import {
+  codeEdges,
+  compareComponents,
+  compareEdges,
+  componentOf,
+  parseWorkspace,
+  typeOnlyReExports,
+  vacuityProblems,
+} from "./architecture-drift.mjs";
 
 const DSL = `
 api = container "Backend API" {
@@ -103,4 +111,105 @@ test("the committed workspace.dsl gives every backend component a code mapping a
   ]);
   assert.ok(edges.has("root->platform"));
   assert.ok(edges.has("modules/telemetry->modules/gameserver"));
+});
+
+test("parseWorkspace ignores commented-out relationships and declarations, and tolerates CRLF", () => {
+  const dsl = `${DSL}
+// satis.api.gameserver -> satis.api.platform "Uses" "call"
+# satis.api.gameserver -> satis.api.telemetry "Uses" "call"
+/*
+satis.api.gameserver -> satis.api.root "Uses" "call"
+ghost = component "ghost" "x" "TS" {
+    properties {
+        "code" "modules/ghost"
+    }
+}
+*/`.replaceAll("\n", "\r\n");
+  const { codes, edges } = parseWorkspace(dsl);
+  assert.equal(edges.size, 3);
+  assert.ok(![...codes.values()].includes("modules/ghost"));
+});
+
+test("parseWorkspace reports duplicate component ids and duplicate code mappings", () => {
+  const dup = `${DSL}
+    telemetry2 = component "again" "x" "TypeScript" {
+        properties {
+            "code" "modules/telemetry"
+        }
+    }`;
+  assert.deepEqual(parseWorkspace(dup).duplicates, ["code \"modules/telemetry\" is mapped by more than one component"]);
+  assert.equal(parseWorkspace(dup.replace("telemetry2", "telemetry")).duplicates.length, 1);
+  assert.deepEqual(parseWorkspace(DSL).duplicates, []);
+});
+
+test("typeOnlyReExports finds export type ... from (which dependency-cruiser misses)", () => {
+  const text = [
+    'export type { A } from "../identity/index.js";',
+    'export type * from "./b.js";',
+    'export type * as NS from "../c.js";',
+    'export type { Z } from "zod";',
+    'export { type Q } from "../q.js";',
+    "export type X = string;",
+  ].join("\n");
+  assert.deepEqual(typeOnlyReExports(text), ["../identity/index.js", "./b.js", "../c.js"]);
+});
+
+test("compareComponents flags a code component missing from the model and the reverse", () => {
+  assert.deepEqual(compareComponents(["a", "b"].values(), new Set(["a", "b"])), []);
+  assert.deepEqual(compareComponents(["a"].values(), new Set(["a", "modules/new"])), [
+    "component in code, not in workspace.dsl: modules/new",
+  ]);
+  assert.deepEqual(compareComponents(["a", "gone"].values(), new Set(["a"])), [
+    "component in workspace.dsl, no source files in code: gone",
+  ]);
+});
+
+test("vacuityProblems passes real input and fails every kind of emptiness", () => {
+  const good = { componentCount: 7, modelEdgeCount: 15, codeEdgeCount: 15, cruisedSources: ["backend/src/app.ts"] };
+  assert.deepEqual(vacuityProblems(good), []);
+  assert.equal(vacuityProblems({ ...good, componentCount: 0 }).length, 1);
+  assert.equal(vacuityProblems({ ...good, modelEdgeCount: 0 }).length, 1);
+  assert.equal(vacuityProblems({ ...good, codeEdgeCount: 0 }).length, 1);
+  assert.equal(vacuityProblems({ ...good, cruisedSources: [] }).length, 1);
+  assert.equal(vacuityProblems({ ...good, cruisedSources: ["node_modules/zod/index.js"] }).length, 1);
+  assert.equal(vacuityProblems({ componentCount: 0, modelEdgeCount: 0, codeEdgeCount: 0, cruisedSources: [] }).length, 4);
+});
+
+test("a DSL whose relationships sit in a nested block yields no edges, which the vacuity check then catches", () => {
+  const nested = `
+api = container "Backend API" {
+    telemetry = component "telemetry" "x" "TypeScript" {
+        properties {
+            "code" "modules/telemetry"
+        }
+    }
+}
+`;
+  const { codes, edges } = parseWorkspace(nested);
+  assert.equal(edges.size, 0);
+  assert.ok(vacuityProblems({ componentCount: codes.size, modelEdgeCount: edges.size, codeEdgeCount: 3, cruisedSources: ["backend/src/app.ts"] }).length >= 1);
+});
+
+test("a later element's code property is not given to the previous component", () => {
+  const dsl = `
+telemetry = component "telemetry" "x" "TypeScript" {
+    properties {
+        "code" "modules/telemetry"
+    }
+}
+other = container "Other" {
+    properties {
+        "code" "modules/other"
+    }
+}
+extra = component "extra" "no block" "TypeScript"
+container "Anonymous" {
+    properties {
+        "code" "modules/anon"
+    }
+}
+`;
+  const { codes, duplicates } = parseWorkspace(dsl);
+  assert.deepEqual([...codes], [["telemetry", "modules/telemetry"]]);
+  assert.deepEqual(duplicates, []);
 });
