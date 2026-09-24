@@ -329,3 +329,39 @@
     font-size: 13px;
   }
 }
+
+/* The map (src/map/, Leaflet). Unlayered on purpose: leaflet.css is unlayered and loads later
+   with the map's chunk, so it beats anything in a layer. `.map-canvas` raises specificity. */
+.map-canvas.leaflet-container {
+  background: var(--color-canvas);
+  font: inherit;
+}
+.map-canvas.leaflet-container:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* 44 px touch targets (#62), in the dashboard's colours. */
+.map-canvas.leaflet-container .leaflet-bar a {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  background: var(--color-surface-2);
+  color: var(--color-fg-strong);
+  border-color: var(--color-line);
+  text-decoration: none;
+}
+.map-canvas.leaflet-container .leaflet-bar a:hover {
+  background: var(--color-surface);
+}
+.map-canvas.leaflet-container .leaflet-bar {
+  border-color: var(--color-line);
+}
+.map-canvas .leaflet-tooltip {
+  background: var(--color-surface-2);
+  color: var(--color-fg);
+  border-color: var(--color-line);
+  font-size: 13px;
+}
+.map-canvas .leaflet-tooltip-top::before {
+  border-top-color: var(--color-line);
+}

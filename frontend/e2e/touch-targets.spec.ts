@@ -29,10 +29,19 @@ test("the shell's tabs, the Overview rows and the banner's dismiss button are 44
   await mockApi("default");
   await page.goto("/app");
   const nav = page.getByRole("navigation", { name: "Main" });
-  for (const tab of ["Overview", "Power", "Factory", "Settings"]) {
+  for (const tab of ["Overview", "Power", "Factory", "Map", "Settings"]) {
     await expectAtLeast44(nav.getByRole("link", { name: tab }), `${tab} tab`);
   }
   const rows = page.getByRole("list", { name: "Sections" });
   await expectAtLeast44(rows.getByRole("link", { name: /Power/ }), "Power row");
   await expectAtLeast44(page.getByRole("button", { name: "Hide this warning until something changes" }), "dismiss");
+});
+
+test("the map's zoom buttons and layer toggle have 44 px tap targets", async ({ page, mockApi }) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  // Leaflet's own buttons are 30 px; index.css enlarges them.
+  await expectAtLeast44(page.getByRole("button", { name: "Zoom in" }), "zoom in");
+  await expectAtLeast44(page.getByRole("button", { name: "Zoom out" }), "zoom out");
+  await expectAtLeast44(page.locator("label").filter({ hasText: "Buildings" }), "layer toggle");
 });
