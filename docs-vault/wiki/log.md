@@ -305,3 +305,7 @@ the bottom.
   backend are log rotation with 14-day retention, user ids instead of usernames in sign-in logs
   after PR 5, a purge job for expired sessions and stale login attempts, and account deletion
   before member invites.
+- 2026-09-25 — Privacy/terms outline updated with the owner's answers (relayed by the coordinator):
+  the contact mailbox is privacy@, retention is decided (audit events 1 year, logs 14 days), and the
+  published pages will be `frontend/public/privacy.html` and `terms.html`. The owner is named only
+  on the published page, never in the repo docs.

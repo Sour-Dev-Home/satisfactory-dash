@@ -1,6 +1,10 @@
 # Privacy policy + terms: outline for satis-manager.com (DRAFT, not legal advice)
 
-Status: architect draft, 2026-09-24. Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
+Status: architect draft, 2026-09-24. Owner answers (2026-09-24): the controller is the owner
+personally, named **only** on the published privacy page (`frontend/public/privacy.html`, the
+single file the CI PII scan excludes); contact `privacy@satis-manager.com` (live, a forwarding
+alias); audit retention 1 year; log retention 14 days; legal review before publishing: yes.
+Still open: the country (it decides the applicable law). Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
 consent screen requires a privacy policy URL, and gate B starts storing emails). The frontend page
 comes later. `[OWNER]` = Leonardo decides; `[LEGAL]` = get legal review before publishing;
 `[BUILD]` = the policy promises something the code doesn't do yet (a prerequisite, not text).
@@ -11,7 +15,8 @@ comes later. `[OWNER]` = Leonardo decides; `[LEGAL]` = get legal review before p
    the applicable law. `[OWNER][LEGAL]`: the legal name vs a trading name, and the country
    (which decides GDPR/UK GDPR and others). The workspace rule keeps personal data out of repos,
    so this text lives only on the published page, decided by the owner.
-   Contact: `contact@satis-manager.com` `[OWNER: confirm the mailbox exists and is read]`.
+   Contact: `privacy@satis-manager.com`. The terms refer to "the operator named in the privacy
+   policy" and never repeat the name.
 2. **What we collect, and why** (from ADR-0025/0027 and the code):
    | Data | Why | Basis (if GDPR applies) `[LEGAL]` |
    |---|---|---|
@@ -42,8 +47,8 @@ comes later. `[OWNER]` = Leonardo decides; `[LEGAL]` = get legal review before p
      the owner's decision).
    - Backups: encrypted, 30 days, so deleted data can survive in backups for up to 30 days
      (ADR-0025).
-   - Audit events: `[OWNER]` 1 year (recommended).
-   - Server logs (including IPs on sign-in events): `[OWNER]` 14 days (recommended).
+   - Audit events: 1 year (owner decision).
+   - Server logs (including IPs on sign-in events): 14 days (owner decision).
      `[BUILD: log rotation/retention doesn't exist yet]`
 6. **Your rights:** access/export, correction, deletion, objection, complaint to a supervisory
    authority `[LEGAL: which authority and rights apply]`.
@@ -88,8 +93,13 @@ comes later. `[OWNER]` = Leonardo decides; `[LEGAL]` = get legal review before p
    PR 5 lands.
 2. `[BUILD]` Purge jobs: expired sessions after 30 days, stale login attempts (ADR-0025 PR 5/7).
 3. `[BUILD]` Account deletion (before 1b) and an export-by-request process.
-4. `[OWNER]` Controller identity, country, contact mailbox, retention answers (audit 1 y? logs 14 d?).
+4. `[OWNER]` The country is still open. (Controller, contact and retention are answered above.)
 5. `[LEGAL]` A review of both documents, the cookie statement, international transfers, and the
    game/mod items.
-6. Frontend: `/privacy` and `/terms` pages on the main site (static, no scripts), linked from the
-   footer and the sign-in page, and used as the Google consent screen's URLs.
+6. Frontend: two **static HTML files**, `frontend/public/privacy.html` and
+   `frontend/public/terms.html`, served at `/privacy` and `/terms` by Workers static assets
+   [NEEDS VERIFICATION: the extensionless URL under the default html_handling]. No JavaScript,
+   so they work without the SPA and can be crawled for the Google consent screen. The strict CSP
+   applies: styles come from a static CSS file, nothing inline. Linked from the footer and the
+   sign-in page. The owner's name appears in `privacy.html` only; reactapps-dc narrows the CI
+   PII-scan exclusion to exactly that path.
