@@ -57,11 +57,7 @@
           </tr>
           <tr>
             <td>Game data: power, production, machine states, building positions</td>
-            <td>The dashboard, its history and alerts. It describes the game world, not you.</td>
-          </tr>
-          <tr>
-            <td>A Discord webhook address (stored encrypted), if you set one up</td>
-            <td>Delivering the alerts you asked for</td>
+            <td>The dashboard. It describes the game world, not you.</td>
           </tr>
           <tr>
             <td>Audit events: who did what to which server, and when (no emails or names in them)</td>
@@ -93,17 +89,26 @@
       <ul>
         <li>Google: signing in. You share your email address and account id with us through it.</li>
         <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
-        <li>Amazon Web Services: encrypted backups (and, later, alert emails).</li>
-        <li>Discord: only if you set up a webhook. Alert text is then posted to Discord under Discord's own terms.</li>
       </ul>
+      <!-- Only what runs today. Add back with the features: Amazon Web Services (backups, once
+           ADR-0025 PR 8b ships and a restore is rehearsed; alert emails) and Discord (webhook
+           alerts, ADR-0027), with the webhook row in the table above. -->
+      <p>
+        When a new feature needs another provider (for example, backups or alert delivery), it's
+        added here before that feature goes live.
+      </p>
       <p>These providers are based in the United States, so your data is processed there.</p>
 
       <h2>How long it's kept</h2>
       <ul>
         <li>Your account: until you delete it.</li>
         <li>Sessions: session records are deleted 30 days after the session expires (a session lasts at most 8 hours).</li>
-        <li>Game data: raw readings for 48 hours, per-minute summaries for 30 days, hourly summaries for 1 year.</li>
-        <li>Backups: encrypted, kept 30 days, so deleted data can survive in a backup for up to 30 days.</li>
+        <!-- Today game data is read live and not stored; history retention (ADR-0027: 48 h /
+             30 d / 1 y) goes here when it ships, and backups when they do. -->
+        <li>
+          Game data: not stored. It's read from your server when the dashboard asks; the only
+          history is the last 5 minutes of power readings, kept in memory for the chart.
+        </li>
         <!-- The audit table is append-only (the app can't delete from it) and no purge exists
              yet: say so until one runs, then make this "1 year". -->
         <li>
@@ -129,7 +134,7 @@
       <h2>Security</h2>
       <p>
         Sign-in is through Google, so we never store a password. Session ids are stored hashed;
-        backups and webhook addresses are encrypted; the database gives each part of the service
+        the database gives each part of the service
         only the access it needs; the site runs under a strict Content Security Policy; and the API
         can only be reached through Cloudflare. No system is perfectly secure, but these are the
         efforts we make. If a breach affects your data, we'll tell you without undue delay.
