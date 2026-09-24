@@ -34,6 +34,7 @@ The diagrams these decisions produce live in [`../architecture/`](../architectur
 | [0023](./0023-live-map.md) | Live factory map: optional building `location` and `circuitGroupId` in the contract, Leaflet with CRS.Simple, a swappable base-map config, and a map-layer plug-in contract |
 | [0024](./0024-architecture-as-code.md) | Architecture as code: one Structurizr model (`docs-vault/workspace.dsl`) that is AI-authored, CI-validated and drift-checked against the backend's module imports |
 | [0025](./0025-postgres-and-google-sign-in.md) | **Accepted:** Postgres, Google sign-in and the DB registry, the ADR-0020 phase 1 build plan; hand-written parameterized SQL through `pg` (no query builder) |
+| [0026](./0026-demo-mode.md) | **Accepted:** demo mode, a public offline demo (demo.satis-manager.com) that can never reach the real API; the frontend builds it from its own curated world |
 
 ## Terms used in the ADRs
 
