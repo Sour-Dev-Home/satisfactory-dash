@@ -6,6 +6,9 @@ added or removed.
 - [`vanilla-dedicated-server-api.md`](./vanilla-dedicated-server-api.md) — summary of
   the official Dedicated Server API (Lightweight UDP Query + HTTPS JSON-RPC): auth,
   relevant functions, and the observation that it has no production/power data model.
+- [`runbooks/go-live-api.md`](./runbooks/go-live-api.md) — ordered steps to turn on the
+  API: production `.env`, enforced game tokens, Scheduled Task, Cloudflare Tunnel, go-live
+  tests and rollback (issue #19).
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
