@@ -340,3 +340,8 @@ the bottom.
   the contact mailbox is privacy@, retention is decided (audit events 1 year, logs 14 days), and the
   published pages will be `frontend/public/privacy.html` and `terms.html`. The owner is named only
   on the published page, never in the repo docs.
+- 2026-09-25 — ADR-0028 (external uptime monitoring and a public status page) added as
+  `decisions/0028-uptime-monitoring.md`, accepted by the owner: Better Stack, a public status
+  page and the ops@ alias; in place at ADR-0025 gate A. Rule for the backend: `/api/health` and
+  `/api/health/ready` stay detail-free forever, since an external monitor and a public status
+  page depend on them.

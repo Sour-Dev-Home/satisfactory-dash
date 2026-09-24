@@ -36,6 +36,7 @@ The diagrams these decisions produce live in [`../architecture/`](../architectur
 | [0025](./0025-postgres-and-google-sign-in.md) | **Accepted:** Postgres, Google sign-in and the DB registry, the ADR-0020 phase 1 build plan; hand-written parameterized SQL through `pg` (no query builder) |
 | [0026](./0026-demo-mode.md) | **Accepted:** demo mode, a public offline demo (demo.satis-manager.com) that can never reach the real API; the frontend builds it from its own curated world |
 | [0027](./0027-history-and-alerts.md) | **Accepted:** production history and alerts (Discord first); builds only after ADR-0025 gate A, since everything in it needs Postgres |
+| [0028](./0028-uptime-monitoring.md) | **Accepted:** external uptime monitoring and a public status page (Better Stack, an ops@ alias), in place at ADR-0025 gate A; the monitor and the status page depend on `/api/health` and `/api/health/ready`, which stay detail-free |
 
 ## Terms used in the ADRs
 
