@@ -1,12 +1,17 @@
+import { EventEmitter } from "node:events";
 import { describe, it, expect } from "vitest";
 import type { PoolClient } from "pg";
 import { withTransaction } from "./transaction.js";
 
-function fakePool(options: { failOn?: string } = {}) {
+function fakePool(options: { failOn?: string; emitErrorDuring?: string } = {}) {
   const log: string[] = [];
-  const client = {
+  const emitter = new EventEmitter();
+  const client = Object.assign(emitter, {
     async query(text: string) {
       log.push(text);
+      if (text === options.emitErrorDuring) {
+        emitter.emit("error", new Error("connection lost"));
+      }
       if (text === options.failOn) {
         throw new Error(`${text} failed`);
       }
@@ -15,8 +20,8 @@ function fakePool(options: { failOn?: string } = {}) {
     release(destroy?: boolean) {
       log.push(`release(${destroy ? "destroy" : ""})`);
     },
-  } as unknown as PoolClient;
-  return { log, pool: { connect: async () => client } };
+  }) as unknown as PoolClient;
+  return { log, client, pool: { connect: async () => client } };
 }
 
 describe("withTransaction", () => {
@@ -56,6 +61,19 @@ describe("withTransaction", () => {
       }),
     ).rejects.toBe(original);
     expect(log).toEqual(["BEGIN", "ROLLBACK", "release(destroy)"]);
+  });
+
+  it("guards the checked-out client against an 'error' event and destroys a client that errored", async () => {
+    const { pool, log, client } = fakePool({ emitErrorDuring: "SELECT 1" });
+    // With no listener, EventEmitter would throw on 'error' (in pg: an uncaught exception).
+    await expect(
+      withTransaction(pool, async (c) => {
+        await c.query("SELECT 1");
+        return "done";
+      }),
+    ).resolves.toBe("done");
+    expect(log.at(-1)).toBe("release(destroy)");
+    expect(client.listenerCount("error")).toBe(0); // its own listener is removed again
   });
 
   it("releases even when BEGIN fails", async () => {

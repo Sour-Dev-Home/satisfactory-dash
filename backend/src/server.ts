@@ -102,6 +102,9 @@ if (process.env.NODE_ENV !== "test") {
     // (and for any setup error, e.g. a schema behind this build) the process exits 1, so the
     // Scheduled Task's restart-on-failure takes over and a broken setup still fails loudly.
     database?.start().catch((err: unknown) => {
+      if (shuttingDown) {
+        return; // a deliberate stop is exit 0, never a startup failure
+      }
       if (err instanceof ConfigError) {
         logger.fatal(err.message);
       } else {

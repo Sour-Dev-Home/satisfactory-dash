@@ -19,6 +19,10 @@ export function createDbPool(config: DatabaseConfig, logger: PoolLogger): pg.Poo
     connectionTimeoutMillis: config.connectionTimeoutMs,
     idleTimeoutMillis: 30_000,
     statement_timeout: config.statementTimeoutMs,
+    // Client-side backstop: statement_timeout is enforced by the server, so a query on a
+    // silently dead socket would otherwise never settle. Slightly longer, so the server's
+    // own (clearer) timeout wins when the server is alive.
+    query_timeout: config.statementTimeoutMs + 1_000,
     application_name: "satisfactory-dash",
   });
   pool.on("error", (err) => {

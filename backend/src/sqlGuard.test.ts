@@ -30,16 +30,72 @@ function productionFiles(dir: string): string[] {
   });
 }
 
-/** Query calls whose text is a template literal with ${...} or a string concatenation. */
+/**
+ * The text of the first argument of the call whose "(" is at `open` (exclusive), up to the
+ * top-level "," or ")": brackets are balanced, and quotes, escapes and template literals
+ * (including `${}` interpolations) are skipped, so a comma or paren inside a string does not end it.
+ */
+function firstArgument(code: string, open: number): string {
+  let depth = 0;
+  let i = open;
+  for (; i < code.length; i++) {
+    const ch = code[i];
+    if (ch === '"' || ch === "'") {
+      for (i++; i < code.length && code[i] !== ch; i++) {
+        if (code[i] === "\\") {
+          i++;
+        }
+      }
+    } else if (ch === "`") {
+      for (i++; i < code.length && code[i] !== "`"; i++) {
+        if (code[i] === "\\") {
+          i++;
+        } else if (code[i] === "$" && code[i + 1] === "{") {
+          let braces = 0;
+          for (i++; i < code.length; i++) {
+            braces += code[i] === "{" ? 1 : code[i] === "}" ? -1 : 0;
+            if (braces === 0) {
+              break;
+            }
+          }
+        }
+      }
+    } else if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+    } else if (ch === ")" || ch === "]" || ch === "}") {
+      if (depth === 0) {
+        break;
+      }
+      depth--;
+    } else if (ch === "," && depth === 0) {
+      break;
+    }
+  }
+  return code.slice(open, i);
+}
+
+/** A template literal that interpolates, or a "+" outside every string (concatenation). */
+function buildsTextFromInput(argument: string): boolean {
+  if (/`(?:[^`\\]|\\.)*\$\{/.test(argument)) {
+    return true;
+  }
+  const withoutStrings = argument
+    .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""');
+  return withoutStrings.includes("+");
+}
+
+/** Query calls (`.query(` or a typed `.query<Row>(`) whose SQL text is interpolated or concatenated. */
 export function unsafeQueryCalls(source: string): string[] {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  const patterns = [
-    /\.query\(\s*`[^`]*\$\{[^`]*`/g, // .query(`... ${x} ...`)
-    /\.query\(\s*(?:"[^"\n]*"|'[^'\n]*')\s*\+/g, // .query("..." + x)
-    /\.query\(\s*[A-Za-z_$][\w$.]*\s*\+/g, // .query(x + "...")
-    /\.query\(\s*\{\s*text:\s*`[^`]*\$\{/g, // .query({ text: `... ${x}` })
-  ];
-  return patterns.flatMap((pattern) => [...code.matchAll(pattern)].map((match) => match[0]));
+  const calls: string[] = [];
+  for (const match of code.matchAll(/\.query\s*(?:<[^()]*>)?\s*\(/g)) {
+    const start = match.index + match[0].length;
+    const argument = firstArgument(code, start);
+    if (buildsTextFromInput(argument)) {
+      calls.push(`${match[0]}${argument}`);
+    }
+  }
+  return calls;
 }
 
 describe("SQL guard (ADR-0025)", () => {
@@ -66,6 +122,10 @@ describe("SQL guard (ADR-0025)", () => {
       ["a template in a config object", "pool.query({ text: `SELECT ${col} FROM t` })"],
       ["a concatenated string", 'db.query("SELECT * FROM t WHERE id = " + id)'],
       ["a concatenated variable", "client.query(sql + suffix)"],
+      ["a typed call with interpolation", "pool.query<Row>(`SELECT * FROM t WHERE id = ${id}`)"],
+      ["a typed call with concatenation", 'pool.query<Row>("SELECT * FROM t WHERE id = " + id)'],
+      ["a template followed by concatenation", "db.query(`SELECT * FROM t WHERE id = ` + id)"],
+      ["a string with escaped quotes then concatenation", 'db.query("SELECT \\"a\\" FROM t WHERE id = " + id)'],
     ])("flags %s", (_label, source) => {
       expect(unsafeQueryCalls(source)).not.toEqual([]);
     });

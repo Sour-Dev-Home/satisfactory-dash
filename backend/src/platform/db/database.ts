@@ -21,6 +21,7 @@ export const READINESS_TIMEOUT_MS = 1_000;
 export class Database {
   readonly pool: Pool;
   private started = false;
+  private closed = false;
 
   constructor(
     config: DatabaseConfig,
@@ -32,10 +33,23 @@ export class Database {
   }
 
   async start(): Promise<void> {
-    await connectWithBackoff(async () => {
-      await this.pool.query("SELECT 1");
-      await assertSchemaCurrent(this.pool);
-    }, { ...this.backoff, logger: this.logger });
+    try {
+      await connectWithBackoff(async () => {
+        if (this.closed) {
+          throw new Error("closed during startup");
+        }
+        await this.pool.query("SELECT 1");
+        await assertSchemaCurrent(this.pool);
+      }, { ...this.backoff, logger: this.logger });
+    } catch (err) {
+      // A shutdown that arrives while startup is retrying ends startup quietly: the pool was
+      // closed on purpose, so the next attempt's failure is not a startup failure (it would
+      // otherwise become exit 1 and race the graceful exit 0).
+      if (this.closed) {
+        return;
+      }
+      throw err;
+    }
     this.started = true;
     this.logger.info({}, "database connected and schema current");
   }
@@ -61,6 +75,11 @@ export class Database {
   }
 
   async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.started = false;
     await this.pool.end();
   }
 }

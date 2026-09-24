@@ -21,19 +21,30 @@ export function isUniqueViolation(err: unknown): boolean {
 }
 
 /** Node codes for "could not reach or lost the server", worth retrying at startup. */
-const TRANSIENT_NODE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE"]);
+const TRANSIENT_NODE_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  // A temporary DNS failure and an unreachable network are what a machine that is still booting
+  // reports; a genuinely unknown host is ENOTFOUND, which stays fatal.
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+]);
 
 /** SQLSTATEs that mean the server is there but not ready or going away: 57P03 "the database
  *  system is starting up" (the boot race), 57P01/57P02 admin or crash shutdown, 53300 too many
  *  connections, 08xxx connection exceptions. */
 function isTransientSqlState(code: string): boolean {
-  return code === "57P03" || code === "57P01" || code === "57P02" || code === "53300" || code.startsWith("08");
+  // 08P01 (protocol violation) is a bug or a misconfigured server, not an outage.
+  return code === "57P03" || code === "57P01" || code === "57P02" || code === "53300" || (code.startsWith("08") && code !== "08P01");
 }
 
 /** pg reports its own connect timeout and an early close without a code. */
 function isTransientMessage(err: unknown): boolean {
   const message = err instanceof Error ? err.message : "";
-  return /connection terminated|connection timeout|timeout exceeded when trying to connect/i.test(message);
+  return /connection terminated|connection timeout|timeout exceeded when trying to connect|query read timeout/i.test(message);
 }
 
 function innerErrors(err: unknown): unknown[] {
@@ -67,7 +78,6 @@ const FATAL_REASONS: Record<string, string> = {
   "28000": "the database rejected the credentials in DATABASE_URL",
   "3D000": "the database named in DATABASE_URL does not exist (run the database setup first)",
   ENOTFOUND: "the host in DATABASE_URL could not be resolved",
-  EAI_AGAIN: "the host in DATABASE_URL could not be resolved",
 };
 
 export function classifyStartupError(err: unknown): StartupErrorClass {

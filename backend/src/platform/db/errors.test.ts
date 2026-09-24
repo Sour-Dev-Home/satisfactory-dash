@@ -5,7 +5,10 @@ import { classifyStartupError, DatabaseSetupError, errorCode, isTransientConnect
 const withCode = (code: string, message = "boom") => Object.assign(new Error(message), { code });
 
 describe("classifyStartupError (ADR-0025 decision 6)", () => {
-  it.each(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "57P03", "57P01", "57P02", "53300", "08006", "08001"])(
+  it.each([
+    "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH",
+    "57P03", "57P01", "57P02", "53300", "08006", "08001",
+  ])(
     "retries %s (the database is coming up or dropped us)",
     (code) => {
       expect(classifyStartupError(withCode(code)).kind).toBe("transient");
@@ -17,7 +20,6 @@ describe("classifyStartupError (ADR-0025 decision 6)", () => {
     ["28000", /credentials/],
     ["3D000", /does not exist/],
     ["ENOTFOUND", /resolved/],
-    ["EAI_AGAIN", /resolved/],
   ])("fails fast on %s with a clear reason", (code, reason) => {
     const verdict = classifyStartupError(withCode(code));
     expect(verdict.kind).toBe("fatal");
@@ -27,6 +29,7 @@ describe("classifyStartupError (ADR-0025 decision 6)", () => {
   it("fails fast on anything unrecognized, and on a schema problem", () => {
     expect(classifyStartupError(new Error("weird")).kind).toBe("fatal");
     expect(classifyStartupError(withCode("42P01")).kind).toBe("fatal");
+    expect(classifyStartupError(withCode("08P01")).kind).toBe("fatal"); // protocol violation
     expect(classifyStartupError(new DatabaseSetupError("run npm run db:migrate")).kind).toBe("fatal");
   });
 
@@ -34,6 +37,7 @@ describe("classifyStartupError (ADR-0025 decision 6)", () => {
     expect(classifyStartupError(new Error("timeout exceeded when trying to connect")).kind).toBe("transient");
     expect(classifyStartupError(new Error("Connection terminated unexpectedly")).kind).toBe("transient");
     expect(classifyStartupError(new Error("Connection terminated due to connection timeout")).kind).toBe("transient");
+    expect(classifyStartupError(new Error("Query read timeout")).kind).toBe("transient");
   });
 
   it("treats a dual-stack AggregateError as transient only if every attempt was", () => {

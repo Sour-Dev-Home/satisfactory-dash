@@ -79,6 +79,9 @@ export async function provisionDatabase(options: ProvisionOptions): Promise<void
     await db.query(
       `ALTER DEFAULT PRIVILEGES FOR ROLE ${MIGRATOR_ROLE} IN SCHEMA public GRANT SELECT ON TABLES TO ${APP_ROLE}`,
     );
+    // Also cover a bookkeeping table that already exists (re-running db:init after the first
+    // migration): default privileges only apply to tables created later.
+    await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${APP_ROLE}`);
   });
 }
 

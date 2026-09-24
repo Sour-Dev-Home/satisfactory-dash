@@ -9,6 +9,15 @@ import type { Pool, PoolClient } from "pg";
  */
 export async function withTransaction<T>(pool: Pick<Pool, "connect">, fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
+  // pg-pool removes its own 'error' listener while a client is checked out, so a connection
+  // that dies between statements (the server restarting, pg_terminate_backend) would be an
+  // uncaught 'error' event and crash the whole backend. The failure still reaches the caller
+  // through the next query, and a client that errored is destroyed rather than reused.
+  let broken = false;
+  const onError = () => {
+    broken = true;
+  };
+  client.on("error", onError);
   let destroy = false;
   try {
     await client.query("BEGIN");
@@ -24,6 +33,7 @@ export async function withTransaction<T>(pool: Pick<Pool, "connect">, fn: (clien
     }
     throw err;
   } finally {
-    client.release(destroy);
+    client.removeListener("error", onError);
+    client.release(destroy || broken);
   }
 }
