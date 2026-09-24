@@ -32,7 +32,13 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error(`[${this.props.label}] failed to render`, error, info.componentStack);
   }
 
-  componentDidUpdate(): void {
+  /** Whether focus is inside the part, so a crash that unmounts it doesn't drop focus on <body>. */
+  getSnapshotBeforeUpdate(): boolean {
+    return !!this.content.current?.contains(document.activeElement);
+  }
+
+  componentDidUpdate(_props: Props, prev: State, focusWasInside: boolean): void {
+    if (!prev.error && this.state.error && focusWasInside) this.notice.current?.focus();
     if (!this.retried) return;
     this.retried = false;
     (this.state.error ? this.notice : this.content).current?.focus();

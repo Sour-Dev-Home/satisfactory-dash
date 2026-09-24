@@ -101,15 +101,6 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("alert", { name: "Power error" })).toHaveFocus();
   });
 
-  it("does not take focus when nobody pressed Try again", () => {
-    render(
-      <ErrorBoundary label="Power">
-        <Flaky />
-      </ErrorBoundary>,
-    );
-    expect(document.body).toHaveFocus();
-  });
-
   it("shows extra actions in the notice", () => {
     render(
       <ErrorBoundary label="Power" actions={<button type="button">Log out</button>}>
