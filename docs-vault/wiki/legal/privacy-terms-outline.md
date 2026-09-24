@@ -32,7 +32,9 @@ the reviewer.)
    with no street address.
 7. The terms' liability limits. There's no governing-law or venue clause (owner decision: no
    location published); confirm that's acceptable.
-8. The game EULA and FRM items from LEGAL.md. Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
+8. Player names as personal data about third parties (ADR-0029): the row and the server-owner
+   responsibility note in section A.2, and whether that wording is enough.
+9. The game EULA and FRM items from LEGAL.md. Roadmap 2b: must be **live before ADR-0025 gate B** (the Google
 consent screen requires a privacy policy URL, and gate B starts storing emails). The frontend page
 comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before publishing;
 `[BUILD]` = the policy promises something the code doesn't do yet (a prerequisite, not text).
@@ -53,9 +55,13 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
    | Session records (a hashed id, times) | keeping you signed in; "sign out everywhere" | contract |
    | Server names, memberships, roles | sharing and permissions | contract |
    | Game telemetry (power, production, machine states, building positions) | the dashboard, history, alerts. About the game world, not you | contract |
+   | In-game names of players connected to a server you're a member of (ADR-0029) | shown live to that server's members; **not stored or logged**. They come from the server owner's own game server. About people who are not users of this service | contract / legitimate interest `[LEGAL]` |
    | Discord webhook URL (encrypted); later, alert email addresses | delivering alerts you set up | contract / consent (email) |
    | Audit events (who did what to which server, when; **no emails or names in them**) | security and abuse investigation | legitimate interest |
    | IP address | rate limiting (in memory) and security logs on sign-in events | legitimate interest |
+
+   The server owner is responsible for telling the people who play on their server that names are
+   shown to the server's members through this service (ADR-0029).
 3. **What we don't do:** no ads (ADR-0021), no analytics or tracking scripts (none in the code
    today), no selling or sharing of data for marketing. **Cookies:** only strictly necessary ones
    (the session cookie and a 10-minute sign-in cookie), so no consent banner `[LEGAL: confirm for
