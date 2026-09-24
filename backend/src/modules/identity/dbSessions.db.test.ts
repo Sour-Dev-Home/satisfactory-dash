@@ -68,7 +68,7 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
   const cookieOf = (res: request.Response) =>
     [res.headers["set-cookie"]].flat().find((c: string) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0];
   const setCookieOf = (res: request.Response) =>
-    [res.headers["set-cookie"]].flat().find((c: string) => c.startsWith(`${SESSION_COOKIE}=`)) ?? "";
+    [res.headers["set-cookie"] ?? []].flat().find((c: string) => c.startsWith(`${SESSION_COOKIE}=`)) ?? "";
   const cleared = (res: request.Response) => /Max-Age=0|Expires=Thu, 01 Jan 1970/i.test(setCookieOf(res));
   const auditActions = async () => (await admin.query("SELECT action FROM audit.audit_events ORDER BY id")).rows.map((r) => r.action as string);
 
@@ -189,7 +189,7 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     const idBefore = (await admin.query("SELECT count(*)::int AS n FROM identity.users WHERE display_name = 'old-name'")).rows[0].n;
     expect(idBefore).toBe(0);
     await loginRequest(first.app, "old-name");
-    const users = async () => (await admin.query("SELECT id, display_name FROM identity.users u JOIN identity.auth_identities i ON i.user_id = u.id WHERE i.provider_subject = 'operator'")).rows;
+    const users = async () => (await admin.query("SELECT u.id, u.display_name FROM identity.users u JOIN identity.auth_identities i ON i.user_id = u.id WHERE i.provider_subject = 'operator'")).rows;
     const [before] = await users();
     const renamed = build({ adminUser: "new-name" });
     const res = await loginRequest(renamed.app, "new-name");
