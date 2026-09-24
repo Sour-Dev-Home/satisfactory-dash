@@ -3,6 +3,7 @@ import { endpoints } from "@satisfactory-dash/shared";
 import {
   factoryMixed,
   healthOk,
+  powerHistoryNormal,
   powerOk,
   serversSingle,
   sessionAnonymous,
@@ -22,6 +23,7 @@ export const handlers = [
   http.get(endpoints.servers.route, () => HttpResponse.json(serversSingle)),
   http.get(endpoints.status.route, () => HttpResponse.json(statusRunning)),
   http.get(endpoints.power.route, () => HttpResponse.json(powerOk)),
+  http.get(endpoints.powerHistory.route, () => HttpResponse.json(powerHistoryNormal)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),

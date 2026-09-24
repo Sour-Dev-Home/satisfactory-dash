@@ -286,25 +286,42 @@
     flex-wrap: wrap;
     gap: 6px;
   }
+  /* Stacked rows at phone width, for the Factory table. Not the power chart's legend (also a
+     table) or its readings table, which scrolls in its own box instead. */
   @media (max-width: 600px) {
-    .panel table thead {
+    .panel table:not(.readings, .u-legend) thead {
       display: none;
     }
-    .panel table,
-    .panel tbody,
-    .panel tr,
-    .panel tbody th,
-    .panel tbody td {
+    .panel table:not(.readings, .u-legend),
+    .panel table:not(.readings, .u-legend) :is(tbody, tr, tbody th, tbody td) {
       display: block;
     }
-    .panel tr {
+    .panel table:not(.readings, .u-legend) tr {
       padding: 10px 0;
       border-bottom: 1px solid var(--color-line);
     }
-    .panel tbody th,
-    .panel tbody td {
+    .panel table:not(.readings, .u-legend) :is(tbody th, tbody td) {
       padding: 2px 0;
       border: 0;
     }
+  }
+
+  /* The power chart's readings table: compact, header pinned while it scrolls. */
+  .readings :is(th, td) {
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .readings thead th {
+    position: sticky;
+    top: 0;
+    background: var(--color-surface-2);
+  }
+
+  /* uPlot's legend is a table: keep the base table borders and padding off it. */
+  .power-chart .u-legend :is(th, td) {
+    padding: 2px 6px;
+    border: 0;
+    color: var(--color-fg);
+    font-size: 13px;
   }
 }

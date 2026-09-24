@@ -235,6 +235,12 @@ the bottom.
   Same PR: ADR-0023 (live factory map) committed as `decisions/0023-live-map.md`, accepted by
   the owner 2026-09-24; its coordinate unit (centimetres) stays [NEEDS VERIFICATION] until an
   in-game distance check.
+- 2026-09-24 — ADR-0023 step 2 (shared contract): `FactoryBuilding` gains optional
+  `location { xM, yM, zM, rotationDeg }` (rotation in [0, 360)) and optional `circuitGroupId`
+  (-1 = unconnected). Both optional per the deploy-skew rule. Fixtures carry real coordinates from
+  the 2026-09-22 capture, converted to metres. The centimetres assumption stays
+  [NEEDS VERIFICATION] pending the owner's in-game distance check. The backend fills the fields in
+  the next PR (step 3).
 - 2026-09-24 — ADR-0024 (architecture as code) committed as `decisions/0024-architecture-as-code.md`,
   accepted by the owner. The Structurizr model lives at `docs-vault/workspace.dsl` (the docs-vault
   root, because `!adrs` only accepts a subdirectory of the DSL file's folder); it is the source of
