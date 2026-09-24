@@ -37,6 +37,14 @@ describe("serverHealth", () => {
   ] as const)("flags %s", (_, snapshot, health, summary) => {
     expect(serverHealth(snapshot)).toEqual({ health, summary });
   });
+
+  // The Overview has no paused banner, so a worse state must not hide that the game is paused.
+  it.each([
+    ["stale", { ...statusStale, data: { ...statusStale.data, gamePaused: true } }, "Showing last known data · game paused"],
+    ["slow", { ...statusSlow, data: { ...statusSlow.data, gamePaused: true } }, "Server tick is slow · game paused"],
+  ] as const)("still says paused when %s wins", (_, snapshot, summary) => {
+    expect(serverHealth(snapshot)).toEqual({ health: "degraded", summary });
+  });
 });
 
 describe("powerHealth", () => {
