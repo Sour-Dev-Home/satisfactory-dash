@@ -254,3 +254,8 @@ the bottom.
   minY -3750, maxY 3750 }` and the Leaflet mapping `[lat, lng] = [-yM, xM]`. The in-game check is
   now a confirmation, not a blocker. The units note in the shared `location` description and the
   adapter comment cite the source (comments only; no schema or behaviour change).
+- 2026-09-24 — ADR-0024 (architecture as code) committed as `decisions/0024-architecture-as-code.md`,
+  accepted by the owner. The Structurizr model lives at `docs-vault/workspace.dsl` (the docs-vault
+  root, because `!adrs` only accepts a subdirectory of the DSL file's folder); it is the source of
+  truth and the D2 diagrams are presentation-only. Phase 3 (dependency-cruiser drift check) and
+  phase 4 (`!adrs`/`!docs`) follow later.

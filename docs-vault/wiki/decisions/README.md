@@ -3,7 +3,7 @@
 One file per decision (ADR), numbered in order. Each has a status, the context that
 forced it, the decision, its consequences, and a "Revisit when" trigger that says what
 would make it worth reopening. Decided 2026-09-22 by the architecture session under
-the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0023). Change
+the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0024). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 The diagrams these decisions produce live in [`../architecture/`](../architecture/README.md).
 
@@ -32,6 +32,7 @@ The diagrams these decisions produce live in [`../architecture/`](../architectur
 | [0021](./0021-advertising.md) | Advertising: none on the dashboard or any authenticated page; ads only on separate public content pages if ever wanted; `/app/*` reserved for the app |
 | [0022](./0022-power-history.md) | Live power history: the backend's first background poller (5 s) feeding an in-memory 5-minute ring buffer, and the additive `power/history` contract |
 | [0023](./0023-live-map.md) | Live factory map: optional building `location` and `circuitGroupId` in the contract, Leaflet with CRS.Simple, a swappable base-map config, and a map-layer plug-in contract |
+| [0024](./0024-architecture-as-code.md) | Architecture as code: one Structurizr model (`docs-vault/workspace.dsl`) that is AI-authored, CI-validated and drift-checked against the backend's module imports |
 
 ## Terms used in the ADRs
 
