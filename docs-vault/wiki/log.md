@@ -352,3 +352,11 @@ the bottom.
   page and the ops@ alias; in place at ADR-0025 gate A. Rule for the backend: `/api/health` and
   `/api/health/ready` stay detail-free forever, since an external monitor and a public status
   page depend on them.
+- 2026-09-25 — ADR-0025 PR 5 (database sessions): a `SessionStore` interface with a stateless store
+  (the original signed tokens, used without a database) and a database store (`identity.sessions`,
+  hashed 32-byte ids, DB clock, touch at most once a minute, audit rows of ids only). A database
+  outage is a 503 (`service_unavailable`), never a 401; an old or foreign cookie is refused without
+  a query and cleared. The operator has a fixed identity (`local`/`operator`), so renaming the
+  `.env` user never forks an account. `POST /api/auth/logout-all` is served, sign-in logs carry the
+  user id, a purge worker keeps retention (sessions 30 days after expiry, stale login attempts;
+  hourly, batched) and `npm run admin -- revoke-sessions` is the audited break-glass.

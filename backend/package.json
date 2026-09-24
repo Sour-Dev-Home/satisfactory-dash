@@ -14,7 +14,8 @@
     "hash-password": "tsx scripts/hash-password.ts",
     "update-item-forms": "tsx scripts/update-item-forms.ts",
     "db:init": "tsx scripts/db-init.ts",
-    "db:migrate": "tsx scripts/db-migrate.ts"
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "admin": "tsx scripts/admin.ts"
   },
   "keywords": [],
   "author": "",
