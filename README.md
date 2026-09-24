@@ -39,10 +39,12 @@ npm workspaces monorepo:
 
 ## Deployment
 
-- **Frontend** → Netlify (connect the repo in the Netlify dashboard; build command
-  `npm run build -w frontend`, publish directory `frontend/dist`)
-- **Backend** → not yet deployed anywhere. Has a `Dockerfile` ready for
-  Render/Railway/AWS when there's real logic worth deploying.
+- **Frontend** → Cloudflare Workers static assets at `https://satis-manager.com`
+  (ADR-0013 and its amendment; configured by `frontend/wrangler.jsonc`). Cloudflare's Git
+  build deploys it on every merge to `main`.
+- **Backend** → runs on the game-server PC and is reached through a Cloudflare Tunnel at
+  `api.satis-manager.com`. The tunnel is currently gated off until the go-live checklist
+  (issue #19) is done. It has a `Dockerfile` for a later move to Render/Railway/AWS.
 
 ## License
 

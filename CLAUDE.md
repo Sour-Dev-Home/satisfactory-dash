@@ -9,8 +9,8 @@ See also: `frontend/CLAUDE.md`, `backend/CLAUDE.md`, `packages/shared/CLAUDE.md`
 module-scoped rules — those load automatically when working in that directory.
 
 This is a **public-facing** project per `../DEPLOYMENT.md` — public repo, Cloudflare
-Pages hosting for `frontend/` (not yet connected). See that file before changing repo
-visibility or hosting.
+Workers static assets hosting for `frontend/` (ADR-0013 amendment; connected, deploys on
+every merge to `main`). See that file before changing repo visibility or hosting.
 
 See `../WORKFLOW.md` for session roles, the branch/PR loop, and this repo's status
 against the workspace's security/CI baseline.
@@ -102,8 +102,10 @@ lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 
 This is a two-process monolith (frontend dev server + one backend process), not a
 single-process framework app. When "AWS later" comes up, it's the `backend/` process
-that scales out to talk to multiple game servers; `frontend/` stays as-is. Not yet
-deployed anywhere — see `../DEPLOYMENT.md` for the plan (Cloudflare Pages).
+that scales out to talk to multiple game servers; `frontend/` stays as-is. The frontend
+is deployed (Cloudflare Workers static assets); the backend runs on the game-server PC
+behind a Cloudflare Tunnel that is gated off until the go-live checklist (issue #19) is
+done. See `../DEPLOYMENT.md` and ADR-0013.
 
 ## Custom agents
 
