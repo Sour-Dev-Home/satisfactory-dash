@@ -274,3 +274,6 @@ the bottom.
 - 2026-09-24 — ADR-0025 (Postgres, Google sign-in and the DB registry: the ADR-0020 phase 1 build
   plan) added as `decisions/0025-postgres-and-google-sign-in.md`, status PROPOSED by the
   architect. Nothing in it is approved to build; it awaits the owner's decisions listed at its end.
+- 2026-09-24 — ADR-0025 accepted by the owner except decision 7 (query layer, still open): status
+  line, the owner's answers, the AWS backup steps as owner-performed and a new PR row 8b (backup
+  script and runbook) added. PRs 1-2 may start; PR 3 onward waits on decision 7.

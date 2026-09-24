@@ -1,6 +1,7 @@
 # ADR-0025: Postgres, Google sign-in and the DB registry (ADR-0020 phase 1)
 
-Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last section) before any build.
+Status: accepted (project owner), 2026-09-24, except decision 7 (query layer), which is open.
+PRs 1-2 may start; PR 3 onward waits on decision 7.
 
 ## Context
 - ADR-0020 fixes the data model (users, auth_identities, sessions, servers, server_members) but
@@ -116,9 +117,27 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
      503 with `{ status: "ok" | "unavailable" }` from a `SELECT 1` with a 1 s timeout. The body
      gives no detail about which dependency failed (it's public). The planned uptime monitor
      watches `/ready`.
-7. **Backups**: a nightly `pg_dump` (Windows scheduled task), encrypted, to a private S3 bucket
-   with SSE and a 30-day lifecycle rule, uploaded by a put-only IAM user (cents per month; the
-   first AWS resource). A restore is rehearsed once before deploy B.
+7. **Backups**: a nightly `pg_dump -Fc` (Windows scheduled task), encrypted on the PC with `age` to
+   a public key (the private key stays offline in the owner's password manager, so neither the PC
+   nor a leaked AWS key can read old backups), uploaded to a private S3 bucket in the **owner's own
+   AWS account**. **No session provisions AWS resources**: the owner performs the steps below from
+   runbooks/backups.md. Size: the dumps are well under 1 MB, so 30 days costs effectively $0.
+   A restore is rehearsed once before deploy B.
+   1. Check the account's plan. Accounts created before 2025-07-15 keep the legacy 12-month free
+      tier. Newer accounts get a credit-based Free plan that ends after 6 months or when the
+      credits run out [NEEDS VERIFICATION: what happens to stored data when it ends]. Backups must
+      not live in an account that can lapse: upgrade to the Paid plan before relying on them (the
+      cost stays cents).
+   2. Budgets: a $1/month cost budget with an email alert.
+   3. S3: one bucket with Block Public Access on (the default), versioning on, default encryption
+      SSE-S3, and a lifecycle rule that expires current objects after 30 days and noncurrent
+      versions after 7.
+   4. IAM: a policy allowing **only `s3:PutObject`** on `arn:aws:s3:::<bucket>/satis-dash/*` (no
+      Get, List or Delete, so a compromised PC can't read or erase backups), attached to a user
+      `satis-backup` with no console access. Create one access key into a named AWS CLI profile on
+      the PC, never into the repo or chat. Rotate it every 90 days.
+   5. Restore rehearsal: download as the owner's admin identity (not the put-only user), `age -d`,
+      `pg_restore` into a scratch DB, then check readiness.
 
 ## Build plan (merge order; dev = satisfactory-dash-dev, fe = satisfactory-dash-frontend, dc = coordinator)
 | # | PR | Owner | Test-hunter |
@@ -133,6 +152,7 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
 | | **Gate A: owner approves, then deploy A (DB, password login still)** | | |
 | 7 | Google OIDC start/callback, bootstrap link, closed sign-up, rate limit on /start | dev | FULL + security-reviewer |
 | 8 | Login page: "Sign in with Google" (a plain navigation); account menu with "sign out everywhere" | fe | QUICK + ui-reviewer |
+| 8b | Backup script (pg_dump, age, upload with the put-only profile) + runbooks/backups.md with the owner's AWS steps; scheduled-task registration (dc) | dev + dc | QUICK |
 | | **Gate B: owner approves, then deploy B (Google)** | | |
 | 9 | Cleanup: remove the password identity/login, the stateless-token code and SESSION_SECRET if unused; mark ADR-0011/0019 as superseded where they are | dev | QUICK |
 | 1b | Later: members API (invite by email, consumed on the first verified sign-in) + members UI | dev, fe | FULL / QUICK |
@@ -163,7 +183,13 @@ fold its interface change into PR 6.
 - Gate B also needs: a Google sign-in tested on localhost and in prod by the owner; revoke-all
   tested; a backup restore rehearsed; e2e against a mock OIDC provider container (never real Google).
 
-## Decisions for the owner
+## Owner decisions (answered 2026-09-24)
+1 yes (start phase 1). 2 A: native Windows service; Docker Desktop now starts at sign-in, understood as a dev convenience (being confirmed).
+3 yes (two-stage rollout). 4 A: closed sign-up. 5 no permanent password fallback. 6 yes, as
+owner-performed steps (Decision 7). 7 OPEN (Kysely vs raw pg; the owner is discussing it with
+the architect). 8 yes, PR 1 is its own PR.
+
+## Decisions as proposed
 1. Go ahead with phase 1 now? **Recommend yes**: the trigger is "the first account beyond the
    owner", and sharing (1b) is what makes that happen.
 2. Prod Postgres: **A local, native Windows service (recommended; "2A-bis")** / A2 local Docker
