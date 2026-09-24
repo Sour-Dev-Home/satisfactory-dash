@@ -294,3 +294,7 @@ the bottom.
   `npm run db:migrate`), a Testcontainers Postgres 18 harness that fails (never skips) in CI when
   Docker is missing, a guard against SQL built from input, and `runbooks/database.md`. Optional:
   without DATABASE_URL the backend behaves exactly as before.
+- 2026-09-25 — ADR-0026 (demo mode: a public, offline demo at demo.satis-manager.com that can
+  never reach the real API) added as `decisions/0026-demo-mode.md`, accepted by the owner. The
+  frontend builds it from its own curated world under `frontend/src/demo`; `packages/shared`
+  fixtures are not changed for it.
