@@ -36,4 +36,60 @@ test.describe("production build", () => {
     expect(csp).toContain("style-src 'self'");
     expect(response.headers()["x-frame-options"]).toBe("DENY");
   });
+
+  test("contains none of the demo build's code or text (ADR-0026)", () => {
+    const text = bundleText(DIST);
+    for (const marker of DEMO_MARKERS) {
+      expect(text, `production bundle contains demo marker ${marker}`).not.toContain(marker);
+    }
+  });
+});
+
+// The demo site (ADR-0026), built by e2e/build-demo.mjs with the production API URL set.
+const DIST_DEMO = join(import.meta.dirname, "..", "dist-demo");
+const API_ORIGIN = "api.satis-manager.com";
+/** Text only the demo build has. The prod check above fails if any of it leaks there. */
+const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] no demo data", "Demo World"];
+
+function bundleText(dir: string): string {
+  return allFiles(dir)
+    .filter((f) => /\.(js|html|css)$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+}
+
+test.describe("demo build", () => {
+  test("is the demo: its own text is there (so the other checks aren't vacuous)", () => {
+    const text = bundleText(DIST_DEMO);
+    for (const marker of DEMO_MARKERS) expect(text, `demo bundle lacks ${marker}`).toContain(marker);
+  });
+
+  test("never mentions the real API, though its URL was set for the build: no network transport", () => {
+    expect(bundleText(DIST_DEMO)).not.toContain(API_ORIGIN);
+  });
+
+  test("ships no mock tooling or test fixtures", () => {
+    const files = allFiles(DIST_DEMO);
+    expect(files.some((f) => f.endsWith("mockServiceWorker.js"))).toBe(false);
+    const text = bundleText(DIST_DEMO);
+    for (const marker of ["setupWorker", "[mock api]", "[crash probe]", "ExampleSession", "example-password"]) {
+      expect(text, `demo bundle contains ${marker}`).not.toContain(marker);
+    }
+  });
+
+  test("has its own headers: the production ones, but connect-src 'self' only", () => {
+    const demo = readFileSync(join(DIST_DEMO, "_headers"), "utf8");
+    const prod = readFileSync(join(DIST, "_headers"), "utf8");
+    const csp = (headers: string) => /Content-Security-Policy: (.+)/.exec(headers)![1];
+    expect(csp(demo)).toContain("connect-src 'self';");
+    expect(csp(demo)).not.toContain(API_ORIGIN);
+    // Everything else as strict as production.
+    expect(csp(demo)).toBe(csp(prod).replace(/connect-src [^;]+;/, "connect-src 'self';"));
+    const rest = (headers: string) =>
+      headers
+        .split(/\r?\n/)
+        .filter((line) => /^\s+\S/.test(line) && !line.includes("Content-Security-Policy"))
+        .join("\n");
+    expect(rest(demo)).toBe(rest(prod));
+  });
 });

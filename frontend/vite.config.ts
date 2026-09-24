@@ -1,18 +1,25 @@
 /// <reference types="vitest/config" />
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
+const PRODUCTION_HEADERS = new URL('./public/_headers', import.meta.url)
+/** The demo site's own headers (ADR-0026): the production ones, with connect-src 'self' only. */
+const DEMO_HEADERS = new URL('./demo/_headers', import.meta.url)
+
 /**
- * The `/*` rules from public/_headers (the production security headers, ADR-0016 item 8),
- * so `vite preview` serves the built app under the same CSP as Workers static assets.
+ * The `/*` rules from a _headers file (public/_headers: the production security headers,
+ * ADR-0016 item 8), so `vite preview` serves the built app under the same CSP as Workers
+ * static assets.
  */
-function productionHeaders(): Record<string, string> {
+function headersFrom(file: URL): Record<string, string> {
   const headers: Record<string, string> = {}
   let inAllPaths = false
-  for (const line of readFileSync(new URL('./public/_headers', import.meta.url), 'utf8').split(/\r?\n/)) {
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
     if (line.startsWith('#') || !line.trim()) continue
     if (!/^\s/.test(line)) {
       inAllPaths = line.trim() === '/*'
@@ -42,6 +49,32 @@ function mockServiceWorker(): Plugin {
   }
 }
 
+/**
+ * The demo build (`--mode demo`, ADR-0026):
+ * - client.ts's `./transport` resolves to src/demo/transport.ts (in-process answers, no
+ *   network), so the network transport never reaches the demo bundle;
+ * - demo/_headers replaces public/_headers in the output, after Vite copies public/.
+ */
+function demoBuild(): Plugin {
+  const demoTransport = fileURLToPath(new URL('./src/demo/transport.ts', import.meta.url))
+  let outDir = ''
+  return {
+    name: 'demo-build',
+    enforce: 'pre',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    resolveId(source, importer) {
+      if (source === './transport' && importer && /[\\/]src[\\/]api[\\/]client\.ts$/.test(importer)) {
+        return demoTransport
+      }
+    },
+    closeBundle() {
+      if (outDir) writeFileSync(join(outDir, '_headers'), readFileSync(DEMO_HEADERS, 'utf8'))
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   // Mock mode is dev-only: a mock build would ship MSW with no worker file (a blank page).
@@ -51,7 +84,14 @@ export default defineConfig(({ command, mode }) => {
   return {
     // Tailwind (ADR-0016) compiles to a static CSS file at build time, so the CSP needs no
     // inline styles.
-    plugins: [react(), tailwindcss(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
+    plugins: [
+      react(),
+      tailwindcss(),
+      ...(mode === 'mock' ? [mockServiceWorker()] : []),
+      ...(mode === 'demo' ? [demoBuild()] : []),
+    ],
+    // The demo build lands next to the production one, never over it.
+    build: mode === 'demo' ? { outDir: 'dist-demo' } : undefined,
     define: {
       // The deployed commit for the AGPL source link (src/source.ts). Cloudflare Workers
       // Builds sets WORKERS_CI_COMMIT_SHA; it's empty locally and in GitHub CI, so the link
@@ -65,7 +105,7 @@ export default defineConfig(({ command, mode }) => {
       proxy: mode === 'mock' ? undefined : { '/api': 'http://localhost:3001' },
     },
     preview: {
-      headers: productionHeaders(),
+      headers: headersFrom(mode === 'demo' ? DEMO_HEADERS : PRODUCTION_HEADERS),
     },
     test: {
       environment: 'jsdom',

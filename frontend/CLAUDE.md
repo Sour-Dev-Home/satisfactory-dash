@@ -73,6 +73,14 @@ contract needs to grow, not that this module should special-case a backend detai
     comparisons run only with `PLAYWRIGHT_SNAPSHOTS=1` (CI's Linux image; fonts differ per OS).
   A new UI state gets a scenario and a case in `e2e/states.spec.ts` (with `path` when it
   lives on a page other than the Overview).
+- Demo build (ADR-0026): `npm run build:demo` (`vite build --mode demo`) into `dist-demo/`,
+  for demo.satis-manager.com. `vite.config.ts` swaps `api/transport.ts` for
+  `src/demo/transport.ts` (in-page answers from `src/demo/handlers.ts` over the made-up
+  world in `src/demo/world.ts`; no network, no service worker) and writes `demo/_headers`
+  (`connect-src 'self'`). `IS_DEMO` (`src/demo/mode.ts`) is a build-time constant, so demo
+  UI never reaches the production bundle; `e2e/build-output.spec.ts` checks both builds.
+  Every new screen or endpoint ships with its demo data and handler. The demo world is
+  ours; never reuse the test fixtures there (they're edge cases with test markers).
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
   Served on the custom domain only (`workers_dev` and `preview_urls` are off).

@@ -1,0 +1,77 @@
+import { describe, expect, it } from "vitest";
+import {
+  FactoryResponseSchema,
+  PowerHistoryResponseSchema,
+  PowerResponseSchema,
+  ServerListResponseSchema,
+  SettingsResponseSchema,
+  StatusResponseSchema,
+} from "@satisfactory-dash/shared";
+import * as world from "./world";
+
+// ADR-0026: the demo world must satisfy the real contract, so the demo exercises the real
+// app's parsing and can't drift from what the backend sends.
+
+const TIMES = [world.DEMO_EPOCH, world.DEMO_EPOCH + 12_345, world.DEMO_EPOCH + 3_600_000, Date.now()];
+
+describe("the demo world", () => {
+  it.each(TIMES)("matches the shared schemas at t=%i", (now) => {
+    expect(() => ServerListResponseSchema.parse(world.servers)).not.toThrow();
+    expect(() => StatusResponseSchema.parse(world.status(now))).not.toThrow();
+    expect(() => PowerResponseSchema.parse(world.power(now))).not.toThrow();
+    expect(() => PowerHistoryResponseSchema.parse(world.powerHistory(now))).not.toThrow();
+    expect(() => FactoryResponseSchema.parse(world.factory(now))).not.toThrow();
+    expect(() => SettingsResponseSchema.parse(world.settings(now, { autoPause: true, pending: true }))).not.toThrow();
+  });
+
+  it("is deterministic: the same time gives the same data", () => {
+    expect(world.power(world.DEMO_EPOCH)).toEqual(world.power(world.DEMO_EPOCH));
+    expect(world.powerHistory(world.DEMO_EPOCH)).toEqual(world.powerHistory(world.DEMO_EPOCH));
+  });
+
+  it("moves with time, so the chart isn't a flat line", () => {
+    const a = world.power(world.DEMO_EPOCH).data.circuits[0].productionMW;
+    const b = world.power(world.DEMO_EPOCH + 20_000).data.circuits[0].productionMW;
+    expect(a).not.toBe(b);
+  });
+
+  it("keeps history consistent with the live reading: a full window, oldest first, never ahead of now", () => {
+    const now = world.DEMO_EPOCH + 7_000;
+    const history = world.powerHistory(now).data;
+    for (const series of history.series) {
+      expect(series.points).toHaveLength(history.windowSeconds / history.intervalSeconds);
+      const times = series.points.map((p) => p.t);
+      expect(times).toEqual([...times].sort((x, y) => x - y));
+      expect(times.at(-1)!).toBeLessThanOrEqual(now);
+    }
+  });
+
+  it("stays within each circuit's capacity and reports no outage, as its 'ok' status says", () => {
+    for (let t = world.DEMO_EPOCH; t < world.DEMO_EPOCH + 600_000; t += 7_000) {
+      for (const c of world.power(t).data.circuits) {
+        expect(c.status).toBe("ok");
+        expect(c.consumptionMW).toBeLessThanOrEqual(c.capacityMW);
+        expect(c.productionMW).toBeLessThanOrEqual(c.capacityMW);
+      }
+    }
+  });
+
+  it("counts its backed-up machines honestly, and puts every machine on a circuit that exists", () => {
+    const { buildings, backedUpCount } = world.factory(world.DEMO_EPOCH).data;
+    expect(backedUpCount).toBe(buildings.filter((b) => b.isBackedUp).length);
+    const circuits = new Set(world.power(world.DEMO_EPOCH).data.circuits.map((c) => c.circuitGroupId));
+    for (const b of buildings) expect(circuits.has(b.circuitGroupId!)).toBe(true);
+  });
+
+  it("carries none of the test fixtures' markers (they're for edge cases, not a public demo)", () => {
+    const text = JSON.stringify([
+      world.servers,
+      world.status(world.DEMO_EPOCH),
+      world.power(world.DEMO_EPOCH),
+      world.factory(world.DEMO_EPOCH),
+    ]);
+    for (const marker of ["ExampleSession", "example-password", "operator", "Satisfactory server"]) {
+      expect(text).not.toContain(marker);
+    }
+  });
+});
