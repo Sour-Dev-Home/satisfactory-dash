@@ -1,6 +1,6 @@
 # ADR-0025: Postgres, Google sign-in and the DB registry (ADR-0020 phase 1)
 
-Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last section) before any build.
+Status: accepted (project owner), 2026-09-24.
 
 ## Context
 - ADR-0020 fixes the data model (users, auth_identities, sessions, servers, server_members) but
@@ -44,9 +44,26 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
 
 2. **Tooling**
    - `pg` (node-postgres): the standard driver, one pool in `platform/db`.
-   - **Kysely** as the query layer: typed SQL that still reads as SQL, with no ORM runtime or
-     codegen engine. Prisma hides the SQL, which is the skill we want visible. Drizzle is close,
-     but its migrations are generated from a TS schema; we want the DDL written by hand.
+   - **No query builder: hand-written, parameterized SQL through `pg`, with every row set parsed
+     by a zod schema** (owner decision 7, 2026-09-24). Why:
+     - Access pattern: the hot path is point reads by key (the session by id hash, the membership
+       by server and user), and the writes are small fixed-shape transactions. A builder's main
+       benefit, composing queries at runtime, goes unused.
+     - Consistency: correctness lives in single statements and constraints (the guarded
+       `DELETE/UPDATE ... RETURNING` consumes, the `ON CONFLICT ... WHERE` newer-wins upsert, the
+       one-owner partial unique index mapped from 23505). As literal SQL, each guarantee is
+       reviewable as written, and READ COMMITTED is enough: no SERIALIZABLE, no retry loops.
+     - Reliability: no difference. A builder would run on the same `pg` pool; reliability comes
+       from timeouts, startup classification and the 503 mapping (Decision 6).
+     - Common use: SQL through node-postgres is the baseline across Node shops, and the skill
+       transfers to any builder later.
+   - Guardrails: SQL lives only in each module's repository files; parameters only, never
+     concatenated (a lint/grep guard); one `withTransaction(pool, fn)` helper in `platform/db`; a
+     typo'd column fails the Testcontainers integration tests in CI, not in prod.
+   - Rejected for now: Kysely (compile-time column checks, but a TS copy of the schema to keep in
+     sync); Prisma (hides the SQL); Drizzle (its migrations are generated from a TS schema, and we
+     want hand-written DDL). **Revisit when** the first query needs runtime composition (search,
+     admin lists with optional filters): adopt Kysely for that module only, on the same pool.
    - **node-pg-migrate with plain `.sql` migrations**: forward-only in prod, run as an explicit
      `npm run db:migrate` step (never at app startup).
    - **Two roles**: `satis_migrator` (DDL) and `satis_app` (DML on the three schemas only).
@@ -116,9 +133,27 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
      503 with `{ status: "ok" | "unavailable" }` from a `SELECT 1` with a 1 s timeout. The body
      gives no detail about which dependency failed (it's public). The planned uptime monitor
      watches `/ready`.
-7. **Backups**: a nightly `pg_dump` (Windows scheduled task), encrypted, to a private S3 bucket
-   with SSE and a 30-day lifecycle rule, uploaded by a put-only IAM user (cents per month; the
-   first AWS resource). A restore is rehearsed once before deploy B.
+7. **Backups**: a nightly `pg_dump -Fc` (Windows scheduled task), encrypted on the PC with `age` to
+   a public key (the private key stays offline in the owner's password manager, so neither the PC
+   nor a leaked AWS key can read old backups), uploaded to a private S3 bucket in the **owner's own
+   AWS account**. **No session provisions AWS resources**: the owner performs the steps below from
+   runbooks/backups.md. Size: the dumps are well under 1 MB, so 30 days costs effectively $0.
+   A restore is rehearsed once before deploy B.
+   1. Check the account's plan. Accounts created before 2025-07-15 keep the legacy 12-month free
+      tier. Newer accounts get a credit-based Free plan that ends after 6 months or when the
+      credits run out [NEEDS VERIFICATION: what happens to stored data when it ends]. Backups must
+      not live in an account that can lapse: upgrade to the Paid plan before relying on them (the
+      cost stays cents).
+   2. Budgets: a $1/month cost budget with an email alert.
+   3. S3: one bucket with Block Public Access on (the default), versioning on, default encryption
+      SSE-S3, and a lifecycle rule that expires current objects after 30 days and noncurrent
+      versions after 7.
+   4. IAM: a policy allowing **only `s3:PutObject`** on `arn:aws:s3:::<bucket>/satis-dash/*` (no
+      Get, List or Delete, so a compromised PC can't read or erase backups), attached to a user
+      `satis-backup` with no console access. Create one access key into a named AWS CLI profile on
+      the PC, never into the repo or chat. Rotate it every 90 days.
+   5. Restore rehearsal: download as the owner's admin identity (not the put-only user), `age -d`,
+      `pg_restore` into a scratch DB, then check readiness.
 
 ## Build plan (merge order; dev = satisfactory-dash-dev, fe = satisfactory-dash-frontend, dc = coordinator)
 | # | PR | Owner | Test-hunter |
@@ -133,6 +168,7 @@ Status: proposed (architect), 2026-09-24. Needs the owner's decisions (last sect
 | | **Gate A: owner approves, then deploy A (DB, password login still)** | | |
 | 7 | Google OIDC start/callback, bootstrap link, closed sign-up, rate limit on /start | dev | FULL + security-reviewer |
 | 8 | Login page: "Sign in with Google" (a plain navigation); account menu with "sign out everywhere" | fe | QUICK + ui-reviewer |
+| 8b | Backup script (pg_dump, age, upload with the put-only profile) + runbooks/backups.md with the owner's AWS steps; scheduled-task registration (dc) | dev + dc | QUICK |
 | | **Gate B: owner approves, then deploy B (Google)** | | |
 | 9 | Cleanup: remove the password identity/login, the stateless-token code and SESSION_SECRET if unused; mark ADR-0011/0019 as superseded where they are | dev | QUICK |
 | 1b | Later: members API (invite by email, consumed on the first verified sign-in) + members UI | dev, fe | FULL / QUICK |
@@ -163,7 +199,12 @@ fold its interface change into PR 6.
 - Gate B also needs: a Google sign-in tested on localhost and in prod by the owner; revoke-all
   tested; a backup restore rehearsed; e2e against a mock OIDC provider container (never real Google).
 
-## Decisions for the owner
+## Owner decisions (answered 2026-09-24)
+1 yes (start phase 1). 2 A: native Windows service; Docker Desktop now starts at sign-in, understood as a dev convenience (being confirmed).
+3 yes (two-stage rollout). 4 A: closed sign-up. 5 no permanent password fallback. 6 yes, as
+owner-performed steps (Decision 7). 7 B: raw `pg` + zod-parsed rows (Decision 2). 8 yes, PR 1 is its own PR.
+
+## Decisions as proposed
 1. Go ahead with phase 1 now? **Recommend yes**: the trigger is "the first account beyond the
    owner", and sharing (1b) is what makes that happen.
 2. Prod Postgres: **A local, native Windows service (recommended; "2A-bis")** / A2 local Docker
@@ -173,7 +214,7 @@ fold its interface change into PR 6.
    Open sign-up waits for the agent, since there's nothing to show a stranger yet.
 5. Keep password login as a permanent fallback? **Recommend no**: the local admin CLI is the break-glass.
 6. Nightly encrypted backups to S3 (cents per month)? **Recommend yes**.
-7. Query layer: **A Kysely (recommended)** / B raw `pg` SQL with zod-parsed rows (fewer deps, more boilerplate).
+7. Query layer: A Kysely / **B raw `pg` SQL with zod-parsed rows (chosen; the recommendation was revised from A to B after weighing access pattern and consistency)**.
 8. PR 1 (multiple servers from config): will a second game server exist soon? If yes, keep it; if no, fold it into PR 6.
 
 ## Consequences
