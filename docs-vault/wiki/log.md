@@ -192,3 +192,9 @@ the bottom.
   `git merge-base --is-ancestor` against `origin/main`. Both findings — unvalidated
   upstream responses and the non-host-scoped self-signed-cert default — are already
   fixed by PR #17, so backfilled marked `Fixed in #17` rather than as open findings.
+- 2026-09-24 — Added ADR-0020 (multi-user accounts, server onboarding and data model,
+  accepted by the project owner): Google-only OIDC sign-up, Postgres server-side sessions,
+  users-to-servers many-to-many with owner/admin/viewer roles, atomically consumed
+  enrollment codes, last-write-wins `latest_snapshots`, async ingest/SSE/commands, and a
+  5,000-user envelope with viewer-driven agent cadence. Docs only: nothing is built until
+  its triggers fire (the first account beyond the owner).
