@@ -6,6 +6,7 @@ import {
   FactoryResponseSchema,
   HealthResponseSchema,
   LoginRequestSchema,
+  PowerHistoryResponseSchema,
   PowerResponseSchema,
   SessionResponseSchema,
   SetAutoPauseRequestSchema,
@@ -19,6 +20,8 @@ import type { PowerCircuitStatus } from "../src/index";
 // Every fixture is matched to its schema by name prefix, so a fixture added later can't
 // be skipped by forgetting to list it here: an unmatched export fails the first test.
 const schemaByPrefix: [string, z.ZodType][] = [
+  // "powerHistory" must come before "power": the first matching prefix wins.
+  ["powerHistory", PowerHistoryResponseSchema],
   ["power", PowerResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
@@ -204,6 +207,8 @@ function flatEndpoints(): [string, Endpoint][] {
 describe("endpoints", () => {
   it("builds server-scoped paths and URL-encodes the server id", () => {
     expect(endpoints.power.path("default")).toBe("/api/servers/default/power");
+    expect(endpoints.powerHistory.path("default")).toBe("/api/servers/default/power/history");
+    expect(endpoints.powerHistory.path("a b")).toBe("/api/servers/a%20b/power/history");
     expect(endpoints.status.path("a b")).toBe("/api/servers/a%20b/status");
     expect(endpoints.health.path()).toBe("/api/health");
     expect(endpoints.settings.setAutoPause.path("default")).toBe("/api/servers/default/settings/auto-pause");
@@ -211,7 +216,7 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(10);
+    expect(all.length).toBe(11);
     for (const [name, endpoint] of all) {
       expect(endpoint.path("default"), name).toBe(endpoint.route.replace(":serverId", "default"));
     }
@@ -226,5 +231,97 @@ describe("endpoints", () => {
     }
     expect("request" in endpoints.auth.login).toBe(true);
     expect("request" in endpoints.settings.setAutoPause).toBe(true);
+  });
+});
+
+// ADR-0022: the power history contract.
+describe("power history (ADR-0022)", () => {
+  const { powerHistoryNormal, powerHistoryPaused, powerHistoryEmpty, powerHistoryFuseTrip } = fixtures;
+  const allHistories = [powerHistoryNormal, powerHistoryPaused, powerHistoryEmpty, powerHistoryFuseTrip];
+
+  it("uses the powerHistory schema, not the live power schema, for its fixtures", () => {
+    expect(schemaFor("powerHistoryNormal")).toBe(PowerHistoryResponseSchema);
+    expect(schemaFor("powerOk")).toBe(PowerResponseSchema);
+    // A history fixture must not satisfy the live power schema by accident.
+    expect(PowerResponseSchema.safeParse(powerHistoryNormal).success).toBe(false);
+  });
+
+  it("every series is in ascending time order, spaced by the interval, inside the window", () => {
+    for (const history of allHistories) {
+      const { windowSeconds, intervalSeconds, series } = history.data;
+      for (const { points } of series) {
+        expect(points.length).toBeLessThanOrEqual(windowSeconds / intervalSeconds);
+        for (let i = 1; i < points.length; i++) {
+          expect(points[i].t - points[i - 1].t).toBe(intervalSeconds * 1000);
+        }
+        expect(points.at(-1)!.t - points[0].t).toBeLessThanOrEqual(windowSeconds * 1000);
+      }
+    }
+  });
+
+  it("powerHistoryNormal is one full window of one circuit with no paused stretch", () => {
+    expect(powerHistoryNormal.data.series).toHaveLength(1);
+    expect(powerHistoryNormal.data.series[0].points).toHaveLength(60);
+    expect(powerHistoryNormal.data.pausedRanges).toEqual([]);
+  });
+
+  it("powerHistoryPaused freezes the readings inside its paused range and nowhere else", () => {
+    const [{ points }] = powerHistoryPaused.data.series;
+    const [{ fromT, toT }] = powerHistoryPaused.data.pausedRanges;
+    expect(fromT).toBeLessThanOrEqual(toT);
+    const inside = points.filter((p) => p.t >= fromT && p.t <= toT);
+    expect(inside.length).toBeGreaterThan(1);
+    expect(new Set(inside.map((p) => p.productionMW)).size).toBe(1);
+    const outside = points.filter((p) => p.t < fromT || p.t > toT);
+    expect(new Set(outside.map((p) => p.productionMW)).size).toBeGreaterThan(1);
+  });
+
+  it("powerHistoryEmpty has no series and no paused ranges (right after start or a reset)", () => {
+    expect(powerHistoryEmpty.data.series).toEqual([]);
+    expect(powerHistoryEmpty.data.pausedRanges).toEqual([]);
+  });
+
+  it("powerHistoryFuseTrip trips one circuit mid-window: 0 readings from then on, the other circuit unaffected", () => {
+    const [main, side] = powerHistoryFuseTrip.data.series;
+    expect(main.points.every((p) => !p.fuseTriggered && p.productionMW > 0)).toBe(true);
+    const tripIndex = side.points.findIndex((p) => p.fuseTriggered);
+    expect(tripIndex).toBeGreaterThan(0);
+    expect(tripIndex).toBeLessThan(side.points.length - 1);
+    for (const [i, p] of side.points.entries()) {
+      if (i < tripIndex) {
+        expect([p.fuseTriggered, p.productionMW > 0]).toEqual([false, true]);
+      } else {
+        expect([p.fuseTriggered, p.productionMW, p.consumptionMW, p.capacityMW]).toEqual([true, 0, 0, 0]);
+      }
+    }
+  });
+
+  it("rejects malformed history: bad times, missing fields, non-positive window or interval", () => {
+    const parse = (data: unknown) => PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, data }).success;
+    const good = JSON.parse(JSON.stringify(powerHistoryNormal.data)) as typeof powerHistoryNormal.data;
+    expect(parse(good)).toBe(true);
+    expect(parse({ ...good, windowSeconds: 0 })).toBe(false);
+    expect(parse({ ...good, intervalSeconds: -5 })).toBe(false);
+    expect(parse({ ...good, windowSeconds: 300.5 })).toBe(false);
+    expect(parse({ ...good, pausedRanges: undefined })).toBe(false);
+    expect(parse({ ...good, series: undefined })).toBe(false);
+    const withPoint = (point: object) => ({ ...good, series: [{ circuitGroupId: 0, points: [point] }] });
+    const point = good.series[0].points[0];
+    expect(parse(withPoint(point))).toBe(true);
+    expect(parse(withPoint({ ...point, t: -1 }))).toBe(false);
+    expect(parse(withPoint({ ...point, t: 1.5 }))).toBe(false);
+    expect(parse(withPoint({ ...point, t: "2026-09-22T22:42:39Z" }))).toBe(false);
+    expect(parse(withPoint({ ...point, fuseTriggered: "no" }))).toBe(false);
+    expect(parse(withPoint({ ...point, batteryPercent: -1 }))).toBe(false);
+    const { productionMW: _dropped, ...missing } = point;
+    expect(parse(withPoint(missing))).toBe(false);
+    expect(parse({ ...good, pausedRanges: [{ fromT: 1 }] })).toBe(false);
+    expect(parse({ ...good, series: [{ points: [point] }] })).toBe(false);
+  });
+
+  it("wraps the data in the shared snapshot envelope (ADR-0004)", () => {
+    expect(PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, stale: undefined }).success).toBe(false);
+    expect(PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, observedAt: "yesterday" }).success).toBe(false);
+    expect(PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, serverId: "Bad Id" }).success).toBe(false);
   });
 });

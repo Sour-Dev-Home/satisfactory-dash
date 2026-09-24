@@ -15,7 +15,7 @@ retyping one is breaking (ADR-0007).
 
 - `src/` — the schemas: `envelope.ts` (the `{ serverId, observedAt, stale, data }`
   snapshot wrapper), `errors.ts` (error envelope and `KnownErrorCode`), one file per
-  resource (`health`, `servers`, `status`, `factory`, `power`, `auth`, `settings`), and `endpoints.ts`
+  resource (`health`, `servers`, `status`, `factory`, `power`, `powerHistory`, `auth`, `settings`), and `endpoints.ts`
   mapping each route to its path builder and response schema. Every field's unit and
   range is in its `.describe()` text (ADR-0006).
 - `src/browser.ts` — exported as `@satisfactory-dash/shared/browser`: sets zod's `jitless`
