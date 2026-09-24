@@ -71,11 +71,15 @@ A lost write response (2026-09-24, architect ruling): the request deadline is no
 slow-but-steady `ApplyServerOptions` response can be cut after the server applied the value.
 Setting `FG.DSAutoPause` is idempotent, so on a transport failure (`failureKind: "unreachable"`)
 of the write the settings service reads the option back ONCE through the same allowlisted
-`GetServerOptions` call. If the applied value is the requested one the write landed: the route
-answers 200 with the settings envelope, and the audit line records "outcome confirmed by
-re-read". Otherwise, or if the read-back fails too, the original 503 `upstream_unreachable`
-stands (with no audit line, since nothing is known to have changed). The write itself is never
-retried, and plain HTTP errors (500, an invalid body) are not read back.
+`GetServerOptions` call. If the applied value is the requested one the wanted end state holds: the
+route answers 200 with the settings envelope. The audit line must not claim a change it cannot
+know about, so it records `requested`, `observed` (both the requested value) and `previous` (the
+value read just before the write) with `outcome: "confirmed by re-read"`, never a from -> to.
+When the option already held the requested value, or someone else set it to that value at the same
+time, that is indistinguishable from the write having landed, and harmless: the user asked for an
+end state and it holds. Otherwise, or if the read-back fails too, the original 503
+`upstream_unreachable` stands (with no audit line, since nothing is known to have changed). The
+write itself is never retried, and plain HTTP errors (500, an invalid body) are not read back.
 
 Live check on an auth-enforcing server (2026-09-24, go-live runbook section 3): with
 AllowInsecureLocalAccess removed, the game API answered 403 without a token and 200 with the

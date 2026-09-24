@@ -209,12 +209,24 @@ describe("PUT /api/servers/:serverId/settings/auto-pause", () => {
       expect(audit[0]).toMatchObject({
         serverId: "default",
         user: "operator",
-        from: false,
-        to: true,
+        requested: true,
+        observed: true,
+        previous: false,
         outcome: "confirmed by re-read",
-        msg: "auto-pause changed (outcome confirmed by re-read)",
         req: { id: res.headers["x-request-id"] },
       });
+      expect(audit[0].msg).toMatch(/response lost.*outcome confirmed by re-read/);
+    });
+
+    // The line must not claim a change it can't know about: a lost write may not be what
+    // changed the value, so it records what was asked and observed, never from -> to.
+    it("does not claim a from -> to change: the line has requested, observed and previous, not from or to", async () => {
+      const { app, lines } = buildApp(fakeGameServer({ dropApply: "after-write" }));
+      await put(app, { enabled: true });
+      const [line] = auditLines(lines);
+      expect(line).not.toHaveProperty("from");
+      expect(line).not.toHaveProperty("to");
+      expect(line.msg).not.toMatch(/changed/);
     });
 
     it("a normal success has no outcome field on its audit line", async () => {
@@ -256,7 +268,8 @@ describe("PUT /api/servers/:serverId/settings/auto-pause", () => {
       const res = await put(app, { enabled: true });
       expect(res.status).toBe(200);
       expect(res.body.data.autoPause).toBe(true);
-      expect(auditLines(lines)[0]).toMatchObject({ from: true, to: true, outcome: "confirmed by re-read" });
+      // Nothing changed here, and the line says so honestly: previous equals observed.
+      expect(auditLines(lines)[0]).toMatchObject({ requested: true, observed: true, previous: true, outcome: "confirmed by re-read" });
     });
 
     it("works the same for turning auto-pause off", async () => {
