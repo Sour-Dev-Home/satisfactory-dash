@@ -4,6 +4,8 @@ import { REPO_URL } from "../source";
 /** The live demo (ADR-0026): its own site, so it's a plain link, not a route. */
 export const DEMO_URL = "https://demo.satis-manager.com";
 const DOCS_URL = `${REPO_URL}/blob/main/docs-vault/wiki`;
+/** `npm run demo:video`, encoded by CI's demo-video workflow (ADR-0026 item 5). */
+export const VIDEO_URL = "/demo/walkthrough.mp4";
 
 const linkButton = "inline-flex min-h-[44px] items-center justify-center rounded-lg border px-[14px] font-semibold no-underline";
 
@@ -50,14 +52,37 @@ export function Landing() {
       </section>
 
       <figure className="grid gap-2">
-        <img
-          src="/og-image.png"
-          width={1200}
-          height={630}
-          alt="The Overview in the demo: all systems operational, with the server, power and factory each marked operational."
-          className="h-auto w-full rounded-card border border-line"
-        />
-        <figcaption className="text-sm text-muted">The Overview, from the live demo's made-up factory.</figcaption>
+        {/* Self-hosted (no video platform: the CSP stays 'self' and no third party sees
+            visitors). Click to play, never autoplay; preload="none" keeps the page light
+            until someone asks for the video. The poster is the link-preview image too. */}
+        <video
+          src={VIDEO_URL}
+          poster="/og-image.png"
+          controls
+          preload="none"
+          playsInline
+          aria-describedby="walkthrough-transcript"
+          className="aspect-video w-full rounded-card border border-line bg-surface object-cover"
+        >
+          <a href={VIDEO_URL}>Download the walkthrough video (MP4)</a>
+        </video>
+        <figcaption className="text-sm text-muted">
+          A one-minute walkthrough of the live demo's made-up factory. No sound.
+        </figcaption>
+        {/* The video has no narration: this is its text alternative (WCAG 1.2.1). */}
+        <details className="text-sm">
+          <summary className="inline-flex min-h-[44px] cursor-pointer items-center text-accent">
+            What the video shows
+          </summary>
+          <ol id="walkthrough-transcript" className="grid list-decimal gap-1 pl-5 text-muted">
+            <li>The demo opens with "Enter demo": no sign-in.</li>
+            <li>The Overview: all systems operational, with the server, power and factory rows.</li>
+            <li>Power: each circuit's production, consumption and capacity, and the five-minute history charts.</li>
+            <li>Factory: every machine with its recipe and output rate, one of them backed up.</li>
+            <li>Settings: auto-pause is turned on, and the change shows as pending until the server applies it.</li>
+            <li>Back to the Overview.</li>
+          </ol>
+        </details>
       </figure>
 
       <section aria-labelledby="features-heading" className="grid gap-4">
