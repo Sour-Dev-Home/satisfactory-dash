@@ -228,3 +228,9 @@ the bottom.
   re-read" when the value landed, else the 503 stands (ADR-0012 note); and
   `SATISFACTORY_API_PORT` / `FRM_WEB_PORT` must be whole numbers from 1 to 65535, otherwise the
   backend refuses to start (they used to become NaN).
+- 2026-09-24 — ADR-0023 step 2 (shared contract): `FactoryBuilding` gains optional
+  `location { xM, yM, zM, rotationDeg }` (rotation in [0, 360)) and optional `circuitGroupId`
+  (-1 = unconnected). Both optional per the deploy-skew rule. Fixtures carry real coordinates from
+  the 2026-09-22 capture, converted to metres. The centimetres assumption stays
+  [NEEDS VERIFICATION] pending the owner's in-game distance check. The backend fills the fields in
+  the next PR (step 3).
