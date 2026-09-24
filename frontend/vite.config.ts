@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -48,7 +49,9 @@ export default defineConfig(({ command, mode }) => {
     throw new Error('Mock mode is for `vite` (dev) only; build without --mode mock.')
   }
   return {
-    plugins: [react(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
+    // Tailwind (ADR-0016) compiles to a static CSS file at build time, so the CSP needs no
+    // inline styles.
+    plugins: [react(), tailwindcss(), ...(mode === 'mock' ? [mockServiceWorker()] : [])],
     define: {
       // The deployed commit for the AGPL source link (src/source.ts). Cloudflare Workers
       // Builds sets WORKERS_CI_COMMIT_SHA; it's empty locally and in GitHub CI, so the link

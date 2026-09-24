@@ -23,6 +23,7 @@ import { FactoryPanel } from "./factory/FactoryPanel";
 import { formatMW, formatPercent, roundForDisplay } from "./format";
 import { PowerPanel } from "./power/PowerPanel";
 import { ServerGate } from "./servers/ServerGate";
+import { ServerSwitcher } from "./servers/ServerSwitcher";
 import { useSelectedServer } from "./servers/ServerContext";
 import { AutoPausePanel } from "./settings/AutoPausePanel";
 import { StatusView } from "./status/StatusView";
@@ -96,6 +97,7 @@ describe("lost-server marking", () => {
     }
     renderWithClient(
       <ServerGate>
+        <ServerSwitcher />
         <Selected />
         <StatusView />
       </ServerGate>,

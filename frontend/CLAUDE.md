@@ -16,6 +16,21 @@ contract needs to grow, not that this module should special-case a backend detai
 
 - Plain client-side React (hooks, components) — no server components, no file-based
   routing framework.
+- Routing (ADR-0016 item 4, ADR-0021): React Router in declarative mode (`BrowserRouter` in
+  `App.tsx`). The signed-in app lives under `/app/*` (`src/shell/Shell.tsx`: tabs Overview,
+  Power, Factory, Settings); `/` and any other path redirect to `/app`, keeping the query
+  string. Keep `/` and future public paths (`/guides/*`, `/changelog`) free of app code.
+  Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
+  React reuses the previous page's crash boundaries.
+- Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
+  (direction B2, dark only). Use the token utilities (`bg-surface`, `text-muted`,
+  `text-ok`...); add a token rather than a raw hex value. `cn()` in `src/lib/cn.ts` merges
+  classes. shadcn/ui components get copied into `src/components/ui/` only when a view needs
+  one; prefer non-modal variants (ADR-0016 item 8). The old `.panel`/`.banner`/`.circuit`
+  classes in `index.css` are there until each view is restyled (step 5), then deleted.
+- The Overview's status-page summary (`src/overview/health.ts`) only aggregates what the
+  backend classified. Its one rule of its own: Factory is degraded above
+  `BACKED_UP_DEGRADED_SHARE` (25%, the owner's pick).
 - `src/api/client.ts` is the only place that calls `fetch`. Use `apiGet`/`apiSend` with
   an entry from `endpoints`; they parse every body with the shared schema and throw
   `ApiError`, `ContractDriftError` or `BackendUnreachableError` (`src/api/errors.ts`).
@@ -52,9 +67,10 @@ contract needs to grow, not that this module should special-case a backend detai
     served by `vite preview` with `public/_headers`, at 1440 and 390 px. Every test fails on
     a CSP violation or an unmocked `/api` call, with no exceptions: zod's eval probe is off
     because `main.tsx` imports `@satisfactory-dash/shared/browser` first (keep it first; a
-    test enforces it). axe runs report-only until ADR-0016 step 4. Screenshot
+    test enforces it). Any axe WCAG 2.1 AA violation fails the test. Screenshot
     comparisons run only with `PLAYWRIGHT_SNAPSHOTS=1` (CI's Linux image; fonts differ per OS).
-  A new UI state gets a scenario and a case in `e2e/states.spec.ts`.
+  A new UI state gets a scenario and a case in `e2e/states.spec.ts` (with `path` when it
+  lives on a page other than the Overview).
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
   Served on the custom domain only (`workers_dev` and `preview_urls` are off).

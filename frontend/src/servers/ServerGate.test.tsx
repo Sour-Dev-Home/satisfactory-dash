@@ -16,6 +16,7 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { useSelectedServer } from "./ServerContext";
 import { ServerGate } from "./ServerGate";
+import { ServerSwitcher } from "./ServerSwitcher";
 
 /** Stands in for the views: polls status for the selected server. */
 function SelectedStatus() {
@@ -24,9 +25,11 @@ function SelectedStatus() {
   return <p>{status.data ? `status for ${status.data.serverId}` : "loading status"}</p>;
 }
 
+/** Like the shell: the switcher renders inside the gate. */
 function renderGate() {
   return renderWithClient(
     <ServerGate>
+      <ServerSwitcher />
       <SelectedStatus />
     </ServerGate>,
   );
@@ -51,7 +54,7 @@ describe("ServerGate", () => {
 
   it("auto-selects the only server", async () => {
     renderGate();
-    expect(await screen.findByRole("heading", { name: "Satisfactory server" })).toBeInTheDocument();
+    expect(await screen.findByText("Satisfactory server")).toBeInTheDocument();
     expect(await screen.findByText("status for default")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Change server" })).not.toBeInTheDocument();
   });

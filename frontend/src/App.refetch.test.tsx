@@ -18,9 +18,11 @@ describe("a failed poll after a successful one", () => {
       http.get(endpoints.status.route, failing(statusPaused)),
       http.get(endpoints.power.route, failing(powerOk)),
     );
+    // The Power page: the server banners (status) show above every page.
+    window.history.pushState(null, "", "/app/power");
     const { client } = renderWithClient(<App />);
     await screen.findByText("Paused: no players connected, values are frozen.");
-    await screen.findByRole("heading", { name: "Power" });
+    await screen.findByRole("heading", { name: "Power", level: 3 });
 
     fail = true;
     await act(() => client.refetchQueries({ type: "active" }));
@@ -28,7 +30,6 @@ describe("a failed poll after a successful one", () => {
     // Error shown, previous snapshot (and its paused banner) still visible.
     await waitFor(() => expect(screen.getAllByText("Game server unreachable.")).toHaveLength(2));
     expect(screen.getByText("Paused: no players connected, values are frozen.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Server status" })).toBeInTheDocument();
     const power = screen.getByRole("region", { name: "Power" });
     expect(within(power).getByRole("article", { name: `Circuit ${powerOk.data.circuits[0].circuitGroupId}` })).toBeInTheDocument();
   });

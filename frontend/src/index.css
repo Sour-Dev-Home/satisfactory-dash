@@ -1,111 +1,310 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import "tailwindcss";
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+/*
+ * Design tokens: direction B2 (energy monitor + status page), picked by the owner in
+ * ADR-0016 step 3. Dark only for now. Every UI PR is judged against these; add a token here
+ * rather than a one-off hex value in a component.
+ *
+ * Status colors come in three strengths:
+ *   --color-{ok,warn,bad,info}       text and marks on the dark surfaces
+ *   --color-{ok,warn,bad,info}-soft  tinted backgrounds behind that text
+ *   --color-{ok,warn,bad,info}-solid filled banners with white text (WCAG AA at any size)
+ */
+@theme {
+  --color-canvas: #0e1217;
+  --color-surface: #161c23;
+  --color-surface-2: #1d252e;
+  --color-line: #29333e;
+  --color-fg: #c3ccd6;
+  --color-fg-strong: #f2f5f8;
+  --color-muted: #8b97a5;
+  --color-accent: #5cb8e6;
+  --color-on-accent: #06121a;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --color-ok: #3fbf6a;
+  --color-ok-soft: rgb(63 191 106 / 0.12);
+  --color-ok-solid: #1f7a3f;
+  --color-warn: #e3a32b;
+  --color-warn-soft: rgb(227 163 43 / 0.13);
+  --color-warn-solid: #8f5f0a;
+  --color-bad: #f2564d;
+  --color-bad-soft: rgb(242 86 77 / 0.14);
+  --color-bad-solid: #b3302a;
+  --color-info: #8fa8ff;
+  --color-info-soft: rgb(122 156 255 / 0.13);
+  --color-info-solid: #3d57b8;
+  --color-idle-solid: #4b5563;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --radius-card: 10px;
 }
 
-@media (prefers-color-scheme: dark) {
+/*
+ * Element defaults. The views not yet restyled (ADR-0016 step 5, one per PR) still use plain
+ * elements and the classes below, so these keep them readable under Tailwind's reset.
+ */
+@layer base {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    color-scheme: dark;
+    font: 15px/1.5 var(--font-sans);
+    color: var(--color-fg);
+    background: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
   }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  body {
+    min-height: 100svh;
+  }
+  h2 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--color-fg-strong);
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-fg-strong);
+    margin-bottom: 12px;
+  }
+  h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-fg-strong);
+  }
+  dd {
+    color: var(--color-fg-strong);
+    font-variant-numeric: tabular-nums;
+  }
+  a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  /* 44 px touch targets everywhere (#62). */
+  button {
+    min-height: 44px;
+    padding-inline: 14px;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    background: var(--color-surface-2);
+    color: var(--color-fg-strong);
+    font-weight: 500;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--color-muted);
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  button[aria-pressed="true"] {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+  input:not([type="checkbox"]) {
+    min-height: 44px;
+    padding-inline: 12px;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    background: var(--color-canvas);
+    color: var(--color-fg-strong);
+  }
+  input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--color-accent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  [role="alert"]:not(.banner) {
+    border: 1px solid rgb(242 86 77 / 0.35);
+    background: var(--color-bad-soft);
+    color: #ffb3ad;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  thead th {
+    color: var(--color-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--color-line);
+  }
+  tbody th,
+  tbody td {
+    text-align: left;
+    vertical-align: top;
+    padding: 10px;
+    border-bottom: 1px solid var(--color-line);
+  }
+  tbody th {
+    color: var(--color-fg-strong);
+    font-weight: 550;
+  }
+  label {
+    color: var(--color-muted);
   }
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+/* The existing views' classes, in B2's style until each view is restyled. */
+@layer components {
+  .panel {
+    display: grid;
+    gap: 12px;
+    padding: 18px 20px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
   }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+  .panel > h3 {
+    margin: 0;
   }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  .panel > dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+  }
+  .panel > dl dt {
+    color: var(--color-muted);
+  }
+  .panel > dl dd {
+    text-align: right;
+  }
+  .as-of,
+  .summary {
+    color: var(--color-muted);
+    font-size: 13px;
+  }
+  .circuits {
+    display: grid;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+  }
+  .circuits > li + li {
+    border-top: 1px solid var(--color-line);
+  }
+  .circuit {
+    display: grid;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .circuit h4 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .circuit dl {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 18px;
+    font-size: 13px;
+  }
+  .circuit dt {
+    color: var(--color-muted);
+  }
+  .circuit dt::after {
+    content: ":";
+  }
+  .circuit dd {
+    margin-left: -14px;
+  }
+  .circuit-at_risk {
+    box-shadow: inset 3px 0 0 var(--color-warn);
+  }
+  .circuit-outage {
+    box-shadow: inset 3px 0 0 var(--color-bad);
+  }
+  .badge,
+  .tag {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-ok);
+    white-space: nowrap;
+  }
+  .tag {
+    color: var(--color-warn);
+  }
+  .circuit-at_risk .badge {
+    color: var(--color-warn);
+  }
+  .circuit-outage .badge {
+    color: var(--color-bad);
+  }
+  .warning {
+    color: var(--color-warn);
+    font-size: 13px;
+  }
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-weight: 550;
+  }
+  .banner::before {
+    content: "";
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .banner-alarm {
+    background: var(--color-bad-soft);
+    border-color: rgb(242 86 77 / 0.35);
+    color: #ff8a82;
+  }
+  .banner-warning {
+    background: var(--color-warn-soft);
+    border-color: rgb(227 163 43 / 0.35);
+    color: #f0bd5c;
+  }
+  .banner-stale,
+  .banner-paused {
+    background: var(--color-info-soft);
+    border-color: rgb(122 156 255 / 0.35);
+    color: #b4c5ff;
+  }
+  [role="group"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  @media (max-width: 600px) {
+    .panel table thead {
+      display: none;
+    }
+    .panel table,
+    .panel tbody,
+    .panel tr,
+    .panel tbody th,
+    .panel tbody td {
+      display: block;
+    }
+    .panel tr {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--color-line);
+    }
+    .panel tbody th,
+    .panel tbody td {
+      padding: 2px 0;
+      border: 0;
+    }
+  }
 }

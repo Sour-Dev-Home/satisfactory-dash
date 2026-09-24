@@ -15,6 +15,7 @@ import {
 import { queries } from "../api/queries";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
+import { AccountMenu } from "./AccountMenu";
 import { AuthGate } from "./AuthGate";
 
 /** A child that calls a protected route, like every dashboard view will. */
@@ -23,9 +24,11 @@ function ServerList() {
   return <p>{servers.data ? `servers: ${servers.data.servers.length}` : "loading servers"}</p>;
 }
 
+/** Like the shell: the account menu renders inside the gate. */
 function renderGate() {
   return renderWithClient(
     <AuthGate>
+      <AccountMenu />
       <ServerList />
     </AuthGate>,
   );
