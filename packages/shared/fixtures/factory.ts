@@ -19,6 +19,7 @@ const backedUpAssembler = {
     {
       name: "Reinforced Iron Plate",
       className: "Desc_IronPlateReinforced_C",
+      unit: "items/min",
       currentPerMinute: 0,
       maxPerMinute: 5,
       percent: 0,
@@ -39,6 +40,7 @@ const partialAssembler = {
     {
       name: "Empty Canister",
       className: "Desc_FluidCanister_C",
+      unit: "items/min", // the empty canister is a solid item, despite the name
       currentPerMinute: 5.647059440612793,
       maxPerMinute: 60,
       percent: 9.411765734354654,
@@ -59,6 +61,7 @@ const overclockedStator = {
     {
       name: "Stator",
       className: "Desc_Stator_C",
+      unit: "items/min",
       currentPerMinute: 1.9764708280563354,
       maxPerMinute: 8,
       percent: 24.705885350704193,
@@ -88,10 +91,18 @@ const fuelRefinery = {
   isPaused: false,
   isBackedUp: false,
   production: [
-    { name: "Fuel", className: "Desc_LiquidFuel_C", currentPerMinute: 40, maxPerMinute: 40, percent: 100 },
+    {
+      name: "Fuel",
+      className: "Desc_LiquidFuel_C",
+      unit: "m3/min",
+      currentPerMinute: 40,
+      maxPerMinute: 40,
+      percent: 100,
+    },
     {
       name: "Polymer Resin",
       className: "Desc_PolymerResin_C",
+      unit: "items/min", // RF_SOLID in the game data (ADR-0015)
       currentPerMinute: 30,
       maxPerMinute: 30,
       percent: 100,
@@ -106,6 +117,63 @@ export const factoryMixed = {
   data: {
     buildings: [backedUpAssembler, partialAssembler, overclockedStator, unconfiguredAssembler, fuelRefinery],
     backedUpCount: 2,
+  },
+} satisfies FactoryResponse;
+
+/** SYNTHETIC: an item that isn't in the backend's catalog (e.g. a modded item), so `unit` is
+ *  null and the client shows just "per minute" (ADR-0015). */
+export const factoryUnknownItem = {
+  serverId: "default",
+  observedAt: "2026-09-22T22:25:04.000Z",
+  stale: false,
+  data: {
+    buildings: [
+      {
+        id: "Build_ConstructorMk1_C_2140000001",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Modded Widget",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        production: [
+          {
+            name: "Modded Widget",
+            className: "Desc_ExampleModdedWidget_C",
+            unit: null,
+            currentPerMinute: 10,
+            maxPerMinute: 10,
+            percent: 100,
+          },
+        ],
+      },
+    ],
+    backedUpCount: 0,
+  },
+} satisfies FactoryResponse;
+
+/** SYNTHETIC: what a backend that predates `unit` sends (the field is absent), so a newly
+ *  deployed frontend must still parse it and show just "per minute" (ADR-0007). */
+export const factoryOldBackend = {
+  serverId: "default",
+  observedAt: "2026-09-22T22:25:04.000Z",
+  stale: false,
+  data: {
+    buildings: [
+      {
+        id: "Build_ConstructorMk1_C_2140000002",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Iron Plate",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        production: [
+          { name: "Iron Plate", className: "Desc_IronPlate_C", currentPerMinute: 20, maxPerMinute: 20, percent: 100 },
+        ],
+      },
+    ],
+    backedUpCount: 0,
   },
 } satisfies FactoryResponse;
 

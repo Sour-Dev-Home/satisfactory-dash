@@ -38,7 +38,9 @@ export class ProductionService {
       isProducing: building.isProducing,
       isPaused: building.isPaused,
       isBackedUp: isBackedUp(building),
-      production: building.production,
+      // The contract now has `unit` (ADR-0015). Every rate is "unknown" (null) until the
+      // item-form catalog lands in the backend PR that follows this contract change.
+      production: building.production.map((rate) => ({ ...rate, unit: null })),
     }));
     return {
       buildings: mapped,

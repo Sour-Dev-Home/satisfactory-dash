@@ -142,14 +142,15 @@ describe("ProductionService", () => {
     await expect(service.getFactoryOverview()).resolves.toMatchObject({ backedUpCount: 1 });
   });
 
-  it("passes production entries through unchanged (same shape as ProductionRateResponse)", async () => {
+  // The catalog that fills `unit` arrives in the next PR (ADR-0015); until then it is null.
+  it("passes production entries through with unit null (same shape as ProductionRateResponse)", async () => {
     const rate = { name: "Concrete", className: "Desc_Cement_C", currentPerMinute: 0, maxPerMinute: 1.65, percent: 0 };
     const adapter: ProductionAdapterLike = {
       getFactoryBuildings: async () => [building({ production: [rate] })],
     };
     const service = new ProductionService(adapter);
     const overview = await service.getFactoryOverview();
-    expect(overview.buildings[0].production).toEqual([rate]);
+    expect(overview.buildings[0].production).toEqual([{ ...rate, unit: null }]);
   });
 
   it("passes a null recipe through unchanged (unconfigured building)", async () => {
