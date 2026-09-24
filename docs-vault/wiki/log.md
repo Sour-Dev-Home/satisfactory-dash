@@ -425,3 +425,4 @@ the bottom.
   audit row (ids and codes only); note for the runbook: the bootstrap trust rests on the verified
   email equalling `BOOTSTRAP_OWNER_EMAIL` with no hosted-domain check, so use an address whose
   mailbox you alone control (a consumer address, not one on a domain others administer).
+- 2026-09-25 — ADR-0027 PR 1, the machine-states contract (additive, all optional): `FactoryBuilding.ingredients` (what a machine consumes, the same shape and unit resolution as `production`, now sent by the backend from FRM's parsed ingredients), `FactoryBuilding.state` (a plain string with the known values in its description: producing, idle, backedUp, starved, paused, unpowered; a string rather than an enum so a later state does not break a deployed frontend) and `Factory.stateCounts`. The backend does not send `state` or `stateCounts` yet: that is the derivation in PR 2.
