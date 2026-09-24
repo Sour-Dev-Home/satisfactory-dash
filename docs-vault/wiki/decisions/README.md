@@ -24,6 +24,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0014](./0014-target-architecture.md) | Target architecture: modular monolith now, service-based with an edge agent later |
 | [0015](./0015-item-form-catalog.md) | Item form (solid vs fluid) from a generated catalog of the game's own data; additive `ProductionRate.unit` |
 | [0016](./0016-frontend-ui-architecture.md) | Frontend UI: Tailwind v4 tokens + shadcn/ui, React Router app shell, Playwright screenshots + axe, a read-only ui-reviewer; strict CSP kept |
+| [0017](./0017-credential-lifecycle.md) | Credential lifecycle: game-server secrets never leave the game host; the cloud holds only a hashed per-server agent credential; managed servers use a secrets store |
 | [0018](./0018-license-agpl.md) | License: AGPL-3.0-only, relicensed from MIT; earlier versions stay MIT; the owner is named in `LICENSE` only |
 
 ## Terms used in the ADRs
