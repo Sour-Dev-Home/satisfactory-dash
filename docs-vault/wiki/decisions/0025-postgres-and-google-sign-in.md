@@ -219,6 +219,20 @@ owner-performed steps (Decision 7). 7 B: raw `pg` + zod-parsed rows (Decision 2)
 7. Query layer: A Kysely / **B raw `pg` SQL with zod-parsed rows (chosen; the recommendation was revised from A to B after weighing access pattern and consistency)**.
 8. PR 1 (multiple servers from config): will a second game server exist soon? If yes, keep it; if no, fold it into PR 6.
 
+## Considered and rejected: Supabase Auth (owner decision, 2026-09-24)
+Reviewed after acceptance; the owner kept this ADR. Why:
+- supabase-js keeps its tokens in JS-readable storage by default. Keeping the HttpOnly-cookie
+  posture (ADR-0011/0019) would mean a backend-mediated exchange, which rebuilds most of PR 5.
+- Revocation is weaker: per Supabase's docs, the access tokens of revoked sessions "remain valid
+  until their expiry time" (1 h by default), versus our immediate revoke.
+- The free plan pauses a project after 7 days of inactivity, and that pause takes sign-in down
+  for a low-traffic service.
+- Another processor holding users' emails, and a new connect-src origin.
+- Only PR 5 and PR 7 remain of the auth work. Authorization (PR 6) stays in our backend either
+  way.
+Revisit when: email/password, magic links, MFA or many providers are needed. At the AWS move
+(ADR-0014), evaluate Amazon Cognito instead.
+
 ## Consequences
 - The project gains visible SQL: hand-written DDL, constraints, guarded single-use updates, roles
   and migrations, all tested against a real Postgres in CI.

@@ -385,3 +385,9 @@ the bottom.
   new one ("rotated on login"), so a copied old cookie does not survive a re-login; only the
   presented session ends, and an unknown, malformed or already-ended cookie is ignored. The
   stateless store ignores it (removed in PR 9).
+- 2026-09-25 — Docs: ADR-0025 re-copied from the architect's draft (adds "Considered and rejected:
+  Supabase Auth") and ADR-0026 (the in-house demo router replaced the msw `getResponse` path,
+  #113), both verbatim. The database runbook's log-hygiene sentence is corrected after the gate A
+  security review (L3): the pool and startup paths log codes only, but the request error handler
+  logs the cause chain, so a database outage line includes the driver's message (never the
+  password or URL, never in a response body).
