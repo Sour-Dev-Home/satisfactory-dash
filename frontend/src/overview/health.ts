@@ -66,6 +66,28 @@ export function factoryHealth({ data, stale }: FactoryResponse): SectionHealth {
   return { health: "ok", summary: `${plural(total, "machine", "machines")} · ${backedUp} backed up` };
 }
 
+/**
+ * The owner's call: the banner can be dismissed for warnings and a paused game only. An
+ * outage or missing data always shows.
+ */
+export function canDismiss(health: Health | "pending"): boolean {
+  return health === "degraded" || health === "paused";
+}
+
+/**
+ * Which sections are warning, and at what level: a dismissed banner comes back when this
+ * changes (another section starts warning, or one gets worse). Summaries are left out, so
+ * a count moving inside a warning that was already dismissed doesn't bring it back.
+ */
+export function warningKey(sections: readonly { name: string; state: SectionState }[]): string {
+  return sections
+    .flatMap(({ name, state }) =>
+      typeof state === "object" && state.health !== "ok" ? [`${name}:${state.health}`] : [],
+    )
+    .sort()
+    .join("|");
+}
+
 const RANK: Record<Health, number> = { ok: 0, paused: 1, degraded: 2, unavailable: 3, outage: 4 };
 
 const HEADLINE: Record<Health, string> = {

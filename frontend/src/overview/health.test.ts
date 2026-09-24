@@ -14,7 +14,7 @@ import {
   statusStale,
 } from "@satisfactory-dash/shared/fixtures";
 import type { FactoryResponse } from "@satisfactory-dash/shared";
-import { factoryHealth, overallHealth, powerHealth, serverHealth } from "./health";
+import { canDismiss, factoryHealth, overallHealth, powerHealth, serverHealth, warningKey } from "./health";
 
 function factoryWith(total: number, backedUp: number): FactoryResponse {
   const building = factoryMixed.data.buildings[0];
@@ -100,6 +100,44 @@ describe("factoryHealth", () => {
       health: "degraded",
       summary: "Showing last known factory data",
     });
+  });
+});
+
+describe("warningKey", () => {
+  const s = (name: string, health: "ok" | "degraded" | "paused", summary = "") => ({
+    name,
+    state: { health, summary },
+  });
+
+  it("names each section that isn't ok, with its level, in a stable order", () => {
+    expect(warningKey([s("Server", "paused"), s("Power", "ok"), s("Factory", "degraded")])).toBe(
+      "Factory:degraded|Server:paused",
+    );
+  });
+
+  it("ignores the summary, so a count changing inside a warning doesn't count as a change", () => {
+    expect(warningKey([s("Factory", "degraded", "2 of 5 machines backed up")])).toBe(
+      warningKey([s("Factory", "degraded", "3 of 5 machines backed up")]),
+    );
+  });
+
+  it("changes when another section starts warning", () => {
+    expect(warningKey([s("Factory", "degraded"), s("Power", "degraded")])).not.toBe(
+      warningKey([s("Factory", "degraded")]),
+    );
+  });
+
+  it("skips loading and failed sections (a failure is never dismissible anyway)", () => {
+    expect(warningKey([{ name: "Power", state: "pending" }, { name: "Factory", state: "error" }])).toBe("");
+  });
+});
+
+describe("canDismiss", () => {
+  it("allows only warnings and a paused game, never an outage or missing data", () => {
+    expect(["ok", "pending", "paused", "degraded", "unavailable", "outage"].filter((h) => canDismiss(h as never))).toEqual([
+      "paused",
+      "degraded",
+    ]);
   });
 });
 
