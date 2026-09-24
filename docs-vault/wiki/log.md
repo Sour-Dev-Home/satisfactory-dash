@@ -274,6 +274,12 @@ the bottom.
 - 2026-09-24 — ADR-0025 (Postgres, Google sign-in and the DB registry: the ADR-0020 phase 1 build
   plan) added as `decisions/0025-postgres-and-google-sign-in.md`, status PROPOSED by the
   architect. Nothing in it is approved to build; it awaits the owner's decisions listed at its end.
+- 2026-09-24 — ADR-0025 PR 1 (multiple servers from config): `SATISFACTORY_SERVERS_FILE` names a
+  git-ignored JSON file with any number of servers (id, name, host, ports, tokens), validated at
+  startup with the same rules as the single-server env (reused, not copied); each entry gets its
+  own connection, telemetry bundle and power-history poller. Without the variable the
+  single-server env works exactly as before. `backend/servers.example.json` (placeholders) and a
+  runbook section document the format.
 - 2026-09-24 — ADR-0025 accepted by the owner except decision 7 (query layer, still open): status
   line, the owner's answers, the AWS backup steps as owner-performed and a new PR row 8b (backup
   script and runbook) added. PRs 1-2 may start; PR 3 onward waits on decision 7.
