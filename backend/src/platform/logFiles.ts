@@ -1,4 +1,14 @@
-import { accessSync, closeSync, constants, mkdirSync, openSync, readdirSync, unlinkSync, writeSync } from "node:fs";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 import { ConfigError } from "./errors.js";
@@ -15,6 +25,7 @@ import { ConfigError } from "./errors.js";
  * and takes an injected clock, so the retention rule is tested exactly.
  */
 export const LOG_RETENTION_DAYS = 14;
+const FUTURE_SLACK_DAYS = 2;
 const FILE_PREFIX = "backend-";
 const FILE_PATTERN = /^backend-(\d{4})-(\d{2})-(\d{2})\.log$/;
 
@@ -30,6 +41,10 @@ export function resolveLogDir(env: NodeJS.ProcessEnv = process.env): string | un
   try {
     mkdirSync(dir, { recursive: true });
     accessSync(dir, constants.W_OK);
+    // accessSync does not reflect every Windows ACL, so prove it by really creating a file.
+    const probe = path.join(dir, `.write-test-${process.pid}`);
+    writeFileSync(probe, "");
+    unlinkSync(probe);
   } catch {
     throw new ConfigError("LOG_DIR must be a directory the backend can create and write to.");
   }
@@ -51,7 +66,12 @@ function fileDate(name: string): string | null {
  * Returns the number removed. Never throws (a locked or vanished file is skipped).
  */
 export function purgeOldLogFiles(dir: string, now: Date, retentionDays = LOG_RETENTION_DAYS): number {
-  const oldestKept = utcDate(new Date(now.getTime() - (retentionDays - 1) * 86_400_000));
+  // At least one day, so a bad value can never delete today's file.
+  const days = Math.max(1, Math.trunc(retentionDays) || 1);
+  const oldestKept = utcDate(new Date(now.getTime() - (days - 1) * 86_400_000));
+  // A file dated well in the future (the clock was wrong, then corrected) would otherwise outlive
+  // the window by however far ahead it is. Two days of slack keeps a brief clock step harmless.
+  const newestKept = utcDate(new Date(now.getTime() + FUTURE_SLACK_DAYS * 86_400_000));
   let removed = 0;
   let entries: Dirent[];
   try {
@@ -61,7 +81,7 @@ export function purgeOldLogFiles(dir: string, now: Date, retentionDays = LOG_RET
   }
   for (const entry of entries) {
     const date = entry.isFile() ? fileDate(entry.name) : null;
-    if (date !== null && date < oldestKept) {
+    if (date !== null && (date < oldestKept || date > newestKept)) {
       try {
         unlinkSync(path.join(dir, entry.name));
         removed++;
@@ -108,11 +128,25 @@ export class DailyLogStream {
       if (this.fd === null || today !== this.currentDate) {
         this.rotate(at, today);
       }
-      writeSync(this.fd as number, line);
+      // writeSync may write fewer bytes than asked (a full disk): keep going until the whole
+      // line is out, or let the failure handler have it.
+      const bytes = Buffer.from(line);
+      let written = 0;
+      while (written < bytes.length) {
+        const n = writeSync(this.fd as number, bytes, written);
+        if (n <= 0) {
+          throw new Error("short write");
+        }
+        written += n;
+      }
     } catch {
       // A logging failure must never take the backend down or lose the line silently.
       this.closeQuietly();
-      this.onFailure(line);
+      try {
+        this.onFailure(line);
+      } catch {
+        // The fallback sink failed too (e.g. a closed stderr): nothing left to do, never throw.
+      }
     }
   }
 

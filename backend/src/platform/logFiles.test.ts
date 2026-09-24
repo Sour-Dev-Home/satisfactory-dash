@@ -173,6 +173,46 @@ describe("DailyLogStream", () => {
     expect(failed).toHaveLength(1);
   });
 
+  it("never throws even when the failure handler itself throws", () => {
+    const stream = new DailyLogStream({
+      dir: path.join(dir, "missing"),
+      now: () => at("2026-09-24T00:00:00Z"),
+      onFailure: () => {
+        throw new Error("stderr closed");
+      },
+    });
+    expect(() => stream.write("x\n")).not.toThrow();
+  });
+
+  it("deletes a file dated well in the future (a wrong clock, later corrected), but not one a day ahead", () => {
+    const now = at("2026-09-24T12:00:00Z");
+    touch("backend-2027-01-01.log"); // months ahead: would otherwise outlive the window
+    touch("backend-2026-09-27.log"); // three days ahead
+    touch("backend-2026-09-26.log"); // two days ahead: within the slack, kept
+    touch("backend-2026-09-25.log"); // tomorrow: kept
+    purgeOldLogFiles(dir, now);
+    expect(names()).toEqual(["backend-2026-09-25.log", "backend-2026-09-26.log"]);
+  });
+
+  it("a retention of 0, a negative or a fractional value can never delete today's file", () => {
+    const now = at("2026-09-24T12:00:00Z");
+    for (const retentionDays of [0, -5, Number.NaN, 0.4]) {
+      touch("backend-2026-09-24.log");
+      touch("backend-2026-09-23.log");
+      purgeOldLogFiles(dir, now, retentionDays);
+      expect(names(), String(retentionDays)).toEqual(["backend-2026-09-24.log"]);
+    }
+  });
+
+  it("writes a long line completely", () => {
+    const now = () => at("2026-09-24T12:00:00Z");
+    const stream = new DailyLogStream({ dir, now });
+    const line = `${"é".repeat(200_000)}\n`;
+    stream.write(line);
+    stream.close();
+    expect(readFileSync(path.join(dir, "backend-2026-09-24.log"), "utf8")).toBe(line);
+  });
+
   it("mtime does not matter: retention is by the date in the name", () => {
     const now = at("2026-09-24T12:00:00Z");
     touch(dayFile(now, 20));
