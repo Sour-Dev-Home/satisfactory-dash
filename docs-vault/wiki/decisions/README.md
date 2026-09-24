@@ -23,6 +23,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0013](./0013-deployment-topology.md) | Deployment v1: frontend on Cloudflare Workers static assets (was Pages; amended 2026-09-23), backend on the game-server PC behind a Cloudflare Tunnel |
 | [0014](./0014-target-architecture.md) | Target architecture: modular monolith now, service-based with an edge agent later |
 | [0015](./0015-item-form-catalog.md) | Item form (solid vs fluid) from a generated catalog of the game's own data; additive `ProductionRate.unit` |
+| [0016](./0016-frontend-ui-architecture.md) | Frontend UI: Tailwind v4 tokens + shadcn/ui, React Router app shell, Playwright screenshots + axe, a read-only ui-reviewer; strict CSP kept |
 | [0018](./0018-license-agpl.md) | License: AGPL-3.0-only, relicensed from MIT; earlier versions stay MIT; the owner is named in `LICENSE` only |
 
 ## Terms used in the ADRs

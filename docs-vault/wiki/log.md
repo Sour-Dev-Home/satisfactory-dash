@@ -159,3 +159,9 @@ the bottom.
   it is solid, items/min.
 - 2026-09-23 — ADR-0012 built (PR 6): `modules/settings` and gameserver's allowlisted
   `ServerOptionsPort`. Live check recorded in the ADR: DSAutoPause applies immediately.
+- 2026-09-24 — Added ADR-0016 (frontend UI architecture, accepted by the project owner):
+  Tailwind v4 design tokens and shadcn/ui, a React Router app shell, Playwright screenshot
+  and axe checks with a read-only ui-reviewer, and a strict CSP where any
+  `securitypolicyviolation` fails a test (item 8). Build order: this docs step, then
+  tooling with no visual change, then a chosen design direction, then the foundation, then
+  one restyled view per PR.
