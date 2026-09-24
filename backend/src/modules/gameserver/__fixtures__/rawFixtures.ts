@@ -4,7 +4,6 @@ import type {
   RawFrmFactoryBuilding,
   RawFrmPowerCircuit,
   RawFrmPowerUsageBuilding,
-  RawFrmPlayer,
   RawFrmSessionInfo,
 } from "../rawTypes.js";
 
