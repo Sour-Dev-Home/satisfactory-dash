@@ -61,7 +61,8 @@ export const FactoryBuildingSchema = z.object({
   location: BuildingLocationSchema.optional().describe(
     "World position (ADR-0023). Optional so a newly deployed frontend still parses an older " +
       "backend's responses (ADR-0007); current backends always send it. The backend converts " +
-      "FRM's units to metres [NEEDS VERIFICATION: centimetres, pending an in-game distance check].",
+      "FRM's centimetres to metres (docs-vault/raw-sources/world-coordinates.md; the owner's " +
+      "in-game check is pending).",
   ),
   circuitGroupId: z
     .number()

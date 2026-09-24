@@ -7,7 +7,7 @@ import {
   capturedUnassignedAssembler,
 } from "./__fixtures__/capturedFixtures.js";
 
-// ADR-0023: FRM's building location (believed centimetres [NEEDS VERIFICATION]) becomes
+// ADR-0023: FRM's building location (centimetres, docs-vault/raw-sources/world-coordinates.md) becomes
 // metres, the yaw is normalized to [0, 360), and the circuit group id reaches the contract.
 // The `location` values below are copied unchanged from the 2026-09-22 capture
 // (docs-vault/raw-sources/captured-responses/frm-getFactory-2026-09-22-01-running-trimmed.json).
