@@ -271,3 +271,6 @@ the bottom.
   report ships in the diagrams artifact as `architecture-out/drift-report.txt`. The job's path
   filter also triggers on `backend/src/platform/`, `app.ts`, `server.ts` and the drift script. It
   becomes a required check after about a week of green runs on main.
+- 2026-09-24 — ADR-0025 (Postgres, Google sign-in and the DB registry: the ADR-0020 phase 1 build
+  plan) added as `decisions/0025-postgres-and-google-sign-in.md`, status PROPOSED by the
+  architect. Nothing in it is approved to build; it awaits the owner's decisions listed at its end.
