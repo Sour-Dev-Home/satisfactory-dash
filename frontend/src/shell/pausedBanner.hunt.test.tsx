@@ -25,7 +25,7 @@ function bannersWrapper() {
 }
 
 describe("paused banner: which URLs count as the Overview", () => {
-  it.each(["/", "/app", "/app/", "/app?x=1", "/app/?x=1#h", "/APP", "/app/nope"])(
+  it.each(["/elsewhere", "/app","/app/", "/app?x=1", "/app/?x=1#h", "/APP", "/app/nope"])(
     "%s ends on the Overview without the banner",
     async (path) => {
       pausedStatus();

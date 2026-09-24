@@ -18,8 +18,12 @@ contract needs to grow, not that this module should special-case a backend detai
   routing framework.
 - Routing (ADR-0016 item 4, ADR-0021): React Router in declarative mode (`BrowserRouter` in
   `App.tsx`). The signed-in app lives under `/app/*` (`src/shell/Shell.tsx`: tabs Overview,
-  Power, Factory, Settings); `/` and any other path redirect to `/app`, keeping the query
-  string. Keep `/` and future public paths (`/guides/*`, `/changelog`) free of app code.
+  Power, Factory, Settings). `/` is the static landing page (`src/landing/`, main site only;
+  the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
+  string. Keep `/` and future public paths (`/guides/*`, `/changelog`) free of app code: no
+  queries, no auth, no API calls (`e2e/landing.spec.ts`). Its link-preview tags are static
+  in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
+  demo video's poster (`npm run demo:video`).
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
@@ -63,7 +67,7 @@ contract needs to grow, not that this module should special-case a backend detai
 - UI states live in `src/test/scenarios.ts` (built only from the shared fixtures). Two
   consumers, one source:
   - `npm run dev:mock -w frontend`: the dev server with the API mocked in the browser (MSW);
-    pick a state with `?scenario=<name>`. Use it with the Playwright MCP and the ui-reviewer.
+    pick a state with `/app?scenario=<name>` (`/` is the landing page). Use it with the Playwright MCP and the ui-reviewer.
     The MSW worker is served by a Vite plugin in mock mode only, never from `public/`.
   - `npm run e2e -w frontend` (ADR-0016 item 5): Playwright against the production build,
     served by `vite preview` with `public/_headers`, at 1440 and 390 px. Every test fails on

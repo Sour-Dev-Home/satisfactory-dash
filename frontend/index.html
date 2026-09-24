@@ -9,6 +9,23 @@
       content="Satis Manager: a live dashboard for a Satisfactory dedicated server's power, production and status."
     />
     <title>Satis Manager</title>
+    <!-- Link previews (LinkedIn, Discord, X...) don't run JavaScript: these must stay static.
+         og:image must be an absolute URL; e2e/build-output.spec.ts checks the file ships. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Satis Manager" />
+    <meta property="og:title" content="Satis Manager" />
+    <meta
+      property="og:description"
+      content="A live dashboard for your Satisfactory dedicated server: power, production and machine health. Try the live demo."
+    />
+    <meta property="og:image" content="https://satis-manager.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The Satis Manager Overview: all systems operational, with the server, power and factory each marked operational."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>

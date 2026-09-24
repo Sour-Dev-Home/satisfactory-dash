@@ -46,6 +46,22 @@ test.describe("production build", () => {
       expect(text, `production bundle contains demo marker ${marker}`).not.toContain(marker);
     }
   });
+
+  // Link previews don't run JavaScript, so these must be in the served HTML itself.
+  test("has static link-preview tags, with an absolute og:image that ships", () => {
+    const html = readFileSync(join(DIST, "index.html"), "utf8");
+    const meta = (key: string) =>
+      new RegExp(`<meta\\s+(?:property|name)="${key}"\\s+content="([^"]+)"`).exec(html)?.[1];
+    expect(meta("og:title")).toBe("Satis Manager");
+    expect(meta("og:description")).toBeTruthy();
+    expect(meta("og:image:alt")).toBeTruthy();
+    expect(meta("twitter:card")).toBe("summary_large_image");
+    const image = new URL(meta("og:image") ?? "");
+    expect(image.origin).toBe("https://satis-manager.com");
+    expect(meta("og:image:width")).toBe("1200");
+    expect(meta("og:image:height")).toBe("630");
+    expect(allFiles(DIST)).toContain(join(DIST, image.pathname));
+  });
 });
 
 // The demo site (ADR-0026), built by e2e/build-demo.mjs with the production API URL set.
@@ -54,6 +70,8 @@ const API_ORIGIN = "api.satis-manager.com";
 const NETWORK_TRANSPORT_MARKER = "satisManagerNetworkTransport";
 /** Text only the demo build has. The prod check above fails if any of it leaks there. */
 const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] no demo data", "Demo World"];
+/** Text only the landing page (src/landing/) has; main site only. */
+const LANDING_MARKER = "Sign-in is invite-only during the beta.";
 
 function bundleText(dir: string): string {
   return allFiles(dir)
@@ -66,6 +84,11 @@ test.describe("demo build", () => {
   test("is the demo: its own text is there (so the other checks aren't vacuous)", () => {
     const text = bundleText(DIST_DEMO);
     for (const marker of DEMO_MARKERS) expect(text, `demo bundle lacks ${marker}`).toContain(marker);
+  });
+
+  test("has no landing page: the demo's / is 'Enter demo'", () => {
+    expect(bundleText(DIST)).toContain(LANDING_MARKER);
+    expect(bundleText(DIST_DEMO)).not.toContain(LANDING_MARKER);
   });
 
   test("never mentions the real API, though its URL was set for the build: no network transport", () => {

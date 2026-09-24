@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SourceFooter } from "./components/SourceFooter";
 import { DemoBanner } from "./demo/DemoBanner";
 import { IS_DEMO } from "./demo/mode";
+import { Landing } from "./landing/Landing";
 import { ServerGate } from "./servers/ServerGate";
 import { Shell } from "./shell/Shell";
 import { ToApp } from "./shell/ToApp";
@@ -38,6 +39,8 @@ function App() {
                   </AuthGate>
                 }
               />
+              {/* The public front page, main site only: the demo's / is "Enter demo". */}
+              {!IS_DEMO && <Route path="/" element={<Landing />} />}
               <Route path="*" element={<ToApp />} />
             </Routes>
           </ErrorBoundary>
