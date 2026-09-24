@@ -80,7 +80,9 @@ export function OverviewPanel({
               onClick={onDismiss}
               aria-label="Hide this warning until something changes"
               title="Hide until something changes"
-              className="grid min-w-11 flex-none place-items-center border-0 bg-transparent px-0 text-lg text-inherit hover:bg-white/15"
+              // 44 x 44 hit area (min-w-11 plus the base button min-height). The faint chip
+              // makes it read as a control on the coloured bar, not an icon.
+              className="grid min-w-11 flex-none place-items-center rounded-md border-0 bg-white/10 px-0 text-lg text-inherit hover:bg-white/20"
             >
               ×
             </button>
