@@ -59,3 +59,15 @@ test("the terms never name the operator; nothing built but the privacy page does
   expect(readFileSync(join(DIST, "terms.html"), "utf8")).toMatch(/the\s+operator named in our/);
   expect(readFileSync(join(DIST, "privacy.html"), "utf8")).toContain("privacy@satis-manager.com");
 });
+
+// test-hunter finding: the previous test only checks that IF the real operator name (from
+// LICENSE) appears anywhere in dist, it's confined to privacy.html -- it never checks that
+// privacy.html actually contains it. So it stays green even if the "[OPERATOR NAME]" placeholder
+// ships unreplaced (e.g. if #133's narrowing of the PII-scan exclusion lands before someone fills
+// in the real name). This test closes that gap and is expected to fail until the placeholder is
+// replaced with the LICENSE name.
+test("privacy.html names the actual operator, not the placeholder", () => {
+  const privacy = readFileSync(join(DIST, "privacy.html"), "utf8");
+  expect(privacy).not.toContain("[OPERATOR NAME]");
+  expect(privacy).toContain(OPERATOR);
+});

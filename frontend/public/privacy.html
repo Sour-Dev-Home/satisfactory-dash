@@ -26,7 +26,7 @@
            appear (CI's PII scan excludes exactly this file). No address or location: the owner
            hasn't approved publishing one. -->
       <p>
-        Satis Manager is run by an individual, [OPERATOR NAME], who decides how its data is used.
+        Satis Manager is run by an individual, Leonardo Nunez, who decides how its data is used.
         Contact: <a href="mailto:privacy@satis-manager.com">privacy@satis-manager.com</a>.
       </p>
 
@@ -104,7 +104,12 @@
         <li>Sessions: session records are deleted 30 days after the session expires (a session lasts at most 8 hours).</li>
         <li>Game data: raw readings for 48 hours, per-minute summaries for 30 days, hourly summaries for 1 year.</li>
         <li>Backups: encrypted, kept 30 days, so deleted data can survive in a backup for up to 30 days.</li>
-        <li>Audit events: 1 year.</li>
+        <!-- The audit table is append-only (the app can't delete from it) and no purge exists
+             yet: say so until one runs, then make this "1 year". -->
+        <li>
+          Audit events: kept for security. We intend to delete them after 1 year, but that isn't
+          automated yet, so for now they're kept longer. They hold no emails or names.
+        </li>
         <li>Server logs, including IP addresses on sign-in events: 14 days.</li>
       </ul>
 
