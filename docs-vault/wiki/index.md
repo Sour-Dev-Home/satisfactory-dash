@@ -16,6 +16,7 @@ added or removed.
 - [`lessons-learned.md`](./lessons-learned.md) — one-sentence-per-bug log of real bugs
   found by independent `test-hunter` review passes, with a counter that increments
   when the same pattern recurs, so repeated mistakes get visible sooner.
-- [`decisions/`](./decisions/README.md) — architecture decision records (ADR-0001 to
-  0012, 2026-09-22): contract, errors, units, versioning, logging, storage, caching,
-  login and the auto-pause toggle, plus the planned PR rollout they imply.
+- [`decisions/`](./decisions/README.md) — architecture decision records (ADR-0001 onward,
+  from 2026-09-22): contract, errors, units, versioning, logging, storage, caching,
+  login, the auto-pause toggle, deployment, target architecture, the item-form catalog,
+  frontend UI architecture and the license. The README table lists every ADR.
