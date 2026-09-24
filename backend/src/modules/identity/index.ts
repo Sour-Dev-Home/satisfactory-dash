@@ -10,6 +10,18 @@ import { LoginRateLimiter } from "./loginRateLimiter.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createSessionGuard } from "./session.js";
 import { SessionDenylist } from "./sessionDenylist.js";
+import { createDbSessionStore } from "./dbSessionStore.js";
+import type { Db } from "./dbSessionStore.js";
+import { createStatelessSessionStore } from "./statelessSessionStore.js";
+import { createSessionPurgeWorker } from "./sessionPurge.js";
+import type { PurgeLogger } from "./sessionPurge.js";
+
+export type { SessionUser } from "./sessionStore.js";
+
+export interface IdentityWorker {
+  start(): void;
+  stop(): Promise<void>;
+}
 
 export interface IdentityModule {
   /** Login, logout and session status: mounted with no session required. */
@@ -18,19 +30,32 @@ export interface IdentityModule {
   sessionGuard: RequestHandler;
   /** Exact origins allowed to call the API with credentials (CORS + cross-site guard). */
   allowedOrigins: string[];
+  /** Background housekeeping (database mode only): started once the server is listening. */
+  workers: IdentityWorker[];
+}
+
+export interface IdentityOptions {
+  /** The database (ADR-0025). Without it, sessions are the original signed tokens. */
+  db?: Db;
+  logger?: PurgeLogger;
 }
 
 /** Throws ConfigError when the login settings are missing or invalid (backend must not start). */
-export function createIdentityModule(env: NodeJS.ProcessEnv = process.env): IdentityModule {
+export function createIdentityModule(
+  env: NodeJS.ProcessEnv = process.env,
+  options: IdentityOptions = {},
+): IdentityModule {
   const auth = loadAuthConfigFromEnv(env);
-  const sessionDeps = {
-    authenticator: new SingleOperatorAuthenticator(auth.adminUser, auth.passwordHash),
-    sessionSecret: auth.sessionSecret,
-    denylist: new SessionDenylist(),
-  };
+  const authenticator = new SingleOperatorAuthenticator(auth.adminUser, auth.passwordHash);
+  const store = options.db
+    ? createDbSessionStore(options.db)
+    : createStatelessSessionStore({ authenticator, sessionSecret: auth.sessionSecret, denylist: new SessionDenylist() });
+  const sessionDeps = { store };
+  const noopLogger: PurgeLogger = { info: () => {}, warn: () => {} };
   return {
-    authRouter: createAuthRouter({ ...sessionDeps, rateLimiter: new LoginRateLimiter() }),
+    authRouter: createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter() }),
     sessionGuard: createSessionGuard(sessionDeps),
     allowedOrigins: auth.allowedOrigins,
+    workers: options.db ? [createSessionPurgeWorker(options.db, options.logger ?? noopLogger)] : [],
   };
 }

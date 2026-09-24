@@ -82,6 +82,21 @@ export function isTransientConnectionError(err: unknown): boolean {
   return isTransientMessage(err);
 }
 
+/**
+ * The database could not answer a runtime request (unreachable, dropped, a statement or pool
+ * timeout, a pool that was ended): the request should get a 503, never a 401 or a 500 that hides
+ * the outage (ADR-0025 decision 6). A constraint violation or a bug is NOT this.
+ */
+export function isDatabaseUnavailable(err: unknown): boolean {
+  if (isTransientConnectionError(err) || errorCode(err) === "57014") {
+    return true;
+  }
+  const message = err instanceof Error ? err.message : "";
+  return /Cannot use a pool after calling end|timeout exceeded when trying to connect|Query read timeout|Connection terminated/i.test(
+    message,
+  );
+}
+
 /** What to do with the first connection error at startup. */
 export type StartupErrorClass =
   | { kind: "transient"; reason: string }

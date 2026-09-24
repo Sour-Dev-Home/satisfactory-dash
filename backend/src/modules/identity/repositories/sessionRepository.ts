@@ -25,6 +25,10 @@ export interface ActiveSession {
   displayName: string;
   email: string | null;
   expiresAt: Date;
+  /** null until first touched; the store touches at most once a minute. */
+  lastSeenAt: Date | null;
+  /** "password" and/or "google", read in the same query. */
+  authMethods: string[];
 }
 
 const ActiveSessionRowSchema = z.object({
@@ -32,6 +36,8 @@ const ActiveSessionRowSchema = z.object({
   display_name: z.string(),
   email: z.string().nullable(),
   expires_at: z.date(),
+  last_seen_at: z.date().nullable(),
+  providers: z.array(z.enum(["local", "google"])),
 });
 
 /** One year; far above any real session lifetime and well inside int4. */
@@ -57,7 +63,8 @@ export async function createSession(
 }
 
 const SELECT_ACTIVE_SESSION = `
-  SELECT s.user_id, u.display_name, u.email, s.expires_at
+  SELECT s.user_id, u.display_name, u.email, s.expires_at, s.last_seen_at,
+         ARRAY(SELECT i.provider FROM identity.auth_identities i WHERE i.user_id = s.user_id ORDER BY i.provider) AS providers
   FROM identity.sessions s
   JOIN identity.users u ON u.id = s.user_id
   WHERE s.id_hash = $1
@@ -72,7 +79,14 @@ export async function findActiveSession(db: Queryable, idHash: Buffer): Promise<
   const row = parseFirst(ActiveSessionRowSchema, result.rows, "identity.findActiveSession");
   return row === undefined
     ? undefined
-    : { userId: row.user_id, displayName: row.display_name, email: row.email, expiresAt: row.expires_at };
+    : {
+        userId: row.user_id,
+        displayName: row.display_name,
+        email: row.email,
+        expiresAt: row.expires_at,
+        lastSeenAt: row.last_seen_at,
+        authMethods: row.providers.map((provider) => (provider === "local" ? "password" : provider)),
+      };
 }
 
 const TOUCH_SESSION = `
@@ -95,12 +109,15 @@ const REVOKE_SESSION = `
   UPDATE identity.sessions
   SET revoked_at = now()
   WHERE id_hash = $1 AND revoked_at IS NULL
-  RETURNING 1 AS revoked`;
+  RETURNING user_id`;
 
-/** Logout. True if this call revoked it (false: unknown or already revoked, both fine). */
-export async function revokeSession(db: Queryable, idHash: Buffer): Promise<boolean> {
+const RevokedRowSchema = z.object({ user_id: z.string() });
+
+/** Logout. The user id when this call revoked it (for the audit row), undefined when the
+ *  session was unknown or already revoked (both fine). */
+export async function revokeSession(db: Queryable, idHash: Buffer): Promise<string | undefined> {
   const result = await db.query(REVOKE_SESSION, [idHash]);
-  return result.rows.length > 0;
+  return parseFirst(RevokedRowSchema, result.rows, "identity.revokeSession")?.user_id;
 }
 
 const REVOKE_ALL_FOR_USER = `
@@ -127,13 +144,21 @@ export async function revokeAllSessions(db: Queryable): Promise<number> {
   return result.rows.length;
 }
 
-const DELETE_EXPIRED = `
+/** Sessions are kept 30 days after they expire (privacy policy retention), then purged. */
+export const SESSION_PURGE_AFTER_DAYS = 30;
+
+const DELETE_EXPIRED_BATCH = `
   DELETE FROM identity.sessions
-  WHERE expires_at < now() - interval '1 day'
+  WHERE id_hash IN (
+    SELECT id_hash FROM identity.sessions
+    WHERE expires_at < now() - make_interval(days => $1::int)
+    LIMIT $2
+  )
   RETURNING 1 AS deleted`;
 
-/** Housekeeping: drops sessions that expired more than a day ago. Returns the count. */
-export async function deleteExpiredSessions(db: Queryable): Promise<number> {
-  const result = await db.query(DELETE_EXPIRED);
+/** Housekeeping: drops up to `batchSize` sessions that expired more than 30 days ago (a small
+ *  batch, so a purge never holds a long lock). Returns the count; call until it is below the batch. */
+export async function deleteExpiredSessions(db: Queryable, batchSize = 1000): Promise<number> {
+  const result = await db.query(DELETE_EXPIRED_BATCH, [SESSION_PURGE_AFTER_DAYS, Math.max(1, Math.trunc(batchSize))]);
   return result.rows.length;
 }

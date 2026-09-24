@@ -95,7 +95,7 @@ const entries = orExit(() => {
 const directory = new InMemoryServerDirectory(entries);
 // ADR-0022: the background workers (the power history poller per server). Started only once
 // the server is listening, and stopped on shutdown.
-const workers = entries.flatMap((entry) => entry.services.telemetry.workers);
+const workers: { start(): void; stop(): Promise<void> }[] = entries.flatMap((entry) => entry.services.telemetry.workers);
 
 // ADR-0025: the database is optional until deploy A. Without DATABASE_URL nothing changes (and
 // /api/health/ready answers 200); with it, the process listens first, then connects in the
@@ -104,7 +104,10 @@ const databaseConfig = orExit(() => loadDatabaseConfig());
 const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
 
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
-const identity = orExit(() => createIdentityModule());
+// With a database, sessions live in it (ADR-0025 decision 4) and a purge worker keeps retention;
+// without one, the original signed-token sessions still work.
+const identity = orExit(() => createIdentityModule(process.env, { db: database?.pool, logger }));
+workers.push(...identity.workers);
 
 export const app = createApp({
   logger,

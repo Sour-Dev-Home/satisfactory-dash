@@ -10,6 +10,7 @@ import { healthRouter } from "../../../platform/health.js";
 import { LOGIN_REQUESTS_PER_WINDOW, createAuthRouter } from "./auth.js";
 import { createSessionGuard, SESSION_COOKIE } from "../session.js";
 import { SessionDenylist } from "../sessionDenylist.js";
+import { createStatelessSessionStore } from "../statelessSessionStore.js";
 import { SingleOperatorAuthenticator } from "../authenticator.js";
 import { hashPassword, parsePasswordHash } from "../passwordHash.js";
 import type { ParsedPasswordHash } from "../passwordHash.js";
@@ -27,10 +28,10 @@ beforeAll(async () => {
 function buildApp() {
   const lines: string[] = [];
   const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(line) });
+  const authenticator = new SingleOperatorAuthenticator("operator", passwordHash);
   const deps = {
-    authenticator: new SingleOperatorAuthenticator("operator", passwordHash),
-    sessionSecret: SECRET,
-    denylist: new SessionDenylist(),
+    authenticator,
+    store: createStatelessSessionStore({ authenticator, sessionSecret: SECRET, denylist: new SessionDenylist() }),
   };
   const protectedRouter = Router();
   protectedRouter.get("/servers", (_req, res) => {
@@ -40,7 +41,7 @@ function buildApp() {
     logger,
     allowedOrigins: ["https://satis-manager.com"],
     routers: [healthRouter, createAuthRouter({ ...deps, rateLimiter: new LoginRateLimiter() })],
-    sessionGuard: createSessionGuard(deps),
+    sessionGuard: createSessionGuard({ store: deps.store }),
     protectedRouters: [protectedRouter],
   });
   return { app, lines };

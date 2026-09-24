@@ -6,6 +6,7 @@ export {
   classifyStartupError,
   DatabaseSetupError,
   errorCode,
+  isDatabaseUnavailable,
   isForeignKeyViolation,
   isTransientConnectionError,
   isUniqueViolation,

@@ -207,7 +207,7 @@ describe("SessionDenylist (ADR-0019)", () => {
 describe("SingleOperatorAuthenticator", () => {
   it("accepts only the configured username with the right password", async () => {
     const auth = new SingleOperatorAuthenticator("operator", stored);
-    expect(await auth.verifyCredentials("operator", "correct horse battery staple")).toEqual({ name: "operator" });
+    expect(await auth.verifyCredentials("operator", "correct horse battery staple")).toEqual({ subject: "operator", name: "operator" });
     expect(await auth.verifyCredentials("Operator", "correct horse battery staple")).toBeNull();
     expect(await auth.verifyCredentials("operator", "wrong")).toBeNull();
   });
