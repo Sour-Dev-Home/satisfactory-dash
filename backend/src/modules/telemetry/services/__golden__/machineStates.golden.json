@@ -1,0 +1,16 @@
+{
+  "01-running": {
+    "Build_AssemblerMk1_C_2147069774": "backedUp",
+    "Build_AssemblerMk1_C_2147397136": "producing",
+    "Build_AssemblerMk1_C_2146597364": "producing",
+    "Build_AssemblerMk1_C_2147356083": "backedUp",
+    "Build_AssemblerMk1_C_2145959128": "idle",
+    "Build_ConstructorMk1_C_2147160359": "unpowered",
+    "Build_OilRefinery_C_2146613066": "producing"
+  },
+  "CJ-norecipe-fuse": {
+    "Build_OilRefinery_C_2147458064": "unpowered",
+    "Build_ConstructorMk1_C_2147456649": "unpowered",
+    "Build_OilRefinery_C_2146846128": "producing"
+  }
+}

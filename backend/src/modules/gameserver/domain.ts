@@ -57,6 +57,10 @@ export interface FactoryBuilding {
   circuitGroupId: number;
   powerConsumed: number;
   maxPowerConsumed: number;
+  /** Whether the fuse of the circuit this building is on has tripped (FRM's PowerInfo.FuseTriggered,
+   *  which the 2026-09-22 CJ capture shows true for a building on the tripped grid). Absent when FRM
+   *  sent none: unknown, never assumed false (ADR-0027). */
+  fuseTriggered?: boolean;
   /** World position in metres, rotation in [0, 360) (ADR-0023). Absent when FRM sent none. */
   location?: { xM: number; yM: number; zM: number; rotationDeg: number };
 }

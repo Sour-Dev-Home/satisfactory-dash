@@ -15,7 +15,8 @@
     "update-item-forms": "tsx scripts/update-item-forms.ts",
     "db:init": "tsx scripts/db-init.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
-    "admin": "tsx scripts/admin.ts"
+    "admin": "tsx scripts/admin.ts",
+    "capture-factory": "tsx scripts/captureFactory.ts"
   },
   "keywords": [],
   "author": "",

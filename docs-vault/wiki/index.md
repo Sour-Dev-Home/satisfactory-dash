@@ -13,6 +13,9 @@ added or removed.
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
   monitoring (field-level schemas still need capturing — see `log.md`).
+- [`machine-states.md`](./machine-states.md) — how a machine's state (producing, idle, backed up,
+  starved, paused, unpowered) is derived per snapshot (ADR-0027), the provisional threshold and its
+  evidence, and how to tune it with a capture session.
 - [`data-gap-analysis.md`](./data-gap-analysis.md) — table of player-facing metrics vs.
   API coverage. Filled in from the Phase 2 live-server spike (2026-09-21): every
   stated metric is covered by the vanilla API or FRM, no custom mod needed yet.
