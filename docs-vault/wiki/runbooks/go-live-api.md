@@ -30,7 +30,7 @@ Copy `backend\.env.example` to `backend\.env` if you haven't, then set these. Le
 | Variable | How to get the value |
 |---|---|
 | `DASHBOARD_ADMIN_USER` | The username you'll sign in with. |
-| `DASHBOARD_ADMIN_PASSWORD_HASH` | `npm run hash-password -w backend`. It prompts for a password (12+ characters, no echo) and prints a hash. Paste the hash, never the password. Quote the value if it contains `$`. |
+| `DASHBOARD_ADMIN_PASSWORD_HASH` | `npm run --silent hash-password -w backend`. It prompts for a password (12+ characters, no echo) and prints one line starting with `scrypt$`. Paste that whole line, never the password. Quotes around the value are optional. |
 | `SESSION_SECRET` | At least 32 random bytes. `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))` prints one; copy it into the file. Changing it later signs every session out (and is how a stolen session is revoked). |
 | `SATISFACTORY_API_TOKEN` | An **application token**: run `server.GenerateAPIToken` in the game server's console. Application tokens don't expire; `server.InvalidateAPITokens` revokes all of them (`dedicated-server-api.md:279-284`). Don't use a password-login token. |
 | `FRM_AUTH_TOKEN` | FRM's token: the value of `FicsitRemoteMonitoring.Server.uWS.AuthenticationToken` in `FactoryGame\Saved\Config\WindowsServer\GameUserSettings.ini` in the server install (`frm-authentication.md`). Rotating it by hand is optional and deferred; ADR-0017 designs the automated version. |
@@ -49,13 +49,15 @@ work. Turn that off:
    argument (`dedicated-server-api.md:287-289`). If the setting is in an `Engine.ini` under
    `[SystemSettings]` instead, remove that line. [NEEDS VERIFICATION: how this install sets it.]
 2. Start it with a **visible console** so you can see it come up (for the Windows server,
-   the `-log` launch argument opens one) [NEEDS VERIFICATION]. Players connected now are
-   dropped by the restart.
+   the `-log` launch argument opens one) [NEEDS VERIFICATION]. Anyone connected is
+   disconnected by the restart [NEEDS VERIFICATION: not in docs-vault; assume so].
 3. Prove the game API now refuses an unauthenticated call and accepts the token. The token is
    read from `.env` without being printed:
 
 ```powershell
-$tok = (Select-String -Path backend\.env -Pattern '^SATISFACTORY_API_TOKEN=(.+)$').Matches[0].Groups[1].Value
+$m = Select-String -Path backend\.env -Pattern '^SATISFACTORY_API_TOKEN=(.+)$'
+if (-not $m) { throw "SATISFACTORY_API_TOKEN is missing or empty in backend\.env" }
+$tok = $m.Matches[0].Groups[1].Value.Trim().Trim('"')
 $body = New-TemporaryFile
 [IO.File]::WriteAllText($body, '{"function":"GetServerOptions"}')
 "no token  : " + (curl.exe -sk -o NUL -w "%{http_code}" -H "Content-Type: application/json" --data-binary "@$body" https://localhost:7777/api/v1)
@@ -69,7 +71,9 @@ Remove-Item $body; Remove-Variable tok
 4. Same for FRM (`FRM_AUTH_TOKEN`). [NEEDS VERIFICATION: FRM's behavior with enforcement on.]
 
 ```powershell
-$frm = (Select-String -Path backend\.env -Pattern '^FRM_AUTH_TOKEN=(.+)$').Matches[0].Groups[1].Value
+$m = Select-String -Path backend\.env -Pattern '^FRM_AUTH_TOKEN=(.+)$'
+if (-not $m) { throw "FRM_AUTH_TOKEN is missing or empty in backend\.env" }
+$frm = $m.Matches[0].Groups[1].Value.Trim().Trim('"')
 "no token  : " + (curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8080/getPower)
 "with token: " + (curl.exe -s -o NUL -w "%{http_code}" -H "X-FRM-Authorization: $frm" http://127.0.0.1:8080/getPower)
 Remove-Variable frm
@@ -81,14 +85,20 @@ enforcement on. Do not skip it: it settles ADR-0012's open question (a refused t
 
 ## 3. Build and run the backend
 
+First make sure nothing else is using port 3001 (a dev server from earlier sessions, for
+example): `Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue`
+must print nothing. If it prints a row, stop that process (`Stop-Process -Id <OwningProcess>`).
+
 ```powershell
 npm run build -w backend
-Set-Location backend
+Push-Location backend
 node dist\server.cjs          # run from backend\ so dotenv finds .env
 ```
 
-In a second window: `Invoke-RestMethod http://127.0.0.1:3001/api/health` should print
-`status : ok`. The startup log line names the address it bound: it must say `127.0.0.1`.
+In a second window (also at the repo root): `Invoke-RestMethod http://127.0.0.1:3001/api/health`
+should print `status : ok`. The startup log line names the address it bound: it must say
+`127.0.0.1`. When you're done with the checks below, stop it with Ctrl+C and run
+`Pop-Location` to return to the repo root.
 
 ### Verify the backend works with real token enforcement (backend running)
 
@@ -99,10 +109,16 @@ $pw = Read-Host "Dashboard password" -AsSecureString
 $plain = [System.Net.NetworkCredential]::new("", $pw).Password
 $tmp = New-TemporaryFile; $hdr = New-TemporaryFile
 [IO.File]::WriteAllText($tmp, (@{ username = "<DASHBOARD_ADMIN_USER>"; password = $plain } | ConvertTo-Json -Compress))
-curl.exe -s -D $hdr -o NUL -H "Content-Type: application/json" --data-binary "@$tmp" "$base/api/auth/login"
-Remove-Item $tmp; Remove-Variable plain, pw
-$cookie = (Select-String -Path $hdr -Pattern '^set-cookie:\s*(sd_session=[^;]+)').Matches[0].Groups[1].Value
+try {
+  $code = curl.exe -s -D $hdr -o NUL -w "%{http_code}" -H "Content-Type: application/json" --data-binary "@$tmp" "$base/api/auth/login"
+} finally {
+  Remove-Item $tmp -ErrorAction SilentlyContinue; Remove-Variable plain, pw
+}
+"login HTTP status: $code"          # expect 200; 401 = wrong user or password
+$m = Select-String -Path $hdr -Pattern '^set-cookie:\s*(sd_session=[^;]+)'
 Remove-Item $hdr
+if (-not $m) { throw "Login failed (HTTP $code); no session cookie. Did you replace <DASHBOARD_ADMIN_USER>?" }
+$cookie = $m.Matches[0].Groups[1].Value
 
 # 1. Live data through enforced tokens (FRM + vanilla): expect real values.
 curl.exe -s -H "Cookie: $cookie" "$base/api/servers/default/status"
@@ -122,7 +138,11 @@ function Set-AutoPause([bool]$enabled) {
 Set-AutoPause (-not $orig)     # expect data.autoPause to be the opposite of $orig
 Set-AutoPause $orig            # restore
 curl.exe -s -H "Cookie: $cookie" "$base/api/servers/default/settings"   # expect autoPause = $orig
+Remove-Variable cookie, s     # the cookie is a live session token
 ```
+
+(The cookie and tokens appear on `curl.exe`'s command line while it runs, where other
+programs on this PC can see them. That's acceptable on a machine only you use.)
 
 Pass = the status has real numbers, `editable` is `true`, the flip and the restore both
 show in the response, and the setting ends where it started. **Record the result**: add it
@@ -134,6 +154,16 @@ Stop the foreground backend (Ctrl+C) before the next step.
 
 ## 4. Start the backend automatically at logon
 
+**First stop the section-3 backend** (Ctrl+C in its window, then `Pop-Location` so you're at
+the repo root again). If anything still listens on port 3001 the task's process fails with
+"address in use". Check, and fail loudly if it does:
+
+```powershell
+if (Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue) {
+  throw "Port 3001 is still in use; stop that process first"
+}
+```
+
 ```powershell
 npm run build -w backend      # if you haven't since the last change
 .\scripts\windows\register-backend-task.ps1 -WhatIf     # preview; changes nothing
@@ -142,13 +172,38 @@ Invoke-RestMethod http://127.0.0.1:3001/api/health
 Get-Content "$env:LOCALAPPDATA\satisfactory-dash\logs\backend.log" -Tail 5
 ```
 
-The task runs as you (no admin rights), starts at logon, restarts if it exits with a
-failure, runs from `backend\` and appends to a log file outside the repo. The log grows
-without limit; check its size now and then (rotation is a later improvement). Remove it
-with `.\scripts\windows\unregister-backend-task.ps1`.
+(`-Start` also refuses to start while something else listens on the port, and stops an
+already-running task instance first.)
 
-After a rebuild (`npm run build -w backend`), restart it: `Stop-ScheduledTask -TaskName
-SatisfactoryDashBackend; Start-ScheduledTask -TaskName SatisfactoryDashBackend`.
+What the task does, and its limits:
+
+- It runs as you (no admin rights), in your session, in a **visible console window**. Closing
+  that window stops the backend.
+- It starts when **you log on**, not at boot. After a reboot the backend is down until you
+  log on, while the `cloudflared` service (which starts at boot) answers 502. If this PC
+  must recover by itself, set up Windows auto-logon for your account first.
+- If the backend exits with a failure it is restarted **3 times, a minute apart**, then it
+  stays down (so a bad `.env` doesn't loop forever). Read the log to see why.
+- It runs from `backend\` with `NODE_ENV=production` and appends to
+  `%LOCALAPPDATA%\satisfactory-dash\logs\backend.log`, outside the repo. That file grows
+  without limit; check its size now and then (rotation is a later improvement).
+- Remove it with `.\scripts\windows\unregister-backend-task.ps1`.
+
+**Prove the restart works** (Task Scheduler's restart-on-failure with a `cmd.exe` action
+hasn't been tested here): find the backend's process and kill it, then wait about 90 seconds.
+
+```powershell
+$p = (Get-NetTCPConnection -LocalPort 3001 -State Listen).OwningProcess
+Stop-Process -Id $p -Force
+Start-Sleep -Seconds 90
+Invoke-RestMethod http://127.0.0.1:3001/api/health     # expect status : ok again
+```
+
+If it doesn't come back, the restart isn't working: start it with
+`Start-ScheduledTask -TaskName SatisfactoryDashBackend` and tell the architect.
+
+After a rebuild (`npm run build -w backend`), restart the task: `Stop-ScheduledTask
+-TaskName SatisfactoryDashBackend; Start-ScheduledTask -TaskName SatisfactoryDashBackend`.
 
 ## 5. Create the Cloudflare Tunnel (in the Cloudflare dashboard)
 
@@ -160,7 +215,8 @@ Do this only after steps 1 to 4 pass.
    **administrator** PowerShell. That installs `cloudflared` and runs it as a Windows service.
    Never paste the tunnel token anywhere else.
 3. **Routes > Add route > Published application**: subdomain `api`, domain `satis-manager.com`,
-   service `http://localhost:3001`.
+   service `http://127.0.0.1:3001` (the backend listens on IPv4 loopback only, and `localhost`
+   can resolve to IPv6 first).
 4. Confirm the service is running: `Get-Service cloudflared`.
 
 The backend keeps listening only on `127.0.0.1`; the tunnel reaches it from the same machine.
@@ -176,9 +232,12 @@ $api = "https://api.satis-manager.com"
 # 6.1 Health through the tunnel: expect 200.
 curl.exe -s -o NUL -w "%{http_code}`n" "$api/api/health"
 
-# 6.2 Compression: expect a content-encoding header (Cloudflare compresses at the edge;
-#     the backend adds none).
-curl.exe -sI -H "Accept-Encoding: gzip, br" "$api/api/health" | Select-String -Pattern "content-encoding"
+# 6.2 Compression: Cloudflare is expected to compress at the edge (the backend adds none)
+#     [NEEDS VERIFICATION: not in docs-vault], so look for a content-encoding header.
+curl.exe -s -D - -o NUL -H "Accept-Encoding: gzip, br" "$api/api/health" | Select-String -Pattern "content-encoding"
+#     /api/health is only ~15 bytes, and Cloudflare may not compress a body that small, so a
+#     missing header there is NOT a failure. Recheck on a larger response, for example the
+#     factory route (about 100 KB) with a signed-in cookie, before deciding.
 
 # 6.3 CORS preflight from the site's origin: expect access-control-allow-origin:
 #     https://satis-manager.com and access-control-allow-credentials: true.
@@ -195,14 +254,21 @@ curl.exe -s -H "CF-Connecting-IP: 203.0.113.9" "$api/api/health"
 (curl.exe -s https://www.cloudflare.com/cdn-cgi/trace | Select-String "^ip=").Line
 ```
 
-Then, on the game-server PC, read that request's log line and check its `clientIp`:
+Then, on the game-server PC, read the latest `/api/health` request's log line and look at
+its `clientIp` (the raw header itself is also in the log line, so don't search for the fake
+address; read the field):
 
 ```powershell
-Get-Content "$env:LOCALAPPDATA\satisfactory-dash\logs\backend.log" -Tail 20 | Select-String "clientIp"
+Get-Content "$env:LOCALAPPDATA\satisfactory-dash\logs\backend.log" -Tail 100 |
+  ForEach-Object { try { $_ | ConvertFrom-Json } catch {} } |
+  Where-Object { $_.req.url -eq "/api/health" } | Select-Object -Last 1 |
+  Select-Object clientIp, @{ n = "socket"; e = { $_.req.remoteAddress } }
 ```
 
-- **Pass:** `clientIp` is the real public address printed by the trace, and `req.remoteAddress`
-  is `127.0.0.1` (the tunnel).
+- **Pass:** `clientIp` is the real public address printed by the trace, and `socket` is
+  `127.0.0.1` (the tunnel). On a machine with both IPv4 and IPv6, the trace and the request
+  may have gone out over different ones; if they differ, repeat with `curl.exe -4` and `-6`
+  on both.
 - **Fail:** `clientIp` is `203.0.113.9`. The spoof survived, so anyone can dodge the login
   lockout. **Stop the tunnel (step 7) and report.** The fallback is a Cloudflare
   rate-limiting rule on `/api/auth/login`.
