@@ -3,7 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 // Visual and accessibility checks (ADR-0016 item 5) against the PRODUCTION build, served by
 // `vite preview` with the same security headers as the live site (public/_headers), so a
 // CSP violation here is one users would hit. The API is mocked per test with page.route().
+// e2e/demo/ runs against the DEMO build (ADR-0026), on its own port with demo/_headers.
 const PORT = 4173;
+const DEMO_PORT = 4174;
+const DEMO_URL = `http://localhost:${DEMO_PORT}`;
+const DEMO_SPECS = /[\\/]demo[\\/].*\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -31,12 +35,13 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
+      testIgnore: DEMO_SPECS,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
     },
     {
       name: "mobile",
       // Build and guard checks don't depend on the viewport; they run in desktop only.
-      testIgnore: /(build-output|guards)\.spec\.ts/,
+      testIgnore: [/(build-output|guards)\.spec\.ts/, DEMO_SPECS],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 390, height: 844 },
@@ -45,14 +50,45 @@ export default defineConfig({
         hasTouch: true,
       },
     },
+    {
+      name: "demo-desktop",
+      testMatch: DEMO_SPECS,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: DEMO_URL,
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 1,
+      },
+    },
+    {
+      name: "demo-mobile",
+      testMatch: DEMO_SPECS,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: DEMO_URL,
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 1,
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
   ],
-  webServer: {
-    // VITE_API_URL stays empty, so the app calls same-origin /api, which the tests mock.
-    // The demo build (dist-demo/) is built too, for build-output.spec.ts's checks on it.
-    command: `npm run build && node e2e/build-demo.mjs && npx vite preview --port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}`,
-    // Always a fresh build: reusing a server already on 4173 could test a stale dist/.
-    reuseExistingServer: false,
-    timeout: 180_000,
-  },
+  // Always fresh builds: reusing a server already on either port could test a stale build.
+  webServer: [
+    {
+      // VITE_API_URL stays empty, so the app calls same-origin /api, which the tests mock.
+      command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
+      url: `http://localhost:${PORT}`,
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
+    {
+      // The demo site (dist-demo/), built with the production API URL set (see build-demo.mjs).
+      // build-output.spec.ts also reads dist-demo/; every server is up before any test starts.
+      command: `node e2e/build-demo.mjs && npx vite preview --mode demo --port ${DEMO_PORT} --strictPort`,
+      url: DEMO_URL,
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
+  ],
 });
