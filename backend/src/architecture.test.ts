@@ -16,6 +16,10 @@ import { describe, it, expect } from "vitest";
  *   4. Only the listed module-to-module edges exist.
  *   5. Only app.ts / server.ts (the composition root) import everything, and nothing
  *      imports them.
+ *   6. Backend production code imports only the bare "@satisfactory-dash/shared". Never
+ *      "/browser" (it turns off zod's runtime compilation for the whole process; the
+ *      frontend imports it, ADR-0016) and never "/fixtures" (tests only: test files are
+ *      not scanned here) or a deep path into the package.
  */
 const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   gameserver: [],
@@ -30,14 +34,18 @@ const GAMESERVER_ALLOWED_PACKAGES = [/^node:/, /^zod$/, /^@satisfactory-dash\/sh
 /** The only bare imports servers may use, besides platform/ and shared (per the architect). */
 const SERVERS_ALLOWED_PACKAGES = [/^node:/, /^express$/, /^zod$/, /^@satisfactory-dash\/shared$/];
 
-/** Every import specifier in a source file: static, re-export, side-effect and dynamic. */
+/** Any subpath of the shared package: "@satisfactory-dash/shared/browser", "/fixtures", "/src/..." */
+const SHARED_SUBPATH = /^@satisfactory-dash\/shared\//;
+
+/** Every import specifier in a source file: static, re-export, side-effect, dynamic and require(). */
 export function importSpecifiers(source: string): string[] {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const specifiers: string[] = [];
   const patterns = [
-    /\b(?:import|export)\s[^;]*?\bfrom\s*["']([^"']+)["']/g,
+    /\b(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']/g,
     /\bimport\s*["']([^"']+)["']/g,
-    /\bimport\(\s*["']([^"']+)["']\s*\)/g,
+    // import("x"), import (`x`), import("x", { with: ... }), require("x"), import x = require("x")
+    /\b(?:import|require)\s*\(\s*["'`]([^"'`]+)["'`]\s*[,)]/g,
   ];
   for (const pattern of patterns) {
     for (const match of code.matchAll(pattern)) {
@@ -79,6 +87,9 @@ export function findViolations(files: Map<string, string>): string[] {
       const fail = (rule: string) => violations.push(`${file} imports "${specifier}": ${rule}`);
 
       if (target === null) {
+        if (SHARED_SUBPATH.test(specifier)) {
+          fail('rule 6: import only the bare "@satisfactory-dash/shared" (not /browser, /fixtures or a deep path)');
+        }
         if (fromModule === "gameserver" && !GAMESERVER_ALLOWED_PACKAGES.some((p) => p.test(specifier))) {
           fail("rule 3: gameserver must not import this package (no Express or HTTP framework)");
         }
@@ -157,6 +168,25 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     ["gameserver importing a helper folder", "modules/gameserver/x.ts", `import { h } from "../../lib/httpHelpers.js";`, /rule 3/],
     ["a deep import written with a .ts extension", "modules/telemetry/x.ts", `import { b } from "../gameserver/domain.ts";`, /rule 2/],
     ["a dynamic import", "platform/x.ts", `const m = await import("../modules/identity/index.js");`, /rule 1/],
+    // Rule 6: the frontend-only zod jitless entry, and other subpaths of shared.
+    ["a module importing shared/browser", "modules/telemetry/x.ts", `import "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["platform importing shared/browser", "platform/x.ts", `import "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["the composition root importing shared/browser", "server.ts", `import "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["shared/browser as a named import", "modules/identity/x.ts", `import { z } from "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["shared/browser as a dynamic import", "modules/settings/x.ts", `const m = await import("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via require()", "modules/identity/x.ts", `const b = require("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via import = require()", "modules/identity/x.ts", `import b = require("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via a template-literal dynamic import", "modules/identity/x.ts", "const m = await import(`@satisfactory-dash/shared/browser`);", /rule 6/],
+    ["shared/browser via a dynamic import with options", "modules/identity/x.ts", `const m = await import("@satisfactory-dash/shared/browser", { with: {} });`, /rule 6/],
+    ["shared/browser via a dynamic import with a space before the paren", "modules/identity/x.ts", `const m = await import ( "@satisfactory-dash/shared/browser" );`, /rule 6/],
+    ["shared/browser via a multi-line dynamic import", "modules/identity/x.ts", `const m = await import(\n  "@satisfactory-dash/shared/browser",\n);`, /rule 6/],
+    ["shared/browser via a typeof import() type query", "modules/identity/x.ts", `type T = typeof import("@satisfactory-dash/shared/browser");`, /rule 6/],
+    ["shared/browser via export * as", "platform/x.ts", `export * as ns from "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["shared/browser via a minified import", "platform/x.ts", `import{a}from"@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["a trailing-slash shared subpath", "modules/identity/x.ts", `import a from "@satisfactory-dash/shared/";`, /rule 6/],
+    ["shared/browser as a re-export", "platform/x.ts", `export * from "@satisfactory-dash/shared/browser";`, /rule 6/],
+    ["production code importing shared fixtures", "modules/telemetry/x.ts", `import { f } from "@satisfactory-dash/shared/fixtures";`, /rule 6/],
+    ["a deep path into shared", "modules/identity/x.ts", `import { a } from "@satisfactory-dash/shared/src/auth";`, /rule 6/],
   ];
   it.each(bad)("fails on %s", (_name, file, source, expected) => {
     const violations = findViolations(new Map([[file, source]]));
@@ -169,6 +199,9 @@ describe("architecture (ADR-0014 dependency rules)", () => {
       ["modules/gameserver/x.ts", `import { E } from "../../platform/errors.js";\nimport { z } from "zod";`],
       ["modules/servers/x.ts", `import type { Request } from "express";\nimport { e } from "../../platform/errorResponse.js";`],
       ["server.ts", `import { a } from "./modules/identity/index.js";\nimport { app } from "./app.js";`],
+      ["modules/identity/y.ts", `import { LoginRequestSchema } from "@satisfactory-dash/shared";`],
+      ["platform/y.ts", `import type { ApiError } from "@satisfactory-dash/shared";`],
+      ["app.ts", `import { endpoints } from "@satisfactory-dash/shared";`],
     ]);
     expect(findViolations(ok)).toEqual([]);
   });
