@@ -202,3 +202,9 @@ the bottom.
   authenticated page and no ad scripts in the SPA; if ads are ever wanted, only on separate
   static public pages with their own CSP and a certified CMP; `/app/*` is reserved for the
   authenticated app so `/` and public paths stay free. Docs only.
+- 2026-09-24 — Added ADR-0022 (live power history, accepted by the project owner; issue
+  #74): the backend's first background poller samples getPower every 5 s into an
+  in-memory 5-minute ring buffer per server behind a source-agnostic store interface, with
+  a reset rule on session change or a game-time rewind and an additive
+  `GET /api/servers/:serverId/power/history` contract. No database yet. Build order: this
+  docs step, then the shared contract, then the backend poller, store and route.
