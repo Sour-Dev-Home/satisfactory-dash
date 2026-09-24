@@ -5,7 +5,7 @@ import type { ClientRateLimitInfo } from "express-rate-limit";
 import { LoginRequestSchema, SessionResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { LoginRateLimiter } from "../loginRateLimiter.js";
 import { BadRequestError, RateLimitedError, UnauthorizedError } from "../../../platform/errorResponse.js";
-import { clearSessionCookie, currentUser, revokeCurrentSession, setSessionCookie } from "../session.js";
+import { clearSessionCookie, currentUser, readSessionCookie, revokeCurrentSession, setSessionCookie } from "../session.js";
 import type { SessionDeps } from "../session.js";
 import type { Authenticator } from "../authenticator.js";
 import type { SessionUser } from "../sessionStore.js";
@@ -85,7 +85,7 @@ export function createAuthRouter(deps: SessionDeps & { authenticator: Authentica
       throw new UnauthorizedError("Invalid username or password");
     }
     // A database outage here is a 503 (ServiceUnavailableError), not a failed login.
-    const session = await store.create(principal);
+    const session = await store.create(principal, readSessionCookie(req));
     // Only a completed sign-in clears the failure count: a correct password that ends in a 401
     // (disabled account) or a 503 must not reset it.
     rateLimiter.recordSuccess(ip);

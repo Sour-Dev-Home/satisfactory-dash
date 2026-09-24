@@ -376,9 +376,25 @@ the bottom.
   upserted with the operator as owner (a no-op after ownership moves), and scoped routes answer
   503 until then; `/api/health/ready` includes it. A database outage is a 503, never a 404.
   Without `DATABASE_URL` nothing changes. `resolveServer` and its six call sites are untouched.
+- 2026-09-25 — Gate A security review, L1 and L2. L1: every membership change writes its audit row
+  in the same statement (a data-modifying CTE) or transaction (ownership transfer):
+  `member_added`, `member_role_changed`, `member_removed`, `ownership_transferred`, with ids and
+  roles only; the startup bootstrap-owner grant is audited once with no actor and a restart adds
+  nothing; a refused change (duplicate, second owner, owner role change) leaves no row. L2: login
+  ends the session named by the browser's incoming cookie in the same transaction that creates the
+  new one ("rotated on login"), so a copied old cookie does not survive a re-login; only the
+  presented session ends, and an unknown, malformed or already-ended cookie is ignored. The
+  stateless store ignores it (removed in PR 9).
 - 2026-09-25 — Docs: ADR-0025 re-copied from the architect's draft (adds "Considered and rejected:
   Supabase Auth") and ADR-0026 (the in-house demo router replaced the msw `getResponse` path,
   #113), both verbatim. The database runbook's log-hygiene sentence is corrected after the gate A
   security review (L3): the pool and startup paths log codes only, but the request error handler
   logs the cause chain, so a database outage line includes the driver's message (never the
   password or URL, never in a response body).
+- 2026-09-25 — Follow-ups to the L1/L2 change, from the architect's review: `setMemberRole` no
+  longer writes an audit row when the role does not change (`AND role <> new` in the UPDATE) and
+  returns `changed` / `unchanged` / `not_found`; the login audit row carries `rotated: true` when
+  a live session really ended. The database runbook gains "Windows port reservations" (Postgres
+  could not bind 5432 because the TCP dynamic port range started at 1024 and Hyper-V reserved
+  5358-5457; fix: reset the dynamic range to 49152/16384 and, optionally, an administered
+  exclusion for 5432).

@@ -46,7 +46,7 @@ export function createDbSessionStore(db: Db): SessionStore {
   };
 
   return {
-    create: (principal: Principal): Promise<CreatedSession> =>
+    create: (principal: Principal, replacing?: string): Promise<CreatedSession> =>
       guard(async () => {
         const user = await ensureLocalUser(db, { subject: principal.subject, displayName: principal.name });
         if (user.status !== "active") {
@@ -56,7 +56,16 @@ export function createDbSessionStore(db: Db): SessionStore {
         const { id, idHash } = newSessionId();
         await withTransaction(db, async (client) => {
           await createSession(client, { idHash, userId: user.id, ttlSeconds: SESSION_TTL_SECONDS });
-          await recordAuditEvent(client, { action: "login", actorUserId: user.id });
+          // Rotation: the browser's previous session ends with the new one starting (one
+          // transaction, so there is no moment with both, and a failure leaves the old one alone).
+          // The login row says so (`rotated: true`) only when a live session really ended.
+          const ended =
+            replacing && SESSION_ID_SHAPE.test(replacing) ? await revokeSession(client, hashSessionId(replacing)) : undefined;
+          await recordAuditEvent(client, {
+            action: "login",
+            actorUserId: user.id,
+            ...(ended !== undefined ? { detail: { rotated: true } } : {}),
+          });
         });
         const authMethods = await authMethodsForUser(db, user.id);
         return {

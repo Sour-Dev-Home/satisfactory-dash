@@ -100,3 +100,29 @@ npm run admin -- revoke-sessions --user <user-id>     # one account, everywhere
   only). Users can sign out everywhere themselves with `POST /api/auth/logout-all`.
 - **Retention:** sessions expired more than 30 days ago and stale login attempts are purged at
   startup and then hourly, in batches. Sign-in logs carry the user id, never the username.
+
+## Windows port reservations (Postgres cannot bind 5432)
+
+Symptom: on the game-server PC, PostgreSQL fails to start because it cannot bind port 5432.
+Cause: Windows (Hyper-V, WSL, Docker) reserves ranges of TCP ports, and on this PC the TCP dynamic
+port range started at 1024 instead of the default 49152, so Hyper-V reserved 5358-5457, which
+contains 5432. Check the reservations (any shell):
+
+```
+netsh int ipv4 show excludedportrange protocol=tcp
+netsh int ipv4 show dynamicport tcp
+```
+
+Fix, from an elevated prompt, then reboot:
+
+1. Reset the dynamic range to the default, for TCP and UDP, so Windows stops reserving low ports:
+   `netsh int ipv4 set dynamicport tcp start=49152 num=16384` and the same with `udp`.
+2. Optionally pin an administered exclusion for 5432 so nothing can reserve it later (this needs the
+   NAT service stopped while it is added): `net stop winnat`, then
+   `netsh int ipv4 add excludedportrange protocol=tcp startport=5432 numberofports=1 store=persistent`,
+   then `net start winnat`.
+
+After the reboot, `show excludedportrange` should no longer list a range containing 5432, and
+Postgres should bind `127.0.0.1:5432` (keep it loopback-only: `listen_addresses`, and `netstat`
+showing 5432 on 127.0.0.1 / ::1 only). If Hyper-V, WSL or Docker Desktop is enabled later, re-run
+the check, since they can add reservations.
