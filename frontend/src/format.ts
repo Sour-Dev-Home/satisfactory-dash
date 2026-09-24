@@ -24,7 +24,15 @@ export function formatTickRate(ticksPerSecond: number): string {
 }
 
 // Fixed en-US grouping so values read the same everywhere (and in tests): "3,633.3".
-const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+// signDisplay "negative": a value that rounds to zero prints "0", never "-0".
+const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, signDisplay: "negative" });
+
+/** Rounds to the one decimal the formatters display, so labels can match what's shown. */
+export function roundForDisplay(value: number): number {
+  // Round the magnitude: Intl rounds half away from zero, Math.round(-0.5) is -0.
+  const rounded = (Math.sign(value) * Math.round(Math.abs(value) * 10)) / 10;
+  return rounded === 0 ? 0 : rounded;
+}
 
 /** Megawatts, as the contract reports them (never rescaled to GW). */
 export function formatMW(megawatts: number): string {

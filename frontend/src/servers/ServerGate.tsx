@@ -55,6 +55,18 @@ export function ServerGate({ children }: { children: ReactNode }) {
 
   if (list.length === 0) return <p>No game servers are configured.</p>;
 
+  // An explicit pick clears the id's lost mark: the operator is retrying it on purpose, and if
+  // it's back, the "no longer available" note shouldn't linger for the rest of the page.
+  const pick = (id: string) => {
+    setSelectedId(id);
+    setLostIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
   if (!current) {
     return (
       <section aria-labelledby="picker-heading">
@@ -63,7 +75,7 @@ export function ServerGate({ children }: { children: ReactNode }) {
         <ul>
           {list.map((server) => (
             <li key={server.id}>
-              <button type="button" onClick={() => setSelectedId(server.id)}>
+              <button type="button" onClick={() => pick(server.id)}>
                 {server.displayName}
               </button>
             </li>
