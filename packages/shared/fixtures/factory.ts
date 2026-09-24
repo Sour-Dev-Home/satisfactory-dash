@@ -15,6 +15,8 @@ const backedUpAssembler = {
   isProducing: false,
   isPaused: false,
   isBackedUp: true,
+  location: { xM: -436, yM: -1439, zM: 118.000087890625, rotationDeg: 180 },
+  circuitGroupId: 0,
   production: [
     {
       name: "Reinforced Iron Plate",
@@ -36,6 +38,8 @@ const partialAssembler = {
   isProducing: false,
   isPaused: false,
   isBackedUp: false,
+  location: { xM: -400, yM: -1488, zM: 82.0001171875, rotationDeg: 180 },
+  circuitGroupId: 0,
   production: [
     {
       name: "Empty Canister",
@@ -57,6 +61,8 @@ const overclockedStator = {
   isProducing: false,
   isPaused: false,
   isBackedUp: true,
+  location: { xM: 582, yM: -619, zM: 140, rotationDeg: 90 },
+  circuitGroupId: 0,
   production: [
     {
       name: "Stator",
@@ -78,6 +84,8 @@ const unconfiguredAssembler = {
   isProducing: false,
   isPaused: false,
   isBackedUp: false,
+  location: { xM: -1957, yM: -1056, zM: 86, rotationDeg: 90 },
+  circuitGroupId: 0,
   production: [],
 } satisfies FactoryBuilding;
 
@@ -90,6 +98,8 @@ const fuelRefinery = {
   isProducing: true,
   isPaused: false,
   isBackedUp: false,
+  location: { xM: -328, yM: -1909, zM: 48.0000439453125, rotationDeg: 180 },
+  circuitGroupId: 0,
   production: [
     {
       name: "Fuel",
