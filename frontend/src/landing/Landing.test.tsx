@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { REPO_URL } from "../source";
-import { DEMO_URL, Landing } from "./Landing";
+import { DEMO_URL, Landing, VIDEO_URL } from "./Landing";
 
 function renderLanding() {
   return render(
@@ -21,9 +21,24 @@ describe("Landing", () => {
     expect(screen.getByText(/invite-only during the beta/)).toBeInTheDocument();
   });
 
-  it("describes the Overview picture for screen readers", () => {
-    renderLanding();
-    expect(screen.getByRole("img", { name: /The Overview in the demo/ })).toHaveAttribute("src", "/og-image.png");
+  it("embeds the walkthrough self-hosted, click to play, with its poster", () => {
+    const { container } = renderLanding();
+    const video = container.querySelector("video")!;
+    expect(video).toHaveAttribute("src", VIDEO_URL);
+    expect(VIDEO_URL.startsWith("/")).toBe(true); // our own origin, never a video platform
+    expect(video).toHaveAttribute("poster", "/og-image.png");
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("preload", "none");
+    expect(video).not.toHaveAttribute("autoplay");
+  });
+
+  it("gives the silent video a text alternative, linked to it", () => {
+    const { container } = renderLanding();
+    const video = container.querySelector("video")!;
+    const transcript = container.querySelector<HTMLElement>(`#${video.getAttribute("aria-describedby")}`)!;
+    expect(transcript).not.toBeNull();
+    expect(within(transcript).getAllByRole("listitem", { hidden: true }).length).toBeGreaterThanOrEqual(5);
+    expect(screen.getByText("What the video shows")).toBeInTheDocument();
   });
 
   it("claims only the features that ship: power, factory health, auto-pause", () => {
