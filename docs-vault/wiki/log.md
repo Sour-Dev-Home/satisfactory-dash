@@ -178,3 +178,11 @@ the bottom.
   write endpoints enforce `X-FRM-Authorization` (401 without or with a wrong token, 200 with
   the right one), which settles the header-name question. FRM token rotated (old token now
   401). Runbook section 2 corrected: there may be no launcher file to edit.
+- 2026-09-24 — Backfilled two `lessons-learned.md` entries from the first
+  `security-reviewer` pass on `backend/src/adapters/` (2026-09-22) that never landed on
+  `main`: the commit adding them was pushed to a since-deleted branch
+  (`worktree-lessons-learned`) but never entered a PR, so it was orphaned when PR #5
+  merged an earlier commit on that branch. Confirmed the gap with
+  `git merge-base --is-ancestor` against `origin/main`. Both findings — unvalidated
+  upstream responses and the non-host-scoped self-signed-cert default — are already
+  fixed by PR #17, so backfilled marked `Fixed in #17` rather than as open findings.
