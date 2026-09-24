@@ -66,7 +66,15 @@ async function offlinePage(browser: Browser, baseURL: string, options: Parameter
     const url = new URL(r.url());
     if (!["data:", "blob:"].includes(url.protocol) && url.origin !== origin) problems.push(`off-origin ${r.url()}`);
   });
+  // Both CSP signals, as e2e/fixtures.ts's guards: the console message and the DOM event.
   page.on("console", (m) => { if (/Content[- ]Security[- ]Policy/i.test(m.text())) problems.push(m.text()); });
+  await page.exposeFunction("__reportCspViolation", (text: string) => problems.push(text));
+  await page.addInitScript(() => {
+    document.addEventListener("securitypolicyviolation", (e) => {
+      (window as unknown as { __reportCspViolation: (t: string) => void })
+        .__reportCspViolation(`${e.effectiveDirective} blocked ${e.blockedURI || "inline"}`);
+    });
+  });
   await page.route("**/api/**", (route) => { problems.push(`/api ${route.request().url()}`); return route.abort(); });
   await page.clock.setFixedTime(DEMO_EPOCH);
   return { context, page, problems };
