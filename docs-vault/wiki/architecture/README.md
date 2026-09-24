@@ -10,6 +10,11 @@ decided; when a diagram and an ADR disagree, the ADR wins and the diagram is sta
 | [`03-backend-modules.d2`](./03-backend-modules.d2) ([svg](./satisfactory-dash-03-backend-modules.svg)) | Backend modules and their dependency rules | 0014 |
 | [`04-target.d2`](./04-target.d2) ([svg](./satisfactory-dash-04-target.svg)) | Planned multi-user architecture (not built yet) | 0014, 0017, 0020, 0021 |
 
+## Source of truth
+
+[`../../workspace.dsl`](../../workspace.dsl) is the source of truth for the architecture
+(ADR-0024). The D2 files here are presentation-only (ADR-0024 item 5).
+
 ## Keeping them current
 
 A PR that changes something a diagram shows (topology, module edges) updates the `.d2`

@@ -235,3 +235,8 @@ the bottom.
   Same PR: ADR-0023 (live factory map) committed as `decisions/0023-live-map.md`, accepted by
   the owner 2026-09-24; its coordinate unit (centimetres) stays [NEEDS VERIFICATION] until an
   in-game distance check.
+- 2026-09-24 — ADR-0024 (architecture as code) committed as `decisions/0024-architecture-as-code.md`,
+  accepted by the owner. The Structurizr model lives at `docs-vault/workspace.dsl` (the docs-vault
+  root, because `!adrs` only accepts a subdirectory of the DSL file's folder); it is the source of
+  truth and the D2 diagrams are presentation-only. Phase 3 (dependency-cruiser drift check) and
+  phase 4 (`!adrs`/`!docs`) follow later.
