@@ -26,8 +26,8 @@ function appWith(production: { getFactoryOverview: () => Promise<any> }) {
   return createApp({ logger: createLogger(), routers: [createFactoryRouter(directory)] });
 }
 
-describe("factory response carries unit (ADR-0015 PR 2)", () => {
-  it("real captured FRM data via adapter + ProductionService + Express: every rate has unit null and validates", async () => {
+describe("factory response carries unit (ADR-0015)", () => {
+  it("real captured FRM data via adapter + ProductionService + Express: units come from the catalog and it validates", async () => {
     const adapter = new SatisfactoryServerAdapter(
       { call: async () => undefined as never },
       {
@@ -41,9 +41,14 @@ describe("factory response carries unit (ADR-0015 PR 2)", () => {
     const rates = res.body.data.buildings.flatMap((b: any) => b.production);
     expect(rates.length).toBeGreaterThan(0);
     for (const rate of rates) {
-      expect(rate).toHaveProperty("unit", null);
+      // The backend always sends the field, even though the contract makes it optional.
       expect(Object.keys(rate).sort()).toEqual(Object.keys(ProductionRateSchema.shape).sort());
     }
+    // The captured refinery: Fuel is a liquid (m3/min), Polymer Resin a solid (items/min).
+    const unitOf = (className: string) => rates.find((r: any) => r.className === className)?.unit;
+    expect(unitOf("Desc_LiquidFuel_C")).toBe("m3/min");
+    expect(unitOf("Desc_PolymerResin_C")).toBe("items/min");
+    expect(unitOf("Desc_IronPlateReinforced_C")).toBe("items/min");
   });
 
   it("real units and unknown-item fixtures survive the HTTP round trip unchanged", async () => {

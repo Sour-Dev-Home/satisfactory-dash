@@ -10,7 +10,7 @@ import {
 } from "./modules/gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import { InMemoryServerDirectory, createServersRouter, loadServerRegistryFromEnv } from "./modules/servers/index.js";
-import { createTelemetryRouters, createTelemetryServices } from "./modules/telemetry/index.js";
+import { createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
 const port = Number(process.env.PORT || 3001);
@@ -34,6 +34,12 @@ function orExit<T>(load: () => T): T {
   }
 }
 
+// ADR-0015: one resolver for the whole process, so each unknown item (a modded item, or
+// one newer than the committed catalog) is logged once, not once per request or server.
+const resolveUnit = createUnitResolver((className) =>
+  logger.warn({ className }, "item not in the item-form catalog; its unit is reported as unknown"),
+);
+
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
 const directory = new InMemoryServerDirectory(
@@ -46,7 +52,7 @@ const directory = new InMemoryServerDirectory(
       id,
       displayName,
       services: {
-        telemetry: createTelemetryServices(createGameServerConnection(config)),
+        telemetry: createTelemetryServices(createGameServerConnection(config), resolveUnit),
         settings: createSettingsServices(createServerOptionsPort(config)),
       },
     }));

@@ -11,20 +11,22 @@ import { createPowerRouter } from "./routes/power.js";
 import { ServerStatusService } from "./services/serverStatusService.js";
 import type { ServerStatusAdapterLike } from "./services/serverStatusService.js";
 import { ProductionService } from "./services/productionService.js";
+import type { UnitResolver } from "./services/productionService.js";
 import type { ProductionAdapterLike } from "./services/productionService.js";
 import { PowerService } from "./services/powerService.js";
 import type { PowerAdapterLike } from "./services/powerService.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
+export { createUnitResolver } from "./itemForms.js";
 
 export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike;
 
 /** ADR-0001: one set of services per registered game server. */
-export function createTelemetryServices(ports: TelemetryPorts): TelemetryServices {
+export function createTelemetryServices(ports: TelemetryPorts, resolveUnit?: UnitResolver): TelemetryServices {
   return {
     status: new ServerStatusService(ports),
-    production: new ProductionService(ports),
+    production: new ProductionService(ports, resolveUnit),
     power: new PowerService(ports),
   };
 }

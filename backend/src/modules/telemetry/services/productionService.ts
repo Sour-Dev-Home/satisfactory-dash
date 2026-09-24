@@ -1,5 +1,9 @@
 import type { Factory, FactoryBuilding as FactoryBuildingResponse } from "@satisfactory-dash/shared";
 import type { FactoryBuilding } from "../../gameserver/index.js";
+import { createUnitResolver } from "../itemForms.js";
+import type { ProductionUnit } from "../itemForms.js";
+
+export type UnitResolver = (className: string) => ProductionUnit | null;
 
 export interface ProductionAdapterLike {
   getFactoryBuildings(): Promise<FactoryBuilding[]>;
@@ -26,7 +30,13 @@ export function isBackedUp(building: FactoryBuilding): boolean {
 }
 
 export class ProductionService {
-  constructor(private readonly adapter: ProductionAdapterLike) {}
+  /** `resolveUnit` maps an item className to the contract's `unit` (ADR-0015). The
+   *  composition root passes one shared resolver so an unknown item is logged once per
+   *  process; the default resolves silently. */
+  constructor(
+    private readonly adapter: ProductionAdapterLike,
+    private readonly resolveUnit: UnitResolver = createUnitResolver(() => {}),
+  ) {}
 
   async getFactoryOverview(): Promise<Factory> {
     const buildings = await this.adapter.getFactoryBuildings();
@@ -38,9 +48,8 @@ export class ProductionService {
       isProducing: building.isProducing,
       isPaused: building.isPaused,
       isBackedUp: isBackedUp(building),
-      // The contract now has `unit` (ADR-0015). Every rate is "unknown" (null) until the
-      // item-form catalog lands in the backend PR that follows this contract change.
-      production: building.production.map((rate) => ({ ...rate, unit: null })),
+      // ADR-0015: the unit comes from the game's own item data; null = an unknown item.
+      production: building.production.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
     }));
     return {
       buildings: mapped,

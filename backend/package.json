@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
-    "hash-password": "tsx scripts/hash-password.ts"
+    "hash-password": "tsx scripts/hash-password.ts",
+    "update-item-forms": "tsx scripts/update-item-forms.ts"
   },
   "keywords": [],
   "author": "",
