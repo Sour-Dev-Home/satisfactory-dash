@@ -20,6 +20,21 @@ export function isUniqueViolation(err: unknown): boolean {
   return errorCode(err) === "23505";
 }
 
+/** The name of the unique constraint or index a 23505 violated (pg puts it in `constraint`),
+ *  so a repository can tell "already a member" from "the server already has an owner". */
+export function uniqueViolationConstraint(err: unknown): string | undefined {
+  if (!isUniqueViolation(err)) {
+    return undefined;
+  }
+  const constraint = (err as { constraint?: unknown }).constraint;
+  return typeof constraint === "string" ? constraint : undefined;
+}
+
+/** A foreign key rejected the write (23503): the row it points at does not exist. */
+export function isForeignKeyViolation(err: unknown): boolean {
+  return errorCode(err) === "23503";
+}
+
 /** Node codes for "could not reach or lost the server", worth retrying at startup. */
 const TRANSIENT_NODE_CODES = new Set([
   "ECONNREFUSED",
