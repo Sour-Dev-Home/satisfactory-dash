@@ -84,9 +84,11 @@ export function createAuthRouter(deps: SessionDeps & { authenticator: Authentica
       req.log.warn({ ip, usernameMatched: authenticator.isActiveUser(parsed.data.username) }, "login failed");
       throw new UnauthorizedError("Invalid username or password");
     }
-    rateLimiter.recordSuccess(ip);
     // A database outage here is a 503 (ServiceUnavailableError), not a failed login.
     const session = await store.create(principal);
+    // Only a completed sign-in clears the failure count: a correct password that ends in a 401
+    // (disabled account) or a 503 must not reset it.
+    rateLimiter.recordSuccess(ip);
     setSessionCookie(res, session.cookieValue, session.maxAgeSeconds);
     // The account id, never the username (privacy policy: sign-in logs carry ids).
     req.log.info({ ip, userId: session.user.id }, "login succeeded");
