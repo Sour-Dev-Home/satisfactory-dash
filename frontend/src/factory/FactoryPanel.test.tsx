@@ -1,7 +1,12 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { FactoryResponse } from "@satisfactory-dash/shared";
-import { factoryEmpty, factoryMixed } from "@satisfactory-dash/shared/fixtures";
+import {
+  factoryEmpty,
+  factoryMixed,
+  factoryOldBackend,
+  factoryUnknownItem,
+} from "@satisfactory-dash/shared/fixtures";
 import { FactoryPanel } from "./FactoryPanel";
 
 function rows(): HTMLElement[] {
@@ -66,15 +71,30 @@ describe("FactoryPanel", () => {
 
   it("shows activity from the averaged percent even when isProducing is false", () => {
     render(<FactoryPanel snapshot={factoryMixed} />);
-    expect(rowFor("Alternate: Coated Iron Canister")).toHaveTextContent("Empty Canister: 5.6 / 60 per min (9.4%)");
+    expect(rowFor("Alternate: Coated Iron Canister")).toHaveTextContent(
+      "Empty Canister: 5.6 / 60 items/min (9.4%)",
+    );
   });
 
-  it("shows rates per minute without guessing items or m³", () => {
+  it("shows each rate in the unit the backend reports (ADR-0015)", () => {
     render(<FactoryPanel snapshot={factoryMixed} />);
     const refinery = rowFor("Fuel");
-    expect(refinery).toHaveTextContent("Fuel: 40 / 40 per min (100%)");
-    expect(refinery).toHaveTextContent("Polymer Resin: 30 / 30 per min (100%)");
-    expect(screen.getByRole("table")).not.toHaveTextContent(/m³|m3|items/i);
+    expect(refinery).toHaveTextContent("Fuel: 40 / 40 m³/min (100%)");
+    expect(refinery).toHaveTextContent("Polymer Resin: 30 / 30 items/min (100%)");
+  });
+
+  it("shows just 'per min' for an item whose unit is unknown (null)", () => {
+    render(<FactoryPanel snapshot={factoryUnknownItem} />);
+    const row = rowFor("Modded Widget");
+    expect(row).toHaveTextContent("Modded Widget: 10 / 10 per min");
+    expect(row).not.toHaveTextContent(/m³|items\/min/);
+  });
+
+  it("shows just 'per min' when an older backend omits the unit field", () => {
+    render(<FactoryPanel snapshot={factoryOldBackend} />);
+    const row = rowFor("Iron Plate");
+    expect(row).toHaveTextContent("Iron Plate: 20 / 20 per min (100%)");
+    expect(row).not.toHaveTextContent(/m³|items\/min/);
   });
 
   it("says so for an empty factory", () => {
