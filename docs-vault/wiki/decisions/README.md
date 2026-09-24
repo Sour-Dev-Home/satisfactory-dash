@@ -3,7 +3,7 @@
 One file per decision (ADR), numbered in order. Each has a status, the context that
 forced it, the decision, its consequences, and a "Revisit when" trigger that says what
 would make it worth reopening. Decided 2026-09-22 by the architecture session under
-the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0014). Change
+the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0015). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 
 | ADR | Decision |
@@ -22,6 +22,7 @@ a decision by adding a new ADR that supersedes it, not by rewriting history here
 | [0012](./0012-auto-pause-toggle.md) | Auto-pause off by default, with a user toggle; paused state is visible |
 | [0013](./0013-deployment-topology.md) | Deployment v1: frontend on Cloudflare Workers static assets (was Pages; amended 2026-09-23), backend on the game-server PC behind a Cloudflare Tunnel |
 | [0014](./0014-target-architecture.md) | Target architecture: modular monolith now, service-based with an edge agent later |
+| [0015](./0015-item-form-catalog.md) | Item form (solid vs fluid) from a generated catalog of the game's own data; additive `ProductionRate.unit` |
 
 ## Terms used in the ADRs
 

@@ -199,10 +199,12 @@ above for `getFactory` and `getPower`.
   /Script/FicsitRemoteMonitoring"). Anyone joining an FRM server needs SML + FRM
   installed too.
 
-Still [NEEDS VERIFICATION]: whether building IDs stay stable across a server restart;
-whether Polymer Resin is counted as items/min or m³/min; a reliable per-item
-solid-vs-fluid source (possibly an FRM item/recipe endpoint not yet captured); and the
-blocked-refinery case above.
+Still [NEEDS VERIFICATION]: whether building IDs stay stable across a server restart, and
+the blocked-refinery case above.
+
+Resolved by ADR-0015: the game's own `CommunityResources/Docs/en-US.json` gives every
+item's `mForm`. Polymer Resin is `RF_SOLID`, so it's items/min (Fuel is `RF_LIQUID`,
+m³/min). That file is the per-item solid-vs-fluid source; no FRM endpoint is needed.
 
 ## Full reference
 
