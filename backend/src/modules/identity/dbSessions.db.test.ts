@@ -200,6 +200,9 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
       expect(fresh).not.toBe(old);
       expect(await status(app, old)).toBe(401); // a copied old cookie does not survive a re-login
       expect(await status(app, fresh)).toBe(200);
+      // The login row records the rotation only when a live session really ended.
+      const details = (await admin.query("SELECT detail FROM audit.audit_events WHERE action = 'login' ORDER BY id DESC LIMIT 2")).rows.map((r) => r.detail);
+      expect(details).toEqual([{ rotated: true }, {}]);
     });
 
     it("only the presented session ends: another browser's session stays valid", async () => {

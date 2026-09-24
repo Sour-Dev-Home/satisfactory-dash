@@ -391,3 +391,10 @@ the bottom.
   security review (L3): the pool and startup paths log codes only, but the request error handler
   logs the cause chain, so a database outage line includes the driver's message (never the
   password or URL, never in a response body).
+- 2026-09-25 — Follow-ups to the L1/L2 change, from the architect's review: `setMemberRole` no
+  longer writes an audit row when the role does not change (`AND role <> new` in the UPDATE) and
+  returns `changed` / `unchanged` / `not_found`; the login audit row carries `rotated: true` when
+  a live session really ended. The database runbook gains "Windows port reservations" (Postgres
+  could not bind 5432 because the TCP dynamic port range started at 1024 and Hyper-V reserved
+  5358-5457; fix: reset the dynamic range to 49152/16384 and, optionally, an administered
+  exclusion for 5432).

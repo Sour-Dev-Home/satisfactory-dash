@@ -204,6 +204,20 @@ describe("db session store: create rotation (scripted db)", () => {
     await expect(createDbSessionStore(db).create(principal, OLD_ID)).resolves.toMatchObject({ user: { id: "u1" } });
   });
 
+  it("the login audit row says rotated: true only when a live session really ended", async () => {
+    const auditDetail = (query: ReturnType<typeof fakeDb>["query"]) =>
+      JSON.parse(String((query.mock.calls.find(([s]) => String(s).includes("INSERT INTO audit"))![1] as unknown[])[3]));
+    const ended = script();
+    await createDbSessionStore(ended.db).create(principal, OLD_ID);
+    expect(auditDetail(ended.query)).toEqual({ rotated: true });
+    const unknown = script(() => ({ rows: [] })); // unknown or already-revoked: nothing ended
+    await createDbSessionStore(unknown.db).create(principal, OLD_ID);
+    expect(auditDetail(unknown.query)).toEqual({});
+    const none = script(); // no cookie presented
+    await createDbSessionStore(none.db).create(principal, undefined);
+    expect(auditDetail(none.query)).toEqual({});
+  });
+
   it("a failing revoke rolls the whole login back (no session survives) and outage maps to 503", async () => {
     const { db, calls } = script(() => connRefused);
     await expect(createDbSessionStore(db).create(principal, OLD_ID)).rejects.toBeInstanceOf(ServiceUnavailableError);

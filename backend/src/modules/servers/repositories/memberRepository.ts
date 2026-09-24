@@ -86,27 +86,44 @@ export async function addMember(
   }
 }
 
+// `role <> $3` keeps a no-op update out of the UPDATE, so RETURNING is empty and no audit row is
+// written; `current` (the same non-owner member, before the update) tells "unchanged" apart from
+// "not found".
 const SET_ROLE = `
-  WITH changed AS (
+  WITH current AS (
+    SELECT 1 AS present
+    FROM servers.server_members
+    WHERE server_id = $1 AND user_id = $2 AND role <> 'owner'
+  ), changed AS (
     UPDATE servers.server_members
     SET role = $3
-    WHERE server_id = $1 AND user_id = $2 AND role <> 'owner'
+    WHERE server_id = $1 AND user_id = $2 AND role <> 'owner' AND role <> $3
     RETURNING server_id, user_id, role
   ), audited AS (
     INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
     SELECT $4::uuid, server_id, 'member_role_changed', jsonb_build_object('userId', user_id, 'role', role)
     FROM changed
   )
-  SELECT 1 AS updated FROM changed`;
+  SELECT CASE
+    WHEN EXISTS (SELECT 1 FROM changed) THEN 'changed'
+    WHEN EXISTS (SELECT 1 FROM current) THEN 'unchanged'
+    ELSE 'not_found'
+  END AS outcome`;
+
+const SetRoleRowSchema = z.object({ outcome: z.enum(["changed", "unchanged", "not_found"]) });
+
+/** `changed`: the role was updated (and audited). `unchanged`: the member already had that role,
+ *  nothing was written. `not_found`: no such non-owner member of that server. */
+export type SetMemberRoleResult = "changed" | "unchanged" | "not_found";
 
 /** Changes an admin or viewer's role. The owner's role is never changed here (and nobody becomes
  *  owner here): that is transferOwnership, which keeps exactly one owner throughout. */
 export async function setMemberRole(
   db: Queryable,
   input: { serverId: string; userId: string; role: Exclude<MemberRole, "owner">; actorUserId: string | null },
-): Promise<boolean> {
+): Promise<SetMemberRoleResult> {
   const result = await db.query(SET_ROLE, [input.serverId, input.userId, input.role, input.actorUserId]);
-  return result.rows.length > 0;
+  return parseFirst(SetRoleRowSchema, result.rows, "servers.setMemberRole")?.outcome ?? "not_found";
 }
 
 const REMOVE_MEMBER = `

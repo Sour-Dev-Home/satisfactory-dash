@@ -163,11 +163,12 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       const server = await upsertConfiguredServer(pool, { publicId: "role-1", displayName: "Role" });
       await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" });
       await addMember(pool, { serverId: server.id, userId: member.id, role: "viewer" });
-      expect(await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "admin" })).toBe(true);
+      expect(await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "admin" })).toBe("changed");
       expect(await getMemberRole(pool, { publicId: "role-1", userId: member.id })).toBe("admin");
-      expect(await setMemberRole(pool, { serverId: server.id, userId: owner.id, role: "viewer" })).toBe(false);
+      expect(await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "admin" })).toBe("unchanged");
+      expect(await setMemberRole(pool, { serverId: server.id, userId: owner.id, role: "viewer" })).toBe("not_found");
       expect(await getMemberRole(pool, { publicId: "role-1", userId: owner.id })).toBe("owner");
-      expect(await setMemberRole(pool, { serverId: server.id, userId: "00000000-0000-4000-8000-000000000000", role: "admin" })).toBe(false);
+      expect(await setMemberRole(pool, { serverId: server.id, userId: "00000000-0000-4000-8000-000000000000", role: "admin" })).toBe("not_found");
     });
 
     it("removes a non-owner member, but never the owner", async () => {
@@ -204,10 +205,24 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       const before = (await auditFor(server.id)).length;
       expect(await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" })).toBe("already_member");
       expect(await addMember(pool, { serverId: server.id, userId: actor.id, role: "owner" })).toBe("owner_exists");
-      expect(await setMemberRole(pool, { serverId: server.id, userId: owner.id, role: "viewer" })).toBe(false);
+      expect(await setMemberRole(pool, { serverId: server.id, userId: owner.id, role: "viewer" })).toBe("not_found");
       expect(await removeMember(pool, { serverId: server.id, userId: owner.id })).toBe(false);
       expect(await removeMember(pool, { serverId: server.id, userId: member.id })).toBe(false);
       expect((await auditFor(server.id)).length).toBe(before);
+    });
+
+    it("a role update that changes nothing writes no audit row, and says so", async () => {
+      const [owner, member, actor] = await users(3);
+      const server = await upsertConfiguredServer(pool, { publicId: "aud-3", displayName: "Aud3" });
+      await addMember(pool, { serverId: server.id, userId: owner.id, role: "owner" });
+      await addMember(pool, { serverId: server.id, userId: member.id, role: "viewer" });
+      const roleRows = async () => (await auditFor(server.id)).filter((r) => r.action === "member_role_changed");
+      expect(await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "viewer", actorUserId: actor.id })).toBe("unchanged");
+      expect(await roleRows()).toHaveLength(0);
+      expect(await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "admin", actorUserId: actor.id })).toBe("changed");
+      expect(await setMemberRole(pool, { serverId: server.id, userId: member.id, role: "admin", actorUserId: actor.id })).toBe("unchanged");
+      expect(await roleRows()).toHaveLength(1); // only the real change
+      expect(await getMemberRole(pool, { publicId: "aud-3", userId: member.id })).toBe("admin");
     });
 
     it("records an ownership transfer with the old owner as actor, and nothing when it is refused", async () => {
