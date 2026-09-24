@@ -13,6 +13,11 @@ dist-ssr
 *.local
 .wrangler
 
+# Playwright: local run output, and the Playwright MCP's screenshots/snapshots
+test-results
+playwright-report
+.playwright-mcp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -42,7 +42,18 @@ contract needs to grow, not that this module should special-case a backend detai
   details. API calls are mocked with MSW (`src/test/`), using handlers built only from
   `@satisfactory-dash/shared/fixtures`. Override a route per test with `server.use(...)`.
 - Fixtures never reach production code: `oxlint` rejects any import of
-  `@satisfactory-dash/shared/fixtures` outside `src/test/` and `*.test.*` files.
+  `@satisfactory-dash/shared/fixtures` outside `src/test/`, `e2e/` and `*.test.*` files.
+- UI states live in `src/test/scenarios.ts` (built only from the shared fixtures). Two
+  consumers, one source:
+  - `npm run dev:mock -w frontend`: the dev server with the API mocked in the browser (MSW);
+    pick a state with `?scenario=<name>`. Use it with the Playwright MCP and the ui-reviewer.
+    The MSW worker is served by a Vite plugin in mock mode only, never from `public/`.
+  - `npm run e2e -w frontend` (ADR-0016 item 5): Playwright against the production build,
+    served by `vite preview` with `public/_headers`, at 1440 and 390 px. Every test fails on
+    a CSP violation or an unmocked `/api` call (one tolerated exception, zod's eval probe,
+    documented in `e2e/fixtures.ts`). axe runs report-only until ADR-0016 step 4. Screenshot
+    comparisons run only with `PLAYWRIGHT_SNAPSHOTS=1` (CI's Linux image; fonts differ per OS).
+  A new UI state gets a scenario and a case in `e2e/states.spec.ts`.
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
   Served on the custom domain only (`workers_dev` and `preview_urls` are off).
