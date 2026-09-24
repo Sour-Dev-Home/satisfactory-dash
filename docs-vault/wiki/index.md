@@ -27,3 +27,6 @@ added or removed.
   accepted, and builds only after ADR-0025 gate A).
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions.
+- [`legal/privacy-terms-outline.md`](./legal/privacy-terms-outline.md) — an outline (not the
+  published policy, not legal advice) for the privacy policy and terms, with `[OWNER]`, `[LEGAL]`
+  and `[BUILD]` markers; roadmap 2b, needed before ADR-0025 gate B.
