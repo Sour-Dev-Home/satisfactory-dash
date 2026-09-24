@@ -74,6 +74,11 @@ function firstArgument(code: string, open: number): string {
   return code.slice(open, i);
 }
 
+/** Escapes every regular-expression metacharacter (including the backslash itself). */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** A template literal that interpolates, or a "+" outside every string (concatenation). */
 function buildsTextFromInput(argument: string): boolean {
   if (/`(?:[^`\\]|\\.)*\$\{/.test(argument)) {
@@ -99,7 +104,7 @@ export function unsafeQueryCalls(source: string): string[] {
     // A bare variable: look at how it was declared in this file (`const q = \`...${x}\``).
     const name = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(argument)?.[1];
     if (name !== undefined) {
-      const declaration = new RegExp(`\\b(?:const|let|var)\\s+${name.replace(/\$/g, "\\$")}\\b[^=]*=`, "g");
+      const declaration = new RegExp(`\\b(?:const|let|var)\\s+${escapeRegExp(name)}\\b[^=]*=`, "g");
       for (const decl of code.matchAll(declaration)) {
         const value = firstArgument(code, decl.index + decl[0].length).trim();
         const rest = code.slice(decl.index + decl[0].length).split(/;\s*\n/)[0] ?? "";
