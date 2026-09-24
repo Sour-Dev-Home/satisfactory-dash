@@ -18,6 +18,10 @@ retyping one is breaking (ADR-0007).
   resource (`health`, `servers`, `status`, `factory`, `power`, `auth`, `settings`), and `endpoints.ts`
   mapping each route to its path builder and response schema. Every field's unit and
   range is in its `.describe()` text (ADR-0006).
+- `src/browser.ts` — exported as `@satisfactory-dash/shared/browser`: sets zod's `jitless`
+  option so a strict CSP (no `unsafe-eval`) sees no `securitypolicyviolation` from zod's
+  runtime-compilation probe. The frontend imports it first in its entry point; the backend
+  must never import it.
 - `fixtures/` — example responses built from real 2026-09-22 captures, exported as
   `@satisfactory-dash/shared/fixtures`. For tests and mock servers only; production code
   must never import them.
