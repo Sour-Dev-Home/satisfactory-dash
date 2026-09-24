@@ -64,10 +64,10 @@ const INSERT_MEMBER = `
  *  (omit it for the system, e.g. startup registration of the bootstrap owner). */
 export async function addMember(
   db: Queryable,
-  input: { serverId: string; userId: string; role: MemberRole; actorUserId?: string },
+  input: { serverId: string; userId: string; role: MemberRole; actorUserId: string | null },
 ): Promise<AddMemberResult> {
   try {
-    await db.query(INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId ?? null]);
+    await db.query(INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId]);
     return "added";
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -103,9 +103,9 @@ const SET_ROLE = `
  *  owner here): that is transferOwnership, which keeps exactly one owner throughout. */
 export async function setMemberRole(
   db: Queryable,
-  input: { serverId: string; userId: string; role: Exclude<MemberRole, "owner">; actorUserId?: string },
+  input: { serverId: string; userId: string; role: Exclude<MemberRole, "owner">; actorUserId: string | null },
 ): Promise<boolean> {
-  const result = await db.query(SET_ROLE, [input.serverId, input.userId, input.role, input.actorUserId ?? null]);
+  const result = await db.query(SET_ROLE, [input.serverId, input.userId, input.role, input.actorUserId]);
   return result.rows.length > 0;
 }
 
@@ -124,9 +124,9 @@ const REMOVE_MEMBER = `
 /** Removes a non-owner member. The owner can't be removed (transfer ownership first). */
 export async function removeMember(
   db: Queryable,
-  input: { serverId: string; userId: string; actorUserId?: string },
+  input: { serverId: string; userId: string; actorUserId: string | null },
 ): Promise<boolean> {
-  const result = await db.query(REMOVE_MEMBER, [input.serverId, input.userId, input.actorUserId ?? null]);
+  const result = await db.query(REMOVE_MEMBER, [input.serverId, input.userId, input.actorUserId]);
   return result.rows.length > 0;
 }
 

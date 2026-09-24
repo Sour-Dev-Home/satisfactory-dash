@@ -9,7 +9,25 @@ import {
   softDeleteServer,
   upsertConfiguredServer,
 } from "./serverRepository.js";
-import { addMember, getMemberRole, removeMember, setMemberRole, transferOwnership } from "./memberRepository.js";
+import {
+  addMember as addMemberAudited,
+  getMemberRole,
+  removeMember as removeMemberAudited,
+  setMemberRole as setMemberRoleAudited,
+  transferOwnership,
+} from "./memberRepository.js";
+
+// The repository requires an explicit actor (null = the system). Most tests here don't care who
+// acted, so these default it; the audit tests below pass one explicitly.
+type WithOptionalActor<F extends (db: never, input: never) => unknown> = (
+  db: Parameters<F>[0],
+  input: Omit<Parameters<F>[1], "actorUserId"> & { actorUserId?: string | null },
+) => ReturnType<F>;
+const addMember: WithOptionalActor<typeof addMemberAudited> = (db, input) => addMemberAudited(db, { actorUserId: null, ...input });
+const setMemberRole: WithOptionalActor<typeof setMemberRoleAudited> = (db, input) =>
+  setMemberRoleAudited(db, { actorUserId: null, ...input });
+const removeMember: WithOptionalActor<typeof removeMemberAudited> = (db, input) =>
+  removeMemberAudited(db, { actorUserId: null, ...input });
 
 // Runs as satis_app against a real Postgres. (The identity repository is used only to make users.)
 const available = dbTestsAvailable();

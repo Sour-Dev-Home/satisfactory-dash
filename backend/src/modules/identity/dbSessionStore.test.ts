@@ -155,6 +155,71 @@ describe("db session store: create", () => {
   });
 });
 
+describe("db session store: create rotation (scripted db)", () => {
+  const activeUser = {
+    rows: [{ id: "u1", display_name: "op", email: null, status: "active", created_at: new Date() }],
+  };
+  const OLD_ID = "B".repeat(43);
+  const script = (revokeOut: () => { rows: unknown[] } | Error = () => ({ rows: [{ user_id: "u2" }] })) =>
+    fakeDb([
+      ["SELECT u.id", () => activeUser],
+      ["INSERT INTO identity.sessions", () => ({ rows: [] })],
+      ["INSERT INTO audit", () => ({ rows: [{ id: "1", at: new Date(), actor_user_id: "u1", server_id: null, action: "login", detail: {} }] })],
+      ["SET revoked_at", revokeOut],
+      ["SELECT provider", () => ({ rows: [{ provider: "local" }] })],
+    ]);
+  const principal = { subject: "operator", name: "op" };
+  const revokeCalls = (query: ReturnType<typeof fakeDb>["query"]) =>
+    query.mock.calls.filter(([sql]) => String(sql).includes("SET revoked_at"));
+
+  it("revokes exactly the presented session, after the new one is inserted, inside the transaction", async () => {
+    const { db, query } = script();
+    const created = await createDbSessionStore(db).create(principal, OLD_ID);
+    const order = query.mock.calls.map(([sql]) => String(sql).trim().split(/\s+/).slice(0, 3).join(" "));
+    expect(order.indexOf("BEGIN")).toBeGreaterThan(-1);
+    const upd = order.indexOf("UPDATE identity.sessions SET");
+    expect(upd).toBeGreaterThan(-1);
+    expect(order.indexOf("INSERT INTO identity.sessions")).toBeLessThan(upd);
+    expect(upd).toBeLessThan(order.indexOf("COMMIT"));
+    const revokes = revokeCalls(query);
+    expect(revokes).toHaveLength(1);
+    const hash = (revokes[0]![1] as Buffer[])[0]!;
+    // Not the new session's hash: the fresh id is never the one revoked.
+    const insertHash = (query.mock.calls.find(([s]) => String(s).includes("INSERT INTO identity.sessions"))![1] as Buffer[])[0]!;
+    expect(Buffer.compare(hash, insertHash)).not.toBe(0);
+    expect(created.cookieValue).not.toBe(OLD_ID);
+  });
+
+  it.each([undefined, "", "short", "B".repeat(44), `${"B".repeat(42)}.`, "signed.token.value"])(
+    "no revoke for absent or malformed replacing value %j",
+    async (value) => {
+      const { db, query } = script();
+      await createDbSessionStore(db).create(principal, value);
+      expect(revokeCalls(query)).toHaveLength(0);
+    },
+  );
+
+  it("an already-revoked or unknown replacing session (no row) is ignored and login succeeds", async () => {
+    const { db } = script(() => ({ rows: [] }));
+    await expect(createDbSessionStore(db).create(principal, OLD_ID)).resolves.toMatchObject({ user: { id: "u1" } });
+  });
+
+  it("a failing revoke rolls the whole login back (no session survives) and outage maps to 503", async () => {
+    const { db, calls } = script(() => connRefused);
+    await expect(createDbSessionStore(db).create(principal, OLD_ID)).rejects.toBeInstanceOf(ServiceUnavailableError);
+    expect(calls).toContain("ROLLBACK");
+    expect(calls).not.toContain("COMMIT");
+  });
+
+  it("a disabled user never reaches the rotation: the presented session is left alone", async () => {
+    const { db, query } = fakeDb([
+      ["SELECT u.id", () => ({ rows: [{ id: "u1", display_name: "op", email: null, status: "disabled", created_at: new Date() }] })],
+    ]);
+    await expect(createDbSessionStore(db).create(principal, OLD_ID)).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(revokeCalls(query)).toHaveLength(0);
+  });
+});
+
 describe("recognizes", () => {
   it("accepts exactly 43 base64url chars", () => {
     const store = createDbSessionStore(fakeDb([]).db);

@@ -19,7 +19,8 @@ export async function registerConfiguredServers(
     const row = await upsertConfiguredServer(db, { publicId: server.id, displayName: server.displayName });
     // "owner_exists" and "already_member" are the normal restart outcomes; a missing user or
     // server would leave the server ownerless while the process reports ready, so it fails loudly.
-    const outcome = await addMember(db, { serverId: row.id, userId: bootstrapOwnerId, role: "owner" });
+    // actorUserId null: the system does this, not a signed-in user.
+    const outcome = await addMember(db, { serverId: row.id, userId: bootstrapOwnerId, role: "owner", actorUserId: null });
     if (outcome === "unknown_server_or_user") {
       throw new Error(`could not seed an owner for server "${server.id}": unknown server or user`);
     }
