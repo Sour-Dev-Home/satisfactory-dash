@@ -4,8 +4,11 @@ import type { Queryable } from "../db/schemaVersion.js";
 
 /**
  * The audit trail (ADR-0025 security review points): append-only, and satis_app has no UPDATE or
- * DELETE on the table, so a bug or a compromised backend cannot rewrite history. Never put
- * secrets, tokens, cookies or emails in `detail`: the trail is readable by operators.
+ * DELETE on the table, so a bug or a compromised backend cannot rewrite history.
+ *
+ * RULE for `detail`: only ids and codes. Never emails, names, tokens, cookies or any other
+ * personal data. The trail is readable by operators, and keeping it free of personal data means
+ * deleting an account needs no audit scrubbing (the actor is an id that simply stops resolving).
  */
 export interface AuditEventInput {
   /** dot/underscore action name, e.g. "login", "logout", "revoke_all", "grant_owner". */

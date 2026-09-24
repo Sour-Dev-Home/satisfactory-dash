@@ -33,9 +33,16 @@ CREATE TABLE identity.login_attempts (
   state         text        NOT NULL CHECK (length(state) BETWEEN 16 AND 256),
   nonce         text        NOT NULL CHECK (length(nonce) BETWEEN 16 AND 256),
   code_verifier text        NOT NULL CHECK (length(code_verifier) BETWEEN 43 AND 128),
-  -- A relative /app path only, so a login can never redirect off-site (no "//", no backslash).
-  -- Dot segments are refused as well: no legitimate return path needs ".." and it keeps the rule easy to audit.
-  return_path   text        NOT NULL CHECK (return_path ~ '^/app([/?#][^\\[:cntrl:]]*)?$' AND position('..' in return_path) = 0),
+  -- A relative /app path only, so a login can never redirect off-site. An ASCII-only allowlist
+  -- (RFC 3986 characters; no backslash, whitespace or control characters), so a non-ASCII
+  -- character simply fails and nothing depends on the database locale. The same text is
+  -- RETURN_PATH_REGEX_SOURCE in modules/identity/returnPath.ts (a test asserts they agree).
+  -- Dot segments are refused too: no legitimate return path needs "..".
+  return_path   text        NOT NULL CHECK (
+    length(return_path) <= 2048
+    AND return_path ~ '^/app(/[A-Za-z0-9._~!$&''()*+,;=:@%-]*)*(\?[A-Za-z0-9._~!$&''()*+,;=:@%/?-]*)?(#[A-Za-z0-9._~!$&''()*+,;=:@%/?-]*)?$'
+    AND position('..' in return_path) = 0
+  ),
   created_at   timestamptz  NOT NULL DEFAULT now(),
   expires_at   timestamptz  NOT NULL,
   CHECK (expires_at > created_at)

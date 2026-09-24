@@ -59,6 +59,12 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       expect(await getMemberRole(pool, { publicId: "revive-1", userId: owner.id })).toBeUndefined();
       expect(await getMemberRole(pool, { publicId: "revive-1", userId: member.id })).toBeUndefined();
       expect((await listServersForUser(pool, owner.id)).map((s) => s.publicId)).not.toContain("revive-1");
+      // A startup upsert that meets a soft-deleted configured id undeletes it with ONLY the
+      // bootstrap owner: the old owner's seat is free, so the new owner can be added.
+      const [bootstrap] = await users(1);
+      expect(await addMember(pool, { serverId: again.id, userId: bootstrap.id, role: "owner" })).toBe("added");
+      expect(await getMemberRole(pool, { publicId: "revive-1", userId: bootstrap.id })).toBe("owner");
+      expect(await getMemberRole(pool, { publicId: "revive-1", userId: owner.id })).toBeUndefined();
     });
 
     it("an unknown or soft-deleted server is not found, and re-registering brings it back", async () => {

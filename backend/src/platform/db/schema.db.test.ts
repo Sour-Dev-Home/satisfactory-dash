@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../test-support/testDb.js";
+import { RETURN_PATH_ACCEPTED, RETURN_PATH_REJECTED } from "../../../test-support/returnPathCases.js";
 
 // ADR-0025 PR 3: the rules live in constraints, so they are tested against the real schema with
 // raw SQL (no repository in the way). Every constraint below is one a repository bug could break.
@@ -119,24 +120,19 @@ describe.skipIf(!available)("core schema constraints", () => {
         [overrides.idHash ?? Buffer.alloc(32, Math.floor(Math.random() * 250) + 1), overrides.state ?? LONG("s", 32), LONG("n", 32), overrides.verifier ?? LONG("v", 43), returnPath],
       );
 
-    it.each(["/app", "/app/", "/app/servers/abc", "/app?tab=power", "/app#x", "/app/a/b?c=d&e=f"])("accepts the relative path %s", async (path) => {
+    // The same cases the zod schema is tested with (test-support/returnPathCases.ts), so the
+    // database's CHECK and the application's regex are held to one list.
+    it.each(RETURN_PATH_ACCEPTED)("accepts the relative path %s", async (path) => {
       await expect(insert(path)).resolves.toBeTruthy();
     });
 
-    it.each([
-      "//evil.example",
-      "/app/../..//evil",
-      "https://evil.example/app",
-      "/application",
-      "/apple",
-      "app",
-      "",
-      "/app\\evil",
-      "/app/\nx",
-      "/other",
-      "\\\\evil",
-    ])("refuses the return path %j (an open redirect) with a check violation", async (path) => {
+    it.each(RETURN_PATH_REJECTED)("refuses %s with a check violation", async (_label, path) => {
       await rejects(insert(path), "23514");
+    });
+
+    it("refuses a path over 2048 characters", async () => {
+      await rejects(insert(`/app/${"a".repeat(2044)}`), "23514");
+      await expect(insert(`/app/${"a".repeat(2043)}`)).resolves.toBeTruthy();
     });
 
     it("refuses short state or verifier values and a wrong-length id hash", async () => {

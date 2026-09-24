@@ -14,6 +14,11 @@ import type { MemberRole } from "./serverRepository.js";
  * database: primary key (server, user), a role check, and a partial unique index that allows at
  * most one owner per server. Every lookup scopes by user AND resolves the server by its public
  * id in the same query, so a caller cannot ask about a server without stating who is asking.
+ *
+ * KNOWN CONSTRAINT: the one-owner index allows AT MOST one owner, not exactly one, and deleting a
+ * user cascades their memberships away. So deleting an account that owns a server would leave it
+ * with zero owners. The account-deletion work (before member invites) must transfer or delete
+ * owned servers first; nothing in this file prevents the orphaned state.
  */
 const ONE_OWNER_INDEX = "server_members_one_owner";
 const MEMBER_PKEY = "server_members_pkey";

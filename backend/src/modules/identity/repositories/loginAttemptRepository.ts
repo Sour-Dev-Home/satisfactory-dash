@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { ReturnPathSchema } from "../returnPath.js";
 
 /**
  * One row per in-flight OIDC login (ADR-0025 decision 3): state, nonce and the PKCE verifier live
@@ -38,11 +39,15 @@ const INSERT_ATTEMPT = `
   INSERT INTO identity.login_attempts (id_hash, state, nonce, code_verifier, return_path, expires_at)
   VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6::int))`;
 
-/** The table refuses a return path that is not a relative /app path (a CHECK constraint). */
+/** The return path is validated here (ReturnPathSchema) and again by the table's CHECK
+ *  constraint, which uses the same regex: a relative, ASCII-only /app path or nothing. */
 export async function createLoginAttempt(
   db: Queryable,
   input: { idHash: Buffer } & LoginAttempt,
 ): Promise<void> {
+  if (!ReturnPathSchema.safeParse(input.returnPath).success) {
+    throw new RangeError("The login return path must be a relative, ASCII-only /app path.");
+  }
   await db.query(INSERT_ATTEMPT, [
     input.idHash,
     input.state,

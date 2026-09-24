@@ -232,10 +232,11 @@ describe.skipIf(!available)("identity repositories against a real Postgres", () 
       expect((await admin.query("SELECT 1 FROM identity.login_attempts WHERE id_hash = $1", [idHash])).rows).toEqual([]);
     });
 
-    it("the database refuses an off-site return path even if a caller forgot to check", async () => {
-      for (const path of ["//evil.example", "https://evil.example/app", "/elsewhere"]) {
-        await expect(createLoginAttempt(pool, { idHash: newLoginAttemptId().idHash, ...attempt(path) })).rejects.toMatchObject({ code: "23514" });
+    it("refuses an off-site or non-ASCII return path in the repository, before the database is asked", async () => {
+      for (const path of ["//evil.example", "https://evil.example/app", "/elsewhere", "/app/a b", "/app\\x"]) {
+        await expect(createLoginAttempt(pool, { idHash: newLoginAttemptId().idHash, ...attempt(path) })).rejects.toThrow(RangeError);
       }
+      expect((await admin.query("SELECT count(*)::int AS n FROM identity.login_attempts WHERE return_path LIKE '//%'")).rows[0].n).toBe(0);
     });
 
     it("lets an attempt live about ten minutes", async () => {
