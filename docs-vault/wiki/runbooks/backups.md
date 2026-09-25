@@ -68,6 +68,10 @@ Delete the trial key and folder afterwards.
 
 ## Restore rehearsal (do it once before ADR-0025 deploy B, then now and then)
 
+**The database roles must exist first.** The dump keeps grants to `satis_app`, so `pg_restore` needs the
+roles that `npm run db:init -w backend` creates (`satis_migrator`, `satis_app`) to exist in the target
+cluster, or it reports errors for every grant. On a fresh cluster run `db:init` before restoring.
+
 Work in a scratch folder **outside the repo** (`.gitignore` also blocks `*.dump`, `*.age` and `*.key` as a
 safety net, but don't rely on it). Download with **your admin AWS identity**, not the put-only
 `satis-backup` profile (it can't read):
