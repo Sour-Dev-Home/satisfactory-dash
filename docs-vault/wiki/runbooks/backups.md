@@ -5,8 +5,10 @@ uploaded to a private S3 bucket in **your own AWS account** with a **put-only** 
 `age` key stays offline in your password manager, so neither this PC nor a leaked AWS key can read old
 backups. The dumps are well under 1 MB, so 30 days costs effectively nothing.
 
-No session (Claude or otherwise) creates AWS resources, holds your AWS credentials or the private
-key. Everything under "Your one-time setup" is yours to do.
+No session creates AWS resources, except the one-time bucket and budget setup, which reactapps-dc may run
+through the time-boxed `satis-setup` identity described in ADR-0025 (decision 7 amendment), with every command
+shown to the owner first. The owner creates both IAM users and types every secret himself. No session holds
+your AWS credentials or the private key.
 
 What the backup script does (`npm run backup -w backend`, source `backend/src/platform/backup/backup.ts`):
 
@@ -49,6 +51,92 @@ allow-listed environment reaches `pg_dump`, `age` and `aws` (no `.env` secrets e
 6. **`backend\.env`:** set `BACKUP_AGE_RECIPIENT` and `BACKUP_S3_BUCKET` (see `backend/.env.example`).
 7. **Tools on PATH:** `pg_dump` (PostgreSQL client tools, the same major version as the server or newer),
    `age`, and the AWS CLI v2.
+
+### The `satis-setup` identity (optional; owner creates, delete the user after setup)
+
+If you want reactapps-dc to run the one-time bucket and budget setup for you (every command shown to you
+first), you create a **separate** IAM user `satis-setup` (not your admin, not `satis-backup`) and type its
+secret yourself into `aws configure --profile satis-setup`. No session is given or pastes the secret, and only
+the named profile is used. Sessions are instructed never to read the profile's credentials file (`~/.aws`); the
+real protection is the narrow policy and the 48-hour expiry, not secrecy from sessions. Run the setup **before
+the first backup exists**: within its window this identity could change lifecycle, versioning or encryption on a
+bucket that already holds backups. Its policy allows only:
+
+- on `arn:aws:s3:::satis-dash-backups-*`: `s3:CreateBucket`; `s3:PutBucketPublicAccessBlock` and
+  `s3:GetBucketPublicAccessBlock`; `s3:PutBucketVersioning` and `s3:GetBucketVersioning`;
+  `s3:PutEncryptionConfiguration` and `s3:GetEncryptionConfiguration`; `s3:PutLifecycleConfiguration` and
+  `s3:GetLifecycleConfiguration`; `s3:PutBucketOwnershipControls` and `s3:GetBucketOwnershipControls`;
+  `s3:GetBucketLocation`;
+- `budgets:ViewBudget` and `budgets:ModifyBudget` on `arn:aws:budgets::<account>:budget/*`.
+
+No object actions (no Get, Put or DeleteObject), no `s3:DeleteBucket`, `PutBucketPolicy` or `PutBucketAcl`, and
+**no IAM actions at all**. Set the bucket's ownership control to `BucketOwnerEnforced` (ACLs off). Every
+statement carries the conditions `aws:SecureTransport = true` and `aws:CurrentTime` before a deadline about 48
+hours out, so the identity expires by itself even if you forget it. The expiry only exists if the condition is in
+the policy you paste, so use this shape and replace `<deadline>` with a UTC time about 48 hours from now
+(`2026-01-01T00:00:00Z` form) and `<account>` with your account id:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketPublicAccessBlock", "s3:GetBucketPublicAccessBlock",
+        "s3:PutBucketVersioning", "s3:GetBucketVersioning",
+        "s3:PutEncryptionConfiguration", "s3:GetEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration",
+        "s3:PutBucketOwnershipControls", "s3:GetBucketOwnershipControls",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::satis-dash-backups-*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "DateLessThan": { "aws:CurrentTime": "<deadline>" }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["budgets:ViewBudget", "budgets:ModifyBudget"],
+      "Resource": "arn:aws:budgets::<account>:budget/*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "DateLessThan": { "aws:CurrentTime": "<deadline>" }
+      }
+    }
+  ]
+}
+```
+
+If the budget alert ever needs a notification channel beyond email, that is a new action to add here and to the
+ADR, not something to grant ad hoc.
+Bucket names are `satis-dash-backups-<random suffix>` (no personal data in a globally visible name). After the
+setup, **delete the whole IAM user** (not just the key) and confirm in the IAM console; CloudTrail's free 90-day
+event history is the audit trail. You still create `satis-backup` (put-only) and its key yourself, and the age
+private key never leaves you.
+
+## Missed-backup alerting (optional heartbeat)
+
+Set `BACKUP_HEARTBEAT_URL` in `backend\.env` to a Better Stack heartbeat URL (create a daily heartbeat with a grace
+period that alerts the ops address). After a backup that was **really uploaded**, the script sends one GET to it
+(10-second timeout, redirects never followed). No ping in time means the backup did not happen, for whatever
+reason: the task did not run, the PC was off, a step failed. Sending it is best effort: a failed ping is logged
+(`heartbeat failed ...`) and never fails the backup, and a local-only trial run (no bucket) never pings. **The URL
+is a secret** (anyone holding it can mark the heartbeat healthy): it lives only in `.env`, is never logged or put
+in an error message, and must be `https` with no user name or password in it. A malformed value does NOT stop
+the backup: the script logs one warning (`backup_heartbeat_misconfigured`, never the URL), skips the ping and
+finishes the backup, so the data stays protected and Better Stack's missed-heartbeat alert still fires on the
+absent ping.
+
+## Recommended database role
+
+Create the read-only `satis_backup` role (`DB_BACKUP_PASSWORD` when running `npm run db:init -w backend`, see the
+database runbook) and set `BACKUP_DATABASE_URL=postgres://satis_backup:<password>@localhost:5432/satis` in
+`backend\.env`. It can read every table and sequence (so a dump is complete by construction) and change nothing,
+and the backup never borrows the app's or the migrator's credentials. Without `BACKUP_DATABASE_URL` the backup
+uses `DATABASE_URL` (the app role).
 
 ## Try it locally first, without AWS
 
