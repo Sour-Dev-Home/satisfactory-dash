@@ -153,31 +153,79 @@ describe("Google sign-in routes", () => {
       expect(issuer.hits()["/.well-known/openid-configuration"]).toBe(before);
     });
 
-    it("answers 503 service_unavailable when Google is unreachable, writes nothing, and leaves the rest of the API alone", async () => {
-      const { app, db } = build({ issuerUrl: new URL("http://127.0.0.1:1") });
-      const res = await request(app).get("/api/auth/google/start");
-      expect(res.status).toBe(503);
-      expect(res.body.error.code).toBe("service_unavailable");
-      expect(db.rows.size).toBe(0);
+    // Top-level navigations: a failure is a redirect to the login screen, never JSON at the API host.
+    const UNAVAILABLE = `${FRONTEND}/app/login?error=unavailable`;
+    const expectRedirectOnly = (res: request.Response, location: string) => {
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe(location);
+      expect(res.headers["content-type"] ?? "").not.toMatch(/json/);
+      expect(res.text).not.toContain('"error"');
       expect(setCookies(res).some((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))).toBe(false);
+    };
+
+    it("redirects to error=unavailable when Google is unreachable, writes nothing, and leaves the rest of the API alone", async () => {
+      const { app, db, lines } = build({ issuerUrl: new URL("http://127.0.0.1:1") });
+      const res = await request(app).get("/api/auth/google/start");
+      expectRedirectOnly(res, UNAVAILABLE);
+      expect(db.rows.size).toBe(0);
+      // The real cause is logged as a fixed code, with no message or detail.
+      const text = JSON.stringify(lines);
+      expect(text).toContain("google_start_unavailable");
+      expect(text).not.toContain("ECONNREFUSED");
       // Any other route still answers normally (here: the guard's 401, not a crash or a hang).
       expect((await request(app).get("/api/anything")).status).toBe(401);
     });
 
-    it("answers 503 when the database is down, without leaving a cookie", async () => {
+    it("redirects to error=unavailable when the database is down, without leaving a cookie", async () => {
       const { app, db } = build();
       db.failWith = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
-      const res = await request(app).get("/api/auth/google/start");
-      expect(res.status).toBe(503);
-      expect(setCookies(res).some((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))).toBe(false);
+      expectRedirectOnly(await request(app).get("/api/auth/google/start"), UNAVAILABLE);
     });
 
-    it(`is capped per IP at ${LOGIN_REQUESTS_PER_WINDOW} requests`, async () => {
+    it("redirects to error=failed (never JSON) on an unexpected failure, logging only a fixed code", async () => {
+      const { app, db, lines } = build();
+      db.failWith = new Error("something unexpected SECRETDETAIL");
+      expectRedirectOnly(await request(app).get("/api/auth/google/start"), `${FRONTEND}/app/login?error=failed`);
+      expect(JSON.stringify(lines)).toContain("google_start_failed");
+      expect(JSON.stringify(lines)).not.toContain("SECRETDETAIL");
+    });
+
+    it(`over the cap of ${LOGIN_REQUESTS_PER_WINDOW} requests per IP, /start redirects to error=unavailable (no 429 body)`, async () => {
       const { app } = build();
       for (let i = 0; i < LOGIN_REQUESTS_PER_WINDOW; i++) {
         expect((await request(app).get("/api/auth/google/start")).status).toBe(302);
       }
-      expect((await request(app).get("/api/auth/google/start")).status).toBe(429);
+      const over = await request(app).get("/api/auth/google/start");
+      expect(over.status).toBe(302);
+      expect(over.headers.location).toBe(UNAVAILABLE);
+      expect(over.headers["content-type"] ?? "").not.toMatch(/json/);
+      expect(over.headers["cache-control"]).toBe("no-store");
+    });
+
+    it("the cap is shared with /callback, which also redirects to error=unavailable over the cap", async () => {
+      const { app } = build();
+      for (let i = 0; i < LOGIN_REQUESTS_PER_WINDOW; i++) {
+        await request(app).get("/api/auth/google/callback");
+      }
+      const over = await request(app).get("/api/auth/google/callback?code=x&state=y");
+      expect(over.status).toBe(302);
+      expect(over.headers.location).toBe(UNAVAILABLE);
+      expect(over.headers["content-type"] ?? "").not.toMatch(/json/);
+      expect(over.text).not.toContain("code=x");
+    });
+
+    it("never logs the redirect's state, nonce or code_challenge: the Location header is redacted", async () => {
+      const { app, lines } = build();
+      const { authUrl } = await beginGoogleSignIn(app);
+      const secrets = [authUrl!.searchParams.get("state")!, authUrl!.searchParams.get("nonce")!, authUrl!.searchParams.get("code_challenge")!];
+      for (const secret of secrets) {
+        expect(secret.length).toBeGreaterThan(15);
+      }
+      const text = JSON.stringify(lines);
+      expect(text).toContain("[Redacted]");
+      for (const secret of secrets) {
+        expect(text).not.toContain(secret);
+      }
     });
   });
 
