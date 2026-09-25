@@ -27,7 +27,8 @@ describe("the demo app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enter demo" }));
     expect(await screen.findByText("Demo factory")).toBeInTheDocument();
     const rows = await screen.findByRole("list", { name: "Sections" });
-    expect(await within(rows).findByText(/Demo World · 3 \/ 4 players/)).toBeInTheDocument();
+    // Real clock here: the demo's players come and go, so any count of the 4 slots.
+    expect(await within(rows).findByText(/Demo World · [0-4] \/ 4 players/)).toBeInTheDocument();
     expect(screen.getByText(/Demo data: nothing here is live/)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });

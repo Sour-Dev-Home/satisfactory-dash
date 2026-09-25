@@ -65,6 +65,5 @@ jobs:
           path: |
             frontend/demo-video/walkthrough.mp4
             frontend/demo-video/poster.png
-            frontend/demo-video/walkthrough.webm
           if-no-files-found: error
           retention-days: 30

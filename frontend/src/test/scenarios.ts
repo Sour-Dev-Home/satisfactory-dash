@@ -102,6 +102,11 @@ export const SCENARIOS = {
   "paused": { status: ok(statusPaused) },
   "stale": { status: ok(statusStale), power: ok(powerStale) },
   "slow-tick": { status: ok(statusSlow) },
+  // The Players card's filled figures and its "+N" (every status fixture has 0 connected).
+  "players-some": { status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: 3 } }) },
+  "players-many": {
+    status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: 10, playerLimit: 12 } }),
+  },
   "no-game": { status: ok(statusNoGame), power: ok(powerEmpty), factory: ok(factoryEmpty) },
   "outage": { power: ok(powerOutage) },
   "at-risk": { power: ok(powerAtRisk) },

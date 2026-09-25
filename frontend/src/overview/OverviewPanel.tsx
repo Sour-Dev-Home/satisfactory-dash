@@ -1,7 +1,9 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { cn } from "../lib/cn";
 import { CardGrid } from "./cards/CardGrid";
 import { HealthCard, type Shown } from "./cards/HealthCard";
+import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
 import type { SectionState } from "./health";
 
 export interface OverviewSection {
@@ -39,28 +41,43 @@ function shown(state: SectionState): { health: Shown; summary: string } {
 export function OverviewPanel({
   overall,
   sections,
+  players,
   bannerHidden = false,
   onDismiss,
 }: {
   overall: { health: Shown; headline: string };
   sections: OverviewSection[];
+  players: PlayersState;
   /** The operator dismissed this banner (a warning only; see canDismiss). */
   bannerHidden?: boolean;
   /** Shows the × when given: "hide until something changes". */
   onDismiss?: () => void;
 }) {
+  // The × disappears with the banner, which would drop keyboard focus to <body>: move it to
+  // the next card's heading instead, once the banner is gone.
+  const playersHeading = useRef<HTMLHeadingElement>(null);
+  const focusAfterDismiss = useRef(false);
+  useEffect(() => {
+    if (bannerHidden && focusAfterDismiss.current) playersHeading.current?.focus();
+    focusAfterDismiss.current = false;
+  }, [bannerHidden]);
+  const dismiss = onDismiss
+    ? () => {
+        focusAfterDismiss.current = true;
+        onDismiss();
+      }
+    : undefined;
+
   return (
     <section aria-labelledby="overview-heading" className="grid gap-4">
       {/* tabIndex -1: the shell moves focus here after navigation (Shell.tsx). */}
       <h2 id="overview-heading" tabIndex={-1} className="sr-only">
         Overview
       </h2>
-      {/* Rendered only with a card in it: an empty grid would still add a gap. */}
-      {!bannerHidden && (
-        <CardGrid>
-          <HealthCard overall={overall} onDismiss={onDismiss} />
-        </CardGrid>
-      )}
+      <CardGrid>
+        {!bannerHidden && <HealthCard overall={overall} onDismiss={dismiss} />}
+        <PlayersCard state={players} headingRef={playersHeading} />
+      </CardGrid>
       <ul aria-label="Sections" className="divide-y divide-line rounded-card border border-line bg-surface">
         {sections.map((section) => {
           const { health, summary } = shown(section.state);

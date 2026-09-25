@@ -9,18 +9,20 @@ describe("HealthCard", () => {
   });
 
   it.each([
-    ["ok", "bg-ok-solid", "✓"],
-    ["degraded", "bg-warn-solid", "!"],
-    ["outage", "bg-bad-solid", "!"],
-    ["paused", "bg-info-solid", "!"],
-    ["unavailable", "bg-idle-solid", "!"],
-    ["pending", "bg-surface-2", "…"],
-  ] as const)("colours %s with %s and marks it %s", (health, background, mark) => {
+    ["ok", "bg-ok-solid", "ok"],
+    ["degraded", "bg-warn-solid", "alert"],
+    ["outage", "bg-bad-solid", "alert"],
+    ["paused", "bg-info-solid", "alert"],
+    ["unavailable", "bg-idle-solid", "alert"],
+    ["pending", "bg-surface-2", "pending"],
+  ] as const)("colours %s with %s and marks it with the %s icon", (health, background, icon) => {
     const { container } = render(<HealthCard overall={{ health, headline: "x" }} />);
     const card = container.firstElementChild!;
     expect(card).toHaveClass(background);
-    // The mark is decoration; the headline carries the meaning.
-    expect(card.querySelector('[aria-hidden="true"]')).toHaveTextContent(mark);
+    // Our own SVG mark, hidden from screen readers: the headline carries the meaning.
+    const mark = card.querySelector('[aria-hidden="true"]')!;
+    expect(mark.querySelector(`svg[data-icon="${icon}"]`)).not.toBeNull();
+    expect(mark).toHaveTextContent("");
   });
 
   it("offers dismissal only when asked to, and reports the click", () => {
