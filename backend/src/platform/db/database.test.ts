@@ -8,7 +8,14 @@ const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
 const immediately = { sleep: async () => {}, now: () => 0 };
 
 const fakePool = (query: (text: string) => Promise<{ rows: unknown[] }>) =>
-  ({ query, end: async () => {}, on: () => {} }) as unknown as Pool;
+  ({
+    query,
+    // The readiness probe borrows a connection (so acquire and query can be timed apart); this one
+    // runs the same fake query and hands nothing back.
+    connect: async () => ({ query, release: () => {} }),
+    end: async () => {},
+    on: () => {},
+  }) as unknown as Pool;
 
 describe("Database", () => {
   it("is not ready before start(), whatever the pool says", async () => {

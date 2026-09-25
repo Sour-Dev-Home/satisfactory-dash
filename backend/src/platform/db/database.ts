@@ -1,5 +1,7 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { DEFAULT_READINESS_TIMEOUT_MS } from "./config.js";
 import type { DatabaseConfig } from "./config.js";
+import { errorCode } from "./errors.js";
 import { connectWithBackoff } from "./startup.js";
 import type { BackoffOptions, StartupLogger } from "./startup.js";
 import { createDbPool } from "./pool.js";
@@ -10,8 +12,17 @@ export interface DatabaseLogger extends StartupLogger, PoolLogger {
   info(obj: object, msg: string): void;
 }
 
-/** How long the readiness probe waits for SELECT 1 (ADR-0025 decision 6). */
-export const READINESS_TIMEOUT_MS = 1_000;
+type ReadinessPhase = "acquire" | "query";
+
+class ReadinessTimeout extends Error {
+  constructor() {
+    super("readiness timeout");
+    this.name = "ReadinessTimeout";
+  }
+}
+
+/** The default budget for the readiness probe (ADR-0025 decision 6); DATABASE_READINESS_TIMEOUT_MS overrides it. */
+export const READINESS_TIMEOUT_MS = DEFAULT_READINESS_TIMEOUT_MS;
 
 /**
  * The backend's database handle: the pool plus its startup and readiness behaviour.
@@ -20,6 +31,7 @@ export const READINESS_TIMEOUT_MS = 1_000;
  */
 export class Database {
   readonly pool: Pool;
+  private readonly readinessTimeoutMs: number;
   private started = false;
   private closed = false;
 
@@ -30,6 +42,7 @@ export class Database {
     pool: Pool = createDbPool(config, logger),
   ) {
     this.pool = pool;
+    this.readinessTimeoutMs = config.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
   }
 
   async start(): Promise<void> {
@@ -63,14 +76,42 @@ export class Database {
     if (!this.started) {
       return false;
     }
+    const budgetMs = this.readinessTimeoutMs;
+    const startedAt = performance.now();
+    // The two phases are timed apart so a miss says WHICH one was slow: getting a connection from
+    // the pool (a fresh handshake, or a busy pool) or the SELECT 1 itself.
+    let phase: ReadinessPhase = "acquire";
+    let client: PoolClient | undefined;
     let timer: NodeJS.Timeout | undefined;
+    const probe = (async () => {
+      client = await this.pool.connect();
+      phase = "query";
+      await client.query("SELECT 1");
+    })();
+    // The connection goes back whenever the probe settles, even after we gave up on it: a probe
+    // that finishes late must not leak a pool slot. A failed probe destroys its connection.
+    void probe.then(
+      () => client?.release(),
+      (err: unknown) => client?.release(err instanceof Error ? err : true),
+    );
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("readiness timeout")), READINESS_TIMEOUT_MS);
+        timer = setTimeout(() => reject(new ReadinessTimeout()), budgetMs);
       });
-      await Promise.race([this.pool.query("SELECT 1"), timeout]);
+      await Promise.race([probe, timeout]);
       return true;
-    } catch {
+    } catch (err) {
+      // ONE warn with a fixed code and numbers only: never the error's message (it can quote
+      // connection details), and never anything in the public response body.
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      if (err instanceof ReadinessTimeout) {
+        this.logger.warn({ code: "readiness_probe_slow", elapsed_ms: elapsedMs, phase, budget_ms: budgetMs }, "readiness probe timed out");
+      } else {
+        this.logger.warn(
+          { code: "readiness_probe_failed", elapsed_ms: elapsedMs, phase, db_code: errorCode(err) },
+          "readiness probe failed",
+        );
+      }
       return false;
     } finally {
       clearTimeout(timer);
