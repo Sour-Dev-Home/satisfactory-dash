@@ -19,11 +19,13 @@ const MAX_MINUTES = 120;
 const MIN_INTERVAL_SECONDS = 10;
 
 function numberFlag(name: string, fallback: number): number {
+  // Both `--minutes 5` and `--minutes=5`.
+  const equals = process.argv.find((arg) => arg.startsWith(`${name}=`));
   const at = process.argv.indexOf(name);
-  if (at === -1) {
+  if (equals === undefined && at === -1) {
     return fallback;
   }
-  const value = Number(process.argv[at + 1]);
+  const value = Number(equals !== undefined ? equals.slice(name.length + 1) : process.argv[at + 1]);
   if (!Number.isFinite(value) || value <= 0) {
     console.error(`${name} needs a positive number.`);
     process.exit(2);
@@ -68,5 +70,6 @@ for (let i = 0; i < total; i++) {
 }
 
 mkdirSync(outDir, { recursive: true });
-writeFileSync(outFile, formatSeries({ start, intervalSeconds, samples }), "utf8");
+// "wx": fail rather than overwrite if the file appeared during the run (raw-sources are never overwritten).
+writeFileSync(outFile, formatSeries({ start, intervalSeconds, samples }), { encoding: "utf8", flag: "wx" });
 console.log(`Saved ${seriesFileName(start)} under docs-vault/raw-sources/captured-responses. Review it, then commit it.`);

@@ -30,6 +30,15 @@ information for a connected machine, or no finite output percent.
 
 Known limits, so nobody over-trusts it:
 
+- `state` and the existing `isBackedUp` / `backedUpCount` are different questions. `isBackedUp` is "an
+  output slot is full" (and the machine is neither paused nor unconfigured); `state` puts paused and unpowered
+  first. A backed-up machine that is unpowered has `isBackedUp` true and state `unpowered`, and one whose fuse
+  information is missing has `isBackedUp` true and no state. So `stateCounts.backedUp` can be lower than
+  `backedUpCount`: do not mix the two numbers in one total. A negative percent counts as starved; NaN and
+  Infinity give no state.
+- The capture script writes the file once at the end (Ctrl+C saves nothing, up to 2 hours of samples lost)
+  and refuses to overwrite a file that appeared meanwhile.
+
 - The machine at 9.4 percent has full input buffers and an output buffer 98 of 100 full: it is throttled by its
   output, not starved of input. A percent-only rule cannot tell that from starvation once the percent is low
   enough; the threshold is what keeps it out. Input-buffer data (FRM's `InputInventory`) could sharpen the
