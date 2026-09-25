@@ -141,6 +141,31 @@ Status: accepted (project owner), 2026-09-24.
    AWS account**. **No session provisions AWS resources**: the owner performs the steps below from
    runbooks/backups.md. Size: the dumps are well under 1 MB, so 30 days costs effectively $0.
    A restore is rehearsed once before deploy B.
+   - *Amendment (owner decision 2026-09-25, "limited identity"):* ONE exception to "no session
+     provisions AWS resources", for the one-time bucket and budget setup only. The coordinator
+     session may run that setup through a **time-boxed, setup-only IAM identity**, with every
+     command shown to the owner before it runs. Rules:
+     - A separate IAM user `satis-setup` (not the owner's admin, not `satis-backup`). Its policy
+       allows only:
+       - on `arn:aws:s3:::satis-dash-backups-*`: s3:CreateBucket; s3:PutBucketPublicAccessBlock
+         / s3:GetBucketPublicAccessBlock; s3:PutBucketVersioning / s3:GetBucketVersioning;
+         s3:PutEncryptionConfiguration / s3:GetEncryptionConfiguration;
+         s3:PutLifecycleConfiguration / s3:GetLifecycleConfiguration;
+         s3:PutBucketOwnershipControls / s3:GetBucketOwnershipControls; s3:GetBucketLocation;
+       - budgets:ViewBudget, budgets:ModifyBudget on `arn:aws:budgets::<account>:budget/*`.
+     - The policy has no object actions (no Get/Put/DeleteObject), no s3:DeleteBucket,
+       PutBucketPolicy or PutBucketAcl, and **no IAM actions at all**.
+     - Conditions on every statement: `aws:SecureTransport = true` and `aws:CurrentTime` before a
+       deadline about 48 h out, so the identity **expires by itself** even if it's never deleted.
+     - The owner creates the user and its access key, and types the secret himself into
+       `aws configure --profile satis-setup`. No session ever sees or pastes the secret. The named
+       profile is used; the default profile and ~/.aws defaults are never read.
+     - After setup, the owner **deletes the whole IAM user** (not just the key) and confirms in
+       the IAM console. CloudTrail's free 90-day event history is the audit trail.
+     - The owner still creates `satis-backup` (put-only) and its key himself, and the age private
+       key never leaves him.
+     - Bucket naming: `satis-dash-backups-<random suffix>` (bucket names are globally visible, so
+       they carry no personal data).
    1. Check the account's plan. Accounts created before 2025-07-15 keep the legacy 12-month free
       tier. Newer accounts get a credit-based Free plan that ends after 6 months or when the
       credits run out [NEEDS VERIFICATION: what happens to stored data when it ends]. Backups must

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../errors.js";
-import { HEARTBEAT_TIMEOUT_MS, loadHeartbeatUrl, pingHeartbeat } from "./heartbeat.js";
+import { HEARTBEAT_TIMEOUT_MS, loadHeartbeatUrl, pingAfterUpload, pingHeartbeat } from "./heartbeat.js";
 import type { Fetch } from "./heartbeat.js";
 
 const URL_WITH_TOKEN = "https://uptime.betterstack.com/api/v1/heartbeat/SECRETTOKEN123";
@@ -30,6 +30,30 @@ describe("loadHeartbeatUrl", () => {
     }
     expect(message).not.toBe("");
     expect(message).not.toContain("SECRETTOKEN123");
+  });
+});
+
+describe("pingAfterUpload", () => {
+  const ok: Fetch = async () => ({ ok: true, status: 200 });
+
+  it("pings only after a real upload, and only when a URL is configured", async () => {
+    let calls = 0;
+    const fetchImpl: Fetch = async (...args) => {
+      calls++;
+      return ok(...args);
+    };
+    const log = () => {};
+    await expect(pingAfterUpload(true, URL_WITH_TOKEN, { fetchImpl, log })).resolves.toBe(true);
+    await expect(pingAfterUpload(false, URL_WITH_TOKEN, { fetchImpl, log })).resolves.toBeUndefined(); // local-only trial run
+    await expect(pingAfterUpload(true, undefined, { fetchImpl, log })).resolves.toBeUndefined(); // not configured
+    expect(calls).toBe(1);
+  });
+
+  it("never throws, even when the ping fails: the backup itself stays a success", async () => {
+    const fetchImpl: Fetch = async () => {
+      throw new TypeError("down");
+    };
+    await expect(pingAfterUpload(true, URL_WITH_TOKEN, { fetchImpl, log: () => {} })).resolves.toBe(false);
   });
 });
 

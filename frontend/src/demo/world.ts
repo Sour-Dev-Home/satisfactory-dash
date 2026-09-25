@@ -33,6 +33,18 @@ export const servers: ServerListResponse = { servers: [{ id: DEMO_SERVER_ID, dis
 export const DEMO_EPOCH = Date.parse("2026-09-24T18:00:00.000Z");
 const PLAY_TIME_AT_EPOCH_S = 3_100_000;
 
+/**
+ * Players come and go (the cards brief): one step every 30 s through a 5-minute cycle that
+ * visits every count from 0 to the limit. 3 at DEMO_EPOCH, so the fixed-clock renders (the
+ * e2e, the walkthrough video) show "3 / 4 players".
+ */
+const PLAYER_CYCLE = [3, 3, 4, 4, 2, 1, 0, 0, 1, 2] as const;
+const PLAYER_STEP_MS = 30_000;
+export function connectedPlayersAt(now: number): number {
+  const step = Math.floor((now - DEMO_EPOCH) / PLAYER_STEP_MS);
+  return PLAYER_CYCLE[((step % PLAYER_CYCLE.length) + PLAYER_CYCLE.length) % PLAYER_CYCLE.length];
+}
+
 export function status(now: number): StatusResponse {
   return {
     ...envelope(now),
@@ -41,7 +53,7 @@ export function status(now: number): StatusResponse {
       isGameRunning: true,
       gamePaused: false,
       sessionName: "Demo World",
-      connectedPlayers: 3,
+      connectedPlayers: connectedPlayersAt(now),
       playerLimit: 4,
       tickRate: round1(29.6 + 0.3 * Math.sin(now / 17_000)),
       totalGameDurationSeconds: Math.max(0, Math.floor(PLAY_TIME_AT_EPOCH_S + (now - DEMO_EPOCH) / 1000)),

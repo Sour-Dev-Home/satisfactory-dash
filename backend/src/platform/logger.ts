@@ -14,6 +14,12 @@ export const REDACT_PATHS = [
   "req.headers.cookie",
   'req.headers["x-frm-authorization"]',
   'res.headers["set-cookie"]',
+  // ADR-0029: player names are personal data about people who are not our users. The players
+  // payload is never logged on purpose; these paths are the safety net if a log call ever includes
+  // it (`players`, or nested one level: `{ data: { players } }`, `{ res: { players } }`).
+  "players",
+  "*.players",
+  "*.*.players",
 ];
 
 function defaultLevel(): string {

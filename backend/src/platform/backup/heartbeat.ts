@@ -36,6 +36,22 @@ export function loadHeartbeatUrl(env: NodeJS.ProcessEnv): string | undefined {
 }
 
 /**
+ * The backup script's last step: ping only when a backup was really uploaded (a local-only trial run,
+ * or no URL configured, sends nothing). Returns whether a ping was accepted, or undefined when none
+ * was attempted.
+ */
+export async function pingAfterUpload(
+  uploaded: boolean,
+  url: string | undefined,
+  deps: { fetchImpl?: Fetch; log: (line: string) => void; timeoutMs?: number },
+): Promise<boolean | undefined> {
+  if (!uploaded || url === undefined) {
+    return undefined;
+  }
+  return pingHeartbeat(url, deps);
+}
+
+/**
  * GETs the heartbeat URL with a 10-second timeout. Returns whether it was accepted (2xx). Never
  * throws and never puts the URL, a status body or an error message into the log: only a fixed
  * description of what went wrong.
