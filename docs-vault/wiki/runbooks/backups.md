@@ -93,6 +93,10 @@ report nothing to do, or apply cleanly if the backup is older than the code), an
 delete the whole scratch folder (`Remove-Item -Recurse -Force "$env:TEMP\restore"`), including `satis.dump`
 and the key file: a plaintext dump or a private key left on disk defeats the point.
 
+A restored database keeps the audit purge function (`audit.purge_expired_events()`, owned by the restoring role,
+grants kept), so the roles must exist first; audit events older than a year in an old backup are purged again
+by the first worker run after the backend starts (the privacy policy's 1-year retention).
+
 To restore for real after a loss, the same steps apply, restoring into a fresh database that the backend
 role owns (or run `npm run db:init -w backend` first for the roles), and only after stopping the backend.
 
