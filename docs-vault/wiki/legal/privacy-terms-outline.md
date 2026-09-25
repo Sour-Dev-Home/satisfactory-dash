@@ -74,8 +74,10 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
      `[BUILD: purge job]`.
    - Telemetry: raw 48 h, per-minute rollups 30 days, hourly rollups 1 year (ADR-0027, pending
      the owner's decision).
-   - Backups: encrypted, 30 days, so deleted data can survive in backups for up to 30 days
-     (ADR-0025).
+   - Backups: encrypted; kept 30 days, then removed within a further 7 days, so deleted data can
+     survive in backups for up to 37 days (ADR-0025). The bucket is versioned: its lifecycle rule
+     turns a 30-day-old backup into a noncurrent version, and noncurrent versions are deleted 7
+     days later. The page must state the real maximum, not the headline 30.
    - Audit events: 1 year (owner decision).
    - Server logs (including IPs on sign-in events): 14 days (owner decision).
      `[BUILD: log rotation/retention doesn't exist yet]`

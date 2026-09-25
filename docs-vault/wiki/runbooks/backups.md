@@ -3,7 +3,7 @@
 A nightly `pg_dump -Fc` of the app database, **encrypted on this PC with `age` to a public key**, then
 uploaded to a private S3 bucket in **your own AWS account** with a **put-only** identity. The private
 `age` key stays offline in your password manager, so neither this PC nor a leaked AWS key can read old
-backups. The dumps are well under 1 MB, so 30 days costs effectively nothing.
+backups. The dumps are well under 1 MB, so keeping them for up to 37 days costs effectively nothing.
 
 No session creates AWS resources, except the one-time bucket and budget setup, which reactapps-dc may run
 through the time-boxed `satis-setup` identity described in ADR-0025 (decision 7 amendment), with every command
@@ -39,7 +39,8 @@ allow-listed environment reaches `pg_dump`, `age` and `aws` (no `.env` secrets e
    that can lapse: upgrade to the Paid plan before relying on them (the cost stays cents).
 2. **Budget:** a $1/month cost budget with an email alert.
 3. **S3 bucket:** Block Public Access on (the default), versioning on, default encryption SSE-S3, and a
-   lifecycle rule that expires current objects after **30 days** and noncurrent versions after **7**.
+   lifecycle rule that expires current objects after **30 days** and noncurrent versions after **7** (so a backup is gone at most 37
+   days after it was uploaded).
 4. **IAM:** a policy allowing **only `s3:PutObject`** on `arn:aws:s3:::<bucket>/satis-dash/*` (no Get, List
    or Delete, so a compromised PC can't read or erase backups), attached to a user `satis-backup` with no
    console access (dumps are far below the AWS CLI's ~8 MB multipart threshold; if one ever grows past it, add
@@ -200,7 +201,9 @@ folder holding at most `BACKUP_LOCAL_KEEP` files.
 
 ## Privacy
 
-The privacy page must say the truth once this ships: **Amazon Web Services stores encrypted backups for
-30 days, so deleted data can survive in backups for up to 30 days** (outline, sections A.4 and A.5). The
+The privacy page must say the truth once this ships: **Amazon Web Services stores encrypted backups for up
+to 37 days, so deleted data can survive in backups for up to 37 days** (outline, sections A.4 and A.5). The
+bucket is versioned: the 30-day lifecycle rule expires the current object, which becomes a noncurrent version
+that is deleted 7 days later, so 37 days is the true worst case, not 30. The
 edit to `frontend/public/privacy.html` goes with the frontend's privacy page PR, in the same change that
 turns backups on (ADR-0025 gate B).
