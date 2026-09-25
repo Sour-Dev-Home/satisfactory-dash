@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { inject } from "vitest";
-import { APP_PASSWORD, MIGRATOR_PASSWORD, TEMPLATE_DATABASE } from "./dbGlobalSetup.js";
+import { APP_PASSWORD, BACKUP_PASSWORD, MIGRATOR_PASSWORD, TEMPLATE_DATABASE } from "./dbGlobalSetup.js";
 
 export interface TestDatabase {
   name: string;
@@ -11,6 +11,8 @@ export interface TestDatabase {
   appUrl: string;
   /** The migration role (satis_migrator). */
   migratorUrl: string;
+  /** The read-only backup role (satis_backup). */
+  backupUrl: string;
   drop(): Promise<void>;
 }
 
@@ -48,6 +50,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     adminUrl: urlFor(adminBase, null, null, name),
     appUrl: urlFor(adminBase, "satis_app", APP_PASSWORD, name),
     migratorUrl: urlFor(adminBase, "satis_migrator", MIGRATOR_PASSWORD, name),
+    backupUrl: urlFor(adminBase, "satis_backup", BACKUP_PASSWORD, name),
     async drop() {
       const dropper = new pg.Client({ connectionString: urlFor(adminBase, null, null, "postgres") });
       await dropper.connect();
