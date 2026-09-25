@@ -32,7 +32,13 @@ describe.skipIf(!available)("audit.purge_expired_events()", () => {
 
   const insertAt = (daysAgo: number, action = "login") =>
     admin.query("INSERT INTO audit.audit_events (at, action) VALUES (now() - make_interval(days => $1::int), $2)", [daysAgo, action]);
-  const remaining = async () => (await admin.query("SELECT action FROM audit.audit_events ORDER BY at")).rows.map((r) => r.action as string);
+  /** The events left, without the purge's own trace row (tested separately). */
+  const remaining = async () =>
+    (await admin.query("SELECT action FROM audit.audit_events WHERE action <> 'audit.retention_purge' ORDER BY at")).rows.map(
+      (r) => r.action as string,
+    );
+  const traces = async () =>
+    (await admin.query("SELECT actor_user_id, server_id, detail FROM audit.audit_events WHERE action = 'audit.retention_purge'")).rows;
 
   it("deletes only events older than a year, and returns how many", async () => {
     await insertAt(400, "old_a");
@@ -92,9 +98,51 @@ describe.skipIf(!available)("audit.purge_expired_events()", () => {
     expect(await remaining()).toEqual([]);
   });
 
-  it("the purge itself leaves no audit row (it deletes history, it does not make more)", async () => {
-    await insertAt(500);
-    await purgeExpiredAuditEvents(app);
-    expect(await remaining()).toEqual([]);
+  it("a purge that removed something writes exactly ONE trace row, with the count only and no personal data", async () => {
+    await insertAt(500, "old_a");
+    await insertAt(450, "old_b");
+    await insertAt(10, "keep");
+    expect(await purgeExpiredAuditEvents(app)).toBe(2);
+    expect(await traces()).toEqual([{ actor_user_id: null, server_id: null, detail: { count: 2 } }]);
+    // The trace is fresh, so a second purge does not delete it, removes nothing and writes no second row.
+    expect(await purgeExpiredAuditEvents(app)).toBe(0);
+    expect(await traces()).toHaveLength(1);
+  });
+
+  it("a purge that removed nothing writes NO trace row (no daily noise)", async () => {
+    await insertAt(10);
+    expect(await purgeExpiredAuditEvents(app)).toBe(0);
+    expect(await purgeExpiredAuditEvents(app)).toBe(0);
+    expect(await traces()).toEqual([]);
+    expect((await admin.query("SELECT count(*)::int AS n FROM audit.audit_events")).rows[0].n).toBe(1);
+  });
+
+  describe("the app can never set `at` (a database guarantee)", () => {
+    it("an INSERT naming `at` is refused with 42501, back-dated or future-dated", async () => {
+      await expect(app.query("INSERT INTO audit.audit_events (at, action) VALUES (now() - interval '2 years', 'login')")).rejects.toMatchObject({
+        code: "42501",
+      });
+      await expect(app.query("INSERT INTO audit.audit_events (at, action) VALUES (now() + interval '2 years', 'login')")).rejects.toMatchObject({
+        code: "42501",
+      });
+      expect(await remaining()).toEqual([]);
+    });
+
+    it("an INSERT naming `id` is refused too", async () => {
+      await expect(app.query("INSERT INTO audit.audit_events (id, action) OVERRIDING SYSTEM VALUE VALUES (1, 'login')")).rejects.toMatchObject({
+        code: "42501",
+      });
+    });
+
+    it("the columns the app does set still work, and `at` defaults to now()", async () => {
+      const result = await app.query(
+        "INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail) VALUES (NULL, NULL, 'login', '{\"provider\":\"google\"}'::jsonb) RETURNING id, at, action, detail",
+      );
+      expect(result.rows[0]).toMatchObject({ action: "login", detail: { provider: "google" } });
+      expect(Math.abs(Date.now() - (result.rows[0].at as Date).getTime())).toBeLessThan(60_000);
+      // A plain default insert with only the required column works as well.
+      await expect(app.query("INSERT INTO audit.audit_events (action) VALUES ('logout')")).resolves.toBeDefined();
+      expect(await remaining()).toEqual(["login", "logout"]);
+    });
   });
 });

@@ -17,10 +17,26 @@ AS $$
     DELETE FROM audit.audit_events
     WHERE at < pg_catalog.now() - interval '1 year'
     RETURNING 1
+  ),
+  purged AS (
+    SELECT pg_catalog.count(*) AS n FROM deleted
+  ),
+  -- The purge leaves its own trace, but only when it removed something (no daily noise rows): the
+  -- count and nothing else, no personal data. Same statement, so the two can never disagree.
+  trace AS (
+    INSERT INTO audit.audit_events (action, detail)
+    SELECT 'audit.retention_purge', pg_catalog.jsonb_build_object('count', n) FROM purged WHERE n > 0
+    RETURNING 1
   )
-  SELECT pg_catalog.count(*) FROM deleted
+  SELECT n FROM purged
 $$;
 
 ALTER FUNCTION audit.purge_expired_events() OWNER TO satis_migrator;
 REVOKE ALL ON FUNCTION audit.purge_expired_events() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION audit.purge_expired_events() TO satis_app;
+
+-- The app never sets `at`: make it a DATABASE guarantee, not a convention. Every insert omits `at` (it
+-- defaults to now()), but table-level INSERT covers every column, so a bug could back-date a row (purged
+-- early) or future-date one (never purged). Column-level INSERT names only what the app may set.
+REVOKE INSERT ON audit.audit_events FROM satis_app;
+GRANT INSERT (actor_user_id, server_id, action, detail) ON audit.audit_events TO satis_app;
