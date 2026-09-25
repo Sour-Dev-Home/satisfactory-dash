@@ -222,14 +222,7 @@ export class SatisfactoryServerAdapter {
 
   async getPlayers(): Promise<Player[]> {
     const raw = parseUpstream("getPlayer", z.array(RawFrmPlayerSchema), await this.frmApi.get<unknown>("getPlayer"));
-    return raw.map((player) => ({
-      id: player.ID,
-      name: player.Name,
-      online: player.Online,
-      dead: player.Dead,
-      hp: player.PlayerHP,
-      location: { x: player.location.x, y: player.location.y, z: player.location.z },
-    }));
+    return raw.map((player) => ({ name: player.Name, online: player.Online }));
   }
 
   async getSessionInfo(): Promise<SessionInfo> {

@@ -20,7 +20,7 @@ function appWith(production: { getFactoryOverview: () => Promise<any> }) {
     {
       id: "default",
       displayName: "Home",
-      services: { telemetry: { status: {} as never, production, power: {} as never, powerHistory: {} as never } },
+      services: { telemetry: { status: {} as never, production, power: {} as never, powerHistory: {} as never, players: {} as never } },
     },
   ]);
   return createApp({ logger: createLogger(), routers: [createFactoryRouter(directory)] });
