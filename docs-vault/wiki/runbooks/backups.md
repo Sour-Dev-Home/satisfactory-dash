@@ -186,6 +186,11 @@ A restored database keeps the audit purge function (`audit.purge_expired_events(
 grants kept), so the roles must exist first; audit events older than a year in an old backup are purged again
 by the first worker run after the backend starts (the privacy policy's 1-year retention).
 
+**Rehearsal record (2026-09-25): passed.** The newest S3 object was decrypted with the offline age key and
+restored into a scratch database. Row counts matched the live database (users 1/1, servers 1/1, members 1/1,
+audit events 5/6: one event was newer than the dump). The newest migration in the restore was
+`1790380800000_audit_purge`. The scratch database was dropped and the plaintext deleted.
+
 To restore for real after a loss, the same steps apply, restoring into a fresh database that the backend
 role owns (or run `npm run db:init -w backend` first for the roles), and only after stopping the backend.
 
