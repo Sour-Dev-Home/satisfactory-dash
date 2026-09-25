@@ -106,6 +106,13 @@ test.describe("demo build", () => {
     expect(allFiles(DIST_DEMO).filter((f) => f.endsWith(".mp4"))).toEqual([]);
   });
 
+  test("doesn't carry its own privacy or terms page (it links to the main site's)", () => {
+    for (const page of ["privacy.html", "terms.html", "legal.css"]) {
+      expect(allFiles(DIST)).toContain(join(DIST, page));
+      expect(allFiles(DIST_DEMO)).not.toContain(join(DIST_DEMO, page));
+    }
+  });
+
   test("ships no mock tooling or test fixtures", () => {
     const files = allFiles(DIST_DEMO);
     expect(files.some((f) => f.endsWith("mockServiceWorker.js"))).toBe(false);
