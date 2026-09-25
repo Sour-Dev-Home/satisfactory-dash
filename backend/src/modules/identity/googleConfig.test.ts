@@ -114,8 +114,11 @@ describe("Google sign-in in the identity module", () => {
       routers: [identity.authRouter],
       sessionGuard: identity.sessionGuard,
     });
-    // The provider is unreachable, so /start is a 503, not a 404 and not a crash.
-    expect((await request(app).get("/api/auth/google/start")).status).toBe(503);
+    // The provider is unreachable, so /start redirects to the login screen with error=unavailable: not a 404,
+    // not a crash and not JSON at the API host.
+    const start = await request(app).get("/api/auth/google/start");
+    expect(start.status).toBe(302);
+    expect(start.headers.location).toBe("https://satis-manager.com/app/login?error=unavailable");
     const session = await request(app).get("/api/auth/session");
     expect(session.status).toBe(200);
     // The login screen may offer Google exactly when it is configured.
