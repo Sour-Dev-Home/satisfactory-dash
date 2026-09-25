@@ -139,6 +139,16 @@ Postgres should bind `127.0.0.1:5432` (keep it loopback-only: `listen_addresses`
 showing 5432 on 127.0.0.1 / ::1 only). If Hyper-V, WSL or Docker Desktop is enabled later, re-run
 the check, since they can add reservations.
 
+## Windows: keep Npcap (Wireshark) on Manual start (first loopback connects fail)
+
+If Npcap (installed with Wireshark) is on this PC, keep its service on **Manual** start. Its loopback filter
+(a WFP callout) drops the first SYN-ACK on 127.0.0.1, and Node on Windows sends no SYN retransmit on loopback,
+so a connect fails after about 310 ms with `ETIMEDOUT`: the backend's first database or FRM connects, the
+readiness probe, and CLI tools such as `db:init` and `db:migrate` can all hit it (issue #153; in an A/B test 34 of
+40 Node connects to Postgres failed with Npcap running and 40 of 40 succeeded with it stopped). **Start Npcap
+only for a capture session and stop it afterwards** (`Stop-Service npcap`, and check with
+`Get-Service npcap | Select Status, StartType`, expecting `Stopped` and `Manual`).
+
 ## Gate B checklist: Google sign-in (ADR-0025)
 
 Before the owner approves gate B:
