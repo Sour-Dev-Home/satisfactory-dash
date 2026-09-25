@@ -35,6 +35,7 @@ function stubServices(overrides: Partial<ServerServices> = {}): ServerServices {
     powerHistory: {
       getPowerHistory: () => ({ data: powerHistoryNormal.data, observedAt: powerHistoryNormal.observedAt, stale: false }),
     },
+    players: { getPlayers: async () => ({ available: true, players: [{ name: "Pioneer", online: true }] }) },
     ...overrides,
   };
 }

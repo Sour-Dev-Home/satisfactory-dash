@@ -9,6 +9,9 @@ added or removed.
 - [`runbooks/go-live-api.md`](./runbooks/go-live-api.md) — ordered steps to turn on the
   API: production `.env`, enforced game tokens, Scheduled Task, Cloudflare Tunnel, go-live
   tests and rollback (issue #19).
+- [`runbooks/backups.md`](./runbooks/backups.md) — the nightly encrypted database backup (pg_dump, age,
+  put-only S3 upload): the owner's one-time AWS and age setup, a local trial without AWS, and the
+  restore rehearsal (ADR-0025 decision 7).
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power

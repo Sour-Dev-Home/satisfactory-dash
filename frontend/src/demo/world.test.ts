@@ -63,6 +63,20 @@ describe("the demo world", () => {
     for (const b of buildings) expect(circuits.has(b.circuitGroupId!)).toBe(true);
   });
 
+  it("varies the players from 0 to the limit over a few minutes, starting at 3 (the fixed clock)", () => {
+    expect(world.status(world.DEMO_EPOCH).data.connectedPlayers).toBe(3);
+    const seen = new Set<number>();
+    for (let t = world.DEMO_EPOCH; t < world.DEMO_EPOCH + 5 * 60_000; t += 10_000) {
+      const { connectedPlayers, playerLimit } = world.status(t).data;
+      expect(connectedPlayers).toBeGreaterThanOrEqual(0);
+      expect(connectedPlayers).toBeLessThanOrEqual(playerLimit);
+      seen.add(connectedPlayers);
+    }
+    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4]);
+    // Before the epoch too (a visitor's clock can be anywhere): never out of range.
+    expect(world.connectedPlayersAt(world.DEMO_EPOCH - 45_000)).toBeGreaterThanOrEqual(0);
+  });
+
   it("carries none of the test fixtures' markers (they're for edge cases, not a public demo)", () => {
     const text = JSON.stringify([
       world.servers,

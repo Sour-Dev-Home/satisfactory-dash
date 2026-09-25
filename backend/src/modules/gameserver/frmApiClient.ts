@@ -80,7 +80,11 @@ export class FrmApiClient {
       throw new FrmApiRequestError(
         invalidBody ? `FRM response from ${endpoint} was not valid JSON` : `FRM request to ${endpoint} failed`,
         undefined,
-        { cause: err, failureKind: invalidBody ? "invalid_response" : "unreachable" },
+        // A SyntaxError's message quotes a fragment of the body ("Unexpected token '<', "<html>Secr"..."),
+        // which for getPlayer can be a player name (ADR-0029: never logged). Drop it as the cause.
+        invalidBody
+          ? { failureKind: "invalid_response" }
+          : { cause: err, failureKind: "unreachable" },
       );
     }
   }

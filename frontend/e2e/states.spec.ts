@@ -39,6 +39,8 @@ const CASES: StateCase[] = [
   { scenario: "paused", name: "paused-power", path: "/app/power", shows: "Paused: no players connected, values are frozen." },
   { scenario: "stale", shows: /Showing last known data from/ },
   { scenario: "slow-tick", shows: /Slow \(/ },
+  { scenario: "players-some", shows: "3 of 4 players connected" },
+  { scenario: "players-many", shows: "10 of 12 players connected" },
   { scenario: "no-game", shows: "No save loaded" },
   // The Overview banner: its text also holds the hidden "!" icon, so no ^ anchor.
   { scenario: "outage", shows: /Power outage$/ },
