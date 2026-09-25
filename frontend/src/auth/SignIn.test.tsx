@@ -1,13 +1,20 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import { useQuery } from "@tanstack/react-query";
 import { endpoints } from "@satisfactory-dash/shared";
 import { errorServiceUnavailable, sessionAnonymous, sessionAuthenticatedWithAccount } from "@satisfactory-dash/shared/fixtures";
+import { queries } from "../api/queries";
 import { openAccountMenu, signOutFromMenu } from "../test/account";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { AccountMenu } from "./AccountMenu";
 import { AuthGate } from "./AuthGate";
+
+function ServerList() {
+  const servers = useQuery(queries.servers());
+  return <p>{servers.data ? `servers: ${servers.data.servers.length}` : "loading servers"}</p>;
+}
 
 // ADR-0025 PR 8: the sign-in screen with Google, and the account menu's two sign-outs.
 
@@ -89,6 +96,28 @@ describe("signing out", () => {
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
+  it("keeps Google on offer even when an in-flight request 401s right after logout-all", async () => {
+    server.use(
+      http.post(endpoints.auth.logoutAll.route, () => HttpResponse.json(withGoogle)),
+      http.get(endpoints.servers.route, async () => {
+        await delay(50);
+        return HttpResponse.json({ error: { code: "unauthorized", message: "no", requestId: "x" } }, { status: 401 });
+      }),
+    );
+    renderWithClient(
+      <AuthGate>
+        <AccountMenu />
+        <ServerList />
+      </AuthGate>,
+    );
+    await screen.findByText("loading servers");
+    await signOutFromMenu(true);
+    await screen.findByRole("heading", { name: "Sign in" });
+    // Give the slow servers request a chance to land its 401 after sign-out.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await screen.findByRole("link", { name: "Sign in with Google" })).toBeInTheDocument();
+  });
+
   it("keeps Google on offer after signing out (the backend's answer says so)", async () => {
     server.use(http.post(endpoints.auth.logout.route, () => HttpResponse.json(withGoogle)));
     renderGate();
@@ -112,6 +141,38 @@ describe("the account menu", () => {
     await openAccountMenu();
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(screen.getByRole("button", { name: "Account" })).toHaveAttribute("aria-expanded", "false"));
+  });
+
+  it("closes, not stays open, when the toggle itself is clicked again (no double toggle)", async () => {
+    renderGate();
+    await openAccountMenu();
+    const toggle = screen.getByRole("button", { name: "Account" });
+    // A real click fires pointerdown (the outside-click listener sees it land inside root,
+    // since the toggle is inside root) then click (the toggle's own handler).
+    fireEvent.pointerDown(toggle);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("Escape does nothing while the panel is already closed", async () => {
+    renderGate();
+    const toggle = await screen.findByRole("button", { name: "Account" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(document.activeElement).not.toBe(toggle);
+  });
+
+  it("unmounting while open doesn't leak its document listeners", async () => {
+    const { unmount } = renderGate();
+    await openAccountMenu();
+    unmount();
+    // A leaked listener would call setState on the unmounted component (an RTL/React warning,
+    // or a thrown error) when a later Escape or outside click fires.
+    expect(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+      fireEvent.pointerDown(document.body);
+    }).not.toThrow();
   });
 });
 

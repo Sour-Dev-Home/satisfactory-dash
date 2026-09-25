@@ -18,6 +18,19 @@ describe("signInErrorText", () => {
     expect(signInErrorText("?error=toString")).toBe("Sign-in didn't work. Try again.");
   });
 
+  it("never treats a prototype key as a known code", () => {
+    expect(signInErrorText("?error=__proto__")).toBe("Sign-in didn't work. Try again.");
+    expect(signInErrorText("?error=constructor")).toBe("Sign-in didn't work. Try again.");
+    expect(signInErrorText("?error=hasOwnProperty")).toBe("Sign-in didn't work. Try again.");
+  });
+
+  it("uses the first value when the error param repeats", () => {
+    // URLSearchParams.get returns the first match; a crafted link stacking a known code in
+    // front of junk must not smuggle the junk through some other path.
+    expect(signInErrorText("?error=denied&error=%3Cb%3Eowned%3C%2Fb%3E")).toBe("Google sign-in was cancelled.");
+    expect(signInErrorText("?error=%3Cb%3Eowned%3C%2Fb%3E&error=denied")).toBe("Sign-in didn't work. Try again.");
+  });
+
   it("is null without an error", () => {
     expect(signInErrorText("")).toBeNull();
     expect(signInErrorText("?scenario=login")).toBeNull();
@@ -46,5 +59,27 @@ describe("googleStartHref", () => {
     expect(returnOf(googleStartHref("/"))).toBe("/app");
     expect(returnOf(googleStartHref("/application"))).toBe("/app");
     expect(returnOf(googleStartHref("/app"))).toBe("/app");
+  });
+
+  it("never sends a protocol-relative or off-origin return value", () => {
+    // A browser never actually hands window.location.pathname a value starting with "//" for a
+    // same-page load (it would be a different origin, a different page), but the pure function
+    // should refuse to forward one if it ever received it.
+    const inputs = [
+      "//evil.com",
+      "/\\evil.com",
+      "/app//evil.com", // what the browser produces for /app/\evil.com or /app//evil.com
+      "/app/http://evil.com", // a real pathname a browser can produce (verified via WHATWG URL)
+      "/app/%2F%2Fevil.com",
+      "/app/..%2f..",
+      "/APP/evil", // case mismatch: falls back, doesn't forward
+      "/app\t/evil.com",
+      "/app/\u0000evil.com",
+    ];
+    for (const pathname of inputs) {
+      const back = returnOf(googleStartHref(pathname));
+      expect(back === "/app" || back?.startsWith("/app/")).toBe(true);
+      expect(back?.startsWith("//")).toBe(false);
+    }
   });
 });

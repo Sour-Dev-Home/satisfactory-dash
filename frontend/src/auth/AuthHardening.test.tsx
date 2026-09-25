@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { signOutFromMenu } from "../test/account";
+import { openAccountMenu, signOutFromMenu } from "../test/account";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -57,6 +57,28 @@ describe("auth hardening", () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(await screen.findByText("servers: 1")).toBeInTheDocument();
+    expect(posts).toBe(1);
+  });
+
+  it("sends one logout POST for a fast double click", async () => {
+    let posts = 0;
+    server.use(
+      http.post(endpoints.auth.logout.route, async () => {
+        posts++;
+        await delay(50);
+        return HttpResponse.json(sessionAnonymous);
+      }),
+    );
+    renderWithClient(
+      <AuthGate>
+        <AccountMenu />
+      </AuthGate>,
+    );
+    const menu = await openAccountMenu();
+    const button = menu.getByRole("button", { name: "Sign out" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await screen.findByRole("heading", { name: "Sign in" });
     expect(posts).toBe(1);
   });
 

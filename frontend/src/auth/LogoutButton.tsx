@@ -11,16 +11,27 @@ import { ErrorNotice } from "../components/ErrorNotice";
  * not pretend it was. A 401 here means the session had already expired; the query client's
  * 401 handling covers that.
  */
+const LOGOUT_MUTATION_KEY = ["auth", "logout"] as const;
+
 export function LogoutButton({ everywhere = false }: { everywhere?: boolean }) {
   const client = useQueryClient();
   const logout = useMutation({
+    mutationKey: LOGOUT_MUTATION_KEY,
     mutationFn: () => apiSend(everywhere ? endpoints.auth.logoutAll : endpoints.auth.logout, undefined),
     onSuccess: (answer) => signOutLocally(client, answer),
   });
 
+  function signOut() {
+    // isPending only updates on the next render, so a fast double click would send two POSTs
+    // (as LoginForm guards against too). isMutating updates synchronously, and one key covers
+    // both buttons: a sign-out and a sign-out-everywhere can't overlap either.
+    if (client.isMutating({ mutationKey: LOGOUT_MUTATION_KEY }) > 0) return;
+    logout.mutate();
+  }
+
   return (
     <>
-      <button type="button" onClick={() => logout.mutate()} disabled={logout.isPending}>
+      <button type="button" onClick={signOut} disabled={logout.isPending}>
         {everywhere ? "Sign out everywhere" : "Sign out"}
       </button>
       {logout.isError && <SignOutError error={logout.error} />}
