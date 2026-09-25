@@ -8,7 +8,7 @@ function fakeDb(insertMember: () => unknown): Queryable & { inserts: number } {
     inserts: 0,
     query: async (sql: string) => {
       if (sql.includes("INSERT INTO servers.servers")) {
-        return { rows: [{ id: "uuid-1", public_id: "home", display_name: "Home", hosting_mode: "self" }] };
+        return { rows: [{ id: "uuid-1", public_id: "home", display_name: "Home", hosting_mode: "self", connection_kind: "local" }] };
       }
       db.inserts += 1;
       const result = insertMember();
