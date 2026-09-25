@@ -59,7 +59,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
             }
 
             agent = container "Edge agent" "Runs beside each game server; pushes snapshots outbound and executes commands (ADR-0014/0017)." "Node.js, TypeScript" "planned"
-            database = container "Database" "Users, sessions, servers, memberships, latest snapshots, commands (ADR-0020)." "PostgreSQL" "planned,Database"
+            database = container "Database" "Users, sessions, servers, memberships, audit events (ADR-0025); latest snapshots and commands later (ADR-0020)." "PostgreSQL 18" "Database"
             provisioning = container "Provisioning service" "Creates and manages paid game servers as async jobs (ADR-0014)." "Node.js, TypeScript" "planned"
         }
 
@@ -94,7 +94,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         # Planned relationships (ADR-0014, ADR-0017, ADR-0020)
         player -> satis.spa "Uses" "HTTPS" "planned"
         satis.api -> google "Signs users in" "OpenID Connect" "planned"
-        satis.api -> satis.database "Reads and writes" "SQL (ACID)" "planned"
+        satis.api -> satis.database "Reads and writes" "SQL over TCP (loopback)"
         satis.agent -> satis.api "Pushes snapshots; polls commands" "HTTPS, outbound only" "planned"
         satis.agent -> game "Reads state and data; applies commands" "HTTPS and HTTP (loopback)" "planned"
         satis.provisioning -> satis.database "Records provisioning jobs" "SQL" "planned"
@@ -115,9 +115,18 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                 gameNode = deploymentNode "Dedicated server process" "Game server with the FRM mod; auto-pause off by default." "Satisfactory 1.x" {
                     gameInstance = softwareSystemInstance game
                 }
+                pg = deploymentNode "PostgreSQL service" "Windows service; listens on loopback only." "PostgreSQL 18" {
+                    dbInstance = containerInstance satis.database
+                }
+                backupTask = infrastructureNode "Nightly backup task" "pg_dump, encrypted with age on this PC (ADR-0025)." "Windows Scheduled Task"
+            }
+            backups = deploymentNode "AWS (backups only)" "Owner's AWS account." "Amazon Web Services" {
+                s3 = infrastructureNode "S3 bucket" "Encrypted backups; versioned, 30 d + 7 d retention." "Amazon S3"
             }
             cloudflare.edge -> pc.tunnel "Routes API traffic" "Cloudflare Tunnel"
             pc.tunnel -> pc.node.apiInstance "Forwards" "HTTP (loopback)"
+            pc.backupTask -> pc.pg.dbInstance "Dumps (read-only role)" "SQL (loopback)"
+            pc.backupTask -> backups.s3 "Uploads encrypted backups" "HTTPS, put-only"
         }
 
         deploymentEnvironment "Target" {
