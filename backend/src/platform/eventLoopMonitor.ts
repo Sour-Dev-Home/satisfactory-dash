@@ -85,7 +85,15 @@ export function createEventLoopMonitor(options: EventLoopMonitorOptions): EventL
         return;
       }
       histogram.enable();
-      timer = setInterval(check, options.windowMs ?? EVENT_LOOP_WINDOW_MS);
+      // A diagnostic must never take the process down: an exception inside a timer callback would
+      // be uncaught, so a failing log call is dropped.
+      timer = setInterval(() => {
+        try {
+          check();
+        } catch {
+          // ignore
+        }
+      }, options.windowMs ?? EVENT_LOOP_WINDOW_MS);
       timer.unref();
     },
     async stop() {

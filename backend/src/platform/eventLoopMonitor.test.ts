@@ -107,6 +107,21 @@ describe("event loop monitor", () => {
     await expect(monitor.stop()).resolves.toBeUndefined(); // and stopping again is harmless
   });
 
+  it("a throwing logger inside the timer never becomes an uncaught exception", async () => {
+    vi.useFakeTimers();
+    const { histogram, state } = fakeHistogram();
+    const warn = vi.fn(() => {
+      throw new Error("logger broke");
+    });
+    const monitor = createEventLoopMonitor({ logger: { warn }, thresholdMs: 100, histogram, windowMs: 1000 });
+    monitor.start();
+    state.max = ms(900);
+    // A throw inside the timer callback would surface as an uncaught exception and fail this run.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(warn).toHaveBeenCalledTimes(1);
+    await monitor.stop();
+  });
+
   it("uses an unref'd timer, so it never keeps the process alive", async () => {
     const spy = vi.spyOn(globalThis, "setInterval");
     try {
@@ -136,6 +151,22 @@ describe("event loop monitor", () => {
     monitor.check();
     expect(warn).toHaveBeenCalledTimes(1);
     expect((warn.mock.calls[0]![0] as { max_ms: number }).max_ms).toBeGreaterThan(150);
+    await monitor.stop();
+  });
+});
+
+describe("event loop monitor edge cases (real histogram)", () => {
+  it("check() on an empty, freshly reset real histogram does not throw or log, and start/stop order is harmless", async () => {
+    const warn = vi.fn();
+    const monitor = createEventLoopMonitor({ logger: { warn }, thresholdMs: 50, windowMs: 60_000 });
+    await monitor.stop(); // stop before start
+    monitor.check(); // never enabled: empty histogram (mean is NaN)
+    monitor.start();
+    monitor.check();
+    monitor.check(); // back-to-back windows with no samples
+    expect(warn).not.toHaveBeenCalled();
+    await monitor.stop();
+    monitor.start(); // restart after stop
     await monitor.stop();
   });
 });
