@@ -1,0 +1,130 @@
+/* The privacy and terms pages (public/privacy.html, public/terms.html): static HTML with no
+   JavaScript, so they can't use the app's Tailwind build. The colours copy the app's design
+   tokens (src/index.css @theme, direction B2); change them there first, then here. */
+:root {
+  color-scheme: dark;
+  font: 15px/1.6 system-ui, "Segoe UI", Roboto, sans-serif;
+  color: #c3ccd6;
+  background: #0e1217;
+  -webkit-font-smoothing: antialiased;
+  scrollbar-gutter: stable;
+}
+body {
+  margin: 0;
+}
+main,
+header,
+footer {
+  box-sizing: border-box;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+header {
+  padding-top: 24px;
+}
+header a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 700;
+  font-size: 20px;
+  color: #f2f5f8;
+  text-decoration: none;
+}
+header a::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #5cb8e6;
+}
+h1 {
+  margin: 24px 0 4px;
+  font-size: 28px;
+  line-height: 1.25;
+  color: #f2f5f8;
+}
+h2 {
+  margin: 32px 0 8px;
+  font-size: 18px;
+  color: #f2f5f8;
+}
+.updated {
+  margin: 0 0 24px;
+  color: #8b97a5;
+}
+a {
+  color: #5cb8e6;
+  text-underline-offset: 2px;
+}
+a:focus-visible {
+  outline: 2px solid #5cb8e6;
+  outline-offset: 2px;
+}
+ul {
+  padding-left: 1.25rem;
+}
+li + li {
+  margin-top: 6px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #29333e;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: #f2f5f8;
+  font-weight: 600;
+}
+/* Phones: each row stacks, the data over its reason, as the app's own tables do (src/index.css).
+   The header row is hidden visually but stays for screen readers. */
+@media (max-width: 600px) {
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  tr {
+    display: block;
+    padding: 10px 0;
+    border-bottom: 1px solid #29333e;
+  }
+  td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  td:first-child {
+    color: #f2f5f8;
+    font-weight: 600;
+  }
+  td + td {
+    margin-top: 2px;
+    color: #8b97a5;
+  }
+}
+footer {
+  margin-top: 48px;
+  padding-top: 16px;
+  padding-bottom: 32px;
+  border-top: 1px solid #29333e;
+  color: #8b97a5;
+  font-size: 14px;
+}
+footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-right: 20px;
+}

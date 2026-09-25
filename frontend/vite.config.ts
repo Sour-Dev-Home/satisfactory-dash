@@ -54,8 +54,10 @@ function mockServiceWorker(): Plugin {
  * - client.ts's `./transport` resolves to src/demo/transport.ts (in-process answers, no
  *   network), so the network transport never reaches the demo bundle;
  * - demo/_headers replaces public/_headers in the output, after Vite copies public/;
- * - public/demo/ (the landing page's walkthrough video) is dropped: the demo has no landing.
+ * - public/demo/ (the landing page's walkthrough video) is dropped: the demo has no landing;
+ * - so are the privacy and terms pages: the demo links to the main site's (SourceFooter).
  */
+const MAIN_SITE_ONLY = ['demo', 'privacy.html', 'terms.html', 'legal.css']
 function demoBuild(): Plugin {
   const demoTransport = fileURLToPath(new URL('./src/demo/transport.ts', import.meta.url))
   let outDir = ''
@@ -77,7 +79,7 @@ function demoBuild(): Plugin {
     closeBundle() {
       if (!outDir) return
       writeFileSync(join(outDir, '_headers'), readFileSync(DEMO_HEADERS, 'utf8'))
-      rmSync(join(outDir, 'demo'), { recursive: true, force: true })
+      for (const path of MAIN_SITE_ONLY) rmSync(join(outDir, path), { recursive: true, force: true })
     },
   }
 }

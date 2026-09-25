@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy · Satis Manager</title>
+    <meta name="description" content="What Satis Manager collects, why, who else processes it, how long it's kept, and your rights." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body>
+    <header><a href="/">Satis Manager</a></header>
+    <main>
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: 24 September 2026</p>
+
+      <p>
+        Satis Manager is a free dashboard for a Satisfactory dedicated server. This page says what
+        it collects, why, who else handles it, how long it's kept, and what you can ask for. It
+        describes what the service actually does. It offers the same rights to everyone,
+        wherever you live, and it doesn't claim compliance with any particular law.
+      </p>
+
+      <h2>Who runs this</h2>
+      <!-- The operator's name: the one place in the repository besides LICENSE where it may
+           appear (CI's PII scan excludes exactly this file). No address or location: left out by
+           the owner's decision. -->
+      <p>
+        Satis Manager is run by an individual, Leonardo Nunez, who decides how its data is used.
+        Contact: <a href="mailto:privacy@satis-manager.com">privacy@satis-manager.com</a>.
+      </p>
+
+      <h2>What we collect, and why</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Data</th>
+            <th scope="col">Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Your Google account id and verified email address</td>
+            <td>Signing you in, and matching you to invitations</td>
+          </tr>
+          <tr>
+            <td>A display name (one you choose, or taken from your email)</td>
+            <td>Shown to the people you share a server with</td>
+          </tr>
+          <tr>
+            <td>Session records (a hashed session id and its times)</td>
+            <td>Keeping you signed in, and "sign out everywhere"</td>
+          </tr>
+          <tr>
+            <td>Server names, memberships and roles</td>
+            <td>Sharing a server and deciding who may do what</td>
+          </tr>
+          <tr>
+            <td>Game data: power, production, machine states, building positions</td>
+            <td>The dashboard. It describes the game world, not you.</td>
+          </tr>
+          <tr>
+            <td>Audit events: who did what to which server, and when (no emails or names in them)</td>
+            <td>Security, and investigating abuse</td>
+          </tr>
+          <tr>
+            <td>Your IP address</td>
+            <td>Rate limiting (kept in memory only) and security logs of sign-in events</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>What we don't do</h2>
+      <ul>
+        <li>No advertising, and no analytics or tracking scripts.</li>
+        <li>No selling of your data, and no sharing of it for marketing.</li>
+        <li>
+          No third party tracks you on this site, and we don't track you across other sites. So a
+          browser's "Do Not Track" signal changes nothing here: there's no tracking for it to turn off.
+        </li>
+        <li>
+          Cookies: only the ones the service needs to work. The session cookie keeps you signed in,
+          and a short-lived cookie (10 minutes) protects the Google sign-in. No cookie banner,
+          because there's nothing optional to accept.
+        </li>
+      </ul>
+
+      <h2>Who else handles data</h2>
+      <ul>
+        <li>Google: signing in. You share your email address and account id with us through it.</li>
+        <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
+      </ul>
+      <!-- Only what runs today. Add back with the features: Amazon Web Services (backups, once
+           ADR-0025 PR 8b ships and a restore is rehearsed; alert emails) and Discord (webhook
+           alerts, ADR-0027), with the webhook row in the table above. -->
+      <p>
+        When a new feature needs another provider (for example, backups or alert delivery), it's
+        added here before that feature goes live.
+      </p>
+      <p>These providers are based in the United States, so your data is processed there.</p>
+
+      <h2>How long it's kept</h2>
+      <ul>
+        <li>Your account: until you delete it.</li>
+        <li>Sessions: session records are deleted 30 days after the session expires (a session lasts at most 8 hours).</li>
+        <!-- Today game data is read live and not stored; history retention (ADR-0027: 48 h /
+             30 d / 1 y) goes here when it ships, and backups when they do. -->
+        <li>
+          Game data: not stored. It's read from your server when the dashboard asks; the only
+          history is the last 5 minutes of power readings, kept in memory for the chart.
+        </li>
+        <li>Audit events: 1 year. They're kept for security and hold no emails or names.</li>
+        <li>Server logs, including IP addresses on sign-in events: 14 days.</li>
+      </ul>
+
+      <h2>Your choices and rights</h2>
+      <p>
+        Whoever and wherever you are, you can ask to see the data we hold about you, get a copy of
+        it, correct it, or delete it, and you can object to how it's used. Email
+        <a href="mailto:privacy@satis-manager.com">privacy@satis-manager.com</a> from the address
+        on your account, and we'll answer within 30 days.
+      </p>
+      <p>
+        Deleting your account removes your user record, your sign-in identity, your sessions and
+        your memberships. A server you own is handed over or deleted first. You can also stop using
+        Google sign-in for us at any time from your Google account settings.
+      </p>
+
+      <h2>Security</h2>
+      <p>
+        User accounts sign in with Google, so we don't store passwords for them. Session ids are stored hashed;
+        the database gives each part of the service
+        only the access it needs; the site runs under a strict Content Security Policy; and the API
+        can only be reached through Cloudflare. No system is perfectly secure, but these are the
+        efforts we make. If a breach affects your data, we'll tell you without undue delay.
+      </p>
+
+      <h2>Children</h2>
+      <p>
+        Satis Manager isn't directed at children, and you must be at least 13 to use it. If we learn
+        an account belongs to someone under 13, we delete it.
+      </p>
+
+      <h2>Changes to this policy</h2>
+      <p>
+        The date at the top changes with every update. For a significant change, we'll also put a
+        notice on the site before it takes effect.
+      </p>
+    </main>
+    <footer>
+      <a href="/">Home</a>
+      <a href="/terms">Terms of Use</a>
+      <a href="https://github.com/Sour-Dev-Home/satisfactory-dash">Source code (AGPL-3.0)</a>
+    </footer>
+  </body>
+</html>
