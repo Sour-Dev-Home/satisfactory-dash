@@ -54,6 +54,7 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
    | Server names, memberships, roles | sharing and permissions | contract |
    | Game telemetry (power, production, machine states, building positions) | the dashboard, history, alerts. About the game world, not you | contract |
    | Discord webhook URL (encrypted); later, alert email addresses | delivering alerts you set up | contract / consent (email) |
+   | In-game names of players connected to a server you're a member of (ADR-0029) | shown live to that server's members only; **not stored and not logged**. They come from the server owner's own game server, and the server owner is responsible for telling their players | legitimate interest |
    | Audit events (who did what to which server, when; **no emails or names in them**) | security and abuse investigation | legitimate interest |
    | IP address | rate limiting (in memory) and security logs on sign-in events | legitimate interest |
 3. **What we don't do:** no ads (ADR-0021), no analytics or tracking scripts (none in the code
