@@ -58,31 +58,42 @@ export function createGoogleDisabledRouter(): Router {
 export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
   const { config, oidc: google, signIn, db } = deps;
   const router = Router();
-  // Same per-IP cap as password login (IPv6 by /56); one instance covering both routes.
-  const cap = createLoginRequestCap("google sign-in");
-
   const noStore = (res: Response) => void res.setHeader("Cache-Control", "no-store");
+  // Both routes are top-level browser navigations: a failure must never render JSON at the API host, so
+  // every failure is a redirect built ONLY from the frontend origin plus a fixed path and code.
   const failTo = (res: Response, error: GoogleLoginError) =>
     res.redirect(302, `${config.frontendOrigin}/app/login?error=${error}`);
+  // Same per-IP cap as password login (IPv6 by /56); one instance covering both routes. Over the cap the
+  // browser is sent back to the login screen ("unavailable"), not shown a 429 body.
+  const cap = createLoginRequestCap("google sign-in", (_req, res) => {
+    noStore(res);
+    failTo(res, "unavailable");
+  });
 
   router.get("/auth/google/start", cap, async (req, res) => {
     noStore(res);
-    // A return path that is not a safe /app path is ignored, not an error: sign-in still works.
-    const requested = typeof req.query.return === "string" ? ReturnPathSchema.safeParse(req.query.return) : undefined;
-    const returnPath = requested?.success ? requested.data : DEFAULT_RETURN_PATH;
-    const state = oidc.randomState();
-    const nonce = oidc.randomNonce();
-    const codeVerifier = oidc.randomPKCECodeVerifier();
-    // Discovery first: when Google is unreachable this is a 503 and nothing is written.
-    const url = await google.authorizationUrl({ state, nonce, codeVerifier });
-    const attempt = newLoginAttemptId();
     try {
+      // A return path that is not a safe /app path is ignored, not an error: sign-in still works.
+      const requested = typeof req.query.return === "string" ? ReturnPathSchema.safeParse(req.query.return) : undefined;
+      const returnPath = requested?.success ? requested.data : DEFAULT_RETURN_PATH;
+      const state = oidc.randomState();
+      const nonce = oidc.randomNonce();
+      const codeVerifier = oidc.randomPKCECodeVerifier();
+      // Discovery first: when Google is unreachable nothing is written.
+      const url = await google.authorizationUrl({ state, nonce, codeVerifier });
+      const attempt = newLoginAttemptId();
       await createLoginAttempt(db, { idHash: attempt.idHash, state, nonce, codeVerifier, returnPath });
+      res.cookie(LOGIN_ATTEMPT_COOKIE, attempt.id, { ...ATTEMPT_COOKIE_OPTIONS, maxAge: ATTEMPT_COOKIE_MAX_AGE_SECONDS * 1000 });
+      res.redirect(302, url.toString());
     } catch (err) {
-      throw isDatabaseUnavailable(err) ? Object.assign(new ServiceUnavailableError(), { cause: err }) : err;
+      // The real cause as a fixed code (no detail, no message); the browser gets a redirect, never JSON.
+      const unavailable = err instanceof ServiceUnavailableError || isDatabaseUnavailable(err);
+      req.log.warn(
+        { ip: clientIp(req), code: unavailable ? "google_start_unavailable" : "google_start_failed", errorName: errorName(err) },
+        "google sign-in could not start",
+      );
+      failTo(res, unavailable ? "unavailable" : "failed");
     }
-    res.cookie(LOGIN_ATTEMPT_COOKIE, attempt.id, { ...ATTEMPT_COOKIE_OPTIONS, maxAge: ATTEMPT_COOKIE_MAX_AGE_SECONDS * 1000 });
-    res.redirect(302, url.toString());
   });
 
   router.get("/auth/google/callback", cap, async (req, res) => {
