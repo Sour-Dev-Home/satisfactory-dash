@@ -3,6 +3,7 @@ import { endpoints } from "@satisfactory-dash/shared";
 import {
   factoryMixed,
   healthOk,
+  playersUnavailable,
   powerHistoryNormal,
   powerOk,
   serversSingle,
@@ -22,6 +23,8 @@ export const handlers = [
   http.post(endpoints.auth.logout.route, () => HttpResponse.json(sessionAnonymous)),
   http.get(endpoints.servers.route, () => HttpResponse.json(serversSingle)),
   http.get(endpoints.status.route, () => HttpResponse.json(statusRunning)),
+  // No FicsitRemoteMonitoring by default (ADR-0029): tests that care about names override this.
+  http.get(endpoints.players.route, () => HttpResponse.json(playersUnavailable)),
   http.get(endpoints.power.route, () => HttpResponse.json(powerOk)),
   http.get(endpoints.powerHistory.route, () => HttpResponse.json(powerHistoryNormal)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
