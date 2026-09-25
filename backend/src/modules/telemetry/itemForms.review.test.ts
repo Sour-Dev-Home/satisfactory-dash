@@ -87,7 +87,7 @@ describe("createUnitResolver edge cases", () => {
           [
             {
               id: "1", name: "n", className: "c", recipe: null, isProducing: false, isPaused: false,
-              outputInventory: [], production: [{ className: "Unknown", ratePerMinute: 1 }],
+              outputInventory: [], production: [{ className: "Unknown", ratePerMinute: 1 }], consumption: [],
             },
           ] as never,
       },
