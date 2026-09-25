@@ -21,7 +21,7 @@ describe("App with a crashing section", () => {
       "Power hit an error and couldn't be shown.",
     );
     // The shell around it still works from the default (signed-in, one server) handlers.
-    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Factory" }));
     expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Overview" }));

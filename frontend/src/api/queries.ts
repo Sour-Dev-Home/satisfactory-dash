@@ -24,9 +24,11 @@ const signedOut: SessionResponse = { authenticated: false };
 /**
  * Marks the session signed out and drops every other cached response, so no data from the
  * old session stays on screen. The auth gate reacts to the session and shows the login screen.
+ * Pass the backend's signed-out answer when there is one: it says which sign-in methods to
+ * offer (e.g. Google), which the bare fallback can't.
  */
-export function signOutLocally(client: QueryClient): void {
-  client.setQueryData(SESSION_KEY, signedOut);
+export function signOutLocally(client: QueryClient, answer?: SessionResponse): void {
+  client.setQueryData(SESSION_KEY, answer && !answer.authenticated ? answer : signedOut);
   dropSessionData(client);
 }
 

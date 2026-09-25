@@ -1,4 +1,5 @@
 import { fireEvent, screen, within } from "@testing-library/react";
+import { signOutFromMenu } from "../test/account";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { renderWithClient } from "../test/render";
@@ -56,7 +57,7 @@ describe("the demo app", () => {
   it("signs out to 'Enter demo' again", async () => {
     renderWithClient(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Enter demo" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+    await signOutFromMenu();
     expect(await screen.findByRole("button", { name: "Enter demo" })).toBeInTheDocument();
   });
 });

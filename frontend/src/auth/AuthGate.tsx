@@ -18,8 +18,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // rather than throwing the operator out of the app.
   if (session.data) {
     // The demo build (ADR-0026) has one "Enter demo" button instead of a credential form.
-    if (!session.data.authenticated) return IS_DEMO ? <DemoEntry /> : <LoginForm />;
-    // The account name and Log out render in the shell's top bar (AccountMenu).
+    if (!session.data.authenticated) {
+      return IS_DEMO ? <DemoEntry /> : <LoginForm signInMethods={session.data.signInMethods} />;
+    }
+    // The account name and Sign out render in the shell's top bar (AccountMenu).
     return <SignedInUser value={session.data.user}>{children}</SignedInUser>;
   }
   if (session.isError) {

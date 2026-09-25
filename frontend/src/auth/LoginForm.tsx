@@ -5,8 +5,17 @@ import { apiSend } from "../api/client";
 import { ApiError, classifyError } from "../api/errors";
 import { LOGIN_MUTATION_KEY, SESSION_KEY } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { googleStartHref, offersGoogle, signInErrorText } from "./googleSignIn";
 
-export function LoginForm() {
+/**
+ * The sign-in screen (ADR-0011, ADR-0025): "Sign in with Google" when the backend offers it,
+ * and the operator's password form (until ADR-0025 PR 9).
+ */
+export function LoginForm({ signInMethods }: { signInMethods?: readonly string[] }) {
+  // The address as loaded: the Google link is a full-page navigation, and the backend's error
+  // redirect is a fresh page load, so there's no need to follow client-side navigation here.
+  const { pathname, search } = window.location;
+  const urlError = signInErrorText(search);
   const client = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -47,6 +56,27 @@ export function LoginForm() {
       className="mx-auto mt-6 grid w-full max-w-sm gap-4 rounded-card border border-line bg-surface p-6"
     >
       <h2 id="login-heading">Sign in</h2>
+      {urlError && (
+        // The global [role="alert"] style gives it the error look (index.css); red text on
+        // that red-tinted background would fail contrast.
+        <p role="alert">
+          {urlError}
+        </p>
+      )}
+      {offersGoogle(signInMethods) && (
+        <>
+          {/* A link, not fetch: the backend answers with a redirect to Google. */}
+          <a
+            href={googleStartHref(pathname)}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-accent bg-accent px-[14px] font-semibold text-on-accent no-underline"
+          >
+            Sign in with Google
+          </a>
+          <p className="flex items-center gap-3 text-sm text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
+            or
+          </p>
+        </>
+      )}
       <label className="grid gap-1.5 text-sm">
         Username
         <input
@@ -73,7 +103,10 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={login.isPending}
-        className="mt-1 border-accent bg-accent font-semibold text-on-accent hover:border-accent"
+        // With Google offered, that's the main way in; the password button steps back.
+        className={
+          offersGoogle(signInMethods) ? "mt-1 font-semibold" : "mt-1 border-accent bg-accent font-semibold text-on-accent hover:border-accent"
+        }
       >
         {login.isPending ? "Signing in…" : "Sign in"}
       </button>

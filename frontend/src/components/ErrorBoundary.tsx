@@ -3,7 +3,7 @@ import { Component, createRef, type ErrorInfo, type ReactNode } from "react";
 interface Props {
   /** What the operator calls this part of the page, e.g. "Power". */
   label: string;
-  /** Extra controls for the fallback, e.g. Log out when the crash hides the real one. */
+  /** Extra controls for the fallback, e.g. Sign out when the crash hides the account menu. */
   actions?: ReactNode;
   children: ReactNode;
 }

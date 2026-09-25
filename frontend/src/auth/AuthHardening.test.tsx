@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { signOutFromMenu } from "../test/account";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -129,7 +130,7 @@ describe("auth hardening", () => {
     fireEvent.click(await screen.findByRole("checkbox"));
     await waitFor(() => expect(screen.getByRole("checkbox")).toBeDisabled());
 
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    await signOutFromMenu();
     await screen.findByRole("heading", { name: "Sign in" });
 
     releasePut();

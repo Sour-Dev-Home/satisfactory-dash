@@ -2,6 +2,9 @@ import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
 import { ApiError, BackendUnreachableError, ContractDriftError, RequestValidationError } from "./errors";
 import { transport } from "./transport";
 
+// Re-exported so nothing but this module imports the transport (the demo build enforces it).
+export { apiHref } from "./transport";
+
 // The only module that builds API requests; transport.ts sends them (ADR-0026). Every body is
 // parsed with the endpoint's shared schema (ADR-0002), so a shape mismatch surfaces as
 // ContractDriftError, not a crash later.

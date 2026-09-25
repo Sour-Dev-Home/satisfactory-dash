@@ -29,7 +29,7 @@ describe("App with a crash outside every section", () => {
     expect(alert).toHaveTextContent("The dashboard hit an error and couldn't be shown.");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Satis Manager");
     expect(screen.getByRole("link", { name: "Source code (AGPL-3.0)" })).toBeInTheDocument();
-    expect(alert).toContainElement(screen.getByRole("button", { name: "Log out" }));
+    expect(alert).toContainElement(screen.getByRole("button", { name: "Sign out" }));
 
     gate.broken = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));

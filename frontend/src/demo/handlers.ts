@@ -52,6 +52,11 @@ export const demoHandlers = [
     state.signedIn = false;
     return Response.json(SIGNED_OUT);
   }),
+  // The demo has one session (this tab), so "everywhere" is the same as here.
+  post(endpoints.auth.logoutAll.route, () => {
+    state.signedIn = false;
+    return Response.json(SIGNED_OUT);
+  }),
 
   get(endpoints.servers.route, ({ params }) => guarded(params, () => Response.json(world.servers))),
   get(endpoints.status.route, ({ params }) => guarded(params, () => Response.json(world.status(demoNow())))),

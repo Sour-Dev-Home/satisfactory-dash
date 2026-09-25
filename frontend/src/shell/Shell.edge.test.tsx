@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { openAccountMenu, signOutFromMenu } from "../test/account";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
@@ -88,7 +89,7 @@ describe("server switcher", () => {
 describe("signed-in user", () => {
   it("shows the new operator's name after signing out and in as someone else", async () => {
     renderWithClient(<App />);
-    expect(await screen.findByText("Signed in as operator")).toBeInTheDocument();
+    expect((await openAccountMenu()).getByText("operator")).toBeInTheDocument();
 
     server.use(
       http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)),
@@ -96,13 +97,14 @@ describe("signed-in user", () => {
         HttpResponse.json({ authenticated: true, user: { name: "second-operator" } }),
       ),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    await signOutFromMenu();
     fireEvent.change(await screen.findByLabelText("Username"), { target: { value: "second-operator" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "example-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByText("Signed in as second-operator")).toBeInTheDocument();
-    expect(screen.queryByText("Signed in as operator")).not.toBeInTheDocument();
+    const menu = await openAccountMenu();
+    expect(menu.getByText("second-operator")).toBeInTheDocument();
+    expect(menu.queryByText("operator")).not.toBeInTheDocument();
     // The app works again after re-login: the Overview loads fresh data.
     const rows = await screen.findByRole("list", { name: "Sections" });
     await waitFor(() => expect(within(rows).queryByText("Loading…")).not.toBeInTheDocument());
