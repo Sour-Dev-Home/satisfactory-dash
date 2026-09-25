@@ -191,13 +191,68 @@ role owns (or run `npm run db:init -w backend` first for the roles), and only af
 
 ## Scheduling
 
-The Windows scheduled task that runs `npm run backup -w backend` nightly is registered by the
-coordinator session (ADR-0025 build plan, 8b), as the same user who owns the AWS profile. It runs
-`npm run backup -w backend` from the repo root and must show a failure (non-zero exit) in Task Scheduler
-history when any step fails. Run it as the interactive user (so the temp folder and the AWS profile are the
-user's own, not SYSTEM's), with a working directory that only you can write to (PowerShell and Windows
-search the current directory for `pg_dump`, `age` and `aws` before `PATH`). Check it after a week: a new object in the bucket every day, and the local
-folder holding at most `BACKUP_LOCAL_KEEP` files.
+The nightly backup is a Windows Scheduled Task, `SatisfactoryDashBackup`, that runs
+`scripts\windows\backup-task.ps1`. The wrapper runs `npm run backup -w backend` and, if it exits non-zero
+(say the internet dropped during the S3 upload), waits 30 minutes and tries again, 4 attempts in total. It logs
+to `%LOCALAPPDATA%\satisfactory-dash\logs\backup.log` (outside the repo) and exits 1 if every attempt failed, so
+Task Scheduler's history shows the failure; the heartbeat is pinged by the backup itself only after a really
+uploaded backup, so the monitor alerts when all attempts fail. **Why a wrapper:** Task Scheduler's "restart on
+failure" setting only covers a task that failed to *launch*, not one that ran and exited non-zero, so the retry
+lives in the script. The wrapper also puts the folders of `pg_dump`, `age` and the AWS CLI in front of `PATH` for
+its own run (parameters `-PostgresBin`, `-AgeDir`, `-AwsDir`, with defaults that follow the standard install
+locations), because the task's `PATH` often lacks them. Other parameters: `-RepoDir` (default: the repo that
+holds the script), `-Attempts`, `-RetryMinutes`, `-Log`.
+
+The task's settings:
+
+| Setting | Value |
+|---|---|
+| Trigger | daily at 03:00 |
+| Runs as | the interactive user (so the temp folder and the AWS profile are the user's own, not SYSTEM's) |
+| Run when a run was missed | yes (`StartWhenAvailable`) |
+| Only with a network | yes (`RunOnlyIfNetworkAvailable`) |
+| Time limit | 3 hours (the retries can take about 90 minutes) |
+| Overlap | `IgnoreNew` (a run still going is not started twice) |
+
+Register it (as yourself, in PowerShell, from the repo root; nothing here needs admin rights):
+
+```powershell
+$repo   = (Get-Location).Path
+$script = Join-Path $repo 'scripts\windows\backup-task.ps1'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`"" -WorkingDirectory $repo
+$trigger  = New-ScheduledTaskTrigger -Daily -At '03:00'
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable `
+  -ExecutionTimeLimit (New-TimeSpan -Hours 3) -MultipleInstances IgnoreNew
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName 'SatisfactoryDashBackup' -Action $action -Trigger $trigger `
+  -Settings $settings -Principal $principal
+```
+
+Try it once by hand before relying on it: `Start-ScheduledTask -TaskName SatisfactoryDashBackup`, then read the log
+file. Remove it with `Unregister-ScheduledTask -TaskName SatisfactoryDashBackup -Confirm:$false`. Run it from a
+working directory that only you can write to (PowerShell and Windows search the current directory for `pg_dump`,
+`age` and `aws` before `PATH`); the repo checkout you deploy from is that. Check it after a week: a new object
+in the bucket every day, and the local folder holding at most `BACKUP_LOCAL_KEEP` files.
+
+### Setting up the `satis_backup` role by hand
+
+`db:init` with `DB_BACKUP_PASSWORD` creates the read-only `satis_backup` role and does all of this for you. If the
+database already existed and you are adding the role manually (as a Postgres superuser; type the password
+yourself, never paste it into a chat or a file):
+
+```sql
+CREATE ROLE satis_backup LOGIN PASSWORD '<a new password of 16+ characters>';
+GRANT pg_read_all_data TO satis_backup;
+ALTER ROLE satis_backup SET default_transaction_read_only = on;
+GRANT CONNECT ON DATABASE satis TO satis_backup;   -- needed: the database revokes CONNECT from PUBLIC
+```
+
+Then set `BACKUP_DATABASE_URL=postgres://satis_backup:<password>@127.0.0.1:5432/satis` in `backend\.env`. Without the
+`GRANT CONNECT`, the backup fails with `permission denied for database`. The app role cannot serve as the backup
+role either: a dump as `satis_app` fails with `permission denied for sequence pgmigrations_id_seq`
+(the migrations bookkeeping table's sequence, which the app role may not read), which is why the backup uses
+`satis_backup` through `BACKUP_DATABASE_URL`.
 
 ## Privacy
 
