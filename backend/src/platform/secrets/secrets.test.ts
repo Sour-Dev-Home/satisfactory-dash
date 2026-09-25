@@ -10,21 +10,21 @@ const ringOf = (id = "k1", key = newKey()) => createSecretsKeyring(id, new Map([
 describe("seal and open", () => {
   it("round-trips a token and stamps the current key id", () => {
     const ring = ringOf("k1");
-    const sealed = ring.seal("token-value-123");
+    const sealed = ring.seal("token-value-123", "ctx");
     expect(sealed.keyId).toBe("k1");
-    expect(ring.open(sealed.keyId, sealed.data)).toBe("token-value-123");
+    expect(ring.open(sealed.keyId, sealed.data, "ctx")).toBe("token-value-123");
   });
 
   it("round-trips non-ASCII text", () => {
     const ring = ringOf();
-    const sealed = ring.seal("tökén-✓");
-    expect(ring.open(sealed.keyId, sealed.data)).toBe("tökén-✓");
+    const sealed = ring.seal("tökén-✓", "ctx");
+    expect(ring.open(sealed.keyId, sealed.data, "ctx")).toBe("tökén-✓");
   });
 
   it("uses a fresh random 12-byte nonce per value and never stores the plaintext", () => {
     const ring = ringOf();
-    const a = ring.seal("same");
-    const b = ring.seal("same");
+    const a = ring.seal("same", "ctx");
+    const b = ring.seal("same", "ctx");
     expect(a.data.subarray(0, 12).equals(b.data.subarray(0, 12))).toBe(false);
     expect(a.data.equals(b.data)).toBe(false);
     expect(a.data.length).toBe(12 + 4 + 16);
@@ -33,8 +33,8 @@ describe("seal and open", () => {
 
   it("rejects an empty or oversized secret", () => {
     const ring = ringOf();
-    expect(() => ring.seal("")).toThrow(SecretsError);
-    expect(() => ring.seal("x".repeat(8 * 1024 + 1))).toThrow(SecretsError);
+    expect(() => ring.seal("", "ctx")).toThrow(SecretsError);
+    expect(() => ring.seal("x".repeat(8 * 1024 + 1), "ctx")).toThrow(SecretsError);
   });
 });
 
@@ -65,7 +65,6 @@ describe("tamper detection", () => {
   it("rejects a value moved to another row or field (context is authenticated)", () => {
     expect(() => ring.open(sealed.keyId, sealed.data, "other:api")).toThrow(SecretsError);
     expect(() => ring.open(sealed.keyId, sealed.data, "srv:frm")).toThrow(SecretsError);
-    expect(() => ring.open(sealed.keyId, sealed.data)).toThrow(SecretsError);
     expect(ring.open(sealed.keyId, sealed.data, "srv:api")).toBe("super-secret-token");
   });
 
@@ -104,7 +103,7 @@ describe("key rotation", () => {
     const before = createSecretsKeyring("k1", new Map([["k1", oldKey]])).seal("old-token", "s:api");
     const rotated = createSecretsKeyring("k2", new Map([["k2", newKey()], ["k1", oldKey]]));
     expect(rotated.open(before.keyId, before.data, "s:api")).toBe("old-token");
-    expect(rotated.seal("new").keyId).toBe("k2");
+    expect(rotated.seal("new", "s:api").keyId).toBe("k2");
     expect(rotated.hasKey("k1")).toBe(true);
     expect(ringOf("k2").hasKey("k1")).toBe(false);
   });
@@ -128,14 +127,14 @@ describe("loadSecretsKeyringFromEnv", () => {
 
   it("uses SERVER_SECRETS_KEY_ID and reads previous keys", () => {
     const oldKey = newKey();
-    const old = loadSecretsKeyringFromEnv({ SERVER_SECRETS_KEY: b64(oldKey) })!.seal("t");
+    const old = loadSecretsKeyringFromEnv({ SERVER_SECRETS_KEY: b64(oldKey) })!.seal("t", "s:api");
     const ring = loadSecretsKeyringFromEnv({
       SERVER_SECRETS_KEY: b64(newKey()),
       SERVER_SECRETS_KEY_ID: "2026-10",
       SERVER_SECRETS_PREVIOUS_KEYS: `k1=${b64(oldKey)}`,
     })!;
     expect(ring.currentKeyId).toBe("2026-10");
-    expect(ring.open(old.keyId, old.data)).toBe("t");
+    expect(ring.open(old.keyId, old.data, "s:api")).toBe("t");
   });
 
   it.each([

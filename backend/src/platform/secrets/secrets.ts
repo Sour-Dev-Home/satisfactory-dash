@@ -37,11 +37,11 @@ export interface SealedSecret {
 export interface SecretsKeyring {
   /** The id `seal` stamps on new values. */
   currentKeyId: string;
-  /** Encrypts with the current key. `context` is bound as authenticated data (e.g. `${serverId}:api`),
+  /** Encrypts with the current key. `context` is REQUIRED and bound as authenticated data (e.g. `${serverId}:api`),
    *  so a sealed value copied to another row or field fails to open. */
-  seal(plaintext: string, context?: string): SealedSecret;
+  seal(plaintext: string, context: string): SealedSecret;
   /** Decrypts a value sealed by any key in the ring. Throws SecretsError on any failure. */
-  open(keyId: string, data: Buffer, context?: string): string;
+  open(keyId: string, data: Buffer, context: string): string;
   /** True when the ring can open values sealed with this key id. */
   hasKey(keyId: string): boolean;
 }
@@ -53,7 +53,7 @@ function parseKey(variable: string, value: string): Buffer {
   // Round-trip so stray characters (which Buffer.from silently skips) are rejected.
   const canonical = key.toString("base64");
   const unpadded = trimmed.replace(/=+$/, "");
-  const valid = key.length === KEY_BYTES && (canonical === trimmed || canonical.replace(/=+$/, "") === unpadded);
+  const valid = key.length === KEY_BYTES && /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) && (canonical === trimmed || canonical.replace(/=+$/, "") === unpadded);
   if (!valid) {
     throw new ConfigError(`${variable} must be 32 random bytes encoded as base64 (e.g. \`openssl rand -base64 32\`).`);
   }
@@ -68,6 +68,14 @@ function parseKeyId(variable: string, value: string): string {
     throw new ConfigError(`${variable} must be 1-32 characters: letters, digits, "_" or "-".`);
   }
   return value;
+}
+
+/** The context is required (never empty), so a caller cannot forget to bind a value to its row. */
+function requireContext(context: string): string {
+  if (typeof context !== "string" || context.length === 0) {
+    throw new SecretsError("A secret needs a non-empty context.");
+  }
+  return context;
 }
 
 /** Builds a keyring from a current key and any number of previous keys (kept only to read old rows). */
@@ -86,7 +94,7 @@ export function createSecretsKeyring(currentKeyId: string, keys: ReadonlyMap<str
       }
       const nonce = randomBytes(NONCE_BYTES);
       const cipher = createCipheriv("aes-256-gcm", current, nonce, { authTagLength: TAG_BYTES });
-      if (context !== undefined) cipher.setAAD(Buffer.from(context, "utf8"));
+      cipher.setAAD(Buffer.from(requireContext(context), "utf8"));
       const encrypted = Buffer.concat([cipher.update(bytes), cipher.final()]);
       return { keyId: currentKeyId, data: Buffer.concat([nonce, encrypted, cipher.getAuthTag()]) };
     },
@@ -99,7 +107,7 @@ export function createSecretsKeyring(currentKeyId: string, keys: ReadonlyMap<str
         const decipher = createDecipheriv("aes-256-gcm", key, data.subarray(0, NONCE_BYTES), {
           authTagLength: TAG_BYTES,
         });
-        if (context !== undefined) decipher.setAAD(Buffer.from(context, "utf8"));
+        decipher.setAAD(Buffer.from(requireContext(context), "utf8"));
         decipher.setAuthTag(data.subarray(data.length - TAG_BYTES));
         const plain = Buffer.concat([
           decipher.update(data.subarray(NONCE_BYTES, data.length - TAG_BYTES)),
