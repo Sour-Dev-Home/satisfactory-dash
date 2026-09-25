@@ -12,3 +12,19 @@ export { createAuthorizeServer, createDbServerAccess } from "./serverAccess.js";
 export type { AuthorizeServerOptions, ServerAccess } from "./serverAccess.js";
 export { registerConfiguredServers } from "./registerConfiguredServers.js";
 export { createServersRouter } from "./serversRouter.js";
+export {
+  deleteConnection,
+  getConnection,
+  getConnectionSummary,
+  listConnections,
+  saveConnection,
+  updateConnection,
+} from "./repositories/connectionRepository.js";
+export type {
+  ConnectionInput,
+  ConnectionList,
+  ConnectionPatch,
+  ServerConnection,
+  ServerConnectionSummary,
+  UnreadableConnection,
+} from "./repositories/connectionRepository.js";

@@ -10,6 +10,8 @@ import { withTransaction } from "../../../platform/db/transaction.js";
  */
 export type HostingMode = "self" | "managed";
 export type MemberRole = "owner" | "admin" | "viewer";
+/** ADR-0030: 'local' is reached directly by this backend (operator only); 'agent' only through a player's edge agent. */
+export type ConnectionKind = "local" | "agent";
 
 export interface RegisteredServer {
   /** Internal primary key (uuid). Never sent to clients. */
@@ -17,6 +19,7 @@ export interface RegisteredServer {
   publicId: string;
   displayName: string;
   hostingMode: HostingMode;
+  connectionKind: ConnectionKind;
 }
 
 const ServerRowSchema = z.object({
@@ -24,6 +27,7 @@ const ServerRowSchema = z.object({
   public_id: z.string(),
   display_name: z.string(),
   hosting_mode: z.enum(["self", "managed"]),
+  connection_kind: z.enum(["local", "agent"]),
 });
 
 const toServer = (row: z.output<typeof ServerRowSchema>): RegisteredServer => ({
@@ -31,6 +35,7 @@ const toServer = (row: z.output<typeof ServerRowSchema>): RegisteredServer => ({
   publicId: row.public_id,
   displayName: row.display_name,
   hostingMode: row.hosting_mode,
+  connectionKind: row.connection_kind,
 });
 
 const UPSERT_SERVER = `
@@ -38,7 +43,7 @@ const UPSERT_SERVER = `
   VALUES ($1, $2)
   ON CONFLICT (public_id) DO UPDATE
     SET display_name = EXCLUDED.display_name, deleted_at = NULL
-  RETURNING id, public_id, display_name, hosting_mode`;
+  RETURNING id, public_id, display_name, hosting_mode, connection_kind`;
 
 /** Startup registration of a server named in local config: created, or its display name and
  *  live state refreshed (a configured server is by definition not deleted). Idempotent. */
@@ -51,7 +56,7 @@ export async function upsertConfiguredServer(
 }
 
 const SELECT_BY_PUBLIC_ID = `
-  SELECT id, public_id, display_name, hosting_mode
+  SELECT id, public_id, display_name, hosting_mode, connection_kind
   FROM servers.servers
   WHERE public_id = $1 AND deleted_at IS NULL`;
 
@@ -101,7 +106,11 @@ const DELETE_MEMBERS = `
   DELETE FROM servers.server_members
   WHERE server_id = $1`;
 
-const IdRowSchema = z.object({ id: z.string() });
+const DELETE_CONNECTION = `
+  DELETE FROM servers.server_connections
+  WHERE server_id = $1`;
+
+const IdRowSchema =z.object({ id: z.string() });
 
 /**
  * Soft delete: the server row stays (for the audit trail) but every membership goes, in the same
@@ -121,6 +130,8 @@ export async function softDeleteServer(
       return false;
     }
     await client.query(DELETE_MEMBERS, [row.id]);
+    // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
+    await client.query(DELETE_CONNECTION, [row.id]);
     return true;
   });
 }
