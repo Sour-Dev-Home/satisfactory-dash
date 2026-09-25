@@ -101,7 +101,8 @@ describe.skipIf(!available)("server connections against a real Postgres", () => 
     const server = await newServer();
     await saveConnection(pool, ringK1, server.id, input);
     await updateConnection(pool, ringK1, server.id, { apiPort: 7778, frmToken: null });
-    expect(await getConnection(pool, ringK1, server.id)).toMatchObject({ apiPort: 7778, frmPort: 8080, host: "gaming-pc.lan", apiToken: API_TOKEN, frmToken: undefined });
+    expect(await getConnection(pool, ringK1, server.id)).toMatchObject({ apiPort: 7778, frmPort: 8080, host: "gaming-pc.lan", apiToken: API_TOKEN });
+    expect((await getConnection(pool, ringK1, server.id))?.frmToken).toBeUndefined();
     expect((await rawRow(server.id)).frm_token_enc).toBeNull();
   });
 

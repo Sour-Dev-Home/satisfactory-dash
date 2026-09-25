@@ -261,17 +261,27 @@ export async function updateConnection(
   return withTransaction(pool, async (client) => {
     const row = await selectRow(client, serverId, true);
     if (row === undefined) return false;
-    const current = openRow(ring, row);
-    const apiToken = patch.apiToken ?? current.apiToken;
-    const frmToken = patch.frmToken === undefined ? current.frmToken : (patch.frmToken ?? undefined);
+    // Open only what the patch does not replace: a row sealed by a retired key can still be repaired
+    // by supplying its tokens afresh.
+    const apiToken =
+      patch.apiToken ?? ring.open(row.key_id, row.api_token_enc, tokenContext(row.server_id, row.connection_kind, "api"));
+    let frmToken: string | undefined;
+    if (patch.frmToken === undefined) {
+      frmToken =
+        row.frm_token_enc === null
+          ? undefined
+          : ring.open(row.key_id, row.frm_token_enc, tokenContext(row.server_id, row.connection_kind, "frm"));
+    } else {
+      frmToken = patch.frmToken ?? undefined;
+    }
     const api = ring.seal(apiToken, tokenContext(row.server_id, row.connection_kind, "api"));
     const frm = frmToken === undefined ? undefined : ring.seal(frmToken, tokenContext(row.server_id, row.connection_kind, "frm"));
     await client.query(UPDATE, [
       serverId,
-      patch.host ?? current.host,
-      patch.pinnedIp ?? current.pinnedIp,
-      patch.apiPort ?? current.apiPort,
-      patch.frmPort ?? current.frmPort,
+      patch.host ?? row.host,
+      patch.pinnedIp ?? row.pinned_ip,
+      patch.apiPort ?? row.api_port,
+      patch.frmPort ?? row.frm_port,
       api.data,
       frm?.data ?? null,
       api.keyId,

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createSecretsKeyring } from "../../../platform/secrets/secrets.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
-import { getConnection, getConnectionSummary, listConnections, saveConnection } from "./connectionRepository.js";
+import { getConnection, getConnectionSummary, listConnections, saveConnection, updateConnection } from "./connectionRepository.js";
 
 // No SQL runs here (the real statements are covered by connectionRepository.db.test.ts in CI): a fake
 // Queryable records what would be written, and serves it back as a row, to test the sealing itself.
@@ -125,6 +125,76 @@ describe("the sealing context binds a value to its row and field", () => {
   it("uses the kind on the row, so a server flipped to another kind stops opening", async () => {
     const { ring, written } = await saved();
     await expect(getConnection(servingDb([rowFrom(written, SERVER_A, { connection_kind: "agent" })]), ring, SERVER_A)).rejects.toThrow("Could not decrypt");
+  });
+});
+
+/** A fake pool whose one client serves `row` for the locking SELECT and records the UPDATE. */
+function fakePool(row: unknown) {
+  const updates: unknown[][] = [];
+  const statements: string[] = [];
+  const client = {
+    on() {},
+    removeListener() {},
+    release() {},
+    async query(text: string, values: unknown[] = []) {
+      statements.push(text.trim().split(/\s+/)[0]!);
+      if (text.includes("FOR UPDATE")) return { rows: row === undefined ? [] : [row] };
+      if (text.includes("UPDATE servers.server_connections")) {
+        updates.push(values);
+        return { rows: [{ server_id: values[0] }] };
+      }
+      return { rows: [] };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { pool: { connect: async () => client } as any, updates, statements };
+}
+
+describe("updateConnection", () => {
+  it("keeps unpatched fields, re-seals both tokens with the current key and keeps their contexts", async () => {
+    const oldKey = randomBytes(32);
+    const oldRing = newRing("k1", oldKey);
+    const ring = createSecretsKeyring("k2", new Map([["k2", randomBytes(32)], ["k1", oldKey]]));
+    const { written } = await saved(oldRing);
+    const { pool, updates } = fakePool(rowFrom(written, SERVER_A));
+    expect(await updateConnection(pool, ring, SERVER_A, { apiPort: 7778 })).toBe(true);
+    const [, host, ip, apiPort, frmPort, , , keyId] = updates[0]!;
+    expect([host, ip, apiPort, frmPort, keyId]).toEqual(["192.168.1.20", "192.168.1.20", 7778, 8080, "k2"]);
+    const opened = await getConnection(servingDb([rowFrom({ params: updates[0]! }, SERVER_A)]), ring, SERVER_A);
+    expect(opened).toMatchObject({ apiToken: API_TOKEN, frmToken: FRM_TOKEN });
+  });
+
+  it("frmToken null clears it, undefined keeps it", async () => {
+    const { ring, written } = await saved();
+    const cleared = fakePool(rowFrom(written, SERVER_A));
+    await updateConnection(cleared.pool, ring, SERVER_A, { frmToken: null });
+    expect(cleared.updates[0]![6]).toBeNull();
+    const kept = fakePool(rowFrom(written, SERVER_A));
+    await updateConnection(kept.pool, ring, SERVER_A, { frmToken: undefined, apiToken: undefined });
+    expect(Buffer.isBuffer(kept.updates[0]![6])).toBe(true);
+  });
+
+  it("can repair a row sealed by a retired key when the patch supplies every token it holds", async () => {
+    const { written } = await saved(newRing("k1"));
+    const ring = newRing("k2");
+    const { pool, updates } = fakePool(rowFrom(written, SERVER_A));
+    expect(await updateConnection(pool, ring, SERVER_A, { apiToken: "brand-new-api-token", frmToken: "brand-new-frm-token" })).toBe(true);
+    expect(updates[0]![7]).toBe("k2");
+  });
+
+  it("an unreadable row with an incomplete patch fails without writing or leaking a token", async () => {
+    const { written } = await saved(newRing("k1"));
+    const { pool, updates, statements } = fakePool(rowFrom(written, SERVER_A));
+    const err = await updateConnection(pool, newRing("k2"), SERVER_A, { apiPort: 1 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(String((err as Error).message)).not.toContain(API_TOKEN);
+    expect(updates).toEqual([]);
+    expect(statements).toContain("ROLLBACK");
+  });
+
+  it("returns false when there is no row", async () => {
+    const { pool } = fakePool(undefined);
+    expect(await updateConnection(pool, newRing(), SERVER_A, { apiPort: 1 })).toBe(false);
   });
 });
 

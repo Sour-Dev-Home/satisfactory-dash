@@ -110,7 +110,7 @@ const DELETE_CONNECTION = `
   DELETE FROM servers.server_connections
   WHERE server_id = $1`;
 
-const IdRowSchema =z.object({ id: z.string() });
+const IdRowSchema = z.object({ id: z.string() });
 
 /**
  * Soft delete: the server row stays (for the audit trail) but every membership goes, in the same
