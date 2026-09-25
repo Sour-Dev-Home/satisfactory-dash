@@ -14,6 +14,7 @@ import {
   SetAutoPauseRequestSchema,
   SettingsResponseSchema,
   ServerListResponseSchema,
+  ServerPlayersResponseSchema,
   StatusResponseSchema,
   endpoints,
 } from "../src/index";
@@ -35,6 +36,7 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["session", SessionResponseSchema],
   ["settings", SettingsResponseSchema],
   ["setAutoPauseRequest", SetAutoPauseRequestSchema],
+  ["players", ServerPlayersResponseSchema],
 ];
 
 function schemaFor(name: string): z.ZodType | undefined {
@@ -371,5 +373,19 @@ describe("power history (ADR-0022)", () => {
     expect(PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, stale: undefined }).success).toBe(false);
     expect(PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, observedAt: "yesterday" }).success).toBe(false);
     expect(PowerHistoryResponseSchema.safeParse({ ...powerHistoryNormal, serverId: "Bad Id" }).success).toBe(false);
+  });
+});
+
+// ADR-0029: the players fixtures are what the frontend's mock server serves, so their shape is pinned.
+describe("players fixtures (ADR-0029)", () => {
+  it("has three online and one offline player, all with obviously fake names, in the available fixture", () => {
+    const { players } = fixtures.playersAvailable;
+    expect(players.filter((p) => p.online).map((p) => p.name)).toEqual(["Pioneer-Alpha", "Pioneer-Bravo", "Pioneer-Charlie"]);
+    expect(players.filter((p) => !p.online).map((p) => p.name)).toEqual(["Pioneer-Delta"]);
+  });
+
+  it("tells unavailable (no FRM) apart from empty (FRM, nobody yet)", () => {
+    expect(fixtures.playersUnavailable).toEqual({ available: false, players: [] });
+    expect(fixtures.playersEmpty).toEqual({ available: true, players: [] });
   });
 });
