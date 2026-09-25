@@ -117,7 +117,10 @@ const database = databaseConfig ? new Database(databaseConfig, logger) : undefin
 // With a database, sessions live in it (ADR-0025 decision 4) and a purge worker keeps retention;
 // without one, the original signed-token sessions still work.
 const identity = orExit(() => createIdentityModule(process.env, { db: database?.pool, logger }));
-workers.push(...identity.workers);
+// The identity module's workers need the database: they are started only AFTER the database startup
+// check has succeeded (plus their own delay), not at boot, so their first run does not race the slow first
+// connections of a new process (issue #153). They are stopped with the others.
+const databaseWorkers = identity.workers;
 
 // ADR-0025 PR 6: with a database, every /api/servers/:serverId route needs a membership (a
 // non-member gets the same 404 as an unknown server; a viewer's write is a 403) and the list is
@@ -165,6 +168,11 @@ if (process.env.NODE_ENV !== "test") {
         );
         serversRegistered = true;
         logger.info({ registered }, "configured servers registered");
+        if (!shuttingDown) {
+          for (const worker of databaseWorkers) {
+            worker.start();
+          }
+        }
       })
       .catch((err: unknown) => {
         if (shuttingDown) {
@@ -194,7 +202,7 @@ if (process.env.NODE_ENV !== "test") {
     // Workers get a short window to stop: their in-flight polls are bounded, but on exit their
     // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
     const workersStopped = Promise.race([
-      Promise.allSettled([...workers.map((worker) => worker.stop()), database?.close()]),
+      Promise.allSettled([...[...workers, ...databaseWorkers].map((worker) => worker.stop()), database?.close()]),
       new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
     ]);
     // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never

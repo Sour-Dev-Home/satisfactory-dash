@@ -21,7 +21,7 @@ import { SessionDenylist } from "./sessionDenylist.js";
 import { createDbSessionStore } from "./dbSessionStore.js";
 import type { Db } from "./dbSessionStore.js";
 import { createStatelessSessionStore } from "./statelessSessionStore.js";
-import { createSessionPurgeWorker } from "./sessionPurge.js";
+import { createSessionPurgeWorker, loadPurgeStartDelayMs } from "./sessionPurge.js";
 import type { PurgeLogger } from "./sessionPurge.js";
 
 export type { SessionUser } from "./sessionStore.js";
@@ -88,7 +88,11 @@ export function createIdentityModule(
     authRouter,
     sessionGuard: createSessionGuard(sessionDeps),
     allowedOrigins: auth.allowedOrigins,
-    workers: options.db ? [createSessionPurgeWorker(options.db, options.logger ?? noopLogger)] : [],
+    // Database workers: the composition root starts them only AFTER the database startup check succeeded
+    // (issue #153), and the worker then waits PURGE_START_DELAY_MS more before its first run.
+    workers: options.db
+      ? [createSessionPurgeWorker(options.db, options.logger ?? noopLogger, Date.now, { initialDelayMs: loadPurgeStartDelayMs(env) })]
+      : [],
     ...(options.db && {
       ensureOperatorUserId: async () =>
         (await ensureLocalUser(options.db!, { subject: OPERATOR_SUBJECT, displayName: auth.adminUser })).id,

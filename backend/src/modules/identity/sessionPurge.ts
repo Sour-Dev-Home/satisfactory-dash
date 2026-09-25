@@ -1,4 +1,5 @@
 import type { Queryable } from "../../platform/db/schemaVersion.js";
+import { ConfigError } from "../../platform/errors.js";
 import { deleteExpiredLoginAttempts } from "./repositories/loginAttemptRepository.js";
 import { deleteExpiredSessions } from "./repositories/sessionRepository.js";
 import { purgeExpiredAuditEvents } from "../../platform/audit/auditRepository.js";
@@ -9,6 +10,21 @@ import { purgeExpiredAuditEvents } from "../../platform/audit/auditRepository.js
  * long lock. A failure is logged and retried at the next tick; it never affects requests.
  */
 export const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+/** PURGE_START_DELAY_MS: how long the purge worker waits after the database startup check succeeded before
+ *  its first run. Whole milliseconds, 0-600000; blank or unset means 30 s. */
+export const DEFAULT_PURGE_START_DELAY_MS = 30_000;
+export function loadPurgeStartDelayMs(env: NodeJS.ProcessEnv = process.env): number {
+  const text = env.PURGE_START_DELAY_MS?.trim();
+  if (!text) {
+    return DEFAULT_PURGE_START_DELAY_MS;
+  }
+  const value = /^\d{1,6}$/.test(text) ? Number(text) : Number.NaN;
+  if (!Number.isInteger(value) || value > 600_000) {
+    throw new ConfigError(`PURGE_START_DELAY_MS must be a whole number from 0 to 600000 (or unset for ${DEFAULT_PURGE_START_DELAY_MS}).`);
+  }
+  return value;
+}
+
 /** The audit trail is purged at most once a day. */
 export const AUDIT_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 1000;
@@ -46,8 +62,16 @@ export async function purgeExpired(db: Queryable): Promise<PurgeResult> {
 }
 
 /** A background worker with the same start/stop shape as the telemetry pollers. */
-export function createSessionPurgeWorker(db: Queryable, logger: PurgeLogger, now: () => number = Date.now) {
+export function createSessionPurgeWorker(
+  db: Queryable,
+  logger: PurgeLogger,
+  now: () => number = Date.now,
+  options: { initialDelayMs?: number } = {},
+) {
   let timer: NodeJS.Timeout | undefined;
+  let delayTimer: NodeJS.Timeout | undefined;
+  let started = false;
+  const initialDelayMs = options.initialDelayMs ?? 0;
   let lastAuditPurge: number | undefined;
   const run = async () => {
     try {
@@ -74,15 +98,33 @@ export function createSessionPurgeWorker(db: Queryable, logger: PurgeLogger, now
     }
   };
   return {
+    /** The caller starts this only once the database startup check has succeeded (server.ts); the first
+     *  run then waits `initialDelayMs` more, because a new process's first connections on the Windows host
+     *  can be slow (issue #153). A later failure still warns exactly as before. */
     start(): void {
-      if (timer !== undefined) {
+      if (started) {
         return;
       }
-      void run();
-      timer = setInterval(() => void run(), PURGE_INTERVAL_MS);
-      timer.unref();
+      started = true;
+      const begin = () => {
+        delayTimer = undefined;
+        void run();
+        timer = setInterval(() => void run(), PURGE_INTERVAL_MS);
+        timer.unref();
+      };
+      if (initialDelayMs <= 0) {
+        begin();
+        return;
+      }
+      delayTimer = setTimeout(begin, initialDelayMs);
+      delayTimer.unref();
     },
     async stop(): Promise<void> {
+      started = false;
+      if (delayTimer !== undefined) {
+        clearTimeout(delayTimer);
+        delayTimer = undefined;
+      }
       if (timer !== undefined) {
         clearInterval(timer);
         timer = undefined;
