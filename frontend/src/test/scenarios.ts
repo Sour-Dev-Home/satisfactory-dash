@@ -10,6 +10,8 @@ import {
   factoryMixed,
   factoryUnknownItem,
   healthOk,
+  playersAvailable,
+  playersUnavailable,
   powerAtRisk,
   powerCharging,
   powerDischarging,
@@ -56,6 +58,7 @@ export const ROUTES = {
   logout: endpoints.auth.logout,
   servers: endpoints.servers,
   status: endpoints.status,
+  players: endpoints.players,
   power: endpoints.power,
   powerHistory: endpoints.powerHistory,
   factory: endpoints.factory,
@@ -75,6 +78,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   logout: ok(sessionAnonymous),
   servers: ok(serversSingle),
   status: ok(statusRunning),
+  // No player list (no FicsitRemoteMonitoring): the card shows counts only, as before names.
+  players: ok(playersUnavailable),
   power: ok(powerOk),
   powerHistory: ok(powerHistoryNormal),
   factory: ok(factoryMixed),
@@ -103,7 +108,11 @@ export const SCENARIOS = {
   "stale": { status: ok(statusStale), power: ok(powerStale) },
   "slow-tick": { status: ok(statusSlow) },
   // The Players card's filled figures and its "+N" (every status fixture has 0 connected).
-  "players-some": { status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: 3 } }) },
+  // With FicsitRemoteMonitoring: 3 online, matching the count, so the names show (ADR-0029).
+  "players-some": {
+    status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: 3 } }),
+    players: ok(playersAvailable),
+  },
   "players-many": {
     status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: 10, playerLimit: 12 } }),
   },

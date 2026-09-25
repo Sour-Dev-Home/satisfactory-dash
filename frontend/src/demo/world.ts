@@ -6,6 +6,7 @@ import type {
   PowerHistoryResponse,
   PowerResponse,
   ServerListResponse,
+  ServerPlayersResponse,
   SettingsResponse,
   StatusResponse,
 } from "@satisfactory-dash/shared";
@@ -43,6 +44,18 @@ const PLAYER_STEP_MS = 30_000;
 export function connectedPlayersAt(now: number): number {
   const step = Math.floor((now - DEMO_EPOCH) / PLAYER_STEP_MS);
   return PLAYER_CYCLE[((step % PLAYER_CYCLE.length) + PLAYER_CYCLE.length) % PLAYER_CYCLE.length];
+}
+
+/**
+ * Who is online (ADR-0029). The names are invented for the demo (the demo rule: never real
+ * people, never the test fixtures); the first N are online, N following the cycle above, so
+ * the names always agree with the count.
+ */
+const DEMO_PLAYERS = ["Rook", "Juniper", "Tinker", "Moss"] as const;
+
+export function players(now: number): ServerPlayersResponse {
+  const online = connectedPlayersAt(now);
+  return { available: true, players: DEMO_PLAYERS.map((name, i) => ({ name, online: i < online })) };
 }
 
 export function status(now: number): StatusResponse {

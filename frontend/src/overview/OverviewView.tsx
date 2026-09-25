@@ -30,6 +30,8 @@ export function OverviewView() {
   const status = useQuery(queries.status(server.id));
   // Same rule as the rows: data wins over an error.
   const players: PlayersState = status.data ? { status: status.data.data } : status.isError ? "error" : "pending";
+  // Names are extra: loading, failing, or a backend without the endpoint all leave the counts.
+  const roster = useQuery(queries.players(server.id)).data;
   const sections = [
     { name: "Server", state: stateOf(status, serverHealth) },
     { name: "Power", to: "/app/power", state: stateOf(useQuery(queries.power(server.id)), powerHealth) },
@@ -43,6 +45,7 @@ export function OverviewView() {
       overall={overall}
       sections={sections}
       players={players}
+      roster={roster}
       bannerHidden={dismissible && dismissal.hidden}
       onDismiss={dismissible ? dismissal.dismiss : undefined}
     />
