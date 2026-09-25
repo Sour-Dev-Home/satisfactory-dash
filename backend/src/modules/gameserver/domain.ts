@@ -86,13 +86,11 @@ export interface BuildingPowerUsage {
   fuseTriggered: boolean;
 }
 
+/** ADR-0029: a name and whether they are online, nothing else. FRM's ID, location, HP, speed,
+ *  "dead" flag and inventory are dropped at the raw schema and never enter the domain. */
 export interface Player {
-  id: string;
   name: string;
   online: boolean;
-  dead: boolean;
-  hp: number;
-  location: { x: number; y: number; z: number };
 }
 
 export interface SessionInfo {

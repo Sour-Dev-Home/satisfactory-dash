@@ -1,13 +1,15 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { DEMO_EPOCH } from "../../src/demo/world";
 
-// The demo walkthrough (ADR-0026): Enter demo -> Overview -> Power -> Factory -> auto-pause,
-// about 70 s at 1920x1080, recorded against the built demo. `?clock=fixed` pins the demo's
-// world to DEMO_EPOCH and page.clock pins the page's Date to it, so every take is the same.
-// scripts/encode-demo-video.mjs turns the WebM into an H.264 MP4.
+// The demo walkthrough (ADR-0026): Enter demo -> Overview -> Power -> Factory -> Map ->
+// auto-pause, about 75 s at 1920x1080, recorded against the built demo. `?clock=fixed` pins
+// the demo's world to DEMO_EPOCH and page.clock pins the page's Date to it, so every take is
+// the same. Frames are captured lossless (PNG, see startCapture) and
+// scripts/encode-demo-video.mjs encodes them to an H.264 MP4 with colour tags.
 const OUT = join(import.meta.dirname, "..", "..", "demo-video");
+const FRAMES = join(OUT, "frames");
 const VIDEO = { width: 1920, height: 1080 };
 // At 1920 CSS px the app is a narrow column, so the page is zoomed 1.5x: the 1280x720 layout,
 // filling the frame. (A 1.5 deviceScaleFactor doesn't: recordings are in CSS pixels.)
@@ -56,6 +58,47 @@ async function scrollThrough(page: Page, pixels: number) {
   for (let i = 0; i < 20; i++) { await page.mouse.wheel(0, -pixels / 20); await page.waitForTimeout(40); }
 }
 
+/**
+ * Captures the page as lossless PNG frames with Chrome's own screencast (CDP), not Playwright's
+ * recordVideo: that one is a low-bitrate VP8 stream whose frames re-compress differently, so
+ * flat dark colours shimmered through the whole video (the owner's report). The screencast
+ * sends a frame whenever the page changes; each frame is shown until the next one, which the
+ * returned stop() writes as an ffmpeg concat list (frames.txt) with per-frame durations.
+ */
+async function startCapture(page: Page) {
+  mkdirSync(FRAMES, { recursive: true });
+  const cdp = await page.context().newCDPSession(page);
+  const frames: { file: string; at: number }[] = [];
+  const acks: Promise<unknown>[] = [];
+  const failedAcks: string[] = [];
+  cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
+    const file = join(FRAMES, `${String(frames.length).padStart(5, "0")}.png`);
+    writeFileSync(file, Buffer.from(data, "base64"));
+    frames.push({ file, at: metadata.timestamp ?? Date.now() / 1000 });
+    // Chrome sends no further frames until a frame is acked, so a failed ack would silently
+    // freeze the video: collect failures and fail the take instead.
+    acks.push(cdp.send("Page.screencastFrameAck", { sessionId }).catch((e: unknown) => failedAcks.push(String(e))));
+  });
+  await cdp.send("Page.startScreencast", { format: "png", maxWidth: VIDEO.width, maxHeight: VIDEO.height, everyNthFrame: 1 });
+
+  return async () => {
+    await cdp.send("Page.stopScreencast");
+    await Promise.all(acks);
+    // After stopping: a frame still in flight must not end up with a near-zero duration.
+    const end = Date.now() / 1000;
+    if (failedAcks.length > 0) throw new Error(`screencast acks failed, so frames may be missing: ${failedAcks[0]}`);
+    if (frames.length === 0) throw new Error("the screencast sent no frames");
+    const path = (file: string) => file.replaceAll("\\", "/").replaceAll("'", "'\\''");
+    const lines = frames.flatMap(({ file, at }, i) => {
+      const next = i + 1 < frames.length ? frames[i + 1].at : end;
+      return [`file '${path(file)}'`, `duration ${Math.max(next - at, 0.001).toFixed(4)}`];
+    });
+    // The concat demuxer ignores the last entry's duration unless the file is listed again.
+    lines.push(`file '${path(frames[frames.length - 1].file)}'`);
+    writeFileSync(join(OUT, "frames.txt"), `ffconcat version 1.0\n${lines.join("\n")}\n`);
+  };
+}
+
 /** A page that fails the take on a CSP violation, any /api call or any off-origin request. */
 async function offlinePage(browser: Browser, baseURL: string, options: Parameters<Browser["newContext"]>[0]) {
   const context = await browser.newContext({ ...options, baseURL });
@@ -86,16 +129,14 @@ test.beforeAll(() => {
 });
 
 test("walkthrough", async ({ browser, baseURL }) => {
-  const { context, page, problems } = await offlinePage(browser, baseURL!, {
-    viewport: VIDEO,
-    deviceScaleFactor: 1,
-    recordVideo: { dir: join(OUT, "raw"), size: VIDEO },
-  });
+  const { context, page, problems } = await offlinePage(browser, baseURL!, { viewport: VIDEO, deviceScaleFactor: 1 });
   await prepareForVideo(page);
 
   await page.goto("/?clock=fixed");
   const enter = page.getByRole("button", { name: "Enter demo" });
   await expect(enter).toBeVisible();
+  // Capture starts only now: no blank white page before the app's first paint.
+  const stopCapture = await startCapture(page);
   await hold(page, 4);
   await clickSlowly(page, enter);
 
@@ -117,6 +158,14 @@ test("walkthrough", async ({ browser, baseURL }) => {
   await scrollThrough(page, 900);
   await hold(page, 4);
 
+  // The live map (ADR-0023): the demo world's buildings on the grid, and one zoom step.
+  await clickSlowly(page, nav.getByRole("link", { name: "Map" }));
+  await expect(page.getByRole("application", { name: /Factory map/ })).toBeVisible();
+  await expect(page.getByText(/^9 buildings on the map:/)).toBeVisible();
+  await hold(page, 5);
+  await clickSlowly(page, page.getByRole("button", { name: "Zoom in" }));
+  await hold(page, 4);
+
   await clickSlowly(page, nav.getByRole("link", { name: "Settings" }));
   const toggle = page.getByRole("checkbox", { name: "Auto-pause when no players are connected" });
   await expect(toggle).toBeEnabled();
@@ -129,10 +178,8 @@ test("walkthrough", async ({ browser, baseURL }) => {
   await page.mouse.move(VIDEO.width - 120, VIDEO.height - 120, { steps: 30 });
   await hold(page, 5);
 
-  const video = page.video();
+  await stopCapture();
   await context.close();
-  await video!.saveAs(join(OUT, "walkthrough.webm"));
-  rmSync(join(OUT, "raw"), { recursive: true, force: true });
   expect(problems, "the demo must never touch the network").toEqual([]);
 });
 
