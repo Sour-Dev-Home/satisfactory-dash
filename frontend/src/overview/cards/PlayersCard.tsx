@@ -1,6 +1,6 @@
 import type { Ref } from "react";
-import type { Status } from "@satisfactory-dash/shared";
-import { MAX_FIGURES, playersText } from "./players";
+import type { ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
+import { MAX_FIGURES, MAX_NAMES, playersText } from "./players";
 import { StickFigure } from "./StickFigure";
 
 export type PlayersState = { status: Status } | "pending" | "error";
@@ -8,9 +8,18 @@ export type PlayersState = { status: Status } | "pending" | "error";
 /**
  * The Players card (the cards brief, item 1): a figure per player slot, filled when someone
  * is connected, and the count as text. No game running is a neutral state, never an alarm.
- * Room below the count for a short name list (ADR-0029, later).
+ * With FicsitRemoteMonitoring, also who is online (ADR-0029: names only, live, never stored);
+ * without it (`available: false`), or while that list loads or fails, just the counts.
  */
-export function PlayersCard({ state, headingRef }: { state: PlayersState; headingRef?: Ref<HTMLHeadingElement> }) {
+export function PlayersCard({
+  state,
+  roster,
+  headingRef,
+}: {
+  state: PlayersState;
+  roster?: ServerPlayersResponse;
+  headingRef?: Ref<HTMLHeadingElement>;
+}) {
   return (
     // Spans the row while it's the only card under Health (half a row next to nothing read as
     // unfinished); cards PR 3 puts the tick-rate card beside it and drops md:col-span-2.
@@ -22,12 +31,32 @@ export function PlayersCard({ state, headingRef }: { state: PlayersState; headin
       <h3 id="players-heading" ref={headingRef} tabIndex={-1} className="mb-0">
         Players
       </h3>
-      <PlayersBody state={state} />
+      <PlayersBody state={state} roster={roster} />
     </section>
   );
 }
 
-function PlayersBody({ state }: { state: PlayersState }) {
+/** The online players' names, as text (they come from the game server: never HTML). */
+function OnlineNames({ roster }: { roster: ServerPlayersResponse }) {
+  const online = roster.players.filter((p) => p.online).map((p) => p.name);
+  if (online.length === 0) return null;
+  const shown = online.slice(0, MAX_NAMES);
+  return (
+    <div className="text-sm text-muted">
+      <ul aria-label="Players online" className="flex flex-wrap gap-x-3 gap-y-1">
+        {shown.map((name, i) => (
+          // Names aren't unique ids (two players can share one): the index keeps keys unique.
+          <li key={`${i}-${name}`} className="text-fg">
+            {name}
+          </li>
+        ))}
+      </ul>
+      {online.length > shown.length && <p>and {online.length - shown.length} more</p>}
+    </div>
+  );
+}
+
+function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPlayersResponse }) {
   if (state === "pending") return <p className="text-muted">Loading…</p>;
   if (state === "error") return <p className="text-muted">Couldn't load the player count.</p>;
   const { status } = state;
@@ -50,6 +79,7 @@ function PlayersBody({ state }: { state: PlayersState }) {
         )}
       </div>
       <p className="font-semibold text-fg-strong">{playersText(status)}</p>
+      {roster?.available && <OnlineNames roster={roster} />}
       {/* Paused is the server's auto-pause (or a player's), not a fault: say it plainly. */}
       {status.gamePaused && <p className="text-sm text-muted">The game is paused.</p>}
     </>

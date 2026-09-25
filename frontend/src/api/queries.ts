@@ -99,6 +99,13 @@ export const queries = {
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.status, serverId),
       refetchInterval: POLL_MS.status,
     }),
+  /** Who is connected (ADR-0029): live only, polled with the status that counts them. */
+  players: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "players"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.players, serverId),
+      refetchInterval: POLL_MS.status,
+    }),
   power: (serverId: string) =>
     queryOptions({
       queryKey: ["servers", serverId, "power"],

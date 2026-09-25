@@ -55,6 +55,7 @@ export const demoHandlers = [
 
   get(endpoints.servers.route, ({ params }) => guarded(params, () => Response.json(world.servers))),
   get(endpoints.status.route, ({ params }) => guarded(params, () => Response.json(world.status(demoNow())))),
+  get(endpoints.players.route, ({ params }) => guarded(params, () => Response.json(world.players(demoNow())))),
   get(endpoints.power.route, ({ params }) => guarded(params, () => Response.json(world.power(demoNow())))),
   get(endpoints.powerHistory.route, ({ params }) =>
     guarded(params, () => Response.json(world.powerHistory(demoNow()))),

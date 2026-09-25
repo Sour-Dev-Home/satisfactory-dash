@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { ServerPlayersResponse } from "@satisfactory-dash/shared";
 import { Link } from "react-router";
 import { cn } from "../lib/cn";
 import { CardGrid } from "./cards/CardGrid";
@@ -42,12 +43,15 @@ export function OverviewPanel({
   overall,
   sections,
   players,
+  roster,
   bannerHidden = false,
   onDismiss,
 }: {
   overall: { health: Shown; headline: string };
   sections: OverviewSection[];
   players: PlayersState;
+  /** Who is online, when the server can say (ADR-0029). */
+  roster?: ServerPlayersResponse;
   /** The operator dismissed this banner (a warning only; see canDismiss). */
   bannerHidden?: boolean;
   /** Shows the × when given: "hide until something changes". */
@@ -76,7 +80,7 @@ export function OverviewPanel({
       </h2>
       <CardGrid>
         {!bannerHidden && <HealthCard overall={overall} onDismiss={dismiss} />}
-        <PlayersCard state={players} headingRef={playersHeading} />
+        <PlayersCard state={players} roster={roster} headingRef={playersHeading} />
       </CardGrid>
       <ul aria-label="Sections" className="divide-y divide-line rounded-card border border-line bg-surface">
         {sections.map((section) => {
