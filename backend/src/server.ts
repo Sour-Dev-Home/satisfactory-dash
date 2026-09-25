@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
 import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
+import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
@@ -112,6 +113,10 @@ workers.push(createEventLoopMonitor({ logger, thresholdMs: orExit(() => loadEven
 // background (retrying transient errors), and /api/health/ready reports 503 until it is up.
 const databaseConfig = orExit(() => loadDatabaseConfig());
 const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
+
+// ADR-0030: the key that encrypts stored game-server tokens. Unset is fine until a later PR starts
+// using it; a set-but-malformed key stops the backend here rather than at the first save.
+orExit(() => loadSecretsKeyringFromEnv());
 
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
 // With a database, sessions live in it (ADR-0025 decision 4) and a purge worker keeps retention;
