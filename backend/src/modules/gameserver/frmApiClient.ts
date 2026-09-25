@@ -44,7 +44,9 @@ export class FrmApiClient {
   }
 
   async get<T>(endpoint: string): Promise<T> {
-    const url = `http://${this.options.host}:${this.options.port}/${endpoint}`;
+    // An IPv6 literal (a pinned address, ADR-0030) needs brackets in a URL.
+    const host = this.options.host.includes(":") && !this.options.host.startsWith("[") ? `[${this.options.host}]` : this.options.host;
+    const url = `http://${host}:${this.options.port}/${endpoint}`;
     // Three separate failure points, each classified where it's actually known,
     // rather than one catch-all: a review pass found the old single try/catch made
     // a 200 response with malformed JSON indistinguishable from an unreachable

@@ -35,6 +35,7 @@ function rowFrom(written: Written, serverId: string, overrides: Record<string, u
   return {
     server_id: serverId,
     public_id: "srv",
+    display_name: "Srv",
     connection_kind: "local",
     host,
     pinned_ip: pinnedIp,

@@ -12,7 +12,17 @@ export { createAuthorizeServer, createDbServerAccess } from "./serverAccess.js";
 export type { AuthorizeServerOptions, ServerAccess } from "./serverAccess.js";
 export { registerConfiguredServers } from "./registerConfiguredServers.js";
 export { createServersRouter } from "./serversRouter.js";
+export { AddressRefusedError, isAllowedAddress, resolveAllowedAddress } from "./addressGuard.js";
+export type { AddressLookup } from "./addressGuard.js";
+export { ServerRuntime } from "./serverRuntime.js";
+export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serverRuntime.js";
+export { loadDatabaseServers } from "./loadDatabaseServers.js";
+export type { LoadDatabaseServersResult } from "./loadDatabaseServers.js";
+export { ImportError, MAX_LOCAL_SERVERS, importServers } from "./importServers.js";
+export type { ImportResult, ImportableServer } from "./importServers.js";
 export {
+  countConnections,
+  createConnection,
   deleteConnection,
   getConnection,
   getConnectionSummary,
@@ -21,6 +31,7 @@ export {
   updateConnection,
 } from "./repositories/connectionRepository.js";
 export type {
+  CreateConnectionOutcome,
   ConnectionInput,
   ConnectionList,
   ConnectionPatch,

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../../platform/errors.js";
-import { ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
+import { configuredServerEnvNamesInUse, ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
 
 const load = (content: unknown, env: NodeJS.ProcessEnv = { SATISFACTORY_SERVERS_FILE: "servers.json" }) =>
   loadConfiguredServersFromFile(env, () => (typeof content === "string" ? content : JSON.stringify(content)));
@@ -28,6 +28,24 @@ describe("loadConfiguredServersFromFile edge cases (test-hunter)", () => {
     expect(() => load({ servers: [{ id: "a", host: "8.8.8.8", verifyApiCertificate: false }] })).toThrow(ConfigError);
     expect(() => load({ servers: [{ id: "a", host: "10.0.0.1 evil" }] })).toThrow(ConfigError);
     expect(() => load({ servers: [{ id: "A" }] })).toThrow(ConfigError);
+  });
+});
+
+describe("configuredServerEnvNamesInUse", () => {
+  it("names the servers file and every single-server variable that is set, never a value", () => {
+    const env = {
+      SATISFACTORY_SERVERS_FILE: "servers.json",
+      SATISFACTORY_SERVER_HOST: "192.168.1.20",
+      FRM_AUTH_TOKEN: "secret-value",
+      SATISFACTORY_API_TOKEN: "  ",
+    };
+    const names = configuredServerEnvNamesInUse(env);
+    expect(names).toEqual(["SATISFACTORY_SERVERS_FILE", "SATISFACTORY_SERVER_HOST", "FRM_AUTH_TOKEN"]);
+    expect(JSON.stringify(names)).not.toContain("secret-value");
+  });
+
+  it("is empty when none is set", () => {
+    expect(configuredServerEnvNamesInUse({})).toEqual([]);
   });
 });
 

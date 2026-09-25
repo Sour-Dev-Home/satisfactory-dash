@@ -96,6 +96,15 @@ export function ignoredSingleServerEnvNames(env: NodeJS.ProcessEnv = process.env
   return SINGLE_SERVER_ENV_NAMES.filter((name) => (env[name] ?? "").trim() !== "");
 }
 
+/**
+ * ADR-0030: names (never values) of every variable that configures servers from the environment
+ * (the servers file and the single-server variables) and is set. Used for the one startup warning
+ * when servers stored in the database take precedence and these are ignored.
+ */
+export function configuredServerEnvNamesInUse(env: NodeJS.ProcessEnv = process.env): string[] {
+  return ["SATISFACTORY_SERVERS_FILE", ...SINGLE_SERVER_ENV_NAMES].filter((name) => (env[name] ?? "").trim() !== "");
+}
+
 /** Field names as the file spells them, for messages from the shared env validators. */
 const FILE_FIELD_FOR_ENV_NAME: Record<string, string> = {
   SATISFACTORY_SERVER_HOST: "host",

@@ -186,6 +186,11 @@ A restored database keeps the audit purge function (`audit.purge_expired_events(
 grants kept), so the roles must exist first; audit events older than a year in an old backup are purged again
 by the first worker run after the backend starts (the privacy policy's 1-year retention).
 
+**Stored server tokens (ADR-0030).** Once servers are stored in the database (see `servers.md`), also check that the
+restored data can be decrypted with the key you backed up: put the backed-up `SERVER_SECRETS_KEY` in the environment,
+point `DATABASE_URL` at the scratch database, and run `npm run admin -- verify-secrets` from `backend\`. It must report
+every connection opened and none unreadable (it prints no token). A key that only exists on this PC is not a backup.
+
 **Rehearsal record (2026-09-25): passed.** The newest S3 object was decrypted with the offline age key and
 restored into a scratch database. Row counts matched the live database (users 1/1, servers 1/1, members 1/1,
 audit events 5/6: one event was newer than the dump). The newest migration in the restore was

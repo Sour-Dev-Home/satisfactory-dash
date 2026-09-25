@@ -55,6 +55,19 @@ export async function upsertConfiguredServer(
   return toServer(parseOne(ServerRowSchema, result.rows, "servers.upsertConfiguredServer"));
 }
 
+const ENSURE_SERVER = `
+  INSERT INTO servers.servers (public_id, display_name)
+  VALUES ($1, $2)
+  ON CONFLICT (public_id) DO UPDATE SET deleted_at = NULL
+  RETURNING id, public_id, display_name, hosting_mode, connection_kind`;
+
+/** Like `upsertConfiguredServer`, but an existing row keeps its display name (an import must not undo
+ *  a rename made in the app). A soft-deleted server is revived. Idempotent. */
+export async function ensureServer(db: Queryable, input: { publicId: string; displayName: string }): Promise<RegisteredServer> {
+  const result = await db.query(ENSURE_SERVER, [input.publicId, input.displayName]);
+  return toServer(parseOne(ServerRowSchema, result.rows, "servers.ensureServer"));
+}
+
 const SELECT_BY_PUBLIC_ID = `
   SELECT id, public_id, display_name, hosting_mode, connection_kind
   FROM servers.servers

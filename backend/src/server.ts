@@ -8,18 +8,22 @@ import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLo
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
+  configuredServerEnvNamesInUse,
   createGameServerConnection,
+  createSatisfactoryServerConfig,
   createServerOptionsPort,
   ignoredSingleServerEnvNames,
   loadConfiguredServersFromFile,
   loadSatisfactoryServerConfigFromEnv,
   parsePortEnv,
 } from "./modules/gameserver/index.js";
+import type { SatisfactoryServerConfig } from "./modules/gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import {
-  InMemoryServerDirectory,
+  ServerRuntime,
   createDbServerAccess,
   createServersRouter,
+  loadDatabaseServers,
   loadServerRegistryFromEnv,
   registerConfiguredServers,
 } from "./modules/servers/index.js";
@@ -79,6 +83,18 @@ const resolveUnit = createUnitResolver((className) =>
 
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
+function buildServer(id: string, displayName: string, config: SatisfactoryServerConfig) {
+  const telemetry = createTelemetryServices(createGameServerConnection(config), resolveUnit, {
+    logger: logger.child({ worker: "power-history", serverId: id }),
+  });
+  return {
+    id,
+    displayName,
+    services: { telemetry, settings: createSettingsServices(createServerOptionsPort(config)) },
+    workers: telemetry.workers,
+  };
+}
+
 const entries = orExit(() => {
   // ADR-0025 PR 1: SATISFACTORY_SERVERS_FILE names any number of servers, each with its own
   // connection config. Without it, single-server mode: a registry of one that uses the
@@ -89,21 +105,17 @@ const entries = orExit(() => {
       const config = loadSatisfactoryServerConfigFromEnv();
       return loadServerRegistryFromEnv().map(({ id, displayName }) => ({ id, displayName, config }));
     })();
-  return configured.map(({ id, displayName, config }) => ({
-    id,
-    displayName,
-    services: {
-      telemetry: createTelemetryServices(createGameServerConnection(config), resolveUnit, {
-        logger: logger.child({ worker: "power-history", serverId: id }),
-      }),
-      settings: createSettingsServices(createServerOptionsPort(config)),
-    },
-  }));
+  return configured.map(({ id, displayName, config }) => buildServer(id, displayName, config));
 });
-const directory = new InMemoryServerDirectory(entries);
-// ADR-0022: the background workers (the power history poller per server). Started only once
-// the server is listening, and stopped on shutdown.
-const workers: { start(): void; stop(): Promise<void> }[] = entries.flatMap((entry) => entry.services.telemetry.workers);
+// ADR-0030: the servers this process serves. Built from the config now; with a database, the servers
+// stored in it replace these once it is up (see loadDatabaseServers). The runtime starts and stops each
+// server's pollers (ADR-0022), also for servers added or removed while the backend runs.
+const directory = new ServerRuntime(entries, {
+  onWorkerStartError: (serverId, err) =>
+    logger.error({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to start"),
+});
+// Process-wide workers. Started once the server is listening, and stopped on shutdown.
+const workers: { start(): void; stop(): Promise<void> }[] = [];
 // Diagnostic: measures event loop delay and warns (numbers only) when a 30 s window's worst delay
 // exceeds EVENT_LOOP_STALL_MS, to tell a machine-wide stall from our own loop being blocked.
 workers.push(createEventLoopMonitor({ logger, thresholdMs: orExit(() => loadEventLoopStallMs()) }));
@@ -114,9 +126,9 @@ workers.push(createEventLoopMonitor({ logger, thresholdMs: orExit(() => loadEven
 const databaseConfig = orExit(() => loadDatabaseConfig());
 const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
 
-// ADR-0030: the key that encrypts stored game-server tokens. Unset is fine until a later PR starts
-// using it; a set-but-malformed key stops the backend here rather than at the first save.
-orExit(() => loadSecretsKeyringFromEnv());
+// ADR-0030: the key that encrypts stored game-server tokens. Unset is fine while no server is stored in
+// the database; a set-but-malformed key stops the backend here rather than at the first use.
+const secretsKeyring = orExit(() => loadSecretsKeyringFromEnv());
 
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
 // With a database, sessions live in it (ADR-0025 decision 4) and a purge worker keeps retention;
@@ -132,6 +144,9 @@ const databaseWorkers = identity.workers;
 // per user. The configured servers are registered, with the operator as owner, once the database
 // is up; until then those routes answer 503. Without a database nothing changes.
 let serversRegistered = database === undefined;
+// ADR-0030: false when a stored connection cannot be opened (no key, an unknown key id, a modified
+// value). The backend stays up and serves the readable servers, but reports not-ready.
+let connectionsReadable = true;
 const serverAccess = database ? createDbServerAccess(database.pool) : undefined;
 
 export const app = createApp({
@@ -139,7 +154,7 @@ export const app = createApp({
   allowedOrigins: identity.allowedOrigins,
   routers: [
     healthRouter,
-    createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered : true)),
+    createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered && connectionsReadable : true)),
     identity.authRouter,
   ],
   sessionGuard: identity.sessionGuard,
@@ -156,6 +171,7 @@ if (process.env.NODE_ENV !== "test") {
     for (const worker of workers) {
       worker.start();
     }
+    directory.start();
     // ADR-0025 decision 6: a transient outage is retried with backoff (up to 5 minutes), then
     // (and for any setup error, e.g. a schema behind this build) the process exits 1, so the
     // Scheduled Task's restart-on-failure takes over and a broken setup still fails loudly.
@@ -166,13 +182,49 @@ if (process.env.NODE_ENV !== "test") {
         if (ownerId === undefined) {
           throw new Error("identity has no operator account in database mode");
         }
-        const { registered } = await registerConfiguredServers(
-          database.pool,
-          entries.map(({ id, displayName }) => ({ id, displayName })),
-          ownerId,
-        );
-        serversRegistered = true;
-        logger.info({ registered }, "configured servers registered");
+        // ADR-0030 precedence: servers stored in the database win over the config. With none stored,
+        // the configured servers are registered exactly as before.
+        const stored = await loadDatabaseServers({
+          db: database.pool,
+          ring: secretsKeyring,
+          runtime: directory,
+          operatorUserId: ownerId,
+          build: (c) =>
+            buildServer(
+              c.publicId,
+              c.displayName,
+              createSatisfactoryServerConfig({
+                host: c.pinnedIp,
+                apiPort: c.apiPort,
+                apiToken: c.apiToken,
+                frmPort: c.frmPort,
+                frmToken: c.frmToken,
+              }),
+            ),
+        });
+        if (stored.usingDatabase) {
+          const ignored = configuredServerEnvNamesInUse();
+          if (ignored.length > 0) {
+            logger.warn({ ignored }, "servers are stored in the database, so these server variables are ignored; remove them");
+          }
+          logger.info({ servers: stored.loaded }, "servers loaded from the database");
+          if (stored.unreadable.length > 0) {
+            connectionsReadable = false;
+            logger.error(
+              { code: "SERVER_CONNECTIONS_UNREADABLE", servers: stored.unreadable.map(({ publicId, keyId }) => ({ publicId, keyId })) },
+              "stored server connections cannot be opened (missing or wrong SERVER_SECRETS_KEY, or a modified value); they are not served",
+            );
+          }
+          serversRegistered = true;
+        } else {
+          const { registered } = await registerConfiguredServers(
+            database.pool,
+            entries.map(({ id, displayName }) => ({ id, displayName })),
+            ownerId,
+          );
+          serversRegistered = true;
+          logger.info({ registered }, "configured servers registered");
+        }
         if (!shuttingDown) {
           for (const worker of databaseWorkers) {
             worker.start();
@@ -207,7 +259,7 @@ if (process.env.NODE_ENV !== "test") {
     // Workers get a short window to stop: their in-flight polls are bounded, but on exit their
     // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
     const workersStopped = Promise.race([
-      Promise.allSettled([...[...workers, ...databaseWorkers].map((worker) => worker.stop()), database?.close()]),
+      Promise.allSettled([...[...workers, ...databaseWorkers].map((worker) => worker.stop()), directory.stop(), database?.close()]),
       new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
     ]);
     // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never
