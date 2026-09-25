@@ -85,6 +85,35 @@ th {
   color: #f2f5f8;
   font-weight: 600;
 }
+/* Phones: each row stacks, the data over its reason, as the app's own tables do (src/index.css).
+   The header row is hidden visually but stays for screen readers. */
+@media (max-width: 600px) {
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  tr {
+    display: block;
+    padding: 10px 0;
+    border-bottom: 1px solid #29333e;
+  }
+  td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  td:first-child {
+    color: #f2f5f8;
+    font-weight: 600;
+  }
+  td + td {
+    margin-top: 2px;
+    color: #8b97a5;
+  }
+}
 footer {
   margin-top: 48px;
   padding-top: 16px;

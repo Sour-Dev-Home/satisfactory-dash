@@ -47,6 +47,16 @@ test("the landing page and the sign-in screen link both pages", async ({ page, m
   await expect(page.getByRole("contentinfo").getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
 });
 
+// legal.css can't use the app's tokens (no build step for these static pages), so it copies
+// their values: this keeps the copy honest when a token changes.
+test("legal.css uses only the app's design-token colours", () => {
+  const read = (path: string) => readFileSync(join(import.meta.dirname, "..", path), "utf8").toLowerCase();
+  const tokens = new Set([...read("src/index.css").matchAll(/--color-[\w-]+:\s*(#[0-9a-f]{6})\b/g)].map((m) => m[1]));
+  const used = [...new Set([...read("public/legal.css").matchAll(/#[0-9a-f]{6}\b/g)].map((m) => m[0]))];
+  expect(used.length).toBeGreaterThan(0);
+  expect(used.filter((hex) => !tokens.has(hex)), "colours in legal.css that aren't tokens").toEqual([]);
+});
+
 test("the terms never name the operator; nothing built but the privacy page does", () => {
   expect(OPERATOR.length).toBeGreaterThan(3);
   const files = (dir: string): string[] =>
