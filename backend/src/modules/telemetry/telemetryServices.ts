@@ -2,6 +2,7 @@ import type { ServerStatusService } from "./services/serverStatusService.js";
 import type { ProductionService } from "./services/productionService.js";
 import type { PowerService } from "./services/powerService.js";
 import type { PowerHistoryService } from "./services/powerHistoryService.js";
+import type { PlayersService } from "./services/playersService.js";
 
 /** The services the data routes need for one game server. Narrowed with Pick so route
  *  tests can supply stubs. */
@@ -10,6 +11,7 @@ export interface TelemetryServices {
   production: Pick<ProductionService, "getFactoryOverview">;
   power: Pick<PowerService, "getPowerOverview">;
   powerHistory: Pick<PowerHistoryService, "getPowerHistory">;
+  players: Pick<PlayersService, "getPlayers">;
 }
 
 /** What the telemetry routes read from a server directory entry. The composition root

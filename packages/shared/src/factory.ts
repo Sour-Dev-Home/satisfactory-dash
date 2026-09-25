@@ -58,6 +58,24 @@ export const FactoryBuildingSchema = z.object({
         "refinery [NEEDS VERIFICATION].",
     ),
   production: z.array(ProductionRateSchema).describe("Empty when no recipe is configured"),
+  ingredients: z
+    .array(ProductionRateSchema)
+    .optional()
+    .describe(
+      "What the machine consumes, mirroring `production` (ADR-0027): the same shape and the same " +
+        "unit resolution, from FRM's CurrentConsumed / MaxConsumed / ConsPercent. Empty when no " +
+        "recipe is configured. Optional so a newly deployed frontend still parses an older " +
+        "backend's responses (ADR-0007).",
+    ),
+  state: z
+    .string()
+    .optional()
+    .describe(
+      "Backend-derived machine state (ADR-0027): one of \"producing\", \"idle\", \"backedUp\", " +
+        "\"starved\", \"paused\", \"unpowered\". A plain string, not an enum, so a state added " +
+        "later doesn't fail an already-deployed frontend's parse; treat an unknown value as " +
+        "\"no state\". Omitted (never guessed) when the backend has too little data to say.",
+    ),
   location: BuildingLocationSchema.optional().describe(
     "World position (ADR-0023). Optional so a newly deployed frontend still parses an older " +
       "backend's responses (ADR-0007); current backends always send it. The backend converts " +
@@ -77,6 +95,14 @@ export const FactoryBuildingSchema = z.object({
 export const FactorySchema = z.object({
   buildings: z.array(FactoryBuildingSchema),
   backedUpCount: z.number().int().min(0).describe("Number of buildings with isBackedUp true"),
+  stateCounts: z
+    .record(z.string(), z.number().int().min(0))
+    .optional()
+    .describe(
+      "How many buildings are in each `state` (ADR-0027), e.g. {\"producing\": 40, \"starved\": 3}, " +
+        "for the Overview's \"N machines stalled\". Buildings without a state are not counted. " +
+        "Optional for the same deploy-skew reason as `state`.",
+    ),
 });
 export const FactoryResponseSchema = snapshotEnvelope(FactorySchema);
 

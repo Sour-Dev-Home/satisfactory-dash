@@ -67,7 +67,7 @@ export function Landing() {
           <a href={VIDEO_URL}>Download the walkthrough video (MP4)</a>
         </video>
         <figcaption className="text-sm text-muted">
-          A one-minute walkthrough of the live demo's made-up factory. No sound.
+          A walkthrough of the live demo's made-up factory. No sound.
         </figcaption>
         {/* The video has no narration: this is its text alternative (WCAG 1.2.1). Always
             rendered: in a closed <details>, browsers drop the video's aria-describedby. */}
@@ -78,6 +78,7 @@ export function Landing() {
             <li>The Overview: all systems operational, with the server, power and factory rows.</li>
             <li>Power: each circuit's production, consumption and capacity, and the five-minute history charts.</li>
             <li>Factory: every machine with its recipe and output rate, one of them backed up.</li>
+            <li>Map: the factory's buildings at their positions on a grid, coloured by state, then one zoom step.</li>
             <li>Settings: auto-pause is turned on, and the change shows as pending until the server applies it.</li>
             <li>Back to the Overview.</li>
           </ol>

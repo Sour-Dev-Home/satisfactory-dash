@@ -27,7 +27,8 @@ adapter maps only `name` and `online`). The owner requested it (Players card, ph
      fetched only by the Players card, at the status polling cadence.
    - The contract is additive (a new endpoint and schemas), in its own PR first.
 3. **Live only, never stored:** no table, no history of who was online when, no inclusion in
-   ADR-0027's history or alerts. The pinned-cache TTL matches status.
+   ADR-0027's history or alerts. Like status, it's fetched live per request (there's no cache);
+   the load is bounded by the frontend's polling cadence.
 4. **Never logged:** a pino redact path for the players payload, plus a test that captures the
    log output of a players request and asserts no name appears.
 5. **Visible to server members only** (the PR 6 middleware); the demo uses invented names.
@@ -45,8 +46,7 @@ adapter maps only `name` and `online`). The owner requested it (Players card, ph
 ## Build plan
 | # | PR | Owner | Test-hunter |
 |---|---|---|---|
-| 1 | Contract: `ServerPlayersResponse` + the endpoint entry (additive) | dev | skip |
-| 2 | Adapter (name/online only) + route + redaction + the no-names-in-logs test | dev | FULL + security-reviewer |
+| 1+2 | ONE PR: contract (`ServerPlayersResponse` + endpoint entry) together with the adapter (name/online only), route, redaction and the no-names-in-logs test. *Amendment (2026-09-24):* the IDOR tests generated from the endpoints list pick up a new server-scoped endpoint at once, so a contract-only PR can't pass CI without its authorized route. This is the intended safety property, not a workaround. | dev | FULL + security-reviewer |
 | 3 | The Players card shows names; demo invented names | frontend | QUICK + ui-reviewer |
 | 4 | The privacy outline row (docs) | dev | skip |
 

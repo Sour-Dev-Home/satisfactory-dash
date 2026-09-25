@@ -162,13 +162,13 @@ export const RawFrmPowerUsageBuildingSchema = z.object({
   PowerInfo: RawFrmPowerInfoSchema,
 });
 
+/** ADR-0029, data minimization AT THE BOUNDARY: only `Name` and `Online` are declared, so zod's
+ *  default object parsing drops everything else FRM sends (ID, location, PlayerHP, Speed, Dead,
+ *  Inventory) here, before any of it can reach the domain, a log line or a response. Do not add
+ *  fields without a new decision: player names are personal data about third parties. */
 export const RawFrmPlayerSchema = z.object({
-  ID: z.string(),
   Name: z.string(),
-  location: RawFrmLocationSchema,
-  PlayerHP: z.number(),
   Online: z.boolean(),
-  Dead: z.boolean(),
 });
 
 export const RawFrmSessionInfoSchema = z.object({

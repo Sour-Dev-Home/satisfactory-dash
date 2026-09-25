@@ -202,18 +202,25 @@ describe("SatisfactoryServerAdapter", () => {
     ]);
   });
 
-  it("maps getPlayer", async () => {
+  it("maps getPlayer to name and online ONLY (ADR-0029: ID, location, HP, dead are dropped)", async () => {
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([playerFixture]) } });
-    await expect(adapter.getPlayers()).resolves.toEqual([
-      {
-        id: "Char_Player_C_2147452680",
-        name: "derpierre65",
-        online: true,
-        dead: false,
-        hp: 100,
-        location: { x: -57604.6796875, y: 260436.1875, z: -3018.36083984375 },
-      },
-    ]);
+    const players = await adapter.getPlayers();
+    expect(players).toEqual([{ name: "derpierre65", online: true }]);
+    expect(Object.keys(players[0]!).sort()).toEqual(["name", "online"]);
+  });
+
+  it("does not need the fields it drops: a player with only Name and Online is valid", async () => {
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([{ Name: "Pioneer", Online: false }]) } });
+    await expect(adapter.getPlayers()).resolves.toEqual([{ name: "Pioneer", online: false }]);
+  });
+
+  it("an invalid getPlayer entry fails without echoing any name or value in the error", async () => {
+    const { adapter } = buildAdapter({
+      frm: { get: vi.fn().mockResolvedValue([{ Name: "SecretPioneerName", Online: "yes" }]) },
+    });
+    const err = (await adapter.getPlayers().catch((e: unknown) => e)) as Error;
+    expect(err).toMatchObject({ failureKind: "invalid_response" });
+    expect(JSON.stringify({ message: err.message, cause: (err.cause as { issues?: unknown })?.issues })).not.toContain("SecretPioneerName");
   });
 
   it("maps getSessionInfo using the live-confirmed PascalCase field names", async () => {
