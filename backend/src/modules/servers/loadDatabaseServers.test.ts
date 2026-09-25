@@ -12,11 +12,11 @@ const ring = createSecretsKeyring("k1", new Map([["k1", key]]));
 const input = { host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678" };
 
 /** Rows as the LIST statement would return them, sealed for real; INSERT INTO server_members answers per `memberOutcome`. */
-async function fakeDb(servers: { uuid: string; publicId: string; sealedWith?: typeof ring }[], memberError?: { code: string; constraint?: string }) {
+async function fakeDb(servers: { uuid: string; publicId: string; sealedWith?: typeof ring; pinnedIp?: string }[], memberError?: { code: string; constraint?: string }) {
   const rows: unknown[] = [];
   for (const server of servers) {
     let written: unknown[] = [];
-    await saveConnection({ query: async (_t, v = []) => { written = v; return { rows: [{}] }; } }, server.sealedWith ?? ring, server.uuid, input);
+    await saveConnection({ query: async (_t, v = []) => { written = v; return { rows: [{}] }; } }, server.sealedWith ?? ring, server.uuid, { ...input, pinnedIp: server.pinnedIp ?? input.pinnedIp });
     const [, host, pinned, apiPort, frmPort, apiEnc, frmEnc, keyId] = written;
     rows.push({
       server_id: server.uuid, public_id: server.publicId, display_name: `Name ${server.publicId}`, connection_kind: "local",
@@ -56,7 +56,7 @@ describe("loadDatabaseServers", () => {
     const { db, members } = await fakeDb([]);
     const runtime = new ServerRuntime([configEntry("home")]);
     const result = await loadDatabaseServers({ db, ring, runtime, operatorUserId: "op", build });
-    expect(result).toEqual({ usingDatabase: false, loaded: [], unreadable: [] });
+    expect(result).toEqual({ usingDatabase: false, loaded: [], unreadable: [], refused: [] });
     expect(runtime.list()).toEqual([{ id: "home", displayName: "From config" }]);
     expect(members).toEqual([]);
   });
@@ -109,6 +109,22 @@ describe("loadDatabaseServers", () => {
     expect(runtime.has("stranded")).toBe(false);
     expect(JSON.stringify(result)).not.toContain(input.apiToken);
   });
+
+  it.each(["8.8.8.8", "169.254.169.254", "fe80::1", "100.64.0.1", "::ffff:8.8.8.8"])(
+    "never serves a stored address that is not loopback or private (%s): refused by public id, not built, no fallback to config",
+    async (pinnedIp) => {
+      const { db, members } = await fakeDb([{ uuid: "u1", publicId: "good" }, { uuid: "u2", publicId: "tampered", pinnedIp }]);
+      const built: string[] = [];
+      const runtime = new ServerRuntime([configEntry("tampered")]);
+      const result = await loadDatabaseServers({ db, ring, runtime, operatorUserId: "op", build: (c) => { built.push(c.publicId); return build(c); } });
+      expect(result.loaded).toEqual(["good"]);
+      expect(result.refused).toEqual([{ serverId: "u2", publicId: "tampered" }]);
+      expect(built).toEqual(["good"]);
+      expect(runtime.has("tampered")).toBe(false);
+      expect(members).toHaveLength(2); // the operator is still made owner of both
+      expect(JSON.stringify(result)).not.toContain(pinnedIp);
+    },
+  );
 
   it("with no keyring and rows present, the database still wins and every row is unreadable", async () => {
     const { db } = await fakeDb([{ uuid: "u1", publicId: "home" }]);

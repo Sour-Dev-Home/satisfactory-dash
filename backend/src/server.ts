@@ -215,6 +215,13 @@ if (process.env.NODE_ENV !== "test") {
               "stored server connections cannot be opened (missing or wrong SERVER_SECRETS_KEY, or a modified value); they are not served",
             );
           }
+          if (stored.refused.length > 0) {
+            connectionsReadable = false;
+            logger.error(
+              { code: "SERVER_CONNECTIONS_REFUSED", servers: stored.refused.map(({ publicId }) => ({ publicId })) },
+              "stored server connections have an address that is not loopback or private; they are not served",
+            );
+          }
           serversRegistered = true;
         } else {
           const { registered } = await registerConfiguredServers(

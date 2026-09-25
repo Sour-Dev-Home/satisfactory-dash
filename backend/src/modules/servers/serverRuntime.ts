@@ -89,7 +89,8 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
     const entry = this.byId.get(id);
     if (entry === undefined) return false;
     this.byId.delete(id);
-    await Promise.allSettled(entry.workers.map((worker) => worker.stop()));
+    // `async` so a worker whose stop() throws synchronously is settled like a rejection.
+    await Promise.allSettled(entry.workers.map(async (worker) => worker.stop()));
     return true;
   }
 
@@ -111,6 +112,6 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
   /** Stops every server's workers (servers stay registered). */
   async stop(): Promise<void> {
     this.running = false;
-    await Promise.allSettled([...this.byId.values()].flatMap((entry) => entry.workers.map((worker) => worker.stop())));
+    await Promise.allSettled([...this.byId.values()].flatMap((entry) => entry.workers.map(async (worker) => worker.stop())));
   }
 }

@@ -53,6 +53,8 @@ Pinned address: a `localhost` host is stored as the address it resolves to (IPv4
 If the key is missing, is not the one that sealed a row, or a stored value was modified, the backend **stays
 up**, serves the servers it can open, and reports **not ready** (`/api/health/ready` 503). The log has one
 `error` with `code: "SERVER_CONNECTIONS_UNREADABLE"` listing each server's public id and key id (never a value).
+The stored address is also re-checked at every start: a row whose address is not loopback or private (say, edited in
+the database by hand) is not served either, with `code: "SERVER_CONNECTIONS_REFUSED"` and the same not-ready answer.
 Fix it by restoring the right key (`SERVER_SECRETS_KEY`, or the old one in `SERVER_SECRETS_PREVIOUS_KEYS`), then
 restart. If the key is truly gone, the tokens must be entered again (the app's server settings, in a later PR).
 
