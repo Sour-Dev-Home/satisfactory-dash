@@ -11,6 +11,9 @@ import { runner } from "node-pg-migrate";
  */
 export const MIGRATOR_ROLE = "satis_migrator";
 export const APP_ROLE = "satis_app";
+/** Backups only (ADR-0025 decision 7): reads everything, changes nothing, and is never used by the
+ *  running backend or the migrations, so a backup never borrows either one's credentials. */
+export const BACKUP_ROLE = "satis_backup";
 
 export interface ProvisionOptions {
   /** Superuser (or CREATEROLE + CREATEDB) connection to any database, normally "postgres". */
@@ -18,6 +21,9 @@ export interface ProvisionOptions {
   database: string;
   migratorPassword: string;
   appPassword: string;
+  /** Optional: when set, the read-only backup role is created (or its password reset). Left out,
+   *  no backup role is touched, so an existing deployment's db:init is unchanged. */
+  backupPassword?: string;
 }
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -52,13 +58,24 @@ export async function provisionDatabase(options: ProvisionOptions): Promise<void
     throw new Error("The database name must be lowercase letters, digits and underscores.");
   }
   await withClient(options.adminUrl, async (admin) => {
-    for (const [role, password] of [
+    const roles: [string, string][] = [
       [MIGRATOR_ROLE, options.migratorPassword],
       [APP_ROLE, options.appPassword],
-    ] as const) {
+    ];
+    if (options.backupPassword !== undefined) {
+      roles.push([BACKUP_ROLE, options.backupPassword]);
+    }
+    for (const [role, password] of roles) {
       const exists = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [role]);
       const verb = exists.rows.length > 0 ? "ALTER" : "CREATE";
       await admin.query(`${verb} ROLE ${role} LOGIN PASSWORD ${admin.escapeLiteral(password)}`);
+    }
+    if (options.backupPassword !== undefined) {
+      // pg_read_all_data (PostgreSQL 14+) is SELECT on every table, view and sequence plus USAGE on
+      // every schema, including ones created later: a dump is complete by construction. Read-only by
+      // default as well, so even a mistaken statement on this role cannot write.
+      await admin.query(`GRANT pg_read_all_data TO ${BACKUP_ROLE}`);
+      await admin.query(`ALTER ROLE ${BACKUP_ROLE} SET default_transaction_read_only = on`);
     }
     const database = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [options.database]);
     if (database.rows.length === 0) {
@@ -72,6 +89,9 @@ export async function provisionDatabase(options: ProvisionOptions): Promise<void
     const name = db.escapeIdentifier(options.database);
     await db.query(`REVOKE ALL ON DATABASE ${name} FROM PUBLIC`);
     await db.query(`GRANT CONNECT ON DATABASE ${name} TO ${APP_ROLE}`);
+    if (options.backupPassword !== undefined) {
+      await db.query(`GRANT CONNECT ON DATABASE ${name} TO ${BACKUP_ROLE}`);
+    }
     await db.query("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
     await db.query(`GRANT USAGE ON SCHEMA public TO ${APP_ROLE}`);
     // node-pg-migrate's bookkeeping table is created by the migrator; the app reads it for the

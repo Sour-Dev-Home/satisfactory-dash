@@ -2,6 +2,7 @@ import type { Factory, FactoryBuilding as FactoryBuildingResponse } from "@satis
 import type { FactoryBuilding } from "../../gameserver/index.js";
 import { createUnitResolver } from "../itemForms.js";
 import type { ProductionUnit } from "../itemForms.js";
+import { classifyBuilding } from "./classifyBuilding.js";
 
 export type UnitResolver = (className: string) => ProductionUnit | null;
 
@@ -40,24 +41,40 @@ export class ProductionService {
 
   async getFactoryOverview(): Promise<Factory> {
     const buildings = await this.adapter.getFactoryBuildings();
-    const mapped: FactoryBuildingResponse[] = buildings.map((building) => ({
-      id: building.id,
-      name: building.name,
-      className: building.className,
-      recipe: building.recipe,
-      isProducing: building.isProducing,
-      isPaused: building.isPaused,
-      isBackedUp: isBackedUp(building),
-      circuitGroupId: building.circuitGroupId,
-      ...(building.location ? { location: building.location } : {}),
-      // ADR-0015: the unit comes from the game's own item data; null = an unknown item.
-      production: building.production.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
-      // ADR-0027: what it consumes, in the same shape and with the same unit resolution.
-      ingredients: building.consumption.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
-    }));
+    const mapped: FactoryBuildingResponse[] = buildings.map((building) => {
+      const backedUp = isBackedUp(building);
+      // ADR-0027 PR 2: derived per snapshot from FRM's own averaged percentages, never from
+      // isProducing alone. Omitted, never guessed, when the data to decide is missing.
+      const state = classifyBuilding(building, backedUp)?.state;
+      return {
+        id: building.id,
+        name: building.name,
+        className: building.className,
+        recipe: building.recipe,
+        isProducing: building.isProducing,
+        isPaused: building.isPaused,
+        isBackedUp: backedUp,
+        circuitGroupId: building.circuitGroupId,
+        ...(building.location ? { location: building.location } : {}),
+        // ADR-0015: the unit comes from the game's own item data; null = an unknown item.
+        production: building.production.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
+        // ADR-0027: what it consumes, in the same shape and with the same unit resolution.
+        ingredients: building.consumption.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
+        ...(state !== undefined ? { state } : {}),
+      };
+    });
+    // How many buildings are in each state, for the Overview's "N machines stalled". Buildings with
+    // no state are not counted.
+    const stateCounts: Record<string, number> = {};
+    for (const building of mapped) {
+      if (building.state !== undefined) {
+        stateCounts[building.state] = (stateCounts[building.state] ?? 0) + 1;
+      }
+    }
     return {
       buildings: mapped,
       backedUpCount: mapped.filter((building) => building.isBackedUp).length,
+      stateCounts,
     };
   }
 }
