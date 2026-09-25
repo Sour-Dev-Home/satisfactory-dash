@@ -14,6 +14,18 @@ describe("FrmApiClient", () => {
     expect(fetchImpl).toHaveBeenCalledWith("http://localhost:8080/getPlayer", expect.objectContaining({ headers: {} }));
   });
 
+  it("brackets an IPv6 host in the URL (a pinned address, ADR-0030), and leaves IPv4 and hostnames alone", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    await new FrmApiClient({ host: "::1", port: 8080, timeoutMs: 1000, fetchImpl }).get("getPlayer");
+    await new FrmApiClient({ host: "[::1]", port: 8080, timeoutMs: 1000, fetchImpl }).get("getPlayer");
+    await new FrmApiClient({ host: "192.168.1.20", port: 8080, timeoutMs: 1000, fetchImpl }).get("getPlayer");
+    expect(fetchImpl.mock.calls.map((call) => call[0])).toEqual([
+      "http://[::1]:8080/getPlayer",
+      "http://[::1]:8080/getPlayer",
+      "http://192.168.1.20:8080/getPlayer",
+    ]);
+  });
+
   it("sends the auth token as X-FRM-Authorization when configured", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     const client = buildClient(fetchImpl, "test-token");

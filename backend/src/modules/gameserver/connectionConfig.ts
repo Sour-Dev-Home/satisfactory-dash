@@ -140,6 +140,29 @@ export function allowSelfSignedCert(env: NodeJS.ProcessEnv, host: string): boole
   return isLoopbackOrPrivateHost(host);
 }
 
+/**
+ * ADR-0030: the config for a server whose connection is stored in the database. `host` is the pinned
+ * address (already validated as loopback or private by the address guard), so the vanilla API's
+ * self-signed certificate is accepted, as it is for any loopback/private host; the timeout is the default.
+ */
+export function createSatisfactoryServerConfig(input: {
+  host: string;
+  apiPort: number;
+  apiToken: string;
+  frmPort: number;
+  frmToken?: string;
+}): SatisfactoryServerConfig {
+  return {
+    host: input.host,
+    apiPort: input.apiPort,
+    apiToken: input.apiToken,
+    apiAllowSelfSignedCert: true,
+    frmPort: input.frmPort,
+    frmToken: input.frmToken,
+    requestTimeoutMs: DEFAULT_TIMEOUT_MS,
+  };
+}
+
 export function loadSatisfactoryServerConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): SatisfactoryServerConfig {

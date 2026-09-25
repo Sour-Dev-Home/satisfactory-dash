@@ -23,6 +23,7 @@ export interface ServerConnection {
   /** Internal server uuid. Never sent to clients. */
   serverId: string;
   publicId: string;
+  displayName: string;
   /** What the operator typed (hostname or address). */
   host: string;
   /** The address the backend connects to; validated by the address guard (a later PR), re-checked on every connect. */
@@ -38,6 +39,7 @@ export interface ServerConnection {
 export interface ServerConnectionSummary {
   serverId: string;
   publicId: string;
+  displayName: string;
   host: string;
   pinnedIp: string;
   apiPort: number;
@@ -97,6 +99,7 @@ const last4 = (token: string): string | null => (token.length >= LAST4_MIN_TOKEN
 const ConnectionRowSchema = z.object({
   server_id: z.string(),
   public_id: z.string(),
+  display_name: z.string(),
   connection_kind: z.string(),
   host: z.string(),
   pinned_ip: z.string().refine((value) => isIP(value) !== 0),
@@ -110,7 +113,7 @@ type ConnectionRow = z.output<typeof ConnectionRowSchema>;
 
 // Whole statements, never assembled from pieces (the SQL guard, ADR-0025 decision 2).
 const LIST_LIVE = `
-  SELECT c.server_id, s.public_id, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
+  SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
          c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id
   FROM servers.server_connections c
   JOIN servers.servers s ON s.id = c.server_id
@@ -118,14 +121,14 @@ const LIST_LIVE = `
   ORDER BY s.public_id`;
 
 const SELECT_ONE = `
-  SELECT c.server_id, s.public_id, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
+  SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
          c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id
   FROM servers.server_connections c
   JOIN servers.servers s ON s.id = c.server_id
   WHERE s.deleted_at IS NULL AND c.server_id = $1`;
 
 const SELECT_ONE_FOR_UPDATE = `
-  SELECT c.server_id, s.public_id, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
+  SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
          c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id
   FROM servers.server_connections c
   JOIN servers.servers s ON s.id = c.server_id
@@ -136,6 +139,7 @@ function openRow(ring: SecretsKeyring, row: ConnectionRow): ServerConnection {
   const connection: ServerConnection = {
     serverId: row.server_id,
     publicId: row.public_id,
+    displayName: row.display_name,
     host: row.host,
     pinnedIp: row.pinned_ip,
     apiPort: row.api_port,
@@ -239,6 +243,60 @@ export async function saveConnection(
   ]);
   return result.rows.length > 0;
 }
+
+const INSERT_IF_ABSENT = `
+  INSERT INTO servers.server_connections
+    (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, frm_token_enc, key_id)
+  SELECT s.id, $2, $3::inet, $4, $5, $6, $7, $8
+  FROM servers.servers s
+  WHERE s.id = $1 AND s.deleted_at IS NULL AND s.connection_kind = 'local'
+  ON CONFLICT (server_id) DO NOTHING
+  RETURNING server_id`;
+
+const CONNECTION_EXISTS = "SELECT 1 FROM servers.server_connections WHERE server_id = $1";
+
+export type CreateConnectionOutcome = "created" | "exists" | "not_local_server";
+
+/**
+ * Creates a connection only if the server has none: it never overwrites (the create route answers 409
+ * and the import skips), so edits go through `updateConnection`. "not_local_server" means the server is
+ * unknown, deleted or not a 'local' one.
+ */
+export async function createConnection(
+  db: Queryable,
+  ring: SecretsKeyring,
+  serverId: string,
+  input: ConnectionInput,
+): Promise<CreateConnectionOutcome> {
+  const api = ring.seal(input.apiToken, tokenContext(serverId, LOCAL_KIND, "api"));
+  const frm = input.frmToken === undefined ? undefined : ring.seal(input.frmToken, tokenContext(serverId, LOCAL_KIND, "frm"));
+  const inserted = await db.query(INSERT_IF_ABSENT, [
+    serverId,
+    input.host,
+    input.pinnedIp,
+    input.apiPort,
+    input.frmPort,
+    api.data,
+    frm?.data ?? null,
+    api.keyId,
+  ]);
+  if (inserted.rows.length > 0) return "created";
+  const existing = await db.query(CONNECTION_EXISTS, [serverId]);
+  return existing.rows.length > 0 ? "exists" : "not_local_server";
+}
+
+/** How many connections exist (live servers only): the cap of ADR-0030 counts these. */
+export async function countConnections(db: Queryable): Promise<number> {
+  const result = await db.query(COUNT_LIVE);
+  const row = parseFirst(z.object({ count: z.number().int() }), result.rows, "servers.countConnections");
+  return row?.count ?? 0;
+}
+
+const COUNT_LIVE = `
+  SELECT count(*)::int AS count
+  FROM servers.server_connections c
+  JOIN servers.servers s ON s.id = c.server_id
+  WHERE s.deleted_at IS NULL`;
 
 const UPDATE = `
   UPDATE servers.server_connections
