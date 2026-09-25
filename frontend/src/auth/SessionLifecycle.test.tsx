@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { signOutFromMenu } from "../test/account";
 import { focusManager } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -45,11 +46,11 @@ describe("session lifecycle", () => {
     renderWithClient(<App />);
     await screen.findByRole("heading", { name: "Sign in" });
     submitLogin();
-    await screen.findByRole("button", { name: "Log out" });
+    await screen.findByRole("button", { name: "Account" });
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(document.cookie).toBe("");
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    await signOutFromMenu();
     await screen.findByRole("heading", { name: "Sign in" });
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
@@ -97,7 +98,7 @@ describe("session lifecycle", () => {
 
     phase = "after";
     submitLogin();
-    await screen.findByRole("button", { name: "Log out" });
+    await screen.findByRole("button", { name: "Account" });
     expect(screen.queryByText("Old session save")).not.toBeInTheDocument();
     expect(await screen.findByText(statusRunning.data.sessionName)).toBeInTheDocument();
   });
@@ -123,10 +124,10 @@ describe("session lifecycle", () => {
     await screen.findByRole("heading", { name: "Sign in" });
     expect(factoryReads).toBe(1);
     submitLogin();
-    await screen.findByRole("button", { name: "Log out" });
+    await screen.findByRole("button", { name: "Account" });
     // Inside act: the re-login's own queries resolve during this wait and update the tree.
     await act(() => delay(200));
-    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
   });
 

@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { openAccountMenu, signOutFromMenu } from "../test/account";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -60,7 +61,7 @@ describe("AuthGate", () => {
   it("shows the app and the operator's name when signed in", async () => {
     renderGate();
     expect(await screen.findByText("servers: 1")).toBeInTheDocument();
-    expect(screen.getByText("Signed in as operator")).toBeInTheDocument();
+    expect((await openAccountMenu()).getByText("operator")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
@@ -158,7 +159,7 @@ describe("AuthGate", () => {
       }),
     );
     renderGate();
-    fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+    await signOutFromMenu();
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(loggedOut).toBe(true);
     expect(screen.queryByText("servers: 1")).not.toBeInTheDocument();
@@ -167,7 +168,7 @@ describe("AuthGate", () => {
   it("returns to the login screen when logout finds the session already expired", async () => {
     server.use(http.post(endpoints.auth.logout.route, () => HttpResponse.json(errorSessionRequired, { status: 401 })));
     renderGate();
-    fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+    await signOutFromMenu();
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 

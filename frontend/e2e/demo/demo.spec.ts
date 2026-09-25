@@ -65,8 +65,13 @@ test("every screen works offline: enter, overview, power, factory, settings, log
   await expect(page.getByText("Change pending: the server will apply it.")).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
 
-  await page.getByRole("button", { name: "Log out" }).click();
+  // The account menu (ADR-0025): axe-checked open, then Sign out. The demo offers no Google.
+  await page.getByRole("button", { name: "Account" }).click();
+  await expect(page.getByRole("button", { name: "Sign out everywhere" })).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("button", { name: "Enter demo" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in with Google" })).toHaveCount(0);
 
   expect(requests.toApi, `requests to ${API_ORIGIN}`).toEqual([]);
   expect(requests.offOrigin, "requests off the demo's origin").toEqual([]);

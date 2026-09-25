@@ -25,7 +25,7 @@ function App() {
         </header>
         <main className="flex-1 pb-10">
           {/* The outer boundary keeps the title and the footer's source link on any crash,
-              and offers Log out, since the crash takes the top bar's button with it. */}
+              and offers Sign out, since the crash takes the top bar's account menu with it. */}
           <ErrorBoundary label="The dashboard" actions={<LogoutButton />}>
             <CrashProbe section="app" />
             <Routes>

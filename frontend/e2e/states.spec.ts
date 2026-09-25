@@ -30,6 +30,12 @@ const CASES: StateCase[] = [
   { scenario: "default", name: "default-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   { scenario: "loading", shows: "Checking session…" },
   { scenario: "login", shows: "Sign in" },
+  { scenario: "login-google", shows: "Sign in with Google" },
+  {
+    scenario: "login-google-error",
+    path: "/app/login?error=not_invited",
+    shows: "This Google account hasn't been invited yet. Ask the server's owner for an invitation.",
+  },
   { scenario: "login-failed", shows: "Invalid username or password", act: signIn },
   { scenario: "login-rate-limited", shows: "Try again later", act: signIn },
   { scenario: "no-servers", shows: "No game servers are configured." },

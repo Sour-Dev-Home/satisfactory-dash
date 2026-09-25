@@ -11,6 +11,10 @@ import { resolve } from "./router";
  * A request the demo has no handler for gets a visible error, never a fallthrough to the
  * network.
  */
+
+/** The demo has no backend to navigate to (and shows no Google button); same-origin path only. */
+export const apiHref = (path: string): string => path;
+
 export const transport: Transport = async (path, init) => {
   init.signal?.throwIfAborted();
   const origin = window.location.origin;

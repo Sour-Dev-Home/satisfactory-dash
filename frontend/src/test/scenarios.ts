@@ -56,6 +56,7 @@ export const ROUTES = {
   session: endpoints.auth.session,
   login: endpoints.auth.login,
   logout: endpoints.auth.logout,
+  logoutAll: endpoints.auth.logoutAll,
   servers: endpoints.servers,
   status: endpoints.status,
   players: endpoints.players,
@@ -76,6 +77,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   session: ok(sessionAuthenticated),
   login: ok(sessionAuthenticated),
   logout: ok(sessionAnonymous),
+  logoutAll: ok(sessionAnonymous),
   servers: ok(serversSingle),
   status: ok(statusRunning),
   // No player list (no FicsitRemoteMonitoring): the card shows counts only, as before names.
@@ -100,6 +102,10 @@ export const SCENARIOS = {
   default: {},
   "loading": { session: { status: 200, delay: "never" } },
   "login": { session: ok(sessionAnonymous) },
+  // A backend with Google sign-in on (ADR-0025): the button shows above the password form.
+  "login-google": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
+  // The backend's redirect after a failed Google sign-in (the text is fixed, never the query).
+  "login-google-error": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
   "login-failed": { session: ok(sessionAnonymous), login: fail(401, errorLoginFailed) },
   "login-rate-limited": { session: ok(sessionAnonymous), login: fail(429, errorRateLimited) },
   "no-servers": { servers: ok(serversNone) },
