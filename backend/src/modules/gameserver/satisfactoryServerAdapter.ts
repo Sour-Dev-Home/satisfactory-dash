@@ -187,6 +187,7 @@ export class SatisfactoryServerAdapter {
         circuitGroupId: building.PowerInfo?.CircuitGroupID ?? -1,
         powerConsumed: building.PowerInfo?.PowerConsumed ?? 0,
         maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
+        ...(building.PowerInfo?.FuseTriggered !== undefined ? { fuseTriggered: building.PowerInfo.FuseTriggered } : {}),
         ...(building.location ? { location: mapLocation(building.location) } : {}),
       };
     });

@@ -34,6 +34,13 @@ Status: accepted (project owner), 2026-09-24. All seven owner decisions were tak
      `ConsPercent` is low.
    - Thresholds are tuned by replaying the captured sessions [NEEDS VERIFICATION: `isPaused`
      semantics; values from the replay].
+   - *Amendment (2026-09-24, PR 2):* classification is **per snapshot**, using FRM's own
+     averaged percentages (`percent` on outputs and inputs; the contract notes these are averaged,
+     unlike the instantaneous `isProducing`). The "held for N minutes" and hysteresis logic lives
+     only in the alert engine (decision 4, PR 5), not in classification. The repo holds only two
+     single `getFactory` snapshots, so PR 2's thresholds are **provisional**, documented with that
+     evidence. A capture session (`getFactory` every 30 s for about 30 minutes while the game
+     runs, saved trimmed under raw-sources/captured-responses) tunes them before PR 5.
    - The state is also exposed (optional) in the factory response, since the live map (ADR-0023)
      needs it too.
 3. **History storage** (new `telemetry` schema, hand-written SQL per ADR-0025 decision 7).
