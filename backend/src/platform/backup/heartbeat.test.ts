@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../errors.js";
-import { HEARTBEAT_TIMEOUT_MS, loadHeartbeatUrl, pingAfterUpload, pingHeartbeat } from "./heartbeat.js";
+import { HEARTBEAT_TIMEOUT_MS, loadHeartbeatUrl, loadHeartbeatUrlOrWarn, pingAfterUpload, pingHeartbeat } from "./heartbeat.js";
 import type { Fetch } from "./heartbeat.js";
 
 const URL_WITH_TOKEN = "https://uptime.betterstack.com/api/v1/heartbeat/SECRETTOKEN123";
@@ -94,6 +94,34 @@ describe("pingHeartbeat with the real fetch (loopback server only)", () => {
     );
     expect(logs).toEqual(["heartbeat failed (timed out); the backup itself succeeded"]);
   });
+});
+
+describe("loadHeartbeatUrlOrWarn", () => {
+  it("returns a valid URL silently and undefined when unset", () => {
+    const lines: string[] = [];
+    expect(loadHeartbeatUrlOrWarn({ BACKUP_HEARTBEAT_URL: URL_WITH_TOKEN }, (l) => lines.push(l))).toBe(URL_WITH_TOKEN);
+    expect(loadHeartbeatUrlOrWarn({}, (l) => lines.push(l))).toBeUndefined();
+    expect(lines).toEqual([]);
+  });
+
+  it.each(["not a url SECRETTOKEN123", "http://x.example/SECRETTOKEN123", "https://u:SECRETTOKEN123@x.example/y"])(
+    "a bad value warns ONCE with the fixed code, never the URL, and sends no ping: %#",
+    async (value) => {
+      const lines: string[] = [];
+      const url = loadHeartbeatUrlOrWarn({ BACKUP_HEARTBEAT_URL: value }, (l) => lines.push(l));
+      expect(url).toBeUndefined();
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("backup_heartbeat_misconfigured");
+      expect(lines[0]).not.toContain("SECRETTOKEN123");
+      let pinged = false;
+      const fetchImpl: Fetch = async () => {
+        pinged = true;
+        return { ok: true, status: 200 };
+      };
+      await expect(pingAfterUpload(true, url, { fetchImpl, log: () => {} })).resolves.toBeUndefined();
+      expect(pinged).toBe(false);
+    },
+  );
 });
 
 describe("pingAfterUpload", () => {

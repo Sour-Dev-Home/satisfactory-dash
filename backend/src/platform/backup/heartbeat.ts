@@ -36,6 +36,21 @@ export function loadHeartbeatUrl(env: NodeJS.ProcessEnv): string | undefined {
 }
 
 /**
+ * For the backup script: a malformed BACKUP_HEARTBEAT_URL must not stop the backup (that would leave
+ * the data unprotected AND miss the alert). It logs ONE fixed-code warning (never the URL), sends no
+ * ping, and lets the backup finish; a heartbeat monitor alerts on the ABSENCE of a ping, so the missing
+ * ping still raises the alarm.
+ */
+export function loadHeartbeatUrlOrWarn(env: NodeJS.ProcessEnv, log: (line: string) => void): string | undefined {
+  try {
+    return loadHeartbeatUrl(env);
+  } catch {
+    log("warning backup_heartbeat_misconfigured: BACKUP_HEARTBEAT_URL is not a usable https URL; no heartbeat will be sent");
+    return undefined;
+  }
+}
+
+/**
  * The backup script's last step: ping only when a backup was really uploaded (a local-only trial run,
  * or no URL configured, sends nothing). Returns whether a ping was accepted, or undefined when none
  * was attempted.

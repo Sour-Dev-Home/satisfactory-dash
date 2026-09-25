@@ -125,7 +125,10 @@ period that alerts the ops address). After a backup that was **really uploaded**
 reason: the task did not run, the PC was off, a step failed. Sending it is best effort: a failed ping is logged
 (`heartbeat failed ...`) and never fails the backup, and a local-only trial run (no bucket) never pings. **The URL
 is a secret** (anyone holding it can mark the heartbeat healthy): it lives only in `.env`, is never logged or put
-in an error message, and must be `https` with no user name or password in it.
+in an error message, and must be `https` with no user name or password in it. A malformed value does NOT stop
+the backup: the script logs one warning (`backup_heartbeat_misconfigured`, never the URL), skips the ping and
+finishes the backup, so the data stays protected and Better Stack's missed-heartbeat alert still fires on the
+absent ping.
 
 ## Recommended database role
 

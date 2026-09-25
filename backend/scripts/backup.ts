@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { ConfigError } from "../src/platform/errors.js";
 import { BackupError, loadBackupConfig, runBackup } from "../src/platform/backup/backup.js";
 import type { Runner } from "../src/platform/backup/backup.js";
-import { loadHeartbeatUrl, pingAfterUpload } from "../src/platform/backup/heartbeat.js";
+import { loadHeartbeatUrlOrWarn, pingAfterUpload } from "../src/platform/backup/heartbeat.js";
 
 // ADR-0025 decision 7 (PR 8b): the nightly database backup. Run by the Windows scheduled task, or by
 // hand for a trial. See docs-vault/wiki/runbooks/backups.md (setup, restore rehearsal, trial run).
@@ -79,10 +79,10 @@ const run: Runner = (command, args, options) =>
 
 try {
   const config = loadBackupConfig(process.env, { localDir: join(process.env.LOCALAPPDATA ?? homedir(), "satisfactory-dash", "backups") });
-  // Optional missed-backup alerting (a secret URL: .env only, never logged). Validated up front so a
-  // typo fails before the backup runs, not after.
-  const heartbeatUrl = loadHeartbeatUrl(process.env);
+  // Optional missed-backup alerting (a secret URL: .env only, never logged). A malformed value warns and
+  // the backup still runs: the missing ping raises the alert, and the data stays protected.
   const log = (line: string) => console.log(`[backup] ${line}`);
+  const heartbeatUrl = loadHeartbeatUrlOrWarn(process.env, log);
   const result = await runBackup(config, { run, now: () => new Date(), log });
   console.log(
     `[backup] done: ${result.fileName}${result.uploaded ? " (uploaded)" : " (local only)"}, ${result.prunedLocal} old local copy(ies) removed`,
