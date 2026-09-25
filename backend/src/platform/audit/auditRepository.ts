@@ -80,3 +80,13 @@ export async function listRecentAuditEvents(
   const result = await db.query(LIST_RECENT, [options.serverId ?? null, limit]);
   return parseRows(AuditEventRowSchema, result.rows, "audit.listRecentAuditEvents").map(toEvent);
 }
+
+// Audit retention (privacy policy: 1 year). satis_app cannot DELETE from the append-only trail; this calls
+// the SECURITY DEFINER function the 1790380800000_audit_purge migration created, which deletes only events
+// older than a year and returns how many.
+const PURGE_EXPIRED = `SELECT audit.purge_expired_events() AS deleted`;
+
+export async function purgeExpiredAuditEvents(db: Queryable): Promise<number> {
+  const result = await db.query(PURGE_EXPIRED);
+  return z.object({ deleted: z.coerce.number().int().min(0) }).parse(result.rows[0]).deleted;
+}

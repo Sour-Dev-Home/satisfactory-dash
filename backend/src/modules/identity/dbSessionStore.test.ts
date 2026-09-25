@@ -265,7 +265,10 @@ describe("session purge", () => {
   it("worker logs a failure without throwing, is idempotent to start, and stops the timer", async () => {
     vi.useFakeTimers();
     try {
-      const { db, query } = fakeDb([["identity", () => connRefused]]);
+      const { db, query } = fakeDb([
+        ["identity", () => connRefused],
+        ["audit.purge_expired_events", () => ({ rows: [{ deleted: "0" }] })],
+      ]);
       const logger = { info: vi.fn(), warn: vi.fn() };
       const worker = createSessionPurgeWorker(db, logger);
       worker.start();

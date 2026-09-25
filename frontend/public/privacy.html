@@ -109,12 +109,7 @@
           Game data: not stored. It's read from your server when the dashboard asks; the only
           history is the last 5 minutes of power readings, kept in memory for the chart.
         </li>
-        <!-- The audit table is append-only (the app can't delete from it) and no purge exists
-             yet: say so until one runs, then make this "1 year". -->
-        <li>
-          Audit events: kept for security. We intend to delete them after 1 year, but that isn't
-          automated yet, so for now they're kept longer. They hold no emails or names.
-        </li>
+        <li>Audit events: 1 year. They're kept for security and hold no emails or names.</li>
         <li>Server logs, including IP addresses on sign-in events: 14 days.</li>
       </ul>
 
