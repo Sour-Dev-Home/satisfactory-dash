@@ -12,6 +12,7 @@ without `DATABASE_URL` the backend behaves exactly as before.
 | `DATABASE_URL` | `postgres://satis_app:<password>@localhost:5432/satis` (add `?sslmode=verify-full` for a remote database). Unset or blank = no database. Never commit it or paste it into chat. |
 | `DATABASE_POOL_MAX` | Pool size, 1-100 (default 10) |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | Server-side statement timeout, 100-120000 (default 10000) |
+| `DATABASE_READINESS_TIMEOUT_MS` | How long `/api/health/ready` may take to borrow a connection and run `SELECT 1`, 100-10000 (default 3000). A miss logs ONE warn line: `readiness_probe_slow` (timed out) or `readiness_probe_failed` (error, with the database error code), each with `elapsed_ms` and `phase` (`acquire` = getting a connection, `query` = the `SELECT 1`). The public body stays `{"status":"unavailable"}`. |
 
 The backend connects as `satis_app` (DML on the `identity`, `servers` and `audit` schemas, never
 DDL). Migrations run as `satis_migrator`, the database owner.
