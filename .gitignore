@@ -23,3 +23,9 @@ npm-debug.log*
 
 # Structurizr exports from the architecture CI job (ADR-0024)
 docs-vault/architecture-out/
+
+# Database backups and their keys must never be committed (docs-vault/wiki/runbooks/backups.md)
+*.dump
+*.dump.age
+*.age
+*.key

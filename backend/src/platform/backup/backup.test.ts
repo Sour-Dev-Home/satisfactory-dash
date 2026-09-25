@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { ConfigError } from "../errors.js";
-import { BackupError, backupFileName, loadBackupConfig, pruneLocalCopies, runBackup, S3_KEY_PREFIX } from "./backup.js";
+import {
+  BackupError,
+  backupFileName,
+  loadBackupConfig,
+  pruneLocalCopies,
+  runBackup,
+  S3_KEY_PREFIX,
+  sweepStaleWorkDirs,
+} from "./backup.js";
 import type { BackupConfig, RunOptions, RunResult, Runner } from "./backup.js";
 
 const RECIPIENT = "age1" + "q".repeat(58);
@@ -98,6 +106,26 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
       expect(other.database).toMatchObject({ user: "satis_migrator", port: "5433", name: "other" });
     });
 
+    it("strips IPv6 brackets from the host and keeps sslmode", () => {
+      const c = loadBackupConfig({ ...ENV, DATABASE_URL: "postgres://u:p@[::1]:5433/db?sslmode=require" }, { localDir: "x" });
+      expect(c.database).toMatchObject({ host: "::1", port: "5433", sslmode: "require" });
+    });
+
+    it("rejects a bad percent-escape and an unknown sslmode as ConfigError (no password in message)", () => {
+      for (const u of ["postgres://u:p%zz@h/db", "postgres://u:p@h/db?sslmode=bogus"]) {
+        expect(() => loadBackupConfig({ ...ENV, DATABASE_URL: u }, { localDir: "x" })).toThrow(ConfigError);
+      }
+    });
+
+    it("refuses an AWS profile that starts with a dash (it could be read as an option)", () => {
+      expect(() => loadBackupConfig({ ...ENV, BACKUP_AWS_PROFILE: "--endpoint-url" }, { localDir: "x" })).toThrow(ConfigError);
+    });
+
+    it("makes the local folder absolute, so a value starting with a dash is never read as an option", () => {
+      const c = loadBackupConfig({ ...ENV, BACKUP_LOCAL_DIR: "-rf" }, { localDir: "x" });
+      expect(isAbsolute(c.localDir)).toBe(true);
+    });
+
     it("allows no bucket (a local trial run that never touches AWS)", () => {
       expect(loadBackupConfig(ENV, { localDir: "x" }).s3Bucket).toBe("");
     });
@@ -184,6 +212,31 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
     expect(calls.map((c) => c.command)).toEqual(["pg_dump", "age"]);
     expect(result.uploaded).toBe(false);
     expect(logs.join("\n")).toContain("not uploaded");
+  });
+
+  describe("stale plaintext leftovers", () => {
+    it("sweeps old satis-backup-* temp folders, and only those", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "sweep-test-"));
+      try {
+        const old = join(parent, "satis-backup-old");
+        const fresh = join(parent, "satis-backup-fresh");
+        const other = join(parent, "unrelated-old");
+        for (const path of [old, fresh, other]) {
+          await mkdir(path);
+          await writeFile(join(path, "dump.plain"), "PLAINTEXT");
+        }
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        await utimes(old, twoHoursAgo, twoHoursAgo);
+        await utimes(other, twoHoursAgo, twoHoursAgo);
+        const removed = await sweepStaleWorkDirs(Date.now(), parent);
+        expect(removed).toBe(1);
+        expect(existsSync(old)).toBe(false);
+        expect(existsSync(fresh)).toBe(true);
+        expect(existsSync(other)).toBe(true);
+      } finally {
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("local retention", () => {

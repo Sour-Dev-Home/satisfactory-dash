@@ -23,7 +23,11 @@ What the backup script does (`npm run backup -w backend`, source `backend/src/pl
    S3 retention is the bucket's lifecycle rule below, not the script.
 
 Any failed step makes the script exit non-zero with a message that names the step and never contains a
-password, a key or a URL. A failed dump is never uploaded; a failed upload keeps the encrypted local copy.
+password, a key or the connection URL (it can include the first few hundred characters of the tool's own
+error, e.g. a host or database name from `pg_dump`, or an IAM ARN from AWS). `sslmode` in the URL is honoured.
+A dump left behind by a run that was killed midway is swept at the start of the next run. Only an
+allow-listed environment reaches `pg_dump`, `age` and `aws` (no `.env` secrets except the one
+`PGPASSWORD`). A failed dump is never uploaded; a failed upload keeps the encrypted local copy.
 
 ## Your one-time setup
 
@@ -36,7 +40,8 @@ password, a key or a URL. A failed dump is never uploaded; a failed upload keeps
    lifecycle rule that expires current objects after **30 days** and noncurrent versions after **7**.
 4. **IAM:** a policy allowing **only `s3:PutObject`** on `arn:aws:s3:::<bucket>/satis-dash/*` (no Get, List
    or Delete, so a compromised PC can't read or erase backups), attached to a user `satis-backup` with no
-   console access. Create one access key into a **named AWS CLI profile** on this PC
+   console access (dumps are far below the AWS CLI's ~8 MB multipart threshold; if one ever grows past it, add
+`s3:AbortMultipartUpload` to the policy). Create one access key into a **named AWS CLI profile** on this PC
    (`aws configure --profile satis-backup`), never into the repo or a chat. Rotate it every 90 days.
 5. **age keys:** install `age` and run `age-keygen` **on a machine you trust, not necessarily this PC**.
    Put the private key (`AGE-SECRET-KEY-...`) in your password manager and nowhere else. Only the
@@ -63,9 +68,12 @@ Delete the trial key and folder afterwards.
 
 ## Restore rehearsal (do it once before ADR-0025 deploy B, then now and then)
 
-Download with **your admin AWS identity**, not the put-only `satis-backup` profile (it can't read):
+Work in a scratch folder **outside the repo** (`.gitignore` also blocks `*.dump`, `*.age` and `*.key` as a
+safety net, but don't rely on it). Download with **your admin AWS identity**, not the put-only
+`satis-backup` profile (it can't read):
 
 ```powershell
+New-Item -ItemType Directory "$env:TEMP\restore" | Set-Location
 aws s3 ls s3://<bucket>/satis-dash/ --profile <your-admin-profile>
 aws s3 cp s3://<bucket>/satis-dash/satis-<time>.dump.age . --profile <your-admin-profile>
 age --decrypt --identity <path-to-private-key-file> --output satis.dump satis-<time>.dump.age
@@ -77,8 +85,9 @@ Take the private key out of the password manager into a temp file only for the `
 it afterwards. Then check the restored data: point a **scratch copy of the backend** (a different port and a
 `DATABASE_URL` for `satis_restore_test`) at it, run the migrations (`npm run db:migrate -w backend`; it must
 report nothing to do, or apply cleanly if the backup is older than the code), and confirm
-`/api/health/ready` answers 200 and a known account can sign in. Drop `satis_restore_test` and delete
-`satis.dump` when done: a plaintext dump on disk defeats the point.
+`/api/health/ready` answers 200 and a known account can sign in. When done, drop `satis_restore_test` and
+delete the whole scratch folder (`Remove-Item -Recurse -Force "$env:TEMP\restore"`), including `satis.dump`
+and the key file: a plaintext dump or a private key left on disk defeats the point.
 
 To restore for real after a loss, the same steps apply, restoring into a fresh database that the backend
 role owns (or run `npm run db:init -w backend` first for the roles), and only after stopping the backend.
@@ -88,7 +97,9 @@ role owns (or run `npm run db:init -w backend` first for the roles), and only af
 The Windows scheduled task that runs `npm run backup -w backend` nightly is registered by the
 coordinator session (ADR-0025 build plan, 8b), as the same user who owns the AWS profile. It runs
 `npm run backup -w backend` from the repo root and must show a failure (non-zero exit) in Task Scheduler
-history when any step fails. Check it after a week: a new object in the bucket every day, and the local
+history when any step fails. Run it as the interactive user (so the temp folder and the AWS profile are the
+user's own, not SYSTEM's), with a working directory that only you can write to (PowerShell and Windows
+search the current directory for `pg_dump`, `age` and `aws` before `PATH`). Check it after a week: a new object in the bucket every day, and the local
 folder holding at most `BACKUP_LOCAL_KEEP` files.
 
 ## Privacy

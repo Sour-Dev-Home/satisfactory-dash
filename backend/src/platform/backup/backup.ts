@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, readdir, rm, unlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { ConfigError } from "../errors.js";
 
 /**
@@ -17,7 +17,7 @@ import { ConfigError } from "../errors.js";
  */
 
 export interface BackupConfig {
-  database: { host: string; port: string; user: string; password: string; name: string };
+  database: { host: string; port: string; user: string; password: string; name: string; sslmode?: string };
   /** A public age recipient (`age1...`). */
   ageRecipient: string;
   /** Empty = no upload (local trial runs without AWS). */
@@ -33,7 +33,8 @@ export const S3_KEY_PREFIX = "satis-dash/";
 const AGE_RECIPIENT = /^age1[a-z0-9]{50,}$/;
 const BACKUP_FILE = /^satis-\d{8}T\d{6}Z\.dump\.age$/;
 const BUCKET_NAME = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
-const PROFILE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+// Starts with a letter or digit, so a profile name can never be read as an option.
+const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface RunResult {
   code: number;
@@ -70,9 +71,24 @@ export function loadBackupConfig(env: NodeJS.ProcessEnv, defaults: { localDir: s
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
     throw new ConfigError("DATABASE_URL must be a postgres:// URL.");
   }
-  const name = decodeURIComponent(url.pathname.replace(/^\//, ""));
-  if (!url.hostname || !name || !url.username) {
+  let name: string;
+  let user: string;
+  let password: string;
+  try {
+    name = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    user = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
+  } catch {
+    throw new ConfigError("DATABASE_URL has an invalid percent-escape (encode special characters in the user/password).");
+  }
+  // URL keeps the brackets on an IPv6 host ("[::1]"); pg_dump wants it bare.
+  const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
+  if (!host || !name || !user) {
     throw new ConfigError("DATABASE_URL needs a host, user and database name.");
+  }
+  const sslmode = url.searchParams.get("sslmode") ?? undefined;
+  if (sslmode !== undefined && !/^(disable|allow|prefer|require|verify-ca|verify-full)$/.test(sslmode)) {
+    throw new ConfigError("DATABASE_URL has an unsupported sslmode.");
   }
   const ageRecipient = env.BACKUP_AGE_RECIPIENT?.trim() ?? "";
   if (!AGE_RECIPIENT.test(ageRecipient)) {
@@ -93,16 +109,18 @@ export function loadBackupConfig(env: NodeJS.ProcessEnv, defaults: { localDir: s
   }
   return {
     database: {
-      host: url.hostname,
+      host,
       port: url.port || "5432",
-      user: decodeURIComponent(url.username),
-      password: decodeURIComponent(url.password),
+      user,
+      password,
       name,
+      ...(sslmode ? { sslmode } : {}),
     },
     ageRecipient,
     s3Bucket,
     awsProfile,
-    localDir: env.BACKUP_LOCAL_DIR?.trim() || defaults.localDir,
+    // Absolute, so the path handed to age and aws can never start with "-" and be read as an option.
+    localDir: resolve(env.BACKUP_LOCAL_DIR?.trim() || defaults.localDir),
     localKeep,
   };
 }
@@ -139,7 +157,10 @@ function fail(step: string, result: RunResult): never {
 export async function runBackup(config: BackupConfig, deps: BackupDeps): Promise<BackupResult> {
   const fileName = backupFileName(deps.now());
   await mkdir(config.localDir, { recursive: true });
-  const workDir = await mkdtemp(join(tmpdir(), "satis-backup-"));
+  // A run killed between the dump and its cleanup (power loss, "stop task") leaves a plaintext dump in
+  // the temp folder: sweep any such leftover from an earlier run before starting.
+  await sweepStaleWorkDirs(deps.now().getTime());
+  const workDir = await mkdtemp(join(tmpdir(), WORK_DIR_PREFIX));
   const plainPath = join(workDir, "dump.plain");
   const encryptedPath = join(config.localDir, fileName);
   let encryptedWritten = false;
@@ -157,7 +178,7 @@ export async function runBackup(config: BackupConfig, deps: BackupDeps): Promise
         `--dbname=${config.database.name}`,
         `--file=${plainPath}`,
       ],
-      { env: { PGPASSWORD: config.database.password } },
+      { env: { PGPASSWORD: config.database.password, ...(config.database.sslmode ? { PGSSLMODE: config.database.sslmode } : {}) } },
     );
     if (dump.code !== 0) {
       fail("pg_dump", dump);
@@ -198,6 +219,30 @@ export async function runBackup(config: BackupConfig, deps: BackupDeps): Promise
 
   const prunedLocal = encryptedWritten ? await pruneLocalCopies(config.localDir, config.localKeep) : 0;
   return { fileName, uploaded, prunedLocal };
+}
+
+const WORK_DIR_PREFIX = "satis-backup-";
+const STALE_WORK_DIR_MS = 60 * 60 * 1000;
+
+/** Removes `satis-backup-*` temp folders older than an hour (a run never takes that long). Only
+ *  folders with that exact prefix are touched. */
+export async function sweepStaleWorkDirs(nowMs: number, dir: string = tmpdir()): Promise<number> {
+  let removed = 0;
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(WORK_DIR_PREFIX)) {
+      continue;
+    }
+    const path = join(dir, entry.name);
+    try {
+      if (nowMs - (await stat(path)).mtimeMs > STALE_WORK_DIR_MS) {
+        await rm(path, { recursive: true, force: true });
+        removed++;
+      }
+    } catch {
+      // Gone already, or not ours to touch: never fail a backup over housekeeping.
+    }
+  }
+  return removed;
 }
 
 /** Deletes the oldest `satis-<stamp>.dump.age` files beyond the newest `keep`. Only files matching

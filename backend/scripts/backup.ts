@@ -18,17 +18,46 @@ import type { Runner } from "../src/platform/backup/backup.js";
 const TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_STDERR = 2000;
 
-/** Runs a program without a shell, with the database URL and backup settings removed from its
- *  environment (only what the caller passes in `env` is added). */
+/** The only inherited environment the child programs get: what a program needs to start and find its
+ *  own config (AWS_* for the AWS CLI profile). backend/.env is already loaded into process.env, so
+ *  everything else in it (SESSION_SECRET, GOOGLE_CLIENT_SECRET, DATABASE_URL, ...) stays out.
+ *  Names match case-insensitively (Windows spells them `Path`, `SystemRoot`, ...). */
+const INHERITED = new Set([
+  "PATH",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "HOME",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "USERNAME",
+  "LANG",
+]);
+
+function childEnv(extra: Record<string, string> | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    const upper = name.toUpperCase();
+    if (value !== undefined && (INHERITED.has(upper) || upper.startsWith("AWS_"))) {
+      env[name] = value;
+    }
+  }
+  return { ...env, ...extra };
+}
+
+/** Runs a program without a shell and with an allow-listed environment (plus what the caller passes
+ *  in `env`, e.g. PGPASSWORD for pg_dump only). */
 const run: Runner = (command, args, options) =>
   new Promise((resolve) => {
-    const env: NodeJS.ProcessEnv = { ...process.env, ...options?.env };
-    delete env.DATABASE_URL;
-    for (const name of Object.keys(env)) {
-      if (name.startsWith("BACKUP_")) {
-        delete env[name];
-      }
-    }
+    const env = childEnv(options?.env);
     const child = spawn(command, args, { env, stdio: ["ignore", "ignore", "pipe"], windowsHide: true, shell: false });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
