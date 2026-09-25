@@ -13,6 +13,7 @@ declare module "vitest" {
 export const TEMPLATE_DATABASE = "satis_template";
 export const MIGRATOR_PASSWORD = "migrator-test-password";
 export const APP_PASSWORD = "app-test-password";
+export const BACKUP_PASSWORD = "backup-test-password";
 
 /**
  * ADR-0025: one Postgres container per test run, migrated once into a template database; each
@@ -43,6 +44,7 @@ export default async function setup(project: TestProject): Promise<(() => Promis
     database: TEMPLATE_DATABASE,
     migratorPassword: MIGRATOR_PASSWORD,
     appPassword: APP_PASSWORD,
+    backupPassword: BACKUP_PASSWORD,
   });
   const migratorUrl = new URL(adminUrl);
   migratorUrl.username = "satis_migrator";

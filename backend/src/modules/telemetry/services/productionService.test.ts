@@ -123,7 +123,7 @@ describe("ProductionService", () => {
   it("returns an empty overview for zero buildings", async () => {
     const adapter: ProductionAdapterLike = { getFactoryBuildings: async () => [] };
     const service = new ProductionService(adapter);
-    await expect(service.getFactoryOverview()).resolves.toEqual({ buildings: [], backedUpCount: 0 });
+    await expect(service.getFactoryOverview()).resolves.toEqual({ buildings: [], backedUpCount: 0, stateCounts: {} });
   });
 
   it("counts backedUpCount per building, not per full slot (a building with several full slots still counts once)", async () => {

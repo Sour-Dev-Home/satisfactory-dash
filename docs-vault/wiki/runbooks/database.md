@@ -26,12 +26,23 @@ Start order: **Postgres, `npm run db:migrate`, backend.** The backend never migr
 $env:DATABASE_ADMIN_URL   = "postgres://postgres:<admin password>@localhost:5432/postgres"
 $env:DB_MIGRATOR_PASSWORD = "<16+ characters>"
 $env:DB_APP_PASSWORD      = "<16+ characters, different>"
+$env:DB_BACKUP_PASSWORD   = "<16+ characters, different from both; optional, see below>"
 npm run db:init -w backend        # roles + database with the builtin C.UTF-8 locale
 
 # 2. After every pull that adds a migration (forward-only).
 $env:MIGRATOR_DATABASE_URL = "postgres://satis_migrator:<password>@localhost:5432/satis"
 npm run db:migrate -w backend
 ```
+
+**The backup role (optional, ADR-0025 decision 7).** With `DB_BACKUP_PASSWORD` set, `db:init` also creates
+`satis_backup`: it can connect, is a member of PostgreSQL's predefined `pg_read_all_data` role (SELECT on every
+table, view and sequence and USAGE on every schema, including ones created later, so a `pg_dump` is complete
+by construction), is read-only by default, and can change nothing. It is used only by the nightly backup
+(`BACKUP_DATABASE_URL=postgres://satis_backup:<password>@localhost:5432/satis`, see the backups runbook), never
+by the backend or the migrations. Left unset, no backup role is created or touched. Note for later: `pg_read_all_data` does not bypass
+row-level security, so if a migration ever enables RLS on a table, give `satis_backup` `BYPASSRLS` in the same
+change or its dumps would silently miss rows (no migration uses RLS today). Re-running `db:init` is safe
+and resets the passwords you pass.
 
 Every database is created with `LOCALE_PROVIDER builtin` and `BUILTIN_LOCALE 'C.UTF-8'` in every
 environment (Windows service, dev, CI), so sorting and comparison never differ. Migrations are

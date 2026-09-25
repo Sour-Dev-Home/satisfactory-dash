@@ -6,6 +6,7 @@ import { provisionDatabase } from "../src/platform/db/admin.js";
 //   DATABASE_ADMIN_URL      postgres://postgres:<admin password>@localhost:5432/postgres
 //   DB_MIGRATOR_PASSWORD    password to set for satis_migrator (16+ characters)
 //   DB_APP_PASSWORD         password to set for satis_app (16+ characters)
+//   DB_BACKUP_PASSWORD      optional: also create the read-only satis_backup role (16+ characters)
 //   DB_NAME                 optional, default "satis"
 // Passwords are never printed. Put the app one into DATABASE_URL in backend/.env.
 
@@ -29,6 +30,15 @@ if (migratorPassword === appPassword) {
   process.exit(1);
 }
 
+// Optional: the read-only role the nightly backup uses (ADR-0025 decision 7, runbooks/backups.md).
+const backupPassword = process.env.DB_BACKUP_PASSWORD?.trim() || undefined;
+if (backupPassword !== undefined && (backupPassword.length < 16 || backupPassword === appPassword || backupPassword === migratorPassword)) {
+  console.error("DB_BACKUP_PASSWORD must be at least 16 characters and different from the other two.");
+  process.exit(1);
+}
+
 const database = process.env.DB_NAME?.trim() || "satis";
-await provisionDatabase({ adminUrl: required("DATABASE_ADMIN_URL"), database, migratorPassword, appPassword });
-console.log(`Database "${database}" and roles satis_migrator, satis_app are ready. Next: npm run db:migrate`);
+await provisionDatabase({ adminUrl: required("DATABASE_ADMIN_URL"), database, migratorPassword, appPassword, backupPassword });
+console.log(
+  `Database "${database}" and roles satis_migrator, satis_app${backupPassword ? ", satis_backup" : ""} are ready. Next: npm run db:migrate`,
+);
