@@ -66,6 +66,25 @@ describe("purge worker start delay", () => {
     }
   });
 
+  it("stop() then start() during the delay restarts the delay once; the old timer never fires", async () => {
+    vi.useFakeTimers();
+    try {
+      const { worker, query } = build(30_000);
+      worker.start();
+      await vi.advanceTimersByTimeAsync(20_000);
+      await worker.stop();
+      worker.start();
+      await vi.advanceTimersByTimeAsync(20_000); // the old timer would have fired at 30 s
+      expect(query).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(query).toHaveBeenCalled();
+      await worker.stop();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a delay of 0 runs immediately (the old behaviour)", async () => {
     vi.useFakeTimers();
     try {
