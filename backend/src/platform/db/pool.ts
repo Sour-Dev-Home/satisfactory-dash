@@ -17,7 +17,11 @@ export function createDbPool(config: DatabaseConfig, logger: PoolLogger): pg.Poo
     connectionString: config.url,
     max: config.poolMax,
     connectionTimeoutMillis: config.connectionTimeoutMs,
-    idleTimeoutMillis: 30_000,
+    idleTimeoutMillis: config.idleTimeoutMs ?? 30_000,
+    // One connection is never evicted by the idle timeout, so the readiness probe (every few
+    // minutes, longer than the idle timeout) finds a warm connection instead of paying a fresh
+    // TCP + SCRAM handshake on a busy machine. Not pre-created: the first use opens it.
+    min: 1,
     statement_timeout: config.statementTimeoutMs,
     // Client-side backstop: statement_timeout is enforced by the server, so a query on a
     // silently dead socket would otherwise never settle. Slightly longer, so the server's
