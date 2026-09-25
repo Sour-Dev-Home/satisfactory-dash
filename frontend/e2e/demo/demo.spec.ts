@@ -79,6 +79,13 @@ test("a deep link into the app lands on 'Enter demo'", async ({ page, baseURL })
   expect(requests.offOrigin, "requests off the demo's origin").toEqual([]);
 });
 
+test("links the main site's privacy and terms pages (the demo ships none of its own)", async ({ page }) => {
+  await page.goto("/");
+  const footer = page.getByRole("contentinfo");
+  await expect(footer.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "https://satis-manager.com/privacy");
+  await expect(footer.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "https://satis-manager.com/terms");
+});
+
 test("serves the demo CSP: connect-src 'self' and no API origin", async ({ request }) => {
   const response = await request.get("/");
   expect(response.ok()).toBe(true);

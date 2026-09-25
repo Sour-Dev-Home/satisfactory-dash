@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
 import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
+import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
@@ -102,6 +103,9 @@ const directory = new InMemoryServerDirectory(entries);
 // ADR-0022: the background workers (the power history poller per server). Started only once
 // the server is listening, and stopped on shutdown.
 const workers: { start(): void; stop(): Promise<void> }[] = entries.flatMap((entry) => entry.services.telemetry.workers);
+// Diagnostic: measures event loop delay and warns (numbers only) when a 30 s window's worst delay
+// exceeds EVENT_LOOP_STALL_MS, to tell a machine-wide stall from our own loop being blocked.
+workers.push(createEventLoopMonitor({ logger, thresholdMs: orExit(() => loadEventLoopStallMs()) }));
 
 // ADR-0025: the database is optional until deploy A. Without DATABASE_URL nothing changes (and
 // /api/health/ready answers 200); with it, the process listens first, then connects in the

@@ -12,9 +12,18 @@ export interface DatabaseConfig {
   /** Server-side statement_timeout, so a stuck query can't hold a pool slot forever. */
   statementTimeoutMs: number;
   connectionTimeoutMs: number;
+  /** How long the readiness probe (acquire a connection + SELECT 1) may take. Optional so a test
+   *  config can leave it out; loadDatabaseConfig always sets it. */
+  readinessTimeoutMs?: number;
+  /** How long an idle connection above the minimum lives before it is closed. A test knob (so the
+   *  pool test doesn't wait 30 s); production uses the default. */
+  idleTimeoutMs?: number;
 }
 
 const DEFAULT_POOL_MAX = 10;
+/** The readiness probe's budget (ADR-0025 decision 6). Was 1 s; two probes missed it on the busy game PC
+ *  when a fresh connection had to be opened, so it is 3 s, and configurable. */
+export const DEFAULT_READINESS_TIMEOUT_MS = 3_000;
 const MAX_POOL_MAX = 100;
 const DEFAULT_STATEMENT_TIMEOUT_MS = 10_000;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 5_000;
@@ -63,5 +72,12 @@ export function loadDatabaseConfig(env: NodeJS.ProcessEnv = process.env): Databa
       DEFAULT_STATEMENT_TIMEOUT_MS,
     ),
     connectionTimeoutMs: DEFAULT_CONNECTION_TIMEOUT_MS,
+    readinessTimeoutMs: wholeNumber(
+      "DATABASE_READINESS_TIMEOUT_MS",
+      env.DATABASE_READINESS_TIMEOUT_MS,
+      100,
+      10_000,
+      DEFAULT_READINESS_TIMEOUT_MS,
+    ),
   };
 }
