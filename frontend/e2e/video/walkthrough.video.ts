@@ -70,18 +70,23 @@ async function startCapture(page: Page) {
   const cdp = await page.context().newCDPSession(page);
   const frames: { file: string; at: number }[] = [];
   const acks: Promise<unknown>[] = [];
+  const failedAcks: string[] = [];
   cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
     const file = join(FRAMES, `${String(frames.length).padStart(5, "0")}.png`);
     writeFileSync(file, Buffer.from(data, "base64"));
     frames.push({ file, at: metadata.timestamp ?? Date.now() / 1000 });
-    acks.push(cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => undefined));
+    // Chrome sends no further frames until a frame is acked, so a failed ack would silently
+    // freeze the video: collect failures and fail the take instead.
+    acks.push(cdp.send("Page.screencastFrameAck", { sessionId }).catch((e: unknown) => failedAcks.push(String(e))));
   });
   await cdp.send("Page.startScreencast", { format: "png", maxWidth: VIDEO.width, maxHeight: VIDEO.height, everyNthFrame: 1 });
 
   return async () => {
-    const end = Date.now() / 1000;
     await cdp.send("Page.stopScreencast");
     await Promise.all(acks);
+    // After stopping: a frame still in flight must not end up with a near-zero duration.
+    const end = Date.now() / 1000;
+    if (failedAcks.length > 0) throw new Error(`screencast acks failed, so frames may be missing: ${failedAcks[0]}`);
     if (frames.length === 0) throw new Error("the screencast sent no frames");
     const path = (file: string) => file.replaceAll("\\", "/").replaceAll("'", "'\\''");
     const lines = frames.flatMap(({ file, at }, i) => {
