@@ -111,8 +111,8 @@
         </li>
         <!-- ADR-0025 PR 8b (backups): live before the first run with a bucket (gate B). -->
         <li>
-          Backups: Amazon Web Services stores encrypted backups for 30 days, so deleted data can
-          survive in backups for up to 30 days.
+          Backups: Amazon Web Services stores encrypted backups for 30 days, and they're removed
+          within a further 7 days, so deleted data can survive in backups for up to 37 days.
         </li>
         <li>Audit events: 1 year. They're kept for security and hold no emails or names.</li>
         <li>Server logs, including IP addresses on sign-in events: 14 days.</li>
