@@ -56,8 +56,11 @@ allow-listed environment reaches `pg_dump`, `age` and `aws` (no `.env` secrets e
 
 If you want reactapps-dc to run the one-time bucket and budget setup for you (every command shown to you
 first), you create a **separate** IAM user `satis-setup` (not your admin, not `satis-backup`) and type its
-secret yourself into `aws configure --profile satis-setup`. No session ever sees or pastes the secret; only the
-named profile is used. Its policy allows only:
+secret yourself into `aws configure --profile satis-setup`. No session is given or pastes the secret, and only
+the named profile is used. Sessions are instructed never to read the profile's credentials file (`~/.aws`); the
+real protection is the narrow policy and the 48-hour expiry, not secrecy from sessions. Run the setup **before
+the first backup exists**: within its window this identity could change lifecycle, versioning or encryption on a
+bucket that already holds backups. Its policy allows only:
 
 - on `arn:aws:s3:::satis-dash-backups-*`: `s3:CreateBucket`; `s3:PutBucketPublicAccessBlock` and
   `s3:GetBucketPublicAccessBlock`; `s3:PutBucketVersioning` and `s3:GetBucketVersioning`;
@@ -67,8 +70,48 @@ named profile is used. Its policy allows only:
 - `budgets:ViewBudget` and `budgets:ModifyBudget` on `arn:aws:budgets::<account>:budget/*`.
 
 No object actions (no Get, Put or DeleteObject), no `s3:DeleteBucket`, `PutBucketPolicy` or `PutBucketAcl`, and
-**no IAM actions at all**. Every statement carries the conditions `aws:SecureTransport = true` and
-`aws:CurrentTime` before a deadline about 48 hours out, so the identity expires by itself even if you forget it.
+**no IAM actions at all**. Set the bucket's ownership control to `BucketOwnerEnforced` (ACLs off). Every
+statement carries the conditions `aws:SecureTransport = true` and `aws:CurrentTime` before a deadline about 48
+hours out, so the identity expires by itself even if you forget it. The expiry only exists if the condition is in
+the policy you paste, so use this shape and replace `<deadline>` with a UTC time about 48 hours from now
+(`2026-01-01T00:00:00Z` form) and `<account>` with your account id:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketPublicAccessBlock", "s3:GetBucketPublicAccessBlock",
+        "s3:PutBucketVersioning", "s3:GetBucketVersioning",
+        "s3:PutEncryptionConfiguration", "s3:GetEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration",
+        "s3:PutBucketOwnershipControls", "s3:GetBucketOwnershipControls",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::satis-dash-backups-*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "DateLessThan": { "aws:CurrentTime": "<deadline>" }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["budgets:ViewBudget", "budgets:ModifyBudget"],
+      "Resource": "arn:aws:budgets::<account>:budget/*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "DateLessThan": { "aws:CurrentTime": "<deadline>" }
+      }
+    }
+  ]
+}
+```
+
+If the budget alert ever needs a notification channel beyond email, that is a new action to add here and to the
+ADR, not something to grant ad hoc.
 Bucket names are `satis-dash-backups-<random suffix>` (no personal data in a globally visible name). After the
 setup, **delete the whole IAM user** (not just the key) and confirm in the IAM console; CloudTrail's free 90-day
 event history is the audit trail. You still create `satis-backup` (put-only) and its key yourself, and the age

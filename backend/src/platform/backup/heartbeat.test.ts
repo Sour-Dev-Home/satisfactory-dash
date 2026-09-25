@@ -1,3 +1,6 @@
+import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../errors.js";
 import { HEARTBEAT_TIMEOUT_MS, loadHeartbeatUrl, pingAfterUpload, pingHeartbeat } from "./heartbeat.js";
@@ -30,6 +33,66 @@ describe("loadHeartbeatUrl", () => {
     }
     expect(message).not.toBe("");
     expect(message).not.toContain("SECRETTOKEN123");
+  });
+});
+
+describe("loadHeartbeatUrl edge cases", () => {
+  it("trims, accepts an uppercase scheme (normalised to https), keeps the query", () => {
+    expect(loadHeartbeatUrl({ BACKUP_HEARTBEAT_URL: `  HTTPS://Example.com/hb/TOKEN?a=1  ` })).toBe("https://example.com/hb/TOKEN?a=1");
+  });
+
+  it("punycodes an IDN host and accepts a very long path", () => {
+    expect(loadHeartbeatUrl({ BACKUP_HEARTBEAT_URL: "https://bücher.example/x" })).toBe("https://xn--bcher-kva.example/x");
+    expect(loadHeartbeatUrl({ BACKUP_HEARTBEAT_URL: `https://example.com/${"a".repeat(5000)}` })).toContain("example.com");
+  });
+
+  it("rejects a user name alone and an empty-password credential", () => {
+    expect(() => loadHeartbeatUrl({ BACKUP_HEARTBEAT_URL: "https://user@example.com/x" })).toThrow(ConfigError);
+    expect(() => loadHeartbeatUrl({ BACKUP_HEARTBEAT_URL: "https://:pw@example.com/x" })).toThrow(ConfigError);
+  });
+});
+
+describe("pingHeartbeat with the real fetch (loopback server only)", () => {
+  async function withServer(handler: (req: IncomingMessage, res: ServerResponse) => void, body: (base: string) => Promise<void>) {
+    const server = createServer(handler);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      await body(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((r) => server.close(r));
+    }
+  }
+
+  it("does not follow a redirect (the secret URL is never re-sent) and reports a network error", async () => {
+    const logs: string[] = [];
+    let targetHit = false;
+    await withServer(
+      (req, res) => {
+        if (req.url === "/target") {
+          targetHit = true;
+          res.end("ok");
+        } else {
+          res.writeHead(302, { location: "/target" }).end();
+        }
+      },
+      async (base) => {
+        await expect(pingHeartbeat(`${base}/secret`, { log: (l) => logs.push(l) })).resolves.toBe(false);
+      },
+    );
+    expect(targetHit).toBe(false);
+    expect(logs).toEqual(["heartbeat failed (network error); the backup itself succeeded"]);
+  });
+
+  it("classifies a real AbortSignal.timeout abort as timed out", async () => {
+    const logs: string[] = [];
+    await withServer(
+      () => {}, // never answers
+      async (base) => {
+        await expect(pingHeartbeat(`${base}/secret`, { log: (l) => logs.push(l), timeoutMs: 100 })).resolves.toBe(false);
+      },
+    );
+    expect(logs).toEqual(["heartbeat failed (timed out); the backup itself succeeded"]);
   });
 });
 
