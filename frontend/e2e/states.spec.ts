@@ -39,7 +39,8 @@ const CASES: StateCase[] = [
   { scenario: "paused", name: "paused-power", path: "/app/power", shows: "Paused: no players connected, values are frozen." },
   { scenario: "stale", shows: /Showing last known data from/ },
   { scenario: "slow-tick", shows: /Slow \(/ },
-  { scenario: "players-some", shows: "3 of 4 players connected" },
+  // With FicsitRemoteMonitoring, the online names show under the count (ADR-0029).
+  { scenario: "players-some", shows: "Pioneer-Alpha" },
   { scenario: "players-many", shows: "10 of 12 players connected" },
   { scenario: "no-game", shows: "No save loaded" },
   // The Overview banner: its text also holds the hidden "!" icon, so no ^ anchor.

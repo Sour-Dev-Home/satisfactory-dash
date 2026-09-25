@@ -77,6 +77,15 @@ describe("the demo world", () => {
     expect(world.connectedPlayersAt(world.DEMO_EPOCH - 45_000)).toBeGreaterThanOrEqual(0);
   });
 
+  it("names exactly as many online players as the status counts, at every step (ADR-0029)", () => {
+    for (let t = world.DEMO_EPOCH - 60_000; t < world.DEMO_EPOCH + 6 * 60_000; t += 15_000) {
+      const roster = world.players(t);
+      expect(roster.available).toBe(true);
+      expect(roster.players.filter((p) => p.online)).toHaveLength(world.status(t).data.connectedPlayers);
+      expect(roster.players.length).toBeLessThanOrEqual(world.status(t).data.playerLimit);
+    }
+  });
+
   it("carries none of the test fixtures' markers (they're for edge cases, not a public demo)", () => {
     const text = JSON.stringify([
       world.servers,
