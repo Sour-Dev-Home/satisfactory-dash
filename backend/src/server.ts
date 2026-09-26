@@ -151,7 +151,7 @@ function buildAgentServer(id: string, displayName: string) {
     resolveUnit, // ADR-0031: the agent sends rates without a unit; ingest resolves it from the same catalog as a polled server
     history: { db: database.pool, serverPublicId: id },
   });
-  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers };
+  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers, kind: "agent" as const };
 }
 
 const entries = orExit(() => {

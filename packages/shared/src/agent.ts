@@ -209,6 +209,7 @@ export const CommandIdSchema = z.string().min(1).max(100).describe("A command's 
 export type Cadence = z.infer<typeof CadenceSchema>;
 export type EnrollRequest = z.infer<typeof EnrollRequestSchema>;
 export type EnrollResponse = z.infer<typeof EnrollResponseSchema>;
+export type EnrollmentCodeResponse = z.infer<typeof EnrollmentCodeResponseSchema>;
 export type SnapshotRequest = z.input<typeof SnapshotRequestSchema>;
 export type AgentPower = z.infer<typeof AgentPowerSchema>;
 export type AgentFactory = z.infer<typeof AgentFactorySchema>;

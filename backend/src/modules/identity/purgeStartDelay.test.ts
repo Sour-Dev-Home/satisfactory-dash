@@ -144,7 +144,8 @@ describe("server.ts ordering (issue #153)", () => {
 
   it("starts them only after the database check succeeded and the servers were registered (the sequencing is platform/bootSequence.ts, whose own tests pin the order; server.ts hands it the workers)", () => {
     const sequence = readFileSync(new URL("../../platform/bootSequence.ts", import.meta.url), "utf8");
-    const databaseStartAt = sequence.indexOf("deps.database\n    .start()");
+    // Whitespace-insensitive: a Windows checkout has CRLF line endings, which a literal "\n" would not match.
+    const databaseStartAt = sequence.search(/deps\.database\s*\.start\(\)/);
     const loadAt = sequence.indexOf(".then(() => deps.loadServers())");
     const workersAt = sequence.indexOf("for (const worker of deps.databaseWorkers)");
     expect(databaseStartAt).toBeGreaterThan(-1);

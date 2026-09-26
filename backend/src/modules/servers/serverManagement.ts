@@ -1,4 +1,5 @@
 import type {
+  AgentServer,
   CreateServerRequest,
   ServerConnection as ServerConnectionView,
   TestConnectionRequest,
@@ -32,7 +33,7 @@ import {
   updateConnection,
 } from "./repositories/connectionRepository.js";
 import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
-import { findServerByPublicId, renameServer, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, listAgentServers, renameServer, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
 
 /**
@@ -91,6 +92,10 @@ export interface ServerManagementService {
   get(publicId: string): Promise<ServerConnectionView>;
   /** Every stored connection, including unreadable and refused ones (the operator's management list). */
   list(): Promise<ServerConnectionView[]>;
+  /** ADR-0031: the servers reached through an edge agent (no stored connection), for the managed list. */
+  listAgentServers(): Promise<AgentServer[]>;
+  /** ADR-0031: renames an agent server, the one edit it has. Not found for a `local` server or an unknown id. */
+  renameAgentServer(actorUserId: string, publicId: string, displayName: string): Promise<AgentServer>;
   update(actorUserId: string, publicId: string, patch: UpdateServerRequest): Promise<ServerConnectionView>;
   remove(actorUserId: string, publicId: string): Promise<void>;
   testCandidate(input: TestConnectionRequest): Promise<TestConnectionResponse>;
@@ -237,6 +242,22 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     async get(publicId) {
       return viewFor(await requireMeta(publicId));
+    },
+
+    async listAgentServers() {
+      return (await listAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
+    },
+
+    /** Renames a server reached through an edge agent. Only for those: a `local` server has a connection and is renamed
+     *  through `update`; for anything else (or an unknown id) the answer is the same "no such server". */
+    renameAgentServer(actorUserId, publicId, displayName) {
+      return mutex.run(async () => {
+        const server = await findServerByPublicId(deps.db, publicId);
+        if (server === undefined || server.connectionKind !== "agent") throw new ServerNotFoundError();
+        if (!(await renameServer(deps.db, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
+        deps.runtime.rename(publicId, displayName);
+        return { id: publicId, displayName, kind: "agent" as const };
+      });
     },
 
     async list() {

@@ -90,6 +90,16 @@ export const managedServersAllStates = {
 
 export const managedServersEmpty = { servers: [] } satisfies ManagedServerListResponse;
 
+/** ADR-0031: one polled server and one reached through an edge agent, which has no connection fields and only a name to edit. */
+export const managedServersWithAgent = {
+  servers: [connectionOk],
+  agentServers: [{ id: "factory-two", displayName: "Factory two", kind: "agent" }],
+} satisfies ManagedServerListResponse;
+
+/** PATCH /api/servers/:serverId/name */
+export const renameAgentServerRequest = { displayName: "Factory two (renamed)" };
+export const renameAgentServerResponse = { server: { id: "factory-two", displayName: "Factory two (renamed)", kind: "agent" } };
+
 // --- test connection (POST /api/servers/test-connection and /api/servers/:serverId/test-connection) ---------------------
 
 export const testConnectionPassed = { ok: true, api: { ok: true }, frm: { ok: true } } satisfies TestConnectionResponse;
