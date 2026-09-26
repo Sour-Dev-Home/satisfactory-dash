@@ -21,10 +21,16 @@ const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 // anything that does not match exactly is refused rather than guessed at.
 const QUEUE_REF = /^gh-readonly-queue\/main\/pr-([1-9][0-9]{0,8})-[0-9a-f]{40}$/;
 
+// GitHub's merge_group.head_ref is the FULL ref (refs/heads/gh-readonly-queue/main/pr-<N>-<sha>), as the first real
+// queue run showed; the bare branch name is accepted too. Only ONE leading `refs/heads/` is stripped, and what is
+// left must still match QUEUE_REF exactly, so any other prefix (refs/tags/, a doubled prefix, ...) fails closed.
+const REF_PREFIX = "refs/heads/";
+
 /** The PR number a merge group's head ref belongs to, or null when the ref is not exactly the queue's format. */
 export function parsePrNumber(headRef) {
   if (typeof headRef !== "string") return null;
-  const match = QUEUE_REF.exec(headRef);
+  const branch = headRef.startsWith(REF_PREFIX) ? headRef.slice(REF_PREFIX.length) : headRef;
+  const match = QUEUE_REF.exec(branch);
   return match ? Number(match[1]) : null;
 }
 
