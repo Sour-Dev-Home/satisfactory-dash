@@ -121,6 +121,33 @@ export function isLoopbackOrPrivateHost(host: string): boolean {
   }
 }
 
+/** True only for loopback: `localhost`, 127.0.0.0/8, ::1 and IPv4-mapped 127/8. Any other host (a LAN address, or a name
+ *  that cannot be classified without DNS) is not, so the caller treats it as off this machine. */
+export function isLoopbackHost(host: string): boolean {
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost")) {
+    return true;
+  }
+  switch (isIP(h)) {
+    case 4:
+      return h.split(".")[0] === "127";
+    case 6: {
+      const mapped = h.match(/^::ffff:(\d+)\.\d+\.\d+\.\d+$/);
+      return mapped ? mapped[1] === "127" : h === "::1";
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * ADR-0030 amendment 1: the public ids of configured servers whose host is not loopback. Their vanilla API
+ * certificate is not verified, so on a LAN it could be impersonated. Ids only: never the address.
+ */
+export function nonLoopbackServerIds(servers: { id: string; config: { host: string } }[]): string[] {
+  return servers.filter((server) => !isLoopbackHost(server.config.host)).map((server) => server.id);
+}
+
 /**
  * Security finding #2 (fixed in PR 3): certificate verification used to be OFF unless
  * SATISFACTORY_API_REJECT_UNAUTHORIZED was exactly "true", for any host. Now it is ON

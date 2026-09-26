@@ -15,6 +15,16 @@ const twoServers = {
 };
 
 describe("loadConfiguredServersFromFile edge cases (test-hunter)", () => {
+  it("refuses a server id that is a fixed API route (ADR-0030: managed, test-connection)", () => {
+    for (const id of ["managed", "test-connection"]) {
+      const read = () => loadConfiguredServersFromFile({ SATISFACTORY_SERVERS_FILE: "servers.json" }, () => JSON.stringify({ servers: [{ id }] }));
+      expect(read).toThrow(ConfigError);
+      expect(read).toThrow(/reserved/);
+    }
+    const ok = loadConfiguredServersFromFile({ SATISFACTORY_SERVERS_FILE: "servers.json" }, () => JSON.stringify({ servers: [{ id: "managed-2" }] }));
+    expect(ok?.[0]?.id).toBe("managed-2");
+  });
+
   it("accepts a file saved with a UTF-8 BOM (Windows Notepad does this)", () => {
     const servers = load("﻿" + JSON.stringify(twoServers));
     expect(servers?.map((s) => s.id)).toEqual(["main", "test-2"]);
