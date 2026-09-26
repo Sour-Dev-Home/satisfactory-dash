@@ -380,6 +380,21 @@ describe("a loopback game server may not be this backend or its database (issue 
     await expect(lan.service.testCandidate({ host: "gaming-pc.lan", apiPort: BACKEND, frmPort: POSTGRES, apiToken: API })).resolves.toMatchObject({ ok: true });
   });
 
+  it("recognises every loopback form as loopback (::1, IPv4-mapped, 127.x.y.z, a name listing ::1 first), and a mixed loopback+LAN name is refused before ports matter", async () => {
+    for (const address of ["::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "127.0.0.2", "127.255.255.254"]) {
+      const { service, testConnection } = setup({ ...loopback, lookup: async () => [address], allowLan: false });
+      expect(await service.testCandidate({ host: "h", apiPort: BACKEND, frmPort: 8080, apiToken: API }).catch(refused), address).toBe("address_not_allowed");
+      expect(testConnection).not.toHaveBeenCalled();
+    }
+    const first6 = setup({ ...loopback, lookup: async () => ["::1", "127.0.0.1"], allowLan: false });
+    expect(await first6.service.testCandidate({ host: "localhost", apiPort: POSTGRES, frmPort: 8080, apiToken: API }).catch(refused)).toBe("address_not_allowed");
+    const mixed = setup({ ...loopback, lookup: async () => ["127.0.0.1", "192.168.1.5"], allowLan: false });
+    expect(await mixed.service.testCandidate({ host: "h", apiPort: BACKEND, frmPort: 8080, apiToken: API }).catch(refused)).toBe("lan_requires_cert_pinning");
+    const any = setup({ ...loopback, lookup: async () => ["0.0.0.0"], allowLan: false });
+    expect(await any.service.testCandidate({ host: "0.0.0.0", apiPort: BACKEND, frmPort: 8080, apiToken: API }).catch(refused)).not.toBe("other-ok");
+    expect(any.testConnection).not.toHaveBeenCalled();
+  });
+
   it("with no forbidden ports configured (a test, or no database) nothing changes", async () => {
     const { service } = setup({ lookup: async () => ["127.0.0.1"] });
     await expect(service.testCandidate({ host: "localhost", apiPort: BACKEND, frmPort: POSTGRES, apiToken: API })).resolves.toMatchObject({ ok: true });

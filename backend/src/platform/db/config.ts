@@ -28,13 +28,19 @@ export const DEFAULT_DATABASE_PORT = 5432;
  * game-server connection from targeting the database (issue #195). It never throws and never puts any part of the URL (which
  * holds the password) in an error or a log.
  */
-export function databasePortOf(url: string | undefined): number | undefined {
+export function databasePortOf(url: string | undefined, env: NodeJS.ProcessEnv = process.env): number | undefined {
   if (url === undefined) return undefined;
+  const valid = (text: string | undefined): number | undefined => {
+    const port = Number(text);
+    return text !== undefined && /^\d+$/.test(text) && port >= 1 && port <= 65535 ? port : undefined;
+  };
   try {
     const parsed = new URL(url);
-    if (parsed.port === "") return DEFAULT_DATABASE_PORT;
-    const port = Number(parsed.port);
-    return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : undefined;
+    // pg (pg-connection-string) lets a ?port= query override the URL and falls back to PGPORT when the URL names none.
+    const query = parsed.searchParams.get("port");
+    if (query !== null) return valid(query) ?? undefined;
+    if (parsed.port === "") return valid(env.PGPORT) ?? DEFAULT_DATABASE_PORT;
+    return valid(parsed.port);
   } catch {
     return undefined;
   }

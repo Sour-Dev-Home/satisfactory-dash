@@ -62,6 +62,13 @@ describe("databasePortOf (issue #195)", () => {
     expect(databasePortOf("postgresql://u:p@[::1]:5433/satis")).toBe(5433);
   });
 
+  it("follows what pg really dials: a ?port= query overrides the URL, and PGPORT applies when the URL names no port", () => {
+    expect(databasePortOf("postgres://u:p@h:5432/db?port=7000", {})).toBe(7000);
+    expect(databasePortOf("postgres://u:p@h/db", { PGPORT: "6543" })).toBe(6543);
+    expect(databasePortOf("postgres://u:p@h:5433/db", { PGPORT: "6543" })).toBe(5433);
+    expect(databasePortOf("postgres://u:p@h/db", { PGPORT: "junk" })).toBe(DEFAULT_DATABASE_PORT);
+  });
+
   it("is undefined, never a throw, for a missing or unreadable URL, and reveals nothing of the URL", () => {
     for (const bad of [undefined, "", "not a url", "postgres://u:p@host:99999/db", "postgres://u:p@host:0/db"]) {
       expect(() => databasePortOf(bad), String(bad)).not.toThrow();
