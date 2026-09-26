@@ -3,7 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../test-support/testDb.js";
-import { ApiFailure } from "../../platform/errorResponse.js";
+import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
+import { UserRateLimiter } from "../../platform/userRateLimiter.js";
 import { createLogger } from "../../platform/logger.js";
 import { Mutex } from "../../platform/mutex.js";
 import { createSecretsKeyring } from "../../platform/secrets/secrets.js";
@@ -61,7 +62,7 @@ describe.skipIf(!available)("switching an agent server back to local, against a 
       mutex: new Mutex(),
       releaseAgent: releaseAgentServer,
     });
-    agents = createAgentsService({ db: pool, canManage: () => true });
+    agents = createAgentsService({ db: pool, canManage: () => true, limiter: new UserRateLimiter({ max: 1000, windowMs: 60_000 }) });
     enrollment = createEnrollmentService({ db: pool, cadence: () => CADENCE, logger: silent, attachAgentRuntime: async () => undefined });
     commands = createCommandsService({ db: pool, notifier: new CommandNotifier() });
   }, 60_000);
@@ -93,7 +94,7 @@ describe.skipIf(!available)("switching an agent server back to local, against a 
     const view = await service.switchToLocal(operatorId, server.publicId, body);
     expect(view).toMatchObject({ id: server.publicId, host: "localhost", apiPort: 7777, frmTokenSet: true, state: "ok" });
     expect(await kindOf(server.publicId)).toBe("local");
-    const stored = await getConnection(pool, ring, server.publicId);
+    const stored = await getConnection(pool, ring, server.id);
     expect(stored).toMatchObject({ host: "localhost", apiToken: API, frmToken: FRM });
     const raw = (await admin.query("SELECT api_token_enc FROM servers.server_connections WHERE server_id = $1", [server.id])).rows[0].api_token_enc as Buffer;
     expect(raw.toString("latin1")).not.toContain(API); // sealed, never plaintext
@@ -153,7 +154,7 @@ describe.skipIf(!available)("switching an agent server back to local, against a 
     const { server } = await newAgentServer();
     await service.switchToLocal(operatorId, server.publicId, body);
     expect(await codeOf(service.switchToLocal(operatorId, server.publicId, body))).toBe("server_not_agent");
-    expect(await codeOf(service.switchToLocal(operatorId, "no-such-server", body))).toBe("server_not_found");
+    await expect(service.switchToLocal(operatorId, "no-such-server", body)).rejects.toBeInstanceOf(ServerNotFoundError);
   });
 
   it("two concurrent switches of the same server: exactly one succeeds, the other is refused, and the database holds one consistent state", async () => {
