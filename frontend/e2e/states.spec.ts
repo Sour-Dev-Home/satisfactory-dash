@@ -125,7 +125,12 @@ const CASES: StateCase[] = [
     name: "power-history-24h",
     path: "/app/power",
     shows: "Last 24 hours",
-    act: (page) => page.getByRole("group", { name: "Power history range" }).getByRole("button", { name: "24 h" }).click(),
+    // The click can scroll the page and the page then scroll back, leaving the pointer over the
+    // Account button (a hover border in the screenshot, #255). Move it into the empty gutter.
+    act: async (page) => {
+      await page.getByRole("group", { name: "Power history range" }).getByRole("button", { name: "24 h" }).click();
+      await page.mouse.move(0, 0);
+    },
   },
   // Alerts (ADR-0027 PR 9): the header bell's dropdown, opened. "alerts" also shows the bell's badge.
   { scenario: "alerts", shows: /Delivery is off \(shadow week\)/, act: openAlerts },
