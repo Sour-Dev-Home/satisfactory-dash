@@ -246,7 +246,7 @@ describe.skipIf(!available)("the alerts API service against a real Postgres", ()
       const dest = (await admin.query("SELECT id FROM alerts.destinations WHERE server_id = $1", [server.id])).rows[0].id as string;
       const rule = (await admin.query("SELECT id FROM alerts.rules WHERE server_id = $1 AND kind = 'power_outage'", [server.id])).rows[0].id as string;
       const event = (await admin.query(
-        "INSERT INTO alerts.alert_events (server_id, rule_id, kind, severity, subject, transition, summary) VALUES ($1, $2, 'power_outage', 'critical', 'circuit:1', 'fired', '{}') RETURNING id",
+        "INSERT INTO alerts.alert_events (server_id, rule_id, kind, severity, subject, transition, at, summary) VALUES ($1, $2, 'power_outage', 'critical', 'circuit:1', 'fired', now(), '{}') RETURNING id",
         [server.id, rule],
       )).rows[0].id;
       await admin.query("INSERT INTO alerts.outbox (event_id, destination_id) VALUES ($1, $2)", [event, dest]);
@@ -296,10 +296,11 @@ describe.skipIf(!available)("the alerts API service against a real Postgres", ()
       });
       const server = await newServer();
       await service.putDiscord(server.publicId, ACTOR, URL_A);
-      await limited.testDiscord(server.publicId, "user-a");
-      await limited.testDiscord(server.publicId, "user-a");
-      expect(await failureOf(limited.testDiscord(server.publicId, "user-a"))).toBeInstanceOf(RateLimitedError);
-      await limited.testDiscord(server.publicId, "user-b"); // another user has their own allowance
+      const [userA, userB] = [randomUUID(), randomUUID()]; // the audit trail's actor column is a uuid
+      await limited.testDiscord(server.publicId, userA);
+      await limited.testDiscord(server.publicId, userA);
+      expect(await failureOf(limited.testDiscord(server.publicId, userA))).toBeInstanceOf(RateLimitedError);
+      await limited.testDiscord(server.publicId, userB); // another user has their own allowance
     });
   });
 
@@ -307,7 +308,7 @@ describe.skipIf(!available)("the alerts API service against a real Postgres", ()
     const addEvent = async (serverUuid: string, ruleId: string | null, transition: string, subject = "circuit:1") =>
       String(
         (await admin.query(
-          "INSERT INTO alerts.alert_events (server_id, rule_id, kind, severity, subject, transition, summary) VALUES ($1, $2, 'power_outage', 'critical', $3, $4, $5::jsonb) RETURNING id::text AS id",
+          "INSERT INTO alerts.alert_events (server_id, rule_id, kind, severity, subject, transition, at, summary) VALUES ($1, $2, 'power_outage', 'critical', $3, $4, now(), $5::jsonb) RETURNING id::text AS id",
           [serverUuid, ruleId, subject, transition, JSON.stringify({ circuit: 1 })],
         )).rows[0].id,
       );

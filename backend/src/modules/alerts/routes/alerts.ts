@@ -22,7 +22,7 @@ import {
   UpdateAlertRuleRequestSchema,
   endpoints,
 } from "@satisfactory-dash/shared";
-import { BadRequestError, InvalidServerIdError, UnauthorizedError } from "../../../platform/errorResponse.js";
+import { ApiFailure, BadRequestError, InvalidServerIdError, UnauthorizedError } from "../../../platform/errorResponse.js";
 import { routePath } from "../../../platform/routePath.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
 import type { AlertsService } from "../services/alertsService.js";
@@ -61,6 +61,11 @@ export function createAlertsRouter(service: AlertsService): Router {
   });
   router.post(routePath(endpoints.alerts.rules.create.route), async (req, res) => {
     const serverId = serverIdOf(req);
+    // Any other kind (a preset's, or one that does not exist) is the contract's rule_kind_not_creatable; the kind is not echoed.
+    const kind: unknown = typeof req.body === "object" && req.body !== null ? (req.body as { kind?: unknown }).kind : undefined;
+    if (typeof kind === "string" && kind !== "production_below_target") {
+      throw new ApiFailure("rule_kind_not_creatable", "That kind of rule cannot be created");
+    }
     const body = bodyOf(CreateAlertRuleRequestSchema, req);
     const created = await service.createRule(serverId, actorOf(res), body);
     res.status(201);

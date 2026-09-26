@@ -102,10 +102,22 @@ describe("rules", () => {
   it("refuses an invalid create body with a FIXED message and never calls the service", async () => {
     const service = stubService();
     const app = build(service);
-    for (const body of [{}, { kind: "power_outage", params: {} }, { kind: "production_below_target", params: { item: "Desc_X_C" } }, { ...alertCreateRuleRequest, extra: 1 }, []]) {
+    for (const body of [{}, { kind: 5 }, { kind: "production_below_target", params: { item: "Desc_X_C" } }, { ...alertCreateRuleRequest, extra: 1 }, []]) {
       const res = await request(app).post(path(endpoints.alerts.rules.create)).send(body as object);
       expect(res.status, JSON.stringify(body)).toBe(400);
       expect(res.body.error).toMatchObject({ code: "bad_request", message: "The request body is not valid" });
+    }
+    expect(service.calls.createRule).toBeUndefined();
+  });
+
+  it("creating any other kind (a preset's or an unknown one) is 422 rule_kind_not_creatable and does not echo the kind", async () => {
+    const service = stubService();
+    const app = build(service);
+    for (const kind of ["power_outage", "stopped_machines", "fuse_trip", "server_unreachable", "nonsense_kind", ""]) {
+      const res = await request(app).post(path(endpoints.alerts.rules.create)).send({ kind, params: {} });
+      expect(res.status, kind).toBe(422);
+      expect(res.body.error.code).toBe("rule_kind_not_creatable");
+      expect(JSON.stringify(res.body)).not.toContain("nonsense");
     }
     expect(service.calls.createRule).toBeUndefined();
   });
@@ -292,6 +304,60 @@ describe("authorization on the real routes", () => {
     }
     // Only the two reads reached the service; not one write did.
     expect(Object.keys(service.calls).sort()).toEqual(["listEvents", "listRules"]);
+  });
+
+  it("the remaining writes (PATCH and DELETE destination, DELETE mute) are 403 for a viewer, also with a trailing slash", async () => {
+    const service = stubService();
+    const app = build(service);
+    const viewer = (r: request.Test) => r.set("x-test-user", "viewer");
+    for (const suffix of ["", "/"]) {
+      expect((await viewer(request(app).patch(path(endpoints.alerts.destinations.patchDiscord) + suffix).send(alertPatchDiscordRequest))).status).toBe(403);
+      expect((await viewer(request(app).delete(path(endpoints.alerts.destinations.removeDiscord) + suffix))).status).toBe(403);
+      expect((await viewer(request(app).delete(path(endpoints.alerts.mute.clear) + suffix))).status).toBe(403);
+    }
+    expect(service.calls).toEqual({});
+  });
+
+  it("a non-member is 404 on writes too (not 403), for every method, and the service is never called", async () => {
+    const service = stubService();
+    const app = build(service);
+    const stranger = (r: request.Test) => r.set("x-test-user", "stranger");
+    for (const res of [
+      await stranger(request(app).delete(path(endpoints.alerts.rules.remove, RULE))),
+      await stranger(request(app).put(path(endpoints.alerts.destinations.putDiscord)).send(alertPutDiscordRequest)),
+      await stranger(request(app).post(path(endpoints.alerts.destinations.testDiscord))),
+      await stranger(request(app).get(path(endpoints.alerts.status)).set("x-test-user", "stranger")),
+      await stranger(request(app).head(path(endpoints.alerts.status))),
+    ]) {
+      expect(res.status).toBe(404);
+    }
+    expect(service.calls).toEqual({});
+  });
+
+  it("an encoded or oddly cased server id never reaches the service as another id", async () => {
+    const service = stubService();
+    const app = build(service);
+    for (const id of ["ALPHA", "alpha%2F..", "alpha%00", "%E0%A4%A"]) {
+      const res = await request(app).get(`/api/servers/${id}/alerts/status`);
+      expect([400, 404], id).toContain(res.status);
+    }
+    expect(service.calls).toEqual({});
+  });
+
+  it("every write passes the signed-in user's id to the service as the actor", async () => {
+    const service = stubService();
+    const app = build(service);
+    await request(app).post(path(endpoints.alerts.rules.create)).send(alertCreateRuleRequest);
+    await request(app).patch(path(endpoints.alerts.rules.update, RULE)).send(alertUpdateRuleRequest);
+    await request(app).delete(path(endpoints.alerts.rules.remove, RULE));
+    await request(app).put(path(endpoints.alerts.destinations.putDiscord)).send(alertPutDiscordRequest);
+    await request(app).patch(path(endpoints.alerts.destinations.patchDiscord)).send(alertPatchDiscordRequest);
+    await request(app).delete(path(endpoints.alerts.destinations.removeDiscord));
+    await request(app).post(path(endpoints.alerts.destinations.testDiscord));
+    await request(app).put(path(endpoints.alerts.mute.set)).send(alertSetMuteRequest);
+    await request(app).delete(path(endpoints.alerts.mute.clear));
+    const names = ["createRule", "updateRule", "deleteRule", "putDiscord", "patchDiscord", "removeDiscord", "testDiscord", "setMute", "clearMute"];
+    for (const name of names) expect(service.calls[name]?.[0]?.slice(0, 2), name).toEqual([SERVER, "owner"]);
   });
 
   it("a non-member gets the same 404 as an unknown server, so a server's existence is not revealed", async () => {

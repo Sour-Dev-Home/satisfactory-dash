@@ -83,6 +83,29 @@ describe("planPatch (what a PATCH changes)", () => {
     expect(zero.ok && [zero.next.forSeconds, zero.next.clearSeconds]).toEqual([0, 0]); // 0 is a value, not "not sent"
   });
 
+  it("`enabled: false` disables an enabled rule (false is a value, not 'not sent')", () => {
+    const plan = planPatch(rule({ enabled: true }), { enabled: false });
+    expect(plan.ok && plan.next.enabled).toBe(false);
+    expect(plan.ok && plan.changed).toEqual(["enabled"]);
+  });
+
+  it("cannot smuggle an item or extra keys through casing, nesting or prototype keys (what comes from JSON.parse)", () => {
+    const hostile = [
+      '{"Item":"Desc_Other_C","targetPerMinute":5}',
+      '{"params":{"item":"Desc_Other_C"},"targetPerMinute":5}',
+      '{"constructor":{"item":"Desc_Other_C"},"targetPerMinute":5}',
+      '{"__proto__":{"item":"Desc_Other_C"},"targetPerMinute":5}',
+      '{"targetPerMinute":5,"windowMinutes":"10"}',
+      '{"targetPerMinute":null}',
+    ];
+    for (const json of hostile) {
+      const plan = planPatch(rule(), { params: JSON.parse(json) as Record<string, unknown> });
+      if (plan.ok) expect(plan.next.params, json).toEqual({ item: "Desc_IronPlate_C", targetPerMinute: 5, windowMinutes: 10 });
+      else expect(plan.failure, json).toBeInstanceOf(BadRequestError);
+    }
+    expect(({} as Record<string, unknown>).item).toBeUndefined(); // nothing polluted Object.prototype
+  });
+
   it("does not mutate the rule it was given", () => {
     const original = rule();
     const before = JSON.stringify(original);

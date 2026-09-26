@@ -53,8 +53,10 @@ const toRule = (row: z.output<typeof RuleRowSchema>): ApiRuleRow => ({
 
 // SQL constants are plain templates without interpolation (sqlGuard.test.ts), so the column list is spelled out each time.
 const SERVER_UUID = `SELECT s.id::text AS id FROM servers.servers s WHERE s.public_id = $1 AND s.deleted_at IS NULL`;
-// The row lock serialises the creates of one server, so the cap and the one-rule-per-item check cannot be raced past.
-const LOCK_SERVER = `SELECT s.id::text AS id FROM servers.servers s WHERE s.public_id = $1 AND s.deleted_at IS NULL FOR UPDATE`;
+// The row lock serialises the writes of one server, so the cap and the one-rule-per-item check cannot be raced past.
+// FOR NO KEY UPDATE, not FOR UPDATE: the latter conflicts with the FOR KEY SHARE that every foreign-key insert takes on
+// the parent row (the evaluator's alert_events / alert_state writes), which could deadlock with it; this one does not.
+const LOCK_SERVER = `SELECT s.id::text AS id FROM servers.servers s WHERE s.public_id = $1 AND s.deleted_at IS NULL FOR NO KEY UPDATE`;
 
 const LIST_RULES = `
   SELECT r.id::text AS id, r.kind AS kind, r.params AS params, r.for_seconds AS for_seconds, r.clear_seconds AS clear_seconds,
@@ -63,7 +65,8 @@ const LIST_RULES = `
   FROM alerts.rules r
   JOIN servers.servers s ON s.id = r.server_id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL
-  ORDER BY r.preset DESC, r.created_at, r.id`;
+  ORDER BY r.preset DESC, r.created_at,
+           array_position(ARRAY['power_outage', 'fuse_trip', 'stopped_machines', 'server_unreachable', 'production_below_target'], r.kind), r.id`;
 const GET_RULE = `
   SELECT r.id::text AS id, r.kind AS kind, r.params AS params, r.for_seconds AS for_seconds, r.clear_seconds AS clear_seconds,
          r.repeat_seconds AS repeat_seconds, r.severity AS severity, r.enabled AS enabled, r.preset AS preset,
@@ -78,7 +81,7 @@ const GET_RULE_FOR_UPDATE = `
   FROM alerts.rules r
   JOIN servers.servers s ON s.id = r.server_id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL AND r.id = $2::uuid
-  FOR UPDATE OF r`;
+  FOR NO KEY UPDATE OF r`;
 const COUNT_RULES = `
   SELECT count(*)::int AS n FROM alerts.rules r JOIN servers.servers s ON s.id = r.server_id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL`;
