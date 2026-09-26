@@ -39,6 +39,14 @@
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 
   --radius-card: 10px;
+
+  /* The smallest touch target (WCAG 2.5.5): buttons, links and rows people tap. */
+  --size-target: 44px;
+
+  /* Overlays: the header's dropdowns sit above the page, fit any screen and scroll when long. */
+  --z-popover: 10;
+  --popover-width: min(24rem, calc(100vw - 2rem));
+  --popover-max-height: min(70vh, 36rem);
 }
 
 /*
