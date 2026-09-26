@@ -286,7 +286,7 @@ export class ServerAlertEvaluator {
     const usable = isFresh(factory, now) && factory !== undefined && !factory.afterResume;
     const windowMs = params.windowMinutes * 60_000;
     const existing = this.rateWindows.get(rule.id);
-    const sameWindow = existing !== undefined && existing.item === params.item && existing.windowMs === windowMs && existing.session === obs.session;
+    const sameWindow = existing !== undefined && existing.item === params.item && existing.windowMs === windowMs && existing.session === obs.session && existing.session === obs.session;
     // The working copy: `evaluate` changes nothing until `commit`.
     let samples: RateSample[] = usable && existing !== undefined && sameWindow ? [...existing.samples] : [];
     let full = false;
@@ -296,7 +296,10 @@ export class ServerAlertEvaluator {
       // The evaluator ticks more often than the factory poller: one sample per reading.
       if (last === undefined || factory.observedAt > last.at) {
         // An item nobody makes is absent from the map: that is a rate of 0 (a zero rate fires), not unknown.
-        samples.push({ at: factory.observedAt, rate: factory.itemRates.get(params.item) ?? 0 });
+        const raw = factory.itemRates.get(params.item) ?? 0;
+        // A NaN/Infinity reading would poison the whole window's average (and hold the alert for a window's length):
+        // it is not a sample at all. A negative rate is impossible; it counts as 0 rather than dragging the average.
+        if (Number.isFinite(raw)) samples.push({ at: factory.observedAt, rate: Math.max(0, raw) });
       }
       samples = samples.filter((sample) => sample.at >= factory.observedAt - windowMs);
       // Full: the oldest sample is at most one poll interval short of the window, so a late poll does not stall it.
