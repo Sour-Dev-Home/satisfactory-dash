@@ -80,7 +80,9 @@ export function Shell() {
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
-        <nav aria-label="Main" className="-mx-1 flex max-w-full gap-1 overflow-x-auto">
+        {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
+            without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
+        <nav aria-label="Main" className="-mx-1 flex min-w-0 max-w-full gap-1 overflow-x-auto">
           {(canManageServers ? [...TABS, SERVERS_TAB] : TABS).map((tab) => (
             <NavLink
               key={tab.to}
