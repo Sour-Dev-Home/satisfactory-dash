@@ -79,6 +79,16 @@ must be running.
 
 - **CI**: always runs them, and **fails the run if Docker is missing** (it never skips).
 - **Locally without Docker**: they skip, with a loud `DATABASE TESTS SKIPPED` line.
+- **Run a DB test before you push it** (#284): `npm run test:db -w backend` runs every `*.db.test.ts` (about 10 s of
+  container start, then the files), and `npm run test -w backend -- <path>.db.test.ts` runs one. A DB test that has only
+  ever been typechecked usually costs several CI rounds (wrong id type, wrong error class, a rate limiter, statement order).
+  If the run prints `DATABASE TESTS SKIPPED`, nothing ran: start Docker Desktop and run it again.
+  **Known local-only failures on this Windows machine (they pass in CI):** three tests that connect to a closed or
+  stopped database, in `src/platform/db/database.db.test.ts` ("classifies REAL driver errors ... a refused port is
+  transient", and "refuses to start, saying to run db:migrate ...") and `src/modules/identity/dbSessions.db.test.ts`
+  ("when the database is down ... 503"). Two of them show a refused connection classified differently (`fatal` where
+  `transient` is expected, `500` where `503` is expected); the third was not investigated. Ignore those three; anything
+  else that fails is yours.
 - `SKIP_DB_TESTS=1 npx vitest run <file>` skips the container start for a narrow run of unrelated
   tests (ignored when `CI` is set).
 - If Docker Desktop is running but a shell can't find it (`spawn docker-credential-desktop
