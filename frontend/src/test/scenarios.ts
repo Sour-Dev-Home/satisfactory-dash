@@ -11,6 +11,7 @@ import {
   errorWithDetail,
   factoryEmpty,
   factoryMixed,
+  factoryStatesAndIngredients,
   factoryUnknownItem,
   healthOk,
   managedServersAllStates,
@@ -173,6 +174,8 @@ export const SCENARIOS = {
   "battery-charging": { power: ok(powerCharging) },
   "battery-discharging": { power: ok(powerDischarging) },
   "unknown-units": { factory: ok(factoryUnknownItem) },
+  // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
+  "factory-states": { factory: ok(factoryStatesAndIngredients) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },
   "upstream-unreachable": upstreamDown(errorUpstreamUnreachable),

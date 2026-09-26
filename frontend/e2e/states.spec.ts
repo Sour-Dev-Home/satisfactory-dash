@@ -66,6 +66,7 @@ const CASES: StateCase[] = [
   { scenario: "battery-discharging", path: "/app/power", shows: /Discharging 80 MW/ },
   // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
   { scenario: "unknown-units", path: "/app/factory", shows: /Modded Widget: .* per min/ },
+  { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },
   { scenario: "upstream-unreachable", shows: "Game server unreachable." },
