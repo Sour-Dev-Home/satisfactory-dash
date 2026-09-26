@@ -240,6 +240,100 @@ describe("AlertDeliveryWorker.tick", () => {
   });
 });
 
+// Added by the fresh-eyes pass (each of these behaviours survived a mutation of the worker).
+describe("AlertDeliveryWorker.tick: batch behaviour", () => {
+  const DEST_B = "33333333-3333-4333-8333-333333333333";
+  const bodyOf = (fetchMock: ReturnType<typeof respond>, call = 0) =>
+    JSON.parse((fetchMock.mock.calls[call] as unknown as [string, RequestInit])[1].body as string);
+
+  it("a rate limit pauses only the destination that was limited: another destination in the same batch is still sent", async () => {
+    let n = 0;
+    const fetchMock = vi.fn(async () => (n++ === 0 ? new Response(null, { status: 429, headers: { "retry-after": "60" } }) : new Response(null, { status: 204 })));
+    const { fake, worker } = make([due("1"), due("2"), due("3", { destination_id: DEST_B })], fetchMock as never);
+    await worker.tick();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // row 1 (limited) and row 3; row 2 waits behind the limit
+    expect(fake.outbox.get("1")).toMatchObject({ status: "pending", error: "rate_limited" });
+    expect(fake.outbox.has("2")).toBe(false);
+    expect(fake.outbox.get("3")).toEqual({ status: "sent" });
+  });
+
+  it("a network error or a 5xx does NOT pause the destination: the next row in the batch is still attempted", async () => {
+    for (const status of [500, 0]) {
+      const fetchMock = status === 0 ? vi.fn(async () => { throw new TypeError("boom"); }) : respond(status);
+      const { fake, worker } = make([due("1"), due("2")], fetchMock as never);
+      await worker.tick();
+      expect(fetchMock, String(status)).toHaveBeenCalledTimes(2);
+      expect(fake.outbox.get("2")).toMatchObject({ status: "pending" });
+    }
+  });
+
+  it("a 404 stops the rest of that destination's batch, but not another destination's", async () => {
+    let n = 0;
+    const fetchMock = vi.fn(async () => (n++ === 0 ? new Response(null, { status: 404 }) : new Response(null, { status: 204 })));
+    const { fake, worker } = make([due("1"), due("2"), due("3", { destination_id: DEST_B })], fetchMock as never);
+    await worker.tick();
+    expect(fake.of("disable")).toEqual([{ kind: "disable", params: [DEST, "webhook_gone"] }]);
+    expect(fake.outbox.has("2")).toBe(false);
+    expect(fake.outbox.get("3")).toEqual({ status: "sent" });
+  });
+
+  it("stopping mid-batch: the rows after the one in flight are not sent (they keep their lease for the next process)", async () => {
+    let stop: () => Promise<void> = async () => {};
+    const fetchMock = vi.fn(async () => {
+      void stop();
+      return new Response(null, { status: 204 });
+    });
+    const { fake, worker } = make([due("1"), due("2"), due("3")], fetchMock as never);
+    stop = () => worker.stop();
+    await worker.tick();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fake.outbox.get("1")).toEqual({ status: "sent" }); // the one in flight is still recorded
+    expect(fake.outbox.has("2")).toBe(false);
+  });
+
+  it("an unreadable secret is retried after the backoff for its attempt count, not immediately", async () => {
+    const wrongKey = sealed(URL_OK, SERVER_UUID, otherRing);
+    const { fake, worker } = make([due("1", { webhook_enc: wrongKey.data, attempts: 3 })], respond(204));
+    await worker.tick();
+    expect(fake.outbox.get("1")).toEqual({ status: "pending", error: "secret_unreadable", at: NOW + BASE_DELAY_MS * 4 });
+  });
+
+  it("the message carries this row's transition, severity, server name and time (and the name is escaped)", async () => {
+    const { worker, fetchMock } = make(
+      [due("1", { kind: "stopped_machines", subject: "group", transition: "renotify", severity: "warning", server_name: "@everyone <@1>", at_ms: NOW - 5000, summary: { machines: 3 } })],
+      respond(204),
+    );
+    await worker.tick();
+    const embed = bodyOf(fetchMock).embeds[0];
+    expect(embed.title).toBe("Still stopped: 3 machines");
+    expect(embed.color).toBe(0xf1c40f);
+    expect(embed.timestamp).toBe(new Date(NOW - 5000).toISOString());
+    expect(embed.description).toBe("**@\u200beveryone \\<@\u200b1\\>**");
+    expect(embed.footer.text).toBe("stopped machines · warning");
+  });
+
+  it("a row that cannot be worded (an unknown kind or transition, e.g. from a newer build) is given up on alone: it never throws out of the batch", async () => {
+    const rows = [due("1"), due("2", { kind: "mystery_kind" }), due("3", { kind: "stopped_machines", transition: "mystery_transition" }), due("4")];
+    const { fake, worker, fetchMock } = make(rows, respond(204));
+    await expect(worker.tick()).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fake.outbox.get("1")).toEqual({ status: "sent" });
+    expect(fake.outbox.get("2")).toEqual({ status: "dead", error: "unformattable" });
+    expect(fake.outbox.get("3")).toEqual({ status: "dead", error: "unformattable" });
+    expect(fake.outbox.get("4")).toEqual({ status: "sent" });
+  });
+
+  it("one row whose own webhook is unreadable does not stop the good rows around it", async () => {
+    const wrongKey = sealed(URL_OK, SERVER_UUID, otherRing);
+    const { fake, worker, fetchMock } = make([due("1"), due("2", { webhook_enc: wrongKey.data }), due("3")], respond(204));
+    await worker.tick();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fake.outbox.get("1")).toEqual({ status: "sent" });
+    expect(fake.outbox.get("3")).toEqual({ status: "sent" });
+    expect(fake.outbox.get("2")).toMatchObject({ error: "secret_unreadable" });
+  });
+});
+
 describe("AlertDeliveryWorker loop", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }));
   afterEach(() => vi.useRealTimers());
@@ -263,6 +357,65 @@ describe("AlertDeliveryWorker loop", () => {
     expect(fake.of("claim")).toHaveLength(claims);
     worker.start();
     await vi.advanceTimersByTimeAsync(30_000);
+    expect(fake.of("claim")).toHaveLength(claims);
+  });
+
+  it("defaults to a 10 second tick, and starting twice does not run two loops", async () => {
+    const fake = fakeDb([]);
+    const worker = new AlertDeliveryWorker(fake.db, ring, { logger: captureLogs().logger });
+    worker.start();
+    worker.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.of("claim")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(fake.of("claim")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fake.of("claim")).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fake.of("claim")).toHaveLength(4); // one loop: a tick every 10 s
+    await worker.stop();
+  });
+
+  it("logs the recovery once, not after every healthy tick", async () => {
+    const fake = fakeDb([]);
+    const logs = captureLogs();
+    const worker = new AlertDeliveryWorker(fake.db, ring, { logger: logs.logger, tickMs: 1000 });
+    worker.start();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(JSON.stringify(logs.lines)).not.toContain("recovered");
+    fake.failClaim.on = true;
+    await vi.advanceTimersByTimeAsync(2_000);
+    fake.failClaim.on = false;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(JSON.stringify(logs.lines).match(/recovered/g)).toHaveLength(1);
+    await worker.stop();
+  });
+
+  it("stop() waits for the tick that is in flight (a send is never cut off mid-write)", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchMock = vi.fn(async () => {
+      await gate;
+      return new Response(null, { status: 204 });
+    });
+    const fake = fakeDb([due("1")]);
+    const worker = new AlertDeliveryWorker(fake.db, ring, { logger: captureLogs().logger, fetch: fetchMock as never, now: () => NOW });
+    worker.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    let stopped = false;
+    const stopping = worker.stop().then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stopped).toBe(false);
+    release();
+    await stopping;
+    expect(fake.outbox.get("1")).toEqual({ status: "sent" });
+    const claims = fake.of("claim").length;
+    await vi.advanceTimersByTimeAsync(60_000); // the finished tick must not schedule another one
     expect(fake.of("claim")).toHaveLength(claims);
   });
 });

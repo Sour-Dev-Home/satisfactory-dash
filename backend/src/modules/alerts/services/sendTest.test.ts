@@ -101,4 +101,13 @@ describe("sendAlertTest (the rules API's Send test, PR 7)", () => {
       expect(JSON.stringify(result), String(status)).not.toContain("AbCdEf");
     }
   });
+
+  it("escapes the server name in the test message (a name can hold a mention)", async () => {
+    const fetchMock = respond(204);
+    const fake = fakeDb({ enabled: true });
+    await sendAlertTest({ mode: "on", db: fake.db, ring, serverPublicId: "alpha", serverName: "@everyone <@1>", fetch: fetchMock as never });
+    const description = JSON.parse(((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]).body as string).embeds[0].description as string;
+    expect(description).not.toContain("@everyone");
+    expect(description).not.toContain("<@1>");
+  });
 });

@@ -43,7 +43,8 @@ function hasAmbiguousCharacter(input: string): boolean {
 export function parseDiscordWebhookUrl(raw: unknown): WebhookParseResult {
   if (typeof raw !== "string") return { ok: false, code: "not_a_string" };
   const input = raw.trim();
-  if (input.length === 0 || input.length > MAX_LENGTH) return { ok: false, code: "too_long" };
+  if (input.length === 0) return { ok: false, code: "not_a_url" }; // an empty paste is not "too long"
+  if (input.length > MAX_LENGTH) return { ok: false, code: "too_long" };
   // Refuse before parsing anything that could make two parsers disagree: whitespace or control characters inside,
   // a backslash (some parsers treat it as a slash), or a percent sign (encoded dots, slashes, at-signs).
   if (hasAmbiguousCharacter(input)) return { ok: false, code: "not_a_url" };

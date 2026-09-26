@@ -138,15 +138,24 @@ export class AlertDeliveryWorker implements BackgroundWorker {
       this.options.logger.warn({ serverId: delivery.serverPublicId, code: "ALERT_DESTINATION_UNREADABLE" }, "a stored webhook cannot be opened");
       return "done";
     }
-    const payload = formatAlertMessage({
-      kind: delivery.event.kind as RuleKind,
-      transition: delivery.event.transition as MessageTransition,
-      severity: delivery.event.severity as Severity,
-      subject: delivery.event.subject,
-      summary: delivery.event.summary,
-      serverName: delivery.serverName,
-      at: delivery.event.atMs,
-    });
+    let payload: ReturnType<typeof formatAlertMessage>;
+    try {
+      payload = formatAlertMessage({
+        kind: delivery.event.kind as RuleKind,
+        transition: delivery.event.transition as MessageTransition,
+        severity: delivery.event.severity as Severity,
+        subject: delivery.event.subject,
+        summary: delivery.event.summary,
+        serverName: delivery.serverName,
+        at: delivery.event.atMs,
+      });
+    } catch {
+      // A kind or transition this build cannot word (rows written by a newer build): give up on THIS row only, so one
+      // such row never throws out of the batch and holds the others behind its lease, tick after tick.
+      await markDeliveryDead(this.db, delivery.outboxId, "unformattable");
+      log("unformattable");
+      return "done";
+    }
     const outcome: SendOutcome = await sendDiscordMessage(url, payload, { fetch: this.options.fetch });
     switch (outcome.kind) {
       case "sent":

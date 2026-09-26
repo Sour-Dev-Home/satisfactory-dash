@@ -93,6 +93,45 @@ describe("sendDiscordMessage", () => {
     expect(await sendDiscordMessage(URL_OK, {}, { fetch: hang as never, timeoutMs: 20 })).toEqual({ kind: "retry", code: "timeout" });
   });
 
+  // Added by the fresh-eyes pass (mutation testing).
+  it("fetches the canonical, validated form of the URL, not the raw text it was given", async () => {
+    const fetchMock = respond(204);
+    await sendDiscordMessage(`  HTTPS://DISCORD.COM:443/api/webhooks/${ID}/${TOKEN}  `, {}, { fetch: fetchMock as never });
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(URL_OK);
+  });
+
+  it.each([
+    [200, "sent"],
+    [201, "sent"],
+    [299, "sent"],
+    [300, "redirect_refused"],
+    [399, "redirect_refused"],
+    [400, "bad_request"],
+    [402, "unexpected_status"],
+  ])("status %i is classified at the range boundary", async (status, expected) => {
+    const outcome = await sendDiscordMessage(URL_OK, {}, { fetch: respond(status) as never });
+    expect(outcome.kind === "sent" ? "sent" : "code" in outcome ? outcome.code : outcome.kind).toBe(expected);
+  });
+
+  it("rounds a fractional retry_after up to the next millisecond, never down", async () => {
+    expect(await sendDiscordMessage(URL_OK, {}, { fetch: respond(429, { body: JSON.stringify({ retry_after: 2.0001 }) }) as never })).toMatchObject({ retryAfterMs: 2001 });
+  });
+
+  it("ignores a negative or infinite retry_after in the body", async () => {
+    for (const body of ['{"retry_after":-3}', '{"retry_after":1e999}', "[]", "null", "5"]) {
+      expect(await sendDiscordMessage(URL_OK, {}, { fetch: respond(429, { body }) as never }), body).toEqual({ kind: "retry", code: "rate_limited" });
+    }
+  });
+
+  it("reads at most 4096 characters of a 429 body", async () => {
+    const body = `${" ".repeat(5000)}{"retry_after":5}`;
+    expect(await sendDiscordMessage(URL_OK, {}, { fetch: respond(429, { body }) as never })).toEqual({ kind: "retry", code: "rate_limited" });
+  });
+
+  it("prefers the Retry-After header over the body", async () => {
+    expect(await sendDiscordMessage(URL_OK, {}, { fetch: respond(429, { headers: { "retry-after": "7" }, body: '{"retry_after":2}' }) as never })).toMatchObject({ retryAfterMs: 7000 });
+  });
+
   it("no outcome ever contains the webhook URL or its token", async () => {
     for (const status of [204, 301, 400, 401, 403, 404, 418, 429, 500]) {
       const outcome = await sendDiscordMessage(URL_OK, { content: "x" }, { fetch: respond(status, { body: TOKEN }) as never });

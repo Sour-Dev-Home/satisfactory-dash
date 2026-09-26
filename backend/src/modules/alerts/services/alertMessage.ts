@@ -71,6 +71,10 @@ export function escapeDiscordText(value: unknown, max = MAX_FIELD): string {
   }
   if (escaped.length <= max) return escaped;
   let cut = escaped.slice(0, Math.max(0, max - 1));
+  // Never end on the first half of a surrogate pair (an emoji at the cut): JSON would carry a lone surrogate and
+  // Discord can refuse the whole message for it.
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
   // Never end on the first half of an escape: an odd run of trailing backslashes would escape the ellipsis.
   const trailing = /\\+$/.exec(cut)?.[0].length ?? 0;
   if (trailing % 2 === 1) cut = cut.slice(0, -1);

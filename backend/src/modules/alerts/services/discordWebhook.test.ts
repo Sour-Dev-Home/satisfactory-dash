@@ -55,6 +55,37 @@ describe("parseDiscordWebhookUrl: the only URL shape the backend will send an al
     expect(parseDiscordWebhookUrl(input)).toEqual({ ok: false, code });
   });
 
+  // Added by the fresh-eyes pass (mutation testing): each of these survived the removal of one check.
+  it.each([
+    ["a password without a user name", `https://:secret@discord.com/api/webhooks/${ID}/${TOKEN}`, "credentials_in_url"],
+    ["the ptb subdomain", `https://ptb.discord.com/api/webhooks/${ID}/${TOKEN}`, "host_not_allowed"],
+    ["a too short id", `https://discord.com/api/webhooks/1/${TOKEN}`, "path_not_a_webhook"],
+    ["a 26 digit id", `https://discord.com/api/webhooks/${"1".repeat(26)}/${TOKEN}`, "path_not_a_webhook"],
+    ["a 121 character token", `https://discord.com/api/webhooks/${ID}/${"a".repeat(121)}`, "path_not_a_webhook"],
+    ["an extra path segment before webhooks", `https://discord.com/api/foo/webhooks/${ID}/${TOKEN}`, "path_not_a_webhook"],
+    ["a version without digits", `https://discord.com/api/v/webhooks/${ID}/${TOKEN}`, "path_not_a_webhook"],
+    ["a three digit version", `https://discord.com/api/v100/webhooks/${ID}/${TOKEN}`, "path_not_a_webhook"],
+    ["a path not starting at /api", `https://discord.com/x/api/webhooks/${ID}/${TOKEN}`, "path_not_a_webhook"],
+    ["a DEL character", `https://discord.com/api/webhooks/${ID}/${TOKEN}\u007f`, "not_a_url"],
+    ["a C1 control (NEL)", `https://discord.com/api/webhooks/${ID}/\u0085${TOKEN}`, "not_a_url"],
+    ["a no-break space", `https://discord.com/api/webhooks/${ID}/${TOKEN} x`, "not_a_url"],
+    ["an em space", `https://discord.com/api/webhooks/${ID}/ ${TOKEN}`, "not_a_url"],
+  ])("refuses %s", (_name, input, code) => {
+    expect(parseDiscordWebhookUrl(input)).toEqual({ ok: false, code });
+  });
+
+  it("an empty or blank value is `not_a_url`, not `too_long` (the admin script prints the code)", () => {
+    expect(parseDiscordWebhookUrl("")).toEqual({ ok: false, code: "not_a_url" });
+    expect(parseDiscordWebhookUrl("   \n")).toEqual({ ok: false, code: "not_a_url" });
+    expect(parseDiscordWebhookUrl("a".repeat(301))).toEqual({ ok: false, code: "too_long" });
+  });
+
+  it("accepts a 20 and a 120 character token and a 15 and a 25 digit id (the documented bounds)", () => {
+    for (const path of [`${"1".repeat(15)}/${"a".repeat(20)}`, `${"1".repeat(25)}/${"a".repeat(120)}`]) {
+      expect(parseDiscordWebhookUrl(`https://discord.com/api/webhooks/${path}`)).toMatchObject({ ok: true });
+    }
+  });
+
   it.each([undefined, null, 42, {}, [], true, ""])("refuses a non-string or empty value (%s)", (input) => {
     expect(parseDiscordWebhookUrl(input).ok).toBe(false);
   });

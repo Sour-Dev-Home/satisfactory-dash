@@ -26,6 +26,14 @@ describe("retryDelayMs: exponential backoff, never sooner than Discord asked", (
   });
 });
 
+describe("the documented constants (runbook: 30 s, 30 min, 24 h)", () => {
+  it("are what the runbook says", () => {
+    expect(BASE_DELAY_MS).toBe(30 * 1000);
+    expect(MAX_DELAY_MS).toBe(30 * 60 * 1000);
+    expect(DEAD_AFTER_MS).toBe(24 * 60 * 60 * 1000);
+  });
+});
+
 describe("isDead: a delivery is given up after 24 hours", () => {
   it("is alive up to the last millisecond and dead from exactly 24 hours", () => {
     const created = 1_000_000;
