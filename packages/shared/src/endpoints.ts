@@ -24,6 +24,25 @@ import {
 import { ServerPlayersResponseSchema } from "./players";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
+import {
+  AlertDestinationsResponseSchema,
+  AlertEventsQuerySchema,
+  AlertEventsResponseSchema,
+  AlertRuleResponseSchema,
+  AlertRulesResponseSchema,
+  AlertStatusResponseSchema,
+  CreateAlertRuleRequestSchema,
+  DeleteAlertRuleResponseSchema,
+  DeleteDestinationResponseSchema,
+  DiscordDestinationResponseSchema,
+  MuteClearedResponseSchema,
+  MuteSetResponseSchema,
+  PatchDiscordDestinationRequestSchema,
+  PutDiscordDestinationRequestSchema,
+  SendTestResponseSchema,
+  SetMuteRequestSchema,
+  UpdateAlertRuleRequestSchema,
+} from "./alerts";
 
 const scoped = (resource: string) => (serverId: string) =>
   `/api/servers/${encodeURIComponent(serverId)}/${resource}`;
@@ -189,6 +208,104 @@ export const endpoints = {
       path: scoped("test-connection"),
       response: TestConnectionResponseSchema,
       operatorOnly: true,
+    },
+  },
+  // ADR-0027 PR 7 (alerts). Every GET is for any member of the server; every other method (POST .../test included) is
+  // owner/admin only. The webhook URL exists only in the PUT request body, never in a response.
+  alerts: {
+    rules: {
+      list: {
+        method: "GET",
+        route: "/api/servers/:serverId/alerts/rules",
+        path: scoped("alerts/rules"),
+        response: AlertRulesResponseSchema,
+      },
+      // 201. Only production_below_target can be created (rule_kind_not_creatable otherwise).
+      create: {
+        method: "POST",
+        route: "/api/servers/:serverId/alerts/rules",
+        path: scoped("alerts/rules"),
+        request: CreateAlertRuleRequestSchema,
+        response: AlertRuleResponseSchema,
+      },
+      // `item` is immutable (rule_item_immutable).
+      update: {
+        method: "PATCH",
+        route: "/api/servers/:serverId/alerts/rules/:ruleId",
+        path: (serverId: string, ruleId: string) => `${scoped("alerts/rules")(serverId)}/${encodeURIComponent(ruleId)}`,
+        request: UpdateAlertRuleRequestSchema,
+        response: AlertRuleResponseSchema,
+      },
+      // A preset answers 409 preset_disable_only.
+      remove: {
+        method: "DELETE",
+        route: "/api/servers/:serverId/alerts/rules/:ruleId",
+        path: (serverId: string, ruleId: string) => `${scoped("alerts/rules")(serverId)}/${encodeURIComponent(ruleId)}`,
+        response: DeleteAlertRuleResponseSchema,
+      },
+    },
+    destinations: {
+      get: {
+        method: "GET",
+        route: "/api/servers/:serverId/alerts/destinations",
+        path: scoped("alerts/destinations"),
+        response: AlertDestinationsResponseSchema,
+      },
+      putDiscord: {
+        method: "PUT",
+        route: "/api/servers/:serverId/alerts/destinations/discord",
+        path: scoped("alerts/destinations/discord"),
+        request: PutDiscordDestinationRequestSchema,
+        response: DiscordDestinationResponseSchema,
+      },
+      patchDiscord: {
+        method: "PATCH",
+        route: "/api/servers/:serverId/alerts/destinations/discord",
+        path: scoped("alerts/destinations/discord"),
+        request: PatchDiscordDestinationRequestSchema,
+        response: DiscordDestinationResponseSchema,
+      },
+      removeDiscord: {
+        method: "DELETE",
+        route: "/api/servers/:serverId/alerts/destinations/discord",
+        path: scoped("alerts/destinations/discord"),
+        response: DeleteDestinationResponseSchema,
+      },
+      // No body. 409 delivery_off while the kill switch is off; 404 destination_not_configured; 429 rate_limited.
+      testDiscord: {
+        method: "POST",
+        route: "/api/servers/:serverId/alerts/destinations/discord/test",
+        path: scoped("alerts/destinations/discord/test"),
+        response: SendTestResponseSchema,
+      },
+    },
+    events: {
+      method: "GET",
+      route: "/api/servers/:serverId/alerts/events",
+      path: scoped("alerts/events"),
+      query: AlertEventsQuerySchema,
+      response: AlertEventsResponseSchema,
+    },
+    status: {
+      method: "GET",
+      route: "/api/servers/:serverId/alerts/status",
+      path: scoped("alerts/status"),
+      response: AlertStatusResponseSchema,
+    },
+    mute: {
+      set: {
+        method: "PUT",
+        route: "/api/servers/:serverId/alerts/mute",
+        path: scoped("alerts/mute"),
+        request: SetMuteRequestSchema,
+        response: MuteSetResponseSchema,
+      },
+      clear: {
+        method: "DELETE",
+        route: "/api/servers/:serverId/alerts/mute",
+        path: scoped("alerts/mute"),
+        response: MuteClearedResponseSchema,
+      },
     },
   },
   // ADR-0012.

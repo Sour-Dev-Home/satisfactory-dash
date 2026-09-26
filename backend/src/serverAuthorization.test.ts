@@ -28,7 +28,11 @@ import type { Method } from "../test-support/scopedEndpoints.js";
  * real membership middleware, with stub services and an in-memory membership table.
  */
 
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0027 PR 7a added the alerts endpoints to the contract BEFORE their routes (contract first, so the frontend can
+// build against the fixtures). Until PR 7b mounts them there is nothing to guard, so exactly these are exempt. PR 7b
+// deletes this line, and the generated tests then cover them like every other scoped route.
+const NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("alerts.");
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
 const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId);
 
 const OWNER = "user-owner";
@@ -146,6 +150,25 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
   it("finds reads and at least one write", () => {
     expect(SCOPED.length).toBeGreaterThanOrEqual(5);
     expect(SCOPED.some((e) => e.method !== "GET")).toBe(true);
+  });
+
+  it("exempts only the alerts endpoints that are in the contract but not mounted yet (PR 7a), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.length).toBe(13);
+    expect(exempt.every((endpoint) => endpoint.route.startsWith("/api/servers/:serverId/alerts/"))).toBe(true);
+  });
+
+  // The exemption expires on its own: the moment PR 7b mounts ANY alerts route, this fails until NOT_YET_MOUNTED is
+  // deleted, so the routes can never ship without the generated authorization tests.
+  it("the exempt endpoints are still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
+      const url = urlFor(endpoint.route, "alpha").replace(":ruleId", "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04");
+      const res = await call(app, endpoint.name, endpoint.method, url, OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0027 PR 7b)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
   });
 });
 

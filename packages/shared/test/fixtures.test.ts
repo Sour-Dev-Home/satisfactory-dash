@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
+  AlertDestinationsResponseSchema,
+  AlertEventsResponseSchema,
+  AlertRuleResponseSchema,
+  AlertRulesResponseSchema,
+  AlertStatusResponseSchema,
+  CreateAlertRuleRequestSchema,
+  DeleteAlertRuleResponseSchema,
+  DeleteDestinationResponseSchema,
+  DiscordDestinationResponseSchema,
+  MuteClearedResponseSchema,
+  MuteSetResponseSchema,
+  PatchDiscordDestinationRequestSchema,
+  PutDiscordDestinationRequestSchema,
+  SendTestResponseSchema,
+  SetMuteRequestSchema,
+  UpdateAlertRuleRequestSchema,
   ApiErrorResponseSchema,
   DeleteServerResponseSchema,
   FactoryResponseSchema,
@@ -37,6 +53,23 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["historyPower", HistoryPowerResponseSchema],
   ["historyItems", HistoryItemsResponseSchema],
   ["historyTransitions", HistoryTransitionsResponseSchema],
+  // ADR-0027 PR 7a: the alerts fixtures. "alertRules" must come before "alertRule": the first matching prefix wins.
+  ["alertRules", AlertRulesResponseSchema],
+  ["alertRule", AlertRuleResponseSchema],
+  ["alertCreateRuleRequest", CreateAlertRuleRequestSchema],
+  ["alertUpdateRuleRequest", UpdateAlertRuleRequestSchema],
+  ["alertDeleteRuleResponse", DeleteAlertRuleResponseSchema],
+  ["alertDestinations", AlertDestinationsResponseSchema],
+  ["alertPutDiscordRequest", PutDiscordDestinationRequestSchema],
+  ["alertPatchDiscordRequest", PatchDiscordDestinationRequestSchema],
+  ["alertPatchDiscordResponse", DiscordDestinationResponseSchema],
+  ["alertDeleteDestinationResponse", DeleteDestinationResponseSchema],
+  ["alertSendTest", SendTestResponseSchema],
+  ["alertEvents", AlertEventsResponseSchema],
+  ["alertStatus", AlertStatusResponseSchema],
+  ["alertSetMuteRequest", SetMuteRequestSchema],
+  ["alertMuteSetResponse", MuteSetResponseSchema],
+  ["alertMuteClearedResponse", MuteClearedResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
   // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
@@ -307,15 +340,15 @@ describe("auth and settings schemas", () => {
   });
 });
 
-type Endpoint = { method: string; route: string; path: (serverId: string) => string };
+type Endpoint = { method: string; route: string; path: (serverId: string, ruleId: string) => string };
 
-// Flattens the nested groups (auth, settings) into "group.name" entries.
+// Flattens the nested groups (auth, settings, alerts.rules, ...) into "group.name" entries, at any depth.
 function flatEndpoints(): [string, Endpoint][] {
-  return Object.entries(endpoints).flatMap(([name, value]): [string, Endpoint][] =>
+  const walk = (name: string, value: object): [string, Endpoint][] =>
     "route" in value
       ? [[name, value as Endpoint]]
-      : Object.entries(value).map(([inner, endpoint]): [string, Endpoint] => [`${name}.${inner}`, endpoint as Endpoint]),
-  );
+      : Object.entries(value).flatMap(([inner, child]) => walk(name === "" ? inner : `${name}.${inner}`, child as object));
+  return walk("", endpoints);
 }
 
 describe("endpoints", () => {
@@ -330,9 +363,10 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(25); // 22 + the three history endpoints (ADR-0027)
+    expect(all.length).toBe(38); // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a)
     for (const [name, endpoint] of all) {
-      expect(endpoint.path("default"), name).toBe(endpoint.route.replace(":serverId", "default"));
+      // The two-parameter builders (a rule id) take a placeholder that must land where `:ruleId` is.
+      expect(endpoint.path("default", "RULE"), name).toBe(endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE"));
     }
   });
 

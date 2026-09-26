@@ -112,6 +112,15 @@ const kindByCode = {
   server_limit_reached: "unknown",
   import_required: "unknown",
   lan_requires_cert_pinning: "unknown",
+  // ADR-0027 PR 7: alerts. The alerts screen words these itself (PR 9); anywhere else they are handled generically.
+  rule_not_found: "unknown",
+  rule_item_immutable: "unknown",
+  preset_disable_only: "unknown",
+  rule_kind_not_creatable: "unknown",
+  destination_not_configured: "unknown",
+  webhook_invalid: "unknown",
+  delivery_off: "unknown",
+  mute_invalid: "unknown",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",
