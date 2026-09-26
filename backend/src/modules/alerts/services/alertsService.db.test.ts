@@ -97,7 +97,7 @@ describe.skipIf(!available)("the alerts API service against a real Postgres", ()
       expect(rules.slice(0, 3).every((r) => r.preset)).toBe(true);
       const audit = await auditActions(server.id);
       expect(audit.map((a) => a.action)).toEqual(["alerts.rule.created"]);
-      expect(JSON.parse(audit[0]!.detail)).toEqual({ ruleId: rule.id, kind: "production_below_target", item: "Desc_IronPlate_C" });
+      expect(JSON.parse(audit[0]!.detail)).toEqual({ ruleId: rule.id, kind: "production_below_target" });
     });
 
     it("refuses a second rule for the same item on a server, but allows it on another server and for another item", async () => {
@@ -268,14 +268,14 @@ describe.skipIf(!available)("the alerts API service against a real Postgres", ()
       expect((await auditActions(a.id)).map((e) => e.action)).toEqual(["alerts.destination.set", "alerts.destination.removed"]);
     });
 
-    it("test sends one message through the sender (the URL only ever goes to Discord) and audits the result code", async () => {
+    it("test sends one message through the sender (the URL only ever goes to Discord) and audits the attempt (before sending)", async () => {
       const server = await newServer();
       await service.putDiscord(server.publicId, ACTOR, URL_A);
       sent.length = 0;
       expect(await service.testDiscord(server.publicId, ACTOR)).toEqual({ ok: true });
       expect(sent).toEqual([URL_A]);
       const tested = (await auditActions(server.id)).filter((e) => e.action === "alerts.destination.tested");
-      expect(JSON.parse(tested[0]!.detail)).toEqual({ kind: "discord", code: "sent" });
+      expect(JSON.parse(tested[0]!.detail)).toEqual({ kind: "discord" });
     });
 
     it("test with the kill switch OFF is delivery_off and sends nothing", async () => {

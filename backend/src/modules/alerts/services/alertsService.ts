@@ -231,7 +231,7 @@ export function createAlertsService(deps: AlertsServiceDeps): AlertsService {
         });
         const created = await getApiRule(client, serverId, id);
         if (created === undefined) throw new Error("the rule just created could not be read back");
-        await audit(client, actorUserId, serverUuid, "alerts.rule.created", { ruleId: id, kind: body.kind, item: params.params.item });
+        await audit(client, actorUserId, serverUuid, "alerts.rule.created", { ruleId: id, kind: body.kind });
         return { rule: toApiRule(created) };
       }),
 
@@ -320,12 +320,14 @@ export function createAlertsService(deps: AlertsServiceDeps): AlertsService {
       if (deps.mode !== "on") throw new ApiFailure("delivery_off", "Alert delivery is switched off, so no message was sent");
       const ring = deps.ring;
       if (ring === null) throw new ServiceUnavailableError();
+      // The attempt is audited BEFORE the send: a failing audit write then stops the send, instead of leaving a message
+      // that was sent with no record of who asked for it.
+      const serverUuid = await orUnavailable(() => getServerUuid(db, serverId));
+      if (serverUuid === undefined) throw new ServerNotFoundError();
+      await orUnavailable(() => audit(db, actorUserId, serverUuid, "alerts.destination.tested", { kind: "discord" }));
       const { code } = await orUnavailable(() =>
         sendAlertTest({ mode: deps.mode, db, ring, serverPublicId: serverId, serverName: deps.serverName(serverId) ?? serverId, fetch: deps.fetch }),
       );
-      const serverUuid = await orUnavailable(() => getServerUuid(db, serverId));
-      if (serverUuid === undefined) throw new ServerNotFoundError();
-      await orUnavailable(() => audit(db, actorUserId, serverUuid, "alerts.destination.tested", { kind: "discord", code }));
       switch (code) {
         case "sent":
           return { ok: true as const };
