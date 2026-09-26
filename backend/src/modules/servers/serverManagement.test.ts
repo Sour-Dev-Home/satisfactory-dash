@@ -58,7 +58,7 @@ const failed = { ok: false, api: { ok: false, error: "unreachable" as const }, f
 
 const meta = { serverId: "uuid-home", publicId: "home", displayName: "Home", host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, frmTokenSet: true, keyId: "k1" };
 
-function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[]; allowLan?: boolean } = {}) {
+function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[]; allowLan?: boolean; forbiddenPorts?: number[] } = {}) {
   const runtime = new ServerRuntime<string>([{ id: "home", displayName: "Home", services: "old", workers: [] }]);
   const build = vi.fn((c: { publicId: string; displayName: string }) => ({ id: c.publicId, displayName: c.displayName, services: "new", workers: [] }));
   const testConnection = vi.fn(options.test ?? (async () => passed));
@@ -74,6 +74,7 @@ function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => 
     // (loopback only, the production default) is tested explicitly with allowLan: false below.
     policy: { allowLan: options.allowLan ?? true },
     lookup: options.lookup ?? (async () => ["192.168.1.30"]),
+    forbiddenPorts: options.forbiddenPorts,
   });
   return { service, runtime, build, testConnection };
 }
@@ -323,6 +324,72 @@ describe("servers reached through an edge agent (ADR-0031): listed and renameabl
     repo.findServerByPublicId.mockResolvedValue(agentRow);
     const { service } = setup({ ring: null });
     await expect(service.renameAgentServer(OPERATOR, "alex", "X")).resolves.toMatchObject({ kind: "agent" });
+  });
+});
+
+describe("a loopback game server may not be this backend or its database (issue #195)", () => {
+  const BACKEND = 3001;
+  const POSTGRES = 5432;
+  const loopback = { lookup: async () => ["127.0.0.1"], forbiddenPorts: [BACKEND, POSTGRES] };
+  const refused = (err: unknown) => (err instanceof ApiFailure ? err.code : "other");
+
+  it("testCandidate refuses the backend's port and the database's port, as the API or the FRM port, without calling the game", async () => {
+    const { service, testConnection } = setup(loopback);
+    for (const [apiPort, frmPort] of [[BACKEND, 8080], [POSTGRES, 8080], [7777, BACKEND], [7777, POSTGRES], [BACKEND, POSTGRES]] as const) {
+      const code = await service.testCandidate({ host: "localhost", apiPort, frmPort, apiToken: API }).catch(refused);
+      expect(code, `${apiPort}/${frmPort}`).toBe("address_not_allowed");
+    }
+    expect(testConnection).not.toHaveBeenCalled(); // the entered token never leaves for the backend's own port
+    await expect(service.testCandidate({ host: "localhost", apiPort: 7777, frmPort: 8080, apiToken: API })).resolves.toMatchObject({ ok: true });
+  });
+
+  it("create refuses them too, before any test or write", async () => {
+    const { service, testConnection } = setup(loopback);
+    const code = await service.create(OPERATOR, { ...createInput, host: "localhost", apiPort: POSTGRES }).catch(refused);
+    expect(code).toBe("address_not_allowed");
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.createConnection).not.toHaveBeenCalled();
+    expect(repo.clientQueries).toEqual([]);
+  });
+
+  it("update refuses a patch that moves a server onto them (by the new port, or a new host with the stored one), and a rename alone is unaffected", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...meta, host: "127.0.0.1", pinnedIp: "127.0.0.1" }); // a loopback server (the stored test row is a LAN one)
+    const { service, testConnection } = setup(loopback);
+    expect(await service.update(OPERATOR, "home", { apiPort: BACKEND }).catch(refused)).toBe("address_not_allowed");
+    expect(await service.update(OPERATOR, "home", { frmPort: POSTGRES }).catch(refused)).toBe("address_not_allowed");
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.updateConnection).not.toHaveBeenCalled();
+    await expect(service.update(OPERATOR, "home", { displayName: "Renamed" })).resolves.toMatchObject({ displayName: "Renamed" });
+  });
+
+  it("update also refuses when the STORED port is forbidden and only the host is edited (the rule applies to what would be saved)", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...meta, apiPort: BACKEND });
+    const { service } = setup(loopback);
+    expect(await service.update(OPERATOR, "home", { host: "localhost" }).catch(refused)).toBe("address_not_allowed");
+  });
+
+  it("testSaved refuses a stored row that already uses one (stored before this rule, or edited in the database)", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...meta, pinnedIp: "127.0.0.1", host: "localhost", frmPort: POSTGRES });
+    const { service, testConnection } = setup(loopback);
+    expect(await service.testSaved("home").catch(refused)).toBe("address_not_allowed");
+    expect(testConnection).not.toHaveBeenCalled();
+  });
+
+  it("applies only to a LOOPBACK address: the same port on another machine is not this backend", async () => {
+    const lan = setup({ lookup: async () => ["192.168.1.30"], forbiddenPorts: [BACKEND, POSTGRES], allowLan: true });
+    await expect(lan.service.testCandidate({ host: "gaming-pc.lan", apiPort: BACKEND, frmPort: POSTGRES, apiToken: API })).resolves.toMatchObject({ ok: true });
+  });
+
+  it("with no forbidden ports configured (a test, or no database) nothing changes", async () => {
+    const { service } = setup({ lookup: async () => ["127.0.0.1"] });
+    await expect(service.testCandidate({ host: "localhost", apiPort: BACKEND, frmPort: POSTGRES, apiToken: API })).resolves.toMatchObject({ ok: true });
+  });
+
+  it("the refusal names no address, port or token", async () => {
+    const { service } = setup(loopback);
+    const error = (await service.testCandidate({ host: "localhost", apiPort: BACKEND, frmPort: 8080, apiToken: API }).catch((err: unknown) => err)) as ApiFailure;
+    expect(error.message).not.toMatch(/3001|5432|127\.0\.0\.1/);
+    expect(error.message).not.toContain(API);
   });
 });
 
