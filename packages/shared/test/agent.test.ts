@@ -109,6 +109,13 @@ describe("agent contract: snapshots", () => {
     expect(SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestUnreachable, paused: undefined }).success).toBe(false); // required, null when unknown
   });
 
+  it("`settings` is optional as a whole; when present it is strict and `autoPause` must be a boolean", () => {
+    const withSettings = (settings: unknown) => SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestPartial, settings }).success;
+    expect(SnapshotRequestSchema.safeParse(fixtures.agentSnapshotRequestPartial).success).toBe(true);
+    expect([withSettings({ autoPause: false }), withSettings({ autoPause: true }), withSettings(undefined)]).toEqual([true, true, true]);
+    expect([withSettings({}), withSettings({ autoPause: "yes" }), withSettings({ autoPause: null }), withSettings({ autoPause: true, extra: 1 }), withSettings(null)]).toEqual([false, false, false, false, false]);
+  });
+
   it("the request is strict (no machine details) and needs the time, with an offset or Z", () => {
     for (const extra of [{ hostname: "pc" }, { ip: "10.0.0.1" }, { os: "windows" }]) {
       expect(SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestPartial, ...extra }).success, JSON.stringify(extra)).toBe(false);

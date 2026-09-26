@@ -71,6 +71,10 @@ export const SnapshotRequestSchema = z
     observedAt: IsoTimeSchema.describe("When the agent read the game (its own clock, with an offset)"),
     reachable: z.boolean().describe("false = the game server or FRM could not be reached; no parts follow"),
     paused: z.boolean().nullable().describe("The game's pause state, or null when unknown"),
+    settings: z
+      .strictObject({ autoPause: z.boolean().describe("The game's auto-pause setting as the agent last read it") })
+      .optional()
+      .describe("Game settings the agent could read; absent when it could not (the backend then treats auto-pause as unknown)"),
     status: StatusSchema.optional(),
     power: PowerSchema.optional(),
     factory: FactorySchema.optional(),
