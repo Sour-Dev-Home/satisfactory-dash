@@ -394,6 +394,8 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
           if ((await countConnections(client)) >= MAX_LOCAL_SERVERS) {
             throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
           }
+          // The kind flips first: `createConnection` only inserts for a 'local' server. Both are in this one transaction.
+          if (!(await switchToLocalKind(client, locked.id))) throw notAnAgentServer();
           const outcome = await createConnection(client, ring, locked.id, {
             host: input.host,
             pinnedIp,
@@ -403,7 +405,6 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
             frmToken: input.frmToken,
           });
           if (outcome !== "created") throw new ApiFailure("server_exists", "That server already has a stored connection.");
-          if (!(await switchToLocalKind(client, locked.id))) throw notAnAgentServer();
           const released = await deps.releaseAgent!(client, locked.id);
           await recordAuditEvent(client, {
             action: "server.switched_to_local",

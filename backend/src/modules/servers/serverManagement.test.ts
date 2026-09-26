@@ -455,7 +455,7 @@ describe("switch back to local (ADR-0031 amendment)", () => {
   it("happy path: tests FIRST (no network under the lock), then one transaction stores the connection, sets the kind, releases the agent and audits; then the runtime is swapped", async () => {
     const { service, runtime, build, events, releaseAgent } = arrange();
     const view = await service.switchToLocal(OPERATOR, "alex", body);
-    expect(events).toEqual(["connection-test", "lock-server", "store-connection", "set-kind-local", "release-agent", "audit"]);
+    expect(events).toEqual(["connection-test", "lock-server", "set-kind-local", "store-connection", "release-agent", "audit"]);
     expect(releaseAgent).toHaveBeenCalledWith(expect.anything(), "uuid-alex");
     expect(repo.recordAuditEvent).toHaveBeenCalledWith(expect.anything(), { action: "server.switched_to_local", actorUserId: OPERATOR, serverId: "uuid-alex", detail: { credentialRevoked: true, commandsEnded: 2 } });
     expect(build).toHaveBeenCalledTimes(1);
@@ -511,7 +511,8 @@ describe("switch back to local (ADR-0031 amendment)", () => {
     const taken = arrange();
     repo.createConnection.mockResolvedValue("conflict");
     expect(await taken.service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_exists");
-    expect(repo.switchToLocalKind).not.toHaveBeenCalled();
+    // The kind flipped inside the transaction, which the failed connection rolls back: nothing after it ran.
+    expect(taken.releaseAgent).not.toHaveBeenCalled();
   });
 
   it("if the kind change finds nothing to change (lost a race), it is server_not_agent and the agent is NOT released", async () => {

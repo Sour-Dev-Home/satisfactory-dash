@@ -250,7 +250,7 @@ const SWITCH_TO_LOCAL = `
   RETURNING id`;
 
 /** ADR-0031 amendment: an agent server is read by this backend again. Only an agent server changes (false otherwise). The
- *  caller has already stored the new connection in the same transaction. */
+ *  caller stores the new connection right after, in the same transaction (`createConnection` needs the kind to be 'local'). */
 export async function switchToLocalKind(db: Queryable, serverId: string): Promise<boolean> {
   return (await db.query(SWITCH_TO_LOCAL, [serverId])).rows.length > 0;
 }
