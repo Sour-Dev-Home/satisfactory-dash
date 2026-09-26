@@ -111,6 +111,10 @@ const CASES: StateCase[] = [
   { scenario: "alerts", name: "alerts-badge-overview", shows: "Total play time on this save" },
   { scenario: "alerts-webhook-gone", path: "/app/alerts", shows: /no longer exists/ },
   { scenario: "alerts-empty", path: "/app/alerts", shows: "No alerts yet." },
+  // Settings → Alerts (ADR-0027 PR 9c): an owner gets the mute, the Discord setup and the rules
+  // editor; a viewer reads the same section with no controls.
+  { scenario: "alerts-owner", path: "/app/settings", shows: "New production target" },
+  { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules." },
 ];
 
 async function openAddForm(page: Page) {

@@ -1,12 +1,20 @@
 import { endpoints } from "@satisfactory-dash/shared";
 import {
+  alertDeleteDestinationResponse,
+  alertDeleteRuleResponse,
   alertDestinationsConfigured,
   alertDestinationsNone,
   alertDestinationsWebhookGone,
   alertEventsEmpty,
   alertEventsLastPage,
   alertEventsPage,
+  alertMuteClearedResponse,
+  alertMuteSetResponse,
+  alertPatchDiscordResponseDisabledManually,
+  alertRuleCreated,
   alertRulesList,
+  alertRuleUpdatedPresetDisabled,
+  alertSendTestOk,
   alertStatusQuiet,
   alertStatusShadowMutedFiring,
   deleteServerDone,
@@ -44,6 +52,8 @@ import {
   serverConnectionOk,
   serversMultiple,
   serversNone,
+  serversRoleOwner,
+  serversRoleViewer,
   serversSingle,
   sessionAnonymous,
   sessionAuthenticated,
@@ -102,6 +112,16 @@ export const ROUTES = {
   alertRules: endpoints.alerts.rules.list,
   alertDestinations: endpoints.alerts.destinations.get,
   alertEvents: endpoints.alerts.events,
+  // ADR-0027 PR 9c: the owner/admin writes (same paths as the reads, told apart by method).
+  alertRuleCreate: endpoints.alerts.rules.create,
+  alertRuleUpdate: endpoints.alerts.rules.update,
+  alertRuleRemove: endpoints.alerts.rules.remove,
+  alertDiscordPut: endpoints.alerts.destinations.putDiscord,
+  alertDiscordPatch: endpoints.alerts.destinations.patchDiscord,
+  alertDiscordRemove: endpoints.alerts.destinations.removeDiscord,
+  alertDiscordTest: endpoints.alerts.destinations.testDiscord,
+  alertMuteSet: endpoints.alerts.mute.set,
+  alertMuteClear: endpoints.alerts.mute.clear,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -139,6 +159,16 @@ const BASE: Record<RouteKey, MockResponse> = {
   alertRules: ok(alertRulesList),
   alertDestinations: ok(alertDestinationsConfigured),
   alertEvents: ok(alertEventsLastPage),
+  // Each write answers as the backend would; the page re-reads or patches its cache from these.
+  alertRuleCreate: { status: 201, body: alertRuleCreated },
+  alertRuleUpdate: ok(alertRuleUpdatedPresetDisabled),
+  alertRuleRemove: ok(alertDeleteRuleResponse),
+  alertDiscordPut: ok({ discord: alertDestinationsConfigured.discord }),
+  alertDiscordPatch: ok(alertPatchDiscordResponseDisabledManually),
+  alertDiscordRemove: ok(alertDeleteDestinationResponse),
+  alertDiscordTest: ok(alertSendTestOk),
+  alertMuteSet: ok(alertMuteSetResponse),
+  alertMuteClear: ok(alertMuteClearedResponse),
 };
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
@@ -233,6 +263,10 @@ export const SCENARIOS = {
   "alerts-webhook-gone": { alertDestinations: ok(alertDestinationsWebhookGone) },
   // A server with nothing set up yet.
   "alerts-empty": { alertDestinations: ok(alertDestinationsNone), alertEvents: ok(alertEventsEmpty) },
+  // Settings → Alerts (ADR-0027 PR 9c) as the server's owner (PR 7b role): the mute, the Discord
+  // setup and the rules editor show; and as a viewer, who reads the same section without controls.
+  "alerts-owner": { servers: ok(serversRoleOwner), alertStatus: ok(alertStatusShadowMutedFiring) },
+  "alerts-viewer": { servers: ok(serversRoleViewer), alertStatus: ok(alertStatusShadowMutedFiring) },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 

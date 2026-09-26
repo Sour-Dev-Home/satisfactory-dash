@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { alertEventsLastPage, alertEventsPage, alertRulesList } from "@satisfactory-dash/shared/fixtures";
-import { alertTitle, disabledReasonText, eventDetail, itemOf, kindLabel, severityClass, severityLabel, subjectLabel, transitionLabel } from "./alertText";
+import {
+  alertTitle,
+  canEditAlerts,
+  disabledReasonText,
+  eventDetail,
+  itemOf,
+  kindLabel,
+  sendTestText,
+  severityClass,
+  severityLabel,
+  subjectLabel,
+  transitionLabel,
+} from "./alertText";
 
 describe("alert words", () => {
   it("names every known kind, and spells out one a newer backend adds", () => {
@@ -75,5 +87,46 @@ describe("eventDetail", () => {
   it("gives nothing for an unknown kind or a summary that doesn't match its kind", () => {
     expect(eventDetail({ kind: "agent_offline", summary: {} })).toBeNull();
     expect(eventDetail({ kind: "power_outage", summary: { circuit: "one" } })).toBeNull();
+  });
+});
+
+describe("canEditAlerts", () => {
+  it("allows only owner and admin, case-sensitively", () => {
+    expect(canEditAlerts("owner")).toBe(true);
+    expect(canEditAlerts("admin")).toBe(true);
+    expect(canEditAlerts("Owner")).toBe(false);
+    expect(canEditAlerts("ADMIN")).toBe(false);
+  });
+
+  it("treats undefined, empty string and an unknown role as read-only", () => {
+    expect(canEditAlerts(undefined)).toBe(false);
+    expect(canEditAlerts("")).toBe(false);
+    expect(canEditAlerts("moderator")).toBe(false);
+    expect(canEditAlerts("viewer")).toBe(false);
+  });
+});
+
+describe("sendTestText", () => {
+  it("says a test went out, or names the demo build instead of claiming one did", () => {
+    expect(sendTestText({ ok: true })).toBe("Sent. Check your Discord channel.");
+    expect(sendTestText({ ok: true }, true)).toBe("Sent (demo): nothing was sent to Discord.");
+  });
+
+  it("names every known failure code", () => {
+    expect(sendTestText({ ok: false, code: "webhook_gone" })).toMatch(/no longer exists/);
+    expect(sendTestText({ ok: false, code: "rate_limited" })).toMatch(/limiting messages/);
+    expect(sendTestText({ ok: false, code: "secret_unreadable" })).toMatch(/can't be read on the server/);
+  });
+
+  it("spells out an unknown failure code instead of showing it raw", () => {
+    expect(sendTestText({ ok: false, code: "quota_exceeded" })).toBe("Discord didn't take the test (quota exceeded).");
+  });
+
+  it("doesn't crash on an empty failure code", () => {
+    expect(sendTestText({ ok: false, code: "" })).toBe("Discord didn't take the test.");
+  });
+
+  it("demo has no effect on a failure's wording", () => {
+    expect(sendTestText({ ok: false, code: "rejected" }, true)).toBe(sendTestText({ ok: false, code: "rejected" }, false));
   });
 });

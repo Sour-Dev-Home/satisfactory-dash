@@ -133,7 +133,7 @@ describe("RulesEditor", () => {
   it("handles an unknown kind with the common fields only, and an unknown severity as it is", async () => {
     const odd: AlertRule = { ...rules[0], id: "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5eaa", kind: "belt_jam", severity: "page-me", params: { belts: 2 }, preset: false };
     const { props } = setup({ rules: [odd] });
-    const article = card("Rule: belt_jam");
+    const article = card("Belt jam");
     expect(within(article).getByRole("combobox", { name: "Severity" })).toHaveValue("page-me");
     expect(within(article).getAllByRole("textbox").map((t) => t.getAttribute("id") && t.closest("div")?.querySelector("label")?.textContent)).toEqual([
       "Fire after (min)",
