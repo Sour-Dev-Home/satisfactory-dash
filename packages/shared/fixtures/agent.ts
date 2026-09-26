@@ -34,6 +34,7 @@ export const agentSnapshotRequestFull = {
   observedAt: "2026-09-26T12:00:00.000+02:00",
   reachable: true,
   paused: false,
+  settings: { autoPause: true },
   status: statusRunning.data,
   power: powerOk.data,
   factory: factoryMixed.data,
