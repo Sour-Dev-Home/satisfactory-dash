@@ -84,7 +84,9 @@ export function Shell() {
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
         {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
-        <nav aria-label="Main" className="-mx-1 flex min-w-0 max-w-full gap-1 overflow-x-auto">
+        {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;
+            an operator's sixth still scrolls. */}
+        <nav aria-label="Main" className="-mx-1 flex min-w-0 max-w-full gap-0 overflow-x-auto sm:gap-1">
           {(canManageServers ? [...TABS, SERVERS_TAB] : TABS).map((tab) => (
             <NavLink
               key={tab.to}
@@ -93,7 +95,7 @@ export function Shell() {
               className={({ isActive }) =>
                 [
                   // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
-                  "inline-flex min-h-[44px] flex-none items-center rounded-md px-3 font-medium no-underline focus-visible:-outline-offset-2",
+                  "inline-flex min-h-[44px] flex-none items-center rounded-md px-2.5 font-medium sm:px-3 no-underline focus-visible:-outline-offset-2",
                   isActive ? "bg-surface-2 text-fg-strong" : "text-muted hover:text-fg-strong",
                 ].join(" ")
               }
