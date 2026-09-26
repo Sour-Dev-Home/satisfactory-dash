@@ -3,7 +3,7 @@ import { openAccountMenu, signOutFromMenu } from "../test/account";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { serversMultiple, sessionAnonymous } from "@satisfactory-dash/shared/fixtures";
+import { serversMultiple, serversSingle, sessionAnonymous } from "@satisfactory-dash/shared/fixtures";
 import App from "../App";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -38,6 +38,27 @@ describe("redirects", () => {
     renderWithClient(<App />);
     expect(await screen.findByRole("region", { name: "Power" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/app/power/");
+  });
+});
+
+describe("tabs", () => {
+  // Guards the tighter-on-phone px-2.5/gap-0 tab styling: whatever the class strings, all the
+  // tabs (and the operator's extra one) must still render as links in the Main nav.
+  it("renders all five standard tabs as links in the Main nav", async () => {
+    renderWithClient(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    for (const label of ["Overview", "Power", "Factory", "Map", "Settings"]) {
+      expect(within(nav).getByRole("link", { name: label })).toBeInTheDocument();
+    }
+    expect(within(nav).queryByRole("link", { name: "Servers" })).not.toBeInTheDocument();
+  });
+
+  it("renders a sixth Servers tab for an operator, after the standard five", async () => {
+    server.use(http.get(endpoints.servers.route, () => HttpResponse.json({ ...serversSingle, canManageServers: true })));
+    renderWithClient(<App />);
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    const links = await within(nav).findAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["Overview", "Power", "Factory", "Map", "Settings", "Servers"]);
   });
 });
 

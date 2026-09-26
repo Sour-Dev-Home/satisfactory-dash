@@ -23,6 +23,8 @@ export interface BackupConfig {
   /** Empty = no upload (local trial runs without AWS). */
   s3Bucket: string;
   awsProfile: string;
+  /** An S3-compatible endpoint origin (https only), for a store that is not AWS S3, e.g. Backblaze B2. Empty = AWS S3. */
+  s3Endpoint: string;
   /** Where encrypted copies are kept locally. */
   localDir: string;
   /** How many encrypted local copies to keep (newest first). */
@@ -35,6 +37,25 @@ const BACKUP_FILE = /^satis-\d{8}T\d{6}Z\.dump\.age$/;
 const BUCKET_NAME = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 // Starts with a letter or digit, so a profile name can never be read as an option.
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * BACKUP_S3_ENDPOINT: empty means plain AWS S3. Otherwise an https origin without credentials. It must start with
+ * "https://", so it can never be read as an option, and the refusal never echoes the value (it could hold a secret).
+ */
+function parseS3Endpoint(raw: string | undefined): string {
+  const text = raw?.trim() ?? "";
+  if (!text) return "";
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new ConfigError("BACKUP_S3_ENDPOINT must be an https:// URL.");
+  }
+  if (url.protocol !== "https:" || url.hostname === "" || url.username !== "" || url.password !== "" || !text.startsWith("https://")) {
+    throw new ConfigError("BACKUP_S3_ENDPOINT must be an https:// URL without credentials.");
+  }
+  return url.origin;
+}
 
 export interface RunResult {
   code: number;
@@ -102,6 +123,7 @@ export function loadBackupConfig(env: NodeJS.ProcessEnv, defaults: { localDir: s
   if (!PROFILE_NAME.test(awsProfile)) {
     throw new ConfigError("BACKUP_AWS_PROFILE is not a valid profile name.");
   }
+  const s3Endpoint = parseS3Endpoint(env.BACKUP_S3_ENDPOINT);
   const keepText = env.BACKUP_LOCAL_KEEP?.trim();
   const localKeep = keepText ? Number(keepText) : 3;
   if (!Number.isInteger(localKeep) || localKeep < 1 || localKeep > 60) {
@@ -119,6 +141,7 @@ export function loadBackupConfig(env: NodeJS.ProcessEnv, defaults: { localDir: s
     ageRecipient,
     s3Bucket,
     awsProfile,
+    s3Endpoint,
     // Absolute, so the path handed to age and aws can never start with "-" and be read as an option.
     localDir: resolve(env.BACKUP_LOCAL_DIR?.trim() || defaults.localDir),
     localKeep,
@@ -206,6 +229,7 @@ export async function runBackup(config: BackupConfig, deps: BackupDeps): Promise
       `s3://${config.s3Bucket}/${S3_KEY_PREFIX}${fileName}`,
       "--profile",
       config.awsProfile,
+      ...(config.s3Endpoint ? ["--endpoint-url", config.s3Endpoint] : []),
       "--only-show-errors",
     ]);
     if (upload.code !== 0) {

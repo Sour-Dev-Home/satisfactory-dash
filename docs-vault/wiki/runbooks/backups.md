@@ -118,6 +118,44 @@ setup, **delete the whole IAM user** (not just the key) and confirm in the IAM c
 event history is the audit trail. You still create `satis-backup` (put-only) and its key yourself, and the age
 private key never leaves you.
 
+## Backblaze B2 (ADR-0035: backups move off AWS)
+
+The AWS account is on the Free plan and closes with the credits, deleting the bucket, so the nightly upload moves
+to Backblaze B2 (free up to 10 GB, no card). The script is unchanged apart from one optional setting,
+`BACKUP_S3_ENDPOINT`: when set it is passed to `aws s3 cp` as `--endpoint-url`; when empty the upload goes to AWS S3
+exactly as before. The endpoint must be an `https://` URL with no credentials (the credentials live in the AWS CLI
+profile, never in `.env`). The owner does these steps himself; no session holds a B2 key.
+
+Owner steps:
+
+1. Create a Backblaze account with 2FA, in a US region. The repo never names the region or the account.
+2. Create a **private** bucket with **Object Lock enabled at creation** (it cannot be added later) and default
+   retention **Governance, 30 days**.
+3. Lifecycle rule: **hide files 30 days after upload, delete hidden files 7 days after hiding**. That keeps the
+   "up to 37 days" promise on the privacy page.
+4. Note the bucket's **S3 endpoint** (`https://s3.<region>.backblazeb2.com`). It becomes `BACKUP_S3_ENDPOINT`.
+5. Create the application key **`satis-backup-upload`**: limited to this bucket only, **Write Only**. Check that no
+   `deleteFiles` capability is listed. This key goes on the PC.
+6. Create the application key **`satis-backup-read`**: this bucket only, **Read Only**. Keep it **offline** next to
+   the age private key; it is for restores only. The master key is never used and never stored on the PC.
+7. Create a new AWS CLI profile **`satis-backup-b2`** holding the upload key (key id and application key) and the
+   endpoint's region (`aws configure --profile satis-backup-b2`).
+8. In `backend\.env` set `BACKUP_S3_BUCKET=<the B2 bucket>`, `BACKUP_S3_ENDPOINT=<the endpoint>` and
+   `BACKUP_AWS_PROFILE=satis-backup-b2`.
+
+Cutover (ADR-0035):
+
+1. Run the backup once by hand (`npm run backup -w backend`) and check the file is in the B2 bucket under `satis-dash/`.
+2. **Restore rehearsal from B2** into a scratch database (the section below), downloading with the read key: use
+   `--profile <read-profile> --endpoint-url <the endpoint>` on `aws s3 ls` and `aws s3 cp`. Row counts must match.
+3. Switch the nightly task to B2 (the `.env` values above are what the task reads).
+4. **Cutover PR, the same day as step 3** (a tiny privacy PR): the page ADDS the Backblaze row and item (the owner's
+   approved text: "Backblaze stores encrypted backups for up to 37 days") and KEEPS the AWS ones, because the old S3
+   copies stay for up to 37 days. The page describes only what runs today, so this PR does not merge before step 3.
+5. Leave the old S3 bucket **read-only for 37 days**, then delete the bucket and the `satis-backup` IAM user.
+6. **Second tiny PR, when the S3 bucket is deleted:** remove the AWS backups row and item from the privacy page (and
+   update the privacy outline in both PRs to match).
+
 ## Missed-backup alerting (optional heartbeat)
 
 Set `BACKUP_HEARTBEAT_URL` in `backend\.env` to a Better Stack heartbeat URL (create a daily heartbeat with a grace
@@ -265,6 +303,10 @@ role either: a dump as `satis_app` fails with `permission denied for sequence pg
 `satis_backup` through `BACKUP_DATABASE_URL`.
 
 ## Privacy
+
+The Backblaze wording (ADR-0035) is **"Backblaze stores encrypted backups for up to 37 days"** (the owner approved
+it; the region is unnamed). It goes on the page only in the cutover PR described in the cutover list above, which
+lists both providers until the S3 bucket is deleted. The AWS wording below is what applies until then.
 
 The privacy page must say the truth once this ships: **Amazon Web Services stores encrypted backups for up
 to 37 days, so deleted data can survive in backups for up to 37 days** (outline, sections A.4 and A.5). The
