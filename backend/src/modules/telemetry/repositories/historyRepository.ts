@@ -243,27 +243,49 @@ export async function rollUp(db: Queryable, window: { fromMs: number; toMs: numb
 
 // --- retention: batched deletes ----------------------------------------------------------------------------------------
 
+// Each DELETE is wrapped in a CTE so it returns one row with the deleted count (the Queryable exposes rows only).
 const PURGE_POWER_SAMPLES = `
-  DELETE FROM telemetry.power_samples
-  WHERE ctid IN (SELECT ctid FROM telemetry.power_samples WHERE at < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.power_samples
+    WHERE ctid IN (SELECT ctid FROM telemetry.power_samples WHERE at < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 const PURGE_ITEM_SAMPLES = `
-  DELETE FROM telemetry.item_samples
-  WHERE ctid IN (SELECT ctid FROM telemetry.item_samples WHERE at < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.item_samples
+    WHERE ctid IN (SELECT ctid FROM telemetry.item_samples WHERE at < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 const PURGE_POWER_MINUTES = `
-  DELETE FROM telemetry.power_rollups
-  WHERE ctid IN (SELECT ctid FROM telemetry.power_rollups WHERE resolution = 60 AND bucket < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.power_rollups
+    WHERE ctid IN (SELECT ctid FROM telemetry.power_rollups WHERE resolution = 60 AND bucket < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 const PURGE_POWER_HOURS = `
-  DELETE FROM telemetry.power_rollups
-  WHERE ctid IN (SELECT ctid FROM telemetry.power_rollups WHERE resolution = 3600 AND bucket < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.power_rollups
+    WHERE ctid IN (SELECT ctid FROM telemetry.power_rollups WHERE resolution = 3600 AND bucket < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 const PURGE_ITEM_MINUTES = `
-  DELETE FROM telemetry.item_rollups
-  WHERE ctid IN (SELECT ctid FROM telemetry.item_rollups WHERE resolution = 60 AND bucket < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.item_rollups
+    WHERE ctid IN (SELECT ctid FROM telemetry.item_rollups WHERE resolution = 60 AND bucket < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 const PURGE_ITEM_HOURS = `
-  DELETE FROM telemetry.item_rollups
-  WHERE ctid IN (SELECT ctid FROM telemetry.item_rollups WHERE resolution = 3600 AND bucket < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.item_rollups
+    WHERE ctid IN (SELECT ctid FROM telemetry.item_rollups WHERE resolution = 3600 AND bucket < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 const PURGE_TRANSITIONS = `
-  DELETE FROM telemetry.building_transitions
-  WHERE ctid IN (SELECT ctid FROM telemetry.building_transitions WHERE at < $1::timestamptz LIMIT $2)`;
+  WITH d AS (
+    DELETE FROM telemetry.building_transitions
+    WHERE ctid IN (SELECT ctid FROM telemetry.building_transitions WHERE at < $1::timestamptz LIMIT $2)
+    RETURNING 1)
+  SELECT count(*)::int AS deleted FROM d`;
 
 export interface PurgeCounts {
   powerSamples: number;
@@ -290,7 +312,6 @@ async function deleteInBatches(db: Queryable, sql: string, cutoff: string, optio
   for (let batch = 0; batch < options.maxBatches; batch++) {
     const result = await db.query(sql, [cutoff, options.batchSize]);
     const deleted = parseFirst(z.object({ deleted: z.number().int() }), result.rows, "telemetry.purge")?.deleted;
-    // A DELETE without RETURNING has no rows; the row count is not on the Queryable, so count through RETURNING below.
     total += deleted ?? 0;
     if ((deleted ?? 0) < options.batchSize) break;
   }
