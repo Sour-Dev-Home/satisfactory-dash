@@ -103,6 +103,14 @@ describe("useAlertWrites", () => {
     await waitFor(() => expect(reads).toBe(before + 1));
   });
 
+  it("never puts a write's answer back into the cache once the session ended while it was in flight", async () => {
+    server.use(http.patch(endpoints.alerts.destinations.patchDiscord.route, () => HttpResponse.json(alertPatchDiscordResponseDisabledManually)));
+    const { client, result, destinations } = setup();
+    client.setQueryData(queries.session().queryKey, { authenticated: false });
+    await act(() => result.current.patchDiscord.mutateAsync(false));
+    expect(destinations()).toEqual(alertDestinationsConfigured);
+  });
+
   it("passes a viewer's 403 back to the caller, changing nothing", async () => {
     server.use(http.put(endpoints.alerts.mute.set.route, () => HttpResponse.json(errorForbidden, { status: 403 })));
     const { result } = setup();

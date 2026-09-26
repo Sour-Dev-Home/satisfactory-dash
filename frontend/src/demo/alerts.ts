@@ -160,17 +160,42 @@ export function deleteRule(now: number, ruleId: string): Answer {
   return ok({ deleted: true });
 }
 
-/** Like the backend's allowlist: only Discord's own webhook addresses, over https. Nothing is contacted. */
-const DISCORD_WEBHOOK = /^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\/\S+$/;
+// The backend's webhook rules (backend/src/modules/alerts/services/discordWebhook.ts), mirrored so the
+// demo accepts and refuses the same URLs with the same `reason`. Nothing is ever contacted.
+const WEBHOOK_HOSTS = ["discord.com", "discordapp.com"];
+const WEBHOOK_PATH = /^\/api(?:\/v\d{1,2})?\/webhooks\/\d{15,25}\/[A-Za-z0-9_-]{20,120}$/;
+
+/** The canonical URL's last 4 characters, or why the backend would refuse it. */
+export function checkWebhook(raw: string): { last4: string } | { reason: string } {
+  const input = raw.trim();
+  if (input.length === 0) return { reason: "not_a_url" };
+  if (input.length > 300) return { reason: "too_long" };
+  if ([...input].some((c) => /[\s\\%]/.test(c) || c.codePointAt(0)! <= 0x20 || (c.codePointAt(0)! >= 0x7f && c.codePointAt(0)! <= 0x9f))) {
+    return { reason: "not_a_url" };
+  }
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return { reason: "not_a_url" };
+  }
+  if (url.protocol !== "https:") return { reason: "not_https" };
+  if (url.username !== "" || url.password !== "") return { reason: "credentials_in_url" };
+  if (!WEBHOOK_HOSTS.includes(url.hostname)) return { reason: "host_not_allowed" };
+  if (url.port !== "") return { reason: "port_not_allowed" };
+  if (url.search !== "" || url.hash !== "") return { reason: "query_or_fragment" };
+  if (!WEBHOOK_PATH.test(url.pathname)) return { reason: "path_not_a_webhook" };
+  if (input.includes("?") || input.includes("#")) return { reason: "query_or_fragment" };
+  return { last4: `https://${url.hostname}${url.pathname}`.slice(-4) };
+}
 
 export function putDiscord(now: number, body: unknown): Answer {
   const parsed = PutDiscordDestinationRequestSchema.safeParse(body);
   if (!parsed.success) return fail(400, "bad_request", "That request isn't valid.");
-  const url = parsed.data.webhookUrl.trim();
-  if (!url.startsWith("https://")) return fail(422, "webhook_invalid", "That is not a valid Discord webhook URL", "not_https");
-  if (!DISCORD_WEBHOOK.test(url)) return fail(422, "webhook_invalid", "That is not a valid Discord webhook URL", "host_not_allowed");
+  const checked = checkWebhook(parsed.data.webhookUrl);
+  if ("reason" in checked) return fail(422, "webhook_invalid", "That is not a valid Discord webhook URL", checked.reason);
   // Only the last 4 characters are kept: the URL itself is forgotten at once, as on the backend.
-  state.discord = { last4: url.slice(-4), enabled: true, disabledReason: null, updatedAt: iso(now) };
+  state.discord = { last4: checked.last4, enabled: true, disabledReason: null, updatedAt: iso(now) };
   return ok({ discord: state.discord });
 }
 

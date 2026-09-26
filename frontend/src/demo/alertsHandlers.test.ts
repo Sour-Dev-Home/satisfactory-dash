@@ -106,16 +106,45 @@ describe("the demo's alerts", () => {
   });
 
   it("keeps only a webhook's last 4 characters, and refuses anything but Discord over https", async () => {
-    const url = "https://discord.com/api/webhooks/123/abcdWXYZ";
+    const url = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnop_-WXYZ";
     const saved = DiscordDestinationResponseSchema.parse(await json(await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), { webhookUrl: url })));
     expect(saved.discord.last4).toBe("WXYZ");
     const read = JSON.stringify(await json(await call("GET", endpoints.alerts.destinations.get.path(S))));
     expect(read).not.toContain("webhooks");
 
-    const http = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), { webhookUrl: "http://discord.com/api/webhooks/1/x" });
+    const http = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), { webhookUrl: "http://discord.com/api/webhooks/123456789012345678/abcdefghijklmnop_-WXYZ" });
     expect(http.status).toBe(422);
-    const other = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), { webhookUrl: "https://example.com/api/webhooks/1/x" });
+    const other = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), { webhookUrl: "https://example.com/api/webhooks/123456789012345678/abcdefghijklmnop_-WXYZ" });
     expect(((await json(other)) as { error: { reason: string } }).error.reason).toBe("host_not_allowed");
+  });
+
+  // The demo mirrors the backend's allowlist (backend discordWebhook.ts): it parses the URL, so the
+  // host's case and the default port don't matter, and a versioned path is a webhook too.
+  it("accepts a webhook URL the way the backend's allowlist does: any case, and a versioned path", async () => {
+    const upper = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), {
+      webhookUrl: "HTTPS://DISCORD.COM/api/webhooks/123456789012345678/abcdefghijklmnop_-WXYZ",
+    });
+    expect(upper.status).toBe(200);
+
+    const versioned = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), {
+      webhookUrl: "https://discord.com/api/v10/webhooks/123456789012345678/abcdefghijklmnop_-WXYZ",
+    });
+    expect(versioned.status).toBe(200);
+  });
+
+  it("refuses with the backend's reasons: a non-webhook path, a port, a query, credentials", async () => {
+    const reasonOf = async (webhookUrl: string) => {
+      const res = await call("PUT", endpoints.alerts.destinations.putDiscord.path(S), { webhookUrl });
+      expect(res.status).toBe(422);
+      return ((await json(res)) as { error: { reason: string } }).error.reason;
+    };
+    const path = "/api/webhooks/123456789012345678/abcdefghijklmnop_-WXYZ";
+    expect(await reasonOf("https://discord.com/api/webhooks/1/short")).toBe("path_not_a_webhook");
+    expect(await reasonOf(`https://discord.com:8443${path}`)).toBe("port_not_allowed");
+    expect(await reasonOf(`https://discord.com${path}?wait=true`)).toBe("query_or_fragment");
+    expect(await reasonOf(`https://user:pw@discord.com${path}`)).toBe("credentials_in_url");
+    expect(await reasonOf(`https://discord.com.example.org${path}`)).toBe("host_not_allowed");
+    expect(await reasonOf(`https://discord.com/api/webhooks/1%2F2${path}`)).toBe("not_a_url");
   });
 
   it("sends a test without any network call, and says so when there's no webhook", async () => {
