@@ -8,8 +8,28 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
+
+      - name: Log fragment (ADR-0033)
+        # Pull requests only (not push or merge_group): the PR must ADD its own file under
+        # docs-vault/wiki/log.d/ and must not edit log.md or an existing fragment. The label
+        # `log-compaction` and the Dependabot author are exempt. Labels are read live so a re-run
+        # after adding the label sees it. Values reach the script through env, never a shell line.
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          PR_FILES_JSON=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[] | {filename, status, previous_filename}' | jq -s .)
+          PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '[.[].name]')
+          export PR_FILES_JSON PR_LABELS_JSON
+          node scripts/log-check.mjs
 
       - uses: actions/setup-node@v7
         with:
