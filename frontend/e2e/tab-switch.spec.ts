@@ -80,8 +80,14 @@ async function shiftsSince(page: Page, from: number): Promise<Shift[]> {
   );
 }
 
+interface Switch {
+  shifts: Shift[];
+  /** For the report: when each shift and each API response came, in ms after the click. */
+  timeline: string[];
+}
+
 /** Clicks a main tab, waits for every request to land and the page to settle, returns its shifts. */
-async function switchTo(page: Page, tab: string): Promise<Shift[]> {
+async function switchTo(page: Page, tab: string): Promise<Switch> {
   const clickedAt = await page.evaluate(() => performance.now());
   await page.getByRole("navigation").getByRole("link", { name: tab, exact: true }).click();
   // Longer than the longest delay plus rendering; networkidle alone misses a lazy chunk's render.
@@ -89,7 +95,22 @@ async function switchTo(page: Page, tab: string): Promise<Shift[]> {
   await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });
   await page.waitForTimeout(300);
   await settleAnimations(page);
-  return shiftsSince(page, clickedAt + 100);
+  const shifts = await shiftsSince(page, clickedAt + 100);
+  const responses = await page.evaluate(
+    (start) =>
+      performance
+        .getEntriesByType("resource")
+        .filter((r) => r.name.includes("/api/") && r.startTime >= start)
+        .map((r) => ({ at: (r as PerformanceResourceTiming).responseEnd, what: new URL(r.name).pathname.replace(/^.*\/api/, "") + new URL(r.name).search })),
+    clickedAt,
+  );
+  const timeline = [
+    ...responses.map((r) => ({ at: r.at, line: `api ${r.what}` })),
+    ...shifts.map((s) => ({ at: s.t, line: `shift ${s.v.toFixed(4)}: ${s.moved.join("; ")}` })),
+  ]
+    .sort((a, b) => a.at - b.at)
+    .map((e) => `${Math.round(e.at - clickedAt)} ms ${e.line}`);
+  return { shifts, timeline };
 }
 
 const VARIANTS = (["no-preference", "reduce"] as const).flatMap((motion) =>
@@ -108,15 +129,16 @@ for (const { motion, slowSinceYesterday } of VARIANTS) {
       await page.waitForLoadState("networkidle");
       await watchShifts(page);
 
-      const shifts: Record<string, Shift[]> = {};
+      const switches: Record<string, Switch> = {};
       for (const tab of ["Power", "Factory", "Overview", "Power"]) {
-        shifts[shifts[tab] ? `${tab} (again)` : tab] = await switchTo(page, tab);
+        switches[switches[tab] ? `${tab} (again)` : tab] = await switchTo(page, tab);
       }
       const scores = Object.fromEntries(
-        Object.entries(shifts).map(([tab, list]) => [tab, list.reduce((sum, s) => sum + s.v, 0)]),
+        Object.entries(switches).map(([tab, s]) => [tab, s.shifts.reduce((sum, shift) => sum + shift.v, 0)]),
       );
+      const timelines = Object.fromEntries(Object.entries(switches).map(([tab, s]) => [tab, s.timeline]));
       // Printed as well as attached: CI keeps the log of a passing test, not its attachments.
-      const report = JSON.stringify({ project: testInfo.project.name, motion, slowSinceYesterday, scores, shifts }, null, 1);
+      const report = JSON.stringify({ project: testInfo.project.name, motion, slowSinceYesterday, scores, timelines }, null, 1);
       console.log(`tab-switch CLS ${report}`);
       await testInfo.attach("cls.json", { body: report, contentType: "application/json" });
       for (const [tab, cls] of Object.entries(scores)) {
