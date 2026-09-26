@@ -22,6 +22,8 @@ export interface MachineObservation {
   state: string | undefined;
   /** The best averaged output percent (the classifier's own input), undefined when there is none. */
   outputPercent: number | undefined;
+  /** For an `underfed` machine: the ingredient it consumes least (classifyBuilding's `missingInput`), a class name. */
+  missingInput?: string;
 }
 
 export interface ObservationSnapshot {

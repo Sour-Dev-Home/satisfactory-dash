@@ -233,15 +233,74 @@ describe("stopped_machines (grouped)", () => {
     const events = sim.at(5, world);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ subject: "group", transition: "fired", kind: "stopped_machines", severity: "warning" });
-    expect(events[0]!.summary).toEqual({ machines: 3, byRecipe: [{ recipe: "Iron Plate", count: 2 }, { recipe: "Wire", count: 1 }] });
+    expect(events[0]!.summary).toEqual({
+      machines: 3,
+      byRecipe: [{ recipe: "Iron Plate", count: 2 }, { recipe: "Wire", count: 1 }],
+      byReason: [{ reason: "input short", count: 3 }], // no ingredient data in this fixture
+    });
   });
 
-  it("only machines that are underfed AND below the percent count: slow, idle, backed up and unpowered ones do not", () => {
+  it("only underfed or backedUp machines below the percent count: slow, intermittently full, idle, paused, unpowered and producing ones do not", () => {
     const sim = new Sim([stopped]);
     const world = {
-      machines: [machine("slow", "underfed", 40), machine("idle", "idle", 0), machine("full", "backedUp", 0), machine("dead", "unpowered", 0), machine("edge", "underfed", 5)],
+      machines: [
+        machine("slow", "underfed", 40),
+        machine("half-full", "backedUp", 50), // intermittently full: not stopped
+        machine("idle", "idle", 0),
+        machine("dead", "unpowered", 0),
+        machine("held", "paused", 0),
+        machine("edge", "underfed", 5), // exactly the threshold: not below it
+        machine("edge-full", "backedUp", 5),
+        okMachine("fine"),
+      ],
     };
     expect(run(sim, 0, 30, world)).toEqual([]);
+  });
+
+  it("a backedUp machine at about 0% is stopped too (the most common real case): it fires after `for`", () => {
+    const sim = new Sim([stopped]);
+    const world = { machines: [machine("full", "backedUp", 0)] };
+    expect(run(sim, 0, 4.5, world)).toEqual([]);
+    const events = sim.at(5, world);
+    expect(transitions(events)).toEqual(["group:fired"]);
+    expect(events[0]!.summary).toMatchObject({ machines: 1, byReason: [{ reason: "output full", count: 1 }] });
+  });
+
+  it("a backedUp machine at 50% does not qualify, even after a long time", () => {
+    const sim = new Sim([stopped]);
+    expect(run(sim, 0, 60, { machines: [machine("half", "backedUp", 50)] }, 1)).toEqual([]);
+  });
+
+  it("one group message carries both reasons, counted, with the ingredient an underfed machine is short of", () => {
+    const sim = new Sim([stopped]);
+    const world = {
+      machines: [
+        { ...machine("a", "underfed", 0), missingInput: "Desc_Screw_C" },
+        { ...machine("b", "underfed", 0), missingInput: "Desc_Screw_C" },
+        { ...machine("c", "underfed", 0), missingInput: "Desc_Wire_C" },
+        machine("d", "underfed", 0), // no ingredient data
+        machine("e", "backedUp", 0),
+        machine("f", "backedUp", 1),
+      ],
+    };
+    run(sim, 0, 4.5, world);
+    const events = sim.at(5, world);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.summary).toMatchObject({
+      machines: 6,
+      byReason: [
+        { reason: "input short: Desc_Screw_C", count: 2 },
+        { reason: "output full", count: 2 },
+        { reason: "input short", count: 1 },
+        { reason: "input short: Desc_Wire_C", count: 1 },
+      ],
+    });
+  });
+
+  it("a machine that goes from underfed to backedUp at 0% keeps qualifying without restarting its timer", () => {
+    const sim = new Sim([stopped]);
+    run(sim, 0, 3, { machines: [machine("a", "underfed", 0)] });
+    expect(transitions(sim.at(5, { machines: [machine("a", "backedUp", 0)] }))).toEqual(["group:fired"]);
   });
 
   it("a machine that recovers before `for` never counts", () => {

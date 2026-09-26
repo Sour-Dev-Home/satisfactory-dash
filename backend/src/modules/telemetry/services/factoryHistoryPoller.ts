@@ -196,13 +196,17 @@ export class FactoryHistoryPoller implements BackgroundWorker {
       observedAt: atMs,
       intervalMs: this.intervalMs,
       afterResume: this.wasPaused,
-      machines: buildings.map((building) => ({
-        id: building.id,
-        className: building.className,
-        recipe: building.recipe,
-        state: classifyBuilding(building, isBackedUp(building))?.state,
-        outputPercent: bestOutputPercent(building),
-      })),
+      machines: buildings.map((building) => {
+        const classification = classifyBuilding(building, isBackedUp(building));
+        return {
+          id: building.id,
+          className: building.className,
+          recipe: building.recipe,
+          state: classification?.state,
+          outputPercent: bestOutputPercent(building),
+          ...(classification?.missingInput !== undefined ? { missingInput: classification.missingInput } : {}),
+        };
+      }),
     });
     this.wasPaused = false;
     this.options.history.recordItems(sumItemRates(buildings, atMs));

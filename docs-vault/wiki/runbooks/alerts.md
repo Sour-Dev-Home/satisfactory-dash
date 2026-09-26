@@ -20,7 +20,7 @@ twice its poller's interval is **unknown**, and every subject then holds its las
 | Rule (kind) | Preset | Subject | Condition | For / clear / repeat | Severity |
 |---|---|---|---|---|---|
 | `power_outage` | yes | one per circuit | the circuit's status is `outage` (a tripped fuse today) | 0 / 60 s / 1 h | critical |
-| `stopped_machines` | yes | `group` (one alert for all machines) | a machine is `underfed` AND its best output percent is below 5, held for `for` | 5 min / 2 min / 1 h | warning |
+| `stopped_machines` | yes | `group` (one alert for all machines) | a machine is `underfed` (input short) or `backedUp` (output full) AND its best output percent is below 5, held for `for`; the alert says why per machine ("input short: <ingredient>", "output full") | 5 min / 2 min / 1 h | warning |
 | `server_unreachable` | yes | `server` | 3 failed status polls in a row AND at least 2 minutes | 0 / 60 s / 1 h | critical |
 | `fuse_trip` | **no** | one per circuit | `fuseTriggered` | 0 / 60 s / 1 h | critical |
 

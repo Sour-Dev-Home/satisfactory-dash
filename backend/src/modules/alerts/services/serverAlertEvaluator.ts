@@ -90,7 +90,24 @@ function machineSummary(ids: ReadonlySet<string>, machines: readonly MachineObse
     .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
     .slice(0, SUMMARY_TOP_RECIPES)
     .map(([recipe, count]) => ({ recipe, count }));
-  return { machines: ids.size, byRecipe: top };
+  // Why each machine is stopped: "output full" (backedUp) or "input short: <the ingredient it consumes least>"
+  // (underfed). Counted per reason, so one group message can say both.
+  const byReason = new Map<string, number>();
+  for (const machine of machines) {
+    if (!ids.has(machine.id)) continue;
+    const reason =
+      machine.state === "backedUp"
+        ? "output full"
+        : machine.missingInput !== undefined
+          ? `input short: ${machine.missingInput}`
+          : "input short";
+    byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  }
+  const reasons = [...byReason]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, SUMMARY_TOP_RECIPES)
+    .map(([reason, count]) => ({ reason, count }));
+  return { machines: ids.size, byRecipe: top, byReason: reasons };
 }
 
 /**
@@ -249,7 +266,10 @@ export class ServerAlertEvaluator {
         seen.add(machine.id);
         let condition: boolean | "unknown";
         if (machine.state === undefined) condition = "unknown";
-        else if (machine.state !== "underfed") condition = false;
+        // Stopped = producing (almost) nothing, for either reason: short of input (underfed) or unable to get rid of its
+        // output (backedUp, the most common real case). A backedUp machine at a higher percent is intermittently full,
+        // not stopped. Any other state (idle, paused, unpowered, producing) is not this alert's business.
+        else if (machine.state !== "underfed" && machine.state !== "backedUp") condition = false;
         else condition = machine.outputPercent === undefined ? "unknown" : machine.outputPercent < params.stoppedBelowPercent;
         let timer = timers.get(machine.id) ?? INITIAL_ALERT_STATE;
         if (adopting && condition === true) {

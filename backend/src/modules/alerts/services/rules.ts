@@ -15,7 +15,8 @@ export type Severity = (typeof SEVERITIES)[number];
 const NoParamsSchema = z.strictObject({});
 
 export const StoppedMachinesParamsSchema = z.strictObject({
-  /** A machine counts as stopped when it is `underfed` and its best output percent is below this (ADR-0027 amendment 2). */
+  /** A machine counts as stopped when it is `underfed` (short of input) or `backedUp` (output full) AND its best
+   *  output percent is below this (ADR-0027 decision 4: "backedUp or starved", amendment 2: "below about 5%"). */
   stoppedBelowPercent: z.number().min(0).max(100).default(5),
 });
 

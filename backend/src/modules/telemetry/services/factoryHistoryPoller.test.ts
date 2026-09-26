@@ -178,6 +178,16 @@ describe("FactoryHistoryPoller.poll", () => {
       ]);
     });
 
+    it("publishes the ingredient an underfed machine is short of (missingInput), and only for underfed machines", async () => {
+      const { board, poller } = publishing();
+      await poller.poll();
+      const byId = new Map(board.snapshot().factory!.machines.map((m) => [m.id, m]));
+      // stalled(): output 0 with the consumption at 100 percent for Desc_Stone_C, the lowest ConsPercent of its inputs.
+      expect(byId.get("m2")?.missingInput).toBe("Desc_Stone_C");
+      expect(byId.get("m1")).not.toHaveProperty("missingInput");
+      expect(byId.get("m3")).not.toHaveProperty("missingInput");
+    });
+
     it("flags ONLY the first snapshot after a pause as afterResume, and publishes nothing while paused", async () => {
       const { board, state, poller } = publishing();
       await poller.poll();
