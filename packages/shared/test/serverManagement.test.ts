@@ -201,6 +201,31 @@ describe("a server's display name is printable text (issue #198)", () => {
     expect(accepted("é".repeat(64))).toBe(true);
   });
 
+  it("the limit counts characters, not UTF-16 units: 64 astral emoji are fine, 65 are not", () => {
+    expect(accepted("🏭".repeat(64))).toBe(true);
+    expect(accepted("🏭".repeat(65))).toBe(false);
+  });
+
+  it("refuses invisible-looking filler characters: Hangul fillers, Braille blank, combining grapheme joiner, Khmer inherent vowels, Unicode tag characters", () => {
+    for (const cp of [0x3164, 0x115f, 0x1160, 0xffa0, 0x2800, 0x034f, 0x17b4, 0x17b5, 0x180e, 0xe0041, 0xe007f]) {
+      expect(accepted(`a${String.fromCodePoint(cp)}b`), cp.toString(16)).toBe(false);
+    }
+  });
+
+  it("refuses inner look-alike spaces (no-break, ideographic, en/em) but keeps the plain space", () => {
+    for (const cp of [0xa0, 0x1680, 0x2003, 0x2009, 0x202f, 0x205f, 0x3000]) {
+      expect(accepted(`a${String.fromCodePoint(cp)}b`), cp.toString(16)).toBe(false);
+    }
+    expect(accepted("a b")).toBe(true);
+  });
+
+  it("refuses a stack of combining marks (zalgo) but keeps ordinary accents and emoji variation selectors", () => {
+    expect(accepted("e" + "́".repeat(3))).toBe(true);
+    expect(accepted("e" + "́".repeat(4))).toBe(false);
+    expect(accepted("Z" + "̀́̂̃̄̅̆")).toBe(false);
+    expect(accepted("☢️ ✔️")).toBe(true);
+  });
+
   it("keeps the list additive for the same reason: canManageServers is optional", () => {
     expect(ServerListResponseSchema.safeParse({ servers: [] }).success).toBe(true);
     expect(ServerListResponseSchema.safeParse({ servers: [], canManageServers: true }).success).toBe(true);

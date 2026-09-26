@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { RESERVED_SERVER_IDS, ServerIdSchema } from "@satisfactory-dash/shared";
+import { DisplayNameSchema, RESERVED_SERVER_IDS, ServerIdSchema } from "@satisfactory-dash/shared";
 import { ConfigError } from "../../platform/errors.js";
 import { loadSatisfactoryServerConfigFromEnv } from "./connectionConfig.js";
 import type { SatisfactoryServerConfig } from "@satisfactory-dash/game-adapter";
@@ -21,7 +21,7 @@ const ServerFileEntrySchema = z.strictObject({
   // ADR-0030: "managed" and "test-connection" are fixed routes under /api/servers, so no server may use them.
   id: ServerIdSchema.refine((id) => !(RESERVED_SERVER_IDS as readonly string[]).includes(id), "that id is reserved (it is a fixed API route)"),
   /** Shown to users by GET /api/servers. Never a host or port. */
-  name: z.string().trim().min(1).max(64).optional(),
+  name: DisplayNameSchema.optional(), // the same printable-text rule as every other way a display name enters (#198)
   host: z.string().trim().min(1).optional(),
   apiPort: IntegerSchema.optional(),
   apiToken: z.string().optional(),

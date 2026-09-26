@@ -39,12 +39,17 @@ const TokenSchema = z
  * single-character form.
  */
 export const NON_PRINTABLE_IN_NAME = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+/** Blank-looking fillers that are not Cc/Cf: Hangul fillers, Braille blank, combining grapheme joiner, Khmer inherent vowels,
+ *  Mongolian vowel separator; plus any Zs other than the plain space (no-break, ideographic, en/em: look-alike spacing); plus
+ *  a stack of 4+ combining marks (zalgo). */
+export const LOOKALIKE_IN_NAME = /[͏ᅟᅠ឴឵᠎⠀ㅤﾠ]|(?! )\p{Zs}|\p{M}{4}/u;
 export const DisplayNameSchema = z
   .string()
   .trim()
   .min(1)
-  .max(64)
-  .refine((name) => !NON_PRINTABLE_IN_NAME.test(name), "A name is printable text: no control, invisible or direction-changing characters");
+  .refine((name) => Array.from(name).length <= 64, "Enter a name of up to 64 characters")
+  .refine((name) => !NON_PRINTABLE_IN_NAME.test(name), "A name is printable text: no control, invisible or direction-changing characters")
+  .refine((name) => !LOOKALIKE_IN_NAME.test(name), "A name is printable text: no blank-looking fillers, odd spaces or stacked combining marks");
 
 const ConnectionShape = {
   host: HostSchema,
