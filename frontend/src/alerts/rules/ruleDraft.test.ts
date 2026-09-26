@@ -123,6 +123,67 @@ describe("buildCreate", () => {
   });
 });
 
+describe("buildUpdate: rounding, formatting and malformed-stored-params edge cases", () => {
+  it("rounds 0.99 minutes of repeat down to 59 s, still under the 60 s minimum", () => {
+    expect(buildUpdate(stopped, { ...draftFrom(stopped), repeatMinutes: "0.99" })).toEqual({
+      ok: false,
+      errors: { repeatMinutes: FIELD_HINT.repeatMinutes },
+    });
+  });
+
+  it("rounds 1440.004 minutes down to exactly the 86,400 s ceiling (accepted)", () => {
+    expect(buildUpdate(outage, { ...draftFrom(outage), forMinutes: "1440.004" })).toEqual({
+      ok: true,
+      request: { forSeconds: 86_400 },
+    });
+  });
+
+  it("rounds 1440.01 minutes up past the ceiling (refused)", () => {
+    expect(buildUpdate(outage, { ...draftFrom(outage), forMinutes: "1440.01" })).toEqual({
+      ok: false,
+      errors: { forMinutes: FIELD_HINT.forMinutes },
+    });
+  });
+
+  it("treats -0 minutes as unchanged (no spurious diff against a stored 0)", () => {
+    expect(buildUpdate(outage, { ...draftFrom(outage), forMinutes: "-0" })).toBeNull();
+  });
+
+  it("accepts scientific notation, since Number() does: 1e3 failed polls is 1000, within bounds", () => {
+    const draft = { ...draftFrom(unreachable), params: { ...draftFrom(unreachable).params, failedPolls: "1e3" } };
+    expect(buildUpdate(unreachable, draft)).toEqual({ ok: true, request: { params: { failedPolls: 1000, minSeconds: 120 } } });
+  });
+
+  it("refuses a locale-formatted number with a thousands comma", () => {
+    const draft = { ...draftFrom(production), params: { ...draftFrom(production).params, targetPerMinute: "1,200" } };
+    expect(buildUpdate(production, draft)).toEqual({ ok: false, errors: { targetPerMinute: FIELD_HINT.targetPerMinute } });
+  });
+
+  it("trims surrounding whitespace", () => {
+    const draft = { ...draftFrom(stopped), params: { stoppedBelowPercent: " 8 " } };
+    expect(buildUpdate(stopped, draft)).toEqual({ ok: true, request: { params: { stoppedBelowPercent: 8 } } });
+  });
+
+  it("gives no editable params for a rule whose stored params fail its own kind's schema, but still lets other fields change", () => {
+    const badTarget: AlertRule = { ...production, params: { item: "Desc_IronPlate_C", targetPerMinute: -5, windowMinutes: 10 } };
+    expect(draftFrom(badTarget).params).toEqual({});
+    expect(buildUpdate(badTarget, draftFrom(badTarget))).toBeNull();
+    expect(buildUpdate(badTarget, { ...draftFrom(badTarget), severity: "critical" })).toEqual({
+      ok: true,
+      request: { severity: "critical" },
+    });
+  });
+
+  // Found by the test-hunter: params were compared as text, so "5.0" for a stored 5 sent a PATCH that changed
+  // nothing. They're compared as numbers now, like the durations.
+  it("doesn't count a reformatted-but-equal param value as a change", () => {
+    expect(buildUpdate(stopped, { ...draftFrom(stopped), params: { stoppedBelowPercent: "5.0" } })).toBeNull();
+    expect(buildUpdate(unreachable, { ...draftFrom(unreachable), params: { failedPolls: "3.0", minMinutes: "2.00" } })).toBeNull();
+    const productionDraft = draftFrom(production);
+    expect(buildUpdate(production, { ...productionDraft, params: { ...productionDraft.params, targetPerMinute: "120.0" } })).toBeNull();
+  });
+});
+
 describe("labels", () => {
   it("names the known kinds and keeps an unknown one's own name", () => {
     expect(kindLabel("server_unreachable")).toBe("Game server unreachable");

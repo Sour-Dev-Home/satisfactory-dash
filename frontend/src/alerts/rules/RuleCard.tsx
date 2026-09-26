@@ -49,7 +49,8 @@ export function RuleCard({
   const item = rule.kind === "production_below_target" && params?.item ? labelFor(items, params.item) : null;
   const headingId = `${uid}-heading`;
   const fieldId = (f: Field | "enabled") => `${uid}-${f}`;
-  const changed = JSON.stringify(draft) !== JSON.stringify(draftFrom(rule));
+  // Changed = something to send (or an error to show): the same test Save uses, so "5.0" for 5 isn't a change.
+  const changed = buildUpdate(rule, draft) !== null;
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const setParam = (f: Field, value: string) => setDraft((d) => ({ ...d, params: { ...d.params, [f]: value } }));

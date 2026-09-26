@@ -133,13 +133,16 @@ export type Built<T> = { ok: true; request: T } | { ok: false; errors: Errors };
 function paramsUpdate(rule: AlertRule, draft: Draft, errors: Errors): Record<string, unknown> | undefined {
   const before = knownParams(rule);
   if (before === null) return undefined; // a kind the editor doesn't edit: its params are never touched
-  const changed = (Object.keys(draft.params) as Field[]).some((f) => draft.params[f] !== before[f]);
-  if (!changed) return undefined;
+  // Untouched text is the stored value, so it needs no checking.
+  const edited = (Object.keys(draft.params) as Field[]).some((f) => draft.params[f] !== before[f]);
+  if (!edited) return undefined;
   const value = (f: Field) => num(draft.params[f] ?? "");
+  // Compare numbers, not text, like the durations: "5.0" for a stored 5 changes nothing.
+  const unchanged = (next: Record<string, unknown>) => Object.entries(next).every(([k, v]) => rule.params[k] === v);
   if (rule.kind === "stopped_machines") {
     const parsed = StoppedMachinesParamsSchema.safeParse({ stoppedBelowPercent: value("stoppedBelowPercent") });
     if (!parsed.success) errors.stoppedBelowPercent = FIELD_HINT.stoppedBelowPercent;
-    return parsed.success ? parsed.data : undefined;
+    return parsed.success && !unchanged(parsed.data) ? parsed.data : undefined;
   }
   if (rule.kind === "server_unreachable") {
     const minMinutes = toSeconds(draft.params.minMinutes ?? "");
@@ -150,7 +153,7 @@ function paramsUpdate(rule: AlertRule, draft: Draft, errors: Errors): Record<str
         if (issue.path[0] === "minSeconds") errors.minMinutes = FIELD_HINT.minMinutes;
       }
     }
-    return parsed.success ? parsed.data : undefined;
+    return parsed.success && !unchanged(parsed.data) ? parsed.data : undefined;
   }
   if (rule.kind === "production_below_target") {
     const parsed = ProductionBelowTargetUpdateParamsSchema.safeParse({
@@ -163,7 +166,7 @@ function paramsUpdate(rule: AlertRule, draft: Draft, errors: Errors): Record<str
         if (issue.path[0] === "windowMinutes") errors.windowMinutes = FIELD_HINT.windowMinutes;
       }
     }
-    return parsed.success ? parsed.data : undefined;
+    return parsed.success && !unchanged(parsed.data) ? parsed.data : undefined;
   }
   return undefined;
 }

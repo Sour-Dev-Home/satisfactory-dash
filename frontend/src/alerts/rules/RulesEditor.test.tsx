@@ -149,6 +149,85 @@ describe("RulesEditor", () => {
     setup({ rules: alertRulesEmpty.rules });
     expect(screen.getByText("No alert rules yet.")).toBeInTheDocument();
   });
+
+  it("does not call onUpdate twice for a rapid double-click on Save (disabled synchronously)", async () => {
+    let resolve!: () => void;
+    const onUpdate = vi.fn(() => new Promise<void>((r) => (resolve = r)));
+    setup({ onUpdate });
+    const stopped = card("Stopped machines");
+    fireEvent.change(within(stopped).getByRole("textbox", { name: "Stopped below (%)" }), { target: { value: "8" } });
+    const save = within(stopped).getByRole("button", { name: "Save" });
+    fireEvent.click(save);
+    fireEvent.click(within(stopped).getByRole("button", { name: "Saving…" })); // already disabled; a native no-op
+    resolve();
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not call onDelete twice for a rapid double-click on Delete (disabled synchronously)", async () => {
+    let resolve!: () => void;
+    const onDelete = vi.fn(() => new Promise<void>((r) => (resolve = r)));
+    setup({ onDelete });
+    const production = card(/Production below target/);
+    fireEvent.click(within(production).getByRole("button", { name: "Delete rule" }));
+    const confirm = within(production).getByRole("group", { name: "Confirm delete" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(production).getByRole("button", { name: "Deleting…" })); // already disabled
+    resolve();
+    await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not throw when onUpdate resolves after the card has unmounted", async () => {
+    let resolve!: () => void;
+    const onUpdate = vi.fn(() => new Promise<void>((r) => (resolve = r)));
+    const { unmount } = setup({ onUpdate });
+    const stopped = card("Stopped machines");
+    fireEvent.change(within(stopped).getByRole("textbox", { name: "Stopped below (%)" }), { target: { value: "8" } });
+    fireEvent.click(within(stopped).getByRole("button", { name: "Save" }));
+    unmount();
+    expect(() => resolve()).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  it("clears aria-invalid and the error description once the field is fixed and resubmitted", async () => {
+    const { props } = setup();
+    const stopped = card("Stopped machines");
+    const repeat = within(stopped).getByRole("textbox", { name: "Repeat every (min)" });
+    fireEvent.change(repeat, { target: { value: "0.5" } });
+    fireEvent.click(within(stopped).getByRole("button", { name: "Save" }));
+    expect(repeat).toHaveAttribute("aria-invalid", "true");
+    expect(repeat.getAttribute("aria-describedby")).toMatch(/-error$/);
+
+    fireEvent.change(repeat, { target: { value: "5" } });
+    fireEvent.click(within(stopped).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(props.onUpdate).toHaveBeenCalledWith(rules[1].id, { repeatSeconds: 300 }));
+    expect(repeat).not.toHaveAttribute("aria-invalid");
+    expect(repeat.getAttribute("aria-describedby")).toMatch(/-hint$/);
+  });
+
+  it("keeps Save disabled after retyping the same value in different notation (found by the test-hunter)", () => {
+    const { props } = setup();
+    const stopped = card("Stopped machines");
+    const box = within(stopped).getByRole("textbox", { name: "Stopped below (%)" });
+    // Same numeric value as the stored 5, just reformatted - a plausible "type away, then back" edit.
+    fireEvent.change(box, { target: { value: "5.0" } });
+    const save = within(stopped).getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(props.onUpdate).not.toHaveBeenCalled();
+    // A real change still enables it.
+    fireEvent.change(box, { target: { value: "5.5" } });
+    expect(save).toBeEnabled();
+  });
+
+  it("renders a production rule whose stored params fail its own schema without crashing, and hides its item fields", () => {
+    const badTarget: AlertRule = { ...rules[3], params: { item: "Desc_IronPlate_C", targetPerMinute: -5, windowMinutes: 10 } };
+    setup({ rules: [badTarget] });
+    const production = card("Production below target");
+    expect(within(production).queryByText("Iron Plate")).not.toBeInTheDocument();
+    expect(within(production).queryByRole("textbox", { name: /Target/ })).not.toBeInTheDocument();
+    expect(within(production).getByRole("button", { name: "Save" })).toBeDisabled();
+  });
 });
 
 describe("New production target", () => {
