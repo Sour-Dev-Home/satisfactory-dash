@@ -3,7 +3,8 @@ import type { ServerPlayersResponse } from "@satisfactory-dash/shared";
 import { Link } from "react-router";
 import { cn } from "../lib/cn";
 import { CardGrid } from "./cards/CardGrid";
-import { HealthCard, type Shown } from "./cards/HealthCard";
+import { HealthCard } from "./cards/HealthCard";
+import { WORD, WORD_COLOR, type Shown } from "./cards/words";
 import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
 import type { SectionState } from "./health";
 
@@ -13,24 +14,6 @@ export interface OverviewSection {
   to?: string;
   state: SectionState;
 }
-
-const WORD: Record<Shown, string> = {
-  ok: "Operational",
-  paused: "Paused",
-  degraded: "Degraded",
-  unavailable: "Unavailable",
-  outage: "Outage",
-  pending: "Checking…",
-};
-
-const WORD_COLOR: Record<Shown, string> = {
-  ok: "text-ok",
-  paused: "text-info",
-  degraded: "text-warn",
-  unavailable: "text-muted",
-  outage: "text-bad",
-  pending: "text-muted",
-};
 
 function shown(state: SectionState): { health: Shown; summary: string } {
   if (state === "pending") return { health: "pending", summary: "Loading…" };
@@ -52,19 +35,21 @@ export function OverviewPanel({
   players: PlayersState;
   /** Who is online, when the server can say (ADR-0029). */
   roster?: ServerPlayersResponse;
-  /** The operator dismissed this banner (a warning only; see canDismiss). */
+  /** The operator hid this warning (a warning only; see canDismiss). */
   bannerHidden?: boolean;
-  /** Shows the × when given: "hide until something changes". */
+  /** Shows the Hide button when given: "hide until something changes". */
   onDismiss?: () => void;
 }) {
-  // The × disappears with the banner, which would drop keyboard focus to <body>: move it to
-  // the next card's heading instead, once the banner is gone.
-  const playersHeading = useRef<HTMLHeadingElement>(null);
+  // The Hide button disappears once clicked, which would drop keyboard focus to <body>: move
+  // it to the Health card's own heading instead. The flag holds for the one commit after the
+  // click (no dependency list): if that render doesn't hide the warning, it's dropped, so a later
+  // unrelated hide never steals focus.
+  const healthHeading = useRef<HTMLHeadingElement>(null);
   const focusAfterDismiss = useRef(false);
   useEffect(() => {
-    if (bannerHidden && focusAfterDismiss.current) playersHeading.current?.focus();
+    if (bannerHidden && focusAfterDismiss.current) healthHeading.current?.focus();
     focusAfterDismiss.current = false;
-  }, [bannerHidden]);
+  });
   const dismiss = onDismiss
     ? () => {
         focusAfterDismiss.current = true;
@@ -79,8 +64,8 @@ export function OverviewPanel({
         Overview
       </h2>
       <CardGrid>
-        {!bannerHidden && <HealthCard overall={overall} onDismiss={dismiss} />}
-        <PlayersCard state={players} roster={roster} headingRef={playersHeading} />
+        <HealthCard overall={overall} hidden={bannerHidden} onDismiss={dismiss} headingRef={healthHeading} />
+        <PlayersCard state={players} roster={roster} />
       </CardGrid>
       <ul aria-label="Sections" className="divide-y divide-line rounded-card border border-line bg-surface">
         {sections.map((section) => {

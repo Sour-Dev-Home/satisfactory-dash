@@ -1,10 +1,11 @@
+import type { Ref } from "react";
 import { cn } from "../../lib/cn";
-import type { Health } from "../health";
+import { WORD, WORD_COLOR, type Shown } from "./words";
 
-/** A health level, or still loading. */
-export type Shown = Health | "pending";
+export type { Shown };
 
-const BANNER: Record<Shown, string> = {
+/** The badge behind the icon: the solid colours carry white marks at WCAG AA. */
+const BADGE: Record<Shown, string> = {
   ok: "bg-ok-solid text-white",
   paused: "bg-info-solid text-white",
   degraded: "bg-warn-solid text-white",
@@ -20,10 +21,10 @@ function HealthIcon({ health }: { health: Shown }) {
     <svg
       viewBox="0 0 12 12"
       data-icon={kind}
-      className="size-3"
+      className="size-5"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.75}
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -46,39 +47,65 @@ function HealthIcon({ health }: { health: Shown }) {
 }
 
 /**
- * The Health card: the overall answer to "is everything OK?" (health.ts), one slim line whose
- * colour carries the level (the owner's call). Only shows what health.ts derived.
+ * The Health card: the overall answer to "is everything OK?" (health.ts), a card of its own
+ * beside Players (the owner's call, replacing the full-width bar). Only shows what health.ts
+ * derived. A dismissed warning stays in the card, quietly, until something changes.
  */
 export function HealthCard({
   overall,
+  hidden = false,
   onDismiss,
+  headingRef,
 }: {
   overall: { health: Shown; headline: string };
-  /** Shows the ×: "hide until something changes" (a warning only; see canDismiss). */
+  /** The operator hid this warning (see canDismiss): shown neutral, without the headline. */
+  hidden?: boolean;
+  /** Shows the Hide button: "hide until something changes" (a warning only; see canDismiss). */
   onDismiss?: () => void;
+  headingRef?: Ref<HTMLHeadingElement>;
 }) {
   return (
-    // Spans the card grid's row: it's the headline for the cards under it.
-    <div className={cn("flex items-center gap-3 rounded-card py-1 pr-1 pl-4 font-semibold md:col-span-2", BANNER[overall.health])}>
-      <span aria-hidden="true" className="grid size-5 flex-none place-items-center rounded-full bg-white/20">
-        <HealthIcon health={overall.health} />
-      </span>
-      <p role="status" className="min-h-[44px] flex-1 content-center">
-        {overall.headline}
-      </p>
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Hide this warning until something changes"
-          title="Hide until something changes"
-          // 44 x 44 hit area (min-w-[44px] plus the base button min-height). The faint chip
-          // makes it read as a control on the coloured bar, not an icon.
-          className="grid min-w-[44px] flex-none place-items-center rounded-md border-0 bg-white/10 px-0 text-lg text-inherit hover:bg-white/20"
+    <section
+      aria-labelledby="health-heading"
+      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5"
+    >
+      {/* 44 px whether or not Hide shows, like Players' header: the two cards' bodies line up. */}
+      <div className="flex min-h-[44px] items-center gap-3">
+        {/* tabIndex -1: focus lands here after the warning is hidden (OverviewPanel). */}
+        <h3 id="health-heading" ref={headingRef} tabIndex={-1} className="mb-0">
+          Health
+        </h3>
+        {onDismiss && !hidden && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Hide this warning until something changes"
+            title="Hide until something changes"
+            className="ml-auto min-w-[44px] text-sm"
+          >
+            Hide
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-4">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "grid size-12 flex-none place-items-center rounded-full",
+            hidden ? "bg-surface-2 text-muted" : BADGE[overall.health],
+          )}
         >
-          ×
-        </button>
-      )}
-    </div>
+          <HealthIcon health={overall.health} />
+        </span>
+        <p role="status" className="mb-0 grid gap-0.5">
+          <span className={cn("text-2xl font-semibold", hidden ? "text-muted" : WORD_COLOR[overall.health])}>
+            {WORD[overall.health]}
+          </span>
+          <span className={hidden ? "text-sm text-muted" : "text-fg-strong"}>
+            {hidden ? "Warning hidden until something changes." : overall.headline}
+          </span>
+        </p>
+      </div>
+    </section>
   );
 }
