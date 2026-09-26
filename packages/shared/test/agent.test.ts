@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
   AGENT_RESULT_CODES,
@@ -114,6 +115,15 @@ describe("agent contract: snapshots", () => {
     expect(SnapshotRequestSchema.safeParse(fixtures.agentSnapshotRequestPartial).success).toBe(true);
     expect([withSettings({ autoPause: false }), withSettings({ autoPause: true }), withSettings(undefined)]).toEqual([true, true, true]);
     expect([withSettings({}), withSettings({ autoPause: "yes" }), withSettings({ autoPause: null }), withSettings({ autoPause: true, extra: 1 }), withSettings(null)]).toEqual([false, false, false, false, false]);
+  });
+
+  it("`settings` is not a data part: allowed on an unreachable snapshot, and it round-trips through parse and z.input", () => {
+    const unreachable = { ...fixtures.agentSnapshotRequestUnreachable, settings: { autoPause: false } };
+    expect(SnapshotRequestSchema.safeParse(unreachable).success).toBe(true);
+    const parsed = SnapshotRequestSchema.parse(fixtures.agentSnapshotRequestFull);
+    expect(parsed.settings).toEqual({ autoPause: true });
+    const input: z.input<typeof SnapshotRequestSchema> = { ...fixtures.agentSnapshotRequestPartial, settings: { autoPause: true } };
+    expect(SnapshotRequestSchema.safeParse(input).success).toBe(true);
   });
 
   it("the request is strict (no machine details) and needs the time, with an offset or Z", () => {
