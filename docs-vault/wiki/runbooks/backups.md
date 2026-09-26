@@ -234,6 +234,13 @@ restored into a scratch database. Row counts matched the live database (users 1/
 audit events 5/6: one event was newer than the dump). The newest migration in the restore was
 `1790380800000_audit_purge`. The scratch database was dropped and the plaintext deleted.
 
+**Rehearsal record (2026-09-26, from Backblaze B2): passed.** After the cutover the newest object was downloaded with
+the offline read key, decrypted with the offline age key and restored into a scratch database: `pg_restore` exited 0
+and the row counts matched the live database (users 1/1, servers 1/1, members 1/1, connections 1/1, audit events
+10/10). The newest migration in the restore was `1790812800000_alert_production_kind`. The scratch database was dropped
+and the plaintext deleted. The nightly task then ran against B2 with result 0 ("succeeded on attempt 1"). The S3
+bucket is read-only from that day and is deleted, with the `satis-backup` IAM user, on or after **2026-11-02**.
+
 To restore for real after a loss, the same steps apply, restoring into a fresh database that the backend
 role owns (or run `npm run db:init -w backend` first for the roles), and only after stopping the backend.
 
@@ -305,8 +312,10 @@ role either: a dump as `satis_app` fails with `permission denied for sequence pg
 ## Privacy
 
 The Backblaze wording (ADR-0035) is **"Backblaze stores encrypted backups for up to 37 days"** (the owner approved
-it; the region is unnamed). It goes on the page only in the cutover PR described in the cutover list above, which
-lists both providers until the S3 bucket is deleted. The AWS wording below is what applies until then.
+it; the region is unnamed). **The cutover happened on 2026-09-26** and the page now lists BOTH providers: Backblaze,
+and Amazon Web Services for the older copies it still holds (read-only, removed within 37 days). When the S3 bucket
+and the `satis-backup` IAM user are deleted (on or after **2026-11-02**), the second tiny PR removes the AWS row and
+item from the page (and updates the outline). The AWS wording below is what applied before the cutover.
 
 The privacy page must say the truth once this ships: **Amazon Web Services stores encrypted backups for up
 to 37 days, so deleted data can survive in backups for up to 37 days** (outline, sections A.4 and A.5). The
