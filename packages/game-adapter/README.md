@@ -52,6 +52,13 @@ which specific game server — the data came from. That indirection is what make
   validates every response through one `parseUpstream()` call, so a malformed or
   out-of-range response is an `UpstreamError` (502), never a `TypeError`. Every
   `>= 0` range the public contract asserts is enforced here.
+- `snapshot/` — the PURE SHAPE mapping from the domain types to the contract's parts (ADR-0031):
+  `mapStatus`, `readPlayers`/`mapPlayers`, `mapPowerCircuit`, `mapFactoryBuilding` and `isBackedUp`. The backend's
+  telemetry services and the edge agent both use them, so the numbers users see cannot drift between the two. The
+  outputs are the contract's AGENT-INPUT shapes: no circuit `status`, no machine `state`, no `unit` on rates, no counts.
+  Those are classification RULES (and a catalog lookup) that stay in the backend (`telemetry/services/snapshotDerive.ts`),
+  which applies them to a polled server and to an agent's readings alike, so a rule change never needs an agent update.
+  `isBackedUp` stays here because it is a raw fact that needs the output inventory, which only this side sees.
 - `rawTypes.ts` — private raw types, derived from `rawSchemas.ts` with `z.infer`.
 - `vanillaApiClient.ts` / `frmApiClient.ts` — low-level HTTP clients, one per API.
   Both take an injectable transport/fetch so they're testable without a real socket.

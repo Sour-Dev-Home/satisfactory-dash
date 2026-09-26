@@ -20,3 +20,4 @@ export type { FrmApiFetch } from "./frmApiClient.js";
 export { ServerOptionsAdapter } from "./serverOptionsAdapter.js";
 export type { ServerOptionsPort, AutoPauseState } from "./serverOptionsAdapter.js";
 export { createServerOptionsPort, createGameServerConnection } from "./factories.js";
+export * from "./snapshot/index.js";

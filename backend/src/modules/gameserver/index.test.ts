@@ -20,10 +20,17 @@ describe("gameserver facade exports", () => {
       "createSatisfactoryServerConfig",
       "createServerOptionsPort",
       "ignoredSingleServerEnvNames",
+      "isBackedUp",
+      "isFrmAbsent",
       "loadConfiguredServersFromFile",
       "loadSatisfactoryServerConfigFromEnv",
+      "mapFactoryBuilding",
+      "mapPlayers",
+      "mapPowerCircuit",
+      "mapStatus",
       "nonLoopbackServerIds",
       "parsePortEnv",
+      "readPlayers",
       "testGameServerConnection",
     ]);
   });

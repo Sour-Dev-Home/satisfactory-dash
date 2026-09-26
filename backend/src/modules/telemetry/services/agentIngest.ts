@@ -4,14 +4,14 @@ import { sessionKey, type HistoryRecorder } from "./historyRecorder.js";
 import type { MachineObservation, ObservationSink } from "./observationBoard.js";
 import type { PowerHistoryStore, PowerSampleCircuit } from "./powerHistoryStore.js";
 import type { LatestSnapshotStore } from "./agentSnapshotStore.js";
-import { deriveFactory, derivePower, fuseByCircuit } from "./agentDerive.js";
+import { deriveFactory, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
 import type { UnitResolver } from "./productionService.js";
 
 /**
  * ADR-0031 PR 5a: what the backend does with one snapshot from an edge agent, so a server reached through an agent feeds
  * exactly what a polled server feeds: the alert engine's observation board, the durable history, the power chart's
  * memory and the live reads' latest-snapshot store. The agent sends raw readings only (ADR-0031): circuit `status`,
- * machine `state`, the counts and `unit` are derived HERE (agentDerive.ts) with the local path's rules, so nothing here
+ * machine `state`, the counts and `unit` are derived HERE (snapshotDerive.ts) with the local path's rules, so nothing here
  * calls a game server and an agent can never disagree with the deployed rules.
  *
  * Trust: the agent is the server's own, but its clock is not. `observedAt` is used only when it is within a minute of
@@ -77,7 +77,7 @@ export class AgentIngest implements AgentSnapshotSink {
     const power = snapshot.power !== undefined ? derivePower(snapshot.power) : undefined;
     const fusePower = power ?? store.freshPower();
     const factory =
-      snapshot.factory !== undefined ? deriveFactory(snapshot.factory, fusePower !== undefined ? fuseByCircuit(fusePower) : undefined, this.deps.resolveUnit) : undefined;
+      snapshot.factory !== undefined ? deriveFactory(snapshot.factory, fuseFromCircuits(fusePower !== undefined ? fuseByCircuit(fusePower) : undefined), this.deps.resolveUnit) : undefined;
     store.record({
       reachable: true,
       observedAtMs,
