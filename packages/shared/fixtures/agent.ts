@@ -98,6 +98,7 @@ export const agentEnrollmentCodeResponse = { code: "AB3D-7XQ2", expiresAt: "2026
 /** GET /api/servers/:serverId/agent */
 export const agentStatusEnrolled = {
   enrolled: true,
+  online: true,
   lastSeenAt: "2026-09-26T12:00:05.000Z",
   agentVersion: "0.1.0",
   connectionKind: "agent",
@@ -108,8 +109,8 @@ export const agentStatusNotEnrolled = {
   agentVersion: null,
   connectionKind: "local",
 } satisfies AgentStatusResponse;
-/** Enrolled but never heard from yet. */
-export const agentStatusEnrolledSilent = { enrolled: true, lastSeenAt: null, agentVersion: null, connectionKind: "agent" } satisfies AgentStatusResponse;
+/** Enrolled but never heard from yet (or not since the backend restarted): `online` is false, not absent. */
+export const agentStatusEnrolledSilent = { enrolled: true, online: false, lastSeenAt: null, agentVersion: null, connectionKind: "agent" } satisfies AgentStatusResponse;
 /** DELETE /api/servers/:serverId/agent */
 export const agentRevokeResponse = { revoked: true } as const;
 

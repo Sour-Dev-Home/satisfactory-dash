@@ -325,7 +325,12 @@ export const app = createApp({
       : []),
     // ADR-0031 PR 5a: the owner's side of the edge agent (enrolment code, agent status, revoke), after the servers router.
     ...(database && agentCommands
-      ? createAgentUserRouters(createAgentsService({ db: database.pool, canManage: (userId) => serverManagement?.canManage(userId) ?? false }), agentCommands)
+      ? createAgentUserRouters(createAgentsService({
+            db: database.pool,
+            canManage: (userId) => serverManagement?.canManage(userId) ?? false,
+            // In memory, from the last snapshot the ingest recorded: fresher than last_seen_at (written at most every 30 s).
+            lastHeardAt: (serverId) => directory.get(serverId)?.telemetry.observations?.snapshot().agent?.lastHeardAt,
+          }), agentCommands)
       : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
   ],

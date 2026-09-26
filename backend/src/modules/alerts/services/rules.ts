@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AGENT_OFFLINE_DEFAULT_SECONDS } from "@satisfactory-dash/shared";
 
 /**
  * ADR-0027 decision 4, the rule kinds and their parameters. The params of a stored rule are validated by a zod
@@ -31,7 +32,7 @@ export const ServerUnreachableParamsSchema = z.strictObject({
  *  agent stopped). Only for a server reached through an agent; a `local` server has no agent and no subject. */
 export const AGENT_OFFLINE_MIN_SECONDS = 60;
 export const AgentOfflineParamsSchema = z.strictObject({
-  offlineSeconds: z.number().int().min(AGENT_OFFLINE_MIN_SECONDS).max(86_400).default(120),
+  offlineSeconds: z.number().int().min(AGENT_OFFLINE_MIN_SECONDS).max(86_400).default(AGENT_OFFLINE_DEFAULT_SECONDS),
 });
 
 export const PRODUCTION_WINDOW_MIN_MINUTES = 5;
@@ -129,7 +130,7 @@ export const PRESET_RULES: readonly PresetDefaults[] = [
  * is a default preset there; a `local` server has no agent to lose). Same kill switch and shadow week as every alert.
  */
 export const AGENT_PRESET_RULES: readonly PresetDefaults[] = [
-  { kind: "agent_offline", params: { offlineSeconds: 120 }, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
+  { kind: "agent_offline", params: { offlineSeconds: AGENT_OFFLINE_DEFAULT_SECONDS }, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
 ];
 
 /** Every kind's defaults, seeded or not, for a rule created later (PR 7). `params` here are only the optional ones. */
