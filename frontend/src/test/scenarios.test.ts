@@ -6,7 +6,9 @@ describe("matchRoute", () => {
   it("maps every endpoint's own client path and method to its key", () => {
     for (const key of Object.keys(ROUTES) as RouteKey[]) {
       const route = ROUTES[key];
-      expect(matchRoute(route.method, route.path("default")), key).toBe(key);
+      // A second id for the routes that take one (a command); the others ignore it.
+      const path = route.path as (serverId: string, id: string) => string;
+      expect(matchRoute(route.method, path("default", "c1")), key).toBe(key);
     }
   });
 

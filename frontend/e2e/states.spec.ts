@@ -69,6 +69,19 @@ const CASES: StateCase[] = [
   { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },
+  // ADR-0031 PR 4: auto-pause on a server reached through the game PC's agent, after the toggle.
+  {
+    scenario: "settings-relayed-saving",
+    path: "/app/settings",
+    shows: "Saving…",
+    act: (page) => page.getByRole("checkbox", { name: /Auto-pause when no players are connected/ }).click(),
+  },
+  {
+    scenario: "settings-relayed-failed",
+    path: "/app/settings",
+    shows: /couldn't reach the game server, so the setting didn't change/,
+    act: (page) => page.getByRole("checkbox", { name: /Auto-pause when no players are connected/ }).click(),
+  },
   { scenario: "upstream-unreachable", shows: "Game server unreachable." },
   { scenario: "upstream-auth-rejected", shows: /credentials for the game server were rejected/ },
   { scenario: "upstream-invalid", shows: "The game server returned an error." },

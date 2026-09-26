@@ -2,9 +2,11 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import { endpoints, type SettingsResponse } from "@satisfactory-dash/shared";
+import { endpoints, type Command, type SettingsResponse } from "@satisfactory-dash/shared";
 import {
   autoPauseResponseAccepted,
+  commandSent,
+  commandSucceeded,
   errorNotEditable,
   errorServerNotFound,
   errorSessionRequired,
@@ -90,23 +92,35 @@ describe("AutoPauseView", () => {
     expect(body).toEqual(setAutoPauseRequestOn);
   });
 
-  it("a 202 with a COMMAND (a server reached through an agent) is not put in the cache as if it were the new setting: the setting is re-read", async () => {
+  it("a 202 with a COMMAND (a server reached through an agent) isn't cached as the new setting: it shows Saving… until the command succeeds, then re-reads", async () => {
+    // The fixture's fixed expiry is in the past on the real clock; the page would give up at once.
+    const live = (c: { command: Command }) => ({ command: { ...c.command, expiresAt: new Date(Date.now() + 600_000).toISOString() } });
     let reads = 0;
+    let polls = 0;
     server.use(
       http.get(endpoints.settings.get.route, () => {
         reads += 1;
-        return HttpResponse.json(settingsEditable); // the setting has not changed yet
+        // The setting has not changed until the game PC has done it.
+        const on = polls >= 2;
+        return HttpResponse.json({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: on } });
       }),
-      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(autoPauseResponseAccepted, { status: 202 })),
+      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(live(autoPauseResponseAccepted), { status: 202 })),
+      http.get(endpoints.commands.get.route, () => {
+        polls += 1;
+        return HttpResponse.json(live(polls >= 2 ? commandSucceeded : commandSent));
+      }),
     );
     renderView();
     await screen.findByRole("checkbox");
     expect(reads).toBe(1);
     fireEvent.click(checkbox());
-    await waitFor(() => expect(reads).toBe(2)); // re-read, not overwritten with the command
-    expect(checkbox()).not.toBeChecked();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // and it is not an error
+    expect(await screen.findByText("Saving…")).toBeInTheDocument();
+    expect(checkbox()).toBeDisabled();
+    expect(checkbox()).not.toBeChecked(); // not overwritten with the command
+    await waitFor(() => expect(checkbox()).toBeChecked(), { timeout: 4000 });
+    expect(reads).toBe(2);
     expect(checkbox()).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("refreshes server status right after a successful change", async () => {
