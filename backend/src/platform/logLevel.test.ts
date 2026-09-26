@@ -5,6 +5,7 @@ import { createApp } from "../app.js";
 import { createLogger } from "./logger.js";
 import { RateLimitedError, UnauthorizedError } from "./errorResponse.js";
 import { requestLogLevel } from "./logLevel.js";
+import { createReadinessRouter } from "./health.js";
 
 describe("requestLogLevel", () => {
   it.each([
@@ -86,6 +87,20 @@ describe("log levels in the real request pipeline", () => {
     });
     expect(status).toBe(500);
     expect(levels).toEqual([LEVEL.error]);
+  });
+
+  it("the readiness probe's 503 (not ready) is a warn in the real pipeline; a 503 elsewhere is an error", async () => {
+    const lines: { level: number }[] = [];
+    const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(JSON.parse(line)) });
+    const other = Router();
+    other.get("/other", (_req, res) => void res.status(503).json({ status: "unavailable" }));
+    const app = createApp({ logger, routers: [createReadinessRouter(async () => false), other] });
+    const res = await request(app).get("/api/health/ready?probe=1");
+    expect(res.status).toBe(503);
+    expect(new Set(lines.map((l) => l.level))).toEqual(new Set([LEVEL.warn]));
+    lines.length = 0;
+    await request(app).get("/api/other");
+    expect(new Set(lines.map((l) => l.level))).toEqual(new Set([LEVEL.error]));
   });
 
   it("a successful request is info", async () => {
