@@ -24,6 +24,20 @@ describe("bandSpan", () => {
     expect(span(0, 9)).toBeNull();
     expect(span(111, 150)).toBeNull();
   });
+
+  it("treats a reversed x0/x1 (x1 before x0) the same as the forward order", () => {
+    expect(span(50, 20)).toEqual(span(20, 50));
+  });
+
+  it("is null, not NaN, when an endpoint is NaN (valToPos before the scale is set)", () => {
+    expect(bandSpan(NaN, 50, 10, 110, 6)).toBeNull();
+    expect(bandSpan(50, NaN, 10, 110, 6)).toBeNull();
+  });
+
+  it("clamps to the plot's own width when the plot is narrower than the minimum", () => {
+    // A 4 px wide plot, 6 px minimum: can't widen past the plot itself.
+    expect(bandSpan(1, 2, 0, 4, 6)).toEqual({ left: 0, width: 4 });
+  });
 });
 
 describe("isolatedIndices", () => {

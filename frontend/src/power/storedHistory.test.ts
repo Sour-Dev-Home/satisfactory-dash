@@ -145,4 +145,14 @@ describe("fuseStretches, duplicate and unaligned buckets", () => {
     const points = [tripped, { ...tripped }];
     expect(fuseStretches(points, history.resolutionSeconds)).toEqual([{ fromT: t0, toT: t0 + step }]);
   });
+
+  // Points are documented as "oldest first" (history.ts), so this shouldn't come from the backend;
+  // if it does, the earlier trip must still be listed, not swallowed by the later stretch.
+  it("keeps a trip that arrives out of order as its own stretch", () => {
+    const points = [{ ...tripped, t: t0 + 5 * step }, { ...tripped, t: t0 + 2 * step }];
+    expect(fuseStretches(points, history.resolutionSeconds)).toEqual([
+      { fromT: t0 + 5 * step, toT: t0 + 6 * step },
+      { fromT: t0 + 2 * step, toT: t0 + 3 * step },
+    ]);
+  });
 });

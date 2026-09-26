@@ -104,9 +104,9 @@ export function fuseStretches(points: readonly Point[], resolutionSeconds: numbe
   for (const p of points) {
     if (p.fuseTrippedSamples === 0) continue;
     const last = stretches.at(-1);
-    // <= (not ===) also merges a duplicate or out-of-order-by-one-bucket timestamp into the
-    // stretch it belongs to, instead of pushing a second stretch covering the same span.
-    if (last && p.t <= last.toT) last.toT = Math.max(last.toT, p.t + step);
+    // A point inside or just after the stretch joins it (so a duplicate timestamp isn't listed
+    // twice); an earlier one (out of order, which the contract rules out) gets its own stretch.
+    if (last && p.t >= last.fromT && p.t <= last.toT) last.toT = Math.max(last.toT, p.t + step);
     else stretches.push({ fromT: p.t, toT: p.t + step });
   }
   return stretches;

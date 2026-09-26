@@ -5,6 +5,7 @@
  * pixel (5 minutes in a year) would draw nothing.
  */
 export function bandSpan(x0: number, x1: number, lo: number, hi: number, min: number): { left: number; width: number } | null {
+  if (!Number.isFinite(x0) || !Number.isFinite(x1)) return null;
   const from = Math.min(x0, x1);
   const to = Math.max(x0, x1);
   if (to < lo || from > hi) return null;
