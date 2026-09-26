@@ -41,13 +41,15 @@ export function OverviewPanel({
   onDismiss?: () => void;
 }) {
   // The Hide button disappears once clicked, which would drop keyboard focus to <body>: move
-  // it to the Health card's own heading instead.
+  // it to the Health card's own heading instead. The flag holds for the one commit after the
+  // click (no dependency list): if that render doesn't hide the warning, it's dropped, so a later
+  // unrelated hide never steals focus.
   const healthHeading = useRef<HTMLHeadingElement>(null);
   const focusAfterDismiss = useRef(false);
   useEffect(() => {
     if (bannerHidden && focusAfterDismiss.current) healthHeading.current?.focus();
     focusAfterDismiss.current = false;
-  }, [bannerHidden]);
+  });
   const dismiss = onDismiss
     ? () => {
         focusAfterDismiss.current = true;

@@ -34,15 +34,9 @@ describe("OverviewPanel: Hide-button focus management", () => {
   });
 
   it(
-    "BUG: a dismiss click that doesn't immediately flip bannerHidden leaves the focus flag " +
-      "armed, and it wrongly fires on a later, unrelated transition to hidden. Found by " +
-      "test-hunter fresh-eyes pass on PR #168: the effect in OverviewPanel.tsx only clears " +
-      "focusAfterDismiss.current when its [bannerHidden] dependency changes, so if the render " +
-      "right after the click keeps bannerHidden false (e.g. the caller's `dismissible` flips " +
-      "false for an unrelated reason before its own hidden state lands), the flag survives and " +
-      "steals focus the next time something else hides the card. Not reachable through the " +
-      "current caller (OverviewView) because dismissal.dismiss updates state synchronously in " +
-      "the same click, but nothing in OverviewPanel.tsx enforces that invariant.",
+    // Found by the test-hunter on PR #168: the flag used to survive a click whose render didn't
+    // hide the warning, then fire on a later, unrelated hide.
+    "doesn't steal focus on a later hide when the click's own render didn't hide the warning",
     () => {
       const onDismiss = vi.fn();
       const { rerender } = render(<OverviewPanel {...baseProps({ onDismiss, bannerHidden: false })} />);

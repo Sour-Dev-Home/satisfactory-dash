@@ -13,7 +13,8 @@ export type PlayersState = { status: Status } | "pending" | "error";
 export function PlayersCard({ state, roster }: { state: PlayersState; roster?: ServerPlayersResponse }) {
   return (
     <section aria-labelledby="players-heading" className="grid content-start gap-3 rounded-card border border-line bg-surface p-5">
-      <h3 id="players-heading" className="mb-0">
+      {/* The same 44 px header row as Health's (which holds the Hide button). */}
+      <h3 id="players-heading" className="mb-0 flex min-h-[44px] items-center">
         Players
       </h3>
       <PlayersBody state={state} roster={roster} />

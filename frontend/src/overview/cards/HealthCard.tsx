@@ -67,9 +67,10 @@ export function HealthCard({
   return (
     <section
       aria-labelledby="health-heading"
-      className="grid content-start gap-4 rounded-card border border-line bg-surface p-5"
+      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5"
     >
-      <div className="flex items-center gap-3">
+      {/* 44 px whether or not Hide shows, like Players' header: the two cards' bodies line up. */}
+      <div className="flex min-h-[44px] items-center gap-3">
         {/* tabIndex -1: focus lands here after the warning is hidden (OverviewPanel). */}
         <h3 id="health-heading" ref={headingRef} tabIndex={-1} className="mb-0">
           Health
