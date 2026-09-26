@@ -39,6 +39,19 @@ export const KnownErrorCode = z.enum([
   "import_required",
   // ADR-0030 amendment 1 (additive): a LAN (private, non-loopback) address; LAN servers wait for certificate pinning.
   "lan_requires_cert_pinning",
+  // ADR-0027 PR 7 (additive): alerts. The rule does not exist on this server (404); `item` cannot be changed on a
+  // rule (422); a preset can be disabled and tuned but not deleted (409); the kind cannot be created through the API
+  // (422); no Discord destination is configured (404); the webhook URL was refused (422, with a `reason`, and the
+  // message NEVER echoes the URL); delivery is switched off, so nothing can be sent (409); the mute time is not
+  // in the future or is more than 7 days ahead (422).
+  "rule_not_found",
+  "rule_item_immutable",
+  "preset_disable_only",
+  "rule_kind_not_creatable",
+  "destination_not_configured",
+  "webhook_invalid",
+  "delivery_off",
+  "mute_invalid",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;
@@ -51,6 +64,9 @@ export const ApiErrorResponseSchema = z.object({
     message: z.string().describe("Safe to show a user"),
     requestId: z.string().describe("Matches the X-Request-Id header and server logs"),
     detail: z.string().optional().describe("Internal detail; only present in development/test"),
+    // ADR-0027 PR 7 (additive, optional): a stable machine-readable sub-code for a code that has several causes, today
+    // webhook_invalid (not_https, host_not_allowed, ...). Never carries user input such as the URL.
+    reason: z.string().optional().describe("A stable sub-code for the error, when the code has several causes"),
   }),
 });
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>;

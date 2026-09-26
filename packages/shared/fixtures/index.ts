@@ -7,6 +7,7 @@ export * from "./factory";
 export * from "./power";
 export * from "./powerHistory";
 export * from "./history";
+export * from "./alerts";
 export * from "./auth";
 export * from "./settings";
 export * from "./players";

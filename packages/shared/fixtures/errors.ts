@@ -140,3 +140,54 @@ export const errorUpstreamAuthRejected = {
     requestId: "00000000-0000-4000-8000-000000000011",
   },
 } satisfies ApiErrorResponse;
+
+// ADR-0027 PR 7: the alerts error codes. Messages are safe to show; none of them names a URL, a token or a host.
+
+/** 404: no such rule on this server (also a rule of another server: existence is not revealed). */
+export const errorRuleNotFound = {
+  error: { code: "rule_not_found", message: "That alert rule was not found on this server", requestId: "00000000-0000-4000-8000-0000000000a1" },
+} satisfies ApiErrorResponse;
+
+/** 422: a PATCH that includes `item`. To watch another item, create a new rule. */
+export const errorRuleItemImmutable = {
+  error: {
+    code: "rule_item_immutable",
+    message: "A rule's item cannot be changed. Create a new rule for another item.",
+    requestId: "00000000-0000-4000-8000-0000000000a2",
+  },
+} satisfies ApiErrorResponse;
+
+/** 409: DELETE on a preset. Disable it instead. */
+export const errorPresetDisableOnly = {
+  error: { code: "preset_disable_only", message: "A preset rule can be disabled but not deleted", requestId: "00000000-0000-4000-8000-0000000000a3" },
+} satisfies ApiErrorResponse;
+
+/** 422: POST with a kind that cannot be created through the API. */
+export const errorRuleKindNotCreatable = {
+  error: { code: "rule_kind_not_creatable", message: "That kind of rule cannot be created", requestId: "00000000-0000-4000-8000-0000000000a4" },
+} satisfies ApiErrorResponse;
+
+/** 404: no Discord destination is set up (test, PATCH or DELETE). */
+export const errorDestinationNotConfigured = {
+  error: { code: "destination_not_configured", message: "No Discord webhook is set up for this server", requestId: "00000000-0000-4000-8000-0000000000a5" },
+} satisfies ApiErrorResponse;
+
+/** 422: the webhook URL was refused. `reason` says why (not_https, host_not_allowed, ...); the URL is never echoed. */
+export const errorWebhookInvalid = {
+  error: {
+    code: "webhook_invalid",
+    message: "That is not a valid Discord webhook URL",
+    requestId: "00000000-0000-4000-8000-0000000000a6",
+    reason: "host_not_allowed",
+  },
+} satisfies ApiErrorResponse;
+
+/** 409: the delivery kill switch is off, so nothing can be sent. */
+export const errorDeliveryOff = {
+  error: { code: "delivery_off", message: "Alert delivery is switched off, so no message was sent", requestId: "00000000-0000-4000-8000-0000000000a7" },
+} satisfies ApiErrorResponse;
+
+/** 422: the mute time is not in the future, or is more than 7 days ahead. */
+export const errorMuteInvalid = {
+  error: { code: "mute_invalid", message: "Choose a time in the future, at most 7 days ahead", requestId: "00000000-0000-4000-8000-0000000000a8" },
+} satisfies ApiErrorResponse;

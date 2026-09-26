@@ -28,7 +28,11 @@ import type { Method } from "../test-support/scopedEndpoints.js";
  * real membership middleware, with stub services and an in-memory membership table.
  */
 
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0027 PR 7a added the alerts endpoints to the contract BEFORE their routes (contract first, so the frontend can
+// build against the fixtures). Until PR 7b mounts them there is nothing to guard, so exactly these are exempt. PR 7b
+// deletes this line, and the generated tests then cover them like every other scoped route.
+const NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("alerts.");
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
 const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId);
 
 const OWNER = "user-owner";
@@ -146,6 +150,12 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
   it("finds reads and at least one write", () => {
     expect(SCOPED.length).toBeGreaterThanOrEqual(5);
     expect(SCOPED.some((e) => e.method !== "GET")).toBe(true);
+  });
+
+  it("exempts only the alerts endpoints that are in the contract but not mounted yet (PR 7a), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.length).toBe(13);
+    expect(exempt.every((endpoint) => endpoint.route.startsWith("/api/servers/:serverId/alerts/"))).toBe(true);
   });
 });
 
