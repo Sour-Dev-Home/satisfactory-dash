@@ -82,7 +82,8 @@ export function Shell() {
     // minmax(0,1fr): an implicit grid column sizes to its content's min-width, so the tab bar
     // would widen the whole app past a phone's width instead of scrolling on its own.
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
+      {/* relative: the bell's dropdown is positioned against this row, so it lines up with the page edge. */}
+      <div className="relative flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
         {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
         {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;

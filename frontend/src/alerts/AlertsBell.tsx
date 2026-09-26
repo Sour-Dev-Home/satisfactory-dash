@@ -40,7 +40,7 @@ export function AlertsBell() {
   return (
     <div
       ref={root}
-      className="relative"
+      className="flex"
       // Tabbing past the last item (focus leaving the bell and its dropdown) closes it.
       onBlur={(e) => {
         if (open && e.relatedTarget instanceof Node && !root.current?.contains(e.relatedTarget)) setOpen(false);
@@ -65,9 +65,10 @@ export function AlertsBell() {
       {open && (
         <div
           id={panelId}
-          // Inside the viewport at any width: right-aligned under the bell, never wider than the
-          // screen minus the page gutters, and scrolling when the list is long.
-          className="absolute right-0 z-(--z-popover) mt-2 max-h-(--popover-max-height) w-(--popover-width) overflow-y-auto rounded-card border border-line bg-surface p-4 shadow-lg"
+          // Inside the viewport at any width: positioned against the header row (not the bell, which
+          // has the account button to its right), so right-aligned with the page edge just below the
+          // header, never wider than the screen minus the page gutters, and scrolling when long.
+          className="absolute top-full right-0 z-(--z-popover) mt-2 max-h-(--popover-max-height) w-(--popover-width) overflow-y-auto rounded-card border border-line bg-surface p-4 shadow-lg"
         >
           <AlertsMenu onNavigate={() => setOpen(false)} />
         </div>
