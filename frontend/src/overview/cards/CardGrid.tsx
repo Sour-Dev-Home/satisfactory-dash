@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
 /**
- * The Overview's cards (the owner's cards brief): one column on a phone, two from md up
- * (Health, then Players beside it).
+ * The Overview's cards (the owner's cards brief): one column on a phone; from md up a narrow
+ * column for the small, square Health card and the rest for Players.
  */
 export function CardGrid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
+  return <div className="grid gap-4 md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">{children}</div>;
 }
