@@ -68,7 +68,7 @@ function stripComments(lines, css) {
         comment += line.slice(i + 2);
         break;
       }
-      if (!css && ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%~^]|\breturn)\s*$/.test(out)) {
+      if (!css && ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%~^]|=>|\breturn)\s*$/.test(out)) {
         const end = regexEnd(line, i);
         if (end > i) {
           out += line.slice(i, end + 1);

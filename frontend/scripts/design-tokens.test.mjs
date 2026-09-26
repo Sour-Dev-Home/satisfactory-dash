@@ -146,6 +146,75 @@ describe("design-token lint, regex literals and where a hatch counts", () => {
   });
 });
 
+// A third fresh-eyes pass (2026-09-26): the regex-start heuristic only fires when the `/` is
+// preceded by one of a fixed set of characters (or `return`). `)` and `=>` are deliberately not
+// in that set (so division reads correctly), but that means a genuine regex literal in either
+// position isn't recognised as a regex at all, and its characters are scanned one at a time by
+// the general block-comment check instead. If that regex contains an unescaped `/*` (e.g. a
+// character class matching a slash or an asterisk, `/[/*]/`), the unconditional
+// `ch === "/" && next === "*"` check still fires on the regex's own inner `/`, and the lint
+// enters "block comment" mode for real — with no regex-aware `regexEnd` protecting it. Because
+// `inBlock` persists across lines until an actual `*/` turns up, this can silently blank out
+// every following line (hiding every later violation) instead of just the one line.
+// The third fresh-eyes pass (2026-09-26) found the arrow case.
+describe("design-token lint, where a regex literal can start", () => {
+  it("recognises a regex right after an arrow", () => {
+    const text = ['const f = (s) => /[/*]/.test(s);', 'className="z-10";'].join("\n");
+    expect(tsx(text).violations.map((v) => v.line)).toEqual([2]);
+  });
+
+  // Known limit, by choice: after `)` a `/` is read as division (`(a + b) / 2` is common,
+  // `if (ok) /re/.test(s);` is not), so a regex there holding `/*` opens a comment.
+  it("reads a `/` after `)` as division, even before a regex", () => {
+    const text = ['if (ok) /[/*]/.test(s);', 'className="z-10";'].join("\n");
+    expect(tsx(text).violations).toEqual([]);
+  });
+
+  it("keeps division after `)` and after `]` as code, not a regex start", () => {
+    expect(tsx('const half = (a + b) / 2; className="z-10";').violations).not.toHaveLength(0);
+    expect(tsx('const half = arr[0] / 2; className="z-10";').violations).not.toHaveLength(0);
+  });
+
+  it("does not mistake a fraction in JSX text (preceded by a digit) for a regex or comment", () => {
+    const text = ["<span>Map (1/2)</span>", 'className="z-10";'].join("\n");
+    expect(tsx(text).violations.map((v) => v.line)).toEqual([2]);
+  });
+
+  it("falls back to plain code when a regex-start heuristic fires but no closing `/` exists on the line", () => {
+    const text = ["const bad = / not closed here", 'className="z-10";'].join("\n");
+    expect(tsx(text).violations.map((v) => v.line)).toEqual([2]);
+  });
+});
+
+// Documents current behaviour rather than asserting a fix is needed: a design-token-allow
+// reason that is split across a multi-line comment (the colon on one line, the prose on the
+// next) is not honoured, because comment text is recorded per source line, not per comment.
+// The result is arguably confusing (the hatch is flagged as missing a reason even though one
+// exists one line down) but matches the documented contract ("a comment on the offending line
+// or the line above"), which implies a single line, not a comment spanning several.
+describe("design-token lint, hatch reason split across a multi-line comment", () => {
+  it("does not honour a reason continued on the next line of a block comment", () => {
+    const text = ["/* design-token-allow:", "   still investigating */", 'className="z-10";'].join("\n");
+    const result = checkDesignTokens("src/x.tsx", text);
+    expect(result.violations.map((v) => v.line)).toEqual([3]);
+    expect(result.errors).toEqual([{ line: 1, message: expect.stringContaining("needs a reason") }]);
+  });
+
+  it("does not honour a reason continued on the next line of a JSX comment", () => {
+    const text = ["{/* design-token-allow:", "    over multiple lines */}", 'className="z-10";'].join("\n");
+    const result = checkDesignTokens("src/x.tsx", text);
+    expect(result.violations.map((v) => v.line)).toEqual([3]);
+    expect(result.errors).toEqual([{ line: 1, message: expect.stringContaining("needs a reason") }]);
+  });
+
+  it("honours a single-line block-comment hatch on the line above (JS style, not just JSX)", () => {
+    const text = ["/* design-token-allow: legacy widget size */", 'className="z-10";'].join("\n");
+    const result = checkDesignTokens("src/x.tsx", text);
+    expect(result.violations).toEqual([]);
+    expect(result.exceptions).toEqual([{ line: 2, reason: "legacy widget size" }]);
+  });
+});
+
 describe("design-token lint, CSS", () => {
   it("allows raw values inside @theme only", () => {
     const text = [
