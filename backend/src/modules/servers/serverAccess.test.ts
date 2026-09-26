@@ -168,4 +168,50 @@ describe("createAuthorizeServer preconditions and failures", () => {
       else delete roles.beta;
     }
   });
+
+  // ADR-0027 PR 7b: each user's own role on each listed server, a UX hint from the same membership query (the 403 on
+  // writes stays the real control).
+  it("shows each user their OWN role on every listed server, and a viewer sees viewer", async () => {
+    for (const [user, role] of [["own", "owner"], ["adm", "admin"], ["view", "viewer"]] as const) {
+      const res = await request(build()).get("/api/servers").set("x-test-user", user);
+      expect(res.body).toEqual({ servers: [{ id: "alpha", displayName: "Alpha", role }] });
+    }
+  });
+
+  it("gives different roles on different servers, and lists nothing (no role either) for a user who belongs to none", async () => {
+    roles.beta = { adm: "owner" };
+    const directory = new InMemoryServerDirectory([
+      { id: "alpha", displayName: "Alpha", services: {} },
+      { id: "beta", displayName: "Beta", services: {} },
+    ]);
+    try {
+      const app = createApp({
+        logger: createLogger({ level: "silent" }, { write: () => {} }),
+        routers: [],
+        sessionGuard: guard("header"),
+        protectedRouters: [createServersRouter(directory, access)],
+      });
+      const mixed = await request(app).get("/api/servers").set("x-test-user", "adm");
+      expect(mixed.body.servers).toEqual([
+        { id: "alpha", displayName: "Alpha", role: "admin" },
+        { id: "beta", displayName: "Beta", role: "owner" },
+      ]);
+      const none = await request(app).get("/api/servers").set("x-test-user", "stranger");
+      expect(none.body).toEqual({ servers: [] });
+    } finally {
+      delete roles.beta;
+    }
+  });
+
+  it("without a database (no access object) the list carries no role at all", async () => {
+    const directory = new InMemoryServerDirectory([{ id: "alpha", displayName: "Alpha", services: {} }]);
+    const app = createApp({
+      logger: createLogger({ level: "silent" }, { write: () => {} }),
+      routers: [],
+      sessionGuard: guard("header"),
+      protectedRouters: [createServersRouter(directory)],
+    });
+    const res = await request(app).get("/api/servers").set("x-test-user", "own");
+    expect(res.body).toEqual({ servers: [{ id: "alpha", displayName: "Alpha" }] });
+  });
 });

@@ -33,7 +33,13 @@ import {
   registerConfiguredServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
-import { createAlertDelivery, createAlertEvaluator, loadAlertDeliveryMode } from "./modules/alerts/index.js";
+import {
+  createAlertDelivery,
+  createAlertEvaluator,
+  createAlertsRouters,
+  createAlertsService,
+  loadAlertDeliveryMode,
+} from "./modules/alerts/index.js";
 import { createHistoryMaintenance, createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
@@ -243,6 +249,18 @@ export const app = createApp({
     }),
     ...createTelemetryRouters(directory),
     ...createSettingsRouters(directory),
+    // ADR-0027 PR 7b: the alerts API. After the servers router (its membership check covers these paths), and only with a
+    // database (alerts live in it).
+    ...(database
+      ? createAlertsRouters(
+          createAlertsService({
+            db: database.pool,
+            ring: secretsKeyring,
+            mode: alertDelivery,
+            serverName: (id) => directory.list().find((server) => server.id === id)?.displayName,
+          }),
+        )
+      : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
   ],
 });

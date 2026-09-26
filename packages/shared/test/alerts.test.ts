@@ -227,9 +227,17 @@ describe("alerts contract: status and mute", () => {
     expect(AlertRuleSchema.safeParse(rule).success).toBe(true);
   });
 
-  it("query and target boundaries: limit 1 and 100, a 19-digit cursor, a target above zero and finite", () => {
+  it("query and target boundaries: limit 1 and 100, a cursor that always fits a bigint, a target above zero and finite", () => {
     expect(AlertEventsQuerySchema.parse({ limit: "1" }).limit).toBe(1);
-    expect(AlertEventsQuerySchema.safeParse({ before: "9".repeat(19) }).success).toBe(true);
+    // At most 18 digits and no leading zero: always below the bigint maximum (9223372036854775807).
+    expect(AlertEventsQuerySchema.safeParse({ before: "9".repeat(18) }).success).toBe(true);
+    for (const before of ["9".repeat(19), "0", "012", "9223372036854775807", "9223372036854775808"]) {
+      expect(AlertEventsQuerySchema.safeParse({ before }).success, before).toBe(false);
+    }
+    expect(AlertEventsQuerySchema.safeParse({ before: "1" }).success).toBe(true);
+    // The window is whole minutes.
+    expect(ProductionBelowTargetParamsSchema.safeParse({ ...production, windowMinutes: 5.5 }).success).toBe(false);
+    expect(ProductionBelowTargetUpdateParamsSchema.safeParse({ windowMinutes: 10.5 }).success).toBe(false);
     const target = (targetPerMinute: unknown) => ProductionBelowTargetParamsSchema.safeParse({ ...production, targetPerMinute }).success;
     expect([target(0.001), target(0), target(-1), target(Infinity), target(NaN), target("5")]).toEqual([true, false, false, false, false, false]);
     expect(ProductionBelowTargetUpdateParamsSchema.safeParse({ windowMinutes: 61 }).success).toBe(false);

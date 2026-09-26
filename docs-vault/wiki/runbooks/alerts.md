@@ -110,6 +110,38 @@ echoed by the terminal (clear the screen afterwards, or pipe it in), and do not 
 To stop sending at once: set `ALERT_DELIVERY=off` and restart (rows already queued wait in the outbox and are sent if
 you turn it back on within 24 hours, then given up).
 
+## The alerts API (ADR-0027 PR 7b)
+
+Thirteen routes under `/api/servers/:serverId/alerts/...` (the contract is `packages/shared/src/alerts.ts`; the sessions
+that build the UI read the fixtures). **Every GET is for any member of the server; every other method, `POST .../test`
+included, is owner/admin only** (the same membership check as every scoped route: a non-member gets the same 404 as an
+unknown server, a viewer's write is a 403). It needs the database: without one the routes are not mounted.
+
+- **Rules.** `GET /rules` lists the presets and the opt-in rules. `POST /rules` creates only `production_below_target`
+  (`rule_kind_not_creatable` otherwise), at most **50 rules per server** (presets included) and **one per item**; both
+  are `bad_request`, and the server's row is locked while a rule is created, so two requests cannot race past either.
+  `PATCH /rules/:ruleId` changes `enabled`, `severity`, the three durations and the params that are meant to be tuned
+  (the target and the window; a preset's own params); **`item` is immutable** (`rule_item_immutable`: to watch another
+  item, create a new rule). A change keeps the persisted state; the engine's rolling window restarts if the window
+  size changes. `DELETE` removes a non-preset rule and its states; **a preset can only be disabled**
+  (`preset_disable_only`). A rule id from another server is `rule_not_found` on every route.
+- **The Discord destination.** `PUT .../destinations/discord` takes `{ webhookUrl }` (the only place the URL ever
+  appears): it is validated by the allowlist (`webhook_invalid`, with a `reason` such as `host_not_allowed`, never the
+  URL), sealed, and re-enables the destination. `GET` returns only the last 4 characters and the state. `PATCH
+  { enabled }` switches it (off = reason `manual`, and its pending deliveries are given up); `DELETE` removes it.
+  `POST .../test` sends one message: **5 per minute per user** (429 `rate_limited`), `delivery_off` (409) while
+  `ALERT_DELIVERY` is off, `destination_not_configured` (404), and otherwise `{ ok, code }` from the sender.
+- **The log, status and mute.** `GET /events?limit=&before=` pages newest first (`nextBefore` is the id to pass as
+  `before`; the cursor is at most 18 digits). `GET /status` is cheap to poll (the bell): `deliveryEnabled`, `mutedUntil`
+  and the firing alerts of enabled rules, from persisted state, no history reads. `PUT /mute { until }` must be in the
+  future and at most 7 days ahead (`mute_invalid`); `DELETE /mute` clears it.
+- **Audit.** Every write records an audit event in the same transaction: `alerts.rule.created`, `.updated`, `.deleted`,
+  `alerts.destination.set`, `.updated`, `.removed`, `.tested`, and `alerts.muted`, `alerts.unmuted`. The detail is ids
+  and codes only (rule id, kind, item class name, the names of the changed fields), **never the webhook URL or any part
+  of it**. A body that fails its schema is answered with a fixed message, and no request body is logged.
+- **Roles for the UI.** `GET /api/servers` now carries each server's `role` (owner, admin or viewer) for the signed-in
+  user, a hint so the frontend can hide edit controls; the 403 on writes is the real control.
+
 ## Known limits
 
 - **"Unreachable" is the joint status + power fetch.** If only FRM (power) is down while the game's own API answers,

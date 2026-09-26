@@ -76,7 +76,7 @@ describe.skipIf(!available)("alert delivery repository against a real Postgres",
       expect(Buffer.from(row.webhook_enc).includes(Buffer.from(TOKEN))).toBe(false);
       expect(Buffer.from(row.webhook_enc).includes(Buffer.from("discord.com"))).toBe(false);
       expect(row).toMatchObject({ key_id: "k1", last4: TOKEN.slice(-4), enabled: true });
-      expect(await getDestinationSummary(pool, server.publicId)).toEqual({ id: expect.any(String), enabled: true, last4: TOKEN.slice(-4), disabledReason: null });
+      expect(await getDestinationSummary(pool, server.publicId)).toEqual({ id: expect.any(String), enabled: true, last4: TOKEN.slice(-4), disabledReason: null, updatedAt: expect.any(Date) });
       expect((await openServerWebhook(pool, ring, server.publicId))?.url).toBe(URL_A);
     });
 
