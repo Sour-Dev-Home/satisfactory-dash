@@ -53,14 +53,15 @@ Status: accepted (owner, 2026-09-25: all of it, with the merge queue after the l
 
 ### 3. One GitHub Projects board as the task queue
 - One organization project covering all Sour-Dev-Home repos. Fields: Status (Backlog, Ready,
-  In progress, In review, Waiting on Leonardo, Done), Owner (dev, frontend, architect, coordinator,
-  portfolio, Leonardo), ADR (text), Tier (FULL, FULL+sec, QUICK, skip), Blocked by (text, `#N`).
+  In progress, In review, Waiting on owner, Done), Owner (dev, frontend, architect, coordinator,
+  portfolio, owner), ADR (text), Tier (FULL, FULL+sec, QUICK, skip), Blocked by (text, `#N`).
   Built-in workflows: auto-add repo issues; item closed or PR merged moves to Done.
 - An issue is: each row of an accepted ADR's build plan, bugs, and owner requests. Not an issue: review
   rounds, fix-ups, and the PR itself (it links with "Closes #N").
 - Who updates: each session moves its own items (In progress when it branches, In review when it
   sends "ready"). The architect opens the build-plan issues when an ADR is accepted. The coordinator
-  grooms Ready and "Waiting on Leonardo".
+  grooms Ready and "Waiting on owner". (The private board labels that Status value and Owner option with the
+  owner's name; this public doc says "owner" so the two still match.)
 - Tooling: the `gh` token needs the `project` scope (`gh auth refresh -s project`; today's token lacks
   `read:project`). A small workspace helper (outside the repos) hides project, field and option ids:
   `board status <issue> "In review"`.
