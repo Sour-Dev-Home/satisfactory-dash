@@ -98,3 +98,7 @@ Then ADR-0034's AWS build.
 - A second backend instance (the latest-snapshot store moves to Postgres; the evaluator needs a
   leader lock).
 - The first other player (packaging, signed updates, viewer-driven cadence).
+
+## Amendment 1 (2026-09-26, PR 5b): where the 202 applies
+- The auto-pause PUT answers `202` + a command only for a server reached through an agent. A `local` server keeps answering `200` with the setting, so the frontend's `200` or `202` handling (PR 4) is what makes this safe, and turning `local` into `202` is not part of PR 5.
+- Reading the auto-pause of an agent server returns the last value the agent confirmed (`pending` while a change is on its way). The snapshot has no auto-pause field yet, so before the first confirmed change the value is unknown (`upstream_unreachable`); adding the field is a contract change for a later PR.

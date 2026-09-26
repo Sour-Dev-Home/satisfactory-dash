@@ -1,6 +1,17 @@
 import express, { Router } from "express";
 import type { RequestHandler, Response } from "express";
-import { EnrollRequestSchema, EnrollResponseSchema, SnapshotRequestSchema, SnapshotResponseSchema, endpoints } from "@satisfactory-dash/shared";
+import {
+  AgentCommandsQuerySchema,
+  AgentCommandsResponseSchema,
+  CommandIdSchema,
+  CommandResultRequestSchema,
+  CommandResultResponseSchema,
+  EnrollRequestSchema,
+  EnrollResponseSchema,
+  SnapshotRequestSchema,
+  SnapshotResponseSchema,
+  endpoints,
+} from "@satisfactory-dash/shared";
 import type { Cadence } from "@satisfactory-dash/shared";
 import { BadRequestError, RateLimitedError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
@@ -11,6 +22,7 @@ import type { TelemetryScope } from "../../telemetry/index.js";
 import { SNAPSHOT_MAX_BYTES } from "../config.js";
 import type { AgentIdentity } from "../services/agentAuth.js";
 import { rateLimitKey } from "../services/clientKey.js";
+import type { AgentCommandsService } from "../services/commandsService.js";
 import type { EnrollmentService } from "../services/enrollmentService.js";
 
 /** The agent API is mounted at /agent/v1 (not under /api): a shared route pattern is registered without that prefix. */
@@ -20,6 +32,8 @@ export interface AgentApiDeps {
   /** Authenticates `Authorization: Bearer <secret>` and sets `res.locals.agent` (services/agentAuth.ts). */
   auth: RequestHandler;
   enrollment: EnrollmentService;
+  /** ADR-0031 PR 5b: the command long-poll, the result report and the snapshot answer's `commandsPending`. */
+  commands: AgentCommandsService;
   directory: ServerDirectory<TelemetryScope>;
   /** Builds the agent-backed running entry for a server that has none yet (idempotent). */
   attachAgentRuntime: (publicId: string) => Promise<void>;
@@ -104,8 +118,40 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
         versions.set(agent.serverUuid, snapshot.data.agentVersion);
         void deps.recordVersion(agent.serverUuid, snapshot.data.agentVersion).catch(() => versions.delete(agent.serverUuid));
       }
-      // PR 5b: `commandsPending` turns true when a command waits for this server.
-      sendValidated(res, SnapshotResponseSchema, { cadence: deps.cadence(), commandsPending: false });
+      // `commandsPending` tells the agent to call GET /commands now (a hint: its long-poll would find the command too).
+      sendValidated(res, SnapshotResponseSchema, { cadence: deps.cadence(), commandsPending: await deps.commands.hasPending(agent.serverUuid) });
+    },
+  );
+
+  // GET /commands?waitSeconds=0..25: the agent's long-poll. Answered as soon as a command exists for its server, or empty
+  // when the wait is up (the agent asks again). The wait ends early if the agent hangs up.
+  router.get(agentRoutePath(endpoints.agentApi.commands.route), deps.auth, snapshotRateLimit, async (req, res) => {
+    const agent = res.locals.agent as AgentIdentity;
+    const query = AgentCommandsQuerySchema.safeParse(req.query);
+    if (!query.success) throw new BadRequestError("The query is not valid");
+    const hangUp = new AbortController();
+    res.on("close", () => hangUp.abort());
+    const commands = await deps.commands.poll(agent, query.data.waitSeconds, hangUp.signal);
+    if (hangUp.signal.aborted) return; // nobody is listening
+    sendValidated(res, AgentCommandsResponseSchema, { commands });
+  });
+
+  // POST /commands/:commandId/result: the agent reports what happened, as a CODE (never free text). Only for a command of
+  // ITS OWN server; unknown and other servers' ids are the same 404, an expired one a 409.
+  router.post(
+    agentRoutePath(endpoints.agentApi.result.route),
+    deps.auth,
+    snapshotRateLimit,
+    requireJsonBody,
+    express.json({ limit: "4kb" }),
+    async (req, res) => {
+      const agent = res.locals.agent as AgentIdentity;
+      const commandId = typeof req.params.commandId === "string" ? req.params.commandId : "";
+      if (!CommandIdSchema.safeParse(commandId).success) throw new BadRequestError("The command id is not valid");
+      const result = CommandResultRequestSchema.safeParse(req.body);
+      if (!result.success) throw new BadRequestError("The result is not valid");
+      await deps.commands.report(agent, commandId, result.data);
+      sendValidated(res, CommandResultResponseSchema, { accepted: true });
     },
   );
 

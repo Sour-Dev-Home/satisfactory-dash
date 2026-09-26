@@ -3,7 +3,7 @@ import { parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import type { AlertState } from "../services/alertStateMachine.js";
-import { PRESET_RULES } from "../services/rules.js";
+import { AGENT_PRESET_RULES, PRESET_RULES } from "../services/rules.js";
 import type { AlertEventOut, StateWrite } from "../services/serverAlertEvaluator.js";
 import { stateKey } from "../services/serverAlertEvaluator.js";
 
@@ -147,16 +147,21 @@ export async function loadMutes(db: Queryable): Promise<Map<string, number>> {
   return new Map(parseRows(MuteRowSchema, result.rows, "alerts.loadMutes").map((row) => [row.server_public_id, row.muted_until_ms]));
 }
 
-/** Seeds the preset rules for one server, idempotently: running it again changes nothing. */
-export async function seedPresetRules(db: Queryable, serverPublicId: string): Promise<void> {
+/**
+ * Seeds the preset rules for one server, idempotently: running it again changes nothing. A server reached through an edge
+ * agent (`agent: true`) also gets the "agent offline" preset (ADR-0031); a server that becomes one later gets it on the
+ * next seeding.
+ */
+export async function seedPresetRules(db: Queryable, serverPublicId: string, options: { agent?: boolean } = {}): Promise<void> {
+  const presets = options.agent === true ? [...PRESET_RULES, ...AGENT_PRESET_RULES] : PRESET_RULES;
   await db.query(SEED_PRESETS, [
     serverPublicId,
-    PRESET_RULES.map((preset) => preset.kind),
-    PRESET_RULES.map((preset) => JSON.stringify(preset.params)),
-    PRESET_RULES.map((preset) => preset.forSeconds),
-    PRESET_RULES.map((preset) => preset.clearSeconds),
-    PRESET_RULES.map((preset) => preset.repeatSeconds),
-    PRESET_RULES.map((preset) => preset.severity),
+    presets.map((preset) => preset.kind),
+    presets.map((preset) => JSON.stringify(preset.params)),
+    presets.map((preset) => preset.forSeconds),
+    presets.map((preset) => preset.clearSeconds),
+    presets.map((preset) => preset.repeatSeconds),
+    presets.map((preset) => preset.severity),
   ]);
 }
 

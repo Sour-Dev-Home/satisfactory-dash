@@ -22,6 +22,7 @@ twice its poller's interval is **unknown**, and every subject then holds its las
 | `power_outage` | yes | one per circuit | the circuit's status is `outage` (a tripped fuse today) | 0 / 60 s / 1 h | critical |
 | `stopped_machines` | yes | `group` (one alert for all machines) | a machine is `underfed` (input short) or `backedUp` (output full) AND its best output percent is below 5, held for `for`; the alert says why per machine ("input short: <ingredient>", "output full") | 5 min / 2 min / 1 h | warning |
 | `server_unreachable` | yes | `server` | 3 failed status polls in a row AND at least 2 minutes | 0 / 60 s / 1 h | critical |
+| `agent_offline` | **only for a server reached through an edge agent** (ADR-0031) | `agent` | no snapshot of any kind from the agent for 2 minutes (`offlineSeconds`, at least 60), measured from the later of the last snapshot and the backend's start; speaks through a paused game and an unreachable game server | 0 / 60 s / 1 h | critical |
 | `fuse_trip` | **no** | one per circuit | `fuseTriggered` | 0 / 60 s / 1 h | critical |
 | `production_below_target` | **no** (opt-in per item) | `item` (one rule per item) | the factory-wide rate of the item, averaged over a rolling window (5 to 60 min, default 10), is below 90% of the target; it clears above 95%, and in between the last answer stands | 10 min / 5 min / 1 h | warning |
 

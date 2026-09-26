@@ -131,7 +131,7 @@ export function createAgentTelemetryServices(options: AgentTelemetryOptions): Te
   const logger = options.logger ?? createLogger({ level: "silent" });
   const store = new LatestSnapshotStore(options.cadence, now);
   const recorder = new BufferedHistoryRecorder(options.history.db, options.history.serverPublicId, { logger });
-  const observations = new ObservationBoard();
+  const observations = new ObservationBoard({ agentStartedAt: now() });
   const intervalSeconds = options.cadence().powerSeconds;
   const powerStore = new InMemoryPowerHistoryStore({ intervalSeconds });
   const startedAt = now();

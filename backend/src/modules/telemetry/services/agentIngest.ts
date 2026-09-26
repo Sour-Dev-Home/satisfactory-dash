@@ -61,6 +61,8 @@ export class AgentIngest implements AgentSnapshotSink {
     // Never later than the arrival: a reading cannot be from the future, and a clock running ahead would make old data look fresh.
     const observedAtMs = Number.isFinite(agentMs) && Math.abs(agentMs - receivedAtMs) <= AGENT_CLOCK_TOLERANCE_MS ? Math.min(agentMs, receivedAtMs) : receivedAtMs;
 
+    // Any snapshot proves the agent is alive, whatever the game says: "agent offline" measures from this.
+    observations.recordAgentSeen(receivedAtMs);
     if (!snapshot.reachable) {
       observations.recordPollFailure(receivedAtMs); // the alert engine's "server unreachable" reads this
       store.record({ reachable: false, observedAtMs, receivedAtMs });
