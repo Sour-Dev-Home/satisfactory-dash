@@ -46,6 +46,13 @@ long-poll of up to 25 s that is answered the moment a command exists), runs it a
 /api/servers/:serverId/commands/:commandId`. A command left unanswered for 60 s is `expired` and must not be run; a
 server can have at most 5 open commands. A `local` server still answers `200` with the new setting.
 
+**Rule for command types (architect, 2026-09-26): commands must be idempotent, and the agent de-duplicates by id.** A
+command that the agent has received but not yet reported (`sent`) is handed out again on every poll until it is reported
+or expires (60 s), so an agent that restarts before reporting still gets it. Therefore every command type must be
+idempotent (`set_auto_pause { enabled }` is), and the agent app (ADR-0031 PR 6) must remember the ids it has run until their
+`expiresAt`, so it never executes one twice. A future command type that is not idempotent needs an explicit claim step
+in the backend first.
+
 Reading the setting of an agent server (`GET /settings`) gives the last value the agent **confirmed** (or the one
 being applied, with `pending`). The agent's snapshot has no auto-pause field, so before the first confirmed change the
 value is unknown and the read answers `upstream_unreachable`. Adding the field to the snapshot is a contract change for a

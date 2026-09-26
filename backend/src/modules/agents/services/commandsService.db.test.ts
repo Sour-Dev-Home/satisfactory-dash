@@ -58,7 +58,8 @@ describe.skipIf(!available)("agent commands against a real Postgres", () => {
     agents = createAgentsService({ db: pool, canManage: () => true, limiter: new UserRateLimiter({ max: 100_000, windowMs: 60_000 }) });
     enrollment = createEnrollmentService({ db: pool, cadence: () => CADENCE, logger: silent, attachAgentRuntime: async () => undefined });
     notifier = new CommandNotifier();
-    commands = createCommandsService({ db: pool, notifier });
+    // One actor makes dozens of changes across the tests: the per-user limit (tested with fakes) must not be what they hit.
+    commands = createCommandsService({ db: pool, notifier, limiter: new UserRateLimiter({ max: 100_000, windowMs: 60_000 }) });
   }, 60_000);
 
   afterAll(async () => {
