@@ -111,6 +111,7 @@ const kindByCode = {
   server_exists: "unknown",
   server_limit_reached: "unknown",
   import_required: "unknown",
+  lan_requires_cert_pinning: "unknown",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",

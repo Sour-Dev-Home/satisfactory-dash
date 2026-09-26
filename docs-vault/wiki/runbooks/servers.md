@@ -98,6 +98,14 @@ the owner or an admin of a server is not enough (403). `GET /api/servers` says `
 
 Rules the routes enforce:
 
+- **LAN servers wait for certificate pinning (ADR-0030 amendment 1).** For now only LOOPBACK servers (127.0.0.1, ::1, or a
+  name that resolves only to loopback) can be added, edited, tested, imported or started. A private LAN address
+  (10/8, 172.16/12, 192.168/16) is refused with `lan_requires_cert_pinning` (422); a stored LAN row shows as
+  `refused` and is not started. This is a constant in the code (not a setting), lifted by the pinning change after
+  its own security review. The address rules below describe the table that change will build on.
+  **Servers configured in the environment (the servers file or the single-server variables) are outside this gate**: they
+  keep the check they always had (loopback or private host, no certificate verification), because they are the
+  operator's own configuration. `import-servers` refuses a LAN one, so it stays on the environment path until pinning ships.
 - **The host must resolve only to loopback or private addresses** (127/8, ::1, 10/8, 172.16/12, 192.168/16; IPv4-mapped
   IPv6 by its IPv4). One public, link-local (169.254/16, including the cloud metadata address), CGNAT, multicast or
   unique-local address among the answers refuses the whole host (`address_not_allowed`, 422; the message never names the

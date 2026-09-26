@@ -128,6 +128,7 @@ describe("POST /api/servers (create)", () => {
 
   it.each([
     ["address_not_allowed", 422],
+    ["lan_requires_cert_pinning", 422],
     ["connection_test_failed", 422],
     ["server_exists", 409],
     ["server_limit_reached", 409],

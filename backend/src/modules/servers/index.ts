@@ -16,8 +16,17 @@ export { createServerManagementService } from "./serverManagement.js";
 export type { ConnectionCandidate, ManagementDb, ServerManagementDeps, ServerManagementService } from "./serverManagement.js";
 export { createServerManagementRouters } from "./serverManagementRouter.js";
 export type { ServerManagementRouterOptions } from "./serverManagementRouter.js";
-export { AddressRefusedError, isAllowedAddress, isLoopbackAddress, resolveAllowedAddress } from "./addressGuard.js";
-export type { AddressLookup } from "./addressGuard.js";
+export {
+  AddressRefusedError,
+  DEFAULT_ADDRESS_POLICY,
+  LAN_ALLOWED,
+  LanRequiresPinningError,
+  addressVerdict,
+  isAllowedAddress,
+  isLoopbackAddress,
+  resolveAllowedAddress,
+} from "./addressGuard.js";
+export type { AddressLookup, AddressPolicy, AddressVerdict } from "./addressGuard.js";
 export { ServerRuntime } from "./serverRuntime.js";
 export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serverRuntime.js";
 export { loadDatabaseServers } from "./loadDatabaseServers.js";

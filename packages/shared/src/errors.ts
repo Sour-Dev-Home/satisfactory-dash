@@ -37,6 +37,8 @@ export const KnownErrorCode = z.enum([
   // ADR-0030 (additive): servers are still configured in the environment and none is stored yet, so adding
   // one would make the database win at the next restart and drop them. Run the import first.
   "import_required",
+  // ADR-0030 amendment 1 (additive): a LAN (private, non-loopback) address; LAN servers wait for certificate pinning.
+  "lan_requires_cert_pinning",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;
