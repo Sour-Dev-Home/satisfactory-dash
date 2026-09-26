@@ -26,13 +26,18 @@ const RAW_STRING = /(["'`])-?\d*\.?\d+(?:px|rem|em|vh|vw|svh|dvh|ms|s)\1/;
  * The file with its comments blanked out, line for line, so a rule never fires on prose: block
  * comments across lines, trailing `//` comments, JSX `{/* *\/}`. Strings are kept (class names live
  * there) and skipped while looking for comments, so `"https://..."` stays code. `'` and `"` strings
- * end at the line's end: an apostrophe in JSX text must not swallow the lines after it.
+ * end at the line's end: an apostrophe in JSX text must not swallow the lines after it. Regex
+ * literals (`/^\/api\//`, `/[/*]/`) are kept as code too. Also returns each line's comment text,
+ * the only place a hatch counts.
  */
 function stripComments(lines, css) {
   let inBlock = false;
   let template = false;
-  return lines.map((line) => {
+  const code = [];
+  const comments = [];
+  for (const line of lines) {
     let out = "";
+    let comment = "";
     let quote = template ? "`" : null;
     for (let i = 0; i < line.length; i += 1) {
       const ch = line[i];
@@ -41,7 +46,7 @@ function stripComments(lines, css) {
         if (ch === "*" && next === "/") {
           inBlock = false;
           i += 1;
-        }
+        } else comment += ch;
         out += " ";
         continue;
       }
@@ -59,13 +64,39 @@ function stripComments(lines, css) {
         i += 1;
         continue;
       }
-      if (!css && ch === "/" && next === "/") break;
+      if (!css && ch === "/" && next === "/") {
+        comment += line.slice(i + 2);
+        break;
+      }
+      if (!css && ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%~^]|\breturn)\s*$/.test(out)) {
+        const end = regexEnd(line, i);
+        if (end > i) {
+          out += line.slice(i, end + 1);
+          i = end;
+          continue;
+        }
+      }
       if (ch === '"' || ch === "'" || (!css && ch === "`")) quote = ch;
       out += ch;
     }
     template = quote === "`";
-    return out;
-  });
+    code.push(out);
+    comments.push(comment);
+  }
+  return { code, comments };
+}
+
+/** The index of the `/` closing a regex literal that opens at `start`, or -1 if none on this line. */
+function regexEnd(line, start) {
+  let inClass = false;
+  for (let i = start + 1; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === "\\") i += 1;
+    else if (ch === "[") inClass = true;
+    else if (ch === "]") inClass = false;
+    else if (ch === "/" && !inClass) return i;
+  }
+  return -1;
 }
 
 function scriptProblems(code) {
@@ -136,16 +167,16 @@ function themeLines(code) {
 export function checkDesignTokens(file, text) {
   const lines = text.split(/\r?\n/);
   const css = file.endsWith(".css");
-  const code = stripComments(lines, css);
+  const { code, comments } = stripComments(lines, css);
   const skip = css ? themeLines(code) : new Set();
   const violations = [];
   const exceptions = [];
   const errors = [];
   const usedAllows = new Set();
 
-  // Read from the original line: the hatch lives in a comment.
+  // Only a comment carries a hatch: help text in a string or JSX must not switch the lint off.
   const allowAt = (i) => {
-    const m = i >= 0 ? lines[i].match(ALLOW) : null;
+    const m = i >= 0 ? comments[i].match(ALLOW) : null;
     return m ? { index: i, reason: m[1].replace(/\*\/|\}|-->/g, "").trim() } : null;
   };
 

@@ -112,6 +112,40 @@ describe("design-token lint, comments and formatting", () => {
   });
 });
 
+// The second fresh-eyes pass (2026-09-26) found these: regex literals read as comments, and a
+// hatch honoured outside a comment.
+describe("design-token lint, regex literals and where a hatch counts", () => {
+  it("does not mistake a regex character class for a block comment", () => {
+    const line = 'const re = /[/*]/; className="z-10"';
+    expect(tsx(line).violations).not.toHaveLength(0);
+  });
+
+  it('does not mistake an escaped slash before a regex delimiter for "//"', () => {
+    const line = 'const isApi = /^\\/api\\//.test(path); className="z-10"';
+    expect(tsx(line).violations).not.toHaveLength(0);
+  });
+
+  it("does not let design-token-allow inside a plain string literal act as an escape hatch", () => {
+    const line = 'const help = "use design-token-allow: to suppress"; className="z-10"';
+    const result = tsx(line);
+    expect(result.exceptions).toEqual([]);
+    expect(result.violations).not.toHaveLength(0);
+  });
+
+  it("does not let design-token-allow inside visible JSX text act as an escape hatch", () => {
+    const text = ["<p>Workaround: design-token-allow: old banner</p>", '<div className="z-10" />'].join("\n");
+    const result = tsx(text);
+    expect(result.exceptions).toEqual([]);
+    expect(result.violations.map((v) => v.line)).toEqual([2]);
+  });
+
+  it("keeps division and JSX closing tags as code", () => {
+    expect(tsx('const half = total / 2; const c = "z-10"; // a / b').violations).not.toHaveLength(0);
+    expect(tsx('<p>a</p> <div className="min-h-[44px]" /> {/* ok */}').violations).not.toHaveLength(0);
+    expect(tsx("const r = a / b / c; // was z-10").violations).toEqual([]);
+  });
+});
+
 describe("design-token lint, CSS", () => {
   it("allows raw values inside @theme only", () => {
     const text = [
