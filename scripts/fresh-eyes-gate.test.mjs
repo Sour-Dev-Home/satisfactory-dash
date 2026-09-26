@@ -88,7 +88,13 @@ function fakeApi({ pr = { head: { sha: HEAD } }, statuses = [{ context: CONTEXT,
     if (url.startsWith(`repos/${REPO}/statuses/`)) return "{}";
     if (failReads) throw new Error("boom");
     if (url === `repos/${REPO}/pulls/176`) return JSON.stringify(pr);
-    if (url === `repos/${REPO}/commits/${HEAD}/status`) return JSON.stringify({ statuses });
+    const m = /^repos\/owner\/repo\/commits\/a{40}\/status\?per_page=(\d+)&page=(\d+)$/.exec(url);
+    if (m) {
+      const size = Number(m[1]);
+      assert.equal(size, 100, "must request the maximum page size");
+      const page = Number(m[2]);
+      return JSON.stringify({ total_count: statuses.length, statuses: statuses.slice((page - 1) * size, page * size) });
+    }
     throw new Error(`unexpected read ${url}`);
   };
   return { api, calls };
@@ -119,6 +125,13 @@ test("runGate fails closed when the branch name does not parse: posts failure an
   assert.equal(result.state, "failure");
   assert.equal(calls.length, 1);
   assert.ok(calls[0].includes("state=failure"));
+});
+
+test("runGate finds the context even when it is beyond the first page of a many-status commit", () => {
+  const filler = Array.from({ length: 130 }, (_, i) => ({ context: `ci/filler-${i}`, state: "success" }));
+  const { api, calls } = fakeApi({ statuses: [...filler, { context: CONTEXT, state: "success" }] });
+  assert.equal(runGate({ repo: REPO, headRef: ref(176), groupSha: GROUP }, api).state, "success");
+  assert.ok(posts(calls)[0].includes("state=success"));
 });
 
 test("runGate fails closed when the API reads fail or return junk", () => {

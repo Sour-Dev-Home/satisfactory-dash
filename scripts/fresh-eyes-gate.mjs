@@ -82,8 +82,16 @@ export function runGate({ repo, headRef, groupSha }, api = ghApi) {
     if (typeof prHeadSha !== "string" || !SHA.test(prHeadSha)) {
       decision = { state: "failure", description: "no fresh-eyes success on PR head (PR head sha unknown)" };
     } else {
-      const combined = JSON.parse(api([`repos/${repo}/commits/${prHeadSha}/status`]));
-      decision = decide({ prHeadSha, statuses: combined?.statuses });
+      // The combined-status list is paginated (30 per page by default), so a commit with many contexts could hide
+      // ours. Ask for 100 per page and keep reading until a short page.
+      const statuses = [];
+      for (let page = 1; page <= 10; page++) {
+        const combined = JSON.parse(api([`repos/${repo}/commits/${prHeadSha}/status?per_page=100&page=${page}`]));
+        const batch = Array.isArray(combined?.statuses) ? combined.statuses : [];
+        statuses.push(...batch);
+        if (batch.length < 100) break;
+      }
+      decision = decide({ prHeadSha, statuses });
     }
   } catch {
     decision = { state: "failure", description: "could not read the PR's fresh-eyes status" };
