@@ -6,6 +6,8 @@ would make it worth reopening. Decided 2026-09-22 by the architecture session un
 the project owner's delegation (ADR-0001 to 0010) or with their approval (ADR-0011 to 0024). Change
 a decision by adding a new ADR that supersedes it, not by rewriting history here.
 The diagrams these decisions produce live in [`../architecture/`](../architecture/README.md).
+What changed and when is in [`../log.md`](../log.md) (frozen at 2026-09-25) and the per-PR fragments in
+[`../log.d/`](../log.d/README.md) (ADR-0033).
 
 | ADR | Decision |
 |---|---|

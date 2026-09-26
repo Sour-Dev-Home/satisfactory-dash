@@ -10,6 +10,10 @@ import { resetDemoState } from "./handlers";
 vi.mock("./mode", () => ({ IS_DEMO: true }));
 vi.mock("../api/transport", async () => await import("./transport"));
 
+// The whole app's first render in jsdom can pass findBy*'s 1 s default on a busy CI runner
+// (1.4 s on #173's run), so the waits on it get more room.
+const FIRST_RENDER = { timeout: 5000 };
+
 const fetchSpy = vi.fn(() => Promise.reject(new Error("the demo must not use the network")));
 
 beforeEach(() => {
@@ -22,14 +26,14 @@ describe("the demo app", () => {
   it("says it's a demo, offers 'Enter demo' instead of a sign-in form, and never uses the network", async () => {
     renderWithClient(<App />);
     expect(screen.getByText(/Demo data: nothing here is live/)).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Enter demo" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Enter demo" }, FIRST_RENDER)).toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Enter demo" }));
-    expect(await screen.findByText("Demo factory")).toBeInTheDocument();
-    const rows = await screen.findByRole("list", { name: "Sections" });
+    expect(await screen.findByText("Demo factory", {}, FIRST_RENDER)).toBeInTheDocument();
+    const rows = await screen.findByRole("list", { name: "Sections" }, FIRST_RENDER);
     // Real clock here: the demo's players come and go, so any count of the 4 slots.
-    expect(await within(rows).findByText(/Demo World · [0-4] \/ 4 players/)).toBeInTheDocument();
+    expect(await within(rows).findByText(/Demo World · [0-4] \/ 4 players/, {}, FIRST_RENDER)).toBeInTheDocument();
     expect(screen.getByText(/Demo data: nothing here is live/)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
