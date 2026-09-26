@@ -56,6 +56,11 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                         "code" "modules/alerts"
                     }
                 }
+                agents = component "agents" "Edge agent enrolment, credentials and snapshot ingest (ADR-0031 PR 5a); the owner's enrolment code, agent status and revoke." "TypeScript" {
+                    properties {
+                        "code" "modules/agents"
+                    }
+                }
                 gameserver = component "gameserver" "Thin facade over the game-adapter package, plus the backend-only config (environment and servers file); no Express." "TypeScript" {
                     properties {
                         "code" "modules/gameserver"
@@ -88,6 +93,10 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.alerts -> satis.api.telemetry "Reads the pollers' last readings" "In-process call"
         satis.api.alerts -> satis.api.servers "Lists the servers" "In-process call"
         satis.api.alerts -> satis.api.platform "Uses" "In-process call" "platform-use"
+        satis.api.root -> satis.api.agents "Wires" "In-process call" "wiring"
+        satis.api.agents -> satis.api.telemetry "Hands each snapshot to an agent server's telemetry services" "In-process call"
+        satis.api.agents -> satis.api.servers "Switches a server to the agent connection kind" "In-process call"
+        satis.api.agents -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.root -> satis.api.gameserver "Wires" "In-process call" "wiring"
         satis.api.telemetry -> satis.api.gameserver "Reads through ports" "In-process call"
         satis.api.telemetry -> satis.api.servers "Resolves the requested server" "In-process call"

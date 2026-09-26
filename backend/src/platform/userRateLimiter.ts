@@ -31,7 +31,9 @@ export class UserRateLimiter {
       for (const [k, window] of this.windows) {
         if (window.resetAt <= now) this.windows.delete(k);
       }
-      if (this.windows.size >= MAX_TRACKED_KEYS) this.windows.clear();
+      // Still full of live windows: drop only the oldest one (Map order is insertion order), never everyone's counters at once.
+      // A flood of distinct keys can still push an old key out, which is why public routes also use a global limiter (agents module).
+      if (this.windows.size >= MAX_TRACKED_KEYS) this.windows.delete(this.windows.keys().next().value as string);
     }
     this.windows.set(key, { count: 1, resetAt: now + this.options.windowMs });
     return 0;

@@ -5,6 +5,7 @@ import type { PowerHistoryService } from "./services/powerHistoryService.js";
 import type { PlayersService } from "./services/playersService.js";
 import type { HistoryQueryService } from "./services/historyQueryService.js";
 import type { ObservationBoard } from "./services/observationBoard.js";
+import type { AgentSnapshotSink } from "./services/agentIngest.js";
 
 /** The services the data routes need for one game server. Narrowed with Pick so route
  *  tests can supply stubs. */
@@ -18,6 +19,8 @@ export interface TelemetryServices {
   history?: Pick<HistoryQueryService, "power" | "items" | "transitions">;
   /** ADR-0027 (alerts): the pollers' last readings, read by the alert evaluator. Absent without a database. */
   observations?: Pick<ObservationBoard, "snapshot">;
+  /** ADR-0031 PR 5a: present only on a server reached through an edge agent; the agents module hands each snapshot to it. */
+  agentIngest?: AgentSnapshotSink;
 }
 
 /** What the telemetry routes read from a server directory entry. The composition root

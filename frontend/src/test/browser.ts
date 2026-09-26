@@ -22,7 +22,8 @@ export async function startMockApi(search: string): Promise<void> {
   const responses = responsesFor(scenario);
   const handlers = (Object.keys(ROUTES) as RouteKey[]).map((key) => {
     const { method, route } = ROUTES[key];
-    const verb = method === "GET" ? http.get : method === "PUT" ? http.put : http.post;
+    // Every method its own handler: PATCH and DELETE used to fall through to POST and never match.
+    const verb = { GET: http.get, POST: http.post, PUT: http.put, PATCH: http.patch, DELETE: http.delete }[method];
     return verb(route, respond(responses[key]));
   });
   await setupWorker(...handlers).start({ onUnhandledRequest: "bypass", quiet: true });

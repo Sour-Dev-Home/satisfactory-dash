@@ -33,6 +33,10 @@ const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   // ADR-0027 PR 5: the alert engine reads the pollers' readings (telemetry) and the server list (servers), through
   // their index.ts, and owns the `alerts` schema.
   alerts: ["telemetry", "servers"],
+  // ADR-0031 PR 5a: the edge agent's enrolment and snapshot ingest hand each snapshot to the telemetry services of an
+  // agent-backed server and switch a server's connection kind (servers), both through their index.ts; it owns the
+  // `agents` schema.
+  agents: ["telemetry", "servers"],
 };
 
 /** The only bare (package) imports gameserver may use. */

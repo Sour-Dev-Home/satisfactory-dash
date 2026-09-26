@@ -21,20 +21,7 @@ import type { ItemLabel } from "../../factory/itemLabels";
 /** An item the editor can offer: ItemLabel-shaped, with its class name (9c builds these from the live factory). */
 export type EditorItem = ItemLabel & { className: string };
 
-// TODO(9a): use alertText.ts (kindLabel, severityLabel), so the rules editor and the log say the same words.
-export const KIND_LABEL: Record<string, string> = {
-  power_outage: "Power outage",
-  fuse_trip: "Fuse trip",
-  stopped_machines: "Stopped machines",
-  server_unreachable: "Game server unreachable",
-  production_below_target: "Production below target",
-};
-
-/** A kind this frontend doesn't know (a newer backend) keeps its own name, never a guess. */
-export const kindLabel = (kind: string) => KIND_LABEL[kind] ?? `Rule: ${kind}`;
-
-export const SEVERITY_LABEL: Record<string, string> = { info: "Info", warning: "Warning", critical: "Critical" };
-export const severityLabel = (severity: string) => SEVERITY_LABEL[severity] ?? severity;
+// Kind and severity names come from ../alertText.ts, so the editor and the log say the same words.
 export const isKnownSeverity = (s: string): s is (typeof KNOWN_SEVERITIES)[number] => (KNOWN_SEVERITIES as readonly string[]).includes(s);
 
 /** A form field's id; each maps to one input and one error message. */

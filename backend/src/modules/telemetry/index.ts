@@ -39,6 +39,9 @@ import { ObservationBoard } from "./services/observationBoard.js";
 import type { HistoryDb } from "./services/historyQueryService.js";
 import { createHistoryRouter } from "./routes/history.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
+import type { Cadence } from "@satisfactory-dash/shared";
+import { AgentIngest } from "./services/agentIngest.js";
+import { LatestSnapshotStore } from "./services/agentSnapshotStore.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
@@ -48,6 +51,7 @@ export type {
   ObservationSnapshot,
   PowerCircuitObservation,
 } from "./services/observationBoard.js";
+export type { AgentSnapshotSink } from "./services/agentIngest.js";
 export { createUnitResolver } from "./itemForms.js";
 
 export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike & PlayersAdapterLike;
@@ -104,6 +108,44 @@ export function createTelemetryServices(
       ? { history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }) }
       : {}),
     workers,
+  };
+}
+
+export interface AgentTelemetryOptions {
+  logger?: Logger;
+  now?: () => number;
+  /** The cadence the backend has set for the agent (also its answer to every snapshot); read on every use, so a change applies at once. */
+  cadence: () => Cadence;
+  /** History is written for an agent server exactly as for a polled one (a database is what makes agents possible at all). */
+  history: { db: Queryable & HistoryDb; serverPublicId: string };
+}
+
+/**
+ * ADR-0031 PR 5a: the services for a server reached through an edge agent. There is no game server to call: the live
+ * routes serve the agent's last snapshot (its own time, stale after three intervals), and `agentIngest` is where each
+ * snapshot arrives, feeding the same observation board, history and power chart the pollers feed. The only worker is
+ * the history recorder's batch writer.
+ */
+export function createAgentTelemetryServices(options: AgentTelemetryOptions): TelemetryBundle {
+  const now = options.now ?? Date.now;
+  const logger = options.logger ?? createLogger({ level: "silent" });
+  const store = new LatestSnapshotStore(options.cadence, now);
+  const recorder = new BufferedHistoryRecorder(options.history.db, options.history.serverPublicId, { logger });
+  const observations = new ObservationBoard();
+  const intervalSeconds = options.cadence().powerSeconds;
+  const powerStore = new InMemoryPowerHistoryStore({ intervalSeconds });
+  const startedAt = now();
+  return {
+    status: { getStatus: async () => store.read("status") },
+    production: { getFactoryOverview: async () => store.read("factory") },
+    power: { getPowerOverview: async () => store.read("power") },
+    powerHistory: new PowerHistoryService(powerStore, { startedAt: () => startedAt, lastSuccessAt: () => store.lastPowerAt() }, { intervalSeconds, now }),
+    // Not listed by the agent yet is "no player list", the same answer a server without FRM gives.
+    players: { getPlayers: async () => store.read("players", { available: false, players: [] }) },
+    history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }),
+    observations,
+    agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore }),
+    workers: [recorder],
   };
 }
 

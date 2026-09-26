@@ -33,7 +33,10 @@ export const MAX_TRANSITIONS_PER_POLL = 500;
 const NEW_IDS_BASELINE_SHARE = 0.5;
 
 /** Total production per item across every building: the factory's output as one sample per item. */
-export function sumItemRates(buildings: FactoryBuilding[], atMs: number): ItemSampleRow[] {
+export function sumItemRates(
+  buildings: { production: { className: string; currentPerMinute: number; maxPerMinute: number }[] }[],
+  atMs: number,
+): ItemSampleRow[] {
   const totals = new Map<string, { current: number; max: number }>();
   for (const building of buildings) {
     for (const rate of building.production) {
@@ -64,6 +67,21 @@ export function diffStates(
       current.set(building.id, { state, className: building.className });
     }
   }
+  return diffDecidedStates(known, current, new Set(buildings.map((building) => building.id)), atMs, cap);
+}
+
+/**
+ * The comparison itself, for states that are already decided: the pollers classify the adapter's buildings, an agent's
+ * snapshot carries each building's state (ADR-0031 PR 5a). `current` holds only buildings whose state is decided;
+ * `present` is every building in the snapshot.
+ */
+export function diffDecidedStates(
+  known: Map<string, string>,
+  current: Map<string, { state: string; className: string }>,
+  present: Set<string>,
+  atMs: number,
+  cap = MAX_TRANSITIONS_PER_POLL,
+): TransitionRow[] {
   let newIds = 0;
   for (const id of current.keys()) {
     if (!known.has(id)) newIds++;
@@ -79,7 +97,6 @@ export function diffStates(
     }
   }
   // Forget buildings that are gone, but keep the last state of ones that are present with an undecidable state.
-  const present = new Set(buildings.map((building) => building.id));
   for (const id of known.keys()) {
     if (!present.has(id)) known.delete(id);
   }

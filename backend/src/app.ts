@@ -15,6 +15,9 @@ export interface AppOptions {
   sessionGuard?: RequestHandler;
   /** Exact origins allowed to call the API with credentials. Empty = no CORS. */
   allowedOrigins?: string[];
+  /** ADR-0031 PR 5a: the edge agent's API, mounted at /agent/v1. No session guard, no cross-site guard and no
+   *  JSON-body policy of /api (an agent is not a browser); each route authenticates its own way and parses its own body. */
+  agentRouters?: Router[];
 }
 
 /**
@@ -32,6 +35,7 @@ export function createApp({
   protectedRouters = [],
   sessionGuard,
   allowedOrigins = [],
+  agentRouters = [],
 }: AppOptions): Express {
   if (protectedRouters.length > 0 && !sessionGuard) {
     throw new Error("createApp: protectedRouters require a sessionGuard");
@@ -41,13 +45,16 @@ export function createApp({
   app.use(assignRequestId);
   // Before CORS so a preflight answer carries them too (ADR-0019).
   app.use("/api", securityHeaders);
+  // The agent API's responses (an enrolment answer holds the credential) are never cached either.
+  app.use("/agent", securityHeaders);
   app.use(createRequestLogger(logger));
   // ADR-0011: never a wildcard. Only the listed origins get CORS headers, with
   // credentials so the session cookie is sent. The Vite dev proxy is same-origin.
   app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : false, credentials: true }));
   app.use("/api", createCrossSiteGuard(allowedOrigins));
   app.use("/api", requireJsonBody);
-  app.use(express.json());
+  // /api only: the agent API parses its own bodies (a snapshot is far larger than any /api body).
+  app.use("/api", express.json());
   for (const router of routers) {
     app.use("/api", router);
   }
@@ -57,6 +64,13 @@ export function createApp({
   for (const router of protectedRouters) {
     app.use("/api", router);
   }
+  // ADR-0031 PR 5a: the agent API, with its own catch-all so an unknown /agent path gets the same envelope.
+  for (const router of agentRouters) {
+    app.use("/agent/v1", router);
+  }
+  app.use("/agent", (_req, _res, next) => {
+    next(new RouteNotFoundError());
+  });
   // Any /api path no router matched gets the not_found envelope rather than Express's
   // HTML 404 page, which the frontend can't parse. Paths outside /api are left alone.
   app.use("/api", (_req, _res, next) => {

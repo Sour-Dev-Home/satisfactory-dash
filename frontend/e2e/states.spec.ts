@@ -120,6 +120,11 @@ const CASES: StateCase[] = [
     },
   },
   { scenario: "alerts-empty", shows: "No alerts yet.", act: openAlerts },
+  // Settings → Alerts (ADR-0027 PR 9c): an owner gets the mute, the Discord setup and the rules
+  // editor; a viewer reads the same section with no controls. A webhook Discord deleted shows there.
+  { scenario: "alerts-owner", path: "/app/settings", shows: "New production target" },
+  { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules." },
+  { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/ },
 ];
 
 async function openAddForm(page: Page) {

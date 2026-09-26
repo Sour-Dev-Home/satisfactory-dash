@@ -29,6 +29,9 @@ export {
 export type { AddressLookup, AddressPolicy, AddressVerdict } from "./addressGuard.js";
 export { ServerRuntime } from "./serverRuntime.js";
 export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serverRuntime.js";
+// ADR-0031 PR 5a: the agents module switches a server to 'agent' in its enrolment transaction and looks servers up.
+export { findServerByPublicId, listAgentServers, switchToAgentConnection } from "./repositories/serverRepository.js";
+export type { ConnectionKind, RegisteredServer } from "./repositories/serverRepository.js";
 export { loadDatabaseServers } from "./loadDatabaseServers.js";
 export type { LoadDatabaseServersResult } from "./loadDatabaseServers.js";
 export { ImportError, MAX_LOCAL_SERVERS, importServers } from "./importServers.js";
