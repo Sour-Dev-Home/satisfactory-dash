@@ -90,7 +90,9 @@ export class LatestSnapshotStore {
    *  fuse is joined from when a factory reading is classified. Unknown is undefined, never assumed healthy. */
   freshPower(): Power | undefined {
     const stored = this.parts.power;
-    if (stored === undefined || !this.reachable) return undefined;
+    // Not gated on `reachable`: this runs BEFORE the arriving snapshot is recorded, so `reachable` still reflects the
+    // previous snapshot; age alone decides whether the reading may be joined.
+    if (stored === undefined) return undefined;
     return this.now() - stored.observedAtMs > STALE_AFTER_INTERVALS * this.cadence().powerSeconds * 1000 ? undefined : stored.data;
   }
 

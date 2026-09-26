@@ -70,7 +70,14 @@ needs the output inventory, which only the agent sees). The backend derives all 
 (`telemetry/services/agentDerive.ts`) with the same rules a polled server uses, so a rule change never needs an agent
 update. A field an agent still sends is dropped by the schema and, as a second guard, never copied by the derivation.
 A machine's fuse is joined from the latest power reading by circuit; if that reading is older than three power
-intervals (or none arrived) the fuse is unknown and the machine gets no `state`, never a guess.
+intervals (or none arrived) the fuse is unknown and the machine gets no `state`, never a guess. A stored factory keeps
+the states derived from the fuses known when it arrived, so a fuse that trips afterwards shows on machines at the next
+factory snapshot (30 s by default), not at once.
+
+Still the agent's word, by design (it is the only source of these readings): `isBackedUp`, `isPaused`, `isProducing`,
+`circuitGroupId`, each circuit's `fuseTriggered` and the numbers. A compromised agent can therefore cause an outage,
+`backedUp` or `unpowered` state and the alerts that follow, but only for its own server. Body size is capped (5 MB) and
+each credential is rate limited, which bounds what one agent can make the backend hold.
 
 ## Agent offline (alert)
 

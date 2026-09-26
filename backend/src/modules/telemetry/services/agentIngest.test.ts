@@ -351,6 +351,30 @@ describe("derived fields (ADR-0031): the backend applies its own rules to an age
   });
 });
 
+describe("the fuse join around staleness and an unreachable game", () => {
+  it("a power reading exactly three power intervals old is still fresh; one millisecond older is not", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ factory: undefined }), T0);
+    t.advance(15_000);
+    t.ingest.ingest(t.running({ power: undefined, factory: factoryOf([building("a", "producing")]) }), T0 + 15_000);
+    expect((t.store.read("factory") as Factory).buildings[0]?.state).toBe("producing");
+    t.advance(1);
+    t.ingest.ingest(t.running({ power: undefined, factory: factoryOf([building("a", "producing")]) }), T0 + 15_001);
+    // 15_001 after the power reading at T0 -> stale; but the previous snapshot's factory is what is re-read here only if newer
+    expect((t.store.read("factory") as Factory).buildings[0]?.state).toBeUndefined();
+  });
+
+  it("the first reachable factory-only snapshot after an unreachable one still joins the (fresh) power reading's fuses", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ factory: undefined }), T0);
+    t.advance(1000);
+    t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(T0 + 1000).toISOString() }, T0 + 1000);
+    t.advance(1000);
+    t.ingest.ingest(t.running({ power: undefined, factory: factoryOf([building("a", "producing")]) }), T0 + 2000);
+    expect((t.store.read("factory") as Factory).buildings[0]?.state).toBe("producing");
+  });
+});
+
 /** A circuit as an agent sends it (raw fields only). */
 function AgentPowerCircuitOf(id: number) {
   return { circuitGroupId: id, productionMW: 100, consumptionMW: 50, capacityMW: 100, maxConsumptionMW: 60, fuseTriggered: false, batteryCapacityMWh: 0, batteryPercent: 0, batteryDifferentialMW: 0 };

@@ -149,6 +149,11 @@ describe("deriveFactory", () => {
     expect(derived.stateCounts).toEqual({ underfed: 1 });
   });
 
+  it("a paused building with no circuit id is still 'paused', as on the local path (pause needs no fuse)", () => {
+    const input = AgentFactorySchema.parse({ buildings: [{ ...building("p"), isBackedUp: false, isPaused: true, circuitGroupId: undefined }] });
+    expect(deriveFactory(input, fuses, resolveUnit).buildings[0]?.state).toBe("paused");
+  });
+
   it("a building with no circuit id gets no state (nothing to join a fuse to), and is still served", () => {
     const input = AgentFactorySchema.parse({ buildings: [{ ...building("x"), isBackedUp: false, circuitGroupId: undefined }] });
     expect(deriveFactory(input, fuses, resolveUnit).buildings[0]).not.toHaveProperty("state");

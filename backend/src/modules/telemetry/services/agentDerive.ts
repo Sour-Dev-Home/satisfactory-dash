@@ -68,9 +68,12 @@ export function deriveFactory(agent: AgentFactory, fuses: ReadonlyMap<number, bo
     const ingredients = building.ingredients?.map(withUnit);
     const circuit = building.circuitGroupId;
     const fuse = circuit === undefined ? undefined : fuses?.get(circuit);
+    // A pause needs no circuit or fuse (the local rule checks it first), so it is decided even when the id is missing.
     const classified =
       circuit === undefined
-        ? undefined
+        ? building.isPaused
+          ? { state: "paused" as const }
+          : undefined
         : classifyBuilding(
             { recipe: building.recipe, isPaused: building.isPaused, production, consumption: building.ingredients ?? [], circuitGroupId: circuit, ...(fuse !== undefined ? { fuseTriggered: fuse } : {}) },
             building.isBackedUp,
