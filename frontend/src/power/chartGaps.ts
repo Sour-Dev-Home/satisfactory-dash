@@ -5,7 +5,8 @@
  * pixel (5 minutes in a year) would draw nothing.
  */
 export function bandSpan(x0: number, x1: number, lo: number, hi: number, min: number): { left: number; width: number } | null {
-  if (!Number.isFinite(x0) || !Number.isFinite(x1)) return null;
+  // valToPos gives NaN before uPlot's scale is set; the plot bounds could be NaN the same way.
+  if (![x0, x1, lo, hi, min].every(Number.isFinite)) return null;
   const from = Math.min(x0, x1);
   const to = Math.max(x0, x1);
   if (to < lo || from > hi) return null;

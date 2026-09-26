@@ -38,6 +38,11 @@ describe("bandSpan", () => {
     // A 4 px wide plot, 6 px minimum: can't widen past the plot itself.
     expect(bandSpan(1, 2, 0, 4, 6)).toEqual({ left: 0, width: 4 });
   });
+
+  it("is null (not NaN) when the plot bounds are NaN too", () => {
+    expect(bandSpan(20, 50, NaN, 110, 6)).toBeNull();
+    expect(bandSpan(20, 50, 10, NaN, 6)).toBeNull();
+  });
 });
 
 describe("isolatedIndices", () => {

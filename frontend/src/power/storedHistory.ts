@@ -97,16 +97,18 @@ export function missingStretches(points: readonly Point[], resolutionSeconds: nu
   return stretches;
 }
 
-/** Stretches of consecutive buckets with the fuse tripped in some sample: [from, to) in ms. */
+/**
+ * Stretches of consecutive buckets with the fuse tripped in some sample: [from, to) in ms, oldest
+ * first. The contract sends points oldest first; sorting anyway means a stray out-of-order or
+ * duplicate bucket still merges into the stretch it belongs to instead of being lost or doubled.
+ */
 export function fuseStretches(points: readonly Point[], resolutionSeconds: number): { fromT: number; toT: number }[] {
   const step = resolutionSeconds * 1000;
+  const tripped = points.filter((p) => p.fuseTrippedSamples > 0).sort((a, b) => a.t - b.t);
   const stretches: { fromT: number; toT: number }[] = [];
-  for (const p of points) {
-    if (p.fuseTrippedSamples === 0) continue;
+  for (const p of tripped) {
     const last = stretches.at(-1);
-    // A point inside or just after the stretch joins it (so a duplicate timestamp isn't listed
-    // twice); an earlier one (out of order, which the contract rules out) gets its own stretch.
-    if (last && p.t >= last.fromT && p.t <= last.toT) last.toT = Math.max(last.toT, p.t + step);
+    if (last && p.t <= last.toT) last.toT = Math.max(last.toT, p.t + step);
     else stretches.push({ fromT: p.t, toT: p.t + step });
   }
   return stretches;

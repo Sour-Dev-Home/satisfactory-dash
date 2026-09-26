@@ -146,13 +146,37 @@ describe("fuseStretches, duplicate and unaligned buckets", () => {
     expect(fuseStretches(points, history.resolutionSeconds)).toEqual([{ fromT: t0, toT: t0 + step }]);
   });
 
-  // Points are documented as "oldest first" (history.ts), so this shouldn't come from the backend;
-  // if it does, the earlier trip must still be listed, not swallowed by the later stretch.
-  it("keeps a trip that arrives out of order as its own stretch", () => {
+  // Points are documented as "oldest first" (history.ts), so the rest shouldn't come from the
+  // backend; if they do, every trip is still listed once, oldest first.
+  it("keeps a trip that arrives out of order, listed oldest first", () => {
     const points = [{ ...tripped, t: t0 + 5 * step }, { ...tripped, t: t0 + 2 * step }];
     expect(fuseStretches(points, history.resolutionSeconds)).toEqual([
-      { fromT: t0 + 5 * step, toT: t0 + 6 * step },
       { fromT: t0 + 2 * step, toT: t0 + 3 * step },
+      { fromT: t0 + 5 * step, toT: t0 + 6 * step },
+    ]);
+  });
+
+  it("doesn't double a stretch when its bucket repeats after an out-of-order trip", () => {
+    const points = [
+      { ...tripped, t: t0 + 5 * step },
+      { ...tripped, t: t0 + 2 * step },
+      { ...tripped, t: t0 + 5 * step }, // same bucket as the first point
+    ];
+    expect(fuseStretches(points, history.resolutionSeconds)).toEqual([
+      { fromT: t0 + 2 * step, toT: t0 + 3 * step },
+      { fromT: t0 + 5 * step, toT: t0 + 6 * step },
+    ]);
+  });
+
+  it("doesn't split a stretch when an adjacent bucket arrives after an out-of-order trip", () => {
+    const points = [
+      { ...tripped, t: t0 + 5 * step },
+      { ...tripped, t: t0 + 2 * step },
+      { ...tripped, t: t0 + 6 * step }, // extends the first stretch
+    ];
+    expect(fuseStretches(points, history.resolutionSeconds)).toEqual([
+      { fromT: t0 + 2 * step, toT: t0 + 3 * step },
+      { fromT: t0 + 5 * step, toT: t0 + 7 * step },
     ]);
   });
 });
