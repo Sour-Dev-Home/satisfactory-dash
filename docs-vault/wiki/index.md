@@ -24,6 +24,9 @@ added or removed.
 - [`runbooks/agents.md`](./runbooks/agents.md) — the backend side of the edge agent (ADR-0031 PR 5a and 5b): the deploy
   order (`db:migrate` first), enrolment codes and what enrolling does to a local server, revoking (the only way back is
   re-enrolling), commands (auto-pause answers `202`), and the `agent_offline` alert.
+- [`runbooks/agent-app.md`](./runbooks/agent-app.md) — the edge agent program itself (ADR-0031 PR 6): first setup in order
+  (set the game's tokens at a hidden prompt, `check`, enrol, run), where the DPAPI-protected store and the 7-day logs
+  live, the Scheduled Task and its logon-type trap, what it sends, and troubleshooting by exit code and log event.
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
