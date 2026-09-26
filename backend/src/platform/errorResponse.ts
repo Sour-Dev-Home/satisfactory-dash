@@ -229,6 +229,26 @@ function clientRequestErrorStatus(err: unknown): number | undefined {
   }
 }
 
+/** The text logged (and, in development, returned) for a failure. A rejected request body is described by its
+ *  type and status only: body-parser's message quotes a snippet of the body, which on a management route can be
+ *  part of a token (ADR-0030 security review). */
+function detailFor(err: unknown): string {
+  const status = clientRequestErrorStatus(err);
+  if (status === undefined) {
+    return formatErrorDetail(err);
+  }
+  let type = "request_error";
+  try {
+    const candidate = (err as { type?: unknown }).type;
+    if (typeof candidate === "string" && /^[a-z._-]{1,60}$/.test(candidate)) {
+      type = candidate;
+    }
+  } catch {
+    // a hostile getter: keep the generic type
+  }
+  return `request rejected: ${type} (${status})`;
+}
+
 export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   if (err instanceof ContractViolationError) {
     return { code: "internal", message: INTERNAL_MESSAGE };
@@ -320,7 +340,7 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
       return;
     }
     const { code, message } = classifyRequestFailure(err);
-    const detail = formatErrorDetail(err);
+    const detail = detailFor(err);
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
     // Only real failures are errors (a 401 is routine while signed out, other 4xx are warnings).

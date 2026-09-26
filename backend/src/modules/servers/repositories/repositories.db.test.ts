@@ -85,6 +85,38 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       expect(await getMemberRole(pool, { publicId: "revive-1", userId: owner.id })).toBeUndefined();
     });
 
+    it("soft delete removes the server's recorded history, so a revived id never inherits it (ADR-0027)", async () => {
+      const server = await upsertConfiguredServer(pool, { publicId: "hist-revive", displayName: "History" });
+      const other = await upsertConfiguredServer(pool, { publicId: "hist-keep", displayName: "Keeper" });
+      const at = "2026-01-10T12:00:00Z";
+      for (const id of [server.id, other.id]) {
+        await admin.query(
+          "INSERT INTO telemetry.power_samples (server_id, session, circuit, at, production_mw, consumption_mw, capacity_mw, battery_pct, fuse_tripped) VALUES ($1, 1, 1, $2, 1, 1, 1, 0, false)",
+          [id, at],
+        );
+        await admin.query("INSERT INTO telemetry.item_samples (server_id, item, at, current_per_min, max_per_min) VALUES ($1, 'X', $2, 1, 1)", [id, at]);
+        await admin.query(
+          "INSERT INTO telemetry.power_rollups (server_id, session, circuit, resolution, bucket, samples, production_min, production_avg, production_max, consumption_min, consumption_avg, consumption_max, capacity_avg, battery_min, battery_avg, battery_max, fuse_samples) VALUES ($1, 1, 1, 60, $2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)",
+          [id, at],
+        );
+        await admin.query(
+          "INSERT INTO telemetry.item_rollups (server_id, item, resolution, bucket, samples, current_min, current_avg, current_max, max_avg) VALUES ($1, 'X', 60, $2, 1, 1, 1, 1, 1)",
+          [id, at],
+        );
+        await admin.query(
+          "INSERT INTO telemetry.building_transitions (server_id, at, building_id, class_name, from_state, to_state) VALUES ($1, $2, 'b', 'c', NULL, 'producing')",
+          [id, at],
+        );
+      }
+      expect(await softDeleteServer(pool, "hist-revive")).toBe(true);
+      const count = async (table: string, id: string) =>
+        Number((await admin.query(`SELECT count(*) AS n FROM telemetry.${table} WHERE server_id = $1`, [id])).rows[0].n);
+      for (const table of ["power_samples", "item_samples", "power_rollups", "item_rollups", "building_transitions"]) {
+        expect(await count(table, server.id), `${table} of the deleted server`).toBe(0);
+        expect(await count(table, other.id), `${table} of another server`).toBe(1);
+      }
+    });
+
     it("an unknown or soft-deleted server is not found, and re-registering brings it back", async () => {
       expect(await findServerByPublicId(pool, "nope")).toBeUndefined();
       const server = await upsertConfiguredServer(pool, { publicId: "soft-1", displayName: "Soft" });
