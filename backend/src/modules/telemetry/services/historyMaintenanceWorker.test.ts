@@ -31,13 +31,15 @@ describe("HistoryMaintenanceWorker.runOnce", () => {
     const worker = new HistoryMaintenanceWorker(db, { logger: logger(), now: () => now });
     await worker.runOnce();
     const first = rollups(calls)[0]?.params[0] as string;
-    expect(new Date(first).getTime()).toBe(Math.floor((NOW - RAW_RETENTION_MS) / 60_000) * 60_000);
+    // The first WHOLE minute inside the raw window: the minute holding the cutoff may be partly purged.
+    expect(new Date(first).getTime()).toBe(Math.floor((NOW - RAW_RETENTION_MS + 60_000) / 60_000) * 60_000);
+    expect(new Date(first).getTime()).toBeGreaterThanOrEqual(NOW - RAW_RETENTION_MS);
     calls.length = 0;
     now += 60_000;
     await worker.runOnce();
     const second = rollups(calls)[0]?.params[0] as string;
-    // Only the recent overlap (5 minutes), floored to a whole minute: far after the 48 h catch-up start.
-    expect(new Date(second).getTime()).toBe(Math.floor((now - 5 * 60_000) / 60_000) * 60_000);
+    // Only the overlap (5 minutes) before the last successful run, floored to a whole minute: far after the 48 h start.
+    expect(new Date(second).getTime()).toBe(Math.floor((NOW - 5 * 60_000) / 60_000) * 60_000);
   });
 
   it("purges on the first run and then only when the interval has passed", async () => {
@@ -62,6 +64,33 @@ describe("HistoryMaintenanceWorker.runOnce", () => {
     await expect(worker.runOnce()).resolves.toBeUndefined();
     await worker.runOnce();
     expect(log.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("after failed runs, the next success re-covers everything since the last success (no hole after an outage)", async () => {
+    const calls: { sql: string; params: unknown[] }[] = [];
+    let down = false;
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        if (down) throw new Error("db down");
+        calls.push({ sql, params });
+        return { rows: sql.includes("count(*)") ? [{ deleted: 0 }] : [] };
+      }),
+    } as unknown as Queryable;
+    let now = NOW;
+    const worker = new HistoryMaintenanceWorker(db, { logger: logger(), now: () => now });
+    await worker.runOnce();
+    const okAt = now;
+    down = true;
+    for (let i = 0; i < 30; i++) {
+      now += 60_000;
+      await worker.runOnce();
+    }
+    down = false;
+    calls.length = 0;
+    now += 60_000;
+    await worker.runOnce();
+    const from = new Date(rollups(calls)[0]?.params[0] as string).getTime();
+    expect(from).toBeLessThanOrEqual(okAt - 5 * 60_000 + 60_000); // back to the last success, minus the overlap
   });
 
   it("stop() before start() keeps it stopped", async () => {

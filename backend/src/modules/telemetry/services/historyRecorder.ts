@@ -107,7 +107,10 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
       clearInterval(this.timer);
       this.timer = undefined;
     }
-    await this.flush(); // one last write of what is buffered
+    // One last write of what is buffered. A timer flush may already be in flight: it started before the newest rows
+    // (or its own failed rows, requeued when it ends) were buffered, so a second flush picks those up.
+    await this.flush();
+    await this.flush();
     this.stopped = true;
   }
 

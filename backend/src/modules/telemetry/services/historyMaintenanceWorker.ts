@@ -35,7 +35,8 @@ export class HistoryMaintenanceWorker implements BackgroundWorker {
   private started = false;
   private stopped = false;
   private lastPurgeAt: number | undefined;
-  private catchingUp = true;
+  /** The `toMs` of the last successful rollup; undefined until one succeeds (then the whole raw window is caught up). */
+  private rolledTo: number | undefined;
   private consecutiveFailures = 0;
 
   constructor(
@@ -85,9 +86,14 @@ export class HistoryMaintenanceWorker implements BackgroundWorker {
   async runOnce(): Promise<void> {
     const now = this.now();
     try {
-      const fromMs = this.catchingUp ? now - RAW_RETENTION_MS : now - this.overlapMs;
+      // Never earlier than the first WHOLE minute inside the raw window: retention deletes raw rows at the cutoff, so the
+      // minute straddling it may be partly gone, and rolling it again would overwrite a good bucket with a short one.
+      const earliest = now - RAW_RETENTION_MS + 60_000;
+      // Cover the recent overlap, and everything since the last successful run: a failed run (database down) or a
+      // restart leaves no hole, however long it lasted (within the raw window).
+      const fromMs = this.rolledTo === undefined ? earliest : Math.max(earliest, this.rolledTo - this.overlapMs);
       await rollUp(this.db, { fromMs, toMs: now });
-      this.catchingUp = false;
+      this.rolledTo = now;
       if (this.lastPurgeAt === undefined || now - this.lastPurgeAt >= this.purgeIntervalMs) {
         const purged = await purgeExpired(this.db, now);
         this.lastPurgeAt = now;

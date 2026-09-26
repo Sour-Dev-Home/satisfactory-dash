@@ -317,8 +317,12 @@ if (process.env.NODE_ENV !== "test") {
     forceExit.unref();
     // Workers get a short window to stop: their in-flight polls are bounded, but on exit their
     // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
+    // The pool closes only AFTER the workers have stopped: the history recorders make one last write on stop (ADR-0027),
+    // and a pool closed underneath them would lose those rows.
     const workersStopped = Promise.race([
-      Promise.allSettled([...[...workers, ...databaseWorkers].map((worker) => worker.stop()), directory.stop(), database?.close()]),
+      Promise.allSettled([...[...workers, ...databaseWorkers].map((worker) => worker.stop()), directory.stop()]).then(() =>
+        Promise.allSettled([database?.close()]),
+      ),
       new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
     ]);
     // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never

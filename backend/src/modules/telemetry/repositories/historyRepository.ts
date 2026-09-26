@@ -127,7 +127,11 @@ const INSERT_TRANSITIONS = `
          AS x(at_ms, building_id, class_name, from_state, to_state)
   WHERE s.public_id = $1 AND s.deleted_at IS NULL`;
 
-/** Writes machine-state transitions (events) for one server. */
+/**
+ * Writes machine-state transitions (events) for one server, in ONE statement. Unlike samples, transitions have no key to
+ * conflict on, so a batch that failed half way (chunk 1 in, chunk 2 out) and was retried would store chunk 1 twice; a
+ * single statement is all-or-nothing. The caller bounds the batch (the recorder keeps at most `maxBuffered` rows).
+ */
 export async function insertTransitions(db: Queryable, serverPublicId: string, rows: TransitionRow[]): Promise<void> {
   const valid = rows.filter(
     (row) =>
@@ -140,16 +144,15 @@ export async function insertTransitions(db: Queryable, serverPublicId: string, r
       row.toState.length <= 40 &&
       (row.fromState === null || (row.fromState.length > 0 && row.fromState.length <= 40)),
   );
-  for (const chunk of chunks(valid)) {
-    await db.query(INSERT_TRANSITIONS, [
-      serverPublicId,
-      chunk.map((row) => row.atMs),
-      chunk.map((row) => row.buildingId),
-      chunk.map((row) => row.className),
-      chunk.map((row) => row.fromState),
-      chunk.map((row) => row.toState),
-    ]);
-  }
+  if (valid.length === 0) return;
+  await db.query(INSERT_TRANSITIONS, [
+    serverPublicId,
+    valid.map((row) => row.atMs),
+    valid.map((row) => row.buildingId),
+    valid.map((row) => row.className),
+    valid.map((row) => row.fromState),
+    valid.map((row) => row.toState),
+  ]);
 }
 
 // --- rollups: idempotent, safe to run any number of times over any window ------------------------------------------------

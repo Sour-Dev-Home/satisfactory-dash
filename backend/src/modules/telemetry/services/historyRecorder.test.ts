@@ -73,6 +73,40 @@ describe("BufferedHistoryRecorder", () => {
     expect(ok.calls).toHaveLength(0);
   });
 
+  it("stop() while a timer flush is in flight still writes rows recorded meanwhile", async () => {
+    const writes: number[][] = [];
+    let release: (() => void) | undefined;
+    let first = true;
+    const db = {
+      query: vi.fn(async (_sql: string, params?: unknown[][]) => {
+        if (first) {
+          first = false;
+          await new Promise<void>((resolve) => (release = resolve));
+        }
+        writes.push(params?.[3] as number[]);
+        return { rows: [] };
+      }),
+    } as unknown as Queryable;
+    const recorder = new BufferedHistoryRecorder(db, "srv", { logger: logger() });
+    recorder.recordPower([powerRow(1)]);
+    const inFlight = recorder.flush();
+    recorder.recordPower([powerRow(2)]); // arrives while the first write is pending
+    const stopping = recorder.stop();
+    release?.();
+    await Promise.all([inFlight, stopping]);
+    expect(writes.flat()).toEqual([1, 2]);
+  });
+
+  it("does not store a transition batch in several statements (a half-failed retry would duplicate events)", async () => {
+    const { db, calls } = fakeDb();
+    const recorder = new BufferedHistoryRecorder(db, "srv", { logger: logger() });
+    recorder.recordTransitions(
+      Array.from({ length: 12_000 }, (_, i) => ({ atMs: i, buildingId: `b${i}`, className: "c", fromState: null, toState: "working" })),
+    );
+    await recorder.flush();
+    expect(calls).toHaveLength(1);
+  });
+
   it("never rejects, and stop() does a final flush", async () => {
     const { db, calls } = fakeDb();
     const recorder = new BufferedHistoryRecorder(db, "srv", { logger: logger() });
