@@ -68,7 +68,7 @@ export function AlertsBell() {
           // Inside the viewport at any width: positioned against the header row (not the bell, which
           // has the account button to its right), so right-aligned with the page edge just below the
           // header, never wider than the screen minus the page gutters, and scrolling when long.
-          className="absolute top-full right-0 z-(--z-popover) mt-2 max-h-(--popover-max-height) w-(--popover-width) overflow-y-auto rounded-card border border-line bg-surface p-4 shadow-lg"
+          className="absolute top-full right-0 z-(--z-popover) mt-2 origin-top-right animate-pop max-h-(--popover-max-height) w-(--popover-width) overflow-y-auto rounded-card border border-line bg-surface p-4 shadow-lg"
         >
           <AlertsMenu onNavigate={() => setOpen(false)} />
         </div>
