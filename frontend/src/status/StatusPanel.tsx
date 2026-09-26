@@ -1,5 +1,7 @@
 import type { StatusResponse } from "@satisfactory-dash/shared";
-import { formatDuration, formatTime } from "../format";
+import { POLL_MS } from "../api/queries";
+import { DataAge } from "../components/DataAge";
+import { formatDuration } from "../format";
 
 /**
  * Presentational: renders one status snapshot. Units and labels per ADR-0006. Stale and
@@ -29,9 +31,9 @@ export function StatusPanel({ snapshot }: { snapshot: StatusResponse }) {
           </>
         )}
 
-        <dt>As of</dt>
+        <dt>Data</dt>
         <dd>
-          <time dateTime={snapshot.observedAt}>{formatTime(snapshot.observedAt)}</time>
+          <DataAge observedAt={snapshot.observedAt} pollMs={POLL_MS.status} />
         </dd>
       </dl>
     </section>
