@@ -94,7 +94,10 @@ function BuildingRow({ building, showInputs }: { building: FactoryBuilding; show
   return (
     <tr>
       <th scope="row">{building.name}</th>
-      <td>{building.recipe ?? "No recipe"}</td>
+      <td>
+        {building.recipe ?? "No recipe"}
+        <Clock percent={building.clockSpeedPercent} />
+      </td>
       {showInputs && (
         <td>
           {/* Absent (an older backend, ADR-0007) says nothing; [] is a machine with no recipe. */}
@@ -111,9 +114,22 @@ function BuildingRow({ building, showInputs }: { building: FactoryBuilding; show
   );
 }
 
+/**
+ * The clock speed, only when it isn't the default 100% (the owner's call, 2026-09-25). It sits
+ * with the recipe, as its setting, and says "Clock" so it's never read as an output's percent.
+ */
+function Clock({ percent }: { percent: number | undefined }) {
+  if (percent === undefined || !Number.isFinite(percent) || percent <= 0) return null;
+  const text = formatPercent(percent);
+  // Compare what's shown: 100.02 would read "Clock 100%", which says nothing.
+  if (text === formatPercent(100)) return null;
+  return <span className="block text-sm text-muted">Clock {text}</span>;
+}
+
 /** A machine's inputs or outputs, one plain line each. */
 function Rates({ rates, label }: { rates: ProductionRate[]; label: "Inputs" | "Outputs" }) {
-  if (rates.length === 0) return "—";
+  // Stacked on a phone, two bare dashes under "No recipe" say nothing more: the table shows them.
+  if (rates.length === 0) return <span className="max-[600px]:hidden">—</span>;
   return (
     <>
       {/* On a phone the table stacks and its header row is hidden: name the list there. */}

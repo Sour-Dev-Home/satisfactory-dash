@@ -207,6 +207,7 @@ function building(
   [inputs, outputs]: [Output[], Output[]],
   place: { x: number; y: number; rot: number; circuit: 0 | 1 },
   state: "producing" | "underfed" | "backedUp" = "producing",
+  clockSpeedPercent = 100,
 ): FactoryBuilding {
   return {
     id: `demo-${n}`,
@@ -219,6 +220,7 @@ function building(
     production: rates(outputs),
     ingredients: rates(inputs),
     state,
+    clockSpeedPercent,
     location: { xM: place.x, yM: place.y, zM: 12, rotationDeg: place.rot },
     circuitGroupId: place.circuit,
   };
@@ -229,7 +231,17 @@ const ORE: Output = ["Iron Ore", "Desc_OreIron_C", 30, 30];
 /** Nine machines on two circuits; one backed up and one underfed, so the page has something to point at. */
 const buildings: FactoryBuilding[] = [
   building(1, "Smelter", "Build_SmelterMk1_C", "Iron Ingot", [[ORE], [["Iron Ingot", "Desc_IronIngot_C", 30, 30]]], { x: -1720, y: -980, rot: 0, circuit: 0 }),
-  building(2, "Smelter", "Build_SmelterMk1_C", "Iron Ingot", [[ORE], [["Iron Ingot", "Desc_IronIngot_C", 30, 30]]], { x: -1720, y: -990, rot: 0, circuit: 0 }),
+  // Overclocked with a power shard: 150% of the recipe's 30 per minute.
+  building(
+    2,
+    "Smelter",
+    "Build_SmelterMk1_C",
+    "Iron Ingot",
+    [[["Iron Ore", "Desc_OreIron_C", 45, 45]], [["Iron Ingot", "Desc_IronIngot_C", 45, 45]]],
+    { x: -1720, y: -990, rot: 0, circuit: 0 },
+    "producing",
+    150,
+  ),
   building(
     3,
     "Constructor",

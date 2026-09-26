@@ -76,6 +76,8 @@ describe("the demo world", () => {
     }
     expect(Object.values(stateCounts ?? {}).reduce((a, n) => a + n, 0)).toBe(buildings.length);
     expect(stateCounts).toMatchObject({ underfed: 1, backedUp: 1 });
+    // One overclocked machine, so the Factory page shows its clock; the rest run at the default.
+    expect(buildings.filter((b) => b.clockSpeedPercent !== 100).map((b) => b.clockSpeedPercent)).toEqual([150]);
   });
 
   it("has a slow tick episode every 10 minutes, healthy at the fixed clock, and agrees with tickHealth", () => {

@@ -108,6 +108,36 @@ describe("FactoryPanel machine state", () => {
   });
 });
 
+describe("FactoryPanel clock speed", () => {
+  // One machine each, so the only body row (the clock changes the recipe cell's name).
+  const onlyRow = () => within(screen.getByRole("table")).getAllByRole("row")[1];
+  const recipeCell = () => within(onlyRow()).getAllByRole("cell")[0];
+
+  it.each([
+    [160, "Iron PlateClock 160%"],
+    [50, "Iron PlateClock 50%"],
+    [62.5, "Iron PlateClock 62.5%"],
+  ])("labels a %s%% clock beside the recipe", (clockSpeedPercent, text) => {
+    render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent })} />);
+    expect(recipeCell().textContent).toBe(text);
+  });
+
+  it.each([100, 100.02, undefined, 0, -5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "shows nothing for a clock of %s (the default, absent, or not a clock)",
+    (clockSpeedPercent) => {
+      render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent })} />);
+      expect(recipeCell().textContent).toBe("Iron Plate");
+    },
+  );
+
+  it("keeps the clock out of the outputs and the state", () => {
+    render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent: 160 })} />);
+    const row = onlyRow();
+    expect(lines(row, "Outputs")).toEqual(["Iron Plate: 20 / 20 items/min (100%)"]);
+    expect(stateText(row)).toBe("Producing");
+  });
+});
+
 describe("FactoryPanel summary", () => {
   it("says 1 machine in the singular", () => {
     render(<FactoryPanel snapshot={withBuildings(machine)} />);
