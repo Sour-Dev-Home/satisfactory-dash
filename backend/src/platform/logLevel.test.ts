@@ -21,6 +21,16 @@ describe("requestLogLevel", () => {
     expect(requestLogLevel(status)).toBe(level);
   });
 
+  it("the readiness probe's 503 is a warn (expected during startup); any other 503, or a thrown error, is still an error", () => {
+    expect(requestLogLevel(503, undefined, "/api/health/ready")).toBe("warn");
+    expect(requestLogLevel(503, undefined, "/api/health/ready?x=1")).toBe("warn");
+    expect(requestLogLevel(503, undefined, "/api/health/live")).toBe("error");
+    expect(requestLogLevel(503, undefined, "/api/servers/a/health/ready")).toBe("error");
+    expect(requestLogLevel(503, new Error("boom"), "/api/health/ready")).toBe("error");
+    expect(requestLogLevel(500, undefined, "/api/health/ready")).toBe("error");
+    expect(requestLogLevel(200, undefined, "/api/health/ready")).toBe("info");
+  });
+
   it("a handled client error (an error object with a 4xx status) is not an error", () => {
     expect(requestLogLevel(401, new UnauthorizedError("Sign in to continue"))).toBe("info");
     expect(requestLogLevel(404, new Error("nope"))).toBe("warn");
