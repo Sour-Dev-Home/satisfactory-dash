@@ -286,7 +286,7 @@ export class ServerAlertEvaluator {
     const usable = isFresh(factory, now) && factory !== undefined && !factory.afterResume;
     const windowMs = params.windowMinutes * 60_000;
     const existing = this.rateWindows.get(rule.id);
-    const sameWindow = existing !== undefined && existing.item === params.item && existing.windowMs === windowMs && existing.session === obs.session && existing.session === obs.session;
+    const sameWindow = existing !== undefined && existing.item === params.item && existing.windowMs === windowMs && existing.session === obs.session;
     // The working copy: `evaluate` changes nothing until `commit`.
     let samples: RateSample[] = usable && existing !== undefined && sameWindow ? [...existing.samples] : [];
     let full = false;
