@@ -58,7 +58,9 @@ export function StoredPowerHistoryPanel({ history }: { history: HistoryPower }) 
                   <RangeRow label="Consumption" range={{ current: stats.consumption.latest, ...stats.consumption }} />
                 </dl>
               )}
-              {series.points.length < 2 ? (
+              {series.points.length === 0 ? (
+                <p className="text-sm text-muted">No readings recorded for this circuit in this range yet.</p>
+              ) : series.points.length < 2 ? (
                 <p className="text-sm text-muted">Only one reading in this range so far.</p>
               ) : (
                 <ChartSlot

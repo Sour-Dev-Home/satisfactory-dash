@@ -3,9 +3,10 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { PausedRange } from "@satisfactory-dash/shared";
 import { formatMW } from "../format";
-import { isolatedIndices } from "./chartGaps";
+import { bandSpan, isolatedIndices } from "./chartGaps";
 
 const HEIGHT = 220;
+const MIN_BAND_PX = 6;
 const NONE: readonly never[] = [];
 
 /** Legend value: "–" off the data (a gap), else MW like the rest of the page. */
@@ -28,9 +29,9 @@ function shade(u: uPlot, ranges: readonly Stretch[], fill: string) {
   for (const r of ranges) {
     const x0 = u.valToPos(r.fromT / 1000, "x", true);
     const x1 = u.valToPos(r.toT / 1000, "x", true);
-    const left = Math.max(bbox.left, Math.min(x0, x1));
-    const right = Math.min(bbox.left + bbox.width, Math.max(x0, x1));
-    if (right > left) ctx.fillRect(left, bbox.top, Math.max(right - left, 2), bbox.height);
+    // Canvas pixels: at least 6 CSS px wide, so a short or edge stretch still shows.
+    const band = bandSpan(x0, x1, bbox.left, bbox.left + bbox.width, MIN_BAND_PX * uPlot.pxRatio);
+    if (band) ctx.fillRect(band.left, bbox.top, band.width, bbox.height);
   }
   ctx.restore();
 }

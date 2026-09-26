@@ -124,4 +124,25 @@ describe("missingStretches", () => {
     const breaks = xs.filter((_, i) => production[i] === null).map((x) => x * 1000);
     expect(missingStretches(newest.points, history.resolutionSeconds).map((m) => m.fromT)).toEqual(breaks);
   });
+
+  it("finds no gap for a duplicate timestamp (zero-width, not negative)", () => {
+    expect(missingStretches([at(t0), at(t0)], history.resolutionSeconds)).toEqual([]);
+  });
+
+  it("still reports a gap when a bucket is off the resolution grid (a jittery backend timestamp)", () => {
+    // One second past a whole step: still a gap, spanning to the actual next point (not rounded to the grid).
+    const points = [at(t0), at(t0 + step + 1000)];
+    expect(missingStretches(points, history.resolutionSeconds)).toEqual([{ fromT: t0 + step, toT: t0 + step + 1000 }]);
+  });
+});
+
+describe("fuseStretches, duplicate and unaligned buckets", () => {
+  const step = history.resolutionSeconds * 1000;
+  const t0 = newest.points[0].t;
+  const tripped = { ...newest.points[0], fuseTrippedSamples: 3 };
+
+  it("does not double-count a duplicate timestamp as two stretches", () => {
+    const points = [tripped, { ...tripped }];
+    expect(fuseStretches(points, history.resolutionSeconds)).toEqual([{ fromT: t0, toT: t0 + step }]);
+  });
 });
