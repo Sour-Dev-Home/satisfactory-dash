@@ -61,6 +61,15 @@ ORDER BY e.at DESC LIMIT 50;
 Each transition is also one info line, `alert event recorded`, with the server id, the kind, the subject and the
 transition (never a name or a secret). Events are kept **90 days** (purged every 10 minutes in batches).
 
+## Known limits
+
+- **"Unreachable" is the joint status + power fetch.** If only FRM (power) is down while the game's own API answers,
+  `server_unreachable` can fire; the message says the server, not which API.
+- **A hard-deleted preset comes back** after a restart (seeding is idempotent and per process). Disable a rule with
+  `enabled = false` instead of deleting it.
+- **One server's failing write does not stop the others**: each server is evaluated on its own, the purge still runs,
+  and the tick is then reported as failed (one warning per outage).
+
 ## When something looks wrong
 
 - Warning `alert evaluation failed; skipping the tick with no state change`: the database refused something. Logged

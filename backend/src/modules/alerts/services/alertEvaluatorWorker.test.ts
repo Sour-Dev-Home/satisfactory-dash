@@ -30,7 +30,7 @@ function fakeDb(initialRules: RuleFixture[] = []) {
   const events: Record<string, unknown>[] = [];
   const calls: string[] = [];
   const mutes = new Map<string, number>();
-  const failWhen: { events: boolean; list: boolean } = { events: false, list: false };
+  const failWhen: { events: boolean; list: boolean; eventsFor?: string } = { events: false, list: false };
   const log: string[] = [];
 
   const handle = (sql: string, params: unknown[] = []) => {
@@ -91,6 +91,9 @@ function fakeDb(initialRules: RuleFixture[] = []) {
     if (sql.includes("INSERT INTO alerts.alert_events")) {
       calls.push("insertEvents");
       if (failWhen.events) throw new Error("events insert failed");
+      if (failWhen.eventsFor !== undefined && (params[1] as string[]).some((id) => id.startsWith(`${failWhen.eventsFor}-`))) {
+        throw new Error("poison event for one server");
+      }
       const [at, ruleIds, kinds, severities, subjects, transitions, summaries] = params as [number, ...unknown[][]];
       (ruleIds as string[]).forEach((ruleId, i) => {
         events.push({
@@ -390,6 +393,32 @@ describe("AlertEvaluatorWorker.tick", () => {
     publish(false, [fine, { circuit: 2, status: "outage", fuseTripped: true }]);
     await worker.tick(); // the gap must not count towards the clear: circuit 1 is NOT resolved yet
     expect(fake.events.map((event) => `${event.subject}:${event.transition}`)).toEqual(["circuit:1:fired", "circuit:2:fired"]);
+  });
+
+  it("one server's failing write does not starve the servers after it: they are evaluated, the purge runs, then the tick throws", async () => {
+    const fake = fakeDb();
+    const w = world(["alpha", "bravo"]);
+    const { worker } = make(fake, w);
+    await worker.tick();
+    publishOutage(w.boards.get("alpha")!, now, true);
+    publishOutage(w.boards.get("bravo")!, now, true);
+    fake.failWhen.eventsFor = "alpha"; // alpha is first in the list and its event insert fails
+    now += 30 * SEC;
+    publishOutage(w.boards.get("alpha")!, now, true);
+    publishOutage(w.boards.get("bravo")!, now, true);
+    const purgesBefore = fake.calls.filter((call) => call === "purge").length;
+    await expect(worker.tick()).rejects.toThrow("poison event for one server");
+    expect(fake.events.map((event) => event.ruleId)).toEqual(["bravo-power_outage"]); // bravo still got its alert
+    now += 10 * MIN + SEC;
+    publishOutage(w.boards.get("alpha")!, now, true);
+    publishOutage(w.boards.get("bravo")!, now, true);
+    await expect(worker.tick()).rejects.toThrow(); // still failing for alpha, and the purge ran on the way
+    expect(fake.calls.filter((call) => call === "purge").length).toBeGreaterThan(purgesBefore);
+    fake.failWhen.eventsFor = undefined;
+    now += 30 * SEC;
+    publishOutage(w.boards.get("alpha")!, now, true);
+    await worker.tick();
+    expect(fake.events.map((event) => event.ruleId)).toEqual(["bravo-power_outage", "alpha-power_outage"]); // alpha recovers, once
   });
 
   it("evaluates each server on its own board", async () => {

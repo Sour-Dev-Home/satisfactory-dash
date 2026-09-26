@@ -155,26 +155,37 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
       rulesByServer.set(rule.serverPublicId, [...(rulesByServer.get(rule.serverPublicId) ?? []), rule]);
     }
 
+    // One server's failure (a poison row, say) must not starve the servers after it: each is isolated, the first error
+    // is remembered, and the tick still purges, then rethrows so the loop logs it (once per outage) as before.
+    let firstError: unknown;
+    let failed = false;
     for (const server of servers) {
-      const rules = rulesByServer.get(server.id) ?? [];
-      let evaluator = this.evaluators.get(server.id);
-      if (evaluator === undefined) {
-        evaluator = new ServerAlertEvaluator();
-        this.evaluators.set(server.id, evaluator);
-      }
-      const states = await loadStates(this.db, server.id);
-      const evaluation = evaluator.evaluate({
-        now,
-        observations: server.observations.snapshot(),
-        rules,
-        states,
-        muted: (mutes.get(server.id) ?? 0) > now,
-      });
-      await writeEvaluation(this.db, { writes: evaluation.writes, events: evaluation.events, nowMs: now });
-      evaluation.commit();
-      for (const event of evaluation.events) {
-        // The alert log's own line: ids and counts only, never a name or a secret.
-        this.options.logger.info({ serverId: server.id, alert: event.kind, subject: event.subject, transition: event.transition }, "alert event recorded");
+      try {
+        const rules = rulesByServer.get(server.id) ?? [];
+        let evaluator = this.evaluators.get(server.id);
+        if (evaluator === undefined) {
+          evaluator = new ServerAlertEvaluator();
+          this.evaluators.set(server.id, evaluator);
+        }
+        const states = await loadStates(this.db, server.id);
+        const evaluation = evaluator.evaluate({
+          now,
+          observations: server.observations.snapshot(),
+          rules,
+          states,
+          muted: (mutes.get(server.id) ?? 0) > now,
+        });
+        await writeEvaluation(this.db, { writes: evaluation.writes, events: evaluation.events, nowMs: now });
+        evaluation.commit();
+        for (const event of evaluation.events) {
+          // The alert log's own line: ids and counts only, never a name or a secret.
+          this.options.logger.info({ serverId: server.id, alert: event.kind, subject: event.subject, transition: event.transition }, "alert event recorded");
+        }
+      } catch (err) {
+        if (!failed) {
+          failed = true;
+          firstError = err;
+        }
       }
     }
 
@@ -183,5 +194,6 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
       this.lastPurgeAt = now;
       if (purged > 0) this.options.logger.info({ purged }, "expired alert events purged");
     }
+    if (failed) throw firstError;
   }
 }
