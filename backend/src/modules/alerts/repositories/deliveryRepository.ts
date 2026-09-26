@@ -41,6 +41,7 @@ const SummaryRowSchema = z.object({
   enabled: z.boolean(),
   last4: z.string(),
   disabled_reason: z.string().nullable(),
+  updated_at: z.date(),
 });
 const ServerIdSchema = z.object({ id: z.string() });
 const SealedRowSchema = z.object({ id: z.string(), server_uuid: z.string(), webhook_enc: z.instanceof(Buffer), key_id: z.string(), enabled: z.boolean() });
@@ -75,7 +76,7 @@ const SAVE_DESTINATION = `
   RETURNING id::text AS id`;
 
 const DESTINATION_SUMMARY = `
-  SELECT d.id::text AS id, d.enabled AS enabled, d.last4 AS last4, d.disabled_reason AS disabled_reason
+  SELECT d.id::text AS id, d.enabled AS enabled, d.last4 AS last4, d.disabled_reason AS disabled_reason, d.updated_at AS updated_at
   FROM alerts.destinations d
   JOIN servers.servers s ON s.id = d.server_id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL AND d.kind = 'discord'`;
@@ -148,9 +149,9 @@ export async function saveDiscordDestination(
 export async function getDestinationSummary(
   db: Queryable,
   serverPublicId: string,
-): Promise<{ id: string; enabled: boolean; last4: string; disabledReason: string | null } | undefined> {
+): Promise<{ id: string; enabled: boolean; last4: string; disabledReason: string | null; updatedAt: Date } | undefined> {
   const row = parseRows(SummaryRowSchema, (await db.query(DESTINATION_SUMMARY, [serverPublicId])).rows, "alerts.destinationSummary")[0];
-  return row === undefined ? undefined : { id: row.id, enabled: row.enabled, last4: row.last4, disabledReason: row.disabled_reason };
+  return row === undefined ? undefined : { id: row.id, enabled: row.enabled, last4: row.last4, disabledReason: row.disabled_reason, updatedAt: row.updated_at };
 }
 
 /** The decrypted URL of a server's destination, for the sender only. Undefined when there is none or it cannot be opened. */
@@ -174,16 +175,19 @@ export function openWebhook(ring: SecretsKeyring, serverUuid: string, keyId: str
   }
 }
 
+/** Switches a destination off and gives up on its pending deliveries, on a connection that is ALREADY in a transaction. */
+export async function disableDestinationIn(client: Queryable, destinationId: string, reason: DisabledReason): Promise<void> {
+  await client.query(DISABLE_DESTINATION, [destinationId, reason]);
+  await client.query(DEAD_FOR_DESTINATION, [destinationId, reason]);
+}
+
 /** Switches a destination off and gives up on its pending deliveries, in one transaction. */
 export async function disableDestination(
   pool: Parameters<typeof withTransaction>[0],
   destinationId: string,
   reason: DisabledReason,
 ): Promise<void> {
-  await withTransaction(pool, async (client) => {
-    await client.query(DISABLE_DESTINATION, [destinationId, reason]);
-    await client.query(DEAD_FOR_DESTINATION, [destinationId, reason]);
-  });
+  await withTransaction(pool, (client) => disableDestinationIn(client, destinationId, reason));
 }
 
 /** Claims up to `limit` due deliveries (leased for `leaseSeconds`); each call counts an attempt for what it returns. */

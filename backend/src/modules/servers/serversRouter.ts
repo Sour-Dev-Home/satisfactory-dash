@@ -38,9 +38,11 @@ export function createServersRouter(
     if (options.isReady && !options.isReady()) {
       throw new ServiceUnavailableError();
     }
-    const mine = new Set((await orUnavailable(() => access.listForUser(userId))).map((s) => s.publicId));
+    // The same membership query that filters the list also gives the user's role on each server (a UX hint the frontend
+    // uses to show or hide edit controls; the 403 on writes stays the real control), so there is no extra query.
+    const mine = new Map((await orUnavailable(() => access.listForUser(userId))).map((s) => [s.publicId, s.role] as const));
     sendValidated(res, ServerListResponseSchema, {
-      servers: directory.list().filter((s) => mine.has(s.id)),
+      servers: directory.list().filter((s) => mine.has(s.id)).map((s) => ({ ...s, role: mine.get(s.id) })),
       ...(options.canManage && { canManageServers: options.canManage(userId) }),
     });
   });

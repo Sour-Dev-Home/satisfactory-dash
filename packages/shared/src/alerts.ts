@@ -51,7 +51,7 @@ export const ServerUnreachableParamsSchema = z.strictObject({
 export const ProductionBelowTargetParamsSchema = z.strictObject({
   item: z.string().min(1).max(200).describe("The item's class name (for example Desc_IronPlate_C). Immutable once created."),
   targetPerMinute: z.number().positive().finite().describe("The wanted factory-wide production, items per minute"),
-  windowMinutes: z.number().min(5).max(60).default(10).describe("The rolling window the average is taken over, minutes"),
+  windowMinutes: z.number().int().min(5).max(60).default(10).describe("The rolling window the average is taken over, whole minutes"),
 });
 
 /** What a PATCH may change for `production_below_target`: the target and/or the window, never the item. */
@@ -153,7 +153,12 @@ export const DeleteDestinationResponseSchema = z.object({ deleted: z.literal(tru
  */
 export const SendTestResponseSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true) }),
-  z.object({ ok: z.literal(false), code: z.string().describe("Known: webhook_gone, rejected, rate_limited, timeout, network") }),
+  z.object({
+    ok: z.literal(false),
+    code: z
+      .string()
+      .describe("Known: webhook_gone, rejected, rate_limited, unavailable, destination_disabled, secret_unreadable. Handle others generically."),
+  }),
 ]);
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -174,7 +179,8 @@ export const AlertEventSchema = z.object({
 /** GET /alerts/events?limit=&before=: newest first. */
 export const AlertEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  before: z.string().regex(/^\d{1,19}$/).optional().describe("An event id: only events older than it are returned"),
+  // At most 18 digits with no leading zero, so it always fits the database's bigint (max 9223372036854775807).
+  before: z.string().regex(/^[1-9]\d{0,17}$/).optional().describe("An event id: only events older than it are returned"),
 });
 export const AlertEventsResponseSchema = z.object({
   events: z.array(AlertEventSchema),

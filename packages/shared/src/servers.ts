@@ -5,6 +5,14 @@ import { ServerIdSchema } from "./ids";
 export const ServerSummarySchema = z.object({
   id: ServerIdSchema,
   displayName: z.string().describe("Operator-configured name. Never a host or port."),
+  // ADR-0027 PR 7b (additive and optional per the deploy-skew rule: an older backend, and the no-database path, omit it).
+  role: z
+    .string()
+    .optional()
+    .describe(
+      "The signed-in user's membership role on this server. Known: owner, admin, viewer. UX only (to show or hide " +
+        "edit controls); the backend enforces it. Absent or unknown means treat as read-only.",
+    ),
 });
 
 export const ServerListResponseSchema = z.object({

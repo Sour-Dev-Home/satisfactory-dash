@@ -12,6 +12,13 @@ const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
 export interface ClassifiedFailure {
   code: KnownErrorCode;
   message: string;
+  /** A stable sub-code (see ApiFailure); only ever a short lowercase snake_case token. */
+  reason?: string;
+}
+
+/** A reason is a stable code, never text: at most 40 lowercase letters, digits and underscores, else it is dropped. */
+function safeReason(reason: string | undefined): string | undefined {
+  return typeof reason === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(reason) ? reason : undefined;
 }
 
 /**
@@ -51,6 +58,11 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   webhook_invalid: 422,
   delivery_off: 409,
   mute_invalid: 422,
+  // ADR-0031 PR 3: the edge agent.
+  enrollment_code_invalid: 400,
+  agent_outdated: 426,
+  command_not_found: 404,
+  command_expired: 409,
   internal: 500,
 };
 
@@ -205,6 +217,9 @@ export class ApiFailure extends Error {
   constructor(
     readonly code: KnownErrorCode,
     message: string,
+    /** ADR-0027 PR 7: a stable sub-code for a code with several causes (webhook_invalid). A lowercase snake_case
+     *  code only, never user input: anything else is dropped rather than echoed. */
+    readonly reason?: string,
   ) {
     super(message);
     this.name = "ApiFailure";
@@ -266,7 +281,7 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
     return { code: "not_found", message: "No such API endpoint" };
   }
   if (err instanceof ApiFailure) {
-    return { code: err.code, message: err.message };
+    return { code: err.code, message: err.message, ...(safeReason(err.reason) !== undefined && { reason: safeReason(err.reason) }) };
   }
   if (err instanceof UnauthorizedError) {
     return { code: "unauthorized", message: err.message };
@@ -348,7 +363,7 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
       next(err);
       return;
     }
-    const { code, message } = classifyRequestFailure(err);
+    const { code, message, reason } = classifyRequestFailure(err);
     const detail = detailFor(err);
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
@@ -358,7 +373,7 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     if (err instanceof RateLimitedError) {
       res.setHeader("Retry-After", String(err.retryAfterSeconds));
     }
-    const body: ApiErrorResponse = { error: { code, message, requestId } };
+    const body: ApiErrorResponse = { error: { code, message, requestId, ...(reason !== undefined && { reason }) } };
     // A service_unavailable cause is a database error (host, port, driver text): never in a body,
     // even in development. The full cause is in the log line above.
     if (code !== "service_unavailable" && DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {

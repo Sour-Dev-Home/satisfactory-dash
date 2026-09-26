@@ -52,6 +52,14 @@ export const KnownErrorCode = z.enum([
   "webhook_invalid",
   "delivery_off",
   "mute_invalid",
+  // ADR-0031 PR 3 (additive): the edge agent. An enrolment code that is unknown, used or expired (400, all alike so the
+  // answer is no oracle); an agent older than the protocol allows (426, reserved for protocol bumps); no such command on
+  // this server (404); a command that expired before it could be run (409). An agent's auth failure, revoked or
+  // unknown alike, is the existing `unauthorized` (401).
+  "enrollment_code_invalid",
+  "agent_outdated",
+  "command_not_found",
+  "command_expired",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;

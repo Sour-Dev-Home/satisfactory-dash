@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
+  AgentCommandsResponseSchema,
+  AgentStatusResponseSchema,
+  CommandResponseSchema,
+  CommandResultRequestSchema,
+  CommandResultResponseSchema,
+  EnrollRequestSchema,
+  EnrollResponseSchema,
+  EnrollmentCodeResponseSchema,
+  RevokeAgentResponseSchema,
+  SetAutoPauseResponseSchema,
+  SnapshotRequestSchema,
+  SnapshotResponseSchema,
   AlertDestinationsResponseSchema,
   AlertEventsResponseSchema,
   AlertRuleResponseSchema,
@@ -70,6 +82,19 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["alertSetMuteRequest", SetMuteRequestSchema],
   ["alertMuteSetResponse", MuteSetResponseSchema],
   ["alertMuteClearedResponse", MuteClearedResponseSchema],
+  // ADR-0031 PR 3: the edge agent's fixtures. "agentEnrollmentCode" and "agentEnroll..." differ at the letter after "Enroll".
+  ["agentEnrollRequest", EnrollRequestSchema],
+  ["agentEnrollResponse", EnrollResponseSchema],
+  ["agentEnrollmentCode", EnrollmentCodeResponseSchema],
+  ["agentSnapshotRequest", SnapshotRequestSchema],
+  ["agentSnapshotResponse", SnapshotResponseSchema],
+  ["agentCommands", AgentCommandsResponseSchema],
+  ["agentResultRequest", CommandResultRequestSchema],
+  ["agentResultResponse", CommandResultResponseSchema],
+  ["agentStatus", AgentStatusResponseSchema],
+  ["agentRevokeResponse", RevokeAgentResponseSchema],
+  ["command", CommandResponseSchema],
+  ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
   // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
@@ -264,6 +289,17 @@ describe("schemas accept what the contract allows", () => {
     const withExtra = { ...fixtures.serversSingle, internalHost: "10.0.0.5:7777" };
     expect(ServerListResponseSchema.parse(withExtra)).toEqual(fixtures.serversSingle);
   });
+
+  it("the server list can carry the signed-in user's role per server (a UX hint), and an older list without it still parses", () => {
+    expect(fixtures.serversRoleOwner.servers[0].role).toBe("owner");
+    expect(fixtures.serversRoleAdmin.servers[0].role).toBe("admin");
+    expect(fixtures.serversRoleViewer.servers[0].role).toBe("viewer");
+    expect(fixtures.serversRolesMixed.servers.map((server) => server.role)).toEqual(["owner", "viewer", "moderator"]); // an unknown role parses
+    expect("role" in fixtures.serversSingle.servers[0]).toBe(false); // the no-database and older-backend path omits it
+    expect(ServerListResponseSchema.safeParse(fixtures.serversSingle).success).toBe(true);
+    // A role is a plain string, so a newer backend's new role never breaks an older frontend.
+    expect(ServerListResponseSchema.safeParse({ servers: [{ id: "x", displayName: "X", role: "auditor" }] }).success).toBe(true);
+  });
 });
 
 // ADR-0025 PR 4: additive contract pieces. Each one must leave an older peer's messages valid.
@@ -363,10 +399,14 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(38); // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a)
+    // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 4 agent
+    // endpoints (ADR-0031 PR 3).
+    expect(all.length).toBe(46);
     for (const [name, endpoint] of all) {
-      // The two-parameter builders (a rule id) take a placeholder that must land where `:ruleId` is.
-      expect(endpoint.path("default", "RULE"), name).toBe(endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE"));
+      // The agent API has its own path builders (no server id; agent.test.ts checks them).
+      if (name.startsWith("agentApi.")) continue;
+      // The two-parameter builders (a rule or command id) take a placeholder that must land where the parameter is.
+      expect(endpoint.path("default", "RULE"), name).toBe(endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE").replace(":commandId", "RULE"));
     }
   });
 

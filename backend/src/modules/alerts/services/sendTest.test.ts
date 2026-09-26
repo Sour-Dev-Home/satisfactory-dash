@@ -17,7 +17,7 @@ function fakeDb(destination: { enabled: boolean; sealedFor?: string } | undefine
     if (/^(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [] };
     if (sql.includes("d.last4 AS last4")) {
       seen.push("summary");
-      return { rows: destination ? [{ id: DEST, enabled: destination.enabled, last4: "z012", disabled_reason: destination.enabled ? null : "manual" }] : [] };
+      return { rows: destination ? [{ id: DEST, enabled: destination.enabled, last4: "z012", disabled_reason: destination.enabled ? null : "manual", updated_at: new Date(0) }] : [] };
     }
     if (sql.includes("d.webhook_enc AS webhook_enc")) {
       seen.push("sealed");
