@@ -187,6 +187,156 @@ export const factoryOldBackend = {
   },
 } satisfies FactoryResponse;
 
+/** A rate with `percent` derived from current and max (invented numbers only). */
+const rate = (name: string, className: string, unit: "items/min" | "m3/min", current: number, max: number) => ({
+  name,
+  className,
+  unit,
+  currentPerMinute: current,
+  maxPerMinute: max,
+  percent: (current / max) * 100,
+});
+
+/** SYNTHETIC (invented ids and numbers): for the Factory view's Ingredients and State colours. Nine machines:
+ *  every backend-derived state (producing, idle, backedUp, underfed, paused, unpowered), a state this frontend
+ *  has never heard of (a newer backend), a machine without `state`, and a machine with neither `ingredients` nor
+ *  `state` (an older backend, ADR-0007) next to one whose `ingredients` is an empty array (no recipe).
+ *  Ingredients cover a solid and a fluid input (the Packager). `stateCounts` counts what the backend would send,
+ *  so the machines without `state` are not in it. */
+export const factoryStatesAndIngredients = {
+  serverId: "default",
+  observedAt: "2026-09-25T12:00:00.000Z",
+  stale: false,
+  data: {
+    buildings: [
+      {
+        id: "Build_ConstructorMk1_C_2149000001",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Iron Plate",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [rate("Iron Plate", "Desc_IronPlate_C", "items/min", 20, 20)],
+        ingredients: [rate("Iron Ingot", "Desc_IronIngot_C", "items/min", 30, 30)],
+        state: "producing",
+      },
+      {
+        // Solid AND fluid input: a Packager's Fuel (m3/min) and Empty Canister (items/min). Input-limited.
+        id: "Build_Packager_C_2149000002",
+        name: "Packager",
+        className: "Build_Packager_C",
+        recipe: "Packaged Fuel",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [rate("Packaged Fuel", "Desc_Fuel_C", "items/min", 24, 60)],
+        ingredients: [
+          rate("Fuel", "Desc_LiquidFuel_C", "m3/min", 24, 60),
+          rate("Empty Canister", "Desc_FluidCanister_C", "items/min", 24, 60),
+        ],
+        state: "underfed",
+      },
+      {
+        // No recipe: `ingredients` is an EMPTY array (the backend sends [] when nothing is configured).
+        id: "Build_AssemblerMk1_C_2149000003",
+        name: "Assembler",
+        className: "Build_AssemblerMk1_C",
+        recipe: null,
+        isProducing: false,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [],
+        ingredients: [],
+        state: "idle",
+      },
+      {
+        id: "Build_ConstructorMk1_C_2149000004",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Screw",
+        isProducing: false,
+        isPaused: false,
+        isBackedUp: true,
+        circuitGroupId: 0,
+        production: [rate("Screw", "Desc_IronScrew_C", "items/min", 0, 40)],
+        ingredients: [rate("Iron Rod", "Desc_IronRod_C", "items/min", 0, 10)],
+        state: "backedUp",
+      },
+      {
+        id: "Build_SmelterMk1_C_2149000005",
+        name: "Smelter",
+        className: "Build_SmelterMk1_C",
+        recipe: "Copper Ingot",
+        isProducing: false,
+        isPaused: true,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [rate("Copper Ingot", "Desc_CopperIngot_C", "items/min", 0, 30)],
+        ingredients: [rate("Copper Ore", "Desc_OreCopper_C", "items/min", 0, 30)],
+        state: "paused",
+      },
+      {
+        id: "Build_ConstructorMk1_C_2149000006",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Wire",
+        isProducing: false,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: -1, // not connected to any power circuit
+        production: [rate("Wire", "Desc_Wire_C", "items/min", 0, 45)],
+        ingredients: [rate("Copper Ingot", "Desc_CopperIngot_C", "items/min", 0, 15)],
+        state: "unpowered",
+      },
+      {
+        // A state a newer backend might send: the frontend must treat an unknown value as neutral.
+        id: "Build_ManufacturerMk1_C_2149000007",
+        name: "Manufacturer",
+        className: "Build_ManufacturerMk1_C",
+        recipe: "Computer",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [rate("Computer", "Desc_Computer_C", "items/min", 2.5, 2.5)],
+        ingredients: [rate("Circuit Board", "Desc_CircuitBoard_C", "items/min", 10, 10)],
+        state: "overclocking-ish",
+      },
+      {
+        // The backend had too little data to say (never guessed): no `state` at all.
+        id: "Build_AssemblerMk1_C_2149000008",
+        name: "Assembler",
+        className: "Build_AssemblerMk1_C",
+        recipe: "Rotor",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [rate("Rotor", "Desc_Rotor_C", "items/min", 4, 4)],
+        ingredients: [rate("Iron Rod", "Desc_IronRod_C", "items/min", 20, 20), rate("Screw", "Desc_IronScrew_C", "items/min", 100, 100)],
+      },
+      {
+        // An older backend: neither `ingredients` nor `state` exists yet (ADR-0007 deploy skew).
+        id: "Build_ConstructorMk1_C_2149000009",
+        name: "Constructor",
+        className: "Build_ConstructorMk1_C",
+        recipe: "Concrete",
+        isProducing: true,
+        isPaused: false,
+        isBackedUp: false,
+        circuitGroupId: 0,
+        production: [rate("Concrete", "Desc_Cement_C", "items/min", 15, 15)],
+      },
+    ],
+    backedUpCount: 1,
+    stateCounts: { producing: 1, underfed: 1, idle: 1, backedUp: 1, paused: 1, unpowered: 1, "overclocking-ish": 1 },
+  },
+} satisfies FactoryResponse;
+
 export const factoryEmpty = {
   serverId: "default",
   observedAt: "2026-09-22T22:25:04.000Z",
