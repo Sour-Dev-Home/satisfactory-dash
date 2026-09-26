@@ -63,6 +63,9 @@ export interface FactoryBuilding {
   fuseTriggered?: boolean;
   /** World position in metres, rotation in [0, 360) (ADR-0023). Absent when FRM sent none. */
   location?: { xM: number; yM: number; zM: number; rotationDeg: number };
+  /** Configured clock speed in percent (FRM ManuSpeed; 100 = default, above 100 when overclocked). Absent
+   *  when FRM sent none or a value that is not a finite number. */
+  clockSpeedPercent?: number;
 }
 
 export interface PowerCircuit {

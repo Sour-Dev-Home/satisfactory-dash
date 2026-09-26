@@ -82,6 +82,14 @@ export const FactoryBuildingSchema = z.object({
       "FRM's centimetres to metres (docs-vault/raw-sources/world-coordinates.md; the owner's " +
       "in-game check is pending).",
   ),
+  clockSpeedPercent: z
+    .number()
+    .optional()
+    .describe(
+      "The machine's configured clock speed in percent (FRM ManuSpeed; 100 = default clock, above 100 " +
+        "when overclocked with power shards). Optional: omitted when FRM sent none, and so an older " +
+        "backend's responses still parse (ADR-0007).",
+    ),
   circuitGroupId: z
     .number()
     .int()

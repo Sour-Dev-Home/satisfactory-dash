@@ -112,6 +112,9 @@ export const RawFrmFactoryBuildingSchema = z.object({
   IsProducing: z.boolean(),
   IsPaused: z.boolean(),
   PowerInfo: RawFrmPowerInfoSchema.optional(),
+  /** Configured speed in percent (frm-getFactory.md:54; the 2026-09-22 running capture has 100 and one 160).
+   *  Optional; the adapter drops a value that is not finite. */
+  ManuSpeed: z.number().optional(),
   /** World position (frm-getFactory.md:23-27; units not documented, believed centimetres:
    *  ADR-0023). Optional so a building without it still maps, just without a location. */
   location: RawFrmLocationSchema.optional(),

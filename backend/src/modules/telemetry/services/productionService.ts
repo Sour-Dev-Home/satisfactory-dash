@@ -56,6 +56,7 @@ export class ProductionService {
         isBackedUp: backedUp,
         circuitGroupId: building.circuitGroupId,
         ...(building.location ? { location: building.location } : {}),
+        ...(building.clockSpeedPercent !== undefined ? { clockSpeedPercent: building.clockSpeedPercent } : {}),
         // ADR-0015: the unit comes from the game's own item data; null = an unknown item.
         production: building.production.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
         // ADR-0027: what it consumes, in the same shape and with the same unit resolution.

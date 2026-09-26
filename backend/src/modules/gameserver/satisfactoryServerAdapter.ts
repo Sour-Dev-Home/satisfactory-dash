@@ -189,6 +189,7 @@ export class SatisfactoryServerAdapter {
         maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
         ...(building.PowerInfo?.FuseTriggered !== undefined ? { fuseTriggered: building.PowerInfo.FuseTriggered } : {}),
         ...(building.location ? { location: mapLocation(building.location) } : {}),
+        ...(building.ManuSpeed !== undefined && Number.isFinite(building.ManuSpeed) ? { clockSpeedPercent: building.ManuSpeed } : {}),
       };
     });
   }

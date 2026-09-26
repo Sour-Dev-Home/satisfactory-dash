@@ -16,6 +16,7 @@ const backedUpAssembler = {
   isPaused: false,
   isBackedUp: true,
   location: { xM: -436, yM: -1439, zM: 118.000087890625, rotationDeg: 180 },
+  clockSpeedPercent: 100,
   circuitGroupId: 0,
   production: [
     {
@@ -62,6 +63,7 @@ const overclockedStator = {
   isPaused: false,
   isBackedUp: true,
   location: { xM: 582, yM: -619, zM: 140, rotationDeg: 90 },
+  clockSpeedPercent: 160,
   circuitGroupId: 0,
   production: [
     {
