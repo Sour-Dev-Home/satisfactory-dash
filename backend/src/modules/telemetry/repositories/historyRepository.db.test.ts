@@ -105,7 +105,7 @@ describe.skipIf(!available)("telemetry history against a real Postgres", () => {
     expect(rows[0]).toMatchObject({ samples: 2, current_min: 60, current_avg: 70, current_max: 80 });
     await insertTransitions(pool, server.publicId, [
       { atMs: MINUTE, buildingId: "b1", className: "Build_Constructor_C", fromState: null, toState: "producing" },
-      { atMs: MINUTE + 1000, buildingId: "b1", className: "Build_Constructor_C", fromState: "producing", toState: "starved" },
+      { atMs: MINUTE + 1000, buildingId: "b1", className: "Build_Constructor_C", fromState: "producing", toState: "underfed" },
     ]);
     expect(await count("building_transitions", server.id)).toBe(2);
   });

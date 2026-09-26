@@ -64,7 +64,7 @@ describe("diffStates", () => {
     diffStates(known, ids(4, building), 1);
     const next = [building("b0"), building("b1"), building("b2"), stalled("b3")];
     expect(diffStates(known, next, 2)).toEqual([
-      { atMs: 2, buildingId: "b3", className: "Build_Constructor_C", fromState: "producing", toState: "starved" },
+      { atMs: 2, buildingId: "b3", className: "Build_Constructor_C", fromState: "producing", toState: "underfed" },
     ]);
     expect(diffStates(known, next, 3)).toEqual([]); // unchanged: no repeat
   });
@@ -125,7 +125,7 @@ describe("FactoryHistoryPoller.poll", () => {
     await poller.poll();
     expect(history.recordItems).toHaveBeenCalledTimes(2);
     expect(history.recordTransitions).toHaveBeenLastCalledWith([
-      { atMs: 5000, buildingId: "b2", className: "Build_Constructor_C", fromState: "producing", toState: "starved" },
+      { atMs: 5000, buildingId: "b2", className: "Build_Constructor_C", fromState: "producing", toState: "underfed" },
     ]);
   });
 

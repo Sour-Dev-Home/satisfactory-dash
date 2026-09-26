@@ -50,6 +50,10 @@ describe("machine states replayed over the captured factory snapshots", () => {
     // B2: an unconfigured machine (recipe "Unassigned") is idle.
     expect(running["Build_AssemblerMk1_C_2145959128"]).toBe("idle");
     const cj = await replay("frm-getFactory-2026-09-22-CJ-norecipe-fuse-trimmed.json");
+    // ADR-0027 amendment 2: 9.4 percent of the set rate with a non-full output is underfed (it was "producing"
+    // under the old 5 percent rule). The 160 percent-clock stator (24.7 percent, output full) stays backedUp.
+    expect(running["Build_AssemblerMk1_C_2147397136"]).toBe("underfed");
+    expect(running["Build_AssemblerMk1_C_2147356083"]).toBe("backedUp");
     // B3: a machine on the tripped grid is unpowered even though it has no recipe either.
     expect(cj["Build_OilRefinery_C_2147458064"]).toBe("unpowered");
   });

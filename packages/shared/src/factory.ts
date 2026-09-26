@@ -72,7 +72,7 @@ export const FactoryBuildingSchema = z.object({
     .optional()
     .describe(
       "Backend-derived machine state (ADR-0027): one of \"producing\", \"idle\", \"backedUp\", " +
-        "\"starved\", \"paused\", \"unpowered\". A plain string, not an enum, so a state added " +
+        "\"underfed\", \"paused\", \"unpowered\". A plain string, not an enum, so a state added " +
         "later doesn't fail an already-deployed frontend's parse; treat an unknown value as " +
         "\"no state\". Omitted (never guessed) when the backend has too little data to say.",
     ),
@@ -99,7 +99,7 @@ export const FactorySchema = z.object({
     .record(z.string(), z.number().int().min(0))
     .optional()
     .describe(
-      "How many buildings are in each `state` (ADR-0027), e.g. {\"producing\": 40, \"starved\": 3}, " +
+      "How many buildings are in each `state` (ADR-0027), e.g. {\"producing\": 40, \"underfed\": 3}, " +
         "for the Overview's \"N machines stalled\". Buildings without a state are not counted. " +
         "Optional for the same deploy-skew reason as `state`.",
     ),

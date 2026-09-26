@@ -157,3 +157,43 @@ Status: accepted (project owner), 2026-09-24. All seven owner decisions were tak
 5. While an alert keeps firing, repeat it: **A: every hour (recommended)** / B: never (only fire and resolve).
 6. Email later via **AWS SES** (you verify the domain and request production access; steps provided)? **Recommend yes, after Discord proves the rules.**
 7. Suppress everything while the game is paused (auto-pause) and send one "server unreachable" alert instead? **Recommend yes.**
+
+## Amendment 2 (2026-09-25): "Underfed" replaces "starved"; the stall alerts
+
+**Context.** PR 2 classified a machine as `starved` when its averaged output percent fell below a
+provisional 5%. The owner's rule is simpler: when the percent is below 95% of what the machine is set
+for, it gets fewer resources than it needs. FRM's `MaxProd` already includes the clock speed
+(`wiki/frm-api.md`, Production), so `ProdPercent` is relative to the set clock and the rule holds for
+underclocked and overclocked machines alike.
+
+**Decision (owner, 2026-09-25).**
+1. The state `starved` is renamed **`underfed`**: output percent below 95 (a named constant,
+   provisional until the capture session). Precedence is unchanged: paused > unpowered > idle >
+   backedUp > underfed > producing. A full output also lowers the percent, and the output is the
+   cause, so backedUp still wins. The hint naming the shortest input (lowest `ConsPercent`) stays.
+2. Discord alerts for machines (the UI shows `underfed` regardless):
+   - **Stopped machines**, on by default: output percent below about 5% for 5 min, grouped into one
+     message per evaluation. The old 5% is a parameter of this rule, not a state.
+   - **Newly underfed**, opt-in: a machine that was at 95% or more for at least 30 min stays below
+     95% for at least 10 min. Machines underfed on purpose never qualify.
+   - "Any underfed machine for N minutes" is not offered (deliberately underfed machines would
+     fire constantly).
+3. No dedicated capture session (owner, 2026-09-25: deprioritized). Tuning uses production history
+   instead. After about a week of recorded `telemetry.building_transitions`, count underfed <->
+   producing flips and short underfed spells per machine, then confirm or adjust the 95. Until then,
+   "Newly underfed" is not offered as a preset. "Stopped machines" does not depend on the 95. It
+   ships behind the delivery kill switch and runs about a week in shadow (transitions logged, nothing
+   sent). The owner turns delivery on after reading the alert log.
+   **Known limitation (owner, 2026-09-25: ship without checking).** Whether `MaxProd` includes a
+   Somersloop's amplification is [NEEDS VERIFICATION]. An amplified machine may read about 200%
+   (never underfed because of it), and users interpret that. Revisit only on a bug report.
+4. The contract gains an optional `clockSpeedPercent` per building (FRM `ManuSpeed`), so the Factory
+   view can show what each machine is set to.
+
+**Consequences.** The alert engine (PR 5) and the UI build on `underfed` from the start. If
+production history shows machines flapping around 95% between polls, a small band (enter below 95, leave at 98
+or above) would move into classification. That relaxes the per-snapshot rule in Amendment 1 and needs
+the owner's approval.
+
+**Revisit when.** A week of production history has been reviewed (confirm 95% and the defaults), a
+bug report involves Somersloop machines, or FRM documents its averaging window.
