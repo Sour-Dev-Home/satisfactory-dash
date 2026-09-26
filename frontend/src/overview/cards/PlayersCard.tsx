@@ -13,7 +13,7 @@ export type PlayersState = { status: Status } | "pending" | "error";
  */
 export function PlayersCard({ state, roster }: { state: PlayersState; roster?: ServerPlayersResponse }) {
   return (
-    <section aria-labelledby="players-heading" className="grid content-start gap-3 rounded-card border border-line bg-surface p-5">
+    <section aria-labelledby="players-heading" className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
       {/* The same 44 px header row as Health's (which holds the Hide button). */}
       <h3 id="players-heading" className="mb-0 flex min-h-[44px] items-center">
         Players
@@ -55,15 +55,17 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
   const more = status.playerLimit - slots;
   return (
     <>
-      <div className="flex items-end gap-1.5">
-        {/* Twelve figures don't fit one row on a phone: two even rows of six there, not 10 + 2.
-            From md up the card is as tall as the Health square beside it: bigger figures fill it. */}
-        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end md:gap-2.5">
+      {/* From lg up the card is as tall as the Health square beside it: bigger figures, centred in
+          whatever height the text leaves, so a quiet server doesn't leave a gap at the bottom. */}
+      <div className="flex items-end gap-1.5 lg:flex-1 lg:items-center">
+        {/* Twelve figures don't fit one row on a phone, or in the narrow column beside Health
+            between md and lg: two even rows of six there, not 10 + 2. */}
+        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end md:grid lg:flex lg:gap-2.5">
           {Array.from({ length: slots }, (_, i) => (
             <StickFigure
               key={i}
               filled={i < filled}
-              className={cn("md:h-13.5 md:w-9", i < filled ? "text-fg-strong" : "text-muted")}
+              className={cn("lg:h-15 lg:w-10", i < filled ? "text-fg-strong" : "text-muted")}
             />
           ))}
         </div>
