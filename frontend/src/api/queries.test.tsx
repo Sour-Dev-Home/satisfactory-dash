@@ -25,7 +25,12 @@ describe("query options", () => {
       settingsPending: 10_000,
       alerts: 60_000,
       command: 1_000,
+      agent: 30_000,
     });
+  });
+
+  it("reads the agent's status every 30 s, the rate its last-seen time moves (ADR-0031 PR 7)", () => {
+    expect(queries.agentStatus("default").refetchInterval).toBe(30_000);
   });
 
   it("reads alerts once a minute, never at the page's rate: the bell polls on every page (ADR-0027 PR 9)", () => {

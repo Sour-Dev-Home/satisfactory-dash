@@ -1,4 +1,7 @@
+import type { z } from "zod";
 import type {
+  AgentStatusResponse,
+  EnrollmentCodeResponseSchema,
   FactoryBuilding,
   FactoryResponse,
   HistoryItemsResponse,
@@ -421,6 +424,16 @@ export function factory(now: number): FactoryResponse {
 
 export function settings(now: number, state: { autoPause: boolean; pending: boolean }): SettingsResponse {
   return { ...envelope(now), data: { ...state, editable: true } };
+}
+
+/** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago. */
+export function agent(now: number): AgentStatusResponse {
+  return { enrolled: true, lastSeenAt: new Date(now - 12_000).toISOString(), agentVersion: "0.1.0", connectionKind: "agent" };
+}
+
+/** A made-up enrolment code: it enrols nothing, since the demo has no backend. */
+export function enrollmentCode(now: number): z.infer<typeof EnrollmentCodeResponseSchema> {
+  return { code: "DEMO-DEMO", expiresAt: new Date(now + 10 * 60_000).toISOString() };
 }
 
 // Stored production history (ADR-0027 decision 3), invented like the rest: the demo's own items, a
