@@ -8,6 +8,7 @@ import {
   overallHealth,
   powerHealth,
   serverHealth,
+  tickState,
   warningKey,
   type SectionHealth,
   type SectionState,
@@ -45,9 +46,13 @@ export function OverviewView() {
     { name: "Power", to: "/app/power", state: stateOf(useQuery(queries.power(server.id)), powerHealth) },
     { name: "Factory", to: "/app/factory", state: stateOf(useQuery(queries.factory(server.id)), factoryHealth) },
   ];
-  const overall = overallHealth(sections.map((s) => s.state));
+  // The tick has no row (it's in the Health card), but a slow one still makes the overall
+  // health a warning, and a dismissed warning comes back when it starts. Loading and errors are
+  // already counted by the Server row, so the tick only joins once there's a snapshot.
+  const inputs = status.data ? [...sections, { name: "Tick", state: tickState(status.data) }] : sections;
+  const overall = overallHealth(inputs.map((s) => s.state));
   const dismissible = canDismiss(overall.health);
-  const dismissal = useDismissedWarning(server.id, warningKey(sections), overall.health === "ok");
+  const dismissal = useDismissedWarning(server.id, warningKey(inputs), overall.health === "ok");
   return (
     <OverviewPanel
       overall={overall}

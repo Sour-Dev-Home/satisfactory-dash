@@ -27,12 +27,23 @@ export function serverHealth({ data, stale }: StatusResponse): SectionHealth {
   // says "paused": keep saying it when a worse state wins.
   const alsoPaused = data.gamePaused ? " · game paused" : "";
   if (stale) return { health: "degraded", summary: `Showing last known data${alsoPaused}` };
-  if (data.tickHealth === "slow") return { health: "degraded", summary: `Server tick is slow${alsoPaused}` };
+  // The tick isn't this row's (the owner's call): it lives in the Health card, and tickState
+  // below feeds it into the overall health instead.
   if (data.gamePaused) return { health: "paused", summary: "Paused: no players connected" };
   return {
     health: "ok",
     summary: `${data.sessionName} · ${data.connectedPlayers} / ${data.playerLimit} players`,
   };
+}
+
+/**
+ * The server tick as an input to the overall health, with no row of its own (the Health card
+ * shows it): the backend's tickHealth "slow" is a warning, anything else counts as ok. A save
+ * that isn't loaded has no tick to judge; the Server row already says so.
+ */
+export function tickState({ data }: StatusResponse): SectionHealth {
+  if (data.isGameRunning && data.tickHealth === "slow") return { health: "degraded", summary: "Server tick is slow" };
+  return { health: "ok", summary: "Server tick is healthy" };
 }
 
 export function powerHealth({ data, stale }: PowerResponse): SectionHealth {

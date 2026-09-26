@@ -14,7 +14,7 @@ import {
   statusStale,
 } from "@satisfactory-dash/shared/fixtures";
 import type { FactoryResponse } from "@satisfactory-dash/shared";
-import { canDismiss, factoryHealth, overallHealth, powerHealth, serverHealth, warningKey } from "./health";
+import { canDismiss, factoryHealth, overallHealth, powerHealth, serverHealth, tickState, warningKey } from "./health";
 
 function factoryWith(total: number, backedUp: number): FactoryResponse {
   const building = factoryMixed.data.buildings[0];
@@ -32,18 +32,32 @@ describe("serverHealth", () => {
   it.each([
     ["no save loaded", statusNoGame, "degraded", "No save loaded"],
     ["stale data", statusStale, "degraded", "Showing last known data"],
-    ["a slow tick", statusSlow, "degraded", "Server tick is slow"],
     ["a paused game", statusPaused, "paused", "Paused: no players connected"],
   ] as const)("flags %s", (_, snapshot, health, summary) => {
     expect(serverHealth(snapshot)).toEqual({ health, summary });
   });
 
+  // The owner's call: the tick lives only in the Health card, never in this row.
+  it("says nothing about a slow tick", () => {
+    expect(serverHealth(statusSlow).health).toBe("ok");
+    expect(serverHealth(statusSlow).summary).not.toMatch(/tick/i);
+  });
+
   // The Overview has no paused banner, so a worse state must not hide that the game is paused.
-  it.each([
-    ["stale", { ...statusStale, data: { ...statusStale.data, gamePaused: true } }, "Showing last known data · game paused"],
-    ["slow", { ...statusSlow, data: { ...statusSlow.data, gamePaused: true } }, "Server tick is slow · game paused"],
-  ] as const)("still says paused when %s wins", (_, snapshot, summary) => {
-    expect(serverHealth(snapshot)).toEqual({ health: "degraded", summary });
+  it("still says paused when stale wins", () => {
+    const snapshot = { ...statusStale, data: { ...statusStale.data, gamePaused: true } };
+    expect(serverHealth(snapshot)).toEqual({ health: "degraded", summary: "Showing last known data · game paused" });
+  });
+});
+
+describe("tickState", () => {
+  it("is a warning for the backend's slow tick, and ok otherwise", () => {
+    expect(tickState(statusSlow)).toEqual({ health: "degraded", summary: "Server tick is slow" });
+    expect(tickState(statusRunning).health).toBe("ok");
+  });
+
+  it("doesn't judge the tick with no save loaded", () => {
+    expect(tickState({ ...statusNoGame, data: { ...statusNoGame.data, tickHealth: "slow" } }).health).toBe("ok");
   });
 });
 
