@@ -3,7 +3,11 @@ import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
   ApiErrorResponseSchema,
+  DeleteServerResponseSchema,
   FactoryResponseSchema,
+  ManagedServerListResponseSchema,
+  ServerConnectionResponseSchema,
+  TestConnectionResponseSchema,
   HealthResponseSchema,
   KnownErrorCode,
   LoginRequestSchema,
@@ -28,6 +32,11 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["power", PowerResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
+  // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
+  ["serverConnection", ServerConnectionResponseSchema],
+  ["managedServers", ManagedServerListResponseSchema],
+  ["testConnection", TestConnectionResponseSchema],
+  ["deleteServer", DeleteServerResponseSchema],
   ["servers", ServerListResponseSchema],
   ["error", ApiErrorResponseSchema],
   ["health", HealthResponseSchema],
@@ -78,6 +87,56 @@ describe("scenario fixtures show what their names say", () => {
   it("exports the circuit status type (compile-time check)", () => {
     const status: PowerCircuitStatus = fixtures.powerOk.data.circuits[0].status;
     expect(["ok", "at_risk", "outage"]).toContain(status);
+  });
+});
+
+describe("server management fixtures (ADR-0030) show what their names say", () => {
+  it("the operator's list can manage, a member's cannot", () => {
+    expect(fixtures.serversOperator.canManageServers).toBe(true);
+    expect(fixtures.serversMemberCannotManage.canManageServers).toBe(false);
+  });
+
+  it("the managed list has every state, and only the refused one is over the LAN with no suffixes", () => {
+    const states = fixtures.managedServersAllStates.servers.map((server) => server.state);
+    expect(states).toEqual(["ok", "unreadable", "refused"]);
+    const [ok, unreadable, refused] = fixtures.managedServersAllStates.servers;
+    expect([ok.apiTokenLast4, ok.frmTokenLast4]).toEqual(["1a2b", "3c4d"]);
+    expect([unreadable.apiTokenLast4, unreadable.frmTokenLast4]).toEqual([null, null]);
+    expect([refused.apiTokenLast4, refused.plainHttpOverLan]).toEqual([null, true]);
+    expect(fixtures.managedServersEmpty.servers).toEqual([]);
+  });
+
+  it("the connection fixtures are loopback, and the variant has no FRM token", () => {
+    expect(fixtures.serverConnectionOk.server.plainHttpOverLan).toBe(false);
+    expect(fixtures.serverConnectionNoFrmToken.server).toMatchObject({ frmTokenSet: false, frmTokenLast4: null });
+  });
+
+  it("each failed test names the failing side by a stable code", () => {
+    expect(fixtures.testConnectionPassed.ok).toBe(true);
+    expect(fixtures.testConnectionApiUnauthorized.api.error).toBe("unauthorized");
+    expect(fixtures.testConnectionFrmUnreachable.frm.error).toBe("unreachable");
+    expect(fixtures.testConnectionApiInvalidResponse.api.error).toBe("invalid_response");
+    for (const failed of [fixtures.testConnectionApiUnauthorized, fixtures.testConnectionFrmUnreachable, fixtures.testConnectionApiInvalidResponse]) {
+      expect(failed.ok).toBe(false);
+    }
+  });
+
+  it("the error envelopes carry the stable management codes, and none of them names a host, an address or a token", () => {
+    const errors = [
+      fixtures.errorOperatorOnly, fixtures.errorValidation, fixtures.errorImportRequired, fixtures.errorLanRequiresCertPinning,
+      fixtures.errorAddressNotAllowed, fixtures.errorConnectionTestFailed, fixtures.errorConnectionUnreadable,
+      fixtures.errorServerExists, fixtures.errorServerLimitReached,
+    ];
+    expect(errors.map((e) => e.error.code)).toEqual([
+      "forbidden", "bad_request", "import_required", "lan_requires_cert_pinning",
+      "address_not_allowed", "connection_test_failed", "connection_unreadable", "server_exists", "server_limit_reached",
+    ]);
+    for (const e of errors) {
+      // lan_requires_cert_pinning joins KnownErrorCode in ADR-0030 amendment 1's change (PR 5c); a fixture may
+      // name a code before that lands because the envelope's `code` is a plain string (ADR-0007).
+      if (e.error.code !== "lan_requires_cert_pinning") expect(KnownErrorCode.safeParse(e.error.code).success).toBe(true);
+      expect(JSON.stringify(e)).not.toMatch(/\d+\.\d+\.\d+\.\d+|token-|password/i);
+    }
   });
 });
 
