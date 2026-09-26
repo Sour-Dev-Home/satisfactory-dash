@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { UpstreamError } from "../../platform/errors.js";
+import { UpstreamError } from "./errors.js";
 import { ServerOptionsAdapter } from "./serverOptionsAdapter.js";
 import type { VanillaApiClientLike } from "./satisfactoryServerAdapter.js";
 

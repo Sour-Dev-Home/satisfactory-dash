@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { BuildingLocationSchema } from "@satisfactory-dash/shared";
 import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
-import { capturedBackedUpAssembler } from "./__fixtures__/capturedFixtures.js";
+import { capturedBackedUpAssembler } from "../fixtures/capturedFixtures.js";
 
 const rotations = [
   359.99999999999994, 360 - Number.EPSILON, -Number.MIN_VALUE, -1e-300, -1e-14, -3e-14, -5.6e-14, -2.8e-14,

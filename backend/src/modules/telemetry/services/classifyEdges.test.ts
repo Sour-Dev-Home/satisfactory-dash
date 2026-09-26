@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
-import { factoryBuildingFixture } from "../../gameserver/__fixtures__/rawFixtures.js";
+import { factoryBuildingFixture } from "@satisfactory-dash/game-adapter/fixtures";
 import { classifyBuilding } from "./classifyBuilding.js";
 import type { ClassifiableBuilding } from "./classifyBuilding.js";
 

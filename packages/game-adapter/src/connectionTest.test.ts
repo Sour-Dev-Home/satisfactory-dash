@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { UpstreamError } from "../../platform/errors.js";
-import { createSatisfactoryServerConfig } from "./connectionConfig.js";
+import { UpstreamError } from "./errors.js";
+import { createSatisfactoryServerConfig } from "./connection.js";
 import { testGameServerConnection } from "./connectionTest.js";
 
 const config = createSatisfactoryServerConfig({ host: "127.0.0.1", apiPort: 7777, apiToken: "api-token-abc", frmPort: 8080 });

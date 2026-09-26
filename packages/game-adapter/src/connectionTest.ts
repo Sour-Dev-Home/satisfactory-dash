@@ -1,5 +1,5 @@
-import { UpstreamError } from "../../platform/errors.js";
-import type { SatisfactoryServerConfig } from "./connectionConfig.js";
+import { UpstreamError } from "./errors.js";
+import type { SatisfactoryServerConfig } from "./connection.js";
 import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 
 /**

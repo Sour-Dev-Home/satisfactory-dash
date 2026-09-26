@@ -10,8 +10,8 @@
  * this client only implements the direct Web Server transport.
  */
 
-import { UpstreamError } from "../../platform/errors.js";
-import type { RequestFailureKind } from "../../platform/errors.js";
+import { UpstreamError } from "./errors.js";
+import type { RequestFailureKind } from "./errors.js";
 
 export type FrmApiFetch = (url: string, init: RequestInit) => Promise<Response>;
 

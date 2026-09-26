@@ -1,50 +1,51 @@
 /**
  * The gameserver module's public API (ADR-0014). Everything that talks to ONE
- * Satisfactory server (vanilla HTTPS API + FRM) lives behind this file, has no Express
- * imports, and can later be lifted into the edge agent. Other modules import only from
- * here, never a deep path.
+ * Satisfactory server (vanilla HTTPS API + FRM) lives in the `@satisfactory-dash/game-adapter`
+ * package (ADR-0031 PR 2), so the edge agent can reuse it; this module is a thin facade over it
+ * plus the backend-only parts (assembling a server's config from the environment or the servers
+ * file). Other modules import only from here, never a deep path and never the package directly.
+ *
+ * The export list is EXPLICIT on purpose (not `export *`): it is exactly what the module exposed
+ * before the extraction. In particular `ServerOptionsAdapter` is not exported, so GetServerOptions
+ * stays reachable only through the allowlisted `ServerOptionsPort` (ADR-0012).
  */
-import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
-import type { SatisfactoryServerConfig } from "./connectionConfig.js";
-import { ServerOptionsAdapter } from "./serverOptionsAdapter.js";
-import type { ServerOptionsPort } from "./serverOptionsAdapter.js";
-import { VanillaApiClient } from "./vanillaApiClient.js";
-
-export * from "./domain.js";
-export { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
-export type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
+export type {
+  ServerHealth,
+  ServerStatus,
+  ProductionRate,
+  InventorySlot,
+  FactoryBuilding,
+  PowerCircuit,
+  BuildingPowerUsage,
+  Player,
+  SessionInfo,
+} from "@satisfactory-dash/game-adapter";
 export {
+  SatisfactoryServerAdapter,
+  VanillaApiClient,
+  VanillaApiRequestError,
+  FrmApiClient,
+  FrmApiRequestError,
   createSatisfactoryServerConfig,
+  createServerOptionsPort,
+  createGameServerConnection,
+  testGameServerConnection,
+} from "@satisfactory-dash/game-adapter";
+export type {
+  VanillaApiClientLike,
+  FrmApiClientLike,
+  SatisfactoryServerConfig,
+  ServerOptionsPort,
+  AutoPauseState,
+  ConnectionCheck,
+  ConnectionCheckError,
+  ConnectionTestResult,
+} from "@satisfactory-dash/game-adapter";
+
+export {
   loadSatisfactoryServerConfigFromEnv,
   nonLoopbackServerIds,
   parsePortEnv,
 } from "./connectionConfig.js";
-export type { SatisfactoryServerConfig } from "./connectionConfig.js";
 export { configuredServerEnvNamesInUse, ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
 export type { ConfiguredServer } from "./serversFile.js";
-export { testGameServerConnection } from "./connectionTest.js";
-export type { ConnectionCheck, ConnectionCheckError, ConnectionTestResult } from "./connectionTest.js";
-export { VanillaApiClient, VanillaApiRequestError } from "./vanillaApiClient.js";
-export { FrmApiClient, FrmApiRequestError } from "./frmApiClient.js";
-
-export type { ServerOptionsPort, AutoPauseState } from "./serverOptionsAdapter.js";
-
-/** The one place GetServerOptions is reachable from (ADR-0012), exposed only as the
- *  allowlisted auto-pause port. It gets its own client so it never shares state with
- *  the telemetry adapter. */
-export function createServerOptionsPort(config: SatisfactoryServerConfig): ServerOptionsPort {
-  const vanillaApi = new VanillaApiClient({
-    host: config.host,
-    port: config.apiPort,
-    authToken: config.apiToken,
-    allowSelfSignedCert: config.apiAllowSelfSignedCert,
-    timeoutMs: config.requestTimeoutMs,
-  });
-  return new ServerOptionsAdapter(vanillaApi, config.apiToken);
-}
-
-/** Opens the connection to one game server: the adapter whose methods are the ports the
- *  other modules' services depend on. */
-export function createGameServerConnection(config: SatisfactoryServerConfig): SatisfactoryServerAdapter {
-  return SatisfactoryServerAdapter.fromConfig(config);
-}

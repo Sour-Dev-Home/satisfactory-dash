@@ -1,4 +1,4 @@
-import type { SatisfactoryServerConfig } from "./connectionConfig.js";
+import type { SatisfactoryServerConfig } from "./connection.js";
 import { VanillaApiClient } from "./vanillaApiClient.js";
 import { z } from "zod";
 import { FrmApiClient } from "./frmApiClient.js";
@@ -23,7 +23,7 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
-import { UpstreamError } from "../../platform/errors.js";
+import { UpstreamError } from "./errors.js";
 
 const MAX_REPORTED_ISSUES = 5;
 

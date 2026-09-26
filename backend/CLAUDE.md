@@ -11,9 +11,10 @@ A modular monolith (ADR-0014): the source is split by domain into `platform/` pl
 
 - `src/platform/` — cross-cutting HTTP and ops: logger, request context, client IP,
   the error taxonomy (`errors.ts`) and envelope, `httpPolicy.ts`. Imports no module.
-- `src/modules/gameserver/` — all communication with ONE Satisfactory server (vanilla
-  HTTPS API, FRM). The only place allowed to know FRM/vanilla-API response shapes; no
-  Express imports, so it can become the edge agent. See its README.
+- `src/modules/gameserver/` — a thin facade over `packages/game-adapter` (all communication
+  with ONE Satisfactory server: vanilla HTTPS API, FRM; the only place allowed to know their
+  response shapes; no Express, so the edge agent can lift it), plus the backend-only config
+  loaders. Only this module and `platform/errors.ts` import the package. See both READMEs.
 - `src/modules/servers/` — the registry of servers and `:serverId` scoping (ADR-0001).
 - `src/modules/telemetry/` — status, factory and power: services (production math,
   overflow/outage detection) and the routes that expose them. See its README.

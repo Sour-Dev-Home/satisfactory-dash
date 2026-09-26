@@ -1,39 +1,15 @@
 import { isIP } from "node:net";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "@satisfactory-dash/game-adapter";
+import type { SatisfactoryServerConfig } from "@satisfactory-dash/game-adapter";
 import { ConfigError } from "../../platform/errors.js";
 
 /**
- * Connection config for a single Satisfactory dedicated server. Read from env vars so
- * "one server now, many via AWS later" (root CLAUDE.md) is a config change, not a
- * rewrite — this is the one place that assembles env into a typed shape.
+ * Assembles a `SatisfactoryServerConfig` (the type lives in the game-adapter package) from environment variables, so
+ * "one server now, many via AWS later" (root CLAUDE.md) is a config change, not a rewrite. Reading the environment
+ * is the backend's job: the adapter package never does it.
  */
-export interface SatisfactoryServerConfig {
-  host: string;
-  /** Vanilla Dedicated Server HTTPS API port. Always TLS, self-signed by default
-   *  (docs-vault/raw-sources/dedicated-server-api.md, "Certificate Validation and
-   *  Encryption"). */
-  apiPort: number;
-  /** Bearer token for admin-privileged vanilla API functions. Not required for the
-   *  read-only functions this adapter currently calls (HealthCheck, QueryServerState). */
-  apiToken?: string;
-  /** Accept the vanilla API's self-signed cert (the game server's default). Off unless
-   *  the host is loopback/private or the operator explicitly opts out; see
-   *  `allowSelfSignedCert` below. */
-  apiAllowSelfSignedCert: boolean;
-  /** FicsitRemoteMonitoring Web Server port (default 8080 per
-   *  docs-vault/raw-sources/frm-config.md). Confirmed live in the Phase 2 spike — see
-   *  docs-vault/wiki/frm-api.md — that FRM's documented tunneled-transport fallback
-   *  through apiPort does not work on this game/FRM version, so the adapter talks to
-   *  this port directly. */
-  frmPort: number;
-  /** Sent as the `X-FRM-Authorization` header per
-   *  docs-vault/raw-sources/frm-authentication.md. [NEEDS VERIFICATION] — not
-   *  live-tested against an instance that actually enforces the token; the Phase 2
-   *  spike's server accepted requests with no token at all. */
-  frmToken?: string;
-  requestTimeoutMs: number;
-}
 
-const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = DEFAULT_REQUEST_TIMEOUT_MS;
 /** Bounds for SATISFACTORY_REQUEST_TIMEOUT_MS. Below 1 s a healthy game server can miss its
  *  own deadline; above 60 s a dead one would freeze every request for a minute (ADR-0022). */
 export const MIN_REQUEST_TIMEOUT_MS = 1000;
@@ -167,28 +143,8 @@ export function allowSelfSignedCert(env: NodeJS.ProcessEnv, host: string): boole
   return isLoopbackOrPrivateHost(host);
 }
 
-/**
- * ADR-0030: the config for a server whose connection is stored in the database. `host` is the pinned
- * address (already validated as loopback or private by the address guard), so the vanilla API's
- * self-signed certificate is accepted, as it is for any loopback/private host; the timeout is the default.
- */
-export function createSatisfactoryServerConfig(input: {
-  host: string;
-  apiPort: number;
-  apiToken: string;
-  frmPort: number;
-  frmToken?: string;
-}): SatisfactoryServerConfig {
-  return {
-    host: input.host,
-    apiPort: input.apiPort,
-    apiToken: input.apiToken,
-    apiAllowSelfSignedCert: true,
-    frmPort: input.frmPort,
-    frmToken: input.frmToken,
-    requestTimeoutMs: DEFAULT_TIMEOUT_MS,
-  };
-}
+// ADR-0030's `createSatisfactoryServerConfig` (a stored connection's config) moved to the game-adapter package with
+// the type; the module's index re-exports it from there.
 
 export function loadSatisfactoryServerConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,

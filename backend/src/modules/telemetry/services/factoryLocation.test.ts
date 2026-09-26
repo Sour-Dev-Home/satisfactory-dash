@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
-import { ProductionService } from "../telemetry/services/productionService.js";
+import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
+import { ProductionService } from "./productionService.js";
 import {
   capturedBackedUpAssembler,
   capturedFuelRefinery,
   capturedUnassignedAssembler,
-} from "./__fixtures__/capturedFixtures.js";
+} from "@satisfactory-dash/game-adapter/fixtures";
 
 // ADR-0023: FRM's building location (centimetres, docs-vault/raw-sources/world-coordinates.md) becomes
 // metres, the yaw is normalized to [0, 360), and the circuit group id reaches the contract.

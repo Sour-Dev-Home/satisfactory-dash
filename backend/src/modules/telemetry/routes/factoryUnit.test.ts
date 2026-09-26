@@ -11,7 +11,7 @@ import {
   capturedFuelRefinery,
   capturedTrippedGridRefinery,
   capturedUnassignedAssembler,
-} from "../../gameserver/__fixtures__/capturedFixtures.js";
+} from "@satisfactory-dash/game-adapter/fixtures";
 import { ProductionService } from "../services/productionService.js";
 import { createFactoryRouter } from "./factory.js";
 

@@ -8,7 +8,7 @@ import {
   capturedBackedUpAssembler,
   capturedFuelRefinery,
   capturedUnassignedAssembler,
-} from "../../gameserver/__fixtures__/capturedFixtures.js";
+} from "@satisfactory-dash/game-adapter/fixtures";
 
 function building(overrides: Partial<FactoryBuilding> = {}): FactoryBuilding {
   return {

@@ -1,6 +1,6 @@
 import https from "node:https";
-import { UpstreamError } from "../../platform/errors.js";
-import type { RequestFailureKind } from "../../platform/errors.js";
+import { UpstreamError } from "./errors.js";
+import type { RequestFailureKind } from "./errors.js";
 
 /**
  * Low-level client for the vanilla Satisfactory Dedicated Server HTTPS API. One POST
