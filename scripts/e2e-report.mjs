@@ -41,12 +41,16 @@ export function parseSummary(text) {
       kind = head[1];
       continue;
     }
-    const test = kind && line.match(/^\s+(\[[^\]]+\] › .+?)\s*[─-]*\s*$/);
-    if (test) {
-      if (!out[kind].includes(test[1])) out[kind].push(test[1]);
+    // A different summary count line ("N passed" / "N skipped" / "N did not run" / "N interrupted")
+    // ends the current section. Anything else is unrelated output (e.g. another step's log
+    // interleaved by timestamp) and is skipped without abandoning the section: a single stray
+    // line must not cause every test listed after it to be dropped.
+    if (/^\s+\d+ (passed|skipped|did not run|interrupted)\b/.test(line)) {
+      kind = undefined;
       continue;
     }
-    kind = undefined;
+    const test = kind && line.match(/^\s+(\[[^\]]+\] › .+?)\s*[─-]*\s*$/);
+    if (test && !out[kind].includes(test[1])) out[kind].push(test[1]);
   }
   return out;
 }
