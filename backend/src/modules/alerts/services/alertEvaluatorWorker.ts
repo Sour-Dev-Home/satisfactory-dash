@@ -26,6 +26,8 @@ export interface AlertEvaluatorOptions {
   /** How often expired alert events are purged. */
   purgeIntervalMs?: number;
   now?: () => number;
+  /** ALERT_DELIVERY is on: new events are also queued for delivery (in the same transaction). Default off: nothing queued. */
+  deliver?: boolean;
 }
 
 const DEFAULT_TICK_MS = 30_000;
@@ -175,7 +177,7 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           states,
           muted: (mutes.get(server.id) ?? 0) > now,
         });
-        await writeEvaluation(this.db, { writes: evaluation.writes, events: evaluation.events, nowMs: now });
+        await writeEvaluation(this.db, { writes: evaluation.writes, events: evaluation.events, nowMs: now, deliver: this.options.deliver === true });
         evaluation.commit();
         for (const event of evaluation.events) {
           // The alert log's own line: ids and counts only, never a name or a secret.

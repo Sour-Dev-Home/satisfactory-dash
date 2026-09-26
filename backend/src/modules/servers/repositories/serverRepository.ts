@@ -166,6 +166,8 @@ const DELETE_HISTORY = [
   "DELETE FROM alerts.rules WHERE server_id = $1",
   "DELETE FROM alerts.alert_events WHERE server_id = $1",
   "DELETE FROM alerts.server_mutes WHERE server_id = $1",
+  // ADR-0027 PR 6: the encrypted webhook goes with the server (its outbox rows cascade from the destination).
+  "DELETE FROM alerts.destinations WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });
