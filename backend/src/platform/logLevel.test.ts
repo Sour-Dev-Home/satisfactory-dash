@@ -5,6 +5,7 @@ import { createApp } from "../app.js";
 import { createLogger } from "./logger.js";
 import { RateLimitedError, UnauthorizedError } from "./errorResponse.js";
 import { requestLogLevel } from "./logLevel.js";
+import { createReadinessRouter } from "./health.js";
 
 describe("requestLogLevel", () => {
   it.each([
@@ -19,6 +20,16 @@ describe("requestLogLevel", () => {
     [302, "info"],
   ] as const)("a %i is logged at %s", (status, level) => {
     expect(requestLogLevel(status)).toBe(level);
+  });
+
+  it("the readiness probe's 503 is a warn (expected during startup); any other 503, or a thrown error, is still an error", () => {
+    expect(requestLogLevel(503, undefined, "/api/health/ready")).toBe("warn");
+    expect(requestLogLevel(503, undefined, "/api/health/ready?x=1")).toBe("warn");
+    expect(requestLogLevel(503, undefined, "/api/health/live")).toBe("error");
+    expect(requestLogLevel(503, undefined, "/api/servers/a/health/ready")).toBe("error");
+    expect(requestLogLevel(503, new Error("boom"), "/api/health/ready")).toBe("error");
+    expect(requestLogLevel(500, undefined, "/api/health/ready")).toBe("error");
+    expect(requestLogLevel(200, undefined, "/api/health/ready")).toBe("info");
   });
 
   it("a handled client error (an error object with a 4xx status) is not an error", () => {
@@ -76,6 +87,20 @@ describe("log levels in the real request pipeline", () => {
     });
     expect(status).toBe(500);
     expect(levels).toEqual([LEVEL.error]);
+  });
+
+  it("the readiness probe's 503 (not ready) is a warn in the real pipeline; a 503 elsewhere is an error", async () => {
+    const lines: { level: number }[] = [];
+    const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(JSON.parse(line)) });
+    const other = Router();
+    other.get("/other", (_req, res) => void res.status(503).json({ status: "unavailable" }));
+    const app = createApp({ logger, routers: [createReadinessRouter(async () => false), other] });
+    const res = await request(app).get("/api/health/ready?probe=1");
+    expect(res.status).toBe(503);
+    expect(new Set(lines.map((l) => l.level))).toEqual(new Set([LEVEL.warn]));
+    lines.length = 0;
+    await request(app).get("/api/other");
+    expect(new Set(lines.map((l) => l.level))).toEqual(new Set([LEVEL.error]));
   });
 
   it("a successful request is info", async () => {

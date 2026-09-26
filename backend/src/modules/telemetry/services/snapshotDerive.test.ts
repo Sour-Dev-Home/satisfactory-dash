@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AgentFactorySchema, AgentPowerSchema, FactorySchema, PowerSchema } from "@satisfactory-dash/shared";
 import type { FactoryBuilding, PowerCircuit } from "../../gameserver/index.js";
-import { deriveFactory, derivePower, fuseByCircuit } from "./agentDerive.js";
+import { deriveFactory, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
 import { PowerService } from "./powerService.js";
 import { ProductionService } from "./productionService.js";
 import type { UnitResolver } from "./productionService.js";
@@ -106,7 +106,7 @@ describe("deriveFactory", () => {
   it("gives exactly what the local path gives for the same buildings (parity: state, units, backedUpCount, stateCounts)", async () => {
     const local = await localFactory(buildings);
     const agentInput = AgentFactorySchema.parse(local);
-    const derived = deriveFactory(agentInput, fuses, resolveUnit);
+    const derived = deriveFactory(agentInput, fuseFromCircuits(fuses), resolveUnit);
     expect(derived).toEqual(local);
     expect(FactorySchema.safeParse(derived).success).toBe(true);
     // The reading really exercises every rule.
@@ -127,12 +127,12 @@ describe("deriveFactory", () => {
 
   it("a stale or missing power reading leaves the fuse unknown: no state for a machine that needs it, never a guess", () => {
     const input = AgentFactorySchema.parse({ buildings: [{ ...buildings[0], isBackedUp: false }] });
-    const withoutFuses = deriveFactory(input, undefined, resolveUnit);
+    const withoutFuses = deriveFactory(input, fuseFromCircuits(undefined), resolveUnit);
     expect(withoutFuses.buildings[0]?.state).toBeUndefined();
     expect(withoutFuses.stateCounts).toEqual({});
     // A machine that needs no fuse to be decided still gets its state.
     const paused = AgentFactorySchema.parse({ buildings: [{ ...building("p", { isPaused: true }), isBackedUp: false }] });
-    expect(deriveFactory(paused, undefined, resolveUnit).buildings[0]?.state).toBe("paused");
+    expect(deriveFactory(paused, fuseFromCircuits(undefined), resolveUnit).buildings[0]?.state).toBe("paused");
   });
 
   it("the agent's `state`, `unit`, `stateCounts` and `backedUpCount` are ignored: an agent on older rules cannot disagree", async () => {
@@ -142,7 +142,7 @@ describe("deriveFactory", () => {
       backedUpCount: 7,
       stateCounts: { producing: 1 },
     };
-    const derived = deriveFactory(AgentFactorySchema.parse(lying), fuses, resolveUnit);
+    const derived = deriveFactory(AgentFactorySchema.parse(lying), fuseFromCircuits(fuses), resolveUnit);
     expect(derived).toEqual(local);
     expect(derived.buildings[0]?.state).toBe("underfed");
     expect(derived.backedUpCount).toBe(0);
@@ -151,11 +151,11 @@ describe("deriveFactory", () => {
 
   it("a paused building with no circuit id is still 'paused', as on the local path (pause needs no fuse)", () => {
     const input = AgentFactorySchema.parse({ buildings: [{ ...building("p"), isBackedUp: false, isPaused: true, circuitGroupId: undefined }] });
-    expect(deriveFactory(input, fuses, resolveUnit).buildings[0]?.state).toBe("paused");
+    expect(deriveFactory(input, fuseFromCircuits(fuses), resolveUnit).buildings[0]?.state).toBe("paused");
   });
 
   it("a building with no circuit id gets no state (nothing to join a fuse to), and is still served", () => {
     const input = AgentFactorySchema.parse({ buildings: [{ ...building("x"), isBackedUp: false, circuitGroupId: undefined }] });
-    expect(deriveFactory(input, fuses, resolveUnit).buildings[0]).not.toHaveProperty("state");
+    expect(deriveFactory(input, fuseFromCircuits(fuses), resolveUnit).buildings[0]).not.toHaveProperty("state");
   });
 });
