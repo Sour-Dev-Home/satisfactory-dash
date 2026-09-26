@@ -3,6 +3,7 @@ export * from "./envelope";
 export * from "./errors";
 export * from "./health";
 export * from "./servers";
+export * from "./serverManagement";
 export * from "./status";
 export * from "./factory";
 export * from "./power";

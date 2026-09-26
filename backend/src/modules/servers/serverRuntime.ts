@@ -22,6 +22,9 @@ export interface RuntimeServer<TServices> extends ServerSummary {
 export interface ServerRuntimeOptions {
   /** Called when one server's worker fails to start, so the others still start. Without it the error is thrown. */
   onWorkerStartError?: (serverId: string, err: unknown) => void;
+  /** Called when one server's worker fails to stop (a stop never blocks a removal or shutdown). Log the
+   *  server id and the error's name only. */
+  onWorkerStopError?: (serverId: string, err: unknown) => void;
 }
 
 export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
@@ -89,15 +92,41 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
     const entry = this.byId.get(id);
     if (entry === undefined) return false;
     this.byId.delete(id);
-    // `async` so a worker whose stop() throws synchronously is settled like a rejection.
-    await Promise.allSettled(entry.workers.map(async (worker) => worker.stop()));
+    await this.stopWorkers(entry);
     return true;
   }
 
-  /** An edit: the old server's workers stop, then the new entry takes its place (and starts if running). */
+  /** Stops one server's workers; a failure is reported through `onWorkerStopError` and never thrown. */
+  private async stopWorkers(entry: RuntimeServer<TServices>): Promise<void> {
+    // `async` so a worker whose stop() throws synchronously is settled like a rejection.
+    const results = await Promise.allSettled(entry.workers.map(async (worker) => worker.stop()));
+    for (const result of results) {
+      if (result.status === "rejected") this.options.onWorkerStopError?.(entry.id, result.reason);
+    }
+  }
+
+  /**
+   * An edit: the new entry takes the old one's place in one step (the id never stops resolving and
+   * there is no window for a "duplicate id"), starts if the runtime is running, and then the old
+   * entry's workers stop. Replacing an id that is not present just adds it.
+   */
   async replace(entry: RuntimeServer<TServices>): Promise<void> {
-    await this.remove(entry.id);
-    this.add(entry);
+    const old = this.byId.get(entry.id);
+    this.byId.set(entry.id, entry);
+    if (this.running) {
+      this.startWorkers(entry);
+    }
+    if (old !== undefined) {
+      await this.stopWorkers(old);
+    }
+  }
+
+  /** Changes a server's display name in place (its pollers keep running). False if there is no such server. */
+  rename(id: string, displayName: string): boolean {
+    const entry = this.byId.get(id);
+    if (entry === undefined) return false;
+    this.byId.set(id, { ...entry, displayName });
+    return true;
   }
 
   /** Starts every server's workers, and every server added later. Idempotent. */
@@ -112,6 +141,6 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
   /** Stops every server's workers (servers stay registered). */
   async stop(): Promise<void> {
     this.running = false;
-    await Promise.allSettled([...this.byId.values()].flatMap((entry) => entry.workers.map(async (worker) => worker.stop())));
+    await Promise.all([...this.byId.values()].map((entry) => this.stopWorkers(entry)));
   }
 }

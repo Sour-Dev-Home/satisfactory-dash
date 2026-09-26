@@ -9,6 +9,11 @@ export const ServerSummarySchema = z.object({
 
 export const ServerListResponseSchema = z.object({
   servers: z.array(ServerSummarySchema),
+  // ADR-0030 (additive and optional per the deploy-skew rule: an older backend omits it).
+  canManageServers: z
+    .boolean()
+    .optional()
+    .describe("True only for the operator: whether to offer adding, editing and removing servers."),
 });
 
 export type ServerSummary = z.infer<typeof ServerSummarySchema>;

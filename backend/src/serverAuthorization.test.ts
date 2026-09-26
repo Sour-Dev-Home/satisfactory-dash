@@ -10,8 +10,8 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
-import { InMemoryServerDirectory, createServersRouter } from "./modules/servers/index.js";
-import type { ServerAccess } from "./modules/servers/index.js";
+import { InMemoryServerDirectory, createServerManagementRouters, createServersRouter } from "./modules/servers/index.js";
+import type { ServerAccess, ServerManagementService } from "./modules/servers/index.js";
 import { createTelemetryRouters } from "./modules/telemetry/index.js";
 import { createSettingsRouters } from "./modules/settings/index.js";
 import { scopedEndpoints } from "../test-support/scopedEndpoints.js";
@@ -33,10 +33,37 @@ const ADMIN = "user-admin";
 const VIEWER = "user-viewer";
 const OUTSIDER = "user-outsider"; // signed in, member of nothing
 const ELSEWHERE = "user-elsewhere"; // a member of the other server only
+// ADR-0030: the seeded operator account. Deliberately only an ADMIN of alpha here, so the tests show that
+// what makes a user allowed to manage servers is being the operator, not the role (the OWNER above is refused).
+const OPERATOR = "user-operator";
 
 const members: Record<string, Record<string, "owner" | "admin" | "viewer">> = {
-  alpha: { [OWNER]: "owner", [ADMIN]: "admin", [VIEWER]: "viewer" },
+  alpha: { [OWNER]: "owner", [ADMIN]: "admin", [VIEWER]: "viewer", [OPERATOR]: "admin" },
   bravo: { [ELSEWHERE]: "owner" },
+};
+
+const connectionView = {
+  id: "alpha",
+  displayName: "Alpha",
+  host: "192.168.1.20",
+  apiPort: 7777,
+  frmPort: 8080,
+  apiTokenSet: true as const,
+  apiTokenLast4: "1234",
+  frmTokenSet: true,
+  frmTokenLast4: "5678",
+  state: "ok" as const,
+  plainHttpOverLan: true,
+};
+const testPassed = { ok: true, api: { ok: true }, frm: { ok: true } };
+const managementService: ServerManagementService = {
+  canManage: (userId) => userId === OPERATOR,
+  create: async () => connectionView,
+  get: async () => connectionView,
+  update: async () => connectionView,
+  remove: async () => undefined,
+  testCandidate: async () => testPassed,
+  testSaved: async () => testPassed,
 };
 
 const access: ServerAccess = {
@@ -80,21 +107,29 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
     { id: "alpha", displayName: "Alpha", services },
     { id: "bravo", displayName: "Bravo", services },
   ]);
+  const management = createServerManagementRouters(managementService, { isReady: options.isReady });
   return createApp({
     logger: createLogger({ level: "silent" }, { write: () => {} }),
     routers: [],
     sessionGuard: fakeGuard,
+    // The same order server.ts uses: collection routes before the servers router, scoped ones after everything.
     protectedRouters: [
+      management.collection,
       createServersRouter(directory, access, options),
       ...createTelemetryRouters(directory),
       ...createSettingsRouters(directory),
+      management.scoped,
     ],
   });
 }
 
-const call = (app: ReturnType<typeof buildApp>, method: Method, url: string, user: string) => {
+/** A valid body for each write endpoint that takes one (the auto-pause toggle, or an edit's fields). */
+const bodyFor = (name: string): unknown => (name === "serverManagement.update" ? { displayName: "Renamed" } : { enabled: true });
+const hasBody = (name: string, method: Method) => method !== "GET" && method !== "DELETE" && name !== "serverManagement.testSaved";
+
+const call = (app: ReturnType<typeof buildApp>, name: string, method: Method, url: string, user: string) => {
   const req = request(app)[method.toLowerCase() as "get"](url).set("x-test-user", user);
-  return method === "GET" ? req : req.set("Content-Type", "application/json").send(JSON.stringify({ enabled: true }));
+  return hasBody(name, method) ? req.set("Content-Type", "application/json").send(JSON.stringify(bodyFor(name))) : req;
 };
 
 describe("the shared contract has server-scoped endpoints to generate from", () => {
@@ -104,13 +139,13 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
   });
 });
 
-describe.each(SCOPED)("$method $route ($name)", ({ method, route }) => {
+describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operatorOnly }) => {
   const app = buildApp();
 
   it("a signed-in non-member gets the same 404 as an unknown server, so existence is not revealed", async () => {
-    const real = await call(app, method, urlFor(route, "alpha"), OUTSIDER);
-    const other = await call(app, method, urlFor(route, "alpha"), ELSEWHERE);
-    const missing = await call(app, method, urlFor(route, "no-such-server"), OUTSIDER);
+    const real = await call(app, name, method, urlFor(route, "alpha"), OUTSIDER);
+    const other = await call(app, name, method, urlFor(route, "alpha"), ELSEWHERE);
+    const missing = await call(app, name, method, urlFor(route, "no-such-server"), OUTSIDER);
     for (const res of [real, other, missing]) {
       expect(res.status).toBe(404);
       expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("server_not_found");
@@ -124,32 +159,58 @@ describe.each(SCOPED)("$method $route ($name)", ({ method, route }) => {
   });
 
   it("a malformed server id is a 400 for everyone", async () => {
-    const res = await call(app, method, urlFor(route, "Bad_Id"), OWNER);
+    const res = await call(app, name, method, urlFor(route, "Bad_Id"), OWNER);
     expect(res.status).toBe(400);
   });
 
-  if (method === "GET") {
+  if (operatorOnly) {
+    // ADR-0030: no role is enough, only the operator account. Every member, an owner included, is refused with 403
+    // (they are members, so the server's existence is no secret); the operator gets through.
+    it.each([OWNER, ADMIN, VIEWER])("a member (%s) who is not the operator is refused with 403 forbidden", async (user) => {
+      const res = await call(app, name, method, urlFor(route, "alpha"), user);
+      expect(res.status).toBe(403);
+      expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("forbidden");
+    });
+
+    it("the operator can use it", async () => {
+      const res = await call(app, name, method, urlFor(route, "alpha"), OPERATOR);
+      expect(res.status).toBe(200);
+    });
+  } else if (method === "GET") {
     it.each([OWNER, ADMIN, VIEWER])("a member (%s) can read it", async (user) => {
-      const res = await call(app, method, urlFor(route, "alpha"), user);
+      const res = await call(app, name, method, urlFor(route, "alpha"), user);
       expect(res.status).toBe(200);
     });
   } else {
     it("a viewer's write is a 403 forbidden, not a 404", async () => {
-      const res = await call(app, method, urlFor(route, "alpha"), VIEWER);
+      const res = await call(app, name, method, urlFor(route, "alpha"), VIEWER);
       expect(res.status).toBe(403);
       expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("forbidden");
     });
 
     it.each([OWNER, ADMIN])("the %s can write", async (user) => {
-      const res = await call(app, method, urlFor(route, "alpha"), user);
+      const res = await call(app, name, method, urlFor(route, "alpha"), user);
       expect(res.status).toBe(200);
     });
   }
 
   it("a role on one server grants nothing on another", async () => {
     // The owner of alpha is not a member of bravo.
-    const res = await call(app, method, urlFor(route, "bravo"), OWNER);
+    const res = await call(app, name, method, urlFor(route, "bravo"), OWNER);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("the operator-only endpoints in the contract", () => {
+  it("are exactly the server-management ones, and the generated tests cover the scoped ones", () => {
+    const operatorOnlyNames = SCOPED.filter((e) => e.operatorOnly).map((e) => e.name).sort();
+    expect(operatorOnlyNames).toEqual([
+      "serverManagement.get",
+      "serverManagement.remove",
+      "serverManagement.testSaved",
+      "serverManagement.update",
+    ]);
+    expect(SCOPED.filter((e) => !e.operatorOnly).some((e) => e.name.startsWith("serverManagement"))).toBe(false);
   });
 });
 

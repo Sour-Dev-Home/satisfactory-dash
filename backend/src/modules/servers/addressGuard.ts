@@ -69,6 +69,18 @@ export function isAllowedAddress(address: string): boolean {
   return false;
 }
 
+/** True for loopback only (127/8, ::1, and IPv4-mapped 127/8): the one case where FRM's plain HTTP
+ *  and its token never leave this machine. Any other allowed address is on the LAN. */
+export function isLoopbackAddress(address: string): boolean {
+  const v4 = parseIPv4(address);
+  if (v4 !== null) return v4[0] === 127;
+  const g = parseIPv6(address);
+  if (g === null) return false;
+  const leadingZeros = g.slice(0, 5).every((group) => group === 0);
+  if (leadingZeros && g[5] === 0 && g[6] === 0 && g[7] === 1) return true;
+  return leadingZeros && g[5] === 0xffff && g[6]! >> 8 === 127;
+}
+
 /** The host cannot be used: it did not resolve, or an address it resolves to is not allowed. The
  *  message never names the address (this can be the operator probing their own network). */
 export class AddressRefusedError extends Error {

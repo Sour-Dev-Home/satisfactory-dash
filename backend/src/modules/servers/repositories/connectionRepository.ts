@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 import { z } from "zod";
 import { parseFirst, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { SecretsError } from "../../../platform/secrets/secrets.js";
 import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
@@ -61,6 +62,8 @@ export interface ConnectionInput {
 
 /** Fields an edit may change. `frmToken: null` clears the FRM token; `undefined` keeps it. */
 export interface ConnectionPatch {
+  /** Renames the server (servers.servers), in the same transaction. */
+  displayName?: string;
   host?: string;
   pinnedIp?: string;
   apiPort?: number;
@@ -315,6 +318,9 @@ export async function updateConnection(
   ring: SecretsKeyring,
   serverId: string,
   patch: ConnectionPatch,
+  /** When given, an audit event `server.updated` (the NAMES of the changed fields, never values) is
+   *  written in the same transaction. */
+  audit?: { actorUserId: string | null },
 ): Promise<boolean> {
   return withTransaction(pool, async (client) => {
     const row = await selectRow(client, serverId, true);
@@ -344,8 +350,78 @@ export async function updateConnection(
       frm?.data ?? null,
       api.keyId,
     ]);
+    if (patch.displayName !== undefined) {
+      await client.query(RENAME, [serverId, patch.displayName]);
+    }
+    if (audit !== undefined) {
+      await recordAuditEvent(client, {
+        action: "server.updated",
+        actorUserId: audit.actorUserId ?? undefined,
+        serverId,
+        // pinnedIp is derived from the host, not something the operator changed by itself.
+        detail: {
+          fields: Object.keys(patch)
+            .filter((key) => key !== "pinnedIp" && patch[key as keyof ConnectionPatch] !== undefined)
+            .sort(),
+        },
+      });
+    }
     return true;
   });
+}
+
+const RENAME = "UPDATE servers.servers SET display_name = $2 WHERE id = $1";
+
+/** What the operator's edit form needs without opening a token: usable even when the stored tokens
+ *  cannot be opened (a missing or wrong key), so the row can still be shown and repaired. */
+export interface ConnectionMeta {
+  serverId: string;
+  publicId: string;
+  displayName: string;
+  host: string;
+  pinnedIp: string;
+  apiPort: number;
+  frmPort: number;
+  frmTokenSet: boolean;
+  keyId: string;
+}
+
+const MetaRowSchema = z.object({
+  server_id: z.string(),
+  public_id: z.string(),
+  display_name: z.string(),
+  host: z.string(),
+  pinned_ip: z.string().refine((value) => isIP(value) !== 0),
+  api_port: z.number().int(),
+  frm_port: z.number().int(),
+  frm_token_set: z.boolean(),
+  key_id: z.string(),
+});
+
+const SELECT_META_BY_PUBLIC_ID = `
+  SELECT c.server_id, s.public_id, s.display_name, c.host, host(c.pinned_ip) AS pinned_ip,
+         c.api_port, c.frm_port, (c.frm_token_enc IS NOT NULL) AS frm_token_set, c.key_id
+  FROM servers.server_connections c
+  JOIN servers.servers s ON s.id = c.server_id
+  WHERE s.deleted_at IS NULL AND s.public_id = $1`;
+
+/** The connection of the live server with this public id, without its tokens. Undefined when none. */
+export async function getConnectionMetaByPublicId(db: Queryable, publicId: string): Promise<ConnectionMeta | undefined> {
+  const result = await db.query(SELECT_META_BY_PUBLIC_ID, [publicId]);
+  const row = parseFirst(MetaRowSchema, result.rows, "servers.getConnectionMeta");
+  return row === undefined
+    ? undefined
+    : {
+        serverId: row.server_id,
+        publicId: row.public_id,
+        displayName: row.display_name,
+        host: row.host,
+        pinnedIp: row.pinned_ip,
+        apiPort: row.api_port,
+        frmPort: row.frm_port,
+        frmTokenSet: row.frm_token_set,
+        keyId: row.key_id,
+      };
 }
 
 /** Removes the connection row, wiping the encrypted tokens. False when there was none. */

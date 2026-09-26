@@ -26,6 +26,14 @@ export const KnownErrorCode = z.enum([
   // Never used for a session lookup that fails because the database is down as 401: an outage
   // must not look like "signed out".
   "service_unavailable",
+  // ADR-0030 (additive): managing servers. The host resolves to an address that is not loopback or
+  // private (never names the address); the game server did not pass the connection test; the stored
+  // tokens cannot be opened with this backend's key (re-enter them); the id is taken; the cap is reached.
+  "address_not_allowed",
+  "connection_test_failed",
+  "connection_unreadable",
+  "server_exists",
+  "server_limit_reached",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;
