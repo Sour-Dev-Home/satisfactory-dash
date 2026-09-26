@@ -4,6 +4,7 @@ import {
   deleteServerDone,
   factoryMixed,
   healthOk,
+  historyPower24h,
   managedServersAllStates,
   playersUnavailable,
   powerHistoryNormal,
@@ -32,6 +33,8 @@ export const handlers = [
   http.get(endpoints.players.route, () => HttpResponse.json(playersUnavailable)),
   http.get(endpoints.power.route, () => HttpResponse.json(powerOk)),
   http.get(endpoints.powerHistory.route, () => HttpResponse.json(powerHistoryNormal)),
+  // ADR-0027 stored history: one fixture whatever `?range=` asks (tests that care override it).
+  http.get(endpoints.history.power.route, () => HttpResponse.json(historyPower24h)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
