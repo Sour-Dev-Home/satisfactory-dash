@@ -69,6 +69,21 @@ describe("agent contract: cadence", () => {
     ]);
     expect(CadenceSchema.safeParse({ statusSeconds: 5, powerSeconds: 5 }).success).toBe(false);
   });
+
+  it("every field has the same 1..3600 bounds (each edge, both sides)", () => {
+    for (const field of ["statusSeconds", "powerSeconds", "factorySeconds"]) {
+      const c = (value: number) => CadenceSchema.safeParse({ statusSeconds: 5, powerSeconds: 5, factorySeconds: 30, [field]: value }).success;
+      expect([c(0), c(1), c(3600), c(3601)], field).toEqual([false, true, true, false]);
+    }
+  });
+
+  it("the enrolment request's version is bounded at 32 and a code with a look-alike character is refused", () => {
+    const req = (over: object) => EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2", agentVersion: "1.0.0", ...over }).success;
+    expect([req({ agentVersion: "a".repeat(32) }), req({ agentVersion: "a".repeat(33) }), req({ agentVersion: "" })]).toEqual([true, false, false]);
+    for (const code of ["AB3D-7XQ2", "АB3D-7XQ2", "AB3D‐7XQ2", "AB3D-７XQ2"]) {
+      expect(req({ code }), code).toBe(code === "AB3D-7XQ2"); // the first is a plain ASCII 2, the rest are look-alikes
+    }
+  });
 });
 
 describe("agent contract: snapshots", () => {
@@ -181,6 +196,30 @@ describe("agent contract: what the user sees", () => {
   it("the enrolment code answer carries the code and its expiry", () => {
     expect(EnrollmentCodeSchema.safeParse(fixtures.agentEnrollmentCodeResponse.code).success).toBe(true);
     expect(new Date(fixtures.agentEnrollmentCodeResponse.expiresAt).getTime()).toBeGreaterThan(0);
+  });
+});
+
+describe("agent contract: edge cases found by the fresh-eyes pass", () => {
+  it("a settings body that also carries a stray `command` key parses as the setting with the key stripped, so `\"command\" in x` stays a sound narrowing", () => {
+    const parsed = SetAutoPauseResponseSchema.parse({ ...fixtures.autoPauseResponseSetting, command: fixtures.commandPending.command });
+    expect("command" in parsed).toBe(false);
+    expect(parsed).toEqual(fixtures.autoPauseResponseSetting);
+  });
+
+  it("a 202 body tolerates extra fields (also inside the command) and is never read as a setting", () => {
+    const parsed = SetAutoPauseResponseSchema.parse({ command: { ...fixtures.commandPending.command, futureField: 1 }, extra: true });
+    expect("command" in parsed).toBe(true);
+    expect("data" in parsed).toBe(false);
+  });
+
+  it("an explicit `undefined` part on an unreachable snapshot counts as absent, but null does not", () => {
+    const base = fixtures.agentSnapshotRequestUnreachable;
+    expect(SnapshotRequestSchema.safeParse({ ...base, status: undefined, power: undefined, factory: undefined, players: undefined }).success).toBe(true);
+    expect(SnapshotRequestSchema.safeParse({ ...base, status: null }).success).toBe(false);
+  });
+
+  it("a reachable snapshot with no parts is allowed (only unreachable forbids parts)", () => {
+    expect(SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestUnreachable, reachable: true }).success).toBe(true);
   });
 });
 
