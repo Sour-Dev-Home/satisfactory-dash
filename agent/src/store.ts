@@ -61,7 +61,7 @@ export function isAllowedGameHost(host: string): boolean {
     return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
   }
   const bare = value.replace(/^\[|\]$/g, "");
-  return bare === "::1" || /^f[cd][0-9a-f]{2}:/.test(bare) || /^fe80:/.test(bare);
+  return bare === "::1" || /^f[cd][0-9a-f]{2}:/.test(bare) || bare.startsWith("fe80:");
 }
 
 export class AgentStore {
