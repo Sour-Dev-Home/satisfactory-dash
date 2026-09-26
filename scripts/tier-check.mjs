@@ -14,6 +14,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const UI_TIER_LABEL = "tier:ui";
+/** GitHub's "list pull request files" returns at most this many files. */
+export const MAX_FILES_LISTED = 3000;
 
 /** Paths that need the architect even inside frontend/src (data access, auth, the demo backend, the test browser setup). */
 const FRONTEND_SRC_EXCLUDED = [/^frontend\/src\/api\//, /^frontend\/src\/auth\//, /^frontend\/src\/demo\/handlers\.ts$/, /^frontend\/src\/test\/browser\.ts$/];
@@ -47,11 +49,11 @@ export function isUiTierPath(file) {
   return E2E.test(file) || LOG_FRAGMENTS.test(file);
 }
 
-/** The lines a unified-diff patch adds (without the leading "+"). "+++" file headers are not part of a GitHub patch, but are skipped anyway. */
+/** The lines a unified-diff patch adds (without the leading "+"). A GitHub patch has no "+++" file header, so a "+++x" line is an added "++x". */
 export function addedLines(patch) {
   return patch
     .split("\n")
-    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .filter((line) => line.startsWith("+"))
     .map((line) => line.slice(1));
 }
 
@@ -62,6 +64,13 @@ export function addedLines(patch) {
 export function checkTier({ files, labels }) {
   if (!labels.includes(UI_TIER_LABEL)) return { ok: true, skipped: `no ${UI_TIER_LABEL} label`, problems: [] };
 
+  // The API lists at most 3000 files of a PR: a list that long may be cut short, and what is not seen cannot be vouched for.
+  if (files.length >= MAX_FILES_LISTED) {
+    return {
+      ok: false,
+      problems: [`Cannot verify the UI tier: the PR has ${MAX_FILES_LISTED} or more changed files, more than the API lists. Not a UI-tier PR, request architect review.`],
+    };
+  }
   const outside = [];
   const dataFlow = [];
   const unreadable = [];
@@ -74,7 +83,7 @@ export function checkTier({ files, labels }) {
       if (!isUiTierPath(touched)) outside.push(safe(touched));
     }
     if (!filename.startsWith(FRONTEND_SRC) || status === "removed") continue;
-    if (patch === undefined) {
+    if (patch == null) {
       // A pure rename or mode change has no patch and no added lines; anything else without a patch (a diff too large for
       // the API to include) cannot be read, so it fails closed.
       if (!(status === "renamed" && changes === 0)) unreadable.push(safe(filename));
@@ -125,6 +134,10 @@ function main() {
     return;
   }
   const files = readJson("PR_FILES_FILE", () => readFileSync(process.env.PR_FILES_FILE ?? "", "utf8"));
+  if (!Array.isArray(files)) {
+    console.error("::error::PR_FILES_FILE is not a JSON array of files (an API error?); the UI-tier check cannot run.");
+    process.exit(1);
+  }
   const result = checkTier({ files, labels });
   if (!result.ok) {
     for (const problem of result.problems) console.error(`::error::${problem}`);

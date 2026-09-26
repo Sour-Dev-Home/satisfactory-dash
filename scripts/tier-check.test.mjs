@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DATA_FLOW, UI_TIER_LABEL, addedLines, checkTier, isUiTierPath } from "./tier-check.mjs";
+import { DATA_FLOW, MAX_FILES_LISTED, UI_TIER_LABEL, addedLines, checkTier, isUiTierPath } from "./tier-check.mjs";
 
 const LABELLED = [UI_TIER_LABEL];
 const patchOf = (...added) => `@@ -1,2 +1,${2 + added.length} @@\n context\n${added.map((line) => `+${line}`).join("\n")}\n context`;
@@ -188,8 +188,16 @@ test("file names never put anything but printable ASCII into the error line (a n
   assert.match(result.problems[0], /backend\/x\?::error::pwned\.ts/);
 });
 
+test("a list as long as the API's cap may be truncated, so it fails closed", () => {
+  const many = Array.from({ length: MAX_FILES_LISTED }, (_, i) => file(`frontend/src/components/C${i}.tsx`));
+  const result = checkTier(pr(many));
+  assert.equal(result.ok, false);
+  assert.match(result.problems[0], /more than the API lists/);
+  assert.equal(checkTier(pr(many.slice(1))).ok, true);
+});
+
 test("addedLines reads a patch: added lines only, without the plus", () => {
-  assert.deepEqual(addedLines("@@ -1 +1,2 @@\n a\n+b\n-c\n+d\n+++ e"), ["b", "d"]);
+  assert.deepEqual(addedLines("@@ -1 +1,2 @@\n a\n+b\n-c\n+d\n+++ e"), ["b", "d", "++ e"]);
 });
 
 // The CLI, as CI runs it: the label from PR_LABELS_JSON, the files from the file PR_FILES_FILE names.
@@ -227,6 +235,31 @@ test("CLI: a labelled PR with an unreadable files list fails closed", () => {
   const result = run(LABELLED, [], { PR_FILES_FILE: "/no/such/file" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /PR_FILES_FILE is missing or not JSON/);
+});
+
+test("an added line whose text starts with '++' (patch line '+++...') is still read: ++counter; useQuery()", () => {
+  const patch = "@@ -1 +1,2 @@\n a\n+++counter; useQuery(x)";
+  assert.equal(checkTier(pr([file("frontend/src/components/A.tsx", { patch })])).ok, false);
+});
+
+test("the CI jq shape gives patch: null for a file with no patch: a pure rename passes, a too-large diff fails closed with a message", () => {
+  const rename = { filename: "frontend/src/components/B.tsx", previous_filename: "frontend/src/components/A.tsx", status: "renamed", changes: 0, patch: null };
+  assert.equal(checkTier(pr([rename])).ok, true);
+  const big = checkTier(pr([{ filename: "frontend/src/components/Huge.tsx", status: "modified", changes: 9000, patch: null, previous_filename: null }]));
+  assert.equal(big.ok, false);
+  assert.match(big.problems[0], /too large for the API/);
+});
+
+test("CLI: a files list that is not an array (an API error object) fails closed with an ::error:: line, not a stack trace", () => {
+  const result = run(LABELLED, { message: "Server Error" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /^::error::PR_FILES_FILE is not a JSON array/m);
+});
+
+test("the workflow step sets pipefail, so a failed `gh api --paginate` cannot leave a partial or empty files list that passes", () => {
+  const ci = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".github", "workflows", "ci.yml"), "utf8");
+  const step = ci.slice(ci.indexOf("UI tier (ADR-0033 amendment 3)"));
+  assert.match(step.slice(0, step.indexOf("setup-node")), /set -o pipefail/);
 });
 
 test("CLI: missing labels fail closed", () => {

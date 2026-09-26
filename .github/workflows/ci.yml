@@ -46,7 +46,8 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '[.[].name]')
+          set -o pipefail
+          PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels?per_page=100" --jq '[.[].name]')
           gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[] | {filename, status, previous_filename, patch, changes}' | jq -s . > "$RUNNER_TEMP/pr-files.json"
           export PR_LABELS_JSON PR_FILES_FILE="$RUNNER_TEMP/pr-files.json"
           node scripts/tier-check.mjs
