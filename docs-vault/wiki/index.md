@@ -32,6 +32,9 @@ added or removed.
 - [`lessons-learned.md`](./lessons-learned.md) — one-sentence-per-bug log of real bugs
   found by independent `test-hunter` review passes, with a counter that increments
   when the same pattern recurs, so repeated mistakes get visible sooner.
+- [`roadmap.md`](./roadmap.md) — where the product stands and what "a successful product" means as
+  checkable targets (time to dashboard, alert speed and quality, adoption, security, release safety), approved
+  by the owner on 2026-09-25 (ADR-0033).
 - [`decisions/`](./decisions/README.md) — architecture decision records (ADR-0001 onward,
   from 2026-09-22): contract, errors, units, versioning, logging, storage, caching,
   login, the auto-pause toggle, deployment, target architecture, the item-form catalog,
