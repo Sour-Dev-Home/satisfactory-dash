@@ -44,7 +44,8 @@ test("serves the walkthrough video as MP4, seekable, under the static-asset size
   expect(response.status()).toBe(206);
   expect(response.headers()["content-type"]).toContain("video/mp4");
   const total = Number(response.headers()["content-range"]?.split("/")[1]);
-  // Workers static assets cap each file [NEEDS VERIFICATION: 25 MiB]; stay well under it.
+  // Workers static assets cap each file at 25 MiB on every plan
+  // (https://developers.cloudflare.com/workers/platform/limits/#static-assets); stay well under it.
   expect(total).toBeGreaterThan(0);
   expect(total).toBeLessThan(20 * 1024 * 1024);
 });
