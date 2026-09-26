@@ -33,11 +33,22 @@ describe("PlayersCard", () => {
     for (const svg of container.querySelectorAll("svg")) expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 
-  it(`shows at most ${MAX_FIGURES} figures, then "+N" for the other slots`, () => {
-    const { container } = render(<PlayersCard state={running({ connectedPlayers: 10, playerLimit: 12 })} />);
+  it.each([
+    [0, { connected: 0, free: 12 }],
+    [7, { connected: 7, free: 5 }],
+    [12, { connected: 12, free: 0 }],
+  ])("draws all 12 slots of the default limit with %i connected, and no \"+N\"", (connectedPlayers, expected) => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers, playerLimit: 12 })} />);
+    expect(figures(container)).toEqual(expected);
+    expect(screen.queryByText(/^\+\d+$/)).not.toBeInTheDocument();
+    expect(screen.getByText(`${connectedPlayers} of 12 players connected`)).toBeInTheDocument();
+  });
+
+  it(`shows at most ${MAX_FIGURES} figures, then "+N" for the slots a mod adds`, () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 14, playerLimit: 16 })} />);
     expect(figures(container)).toEqual({ connected: MAX_FIGURES, free: 0 });
     expect(screen.getByText("+4")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByText("10 of 12 players connected")).toBeInTheDocument();
+    expect(screen.getByText("14 of 16 players connected")).toBeInTheDocument();
   });
 
   it("uses no style attributes (the CSP forbids inline styles)", () => {
@@ -59,6 +70,12 @@ describe("PlayersCard", () => {
   it("says when the game is paused, in the same neutral tone", () => {
     render(<PlayersCard state={{ status: statusPaused.data }} />);
     expect(screen.getByText("The game is paused.")).toHaveClass("text-muted");
+  });
+
+  it(`shows exactly "+1" right past the ${MAX_FIGURES}-figure boundary (off-by-one guard)`, () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: MAX_FIGURES + 1, playerLimit: MAX_FIGURES + 1 })} />);
+    expect(figures(container)).toEqual({ connected: MAX_FIGURES, free: 0 });
+    expect(screen.getByText("+1")).toBeInTheDocument();
   });
 
   it("never shows more filled figures than slots when the server reports more players than the limit", () => {
@@ -127,10 +144,45 @@ describe("PlayersCard names (ADR-0029)", () => {
     expect(screen.getByText("and 3 more")).toBeInTheDocument();
   });
 
+  it("names every player on a full server of the default 12, one per figure", () => {
+    const full = { available: true, players: Array.from({ length: 12 }, (_, i) => ({ name: `P${i}`, online: true })) };
+    render(<PlayersCard state={running({ connectedPlayers: 12, playerLimit: 12 })} roster={full} />);
+    expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(12);
+    expect(screen.queryByText(/^and \d+ more$/)).not.toBeInTheDocument();
+  });
+
   it("renders a name as text, never as HTML, and allows duplicate names", () => {
     const roster = { available: true, players: [{ name: "<b>X</b>", online: true }, { name: "<b>X</b>", online: true }] };
     const { container } = render(<PlayersCard state={running({ connectedPlayers: 2 })} roster={roster} />);
     expect(container.querySelector("b")).toBeNull();
     expect(screen.getAllByText("<b>X</b>")).toHaveLength(2);
+  });
+
+  it(`says "and 1 more" exactly one name past the ${MAX_NAMES}-name boundary (off-by-one guard)`, () => {
+    const roster = { available: true, players: Array.from({ length: MAX_NAMES + 1 }, (_, i) => ({ name: `P${i}`, online: true })) };
+    render(<PlayersCard state={running({ connectedPlayers: MAX_NAMES + 1, playerLimit: MAX_NAMES + 1 })} roster={roster} />);
+    expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(MAX_NAMES);
+    expect(screen.getByText("and 1 more")).toBeInTheDocument();
+  });
+
+  it("keeps names hidden when the server allows no players, even if a stale roster lists someone online", () => {
+    // playerLimit 0 returns early in PlayersBody before the roster is ever read; this locks
+    // in that a mismatched/stale roster can't leak a name onto a "no players" server.
+    render(<PlayersCard state={running({ isGameRunning: true, playerLimit: 0, connectedPlayers: 0 })} roster={playersAvailable} />);
+    expect(screen.getByText("The server allows no players.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Players online" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Pioneer-Alpha")).not.toBeInTheDocument();
+  });
+
+  it("lists more online names than there are figures when playerLimit is under the figure cap (roster is not capped to slots)", () => {
+    // FLAG: MAX_NAMES is tied to MAX_FIGURES (12), not to `slots` (min(playerLimit, MAX_FIGURES)).
+    // On a small server, a roster reporting more online players than playerLimit allows (stale
+    // or buggy FRM data) shows more names than figures, with no "+N"/"and N more" to reconcile
+    // the two. This test documents the current, observed behavior — flagging it for the author
+    // to confirm is intentional rather than asserting it's wrong.
+    const roster = { available: true, players: Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, online: true })) };
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 4, playerLimit: 4 })} roster={roster} />);
+    expect(figures(container)).toEqual({ connected: 4, free: 0 });
+    expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(6);
   });
 });
