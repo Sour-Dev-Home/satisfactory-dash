@@ -7,7 +7,7 @@ import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
 import { useNow } from "../lib/useNow";
 import { useSelectedServer } from "../servers/ServerContext";
-import { canCreateCode, canRevoke, connectionText, lastSeenText } from "./agentText";
+import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText } from "./agentText";
 
 /**
  * Settings → Game PC agent (ADR-0031 PR 7): whether an agent reports for this server, when it was
@@ -160,7 +160,9 @@ export function AgentPanel({
           </p>
           {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"). Whether --replace is
               needed depends on what the PC has stored, which the dashboard can't see, so it's only named. */}
-          <p className="mb-0 font-mono text-sm break-all">node agent.cjs enroll {code.code} --url https://&lt;your backend&gt;</p>
+          <p className="mb-0 font-mono text-sm break-all">
+            node agent.cjs enroll {code.code} --url {agentBackendUrl(import.meta.env.VITE_API_URL)}
+          </p>
           <p className="mb-0 text-sm text-muted">
             If this PC was enrolled before (or the agent was revoked), add <code>--replace</code>.
           </p>

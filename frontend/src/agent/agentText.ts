@@ -30,6 +30,16 @@ export function canCreateCode(kind: string, role: ServerSummary["role"], isOpera
   return role === "owner" || role === "admin";
 }
 
+/**
+ * The backend address for the agent's `--url`: the frontend's configured API origin (VITE_API_URL) when
+ * it has one, so the command can be pasted as is. In development (Vite proxies only /api, not the
+ * agent's /agent/v1) and in the demo it's empty, so the placeholder stays.
+ */
+export function agentBackendUrl(configured: string | undefined): string {
+  const origin = (configured ?? "").trim().replace(/\/+$/, "");
+  return origin.startsWith("https://") ? origin : "https://<your backend>";
+}
+
 /** Who may revoke the agent: the server's owner or admin. */
 export function canRevoke(role: ServerSummary["role"]): boolean {
   return role === "owner" || role === "admin";
