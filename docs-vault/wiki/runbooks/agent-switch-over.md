@@ -10,14 +10,27 @@ side) first; this page is only the order of doing it.
 
 - The backend that is running has PRs 5a, 5b and the agent-input contract deployed and **`npm run db:migrate` has been
   run** (the agent tables, commands and the `agent_offline` rule kind). The dashboard's Settings page has the Agent
-  section (frontend PR 7).
+  section (frontend PR 7) **and the "Switch back to local" action** (frontend card, #273). **Do not enrol until that
+  action is there:** without it the way back is a raw `POST` that needs the operator's session cookie and the Origin
+  allowlist, which is not something to attempt in the middle of an incident.
 - The alert engine is in the state you want for the week: **`ALERT_DELIVERY=off` while you compare** (alerts are recorded
   and nothing is sent), see [`alerts.md`](./alerts.md). Turn it on afterwards.
 - You can sign in as the operator (the account that manages servers) and you have the game PC's desktop or a remote session
   as the **same Windows user** that will run the agent.
-- Write down the baseline (below) BEFORE enrolling: the local server's last week of history and alerts is what the agent
+- Write down the baseline ("The baseline", below) BEFORE enrolling: the local server's last week of history and alerts is what the agent
   week is compared against. The server keeps its id, its members and its history across the switch (history is stored per
   server, whatever reads it), so both weeks sit in the same charts.
+
+## The baseline (write it down before step 3)
+
+Three things, from the last 7 days of the local server, in a note you keep outside the repo:
+
+1. **History:** the range `7d` of `GET /api/servers/:serverId/history/power` and `.../items` (or the dashboard's charts at
+   7 d): the typical daily power peak and the totals of the items you care about. Raw samples are kept only 48 hours, the
+   rollups 30 days and 1 year ([`history.md`](./history.md)), so this must be done within the week.
+2. **Alert events by kind:** the query in [`alerts.md`](./alerts.md) (`alerts.alert_events`), counted per `kind` over 7 days.
+3. **Machine states now:** the count of machines per state from the dashboard's factory view, and the number of
+   transitions from `.../history/transitions?range=7d`.
 
 ## 1. Put the agent on the PC
 
@@ -85,7 +98,10 @@ After a clean week:
    ([`servers.md`](./servers.md)).
 3. Revoke the game token the backend used to hold, in the game, so only the agent's token remains valid
    [NEEDS VERIFICATION: how a single application token is revoked in-game on this version; regenerating the admin
-   credential invalidates all, see the vanilla API notes].
+   credential invalidates all, see the vanilla API notes]. **If the game cannot revoke one token, either skip this step
+   or regenerate and then immediately re-run `set-tokens` and `check` on the agent**: regenerating also kills the agent's
+   token and the dashboard goes dark until you do. Note that switching back to local later needs a valid token for the
+   backend, so generate a fresh one then.
 4. Turn `ALERT_DELIVERY=on` if the shadow run was clean ([`alerts.md`](./alerts.md)).
 
 ## The way back
@@ -93,9 +109,9 @@ After a clean week:
 - **Stop the agent** (Stop-ScheduledTask; the dashboard then shows it offline and `agent_offline` fires when delivery is on).
 - **Revoke it** in the dashboard (Agent section): the credential stops working at once; a running agent gets a 401 and halts
   by itself (exit 2, marker, then quiet).
-- **Back to a backend-polled server**: `POST /api/servers/:serverId/local-connection` (operator only; ADR-0031 amendment 2,
-  the dashboard's "Switch back to local" card is the frontend's) with the game server's address and tokens, exactly as when
-  adding a server. The backend tests the connection first, then in one step makes the server `local` again, stores the
+- **Back to a backend-polled server**: use the **"Switch back to local"** action in the dashboard's Settings (operator
+  only), with the game server's address and tokens exactly as when adding a server. It calls
+  `POST /api/servers/:serverId/local-connection` (ADR-0031 amendment 2), which is the underlying endpoint. The backend tests the connection first, then in one step makes the server `local` again, stores the
   connection, revokes the agent's credential, drops unspent enrolment codes and ends waiting commands as `expired`. Members
   and history stay (they hang on the server's internal id). It answers `server_not_agent` (409) for a server that is not
   reached through an agent. Afterwards **stop the agent** on the game PC (Stop-ScheduledTask); a running one gets a 401 and
