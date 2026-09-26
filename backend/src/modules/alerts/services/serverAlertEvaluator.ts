@@ -241,7 +241,9 @@ export class ServerAlertEvaluator {
     if (usable) {
       // After a restart a firing group adopts the machines that are stopped right now: they have been stopped since
       // before we looked, so they qualify at once instead of the group resolving and firing again in `for`.
-      const adopting = timers.size === 0 && group.phase === "firing";
+      // Only when this evaluator has never tracked the rule's machines (`machineTimers` has no entry): an empty set
+      // during a clear run is not a restart, and a new machine must then wait its own `for`.
+      const adopting = !this.machineTimers.has(rule.id) && timers.size === 0 && group.phase === "firing";
       const seen = new Set<string>();
       for (const machine of factory.machines) {
         seen.add(machine.id);
@@ -293,7 +295,9 @@ export class ServerAlertEvaluator {
       }
     }
     commits.push(() => {
-      this.machineTimers.set(rule.id, timers);
+      // While the factory reading is unusable and nothing was tracked yet (right after a restart), stay "untracked" so
+      // the first usable reading can still adopt.
+      if (usable || this.machineTimers.has(rule.id)) this.machineTimers.set(rule.id, timers);
       if (transition === "resolved") this.notified.set(rule.id, new Set());
       else if (transition !== undefined || told.size > 0) this.notified.set(rule.id, transition !== undefined ? new Set(qualifying) : told);
     });

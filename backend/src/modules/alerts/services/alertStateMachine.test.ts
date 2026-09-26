@@ -25,6 +25,16 @@ function run(script: [number, boolean | "unknown"][], t: AlertTiming = timing, f
   return { state, out };
 }
 
+describe("fresh-eyes: clock going backwards with zero durations", () => {
+  it("repeat 0 renotifies and clear 0 resolves even when `now` is before the recorded times", () => {
+    const zero: AlertTiming = { forMs: 0, clearMs: 0, repeatMs: 0 };
+    const firing: AlertState = { phase: "firing", since: T0 + 10, clearSince: null, lastNotifiedAt: T0 + 10, lastCondition: true };
+    expect(step(firing, true, T0, zero).transition).toBe("renotify");
+    const clearing: AlertState = { ...firing, clearSince: T0 + 10, lastCondition: false };
+    expect(step(clearing, false, T0, zero).transition).toBe("resolved");
+  });
+});
+
 describe("step: fire, hold, resolve", () => {
   it("stays ok while the condition is false", () => {
     const { state, out } = run([[0, false], [1, false], [2, false]]);

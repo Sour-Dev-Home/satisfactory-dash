@@ -383,3 +383,76 @@ describe("robustness", () => {
     expect(sim.at(2, { machines: [stoppedMachine("a")] })).toEqual([]); // a fresh run: no memory of minute 0
   });
 });
+
+describe("fresh-eyes: boundaries and gaps", () => {
+  it("a reading exactly two poll intervals old is fresh, one millisecond older is stale (unknown)", () => {
+    const fresh = new Sim([powerOutage]);
+    expect(transitions(fresh.at(0, { circuits: [circuit(1, "outage")], powerAge: 10 * SEC }))).toEqual(["circuit:1:fired"]);
+    const stale = new Sim([powerOutage]);
+    expect(stale.at(0, { circuits: [circuit(1, "outage")], powerAge: 10 * SEC + 1 })).toEqual([]);
+  });
+
+  it("a stale status reading that says paused does not suppress anything", () => {
+    const sim = new Sim([powerOutage]);
+    expect(transitions(sim.at(0, { paused: true, statusAge: 30 * SEC, circuits: [circuit(1, "outage")] }))).toEqual(["circuit:1:fired"]);
+  });
+
+  it("power_outage fires on status outage only, not on at_risk", () => {
+    const sim = new Sim([powerOutage]);
+    expect(sim.at(0, { circuits: [circuit(1, "at_risk", false)] })).toEqual([]);
+  });
+
+  it("server_unreachable: exactly 3 failed polls (and 2 minutes) is enough; 2 is not", () => {
+    const three = new Sim([unreachable]);
+    expect(transitions(three.at(2, { failures: 3, firstFailureAt: T0 }))).toEqual(["server:fired"]);
+    const two = new Sim([unreachable]);
+    expect(two.at(2, { failures: 2, firstFailureAt: T0 })).toEqual([]);
+  });
+
+  it("server_unreachable: a single failed poll is not an answer, so a firing alert never clears on it", () => {
+    const sim = new Sim([unreachable]);
+    sim.at(2, { failures: 30, firstFailureAt: T0 });
+    for (let m = 3; m <= 20; m += 1) sim.at(m, { failures: 1, firstFailureAt: T0 + m * MIN });
+    expect(sim.phase(unreachable, "server")).toBe("firing");
+  });
+
+  it("server_unreachable keeps clearing through a pause: the gap is not dropped for that rule", () => {
+    const sim = new Sim([unreachable]);
+    sim.at(2, { failures: 30, firstFailureAt: T0 });
+    sim.at(3, { paused: true }); // answers again (paused), clear run starts
+    sim.at(3.5, {}); // resumed: not suppressed any more
+    expect(transitions(sim.at(4.1, {}))).toEqual(["server:resolved"]);
+  });
+
+  it("`updated` is announced exactly 10 minutes after the last notification, not a moment before", () => {
+    const sim = new Sim([stopped]);
+    sim.at(0, { machines: [stoppedMachine("a"), okMachine("b")] });
+    sim.at(5, { machines: [stoppedMachine("a"), okMachine("b")] }); // fired at 5
+    const two = { machines: [stoppedMachine("a"), stoppedMachine("b")] };
+    for (let m = 6; m < 15; m += 1) expect(sim.at(m, two)).toEqual([]);
+    expect(transitions(sim.at(15, two))).toEqual(["group:updated"]);
+  });
+
+  it("a new machine during a clear run waits its own `for`; it does not count as a restart adoption", () => {
+    const sim = new Sim([stopped]);
+    sim.at(0, { machines: [stoppedMachine("a"), okMachine("b")] });
+    sim.at(5, { machines: [stoppedMachine("a"), okMachine("b")] }); // fired
+    sim.at(6, { machines: [okMachine("a"), okMachine("b")] }); // clear run starts, no machine tracked any more
+    sim.at(7, { machines: [okMachine("a"), stoppedMachine("b")] }); // b only just stopped
+    expect(transitions(sim.at(8, { machines: [okMachine("a"), stoppedMachine("b")] }))).toEqual(["group:resolved"]);
+    expect(transitions(sim.at(12, { machines: [okMachine("a"), stoppedMachine("b")] }))).toEqual(["group:fired"]);
+  });
+
+  it("a restart while the factory reading is not usable yet still adopts on the first usable reading", () => {
+    const sim = new Sim([stopped]);
+    const world = { machines: [stoppedMachine("a")] };
+    sim.at(0, world);
+    sim.at(5, world); // fired
+    sim.restart();
+    expect(sim.at(6, { ...world, factoryAge: 5 * MIN })).toEqual([]); // stale after the restart
+    const out: string[] = [];
+    for (let m = 7; m <= 30; m += 1) out.push(...transitions(sim.at(m, world)));
+    expect(out).toEqual([]);
+    expect(sim.phase(stopped, "group")).toBe("firing");
+  });
+});

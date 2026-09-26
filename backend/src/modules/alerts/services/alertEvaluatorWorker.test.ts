@@ -298,6 +298,100 @@ describe("AlertEvaluatorWorker.tick", () => {
     expect(fake.calls.filter((call) => call === "purge")).toHaveLength(2);
   });
 
+  it("a mute that ends exactly now no longer mutes", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const { worker } = make(fake, w);
+    await worker.tick();
+    fake.mutes.set("alpha", now);
+    publishOutage(w.boards.get("alpha")!, now, true);
+    await worker.tick();
+    expect(fake.events.map((event) => event.transition)).toEqual(["fired"]);
+  });
+
+  it("purges again exactly one purge interval after the last purge, not a moment later", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const { worker } = make(fake, w);
+    await worker.tick();
+    now += 10 * MIN - 1;
+    await worker.tick();
+    expect(fake.calls.filter((call) => call === "purge")).toHaveLength(1);
+    now += 1;
+    await worker.tick();
+    expect(fake.calls.filter((call) => call === "purge")).toHaveLength(2);
+  });
+
+  it("keeps one evaluator per server across ticks (machine timers survive between ticks)", async () => {
+    const stoppedRule = { id: "sm", server_public_id: "alpha", kind: "stopped_machines", params: { stoppedBelowPercent: 5 }, for_seconds: 60, clear_seconds: 60, repeat_seconds: 3600, severity: "warning" };
+    const fake = fakeDb([stoppedRule]);
+    const w = world();
+    const { worker } = make(fake, w);
+    const board = w.boards.get("alpha")!;
+    const publish = () => {
+      board.recordPollSuccess(now);
+      board.publishStatus({ observedAt: now, intervalMs: 5 * SEC, paused: false, session: "S" });
+      board.publishFactory({ observedAt: now, intervalMs: 30 * SEC, afterResume: false, machines: [{ id: "m1", className: "C", recipe: "Wire", state: "underfed", outputPercent: 0 }] });
+    };
+    publish();
+    await worker.tick();
+    now += 30 * SEC;
+    publish();
+    await worker.tick();
+    expect(fake.events).toEqual([]);
+    now += 31 * SEC;
+    publish();
+    await worker.tick();
+    expect(fake.events.map((event) => `${event.subject}:${event.transition}`)).toEqual(["group:fired"]);
+  });
+
+  it("a rule that became unreadable, was fixed and broke again is logged again", async () => {
+    const bad = { id: "bad", server_public_id: "alpha", kind: "stopped_machines", params: { stoppedBelowPercent: "lots" } as unknown, for_seconds: 300, clear_seconds: 120, repeat_seconds: 3600, severity: "warning" };
+    const fake = fakeDb([bad]);
+    const w = world();
+    const { worker, lines } = make(fake, w);
+    const warnings = () => lines.filter((line) => line.obj.code === "ALERT_RULE_UNREADABLE").length;
+    await worker.tick();
+    expect(warnings()).toBe(1);
+    bad.params = { stoppedBelowPercent: 5 };
+    await worker.tick();
+    bad.params = { stoppedBelowPercent: "lots" };
+    await worker.tick();
+    expect(warnings()).toBe(2);
+  });
+
+  it("a failed write on the tick that ends a suppressed stretch keeps the resume cleanup for the retry", async () => {
+    const outageRule = { id: "po", server_public_id: "alpha", kind: "power_outage", params: {}, for_seconds: 0, clear_seconds: 20, repeat_seconds: 3600, severity: "critical" };
+    const fake = fakeDb([outageRule]);
+    const w = world();
+    const { worker } = make(fake, w);
+    const board = w.boards.get("alpha")!;
+    const publish = (paused: boolean, circuits: { circuit: number; status: "ok" | "outage"; fuseTripped: boolean }[]) => {
+      board.recordPollSuccess(now);
+      board.publishStatus({ observedAt: now, intervalMs: 5 * SEC, paused, session: "S" });
+      board.publishPower({ observedAt: now, intervalMs: 5 * SEC, circuits });
+    };
+    const out = { circuit: 1, status: "outage" as const, fuseTripped: true };
+    const fine = { circuit: 1, status: "ok" as const, fuseTripped: false };
+    publish(false, [out]);
+    await worker.tick(); // fired
+    now += 10 * SEC;
+    publish(false, [fine]);
+    await worker.tick(); // a clear run starts
+    now += 5 * SEC;
+    publish(true, [fine]);
+    await worker.tick(); // paused: suppressed
+    now += 15 * SEC;
+    publish(false, [fine, { circuit: 2, status: "outage", fuseTripped: true }]);
+    fake.failWhen.events = true;
+    await expect(worker.tick()).rejects.toThrow(); // the resume tick's write fails and rolls back
+    fake.failWhen.events = false;
+    now += 5 * SEC;
+    publish(false, [fine, { circuit: 2, status: "outage", fuseTripped: true }]);
+    await worker.tick(); // the gap must not count towards the clear: circuit 1 is NOT resolved yet
+    expect(fake.events.map((event) => `${event.subject}:${event.transition}`)).toEqual(["circuit:1:fired", "circuit:2:fired"]);
+  });
+
   it("evaluates each server on its own board", async () => {
     const fake = fakeDb();
     const w = world(["alpha", "bravo"]);
