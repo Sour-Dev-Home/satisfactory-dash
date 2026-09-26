@@ -12,6 +12,25 @@ test("a PR that adds one fragment passes", () => {
   assert.deepEqual(result.problems, []);
 });
 
+test("the CI jq shape (previous_filename: null on every file) still passes an added fragment", () => {
+  const files = [
+    { filename: FRAGMENT, status: "added", previous_filename: null },
+    { filename: "backend/src/x.ts", status: "modified", previous_filename: null },
+  ];
+  assert.equal(checkLogFragments(pr(files)).ok, true);
+});
+
+test("look-alike paths are not fragments and do not satisfy the rule", () => {
+  for (const filename of [
+    "docs-vault/wiki/log.dx/2026-09-26-x.md",
+    "docs-vault/wiki/log.d/sub/2026-09-26-x.md",
+    "docs-vault/wiki/log.d/2026-09-26-x.md/y.md",
+    "docs-vault/wiki/2026-09-26-x.md",
+  ]) {
+    assert.equal(checkLogFragments(pr([added(filename)])).ok, false, filename);
+  }
+});
+
 test("a PR with no fragment fails, and says what to add", () => {
   const result = checkLogFragments(pr([{ filename: "backend/src/x.ts", status: "modified" }]));
   assert.equal(result.ok, false);
