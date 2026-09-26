@@ -30,7 +30,9 @@ function fakeDb(initialRules: RuleFixture[] = []) {
   const events: Record<string, unknown>[] = [];
   const calls: string[] = [];
   const mutes = new Map<string, number>();
-  const failWhen: { events: boolean; list: boolean; eventsFor?: string } = { events: false, list: false };
+  const failWhen: { events: boolean; list: boolean; eventsFor?: string; enqueue?: boolean } = { events: false, list: false };
+  const insertedIds: { id: string }[] = [];
+  const outbox: string[] = [];
   const log: string[] = [];
 
   const handle = (sql: string, params: unknown[] = []) => {
@@ -95,7 +97,9 @@ function fakeDb(initialRules: RuleFixture[] = []) {
         throw new Error("poison event for one server");
       }
       const [at, ruleIds, kinds, severities, subjects, transitions, summaries] = params as [number, ...unknown[][]];
+      insertedIds.length = 0;
       (ruleIds as string[]).forEach((ruleId, i) => {
+        insertedIds.push({ id: String(events.length + 1) });
         events.push({
           at,
           ruleId,
@@ -106,6 +110,12 @@ function fakeDb(initialRules: RuleFixture[] = []) {
           summary: JSON.parse((summaries as string[])[i]!),
         });
       });
+      return { rows: [...insertedIds] };
+    }
+    if (sql.includes("INSERT INTO alerts.outbox")) {
+      calls.push("enqueue");
+      if (failWhen.enqueue) throw new Error("outbox insert failed");
+      (params[0] as string[]).forEach((id) => outbox.push(id));
       return { rows: [] };
     }
     if (sql.includes("DELETE FROM alerts.alert_events")) {
@@ -130,6 +140,7 @@ function fakeDb(initialRules: RuleFixture[] = []) {
       // A snapshot the fake restores on ROLLBACK, so the atomicity of writeEvaluation is observable.
       const savedStates = new Map(states);
       const savedEvents = events.length;
+      const savedOutbox = outbox.length;
       const tx = {
         ...client,
         query: async (sql: string, params?: unknown[]) => {
@@ -137,6 +148,7 @@ function fakeDb(initialRules: RuleFixture[] = []) {
             states.clear();
             savedStates.forEach((value, key) => states.set(key, value));
             events.length = savedEvents;
+            outbox.length = savedOutbox;
           }
           return handle(sql, params);
         },
@@ -144,7 +156,7 @@ function fakeDb(initialRules: RuleFixture[] = []) {
       return tx;
     },
   } as unknown as AlertsDb;
-  return { db, rules, states, events, calls, mutes, failWhen, log };
+  return { db, rules, states, events, calls, mutes, failWhen, log, outbox };
 }
 
 const logger = () => {
@@ -175,8 +187,8 @@ describe("AlertEvaluatorWorker.tick", () => {
     now = T0;
   });
 
-  const make = (fake: ReturnType<typeof fakeDb>, w: ReturnType<typeof world>, l = logger()) =>
-    ({ worker: new AlertEvaluatorWorker(fake.db, w.directory, { logger: l.logger, now: () => now }), ...l });
+  const make = (fake: ReturnType<typeof fakeDb>, w: ReturnType<typeof world>, l = logger(), deliver?: boolean) =>
+    ({ worker: new AlertEvaluatorWorker(fake.db, w.directory, { logger: l.logger, now: () => now, deliver }), ...l });
 
   it("seeds the presets once per server and only for servers that have observations", async () => {
     const fake = fakeDb();
@@ -419,6 +431,79 @@ describe("AlertEvaluatorWorker.tick", () => {
     publishOutage(w.boards.get("alpha")!, now, true);
     await worker.tick();
     expect(fake.events.map((event) => event.ruleId)).toEqual(["bravo-power_outage", "alpha-power_outage"]); // alpha recovers, once
+  });
+
+  describe("the delivery kill switch (ALERT_DELIVERY)", () => {
+    it("OFF (the default): events are recorded but NO outbox row is ever queued", async () => {
+      const fake = fakeDb();
+      const w = world();
+      for (const worker of [make(fake, w).worker, make(fake, w, logger(), false).worker]) {
+        await worker.tick();
+      }
+      publishOutage(w.boards.get("alpha")!, now, true);
+      await make(fake, w).worker.tick();
+      expect(fake.events.map((event) => event.transition)).toEqual(["fired"]);
+      expect(fake.calls).not.toContain("enqueue");
+      expect(fake.outbox).toEqual([]);
+    });
+
+    it("ON: each new event is queued in the same transaction, once", async () => {
+      const fake = fakeDb();
+      const w = world();
+      const { worker } = make(fake, w, logger(), true);
+      await worker.tick();
+      publishOutage(w.boards.get("alpha")!, now, true);
+      await worker.tick();
+      expect(fake.events).toHaveLength(1);
+      expect(fake.calls.filter((call) => call === "enqueue")).toHaveLength(1);
+      expect(fake.outbox).toEqual(["1"]);
+      now += 30 * SEC;
+      publishOutage(w.boards.get("alpha")!, now, true);
+      await worker.tick(); // nothing new happened: nothing queued
+      expect(fake.outbox).toEqual(["1"]);
+    });
+
+    it("switching it on later sends only transitions that happen AFTER that (earlier events were never queued)", async () => {
+      const fake = fakeDb();
+      const w = world();
+      const off = make(fake, w).worker;
+      await off.tick();
+      publishOutage(w.boards.get("alpha")!, now, true);
+      await off.tick(); // fired while off
+      expect(fake.outbox).toEqual([]);
+      const on = make(fake, w, logger(), true).worker; // the operator restarts with the switch on
+      now += 30 * SEC;
+      publishOutage(w.boards.get("alpha")!, now, true);
+      await on.tick(); // still down: no transition, so nothing to send
+      expect(fake.outbox).toEqual([]);
+      now += 30 * SEC;
+      publishOutage(w.boards.get("alpha")!, now, false);
+      await on.tick();
+      now += 61 * SEC;
+      publishOutage(w.boards.get("alpha")!, now, false);
+      await on.tick(); // resolved after the switch: this one is queued
+      expect(fake.events.map((event) => event.transition)).toEqual(["fired", "resolved"]);
+      expect(fake.outbox).toEqual(["2"]);
+    });
+
+    it("the queue write is ATOMIC with the event: if it fails, the event and the state are rolled back too, and nothing is lost", async () => {
+      const fake = fakeDb();
+      const w = world();
+      const { worker } = make(fake, w, logger(), true);
+      await worker.tick();
+      publishOutage(w.boards.get("alpha")!, now, true);
+      fake.failWhen.enqueue = true;
+      await expect(worker.tick()).rejects.toThrow("outbox insert failed");
+      expect(fake.events).toEqual([]);
+      expect(fake.states.size).toBe(0);
+      expect(fake.outbox).toEqual([]);
+      fake.failWhen.enqueue = false;
+      now += 30 * SEC;
+      publishOutage(w.boards.get("alpha")!, now, true);
+      await worker.tick();
+      expect(fake.events.map((event) => event.transition)).toEqual(["fired"]);
+      expect(fake.outbox).toEqual(["1"]);
+    });
   });
 
   it("evaluates each server on its own board", async () => {

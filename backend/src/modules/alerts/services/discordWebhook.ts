@@ -27,6 +27,15 @@ const MAX_LENGTH = 300;
 // /api/webhooks/<id>/<token> or /api/v<N>/webhooks/<id>/<token>. The id is a snowflake; the token is URL-safe base64.
 const WEBHOOK_PATH = /^\/api(?:\/v\d{1,2})?\/webhooks\/\d{15,25}\/[A-Za-z0-9_-]{20,120}$/;
 
+/** Whitespace of any kind, C0/C1 controls, a backslash or a percent sign: anything that could make two URL parsers disagree. */
+function hasAmbiguousCharacter(input: string): boolean {
+  for (const char of input) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f) || char === "\\" || char === "%" || /\s/.test(char)) return true;
+  }
+  return false;
+}
+
 /**
  * Validates a webhook URL and returns it in canonical form plus its last 4 characters (the only part ever shown back).
  * Never throws and never echoes the input.
@@ -37,7 +46,7 @@ export function parseDiscordWebhookUrl(raw: unknown): WebhookParseResult {
   if (input.length === 0 || input.length > MAX_LENGTH) return { ok: false, code: "too_long" };
   // Refuse before parsing anything that could make two parsers disagree: whitespace or control characters inside,
   // a backslash (some parsers treat it as a slash), or a percent sign (encoded dots, slashes, at-signs).
-  if (/[\s\u0000-\u001f\u007f\\%]/.test(input)) return { ok: false, code: "not_a_url" };
+  if (hasAmbiguousCharacter(input)) return { ok: false, code: "not_a_url" };
   let url: URL;
   try {
     url = new URL(input);
