@@ -71,6 +71,9 @@ export interface ServerManagementDeps<TServices> {
   build: (connection: ServerConnection) => RuntimeServer<TServices>;
   /** Runs the two reads against the candidate (composition root: the gameserver module). */
   testConnection: (candidate: ConnectionCandidate) => Promise<TestConnectionResponse>;
+  /** Issue #195: ports that belong to this process's own machine services (the backend's listen port, the database's port). A
+   *  loopback game server may not use them: a test would otherwise probe the backend or Postgres. The composition root supplies them. */
+  forbiddenPorts?: readonly number[];
   /** The seeded operator account's id; undefined until the database is up. */
   getOperatorUserId: () => string | undefined;
   /** Names of the environment variables that still configure servers (composition root: the gameserver module).
@@ -112,6 +115,13 @@ function refusedAddress(): ApiFailure {
   return new ApiFailure(
     "address_not_allowed",
     "That host is not a private address, or it could not be resolved.",
+  );
+}
+
+function refusedPort(): ApiFailure {
+  return new ApiFailure(
+    "address_not_allowed",
+    "That port is used by this backend or its database, so it cannot be a game server's.",
   );
 }
 
@@ -185,6 +195,17 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
     }
   };
 
+  /**
+   * Issue #195: a "game server" on THIS machine must not be this backend or its database. A test connection sends the entered
+   * API token to `pinnedIp:port`, so a loopback address with the backend's own port (or Postgres's) would make the backend probe
+   * and talk to its own internals, and the answer (a test result) would map them. Only loopback matters: a LAN address is a
+   * different machine, and LAN servers are refused anyway (amendment 1).
+   */
+  const assertPortsAllowed = (pinnedIp: string, ports: readonly number[]): void => {
+    const forbidden = deps.forbiddenPorts ?? [];
+    if (forbidden.length > 0 && isLoopbackAddress(pinnedIp) && ports.some((port) => forbidden.includes(port))) throw refusedPort();
+  };
+
   const requireMeta = async (publicId: string): Promise<ConnectionMeta> => {
     const meta = await getConnectionMetaByPublicId(deps.db, publicId);
     if (meta === undefined) throw new ServerNotFoundError();
@@ -222,6 +243,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     async testCandidate(input) {
       const pinnedIp = await pin(input.host);
+      assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
       return deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
     },
 
@@ -235,6 +257,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       if (storedVerdict === "lan") throw lanRequiresPinning();
       if (storedVerdict === "refused") throw refusedAddress();
       await pin(meta.host);
+      assertPortsAllowed(meta.pinnedIp, [meta.apiPort, meta.frmPort]); // a row stored before this rule (or edited in the database) is not tested either
       const tokens = await openTokens(ring, meta);
       if (tokens === undefined) throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
       return deps.testConnection({ pinnedIp: meta.pinnedIp, apiPort: meta.apiPort, frmPort: meta.frmPort, ...tokens });
@@ -277,6 +300,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const envConfigured = (deps.configuredServerEnvNames?.() ?? []).length > 0;
         if (envConfigured && (await countConnections(deps.db)) === 0) throw importRequired();
         const pinnedIp = await pin(input.host);
+        assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
         const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
         if (!test.ok) throw testFailure(test);
 
@@ -347,6 +371,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const ring = ringOrUnavailable();
         const host = patch.host ?? meta.host;
         const pinnedIp = await pin(host);
+        assertPortsAllowed(pinnedIp, [patch.apiPort ?? meta.apiPort, patch.frmPort ?? meta.frmPort]);
         const opened = await openTokens(ring, meta);
         let apiToken: string;
         let frmToken: string | undefined;

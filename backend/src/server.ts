@@ -9,7 +9,7 @@ import { environmentServerEntries, warnEnvServersNotServed } from "./platform/en
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
-import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
+import { Database, databasePortOf, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
   configuredServerEnvNamesInUse,
   createGameServerConnection,
@@ -251,6 +251,7 @@ function buildFromConnection(c: ServerConnection) {
   );
 }
 
+const databasePort = databasePortOf(databaseConfig?.url);
 const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
@@ -261,6 +262,8 @@ const serverManagement = database
         testGameServerConnection(createSatisfactoryServerConfig({ host: pinnedIp, apiPort, apiToken, frmPort, frmToken })),
       getOperatorUserId: () => operatorUserId,
       configuredServerEnvNames: () => configuredServerEnvNamesInUse(),
+      // Issue #195: a loopback "game server" may not be this backend or its database.
+      forbiddenPorts: databasePort === undefined ? [port] : [port, databasePort],
     })
   : undefined;
 const managementRouters = serverManagement

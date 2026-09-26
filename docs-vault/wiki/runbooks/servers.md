@@ -113,6 +113,11 @@ Rules the routes enforce:
   IPv6 by its IPv4). One public, link-local (169.254/16, including the cloud metadata address), CGNAT, multicast or
   unique-local address among the answers refuses the whole host (`address_not_allowed`, 422; the message never names the
   address). The host is checked again on every edit and every test, and the backend connects to the pinned address.
+- **A loopback game server may not use the backend's own port or the database's port** (issue #195): a test connection
+  sends the entered API token to `address:port`, so `127.0.0.1` with the port this backend listens on (`PORT`, default
+  3001) or the one `DATABASE_URL` names (default 5432) would make the backend probe its own internals. Create, edit, the
+  candidate test and the saved test all refuse it with `address_not_allowed` (422); the message names no port or address.
+  A LAN address is another machine, so the same port number there is fine.
 - **A test connection must pass before anything is saved** (`connection_test_failed`, 422): the vanilla API's
   `QueryServerState` and FRM's `getSessionInfo`. The result carries codes only (`unreachable`, `unauthorized`,
   `invalid_response`), never a message from the game server.

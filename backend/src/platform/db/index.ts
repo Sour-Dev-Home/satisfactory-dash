@@ -1,4 +1,4 @@
-export { loadDatabaseConfig } from "./config.js";
+export { databasePortOf, loadDatabaseConfig } from "./config.js";
 export type { DatabaseConfig } from "./config.js";
 export { Database, READINESS_TIMEOUT_MS } from "./database.js";
 export type { DatabaseLogger } from "./database.js";
