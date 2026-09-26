@@ -81,6 +81,8 @@ export { expect };
  * item 5; failing since step 4). The full result is attached to the report either way.
  */
 export async function expectNoAxeViolations(page: Page, testInfo: TestInfo): Promise<void> {
+  // axe counts opacity in contrast, so check the settled page, not a frame of a fade-in.
+  await page.evaluate(() => Promise.allSettled(document.getAnimations().map((a) => a.finished)));
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     // axe's preload copies the page's CSS into <style> elements for css-orientation-lock

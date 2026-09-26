@@ -71,6 +71,37 @@
   --z-popover: 10;
   --popover-width: min(24rem, calc(100vw - 2rem));
   --popover-max-height: min(70vh, 36rem);
+
+  /*
+   * Motion. Opacity and transform only, so nothing shifts the layout; content is in the page and
+   * focusable from the first frame, and nothing waits for an animation. There are no exit
+   * animations. Reduced motion sets every duration to 0 in one place (the end of @layer base).
+   */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms; /* hover and colour changes, a page's reveal */
+  --duration-base: 180ms; /* a dropdown opening, a detail expanding */
+  --duration-slow: 240ms; /* larger surfaces */
+  --spacing-motion-rise: 4px; /* how far entering content travels */
+  /* Tailwind's `transition-*` utilities use the tokens too. */
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: var(--ease-standard);
+  /* `animate-reveal`: a page or a detail fading in. `animate-pop`: a dropdown opening. */
+  --animate-reveal: reveal var(--duration-fast) var(--ease-standard) both;
+  --animate-pop: pop var(--duration-base) var(--ease-standard) both;
+
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      translate: 0 var(--spacing-motion-rise);
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      translate: 0 calc(var(--spacing-motion-rise) * -1);
+      scale: 0.98;
+    }
+  }
 }
 
 /*
@@ -127,6 +158,9 @@
     color: var(--color-fg-strong);
     font-weight: 500;
     cursor: pointer;
+    transition-property: border-color, background-color, color;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-standard);
   }
   button:hover:not(:disabled) {
     border-color: var(--color-muted);
@@ -198,6 +232,23 @@
   }
   label {
     color: var(--color-muted);
+  }
+  /* The one place reduced motion is honoured: every motion token goes to 0, so each animation
+     and transition lands on its end state at once (Tailwind's `animate-pulse` included). */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --duration-fast: 0s;
+      --duration-base: 0s;
+      --duration-slow: 0s;
+    }
+    /* Anything not built on the tokens too (Leaflet's zoom, third-party CSS). */
+    *,
+    ::before,
+    ::after {
+      animation-duration: var(--duration-fast) !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: var(--duration-fast) !important;
+    }
   }
 }
 
