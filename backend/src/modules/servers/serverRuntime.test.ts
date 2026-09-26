@@ -117,6 +117,12 @@ describe("an agent server's runtime is never replaced by a polled one (ADR-0031 
     expect(runtime.has("a")).toBe(true);
   });
 
+  it("a rename keeps the agent kind, so the invariant still guards a renamed agent server", async () => {
+    const runtime = new ServerRuntime([agent("a")]);
+    runtime.rename("a", "Renamed");
+    await expect(runtime.replace(server("a"))).rejects.toBeInstanceOf(AgentRuntimeReplacedError);
+  });
+
   it("remove then add is the explicit way to change a server's kind (an un-enrol), and is not blocked", async () => {
     const runtime = new ServerRuntime([agent("a")]);
     await runtime.remove("a");
