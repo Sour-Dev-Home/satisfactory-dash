@@ -12,6 +12,7 @@ import {
   type SectionHealth,
   type SectionState,
 } from "./health";
+import type { Tick } from "./cards/HealthCard";
 import type { PlayersState } from "./cards/PlayersCard";
 import { OverviewPanel } from "./OverviewPanel";
 
@@ -30,6 +31,13 @@ export function OverviewView() {
   const status = useQuery(queries.status(server.id));
   // Same rule as the rows: data wins over an error.
   const players: PlayersState = status.data ? { status: status.data.data } : status.isError ? "error" : "pending";
+  // The Health card's tick (the owner's call): the backend's own tickHealth, nothing re-derived.
+  const snapshot = status.data?.data;
+  const tick: Tick | undefined = snapshot
+    ? snapshot.isGameRunning
+      ? { rate: snapshot.tickRate, health: snapshot.tickHealth }
+      : null
+    : undefined;
   // Names are extra: loading, failing, or a backend without the endpoint all leave the counts.
   const roster = useQuery(queries.players(server.id)).data;
   const sections = [
@@ -45,6 +53,7 @@ export function OverviewView() {
       overall={overall}
       sections={sections}
       players={players}
+      tick={tick}
       roster={roster}
       bannerHidden={dismissible && dismissal.hidden}
       onDismiss={dismissible ? dismissal.dismiss : undefined}

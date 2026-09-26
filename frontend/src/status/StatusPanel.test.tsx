@@ -22,17 +22,15 @@ describe("StatusPanel", () => {
     expect(within(panel).getByText("Save", { selector: "dt" })).toBeInTheDocument();
     expect(valueOf("Save")).toHaveTextContent("ExampleSession");
     expect(valueOf("Players")).toHaveTextContent("0 / 4 connected");
-    expect(valueOf("Server tick")).toHaveTextContent("Healthy (21.4 ticks/s)");
-    expect(valueOf("Server tick")).not.toHaveClass("warning");
     expect(valueOf("Total play time on this save")).toHaveTextContent("1 d 2 h 50 m");
     expect(valueOf("As of")).toHaveTextContent(new Date(statusRunning.observedAt).toLocaleString());
     expect(screen.queryByText(/uptime/i)).not.toBeInTheDocument();
   });
 
-  it("marks a slow tick as a warning", () => {
+  it("leaves the server tick to the Health card (the owner's call)", () => {
     render(<StatusPanel snapshot={statusSlow} />);
-    expect(valueOf("Server tick")).toHaveTextContent("Slow (8.2 ticks/s)");
-    expect(valueOf("Server tick")).toHaveClass("warning");
+    expect(screen.queryByText("Server tick")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ticks\/s/)).not.toBeInTheDocument();
   });
 
   it("keeps showing a paused server's frozen values", () => {
