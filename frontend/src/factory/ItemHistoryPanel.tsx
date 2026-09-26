@@ -74,40 +74,52 @@ export function ItemHistoryPanel({
           {formatPerMinute(stats.capacity, label.unit)}.
         </p>
       )}
-      {series.points.length < 2 ? (
+      {/* The contract allows a series with no points: an item with nothing recorded in this range. */}
+      {series.points.length === 0 ? (
+        <p className="text-sm text-muted">No readings for {label.name} in this range yet.</p>
+      ) : series.points.length < 2 ? (
         <p className="text-sm text-muted">Only one reading in this range so far.</p>
       ) : (
-        <Suspense fallback={<ChartPlaceholder />}>
-          {/* key: a new item gets a new chart, with its own unit on the axis. */}
-          <ItemChart key={series.item} data={toItemChartData(series.points, history.resolutionSeconds)} unitLabel={unitLabel(label.unit)} />
-        </Suspense>
+        <>
+          <Suspense fallback={<ChartPlaceholder />}>
+            {/* key: a new item gets a new chart, with its own unit on the axis. */}
+            <ItemChart key={series.item} data={toItemChartData(series.points, history.resolutionSeconds)} unitLabel={unitLabel(label.unit)} />
+          </Suspense>
+          <p className="text-sm text-muted">A break in the line means nothing was recorded then (the game was paused or the server couldn't be reached).</p>
+        </>
       )}
-      <p className="text-sm text-muted">A break in the line means nothing was recorded then (the game was paused or the server couldn't be reached).</p>
-      <details>
-        <summary className="cursor-pointer text-sm text-muted">Readings table</summary>
-        <div className="mt-2 max-h-72 overflow-auto rounded-md border border-line [contain:inline-size]">
-          <table className="readings">
-            <thead>
-              <tr>
-                <th scope="col">From</th>
-                <th scope="col">Produced (avg)</th>
-                <th scope="col">Capacity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {series.points.map((p) => (
-                <tr key={p.t}>
-                  <th scope="row">
-                    <time dateTime={iso(p.t)}>{formatTime(iso(p.t))}</time>
-                  </th>
-                  <td>{formatPerMinute(p.currentPerMinute.avg, label.unit)}</td>
-                  <td>{formatPerMinute(p.maxPerMinute, label.unit)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      {series.points.length > 0 && <ReadingsTable points={series.points} label={label} />}
     </div>
+  );
+}
+
+/** The chart's data as text, collapsed: every bucket's average and capacity. */
+function ReadingsTable({ points, label }: { points: HistoryItems["series"][number]["points"]; label: ItemLabel }) {
+  return (
+    <details>
+      <summary className="cursor-pointer text-sm text-muted">Readings table</summary>
+      <div className="mt-2 max-h-72 overflow-auto rounded-md border border-line [contain:inline-size]">
+        <table className="readings">
+          <thead>
+            <tr>
+              <th scope="col">From</th>
+              <th scope="col">Produced (avg)</th>
+              <th scope="col">Capacity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {points.map((p) => (
+              <tr key={p.t}>
+                <th scope="row">
+                  <time dateTime={iso(p.t)}>{formatTime(iso(p.t))}</time>
+                </th>
+                <td>{formatPerMinute(p.currentPerMinute.avg, label.unit)}</td>
+                <td>{formatPerMinute(p.maxPerMinute, label.unit)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }

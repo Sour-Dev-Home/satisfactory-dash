@@ -103,4 +103,21 @@ describe("ItemHistoryPanel", () => {
     render(<ItemHistoryPanel history={{ ...day, truncated: true }} labels={labels} item={undefined} onItem={() => {}} />);
     expect(screen.getByText("Showing the 50 items made fastest in this range.")).toBeInTheDocument();
   });
+
+  // BUG: the contract allows a series with zero points (an item that exists but has no readings
+  // in this range: HistoryItemSeriesSchema.points has no minimum length). The panel only checks
+  // `series.length === 0` for "no history at all", then falls through to the `points.length < 2`
+  // branch, which reports zero readings as "Only one reading" — a real item with no data at all
+  // gets a misleading message and no stats. This test documents the expected distinction and
+  // fails against the current implementation.
+  it("distinguishes zero readings from exactly one reading", () => {
+    const zero: HistoryItems = { ...day, series: [{ item: "Desc_IronIngot_C", points: [] }] };
+    render(<ItemHistoryPanel history={zero} labels={labels} item={undefined} onItem={() => {}} />);
+    expect(screen.queryByText("Only one reading in this range so far.")).not.toBeInTheDocument();
+    // Not in today's labels here: the readable class name.
+    expect(screen.getByText("No readings for Iron Ingot in this range yet.")).toBeInTheDocument();
+    expect(screen.queryByTestId("item-chart")).not.toBeInTheDocument();
+    // Nothing to summarise, and an empty readings table would say nothing.
+    expect(screen.queryByText(/average/)).not.toBeInTheDocument();
+  });
 });
