@@ -106,6 +106,31 @@ describe("FactoryPanel machine state", () => {
     render(<FactoryPanel snapshot={withBuildings({ ...machine, state: "unpowered", isBackedUp: true })} />);
     expect(stateText(rowFor("Iron Plate"))).toBe("Unpowered Backed up");
   });
+
+  it("never duplicates a flag even when both flags and the state overlap", () => {
+    // state already says "Backed up"; isPaused is a second, distinct flag the state doesn't say.
+    render(
+      <FactoryPanel snapshot={withBuildings({ ...machine, state: "backedUp", isBackedUp: true, isPaused: true })} />,
+    );
+    const row = rowFor("Iron Plate");
+    expect(stateText(row)).toBe("Backed up Paused");
+    expect(within(row).getAllByText("Backed up")).toHaveLength(1);
+    expect(within(row).getAllByText("Paused")).toHaveLength(1);
+  });
+
+  it("shows both flags beside an unknown state, never the unknown value itself", () => {
+    render(
+      <FactoryPanel
+        snapshot={withBuildings({ ...machine, state: "overclocking-ish", isBackedUp: true, isPaused: true })}
+      />,
+    );
+    expect(stateText(rowFor("Iron Plate"))).toBe("Backed up Paused");
+  });
+
+  it("still shows the isBackedUp flag when state is a prototype-key string", () => {
+    render(<FactoryPanel snapshot={withBuildings({ ...machine, state: "__proto__", isBackedUp: true })} />);
+    expect(stateText(rowFor("Iron Plate"))).toBe("Backed up");
+  });
 });
 
 describe("FactoryPanel clock speed", () => {
@@ -114,9 +139,10 @@ describe("FactoryPanel clock speed", () => {
   const recipeCell = () => within(onlyRow()).getAllByRole("cell")[0];
 
   it.each([
-    [160, "Iron PlateClock 160%"],
-    [50, "Iron PlateClock 50%"],
-    [62.5, "Iron PlateClock 62.5%"],
+    // The ", " is screen-reader only: "Iron Plate, Clock 160%" rather than one run-on name.
+    [160, "Iron Plate, Clock 160%"],
+    [50, "Iron Plate, Clock 50%"],
+    [62.5, "Iron Plate, Clock 62.5%"],
   ])("labels a %s%% clock beside the recipe", (clockSpeedPercent, text) => {
     render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent })} />);
     expect(recipeCell().textContent).toBe(text);
@@ -129,6 +155,27 @@ describe("FactoryPanel clock speed", () => {
       expect(recipeCell().textContent).toBe("Iron Plate");
     },
   );
+
+  it.each([
+    [99.96, "Iron Plate"], // rounds to the same displayed "100%" as the default, so hidden
+    [100.049, "Iron Plate"],
+  ])("hides a clock of %s that displays as 100%%", (clockSpeedPercent, text) => {
+    render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent })} />);
+    expect(recipeCell().textContent).toBe(text);
+  });
+
+  it("hides a tiny positive clock that would read 'Clock 0%' (compared as shown, like 100%)", () => {
+    for (const clockSpeedPercent of [5e-324, 0.04]) {
+      const { unmount } = render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent })} />);
+      expect(recipeCell().textContent).toBe("Iron Plate");
+      unmount();
+    }
+  });
+
+  it("names the recipe cell with a pause before the clock, for screen readers", () => {
+    render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent: 160 })} />);
+    expect(within(onlyRow()).getByRole("cell", { name: /^Iron Plate\s*,\s*Clock 160%$/ })).toBeInTheDocument();
+  });
 
   it("keeps the clock out of the outputs and the state", () => {
     render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent: 160 })} />);

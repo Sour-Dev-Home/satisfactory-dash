@@ -121,9 +121,15 @@ function BuildingRow({ building, showInputs }: { building: FactoryBuilding; show
 function Clock({ percent }: { percent: number | undefined }) {
   if (percent === undefined || !Number.isFinite(percent) || percent <= 0) return null;
   const text = formatPercent(percent);
-  // Compare what's shown: 100.02 would read "Clock 100%", which says nothing.
-  if (text === formatPercent(100)) return null;
-  return <span className="block text-sm text-muted">Clock {text}</span>;
+  // Compare what's shown: 100.02 would read "Clock 100%", which says nothing, and a tiny
+  // positive clock would read "Clock 0%", which isn't a setting.
+  if (text === formatPercent(100) || text === formatPercent(0)) return null;
+  return (
+    <span className="block text-sm text-muted">
+      {/* Read as "Stator, Clock 160%", not one run-on "Stator Clock 160%". */}
+      <span className="sr-only">, </span>Clock {text}
+    </span>
+  );
 }
 
 /** A machine's inputs or outputs, one plain line each. */
