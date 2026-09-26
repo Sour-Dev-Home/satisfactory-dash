@@ -131,7 +131,7 @@ export function RuleCard({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <FormField id={fieldId("severity")} label="Severity" error={errors.severity}>
               <select
-                {...fieldAttrs(fieldId("severity"), undefined, errors.severity, "select")}
+                {...fieldAttrs(fieldId("severity"), undefined, errors.severity)}
                 value={draft.severity}
                 onChange={(e) => set("severity", e.target.value)}
               >

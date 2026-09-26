@@ -1,6 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
+  alertDestinationsConfigured,
+  alertEventsLastPage,
+  alertRulesList,
+  alertStatusQuiet,
   deleteServerDone,
   factoryMixed,
   healthOk,
@@ -50,4 +54,10 @@ export const handlers = [
   http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
   http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(serverConnectionOk)),
   http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
+  // Alerts (ADR-0027 PR 9). The header bell reads the status on every page: quiet by default, so
+  // no badge shows unless a test asks for one.
+  http.get(endpoints.alerts.status.route, () => HttpResponse.json(alertStatusQuiet)),
+  http.get(endpoints.alerts.rules.list.route, () => HttpResponse.json(alertRulesList)),
+  http.get(endpoints.alerts.destinations.get.route, () => HttpResponse.json(alertDestinationsConfigured)),
+  http.get(endpoints.alerts.events.route, () => HttpResponse.json(alertEventsLastPage)),
 ];

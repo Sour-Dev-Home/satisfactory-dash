@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
+import { AlertsBell } from "../alerts/AlertsBell";
+import { AlertsView } from "../alerts/AlertsView";
 import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
 import { CrashProbe } from "../components/CrashProbe";
@@ -29,13 +31,14 @@ function Section({ label, probe, children }: { label: string; probe: string; chi
 }
 
 /**
- * A page under a tab. The heading is for screen readers; the active tab shows it visually.
- * Not a landmark itself: its panel already is one, with the same name.
+ * A page under a tab. The heading is for screen readers; the active tab shows it visually. A page
+ * without a tab (Alerts, opened from the bell) shows its heading. Not a landmark itself: its panel
+ * already is one, with the same name.
  */
-function Page({ title, children }: { title: string; children: ReactNode }) {
+function Page({ title, showTitle = false, children }: { title: string; showTitle?: boolean; children: ReactNode }) {
   return (
     <div className="grid gap-4">
-      <h2 tabIndex={-1} className="sr-only">
+      <h2 tabIndex={-1} className={showTitle ? undefined : "sr-only"}>
         {title}
       </h2>
       {children}
@@ -106,7 +109,11 @@ export function Shell() {
         </nav>
         <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3">
           <ServerSwitcher />
-          <AccountMenu />
+          {/* The bell sits with the account: both are about you, not the game. */}
+          <div className="flex items-center gap-2">
+            <AlertsBell />
+            <AccountMenu />
+          </div>
         </div>
       </div>
 
@@ -179,6 +186,16 @@ export function Shell() {
                 {/* Keyed by server: a change still on its way to one server's game PC must not follow
                     the user to another server. */}
                 <AutoPauseView key={server.id} />
+              </Section>
+            </Page>
+          }
+        />
+        <Route
+          path="alerts"
+          element={
+            <Page key="alerts" title="Alerts" showTitle>
+              <Section label="Alerts" probe="alerts">
+                <AlertsView />
               </Section>
             </Page>
           }

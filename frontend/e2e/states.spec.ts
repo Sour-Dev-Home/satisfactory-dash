@@ -119,6 +119,11 @@ const CASES: StateCase[] = [
     shows: "Last 24 hours",
     act: (page) => page.getByRole("group", { name: "Power history range" }).getByRole("button", { name: "24 h" }).click(),
   },
+  // Alerts (ADR-0027 PR 9), opened from the header bell. "alerts" also shows the bell's badge.
+  { scenario: "alerts", path: "/app/alerts", shows: /Delivery is off \(shadow week\)/ },
+  { scenario: "alerts", name: "alerts-badge-overview", shows: "Total play time on this save" },
+  { scenario: "alerts-webhook-gone", path: "/app/alerts", shows: /no longer exists/ },
+  { scenario: "alerts-empty", path: "/app/alerts", shows: "No alerts yet." },
 ];
 
 async function openAddForm(page: Page) {

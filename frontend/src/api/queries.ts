@@ -1,10 +1,27 @@
-import { MutationCache, QueryCache, QueryClient, queryOptions, type QueryKey } from "@tanstack/react-query";
+import {
+  infiniteQueryOptions,
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  queryOptions,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { endpoints, type HistoryRange, type SessionResponse, type TransitionRange } from "@satisfactory-dash/shared";
 import { apiGetAbortable, apiGetQuery } from "./client";
 import { BackendUnreachableError, classifyError } from "./errors";
 
 /** ADR-0005 poll intervals. Settings poll only while a change is pending. */
-export const POLL_MS = { status: 10_000, power: 10_000, factory: 30_000, settingsPending: 10_000, command: 1_000 } as const;
+export const POLL_MS = {
+  status: 10_000,
+  power: 10_000,
+  factory: 30_000,
+  settingsPending: 10_000,
+  alerts: 60_000,
+  command: 1_000,
+} as const;
+
+/** Alert log events per page (the backend allows 1 to 100). */
+export const ALERT_PAGE = 50;
 
 /** A relayed command's statuses that won't change again (ADR-0031). Anything else is still on its way. */
 export const FINAL_COMMAND_STATUSES: readonly string[] = ["succeeded", "failed", "expired"];
@@ -172,6 +189,35 @@ export const queries = {
         const status = query.state.data?.command.status;
         return status !== undefined && FINAL_COMMAND_STATUSES.includes(status) ? false : POLL_MS.command;
       },
+    }),
+  // ADR-0027 PR 9: alerts. Alerts change on minute scales, and the header bell reads the status on
+  // every page, so it's polled once a minute (never at the page's rate).
+  alertStatus: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "alerts", "status"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.alerts.status, serverId),
+      refetchInterval: POLL_MS.alerts,
+      staleTime: POLL_MS.alerts,
+    }),
+  alertRules: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "alerts", "rules"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.alerts.rules.list, serverId),
+    }),
+  alertDestinations: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "alerts", "destinations"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.alerts.destinations.get, serverId),
+    }),
+  /** The alert log, newest first, a page at a time: each page's `nextBefore` fetches the older one. */
+  alertEvents: (serverId: string) =>
+    infiniteQueryOptions({
+      queryKey: ["servers", serverId, "alerts", "events"],
+      queryFn: ({ signal, pageParam }) =>
+        apiGetQuery(signal, endpoints.alerts.events, { limit: ALERT_PAGE, before: pageParam }, serverId),
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (page) => page.nextBefore ?? undefined,
+      refetchInterval: POLL_MS.alerts,
     }),
   settings: (serverId: string) =>
     queryOptions({

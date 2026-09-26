@@ -258,7 +258,11 @@ describe("New production target", () => {
   it("says what's missing before sending anything", () => {
     const { props } = setup();
     fireEvent.click(within(form()).getByRole("button", { name: "Create rule" }));
-    expect(within(form()).getByRole("combobox", { name: "Item" })).toHaveAttribute("aria-invalid", "true");
+    const itemSelect = within(form()).getByRole("combobox", { name: "Item" });
+    expect(itemSelect).toHaveAttribute("aria-invalid", "true");
+    // The select, like an invalid input, must point at its own error text (fieldAttrs.ts), not just look invalid.
+    expect(itemSelect.getAttribute("aria-describedby")).toBe(`${itemSelect.id}-error`);
+    expect(within(form()).getByText("Choose an item.", { selector: `#${itemSelect.id}-error` })).toBeInTheDocument();
     expect(within(form()).getByText("More than 0.", { selector: ".text-bad" })).toBeInTheDocument();
     expect(props.onCreate).not.toHaveBeenCalled();
   });
