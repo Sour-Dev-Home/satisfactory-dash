@@ -11,7 +11,7 @@ export const TERMS_URL = `${LEGAL_ORIGIN}/terms`;
 
 // A 44 px hit area (#62) around the 20 px line; the negative margin keeps the footer's height,
 // so the tap target grows without moving anything.
-const link = "-my-[calc((44px-1lh)/2)] inline-flex min-h-[44px] items-center";
+const link = "-my-touch-bleed inline-flex min-h-touch items-center";
 
 /** Always rendered, outside the auth gate, so it's reachable from the login screen too. */
 export function SourceFooter({ commitSha = __COMMIT_SHA__ }: { commitSha?: string }) {

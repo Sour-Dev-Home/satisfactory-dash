@@ -32,7 +32,7 @@ function ChartPlaceholder() {
       aria-hidden="true"
       data-chart-loading=""
       // Measured chart heights: 250 px, 279 px at phone width where the legend wraps.
-      className="grid h-[279px] place-items-center rounded-md bg-surface-2 text-sm text-muted motion-safe:animate-pulse sm:h-[250px]"
+      className="grid h-chart-slot-phone place-items-center rounded-md bg-surface-2 text-sm text-muted motion-safe:animate-pulse sm:h-chart-slot"
     >
       Loading chart…
     </div>

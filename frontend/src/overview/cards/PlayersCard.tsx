@@ -15,7 +15,7 @@ export function PlayersCard({ state, roster }: { state: PlayersState; roster?: S
   return (
     <section aria-labelledby="players-heading" className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
       {/* The same 44 px header row as Health's (which holds the Hide button). */}
-      <h3 id="players-heading" className="mb-0 flex min-h-[44px] items-center">
+      <h3 id="players-heading" className="mb-0 flex min-h-touch items-center">
         Players
       </h3>
       <PlayersBody state={state} roster={roster} />

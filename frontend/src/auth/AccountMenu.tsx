@@ -41,7 +41,7 @@ export function AccountMenu() {
       {open && (
         <div
           id={panelId}
-          className="absolute right-0 z-10 mt-2 grid w-64 gap-2 rounded-card border border-line bg-surface p-4 shadow-lg"
+          className="absolute right-0 z-(--z-popover) mt-2 grid w-64 gap-2 rounded-card border border-line bg-surface p-4 shadow-lg"
         >
           <p className="text-sm">
             <span className="text-muted">Signed in as </span>

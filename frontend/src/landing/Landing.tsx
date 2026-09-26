@@ -7,7 +7,7 @@ const DOCS_URL = `${REPO_URL}/blob/main/docs-vault/wiki`;
 /** `npm run demo:video`, encoded by CI's demo-video workflow (ADR-0026 item 5). */
 export const VIDEO_URL = "/demo/walkthrough.mp4";
 
-const linkButton = "inline-flex min-h-[44px] items-center justify-center rounded-lg border px-[14px] font-semibold no-underline";
+const linkButton = "inline-flex min-h-touch items-center justify-center rounded-lg border px-button-x font-semibold no-underline";
 
 /** Only what ships today: a feature appears here when it's live, never before. */
 const FEATURES = [
@@ -105,15 +105,15 @@ export function Landing() {
         </p>
         <ul className="flex flex-wrap gap-x-6 gap-y-2">
           <li>
-            <a href={REPO_URL} className="inline-flex min-h-[44px] items-center">Source on GitHub</a>
+            <a href={REPO_URL} className="inline-flex min-h-touch items-center">Source on GitHub</a>
           </li>
           <li>
-            <a href={`${DOCS_URL}/decisions/README.md`} className="inline-flex min-h-[44px] items-center">
+            <a href={`${DOCS_URL}/decisions/README.md`} className="inline-flex min-h-touch items-center">
               Architecture decisions
             </a>
           </li>
           <li>
-            <a href={`${DOCS_URL}/architecture/README.md`} className="inline-flex min-h-[44px] items-center">
+            <a href={`${DOCS_URL}/architecture/README.md`} className="inline-flex min-h-touch items-center">
               Architecture diagrams
             </a>
           </li>
