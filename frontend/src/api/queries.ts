@@ -18,6 +18,7 @@ export const POLL_MS = {
   settingsPending: 10_000,
   alerts: 60_000,
   command: 1_000,
+  agent: 30_000,
 } as const;
 
 /** Alert log events per page (the backend allows 1 to 100). */
@@ -189,6 +190,14 @@ export const queries = {
         const status = query.state.data?.command.status;
         return status !== undefined && FINAL_COMMAND_STATUSES.includes(status) ? false : POLL_MS.command;
       },
+    }),
+  // ADR-0031 PR 7: the game PC's agent for a server. Read only by the Settings section, so it polls
+  // only while that's open, at the rate the agent's last-seen time actually moves.
+  agentStatus: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "agent"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.agent.status, serverId),
+      refetchInterval: POLL_MS.agent,
     }),
   // ADR-0027 PR 9: alerts. Alerts change on minute scales, and the header bell reads the status on
   // every page, so it's polled once a minute (never at the page's rate).
