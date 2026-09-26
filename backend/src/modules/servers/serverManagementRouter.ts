@@ -4,6 +4,7 @@ import type { z } from "zod";
 import {
   CreateServerRequestSchema,
   DeleteServerResponseSchema,
+  ManagedServerListResponseSchema,
   ServerConnectionResponseSchema,
   ServerIdSchema,
   TestConnectionRequestSchema,
@@ -30,8 +31,9 @@ import type { ServerManagementService } from "./serverManagement.js";
  * an owner or admin membership is not enough), answered 403 for anyone else. The routes are split in
  * two so the composition root can mount each where it belongs:
  *
- * - `collection`: the routes with no server in the path (POST /servers, POST /servers/test-connection).
- *   Mount BEFORE the servers router, or `test-connection` would be read as a server id.
+ * - `collection`: the routes with no server in the path (POST /servers, GET /servers/managed,
+ *   POST /servers/test-connection). Mount BEFORE the servers router, or `managed` and `test-connection`
+ *   would be read as server ids.
  * - `scoped`: the routes under /servers/:serverId. Mount AFTER the servers router, so its membership
  *   check runs first (a non-member gets the same 404 as an unknown server, a viewer's write a 403).
  *
@@ -93,9 +95,14 @@ export function createServerManagementRouters(
     return parsed.data;
   };
 
-  const { create, testConnection, get, update, remove, testSaved } = endpoints.serverManagement;
+  const { create, list, testConnection, get, update, remove, testSaved } = endpoints.serverManagement;
 
   const collection = Router();
+  // "managed" is a reserved server id, and this router is mounted before the servers router, so the
+  // list is never read as GET /servers/:serverId.
+  collection.get(routePath(list.route), operatorOnly, async (_req, res) => {
+    sendValidated(res, ManagedServerListResponseSchema, { servers: await orUnavailable(() => service.list()) });
+  });
   collection.post(routePath(create.route), operatorOnly, limited(writeLimiter), async (req, res) => {
     const body = parseBody(CreateServerRequestSchema, req.body);
     const server = await orUnavailable(() => service.create(userId(res), body));

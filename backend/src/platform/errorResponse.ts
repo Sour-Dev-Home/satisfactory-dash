@@ -40,6 +40,7 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   connection_unreadable: 409,
   server_exists: 409,
   server_limit_reached: 409,
+  import_required: 409,
   internal: 500,
 };
 

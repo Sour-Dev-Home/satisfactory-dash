@@ -89,6 +89,7 @@ the owner or an admin of a server is not enough (403). `GET /api/servers` says `
 | Route | What it does |
 |---|---|
 | `POST /api/servers` | Add a server (`id`, `displayName`, `host`, `apiPort`, `frmPort`, `apiToken`, optional `frmToken`). 201. |
+| `GET /api/servers/managed` | Every stored connection, including the ones this backend is not serving (`state`: `ok`, `unreadable` or `refused`), with host, ports and the token flags. Members' `GET /api/servers` is unchanged. |
 | `POST /api/servers/test-connection` | Try entered values before saving. Always 200; `ok: false` names the failing side by code. |
 | `GET /api/servers/:serverId/connection` | The stored connection for the edit form: host, ports, `set` flags and the last 4 characters of each token. |
 | `PATCH /api/servers/:serverId` | Change any of the fields (`frmToken: null` clears the FRM token). |
@@ -108,7 +109,13 @@ Rules the routes enforce:
   overwrites; edits go through `PATCH`.
 - **Tokens are write-only.** A request may carry them; no response ever does. A token must be printable ASCII without
   spaces, and an empty FRM token is refused (omit it, or send `null` on an edit).
-- **A row whose tokens cannot be opened** is `state: "unreadable"` on `GET .../connection`; a `PATCH` that carries
+- **Import first.** While servers still come from the environment (the servers file or the single-server variables) and
+  none is stored, adding one is refused with `import_required` (409): the next restart would let the database win and
+  silently drop the environment's servers. Run `npm run admin -- import-servers`, remove the variables, then add more.
+- **Remove needs no key.** An unreadable row (or one on a backend with no `SERVER_SECRETS_KEY`) can still be removed.
+- **`state: "refused"`**: a stored address that is not loopback or private (e.g. edited in the database by hand). The
+  backend does not connect to it, not even to test it. Edit the host (it is re-resolved and re-pinned), or remove it.
+- **A row whose tokens cannot be opened** is `state: "unreadable"` on `GET .../connection` and in the list; a `PATCH` that carries
   BOTH tokens (the FRM token may be `null`) repairs it, and anything less is `connection_unreadable` (409).
 - **The plain-HTTP warning**: for any address that is not loopback the response has `plainHttpOverLan: true`. FRM has
   no TLS, so its token (and data) cross the LAN in clear text, and anyone on the LAN could read it. The owner accepted

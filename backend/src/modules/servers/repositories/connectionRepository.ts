@@ -405,23 +405,37 @@ const SELECT_META_BY_PUBLIC_ID = `
   JOIN servers.servers s ON s.id = c.server_id
   WHERE s.deleted_at IS NULL AND s.public_id = $1`;
 
+const toMeta = (row: z.output<typeof MetaRowSchema>): ConnectionMeta => ({
+  serverId: row.server_id,
+  publicId: row.public_id,
+  displayName: row.display_name,
+  host: row.host,
+  pinnedIp: row.pinned_ip,
+  apiPort: row.api_port,
+  frmPort: row.frm_port,
+  frmTokenSet: row.frm_token_set,
+  keyId: row.key_id,
+});
+
 /** The connection of the live server with this public id, without its tokens. Undefined when none. */
 export async function getConnectionMetaByPublicId(db: Queryable, publicId: string): Promise<ConnectionMeta | undefined> {
   const result = await db.query(SELECT_META_BY_PUBLIC_ID, [publicId]);
   const row = parseFirst(MetaRowSchema, result.rows, "servers.getConnectionMeta");
-  return row === undefined
-    ? undefined
-    : {
-        serverId: row.server_id,
-        publicId: row.public_id,
-        displayName: row.display_name,
-        host: row.host,
-        pinnedIp: row.pinned_ip,
-        apiPort: row.api_port,
-        frmPort: row.frm_port,
-        frmTokenSet: row.frm_token_set,
-        keyId: row.key_id,
-      };
+  return row === undefined ? undefined : toMeta(row);
+}
+
+const LIST_META = `
+  SELECT c.server_id, s.public_id, s.display_name, c.host, host(c.pinned_ip) AS pinned_ip,
+         c.api_port, c.frm_port, (c.frm_token_enc IS NOT NULL) AS frm_token_set, c.key_id
+  FROM servers.server_connections c
+  JOIN servers.servers s ON s.id = c.server_id
+  WHERE s.deleted_at IS NULL
+  ORDER BY s.public_id`;
+
+/** Every live stored connection without its tokens, whether or not this backend can open or serve it. */
+export async function listConnectionMetas(db: Queryable): Promise<ConnectionMeta[]> {
+  const result = await db.query(LIST_META);
+  return parseRows(MetaRowSchema, result.rows, "servers.listConnectionMetas").map(toMeta);
 }
 
 /** Removes the connection row, wiping the encrypted tokens. False when there was none. */

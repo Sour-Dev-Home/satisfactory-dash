@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { RequestHandler } from "express";
-import { ApiErrorResponseSchema, ServerConnectionResponseSchema, ServerListResponseSchema, TestConnectionResponseSchema } from "@satisfactory-dash/shared";
+import { ApiErrorResponseSchema, ManagedServerListResponseSchema, ServerConnectionResponseSchema, ServerListResponseSchema, TestConnectionResponseSchema } from "@satisfactory-dash/shared";
 import { createApp } from "../../app.js";
 import { createLogger } from "../../platform/logger.js";
 import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
@@ -35,6 +35,7 @@ function fakeService(overrides: Partial<ServerManagementService> = {}) {
     canManage: (id: string) => id === OPERATOR,
     create: vi.fn(async () => view),
     get: vi.fn(async () => view),
+    list: vi.fn(async () => [view]),
     update: vi.fn(async () => view),
     remove: vi.fn(async () => undefined),
     testCandidate: vi.fn(async () => passed),
@@ -190,6 +191,42 @@ describe("POST /api/servers/test-connection", () => {
     const app = build(fakeService(), { testLimiter });
     expect((await send(app, "post", "/api/servers/test-connection", OPERATOR, candidate)).status).toBe(200);
     expect((await send(app, "post", "/api/servers/test-connection", OPERATOR, candidate)).status).toBe(429);
+  });
+});
+
+describe("GET /api/servers/managed (the operator's list of every stored connection)", () => {
+  it("is not read as a server id: the operator gets the list, a non-operator 403, no session 401", async () => {
+    const service = fakeService({
+      list: vi.fn(async () => [
+        view,
+        { ...view, id: "stranded", state: "unreadable" as const, apiTokenLast4: null, frmTokenLast4: null },
+        { ...view, id: "tampered", state: "refused" as const, apiTokenLast4: null, frmTokenLast4: null },
+      ]),
+    });
+    const app = build(service);
+    const ok = await send(app, "get", "/api/servers/managed", OPERATOR);
+    expect(ok.status).toBe(200);
+    expect(ManagedServerListResponseSchema.parse(ok.body).servers.map((s) => s.state)).toEqual(["ok", "unreadable", "refused"]);
+    const refused = await send(app, "get", "/api/servers/managed", OTHER);
+    expect(refused.status).toBe(403);
+    expect(ApiErrorResponseSchema.parse(refused.body).error.code).toBe("forbidden");
+    expect((await send(app, "get", "/api/servers/managed", undefined)).status).toBe(401);
+    expect(service.list).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries no token, is 503 until ready, and maps a database outage to 503", async () => {
+    const res = await send(build(fakeService()), "get", "/api/servers/managed", OPERATOR);
+    expect(JSON.stringify(res.body)).not.toMatch(/api-token|frm-token/);
+    expect((await send(build(fakeService(), { isReady: () => false }), "get", "/api/servers/managed", OPERATOR)).status).toBe(503);
+    const outage = Object.assign(new Error("down"), { code: "ECONNREFUSED" });
+    expect((await send(build(fakeService({ list: vi.fn(async () => Promise.reject(outage)) })), "get", "/api/servers/managed", OPERATOR)).status).toBe(503);
+  });
+
+  it("import_required maps to 409", async () => {
+    const service = fakeService({ create: vi.fn(async () => Promise.reject(new ApiFailure("import_required", "Import first."))) });
+    const res = await send(build(service), "post", "/api/servers", OPERATOR, createBody);
+    expect(res.status).toBe(409);
+    expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("import_required");
   });
 });
 

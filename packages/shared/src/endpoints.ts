@@ -3,6 +3,7 @@ import { ServerListResponseSchema } from "./servers";
 import {
   CreateServerRequestSchema,
   DeleteServerResponseSchema,
+  ManagedServerListResponseSchema,
   ServerConnectionResponseSchema,
   TestConnectionRequestSchema,
   TestConnectionResponseSchema,
@@ -104,6 +105,15 @@ export const endpoints = {
       path: () => "/api/servers",
       request: CreateServerRequestSchema,
       response: ServerConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    // Every stored connection, including those the backend is not serving (unreadable or refused).
+    // "managed" is a reserved id, so this is never read as a server.
+    list: {
+      method: "GET",
+      route: "/api/servers/managed",
+      path: () => "/api/servers/managed",
+      response: ManagedServerListResponseSchema,
       operatorOnly: true,
     },
     // Try entered values before saving. Not server-scoped (there is no server yet).

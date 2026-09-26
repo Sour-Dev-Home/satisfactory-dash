@@ -11,6 +11,7 @@ const repo = vi.hoisted(() => ({
   createConnection: vi.fn(),
   getConnection: vi.fn(),
   getConnectionMetaByPublicId: vi.fn(),
+  listConnectionMetas: vi.fn(),
   updateConnection: vi.fn(),
   addMember: vi.fn(),
   findServerByPublicId: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("./repositories/connectionRepository.js", () => ({
   createConnection: repo.createConnection,
   getConnection: repo.getConnection,
   getConnectionMetaByPublicId: repo.getConnectionMetaByPublicId,
+  listConnectionMetas: repo.listConnectionMetas,
   updateConnection: repo.updateConnection,
 }));
 vi.mock("./repositories/memberRepository.js", () => ({ addMember: repo.addMember }));
@@ -54,7 +56,7 @@ const failed = { ok: false, api: { ok: false, error: "unreachable" as const }, f
 
 const meta = { serverId: "uuid-home", publicId: "home", displayName: "Home", host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, frmTokenSet: true, keyId: "k1" };
 
-function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed> } = {}) {
+function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[] } = {}) {
   const runtime = new ServerRuntime<string>([{ id: "home", displayName: "Home", services: "old", workers: [] }]);
   const build = vi.fn((c: { publicId: string; displayName: string }) => ({ id: c.publicId, displayName: c.displayName, services: "new", workers: [] }));
   const testConnection = vi.fn(options.test ?? (async () => passed));
@@ -65,6 +67,7 @@ function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => 
     build,
     testConnection,
     getOperatorUserId: () => OPERATOR,
+    configuredServerEnvNames: () => options.envNames ?? [],
     lookup: options.lookup ?? (async () => ["192.168.1.30"]),
   });
   return { service, runtime, build, testConnection };
@@ -345,5 +348,93 @@ describe("testCandidate and testSaved", () => {
     repo.getConnection.mockRejectedValue(new SecretsError("Could not decrypt a stored secret."));
     const err = await setup().service.testSaved("home").catch((e: unknown) => e);
     expect((err as ApiFailure).code).toBe("connection_unreadable");
+  });
+});
+
+describe("the management list and the states (unreadable, refused)", () => {
+  const stranded = { ...meta, serverId: "uuid-stranded", publicId: "stranded", displayName: "Stranded" };
+  const tampered = { ...meta, serverId: "uuid-tampered", publicId: "tampered", displayName: "Tampered", pinnedIp: "8.8.8.8" };
+
+  it("lists every stored connection with its state: ok, unreadable and refused", async () => {
+    repo.listConnectionMetas.mockResolvedValue([meta, stranded, tampered]);
+    repo.getConnection.mockImplementation(async (_db: unknown, _ring: unknown, serverId: string) => {
+      if (serverId === "uuid-stranded") throw new SecretsError("Could not decrypt a stored secret.");
+      return { ...meta, apiToken: API, frmToken: FRM };
+    });
+    const views = await setup().service.list();
+    expect(views.map((v) => [v.id, v.state])).toEqual([["home", "ok"], ["stranded", "unreadable"], ["tampered", "refused"]]);
+    expect(views[0]).toMatchObject({ apiTokenLast4: "1234", frmTokenLast4: "5678" });
+    expect(views[1]).toMatchObject({ apiTokenLast4: null, frmTokenLast4: null, host: "192.168.1.20", apiPort: 7777 });
+    expect(views[2]).toMatchObject({ apiTokenLast4: null, frmTokenLast4: null });
+    expect(JSON.stringify(views)).not.toContain(API);
+    expect(JSON.stringify(views)).not.toContain(FRM);
+  });
+
+  it("never opens the tokens of a refused row", async () => {
+    repo.listConnectionMetas.mockResolvedValue([tampered]);
+    await setup().service.list();
+    expect(repo.getConnection).not.toHaveBeenCalled();
+  });
+
+  it("with no keyring every row is unreadable (still listed), and refused stays refused", async () => {
+    repo.listConnectionMetas.mockResolvedValue([meta, tampered]);
+    const views = await setup({ ring: null }).service.list();
+    expect(views.map((v) => v.state)).toEqual(["unreadable", "refused"]);
+    expect(repo.getConnection).not.toHaveBeenCalled();
+  });
+
+  it("is empty when nothing is stored", async () => {
+    repo.listConnectionMetas.mockResolvedValue([]);
+    expect(await setup().service.list()).toEqual([]);
+  });
+
+  it("get reports refused too, and works without a keyring", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue(tampered);
+    expect((await setup().service.get("tampered")).state).toBe("refused");
+    repo.getConnectionMetaByPublicId.mockResolvedValue(meta);
+    expect((await setup({ ring: null }).service.get("home")).state).toBe("unreadable");
+  });
+
+  it("testSaved refuses to connect to a stored address that is not allowed (no test is run)", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...tampered, host: "192.168.1.20" });
+    const { service, testConnection } = setup({ lookup: async () => ["192.168.1.20"] });
+    const err = await service.testSaved("tampered").catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("address_not_allowed");
+    expect(testConnection).not.toHaveBeenCalled();
+  });
+
+  it("a refused row can be repaired by editing the host: it is re-resolved and re-pinned", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...tampered, host: "192.168.1.20" });
+    const { service, runtime } = setup({ lookup: async () => ["192.168.1.20"] });
+    const view = await service.update(OPERATOR, "tampered", { host: "gaming-pc.lan" });
+    expect(repo.updateConnection).toHaveBeenCalledWith(expect.anything(), ring, "uuid-tampered", expect.objectContaining({ pinnedIp: "192.168.1.20" }), expect.anything());
+    expect(view.state).toBe("ok");
+    expect(runtime.has("tampered")).toBe(true);
+  });
+});
+
+describe("remove without a keyring, and create before the import", () => {
+  it("removes an unreadable or keyless row (no keyring is needed)", async () => {
+    const { service, runtime } = setup({ ring: null });
+    await service.remove(OPERATOR, "home");
+    expect(repo.softDeleteServer).toHaveBeenCalledWith(expect.anything(), "home", { actorUserId: OPERATOR });
+    expect(runtime.has("home")).toBe(false);
+  });
+
+  it("create is refused with import_required while servers still come from the environment and none is stored", async () => {
+    repo.countConnections.mockResolvedValue(0);
+    const { service, testConnection } = setup({ envNames: ["SATISFACTORY_SERVER_HOST"] });
+    const err = await service.create(OPERATOR, createInput).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("import_required");
+    expect((err as ApiFailure).message).toContain("import-servers");
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.upsertConfiguredServer).not.toHaveBeenCalled();
+  });
+
+  it("create is allowed once something is stored (the database already wins), or when nothing is configured in the environment", async () => {
+    repo.countConnections.mockResolvedValue(1);
+    await expect(setup({ envNames: ["SATISFACTORY_SERVER_HOST"] }).service.create(OPERATOR, createInput)).resolves.toMatchObject({ id: "alt" });
+    repo.countConnections.mockResolvedValue(0);
+    await expect(setup({ envNames: [] }).service.create(OPERATOR, { ...createInput, id: "alt2" })).resolves.toMatchObject({ id: "alt2" });
   });
 });

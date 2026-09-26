@@ -60,6 +60,7 @@ const managementService: ServerManagementService = {
   canManage: (userId) => userId === OPERATOR,
   create: async () => connectionView,
   get: async () => connectionView,
+  list: async () => [connectionView],
   update: async () => connectionView,
   remove: async () => undefined,
   testCandidate: async () => testPassed,

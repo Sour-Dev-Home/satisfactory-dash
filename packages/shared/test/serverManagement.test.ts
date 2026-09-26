@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CreateServerRequestSchema,
+  ManagedServerListResponseSchema,
   ServerConnectionSchema,
   ServerListResponseSchema,
   TestConnectionRequestSchema,
@@ -38,6 +39,7 @@ describe("CreateServerRequestSchema", () => {
     ["a token over 4096 characters", { apiToken: "a".repeat(4097) }],
     ["an id that is not a server id", { id: "Not Valid" }],
     ["the reserved id test-connection", { id: "test-connection" }],
+    ["the reserved id managed (it is the list route)", { id: "managed" }],
     ["a blank display name", { displayName: "   " }],
     ["a display name over 64 characters", { displayName: "x".repeat(65) }],
   ])("refuses %s", (_label, change) => {
@@ -82,6 +84,16 @@ describe("responses never carry a token", () => {
   });
 });
 
+describe("ManagedServerListResponseSchema", () => {
+  const row = { id: "a", displayName: "A", host: "h", apiPort: 1, frmPort: 2, apiTokenSet: true, apiTokenLast4: null, frmTokenSet: false, frmTokenLast4: null, plainHttpOverLan: false };
+  it("carries every state, and refuses an unknown one", () => {
+    for (const state of ["ok", "unreadable", "refused"]) {
+      expect(ManagedServerListResponseSchema.safeParse({ servers: [{ ...row, state }] }).success, state).toBe(true);
+    }
+    expect(ManagedServerListResponseSchema.safeParse({ servers: [{ ...row, state: "gone" }] }).success).toBe(false);
+  });
+});
+
 describe("the contract's operator-only endpoints", () => {
   it("are marked, all under serverManagement, and nothing else is", () => {
     const marked = Object.entries(endpoints).flatMap(([group, value]) =>
@@ -92,6 +104,7 @@ describe("the contract's operator-only endpoints", () => {
     expect(marked.sort()).toEqual([
       "serverManagement.create",
       "serverManagement.get",
+      "serverManagement.list",
       "serverManagement.remove",
       "serverManagement.testConnection",
       "serverManagement.testSaved",
