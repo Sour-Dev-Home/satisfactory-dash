@@ -60,6 +60,21 @@ describe.skipIf(!available)("alert repository against a real Postgres", () => {
     expect(rules.some((rule) => rule.kind === "fuse_trip")).toBe(false);
   });
 
+  it("stores production_below_target rules (one per item, never a preset) and still refuses an unknown kind", async () => {
+    const server = await newServer();
+    const insert = (kind: string, params: object) =>
+      admin.query(
+        "INSERT INTO alerts.rules (server_id, kind, params, for_seconds, clear_seconds, repeat_seconds, severity) VALUES ($1, $2, $3, 600, 300, 3600, 'warning')",
+        [server.id, kind, JSON.stringify(params)],
+      );
+    await insert("production_below_target", { item: "Desc_IronPlate_C", targetPerMinute: 100, windowMinutes: 10 });
+    await insert("production_below_target", { item: "Desc_CopperIngot_C", targetPerMinute: 50, windowMinutes: 10 }); // a second item is allowed
+    const rules = (await rulesOf(server.publicId)).filter((rule) => rule.kind === "production_below_target");
+    expect(rules.map((rule) => (rule.params as { item: string }).item).sort()).toEqual(["Desc_CopperIngot_C", "Desc_IronPlate_C"]);
+    expect(await count("SELECT count(*) AS n FROM alerts.rules WHERE server_id = $1 AND preset", [server.id])).toBe(0);
+    await expect(insert("production_above_target", {})).rejects.toMatchObject({ code: "23514" });
+  });
+
   it("does not list a disabled rule, or the rules of a removed server", async () => {
     const server = await newServer();
     await seedPresetRules(pool, server.publicId);

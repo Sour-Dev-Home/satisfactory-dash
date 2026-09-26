@@ -23,9 +23,19 @@ twice its poller's interval is **unknown**, and every subject then holds its las
 | `stopped_machines` | yes | `group` (one alert for all machines) | a machine is `underfed` (input short) or `backedUp` (output full) AND its best output percent is below 5, held for `for`; the alert says why per machine ("input short: <ingredient>", "output full") | 5 min / 2 min / 1 h | warning |
 | `server_unreachable` | yes | `server` | 3 failed status polls in a row AND at least 2 minutes | 0 / 60 s / 1 h | critical |
 | `fuse_trip` | **no** | one per circuit | `fuseTriggered` | 0 / 60 s / 1 h | critical |
+| `production_below_target` | **no** (opt-in per item) | `item` (one rule per item) | the factory-wide rate of the item, averaged over a rolling window (5 to 60 min, default 10), is below 90% of the target; it clears above 95%, and in between the last answer stands | 10 min / 5 min / 1 h | warning |
 
 `fuse_trip` exists but is not seeded: today "outage" IS a tripped fuse, so both would say the same thing twice.
-"Newly underfed" is not offered (ADR-0027 amendment 2) and "production below target" is undecided.
+"Newly underfed" is not offered (ADR-0027 amendment 2).
+
+`production_below_target` (amendment 3) has no preset, because a target only means something for a chosen item. Its
+parameters are `item` (the class name), `targetPerMinute` (above 0) and `windowMinutes`. Rules are created through the
+rules API (PR 7); until then a row can only be inserted by hand. The window lives in memory, fed by the factory poller
+(one sample per 30 s reading, no database reads), so **after a restart, a pause, an unreachable stretch, a mute, a
+stale reading or a change of game session it starts empty**: the rule decides nothing (a firing alert holds, a new
+one waits) until the window is full again, and only then does `for` start. An item nobody makes counts as a rate of 0,
+so it fires. It follows the same `ALERT_DELIVERY` switch and shadow week as the other kinds. Migration
+`1790812800000_alert_production_kind` (a deploy needs `db:migrate` first) only widens the kind CHECK.
 
 Transitions: `fired`, `renotify` (at most once per repeat interval while it keeps firing), `resolved` (only after the
 condition has been false for the whole clear duration), and, for the grouped machine alert only, `updated` (new

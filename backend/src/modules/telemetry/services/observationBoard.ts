@@ -38,17 +38,27 @@ export interface ObservationSnapshot {
         /** true = the FIRST snapshot after a pause: FRM values may still be frozen, so it counts as unknown. */
         afterResume: boolean;
         machines: MachineObservation[];
+        /** Factory-wide current production per item (class name), items per minute. An item nobody makes is absent. */
+        itemRates: ReadonlyMap<string, number>;
       }
     | undefined;
   /** Health of the status/power poll: how the server looks from here. */
   polls: { consecutiveFailures: number; firstFailureAt: number | undefined; lastSuccessAt: number | undefined };
 }
 
+export interface FactoryObservationInput {
+  observedAt: number;
+  intervalMs: number;
+  afterResume: boolean;
+  machines: MachineObservation[];
+  itemRates: ReadonlyMap<string, number>;
+}
+
 /** What the pollers write to; a no-op when there is no database (alerts need one). */
 export interface ObservationSink {
   publishStatus(input: { observedAt: number; intervalMs: number; paused: boolean; session: string }): void;
   publishPower(input: { observedAt: number; intervalMs: number; circuits: PowerCircuitObservation[] }): void;
-  publishFactory(input: { observedAt: number; intervalMs: number; afterResume: boolean; machines: MachineObservation[] }): void;
+  publishFactory(input: FactoryObservationInput): void;
   recordPollFailure(at: number): void;
   recordPollSuccess(at: number): void;
 }
@@ -71,12 +81,13 @@ export class ObservationBoard implements ObservationSink {
     this.power = { observedAt: input.observedAt, intervalMs: input.intervalMs, circuits: input.circuits };
   }
 
-  publishFactory(input: { observedAt: number; intervalMs: number; afterResume: boolean; machines: MachineObservation[] }): void {
+  publishFactory(input: FactoryObservationInput): void {
     this.factory = {
       observedAt: input.observedAt,
       intervalMs: input.intervalMs,
       afterResume: input.afterResume,
       machines: input.machines,
+      itemRates: input.itemRates,
     };
   }
 
