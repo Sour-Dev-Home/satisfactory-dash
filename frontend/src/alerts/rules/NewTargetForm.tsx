@@ -56,7 +56,7 @@ export function NewTargetForm({
       <p className="mb-0 text-sm text-muted">Alert when an item's production stays below a target.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FormField id={id("item")} label="Item" error={errors.item}>
-          <select {...fieldAttrs(id("item"), undefined, errors.item)} value={draft.item} onChange={(e) => set("item", e.target.value)}>
+          <select {...fieldAttrs(id("item"), undefined, errors.item, "select")} value={draft.item} onChange={(e) => set("item", e.target.value)}>
             <option value="">Choose an item…</option>
             {items.map((i) => (
               <option key={i.className} value={i.className}>
@@ -82,7 +82,7 @@ export function NewTargetForm({
           />
         </FormField>
         <FormField id={id("severity")} label="Severity" error={errors.severity}>
-          <select {...fieldAttrs(id("severity"), undefined, errors.severity)} value={draft.severity} onChange={(e) => set("severity", e.target.value)}>
+          <select {...fieldAttrs(id("severity"), undefined, errors.severity, "select")} value={draft.severity} onChange={(e) => set("severity", e.target.value)}>
             {KNOWN_SEVERITIES.map((s) => (
               <option key={s} value={s}>
                 {severityLabel(s)}

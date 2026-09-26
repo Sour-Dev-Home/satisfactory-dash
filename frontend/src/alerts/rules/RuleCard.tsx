@@ -131,7 +131,7 @@ export function RuleCard({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <FormField id={fieldId("severity")} label="Severity" error={errors.severity}>
               <select
-                {...fieldAttrs(fieldId("severity"), undefined, errors.severity)}
+                {...fieldAttrs(fieldId("severity"), undefined, errors.severity, "select")}
                 value={draft.severity}
                 onChange={(e) => set("severity", e.target.value)}
               >
@@ -165,7 +165,8 @@ export function RuleCard({
           {rule.kind === "production_below_target" && params && item && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid content-start gap-1.5 text-sm">
-                <span>Item</span>
+                {/* Styled like the fields' <label>s (muted), so it reads as a label over its value. */}
+                <span className="text-muted">Item</span>
                 <span className="text-fg-strong">{item.name}</span>
                 <span className="text-muted">{ITEM_NOTE}</span>
               </div>
@@ -225,7 +226,8 @@ function ReadOnly({ rule, item }: { rule: AlertRule; item: ItemLabel | null }) {
   }
   return (
     <>
-      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
+      {/* Label and value stay on one line at any width, like the app's other definition lists. */}
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
         {rows.map(([term, value]) => (
           <div key={term} className="contents">
             <dt className="text-muted">{term}</dt>
