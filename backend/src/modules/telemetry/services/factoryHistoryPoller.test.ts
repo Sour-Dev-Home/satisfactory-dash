@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
 import { diffStates, FactoryHistoryPoller, MAX_TRANSITIONS_PER_POLL, sumItemRates } from "./factoryHistoryPoller.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
+import { ObservationBoard } from "./observationBoard.js";
 
 const rate = (className: string, current: number, max = 100) => ({
   name: className,
@@ -151,6 +152,55 @@ describe("FactoryHistoryPoller.poll", () => {
     );
     await poller.poll();
     expect(log.warn).toHaveBeenCalledTimes(1);
+  });
+
+  describe("observations for the alert engine (ADR-0027)", () => {
+    const publishing = () => {
+      const board = new ObservationBoard();
+      const state = { paused: false, buildings: [building("m1"), stalled("m2"), building("m3", { recipe: null, production: [], consumption: [] })] };
+      const ports = {
+        getFactoryBuildings: async () => state.buildings,
+        getServerStatus: async () => ({ isPaused: state.paused }) as ServerStatus,
+      };
+      const poller = new FactoryHistoryPoller(ports, { logger: logger(), history: recorder(), observations: board, now: () => 7000 });
+      return { board, state, poller };
+    };
+
+    it("publishes every machine's state and best output percent, and the recipe, with the poll time", async () => {
+      const { board, poller } = publishing();
+      await poller.poll();
+      const factory = board.snapshot().factory!;
+      expect(factory).toMatchObject({ observedAt: 7000, intervalMs: 30_000, afterResume: false });
+      expect(factory.machines.map((m) => [m.id, m.state, m.outputPercent, m.recipe])).toEqual([
+        ["m1", "producing", 100, "Concrete"],
+        ["m2", "underfed", 0, "Concrete"],
+        ["m3", "idle", undefined, null],
+      ]);
+    });
+
+    it("flags ONLY the first snapshot after a pause as afterResume, and publishes nothing while paused", async () => {
+      const { board, state, poller } = publishing();
+      await poller.poll();
+      expect(board.snapshot().factory?.afterResume).toBe(false);
+      state.paused = true;
+      await poller.poll();
+      expect(board.snapshot().factory?.afterResume).toBe(false); // untouched: nothing is published while paused
+      state.paused = false;
+      await poller.poll();
+      expect(board.snapshot().factory?.afterResume).toBe(true); // the first after the resume
+      await poller.poll();
+      expect(board.snapshot().factory?.afterResume).toBe(false); // and only that one
+    });
+
+    it("a failed poll publishes nothing new", async () => {
+      const board = new ObservationBoard();
+      const poller = new FactoryHistoryPoller(
+        { getFactoryBuildings: async () => Promise.reject(new Error("offline")), ...running },
+        { logger: logger(), history: recorder(), observations: board },
+      );
+      await poller.poll();
+      expect(board.snapshot().factory).toBeUndefined();
+    });
   });
 
   describe("while the game is paused (FRM returns frozen values)", () => {

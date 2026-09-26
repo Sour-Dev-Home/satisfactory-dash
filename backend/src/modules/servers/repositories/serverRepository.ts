@@ -161,6 +161,11 @@ const DELETE_HISTORY = [
   "DELETE FROM telemetry.power_rollups WHERE server_id = $1",
   "DELETE FROM telemetry.item_rollups WHERE server_id = $1",
   "DELETE FROM telemetry.building_transitions WHERE server_id = $1",
+  // ADR-0027 PR 5, the same reason: a revived id must not inherit the old server's alert rules (their states go with
+  // them: alert_state cascades from rules), its alert log or its mute.
+  "DELETE FROM alerts.rules WHERE server_id = $1",
+  "DELETE FROM alerts.alert_events WHERE server_id = $1",
+  "DELETE FROM alerts.server_mutes WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });
