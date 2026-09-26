@@ -13,7 +13,10 @@ test.use({
 test("the header and tabs stay put across every tab, scrolling or not", async ({ page, mockApi, isMobile }) => {
   // Phones use overlay scrollbars, and the viewport above replaces the mobile one anyway.
   test.skip(isMobile, "desktop scrollbars only");
-  await mockApi("default");
+  // With the game server unreachable, Power is just its error (short) while Overview, Factory and
+  // Settings still scroll at this height. Every tab of the default scenario scrolls once Settings
+  // has its Alerts section, so a short page comes from an error, which stays short as pages grow.
+  await mockApi("upstream-unreachable");
   await page.goto("/app");
   const nav = page.getByRole("navigation", { name: "Main" });
   await nav.waitFor();
@@ -24,7 +27,7 @@ test("the header and tabs stay put across every tab, scrolling or not", async ({
     await expect(nav.getByRole("link", { name: tab })).toHaveAttribute("aria-current", "page");
     // Each page's content is what makes it tall: wait for it before measuring.
     await page.waitForLoadState("networkidle");
-    if (tab === "Power") await page.locator(".power-chart canvas").first().waitFor();
+    if (tab === "Power") await expect(page.getByText("Game server unreachable.").first()).toBeVisible();
     seen.push({
       tab,
       title: (await page.getByRole("heading", { level: 1 }).boundingBox())!.x,
