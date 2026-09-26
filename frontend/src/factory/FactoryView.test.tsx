@@ -2,7 +2,12 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { errorUpstreamUnreachable, factoryMixed, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import {
+  errorUpstreamUnreachable,
+  factoryMixed,
+  historyTransitions24h,
+  serversSingle,
+} from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
@@ -32,6 +37,45 @@ describe("FactoryView", () => {
     renderView();
     expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
     expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+  });
+
+  // ADR-0032's tab-switch budget: "Since yesterday" sits above the table, so the table waits for it
+  // rather than being pushed down when it lands.
+  it("reveals the page once, after the factory and both 'since yesterday' reads land", async () => {
+    let release = () => {};
+    const transitionsHeld = new Promise<void>((r) => (release = r));
+    server.use(
+      http.get(endpoints.history.transitions.route, async () => {
+        await transitionsHeld;
+        return HttpResponse.json(historyTransitions24h);
+      }),
+    );
+    renderView();
+    // Give the factory and the 7d history time to land; the transitions are still held.
+    await delay(100);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
+    expect(screen.queryByRole("region", { name: "Factory" })).not.toBeInTheDocument();
+
+    release();
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(screen.getByText(/Machines changed state/)).toBeInTheDocument();
+  });
+
+  it("still reveals the page when a 'since yesterday' read fails, and doesn't hide it again", async () => {
+    let calls = 0;
+    server.use(
+      http.get(endpoints.history.transitions.route, () => {
+        calls += 1;
+        return HttpResponse.json(errorUpstreamUnreachable, { status: 502 });
+      }),
+    );
+    renderView();
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    // "Since yesterday" retries the failed read once when it mounts; the page stays shown meanwhile
+    // instead of hiding and asking again in a loop.
+    await delay(200);
+    expect(screen.getByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(calls).toBeLessThanOrEqual(2);
   });
 
   it("shows the error with its request ID when the factory can't be read", async () => {

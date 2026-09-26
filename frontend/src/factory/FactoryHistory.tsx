@@ -12,14 +12,23 @@ import { SinceYesterdayPanel } from "./SinceYesterdayPanel";
 /** The most transitions the backend sends in one answer; more reads "500+". */
 const TRANSITION_LIMIT = 500;
 
+/** The two queries "Since yesterday" reads; FactoryView waits for them too (ADR-0032). */
+export function sinceYesterdayQueries(serverId: string) {
+  return {
+    history: queries.historyItems(serverId, "7d"),
+    transitions: queries.historyTransitions(serverId, "24h", TRANSITION_LIMIT),
+  };
+}
+
 /**
  * Container for "Since yesterday" (ADR-0027 item 6): the 7d range's hourly buckets, and the last
  * 24 h of state changes. The comparison shows even if the transitions can't load.
  */
 export function SinceYesterdayView({ labels }: { labels: Map<string, ItemLabel> }) {
   const server = useSelectedServer();
-  const history = useQuery(queries.historyItems(server.id, "7d"));
-  const transitions = useQuery(queries.historyTransitions(server.id, "24h", TRANSITION_LIMIT));
+  const since = sinceYesterdayQueries(server.id);
+  const history = useQuery(since.history);
+  const transitions = useQuery(since.transitions);
   if (history.isPending) return <p role="status">Loading what changed since yesterday…</p>;
   if (!history.data) {
     return (
