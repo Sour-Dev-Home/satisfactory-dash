@@ -1,5 +1,5 @@
 import { MutationCache, QueryCache, QueryClient, queryOptions, type QueryKey } from "@tanstack/react-query";
-import { endpoints, type HistoryRange, type SessionResponse } from "@satisfactory-dash/shared";
+import { endpoints, type HistoryRange, type SessionResponse, type TransitionRange } from "@satisfactory-dash/shared";
 import { apiGetAbortable, apiGetQuery } from "./client";
 import { BackendUnreachableError, classifyError } from "./errors";
 
@@ -130,6 +130,20 @@ export const queries = {
     queryOptions({
       queryKey: ["servers", serverId, "history", "power", range],
       queryFn: ({ signal }) => apiGetQuery(signal, endpoints.history.power, { range }, serverId),
+      staleTime: 60_000,
+    }),
+  // The Factory page's history (ADR-0027 PR 8b): every item's series for a range (top 50, highest
+  // rate first), and machine state changes. Like historyPower, stored data refreshed on a visit.
+  historyItems: (serverId: string, range: HistoryRange) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "history", "items", range],
+      queryFn: ({ signal }) => apiGetQuery(signal, endpoints.history.items, { range }, serverId),
+      staleTime: 60_000,
+    }),
+  historyTransitions: (serverId: string, range: TransitionRange, limit: number) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "history", "transitions", range, limit],
+      queryFn: ({ signal }) => apiGetQuery(signal, endpoints.history.transitions, { range, limit }, serverId),
       staleTime: 60_000,
     }),
   factory: (serverId: string) =>

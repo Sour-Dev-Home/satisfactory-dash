@@ -4,7 +4,9 @@ import {
   deleteServerDone,
   factoryMixed,
   healthOk,
+  historyItems7d,
   historyPower24h,
+  historyTransitions24h,
   managedServersAllStates,
   playersUnavailable,
   powerHistoryNormal,
@@ -35,6 +37,9 @@ export const handlers = [
   http.get(endpoints.powerHistory.route, () => HttpResponse.json(powerHistoryNormal)),
   // ADR-0027 stored history: one fixture whatever `?range=` asks (tests that care override it).
   http.get(endpoints.history.power.route, () => HttpResponse.json(historyPower24h)),
+  // The Factory page's history (ADR-0027 PR 8b), queried whenever FactoryView renders.
+  http.get(endpoints.history.items.route, () => HttpResponse.json(historyItems7d)),
+  http.get(endpoints.history.transitions.route, () => HttpResponse.json(historyTransitions24h)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),

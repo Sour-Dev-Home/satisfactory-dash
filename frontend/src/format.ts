@@ -61,6 +61,20 @@ const UNIT_LABEL: Record<RateUnit, string> = { "items/min": "items/min", "m3/min
  * unit only has to be passed in at the call sites once the contract adds it.
  */
 export function formatRate(currentPerMinute: number, maxPerMinute: number, unit?: RateUnit | null): string {
-  const label = unit ? UNIT_LABEL[unit] : "per min";
-  return `${oneDecimal.format(currentPerMinute)} / ${oneDecimal.format(maxPerMinute)} ${label}`;
+  return `${oneDecimal.format(currentPerMinute)} / ${oneDecimal.format(maxPerMinute)} ${unitLabel(unit)}`;
+}
+
+/** The label after a rate: "items/min", "m³/min", or "per min" when the unit is unknown. */
+export function unitLabel(unit?: RateUnit | null): string {
+  return unit ? UNIT_LABEL[unit] : "per min";
+}
+
+/** One rate per minute, e.g. "18.2 items/min" (rounded like formatRate, never rescaled). */
+export function formatPerMinute(perMinute: number, unit?: RateUnit | null): string {
+  return `${formatAmount(perMinute)} ${unitLabel(unit)}`;
+}
+
+/** A bare amount rounded like the rates, e.g. "3,633.3", for "40 → 12 items/min". */
+export function formatAmount(value: number): string {
+  return oneDecimal.format(value);
 }
