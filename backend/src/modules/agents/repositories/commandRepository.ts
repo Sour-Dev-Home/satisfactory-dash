@@ -77,12 +77,14 @@ export async function insertCommand(
   return toCommand(row);
 }
 
-// The agent's poll: every open, unexpired command of THIS server. A pending one becomes `sent`; one already `sent` is
+// The agent's poll: every open, unexpired command of THIS server, and only while an agent is enrolled and not revoked (a
+// poll that began before a revoke gets nothing when it wakes; the security review of PR 5b). A pending one becomes `sent`; one already `sent` is
 // handed out again (the agent may have restarted before reporting; it de-duplicates by id, and the expiry bounds it).
 const CLAIM_OPEN = `
   UPDATE agents.commands c
   SET status = 'sent', sent_at = COALESCE(c.sent_at, now())
   WHERE c.server_id = $1 AND c.status IN ('pending', 'sent') AND c.expires_at > now()
+    AND EXISTS (SELECT 1 FROM agents.agent_credentials k WHERE k.server_id = c.server_id AND k.revoked_at IS NULL)
   RETURNING c.id::text AS id, c.type AS type, c.params AS params, c.status AS status, c.created_at AS created_at,
             c.expires_at AS expires_at, c.completed_at AS completed_at, c.result_code AS result_code`;
 
@@ -133,6 +135,7 @@ export async function completeCommand(
   db: Queryable,
   input: { serverUuid: string; commandId: string; ok: boolean; code: string | undefined },
 ): Promise<CompleteOutcome> {
+  if (!isCommandId(input.commandId)) return "not_found"; // the column is a uuid: Postgres would reject other text (a 500)
   const done = await db.query(COMPLETE, [input.commandId, input.serverUuid, input.ok ? "succeeded" : "failed", input.ok ? null : (input.code ?? null)]);
   if (done.rows.length > 0) return "accepted";
   const found = parseFirst(z.object({ status: z.string(), past_expiry: z.boolean() }), (await db.query(LOOK_UP_FOR_REPORT, [input.commandId, input.serverUuid])).rows, "agents.completeCommand");

@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { CommandSchema } from "@satisfactory-dash/shared";
 import { ApiFailure, NotEditableError, RateLimitedError, ServerNotFoundError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import { MAX_OPEN_COMMANDS } from "../repositories/commandRepository.js";
+import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { CommandNotifier } from "./commandNotifier.js";
 import { createCommandsService } from "./commandsService.js";
 
@@ -139,6 +140,18 @@ describe("requestAutoPause", () => {
     const failure = await createCommandsService({ db: pool, notifier: new CommandNotifier() }).requestAutoPause("alpha", true, "u").catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(RateLimitedError);
     expect(kinds()).not.toContain("insert");
+  });
+
+  it("limits how many changes one person can make per minute (the server's cap of open commands does not stop one admin filling it)", async () => {
+    const { pool, kinds } = fakePool(enrolledAgentServer);
+    const service = createCommandsService({ db: pool, notifier: new CommandNotifier(), limiter: new UserRateLimiter({ max: 2, windowMs: 60_000 }) });
+    await service.requestAutoPause("alpha", true, "user-1");
+    await service.requestAutoPause("alpha", false, "user-1");
+    const before = kinds().length;
+    expect(await service.requestAutoPause("alpha", true, "user-1").catch((err: unknown) => err)).toBeInstanceOf(RateLimitedError);
+    expect(kinds()).toHaveLength(before); // refused before it touched the database
+    await expect(service.requestAutoPause("alpha", true, "user-2")).resolves.toHaveProperty("id");
+    await expect(service.requestAutoPause("alpha", true, undefined)).resolves.toHaveProperty("id");
   });
 
   it("one below the cap still works", async () => {

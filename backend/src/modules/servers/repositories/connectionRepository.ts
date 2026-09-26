@@ -367,7 +367,9 @@ export async function updateConnection(
     if (patch.displayName !== undefined) {
       await client.query(RENAME, [serverId, patch.displayName]);
     }
-    await dropOpenEnrollmentCodes(client, serverId);
+    // A rename alone changes nothing about how the server is reached: its codes stay.
+    const reachesDifferently = [patch.host, patch.pinnedIp, patch.apiPort, patch.frmPort, patch.apiToken, patch.frmToken].some((value) => value !== undefined);
+    if (reachesDifferently) await dropOpenEnrollmentCodes(client, serverId);
     if (audit !== undefined) {
       await recordAuditEvent(client, {
         action: "server.updated",

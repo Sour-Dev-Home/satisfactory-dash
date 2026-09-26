@@ -148,6 +148,18 @@ describe.skipIf(!available)("agent commands against a real Postgres", () => {
       expect((await commands.poll(theirs.agent, 0)).map((c) => c.id)).toEqual([other.id]);
     });
 
+    it("a revoked credential is handed nothing, even by a poll that began before the revoke and wakes after it", async () => {
+      const { publicId, agent } = await newAgentServer();
+      const poll = commands.poll(agent, 25);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await agents.revoke(publicId, ACTOR);
+      // A command that was already open (created before the revoke, as a direct insert would) is not delivered either.
+      await admin.query("INSERT INTO agents.commands (server_id, type, params, expires_at) VALUES ($1, 'set_auto_pause', '{\"enabled\": true}', now() + interval '1 minute')", [agent.serverUuid]);
+      notifier.notify(agent.serverUuid);
+      expect(await poll).toEqual([]);
+      expect(await commands.poll(agent, 0)).toEqual([]);
+    });
+
     it("hasPending is true only while an open, unexpired command waits", async () => {
       const { publicId, agent } = await newAgentServer();
       expect(await commands.hasPending(agent.serverUuid)).toBe(false);
@@ -353,6 +365,14 @@ describe.skipIf(!available)("agent commands against a real Postgres", () => {
       expect(await updateConnection(pool, ring, server.id, { apiPort: 7778 })).toBe(true);
       expect(await openCodes(server.id)).toBe(0);
       expect(await openCodes(bystander.id)).toBe(1);
+    });
+
+    it("a rename alone changes nothing about how the server is reached: its codes stay", async () => {
+      const server = await upsertConfiguredServer(pool, { publicId: `cmd-${++counter}`, displayName: "Local" });
+      await saveConnection(pool, ring, server.id, input);
+      await agents.createEnrollmentCode(server.publicId, ACTOR);
+      expect(await updateConnection(pool, ring, server.id, { displayName: "Renamed" })).toBe(true);
+      expect(await openCodes(server.id)).toBe(1);
     });
 
     it("a spent code is not touched (it is history)", async () => {

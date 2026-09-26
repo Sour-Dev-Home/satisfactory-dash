@@ -4,6 +4,7 @@ import { isDatabaseUnavailable } from "../../../platform/db/errors.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
+import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { getAgentStatus, lockServer } from "../repositories/agentRepository.js";
 import {
   MAX_OPEN_COMMANDS,
@@ -52,6 +53,8 @@ export interface AgentCommandsService {
 export interface CommandsServiceDeps {
   db: Queryable & Parameters<typeof withTransaction>[0];
   notifier: CommandNotifier;
+  /** Auto-pause changes per user per minute (default 20): the cap of 5 open commands bounds a server, this bounds a person. */
+  limiter?: UserRateLimiter;
   now?: () => number;
 }
 
@@ -88,10 +91,15 @@ const enabledOf = (row: CommandRow): boolean | undefined => (typeof row.params.e
 
 export function createCommandsService(deps: CommandsServiceDeps): CommandsService & AgentCommandsService {
   const { db, notifier } = deps;
+  const limiter = deps.limiter ?? new UserRateLimiter({ max: 20, windowMs: 60_000 });
 
   return {
     requestAutoPause: (serverId, enabled, actorUserId) =>
       orUnavailable(async () => {
+        if (actorUserId !== undefined) {
+          const wait = limiter.hit(actorUserId);
+          if (wait > 0) throw new RateLimitedError(wait, "Too many changes. Try again in a moment.");
+        }
         const { row, serverUuid } = await withTransaction(db, async (client) => {
           const server = await lockServer(client, serverId);
           if (server === undefined) throw new ServerNotFoundError();

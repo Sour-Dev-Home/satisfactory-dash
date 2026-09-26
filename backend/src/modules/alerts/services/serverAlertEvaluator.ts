@@ -226,7 +226,11 @@ export class ServerAlertEvaluator {
           // enrolled a moment ago is not offline before it had the time to report.
           const since = Math.max(obs.agent.startedAt, obs.agent.lastHeardAt ?? obs.agent.startedAt);
           const silentMs = Math.max(0, now - since);
-          stepSubject(rule, "agent", silentMs >= rule.params.offlineSeconds * 1000, () => ({
+          const silent = silentMs >= rule.params.offlineSeconds * 1000;
+          // Nothing heard since this board began and the window not yet over: that is no evidence the agent is back, so a
+          // firing alert HOLDS (unknown) instead of clearing and re-firing after every backend restart.
+          const condition: boolean | "unknown" = silent ? true : obs.agent.lastHeardAt === undefined ? "unknown" : false;
+          stepSubject(rule, "agent", condition, () => ({
             silentForSeconds: Math.round(silentMs / 1000),
             neverHeard: obs.agent?.lastHeardAt === undefined,
           }));
