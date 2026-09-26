@@ -97,7 +97,21 @@ const INSERT_EVENTS = `
   SELECT r.server_id, r.id, x.kind, x.severity, x.subject, x.transition, to_timestamp($1::float8 / 1000.0), x.summary::jsonb
   FROM unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
          AS x(rule_id, kind, severity, subject, transition, summary)
-  JOIN alerts.rules r ON r.id = x.rule_id`;
+  JOIN alerts.rules r ON r.id = x.rule_id
+  RETURNING id::text AS id`;
+
+// ADR-0027 decision 5, the transactional outbox: one row per (new event, ENABLED destination of its server), written in
+// the same transaction as the events. (event_id, destination_id) is the idempotency key.
+const ENQUEUE_DELIVERIES = `
+  INSERT INTO alerts.outbox (event_id, destination_id)
+  SELECT e.id, d.id
+  FROM alerts.alert_events e
+  JOIN alerts.destinations d ON d.server_id = e.server_id AND d.enabled
+  JOIN servers.servers sv ON sv.id = e.server_id AND sv.deleted_at IS NULL
+  WHERE e.id = ANY($1::bigint[])
+  ON CONFLICT (event_id, destination_id) DO NOTHING`;
+
+const InsertedIdSchema = z.object({ id: z.string() });
 
 const PURGE_EVENTS = `
   WITH d AS (
@@ -153,7 +167,14 @@ export async function seedPresetRules(db: Queryable, serverPublicId: string): Pr
  */
 export async function writeEvaluation(
   pool: Parameters<typeof withTransaction>[0],
-  input: { writes: readonly StateWrite[]; events: readonly AlertEventOut[]; nowMs: number },
+  input: {
+    writes: readonly StateWrite[];
+    events: readonly AlertEventOut[];
+    nowMs: number;
+    /** ALERT_DELIVERY is on: also queue each new event for every enabled destination, in the same transaction. While
+     *  it is off nothing is queued, so switching it on later sends only transitions that happen after that. */
+    deliver?: boolean;
+  },
 ): Promise<void> {
   if (input.writes.length === 0 && input.events.length === 0) return;
   await withTransaction(pool, async (client) => {
@@ -171,7 +192,7 @@ export async function writeEvaluation(
     }
     if (input.events.length > 0) {
       const e = input.events;
-      await client.query(INSERT_EVENTS, [
+      const inserted = await client.query(INSERT_EVENTS, [
         input.nowMs,
         e.map((event) => event.ruleId),
         e.map((event) => event.kind),
@@ -180,6 +201,10 @@ export async function writeEvaluation(
         e.map((event) => event.transition),
         e.map((event) => JSON.stringify(event.summary)),
       ]);
+      if (input.deliver === true) {
+        const ids = parseRows(InsertedIdSchema, inserted.rows, "alerts.insertEvents").map((row) => row.id);
+        if (ids.length > 0) await client.query(ENQUEUE_DELIVERIES, [ids]);
+      }
     }
   });
 }

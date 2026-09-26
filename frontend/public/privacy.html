@@ -60,6 +60,18 @@
             <td>The dashboard. It describes the game world, not you.</td>
           </tr>
           <tr>
+            <td>A Discord webhook URL, if a server's owner or an admin sets one up for alerts</td>
+            <td>
+              Sending that server's alerts to its Discord channel. The URL is a secret (whoever has it can
+              post to that channel), so it is stored encrypted and never shown back: only its last 4
+              characters are. Nothing is sent until someone sets one up.
+            </td>
+          </tr>
+          <tr>
+            <td>Alerts: which alert fired or cleared on a server, when, and what it was about (a circuit, a count of machines and their recipes)</td>
+            <td>Showing the alert log and sending the alerts. It describes the game world, not you.</td>
+          </tr>
+          <tr>
             <td>Audit events: who did what to which server, and when (no emails or names in them)</td>
             <td>Security, and investigating abuse</td>
           </tr>
@@ -98,11 +110,17 @@
         <li>Google: signing in. You share your email address and account id with us through it.</li>
         <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
         <li>Backblaze: stores our encrypted backups.</li>
+        <li>
+          Discord: only if a server's owner or an admin sets up a webhook. It receives that server's
+          alert messages (the server's name and what the alert is about: a circuit, or a count of
+          machines and their recipes). No account information is sent. Discord also sees the IP address
+          of our server, as the sender.
+        </li>
       </ul>
-      <!-- Only what runs today. Add with the features: alert emails (AWS SES) and Discord
-           (webhook alerts, ADR-0027), with the webhook row in the table above. -->
+      <!-- Only what runs today. Add with the features: alert emails (AWS SES), with its own row in the
+           table above. Discord (webhook alerts, ADR-0027 PR 6) is in the table and the list above. -->
       <p>
-        When a new feature needs another provider (for example, alert delivery), it's added here
+        When a new feature needs another provider (for example, emailed alerts), it's added here
         before that feature goes live.
       </p>
       <p>These providers are based in the United States, so your data is processed there.</p>
@@ -114,9 +132,13 @@
         <!-- ADR-0027 PR 3: history storage. Live with the first deploy that runs the telemetry migration. -->
         <li>
           Game data (power, production and machine states): recorded so the dashboard can show
-          history. Detailed readings are kept for 48 hours, one-minute averages
+          history and send alerts. Detailed readings are kept for 48 hours, one-minute averages
           for 30 days, and hourly averages for 1 year. Machine state changes are kept for 30 days.
           It describes the game world, not you. Player names are never part of it.
+        </li>
+        <li>
+          Alerts (which alert fired or cleared, and when): kept for 90 days. A message that could not
+          be delivered to Discord is tried again for up to 24 hours and then given up.
         </li>
         <!-- ADR-0025 PR 8b (backups): live before the first run with a bucket (gate B). -->
         <li>
