@@ -248,10 +248,11 @@ describe("error middleware (ADR-0003 envelope)", () => {
     process.env.NODE_ENV = "development";
     const { app, lines } = appThrowing(unreachable());
     const secret = "tok-SECRET-fragment-1234567890";
-    const res = await request(app)
-      .post("/api/echo")
-      .set("Content-Type", "application/json")
-      .send(`{"apiToken": "${secret}" "broken`);
+    // An unquoted value makes V8 quote the surrounding text in its message; a missing comma (the earlier
+    // body here) does not, which made the SECRET assertions below pass even on the unfixed code.
+    const body = `{"apiToken": ${secret}}`;
+    expect(() => JSON.parse(body)).toThrow(/SECRET/);
+    const res = await request(app).post("/api/echo").set("Content-Type", "application/json").send(body);
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).not.toContain("SECRET");
     expect(lines.length).toBeGreaterThan(0);
