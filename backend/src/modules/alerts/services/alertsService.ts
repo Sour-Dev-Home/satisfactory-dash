@@ -44,7 +44,7 @@ import {
   type ApiRuleRow,
 } from "../repositories/apiRepository.js";
 import { disableDestinationIn, getDestinationSummary, saveDiscordDestination } from "../repositories/deliveryRepository.js";
-import { parseRuleParams } from "./rules.js";
+import { AGENT_OFFLINE_MIN_SECONDS, parseRuleParams } from "./rules.js";
 import { sendAlertTest } from "./sendTest.js";
 
 /**
@@ -99,8 +99,12 @@ const ServerUnreachableUpdate = z
   .strictObject({ failedPolls: z.number().int().min(1).max(1000).optional(), minSeconds: z.number().int().min(0).max(86_400).optional() })
   .refine((params) => params.failedPolls !== undefined || params.minSeconds !== undefined, "Send failedPolls and/or minSeconds");
 
+const AgentOfflineUpdate = z.strictObject({ offlineSeconds: z.number().int().min(AGENT_OFFLINE_MIN_SECONDS).max(86_400) });
+
 function updateSchemaFor(kind: string): z.ZodType<Record<string, unknown>> | undefined {
   switch (kind) {
+    case "agent_offline":
+      return AgentOfflineUpdate;
     case "production_below_target":
       return ProductionBelowTargetUpdateParamsSchema;
     case "stopped_machines":

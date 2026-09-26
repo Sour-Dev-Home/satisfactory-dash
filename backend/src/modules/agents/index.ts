@@ -15,22 +15,36 @@ import { setAgentVersion } from "./repositories/agentRepository.js";
 import { createAgentApiRouter } from "./routes/agentApi.js";
 import { createAgentUserRouter } from "./routes/agentUser.js";
 import { createAgentAuth } from "./services/agentAuth.js";
+import { CommandSweeper } from "./services/commandSweeper.js";
+import type { AgentCommandsService, CommandsService } from "./services/commandsService.js";
 import { createEnrollmentService } from "./services/enrollmentService.js";
 import type { AgentsService } from "./services/agentsService.js";
 
 export { AGENT_CADENCE } from "./config.js";
 export { createAgentsService } from "./services/agentsService.js";
 export type { AgentsService, AgentsServiceDeps } from "./services/agentsService.js";
+export { createCommandsService } from "./services/commandsService.js";
+export type { AgentCommandsService, CommandsService, CommandsServiceDeps } from "./services/commandsService.js";
+export { CommandNotifier } from "./services/commandNotifier.js";
+export { createAgentSettingsServices } from "./services/agentSettings.js";
+export type { AgentSettingsServices } from "./services/agentSettings.js";
 
-/** The owner's routes under /api/servers/:serverId (enrolment code, agent status, revoke). Mount them AFTER the servers
- *  router, whose membership check covers these paths. */
-export function createAgentUserRouters(service: AgentsService): Router[] {
-  return [createAgentUserRouter(service)];
+/** The process-wide worker that expires stale commands and purges old ones; start it once the database is up. */
+export function createCommandSweeper(db: Queryable, logger: Logger): { start(): void; stop(): Promise<void> } {
+  return new CommandSweeper(db, { logger });
+}
+
+/** The owner's routes under /api/servers/:serverId (enrolment code, agent status, revoke, a command's status). Mount them
+ *  AFTER the servers router, whose membership check covers these paths. */
+export function createAgentUserRouters(service: AgentsService, commands: Pick<CommandsService, "getCommand">): Router[] {
+  return [createAgentUserRouter(service, commands)];
 }
 
 export interface AgentApiModuleDeps {
   db: Queryable & Parameters<typeof withTransaction>[0];
   logger: Logger;
+  /** The agent-facing commands service (poll, report, pending), built with the SAME notifier as the settings services. */
+  commands: AgentCommandsService;
   directory: ServerDirectory<TelemetryScope>;
   /** Replaces a server's running entry with an agent-backed one; idempotent. Called after enrolment commits, and by the
    *  first snapshot of a server that has none. */
@@ -45,6 +59,7 @@ export function createAgentApiRouters(deps: AgentApiModuleDeps): Router[] {
     createAgentApiRouter({
       auth: createAgentAuth({ db: deps.db }),
       enrollment: createEnrollmentService({ db: deps.db, cadence, attachAgentRuntime: deps.attachAgentRuntime, logger: deps.logger }),
+      commands: deps.commands,
       directory: deps.directory,
       attachAgentRuntime: deps.attachAgentRuntime,
       recordVersion: (serverUuid, agentVersion) => setAgentVersion(deps.db, serverUuid, agentVersion),

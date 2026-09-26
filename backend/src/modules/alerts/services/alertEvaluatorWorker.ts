@@ -135,9 +135,13 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
     }
 
     for (const server of servers) {
-      if (!this.seeded.has(server.id)) {
-        await seedPresetRules(this.db, server.id);
-        this.seeded.add(server.id);
+      // A server reached through an edge agent also gets the "agent offline" preset (ADR-0031). One that becomes an agent
+      // server later (its enrolment) is seeded again under its new key, so it gets it without a restart.
+      const agent = server.observations.snapshot().agent !== undefined;
+      const seededAs = agent ? `${server.id}#agent` : server.id;
+      if (!this.seeded.has(seededAs)) {
+        await seedPresetRules(this.db, server.id, { agent });
+        this.seeded.add(seededAs);
       }
     }
 

@@ -39,6 +39,7 @@ function setup(startMs = T0) {
     publishFactory: vi.fn(),
     recordPollFailure: vi.fn(),
     recordPollSuccess: vi.fn(),
+    recordAgentSeen: vi.fn(),
   };
   const history = { recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() };
   const powerStore = new InMemoryPowerHistoryStore({ intervalSeconds: 5 });
@@ -164,6 +165,21 @@ describe("a paused game", () => {
     const t = setup();
     t.ingest.ingest(t.running({ paused: null }), T0);
     expect(t.history.recordItems).toHaveBeenCalled();
+  });
+});
+
+describe("the agent's liveness (ADR-0031: 'agent offline' measures from it)", () => {
+  it("every snapshot proves the agent is alive: a running one, and one that says the game is unreachable", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(T0 + 5000).toISOString() }, T0 + 5000);
+    expect(t.observations.recordAgentSeen.mock.calls).toEqual([[T0], [T0 + 5000]]);
+  });
+
+  it("is the arrival time, not the agent's own clock", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ observedAt: "1999-01-01T00:00:00.000Z" }), T0);
+    expect(t.observations.recordAgentSeen).toHaveBeenCalledWith(T0);
   });
 });
 

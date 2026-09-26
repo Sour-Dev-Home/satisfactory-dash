@@ -142,6 +142,19 @@ function words(input: AlertMessageInput): { title: string; lines: string[] } {
         lines: down > 0 && input.transition !== "resolved" ? [`No answer for about ${Math.max(1, Math.round(down / 60))} min.`] : [],
       };
     }
+    case "agent_offline": {
+      // ADR-0031: the edge agent on the game PC stopped reporting (the PC is off, the network is down, or the agent stopped).
+      const silent = count(input.summary.silentForSeconds);
+      return {
+        title:
+          input.transition === "resolved"
+            ? "Agent reporting again"
+            : input.transition === "renotify"
+              ? "Still offline: the agent on the game PC"
+              : "Agent offline: the game PC has stopped reporting",
+        lines: silent > 0 && input.transition !== "resolved" ? [`No snapshot for about ${Math.max(1, Math.round(silent / 60))} min.`] : [],
+      };
+    }
     case "production_below_target": {
       // `item` is a game class name: escaped like any game text. The rates are rounded to one decimal.
       const item = escapeDiscordText(input.summary.item, 80) || "an item";

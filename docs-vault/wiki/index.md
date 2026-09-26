@@ -21,6 +21,9 @@ added or removed.
   order (`db:migrate` first), what is stored and for how long, the recorder, pollers and rollup worker.
 - [`runbooks/alerts.md`](./runbooks/alerts.md) — the alert engine (ADR-0027 PR 5): the deploy order (`db:migrate`
   first), the rule kinds and presets, suppression, restarts, and the SQL to read the alert log during the shadow run.
+- [`runbooks/agents.md`](./runbooks/agents.md) — the backend side of the edge agent (ADR-0031 PR 5a and 5b): the deploy
+  order (`db:migrate` first), enrolment codes and what enrolling does to a local server, revoking (the only way back is
+  re-enrolling), commands (auto-pause answers `202`), and the `agent_offline` alert.
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power

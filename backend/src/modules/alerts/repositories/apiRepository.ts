@@ -66,7 +66,7 @@ const LIST_RULES = `
   JOIN servers.servers s ON s.id = r.server_id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL
   ORDER BY r.preset DESC, r.created_at,
-           array_position(ARRAY['power_outage', 'fuse_trip', 'stopped_machines', 'server_unreachable', 'production_below_target'], r.kind), r.id`;
+           array_position(ARRAY['power_outage', 'fuse_trip', 'stopped_machines', 'server_unreachable', 'agent_offline', 'production_below_target'], r.kind), r.id`;
 const GET_RULE = `
   SELECT r.id::text AS id, r.kind AS kind, r.params AS params, r.for_seconds AS for_seconds, r.clear_seconds AS clear_seconds,
          r.repeat_seconds AS repeat_seconds, r.severity AS severity, r.enabled AS enabled, r.preset AS preset,
