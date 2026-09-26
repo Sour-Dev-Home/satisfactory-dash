@@ -17,7 +17,7 @@ describe("ObservationBoard", () => {
     const board = new ObservationBoard();
     board.publishStatus({ observedAt: 100, intervalMs: 5000, paused: false, session: "S1" });
     board.publishPower({ observedAt: 100, intervalMs: 5000, circuits: [{ circuit: 1, status: "ok", fuseTripped: false }] });
-    board.publishFactory({ observedAt: 90, intervalMs: 30_000, afterResume: true, machines: [] });
+    board.publishFactory({ observedAt: 90, intervalMs: 30_000, afterResume: true, machines: [], itemRates: new Map([["Desc_IronPlate_C", 60]]) });
     board.publishStatus({ observedAt: 105, intervalMs: 5000, paused: true, session: "S2" });
     const snapshot = board.snapshot();
     expect(snapshot.session).toBe("S2");
@@ -51,7 +51,7 @@ describe("ObservationBoard", () => {
     expect(() => {
       noopObservationSink.publishStatus({ observedAt: 1, intervalMs: 1, paused: false, session: "S" });
       noopObservationSink.publishPower({ observedAt: 1, intervalMs: 1, circuits: [] });
-      noopObservationSink.publishFactory({ observedAt: 1, intervalMs: 1, afterResume: false, machines: [] });
+      noopObservationSink.publishFactory({ observedAt: 1, intervalMs: 1, afterResume: false, machines: [], itemRates: new Map() });
       noopObservationSink.recordPollFailure(1);
       noopObservationSink.recordPollSuccess(1);
     }).not.toThrow();

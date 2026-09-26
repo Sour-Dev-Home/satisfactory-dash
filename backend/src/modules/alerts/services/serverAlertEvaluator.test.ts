@@ -45,6 +45,9 @@ interface World {
   paused?: boolean;
   circuits?: PowerCircuitObservation[];
   machines?: MachineObservation[];
+  /** Factory-wide items per minute by class name (an item that is absent is not being made). */
+  itemRates?: Record<string, number>;
+  session?: string;
   afterResume?: boolean;
   failures?: number;
   firstFailureAt?: number;
@@ -59,10 +62,16 @@ interface World {
 function snapshot(now: number, world: World): ObservationSnapshot {
   const failing = (world.failures ?? 0) > 0;
   return {
-    session: "Session A",
+    session: world.session ?? "Session A",
     status: { observedAt: now - (world.statusAge ?? 0), intervalMs: 5 * SEC, paused: world.paused ?? false },
     power: { observedAt: now - (world.powerAge ?? 0), intervalMs: 5 * SEC, circuits: world.circuits ?? [circuit(1)] },
-    factory: { observedAt: now - (world.factoryAge ?? 0), intervalMs: 30 * SEC, afterResume: world.afterResume ?? false, machines: world.machines ?? [] },
+    factory: {
+      observedAt: now - (world.factoryAge ?? 0),
+      intervalMs: 30 * SEC,
+      afterResume: world.afterResume ?? false,
+      machines: world.machines ?? [],
+      itemRates: new Map(Object.entries(world.itemRates ?? {})),
+    },
     polls: {
       consecutiveFailures: world.failures ?? 0,
       firstFailureAt: failing ? (world.firstFailureAt ?? now) : undefined,
@@ -522,5 +531,312 @@ describe("fresh-eyes: boundaries and gaps", () => {
     for (let m = 7; m <= 30; m += 1) out.push(...transitions(sim.at(m, world)));
     expect(out).toEqual([]);
     expect(sim.phase(stopped, "group")).toBe("firing");
+  });
+});
+
+describe("production_below_target (ADR-0027 amendment 3)", () => {
+  const ITEM = "Desc_IronPlate_C";
+  const production = rule("production_below_target", { forSeconds: 600, clearSeconds: 300, repeatSeconds: 3600 }, { item: ITEM, targetPerMinute: 100, windowMinutes: 10 });
+  const STEP = 0.5; // the factory poller's 30 s
+  const at = (rate: number | undefined): World => ({ itemRates: rate === undefined ? {} : { [ITEM]: rate } });
+
+  /** Runs one tick per 30 s from `from` to `to` (minutes, inclusive) and returns every event with its time. */
+  function run(sim: Sim, from: number, to: number, world: World | ((minute: number) => World)) {
+    const out: { minute: number; event: string; summary: Record<string, unknown> }[] = [];
+    for (let minute = from; minute <= to + 1e-9; minute += STEP) {
+      for (const event of sim.at(minute, typeof world === "function" ? world(minute) : world)) {
+        out.push({ minute, event: `${event.subject}:${event.transition}`, summary: event.summary });
+      }
+    }
+    return out;
+  }
+
+  it("says nothing while the window fills, then fires after the window is full and `for` has passed", () => {
+    const sim = new Sim([production]);
+    const events = run(sim, 0, 25, at(50));
+    expect(events.map((e) => e.event)).toEqual(["item:fired"]);
+    // Full at about 9.5 min, then 10 min of `for`.
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(19);
+    expect(events[0]!.minute).toBeLessThanOrEqual(20.5);
+    expect(sim.phase(production, "item")).toBe("firing");
+  });
+
+  it("a partly filled window decides nothing: no pending state, no event", () => {
+    const sim = new Sim([production]);
+    expect(run(sim, 0, 9, at(0))).toEqual([]);
+    expect(sim.phase(production, "item")).toBe("ok");
+    expect(sim.states.size).toBe(0);
+  });
+
+  it("the event says what is wrong: item, target, the window average and the window", () => {
+    const sim = new Sim([production]);
+    const [fired] = run(sim, 0, 25, at(50));
+    expect(fired!.summary).toEqual({ item: ITEM, targetPerMinute: 100, averagePerMinute: 50, windowMinutes: 10 });
+  });
+
+  it("a zero rate fires: an item nobody makes is production of 0, not unknown", () => {
+    const absent = new Sim([production]);
+    expect(run(absent, 0, 25, at(undefined)).map((e) => e.event)).toEqual(["item:fired"]);
+    const zero = new Sim([production]);
+    expect(run(zero, 0, 25, at(0)).map((e) => e.event)).toEqual(["item:fired"]);
+  });
+
+  it("does not flap at 92% of the target: inside the 90-95% band it neither fires nor resolves", () => {
+    const fresh = new Sim([production]);
+    expect(run(fresh, 0, 90, at(92))).toEqual([]); // never fires from 92%
+    const firing = new Sim([production]);
+    expect(run(firing, 0, 25, at(50)).map((e) => e.event)).toEqual(["item:fired"]);
+    // Held while the average sits in the band: only the hourly reminder, never a resolve.
+    expect(run(firing, 25.5, 120, at(92)).map((e) => e.event)).toEqual(["item:renotify"]);
+    expect(firing.phase(production, "item")).toBe("firing");
+  });
+
+  it("fires just below 90% and not at exactly 90%", () => {
+    const below = new Sim([production]);
+    expect(run(below, 0, 25, at(89.9)).map((e) => e.event)).toEqual(["item:fired"]);
+    const exactly = new Sim([production]);
+    expect(run(exactly, 0, 60, at(90))).toEqual([]);
+  });
+
+  it("resolves only after the average is above 95% and has stayed there for the clear time", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 25, at(50));
+    const events = run(sim, 25.5, 60, at(100));
+    expect(events.map((e) => e.event)).toEqual(["item:resolved"]);
+    // The window average must climb past 95 (about 9 of 10 minutes at 100), then 5 minutes clear.
+    expect(events[0]!.minute).toBeGreaterThan(25 + 9 + 5 - 1);
+    expect(sim.phase(production, "item")).toBe("ok");
+  });
+
+  it("holds after a restart until the window is full again, then decides from the refilled window", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 25, at(50)); // firing, persisted
+    sim.restart();
+    // Production recovered while we were down: nothing may resolve until a full window says so.
+    const events = run(sim, 26, 60, at(100));
+    expect(events.map((e) => e.event)).toEqual(["item:resolved"]);
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(26 + 9.5 + 5 - 0.5); // window full, then 5 minutes clear
+  });
+
+  it("a new alert after a restart also waits for a full window and its `for`", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 5, at(50)); // 5 minutes in: still filling
+    sim.restart();
+    const events = run(sim, 6, 40, at(50));
+    expect(events.map((e) => e.event)).toEqual(["item:fired"]);
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(6 + 19);
+  });
+
+  it("is suppressed while the game is paused, and the window refills after the pause", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 8, at(50)); // nearly full
+    expect(run(sim, 8.5, 60, { ...at(0), paused: true })).toEqual([]);
+    const events = run(sim, 60.5, 90, at(50));
+    expect(events.map((e) => e.event)).toEqual(["item:fired"]);
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(60.5 + 19 - 0.5); // a fresh window, not the one from before the pause
+  });
+
+  it("is suppressed while the server is unreachable", () => {
+    const sim = new Sim([production]);
+    const down = (minute: number): World => ({ ...at(0), failures: 10, firstFailureAt: T0 + (minute - 30) * MIN });
+    expect(run(sim, 0, 60, down)).toEqual([]);
+  });
+
+  it("the first snapshot after a pause is not sampled (FRM may still be frozen)", () => {
+    const sim = new Sim([production]);
+    const events = run(sim, 0, 40, (minute) => ({ ...at(50), afterResume: minute < 10 }));
+    // Nothing was sampled before minute 10, so the window is full at about 19.5 and the alert fires 10 minutes later.
+    expect(events.map((e) => e.event)).toEqual(["item:fired"]);
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(29);
+  });
+
+  it("a stale factory reading throws the window away: a gap is not time", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 8, at(50));
+    sim.at(8.5, { ...at(50), factoryAge: 5 * MIN }); // stale, and unknown
+    const events = run(sim, 9, 40, at(50));
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(8.5 + 19 - 0.5);
+  });
+
+  it("a change of game session starts a new window", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 9, { ...at(50), session: "Session A" });
+    const events = run(sim, 9.5, 40, { ...at(50), session: "Session B" });
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(9.5 + 19 - 0.5);
+  });
+
+  it("an evaluation that is not committed does not advance the window", () => {
+    const sim = new Sim([production]);
+    for (let minute = 0; minute <= 40; minute += STEP) expect(sim.at(minute, at(0), { commit: false })).toEqual([]);
+  });
+
+  it("two items have independent windows and alerts", () => {
+    const copper = rule("production_below_target", { id: "rule-copper", forSeconds: 600, clearSeconds: 300, repeatSeconds: 3600 }, { item: "Desc_CopperIngot_C", targetPerMinute: 50, windowMinutes: 10 });
+    const sim = new Sim([production, copper]);
+    const events = run(sim, 0, 25, { itemRates: { [ITEM]: 100, Desc_CopperIngot_C: 10 } });
+    expect(events.map((e) => `${e.event}:${e.summary.item}`)).toEqual(["item:fired:Desc_CopperIngot_C"]);
+    expect(sim.phase(copper, "item")).toBe("firing");
+    expect(sim.phase(production, "item")).toBe("ok");
+  });
+
+  it("changing the window size starts a new window", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 9, at(50));
+    sim.rules = [{ ...production, params: { item: ITEM, targetPerMinute: 100, windowMinutes: 20 } } as Rule];
+    expect(run(sim, 9.5, 25, at(50))).toEqual([]); // a 20-minute window is not full for 20 minutes
+  });
+
+  it("muted: nothing is evaluated and the window is dropped", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 9, at(50));
+    for (let minute = 9.5; minute <= 20; minute += STEP) expect(sim.at(minute, at(50), { muted: true })).toEqual([]);
+    const events = run(sim, 20.5, 45, at(50));
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(20.5 + 19 - 0.5);
+  });
+
+  // ---- fresh-eyes additions ----
+  const windowOf = (sim: Sim, r: Rule = production) =>
+    (sim.evaluator as unknown as { rateWindows: Map<string, { samples: unknown[] }> }).rateWindows.get(r.id);
+
+  it("a NaN or Infinity reading is not a sample: it must not hold the alert for a window's length", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const sim = new Sim([production]);
+      const events = run(sim, 0, 30, (minute) => (minute === 5 ? at(bad) : at(50)));
+      expect(events.map((e) => e.event)).toEqual(["item:fired"]);
+      expect(events[0]!.minute).toBeLessThanOrEqual(21);
+      expect(Number.isFinite(events[0]!.summary.averagePerMinute)).toBe(true);
+    }
+  });
+
+  it("a negative reading counts as 0, it does not drag the average below what was made", () => {
+    const sim = new Sim([production]);
+    // One absurd -1000 in a window of 100/min would average to 45 and fire falsely.
+    expect(run(sim, 0, 40, (minute) => at(minute === 12 ? -1000 : 100))).toEqual([]);
+  });
+
+  it("ticking faster than the poller adds one sample per reading, not one per tick", () => {
+    const sim = new Sim([production]);
+    const events: string[] = [];
+    for (let minute = 0; minute <= 25; minute += 5 / 60) {
+      const polled = Math.floor(minute / STEP + 1e-9) * STEP;
+      for (const e of sim.at(minute, { ...at(50), factoryAge: (minute - polled) * MIN })) events.push(`${e.subject}:${e.transition}`);
+    }
+    expect(events).toEqual(["item:fired"]);
+    expect(windowOf(sim)!.samples.length).toBeLessThanOrEqual(22); // 10 min / 30 s, plus the edges
+  });
+
+  it("the window stays bounded over a long run and is forgotten when its rule is deleted", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 120, at(100));
+    expect(windowOf(sim)!.samples.length).toBeLessThanOrEqual(22);
+    sim.rules = [];
+    sim.at(121, at(100));
+    expect(windowOf(sim)).toBeUndefined();
+  });
+
+  it("a window counts as full one poll interval early: with 30 s polls the alert fires at 19.5 min, not 20", () => {
+    const sim = new Sim([production]);
+    expect(run(sim, 0, 25, at(50))[0]!.minute).toBe(19.5);
+  });
+
+  it("the window includes a sample exactly one window old, and drops the one before it", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 10, at(50));
+    expect(windowOf(sim)!.samples.length).toBe(21); // 0, 0.5 ... 10 minutes
+    run(sim, 10.5, 10.5, at(50));
+    expect(windowOf(sim)!.samples.length).toBe(21); // the one at 0 fell out
+  });
+
+  it("even a short suppressed stretch (pause, outage, mute) throws the window away", () => {
+    const worlds: [string, World, boolean][] = [
+      ["paused", { ...at(50), paused: true }, false],
+      ["unreachable", { ...at(50), failures: 10, firstFailureAt: T0 - 60 * MIN }, false],
+      ["muted", at(50), true],
+    ];
+    for (const [name, gap, muted] of worlds) {
+      const sim = new Sim([production]);
+      run(sim, 0, 8, at(50));
+      for (let minute = 8.5; minute <= 10; minute += STEP) sim.at(minute, gap, { muted });
+      const events = run(sim, 10.5, 45, at(50));
+      expect(events[0]?.minute, name).toBeGreaterThanOrEqual(10.5 + 19 - 0.5);
+    }
+  });
+
+  it("shrinking the window also starts a new one, it does not reuse the older samples", () => {
+    const long = { ...production, params: { item: ITEM, targetPerMinute: 100, windowMinutes: 20 } } as Rule;
+    const sim = new Sim([long]);
+    run(sim, 0, 15, at(50));
+    sim.rules = [{ ...production, id: long.id } as Rule]; // 10 minutes now
+    const events = run(sim, 15.5, 40, at(50));
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(15.5 + 19 - 0.5);
+  });
+
+  it("changing the item starts a new window", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 9, at(50));
+    sim.rules = [{ ...production, params: { item: "Desc_Other_C", targetPerMinute: 100, windowMinutes: 10 } } as Rule];
+    expect(run(sim, 9.5, 25, { itemRates: { Desc_Other_C: 50 } })).toEqual([]);
+  });
+
+  it("clears only strictly above 95%: an average of exactly 95 stays firing, above it resolves", () => {
+    const at95 = new Sim([production]);
+    run(at95, 0, 25, at(50));
+    expect(run(at95, 25.5, 80, at(95)).map((e) => e.event)).not.toContain("item:resolved");
+    const above = new Sim([production]);
+    run(above, 0, 25, at(50));
+    expect(run(above, 25.5, 80, at(95.1)).map((e) => e.event)).toContain("item:resolved");
+  });
+
+  it("the resolved event carries the real, recovered average", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 25, at(50));
+    const resolved = run(sim, 25.5, 60, at(100)).find((e) => e.event === "item:resolved")!;
+    expect(resolved.summary.averagePerMinute).toBe(100);
+  });
+
+  it("a reminder that falls while the window refills after a restart reports no average at all", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 25, at(50)); // fired at ~20, lastNotifiedAt persisted
+    sim.restart();
+    const events = run(sim, 100, 105, at(50)); // an hour later: the reminder is due, the window is empty
+    const reminder = events.find((e) => e.event === "item:renotify")!;
+    expect(reminder).toBeDefined();
+    expect("averagePerMinute" in reminder.summary).toBe(false);
+  });
+
+  it("the reminder from a full window reports the window's average", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 25, at(50));
+    const reminder = run(sim, 25.5, 100, at(60)).find((e) => e.event === "item:renotify")!;
+    expect(reminder.summary.averagePerMinute).toBe(60);
+  });
+
+  it("irregular poll timing (20 s to 55 s apart) still fills the window and fires once", () => {
+    const sim = new Sim([production]);
+    const events: string[] = [];
+    let minute = 0;
+    for (let i = 0; minute <= 45; i++) {
+      for (const e of sim.at(minute, at(50))) events.push(`${e.subject}:${e.transition}`);
+      minute += (i % 2 === 0 ? 20 : 55) / 60;
+    }
+    expect(events).toEqual(["item:fired"]);
+  });
+
+  it("very small and very large targets use the same 90% line", () => {
+    for (const target of [0.001, 1e9]) {
+      const small = rule("production_below_target", { forSeconds: 600, clearSeconds: 300, repeatSeconds: 3600 }, { item: ITEM, targetPerMinute: target, windowMinutes: 10 });
+      const below = new Sim([small]);
+      expect(run(below, 0, 25, at(target * 0.89)).map((e) => e.event)).toEqual(["item:fired"]);
+      const above = new Sim([small]);
+      expect(run(above, 0, 40, at(target * 0.91))).toEqual([]);
+    }
+  });
+
+  it("the first tick after a resume, when the reading is not flagged, still needs a whole new window", () => {
+    const sim = new Sim([production]);
+    run(sim, 0, 8, at(50));
+    run(sim, 8.5, 20, { ...at(50), paused: true });
+    const events = run(sim, 20.5, 45, at(50));
+    expect(events[0]!.minute).toBeGreaterThanOrEqual(20.5 + 19 - 0.5);
   });
 });

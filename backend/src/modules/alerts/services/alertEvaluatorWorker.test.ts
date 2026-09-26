@@ -346,7 +346,7 @@ describe("AlertEvaluatorWorker.tick", () => {
     const publish = () => {
       board.recordPollSuccess(now);
       board.publishStatus({ observedAt: now, intervalMs: 5 * SEC, paused: false, session: "S" });
-      board.publishFactory({ observedAt: now, intervalMs: 30 * SEC, afterResume: false, machines: [{ id: "m1", className: "C", recipe: "Wire", state: "underfed", outputPercent: 0 }] });
+      board.publishFactory({ observedAt: now, intervalMs: 30 * SEC, afterResume: false, machines: [{ id: "m1", className: "C", recipe: "Wire", state: "underfed", outputPercent: 0 }], itemRates: new Map() });
     };
     publish();
     await worker.tick();

@@ -83,6 +83,10 @@ export function escapeDiscordText(value: unknown, max = MAX_FIELD): string {
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0);
 
+/** A non-negative finite rate, rounded to one decimal, as text; undefined when the value is not one. */
+const rate = (value: unknown): string | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? String(Math.round(value * 10) / 10) : undefined;
+
 function listOf(value: unknown, keyField: string, max = 5): { label: string; count: number }[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, max).flatMap((entry) => {
@@ -136,6 +140,28 @@ function words(input: AlertMessageInput): { title: string; lines: string[] } {
               ? "Still not responding: game server or FRM"
               : "Game server or FRM not responding",
         lines: down > 0 && input.transition !== "resolved" ? [`No answer for about ${Math.max(1, Math.round(down / 60))} min.`] : [],
+      };
+    }
+    case "production_below_target": {
+      // `item` is a game class name: escaped like any game text. The rates are rounded to one decimal.
+      const item = escapeDiscordText(input.summary.item, 80) || "an item";
+      const lines: string[] = [];
+      if (input.transition !== "resolved") {
+        const target = rate(input.summary.targetPerMinute);
+        const average = rate(input.summary.averagePerMinute);
+        const minutes = count(input.summary.windowMinutes);
+        if (target !== undefined && average !== undefined) {
+          lines.push(`Making ${average}/min, target ${target}/min${minutes > 0 ? ` (average over ${minutes} min)` : ""}.`);
+        }
+      }
+      return {
+        title:
+          input.transition === "resolved"
+            ? `Production back on target: ${item}`
+            : input.transition === "renotify"
+              ? `Still below target: ${item}`
+              : `Production below target: ${item}`,
+        lines,
       };
     }
     case "stopped_machines": {

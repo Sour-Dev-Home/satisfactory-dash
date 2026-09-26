@@ -53,6 +53,31 @@ describe("formatAlertMessage: the words per kind and transition", () => {
     expect(embed({ ...input, summary: { machines: 1 } }).title).toBe("1 machine stopped");
   });
 
+  it("production below target: the item, the average against the target, and the renotify/resolved wording", () => {
+    const summary = { item: "Desc_IronPlate_C", targetPerMinute: 120, averagePerMinute: 87.46, windowMinutes: 10 };
+    const input = base({ kind: "production_below_target", subject: "item", severity: "warning", summary });
+    const fired = embed(input);
+    expect(fired.title).toBe("Production below target: Desc\\_IronPlate\\_C");
+    expect(fired.description).toContain("Making 87.5/min, target 120/min (average over 10 min).");
+    expect(embed({ ...input, transition: "renotify" }).title).toBe("Still below target: Desc\\_IronPlate\\_C");
+    const resolved = embed({ ...input, transition: "resolved" });
+    expect(resolved.title).toBe("Production back on target: Desc\\_IronPlate\\_C");
+    expect(resolved.description).not.toContain("Making");
+  });
+
+  it("production below target: the item is escaped like any game text, and a missing or bad number just drops the line", () => {
+    const evil = embed(base({ kind: "production_below_target", subject: "item", summary: { item: "@everyone <@123> **x**", targetPerMinute: 10, averagePerMinute: 1, windowMinutes: 10 } }));
+    expect(evil.title).not.toMatch(/@(?!​)/);
+    expect(evil.title).not.toMatch(/(^|[^\\])[<>*]/); // every special character is escaped
+    const noAverage = embed(base({ kind: "production_below_target", subject: "item", summary: { item: "Desc_X_C", targetPerMinute: 10, windowMinutes: 10 } }));
+    expect(noAverage.description).not.toContain("Making");
+    for (const bad of [Number.NaN, -1, "5", null, Number.POSITIVE_INFINITY]) {
+      const out = embed(base({ kind: "production_below_target", subject: "item", summary: { item: "Desc_X_C", targetPerMinute: 10, averagePerMinute: bad, windowMinutes: 10 } }));
+      expect(out.description, String(bad)).not.toContain("Making");
+    }
+    expect(embed(base({ kind: "production_below_target", subject: "item", summary: {} })).title).toBe("Production below target: an item");
+  });
+
   it("colours by severity, and green for a resolve; carries the time and the kind", () => {
     expect(embed(base()).color).toBe(0xe74c3c);
     expect(embed(base({ severity: "warning" })).color).toBe(0xf1c40f);
@@ -63,7 +88,7 @@ describe("formatAlertMessage: the words per kind and transition", () => {
   });
 
   it("can never ping: allowed_mentions.parse is empty on every message", () => {
-    for (const kind of ["power_outage", "fuse_trip", "server_unreachable", "stopped_machines"] as const) {
+    for (const kind of ["power_outage", "fuse_trip", "server_unreachable", "stopped_machines", "production_below_target"] as const) {
       expect(formatAlertMessage(base({ kind, serverName: "@everyone <@123>" })).allowed_mentions).toEqual({ parse: [] });
     }
   });

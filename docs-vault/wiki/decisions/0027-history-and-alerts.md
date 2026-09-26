@@ -197,3 +197,19 @@ the owner's approval.
 
 **Revisit when.** A week of production history has been reviewed (confirm 95% and the defaults), a
 bug report involves Somersloop machines, or FRM documents its averaging window.
+
+## Amendment 3 (2026-09-26, approved by the owner): "Production below target" is kept, opt-in
+- The owner keeps kind D, production below target (decision 4). A target only means something for a
+  chosen item, so **there is no default preset**. The owner (or a server's owner/admin) creates a rule
+  per item.
+- Evaluation, from the factory observations the evaluator already receives (no database reads in the
+  tick): per server, a rolling window of the factory-wide current rate for each item that has a
+  rule. The condition is the window average below the fire threshold. Paused or unreachable
+  suppresses it, as for the other kinds. After a restart, or a session change, the rule holds until
+  the window is full again.
+- Parameters, validated per kind: `item` (class name), `targetPerMinute` (> 0), `windowMinutes`
+  (default 10, 5–60), fire below **90%** of the target and clear above **95%** (hysteresis),
+  `for` 10 min, clear 5 min, repeat 1 h.
+- Rollout: the engine kind comes first. Rules are created through the rules API and UI (PRs 7 and 9),
+  with an item picker built from current production. Delivery follows the same kill switch and
+  shadow week as the other kinds, so no separate shadow period.

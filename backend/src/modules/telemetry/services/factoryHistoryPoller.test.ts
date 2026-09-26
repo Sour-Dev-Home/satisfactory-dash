@@ -178,6 +178,16 @@ describe("FactoryHistoryPoller.poll", () => {
       ]);
     });
 
+    it("publishes the factory-wide current rate per item: the same figures the history records, and none for an item nobody makes", async () => {
+      const { board, state, poller } = publishing();
+      await poller.poll();
+      const rates = board.snapshot().factory!.itemRates;
+      const expected = new Map(sumItemRates(state.buildings, 7000).map((row) => [row.item, row.currentPerMinute]));
+      expect(expected.size).toBeGreaterThan(0);
+      expect(rates).toEqual(expected);
+      expect(rates.has("Desc_NobodyMakesThis_C")).toBe(false);
+    });
+
     it("publishes the ingredient an underfed machine is short of (missingInput), and only for underfed machines", async () => {
       const { board, poller } = publishing();
       await poller.poll();
