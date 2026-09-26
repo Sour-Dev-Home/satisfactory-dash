@@ -11,6 +11,7 @@ import {
 } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { MANAGED_KEY, queries } from "../api/queries";
+import { cn } from "../lib/cn";
 import { isNonLoopbackIpLiteral } from "./hosts";
 import { ManagementError } from "./ManagementError";
 import { LOOPBACK_ONLY } from "./messages";
@@ -207,16 +208,21 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
     }
   }
 
-  const field = (name: Field, label: string, extra: { hint?: ReactNode; password?: boolean; numeric?: boolean } = {}) => {
+  const field = (
+    name: Field,
+    label: string,
+    extra: { hint?: ReactNode; password?: boolean; numeric?: boolean; wide?: boolean } = {},
+  ) => {
     const errorId = `${formId}-${name}-error`;
     const hintId = `${formId}-${name}-hint`;
     const describedBy = [extra.hint && hintId, errors[name] && errorId].filter(Boolean).join(" ") || undefined;
     // The hint and error sit outside the <label>, so the field's name is only its label.
     return (
-      <div key={name} className="grid content-start gap-1.5 text-sm">
+      <div key={name} className={cn("grid content-start gap-1.5 text-sm", extra.wide && "sm:col-span-2")}>
         <label htmlFor={`${formId}-${name}`}>{label}</label>
         <input
           id={`${formId}-${name}`}
+          className="aria-[invalid=true]:border-bad"
           ref={(el) => {
             inputs.current[name] = el;
           }}
@@ -236,7 +242,7 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
           </span>
         )}
         {errors[name] && (
-          <span id={errorId} className="text-fg-strong">
+          <span id={errorId} className="font-medium text-bad">
             {errors[name]}
           </span>
         )}
@@ -265,12 +271,15 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
           blank if FRM runs without one.
         </p>
       )}
+      {/* Pairs by meaning from sm up: id + name (or a full-width name), host alone, the two ports,
+          the two tokens. */}
       <div className="grid gap-4 sm:grid-cols-2">
         {shows.includes("id") &&
           field("id", "Server id", { hint: "Used in links. Lowercase letters, digits and dashes; can't be changed." })}
-        {shows.includes("displayName") && field("displayName", "Name")}
+        {shows.includes("displayName") && field("displayName", "Name", { wide: !shows.includes("id") })}
         {shows.includes("host") &&
           field("host", "Host", {
+            wide: true,
             hint: isNonLoopbackIpLiteral(values.host) ? LOOPBACK_ONLY : "The game server's machine, e.g. 127.0.0.1.",
           })}
         {shows.includes("apiPort") && field("apiPort", "Game API port", { numeric: true })}

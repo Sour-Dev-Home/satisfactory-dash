@@ -71,7 +71,11 @@ export function ServerRow({
             tokens are deleted. The audit log keeps a record of the removal.
           </p>
           {remove.error && !remove.isPending && <ManagementError error={remove.error} />}
+          {/* The safe choice first, where a quick tap lands. */}
           <div className="flex flex-wrap gap-3">
+            <button type="button" disabled={remove.isPending} onClick={() => setConfirming(false)}>
+              Keep it
+            </button>
             <button
               type="button"
               disabled={remove.isPending}
@@ -79,9 +83,6 @@ export function ServerRow({
               className="border-bad-solid bg-bad-solid text-white"
             >
               {remove.isPending ? "Removing…" : "Remove server"}
-            </button>
-            <button type="button" disabled={remove.isPending} onClick={() => setConfirming(false)}>
-              Keep it
             </button>
           </div>
         </div>
