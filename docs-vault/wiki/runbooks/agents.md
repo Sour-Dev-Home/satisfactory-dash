@@ -62,6 +62,16 @@ game since; one taken before it is out of date. While the game is unreachable th
 confirmed change (an agent that sends no `settings`) the value is unknown and the read answers `upstream_unreachable`.
 Restarting the backend forgets the reading until the next snapshot.
 
+## What the agent sends, and what the backend derives (ADR-0031)
+
+A snapshot carries raw readings only. `power` has no circuit `status` and no `hasOutage`; `factory` has no machine
+`state`, no `stateCounts`, no `backedUpCount`, and its rates have no `unit` (`isBackedUp` stays: it is a raw fact that
+needs the output inventory, which only the agent sees). The backend derives all of them at ingest
+(`telemetry/services/agentDerive.ts`) with the same rules a polled server uses, so a rule change never needs an agent
+update. A field an agent still sends is dropped by the schema and, as a second guard, never copied by the derivation.
+A machine's fuse is joined from the latest power reading by circuit; if that reading is older than three power
+intervals (or none arrived) the fuse is unknown and the machine gets no `state`, never a guess.
+
 ## Agent offline (alert)
 
 `agent_offline` is a preset **only for agent servers** (seeded on the alert engine's next tick after a server becomes

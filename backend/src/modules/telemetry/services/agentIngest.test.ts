@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Factory, SnapshotRequest } from "@satisfactory-dash/shared";
+import type { AgentFactory, Factory, SnapshotRequest } from "@satisfactory-dash/shared";
 import { agentSnapshotRequestFull, agentSnapshotRequestUnreachable, powerOk, statusRunning } from "@satisfactory-dash/shared/fixtures";
 import { AgentIngest, AGENT_CLOCK_TOLERANCE_MS } from "./agentIngest.js";
 import { LatestSnapshotStore } from "./agentSnapshotStore.js";
@@ -13,21 +13,25 @@ const CADENCE = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
 const observedStale = (data: unknown): boolean => snapshot("s", data).stale;
 const T0 = Date.parse("2026-09-26T12:00:00.000Z");
 
-const building = (id: string, state: string | undefined, extra: Partial<Factory["buildings"][number]> = {}): Factory["buildings"][number] => ({
+/**
+ * A building as an agent sends it (ADR-0031: raw readings, no `state`), set up so the backend's rules DERIVE `wanted` for it
+ * (the fixture's main grid is circuit 0, fuse intact): underfed = a low output percent, backedUp = the raw flag.
+ */
+const building = (id: string, wanted: "producing" | "underfed" | "backedUp" | undefined, extra: Partial<AgentFactory["buildings"][number]> = {}): AgentFactory["buildings"][number] => ({
   id,
   name: "Constructor",
   className: "Build_ConstructorMk1_C",
   recipe: "Iron Plate",
   isProducing: true,
   isPaused: false,
-  isBackedUp: false,
-  production: [{ name: "Iron Plate", className: "Desc_IronPlate_C", currentPerMinute: 20, maxPerMinute: 20, percent: 100 }],
+  isBackedUp: wanted === "backedUp",
+  circuitGroupId: wanted === undefined ? 99 : 0, // 99 is on no power circuit: its fuse is unknown, so no state
+  production: [{ name: "Iron Plate", className: "Desc_IronPlate_C", currentPerMinute: 20, maxPerMinute: 20, percent: wanted === "underfed" ? 20 : 100 }],
   ingredients: [],
-  ...(state !== undefined ? { state } : {}),
   ...extra,
 });
 
-const factoryOf = (buildings: Factory["buildings"]): Factory => ({ buildings, backedUpCount: 0 });
+const factoryOf = (buildings: AgentFactory["buildings"]): AgentFactory => ({ buildings });
 
 function setup(startMs = T0) {
   let nowMs = startMs;
@@ -43,7 +47,7 @@ function setup(startMs = T0) {
   };
   const history = { recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() };
   const powerStore = new InMemoryPowerHistoryStore({ intervalSeconds: 5 });
-  const ingest = new AgentIngest({ store, cadence: () => CADENCE, observations, history, powerStore });
+  const ingest = new AgentIngest({ store, cadence: () => CADENCE, observations, history, powerStore, resolveUnit: () => "items/min" });
   return {
     store,
     observations,
@@ -88,7 +92,7 @@ describe("a running snapshot", () => {
     expect(factory.intervalMs).toBe(30_000);
     expect(factory.afterResume).toBe(false);
     expect(factory.itemRates.get("Desc_IronPlate_C")).toBe(40);
-    expect(factory.machines.map((m) => [m.id, m.state, m.outputPercent])).toEqual([["a", "producing", 100], ["b", "underfed", 100]]);
+    expect(factory.machines.map((m) => [m.id, m.state, m.outputPercent])).toEqual([["a", "producing", 100], ["b", "underfed", 20]]);
     // The underfed machine's least-consumed ingredient is the one it lacks.
     expect(factory.machines.find((m) => m.id === "b")?.missingInput).toBe("Desc_Ore_C");
     expect(factory.machines.find((m) => m.id === "a")?.missingInput).toBeUndefined();
@@ -298,6 +302,59 @@ describe("the latest-snapshot store", () => {
     expect(t.store.read("players", { available: false, players: [] })).toEqual({ available: false, players: [] });
   });
 });
+
+describe("derived fields (ADR-0031): the backend applies its own rules to an agent's raw readings", () => {
+  it("re-derives the state an agent claims: a wrong `state`, `stateCounts` or `backedUpCount` is ignored, in the store and in history", () => {
+    const t = setup();
+    const lying = { ...t.running({ factory: factoryOf([building("a", "underfed")]) }) };
+    // What an older or misbehaving agent might still send, bypassing the route's schema stripping.
+    (lying.factory as unknown as { buildings: Record<string, unknown>[] }).buildings[0]!.state = "producing";
+    (lying.factory as unknown as Record<string, unknown>).backedUpCount = 9;
+    (lying.factory as unknown as Record<string, unknown>).stateCounts = { producing: 1 };
+    t.ingest.ingest(lying, T0);
+    const served = t.store.read("factory") as Factory;
+    expect(served.buildings[0]?.state).toBe("underfed");
+    expect(served.backedUpCount).toBe(0);
+    expect(served.stateCounts).toEqual({ underfed: 1 });
+    const published = t.observations.publishFactory.mock.calls[0]![0] as { machines: { state?: string }[] };
+    expect(published.machines.map((machine) => machine.state)).toEqual(["underfed"]);
+  });
+
+  it("derives a circuit's status from the numbers, whatever the agent says, and serves hasOutage", () => {
+    const t = setup();
+    const power = { circuits: [{ ...AgentPowerCircuitOf(0), fuseTriggered: true, status: "ok" }] };
+    t.ingest.ingest(t.running({ power: power as unknown as SnapshotRequest["power"] }), T0);
+    expect((t.store.read("power") as { hasOutage: boolean; circuits: { status: string }[] }).hasOutage).toBe(true);
+    expect((t.store.read("power") as { circuits: { status: string }[] }).circuits[0]?.status).toBe("outage");
+    expect(t.observations.publishPower).toHaveBeenCalledWith(expect.objectContaining({ circuits: [{ circuit: 0, status: "outage", fuseTripped: true }] }));
+  });
+
+  it("resolves each rate's unit from the backend's catalog", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    expect((t.store.read("factory") as Factory).buildings[0]?.production[0]?.unit).toBe("items/min");
+  });
+
+  it("joins a factory-only snapshot to the latest power reading's fuses, and stops joining when that reading is stale (state unknown, never guessed)", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0); // power and factory together
+    t.advance(30_000);
+    // Factory only, 30 s later: the power reading is older than three power intervals (15 s), so no fuse is known.
+    t.ingest.ingest(t.running({ power: undefined, factory: factoryOf([building("a", "producing")]) }), T0 + 30_000);
+    expect((t.store.read("factory") as Factory).buildings[0]?.state).toBeUndefined();
+    // A fresh power reading makes it known again.
+    t.advance(1000);
+    t.ingest.ingest(t.running({ factory: undefined }), T0 + 31_000);
+    t.advance(1000);
+    t.ingest.ingest(t.running({ power: undefined, factory: factoryOf([building("a", "producing")]) }), T0 + 32_000);
+    expect((t.store.read("factory") as Factory).buildings[0]?.state).toBe("producing");
+  });
+});
+
+/** A circuit as an agent sends it (raw fields only). */
+function AgentPowerCircuitOf(id: number) {
+  return { circuitGroupId: id, productionMW: 100, consumptionMW: 50, capacityMW: 100, maxConsumptionMW: 60, fuseTriggered: false, batteryCapacityMWh: 0, batteryPercent: 0, batteryDifferentialMW: 0 };
+}
 
 describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
   it("is none until a snapshot carries it, and an older agent that never sends it leaves it unknown", () => {

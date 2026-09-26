@@ -86,6 +86,14 @@ export class LatestSnapshotStore {
     return { ...reading, stale: this.now() - reading.observedAtMs > STALE_AFTER_INTERVALS * this.cadence().statusSeconds * 1000 };
   }
 
+  /** The latest power reading unless it is stale (older than three power intervals) or none arrived: what a machine's
+   *  fuse is joined from when a factory reading is classified. Unknown is undefined, never assumed healthy. */
+  freshPower(): Power | undefined {
+    const stored = this.parts.power;
+    if (stored === undefined || !this.reachable) return undefined;
+    return this.now() - stored.observedAtMs > STALE_AFTER_INTERVALS * this.cadence().powerSeconds * 1000 ? undefined : stored.data;
+  }
+
   /** When the last snapshot of any kind arrived (the agent's liveness), or undefined before the first. */
   lastReceivedAt(): number | undefined {
     return this.lastReceivedAtMs;

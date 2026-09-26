@@ -17,7 +17,9 @@ import {
   KNOWN_AGENT_COMMAND_TYPES,
   KNOWN_COMMAND_STATUSES,
   KNOWN_CONNECTION_KINDS,
+  FactorySchema,
   KnownErrorCode,
+  PowerSchema,
   SetAutoPauseParamsSchema,
   SetAutoPauseResponseSchema,
   SnapshotRequestSchema,
@@ -94,9 +96,10 @@ describe("agent contract: snapshots", () => {
     }
   });
 
-  it("the parts are the SAME shapes the live routes return (their data): a bad part is refused", () => {
+  it("status and players are the SAME shapes the live routes return (their data); power and factory are the agent-input forms; a bad part is refused", () => {
     expect(fixtures.agentSnapshotRequestFull.status).toEqual(fixtures.statusRunning.data);
-    expect(fixtures.agentSnapshotRequestFull.factory).toEqual(fixtures.factoryMixed.data);
+    expect(fixtures.agentSnapshotRequestFull.players).toEqual(fixtures.playersAvailable);
+    expect(fixtures.agentSnapshotRequestFull.factory.buildings).toHaveLength(fixtures.factoryMixed.data.buildings.length);
     const bad = (part: object) => SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestFull, ...part }).success;
     expect([bad({ status: { tickHealth: "great" } }), bad({ power: { circuits: "none" } }), bad({ factory: { buildings: 1 } }), bad({ players: { available: "yes" } })]).toEqual([false, false, false, false]);
   });
@@ -115,6 +118,31 @@ describe("agent contract: snapshots", () => {
     expect(SnapshotRequestSchema.safeParse(fixtures.agentSnapshotRequestPartial).success).toBe(true);
     expect([withSettings({ autoPause: false }), withSettings({ autoPause: true }), withSettings(undefined)]).toEqual([true, true, true]);
     expect([withSettings({}), withSettings({ autoPause: "yes" }), withSettings({ autoPause: null }), withSettings({ autoPause: true, extra: 1 }), withSettings(null)]).toEqual([false, false, false, false, false]);
+  });
+
+  it("power and factory carry NO backend-derived field: an agent that still sends one has it dropped on parse, never trusted (ADR-0031)", () => {
+    const power = fixtures.powerOk.data;
+    const factory = fixtures.factoryStatesAndIngredients.data;
+    const sent = { ...fixtures.agentSnapshotRequestFull, power, factory };
+    const parsed = SnapshotRequestSchema.parse(sent);
+    expect(Object.keys(parsed.power ?? {})).toEqual(["circuits"]); // no hasOutage
+    expect(parsed.power?.circuits.every((circuit) => !("status" in circuit))).toBe(true);
+    expect(Object.keys(parsed.factory ?? {})).toEqual(["buildings"]); // no backedUpCount, no stateCounts
+    for (const building of parsed.factory?.buildings ?? []) {
+      expect("state" in building).toBe(false);
+      for (const rate of [...building.production, ...(building.ingredients ?? [])]) expect("unit" in rate).toBe(false);
+    }
+    // The raw fact the agent computes stays.
+    expect(parsed.factory?.buildings.map((building) => building.isBackedUp)).toEqual(factory.buildings.map((building) => building.isBackedUp));
+    // The live fixtures really carry the derived fields, so the test above proves the stripping.
+    expect(power.circuits[0]).toHaveProperty("status");
+    expect(factory.buildings.some((building) => building.state !== undefined)).toBe(true);
+  });
+
+  it("the agent-input fixtures are what the schemas produce from the live ones, and the response schemas are unchanged", () => {
+    expect(SnapshotRequestSchema.parse(fixtures.agentSnapshotRequestFull)).toEqual(fixtures.agentSnapshotRequestFull);
+    expect(PowerSchema.safeParse(fixtures.agentSnapshotRequestFull.power).success).toBe(false); // status and hasOutage are required in a RESPONSE
+    expect(FactorySchema.safeParse(fixtures.agentSnapshotRequestFull.factory).success).toBe(false); // backedUpCount is required in a RESPONSE
   });
 
   it("`settings` means it was read in this snapshot: refused on an unreachable snapshot, and it round-trips through parse and z.input", () => {

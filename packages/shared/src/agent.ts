@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { ServerIdSchema } from "./ids";
 import { StatusSchema } from "./status";
-import { PowerSchema } from "./power";
-import { FactorySchema } from "./factory";
+import { PowerCircuitSchema } from "./power";
+import { FactoryBuildingSchema, ProductionRateSchema } from "./factory";
 import { ServerPlayersResponseSchema } from "./players";
 import { SettingsResponseSchema } from "./settings";
 
@@ -61,9 +61,27 @@ export const EnrollResponseSchema = z.object({
 });
 
 /**
- * POST /agent/v1/snapshots: what the agent read from the game. The four data parts REUSE the schemas the live routes
- * return (their `data`, not the response envelope), so one shape describes a reading everywhere. An unreachable game
- * sends `reachable: false` and NO parts and no `settings`; `paused` is null when it is not known.
+ * What the agent SENDS for power and factory: the response data schemas with every backend-derived field OMITTED
+ * (ADR-0031). Deciding a circuit's `status`, a machine's `state`, the counts and a rate's `unit` are RULES and lookups
+ * that stay in the backend, which derives them at ingest, so a rule change never needs an agent update, and a missing
+ * derivation is a type error rather than a silent "ok". `isBackedUp` stays: it is a raw fact that needs the machine's
+ * output inventory, which only the agent sees. The RESPONSE schemas are unchanged. Parsing strips unknown keys, so
+ * an older or misbehaving agent that still sends `status`, `state`, `hasOutage`, `stateCounts`, `backedUpCount` or `unit`
+ * has them dropped, never trusted.
+ */
+export const AgentPowerCircuitSchema = PowerCircuitSchema.omit({ status: true });
+export const AgentPowerSchema = z.object({ circuits: z.array(AgentPowerCircuitSchema) });
+const AgentProductionRateSchema = ProductionRateSchema.omit({ unit: true });
+export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: true }).extend({
+  production: z.array(AgentProductionRateSchema),
+  ingredients: z.array(AgentProductionRateSchema).optional(),
+});
+export const AgentFactorySchema = z.object({ buildings: z.array(AgentFactoryBuildingSchema) });
+
+/**
+ * POST /agent/v1/snapshots: what the agent read from the game. `status` and `players` REUSE the schemas the live routes
+ * return (their `data`, not the response envelope); `power` and `factory` are their agent-input forms above. An
+ * unreachable game sends `reachable: false` and NO parts and no `settings`; `paused` is null when it is not known.
  */
 export const SnapshotRequestSchema = z
   .strictObject({
@@ -76,8 +94,8 @@ export const SnapshotRequestSchema = z
       .optional()
       .describe("Game settings read in this snapshot; absent when not read, and always absent when the game is unreachable"),
     status: StatusSchema.optional(),
-    power: PowerSchema.optional(),
-    factory: FactorySchema.optional(),
+    power: AgentPowerSchema.optional(),
+    factory: AgentFactorySchema.optional(),
     players: ServerPlayersResponseSchema.optional(),
   })
   .refine(
@@ -162,6 +180,8 @@ export type Cadence = z.infer<typeof CadenceSchema>;
 export type EnrollRequest = z.infer<typeof EnrollRequestSchema>;
 export type EnrollResponse = z.infer<typeof EnrollResponseSchema>;
 export type SnapshotRequest = z.input<typeof SnapshotRequestSchema>;
+export type AgentPower = z.infer<typeof AgentPowerSchema>;
+export type AgentFactory = z.infer<typeof AgentFactorySchema>;
 export type SnapshotResponse = z.infer<typeof SnapshotResponseSchema>;
 export type AgentCommand = z.infer<typeof AgentCommandSchema>;
 export type CommandResultRequest = z.input<typeof CommandResultRequestSchema>;
