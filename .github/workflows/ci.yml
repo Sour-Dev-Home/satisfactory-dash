@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # ADR-0033: the merge queue runs these checks on its own commit (main plus the queued PRs). Harmless until a
+  # queue is enabled. The log fragment step below runs on pull_request only.
+  merge_group:
+    types: [checks_requested]
 
 jobs:
   verify:
