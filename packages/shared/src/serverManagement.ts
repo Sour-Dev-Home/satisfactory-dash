@@ -30,7 +30,21 @@ const TokenSchema = z
   .max(4096)
   .regex(/^[\x21-\x7e]+$/, "A token is printable characters without spaces");
 
-const DisplayNameSchema = z.string().trim().min(1).max(64);
+/**
+ * A server's display name is shown to every member of the server and put in alert messages, so it must be PRINTABLE (issue
+ * #198): no control character (Unicode Cc: line breaks, NUL, escape), no format character (Cf: the bidirectional overrides
+ * and isolates that make text read as something else, zero-width characters, the byte-order mark), no line or paragraph
+ * separator (Zl, Zp), and no surrogate, private-use or unassigned code point. Ordinary letters, digits, marks, punctuation,
+ * symbols, emoji and plain spaces are fine. Consequence: an emoji built with the zero-width joiner (a Cf) is refused; use the
+ * single-character form.
+ */
+export const NON_PRINTABLE_IN_NAME = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+export const DisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((name) => !NON_PRINTABLE_IN_NAME.test(name), "A name is printable text: no control, invisible or direction-changing characters");
 
 const ConnectionShape = {
   host: HostSchema,
