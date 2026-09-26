@@ -213,5 +213,51 @@ describe("overallHealth", () => {
       expect(overallHealth([ok, factory]).headline).toBe("Running with warnings");
       expect(overallHealth([tick, { health: "outage", summary: "" }]).headline).toBe("Power outage");
     });
+
+    // A failed section outranks a warning, so it's a worse level (unavailable), not a tie: the
+    // generic headline wins even though the tick's cause is sitting right there.
+    it("falls back to the generic headline when a failed section outranks the tick", () => {
+      expect(overallHealth([tick, "error"])).toEqual({ health: "unavailable", headline: "Some data is unavailable" });
+    });
+
+    // Paused (rank 1) never outranks a slow tick's degraded (rank 2), and it carries no cause of
+    // its own, so it must neither win the banner nor blank out the tick's cause.
+    it("still names the tick when a paused section is also present", () => {
+      const paused = { health: "paused", summary: "Paused: no players connected" } as const;
+      expect(overallHealth([paused, tick])).toEqual({ health: "degraded", headline: "Server tick is slow" });
+    });
+
+    // "pending" only holds back an all-clear (see overallHealth's doc comment); it must not mask
+    // an already-known slow tick once another section is still loading.
+    it("still names the tick while another section is pending", () => {
+      expect(overallHealth([tick, "pending"])).toEqual({ health: "degraded", headline: "Server tick is slow" });
+    });
+
+    // Two non-tick sections sharing a cause text is reachable only by a bug elsewhere (today's
+    // causes are all distinct strings), but overallHealth itself has no dedup for that case:
+    // document that a repeat prints twice rather than silently disappearing.
+    it("doesn't dedup a repeated non-tick cause", () => {
+      const dup = { health: "degraded", summary: "", cause: "Factory backed up" } as const;
+      expect(overallHealth([tick, dup, dup]).headline).toBe(
+        "Server tick is slow · Factory backed up · Factory backed up",
+      );
+    });
+
+    // A cause that happens to equal SLOW_TICK's own text is a special case worth pinning down:
+    // the "others" filter strips every match of that exact string, not just the one already
+    // prepended, so this collapses to one occurrence instead of the two you'd expect from a
+    // naive "no dedup" model.
+    it("swallows a non-tick cause that happens to collide with the tick's own text", () => {
+      const collision = { health: "degraded", summary: "", cause: "Server tick is slow" } as const;
+      expect(overallHealth([tick, collision]).headline).toBe("Server tick is slow");
+    });
+  });
+
+  // The dismissal key must survive this change: it's keyed on health only, so a cause never
+  // makes an already-dismissed warning reappear, and never masks a real level change either.
+  it("warningKey ignores cause the same way it ignores summary", () => {
+    const withCause = [{ name: "Tick", state: { health: "degraded" as const, summary: "x", cause: "Server tick is slow" } }];
+    const withoutCause = [{ name: "Tick", state: { health: "degraded" as const, summary: "x" } }];
+    expect(warningKey(withCause)).toBe(warningKey(withoutCause));
   });
 });
