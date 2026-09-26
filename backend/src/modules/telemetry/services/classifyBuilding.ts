@@ -13,7 +13,8 @@ import type { FactoryBuilding } from "../../gameserver/index.js";
  *  overclocked machine reads about 100. Evidence so far: the running machines in the 2026-09-22 snapshot
  *  read 100, 100, 24.7 and 9.4 percent (the last two are input-limited, i.e. underfed by this rule). No
  *  capture yet of a fully fed underclocked machine or a Somersloop machine (whether MaxProd includes the
- *  Somersloop's amplification is [NEEDS VERIFICATION]). PROVISIONAL until the capture session replay (2b-2). */
+ *  Somersloop's amplification is [NEEDS VERIFICATION], shipped as a known limitation). PROVISIONAL until about
+ *  a week of production building_transitions has been reviewed (ADR-0027 amendment 2: no dedicated capture). */
 export const UNDERFED_BELOW_PERCENT = 95;
 
 export type MachineState = "producing" | "idle" | "backedUp" | "underfed" | "paused" | "unpowered";

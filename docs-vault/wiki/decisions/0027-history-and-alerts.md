@@ -178,17 +178,22 @@ underclocked and overclocked machines alike.
      95% for at least 10 min. Machines underfed on purpose never qualify.
    - "Any underfed machine for N minutes" is not offered (deliberately underfed machines would
      fire constantly).
-3. The capture session also covers one fully fed, deliberately underclocked machine (it must read
-   producing) and one machine with a Somersloop. Whether `MaxProd` includes the Somersloop's
-   amplification is [NEEDS VERIFICATION]. The capture measures false underfed readings, the lag
-   after an input is cut, and flapping around 95%.
+3. No dedicated capture session (owner, 2026-09-25: deprioritized). Tuning uses production history
+   instead. After about a week of recorded `telemetry.building_transitions`, count underfed <->
+   producing flips and short underfed spells per machine, then confirm or adjust the 95. Until then,
+   "Newly underfed" is not offered as a preset. "Stopped machines" does not depend on the 95. It
+   ships behind the delivery kill switch and runs about a week in shadow (transitions logged, nothing
+   sent). The owner turns delivery on after reading the alert log.
+   **Known limitation (owner, 2026-09-25: ship without checking).** Whether `MaxProd` includes a
+   Somersloop's amplification is [NEEDS VERIFICATION]. An amplified machine may read about 200%
+   (never underfed because of it), and users interpret that. Revisit only on a bug report.
 4. The contract gains an optional `clockSpeedPercent` per building (FRM `ManuSpeed`), so the Factory
    view can show what each machine is set to.
 
-**Consequences.** The alert engine (PR 5) and the UI build on `underfed` from the start. If the
-capture shows machines flapping around 95% between polls, a small band (enter below 95, leave at 98
+**Consequences.** The alert engine (PR 5) and the UI build on `underfed` from the start. If
+production history shows machines flapping around 95% between polls, a small band (enter below 95, leave at 98
 or above) would move into classification. That relaxes the per-snapshot rule in Amendment 1 and needs
 the owner's approval.
 
-**Revisit when.** The capture session is replayed (confirm 95% and the defaults), or FRM documents
-its averaging window.
+**Revisit when.** A week of production history has been reviewed (confirm 95% and the defaults), a
+bug report involves Somersloop machines, or FRM documents its averaging window.

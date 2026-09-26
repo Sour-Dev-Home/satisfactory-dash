@@ -29,7 +29,7 @@ information for a connected machine, or no finite output percent.
 
 | Constant | Value | Evidence |
 |---|---|---|
-| `UNDERFED_BELOW_PERCENT` | 95 | The owner's rule (2026-09-25, ADR-0027 amendment 2), not yet tuned by a capture. Two trimmed getFactory snapshots (2026-09-22, 10 buildings): running machines read 100, 100, 24.7 and 9.4 percent; every 0 percent machine in them is backed up or unpowered. There is no capture yet of a fully fed underclocked machine (it must read producing) or a Somersloop machine (whether `MaxProd` includes the amplification is [NEEDS VERIFICATION]). Confirming 95 waits for the capture session replay (2b-2). |
+| `UNDERFED_BELOW_PERCENT` | 95 | The owner's rule (2026-09-25, ADR-0027 amendment 2), not yet tuned. Two trimmed getFactory snapshots (2026-09-22, 10 buildings): running machines read 100, 100, 24.7 and 9.4 percent; every 0 percent machine in them is backed up or unpowered. There is no capture yet of a fully fed underclocked machine (it must read producing) or a Somersloop machine (whether `MaxProd` includes the amplification is [NEEDS VERIFICATION], shipped as a known limitation; an amplified machine may read about 200 percent, never underfed because of it). There is no dedicated capture session (owner, 2026-09-25): 95 is confirmed or adjusted after about a week of recorded `telemetry.building_transitions` (underfed <-> producing flips and short underfed spells per machine). |
 
 Known limits, so nobody over-trusts it:
 
@@ -46,7 +46,7 @@ Known limits, so nobody over-trusts it:
   has full input buffers and an output buffer 98 of 100 full: it is throttled by its output, not short of input.
   Under the old 5 percent rule it read "producing"; under the 95 percent rule it reads "underfed", so the golden
   file changed for exactly this machine. A percent-only rule cannot tell an output-throttled machine from an
-  input-starved one; the capture session (2b-2) should measure how often this happens. Input-buffer data (FRM's
+  input-starved one; the week of production history (amendment 2) is where to see how often this happens. Input-buffer data (FRM's
   `InputInventory`) could sharpen the rule; it is not read today.
 - Nothing here is time-based. "Held for N minutes" and hysteresis belong to the alert engine (ADR-0027 PR 5).
 - The golden file `telemetry/services/__golden__/machineStates.golden.json` pins the outcome for the 10
