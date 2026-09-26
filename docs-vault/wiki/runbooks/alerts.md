@@ -61,6 +61,42 @@ ORDER BY e.at DESC LIMIT 50;
 Each transition is also one info line, `alert event recorded`, with the server id, the kind, the subject and the
 transition (never a name or a secret). Events are kept **90 days** (purged every 10 minutes in batches).
 
+## Delivery to Discord (ADR-0027 PR 6)
+
+Delivery is behind a **kill switch**: `ALERT_DELIVERY=on|off` in `backend/.env`, **default off** (anything else stops
+the backend at startup). The startup log states the mode. While it is **off**, transitions are still recorded in the
+alert log but **no outbox row is written and nothing is sent**; turning it on later sends **only transitions that
+happen after that** (nothing was queued before). It needs `DATABASE_URL` and `SERVER_SECRETS_KEY` (the webhook is
+stored encrypted), otherwise `on` is a startup error.
+
+Turning it on, in order:
+
+1. Deploy with `npm run db:migrate -w backend` first (adds `alerts.destinations` and `alerts.outbox`,
+   `1790726400000_alert_delivery`). Keep `ALERT_DELIVERY=off` for the shadow run and read the alert log.
+2. Set the server's webhook (until the rules API exists): `npm run admin -- set-alert-webhook <server-id>`, then paste
+   the Discord webhook URL on stdin (it is read from stdin, never an argument, so it is not in shell history). It is
+   validated (only `https://discord.com/api/webhooks/<id>/<token>`, or `discordapp.com`; no port, query, userinfo or
+   subdomain), stored encrypted, and only its last 4 characters are printed. Running it again replaces the webhook and
+   re-enables a disabled destination.
+3. Set `ALERT_DELIVERY=on` and restart. The sender runs every 10 seconds.
+
+How it delivers: the outbox row is written in the SAME transaction as the alert event (one row per event and enabled
+destination; `(event, destination)` is unique). The sender claims due rows with `FOR UPDATE SKIP LOCKED` (two senders
+never take the same row) and leases them for 2 minutes, so a crash mid-send means the message is sent again
+(**at-least-once**). Failures retry with exponential backoff from 30 seconds up to 30 minutes, never sooner than a 429's
+`retry_after`; a row still failing after **24 hours** is given up (`dead`). A **404** (webhook deleted) or **401**
+disables the destination and gives up on its pending rows; a 400 gives up on that message only; **redirects are never
+followed**. The message text escapes game names so nothing can ping (`allowed_mentions` is empty); the unreachable alert
+says "Game server or FRM not responding".
+
+Security: the webhook URL is a bearer secret. It is sealed with AES-256-GCM (`platform/secrets`, bound to the server so a
+copied value does not open), re-validated against the allowlist right before every send, and never logged, returned or
+put in an error: logs carry only stable codes (`ALERT_DESTINATION_DISABLED`, `ALERT_DESTINATION_UNREADABLE`). Rotate it by
+running `set-alert-webhook` again after creating a new webhook in Discord.
+
+To stop sending at once: set `ALERT_DELIVERY=off` and restart (rows already queued wait in the outbox and are sent if
+you turn it back on within 24 hours, then given up).
+
 ## Known limits
 
 - **"Unreachable" is the joint status + power fetch.** If only FRM (power) is down while the game's own API answers,
