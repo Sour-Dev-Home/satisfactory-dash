@@ -24,7 +24,11 @@ const FRONTEND_SRC = "frontend/src/";
 const E2E = /^frontend\/e2e\/.+/;
 const LOG_FRAGMENTS = /^docs-vault\/wiki\/log\.d\/.+/;
 
-/** The data-flow pattern of amendment 3: an added line under frontend/src that contains any of these is not UI work. */
+/**
+ * The data-flow pattern of amendment 3: an added line under frontend/src that contains any of these is not UI work.
+ * The first thirteen are the amendment's own list; the architect's follow-up (2026-09-26) added the four browser network
+ * APIs, and `fetch(` became a regex (below) so `fetch (` and `fetch\t(` count too.
+ */
 export const DATA_FLOW = [
   "useQuery",
   "useInfiniteQuery",
@@ -33,14 +37,48 @@ export const DATA_FLOW = [
   "apiSend",
   "apiGet",
   "endpoints.",
-  "fetch(",
   "localStorage",
   "sessionStorage",
   "document.cookie",
   "indexedDB",
   "postMessage",
   "dangerouslySetInnerHTML",
+  "XMLHttpRequest",
+  "WebSocket",
+  "EventSource",
+  "sendBeacon",
 ];
+
+/** `fetch` followed by optional whitespace and `(`: the call, however it is spaced (`refetch(` is data flow too). */
+const FETCH_CALL = /fetch\s*\(/;
+/** The data layer's package: any added line that names it. */
+const QUERY_PACKAGE = "@tanstack/react-query";
+/** An added line that imports (static, re-export, dynamic or require) from a module specifier with an `/api` or `/auth`
+ *  path segment: `"../api/client"`, `"@/auth/session"`, `"./api"`. Only import-shaped lines, so a string that merely holds
+ *  a URL is not caught here (the fetch that would use it is). */
+// Import-SHAPED, not just containing the word: a statement that starts with `import`, an `export ... from`, the `} from`
+// that closes a multi-line import, or a dynamic `import(` / `require(` call. JSX text like `Log in from here` next to a
+// `/auth/login` link is not an import.
+const IMPORT_LINE = /^\s*import\b|^\s*export\b[^\n]*\bfrom\b|^\s*\}?\s*from\b|\b(import|require)\s*\(/;
+const API_OR_AUTH_SPECIFIER = /["'`][^"'`\n]*\/(api|auth)(?=[/?#"'`])/;
+
+/**
+ * What in an added line makes it data-flow code, or undefined. Literal token, `fetch(` regex, the query package, and
+ * imports of an api/auth path.
+ *
+ * ACCEPTED LIMITS (ADR-0033 amendment 3, architect's ruling): this stops an honest author from misclassifying a PR, not a
+ * malicious one. A token split across lines or built by string concatenation (`window["fe" + "tch"]`), a different case,
+ * or a symlink added as a `.ts` file (its patch is only the target path) is not seen. The label never replaces the
+ * architect's review of a PR someone means to smuggle past it; that is what code ownership and the merge queue are for.
+ */
+export function dataFlowHit(line) {
+  const token = DATA_FLOW.find((pattern) => line.includes(pattern));
+  if (token !== undefined) return token;
+  if (FETCH_CALL.test(line)) return "fetch(";
+  if (line.includes(QUERY_PACKAGE)) return QUERY_PACKAGE;
+  if (IMPORT_LINE.test(line) && API_OR_AUTH_SPECIFIER.test(line)) return "an import from an api/ or auth/ path";
+  return undefined;
+}
 
 /** True when a changed path is inside the UI tier's paths. Anything with a ".." segment is refused outright. */
 export function isUiTierPath(file) {
@@ -91,7 +129,7 @@ export function checkTier({ files, labels }) {
     }
     const lines = addedLines(patch);
     for (const line of lines) {
-      const hit = DATA_FLOW.find((pattern) => line.includes(pattern));
+      const hit = dataFlowHit(line);
       if (hit !== undefined) dataFlow.push(`${safe(filename)}: added line uses \`${hit}\``);
     }
   }
