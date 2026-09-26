@@ -5,6 +5,13 @@ import { SERVER_ID_PATTERN, loadServerRegistryFromEnv } from "./serverRegistry.j
 
 // ADR-0001: single-server mode is a registry of one.
 describe("loadServerRegistryFromEnv", () => {
+  it("refuses the ids that are fixed API routes (ADR-0030), naming the id and never the environment", () => {
+    for (const id of ["managed", "test-connection"]) {
+      expect(() => loadServerRegistryFromEnv({ SATISFACTORY_SERVER_ID: id })).toThrow(/reserved/);
+    }
+    expect(loadServerRegistryFromEnv({ SATISFACTORY_SERVER_ID: "managed-2" })[0]?.id).toBe("managed-2");
+  });
+
   it("defaults to one server with id \"default\"", () => {
     const [entry, ...rest] = loadServerRegistryFromEnv({});
     expect(rest).toEqual([]);

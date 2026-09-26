@@ -15,6 +15,7 @@ import {
   ignoredSingleServerEnvNames,
   loadConfiguredServersFromFile,
   loadSatisfactoryServerConfigFromEnv,
+  nonLoopbackServerIds,
   parsePortEnv,
   testGameServerConnection,
 } from "./modules/gameserver/index.js";
@@ -110,6 +111,15 @@ const entries = orExit(() => {
       const config = loadSatisfactoryServerConfigFromEnv();
       return loadServerRegistryFromEnv().map(({ id, displayName }) => ({ id, displayName, config }));
     })();
+  // ADR-0030 amendment 1: servers configured in the environment are outside the LAN gate (they are the operator's own
+  // configuration), but a LAN host has no certificate verification: say so once, by id, never naming the address.
+  const lanServerIds = nonLoopbackServerIds(configured);
+  if (lanServerIds.length > 0) {
+    logger.warn(
+      { servers: lanServerIds },
+      "an environment-configured server is not on loopback: its API certificate is unverified on the LAN (ADR-0030 amendment 1)",
+    );
+  }
   return configured.map(({ id, displayName, config }) => buildServer(id, displayName, config));
 });
 // ADR-0030: the servers this process serves. Built from the config now; with a database, the servers
