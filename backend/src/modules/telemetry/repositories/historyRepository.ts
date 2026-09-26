@@ -51,6 +51,12 @@ export interface TransitionRow {
 }
 
 const isFiniteNumber = (value: number): boolean => Number.isFinite(value);
+/** Fits Postgres `integer` (the session hash and circuit id columns). */
+const isInt4 = (value: number): boolean => Number.isInteger(value) && value >= -(2 ** 31) && value < 2 ** 31;
+/** Within JS's Date range (about year 275760), which is inside timestamptz's: to_timestamp() would error beyond it. */
+const isStorableTime = (value: number): boolean => Number.isFinite(value) && Math.abs(value) <= 8.64e15;
+/** Postgres text cannot hold a NUL character; one would fail the whole statement, and the batch is retried as a unit. */
+const isStorableText = (value: string): boolean => !value.includes("\u0000");
 
 function* chunks<T>(rows: T[]): Generator<T[]> {
   for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
@@ -70,8 +76,12 @@ const INSERT_POWER_SAMPLES = `
 
 /** Writes power samples for one server. A sample with a non-finite number is dropped (never stored as NaN). */
 export async function insertPowerSamples(db: Queryable, serverPublicId: string, rows: PowerSampleRow[]): Promise<void> {
-  const valid = rows.filter((row) =>
-    [row.session, row.circuit, row.atMs, row.productionMW, row.consumptionMW, row.capacityMW, row.batteryPercent].every(isFiniteNumber),
+  const valid = rows.filter(
+    (row) =>
+      isInt4(row.session) &&
+      isInt4(row.circuit) &&
+      isStorableTime(row.atMs) &&
+      [row.productionMW, row.consumptionMW, row.capacityMW, row.batteryPercent].every(isFiniteNumber),
   );
   for (const chunk of chunks(valid)) {
     await db.query(INSERT_POWER_SAMPLES, [
@@ -102,7 +112,8 @@ export async function insertItemSamples(db: Queryable, serverPublicId: string, r
     (row) =>
       row.item.length > 0 &&
       row.item.length <= 200 &&
-      isFiniteNumber(row.atMs) &&
+      isStorableText(row.item) &&
+      isStorableTime(row.atMs) &&
       isFiniteNumber(row.currentPerMinute) &&
       isFiniteNumber(row.maxPerMinute) &&
       row.currentPerMinute >= 0 &&
@@ -135,14 +146,17 @@ const INSERT_TRANSITIONS = `
 export async function insertTransitions(db: Queryable, serverPublicId: string, rows: TransitionRow[]): Promise<void> {
   const valid = rows.filter(
     (row) =>
-      isFiniteNumber(row.atMs) &&
+      isStorableTime(row.atMs) &&
       row.buildingId.length > 0 &&
       row.buildingId.length <= 200 &&
+      isStorableText(row.buildingId) &&
       row.className.length > 0 &&
       row.className.length <= 200 &&
+      isStorableText(row.className) &&
       row.toState.length > 0 &&
       row.toState.length <= 40 &&
-      (row.fromState === null || (row.fromState.length > 0 && row.fromState.length <= 40)),
+      isStorableText(row.toState) &&
+      (row.fromState === null || (row.fromState.length > 0 && row.fromState.length <= 40 && isStorableText(row.fromState))),
   );
   if (valid.length === 0) return;
   await db.query(INSERT_TRANSITIONS, [
