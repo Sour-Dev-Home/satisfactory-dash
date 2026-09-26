@@ -157,6 +157,19 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     expect(exempt.length).toBe(13);
     expect(exempt.every((endpoint) => endpoint.route.startsWith("/api/servers/:serverId/alerts/"))).toBe(true);
   });
+
+  // The exemption expires on its own: the moment PR 7b mounts ANY alerts route, this fails until NOT_YET_MOUNTED is
+  // deleted, so the routes can never ship without the generated authorization tests.
+  it("the exempt endpoints are still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
+      const url = urlFor(endpoint.route, "alpha").replace(":ruleId", "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04");
+      const res = await call(app, endpoint.name, endpoint.method, url, OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0027 PR 7b)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
+  });
 });
 
 describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operatorOnly }) => {
