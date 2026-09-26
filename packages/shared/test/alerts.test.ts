@@ -215,6 +215,26 @@ describe("alerts contract: status and mute", () => {
     expect(SetMuteRequestSchema.safeParse({ until: "2026-09-26T18:00:00.000Z", extra: 1 }).success).toBe(false);
     expect(SetMuteRequestSchema.safeParse({}).success).toBe(false);
   });
+
+  it("times are ISO 8601 with a Z or an offset, with or without milliseconds (a notation is not a reason to refuse)", () => {
+    for (const until of ["2026-09-27T10:00:00Z", "2026-09-27T10:00:00.123Z", "2026-09-27T10:00:00+02:00", "2026-09-27T10:00:00.5-05:30"]) {
+      expect(SetMuteRequestSchema.safeParse({ until }).success, until).toBe(true);
+    }
+    for (const until of ["2026-09-27", "2026-09-27T10:00:00", "2026-09-27 10:00:00Z", ""]) {
+      expect(SetMuteRequestSchema.safeParse({ until }).success, until).toBe(false);
+    }
+    const rule = { ...fixtures.alertRulesList.rules[0]!, createdAt: "2026-09-01T00:00:00+00:00" };
+    expect(AlertRuleSchema.safeParse(rule).success).toBe(true);
+  });
+
+  it("query and target boundaries: limit 1 and 100, a 19-digit cursor, a target above zero and finite", () => {
+    expect(AlertEventsQuerySchema.parse({ limit: "1" }).limit).toBe(1);
+    expect(AlertEventsQuerySchema.safeParse({ before: "9".repeat(19) }).success).toBe(true);
+    const target = (targetPerMinute: unknown) => ProductionBelowTargetParamsSchema.safeParse({ ...production, targetPerMinute }).success;
+    expect([target(0.001), target(0), target(-1), target(Infinity), target(NaN), target("5")]).toEqual([true, false, false, false, false, false]);
+    expect(ProductionBelowTargetUpdateParamsSchema.safeParse({ windowMinutes: 61 }).success).toBe(false);
+    expect(ProductionBelowTargetUpdateParamsSchema.safeParse({ windowMinutes: 30 }).success).toBe(true);
+  });
 });
 
 describe("alerts contract: errors", () => {

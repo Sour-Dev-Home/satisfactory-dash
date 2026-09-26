@@ -17,6 +17,10 @@ export const CREATABLE_RULE_KINDS = ["production_below_target"] as const;
 export const KNOWN_SEVERITIES = ["info", "warning", "critical"] as const;
 export const KNOWN_EVENT_TRANSITIONS = ["fired", "updated", "renotify", "resolved"] as const;
 
+// An ISO 8601 time. zod's default accepts only a trailing `Z`; `offset: true` also takes `+02:00`, so a Postgres-formatted
+// response time or a mute time typed with the user's offset is not refused for its notation.
+const IsoTimeSchema = z.iso.datetime({ offset: true });
+
 export const RuleIdSchema = z.uuid().describe("A rule's id");
 export const SeveritySchema = z.enum(KNOWN_SEVERITIES);
 
@@ -72,8 +76,8 @@ export const AlertRuleSchema = z.object({
   severity: z.string().describe("Known: info, warning, critical"),
   enabled: z.boolean(),
   preset: z.boolean().describe("Seeded by the app. A preset can be disabled and tuned but never deleted (preset_disable_only)"),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
+  createdAt: IsoTimeSchema,
+  updatedAt: IsoTimeSchema,
 });
 
 /** GET /alerts/rules */
@@ -125,7 +129,7 @@ export const DiscordDestinationSchema = z.object({
   last4: z.string().length(4).describe("The last 4 characters of the webhook URL"),
   enabled: z.boolean(),
   disabledReason: z.string().nullable().describe("null while enabled. Known: webhook_gone, invalid_url, manual"),
-  updatedAt: z.iso.datetime(),
+  updatedAt: IsoTimeSchema,
 });
 
 /** GET /alerts/destinations: `discord` is null when none is configured. */
@@ -158,7 +162,7 @@ export const SendTestResponseSchema = z.discriminatedUnion("ok", [
 
 export const AlertEventSchema = z.object({
   id: z.string().describe("A bigint identity as a string. Pass it as `before` to page backwards."),
-  at: z.iso.datetime(),
+  at: IsoTimeSchema,
   ruleId: RuleIdSchema.nullable().describe("null once the rule was deleted (the log outlives the rule)"),
   kind: z.string().describe("Copied from the rule when the event was written"),
   severity: z.string().describe("Known: info, warning, critical"),
@@ -210,13 +214,13 @@ export const FiringAlertSchema = z.object({
   kind: z.string(),
   subject: z.string(),
   severity: z.string().describe("Known: info, warning, critical"),
-  since: z.iso.datetime(),
+  since: IsoTimeSchema,
 });
 
 /** GET /alerts/status. `deliveryEnabled` false = the kill switch is off ("Delivery is off (shadow week)"). */
 export const AlertStatusResponseSchema = z.object({
   deliveryEnabled: z.boolean(),
-  mutedUntil: z.iso.datetime().nullable(),
+  mutedUntil: IsoTimeSchema.nullable(),
   firing: z.array(FiringAlertSchema),
 });
 
@@ -224,8 +228,8 @@ export const AlertStatusResponseSchema = z.object({
  * PUT /alerts/mute. `until` must be in the future and at most 7 days ahead; the backend checks that against its own
  * clock (a bad value answers mute_invalid), so it is not in the schema.
  */
-export const SetMuteRequestSchema = z.strictObject({ until: z.iso.datetime() });
-export const MuteSetResponseSchema = z.object({ mutedUntil: z.iso.datetime() });
+export const SetMuteRequestSchema = z.strictObject({ until: IsoTimeSchema });
+export const MuteSetResponseSchema = z.object({ mutedUntil: IsoTimeSchema });
 /** DELETE /alerts/mute */
 export const MuteClearedResponseSchema = z.object({ mutedUntil: z.null() });
 
