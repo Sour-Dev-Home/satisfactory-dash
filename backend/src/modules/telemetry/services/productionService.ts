@@ -1,8 +1,9 @@
-import type { Factory, FactoryBuilding as FactoryBuildingResponse } from "@satisfactory-dash/shared";
+import type { Factory } from "@satisfactory-dash/shared";
 import type { FactoryBuilding } from "../../gameserver/index.js";
+import { isBackedUp, mapFactoryBuilding } from "../../gameserver/index.js";
 import { createUnitResolver } from "../itemForms.js";
 import type { ProductionUnit } from "../itemForms.js";
-import { classifyBuilding } from "./classifyBuilding.js";
+import { deriveFactory } from "./snapshotDerive.js";
 
 export type UnitResolver = (className: string) => ProductionUnit | null;
 
@@ -11,24 +12,12 @@ export interface ProductionAdapterLike {
 }
 
 /**
- * A building is treated as backed up — the closest available overflow signal, see
- * docs-vault/wiki/frm-api.md — when at least one output slot is sitting at capacity,
- * i.e. downstream (the belt/pipe/container it feeds) can't keep up. Deterministic
- * threshold check, not an LLM call (ground rule 3).
- *
- * Deliberately NOT gated on isProducing (B1, 2026-09-22 captures): a machine whose
- * output is full stops producing, so all 71 backed-up machines on a real save read
- * IsProducing false and the old rule matched none of them. Paused and unconfigured
- * machines are excluded instead, since a full slot there doesn't mean a blocked belt.
- * maxAmount > 0 guards a zero-capacity slot; FRM omits empty slots, so one would
- * never mean "full".
+ * A building is treated as backed up (an output slot at capacity, the closest available overflow signal, see
+ * docs-vault/wiki/frm-api.md). ADR-0031: this raw fact needs the output inventory, so it is computed where the inventory
+ * is (the game-adapter package's shape mapping, shared with the edge agent); re-exported here for the services and tests
+ * that read it from the production service.
  */
-export function isBackedUp(building: FactoryBuilding): boolean {
-  if (building.isPaused || building.recipe === null) {
-    return false;
-  }
-  return building.outputInventory.some((slot) => slot.maxAmount > 0 && slot.amount >= slot.maxAmount);
-}
+export { isBackedUp };
 
 export class ProductionService {
   /** `resolveUnit` maps an item className to the contract's `unit` (ADR-0015). The
@@ -39,43 +28,15 @@ export class ProductionService {
     private readonly resolveUnit: UnitResolver = createUnitResolver(() => {}),
   ) {}
 
+  /**
+   * The shared shape mapping (`mapFactoryBuilding`, including `isBackedUp`), then the backend's classification step
+   * (`deriveFactory`: each machine's `state`, the units, `backedUpCount`, `stateCounts`), the same two steps an edge agent's
+   * readings go through at ingest (ADR-0031). For a polled server each machine's fuse is the one FRM sent on it (ADR-0027);
+   * absent means unknown, never assumed intact.
+   */
   async getFactoryOverview(): Promise<Factory> {
     const buildings = await this.adapter.getFactoryBuildings();
-    const mapped: FactoryBuildingResponse[] = buildings.map((building) => {
-      const backedUp = isBackedUp(building);
-      // ADR-0027 PR 2: derived per snapshot from FRM's own averaged percentages, never from
-      // isProducing alone. Omitted, never guessed, when the data to decide is missing.
-      const state = classifyBuilding(building, backedUp)?.state;
-      return {
-        id: building.id,
-        name: building.name,
-        className: building.className,
-        recipe: building.recipe,
-        isProducing: building.isProducing,
-        isPaused: building.isPaused,
-        isBackedUp: backedUp,
-        circuitGroupId: building.circuitGroupId,
-        ...(building.location ? { location: building.location } : {}),
-        ...(building.clockSpeedPercent !== undefined ? { clockSpeedPercent: building.clockSpeedPercent } : {}),
-        // ADR-0015: the unit comes from the game's own item data; null = an unknown item.
-        production: building.production.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
-        // ADR-0027: what it consumes, in the same shape and with the same unit resolution.
-        ingredients: building.consumption.map((rate) => ({ ...rate, unit: this.resolveUnit(rate.className) })),
-        ...(state !== undefined ? { state } : {}),
-      };
-    });
-    // How many buildings are in each state, for the Overview's "N machines stalled". Buildings with
-    // no state are not counted.
-    const stateCounts: Record<string, number> = {};
-    for (const building of mapped) {
-      if (building.state !== undefined) {
-        stateCounts[building.state] = (stateCounts[building.state] ?? 0) + 1;
-      }
-    }
-    return {
-      buildings: mapped,
-      backedUpCount: mapped.filter((building) => building.isBackedUp).length,
-      stateCounts,
-    };
+    const fuseById = new Map(buildings.map((building) => [building.id, building.fuseTriggered]));
+    return deriveFactory({ buildings: buildings.map(mapFactoryBuilding) }, (building) => fuseById.get(building.id), this.resolveUnit);
   }
 }

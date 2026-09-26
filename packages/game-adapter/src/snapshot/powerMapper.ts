@@ -1,8 +1,8 @@
-import type { PowerCircuit as PowerCircuitResponse } from "@satisfactory-dash/shared";
+import type { AgentPower } from "@satisfactory-dash/shared";
 import type { PowerCircuit } from "../domain.js";
 
-/** A circuit as the contract has it, without the derived `status` (a RULE the backend applies, ADR-0031). */
-export type MappedPowerCircuit = Omit<PowerCircuitResponse, "status">;
+/** A circuit as an agent sends it: the contract's fields without the derived `status` (a RULE the backend applies, ADR-0031). */
+export type MappedPowerCircuit = AgentPower["circuits"][number];
 
 /**
  * Maps one adapter circuit to the contract's fields (packages/shared/src/power.ts): MW/MWh unit names, and the two

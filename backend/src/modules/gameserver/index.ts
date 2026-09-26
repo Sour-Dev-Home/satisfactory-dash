@@ -31,6 +31,9 @@ export {
   createGameServerConnection,
   testGameServerConnection,
 } from "@satisfactory-dash/game-adapter";
+// ADR-0031: the pure shape mappers the telemetry services and the edge agent share (classification rules stay in the backend).
+export { mapStatus, mapPlayers, readPlayers, isFrmAbsent, mapPowerCircuit, mapFactoryBuilding, isBackedUp } from "@satisfactory-dash/game-adapter";
+export type { MappedPowerCircuit, MappedFactoryBuilding } from "@satisfactory-dash/game-adapter";
 export type {
   VanillaApiClientLike,
   FrmApiClientLike,

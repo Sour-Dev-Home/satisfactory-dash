@@ -1,9 +1,9 @@
-import type { FactoryBuilding as FactoryBuildingResponse } from "@satisfactory-dash/shared";
+import type { AgentFactory } from "@satisfactory-dash/shared";
 import type { FactoryBuilding } from "../domain.js";
 
 /** A building as the contract has it, without the derived `state` and without `unit` on its rates: both are RULES or
  *  catalog lookups the backend applies (ADR-0031), so a change to them never needs an agent update. */
-export type MappedFactoryBuilding = Omit<FactoryBuildingResponse, "state">;
+export type MappedFactoryBuilding = AgentFactory["buildings"][number];
 
 /**
  * A building is treated as backed up, the closest available overflow signal (docs-vault/wiki/frm-api.md), when at

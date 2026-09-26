@@ -1,7 +1,7 @@
 import type { AgentFactory, AgentPower, Factory, FactoryBuilding, Power, PowerCircuit as PowerCircuitResponse } from "@satisfactory-dash/shared";
 import type { PowerCircuit } from "../../gameserver/index.js";
 import { classifyBuilding } from "./classifyBuilding.js";
-import { classifyPowerCircuit } from "./powerService.js";
+import { classifyPowerCircuit } from "./classifyPower.js";
 import type { UnitResolver } from "./productionService.js";
 
 /**
@@ -49,12 +49,23 @@ export function fuseByCircuit(power: Power): ReadonlyMap<number, boolean> {
   return new Map(power.circuits.map((circuit) => [circuit.circuitGroupId, circuit.fuseTriggered]));
 }
 
+type AgentBuilding = AgentFactory["buildings"][number];
+
+/** Whether a machine's fuse has tripped, or undefined when that is not known (never assumed false, ADR-0027). */
+export type FuseLookup = (building: AgentBuilding) => boolean | undefined;
+
+/** An agent's machines: the fuse comes from the power circuit each is wired to; without a (fresh) power reading it is unknown. */
+export function fuseFromCircuits(fuses: ReadonlyMap<number, boolean> | undefined): FuseLookup {
+  return (building) => (building.circuitGroupId === undefined ? undefined : fuses?.get(building.circuitGroupId));
+}
+
 /**
- * Each building's `state`, its rates' `unit`, `backedUpCount` and `stateCounts`, as the production service derives them
- * for a polled server. The machine's fuse comes from the power circuit it is wired to (`fuses`); without a fresh power
- * reading it is unknown, and the classifier then leaves `state` out rather than guess, exactly as when FRM sends none.
+ * Each building's `state`, its rates' `unit`, `backedUpCount` and `stateCounts`: the backend's classification step, applied
+ * to a polled server's mapped buildings and to an edge agent's alike (ADR-0031). `fuseOf` says whether a machine's fuse has
+ * tripped: FRM sends it on the machine for a polled server, and for an agent it is joined from the power circuits. Unknown
+ * means the classifier leaves `state` out rather than guess, exactly as when FRM sends none.
  */
-export function deriveFactory(agent: AgentFactory, fuses: ReadonlyMap<number, boolean> | undefined, resolveUnit: UnitResolver): Factory {
+export function deriveFactory(agent: AgentFactory, fuseOf: FuseLookup, resolveUnit: UnitResolver): Factory {
   const buildings: FactoryBuilding[] = agent.buildings.map((building) => {
     const withUnit = (rate: AgentFactory["buildings"][number]["production"][number]) => ({
       name: rate.name,
@@ -67,7 +78,7 @@ export function deriveFactory(agent: AgentFactory, fuses: ReadonlyMap<number, bo
     const production = building.production.map(withUnit);
     const ingredients = building.ingredients?.map(withUnit);
     const circuit = building.circuitGroupId;
-    const fuse = circuit === undefined ? undefined : fuses?.get(circuit);
+    const fuse = fuseOf(building);
     // A pause needs no circuit or fuse (the local rule checks it first), so it is decided even when the id is missing.
     const classified =
       circuit === undefined
