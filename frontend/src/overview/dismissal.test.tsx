@@ -89,7 +89,8 @@ describe("dismissing the warnings banner", () => {
 
     server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)));
     await refetchAll(client);
-    expect(await screen.findByText("Running with warnings")).toBeInTheDocument();
+    // With the tick among the warnings, the headline names the causes (the owner's option A).
+    expect(await screen.findByText("Server tick is slow · Factory backed up")).toBeInTheDocument();
   });
 
   it("stays dismissed across a refetch that reports the exact same tick warning again", async () => {

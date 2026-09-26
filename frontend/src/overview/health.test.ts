@@ -30,11 +30,11 @@ describe("serverHealth", () => {
   });
 
   it.each([
-    ["no save loaded", statusNoGame, "degraded", "No save loaded"],
-    ["stale data", statusStale, "degraded", "Showing last known data"],
-    ["a paused game", statusPaused, "paused", "Paused: no players connected"],
-  ] as const)("flags %s", (_, snapshot, health, summary) => {
-    expect(serverHealth(snapshot)).toEqual({ health, summary });
+    ["no save loaded", statusNoGame, { health: "degraded", summary: "No save loaded", cause: "No save loaded" }],
+    ["stale data", statusStale, { health: "degraded", summary: "Showing last known data", cause: "Server data is stale" }],
+    ["a paused game", statusPaused, { health: "paused", summary: "Paused: no players connected" }],
+  ] as const)("flags %s", (_, snapshot, expected) => {
+    expect(serverHealth(snapshot)).toEqual(expected);
   });
 
   // The owner's call: the tick lives only in the Health card, never in this row.
@@ -46,13 +46,17 @@ describe("serverHealth", () => {
   // The Overview has no paused banner, so a worse state must not hide that the game is paused.
   it("still says paused when stale wins", () => {
     const snapshot = { ...statusStale, data: { ...statusStale.data, gamePaused: true } };
-    expect(serverHealth(snapshot)).toEqual({ health: "degraded", summary: "Showing last known data · game paused" });
+    expect(serverHealth(snapshot)).toEqual({
+      health: "degraded",
+      summary: "Showing last known data · game paused",
+      cause: "Server data is stale",
+    });
   });
 });
 
 describe("tickState", () => {
   it("is a warning for the backend's slow tick, and ok otherwise", () => {
-    expect(tickState(statusSlow)).toEqual({ health: "degraded", summary: "Server tick is slow" });
+    expect(tickState(statusSlow)).toEqual({ health: "degraded", summary: "Server tick is slow", cause: "Server tick is slow" });
     expect(tickState(statusRunning).health).toBe("ok");
   });
 
@@ -67,7 +71,7 @@ describe("powerHealth", () => {
   });
 
   it("is degraded when a circuit is at risk", () => {
-    expect(powerHealth(powerAtRisk)).toEqual({ health: "degraded", summary: "1 circuit is at risk" });
+    expect(powerHealth(powerAtRisk)).toEqual({ health: "degraded", summary: "1 circuit is at risk", cause: "Power at risk" });
   });
 
   it("is ok otherwise, with production and capacity", () => {
@@ -84,6 +88,7 @@ describe("powerHealth", () => {
     expect(powerHealth({ ...powerStale, data: powerOk.data })).toEqual({
       health: "degraded",
       summary: "Showing last known power data",
+      cause: "Power data is stale",
     });
   });
 
@@ -98,7 +103,11 @@ describe("factoryHealth", () => {
   });
 
   it("is degraded above a quarter of machines backed up", () => {
-    expect(factoryHealth(factoryWith(8, 3))).toEqual({ health: "degraded", summary: "3 of 8 machines backed up" });
+    expect(factoryHealth(factoryWith(8, 3))).toEqual({
+      health: "degraded",
+      summary: "3 of 8 machines backed up",
+      cause: "Factory backed up",
+    });
   });
 
   it("is ok with no machines", () => {
@@ -113,6 +122,7 @@ describe("factoryHealth", () => {
     expect(factoryHealth({ ...factoryWith(4, 0), stale: true })).toEqual({
       health: "degraded",
       summary: "Showing last known factory data",
+      cause: "Factory data is stale",
     });
   });
 });
@@ -184,5 +194,24 @@ describe("overallHealth", () => {
   it("is still checking while any section is loading and nothing is worse yet", () => {
     expect(overallHealth([ok, "pending"])).toEqual({ health: "pending", headline: "Checking…" });
     expect(overallHealth(["pending", { health: "outage", summary: "" }]).health).toBe("outage");
+  });
+
+  // The owner's call (option A): the tick has no row, so a slow tick names the causes.
+  describe("with a slow tick", () => {
+    const tick = tickState(statusSlow);
+    const factory = factoryHealth(factoryWith(8, 3));
+
+    it("says so instead of the generic warning", () => {
+      expect(overallHealth([ok, tick, ok])).toEqual({ health: "degraded", headline: "Server tick is slow" });
+    });
+
+    it("names the other warnings after it", () => {
+      expect(overallHealth([ok, factory, tick]).headline).toBe("Server tick is slow · Factory backed up");
+    });
+
+    it("keeps the generic warning without a slow tick, and a worse state's own headline", () => {
+      expect(overallHealth([ok, factory]).headline).toBe("Running with warnings");
+      expect(overallHealth([tick, { health: "outage", summary: "" }]).headline).toBe("Power outage");
+    });
   });
 });

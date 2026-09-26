@@ -75,7 +75,7 @@ describe("OverviewView: the Health card's tick", () => {
     );
     renderOverview();
     expect(await within(healthCard()).findByText("Degraded")).toBeInTheDocument();
-    expect(healthCard()).toHaveTextContent("Running with warnings");
+    expect(healthCard()).toHaveTextContent("Server tick is slow");
     const rows = screen.getByRole("list", { name: "Sections" });
     expect(within(rows).getAllByText("Checking…")).toHaveLength(2);
   });
