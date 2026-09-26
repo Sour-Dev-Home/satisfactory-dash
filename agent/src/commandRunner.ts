@@ -92,7 +92,7 @@ export class CommandRunner {
         continue;
       }
       // A poll that came back at once (an empty answer, or commands to run) is spaced, and a "pending" hint ends the wait early.
-      const spent = this.now() - startedAt;
+      const spent = Math.max(0, this.now() - startedAt); // a clock set back must not turn into a long wait
       if (spent < MIN_POLL_SPACING_MS) await this.wait(MIN_POLL_SPACING_MS - spent, signal, sleep);
     }
   }

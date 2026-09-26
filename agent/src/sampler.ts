@@ -29,6 +29,15 @@ export function failureCode(err: unknown): string {
   return "internal_error";
 }
 
+/** A wake-up a hair early (timers are not exact, and the clock and the timer disagree by a millisecond) must not cost a whole period. */
+const DUE_SLACK_MS = 250;
+
+/** Due when a period has passed (within the slack), or when the clock went BACKWARDS since the last read (never silence a part until it catches up). */
+const isDue = (nowMs: number, lastMs: number, seconds: number): boolean => {
+  const elapsed = nowMs - lastMs;
+  return elapsed < 0 || elapsed >= seconds * 1000 - DUE_SLACK_MS;
+};
+
 export interface SamplerOptions {
   reader: GameReader;
   /** Read on every use, so a cadence the backend changes applies at once. */
@@ -70,9 +79,9 @@ export class Sampler {
       return { ...base, reachable: false, paused: null };
     }
 
-    const powerDue = nowMs - this.lastPower >= cadence.powerSeconds * 1000;
-    const factoryDue = nowMs - this.lastFactory >= cadence.factorySeconds * 1000;
-    const autoPauseDue = nowMs - this.lastAutoPause >= cadence.statusSeconds * 1000;
+    const powerDue = isDue(nowMs, this.lastPower, cadence.powerSeconds);
+    const factoryDue = isDue(nowMs, this.lastFactory, cadence.factorySeconds);
+    const autoPauseDue = isDue(nowMs, this.lastAutoPause, cadence.statusSeconds);
     if (powerDue) this.lastPower = nowMs;
     if (factoryDue) this.lastFactory = nowMs;
     if (autoPauseDue) this.lastAutoPause = nowMs;

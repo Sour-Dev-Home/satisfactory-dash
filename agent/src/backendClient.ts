@@ -117,8 +117,8 @@ export class BackendClient {
   }
 
   /** POST /agent/v1/snapshots. The answer carries the current cadence and whether a command is waiting. */
-  postSnapshot(snapshot: SnapshotRequest): Promise<SnapshotResponse> {
-    return this.request({ method: "POST", path: endpoints.agentApi.snapshots.path(), body: snapshot, authenticated: true, schema: SnapshotResponseSchema });
+  postSnapshot(snapshot: SnapshotRequest, signal?: AbortSignal): Promise<SnapshotResponse> {
+    return this.request({ method: "POST", path: endpoints.agentApi.snapshots.path(), body: snapshot, authenticated: true, schema: SnapshotResponseSchema, signal });
   }
 
   /** GET /agent/v1/commands?waitSeconds=N: a long-poll (0 to 25 seconds). */

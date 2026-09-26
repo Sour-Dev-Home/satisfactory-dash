@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
+import { isIPv6 } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -60,7 +61,9 @@ export function isAllowedGameHost(host: string): boolean {
     if ([a, b, c, d].some((part) => part > 255)) return false;
     return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
   }
+  // A REAL IPv6 literal, not a prefix: "fd00:@evil.com" starts like a private address but is a URL with another host in it.
   const bare = value.replace(/^\[|\]$/g, "");
+  if (!isIPv6(bare)) return false;
   return bare === "::1" || /^f[cd][0-9a-f]{2}:/.test(bare) || bare.startsWith("fe80:");
 }
 
@@ -130,7 +133,7 @@ export class AgentStore {
     if (!isAllowedGameHost(game.host)) {
       throw new StoreError("The game host must be this machine or an address on its own network (127.0.0.1, localhost, or a private IP), never a public one.");
     }
-    this.data = { ...this.data, game: { ...game } };
+    this.data = { ...this.data, game: { ...game, host: game.host.trim() } };
     this.save();
   }
 

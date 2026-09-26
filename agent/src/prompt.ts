@@ -11,6 +11,9 @@ export interface PromptInput {
   resume(): unknown;
   pause(): unknown;
   setEncoding?(encoding: BufferEncoding): unknown;
+  /** Puts unread text back (piped input: the rest of the chunk belongs to the next prompt). */
+  unshift?(chunk: string): unknown;
+  readableEnded?: boolean;
   on(event: "data", listener: (chunk: string | Buffer) => void): unknown;
   on(event: "end", listener: () => void): unknown;
   removeListener(event: "data", listener: (chunk: string | Buffer) => void): unknown;
@@ -46,7 +49,9 @@ export function readHidden(question: string, io: { stdin: PromptInput; stderr: {
     // An arrow or function key arrives as ESC [ ... <letter>: skipped whole, so "[A" never lands in a secret.
     let escape: "none" | "esc" | "csi" = "none";
     function onData(chunk: string | Buffer) {
-      for (const char of chunk.toString()) {
+      const chars = Array.from(chunk.toString());
+      for (let index = 0; index < chars.length; index++) {
+        const char = chars[index]!;
         if (escape === "esc") {
           escape = char === "[" ? "csi" : "none";
           continue;
@@ -59,7 +64,15 @@ export function readHidden(question: string, io: { stdin: PromptInput; stderr: {
           escape = "esc";
           continue;
         }
-        if (char === "\r" || char === "\n") return finish();
+        if (char === "\r" || char === "\n") {
+          finish();
+          // Piped input: what follows this line belongs to the NEXT prompt (a CRLF is one line end). A terminal's type-ahead is dropped.
+          if (!tty) {
+            const rest = chars.slice(index + (char === "\r" && chars[index + 1] === "\n" ? 2 : 1)).join("");
+            if (rest !== "") stdin.unshift?.(rest);
+          }
+          return;
+        }
         if (char === "\u0003") return finish(new PromptAborted()); // Ctrl+C
         if (char === "\u007f" || char === "\b") value = value.slice(0, -1);
         else if (char >= " " && char !== "\u007f") value += char;
@@ -68,6 +81,7 @@ export function readHidden(question: string, io: { stdin: PromptInput; stderr: {
     function onEnd() {
       finish();
     }
+    if (!tty && stdin.readableEnded === true) return finish(); // an input that already ended never fires "end" again
     stdin.on("data", onData);
     stdin.on("end", onEnd);
   });

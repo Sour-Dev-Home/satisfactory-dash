@@ -77,7 +77,8 @@ export async function runAgent(options: RunAgentOptions): Promise<RunOutcome> {
         logger.error("sample_failed", { code: "internal_error" });
       }
       const period = Math.min(cadence.statusSeconds, cadence.powerSeconds, cadence.factorySeconds) * 1000;
-      await sleep(Math.max(250, period - (now() - startedAt)), stop.signal);
+      const spent = Math.max(0, now() - startedAt); // a clock set back must not turn into a long sleep
+      await sleep(Math.max(250, period - spent), stop.signal);
     }
   };
 

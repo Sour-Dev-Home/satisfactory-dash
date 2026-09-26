@@ -30,8 +30,27 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 const atLeastZero = (value: number): number => (value < 0 ? 0 : value);
 const clampPercent = (value: number): number => Math.min(100, Math.max(0, value));
 
+/** A yaw into the contract's [0, 360). Float noise such as -1e-20 would land on exactly 360, so that goes to 0. */
+const normalizeYaw = (degrees: number): number => {
+  const yaw = ((degrees % 360) + 360) % 360;
+  return yaw >= 360 ? 0 : yaw;
+};
+
+/**
+ * A status number that is not finite has no honest value ("unknown is not zero"), so it throws and the sampler reports the game
+ * as unreachable for this pass; a finite one is raised to 0 (noise) and a count is rounded to a whole number.
+ */
 export function conformStatus(status: Status): Status {
-  return { ...status, sessionName: cut(status.sessionName) };
+  const numbers = [status.connectedPlayers, status.playerLimit, status.tickRate, status.totalGameDurationSeconds];
+  if (!numbers.every(finite)) throw new RangeError("a status reading is not a finite number");
+  return {
+    ...status,
+    sessionName: cut(status.sessionName),
+    connectedPlayers: atLeastZero(Math.round(status.connectedPlayers)),
+    playerLimit: atLeastZero(Math.round(status.playerLimit)),
+    tickRate: atLeastZero(status.tickRate),
+    totalGameDurationSeconds: atLeastZero(status.totalGameDurationSeconds),
+  };
 }
 
 export function conformPlayers(players: ServerPlayersResponse): Conformed<ServerPlayersResponse> {
@@ -89,7 +108,7 @@ export function conformFactory(factory: AgentFactory): Conformed<AgentFactory> {
     isPaused: building.isPaused,
     isBackedUp: building.isBackedUp,
     ...(building.circuitGroupId !== undefined && Number.isInteger(building.circuitGroupId) ? { circuitGroupId: building.circuitGroupId } : {}),
-    ...(building.location !== undefined && [building.location.xM, building.location.yM, building.location.zM, building.location.rotationDeg].every(finite) ? { location: building.location } : {}),
+    ...(building.location !== undefined && [building.location.xM, building.location.yM, building.location.zM, building.location.rotationDeg].every(finite) ? { location: { ...building.location, rotationDeg: normalizeYaw(building.location.rotationDeg) } } : {}),
     ...(building.clockSpeedPercent !== undefined && finite(building.clockSpeedPercent) ? { clockSpeedPercent: atLeastZero(building.clockSpeedPercent) } : {}),
     production: conformRates(building.production),
     ...(building.ingredients !== undefined ? { ingredients: conformRates(building.ingredients) } : {}),

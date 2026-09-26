@@ -20,7 +20,7 @@ export const abortableSleep: Sleep = (ms, signal) =>
   });
 
 export interface PusherOptions {
-  client: { postSnapshot(snapshot: SnapshotRequest): Promise<SnapshotResponse> };
+  client: { postSnapshot(snapshot: SnapshotRequest, signal?: AbortSignal): Promise<SnapshotResponse> };
   queue: BoundedQueue<SnapshotRequest>;
   logger: AgentLogger;
   /** Called with the cadence in every answer: the backend decides how often the agent samples. */
@@ -80,7 +80,7 @@ export class Pusher {
         continue;
       }
       try {
-        const answer = await client.postSnapshot(head);
+        const answer = await client.postSnapshot(head, signal); // the stop signal cancels a request in flight
         if (queue.peek() === head) queue.shift(); // the head may have been dropped for room while this was in flight
         if (this.failures > 0) {
           logger.info("push_recovered", { attempts: this.failures, queued: queue.size, dropped: this.droppedInStreak });
