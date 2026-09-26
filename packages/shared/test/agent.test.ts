@@ -117,9 +117,9 @@ describe("agent contract: snapshots", () => {
     expect([withSettings({}), withSettings({ autoPause: "yes" }), withSettings({ autoPause: null }), withSettings({ autoPause: true, extra: 1 }), withSettings(null)]).toEqual([false, false, false, false, false]);
   });
 
-  it("`settings` is not a data part: allowed on an unreachable snapshot, and it round-trips through parse and z.input", () => {
+  it("`settings` means it was read in this snapshot: refused on an unreachable snapshot, and it round-trips through parse and z.input", () => {
     const unreachable = { ...fixtures.agentSnapshotRequestUnreachable, settings: { autoPause: false } };
-    expect(SnapshotRequestSchema.safeParse(unreachable).success).toBe(true);
+    expect(SnapshotRequestSchema.safeParse(unreachable).success).toBe(false);
     const parsed = SnapshotRequestSchema.parse(fixtures.agentSnapshotRequestFull);
     expect(parsed.settings).toEqual({ autoPause: true });
     const input: z.input<typeof SnapshotRequestSchema> = { ...fixtures.agentSnapshotRequestPartial, settings: { autoPause: true } };

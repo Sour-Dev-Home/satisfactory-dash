@@ -63,7 +63,7 @@ export const EnrollResponseSchema = z.object({
 /**
  * POST /agent/v1/snapshots: what the agent read from the game. The four data parts REUSE the schemas the live routes
  * return (their `data`, not the response envelope), so one shape describes a reading everywhere. An unreachable game
- * sends `reachable: false` and NO parts; `paused` is null when it is not known.
+ * sends `reachable: false` and NO parts and no `settings`; `paused` is null when it is not known.
  */
 export const SnapshotRequestSchema = z
   .strictObject({
@@ -72,16 +72,20 @@ export const SnapshotRequestSchema = z
     reachable: z.boolean().describe("false = the game server or FRM could not be reached; no parts follow"),
     paused: z.boolean().nullable().describe("The game's pause state, or null when unknown"),
     settings: z
-      .strictObject({ autoPause: z.boolean().describe("The game's auto-pause setting as the agent last read it") })
+      .strictObject({ autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot") })
       .optional()
-      .describe("Game settings the agent could read; absent when it could not (the backend then treats auto-pause as unknown)"),
+      .describe("Game settings read in this snapshot; absent when not read, and always absent when the game is unreachable"),
     status: StatusSchema.optional(),
     power: PowerSchema.optional(),
     factory: FactorySchema.optional(),
     players: ServerPlayersResponseSchema.optional(),
   })
   .refine(
-    (snapshot) => snapshot.reachable || (snapshot.status === undefined && snapshot.power === undefined && snapshot.factory === undefined && snapshot.players === undefined),
+    (snapshot) => snapshot.reachable || (snapshot.status === undefined &&
+        snapshot.power === undefined &&
+        snapshot.factory === undefined &&
+        snapshot.players === undefined &&
+        snapshot.settings === undefined),
     "An unreachable game sends no data parts",
   );
 /** 200. The backend answers every snapshot with the current cadence and whether a command is waiting. */
