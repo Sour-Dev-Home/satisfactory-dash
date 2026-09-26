@@ -140,6 +140,10 @@ Owner steps:
    the age private key; it is for restores only. The master key is never used and never stored on the PC.
 7. Create a new AWS CLI profile **`satis-backup-b2`** holding the upload key (key id and application key) and the
    endpoint's region (`aws configure --profile satis-backup-b2`).
+   **Caveat on the upload key:** the B2 web UI cannot pick exact key capabilities, so the upload key is the UI's
+   "Write Only" preset and may include delete. What protects recent copies from a stolen upload key is the **30-day
+   governance Object Lock** on the bucket (step 2), and the age key stays the second line of defence (the backups are
+   encrypted, and the age private key is offline).
 8. In `backend\.env` set `BACKUP_S3_BUCKET=<the B2 bucket>`, `BACKUP_S3_ENDPOINT=<the endpoint>` and
    `BACKUP_AWS_PROFILE=satis-backup-b2`.
 
@@ -240,6 +244,9 @@ and the row counts matched the live database (users 1/1, servers 1/1, members 1/
 10/10). The newest migration in the restore was `1790812800000_alert_production_kind`. The scratch database was dropped
 and the plaintext deleted. The nightly task then ran against B2 with result 0 ("succeeded on attempt 1"). The S3
 bucket is read-only from that day and is deleted, with the `satis-backup` IAM user, on or after **2026-11-02**.
+
+**Secrets check record (2026-09-26):** `verify-secrets` against a scratch restore of the newest B2 backup, using the
+OFFLINE copy of `SERVER_SECRETS_KEY`, passed: 1 stored connection opened, 0 unreadable.
 
 To restore for real after a loss, the same steps apply, restoring into a fresh database that the backend
 role owns (or run `npm run db:init -w backend` first for the roles), and only after stopping the backend.

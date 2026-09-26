@@ -109,3 +109,68 @@ Status: accepted (owner, 2026-09-25: all of it, with the merge queue after the l
 - The first queued run found the `merge_group.head_ref` value to be the full ref
   (`refs/heads/gh-readonly-queue/main/pr-<N>-<sha>`). The parser strips an optional `refs/heads/`
   prefix and is otherwise strict. Anything else fails closed.
+
+## Amendment 3 (2026-09-26, decided by the owner): review tiers, and design tokens enforced in CI
+**Why.** On 2026-09-26 the main time cost was not writing code but review round trips and screenshot
+baseline churn. Many PRs were frontend styling changes that an architecture review could not improve.
+Those reviews stay where they catch real problems: in the #230 alerts UI, a Discord webhook URL was
+passed as a TanStack mutation variable and kept in the browser's mutation cache.
+
+### 1. Review tiers
+- **UI tier (no architect review).** A PR qualifies only if **every** changed file is in:
+  - `frontend/src/**/*.{ts,tsx,css}`, except `frontend/src/api/**`, `frontend/src/auth/**`,
+    `frontend/src/demo/handlers.ts` and `frontend/src/test/browser.ts`;
+  - `frontend/e2e/**` (specs and screenshot baselines);
+  - `docs-vault/wiki/log.d/**`.
+
+  **And** no added line in `frontend/src` matches the data-flow pattern: `useQuery`,
+  `useInfiniteQuery`, `useMutation`, `queryOptions`, `apiSend`, `apiGet`, `endpoints.`, `fetch(`,
+  `localStorage`, `sessionStorage`, `document.cookie`, `indexedDB`, `postMessage`,
+  `dangerouslySetInnerHTML`.
+
+  CI, the ui-reviewer and the fresh-eyes tier are enough. The author labels the PR `tier:ui`.
+- **A CI guard decides, not the author.** A check in `verify` runs on every PR with the `tier:ui` label
+  and fails if the diff breaks either rule above: "not a UI-tier PR, request architect review". The
+  label can't be added to escape a review. A PR without the label goes through the normal review.
+- **Architect review stays mandatory** for everything else, in particular:
+  - `packages/shared` (contracts), `backend/**`, migrations and data;
+  - authentication, secrets and anything a user types that is secret;
+  - `.github/**` (workflows; ADR-0033 amendment 1), `scripts/**`, dependencies (`package*.json`);
+  - `frontend/public/**` (CSP headers, privacy and terms pages), and build or deploy config.
+- When the author is unsure, it's not the UI tier.
+
+### 2. Design tokens enforced in CI
+- The owner's standing rule (2026-09-26): use variables, not hard-set values. The tokens live in the
+  `@theme` block of `frontend/src/index.css` (and any token file added later), and only those files may
+  define raw values.
+- A lint step in `verify` fails on, outside the token files:
+  - raw colours (hex, `rgb()`/`hsl()`/`oklch()` literals, named colours);
+  - raw z-index numbers, and raw sizes where a spacing or size token exists;
+  - raw transition durations and easing curves;
+  - arbitrary Tailwind values (`[...]` in a class, e.g. `w-[13px]`, `text-[#abc]`).
+
+  CSS goes through stylelint. Class strings go through a small repo script if the project's linter
+  (oxlint) can't express it [verify when building].
+- An exception is a one-line disable comment **with a written reason**, and the lint counts
+  exceptions in its summary, so they stay visible in review.
+- It lands in the token-audit PR, together with the fixes that make the current code pass.
+
+### 3. The test-hunter runs in parallel, and only where it finds things
+The reason: the hunter's wall-clock time. Every other part of the fresh-eyes loop stays as it is.
+- **In parallel.** The test-hunter runs in the background at the same time as CI, the baseline
+  regeneration and the architect review, not before them. Its fixes land as a follow-up commit before
+  merge. If that commit changes non-test code, the architect reviews only that small diff, not the
+  whole PR again. The `fresh-eyes/test-hunter` status goes on the final head, as today.
+- **Skipped where it rarely finds anything:**
+  - UI-tier PRs (section 1) that add or change **no logic in plain `.ts` files**: only `.tsx` markup
+    and CSS. The ui-reviewer covers them.
+  - Pure refactors with no behaviour change (e.g. #228).
+
+  CI and review are enough there, and the status reads `skipped: <tier>` (e.g. `skipped: ui-tier`).
+- **Kept, but narrowed:**
+  - A UI-tier PR that changes functions in plain `.ts` files (e.g. `ruleDraft.ts`, `muteTime.ts`) gets
+    a QUICK pass on those files. #229's "5.0 vs 5" no-op edit came from such a file.
+  - Contract-only PRs get a QUICK pass limited to the schema tests. #227's timestamp-offset bug was a
+    contract bug.
+- Otherwise the hunter stays for real logic: alert maths, routes, locks, authentication and data.
+  That's where the other 2026-09-26 catches were.
