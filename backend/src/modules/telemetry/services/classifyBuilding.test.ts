@@ -87,6 +87,33 @@ describe("classifyBuilding (ADR-0027 decision 2, per snapshot)", () => {
     });
   });
 
+  describe("out-of-range percents (fresh-eyes)", () => {
+    const at = (percent: number, backedUp = false) =>
+      classifyBuilding(building({ production: [rate("Desc_Cement_C", percent)] }), backedUp)?.state;
+
+    it("reads above 100 (an overclocked reading) as producing, and negative as underfed", () => {
+      expect(at(100.0001)).toBe("producing");
+      expect(at(250)).toBe("producing");
+      expect(at(-1)).toBe("underfed");
+    });
+
+    it("ignores a NaN output when another output is finite, and a zero maxPerMinute does not matter", () => {
+      const mixed = building({ production: [rate("A", NaN), rate("B", 96)] });
+      expect(classifyBuilding(mixed, false)?.state).toBe("producing");
+      const zeroMax = building({ production: [{ name: "A", className: "A", currentPerMinute: 0, maxPerMinute: 0, percent: 0 }] });
+      expect(classifyBuilding(zeroMax, false)?.state).toBe("underfed");
+    });
+
+    it("a tiny percent with a full output is backedUp, never underfed", () => {
+      expect(at(0.5, true)).toBe("backedUp");
+    });
+
+    it("an all-100 production with low consumption percents is producing (only output decides)", () => {
+      const b = building({ production: [rate("O", 100)], consumption: [rate("I", 3)] });
+      expect(classifyBuilding(b, false)).toEqual({ state: "producing" });
+    });
+  });
+
   describe("missingInput", () => {
     it("names the ingredient with the lowest consumption percent when underfed", () => {
       const underfed = building({
