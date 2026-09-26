@@ -43,6 +43,21 @@ import {
   SetMuteRequestSchema,
   UpdateAlertRuleRequestSchema,
 } from "./alerts";
+import {
+  AgentCommandsQuerySchema,
+  AgentCommandsResponseSchema,
+  AgentStatusResponseSchema,
+  CommandResponseSchema,
+  CommandResultRequestSchema,
+  CommandResultResponseSchema,
+  EnrollRequestSchema,
+  EnrollResponseSchema,
+  EnrollmentCodeResponseSchema,
+  RevokeAgentResponseSchema,
+  SetAutoPauseResponseSchema,
+  SnapshotRequestSchema,
+  SnapshotResponseSchema,
+} from "./agent";
 
 const scoped = (resource: string) => (serverId: string) =>
   `/api/servers/${encodeURIComponent(serverId)}/${resource}`;
@@ -321,7 +336,73 @@ export const endpoints = {
       route: "/api/servers/:serverId/settings/auto-pause",
       path: scoped("settings/auto-pause"),
       request: SetAutoPauseRequestSchema,
-      response: SettingsResponseSchema,
+      // ADR-0031 PR 3: today's 200 with the setting, OR (for a server reached through an agent) a 202 with the command
+      // to poll. The backend keeps sending 200 until PR 5; a client handles both.
+      response: SetAutoPauseResponseSchema,
+    },
+  },
+  // ADR-0031 PR 3, user-facing (members read, owner/admin write): enrolling an agent and seeing what it is doing.
+  agent: {
+    // 201: a code valid for 10 minutes, single use.
+    enrollmentCode: {
+      method: "POST",
+      route: "/api/servers/:serverId/agent/enrollment-codes",
+      path: scoped("agent/enrollment-codes"),
+      response: EnrollmentCodeResponseSchema,
+    },
+    status: {
+      method: "GET",
+      route: "/api/servers/:serverId/agent",
+      path: scoped("agent"),
+      response: AgentStatusResponseSchema,
+    },
+    // The credential stops working at once.
+    revoke: {
+      method: "DELETE",
+      route: "/api/servers/:serverId/agent",
+      path: scoped("agent"),
+      response: RevokeAgentResponseSchema,
+    },
+  },
+  commands: {
+    get: {
+      method: "GET",
+      route: "/api/servers/:serverId/commands/:commandId",
+      path: (serverId: string, commandId: string) => `${scoped("commands")(serverId)}/${encodeURIComponent(commandId)}`,
+      response: CommandResponseSchema,
+    },
+  },
+  // ADR-0031 PR 3, the AGENT API: a prefix of its own, NOT under /api/servers, authenticated by the agent's credential
+  // (Bearer), so it is outside the membership-based tests. `enroll` is authenticated by the one-time code instead.
+  agentApi: {
+    enroll: {
+      method: "POST",
+      route: "/agent/v1/enroll",
+      path: () => "/agent/v1/enroll",
+      request: EnrollRequestSchema,
+      response: EnrollResponseSchema, // 201
+    },
+    snapshots: {
+      method: "POST",
+      route: "/agent/v1/snapshots",
+      path: () => "/agent/v1/snapshots",
+      request: SnapshotRequestSchema,
+      response: SnapshotResponseSchema,
+    },
+    // A long-poll: ?waitSeconds=0..25.
+    commands: {
+      method: "GET",
+      route: "/agent/v1/commands",
+      path: () => "/agent/v1/commands",
+      query: AgentCommandsQuerySchema,
+      response: AgentCommandsResponseSchema,
+    },
+    result: {
+      method: "POST",
+      route: "/agent/v1/commands/:commandId/result",
+      path: (commandId: string) => `/agent/v1/commands/${encodeURIComponent(commandId)}/result`,
+      request: CommandResultRequestSchema,
+      response: CommandResultResponseSchema,
     },
   },
 } as const;

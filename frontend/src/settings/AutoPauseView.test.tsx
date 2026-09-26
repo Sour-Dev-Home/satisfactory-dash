@@ -4,6 +4,7 @@ import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { endpoints, type SettingsResponse } from "@satisfactory-dash/shared";
 import {
+  autoPauseResponseAccepted,
   errorNotEditable,
   errorServerNotFound,
   errorSessionRequired,
@@ -87,6 +88,25 @@ describe("AutoPauseView", () => {
     await waitFor(() => expect(checkbox()).toBeChecked());
     expect(checkbox()).toBeEnabled();
     expect(body).toEqual(setAutoPauseRequestOn);
+  });
+
+  it("a 202 with a COMMAND (a server reached through an agent) is not put in the cache as if it were the new setting: the setting is re-read", async () => {
+    let reads = 0;
+    server.use(
+      http.get(endpoints.settings.get.route, () => {
+        reads += 1;
+        return HttpResponse.json(settingsEditable); // the setting has not changed yet
+      }),
+      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(autoPauseResponseAccepted, { status: 202 })),
+    );
+    renderView();
+    await screen.findByRole("checkbox");
+    expect(reads).toBe(1);
+    fireEvent.click(checkbox());
+    await waitFor(() => expect(reads).toBe(2)); // re-read, not overwritten with the command
+    expect(checkbox()).not.toBeChecked();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // and it is not an error
+    expect(checkbox()).toBeEnabled();
   });
 
   it("refreshes server status right after a successful change", async () => {

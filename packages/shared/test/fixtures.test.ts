@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
+  AgentCommandsResponseSchema,
+  AgentStatusResponseSchema,
+  CommandResponseSchema,
+  CommandResultRequestSchema,
+  CommandResultResponseSchema,
+  EnrollRequestSchema,
+  EnrollResponseSchema,
+  EnrollmentCodeResponseSchema,
+  RevokeAgentResponseSchema,
+  SetAutoPauseResponseSchema,
+  SnapshotRequestSchema,
+  SnapshotResponseSchema,
   AlertDestinationsResponseSchema,
   AlertEventsResponseSchema,
   AlertRuleResponseSchema,
@@ -70,6 +82,19 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["alertSetMuteRequest", SetMuteRequestSchema],
   ["alertMuteSetResponse", MuteSetResponseSchema],
   ["alertMuteClearedResponse", MuteClearedResponseSchema],
+  // ADR-0031 PR 3: the edge agent's fixtures. "agentEnrollmentCode" and "agentEnroll..." differ at the letter after "Enroll".
+  ["agentEnrollRequest", EnrollRequestSchema],
+  ["agentEnrollResponse", EnrollResponseSchema],
+  ["agentEnrollmentCode", EnrollmentCodeResponseSchema],
+  ["agentSnapshotRequest", SnapshotRequestSchema],
+  ["agentSnapshotResponse", SnapshotResponseSchema],
+  ["agentCommands", AgentCommandsResponseSchema],
+  ["agentResultRequest", CommandResultRequestSchema],
+  ["agentResultResponse", CommandResultResponseSchema],
+  ["agentStatus", AgentStatusResponseSchema],
+  ["agentRevokeResponse", RevokeAgentResponseSchema],
+  ["command", CommandResponseSchema],
+  ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
   // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
@@ -363,10 +388,14 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(38); // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a)
+    // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 4 agent
+    // endpoints (ADR-0031 PR 3).
+    expect(all.length).toBe(46);
     for (const [name, endpoint] of all) {
-      // The two-parameter builders (a rule id) take a placeholder that must land where `:ruleId` is.
-      expect(endpoint.path("default", "RULE"), name).toBe(endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE"));
+      // The agent API has its own path builders (no server id; agent.test.ts checks them).
+      if (name.startsWith("agentApi.")) continue;
+      // The two-parameter builders (a rule or command id) take a placeholder that must land where the parameter is.
+      expect(endpoint.path("default", "RULE"), name).toBe(endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE").replace(":commandId", "RULE"));
     }
   });
 

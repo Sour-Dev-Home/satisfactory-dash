@@ -51,6 +51,11 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   webhook_invalid: 422,
   delivery_off: 409,
   mute_invalid: 422,
+  // ADR-0031 PR 3: the edge agent.
+  enrollment_code_invalid: 400,
+  agent_outdated: 426,
+  command_not_found: 404,
+  command_expired: 409,
   internal: 500,
 };
 

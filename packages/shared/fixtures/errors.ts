@@ -191,3 +191,30 @@ export const errorDeliveryOff = {
 export const errorMuteInvalid = {
   error: { code: "mute_invalid", message: "Choose a time in the future, at most 7 days ahead", requestId: "00000000-0000-4000-8000-0000000000a8" },
 } satisfies ApiErrorResponse;
+
+// ADR-0031 PR 3: the edge agent's error codes. Messages are safe to show and carry no code, secret or hostname.
+
+/** 400: an enrolment code that is unknown, already used or expired, all answered alike (no oracle). */
+export const errorEnrollmentCodeInvalid = {
+  error: { code: "enrollment_code_invalid", message: "That enrolment code is not valid", requestId: "00000000-0000-4000-8000-0000000000b1" },
+} satisfies ApiErrorResponse;
+
+/** 426: reserved for a protocol bump that leaves an old agent unable to continue. */
+export const errorAgentOutdated = {
+  error: { code: "agent_outdated", message: "This agent is too old for this server. Update it.", requestId: "00000000-0000-4000-8000-0000000000b2" },
+} satisfies ApiErrorResponse;
+
+/** 404: no such command on this server. */
+export const errorCommandNotFound = {
+  error: { code: "command_not_found", message: "That command was not found on this server", requestId: "00000000-0000-4000-8000-0000000000b3" },
+} satisfies ApiErrorResponse;
+
+/** 409: the command expired before it could be run. */
+export const errorCommandExpired = {
+  error: { code: "command_expired", message: "That command expired before it could be run", requestId: "00000000-0000-4000-8000-0000000000b4" },
+} satisfies ApiErrorResponse;
+
+/** 401: an agent's credential is unknown or revoked, answered alike. */
+export const errorAgentUnauthorized = {
+  error: { code: "unauthorized", message: "The agent's credential is not valid", requestId: "00000000-0000-4000-8000-0000000000b5" },
+} satisfies ApiErrorResponse;

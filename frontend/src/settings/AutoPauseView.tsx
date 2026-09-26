@@ -29,6 +29,13 @@ export function AutoPauseView() {
       await client.cancelQueries({ queryKey: settingsQuery.queryKey });
       // Signed out while the PUT was in flight: don't put this session's data back in the cache.
       if (isSignedOut(client)) return;
+      // ADR-0031 PR 3: for a server reached through an agent the answer can be a 202 with a COMMAND instead of the new
+      // setting. The setting has not changed yet, so it is not put in the cache as if it had: re-read it instead. (The
+      // screen that follows the command to its result is ADR-0031 PR 4; the backend still answers 200 until PR 5.)
+      if ("command" in snapshot) {
+        void client.invalidateQueries({ queryKey: settingsQuery.queryKey });
+        return;
+      }
       client.setQueryData(settingsQuery.queryKey, snapshot);
       // DSAutoPause applies immediately (ADR-0012), so gamePaused may already have flipped;
       // refresh status now rather than letting the paused banner lag a full poll behind.
