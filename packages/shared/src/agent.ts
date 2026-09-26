@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { ServerIdSchema } from "./ids";
 import { StatusSchema } from "./status";
-import { PowerSchema } from "./power";
-import { FactorySchema } from "./factory";
-import { ServerPlayersResponseSchema } from "./players";
+import { PowerCircuitSchema } from "./power";
+import { FactoryBuildingSchema, ProductionRateSchema } from "./factory";
+import { PlayerSchema, ServerPlayersResponseSchema } from "./players";
 import { SettingsResponseSchema } from "./settings";
 
 /**
@@ -61,9 +61,57 @@ export const EnrollResponseSchema = z.object({
 });
 
 /**
- * POST /agent/v1/snapshots: what the agent read from the game. The four data parts REUSE the schemas the live routes
- * return (their `data`, not the response envelope), so one shape describes a reading everywhere. An unreachable game
- * sends `reachable: false` and NO parts and no `settings`; `paused` is null when it is not known.
+ * What the agent SENDS for power and factory: the response data schemas with every backend-derived field OMITTED
+ * (ADR-0031). Deciding a circuit's `status`, a machine's `state`, the counts and a rate's `unit` are RULES and lookups
+ * that stay in the backend, which derives them at ingest, so a rule change never needs an agent update, and a missing
+ * derivation is a type error rather than a silent "ok". `isBackedUp` stays: it is a raw fact that needs the machine's
+ * output inventory, which only the agent sees. The RESPONSE schemas are unchanged. Parsing strips unknown keys, so
+ * an older or misbehaving agent that still sends `status`, `state`, `hasOutage`, `stateCounts`, `backedUpCount` or `unit`
+ * has them dropped, never trusted.
+ *
+ * INPUT BOUNDS (the contract every agent is held to, ADR-0031): strings are at most 200 characters, matching the history
+ * tables' CHECKs (an over-long class name would otherwise fail a whole batch insert); arrays are capped well above a real
+ * factory (buildings 20,000, circuits 1,000, rates per building 16, players 256); numbers are finite (zod refuses NaN and
+ * Infinity) and a reading that cannot be negative is `>= 0` (MW, rates, clock speed; battery percent 0-100). A body that
+ * breaks a bound is REFUSED (400), never clamped by the backend: the agent clamps float noise (such as a battery at
+ * 100.0000001) before it sends. The response schemas have no such bounds.
+ */
+export const AGENT_INPUT_MAX_STRING = 200;
+export const AGENT_INPUT_MAX_BUILDINGS = 20_000;
+export const AGENT_INPUT_MAX_CIRCUITS = 1_000;
+export const AGENT_INPUT_MAX_RATES_PER_BUILDING = 16;
+export const AGENT_INPUT_MAX_PLAYERS = 256;
+const boundedString = z.string().max(AGENT_INPUT_MAX_STRING);
+
+export const AgentPowerCircuitSchema = PowerCircuitSchema.omit({ status: true }).extend({
+  productionMW: z.number().min(0),
+  consumptionMW: z.number().min(0),
+  capacityMW: z.number().min(0),
+  maxConsumptionMW: z.number().min(0),
+  batteryPercent: z.number().min(0).max(100),
+});
+export const AgentPowerSchema = z.object({ circuits: z.array(AgentPowerCircuitSchema).max(AGENT_INPUT_MAX_CIRCUITS) });
+const AgentProductionRateSchema = ProductionRateSchema.omit({ unit: true }).extend({ name: boundedString, className: boundedString });
+export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: true }).extend({
+  id: boundedString,
+  name: boundedString,
+  className: boundedString,
+  recipe: boundedString.nullable(),
+  clockSpeedPercent: z.number().min(0).optional(),
+  production: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING),
+  ingredients: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING).optional(),
+});
+export const AgentFactorySchema = z.object({ buildings: z.array(AgentFactoryBuildingSchema).max(AGENT_INPUT_MAX_BUILDINGS) });
+/** Status and players as the live routes return them, with the same string and list bounds. */
+export const AgentStatusSchema = StatusSchema.extend({ sessionName: boundedString });
+export const AgentPlayersSchema = ServerPlayersResponseSchema.extend({
+  players: z.array(PlayerSchema.extend({ name: boundedString })).max(AGENT_INPUT_MAX_PLAYERS),
+});
+
+/**
+ * POST /agent/v1/snapshots: what the agent read from the game. `status` and `players` REUSE the schemas the live routes
+ * return (their `data`, not the response envelope); `power` and `factory` are their agent-input forms above. An
+ * unreachable game sends `reachable: false` and NO parts and no `settings`; `paused` is null when it is not known.
  */
 export const SnapshotRequestSchema = z
   .strictObject({
@@ -75,10 +123,10 @@ export const SnapshotRequestSchema = z
       .strictObject({ autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot") })
       .optional()
       .describe("Game settings read in this snapshot; absent when not read, and always absent when the game is unreachable"),
-    status: StatusSchema.optional(),
-    power: PowerSchema.optional(),
-    factory: FactorySchema.optional(),
-    players: ServerPlayersResponseSchema.optional(),
+    status: AgentStatusSchema.optional(),
+    power: AgentPowerSchema.optional(),
+    factory: AgentFactorySchema.optional(),
+    players: AgentPlayersSchema.optional(),
   })
   .refine(
     (snapshot) => snapshot.reachable || (snapshot.status === undefined &&
@@ -162,6 +210,8 @@ export type Cadence = z.infer<typeof CadenceSchema>;
 export type EnrollRequest = z.infer<typeof EnrollRequestSchema>;
 export type EnrollResponse = z.infer<typeof EnrollResponseSchema>;
 export type SnapshotRequest = z.input<typeof SnapshotRequestSchema>;
+export type AgentPower = z.infer<typeof AgentPowerSchema>;
+export type AgentFactory = z.infer<typeof AgentFactorySchema>;
 export type SnapshotResponse = z.infer<typeof SnapshotResponseSchema>;
 export type AgentCommand = z.infer<typeof AgentCommandSchema>;
 export type CommandResultRequest = z.input<typeof CommandResultRequestSchema>;

@@ -9,6 +9,7 @@ import type {
   SnapshotRequest,
   SnapshotResponse,
 } from "../src/index";
+import { AgentFactorySchema, AgentPowerSchema } from "../src/index";
 import { factoryMixed } from "./factory";
 import { playersAvailable } from "./players";
 import { powerOk } from "./power";
@@ -28,7 +29,12 @@ export const agentEnrollResponse = {
   cadence,
 } satisfies EnrollResponse;
 
-/** POST /agent/v1/snapshots with every part: the parts are the SAME shapes the live routes return (their `data`). */
+/** The agent's power and factory inputs: the live fixtures parsed by the agent-input schemas, which drop every
+ *  backend-derived field (status, hasOutage, state, stateCounts, backedUpCount, unit; ADR-0031). */
+const agentPowerOk = AgentPowerSchema.parse(powerOk.data);
+const agentFactoryMixed = AgentFactorySchema.parse(factoryMixed.data);
+
+/** POST /agent/v1/snapshots with every part: `status` and `players` are the shapes the live routes return (their `data`); `power` and `factory` are the agent-input forms. */
 export const agentSnapshotRequestFull = {
   agentVersion: "0.1.0",
   observedAt: "2026-09-26T12:00:00.000+02:00",
@@ -36,8 +42,8 @@ export const agentSnapshotRequestFull = {
   paused: false,
   settings: { autoPause: true },
   status: statusRunning.data,
-  power: powerOk.data,
-  factory: factoryMixed.data,
+  power: agentPowerOk,
+  factory: agentFactoryMixed,
   players: playersAvailable,
 } satisfies SnapshotRequest;
 
@@ -48,7 +54,7 @@ export const agentSnapshotRequestPartial = {
   reachable: true,
   paused: false,
   status: statusRunning.data,
-  power: powerOk.data,
+  power: agentPowerOk,
 } satisfies SnapshotRequest;
 
 /** The game (or FRM) could not be reached: `reachable: false`, `paused` unknown, and no parts. */
