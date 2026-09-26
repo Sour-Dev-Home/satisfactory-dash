@@ -245,6 +245,15 @@ describe.skipIf(!available)("alert delivery repository against a real Postgres",
       expect((await claimDueDeliveries(pool, 10, 120)).filter((c) => c.serverPublicId === server.publicId)).toEqual([]);
     });
 
+    it("never claims a row of a soft-deleted server, and queues nothing for one", async () => {
+      const server = await queue(2);
+      expect(await softDeleteServer(pool, server.publicId)).toBe(true);
+      expect((await claimDueDeliveries(pool, 10, 120)).filter((c) => c.serverPublicId === server.publicId)).toEqual([]);
+      const before = (await outboxOf(server.id)).length;
+      await fire(server.outageRuleId, "circuit:99");
+      expect((await outboxOf(server.id)).length).toBe(before);
+    });
+
     it("disabling a destination gives up on its pending rows (dead), leaves sent ones and other servers alone", async () => {
       const a = await queue(2);
       const b = await queue(1);

@@ -33,6 +33,9 @@ export interface AlertDeliveryOptions {
 const DEFAULT_TICK_MS = 10_000;
 const DEFAULT_BATCH = 10;
 const DEFAULT_LEASE_SECONDS = 120;
+/** A 404/401 disables a destination only on a row's second attempt or later, and the recheck comes this soon after. */
+const GONE_CONFIRM_ATTEMPTS = 2;
+const GONE_RECHECK_MS = 60_000;
 
 /**
  * ADR-0027 decision 5: the outbox sender. It only runs when ALERT_DELIVERY is on. Each tick claims due rows
@@ -174,6 +177,13 @@ export class AlertDeliveryWorker implements BackgroundWorker {
         return outcome.code === "rate_limited" ? "paused" : "done";
       }
       case "gone":
+        // A 404/401 on the first sight is not believed (a proxy or edge glitch must not kill a working destination):
+        // retry that row shortly and pause the destination for this tick. Only a repeat disables it.
+        if (delivery.attempts < GONE_CONFIRM_ATTEMPTS) {
+          await rescheduleDelivery(this.db, delivery.outboxId, now + GONE_RECHECK_MS, "webhook_gone");
+          log("webhook_gone");
+          return "paused";
+        }
         // The webhook was deleted (404) or its token is no longer valid (401): the destination is dead.
         await disableDestination(this.db, delivery.destinationId, "webhook_gone");
         this.options.logger.warn({ serverId: delivery.serverPublicId, code: "ALERT_DESTINATION_DISABLED", status: outcome.status }, "the Discord webhook is gone; destination disabled");

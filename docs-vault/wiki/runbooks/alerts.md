@@ -84,15 +84,18 @@ How it delivers: the outbox row is written in the SAME transaction as the alert 
 destination; `(event, destination)` is unique). The sender claims due rows with `FOR UPDATE SKIP LOCKED` (two senders
 never take the same row) and leases them for 2 minutes, so a crash mid-send means the message is sent again
 (**at-least-once**). Failures retry with exponential backoff from 30 seconds up to 30 minutes, never sooner than a 429's
-`retry_after`; a row still failing after **24 hours** is given up (`dead`). A **404** (webhook deleted) or **401**
-disables the destination and gives up on its pending rows; a 400 gives up on that message only; **redirects are never
+`retry_after`; a row still failing after **24 hours** is given up (`dead`). A **404** (webhook deleted) or **401** is
+first retried about a minute later (one glitch must not kill a working destination); a repeat disables the destination
+and gives up on its pending rows. Deleted servers are never delivered to. A 400 gives up on that message only; **redirects are never
 followed**. The message text escapes game names so nothing can ping (`allowed_mentions` is empty); the unreachable alert
 says "Game server or FRM not responding".
 
 Security: the webhook URL is a bearer secret. It is sealed with AES-256-GCM (`platform/secrets`, bound to the server so a
 copied value does not open), re-validated against the allowlist right before every send, and never logged, returned or
 put in an error: logs carry only stable codes (`ALERT_DESTINATION_DISABLED`, `ALERT_DESTINATION_UNREADABLE`). Rotate it by
-running `set-alert-webhook` again after creating a new webhook in Discord.
+running `set-alert-webhook` again after creating a new webhook in Discord. Two cautions: a URL pasted at the prompt is
+echoed by the terminal (clear the screen afterwards, or pipe it in), and do not set `NODE_USE_ENV_PROXY` on the backend
+(it would route the send through a proxy that then sees the URL).
 
 To stop sending at once: set `ALERT_DELIVERY=off` and restart (rows already queued wait in the outbox and are sent if
 you turn it back on within 24 hours, then given up).

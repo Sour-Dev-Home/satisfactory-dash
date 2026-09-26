@@ -170,8 +170,19 @@ describe("AlertDeliveryWorker.tick", () => {
     expect(fake.outbox.has("2")).toBe(false);
   });
 
+  it("a 404 or 401 on the FIRST attempt is not believed: the row is retried in about a minute and the destination stays enabled", async () => {
+    for (const status of [404, 401]) {
+      const { fake, worker } = make([due("1", { attempts: 1 }), due("2")], respond(status));
+      await worker.tick();
+      expect(fake.of("disable"), String(status)).toEqual([]);
+      expect(fake.of("deadForDestination"), String(status)).toEqual([]);
+      expect(fake.outbox.get("1"), String(status)).toEqual({ status: "pending", error: "webhook_gone", at: NOW + 60_000 });
+      expect(fake.outbox.has("2"), String(status)).toBe(false); // the rest of that destination waits for the tick after
+    }
+  });
+
   it("a 404 disables the destination and gives up on its pending deliveries (once, then stops sending to it)", async () => {
-    const rows = [due("1"), due("2")];
+    const rows = [due("1", { attempts: 2 }), due("2")];
     const { fake, worker, fetchMock, logs } = make(rows, respond(404));
     await worker.tick();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -182,7 +193,7 @@ describe("AlertDeliveryWorker.tick", () => {
   });
 
   it("a 401 (token no longer valid) disables it too", async () => {
-    const { fake, worker } = make([due("1")], respond(401));
+    const { fake, worker } = make([due("1", { attempts: 2 })], respond(401));
     await worker.tick();
     expect(fake.of("disable")).toHaveLength(1);
   });
@@ -270,7 +281,7 @@ describe("AlertDeliveryWorker.tick: batch behaviour", () => {
   it("a 404 stops the rest of that destination's batch, but not another destination's", async () => {
     let n = 0;
     const fetchMock = vi.fn(async () => (n++ === 0 ? new Response(null, { status: 404 }) : new Response(null, { status: 204 })));
-    const { fake, worker } = make([due("1"), due("2"), due("3", { destination_id: DEST_B })], fetchMock as never);
+    const { fake, worker } = make([due("1", { attempts: 2 }), due("2"), due("3", { destination_id: DEST_B })], fetchMock as never);
     await worker.tick();
     expect(fake.of("disable")).toEqual([{ kind: "disable", params: [DEST, "webhook_gone"] }]);
     expect(fake.outbox.has("2")).toBe(false);

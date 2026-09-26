@@ -107,6 +107,7 @@ const ENQUEUE_DELIVERIES = `
   SELECT e.id, d.id
   FROM alerts.alert_events e
   JOIN alerts.destinations d ON d.server_id = e.server_id AND d.enabled
+  JOIN servers.servers sv ON sv.id = e.server_id AND sv.deleted_at IS NULL
   WHERE e.id = ANY($1::bigint[])
   ON CONFLICT (event_id, destination_id) DO NOTHING`;
 

@@ -98,6 +98,7 @@ const CLAIM_DUE = `
     SELECT o.id
     FROM alerts.outbox o
     JOIN alerts.destinations d ON d.id = o.destination_id AND d.enabled
+    JOIN servers.servers sv ON sv.id = d.server_id AND sv.deleted_at IS NULL
     WHERE o.status = 'pending' AND o.next_attempt_at <= now()
     ORDER BY o.next_attempt_at, o.id
     LIMIT $1::int

@@ -154,16 +154,24 @@ function words(input: AlertMessageInput): { title: string; lines: string[] } {
   }
 }
 
+/** Cuts to at most `max` UTF-16 units without leaving the first half of a surrogate pair at the end. */
+function cutAt(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 export function formatAlertMessage(input: AlertMessageInput): DiscordPayload {
   const { title, lines } = words(input);
   const server = escapeDiscordText(input.serverName, 60) || "server";
-  const description = [`**${server}**`, ...lines].join("\n").slice(0, MAX_DESCRIPTION);
+  const description = cutAt([`**${server}**`, ...lines].join("\n"), MAX_DESCRIPTION);
   const at = Number.isFinite(input.at) ? new Date(input.at) : new Date(0);
   return {
     username: "Satisfactory Dash",
     embeds: [
       {
-        title: title.slice(0, MAX_TITLE),
+        title: cutAt(title, MAX_TITLE),
         description,
         color: input.transition === "resolved" ? COLORS.resolved : COLORS[input.severity],
         timestamp: at.toISOString(),
