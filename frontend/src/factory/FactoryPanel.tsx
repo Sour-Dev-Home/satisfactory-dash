@@ -1,7 +1,6 @@
 import { Fragment, useState } from "react";
 import type { FactoryBuilding, FactoryResponse, ProductionRate } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
-import { POLL_MS } from "../api/queries";
 import { DataAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
 import { machineState } from "./machineState";
@@ -19,8 +18,9 @@ const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boole
  * Presentational: one factory snapshot, with in-memory filter and search. Backed-up is
  * information, not an alarm: on a real save a large share of machines is backed up in
  * normal steady-state play, so it's a count and a filter, never a red banner.
+ * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  */
-export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
+export function FactoryPanel({ snapshot, refetchFailed = false }: { snapshot: FactoryResponse; refetchFailed?: boolean }) {
   const { buildings, backedUpCount } = snapshot.data;
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -86,7 +86,7 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
       )}
 
       <p className="as-of">
-        <DataAge observedAt={snapshot.observedAt} pollMs={POLL_MS.factory} />
+        <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
       </p>
     </section>
   );

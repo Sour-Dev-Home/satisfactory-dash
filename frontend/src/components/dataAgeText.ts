@@ -2,16 +2,12 @@ import { formatDuration } from "../format";
 
 /**
  * How old the numbers on screen are (ADR-0032 step 3): "Updated 8 s ago" from a snapshot's
- * `observedAt`, and `late` once that's past twice the view's poll interval, when a fresh reading
- * should have arrived twice over. A reading "from the future" (the clocks disagree) counts as now.
+ * `observedAt`. Text only: this clock can disagree with the backend's, so whether the data is late
+ * is the backend's call (`stale`), never this age. A reading "from the future" counts as now.
  */
-export function dataAge(observedAt: string, now: number, pollMs: number): { text: string; late: boolean } {
+export function dataAgeText(observedAt: string, now: number): string {
   const observed = Date.parse(observedAt);
-  if (Number.isNaN(observed)) return { text: "Updated at an unknown time", late: true };
-  const ageMs = Math.max(0, now - observed);
-  const seconds = Math.floor(ageMs / 1000);
-  return {
-    text: seconds < 1 ? "Updated just now" : `Updated ${formatDuration(seconds)} ago`,
-    late: ageMs > 2 * pollMs,
-  };
+  if (Number.isNaN(observed)) return "Updated at an unknown time";
+  const seconds = Math.floor(Math.max(0, now - observed) / 1000);
+  return seconds < 1 ? "Updated just now" : `Updated ${formatDuration(seconds)} ago`;
 }
