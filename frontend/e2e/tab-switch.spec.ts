@@ -35,31 +35,45 @@ async function staggerApi(page: Page): Promise<void> {
   });
 }
 
-/** Starts summing layout shifts; the returned function reads the total since `from` (ms). */
+interface Shift {
+  t: number;
+  v: number;
+  /** What moved, for the report: each source's element and how far its top went. */
+  moved: string[];
+}
+
+/** Starts recording layout shifts, with what moved in each. */
 async function watchShifts(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const w = window as unknown as { __shifts: { t: number; v: number }[] };
+    type Source = { node?: Node; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly };
+    const w = window as unknown as { __shifts: Shift[] };
+    const describe = (node?: Node) => {
+      if (!(node instanceof Element)) return node?.nodeName ?? "?";
+      const text = (node.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+      return `${node.tagName.toLowerCase()} "${text}"`;
+    };
     w.__shifts = [];
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as unknown as { startTime: number; value: number }[]) {
-        w.__shifts.push({ t: entry.startTime, v: entry.value });
+      for (const entry of list.getEntries() as unknown as { startTime: number; value: number; sources: Source[] }[]) {
+        w.__shifts.push({
+          t: entry.startTime,
+          v: entry.value,
+          moved: entry.sources.map((s) => `${describe(s.node)} ${Math.round(s.previousRect.y)}→${Math.round(s.currentRect.y)}`),
+        });
       }
     }).observe({ type: "layout-shift", buffered: false });
   });
 }
 
-async function shiftSince(page: Page, from: number): Promise<number> {
+async function shiftsSince(page: Page, from: number): Promise<Shift[]> {
   return page.evaluate(
-    (start) =>
-      (window as unknown as { __shifts: { t: number; v: number }[] }).__shifts
-        .filter((s) => s.t >= start)
-        .reduce((sum, s) => sum + s.v, 0),
+    (start) => (window as unknown as { __shifts: Shift[] }).__shifts.filter((s) => s.t >= start),
     from,
   );
 }
 
-/** Clicks a main tab, waits for every request to land and the page to settle, returns the CLS. */
-async function switchTo(page: Page, tab: string): Promise<number> {
+/** Clicks a main tab, waits for every request to land and the page to settle, returns its shifts. */
+async function switchTo(page: Page, tab: string): Promise<Shift[]> {
   const clickedAt = await page.evaluate(() => performance.now());
   await page.getByRole("navigation").getByRole("link", { name: tab, exact: true }).click();
   // Longer than the longest delay plus rendering; networkidle alone misses a lazy chunk's render.
@@ -67,7 +81,7 @@ async function switchTo(page: Page, tab: string): Promise<number> {
   await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });
   await page.waitForTimeout(300);
   await settleAnimations(page);
-  return shiftSince(page, clickedAt + 100);
+  return shiftsSince(page, clickedAt + 100);
 }
 
 for (const motion of ["no-preference", "reduce"] as const) {
@@ -82,12 +96,17 @@ for (const motion of ["no-preference", "reduce"] as const) {
       await page.waitForLoadState("networkidle");
       await watchShifts(page);
 
-      const scores: Record<string, number> = {};
+      const shifts: Record<string, Shift[]> = {};
       for (const tab of ["Power", "Factory", "Overview", "Power"]) {
-        const key = scores[tab] === undefined ? tab : `${tab} (again)`;
-        scores[key] = await switchTo(page, tab);
+        shifts[shifts[tab] ? `${tab} (again)` : tab] = await switchTo(page, tab);
       }
-      await testInfo.attach("cls.json", { body: JSON.stringify(scores, null, 2), contentType: "application/json" });
+      const scores = Object.fromEntries(
+        Object.entries(shifts).map(([tab, list]) => [tab, list.reduce((sum, s) => sum + s.v, 0)]),
+      );
+      // Printed as well as attached: CI keeps the log of a passing test, not its attachments.
+      const report = JSON.stringify({ project: testInfo.project.name, motion, scores, shifts }, null, 1);
+      console.log(`tab-switch CLS ${report}`);
+      await testInfo.attach("cls.json", { body: report, contentType: "application/json" });
       for (const [tab, cls] of Object.entries(scores)) {
         expect.soft(cls, `CLS switching to ${tab}`).toBeLessThanOrEqual(BUDGET);
       }
