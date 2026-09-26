@@ -101,6 +101,7 @@ test("compareEdges reports unknown and missing edges", () => {
 test("the committed workspace.dsl gives every backend component a code mapping and the root edges", () => {
   const { codes, edges } = parseWorkspace(readFileSync("docs-vault/workspace.dsl", "utf8"));
   assert.deepEqual([...codes.values()].sort(), [
+    "modules/agents",
     "modules/alerts",
     "modules/gameserver",
     "modules/identity",

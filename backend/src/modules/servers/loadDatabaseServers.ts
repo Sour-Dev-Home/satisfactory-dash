@@ -2,6 +2,7 @@ import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { addMember } from "./repositories/memberRepository.js";
 import { listConnections } from "./repositories/connectionRepository.js";
+import { listAgentServers } from "./repositories/serverRepository.js";
 import type { ServerConnection, UnreadableConnection } from "./repositories/connectionRepository.js";
 import { DEFAULT_ADDRESS_POLICY, addressVerdict } from "./addressGuard.js";
 import type { AddressPolicy } from "./addressGuard.js";
@@ -36,6 +37,8 @@ export async function loadDatabaseServers<TServices>(deps: {
   runtime: ServerRuntime<TServices>;
   operatorUserId: string;
   build: (connection: ServerConnection) => RuntimeServer<TServices>;
+  /** ADR-0031 PR 5a: builds the entry of a server reached through an agent (no connection, no pollers). Omitted: none are loaded. */
+  buildAgent?: (server: { publicId: string; displayName: string }) => RuntimeServer<TServices>;
   /** Tests only; production uses the default (the LAN_ALLOWED constant). */
   policy?: AddressPolicy;
 }): Promise<LoadDatabaseServersResult> {
@@ -50,7 +53,10 @@ export async function loadDatabaseServers<TServices>(deps: {
   const refused = listed.connections
     .filter((c) => addressVerdict(c.pinnedIp, policy) !== "ok")
     .map(({ serverId, publicId }) => ({ serverId, publicId }));
-  if (listed.connections.length === 0 && unreadable.length === 0) {
+  // ADR-0031 PR 5a: a server reached through an agent has no connection row; it counts as "the database holds servers"
+  // too, so the database wins for it as well.
+  const agentServers = deps.buildAgent ? await listAgentServers(deps.db) : [];
+  if (listed.connections.length === 0 && unreadable.length === 0 && agentServers.length === 0) {
     return { usingDatabase: false, loaded: [], unreadable: [], refused: [] };
   }
   for (const { id } of deps.runtime.list()) {
@@ -58,6 +64,9 @@ export async function loadDatabaseServers<TServices>(deps: {
   }
   for (const connection of connections) {
     deps.runtime.add(deps.build(connection));
+  }
+  for (const server of agentServers) {
+    deps.runtime.add(deps.buildAgent!(server));
   }
   const seedIds = [...listed.connections.map((c) => c.serverId), ...unreadable.map((u) => u.serverId)];
   for (const serverId of seedIds) {
