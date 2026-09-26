@@ -383,8 +383,10 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
       if (!test.ok) throw testFailure(test);
 
-      const server = await mutex.run(async () => {
-        return withTransaction(deps.db, async (client) => {
+      // The runtime swap is inside the management lock too: otherwise a removal or edit of this server could run between the
+      // commit and the swap (a removed server re-added to the runtime, or a duplicate-id error on the add).
+      return mutex.run(async () => {
+        const server = await withTransaction(deps.db, async (client) => {
           await client.query(TAKE_ADVISORY_LOCK);
           const locked = await lockServerByPublicId(client, publicId);
           if (locked === undefined) throw new ServerNotFoundError();
@@ -412,19 +414,19 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
           });
           return locked;
         });
-      });
 
-      const connection = connectionOf(
-        { serverId: server.id, publicId: server.publicId, displayName: server.displayName },
-        { host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken },
-      );
-      await deps.runtime.remove(publicId);
-      deps.runtime.add(deps.build(connection));
-      return viewOf(
-        { publicId, displayName: server.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
-        { apiToken: input.apiToken, frmToken: input.frmToken },
-        policy,
-      );
+        const connection = connectionOf(
+          { serverId: server.id, publicId: server.publicId, displayName: server.displayName },
+          { host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken },
+        );
+        await deps.runtime.remove(publicId);
+        deps.runtime.add(deps.build(connection));
+        return viewOf(
+          { publicId, displayName: server.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
+          { apiToken: input.apiToken, frmToken: input.frmToken },
+          policy,
+        );
+      });
     },
 
     update(actorUserId, publicId, patch) {

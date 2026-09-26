@@ -537,6 +537,27 @@ describe("switch back to local (ADR-0031 amendment)", () => {
     expect(runtime.has("alex")).toBe(false); // removed, not left half-swapped
   });
 
+  it("the runtime swap is under the management lock: a removal started meanwhile waits, so the removed server is not re-added to the runtime", async () => {
+    const { service, runtime } = arrange();
+    let releaseStop: () => void = () => {};
+    const slowStop = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    await runtime.remove("alex");
+    runtime.add({ id: "alex", displayName: "Alex", services: "agent-runtime", workers: [{ start: () => {}, stop: () => slowStop }], kind: "agent" } as never);
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...meta, serverId: "uuid-alex", publicId: "alex" });
+    const switching = service.switchToLocal(OPERATOR, "alex", body);
+    await vi.waitFor(() => expect(repo.switchToLocalKind).toHaveBeenCalled());
+    const removing = service.remove(OPERATOR, "alex");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(repo.softDeleteServer).not.toHaveBeenCalled(); // waiting for the switch, including its runtime swap
+    releaseStop();
+    await switching;
+    await removing;
+    expect(repo.softDeleteServer).toHaveBeenCalledTimes(1);
+    expect(runtime.has("alex")).toBe(false);
+  });
+
   it("the runtime guard still refuses a plain replace of the agent entry: the switch works only through remove + add", async () => {
     const { runtime } = arrange();
     await expect(runtime.replace({ id: "alex", displayName: "Alex", services: "polled", workers: [] })).rejects.toThrow(/Refusing to replace the agent runtime/);
