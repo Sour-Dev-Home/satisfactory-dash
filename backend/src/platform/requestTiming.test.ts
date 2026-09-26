@@ -75,6 +75,43 @@ function timedApp(options: { allowedOrigins?: string[] } = {}, lines: string[] =
   return { app, lines };
 }
 
+describe("unionMs against a brute-force count", () => {
+  it("agrees on every grid of small integer intervals (unsorted, nested, empty, clipped)", () => {
+    let seed = 12345;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n);
+    for (let round = 0; round < 500; round++) {
+      const intervals = Array.from({ length: rnd(7) }, () => {
+        const a = rnd(14) - 2;
+        return { startMs: a, endMs: a + rnd(8) - 1 };
+      });
+      const from = rnd(4);
+      const to = from + rnd(10);
+      let expected = 0;
+      for (let cell = from; cell < to; cell++) if (intervals.some((i) => i.startMs <= cell && cell + 1 <= i.endMs)) expected++;
+      expect(unionMs(intervals, from, to)).toBe(expected);
+    }
+  });
+  it("ignores NaN and treats an infinite end as the window end", () => {
+    expect(unionMs([{ startMs: NaN, endMs: 5 }, { startMs: 1, endMs: Infinity }], 0, 10)).toBe(9);
+  });
+});
+
+describe("writeHead variants", () => {
+  it("still adds the headers when the handler calls writeHead with a status message and a headers object, and on HEAD", async () => {
+    const app = express();
+    app.use(requestTiming({ allowedOrigins: ["https://a.example"] }));
+    app.get("/w", (_req, res) => {
+      res.writeHead(200, "fine", { "X-Test": "1" });
+      res.end("x");
+    });
+    const res = await request(app).get("/w").set("Origin", "https://a.example");
+    expect(res.headers["server-timing"]).toMatch(/^app;dur=\d+(\.\d)?, upstream;dur=\d+(\.\d)?$/);
+    expect(res.headers["x-test"]).toBe("1");
+    const head = await request(app).head("/w");
+    expect(head.headers["server-timing"]).toBeDefined();
+  });
+});
+
 describe("the middleware", () => {
   function scripted(allowedOrigins: string[] = []) {
     const app = express();

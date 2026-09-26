@@ -184,3 +184,20 @@ test("CLI: no logs or bad options fail with a message and a non-zero exit", () =
   assert.equal(run(["--days", "0", "--dir", "x"]).status, 2);
   assert.equal(run(["--bogus"]).status, 2);
 });
+
+test("CLI: an option without its value is a usage error (exit 2), not a crash", () => {
+  for (const args of [["--file"], ["--dir"], ["--days"], ["--file", "--json"], ["--days", "--json"]]) {
+    const result = run(args);
+    assert.equal(result.status, 2, args.join(" "));
+    assert.match(result.stderr, /needs a value/);
+    assert.equal(result.stderr.includes("at "), false, "no stack trace");
+  }
+});
+
+test("CLI: a file or folder that cannot be read is one clean line and exit 1, with no stack trace", () => {
+  for (const args of [["--file", "/no/such/file.log"], ["--dir", "/no/such/folder"]]) {
+    const result = run(args);
+    assert.equal(result.status, 1, args.join(" "));
+    assert.match(result.stderr, /^Cannot read the logs \(ENOENT\)\.\s*$/);
+  }
+});

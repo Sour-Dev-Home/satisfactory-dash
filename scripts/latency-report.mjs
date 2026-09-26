@@ -161,12 +161,17 @@ export function formatReport(result) {
 
 function parseArgs(argv, env) {
   const options = { dir: env.LOG_DIR?.trim() || undefined, days: DEFAULT_DAYS, files: [], json: false };
+  const valueOf = (name, index) => {
+    const value = argv[index];
+    if (value === undefined || value.startsWith("--")) throw new Error(`${name} needs a value`);
+    return value;
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") options.json = true;
-    else if (arg === "--dir") options.dir = argv[++i];
-    else if (arg === "--file") options.files.push(argv[++i]);
-    else if (arg === "--days") options.days = Number(argv[++i]);
+    else if (arg === "--dir") options.dir = valueOf(arg, ++i);
+    else if (arg === "--file") options.files.push(valueOf(arg, ++i));
+    else if (arg === "--days") options.days = Number(valueOf(arg, ++i));
     else throw new Error(`Unknown option ${arg}`);
   }
   if (!Number.isInteger(options.days) || options.days < 1 || options.days > 366) throw new Error("--days must be a whole number from 1 to 366");
@@ -182,18 +187,25 @@ function main() {
     process.exit(2);
   }
   let files = options.files;
-  if (files.length === 0) {
-    if (!options.dir) {
-      console.error("No logs to read: set LOG_DIR, or pass --dir <folder> or --file <log>.");
-      process.exit(2);
-    }
-    files = selectLogFiles(readdirSync(options.dir), options.days, Date.now()).map((name) => path.join(options.dir, name));
+  let lines;
+  try {
     if (files.length === 0) {
-      console.error(`No backend-YYYY-MM-DD.log files in the last ${options.days} days in that folder.`);
-      process.exit(1);
+      if (!options.dir) {
+        console.error("No logs to read: set LOG_DIR, or pass --dir <folder> or --file <log>.");
+        process.exit(2);
+      }
+      files = selectLogFiles(readdirSync(options.dir), options.days, Date.now()).map((name) => path.join(options.dir, name));
+      if (files.length === 0) {
+        console.error(`No backend-YYYY-MM-DD.log files in the last ${options.days} days in that folder.`);
+        process.exit(1);
+      }
     }
+    lines = files.flatMap((file) => readFileSync(file, "utf8").split("\n"));
+  } catch (err) {
+    // A folder or file that cannot be read: one line, no stack trace.
+    console.error(`Cannot read the logs (${err.code ?? "error"}).`);
+    process.exit(1);
   }
-  const lines = files.flatMap((file) => readFileSync(file, "utf8").split("\n"));
   const result = aggregate(lines);
   console.log(options.json ? JSON.stringify(result, null, 2) : formatReport(result));
 }
