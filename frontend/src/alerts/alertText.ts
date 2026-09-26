@@ -65,6 +65,16 @@ export function subjectLabel(subject: string, item?: string): string {
   return subject;
 }
 
+/**
+ * An alert's one-line title: "Power outage: Circuit 3", "Production below target: Iron Plate". A
+ * subject that only repeats the kind (the stopped-machines group, the game server) is left out:
+ * "Stopped machines", not "Stopped machines: Machines".
+ */
+export function alertTitle(kind: string, subject: string, item?: string): string {
+  if (subject === "group" || subject === "server") return kindLabel(kind);
+  return `${kindLabel(kind)}: ${subjectLabel(subject, item)}`;
+}
+
 /** The item class in a rule's params or an event's summary, when there is one. */
 export function itemOf(record: Record<string, unknown> | undefined): string | undefined {
   const item = record?.item;

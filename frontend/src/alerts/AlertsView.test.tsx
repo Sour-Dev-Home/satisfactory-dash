@@ -34,7 +34,7 @@ describe("AlertsView", () => {
     expect(screen.getByText(/Muted until/)).toBeInTheDocument();
     const firing = screen.getByRole("list", { name: "Firing now" });
     expect(within(firing).getAllByRole("listitem")).toHaveLength(alertStatusShadowMutedFiring.firing.length);
-    expect(within(firing).getByText(/Stopped machines: Machines/)).toBeInTheDocument();
+    expect(within(firing).getByText(/^Stopped machines$/)).toBeInTheDocument();
   });
 
   it("names the item of a firing production alert from its rule", async () => {

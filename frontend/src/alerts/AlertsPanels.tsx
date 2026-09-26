@@ -2,13 +2,12 @@ import type { AlertDestinationsResponse, AlertEvent, AlertRule, AlertStatusRespo
 import { formatTime } from "../format";
 import { cn } from "../lib/cn";
 import {
+  alertTitle,
   disabledReasonText,
   eventDetail,
   itemOf,
-  kindLabel,
   severityClass,
   severityLabel,
-  subjectLabel,
   transitionLabel,
 } from "./alertText";
 
@@ -42,7 +41,7 @@ export function AlertStatusPanel({ status, rules }: { status: AlertStatusRespons
             <li key={`${alert.ruleId}:${alert.subject}`} className="grid gap-0.5">
               <span>
                 <span className={cn("font-semibold", severityClass(alert.severity))}>{severityLabel(alert.severity)}</span>{" "}
-                {kindLabel(alert.kind)}: {subjectLabel(alert.subject, itemFor(alert.ruleId))}
+                {alertTitle(alert.kind, alert.subject, itemFor(alert.ruleId))}
               </span>
               <span className="text-sm text-muted">
                 Since <time dateTime={alert.since}>{formatTime(alert.since)}</time>
@@ -122,7 +121,7 @@ function LogEntry({ event }: { event: AlertEvent }) {
         <span className={cn("font-semibold", resolved ? "text-ok" : severityClass(event.severity))}>
           {resolved ? "Resolved" : severityLabel(event.severity)}
         </span>{" "}
-        {kindLabel(event.kind)}: {subjectLabel(event.subject, itemOf(event.summary))}
+        {alertTitle(event.kind, event.subject, itemOf(event.summary))}
       </span>
       {detail && <span className="text-sm">{detail}</span>}
     </li>

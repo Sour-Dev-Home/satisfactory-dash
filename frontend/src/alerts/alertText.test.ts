@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { alertEventsLastPage, alertEventsPage, alertRulesList } from "@satisfactory-dash/shared/fixtures";
-import { disabledReasonText, eventDetail, itemOf, kindLabel, severityClass, severityLabel, subjectLabel, transitionLabel } from "./alertText";
+import { alertTitle, disabledReasonText, eventDetail, itemOf, kindLabel, severityClass, severityLabel, subjectLabel, transitionLabel } from "./alertText";
 
 describe("alert words", () => {
   it("names every known kind, and spells out one a newer backend adds", () => {
@@ -25,6 +25,14 @@ describe("alert words", () => {
     expect(subjectLabel("item", "Desc_IronPlate_C")).toBe("Iron Plate");
     expect(subjectLabel("item")).toBe("An item");
     expect(subjectLabel("something:new")).toBe("something:new");
+  });
+
+  it("titles an alert without repeating the kind in the subject", () => {
+    expect(alertTitle("stopped_machines", "group")).toBe("Stopped machines");
+    expect(alertTitle("server_unreachable", "server")).toBe("Game server unreachable");
+    expect(alertTitle("power_outage", "circuit:3")).toBe("Power outage: Circuit 3");
+    expect(alertTitle("production_below_target", "item", "Desc_IronPlate_C")).toBe("Production below target: Iron Plate");
+    expect(alertTitle("agent_offline", "agent:pc-1")).toBe("Agent offline: agent:pc-1");
   });
 
   it("finds the item in a rule's params or an event's summary, and nothing else", () => {
