@@ -56,7 +56,7 @@ const failed = { ok: false, api: { ok: false, error: "unreachable" as const }, f
 
 const meta = { serverId: "uuid-home", publicId: "home", displayName: "Home", host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, frmTokenSet: true, keyId: "k1" };
 
-function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[] } = {}) {
+function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[]; allowLan?: boolean } = {}) {
   const runtime = new ServerRuntime<string>([{ id: "home", displayName: "Home", services: "old", workers: [] }]);
   const build = vi.fn((c: { publicId: string; displayName: string }) => ({ id: c.publicId, displayName: c.displayName, services: "new", workers: [] }));
   const testConnection = vi.fn(options.test ?? (async () => passed));
@@ -68,6 +68,9 @@ function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => 
     testConnection,
     getOperatorUserId: () => OPERATOR,
     configuredServerEnvNames: () => options.envNames ?? [],
+    // Most tests exercise the flows with LAN addresses, so LAN is allowed by default here; the amendment-1 gate
+    // (loopback only, the production default) is tested explicitly with allowLan: false below.
+    policy: { allowLan: options.allowLan ?? true },
     lookup: options.lookup ?? (async () => ["192.168.1.30"]),
   });
   return { service, runtime, build, testConnection };
@@ -417,6 +420,89 @@ describe("the management list and the states (unreadable, refused)", () => {
     expect(repo.updateConnection).toHaveBeenCalledWith(expect.anything(), ring, "uuid-tampered", expect.objectContaining({ pinnedIp: "192.168.1.20" }), expect.anything());
     expect(view.state).toBe("ok");
     expect(runtime.has("tampered")).toBe(true);
+  });
+});
+
+// ADR-0030 amendment 1: while LAN servers wait for certificate pinning, only loopback is usable on EVERY path.
+describe("the LAN gate: only loopback is usable (allowLan: false, the production default)", () => {
+  const lan = ["192.168.1.20", "10.0.0.5", "172.16.4.4", "::ffff:10.0.0.5"];
+  const loopbackTokens = { apiToken: API, frmToken: FRM };
+
+  it.each(lan)("create refuses a LAN host (%s) with lan_requires_cert_pinning, before any test or write", async (host) => {
+    const { service, testConnection } = setup({ allowLan: false, lookup: async () => [host] });
+    const err = await service.create(OPERATOR, { ...createInput, host: "pc.lan" }).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("lan_requires_cert_pinning");
+    expect((err as ApiFailure).message).not.toContain(host);
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.upsertConfiguredServer).not.toHaveBeenCalled();
+  });
+
+  it.each(lan)("testCandidate refuses a LAN literal (%s) with the same code and never connects", async (host) => {
+    const { service, testConnection } = setup({ allowLan: false });
+    const err = await service.testCandidate({ host, apiPort: 7777, frmPort: 8080, apiToken: API }).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("lan_requires_cert_pinning");
+    expect(testConnection).not.toHaveBeenCalled();
+  });
+
+  it("still creates and tests a loopback server (127.x and ::1, also via a name that resolves only to loopback)", async () => {
+    for (const [host, resolved] of [["127.0.0.1", "127.0.0.1"], ["::1", "::1"], ["localhost", "127.0.0.1"]] as const) {
+      const { service, testConnection } = setup({ allowLan: false, lookup: async () => [resolved] });
+      repo.upsertConfiguredServer.mockResolvedValue({ id: `uuid-${host}`, publicId: "alt", displayName: "Alt" });
+      const view = await service.create(OPERATOR, { ...createInput, host, ...loopbackTokens });
+      expect(view).toMatchObject({ state: "ok", plainHttpOverLan: false });
+      expect(testConnection).toHaveBeenCalledWith(expect.objectContaining({ pinnedIp: resolved }));
+    }
+  });
+
+  it("refuses a name that resolves to a mix of loopback and LAN", async () => {
+    const { service } = setup({ allowLan: false, lookup: async () => ["127.0.0.1", "192.168.1.20"] });
+    const err = await service.testCandidate({ host: "mixed.lan", apiPort: 1, frmPort: 2, apiToken: API }).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("lan_requires_cert_pinning");
+  });
+
+  it("public and metadata addresses keep their own code (address_not_allowed), not the LAN one", async () => {
+    const { service } = setup({ allowLan: false });
+    for (const host of ["8.8.8.8", "169.254.169.254"]) {
+      const err = await service.testCandidate({ host, apiPort: 1, frmPort: 2, apiToken: API }).catch((e: unknown) => e);
+      expect((err as ApiFailure).code).toBe("address_not_allowed");
+    }
+  });
+
+  it("edit re-resolves and refuses a LAN host, saving nothing and keeping the running server", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue({ ...meta, host: "127.0.0.1", pinnedIp: "127.0.0.1" });
+    const { service, runtime, testConnection } = setup({ allowLan: false, lookup: async () => ["10.0.0.9"] });
+    const err = await service.update(OPERATOR, "home", { host: "moved.lan" }).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("lan_requires_cert_pinning");
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.updateConnection).not.toHaveBeenCalled();
+    expect(runtime.get("home")).toBe("old");
+  });
+
+  it("a stored LAN row is 'refused' in the list and get, its tokens are never opened, and testSaved never connects", async () => {
+    repo.listConnectionMetas.mockResolvedValue([meta]); // meta.pinnedIp is 192.168.1.20
+    repo.getConnectionMetaByPublicId.mockResolvedValue(meta);
+    const { service, testConnection } = setup({ allowLan: false });
+    expect((await service.list()).map((view) => view.state)).toEqual(["refused"]);
+    expect((await service.get("home")).state).toBe("refused");
+    expect(repo.getConnection).not.toHaveBeenCalled();
+    const err = await service.testSaved("home").catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("lan_requires_cert_pinning");
+    expect(testConnection).not.toHaveBeenCalled();
+  });
+
+  it("a stored loopback row stays ok", async () => {
+    repo.listConnectionMetas.mockResolvedValue([{ ...meta, host: "127.0.0.1", pinnedIp: "127.0.0.1" }]);
+    const { service } = setup({ allowLan: false });
+    expect((await service.list()).map((view) => view.state)).toEqual(["ok"]);
+  });
+
+  it("the production default (no policy passed) is the loopback-only constant", async () => {
+    const service = createServerManagementService({
+      db: {} as never, ring, runtime: new ServerRuntime<string>(), build: vi.fn() as never,
+      testConnection: vi.fn(), getOperatorUserId: () => OPERATOR, lookup: async () => ["192.168.1.20"],
+    });
+    const err = await service.testCandidate({ host: "pc.lan", apiPort: 1, frmPort: 2, apiToken: API }).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("lan_requires_cert_pinning");
   });
 });
 

@@ -118,3 +118,39 @@ backed up offline. 5 yes: caps 8 local / 3 agent per player.
 ## Revisit when
 - The API moves to AWS: the "local" kind disappears (nothing is local to the cloud); the owner's own
   servers use the agent too.
+## Amendment 1 (2026-09-25): LAN servers wait for certificate pinning
+
+**Context.** The PR 5 security review noted that the vanilla API's self-signed certificate is not
+verified for loopback or private hosts. On loopback that costs nothing (the traffic never leaves the
+machine). On a LAN host, anyone who can intercept LAN traffic (ARP spoofing, a rogue access point) can
+present their own certificate and read the API token. That token is admin-level on the game server.
+Owner decision 3 (LAN allowed) accepted plain-HTTP FRM on the LAN. It did not cover the API token.
+
+**Decision (owner, 2026-09-25: "Pin before first LAN server").**
+1. Loopback servers are accepted as they are: the self-signed API certificate is not verified.
+2. Until certificate pinning ships, the backend **refuses every non-loopback address in code**. That
+   covers create, edit, test connection (candidate and saved) and import-servers, which all answer
+   with the stable code `lan_requires_cert_pinning` (422) and never name the address. At startup, a
+   stored non-loopback row is treated as `refused`. The policy is one constant in the address guard,
+   not an environment variable, so configuration cannot switch it on.
+3. **Before the first LAN server can be saved**, trust-on-first-use pinning of the API certificate:
+   - `servers.server_connections.api_cert_sha256 bytea` (32 bytes) plus the certificate itself
+     (`api_cert_der bytea`; public, not secret). Additive migration. CHECK: required unless the pinned
+     address is loopback.
+   - The fingerprint stored is the one **observed in the test that just passed** during create or edit,
+     never one fetched by a second connection.
+   - Every later API connection verifies the presented certificate against the pin **during the TLS
+     handshake, before any request bytes (and so the token) are sent**. A mismatch fails with a stable
+     code (`cert_changed`) and marks the connection so.
+   - Re-trust is an explicit operator action: the test result shows the new fingerprint, and the edit
+     confirms it by value (`trustCertificateSha256`). The backend stores it only if it equals what the
+     same test observed.
+   - Loopback servers may be pinned too (optional). Pinning never weakens the loopback case.
+4. The UI's LAN warning names both the game-server API token and the FRM data/token.
+
+**Consequences.** LAN servers are unavailable until the pinning PR merges and passes a security
+review. The loopback deploy is not blocked. FRM stays plain HTTP on the LAN (decision 3 unchanged);
+pinning protects the admin API token only.
+
+**Revisit when.** The operator wants a first LAN server (build the pinning PR then), or the game server
+supports a CA-issued certificate (verify normally instead of pinning).

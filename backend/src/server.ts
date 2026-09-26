@@ -26,7 +26,7 @@ import {
   createServerManagementRouters,
   createServerManagementService,
   createServersRouter,
-  isAllowedAddress,
+  addressVerdict,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
   registerConfiguredServers,
@@ -157,8 +157,8 @@ let operatorUserId: string | undefined;
 /** A stored connection becomes a running server that connects to its PINNED address. The address is
  *  re-checked here as well (defence in depth): nothing but a loopback or private address is ever built. */
 function buildFromConnection(c: ServerConnection) {
-  if (!isAllowedAddress(c.pinnedIp)) {
-    throw new Error("refusing to build a server whose address is not loopback or private");
+  if (addressVerdict(c.pinnedIp) !== "ok") {
+    throw new Error("refusing to build a server whose address is not usable (not loopback while LAN servers wait for certificate pinning)");
   }
   return buildServer(
     c.publicId,
@@ -254,7 +254,7 @@ if (process.env.NODE_ENV !== "test") {
             connectionsReadable = false;
             logger.error(
               { code: "SERVER_CONNECTIONS_REFUSED", servers: stored.refused.map(({ publicId }) => ({ publicId })) },
-              "stored server connections have an address that is not loopback or private; they are not served",
+              "stored server connections have an address that is not usable (not loopback: LAN servers wait for certificate pinning); they are not served",
             );
           }
           serversRegistered = true;

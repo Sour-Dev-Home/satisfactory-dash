@@ -12,8 +12,15 @@ import { Mutex } from "../../platform/mutex.js";
 import { SecretsError } from "../../platform/secrets/secrets.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
-import { AddressRefusedError, isAllowedAddress, isLoopbackAddress, resolveAllowedAddress } from "./addressGuard.js";
-import type { AddressLookup } from "./addressGuard.js";
+import {
+  AddressRefusedError,
+  DEFAULT_ADDRESS_POLICY,
+  LanRequiresPinningError,
+  addressVerdict,
+  isLoopbackAddress,
+  resolveAllowedAddress,
+} from "./addressGuard.js";
+import type { AddressLookup, AddressPolicy } from "./addressGuard.js";
 import { MAX_LOCAL_SERVERS, TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
 import { addMember } from "./repositories/memberRepository.js";
 import {
@@ -70,6 +77,9 @@ export interface ServerManagementDeps<TServices> {
   configuredServerEnvNames?: () => string[];
   /** DNS lookup, injectable for tests. */
   lookup?: AddressLookup;
+  /** For tests and the future certificate-pinning change only. Production never passes one: the default is the
+   *  LAN_ALLOWED constant in the address guard (ADR-0030 amendment 1), which is not an environment setting. */
+  policy?: AddressPolicy;
   /** One mutex per process; tests may pass their own. */
   mutex?: Mutex;
 }
@@ -100,6 +110,13 @@ function refusedAddress(): ApiFailure {
   );
 }
 
+function lanRequiresPinning(): ApiFailure {
+  return new ApiFailure(
+    "lan_requires_cert_pinning",
+    "Only loopback servers can be used for now: LAN servers wait for certificate pinning (ADR-0030, amendment 1).",
+  );
+}
+
 function importRequired(): ApiFailure {
   return new ApiFailure(
     "import_required",
@@ -121,7 +138,9 @@ const UNREADABLE_MESSAGE =
 function viewOf(
   meta: Pick<ConnectionMeta, "publicId" | "displayName" | "host" | "pinnedIp" | "apiPort" | "frmPort" | "frmTokenSet">,
   tokens: { apiToken: string; frmToken?: string } | undefined,
+  policy: AddressPolicy,
 ): ServerConnectionView {
+  const verdict = addressVerdict(meta.pinnedIp, policy);
   return {
     id: meta.publicId,
     displayName: meta.displayName,
@@ -132,14 +151,16 @@ function viewOf(
     apiTokenLast4: tokens ? last4(tokens.apiToken) : null,
     frmTokenSet: meta.frmTokenSet,
     frmTokenLast4: tokens?.frmToken === undefined ? null : last4(tokens.frmToken),
-    // "refused" wins: a stored address that is not loopback or private is never connected to, whatever the tokens are.
-    state: !isAllowedAddress(meta.pinnedIp) ? "refused" : tokens ? "ok" : "unreadable",
+    // "refused" wins: a stored address that is not usable (not loopback or private, or a LAN address while LAN servers
+    // wait for certificate pinning) is never connected to, whatever the tokens are.
+    state: verdict !== "ok" ? "refused" : tokens ? "ok" : "unreadable",
     plainHttpOverLan: !isLoopbackAddress(meta.pinnedIp),
   };
 }
 
 export function createServerManagementService<TServices>(deps: ServerManagementDeps<TServices>): ServerManagementService {
   const mutex = deps.mutex ?? new Mutex();
+  const policy = deps.policy ?? DEFAULT_ADDRESS_POLICY;
 
   const ringOrUnavailable = (): SecretsKeyring => {
     if (deps.ring === null) {
@@ -151,8 +172,9 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
   const pin = async (host: string): Promise<string> => {
     try {
-      return await resolveAllowedAddress(host, deps.lookup);
+      return await resolveAllowedAddress(host, deps.lookup, policy);
     } catch (err) {
+      if (err instanceof LanRequiresPinningError) throw lanRequiresPinning();
       if (err instanceof AddressRefusedError) throw refusedAddress();
       throw err;
     }
@@ -178,8 +200,8 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
   /** The view of a stored connection, from metadata. Tokens are opened only to show their last 4 characters, and
    *  never for a refused address or without a key (then the row is "unreadable"). */
   const viewFor = async (meta: ConnectionMeta): Promise<ServerConnectionView> => {
-    const openable = deps.ring !== null && isAllowedAddress(meta.pinnedIp);
-    return viewOf(meta, openable ? await openTokens(deps.ring as SecretsKeyring, meta) : undefined);
+    const openable = deps.ring !== null && addressVerdict(meta.pinnedIp, policy) === "ok";
+    return viewOf(meta, openable ? await openTokens(deps.ring as SecretsKeyring, meta) : undefined, policy);
   };
 
   const connectionOf = (
@@ -204,7 +226,9 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       // The host must still resolve to allowed addresses; the test then uses the STORED pinned address
       // (what the backend really connects to), never a fresh answer for the name.
       // A stored address that is not allowed is never connected to, not even to test it (checked before any lookup).
-      if (!isAllowedAddress(meta.pinnedIp)) throw refusedAddress();
+      const storedVerdict = addressVerdict(meta.pinnedIp, policy);
+      if (storedVerdict === "lan") throw lanRequiresPinning();
+      if (storedVerdict === "refused") throw refusedAddress();
       await pin(meta.host);
       const tokens = await openTokens(ring, meta);
       if (tokens === undefined) throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
@@ -274,6 +298,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         return viewOf(
           { publicId: input.id, displayName: input.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
           { apiToken: input.apiToken, frmToken: input.frmToken },
+          policy,
         );
       });
     },
@@ -329,7 +354,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         await deps.runtime.replace(
           deps.build(connectionOf({ serverId: meta.serverId, publicId, displayName }, { host, pinnedIp, apiPort, frmPort, apiToken, frmToken })),
         );
-        return viewOf({ publicId, displayName, host, pinnedIp, apiPort, frmPort, frmTokenSet: frmToken !== undefined }, { apiToken, frmToken });
+        return viewOf({ publicId, displayName, host, pinnedIp, apiPort, frmPort, frmTokenSet: frmToken !== undefined }, { apiToken, frmToken }, policy);
       });
     },
 

@@ -1,5 +1,7 @@
 import { withTransaction } from "../../platform/db/transaction.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
+import { DEFAULT_ADDRESS_POLICY, LanRequiresPinningError, addressVerdict } from "./addressGuard.js";
+import type { AddressPolicy } from "./addressGuard.js";
 import { countConnections, createConnection } from "./repositories/connectionRepository.js";
 import { ensureServer } from "./repositories/serverRepository.js";
 
@@ -38,6 +40,9 @@ export interface ImportResult {
   warnings: string[];
 }
 
+const lanMessage = (id: string) =>
+  `Server "${id}": only loopback servers can be imported for now; LAN servers wait for certificate pinning (ADR-0030, amendment 1).`;
+
 /** A reason the import cannot proceed. The message names a server id and a setting, never a value. */
 export class ImportError extends Error {
   constructor(message: string) {
@@ -60,6 +65,8 @@ export async function importServers(
   ring: SecretsKeyring,
   servers: ImportableServer[],
   resolvePinnedIp: (host: string) => Promise<string>,
+  /** Tests only; production uses the default (the LAN_ALLOWED constant). */
+  policy: AddressPolicy = DEFAULT_ADDRESS_POLICY,
 ): Promise<ImportResult> {
   const result: ImportResult = { imported: [], skipped: [], warnings: [] };
   return withTransaction(pool, async (client) => {
@@ -80,7 +87,17 @@ export async function importServers(
       let pinnedIp: string;
       try {
         pinnedIp = await resolvePinnedIp(config.host);
-      } catch {
+      } catch (err) {
+        throw new ImportError(
+          err instanceof LanRequiresPinningError
+            ? lanMessage(server.id)
+            : `Server "${server.id}": its host could not be resolved to a loopback or private address.`,
+        );
+      }
+      // The resolver is injected, so the pinned address is judged here too: nothing but a usable address is stored.
+      const verdict = addressVerdict(pinnedIp, policy);
+      if (verdict === "lan") throw new ImportError(lanMessage(server.id));
+      if (verdict === "refused") {
         throw new ImportError(`Server "${server.id}": its host could not be resolved to a loopback or private address.`);
       }
       const row = await ensureServer(client, { publicId: server.id, displayName: server.displayName });
