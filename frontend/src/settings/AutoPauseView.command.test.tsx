@@ -188,4 +188,49 @@ describe("AutoPauseView, a change relayed through the agent", () => {
     await waitFor(() => expect(checkbox()).toBeEnabled());
     expect(commandPollsForB).toBe(0);
   });
+
+  // A real bug in the fix above: onChange's guard checks the raw `sent` state, not the
+  // server-filtered `relayed`. Starting a change on server B (which has nothing shown, since
+  // `relayed` is already null there) still nulls out `sent`, destroying server A's still-unresolved
+  // command tracking. Switching back to A then shows it as idle, even though its command never
+  // actually resolved.
+  it("does not let starting a change on server B erase server A's still-pending command", async () => {
+    server.use(
+      http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
+      http.put(endpoints.settings.setAutoPause.route, () =>
+        HttpResponse.json(expiringIn(autoPauseResponseAccepted, 600_000), { status: 202 }),
+      ),
+      http.get(endpoints.commands.get.route, () =>
+        // Never resolves within the test: server A's command stays "waiting" forever.
+        HttpResponse.json(expiringIn(commandPending, 600_000)),
+      ),
+    );
+
+    function Switcher() {
+      const [selected, setSelected] = useState(serversMultiple.servers[0]);
+      return (
+        <>
+          <button onClick={() => setSelected(serversMultiple.servers[0])}>select A</button>
+          <button onClick={() => setSelected(serversMultiple.servers[1])}>select B</button>
+          <ServerContext value={selected}>
+            <AutoPauseView />
+          </ServerContext>
+        </>
+      );
+    }
+    renderWithClient(<Switcher />);
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    await screen.findByText("Saving…");
+
+    fireEvent.click(screen.getByRole("button", { name: "select B" }));
+    await waitFor(() => expect(checkbox()).toBeEnabled());
+    fireEvent.click(checkbox()); // server B starts its own, unrelated change
+
+    fireEvent.click(screen.getByRole("button", { name: "select A" }));
+
+    // Server A's command was never answered, so it should still read as pending.
+    await screen.findByText("Saving…");
+    expect(checkbox()).toBeDisabled();
+  });
 });

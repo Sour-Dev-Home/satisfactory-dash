@@ -9,6 +9,12 @@ import { useSelectedServer } from "../servers/ServerContext";
 import { AutoPausePanel } from "./AutoPausePanel";
 import { commandPhase, EXPIRED_TEXT, failureText, msUntilGiveUp, type CommandPhase } from "./command";
 
+/** A change relayed to the game PC: the command the PUT answered with, and whether the page gave up on it. */
+interface Relayed {
+  command: Command;
+  gaveUp: boolean;
+}
+
 /**
  * Container: reads settings through the query layer and writes only on a user action.
  * No optimistic update: the checkbox shows what the backend returns, never a guess.
@@ -23,10 +29,15 @@ export function AutoPauseView() {
   // ADR-0031 PR 4: a change relayed through the game PC's agent (the PUT answered 202 with a command),
   // followed until it lands. Only the command and "gave up" are kept; where it stands is derived from
   // the latest poll. It stays set after the result, so the result stays on screen until the next change.
-  // The server it was sent to is kept too: after switching servers, the other server's command is
-  // simply not this one's (never shown, never polled on this server's route).
-  const [sent, setRelayed] = useState<{ serverId: string; command: Command; gaveUp: boolean } | null>(null);
-  const relayed = sent?.serverId === server.id ? sent : null;
+  // Kept per server: after switching servers, another server's command is never shown or polled
+  // here, and a change on this server never touches another's (Shell also keys this view by server).
+  const [sent, setSent] = useState<Record<string, Relayed | undefined>>({});
+  const relayed = sent[server.id] ?? null;
+  const setRelayed = useCallback(
+    (update: (current: Relayed | null) => Relayed | null) =>
+      setSent((all) => ({ ...all, [server.id]: update(all[server.id] ?? null) ?? undefined })),
+    [server.id],
+  );
   const followed = useQuery({
     ...queries.command(server.id, relayed?.command.id ?? ""),
     enabled: relayed !== null && !relayed.gaveUp,
@@ -37,7 +48,7 @@ export function AutoPauseView() {
       ? null
       : relayed.gaveUp
         ? "expired"
-        : answer?.id === relayed.command.id
+        : answer !== undefined && answer.id === relayed.command.id
           ? commandPhase(answer.status)
           : "waiting";
   const outcome = phase === "failed" ? failureText(answer?.resultCode ?? null) : phase === "expired" ? EXPIRED_TEXT : null;
@@ -62,7 +73,7 @@ export function AutoPauseView() {
       refresh();
     }, msUntilGiveUp(waitingFor, Date.now()));
     return () => clearTimeout(timer);
-  }, [waitingFor, refresh]);
+  }, [waitingFor, refresh, setRelayed]);
 
   const save = useMutation({
     mutationKey: saveKey,
@@ -79,7 +90,8 @@ export function AutoPauseView() {
       // ADR-0031: for a server reached through an agent the answer is a 202 with a COMMAND, not the new setting. The
       // setting hasn't changed yet, so nothing goes in the cache: follow the command until it lands (above).
       if ("command" in snapshot) {
-        setRelayed({ serverId: server.id, command: snapshot.command, gaveUp: false });
+        const command = snapshot.command;
+        setRelayed(() => ({ command, gaveUp: false }));
         return;
       }
       client.setQueryData(settingsQuery.queryKey, snapshot);
@@ -103,7 +115,7 @@ export function AutoPauseView() {
     if (client.isMutating({ mutationKey: saveKey }) !== 0 || phase === "waiting") return;
     // Clear the last result, but only when there is one: a state update here, even to the same
     // value, re-renders before the PUT and lets a stale settings read land after it.
-    if (sent !== null) setRelayed(null);
+    if (relayed !== null) setRelayed(() => null);
     save.mutate(enabled);
   };
 
