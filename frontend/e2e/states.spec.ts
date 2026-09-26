@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { ScenarioName } from "../src/test/scenarios";
-import { expect, expectNoAxeViolations, test } from "./fixtures";
+import { expect, expectNoAxeViolations, settleAnimations, test } from "./fixtures";
 
 // Every UI state from ADR-0016 item 5, at 1440 and 390 px (the two projects): wait until the
 // state is actually on screen, fail on any axe violation, then compare a full-page screenshot.
@@ -153,9 +153,10 @@ async function openAddForm(page: Page) {
   await page.getByRole("button", { name: "Add a server" }).click();
 }
 
-/** Opens the header bell's dropdown (ADR-0027 PR 9). */
+/** Opens the header bell's dropdown (ADR-0027 PR 9) and lets it finish popping in. */
 async function openAlerts(page: Page) {
   await page.getByRole("button", { name: /^Alerts/ }).click();
+  await settleAnimations(page);
 }
 
 async function addServer(page: Page, host: string) {

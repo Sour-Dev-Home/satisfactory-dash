@@ -77,12 +77,20 @@ export const test = base.extend<Fixtures & { unmocked: string[] }>({
 export { expect };
 
 /**
+ * Waits for running CSS animations (a page's reveal, a dropdown's pop) to end. Clicking inside
+ * something still moving fails Playwright's hit check, and its retry scrolls the element into
+ * view, which scrolls the dropdown; axe counts opacity in contrast.
+ */
+export async function settleAnimations(page: Page): Promise<void> {
+  await page.evaluate(() => Promise.allSettled(document.getAnimations().map((a) => a.finished)));
+}
+
+/**
  * Runs axe (WCAG 2.1 A/AA, contrast included) and fails the test on any violation (ADR-0016
  * item 5; failing since step 4). The full result is attached to the report either way.
  */
 export async function expectNoAxeViolations(page: Page, testInfo: TestInfo): Promise<void> {
-  // axe counts opacity in contrast, so check the settled page, not a frame of a fade-in.
-  await page.evaluate(() => Promise.allSettled(document.getAnimations().map((a) => a.finished)));
+  await settleAnimations(page);
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     // axe's preload copies the page's CSS into <style> elements for css-orientation-lock

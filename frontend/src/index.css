@@ -85,9 +85,11 @@
   /* Tailwind's `transition-*` utilities use the tokens too. */
   --default-transition-duration: var(--duration-fast);
   --default-transition-timing-function: var(--ease-standard);
-  /* `animate-reveal`: a page or a detail fading in. `animate-pop`: a dropdown opening. */
-  --animate-reveal: reveal var(--duration-fast) var(--ease-standard) both;
-  --animate-pop: pop var(--duration-base) var(--ease-standard) both;
+  /* `animate-reveal`: a page or a detail fading in. `animate-pop`: a dropdown opening. No fill
+     mode: once an animation ends it stops applying, so the element renders exactly as it would
+     without one (a held end state keeps it on its own layer, which moves text by subpixels). */
+  --animate-reveal: reveal var(--duration-fast) var(--ease-standard);
+  --animate-pop: pop var(--duration-base) var(--ease-standard);
 
   @keyframes reveal {
     from {
