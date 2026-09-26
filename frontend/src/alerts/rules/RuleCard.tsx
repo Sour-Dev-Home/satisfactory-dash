@@ -112,10 +112,11 @@ export function RuleCard({
   return (
     <article aria-labelledby={headingId} className="grid gap-3 rounded-card border border-line bg-surface p-4">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h4 id={headingId} className="mb-0">
+        {/* h5: under Settings → Alerts → Rules (h3, h4); styled like the h4s. */}
+        <h5 id={headingId} className="mb-0 text-sm font-semibold text-fg-strong">
           {kindLabel(rule.kind)}
           {item && <span className="font-normal text-muted"> · {item.name}</span>}
-        </h4>
+        </h5>
         {rule.preset && <span className="text-sm text-muted">Preset: can be turned off, not deleted.</span>}
       </header>
 

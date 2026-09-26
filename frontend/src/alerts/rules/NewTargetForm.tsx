@@ -51,9 +51,9 @@ export function NewTargetForm({
 
   return (
     <form onSubmit={submit} noValidate aria-labelledby={`${uid}-heading`} className="grid gap-3 rounded-card border border-line bg-surface p-4">
-      <h4 id={`${uid}-heading`} className="mb-0">
+      <h5 id={`${uid}-heading`} className="mb-0 text-sm font-semibold text-fg-strong">
         New production target
-      </h4>
+      </h5>
       <p className="mb-0 text-sm text-muted">Alert when an item's production stays below a target.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FormField id={id("item")} label="Item" error={errors.item}>
