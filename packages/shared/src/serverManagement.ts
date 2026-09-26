@@ -144,6 +144,16 @@ export const ManagedServerListResponseSchema = z.object({
     ),
 });
 
+/**
+ * POST /api/servers/:serverId/local-connection (ADR-0031 amendment "Rollback: switch back to local", operator only): a server
+ * reached through an edge agent becomes a server this backend reads itself again. The body is what create takes for the
+ * connection (the id and name are the server's own and stay); the answer is the stored connection, as for create. The
+ * connection must pass the same test create runs, and in one step the agent's credential is revoked, its unspent enrolment
+ * codes are dropped and its waiting commands are ended. Members and history are kept. 409 `server_not_agent` when the
+ * server is not reached through an agent.
+ */
+export const SwitchToLocalRequestSchema = z.strictObject(ConnectionShape);
+
 /** PATCH /api/servers/:serverId/name: renames a server. The only edit an agent server has (its `servers` twin, PATCH
  *  /api/servers/:serverId, needs a stored connection). */
 export const RenameServerRequestSchema = z.strictObject({ displayName: DisplayNameSchema });
@@ -158,6 +168,7 @@ export type ServerConnection = z.infer<typeof ServerConnectionSchema>;
 export type ServerConnectionResponse = z.infer<typeof ServerConnectionResponseSchema>;
 export type ManagedServerListResponse = z.infer<typeof ManagedServerListResponseSchema>;
 export type DeleteServerResponse = z.infer<typeof DeleteServerResponseSchema>;
+export type SwitchToLocalRequest = z.infer<typeof SwitchToLocalRequestSchema>;
 export type AgentServer = z.infer<typeof AgentServerSchema>;
 export type RenameServerRequest = z.infer<typeof RenameServerRequestSchema>;
 export type RenameServerResponse = z.infer<typeof RenameServerResponseSchema>;

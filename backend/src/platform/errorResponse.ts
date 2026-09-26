@@ -49,6 +49,7 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   server_limit_reached: 409,
   import_required: 409,
   lan_requires_cert_pinning: 422,
+  server_not_agent: 409,
   // ADR-0027 PR 7: alerts.
   rule_not_found: 404,
   rule_item_immutable: 422,

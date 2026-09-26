@@ -38,6 +38,7 @@ import {
   HistoryTransitionsResponseSchema,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
+  SwitchToLocalRequestSchema,
   RenameServerResponseSchema,
   ServerConnectionResponseSchema,
   TestConnectionResponseSchema,
@@ -104,6 +105,7 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["managedServers", ManagedServerListResponseSchema],
   ["managedServersWithAgent", ManagedServerListResponseSchema],
   ["renameAgentServerRequest", RenameServerRequestSchema],
+  ["switchToLocalRequest", SwitchToLocalRequestSchema],
   ["renameAgentServerResponse", RenameServerResponseSchema],
   ["testConnection", TestConnectionResponseSchema],
   ["deleteServer", DeleteServerResponseSchema],
@@ -195,11 +197,11 @@ describe("server management fixtures (ADR-0030) show what their names say", () =
     const errors = [
       fixtures.errorOperatorOnly, fixtures.errorValidation, fixtures.errorImportRequired, fixtures.errorLanRequiresCertPinning,
       fixtures.errorAddressNotAllowed, fixtures.errorConnectionTestFailed, fixtures.errorConnectionUnreadable,
-      fixtures.errorServerExists, fixtures.errorServerLimitReached,
+      fixtures.errorServerExists, fixtures.errorServerLimitReached, fixtures.errorServerNotAgent,
     ];
     expect(errors.map((e) => e.error.code)).toEqual([
       "forbidden", "bad_request", "import_required", "lan_requires_cert_pinning",
-      "address_not_allowed", "connection_test_failed", "connection_unreadable", "server_exists", "server_limit_reached",
+      "address_not_allowed", "connection_test_failed", "connection_unreadable", "server_exists", "server_limit_reached", "server_not_agent",
     ]);
     for (const e of errors) {
       expect(KnownErrorCode.safeParse(e.error.code).success).toBe(true);
@@ -406,7 +408,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 4 agent
     // endpoints (ADR-0031 PR 3).
-    expect(all.length).toBe(47); // + serverManagement.renameAgent (ADR-0031)
+    expect(all.length).toBe(48); // + serverManagement.renameAgent and switchToLocal (ADR-0031)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;

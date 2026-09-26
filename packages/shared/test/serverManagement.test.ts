@@ -7,6 +7,8 @@ import {
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
   RenameServerResponseSchema,
+  SwitchToLocalRequestSchema,
+  KnownErrorCode,
   ServerConnectionSchema,
   ServerListResponseSchema,
   TestConnectionRequestSchema,
@@ -112,6 +114,7 @@ describe("the contract's operator-only endpoints", () => {
       "serverManagement.list",
       "serverManagement.remove",
       "serverManagement.renameAgent",
+      "serverManagement.switchToLocal",
       "serverManagement.testConnection",
       "serverManagement.testSaved",
       "serverManagement.update",
@@ -139,6 +142,18 @@ describe("the contract's operator-only endpoints", () => {
     expect(RenameServerResponseSchema.parse(fixtures.renameAgentServerResponse).server.kind).toBe("agent");
     expect(endpoints.serverManagement.renameAgent).toMatchObject({ method: "PATCH", route: "/api/servers/:serverId/name", operatorOnly: true });
     expect(endpoints.serverManagement.renameAgent.path("alex")).toBe("/api/servers/alex/name");
+  });
+
+  it("switch back to local (ADR-0031 amendment): the request is exactly the connection (no id, no name, no unknown field), and the endpoint is operator only", () => {
+    expect(SwitchToLocalRequestSchema.safeParse(fixtures.switchToLocalRequest).success).toBe(true);
+    const { frmToken: _frm, ...withoutFrm } = fixtures.switchToLocalRequest;
+    expect(SwitchToLocalRequestSchema.safeParse(withoutFrm).success).toBe(true); // FRM can run without a token
+    for (const bad of [{ ...fixtures.switchToLocalRequest, id: "x" }, { ...fixtures.switchToLocalRequest, displayName: "x" }, { ...fixtures.switchToLocalRequest, apiPort: 0 }, { ...fixtures.switchToLocalRequest, host: "https://10.0.0.1" }, { ...fixtures.switchToLocalRequest, apiToken: "has space" }, { host: "127.0.0.1", apiPort: 7777, frmPort: 8080 }]) {
+      expect(SwitchToLocalRequestSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(endpoints.serverManagement.switchToLocal).toMatchObject({ method: "POST", route: "/api/servers/:serverId/local-connection", operatorOnly: true });
+    expect(endpoints.serverManagement.switchToLocal.path("alex")).toBe("/api/servers/alex/local-connection");
+    expect(KnownErrorCode.safeParse("server_not_agent").success).toBe(true);
   });
 
   it("keeps the list additive: canManageServers is optional", () => {
