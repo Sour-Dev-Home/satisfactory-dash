@@ -20,9 +20,10 @@ import {
   testGameServerConnection,
 } from "./modules/gameserver/index.js";
 import type { SatisfactoryServerConfig } from "./modules/gameserver/index.js";
-import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
+import { createAgentSettingsServices, createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import {
   ServerRuntime,
+  findServerByPublicId,
   createDbServerAccess,
   createServerManagementRouters,
   createServerManagementService,
@@ -40,7 +41,14 @@ import {
   createAlertsService,
   loadAlertDeliveryMode,
 } from "./modules/alerts/index.js";
-import { createHistoryMaintenance, createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
+import {
+  createAgentTelemetryServices,
+  createHistoryMaintenance,
+  createTelemetryRouters,
+  createTelemetryServices,
+  createUnitResolver,
+} from "./modules/telemetry/index.js";
+import { AGENT_CADENCE, createAgentApiRouters, createAgentUserRouters, createAgentsService } from "./modules/agents/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -115,6 +123,18 @@ function buildServer(id: string, displayName: string, config: SatisfactoryServer
     services: { telemetry, settings: createSettingsServices(createServerOptionsPort(config)) },
     workers: telemetry.workers,
   };
+}
+
+/** ADR-0031 PR 5a: a server reached through an edge agent. No game connection and no pollers: its live reads serve the
+ *  agent's last snapshot and its history is fed by the snapshots. Only built with a database (an agent needs one). */
+function buildAgentServer(id: string, displayName: string) {
+  if (!database) throw new Error("an agent server needs a database");
+  const telemetry = createAgentTelemetryServices({
+    logger: logger.child({ worker: "agent-history", serverId: id }),
+    cadence: () => AGENT_CADENCE,
+    history: { db: database.pool, serverPublicId: id },
+  });
+  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices() }, workers: telemetry.workers };
 }
 
 const entries = orExit(() => {
@@ -230,6 +250,30 @@ const managementRouters = serverManagement
 let connectionsReadable = true;
 const serverAccess = database ? createDbServerAccess(database.pool) : undefined;
 
+// ADR-0031 PR 5a: makes sure a server has its agent-backed running entry. Called after an enrolment commits (the server
+// was a local one: its entry, with its pollers, is replaced and the pollers stop) and by the first snapshot of a server
+// that has none. Idempotent, and one swap at a time per server so two callers cannot build two entries.
+const attaching = new Map<string, Promise<void>>();
+function attachAgentRuntime(publicId: string): Promise<void> {
+  if (!database || directory.get(publicId)?.telemetry.agentIngest !== undefined) {
+    return Promise.resolve();
+  }
+  const running = attaching.get(publicId);
+  if (running) {
+    return running;
+  }
+  const swap = (async () => {
+    const displayName =
+      directory.list().find((server) => server.id === publicId)?.displayName ?? (await findServerByPublicId(database.pool, publicId))?.displayName;
+    if (displayName === undefined) {
+      return; // the server was removed: nothing to attach
+    }
+    await directory.replace(buildAgentServer(publicId, displayName));
+  })().finally(() => attaching.delete(publicId));
+  attaching.set(publicId, swap);
+  return swap;
+}
+
 export const app = createApp({
   logger,
   allowedOrigins: identity.allowedOrigins,
@@ -261,8 +305,14 @@ export const app = createApp({
           }),
         )
       : []),
+    // ADR-0031 PR 5a: the owner's side of the edge agent (enrolment code, agent status, revoke), after the servers router.
+    ...(database ? createAgentUserRouters(createAgentsService({ db: database.pool, canManage: (userId) => serverManagement?.canManage(userId) ?? false })) : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
   ],
+  // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
+  agentRouters: database
+    ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), directory, attachAgentRuntime, isReady: () => serversRegistered })
+    : [],
 });
 
 if (process.env.NODE_ENV !== "test") {
@@ -291,6 +341,7 @@ if (process.env.NODE_ENV !== "test") {
           runtime: directory,
           operatorUserId: ownerId,
           build: buildFromConnection,
+          buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
         });
         if (stored.usingDatabase) {
           const ignored = configuredServerEnvNamesInUse();

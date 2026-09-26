@@ -168,6 +168,10 @@ const DELETE_HISTORY = [
   "DELETE FROM alerts.server_mutes WHERE server_id = $1",
   // ADR-0027 PR 6: the encrypted webhook goes with the server (its outbox rows cascade from the destination).
   "DELETE FROM alerts.destinations WHERE server_id = $1",
+  // ADR-0031 PR 5a: an enrolled agent's credential and any pending enrolment code go with the server, so a revived
+  // id can never be reached by the old agent.
+  "DELETE FROM agents.enrollment_codes WHERE server_id = $1",
+  "DELETE FROM agents.agent_credentials WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });
@@ -202,4 +206,39 @@ export async function softDeleteServer(
     }
     return true;
   });
+}
+
+const SWITCH_TO_AGENT = `
+  UPDATE servers.servers
+  SET connection_kind = 'agent'
+  WHERE id = $1 AND deleted_at IS NULL
+  RETURNING public_id`;
+
+/**
+ * ADR-0031 PR 5a: a server is now reached through an agent. Its kind becomes 'agent' and its stored game-server
+ * tokens are deleted (an agent server holds none), and it returns the public id, or undefined when the server is
+ * unknown or removed (nothing is written then). The caller runs it in the enrolment transaction, so the switch, the
+ * credential and the audit event commit together.
+ */
+export async function switchToAgentConnection(db: Queryable, serverId: string): Promise<string | undefined> {
+  const switched = await db.query(SWITCH_TO_AGENT, [serverId]);
+  const row = parseFirst(z.object({ public_id: z.string() }), switched.rows, "servers.switchToAgentConnection");
+  if (row === undefined) return undefined;
+  await db.query(DELETE_CONNECTION, [serverId]);
+  return row.public_id;
+}
+
+const LIST_AGENT_SERVERS = `
+  SELECT public_id, display_name
+  FROM servers.servers
+  WHERE connection_kind = 'agent' AND deleted_at IS NULL
+  ORDER BY public_id`;
+
+/** The live servers reached through an agent (they have no connection row), for building their runtime entries at startup. */
+export async function listAgentServers(db: Queryable): Promise<{ publicId: string; displayName: string }[]> {
+  const result = await db.query(LIST_AGENT_SERVERS);
+  return parseRows(z.object({ public_id: z.string(), display_name: z.string() }), result.rows, "servers.listAgentServers").map((row) => ({
+    publicId: row.public_id,
+    displayName: row.display_name,
+  }));
 }
