@@ -1,5 +1,6 @@
 import type { HistoryItems, HistoryTransitions } from "@satisfactory-dash/shared";
 import { formatAmount, formatPerMinute } from "../format";
+import { cn } from "../lib/cn";
 import { labelFor, type ItemLabel } from "./itemLabels";
 import { sinceYesterday, transitionCount, type ItemChange } from "./sinceYesterday";
 
@@ -46,15 +47,19 @@ export function SinceYesterdayPanel({
   history,
   transitions,
   labels,
+  className,
 }: {
   history: HistoryItems;
   transitions?: HistoryTransitions;
   labels: Map<string, ItemLabel>;
+  /** The reserved box's size (FactoryHistory); the content scrolls inside it when longer. */
+  className?: string;
 }) {
   const result = sinceYesterday(history);
   const drop = result.enough ? result.down[0] : undefined;
   return (
-    <section aria-labelledby="since-yesterday-heading" className="panel">
+    // Focusable, so a keyboard can scroll it when a phone's reserved box is shorter than the lists.
+    <section aria-labelledby="since-yesterday-heading" tabIndex={0} className={cn("panel content-start overflow-y-auto", className)}>
       <h3 id="since-yesterday-heading">
         Since yesterday
         {result.enough && (

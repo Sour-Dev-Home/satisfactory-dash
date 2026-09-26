@@ -1,5 +1,4 @@
 import type { StatusResponse } from "@satisfactory-dash/shared";
-import { POLL_MS } from "../api/queries";
 import { DataAge } from "../components/DataAge";
 import { formatDuration } from "../format";
 
@@ -7,8 +6,9 @@ import { formatDuration } from "../format";
  * Presentational: renders one status snapshot. Units and labels per ADR-0006. Stale and
  * paused are shown by StatusBanners; this panel keeps showing the snapshot's values. The
  * server tick lives in the Overview's Health card (the owner's call), not here.
+ * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  */
-export function StatusPanel({ snapshot }: { snapshot: StatusResponse }) {
+export function StatusPanel({ snapshot, refetchFailed = false }: { snapshot: StatusResponse; refetchFailed?: boolean }) {
   const status = snapshot.data;
   return (
     <section aria-labelledby="status-heading" className="panel">
@@ -33,7 +33,7 @@ export function StatusPanel({ snapshot }: { snapshot: StatusResponse }) {
 
         <dt>Data</dt>
         <dd>
-          <DataAge observedAt={snapshot.observedAt} pollMs={POLL_MS.status} />
+          <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
         </dd>
       </dl>
     </section>

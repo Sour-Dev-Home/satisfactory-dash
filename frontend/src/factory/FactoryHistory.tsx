@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { HistoryRange } from "@satisfactory-dash/shared";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { cn } from "../lib/cn";
 import { useSelectedServer } from "../servers/ServerContext";
 import type { ItemLabel } from "./itemLabels";
 import { ItemHistoryPanel } from "./ItemHistoryPanel";
@@ -12,7 +13,7 @@ import { SinceYesterdayPanel } from "./SinceYesterdayPanel";
 /** The most transitions the backend sends in one answer; more reads "500+". */
 const TRANSITION_LIMIT = 500;
 
-/** The two queries "Since yesterday" reads; FactoryView waits for them too (ADR-0032). */
+/** The two queries "Since yesterday" reads; FactoryView gives them a short grace (ADR-0032). */
 export function sinceYesterdayQueries(serverId: string) {
   return {
     history: queries.historyItems(serverId, "7d"),
@@ -20,29 +21,48 @@ export function sinceYesterdayQueries(serverId: string) {
   };
 }
 
+/** The box "Since yesterday" reserves in every state, so nothing it shows moves the table below. */
+const SINCE_YESTERDAY_BOX = "h-since-yesterday-phone sm:h-since-yesterday-mid lg:h-since-yesterday-wide";
+
 /**
  * Container for "Since yesterday" (ADR-0027 item 6): the 7d range's hourly buckets, and the last
- * 24 h of state changes. The comparison shows even if the transitions can't load.
+ * 24 h of state changes. The comparison shows even if the transitions can't load. Loading, error
+ * and content all fill the same reserved box.
  */
 export function SinceYesterdayView({ labels }: { labels: Map<string, ItemLabel> }) {
   const server = useSelectedServer();
   const since = sinceYesterdayQueries(server.id);
   const history = useQuery(since.history);
   const transitions = useQuery(since.transitions);
-  if (history.isPending) return <p role="status">Loading what changed since yesterday…</p>;
-  if (!history.data) {
+  if (history.isPending) {
     return (
-      <ErrorNotice
-        error={history.error}
-        action={
-          <button type="button" onClick={() => void history.refetch()}>
-            Retry
-          </button>
-        }
-      />
+      <p role="status" className={cn("panel place-content-center text-muted", SINCE_YESTERDAY_BOX)}>
+        Loading what changed since yesterday…
+      </p>
     );
   }
-  return <SinceYesterdayPanel history={history.data.data} transitions={transitions.data?.data} labels={labels} />;
+  if (!history.data) {
+    return (
+      <div className={cn("grid content-start overflow-y-auto", SINCE_YESTERDAY_BOX)}>
+        <ErrorNotice
+          error={history.error}
+          action={
+            <button type="button" onClick={() => void history.refetch()}>
+              Retry
+            </button>
+          }
+        />
+      </div>
+    );
+  }
+  return (
+    <SinceYesterdayPanel
+      history={history.data.data}
+      transitions={transitions.data?.data}
+      labels={labels}
+      className={SINCE_YESTERDAY_BOX}
+    />
+  );
 }
 
 /** One stored range of item history: its own load and error states. */

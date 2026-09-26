@@ -10,5 +10,5 @@ import { StatusPanel } from "./StatusPanel";
 export function StatusView() {
   const server = useSelectedServer();
   const status = useQuery(queries.status(server.id));
-  return status.data ? <StatusPanel snapshot={status.data} /> : null;
+  return status.data ? <StatusPanel snapshot={status.data} refetchFailed={status.isRefetchError} /> : null;
 }

@@ -1,5 +1,4 @@
 import type { PowerCircuit, PowerCircuitStatus, PowerResponse } from "@satisfactory-dash/shared";
-import { POLL_MS } from "../api/queries";
 import { DataAge } from "../components/DataAge";
 import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
 
@@ -13,8 +12,9 @@ const STATUS_LABEL: Record<PowerCircuitStatus, string> = {
 /**
  * Presentational: one power snapshot. Alarms come only from the backend's classification
  * (hasOutage, circuit.status); this component never re-derives them (power.ts).
+ * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  */
-export function PowerPanel({ snapshot }: { snapshot: PowerResponse }) {
+export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: PowerResponse; refetchFailed?: boolean }) {
   const { circuits, hasOutage } = snapshot.data;
   const outages = circuits.filter((c) => c.status === "outage").length;
   const atRisk = circuits.filter((c) => c.status === "at_risk").length;
@@ -54,7 +54,7 @@ export function PowerPanel({ snapshot }: { snapshot: PowerResponse }) {
       )}
 
       <p className="as-of">
-        <DataAge observedAt={snapshot.observedAt} pollMs={POLL_MS.power} />
+        <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
       </p>
     </section>
   );

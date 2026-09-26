@@ -25,11 +25,19 @@ const DELAYS: [RegExp, number][] = [
   [/\/history\/power/, 600],
 ];
 
-async function staggerApi(page: Page): Promise<void> {
+/**
+ * The slow-history variant: the 7d read behind the Factory page's "Since yesterday" takes 3 s (the
+ * heaviest history read; the backend allows it up to 5 s). The table must not wait for it, and its
+ * reserved box means its late arrival moves nothing.
+ */
+const SLOW_SINCE_YESTERDAY_MS = 3_000;
+
+async function staggerApi(page: Page, slowSinceYesterday = false): Promise<void> {
   // Registered after mockApi, so it runs first and hands each request on once its delay is up.
   await page.route("**/api/**", async (route) => {
-    const { pathname } = new URL(route.request().url());
-    const delay = DELAYS.find(([pattern]) => pattern.test(pathname))?.[1] ?? 0;
+    const { pathname, searchParams } = new URL(route.request().url());
+    const slow = slowSinceYesterday && /\/history\/items/.test(pathname) && searchParams.get("range") === "7d";
+    const delay = slow ? SLOW_SINCE_YESTERDAY_MS : (DELAYS.find(([pattern]) => pattern.test(pathname))?.[1] ?? 0);
     if (delay) await new Promise((r) => setTimeout(r, delay));
     return route.fallback();
   });
@@ -84,13 +92,17 @@ async function switchTo(page: Page, tab: string): Promise<Shift[]> {
   return shiftsSince(page, clickedAt + 100);
 }
 
-for (const motion of ["no-preference", "reduce"] as const) {
-  test.describe(`tab switch, motion ${motion}`, () => {
+const VARIANTS = (["no-preference", "reduce"] as const).flatMap((motion) =>
+  [false, true].map((slowSinceYesterday) => ({ motion, slowSinceYesterday })),
+);
+
+for (const { motion, slowSinceYesterday } of VARIANTS) {
+  test.describe(`tab switch, motion ${motion}${slowSinceYesterday ? ", slow history" : ""}`, () => {
     test.use({ reducedMotion: motion });
 
     test(`stays under CLS ${BUDGET} across the main tabs`, async ({ page, mockApi }, testInfo) => {
       await mockApi("default");
-      await staggerApi(page);
+      await staggerApi(page, slowSinceYesterday);
       await page.goto("/app");
       await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
       await page.waitForLoadState("networkidle");
@@ -104,12 +116,25 @@ for (const motion of ["no-preference", "reduce"] as const) {
         Object.entries(shifts).map(([tab, list]) => [tab, list.reduce((sum, s) => sum + s.v, 0)]),
       );
       // Printed as well as attached: CI keeps the log of a passing test, not its attachments.
-      const report = JSON.stringify({ project: testInfo.project.name, motion, scores, shifts }, null, 1);
+      const report = JSON.stringify({ project: testInfo.project.name, motion, slowSinceYesterday, scores, shifts }, null, 1);
       console.log(`tab-switch CLS ${report}`);
       await testInfo.attach("cls.json", { body: report, contentType: "application/json" });
       for (const [tab, cls] of Object.entries(scores)) {
         expect.soft(cls, `CLS switching to ${tab}`).toBeLessThanOrEqual(BUDGET);
       }
     });
+
+    if (slowSinceYesterday) {
+      test("shows the factory table while 'Since yesterday' is still loading", async ({ page, mockApi }) => {
+        await mockApi("default");
+        await staggerApi(page, true);
+        await page.goto("/app");
+        await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
+        await page.getByRole("navigation").getByRole("link", { name: "Factory", exact: true }).click();
+        // The table lands with the factory read (500 ms) plus at most the grace, long before 3 s.
+        await expect(page.getByRole("region", { name: "Factory" })).toBeVisible({ timeout: 2_000 });
+        await expect(page.getByText("Loading what changed since yesterday…")).toBeVisible();
+      });
+    }
   });
 }
