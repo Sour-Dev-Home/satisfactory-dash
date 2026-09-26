@@ -58,6 +58,16 @@ describe("FactoryPanel rate units (exact text)", () => {
     }
   });
 
+  it("keeps 'current / max unit' in one unbreakable group, so a phone only wraps before the '(%)' (#59)", () => {
+    render(<FactoryPanel snapshot={factoryMixed} />);
+    const groups = within(screen.getByRole("table"))
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector(".whitespace-nowrap")?.textContent);
+    expect(groups).toContain("40 / 40 m³/min");
+    expect(groups).toContain("30 / 30 items/min");
+    expect(groups).not.toContain(undefined);
+  });
+
   it("renders the unknown-unit fallback exactly (null unit)", () => {
     render(<FactoryPanel snapshot={factoryUnknownItem} />);
     expect(outputs()).toEqual(["Modded Widget: 10 / 10 per min (100%)"]);
