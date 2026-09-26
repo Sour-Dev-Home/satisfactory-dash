@@ -30,7 +30,26 @@ const TokenSchema = z
   .max(4096)
   .regex(/^[\x21-\x7e]+$/, "A token is printable characters without spaces");
 
-const DisplayNameSchema = z.string().trim().min(1).max(64);
+/**
+ * A server's display name is shown to every member of the server and put in alert messages, so it must be PRINTABLE (issue
+ * #198): no control character (Unicode Cc: line breaks, NUL, escape), no format character (Cf: the bidirectional overrides
+ * and isolates that make text read as something else, zero-width characters, the byte-order mark), no line or paragraph
+ * separator (Zl, Zp), and no surrogate, private-use or unassigned code point. Ordinary letters, digits, marks, punctuation,
+ * symbols, emoji and plain spaces are fine. Consequence: an emoji built with the zero-width joiner (a Cf) is refused; use the
+ * single-character form.
+ */
+export const NON_PRINTABLE_IN_NAME = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+/** Blank-looking fillers that are not Cc/Cf: Hangul fillers, Braille blank, combining grapheme joiner, Khmer inherent vowels,
+ *  Mongolian vowel separator; plus any Zs other than the plain space (no-break, ideographic, en/em: look-alike spacing); plus
+ *  a stack of 4+ combining marks (zalgo). */
+export const LOOKALIKE_IN_NAME = /[͏ᅟᅠ឴឵᠎⠀ㅤﾠ]|(?! )\p{Zs}|\p{M}{4}/u;
+export const DisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((name) => Array.from(name).length <= 64, "Enter a name of up to 64 characters")
+  .refine((name) => !NON_PRINTABLE_IN_NAME.test(name), "A name is printable text: no control, invisible or direction-changing characters")
+  .refine((name) => !LOOKALIKE_IN_NAME.test(name), "A name is printable text: no blank-looking fillers, odd spaces or stacked combining marks");
 
 const ConnectionShape = {
   host: HostSchema,

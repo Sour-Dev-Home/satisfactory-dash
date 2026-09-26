@@ -25,6 +25,15 @@ describe("loadConfiguredServersFromFile edge cases (test-hunter)", () => {
     expect(ok?.[0]?.id).toBe("managed-2");
   });
 
+  it("a server's name in the file follows the same printable-text rule as every other entry point (#198), counted in characters", () => {
+    const named = (name: string) => () => loadConfiguredServersFromFile({ SATISFACTORY_SERVERS_FILE: "servers.json" }, () => JSON.stringify({ servers: [{ id: "a", name }] }));
+    expect(named("Home‮gpj.exe")).toThrow(ConfigError); // a bidirectional override
+    expect(named("Home​base")).toThrow(ConfigError); // a zero-width space
+    expect(named("Home\nbase")).toThrow(ConfigError);
+    expect(named("🏭".repeat(64))()?.[0]?.displayName).toBe("🏭".repeat(64)); // 64 characters, 128 UTF-16 units
+    expect(named("Main factory")()?.[0]?.displayName).toBe("Main factory");
+  });
+
   it("accepts a file saved with a UTF-8 BOM (Windows Notepad does this)", () => {
     const servers = load("﻿" + JSON.stringify(twoServers));
     expect(servers?.map((s) => s.id)).toEqual(["main", "test-2"]);
