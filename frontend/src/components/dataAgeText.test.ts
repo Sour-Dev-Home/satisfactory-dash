@@ -26,4 +26,26 @@ describe("dataAge", () => {
   it("is late, and says so, for a time that can't be read", () => {
     expect(dataAge("not a time", t, 10_000)).toEqual({ text: "Updated at an unknown time", late: true });
   });
+
+  it("rounds down under a second, and rolls over to 1 s exactly at 1000 ms", () => {
+    expect(dataAge(at, t + 999, 10_000).text).toBe("Updated just now");
+    expect(dataAge(at, t + 1_000, 10_000).text).toBe("Updated 1 s ago");
+  });
+
+  it("keeps counting in days for a much older reading", () => {
+    const twoDays = 2 * 86_400_000 + 3 * 3_600_000 + 4 * 60_000;
+    const result = dataAge(at, t + twoDays, 10_000);
+    expect(result.text).toBe("Updated 2 d 3 h 4 m ago");
+    expect(result.late).toBe(true);
+  });
+
+  it("with pollMs 0, any elapsed time counts as late but zero age does not", () => {
+    expect(dataAge(at, t, 0).late).toBe(false);
+    expect(dataAge(at, t + 1, 0).late).toBe(true);
+  });
+
+  it("with a negative pollMs, any non-negative age (including zero) is late", () => {
+    expect(dataAge(at, t, -10_000).late).toBe(true);
+    expect(dataAge(at, t + 1, -10_000).late).toBe(true);
+  });
 });
