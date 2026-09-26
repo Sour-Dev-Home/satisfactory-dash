@@ -19,6 +19,7 @@ import { ServerStatusService } from "./services/serverStatusService.js";
 import type { ServerStatusAdapterLike } from "./services/serverStatusService.js";
 import { ProductionService } from "./services/productionService.js";
 import type { UnitResolver } from "./services/productionService.js";
+import { createUnitResolver } from "./itemForms.js";
 import type { ProductionAdapterLike } from "./services/productionService.js";
 import { PowerService } from "./services/powerService.js";
 import type { PowerAdapterLike } from "./services/powerService.js";
@@ -117,6 +118,8 @@ export interface AgentTelemetryOptions {
   now?: () => number;
   /** The cadence the backend has set for the agent (also its answer to every snapshot); read on every use, so a change applies at once. */
   cadence: () => Cadence;
+  /** ADR-0015: resolves an item's unit for the rates an agent sends without one; the composition root passes the shared resolver. */
+  resolveUnit?: UnitResolver;
   /** History is written for an agent server exactly as for a polled one (a database is what makes agents possible at all). */
   history: { db: Queryable & HistoryDb; serverPublicId: string };
 }
@@ -145,7 +148,7 @@ export function createAgentTelemetryServices(options: AgentTelemetryOptions): Te
     players: { getPlayers: async () => store.read("players", { available: false, players: [] }) },
     history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }),
     observations,
-    agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore }),
+    agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore, resolveUnit: options.resolveUnit ?? createUnitResolver(() => {}) }),
     agentAutoPause: () => store.autoPause(),
     workers: [recorder],
   };

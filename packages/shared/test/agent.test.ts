@@ -17,7 +17,9 @@ import {
   KNOWN_AGENT_COMMAND_TYPES,
   KNOWN_COMMAND_STATUSES,
   KNOWN_CONNECTION_KINDS,
+  FactorySchema,
   KnownErrorCode,
+  PowerSchema,
   SetAutoPauseParamsSchema,
   SetAutoPauseResponseSchema,
   SnapshotRequestSchema,
@@ -94,9 +96,10 @@ describe("agent contract: snapshots", () => {
     }
   });
 
-  it("the parts are the SAME shapes the live routes return (their data): a bad part is refused", () => {
+  it("status and players are the SAME shapes the live routes return (their data); power and factory are the agent-input forms; a bad part is refused", () => {
     expect(fixtures.agentSnapshotRequestFull.status).toEqual(fixtures.statusRunning.data);
-    expect(fixtures.agentSnapshotRequestFull.factory).toEqual(fixtures.factoryMixed.data);
+    expect(fixtures.agentSnapshotRequestFull.players).toEqual(fixtures.playersAvailable);
+    expect(fixtures.agentSnapshotRequestFull.factory.buildings).toHaveLength(fixtures.factoryMixed.data.buildings.length);
     const bad = (part: object) => SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestFull, ...part }).success;
     expect([bad({ status: { tickHealth: "great" } }), bad({ power: { circuits: "none" } }), bad({ factory: { buildings: 1 } }), bad({ players: { available: "yes" } })]).toEqual([false, false, false, false]);
   });
@@ -115,6 +118,94 @@ describe("agent contract: snapshots", () => {
     expect(SnapshotRequestSchema.safeParse(fixtures.agentSnapshotRequestPartial).success).toBe(true);
     expect([withSettings({ autoPause: false }), withSettings({ autoPause: true }), withSettings(undefined)]).toEqual([true, true, true]);
     expect([withSettings({}), withSettings({ autoPause: "yes" }), withSettings({ autoPause: null }), withSettings({ autoPause: true, extra: 1 }), withSettings(null)]).toEqual([false, false, false, false, false]);
+  });
+
+  it("power and factory carry NO backend-derived field: an agent that still sends one has it dropped on parse, never trusted (ADR-0031)", () => {
+    const power = fixtures.powerOk.data;
+    const factory = fixtures.factoryStatesAndIngredients.data;
+    const sent = { ...fixtures.agentSnapshotRequestFull, power, factory };
+    const parsed = SnapshotRequestSchema.parse(sent);
+    expect(Object.keys(parsed.power ?? {})).toEqual(["circuits"]); // no hasOutage
+    expect(parsed.power?.circuits.every((circuit) => !("status" in circuit))).toBe(true);
+    expect(Object.keys(parsed.factory ?? {})).toEqual(["buildings"]); // no backedUpCount, no stateCounts
+    for (const building of parsed.factory?.buildings ?? []) {
+      expect("state" in building).toBe(false);
+      for (const rate of [...building.production, ...(building.ingredients ?? [])]) expect("unit" in rate).toBe(false);
+    }
+    // The raw fact the agent computes stays.
+    expect(parsed.factory?.buildings.map((building) => building.isBackedUp)).toEqual(factory.buildings.map((building) => building.isBackedUp));
+    // The live fixtures really carry the derived fields, so the test above proves the stripping.
+    expect(power.circuits[0]).toHaveProperty("status");
+    expect(factory.buildings.some((building) => building.state !== undefined)).toBe(true);
+  });
+
+  it("the agent-input fixtures are what the schemas produce from the live ones, and the response schemas are unchanged", () => {
+    expect(SnapshotRequestSchema.parse(fixtures.agentSnapshotRequestFull)).toEqual(fixtures.agentSnapshotRequestFull);
+    expect(PowerSchema.safeParse(fixtures.agentSnapshotRequestFull.power).success).toBe(false); // status and hasOutage are required in a RESPONSE
+    expect(FactorySchema.safeParse(fixtures.agentSnapshotRequestFull.factory).success).toBe(false); // backedUpCount is required in a RESPONSE
+  });
+
+  describe("input bounds: what every agent is held to (one over-cap case per field family)", () => {
+    const full = fixtures.agentSnapshotRequestFull;
+    const ok = (part: object) => SnapshotRequestSchema.safeParse({ ...full, ...part }).success;
+    const building = full.factory.buildings[0]!;
+    const circuit = full.power.circuits[0]!;
+    const rate = building.production[0]!;
+    const long = (n: number) => "x".repeat(n);
+
+    it("strings are at most 200 characters (the history CHECKs): exactly 200 passes, 201 is refused, for every string family", () => {
+      const withBuilding = (fields: object) => ({ factory: { buildings: [{ ...building, ...fields }] } });
+      for (const field of ["id", "name", "className", "recipe"]) {
+        expect(ok(withBuilding({ [field]: long(200) })), `${field} 200`).toBe(true);
+        expect(ok(withBuilding({ [field]: long(201) })), `${field} 201`).toBe(false);
+      }
+      expect(ok(withBuilding({ production: [{ ...rate, className: long(201) }] })), "rate className").toBe(false);
+      expect(ok(withBuilding({ production: [{ ...rate, name: long(201) }] })), "rate name").toBe(false);
+      expect(ok(withBuilding({ ingredients: [{ ...rate, className: long(201) }] })), "ingredient className").toBe(false);
+      expect(ok({ players: { available: true, players: [{ name: long(201), online: true }] } }), "player name").toBe(false);
+      expect(ok({ players: { available: true, players: [{ name: long(200), online: true }] } }), "player name 200").toBe(true);
+      expect(ok({ status: { ...full.status, sessionName: long(201) } }), "session name").toBe(false);
+    });
+
+    it("lists are capped well above a real factory: buildings 20000, circuits 1000, rates per building 16, players 256", () => {
+      const many = <T,>(item: T, n: number) => Array.from({ length: n }, () => item);
+      expect(ok({ factory: { buildings: many(building, 20_000) } })).toBe(true);
+      expect(ok({ factory: { buildings: many(building, 20_001) } })).toBe(false);
+      expect(ok({ power: { circuits: many(circuit, 1_000) } })).toBe(true);
+      expect(ok({ power: { circuits: many(circuit, 1_001) } })).toBe(false);
+      expect(ok({ factory: { buildings: [{ ...building, production: many(rate, 16) }] } })).toBe(true);
+      expect(ok({ factory: { buildings: [{ ...building, production: many(rate, 17) }] } })).toBe(false);
+      expect(ok({ factory: { buildings: [{ ...building, ingredients: many(rate, 17) }] } })).toBe(false);
+      const player = { name: "p", online: true };
+      expect(ok({ players: { available: true, players: many(player, 256) } })).toBe(true);
+      expect(ok({ players: { available: true, players: many(player, 257) } })).toBe(false);
+    });
+
+    it("numbers are finite, and a reading that cannot be negative is >= 0 (MW, rates, clock speed, battery 0-100)", () => {
+      const withCircuit = (fields: object) => ({ power: { circuits: [{ ...circuit, ...fields }] } });
+      for (const field of ["productionMW", "consumptionMW", "capacityMW", "maxConsumptionMW"]) {
+        expect(ok(withCircuit({ [field]: 0 })), `${field} 0`).toBe(true);
+        expect(ok(withCircuit({ [field]: -1 })), `${field} -1`).toBe(false);
+      }
+      expect(ok(withCircuit({ batteryPercent: 100 }))).toBe(true);
+      expect(ok(withCircuit({ batteryPercent: 100.5 }))).toBe(false);
+      expect(ok(withCircuit({ batteryPercent: -1 }))).toBe(false);
+      expect(ok(withCircuit({ batteryDifferentialMW: -3 }))).toBe(true); // draining is a valid reading
+      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        expect(ok(withCircuit({ productionMW: bad })), String(bad)).toBe(false);
+        expect(ok(withCircuit({ batteryDifferentialMW: bad })), String(bad)).toBe(false);
+      }
+      const withRate = (fields: object) => ({ factory: { buildings: [{ ...building, production: [{ ...rate, ...fields }] }] } });
+      expect(ok(withRate({ currentPerMinute: -1 }))).toBe(false);
+      expect(ok(withRate({ maxPerMinute: -1 }))).toBe(false);
+      expect(ok(withRate({ percent: -1 }))).toBe(false);
+      expect(ok(withRate({ percent: 100.4 }))).toBe(true); // rate percent may exceed 100 from float noise
+      expect(ok({ factory: { buildings: [{ ...building, clockSpeedPercent: -5 }] } })).toBe(false);
+    });
+
+    it("the RESPONSE schemas are not bounded: only what an agent sends is", () => {
+      expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, buildings: [{ ...fixtures.factoryMixed.data.buildings[0], className: long(300) }] }).success).toBe(true);
+    });
   });
 
   it("`settings` means it was read in this snapshot: refused on an unreachable snapshot, and it round-trips through parse and z.input", () => {

@@ -62,6 +62,29 @@ game since; one taken before it is out of date. While the game is unreachable th
 confirmed change (an agent that sends no `settings`) the value is unknown and the read answers `upstream_unreachable`.
 Restarting the backend forgets the reading until the next snapshot.
 
+## What the agent sends, and what the backend derives (ADR-0031)
+
+A snapshot carries raw readings only. `power` has no circuit `status` and no `hasOutage`; `factory` has no machine
+`state`, no `stateCounts`, no `backedUpCount`, and its rates have no `unit` (`isBackedUp` stays: it is a raw fact that
+needs the output inventory, which only the agent sees). The backend derives all of them at ingest
+(`telemetry/services/agentDerive.ts`) with the same rules a polled server uses, so a rule change never needs an agent
+update. A field an agent still sends is dropped by the schema and, as a second guard, never copied by the derivation.
+A machine's fuse is joined from the latest power reading by circuit; if that reading is older than three power
+intervals (or none arrived) the fuse is unknown and the machine gets no `state`, never a guess. A stored factory keeps
+the states derived from the fuses known when it arrived, so a fuse that trips afterwards shows on machines at the next
+factory snapshot (30 s by default), not at once.
+
+**Input bounds** (the contract every agent is held to; the backend REFUSES a body that breaks one with a 400, it never
+clamps): strings at most 200 characters (matching the history tables' CHECKs, since an over-long class name would fail a
+whole batch insert); at most 20,000 buildings, 1,000 circuits, 16 rates per building and 256 players; every number
+finite; MW, rates and clock speed `>= 0`; battery percent 0 to 100. The agent clamps float noise (a battery at
+100.0000001) before it sends. The response schemas have no such bounds.
+
+Still the agent's word, by design (it is the only source of these readings): `isBackedUp`, `isPaused`, `isProducing`,
+`circuitGroupId`, each circuit's `fuseTriggered` and the numbers. A compromised agent can therefore cause an outage,
+`backedUp` or `unpowered` state and the alerts that follow, but only for its own server. Body size is capped (5 MB) and
+each credential is rate limited, which bounds what one agent can make the backend hold.
+
 ## Agent offline (alert)
 
 `agent_offline` is a preset **only for agent servers** (seeded on the alert engine's next tick after a server becomes

@@ -170,7 +170,7 @@ function AlertLine({
         <span className="text-sm text-muted">{meta}</span>
       </button>
       {open && (
-        <div id={detailId} className="border-t border-line px-3 py-2 text-sm">
+        <div id={detailId} className="animate-reveal border-t border-line px-3 py-2 text-sm">
           {children}
         </div>
       )}
