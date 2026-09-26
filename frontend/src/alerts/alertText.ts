@@ -131,6 +131,29 @@ export function eventDetail(event: Pick<AlertEvent, "kind" | "summary">): string
   }
 }
 
+const SEND_TEST_FAILED: Record<string, string> = {
+  webhook_gone: "Discord says this webhook no longer exists, so it was turned off. Set a new webhook.",
+  rejected: "Discord refused the test message. Check the webhook in your Discord channel's settings.",
+  rate_limited: "Discord is limiting messages to this webhook right now. Try again in a minute.",
+  unavailable: "Discord couldn't be reached. Try again later.",
+  destination_disabled: "The webhook is turned off. Turn it on to send a test.",
+  secret_unreadable: "The saved webhook can't be read on the server. Set the webhook again.",
+};
+
+/**
+ * What a "Send test" answer means (SendTestResponse). `demo`: the demo build answers without any
+ * network call (ADR-0027 item 7), so it says so rather than claiming a message went out.
+ */
+export function sendTestText(answer: { ok: true } | { ok: false; code: string }, demo = false): string {
+  if (answer.ok) return demo ? "Sent (demo): nothing was sent to Discord." : "Sent. Check your Discord channel.";
+  return SEND_TEST_FAILED[answer.code] ?? `Discord didn't take the test (${spellOut(answer.code).toLowerCase()}).`;
+}
+
+/** Whether a role may change the server's alerts (ADR-0027 PR 7b). Absent or unknown is read-only. */
+export function canEditAlerts(role: string | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
 /** "output full" / "input short" / "input short: Desc_Coal_C" -> readable words. */
 function reasonText(reason: string): string {
   const short = /^input short: (.+)$/.exec(reason);

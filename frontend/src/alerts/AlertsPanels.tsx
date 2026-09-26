@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { AlertDestinationsResponse, AlertEvent, AlertRule, AlertStatusResponse } from "@satisfactory-dash/shared";
 import { formatTime } from "../format";
 import { cn } from "../lib/cn";
@@ -20,7 +21,16 @@ import {
  * Whether alerts go out at all, the mute, and what's firing now. `rules` (when loaded) names the
  * item a production alert is about: the status itself only says "item".
  */
-export function AlertStatusPanel({ status, rules }: { status: AlertStatusResponse; rules?: readonly AlertRule[] }) {
+export function AlertStatusPanel({
+  status,
+  rules,
+  children,
+}: {
+  status: AlertStatusResponse;
+  rules?: readonly AlertRule[];
+  /** The owner/admin mute control (9c), under the status. */
+  children?: ReactNode;
+}) {
   const itemFor = (ruleId: string) => itemOf(rules?.find((r) => r.id === ruleId)?.params);
   return (
     <section aria-labelledby="alerts-now-heading" className="panel grid gap-3">
@@ -50,12 +60,20 @@ export function AlertStatusPanel({ status, rules }: { status: AlertStatusRespons
           ))}
         </ul>
       )}
+      {children}
     </section>
   );
 }
 
 /** Where alerts are sent. The webhook URL is a secret: only its last 4 characters ever arrive. */
-export function DestinationPanel({ destinations }: { destinations: AlertDestinationsResponse }) {
+export function DestinationPanel({
+  destinations,
+  children,
+}: {
+  destinations: AlertDestinationsResponse;
+  /** The owner/admin controls (9c), under the destination. */
+  children?: ReactNode;
+}) {
   const discord = destinations.discord;
   const reason = discord ? disabledReasonText(discord.disabledReason) : null;
   return (
@@ -72,6 +90,7 @@ export function DestinationPanel({ destinations }: { destinations: AlertDestinat
           {reason && <p className="text-sm text-muted">{reason}</p>}
         </>
       )}
+      {children}
     </section>
   );
 }

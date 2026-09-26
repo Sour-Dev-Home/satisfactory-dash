@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from "react";
 import type { AlertRule, UpdateAlertRuleRequest } from "@satisfactory-dash/shared";
 import { KNOWN_SEVERITIES } from "@satisfactory-dash/shared";
 import { ErrorNotice } from "../../components/ErrorNotice";
+import { kindLabel, severityLabel } from "../alertText";
 import { labelFor, type ItemLabel } from "../../factory/itemLabels";
 import { formatAmount, unitLabel } from "../../format";
 import { fieldAttrs } from "./fieldAttrs";
@@ -10,10 +11,8 @@ import {
   buildUpdate,
   draftFrom,
   FIELD_HINT,
-  kindLabel,
   knownParams,
   minutesText,
-  severityLabel,
   type Draft,
   type Errors,
   type Field,
@@ -142,7 +141,7 @@ export function RuleCard({
                 ))}
                 {/* A severity from a newer backend: shown as it is, kept unless changed. */}
                 {!(KNOWN_SEVERITIES as readonly string[]).includes(rule.severity) && (
-                  <option value={rule.severity}>{rule.severity}</option>
+                  <option value={rule.severity}>{severityLabel(rule.severity)}</option>
                 )}
               </select>
             </FormField>

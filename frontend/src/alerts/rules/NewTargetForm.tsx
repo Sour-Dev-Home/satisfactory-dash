@@ -1,10 +1,11 @@
 import { useId, useState, type FormEvent } from "react";
 import { KNOWN_SEVERITIES, type CreateAlertRuleRequest } from "@satisfactory-dash/shared";
 import { ErrorNotice } from "../../components/ErrorNotice";
+import { severityLabel } from "../alertText";
 import { unitLabel } from "../../format";
 import { fieldAttrs } from "./fieldAttrs";
 import { FormField } from "./FormField";
-import { buildCreate, FIELD_HINT, NEW_TARGET, severityLabel, type EditorItem, type Errors, type NewTargetDraft } from "./ruleDraft";
+import { buildCreate, FIELD_HINT, NEW_TARGET, type EditorItem, type Errors, type NewTargetDraft } from "./ruleDraft";
 
 /**
  * Create a "production below target" rule, the one kind that isn't a preset (ADR-0027 amendment 3):
