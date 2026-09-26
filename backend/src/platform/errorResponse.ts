@@ -41,6 +41,7 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   server_exists: 409,
   server_limit_reached: 409,
   import_required: 409,
+  lan_requires_cert_pinning: 422,
   internal: 500,
 };
 

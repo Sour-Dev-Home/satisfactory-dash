@@ -124,6 +124,8 @@ describe("address guard edge cases", () => {
     await expect(resolveAllowedAddress("h", async () => ["10.0.0.1", "8.8.8.8"])).rejects.toThrow();
     await expect(resolveAllowedAddress("h", async () => [])).rejects.toThrow();
     await expect(resolveAllowedAddress("[::1]")).resolves.toBe("::1");
-    await expect(resolveAllowedAddress("h", async () => ["::1", "10.0.0.2"])).resolves.toBe("10.0.0.2");
+    // IPv4 is pinned before IPv6 (with LAN allowed for this table check); by default a LAN address is refused (amendment 1).
+    await expect(resolveAllowedAddress("h", async () => ["::1", "10.0.0.2"], { allowLan: true })).resolves.toBe("10.0.0.2");
+    await expect(resolveAllowedAddress("h", async () => ["::1", "10.0.0.2"])).rejects.toThrow();
   });
 });

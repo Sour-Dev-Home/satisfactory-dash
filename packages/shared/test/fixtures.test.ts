@@ -132,9 +132,7 @@ describe("server management fixtures (ADR-0030) show what their names say", () =
       "address_not_allowed", "connection_test_failed", "connection_unreadable", "server_exists", "server_limit_reached",
     ]);
     for (const e of errors) {
-      // lan_requires_cert_pinning joins KnownErrorCode in ADR-0030 amendment 1's change (PR 5c); a fixture may
-      // name a code before that lands because the envelope's `code` is a plain string (ADR-0007).
-      if (e.error.code !== "lan_requires_cert_pinning") expect(KnownErrorCode.safeParse(e.error.code).success).toBe(true);
+      expect(KnownErrorCode.safeParse(e.error.code).success).toBe(true);
       expect(JSON.stringify(e)).not.toMatch(/\d+\.\d+\.\d+\.\d+|token-|password/i);
     }
   });

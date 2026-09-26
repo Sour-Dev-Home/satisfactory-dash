@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { AddressRefusedError, isAllowedAddress, resolveAllowedAddress } from "./addressGuard.js";
+import {
+  AddressRefusedError,
+  DEFAULT_ADDRESS_POLICY,
+  LAN_ALLOWED,
+  LanRequiresPinningError,
+  addressVerdict,
+  isAllowedAddress,
+  resolveAllowedAddress,
+} from "./addressGuard.js";
+import type { AddressLookup } from "./addressGuard.js";
+
+// The address TABLE (what is private) is tested with LAN allowed, so it stays meaningful for the future pinning change;
+// the amendment-1 gate (what is usable TODAY: loopback only) has its own tests at the end of this file.
+const lanResolve = (host: string, lookup?: AddressLookup) => resolveAllowedAddress(host, lookup, { allowLan: true });
 
 describe("isAllowedAddress: the allowed list", () => {
   it.each([
@@ -93,46 +106,120 @@ describe("resolveAllowedAddress", () => {
   const returning = (...addresses: string[]) => async () => addresses;
 
   it("uses an allowed IP literal as is, without resolving (brackets accepted)", async () => {
-    expect(await resolveAllowedAddress("192.168.1.20", never)).toBe("192.168.1.20");
-    expect(await resolveAllowedAddress("[::1]", never)).toBe("::1");
-    expect(await resolveAllowedAddress("  10.0.0.5 ", never)).toBe("10.0.0.5");
+    expect(await lanResolve("192.168.1.20", never)).toBe("192.168.1.20");
+    expect(await lanResolve("[::1]", never)).toBe("::1");
+    expect(await lanResolve("  10.0.0.5 ", never)).toBe("10.0.0.5");
   });
 
   it("refuses a literal that is not allowed, without resolving", async () => {
-    await expect(resolveAllowedAddress("8.8.8.8", never)).rejects.toThrow(AddressRefusedError);
-    await expect(resolveAllowedAddress("169.254.169.254", never)).rejects.toThrow(AddressRefusedError);
+    await expect(lanResolve("8.8.8.8", never)).rejects.toThrow(AddressRefusedError);
+    await expect(lanResolve("169.254.169.254", never)).rejects.toThrow(AddressRefusedError);
   });
 
   it("resolves a hostname and pins an allowed address", async () => {
-    expect(await resolveAllowedAddress("gaming-pc.lan", returning("192.168.1.20"))).toBe("192.168.1.20");
+    expect(await lanResolve("gaming-pc.lan", returning("192.168.1.20"))).toBe("192.168.1.20");
   });
 
   it("refuses a hostname that resolves to a MIX of allowed and refused addresses (rebinding)", async () => {
-    await expect(resolveAllowedAddress("evil.example", returning("192.168.1.20", "8.8.8.8"))).rejects.toThrow(AddressRefusedError);
-    await expect(resolveAllowedAddress("evil.example", returning("8.8.8.8", "192.168.1.20"))).rejects.toThrow(AddressRefusedError);
-    await expect(resolveAllowedAddress("evil.example", returning("127.0.0.1", "::ffff:169.254.169.254"))).rejects.toThrow(AddressRefusedError);
+    await expect(lanResolve("evil.example", returning("192.168.1.20", "8.8.8.8"))).rejects.toThrow(AddressRefusedError);
+    await expect(lanResolve("evil.example", returning("8.8.8.8", "192.168.1.20"))).rejects.toThrow(AddressRefusedError);
+    await expect(lanResolve("evil.example", returning("127.0.0.1", "::ffff:169.254.169.254"))).rejects.toThrow(AddressRefusedError);
   });
 
   it("refuses a hostname that resolves only to refused addresses, or to none, or fails to resolve", async () => {
-    await expect(resolveAllowedAddress("public.example", returning("93.184.216.34"))).rejects.toThrow(/not loopback or private/);
-    await expect(resolveAllowedAddress("empty.example", returning())).rejects.toThrow(/any address/);
-    await expect(resolveAllowedAddress("gone.example", never)).rejects.toThrow(/could not be resolved/);
-    await expect(resolveAllowedAddress("", never)).rejects.toThrow(AddressRefusedError);
+    await expect(lanResolve("public.example", returning("93.184.216.34"))).rejects.toThrow(/not loopback or private/);
+    await expect(lanResolve("empty.example", returning())).rejects.toThrow(/any address/);
+    await expect(lanResolve("gone.example", never)).rejects.toThrow(/could not be resolved/);
+    await expect(lanResolve("", never)).rejects.toThrow(AddressRefusedError);
   });
 
   it("pins IPv4 before IPv6 when a name resolves to both (localhost often lists ::1 first)", async () => {
-    expect(await resolveAllowedAddress("localhost", returning("::1", "127.0.0.1"))).toBe("127.0.0.1");
-    expect(await resolveAllowedAddress("localhost", returning("::1"))).toBe("::1");
+    expect(await lanResolve("localhost", returning("::1", "127.0.0.1"))).toBe("127.0.0.1");
+    expect(await lanResolve("localhost", returning("::1"))).toBe("::1");
   });
 
   it("never names an address in the error", async () => {
     let message = "";
     try {
-      await resolveAllowedAddress("evil.example", returning("10.1.2.3", "203.0.113.9"));
+      await lanResolve("evil.example", returning("10.1.2.3", "203.0.113.9"));
     } catch (err) {
       message = (err as Error).message;
     }
     expect(message).not.toContain("203.0.113.9");
     expect(message).not.toContain("10.1.2.3");
+  });
+});
+
+// ADR-0030 amendment 1: until certificate pinning exists, only loopback is usable. LAN_ALLOWED is a CONSTANT.
+describe("the LAN gate (amendment 1)", () => {
+  const returning = (...addresses: string[]) => async () => addresses;
+
+  it("LAN_ALLOWED is false, and the default policy follows it (no environment variable can change it)", () => {
+    expect(LAN_ALLOWED).toBe(false);
+    expect(DEFAULT_ADDRESS_POLICY).toEqual({ allowLan: false });
+  });
+
+  it.each(["127.0.0.1", "127.9.9.9", "::1", "::ffff:127.0.0.1", "0:0:0:0:0:0:0:1"])("%s is usable", (address) => {
+    expect(addressVerdict(address)).toBe("ok");
+  });
+
+  it.each(["192.168.1.20", "10.0.0.5", "172.16.4.4", "::ffff:10.0.0.5", "::ffff:192.168.1.1", "::ffff:c0a8:0114"])(
+    "%s is private but a LAN address: refused as 'lan' until pinning exists",
+    (address) => {
+      expect(addressVerdict(address)).toBe("lan");
+      expect(addressVerdict(address, { allowLan: true })).toBe("ok");
+    },
+  );
+
+  it.each(["8.8.8.8", "169.254.169.254", "fe80::1", "fc00::1", "100.64.0.1", "not an address"])(
+    "%s is 'refused' whatever the policy",
+    (address) => {
+      expect(addressVerdict(address)).toBe("refused");
+      expect(addressVerdict(address, { allowLan: true })).toBe("refused");
+    },
+  );
+
+  it("resolves loopback literals and names that resolve only to loopback", async () => {
+    expect(await resolveAllowedAddress("127.0.0.1")).toBe("127.0.0.1");
+    expect(await resolveAllowedAddress("[::1]")).toBe("::1");
+    expect(await resolveAllowedAddress("localhost", returning("::1", "127.0.0.1"))).toBe("127.0.0.1");
+  });
+
+  it.each(["192.168.1.20", "10.1.2.3", "::ffff:10.1.2.3", "[::ffff:192.168.1.1]"])(
+    "refuses the LAN literal %s with LanRequiresPinningError, without resolving",
+    async (host) => {
+      const never: AddressLookup = async () => {
+        throw new Error("should not resolve");
+      };
+      const err = await resolveAllowedAddress(host, never).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(LanRequiresPinningError);
+      expect(err).toBeInstanceOf(AddressRefusedError);
+      expect((err as Error).message).not.toMatch(/192\.168|10\.1\.2\.3/);
+    },
+  );
+
+  it("refuses a name that resolves to a LAN address, or to a MIX of loopback and LAN", async () => {
+    await expect(resolveAllowedAddress("pc.lan", returning("192.168.1.20"))).rejects.toBeInstanceOf(LanRequiresPinningError);
+    await expect(resolveAllowedAddress("mixed.lan", returning("127.0.0.1", "192.168.1.20"))).rejects.toBeInstanceOf(LanRequiresPinningError);
+    await expect(resolveAllowedAddress("mixed.lan", returning("192.168.1.20", "::1"))).rejects.toBeInstanceOf(LanRequiresPinningError);
+  });
+
+  it("a mix with a public address is a plain refusal (not the LAN code), and public stays refused", async () => {
+    const err = await resolveAllowedAddress("evil.example", returning("127.0.0.1", "8.8.8.8")).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AddressRefusedError);
+    expect(err).not.toBeInstanceOf(LanRequiresPinningError);
+    await expect(resolveAllowedAddress("8.8.8.8")).rejects.not.toBeInstanceOf(LanRequiresPinningError);
+  });
+});
+
+describe("hunt: loopback spellings that must not slip through the default policy", () => {
+  it.each(["::1%lo", "::1%1", "[::1%lo]", "::ffff:127.0.0.1%lo", "0.0.0.0", "::", "::ffff:0:127.0.0.1"])(
+    "refuses %s under the default policy",
+    async (host) => {
+      await expect(resolveAllowedAddress(host, async () => ["127.0.0.1"])).rejects.toBeInstanceOf(AddressRefusedError);
+    },
+  );
+  it("a name resolving to ::1 and 127.0.0.1 is fine, and pins IPv4", async () => {
+    await expect(resolveAllowedAddress("localhost", async () => ["::1", "127.0.0.1"])).resolves.toBe("127.0.0.1");
   });
 });

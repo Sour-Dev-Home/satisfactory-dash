@@ -10,6 +10,7 @@ import { isIP } from "node:net";
  *   address 169.254.169.254 among them) and fe80::/10, 0.0.0.0/8, 100.64.0.0/10, multicast,
  *   broadcast, and IPv6 unique-local (fc00::/7).
  * A hostname is resolved and EVERY resolved address must pass; one address is pinned.
+ * On top of that table, amendment 1 (LAN_ALLOWED, below) currently requires loopback.
  */
 
 function parseIPv4(address: string): [number, number, number, number] | null {
@@ -90,6 +91,38 @@ export class AddressRefusedError extends Error {
   }
 }
 
+/**
+ * ADR-0030 amendment 1: no non-loopback server may be used until trust-on-first-use certificate pinning
+ * exists (the vanilla API's self-signed certificate is not verified, so on a LAN anyone who can intercept
+ * traffic could read the admin API token). This is a CONSTANT, not an environment variable, so configuration
+ * cannot switch it on: the pinning change flips it in code, after a security review. While it is false every
+ * path that pins or uses an address requires loopback (127/8, ::1, IPv4-mapped 127/8) on top of the table above.
+ */
+export const LAN_ALLOWED = false;
+
+/** Injectable for tests and for the future pinning change; production code never passes one (the default is the constant). */
+export interface AddressPolicy {
+  allowLan: boolean;
+}
+export const DEFAULT_ADDRESS_POLICY: AddressPolicy = { allowLan: LAN_ALLOWED };
+
+/** `ok`: may be used. `lan`: private but not loopback, refused until pinning exists. `refused`: not in the table at all. */
+export type AddressVerdict = "ok" | "lan" | "refused";
+
+export function addressVerdict(address: string, policy: AddressPolicy = DEFAULT_ADDRESS_POLICY): AddressVerdict {
+  if (!isAllowedAddress(address)) return "refused";
+  return policy.allowLan || isLoopbackAddress(address) ? "ok" : "lan";
+}
+
+/** The address is private but not loopback and LAN servers wait for certificate pinning (amendment 1).
+ *  Still an AddressRefusedError, so a caller that only cares "refused or not" needs no change. */
+export class LanRequiresPinningError extends AddressRefusedError {
+  constructor() {
+    super("The host is a LAN address; LAN servers wait for certificate pinning.");
+    this.name = "LanRequiresPinningError";
+  }
+}
+
 export type AddressLookup = (host: string) => Promise<string[]>;
 
 const systemLookup: AddressLookup = async (host) => (await lookup(host, { all: true, verbatim: true })).map((entry) => entry.address);
@@ -102,7 +135,11 @@ const systemLookup: AddressLookup = async (host) => (await lookup(host, { all: t
  * lists ::1 first). Callers connect to the returned address, never to the hostname again, and
  * re-run this on every connect and edit.
  */
-export async function resolveAllowedAddress(host: string, resolve: AddressLookup = systemLookup): Promise<string> {
+export async function resolveAllowedAddress(
+  host: string,
+  resolve: AddressLookup = systemLookup,
+  policy: AddressPolicy = DEFAULT_ADDRESS_POLICY,
+): Promise<string> {
   const name = host.trim().replace(/^\[|\]$/g, "");
   if (name.length === 0) throw new AddressRefusedError("The host is empty.");
   let addresses: string[];
@@ -119,5 +156,7 @@ export async function resolveAllowedAddress(host: string, resolve: AddressLookup
   if (!addresses.every(isAllowedAddress)) {
     throw new AddressRefusedError("The host resolves to an address that is not loopback or private.");
   }
+  // Every address must be usable under the policy: a name that resolves to a MIX of loopback and LAN is refused too.
+  if (!addresses.every((address) => addressVerdict(address, policy) === "ok")) throw new LanRequiresPinningError();
   return [...addresses].sort((a, b) => Number(isIP(a) === 6) - Number(isIP(b) === 6))[0]!;
 }

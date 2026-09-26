@@ -51,6 +51,8 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
       testConnection: async () => passed,
       getOperatorUserId: () => operatorId,
       lookup: async () => ["192.168.1.20"],
+      // These flows store a LAN address, so they run with LAN allowed; the amendment-1 default (loopback only) is covered by the unit tests.
+      policy: { allowLan: true },
       mutex: new Mutex(),
     });
     return { service, runtime };

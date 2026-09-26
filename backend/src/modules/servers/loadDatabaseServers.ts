@@ -3,7 +3,8 @@ import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { addMember } from "./repositories/memberRepository.js";
 import { listConnections } from "./repositories/connectionRepository.js";
 import type { ServerConnection, UnreadableConnection } from "./repositories/connectionRepository.js";
-import { isAllowedAddress } from "./addressGuard.js";
+import { DEFAULT_ADDRESS_POLICY, addressVerdict } from "./addressGuard.js";
+import type { AddressPolicy } from "./addressGuard.js";
 import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
 
 export interface LoadDatabaseServersResult {
@@ -35,14 +36,19 @@ export async function loadDatabaseServers<TServices>(deps: {
   runtime: ServerRuntime<TServices>;
   operatorUserId: string;
   build: (connection: ServerConnection) => RuntimeServer<TServices>;
+  /** Tests only; production uses the default (the LAN_ALLOWED constant). */
+  policy?: AddressPolicy;
 }): Promise<LoadDatabaseServersResult> {
   const listed = await listConnections(deps.db, deps.ring);
   const { unreadable } = listed;
   // The stored address is re-checked here, not trusted: a row edited outside the app (or restored
   // from a tampered backup) must never make the backend send tokens to a non-private address.
-  const connections = listed.connections.filter((c) => isAllowedAddress(c.pinnedIp));
+  const policy = deps.policy ?? DEFAULT_ADDRESS_POLICY;
+  // Not usable = not loopback/private, or a LAN address while LAN servers wait for certificate pinning (amendment 1):
+  // no server is built for it, so it gets no pollers and no connection is ever made.
+  const connections = listed.connections.filter((c) => addressVerdict(c.pinnedIp, policy) === "ok");
   const refused = listed.connections
-    .filter((c) => !isAllowedAddress(c.pinnedIp))
+    .filter((c) => addressVerdict(c.pinnedIp, policy) !== "ok")
     .map(({ serverId, publicId }) => ({ serverId, publicId }));
   if (listed.connections.length === 0 && unreadable.length === 0) {
     return { usingDatabase: false, loaded: [], unreadable: [], refused: [] };

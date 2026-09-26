@@ -14,6 +14,9 @@ import { findServerByPublicId } from "./repositories/serverRepository.js";
 import { ServerRuntime } from "./serverRuntime.js";
 
 const available = dbTestsAvailable();
+// These tests store LAN addresses (the flows are what matters), so they run with LAN allowed; the amendment-1 default
+// (loopback only) is covered by the unit tests.
+const LAN_OK = { allowLan: true };
 const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
 
 const configured = (id: string, over: Partial<ImportableServer["config"]> = {}): ImportableServer => ({
@@ -48,13 +51,13 @@ describe.skipIf(!available)("import-servers and database precedence against a re
   });
 
   it("imports, encrypted, and a second run changes nothing (the database wins, names are kept)", async () => {
-    const result = await importServers(pool, ring, [configured("imp-a"), configured("imp-b")], resolve);
+    const result = await importServers(pool, ring, [configured("imp-a"), configured("imp-b")], resolve, LAN_OK);
     expect(result.imported).toEqual(["imp-a", "imp-b"]);
     const row = await findServerByPublicId(pool, "imp-a");
     expect(await getConnection(pool, ring, row!.id)).toMatchObject({ host: "192.168.1.20", apiPort: 7777, apiToken: "api-token-for-imp-a-12345" });
 
     await pool.query("UPDATE servers.servers SET display_name = 'Renamed in the app' WHERE public_id = 'imp-a'");
-    const again = await importServers(pool, ring, [configured("imp-a", { apiPort: 9999 }), configured("imp-b")], resolve);
+    const again = await importServers(pool, ring, [configured("imp-a", { apiPort: 9999 }), configured("imp-b")], resolve, LAN_OK);
     expect(again).toMatchObject({ imported: [], skipped: ["imp-a", "imp-b"] });
     expect((await findServerByPublicId(pool, "imp-a"))?.displayName).toBe("Renamed in the app");
     expect((await getConnection(pool, ring, row!.id))?.apiPort).toBe(7777);
@@ -62,7 +65,7 @@ describe.skipIf(!available)("import-servers and database precedence against a re
 
   it("rolls the whole import back when one server is refused", async () => {
     await expect(
-      importServers(pool, ring, [configured("rb-a"), configured("rb-b", { apiToken: "" })], resolve),
+      importServers(pool, ring, [configured("rb-a"), configured("rb-b", { apiToken: "" })], resolve, LAN_OK),
     ).rejects.toThrow(ImportError);
     expect(await findServerByPublicId(pool, "rb-a")).toBeUndefined();
   });
@@ -70,7 +73,7 @@ describe.skipIf(!available)("import-servers and database precedence against a re
   it("refuses to go over the cap, leaving nothing behind", async () => {
     const existing = (await pool.query("SELECT count(*)::int AS n FROM servers.server_connections")).rows[0].n as number;
     const many = Array.from({ length: MAX_LOCAL_SERVERS - existing + 1 }, (_, i) => configured(`cap-${i}`));
-    await expect(importServers(pool, ring, many, resolve)).rejects.toThrow(/limit of 8/);
+    await expect(importServers(pool, ring, many, resolve, LAN_OK)).rejects.toThrow(/limit of 8/);
     expect(await findServerByPublicId(pool, "cap-0")).toBeUndefined();
   });
 
@@ -83,7 +86,7 @@ describe.skipIf(!available)("import-servers and database precedence against a re
       db: pool,
       ring,
       runtime,
-      operatorUserId: operator.id,
+      operatorUserId: operator.id, policy: LAN_OK,
       build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }),
     });
     expect(result.usingDatabase).toBe(true);
@@ -94,7 +97,7 @@ describe.skipIf(!available)("import-servers and database precedence against a re
     expect(await getMemberRole(pool, { publicId: "imp-a", userId: operator.id })).toBe("owner");
     // A second load is idempotent.
     await expect(
-      loadDatabaseServers({ db: pool, ring, runtime, operatorUserId: operator.id, build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }) }),
+      loadDatabaseServers({ db: pool, ring, runtime, operatorUserId: operator.id, policy: LAN_OK, build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }) }),
     ).resolves.toMatchObject({ usingDatabase: true });
   });
 
@@ -104,7 +107,7 @@ describe.skipIf(!available)("import-servers and database precedence against a re
       db: pool,
       ring: null,
       runtime: new ServerRuntime<string>(),
-      operatorUserId: operator.id,
+      operatorUserId: operator.id, policy: LAN_OK,
       build: () => {
         throw new Error("nothing should be built");
       },
