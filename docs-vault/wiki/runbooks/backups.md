@@ -118,6 +118,40 @@ setup, **delete the whole IAM user** (not just the key) and confirm in the IAM c
 event history is the audit trail. You still create `satis-backup` (put-only) and its key yourself, and the age
 private key never leaves you.
 
+## Backblaze B2 (ADR-0035: backups move off AWS)
+
+The AWS account is on the Free plan and closes with the credits, deleting the bucket, so the nightly upload moves
+to Backblaze B2 (free up to 10 GB, no card). The script is unchanged apart from one optional setting,
+`BACKUP_S3_ENDPOINT`: when set it is passed to `aws s3 cp` as `--endpoint-url`; when empty the upload goes to AWS S3
+exactly as before. The endpoint must be an `https://` URL with no credentials (the credentials live in the AWS CLI
+profile, never in `.env`). The owner does these steps himself; no session holds a B2 key.
+
+Owner steps:
+
+1. Create a Backblaze account with 2FA, in a US region. The repo never names the region or the account.
+2. Create a **private** bucket with **Object Lock enabled at creation** (it cannot be added later) and default
+   retention **Governance, 30 days**.
+3. Lifecycle rule: **hide files 30 days after upload, delete hidden files 7 days after hiding**. That keeps the
+   "up to 37 days" promise on the privacy page.
+4. Note the bucket's **S3 endpoint** (`https://s3.<region>.backblazeb2.com`). It becomes `BACKUP_S3_ENDPOINT`.
+5. Create the application key **`satis-backup-upload`**: limited to this bucket only, **Write Only**. Check that no
+   `deleteFiles` capability is listed. This key goes on the PC.
+6. Create the application key **`satis-backup-read`**: this bucket only, **Read Only**. Keep it **offline** next to
+   the age private key; it is for restores only. The master key is never used and never stored on the PC.
+7. Create a new AWS CLI profile **`satis-backup-b2`** holding the upload key (key id and application key) and the
+   endpoint's region (`aws configure --profile satis-backup-b2`).
+8. In `backend\.env` set `BACKUP_S3_BUCKET=<the B2 bucket>`, `BACKUP_S3_ENDPOINT=<the endpoint>` and
+   `BACKUP_AWS_PROFILE=satis-backup-b2`.
+
+Cutover (ADR-0035):
+
+1. Run the backup once by hand (`npm run backup -w backend`) and check the file is in the B2 bucket under `satis-dash/`.
+2. **Restore rehearsal from B2** into a scratch database (the section below), downloading with the read key: use
+   `--profile <read-profile> --endpoint-url <the endpoint>` on `aws s3 ls` and `aws s3 cp`. Row counts must match.
+3. Switch the nightly task to B2 (the `.env` values above are what the task reads).
+4. Leave the old S3 bucket **read-only for 37 days**, then delete the bucket and the `satis-backup` IAM user.
+5. Update the privacy page in the same change as the switch (the Privacy section at the end).
+
 ## Missed-backup alerting (optional heartbeat)
 
 Set `BACKUP_HEARTBEAT_URL` in `backend\.env` to a Better Stack heartbeat URL (create a daily heartbeat with a grace
@@ -265,6 +299,9 @@ role either: a dump as `satis_app` fails with `permission denied for sequence pg
 `satis_backup` through `BACKUP_DATABASE_URL`.
 
 ## Privacy
+
+After the move to Backblaze (ADR-0035) the privacy row reads **"Backblaze stores encrypted backups for up to 37
+days"** (the owner approved the wording; the region is unnamed). The AWS wording below is what applied until then.
 
 The privacy page must say the truth once this ships: **Amazon Web Services stores encrypted backups for up
 to 37 days, so deleted data can survive in backups for up to 37 days** (outline, sections A.4 and A.5). The

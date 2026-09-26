@@ -129,6 +129,26 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
     it("allows no bucket (a local trial run that never touches AWS)", () => {
       expect(loadBackupConfig(ENV, { localDir: "x" }).s3Bucket).toBe("");
     });
+
+    it("has no S3 endpoint unless BACKUP_S3_ENDPOINT is set (plain AWS S3, as before)", () => {
+      expect(loadBackupConfig(ENV, { localDir: "x" }).s3Endpoint).toBe("");
+      expect(loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: "  " }, { localDir: "x" }).s3Endpoint).toBe("");
+    });
+
+    it("accepts an https endpoint and keeps only its origin", () => {
+      const c = loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: " https://s3.example-region.example.com/ignored/path " }, { localDir: "x" });
+      expect(c.s3Endpoint).toBe("https://s3.example-region.example.com");
+    });
+
+    it("refuses an endpoint that is not https, carries credentials, or could be read as an option", () => {
+      for (const bad of ["http://s3.example.com", "--endpoint-url", "s3.example.com", "https://user:pw@s3.example.com", "https://", "ftp://s3.example.com"]) {
+        expect(() => loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: bad }, { localDir: "x" }), bad).toThrow(ConfigError);
+      }
+    });
+
+    it("never echoes the endpoint value in the refusal message", () => {
+      expect(() => loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: "https://user:secret@s3.example.com" }, { localDir: "x" })).toThrow(/^(?!.*secret)/s);
+    });
   });
 
   it("names files by UTC time", () => {
@@ -154,6 +174,17 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
     expect(aws.args).toContain("cp");
     // put-only: no list, sync, rm or delete verb is ever used
     expect(aws.args.join(" ")).not.toMatch(/\b(ls|sync|rm|mv|delete)\b/);
+  });
+
+  it("passes --endpoint-url to aws only when an endpoint is configured", async () => {
+    const plain = fakeRunner();
+    await runBackup({ ...config, s3Endpoint: "" }, deps(plain.run));
+    expect(plain.calls.find((c) => c.command === "aws")!.args).not.toContain("--endpoint-url");
+    const b2 = fakeRunner();
+    await runBackup({ ...config, s3Endpoint: "https://s3.example-region.example.com" }, deps(b2.run));
+    const args = b2.calls.find((c) => c.command === "aws")!.args;
+    expect(args.slice(args.indexOf("--profile"))).toEqual(["--profile", "satis-backup", "--endpoint-url", "https://s3.example-region.example.com", "--only-show-errors"]);
+    expect(args.join(" ")).not.toMatch(/\b(ls|sync|rm|mv|delete)\b/);
   });
 
   it("passes the password ONLY in PGPASSWORD: never on a command line, in a log line, or in a result", async () => {

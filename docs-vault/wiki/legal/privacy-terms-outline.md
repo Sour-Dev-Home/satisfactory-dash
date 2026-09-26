@@ -64,7 +64,8 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
 4. **Who else processes data (processors / third parties):**
    - Google (sign-in: you share your email and id with us)
    - Cloudflare (hosting, DNS, the tunnel and firewall: sees every request's IP and metadata)
-   - Amazon Web Services (encrypted backups in S3; later, email via SES)
+   - Backblaze (encrypted backups, ADR-0035; they moved off AWS S3, which closes with its credits)
+   - Amazon Web Services (only if email alerts via SES are ever added)
    - Discord (only if you configure a webhook: alert text is posted under Discord's terms)
    `[LEGAL]` transfers outside the owner's country (US providers) and whether a DPA / terms
    acceptance is needed per provider.
@@ -75,9 +76,9 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
    - Telemetry: raw 48 h, per-minute rollups 30 days, hourly rollups 1 year, machine state
      changes 30 days (ADR-0027; recording since ADR-0027 PR 3).
    - Backups: encrypted; kept 30 days, then removed within a further 7 days, so deleted data can
-     survive in backups for up to 37 days (ADR-0025). The bucket is versioned: its lifecycle rule
-     turns a 30-day-old backup into a noncurrent version, and noncurrent versions are deleted 7
-     days later. The page must state the real maximum, not the headline 30.
+     survive in backups for up to 37 days (ADR-0025). The store is versioned (Backblaze B2 since
+     ADR-0035; the page reads "Backblaze stores encrypted backups for up to 37 days"): its lifecycle
+     rule hides a 30-day-old backup, and hidden files are deleted 7 days later. The page must state the real maximum, not the headline 30.
    - Audit events: 1 year (owner decision).
    - Server logs (including IPs on sign-in events): 14 days (owner decision).
      `[BUILD: log rotation/retention doesn't exist yet]`

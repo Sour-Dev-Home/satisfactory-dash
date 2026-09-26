@@ -12,7 +12,7 @@
     <header><a href="/">Satis Manager</a></header>
     <main>
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 25 September 2026</p>
+      <p class="updated">Last updated: 26 September 2026</p>
 
       <p>
         Satis Manager is a free dashboard for a Satisfactory dedicated server. This page says what
@@ -97,7 +97,7 @@
       <ul>
         <li>Google: signing in. You share your email address and account id with us through it.</li>
         <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
-        <li>Amazon Web Services: stores our encrypted backups.</li>
+        <li>Backblaze: stores our encrypted backups.</li>
       </ul>
       <!-- Only what runs today. Add with the features: alert emails (AWS SES) and Discord
            (webhook alerts, ADR-0027), with the webhook row in the table above. -->
@@ -120,8 +120,8 @@
         </li>
         <!-- ADR-0025 PR 8b (backups): live before the first run with a bucket (gate B). -->
         <li>
-          Backups: Amazon Web Services stores encrypted backups for 30 days, and they're removed
-          within a further 7 days, so deleted data can survive in backups for up to 37 days.
+          Backups: Backblaze stores encrypted backups for up to 37 days, so deleted data can survive
+          in backups for up to 37 days.
         </li>
         <li>Audit events: 1 year. They're kept for security and hold no emails or names.</li>
         <li>Server logs, including IP addresses on sign-in events: 14 days.</li>
