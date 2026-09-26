@@ -12,15 +12,16 @@ import { Mutex } from "../../platform/mutex.js";
 import { SecretsError } from "../../platform/secrets/secrets.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
-import { AddressRefusedError, isLoopbackAddress, resolveAllowedAddress } from "./addressGuard.js";
+import { AddressRefusedError, isAllowedAddress, isLoopbackAddress, resolveAllowedAddress } from "./addressGuard.js";
 import type { AddressLookup } from "./addressGuard.js";
-import { MAX_LOCAL_SERVERS } from "./importServers.js";
+import { MAX_LOCAL_SERVERS, TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
 import { addMember } from "./repositories/memberRepository.js";
 import {
   countConnections,
   createConnection,
   getConnection,
   getConnectionMetaByPublicId,
+  listConnectionMetas,
   updateConnection,
 } from "./repositories/connectionRepository.js";
 import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
@@ -64,6 +65,9 @@ export interface ServerManagementDeps<TServices> {
   testConnection: (candidate: ConnectionCandidate) => Promise<TestConnectionResponse>;
   /** The seeded operator account's id; undefined until the database is up. */
   getOperatorUserId: () => string | undefined;
+  /** Names of the environment variables that still configure servers (composition root: the gameserver module).
+   *  While any is set and no connection is stored, create is refused with `import_required`. */
+  configuredServerEnvNames?: () => string[];
   /** DNS lookup, injectable for tests. */
   lookup?: AddressLookup;
   /** One mutex per process; tests may pass their own. */
@@ -75,6 +79,8 @@ export interface ServerManagementService {
   canManage(userId: string): boolean;
   create(actorUserId: string, input: CreateServerRequest): Promise<ServerConnectionView>;
   get(publicId: string): Promise<ServerConnectionView>;
+  /** Every stored connection, including unreadable and refused ones (the operator's management list). */
+  list(): Promise<ServerConnectionView[]>;
   update(actorUserId: string, publicId: string, patch: UpdateServerRequest): Promise<ServerConnectionView>;
   remove(actorUserId: string, publicId: string): Promise<void>;
   testCandidate(input: TestConnectionRequest): Promise<TestConnectionResponse>;
@@ -85,12 +91,19 @@ export interface ServerManagementService {
 const LAST4_MIN_LENGTH = 12;
 const last4 = (token: string): string | null => (token.length >= LAST4_MIN_LENGTH ? token.slice(-4) : null);
 
-const TAKE_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext('satis.server_management'))";
+const TAKE_ADVISORY_LOCK = TAKE_SERVER_MANAGEMENT_LOCK;
 
 function refusedAddress(): ApiFailure {
   return new ApiFailure(
     "address_not_allowed",
     "That host is not a loopback or private (LAN) address, or it could not be resolved.",
+  );
+}
+
+function importRequired(): ApiFailure {
+  return new ApiFailure(
+    "import_required",
+    "Servers are still configured in the environment and none is stored yet. Import them first (npm run admin -- import-servers; see the servers runbook) or remove those variables, then add more.",
   );
 }
 
@@ -119,7 +132,8 @@ function viewOf(
     apiTokenLast4: tokens ? last4(tokens.apiToken) : null,
     frmTokenSet: meta.frmTokenSet,
     frmTokenLast4: tokens?.frmToken === undefined ? null : last4(tokens.frmToken),
-    state: tokens ? "ok" : "unreadable",
+    // "refused" wins: a stored address that is not loopback or private is never connected to, whatever the tokens are.
+    state: !isAllowedAddress(meta.pinnedIp) ? "refused" : tokens ? "ok" : "unreadable",
     plainHttpOverLan: !isLoopbackAddress(meta.pinnedIp),
   };
 }
@@ -161,6 +175,13 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
     }
   };
 
+  /** The view of a stored connection, from metadata. Tokens are opened only to show their last 4 characters, and
+   *  never for a refused address or without a key (then the row is "unreadable"). */
+  const viewFor = async (meta: ConnectionMeta): Promise<ServerConnectionView> => {
+    const openable = deps.ring !== null && isAllowedAddress(meta.pinnedIp);
+    return viewOf(meta, openable ? await openTokens(deps.ring as SecretsKeyring, meta) : undefined);
+  };
+
   const connectionOf = (
     meta: Pick<ConnectionMeta, "serverId" | "publicId" | "displayName">,
     fields: { host: string; pinnedIp: string; apiPort: number; frmPort: number; apiToken: string; frmToken?: string },
@@ -182,6 +203,8 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       const meta = await requireMeta(publicId);
       // The host must still resolve to allowed addresses; the test then uses the STORED pinned address
       // (what the backend really connects to), never a fresh answer for the name.
+      // A stored address that is not allowed is never connected to, not even to test it (checked before any lookup).
+      if (!isAllowedAddress(meta.pinnedIp)) throw refusedAddress();
       await pin(meta.host);
       const tokens = await openTokens(ring, meta);
       if (tokens === undefined) throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
@@ -189,14 +212,25 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
     },
 
     async get(publicId) {
-      const ring = ringOrUnavailable();
-      const meta = await requireMeta(publicId);
-      return viewOf(meta, await openTokens(ring, meta));
+      return viewFor(await requireMeta(publicId));
+    },
+
+    async list() {
+      const metas = await listConnectionMetas(deps.db);
+      // One at a time: at most MAX_LOCAL_SERVERS rows, each opened only to show the last 4 characters.
+      const views: ServerConnectionView[] = [];
+      for (const meta of metas) views.push(await viewFor(meta));
+      return views;
     },
 
     create(actorUserId, input) {
       return mutex.run(async () => {
         const ring = ringOrUnavailable();
+        // While the servers still come from the environment and none is stored, adding one would make the
+        // database win at the next restart and silently drop them: the import comes first.
+        // Checked here for an early answer, and again under the advisory lock below (the import CLI takes the same lock).
+        const envConfigured = (deps.configuredServerEnvNames?.() ?? []).length > 0;
+        if (envConfigured && (await countConnections(deps.db)) === 0) throw importRequired();
         const pinnedIp = await pin(input.host);
         const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
         if (!test.ok) throw testFailure(test);
@@ -204,7 +238,9 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const serverId = await withTransaction(deps.db, async (client) => {
           // Serialises the count and the insert across processes and instances; released at COMMIT.
           await client.query(TAKE_ADVISORY_LOCK);
-          if ((await countConnections(client)) >= MAX_LOCAL_SERVERS) {
+          const stored = await countConnections(client);
+          if (envConfigured && stored === 0) throw importRequired();
+          if (stored >= MAX_LOCAL_SERVERS) {
             throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
           }
           if ((await findServerByPublicId(client, input.id)) !== undefined) {
@@ -244,7 +280,6 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     update(actorUserId, publicId, patch) {
       return mutex.run(async () => {
-        const ring = ringOrUnavailable();
         const meta = await requireMeta(publicId);
         const touchesConnection =
           patch.host !== undefined ||
@@ -258,10 +293,12 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
           const displayName = patch.displayName ?? meta.displayName;
           if (!(await renameServer(deps.db, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
           deps.runtime.rename(publicId, displayName);
-          const renamed = { ...meta, displayName };
-          return viewOf(renamed, await openTokens(ring, renamed));
+          // viewFor, not openTokens: a refused address's tokens are never opened.
+          return viewFor({ ...meta, displayName });
         }
 
+        // Anything that touches the connection re-seals the tokens, so it needs the key.
+        const ring = ringOrUnavailable();
         const host = patch.host ?? meta.host;
         const pinnedIp = await pin(host);
         const opened = await openTokens(ring, meta);
@@ -298,7 +335,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     remove(actorUserId, publicId) {
       return mutex.run(async () => {
-        ringOrUnavailable();
+        // No keyring needed: an unreadable or keyless row must still be removable.
         await requireMeta(publicId);
         // The row and its tokens and memberships go in one transaction; then the pollers stop.
         const removed = await softDeleteServer(deps.db, publicId, { actorUserId });

@@ -6,6 +6,10 @@ import { ensureServer } from "./repositories/serverRepository.js";
 /** ADR-0030 decision 2: the operator may manage at most this many local servers. */
 export const MAX_LOCAL_SERVERS = 8;
 
+/** The transaction-scoped advisory lock that serialises everything that counts or adds stored connections: the
+ *  create route and this import take the SAME lock, so neither can slip between the other's count and insert. */
+export const TAKE_SERVER_MANAGEMENT_LOCK = "SELECT pg_advisory_xact_lock(hashtext('satis.server_management'))";
+
 /** The request timeout every database-stored server uses (it is not stored per server). */
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 
@@ -59,6 +63,7 @@ export async function importServers(
 ): Promise<ImportResult> {
   const result: ImportResult = { imported: [], skipped: [], warnings: [] };
   return withTransaction(pool, async (client) => {
+    await client.query(TAKE_SERVER_MANAGEMENT_LOCK);
     for (const server of servers) {
       const { config } = server;
       if (config.apiToken === undefined || config.apiToken.trim() === "") {

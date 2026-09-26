@@ -9,7 +9,7 @@ import { ServerIdSchema } from "./ids";
  */
 
 /** Ids that would collide with a fixed route under /api/servers. */
-export const RESERVED_SERVER_IDS = ["test-connection"] as const;
+export const RESERVED_SERVER_IDS = ["test-connection", "managed"] as const;
 
 /** A hostname, an IPv4 address or an IPv6 literal (with or without brackets). No scheme, path, port,
  *  credentials or whitespace: only what is needed to name a machine. */
@@ -89,14 +89,22 @@ export const ServerConnectionSchema = z.object({
   frmTokenSet: z.boolean(),
   frmTokenLast4: z.string().nullable(),
   state: z
-    .enum(["ok", "unreadable"])
-    .describe("'unreadable': the stored tokens cannot be opened with this backend's key; re-enter both tokens."),
+    .enum(["ok", "unreadable", "refused"])
+    .describe(
+      "'unreadable': the stored tokens cannot be opened with this backend's key; re-enter both tokens. " +
+        "'refused': the stored address is not loopback or private, so the backend does not connect to it; " +
+        "edit the host (or remove the server).",
+    ),
   plainHttpOverLan: z
     .boolean()
     .describe("True when the address is not loopback: FRM is plain HTTP, so its token crosses the LAN (show a warning)."),
 });
 
 export const ServerConnectionResponseSchema = z.object({ server: ServerConnectionSchema });
+
+/** GET /api/servers/managed: every stored connection, including the ones this backend is not serving
+ *  (unreadable or refused), which the members' list (GET /api/servers) cannot show. */
+export const ManagedServerListResponseSchema = z.object({ servers: z.array(ServerConnectionSchema) });
 export const DeleteServerResponseSchema = z.object({ deleted: z.literal(true) });
 
 export type CreateServerRequest = z.infer<typeof CreateServerRequestSchema>;
@@ -105,4 +113,5 @@ export type TestConnectionRequest = z.infer<typeof TestConnectionRequestSchema>;
 export type TestConnectionResponse = z.infer<typeof TestConnectionResponseSchema>;
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>;
 export type ServerConnectionResponse = z.infer<typeof ServerConnectionResponseSchema>;
+export type ManagedServerListResponse = z.infer<typeof ManagedServerListResponseSchema>;
 export type DeleteServerResponse = z.infer<typeof DeleteServerResponseSchema>;

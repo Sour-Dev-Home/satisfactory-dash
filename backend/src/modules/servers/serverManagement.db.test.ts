@@ -41,11 +41,11 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
   });
 
   /** Each call is a separate "process": its own runtime and its own mutex, so only the database lock can serialise two of them. */
-  const newInstance = () => {
+  const newInstance = (instanceRing: typeof ring | null = ring) => {
     const runtime = new ServerRuntime<string>();
     const service = createServerManagementService({
       db: pool,
-      ring,
+      ring: instanceRing,
       runtime,
       build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }),
       testConnection: async () => passed,
@@ -109,6 +109,36 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     const again = await newInstance().service.create(operatorId, input("db-b"));
     expect(again.id).toBe("db-b");
     expect(await getMemberRole(pool, { publicId: "db-b", userId: operatorId })).toBe("owner");
+  });
+
+  it("lists every stored connection with its state, including unreadable and refused ones, and removes them without a keyring", async () => {
+    await newInstance().service.create(operatorId, input("db-u"));
+    await newInstance().service.create(operatorId, input("db-r"));
+    // A tampered address, edited in the database by hand: refused, and its tokens are not even opened.
+    await pool.query("UPDATE servers.server_connections SET pinned_ip = '8.8.8.8' WHERE server_id = (SELECT id FROM servers.servers WHERE public_id = 'db-r')");
+
+    const withKey = await newInstance().service.list();
+    const stateOf = (views: typeof withKey, id: string) => views.find((view) => view.id === id)?.state;
+    expect(stateOf(withKey, "db-a")).toBe("ok");
+    expect(stateOf(withKey, "db-u")).toBe("ok");
+    expect(stateOf(withKey, "db-r")).toBe("refused");
+
+    // The same rows read by a backend with a DIFFERENT key (or none): unreadable, still listed with host and ports.
+    const otherKey = createSecretsKeyring("k9", new Map([["k9", randomBytes(32)]]));
+    for (const instanceRing of [otherKey, null]) {
+      const views = await newInstance(instanceRing).service.list();
+      expect(stateOf(views, "db-u")).toBe("unreadable");
+      expect(stateOf(views, "db-r")).toBe("refused");
+      expect(views.find((view) => view.id === "db-u")).toMatchObject({ host: "192.168.1.20", apiPort: 7777, apiTokenLast4: null });
+      expect(JSON.stringify(views)).not.toContain(API);
+    }
+
+    // Removal needs no key.
+    await newInstance(null).service.remove(operatorId, "db-u");
+    await newInstance(null).service.remove(operatorId, "db-r");
+    const after = await newInstance().service.list();
+    expect(after.map((view) => view.id)).not.toContain("db-u");
+    expect(after.map((view) => view.id)).not.toContain("db-r");
   });
 
   it("holds the cap of 8 under concurrent creates from separate instances (the advisory lock, not just the mutex)", async () => {

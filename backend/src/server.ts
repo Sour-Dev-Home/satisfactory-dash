@@ -176,6 +176,7 @@ const serverManagement = database
       testConnection: ({ pinnedIp, apiPort, frmPort, apiToken, frmToken }) =>
         testGameServerConnection(createSatisfactoryServerConfig({ host: pinnedIp, apiPort, apiToken, frmPort, frmToken })),
       getOperatorUserId: () => operatorUserId,
+      configuredServerEnvNames: () => configuredServerEnvNamesInUse(),
     })
   : undefined;
 const managementRouters = serverManagement

@@ -34,6 +34,9 @@ export const KnownErrorCode = z.enum([
   "connection_unreadable",
   "server_exists",
   "server_limit_reached",
+  // ADR-0030 (additive): servers are still configured in the environment and none is stored yet, so adding
+  // one would make the database win at the next restart and drop them. Run the import first.
+  "import_required",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;
