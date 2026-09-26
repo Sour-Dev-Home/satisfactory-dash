@@ -76,6 +76,7 @@ export class AgentIngest implements AgentSnapshotSink {
       power: snapshot.power,
       factory: snapshot.factory,
       players: snapshot.players,
+      autoPause: snapshot.settings?.autoPause,
     });
     observations.recordPollSuccess(receivedAtMs);
 

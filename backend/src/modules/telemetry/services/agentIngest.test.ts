@@ -298,3 +298,48 @@ describe("the latest-snapshot store", () => {
     expect(t.store.read("players", { available: false, players: [] })).toEqual({ available: false, players: [] });
   });
 });
+
+describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
+  it("is none until a snapshot carries it, and an older agent that never sends it leaves it unknown", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: undefined }), T0);
+    expect(t.store.autoPause()).toBeUndefined();
+  });
+
+  it("is kept with the reading's own time, and stale after three status intervals", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);
+    expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: false });
+    t.advance(3 * CADENCE.statusSeconds * 1000);
+    expect(t.store.autoPause()?.stale).toBe(false);
+    t.advance(1);
+    expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: true });
+  });
+
+  it("a snapshot without it does not clear it, and a newer one replaces it", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);
+    t.advance(1000);
+    t.ingest.ingest(t.running({ settings: undefined }), T0 + 1000);
+    expect(t.store.autoPause()?.autoPause).toBe(true);
+    t.advance(1000);
+    t.ingest.ingest(t.running({ settings: { autoPause: false } }), T0 + 2000);
+    expect(t.store.autoPause()).toMatchObject({ autoPause: false, observedAtMs: T0 + 2000 });
+  });
+
+  it("a late or retried snapshot never puts an older value over a newer one", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: { autoPause: false } }), T0);
+    const older = { ...t.running({ settings: { autoPause: true } }), observedAt: new Date(T0 - 4000).toISOString() };
+    t.ingest.ingest(older, T0 + 100);
+    expect(t.store.autoPause()).toMatchObject({ autoPause: false, observedAtMs: T0 });
+  });
+
+  it("an unreachable game keeps the last value, stale by age, instead of clearing it", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);
+    t.advance(60_000);
+    t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(t.now()).toISOString() }, t.now());
+    expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: true });
+  });
+});

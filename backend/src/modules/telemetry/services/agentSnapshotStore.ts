@@ -29,6 +29,15 @@ export interface RecordedSnapshot {
   power?: Power;
   factory?: Factory;
   players?: ServerPlayersResponse;
+  /** The game's auto-pause setting, read in this snapshot (never present on an unreachable one). */
+  autoPause?: boolean;
+}
+
+/** The last auto-pause value an agent reported, with when it was read and whether that is older than its cadence allows. */
+export interface AutoPauseReading {
+  autoPause: boolean;
+  observedAtMs: number;
+  stale: boolean;
 }
 
 const CADENCE_KEY: Record<SnapshotPart, keyof Cadence> = {
@@ -43,6 +52,7 @@ export class LatestSnapshotStore {
   private reachable: boolean | undefined;
   private lastReceivedAtMs: number | undefined;
   private lastPowerAtMs: number | undefined;
+  private autoPauseReading: { autoPause: boolean; observedAtMs: number } | undefined;
 
   constructor(
     private readonly cadence: () => Cadence,
@@ -61,6 +71,19 @@ export class LatestSnapshotStore {
       }
     }
     if (snapshot.power !== undefined) this.lastPowerAtMs = snapshot.receivedAtMs;
+    if (snapshot.autoPause !== undefined && snapshot.observedAtMs >= (this.autoPauseReading?.observedAtMs ?? -Infinity)) {
+      this.autoPauseReading = { autoPause: snapshot.autoPause, observedAtMs: snapshot.observedAtMs };
+    }
+  }
+
+  /**
+   * The last auto-pause value an agent reported, or undefined when none did (an older agent, or none yet). It is kept
+   * while the game is unreachable, marked stale by its age (three status intervals, like the status part it is read with).
+   */
+  autoPause(): AutoPauseReading | undefined {
+    const reading = this.autoPauseReading;
+    if (reading === undefined) return undefined;
+    return { ...reading, stale: this.now() - reading.observedAtMs > STALE_AFTER_INTERVALS * this.cadence().statusSeconds * 1000 };
   }
 
   /** When the last snapshot of any kind arrived (the agent's liveness), or undefined before the first. */
