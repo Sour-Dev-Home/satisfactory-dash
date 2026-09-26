@@ -80,6 +80,17 @@ describe("ServerGate", () => {
     listServers(serversNone);
     renderGate();
     expect(await screen.findByText("No game servers are configured.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add a server" })).not.toBeInTheDocument();
+  });
+
+  it("lets the operator set up the first server instead (ADR-0030), listing stored ones it can't serve", async () => {
+    listServers({ ...serversNone, canManageServers: true });
+    renderGate();
+    expect(await screen.findByRole("heading", { name: "Set up a game server" })).toBeInTheDocument();
+    // The default managed list has an unreadable and a refused server: they show here to be fixed.
+    expect(await screen.findByRole("list", { name: "Game servers" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add a server" })).toBeInTheDocument();
+    expect(screen.queryByText("No game servers are configured.")).not.toBeInTheDocument();
   });
 
   it("shows an error with a retry when discovery fails", async () => {

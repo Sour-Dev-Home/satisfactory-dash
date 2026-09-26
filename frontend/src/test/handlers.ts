@@ -1,16 +1,20 @@
 import { http, HttpResponse } from "msw";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
+  deleteServerDone,
   factoryMixed,
   healthOk,
+  managedServersAllStates,
   playersUnavailable,
   powerHistoryNormal,
   powerOk,
+  serverConnectionOk,
   serversSingle,
   sessionAnonymous,
   sessionAuthenticated,
   settingsEditable,
   statusRunning,
+  testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
 
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
@@ -31,4 +35,11 @@ export const handlers = [
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
+  // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).
+  http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersAllStates)),
+  http.post(endpoints.serverManagement.testConnection.route, () => HttpResponse.json(testConnectionPassed)),
+  http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionPassed)),
+  http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
+  http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(serverConnectionOk)),
+  http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
 ];

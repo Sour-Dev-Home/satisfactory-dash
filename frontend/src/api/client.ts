@@ -27,7 +27,7 @@ interface GetEndpoint<T, A extends unknown[]> {
 }
 
 interface SendEndpoint<T, B, A extends unknown[]> {
-  method: "POST" | "PUT";
+  method: "POST" | "PUT" | "PATCH" | "DELETE";
   path: (...args: A) => string;
   request?: Schema<B>;
   response: Schema<T>;
@@ -50,7 +50,7 @@ export function apiGetAbortable<T, A extends unknown[]>(
 }
 
 /**
- * For endpoints without a request schema (logout), pass `undefined` as the body. When the
+ * For endpoints without a request schema (logout, a DELETE), pass `undefined` as the body. When the
  * endpoint has one, the body is checked first and a mismatch rejects without sending.
  */
 export async function apiSend<T, B, A extends unknown[]>(
