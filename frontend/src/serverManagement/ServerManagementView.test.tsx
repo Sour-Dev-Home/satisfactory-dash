@@ -238,13 +238,9 @@ describe("ServerManagementView: adding", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Game servers" })).toHaveFocus());
   });
 
-  it("sends only one request for two submits that land before React re-renders", async () => {
-    // Unlike LoginForm and LogoutButton, ServerForm has no `client.isMutating(...)` guard, and
-    // save.isPending only updates on the next render, so nothing stops the handler itself from
-    // running twice for two fast submits. It's still safe: the second run's mutationFn finds
-    // `pendingSave.current` already cleared by the first and throws before ever calling apiSend,
-    // so only one request reaches the network. That's incidental to how the ref is cleared, not
-    // a deliberate guard, so this pins the behavior down.
+  it("sends only one request for two submits that land before React re-renders, and shows no error", async () => {
+    // save.isPending only updates on the next render; the pending-body ref is what drops the
+    // second submit, before it can become a failed mutation shown as an error.
     const bodies = capture("post", endpoints.serverManagement.create.route, () =>
       HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
     );
@@ -259,6 +255,7 @@ describe("ServerManagementView: adding", () => {
     });
     await screen.findByText("Added Second world.");
     expect(bodies.length).toBe(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

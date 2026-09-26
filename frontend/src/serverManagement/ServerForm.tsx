@@ -188,6 +188,9 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
       return;
     }
     const schema = mode.kind === "create" ? CreateServerRequestSchema : UpdateServerRequestSchema;
+    // A second submit before the first request is built (isPending only updates on the next
+    // render) is dropped here, rather than becoming a failed mutation that shows an error.
+    if (pendingSave.current || save.isPending) return;
     if (validated(schema, body)) {
       pendingSave.current = body;
       save.mutate();
@@ -197,6 +200,7 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
   function runTest() {
     const body = bodyFor({ kind: "create" }, values, false)!;
     const { id: _id, displayName: _name, ...connection } = body;
+    if (pendingTest.current || test.isPending) return;
     if (validated(TestConnectionRequestSchema, connection)) {
       pendingTest.current = connection;
       test.mutate();
