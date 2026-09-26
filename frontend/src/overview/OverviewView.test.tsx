@@ -6,6 +6,8 @@ import { endpoints } from "@satisfactory-dash/shared";
 import {
   errorServiceUnavailable,
   factoryEmpty,
+  factoryMixed,
+  powerOk,
   serversSingle,
   statusNoGame,
   statusSlow,
@@ -57,6 +59,25 @@ describe("OverviewView: the Health card's tick", () => {
     const rows = screen.getByRole("list", { name: "Sections" });
     expect(rows).not.toHaveTextContent(/tick/i);
     expect(within(rows).getAllByText("Operational")).toHaveLength(3);
+  });
+
+  it("counts a slow tick as a warning as soon as the status query has data, even while Power and Factory are still loading", async () => {
+    server.use(
+      http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)),
+      http.get(endpoints.power.route, async () => {
+        await delay("infinite");
+        return HttpResponse.json(powerOk);
+      }),
+      http.get(endpoints.factory.route, async () => {
+        await delay("infinite");
+        return HttpResponse.json(factoryMixed);
+      }),
+    );
+    renderOverview();
+    expect(await within(healthCard()).findByText("Degraded")).toBeInTheDocument();
+    expect(healthCard()).toHaveTextContent("Running with warnings");
+    const rows = screen.getByRole("list", { name: "Sections" });
+    expect(within(rows).getAllByText("Checking…")).toHaveLength(2);
   });
 
   it("says no game is running instead of a tick when isGameRunning is false", async () => {
