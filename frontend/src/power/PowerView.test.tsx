@@ -1,8 +1,8 @@
-import { screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { errorUpstreamUnreachable, powerOk, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { errorUpstreamUnreachable, powerOk, powerStale, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -35,5 +35,42 @@ describe("PowerView", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Game server unreachable.");
     expect(alert).toHaveTextContent(errorUpstreamUnreachable.error.requestId);
+  });
+});
+
+// Whether the data is late is the backend's call (`stale`) or a failed refresh, never this PC's
+// clock (the architect's #249 note).
+describe("PowerView's data-age warning", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("doesn't call fresh data late when this PC's clock is a day ahead", async () => {
+    vi.setSystemTime(Date.parse(powerOk.observedAt) + 86_400_000);
+    server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerOk)));
+    renderView();
+    expect(await screen.findByText(/^Updated 1 d /)).toBeInTheDocument();
+    expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument();
+  });
+
+  it("calls the data late when the backend says it's stale", async () => {
+    server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerStale)));
+    renderView();
+    expect(await screen.findByText(/newer data is overdue/)).toBeInTheDocument();
+  });
+
+  it("calls the data late when a refresh fails and the last snapshot stays on screen", async () => {
+    let fail = false;
+    server.use(
+      http.get(endpoints.power.route, () =>
+        fail ? HttpResponse.json(errorUpstreamUnreachable, { status: 503 }) : HttpResponse.json(powerOk),
+      ),
+    );
+    const { client } = renderView();
+    await screen.findByRole("region", { name: "Power" });
+    expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument();
+
+    fail = true;
+    await act(() => client.refetchQueries({ type: "active" }));
+    await waitFor(() => expect(screen.getByText(/newer data is overdue/)).toBeInTheDocument());
+    expect(screen.getByRole("region", { name: "Power" })).toBeInTheDocument();
   });
 });

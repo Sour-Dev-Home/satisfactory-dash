@@ -27,7 +27,7 @@ export function FactoryView() {
         <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
       {factory.isError && <ErrorNotice error={factory.error} />}
-      {factory.data && <FactoryPanel snapshot={factory.data} />}
+      {factory.data && <FactoryPanel snapshot={factory.data} refetchFailed={factory.isRefetchError} />}
       <ErrorBoundary label="Production history">
         <ItemHistorySection labels={labels} />
       </ErrorBoundary>

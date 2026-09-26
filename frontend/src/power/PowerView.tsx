@@ -13,7 +13,7 @@ export function PowerView() {
   return (
     <>
       {power.isError && <ErrorNotice error={power.error} />}
-      {power.data && <PowerPanel snapshot={power.data} />}
+      {power.data && <PowerPanel snapshot={power.data} refetchFailed={power.isRefetchError} />}
     </>
   );
 }
