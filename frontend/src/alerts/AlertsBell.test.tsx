@@ -109,6 +109,14 @@ describe("AlertsBell", () => {
     expect(bell()).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("stays open on a blur with no related target (clicking non-focusable space, or losing window focus)", async () => {
+    renderBell();
+    fireEvent.click(await screen.findByRole("button", { name: /^Alerts/ }));
+    const link = await screen.findByRole("link", { name: "Manage alerts" });
+    fireEvent.blur(link, { relatedTarget: null });
+    expect(bell()).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("links to the alert settings, and closes when it's followed", async () => {
     renderBell();
     fireEvent.click(await screen.findByRole("button", { name: /^Alerts/ }));
