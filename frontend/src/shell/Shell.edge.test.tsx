@@ -39,6 +39,15 @@ describe("redirects", () => {
     expect(await screen.findByRole("region", { name: "Power" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/app/power/");
   });
+
+  it("sends the old Alerts page's address to the alert settings, keeping the query string", async () => {
+    window.history.pushState(null, "", "/app/alerts?scenario=outage");
+    renderWithClient(<App />);
+    await screen.findByRole("region", { name: "Server settings" });
+    expect(window.location.pathname).toBe("/app/settings");
+    expect(window.location.search).toBe("?scenario=outage");
+    expect(window.location.hash).toBe("#alerts");
+  });
 });
 
 describe("tabs", () => {

@@ -35,6 +35,23 @@ jobs:
           export PR_FILES_JSON PR_LABELS_JSON
           node scripts/log-check.mjs
 
+      - name: UI tier (ADR-0033 amendment 3)
+        # Pull requests only. A PR labelled `tier:ui` skips the architect's review, so this decides whether it really is
+        # one: every changed file must be in the UI-tier paths and no added line under frontend/src may match the
+        # data-flow pattern. Without the label nothing is checked. Labels are read live, so a re-run after adding the
+        # label sees it. The files (with their patches, which can be large) go through a file, not a variable.
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels?per_page=100" --jq '[.[].name]')
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[] | {filename, status, previous_filename, patch, changes}' | jq -s . > "$RUNNER_TEMP/pr-files.json"
+          export PR_LABELS_JSON PR_FILES_FILE="$RUNNER_TEMP/pr-files.json"
+          node scripts/tier-check.mjs
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22

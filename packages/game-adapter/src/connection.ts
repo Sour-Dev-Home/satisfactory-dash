@@ -27,7 +27,22 @@ export interface SatisfactoryServerConfig {
    *  spike's server accepted requests with no token at all. */
   frmToken?: string;
   requestTimeoutMs: number;
+  /**
+   * ADR-0032 step 1: called once per request to the game server (either API), success or failure, with how long it took.
+   * The backend uses it to split a request's time into "app" and "upstream". The package only reports; it never knows who
+   * listens, and a listener that throws never affects the request.
+   */
+  onUpstreamCall?: UpstreamCallListener;
 }
+
+/** One timed request to the game server: which API (`vanilla` = the dedicated-server HTTPS API, `frm` = FicsitRemoteMonitoring)
+ *  and when it ran, in `performance.now()` milliseconds (a monotonic clock), so overlapping calls can be merged. */
+export interface UpstreamCall {
+  upstream: "vanilla" | "frm";
+  startMs: number;
+  endMs: number;
+}
+export type UpstreamCallListener = (call: UpstreamCall) => void;
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 

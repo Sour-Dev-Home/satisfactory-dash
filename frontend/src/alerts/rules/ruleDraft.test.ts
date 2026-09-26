@@ -1,7 +1,7 @@
 import { CreateAlertRuleRequestSchema, UpdateAlertRuleRequestSchema, type AlertRule } from "@satisfactory-dash/shared";
 import { alertRulesList } from "@satisfactory-dash/shared/fixtures";
 import { describe, expect, it } from "vitest";
-import { buildCreate, buildUpdate, draftFrom, FIELD_HINT, kindLabel, NEW_TARGET, severityLabel } from "./ruleDraft";
+import { buildCreate, buildUpdate, draftFrom, FIELD_HINT, NEW_TARGET } from "./ruleDraft";
 
 const [outage, stopped, unreachable, production] = alertRulesList.rules as AlertRule[];
 
@@ -184,11 +184,3 @@ describe("buildUpdate: rounding, formatting and malformed-stored-params edge cas
   });
 });
 
-describe("labels", () => {
-  it("names the known kinds and keeps an unknown one's own name", () => {
-    expect(kindLabel("server_unreachable")).toBe("Game server unreachable");
-    expect(kindLabel("belt_jam")).toBe("Rule: belt_jam");
-    expect(severityLabel("critical")).toBe("Critical");
-    expect(severityLabel("page-me")).toBe("page-me");
-  });
-});

@@ -8,7 +8,7 @@ export * from "./domain.js";
 export { UpstreamError } from "./errors.js";
 export type { RequestFailureKind } from "./errors.js";
 export { createSatisfactoryServerConfig, DEFAULT_REQUEST_TIMEOUT_MS } from "./connection.js";
-export type { SatisfactoryServerConfig } from "./connection.js";
+export type { SatisfactoryServerConfig, UpstreamCall, UpstreamCallListener } from "./connection.js";
 export { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 export type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
 export { testGameServerConnection } from "./connectionTest.js";

@@ -19,6 +19,9 @@ import {
   alertSetMuteRequest,
   alertStatusQuiet,
   alertUpdateRuleRequest,
+  agentEnrollmentCodeResponse,
+  agentRevokeResponse,
+  agentStatusEnrolled,
   factoryMixed,
   historyItems7d,
   historyPower24h,
@@ -35,6 +38,8 @@ import { createTelemetryRouters } from "./modules/telemetry/index.js";
 import { createSettingsRouters } from "./modules/settings/index.js";
 import { createAlertsRouters } from "./modules/alerts/index.js";
 import type { AlertsService } from "./modules/alerts/index.js";
+import { createAgentUserRouters } from "./modules/agents/index.js";
+import type { AgentsService } from "./modules/agents/index.js";
 import { scopedEndpoints } from "../test-support/scopedEndpoints.js";
 import type { Method } from "../test-support/scopedEndpoints.js";
 
@@ -49,9 +54,11 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // ADR-0027 PR 7a added the alerts endpoints to the contract before their routes; PR 7b mounted them, so nothing about
 // alerts is exempt any more and the generated tests cover all of them like every other scoped route.
 // ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
-// contract before their routes. PR 5 mounts them and deletes this line. A guard test below makes that impossible to forget.
-const AGENT_NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("agent.") || name.startsWith("commands.");
-const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !AGENT_NOT_YET_MOUNTED(endpoint.name));
+// contract before their routes. PR 5a mounted the three agent ones, so the generated tests cover them like every other
+// scoped route; the command's status (`GET /commands/:commandId`) arrives with the commands table in PR 5b, which deletes
+// this line. A guard test below makes that impossible to forget.
+const COMMANDS_NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("commands.");
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !COMMANDS_NOT_YET_MOUNTED(endpoint.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1");
 
@@ -153,6 +160,13 @@ const alertsService: AlertsService = {
   clearMute: async () => alertMuteClearedResponse,
 };
 
+/** A stand-in for the agents service: every method answers with its contract fixture. */
+const agentsService: AgentsService = {
+  createEnrollmentCode: async () => agentEnrollmentCodeResponse,
+  getStatus: async () => agentStatusEnrolled,
+  revoke: async () => agentRevokeResponse,
+};
+
 function buildApp(options: { isReady?: () => boolean } = {}) {
   // Both servers exist on this process: what differs is who belongs to them.
   const directory = new InMemoryServerDirectory([
@@ -171,6 +185,7 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
       ...createTelemetryRouters(directory),
       ...createSettingsRouters(directory),
       ...createAlertsRouters(alertsService),
+      ...createAgentUserRouters(agentsService),
       management.scoped,
     ],
   });
@@ -188,9 +203,13 @@ const bodyFor = (name: string): unknown =>
   name in ALERT_BODIES ? ALERT_BODIES[name] : name === "serverManagement.update" ? { displayName: "Renamed" } : { enabled: true };
 // POST .../test takes no body, like the other action endpoints.
 const hasBody = (name: string, method: Method) =>
-  method !== "GET" && method !== "DELETE" && name !== "serverManagement.testSaved" && name !== "alerts.destinations.testDiscord";
+  method !== "GET" &&
+  method !== "DELETE" &&
+  name !== "serverManagement.testSaved" &&
+  name !== "alerts.destinations.testDiscord" &&
+  name !== "agent.enrollmentCode";
 /** What a successful write answers: 200, except a create (201). */
-const successStatus = (name: string): number => (name === "alerts.rules.create" ? 201 : 200);
+const successStatus = (name: string): number => (name === "alerts.rules.create" || name === "agent.enrollmentCode" ? 201 : 200);
 
 const call = (app: ReturnType<typeof buildApp>, name: string, method: Method, url: string, user: string) => {
   const req = request(app)[method.toLowerCase() as "get"](url).set("x-test-user", user);
@@ -211,23 +230,29 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     }
   });
 
-  it("exempts only the four user-facing agent endpoints (ADR-0031 PR 3), and no other", () => {
-    const exempt = scopedEndpoints(endpoints).filter((endpoint) => AGENT_NOT_YET_MOUNTED(endpoint.name));
-    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`).sort()).toEqual([
+  it("covers the three agent endpoints (ADR-0031 PR 5a): enrolment code, status and revoke", () => {
+    const agent = SCOPED.filter((endpoint) => endpoint.name.startsWith("agent."));
+    expect(agent.map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`).sort()).toEqual([
       "DELETE /agent",
       "GET /agent",
-      "GET /commands/:commandId",
       "POST /agent/enrollment-codes",
     ]);
   });
 
-  // Expires on its own: the moment PR 5 mounts ANY of them, this fails until AGENT_NOT_YET_MOUNTED is deleted, so the
-  // routes can never ship without the generated authorization tests.
-  it("the exempt agent endpoints are still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+  it("exempts only the command status endpoint (ADR-0031 PR 5b), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => COMMANDS_NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`).sort()).toEqual([
+      "GET /commands/:commandId",
+    ]);
+  });
+
+  // Expires on its own: the moment PR 5b mounts it, this fails until COMMANDS_NOT_YET_MOUNTED is deleted, so the
+  // route can never ship without the generated authorization tests.
+  it("the exempt command endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
     const app = buildApp();
-    for (const endpoint of scopedEndpoints(endpoints).filter((e) => AGENT_NOT_YET_MOUNTED(e.name))) {
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => COMMANDS_NOT_YET_MOUNTED(e.name))) {
       const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
-      const mounted = `${endpoint.name} is now mounted: delete AGENT_NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0031 PR 5)`;
+      const mounted = `${endpoint.name} is now mounted: delete COMMANDS_NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0031 PR 5b)`;
       expect(res.status, mounted).toBe(404);
       expect(res.body?.error?.code, mounted).toBe("not_found");
     }

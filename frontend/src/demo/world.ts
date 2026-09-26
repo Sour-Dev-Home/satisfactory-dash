@@ -35,10 +35,11 @@ const envelope = (now: number) => ({
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
-// The visitor is the operator, so the Servers screens can be shown (ADR-0030). Nothing they do
-// there is saved (demo/handlers.ts).
+// The visitor is the operator, so the Servers screens can be shown (ADR-0030), and the server's
+// owner, so the Alerts page shows its controls (ADR-0027 PR 9c). Nothing they do is saved
+// beyond the page (demo/handlers.ts, demo/alerts.ts).
 export const servers: ServerListResponse = {
-  servers: [{ id: DEMO_SERVER_ID, displayName: "Demo factory" }],
+  servers: [{ id: DEMO_SERVER_ID, displayName: "Demo factory", role: "owner" }],
   canManageServers: true,
 };
 

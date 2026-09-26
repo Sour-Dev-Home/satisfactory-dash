@@ -4,6 +4,7 @@ import { pinoHttp } from "pino-http";
 import { requestLogLevel } from "./logLevel.js";
 import type { Logger } from "pino";
 import { clientIp } from "./clientIp.js";
+import { timingLogFields } from "./requestTiming.js";
 
 /**
  * ADR-0003: every response carries a fresh request id in X-Request-Id, and every log
@@ -18,6 +19,12 @@ export function assignRequestId(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+/** The route pattern the request matched (mount path plus route path), or undefined for a request no route handled. */
+function matchedRoute(req: Request): string | undefined {
+  const pattern: unknown = req.route?.path;
+  return typeof pattern === "string" ? `${req.baseUrl}${pattern}` : undefined;
+}
+
 /** pino-http reuses the `req.id` set above (it never generates its own when one
  *  exists), so the id in the header, the error body and the logs always match. */
 export function createRequestLogger(logger: Logger): RequestHandler {
@@ -26,7 +33,13 @@ export function createRequestLogger(logger: Logger): RequestHandler {
     // Behind the tunnel the raw socket address (req.remoteAddress) is 127.0.0.1 for
     // everyone, so each line also names the resolved caller. Keeping both makes a
     // spoofed CF-Connecting-IP visible as a mismatch (architect request, go-live).
-    customProps: (req) => ({ clientIp: clientIp(req) }),
+    // ADR-0032: where the request's time went (appMs, upstreamMs, vanillaMs, frmMs, upstreamCalls) and the route pattern it
+    // matched (`/api/servers/:serverId/status`, never the concrete URL), which `npm run latency-report` groups by.
+    customProps: (req, res) => ({
+      clientIp: clientIp(req),
+      ...timingLogFields(res as Response),
+      route: matchedRoute(req as Request),
+    }),
     customLogLevel: (_req, res, err) => requestLogLevel(res.statusCode, err),
     // pino-http wraps this: it receives the standard serialized request (id, method, url, ...).
     serializers: {

@@ -1,4 +1,6 @@
 import https from "node:https";
+import type { UpstreamCallListener } from "./connection.js";
+import { timedCall } from "./upstreamTiming.js";
 import { UpstreamError } from "./errors.js";
 import type { RequestFailureKind } from "./errors.js";
 
@@ -37,6 +39,8 @@ export interface VanillaApiClientOptions {
   allowSelfSignedCert: boolean;
   timeoutMs: number;
   transport?: VanillaApiTransport;
+  /** ADR-0032: told once per request, success or failure. Never affects the request. */
+  onCall?: UpstreamCallListener;
 }
 
 /** `status` is the HTTP status when the server answered with >= 400. Found by a
@@ -166,14 +170,16 @@ export class VanillaApiClient {
   }
 
   async call<T>(functionName: string, data?: unknown): Promise<T> {
-    const { status, body } = await this.transport({
-      host: this.options.host,
-      port: this.options.port,
-      authToken: this.options.authToken,
-      timeoutMs: this.options.timeoutMs,
-      allowSelfSignedCert: this.options.allowSelfSignedCert,
-      requestBody: data === undefined ? { function: functionName } : { function: functionName, data },
-    });
+    const { status, body } = await timedCall("vanilla", this.options.onCall, () =>
+      this.transport({
+        host: this.options.host,
+        port: this.options.port,
+        authToken: this.options.authToken,
+        timeoutMs: this.options.timeoutMs,
+        allowSelfSignedCert: this.options.allowSelfSignedCert,
+        requestBody: data === undefined ? { function: functionName } : { function: functionName, data },
+      }),
+    );
 
     if (isErrorBody(body)) {
       throw new VanillaApiRequestError(body.errorMessage ?? body.errorCode, body.errorCode, body.errorData, {
