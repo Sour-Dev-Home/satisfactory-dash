@@ -109,7 +109,7 @@
       <ul>
         <li>Google: signing in. You share your email address and account id with us through it.</li>
         <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
-        <li>Backblaze: stores our encrypted backups.</li>
+        <li>Amazon Web Services: stores our encrypted backups.</li>
         <li>
           Discord: only if a server's owner or an admin sets up a webhook. It receives that server's
           alert messages (the server's name and what the alert is about: a circuit, or a count of
@@ -142,8 +142,8 @@
         </li>
         <!-- ADR-0025 PR 8b (backups): live before the first run with a bucket (gate B). -->
         <li>
-          Backups: Backblaze stores encrypted backups for up to 37 days, so deleted data can survive
-          in backups for up to 37 days.
+          Backups: Amazon Web Services stores encrypted backups for 30 days, and they're removed
+          within a further 7 days, so deleted data can survive in backups for up to 37 days.
         </li>
         <li>Audit events: 1 year. They're kept for security and hold no emails or names.</li>
         <li>Server logs, including IP addresses on sign-in events: 14 days.</li>

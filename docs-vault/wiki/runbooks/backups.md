@@ -149,8 +149,12 @@ Cutover (ADR-0035):
 2. **Restore rehearsal from B2** into a scratch database (the section below), downloading with the read key: use
    `--profile <read-profile> --endpoint-url <the endpoint>` on `aws s3 ls` and `aws s3 cp`. Row counts must match.
 3. Switch the nightly task to B2 (the `.env` values above are what the task reads).
-4. Leave the old S3 bucket **read-only for 37 days**, then delete the bucket and the `satis-backup` IAM user.
-5. Update the privacy page in the same change as the switch (the Privacy section at the end).
+4. **Cutover PR, the same day as step 3** (a tiny privacy PR): the page ADDS the Backblaze row and item (the owner's
+   approved text: "Backblaze stores encrypted backups for up to 37 days") and KEEPS the AWS ones, because the old S3
+   copies stay for up to 37 days. The page describes only what runs today, so this PR does not merge before step 3.
+5. Leave the old S3 bucket **read-only for 37 days**, then delete the bucket and the `satis-backup` IAM user.
+6. **Second tiny PR, when the S3 bucket is deleted:** remove the AWS backups row and item from the privacy page (and
+   update the privacy outline in both PRs to match).
 
 ## Missed-backup alerting (optional heartbeat)
 
@@ -300,8 +304,9 @@ role either: a dump as `satis_app` fails with `permission denied for sequence pg
 
 ## Privacy
 
-After the move to Backblaze (ADR-0035) the privacy row reads **"Backblaze stores encrypted backups for up to 37
-days"** (the owner approved the wording; the region is unnamed). The AWS wording below is what applied until then.
+The Backblaze wording (ADR-0035) is **"Backblaze stores encrypted backups for up to 37 days"** (the owner approved
+it; the region is unnamed). It goes on the page only in the cutover PR described in the cutover list above, which
+lists both providers until the S3 bucket is deleted. The AWS wording below is what applies until then.
 
 The privacy page must say the truth once this ships: **Amazon Web Services stores encrypted backups for up
 to 37 days, so deleted data can survive in backups for up to 37 days** (outline, sections A.4 and A.5). The
