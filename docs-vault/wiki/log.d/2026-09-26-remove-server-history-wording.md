@@ -1,0 +1,1 @@
+- 2026-09-26 — Frontend (#199): the remove-server confirmation now says the server's recorded history is deleted too, matching the backend since #193 (soft-deleting a server deletes its ADR-0027 samples, rollups and transitions). Text only.

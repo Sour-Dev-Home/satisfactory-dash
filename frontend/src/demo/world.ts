@@ -194,63 +194,159 @@ export function powerHistory(now: number): PowerHistoryResponse {
 
 type Output = [name: string, className: string, current: number, max: number, unit?: "m3/min"];
 
+const rates = (items: Output[]) =>
+  items.map(([itemName, itemClass, current, max, unit]) => ({
+    name: itemName,
+    className: itemClass,
+    unit: unit ?? ("items/min" as const),
+    currentPerMinute: current,
+    maxPerMinute: max,
+    percent: max === 0 ? 0 : round1((current / max) * 100),
+  }));
+
 function building(
   n: number,
   name: string,
   className: string,
   recipe: string | null,
-  outputs: Output[],
+  [inputs, outputs]: [Output[], Output[]],
   place: { x: number; y: number; rot: number; circuit: 0 | 1 },
-  backedUp = false,
+  state: "producing" | "underfed" | "backedUp" = "producing",
+  clockSpeedPercent = 100,
 ): FactoryBuilding {
   return {
     id: `demo-${n}`,
     name,
     className,
     recipe,
-    isProducing: recipe !== null && !backedUp,
+    isProducing: recipe !== null && state !== "backedUp",
     isPaused: false,
-    isBackedUp: backedUp,
-    production: outputs.map(([itemName, itemClass, current, max, unit]) => ({
-      name: itemName,
-      className: itemClass,
-      unit: unit ?? "items/min",
-      currentPerMinute: current,
-      maxPerMinute: max,
-      percent: max === 0 ? 0 : round1((current / max) * 100),
-    })),
+    isBackedUp: state === "backedUp",
+    production: rates(outputs),
+    ingredients: rates(inputs),
+    state,
+    clockSpeedPercent,
     location: { xM: place.x, yM: place.y, zM: 12, rotationDeg: place.rot },
     circuitGroupId: place.circuit,
   };
 }
 
-/** Nine machines on two circuits; one backed up, so the page has something to point at. */
+const ORE: Output = ["Iron Ore", "Desc_OreIron_C", 30, 30];
+
+/** Nine machines on two circuits; one backed up and one underfed, so the page has something to point at. */
 const buildings: FactoryBuilding[] = [
-  building(1, "Smelter", "Build_SmelterMk1_C", "Iron Ingot", [["Iron Ingot", "Desc_IronIngot_C", 30, 30]], { x: -1720, y: -980, rot: 0, circuit: 0 }),
-  building(2, "Smelter", "Build_SmelterMk1_C", "Iron Ingot", [["Iron Ingot", "Desc_IronIngot_C", 30, 30]], { x: -1720, y: -990, rot: 0, circuit: 0 }),
-  building(3, "Constructor", "Build_ConstructorMk1_C", "Iron Plate", [["Iron Plate", "Desc_IronPlate_C", 20, 20]], { x: -1700, y: -980, rot: 90, circuit: 0 }),
-  building(4, "Constructor", "Build_ConstructorMk1_C", "Iron Rod", [["Iron Rod", "Desc_IronRod_C", 15, 15]], { x: -1700, y: -990, rot: 90, circuit: 0 }),
-  building(5, "Constructor", "Build_ConstructorMk1_C", "Screw", [["Screw", "Desc_IronScrew_C", 38, 40]], { x: -1690, y: -990, rot: 90, circuit: 0 }),
-  building(6, "Assembler", "Build_AssemblerMk1_C", "Reinforced Iron Plate", [["Reinforced Iron Plate", "Desc_IronPlateReinforced_C", 5, 5]], { x: -1675, y: -985, rot: 180, circuit: 0 }),
-  building(7, "Assembler", "Build_AssemblerMk1_C", "Rotor", [["Rotor", "Desc_Rotor_C", 0, 4]], { x: -1675, y: -1000, rot: 180, circuit: 0 }, true),
-  building(8, "Manufacturer", "Build_ManufacturerMk1_C", "Modular Frame", [["Modular Frame", "Desc_ModularFrame_C", 2, 2]], { x: -1655, y: -990, rot: 270, circuit: 0 }),
+  building(1, "Smelter", "Build_SmelterMk1_C", "Iron Ingot", [[ORE], [["Iron Ingot", "Desc_IronIngot_C", 30, 30]]], { x: -1720, y: -980, rot: 0, circuit: 0 }),
+  // Overclocked with a power shard: 150% of the recipe's 30 per minute.
+  building(
+    2,
+    "Smelter",
+    "Build_SmelterMk1_C",
+    "Iron Ingot",
+    [[["Iron Ore", "Desc_OreIron_C", 45, 45]], [["Iron Ingot", "Desc_IronIngot_C", 45, 45]]],
+    { x: -1720, y: -990, rot: 0, circuit: 0 },
+    "producing",
+    150,
+  ),
+  building(
+    3,
+    "Constructor",
+    "Build_ConstructorMk1_C",
+    "Iron Plate",
+    [[["Iron Ingot", "Desc_IronIngot_C", 30, 30]], [["Iron Plate", "Desc_IronPlate_C", 20, 20]]],
+    { x: -1700, y: -980, rot: 90, circuit: 0 },
+  ),
+  building(
+    4,
+    "Constructor",
+    "Build_ConstructorMk1_C",
+    "Iron Rod",
+    [[["Iron Ingot", "Desc_IronIngot_C", 15, 15]], [["Iron Rod", "Desc_IronRod_C", 15, 15]]],
+    { x: -1700, y: -990, rot: 90, circuit: 0 },
+  ),
+  // Short of rods: under 95% of its rate (ADR-0027 amendment 2), so underfed.
+  building(
+    5,
+    "Constructor",
+    "Build_ConstructorMk1_C",
+    "Screw",
+    [[["Iron Rod", "Desc_IronRod_C", 7.5, 10]], [["Screw", "Desc_IronScrew_C", 30, 40]]],
+    { x: -1690, y: -990, rot: 90, circuit: 0 },
+    "underfed",
+  ),
+  building(
+    6,
+    "Assembler",
+    "Build_AssemblerMk1_C",
+    "Reinforced Iron Plate",
+    [
+      [
+        ["Iron Plate", "Desc_IronPlate_C", 30, 30],
+        ["Screw", "Desc_IronScrew_C", 60, 60],
+      ],
+      [["Reinforced Iron Plate", "Desc_IronPlateReinforced_C", 5, 5]],
+    ],
+    { x: -1675, y: -985, rot: 180, circuit: 0 },
+  ),
+  building(
+    7,
+    "Assembler",
+    "Build_AssemblerMk1_C",
+    "Rotor",
+    [
+      [
+        ["Iron Rod", "Desc_IronRod_C", 0, 20],
+        ["Screw", "Desc_IronScrew_C", 0, 100],
+      ],
+      [["Rotor", "Desc_Rotor_C", 0, 4]],
+    ],
+    { x: -1675, y: -1000, rot: 180, circuit: 0 },
+    "backedUp",
+  ),
+  building(
+    8,
+    "Manufacturer",
+    "Build_ManufacturerMk1_C",
+    "Modular Frame",
+    [
+      [
+        ["Reinforced Iron Plate", "Desc_IronPlateReinforced_C", 3, 3],
+        ["Iron Rod", "Desc_IronRod_C", 12, 12],
+      ],
+      [["Modular Frame", "Desc_ModularFrame_C", 2, 2]],
+    ],
+    { x: -1655, y: -990, rot: 270, circuit: 0 },
+  ),
   building(
     9,
     "Refinery",
     "Build_OilRefinery_C",
     "Plastic",
     [
-      ["Plastic", "Desc_Plastic_C", 20, 20],
-      ["Heavy Oil Residue", "Desc_HeavyOilResidue_C", 10, 10, "m3/min"],
+      [["Crude Oil", "Desc_LiquidOil_C", 30, 30, "m3/min"]],
+      [
+        ["Plastic", "Desc_Plastic_C", 20, 20],
+        ["Heavy Oil Residue", "Desc_HeavyOilResidue_C", 10, 10, "m3/min"],
+      ],
     ],
     { x: -1540, y: -870, rot: 0, circuit: 1 },
   ),
 ];
 
+/** What the backend counts (ADR-0027): machines per state; ones without a state aren't counted. */
+function stateCounts(list: FactoryBuilding[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const { state } of list) if (state) counts[state] = (counts[state] ?? 0) + 1;
+  return counts;
+}
+
 export function factory(now: number): FactoryResponse {
   return {
     ...envelope(now),
-    data: { buildings, backedUpCount: buildings.filter((b) => b.isBackedUp).length },
+    data: {
+      buildings,
+      backedUpCount: buildings.filter((b) => b.isBackedUp).length,
+      stateCounts: stateCounts(buildings),
+    },
   };
 }
 

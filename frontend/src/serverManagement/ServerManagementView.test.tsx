@@ -123,8 +123,8 @@ describe("ServerManagementView: removing", () => {
     await screen.findByRole("list", { name: "Game servers" });
     fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Remove" }));
     const confirm = screen.getByRole("group", { name: `Remove ${okServer.displayName}?` });
-    expect(confirm).toHaveTextContent("its saved tokens are deleted");
-    expect(confirm).not.toHaveTextContent(/history/i);
+    // Only what the backend really does: removing a server deletes its recorded history too (#193).
+    expect(confirm).toHaveTextContent("its saved tokens and recorded history are deleted");
     expect(removed).toBe("");
     fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
     expect(await screen.findByText(`Removed ${okServer.displayName}.`)).toBeInTheDocument();
