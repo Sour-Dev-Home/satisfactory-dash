@@ -113,4 +113,36 @@ describe("bootSequence", () => {
     await tick();
     expect(failing.failures).toEqual([]); // a deliberate stop is exit 0, never a startup failure
   });
+
+  it("loadServers throwing synchronously is a startup failure and starts nothing", async () => {
+    const h = harness({
+      loadServers: () => {
+        throw new Error("sync boom");
+      },
+    });
+    bootSequence(h.deps);
+    h.releaseDatabase();
+    await tick();
+    await tick();
+    expect(h.failures).toHaveLength(1);
+    expect(h.calls).not.toContain("runtime (pollers)");
+    expect(h.calls).not.toContain("database-worker");
+  });
+
+  it("a runtime whose start throws is a startup failure and no database worker starts", async () => {
+    const h = harness({
+      runtime: {
+        start: () => {
+          throw new Error("start boom");
+        },
+      },
+    });
+    bootSequence(h.deps);
+    h.releaseDatabase();
+    h.releaseLoad();
+    await tick();
+    await tick();
+    expect(h.failures).toHaveLength(1);
+    expect(h.calls).not.toContain("database-worker");
+  });
 });

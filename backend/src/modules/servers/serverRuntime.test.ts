@@ -161,4 +161,27 @@ describe("remove and replace", () => {
     expect(newWorker.start).toHaveBeenCalledTimes(1);
     expect(runtime.list()).toEqual([{ id: "a", displayName: "Renamed" }]);
   });
+
+  it("(#239) a replaced-before-start entry's workers never start; the new entry starts exactly once", async () => {
+    const placeholder = fakeWorker();
+    const real = fakeWorker();
+    const runtime = new ServerRuntime([server("a", [placeholder])]);
+    await runtime.replace(server("a", [real]));
+    expect(real.start).not.toHaveBeenCalled();
+    runtime.start();
+    runtime.start();
+    expect(real.start).toHaveBeenCalledTimes(1);
+    expect(placeholder.start).not.toHaveBeenCalled();
+  });
+
+  it("(#239) an entry added before start() starts once; one removed before start() never starts", async () => {
+    const added = fakeWorker();
+    const removed = fakeWorker();
+    const runtime = new ServerRuntime([server("gone", [removed])]);
+    runtime.add(server("new", [added]));
+    await runtime.remove("gone");
+    runtime.start();
+    expect(added.start).toHaveBeenCalledTimes(1);
+    expect(removed.start).not.toHaveBeenCalled();
+  });
 });
