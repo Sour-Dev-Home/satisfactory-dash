@@ -3,7 +3,7 @@ import { ServerIdSchema } from "./ids";
 import { StatusSchema } from "./status";
 import { PowerCircuitSchema } from "./power";
 import { FactoryBuildingSchema, ProductionRateSchema } from "./factory";
-import { ServerPlayersResponseSchema } from "./players";
+import { PlayerSchema, ServerPlayersResponseSchema } from "./players";
 import { SettingsResponseSchema } from "./settings";
 
 /**
@@ -68,15 +68,45 @@ export const EnrollResponseSchema = z.object({
  * output inventory, which only the agent sees. The RESPONSE schemas are unchanged. Parsing strips unknown keys, so
  * an older or misbehaving agent that still sends `status`, `state`, `hasOutage`, `stateCounts`, `backedUpCount` or `unit`
  * has them dropped, never trusted.
+ *
+ * INPUT BOUNDS (the contract every agent is held to, ADR-0031): strings are at most 200 characters, matching the history
+ * tables' CHECKs (an over-long class name would otherwise fail a whole batch insert); arrays are capped well above a real
+ * factory (buildings 20,000, circuits 1,000, rates per building 16, players 256); numbers are finite (zod refuses NaN and
+ * Infinity) and a reading that cannot be negative is `>= 0` (MW, rates, clock speed; battery percent 0-100). A body that
+ * breaks a bound is REFUSED (400), never clamped by the backend: the agent clamps float noise (such as a battery at
+ * 100.0000001) before it sends. The response schemas have no such bounds.
  */
-export const AgentPowerCircuitSchema = PowerCircuitSchema.omit({ status: true });
-export const AgentPowerSchema = z.object({ circuits: z.array(AgentPowerCircuitSchema) });
-const AgentProductionRateSchema = ProductionRateSchema.omit({ unit: true });
-export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: true }).extend({
-  production: z.array(AgentProductionRateSchema),
-  ingredients: z.array(AgentProductionRateSchema).optional(),
+export const AGENT_INPUT_MAX_STRING = 200;
+export const AGENT_INPUT_MAX_BUILDINGS = 20_000;
+export const AGENT_INPUT_MAX_CIRCUITS = 1_000;
+export const AGENT_INPUT_MAX_RATES_PER_BUILDING = 16;
+export const AGENT_INPUT_MAX_PLAYERS = 256;
+const boundedString = z.string().max(AGENT_INPUT_MAX_STRING);
+
+export const AgentPowerCircuitSchema = PowerCircuitSchema.omit({ status: true }).extend({
+  productionMW: z.number().min(0),
+  consumptionMW: z.number().min(0),
+  capacityMW: z.number().min(0),
+  maxConsumptionMW: z.number().min(0),
+  batteryPercent: z.number().min(0).max(100),
 });
-export const AgentFactorySchema = z.object({ buildings: z.array(AgentFactoryBuildingSchema) });
+export const AgentPowerSchema = z.object({ circuits: z.array(AgentPowerCircuitSchema).max(AGENT_INPUT_MAX_CIRCUITS) });
+const AgentProductionRateSchema = ProductionRateSchema.omit({ unit: true }).extend({ name: boundedString, className: boundedString });
+export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: true }).extend({
+  id: boundedString,
+  name: boundedString,
+  className: boundedString,
+  recipe: boundedString.nullable(),
+  clockSpeedPercent: z.number().min(0).optional(),
+  production: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING),
+  ingredients: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING).optional(),
+});
+export const AgentFactorySchema = z.object({ buildings: z.array(AgentFactoryBuildingSchema).max(AGENT_INPUT_MAX_BUILDINGS) });
+/** Status and players as the live routes return them, with the same string and list bounds. */
+export const AgentStatusSchema = StatusSchema.extend({ sessionName: boundedString });
+export const AgentPlayersSchema = ServerPlayersResponseSchema.extend({
+  players: z.array(PlayerSchema.extend({ name: boundedString })).max(AGENT_INPUT_MAX_PLAYERS),
+});
 
 /**
  * POST /agent/v1/snapshots: what the agent read from the game. `status` and `players` REUSE the schemas the live routes
@@ -93,10 +123,10 @@ export const SnapshotRequestSchema = z
       .strictObject({ autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot") })
       .optional()
       .describe("Game settings read in this snapshot; absent when not read, and always absent when the game is unreachable"),
-    status: StatusSchema.optional(),
+    status: AgentStatusSchema.optional(),
     power: AgentPowerSchema.optional(),
     factory: AgentFactorySchema.optional(),
-    players: ServerPlayersResponseSchema.optional(),
+    players: AgentPlayersSchema.optional(),
   })
   .refine(
     (snapshot) => snapshot.reachable || (snapshot.status === undefined &&

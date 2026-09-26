@@ -74,6 +74,12 @@ intervals (or none arrived) the fuse is unknown and the machine gets no `state`,
 the states derived from the fuses known when it arrived, so a fuse that trips afterwards shows on machines at the next
 factory snapshot (30 s by default), not at once.
 
+**Input bounds** (the contract every agent is held to; the backend REFUSES a body that breaks one with a 400, it never
+clamps): strings at most 200 characters (matching the history tables' CHECKs, since an over-long class name would fail a
+whole batch insert); at most 20,000 buildings, 1,000 circuits, 16 rates per building and 256 players; every number
+finite; MW, rates and clock speed `>= 0`; battery percent 0 to 100. The agent clamps float noise (a battery at
+100.0000001) before it sends. The response schemas have no such bounds.
+
 Still the agent's word, by design (it is the only source of these readings): `isBackedUp`, `isPaused`, `isProducing`,
 `circuitGroupId`, each circuit's `fuseTriggered` and the numbers. A compromised agent can therefore cause an outage,
 `backedUp` or `unpowered` state and the alerts that follow, but only for its own server. Body size is capped (5 MB) and
