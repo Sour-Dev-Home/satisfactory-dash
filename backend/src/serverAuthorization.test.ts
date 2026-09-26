@@ -46,11 +46,14 @@ import type { Method } from "../test-support/scopedEndpoints.js";
  * real membership middleware, with stub services and an in-memory membership table.
  */
 
-// ADR-0027 PR 7a added the alerts endpoints to the contract before their routes; PR 7b mounted them, so nothing is exempt
-// any more and the generated tests cover all of them like every other scoped route.
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0027 PR 7a added the alerts endpoints to the contract before their routes; PR 7b mounted them, so nothing about
+// alerts is exempt any more and the generated tests cover all of them like every other scoped route.
+// ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
+// contract before their routes. PR 5 mounts them and deletes this line. A guard test below makes that impossible to forget.
+const AGENT_NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("agent.") || name.startsWith("commands.");
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !AGENT_NOT_YET_MOUNTED(endpoint.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
-const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":ruleId", RULE_ID);
+const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1");
 
 const OWNER = "user-owner";
 const ADMIN = "user-admin";
@@ -206,6 +209,33 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     for (const endpoint of alerts.filter((e) => hasBody(e.name, e.method))) {
       expect(ALERT_BODIES, endpoint.name).toHaveProperty([endpoint.name]);
     }
+  });
+
+  it("exempts only the four user-facing agent endpoints (ADR-0031 PR 3), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => AGENT_NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`).sort()).toEqual([
+      "DELETE /agent",
+      "GET /agent",
+      "GET /commands/:commandId",
+      "POST /agent/enrollment-codes",
+    ]);
+  });
+
+  // Expires on its own: the moment PR 5 mounts ANY of them, this fails until AGENT_NOT_YET_MOUNTED is deleted, so the
+  // routes can never ship without the generated authorization tests.
+  it("the exempt agent endpoints are still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => AGENT_NOT_YET_MOUNTED(e.name))) {
+      const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete AGENT_NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0031 PR 5)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
+  });
+
+  it("the agent API itself (/agent/v1) is not under /api/servers, so the membership tests do not select it", () => {
+    const selected = scopedEndpoints(endpoints).map((endpoint) => endpoint.route);
+    expect(selected.some((route) => route.startsWith("/agent/v1"))).toBe(false);
   });
 });
 

@@ -121,6 +121,11 @@ const kindByCode = {
   webhook_invalid: "unknown",
   delivery_off: "unknown",
   mute_invalid: "unknown",
+  // ADR-0031 PR 3: the edge agent. The agent screens (PR 4) word these themselves.
+  enrollment_code_invalid: "unknown",
+  agent_outdated: "unknown",
+  command_not_found: "unknown",
+  command_expired: "unknown",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",
