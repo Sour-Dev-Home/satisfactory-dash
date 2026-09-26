@@ -111,11 +111,12 @@
       <ul>
         <li>Your account: until you delete it.</li>
         <li>Sessions: session records are deleted 30 days after the session expires (a session lasts at most 8 hours).</li>
-        <!-- Today game data is read live and not stored; history retention (ADR-0027: 48 h /
-             30 d / 1 y) goes here when it ships. -->
+        <!-- ADR-0027 PR 3: history storage. Live with the first deploy that runs the telemetry migration. -->
         <li>
-          Game data: not stored. It's read from your server when the dashboard asks; the only
-          history is the last 5 minutes of power readings, kept in memory for the chart.
+          Game data (power, production and machine states): recorded so the dashboard can show
+          history. Detailed readings are kept for 48 hours, one-minute averages
+          for 30 days, and hourly averages for 1 year. Machine state changes are kept for 30 days.
+          It describes the game world, not you. Player names are never part of it.
         </li>
         <!-- ADR-0025 PR 8b (backups): live before the first run with a bucket (gate B). -->
         <li>

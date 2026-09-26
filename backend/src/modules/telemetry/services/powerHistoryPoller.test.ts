@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
 import { createLogger } from "../../../platform/logger.js";
+import type { HistoryRecorder } from "./historyRecorder.js";
 import { PowerHistoryPoller } from "./powerHistoryPoller.js";
 import type { PowerHistoryPorts } from "./powerHistoryPoller.js";
 import { InMemoryPowerHistoryStore } from "./powerHistoryStore.js";
@@ -92,13 +93,51 @@ describe("PowerHistoryPoller (fake time)", () => {
     vi.useRealTimers();
   });
 
-  function setup(over: { store?: PowerHistoryStore } = {}) {
+  function setup(over: { store?: PowerHistoryStore; history?: HistoryRecorder } = {}) {
     const { ports, state } = fakePorts();
     const { logger, lines } = captureLogs();
     const store = over.store ?? new InMemoryPowerHistoryStore();
-    const poller = new PowerHistoryPoller(ports, store, { logger });
+    const poller = new PowerHistoryPoller(ports, store, { logger, history: over.history });
     return { ports, state, lines, store, poller };
   }
+
+  describe("durable history (ADR-0027)", () => {
+    const recorder = () => ({ recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() }) satisfies HistoryRecorder;
+
+    it("records each circuit's sample", async () => {
+      const history = recorder();
+      const { poller, state } = setup({ history });
+      state.circuits = [circuit(0, 50), circuit(1, 20)];
+      poller.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(history.recordPower).toHaveBeenCalledTimes(1);
+      expect(history.recordPower.mock.calls[0]?.[0]).toHaveLength(2);
+      await poller.stop();
+    });
+
+    it("records nothing while the game is paused (FRM returns frozen values), and again after the resume", async () => {
+      const history = recorder();
+      const { poller, state } = setup({ history });
+      state.status = status({ isPaused: true });
+      poller.start();
+      await vi.advanceTimersByTimeAsync(2 * INTERVAL_MS);
+      expect(history.recordPower).not.toHaveBeenCalled();
+      state.status = status({ isPaused: false, totalGameDurationSeconds: 1010 });
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
+      expect(history.recordPower).toHaveBeenCalledTimes(1);
+      await poller.stop();
+    });
+
+    it("records nothing when the status cannot be read (an unknown pause state is never guessed)", async () => {
+      const history = recorder();
+      const { poller, state } = setup({ history });
+      state.failWith = new Error("offline");
+      poller.start();
+      await vi.advanceTimersByTimeAsync(2 * INTERVAL_MS);
+      expect(history.recordPower).not.toHaveBeenCalled();
+      await poller.stop();
+    });
+  });
 
   it("does nothing until it is started", async () => {
     const { state, store } = setup();

@@ -30,6 +30,11 @@ import {
   POWER_HISTORY_INTERVAL_SECONDS,
   POWER_HISTORY_WINDOW_SECONDS,
 } from "./services/powerHistoryStore.js";
+import { BufferedHistoryRecorder, noopHistoryRecorder } from "./services/historyRecorder.js";
+import type { HistoryRecorder } from "./services/historyRecorder.js";
+import { FactoryHistoryPoller } from "./services/factoryHistoryPoller.js";
+import { HistoryMaintenanceWorker } from "./services/historyMaintenanceWorker.js";
+import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
@@ -45,6 +50,8 @@ export interface TelemetryOptions {
   now?: () => number;
   /** History window and sampling cadence; ADR-0022's 5 minutes at 5 seconds by default. */
   powerHistory?: { windowSeconds?: number; intervalSeconds?: number };
+  /** ADR-0027: with a database, this server's samples are also written to durable history. Omitted: memory only. */
+  history?: { db: Queryable; serverPublicId: string };
 }
 
 /** The services plus the background workers the composition root must start and stop. */
@@ -63,19 +70,29 @@ export function createTelemetryServices(
   const windowSeconds = options.powerHistory?.windowSeconds ?? POWER_HISTORY_WINDOW_SECONDS;
   const intervalSeconds = options.powerHistory?.intervalSeconds ?? POWER_HISTORY_INTERVAL_SECONDS;
   const store = new InMemoryPowerHistoryStore({ windowSeconds, intervalSeconds });
-  const poller = new PowerHistoryPoller(ports, store, {
-    logger: options.logger ?? createLogger({ level: "silent" }),
-    intervalSeconds,
-    now: options.now,
-  });
+  const logger = options.logger ?? createLogger({ level: "silent" });
+  const workers: BackgroundWorker[] = [];
+  let history: HistoryRecorder = noopHistoryRecorder;
+  if (options.history) {
+    const recorder = new BufferedHistoryRecorder(options.history.db, options.history.serverPublicId, { logger });
+    history = recorder;
+    workers.push(recorder, new FactoryHistoryPoller(ports, { logger, history: recorder, now: options.now }));
+  }
+  const poller = new PowerHistoryPoller(ports, store, { logger, intervalSeconds, now: options.now, history });
+  workers.unshift(poller);
   return {
     status: new ServerStatusService(ports),
     production: new ProductionService(ports, resolveUnit),
     power: new PowerService(ports),
     powerHistory: new PowerHistoryService(store, poller, { intervalSeconds, now: options.now }),
     players: new PlayersService(ports),
-    workers: [poller],
+    workers,
   };
+}
+
+/** ADR-0027: the process-wide worker that rolls history up and purges it; start it once the database is up. */
+export function createHistoryMaintenance(db: Queryable, logger: Logger): BackgroundWorker {
+  return new HistoryMaintenanceWorker(db, { logger });
 }
 
 /** The data routes, scoped to :serverId through the directory. */
