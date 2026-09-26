@@ -51,6 +51,11 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                         "code" "modules/settings"
                     }
                 }
+                alerts = component "alerts" "Alert engine: rule state machines, suppression, grouping; records alert events (delivery comes later)." "TypeScript" {
+                    properties {
+                        "code" "modules/alerts"
+                    }
+                }
                 gameserver = component "gameserver" "Vanilla and FRM clients, raw zod schemas; no Express (future edge agent)." "TypeScript" {
                     properties {
                         "code" "modules/gameserver"
@@ -78,6 +83,10 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.root -> satis.api.servers "Wires" "In-process call" "wiring"
         satis.api.root -> satis.api.telemetry "Wires" "In-process call" "wiring"
         satis.api.root -> satis.api.settings "Wires" "In-process call" "wiring"
+        satis.api.root -> satis.api.alerts "Wires" "In-process call" "wiring"
+        satis.api.alerts -> satis.api.telemetry "Reads the pollers' last readings" "In-process call"
+        satis.api.alerts -> satis.api.servers "Lists the servers" "In-process call"
+        satis.api.alerts -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.root -> satis.api.gameserver "Wires" "In-process call" "wiring"
         satis.api.telemetry -> satis.api.gameserver "Reads through ports" "In-process call"
         satis.api.telemetry -> satis.api.servers "Resolves the requested server" "In-process call"

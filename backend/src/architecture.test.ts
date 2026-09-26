@@ -27,6 +27,9 @@ const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   identity: [],
   telemetry: ["gameserver", "servers"],
   settings: ["gameserver", "servers"],
+  // ADR-0027 PR 5: the alert engine reads the pollers' readings (telemetry) and the server list (servers), through
+  // their index.ts, and owns the `alerts` schema.
+  alerts: ["telemetry", "servers"],
 };
 
 /** The only bare (package) imports gameserver may use. */

@@ -117,6 +117,35 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       }
     });
 
+    it("soft delete removes the server's alert rules, states, events and mute, so a revived id never inherits them (ADR-0027)", async () => {
+      const server = await upsertConfiguredServer(pool, { publicId: "alert-revive", displayName: "Alerts" });
+      const other = await upsertConfiguredServer(pool, { publicId: "alert-keep", displayName: "Keeper" });
+      for (const id of [server.id, other.id]) {
+        const rule = await admin.query(
+          "INSERT INTO alerts.rules (server_id, kind, for_seconds, clear_seconds, repeat_seconds, severity) VALUES ($1, 'power_outage', 0, 60, 3600, 'critical') RETURNING id",
+          [id],
+        );
+        const ruleId = rule.rows[0].id as string;
+        await admin.query("INSERT INTO alerts.alert_state (rule_id, subject, phase) VALUES ($1, 'circuit:1', 'firing')", [ruleId]);
+        await admin.query(
+          "INSERT INTO alerts.alert_events (server_id, rule_id, kind, severity, subject, transition, at) VALUES ($1, $2, 'power_outage', 'critical', 'circuit:1', 'fired', now())",
+          [id, ruleId],
+        );
+        await admin.query("INSERT INTO alerts.server_mutes (server_id, muted_until) VALUES ($1, now() + interval '1 hour')", [id]);
+      }
+      expect(await softDeleteServer(pool, "alert-revive")).toBe(true);
+      const count = async (sql: string, id: string) => Number((await admin.query(sql, [id])).rows[0].n);
+      expect(await count("SELECT count(*) AS n FROM alerts.rules WHERE server_id = $1", server.id)).toBe(0);
+      expect(await count("SELECT count(*) AS n FROM alerts.alert_state st JOIN alerts.rules r ON r.id = st.rule_id WHERE r.server_id = $1", server.id)).toBe(0);
+      expect(await count("SELECT count(*) AS n FROM alerts.alert_events WHERE server_id = $1", server.id)).toBe(0);
+      expect(await count("SELECT count(*) AS n FROM alerts.server_mutes WHERE server_id = $1", server.id)).toBe(0);
+      // Another server keeps everything.
+      expect(await count("SELECT count(*) AS n FROM alerts.rules WHERE server_id = $1", other.id)).toBe(1);
+      expect(await count("SELECT count(*) AS n FROM alerts.alert_state st JOIN alerts.rules r ON r.id = st.rule_id WHERE r.server_id = $1", other.id)).toBe(1);
+      expect(await count("SELECT count(*) AS n FROM alerts.alert_events WHERE server_id = $1", other.id)).toBe(1);
+      expect(await count("SELECT count(*) AS n FROM alerts.server_mutes WHERE server_id = $1", other.id)).toBe(1);
+    });
+
     it("an unknown or soft-deleted server is not found, and re-registering brings it back", async () => {
       expect(await findServerByPublicId(pool, "nope")).toBeUndefined();
       const server = await upsertConfiguredServer(pool, { publicId: "soft-1", displayName: "Soft" });

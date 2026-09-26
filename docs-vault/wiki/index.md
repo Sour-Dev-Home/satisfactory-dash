@@ -19,6 +19,8 @@ added or removed.
   `import-servers` and `verify-secrets` commands, unreadable rows and key rotation.
 - [`runbooks/history.md`](./runbooks/history.md) — production history (ADR-0027 PR 3): the deploy
   order (`db:migrate` first), what is stored and for how long, the recorder, pollers and rollup worker.
+- [`runbooks/alerts.md`](./runbooks/alerts.md) — the alert engine (ADR-0027 PR 5): the deploy order (`db:migrate`
+  first), the rule kinds and presets, suppression, restarts, and the SQL to read the alert log during the shadow run.
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
