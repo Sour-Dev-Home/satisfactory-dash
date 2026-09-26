@@ -92,7 +92,7 @@ and Satisfactory's EULA directly — don't assume either is settled.
 
 ## Stack (current)
 
-npm workspaces monorepo: `frontend`, `backend`, `packages/shared`, `packages/game-adapter`. One install, one
+npm workspaces monorepo: `frontend`, `backend`, `agent`, `packages/shared`, `packages/game-adapter`. One install, one
 lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 
 - `frontend/` — Vite + React + TypeScript SPA. Plain client-side React (hooks,
@@ -103,6 +103,9 @@ lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 - `packages/game-adapter/` — the vanilla-API and FRM clients, raw schemas and adapter for
   one game server (ADR-0031 PR 2). Source-only; imports only shared, zod and node; the
   backend uses it through `modules/gameserver/`, and the edge agent will lift it.
+- `agent/` — the edge agent (ADR-0031 PR 6): a Windows program that runs beside a player's game server, reads it over
+  loopback with `packages/game-adapter`, pushes snapshots out to the backend and runs its commands; bundled by `esbuild`
+  into `dist/agent.cjs`. Secrets only as DPAPI blobs. See `agent/CLAUDE.md` and `docs-vault/wiki/runbooks/agent-app.md`.
 - `packages/shared/` — TypeScript types shared between `frontend` and `backend`
   (the API contract). Source-only, no build step.
 

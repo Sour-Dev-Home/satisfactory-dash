@@ -1,4 +1,5 @@
 import type { AgentStatusResponseSchema, EnrollmentCodeResponseSchema, RevokeAgentResponseSchema } from "@satisfactory-dash/shared";
+import { AGENT_OFFLINE_DEFAULT_SECONDS } from "@satisfactory-dash/shared";
 import type { z } from "zod";
 import { ForbiddenError, RateLimitedError, ServerNotFoundError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import { isDatabaseUnavailable } from "../../../platform/db/errors.js";
@@ -36,6 +37,9 @@ export interface AgentsServiceDeps {
   /** Codes per user per minute; default 10 (each creation drops the server's previous code). */
   limiter?: UserRateLimiter;
   now?: () => number;
+  /** When the backend last received a snapshot from this server's agent (ms), from memory; undefined before the first one.
+   *  The composition root reads it from the server's observations. */
+  lastHeardAt?: (serverId: string) => number | undefined;
 }
 
 /** A database outage is a 503, never a 500 or a "not found". */
@@ -82,8 +86,13 @@ export function createAgentsService(deps: AgentsServiceDeps): AgentsService {
       orUnavailable(async () => {
         const row = await getAgentStatus(db, serverId);
         if (row === undefined) throw new ServerNotFoundError();
+        // `online` only for an enrolled agent, from the backend's OWN memory of the last snapshot (fresher than last_seen_at,
+        // which is written at most every 30 s), and false when none arrived in the window or since a restart.
+        const heardAt = row.enrolled ? deps.lastHeardAt?.(serverId) : undefined;
+        const online = row.enrolled ? heardAt !== undefined && (deps.now ?? Date.now)() - heardAt <= AGENT_OFFLINE_DEFAULT_SECONDS * 1000 : undefined;
         return {
           enrolled: row.enrolled,
+          ...(online !== undefined ? { online } : {}),
           lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
           agentVersion: row.agentVersion,
           connectionKind: row.connectionKind,

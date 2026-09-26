@@ -5,6 +5,7 @@ import { ApiFailure, ForbiddenError, RateLimitedError, ServerNotFoundError, Serv
 import { createLogger } from "../../../platform/logger.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { sha256 } from "../repositories/agentRepository.js";
+import { AGENT_OFFLINE_DEFAULT_SECONDS } from "@satisfactory-dash/shared";
 import { createAgentsService } from "./agentsService.js";
 import { createEnrollmentService } from "./enrollmentService.js";
 
@@ -182,5 +183,56 @@ describe("the user-facing agents service", () => {
     const { pool } = fakePool(() => ({ rows: [{ connection_kind: "agent", enrolled: false, last_seen_at: new Date(), agent_version: "0.1.0" }] }));
     const service = createAgentsService({ db: pool, canManage: () => false });
     expect(await service.getStatus("alpha")).toEqual({ enrolled: false, lastSeenAt: null, agentVersion: null, connectionKind: "agent" });
+  });
+
+  describe("`online` (from the backend's memory of the last snapshot)", () => {
+    const NOW = 10_000_000;
+    const enrolledPool = () => fakePool(() => ({ rows: [{ connection_kind: "agent", enrolled: true, last_seen_at: new Date(NOW - 45_000), agent_version: "0.1.0" }] })).pool;
+    const statusWith = (heardAt: number | undefined, extra: { enrolled?: boolean } = {}) => {
+      const pool = extra.enrolled === false ? fakePool(() => ({ rows: [{ connection_kind: "agent", enrolled: false, last_seen_at: null, agent_version: null }] })).pool : enrolledPool();
+      const asked: string[] = [];
+      const service = createAgentsService({
+        db: pool,
+        canManage: () => false,
+        now: () => NOW,
+        lastHeardAt: (serverId) => {
+          asked.push(serverId);
+          return heardAt;
+        },
+      });
+      return { status: service.getStatus("alpha"), asked };
+    };
+
+    it("is true when a snapshot arrived within the agent_offline window (120 s, the shared constant), and false past it", async () => {
+      expect(AGENT_OFFLINE_DEFAULT_SECONDS).toBe(120);
+      for (const [heardAgoMs, online] of [[0, true], [5_000, true], [119_999, true], [120_000, true], [120_001, false], [3_600_000, false]] as const) {
+        expect((await statusWith(NOW - heardAgoMs).status).online, String(heardAgoMs)).toBe(online);
+      }
+    });
+
+    it("is FALSE, not absent, for an enrolled agent nothing has been heard from since the backend started", async () => {
+      const result = await statusWith(undefined).status;
+      expect(result).toMatchObject({ enrolled: true, online: false });
+      expect(Object.hasOwn(result, "online")).toBe(true);
+    });
+
+    it("is ABSENT when no agent is enrolled, whatever the memory holds, and the memory is not even asked", async () => {
+      const { status, asked } = statusWith(NOW, { enrolled: false });
+      const result = await status;
+      expect(Object.hasOwn(result, "online")).toBe(false);
+      expect(result.enrolled).toBe(false);
+      expect(asked).toEqual([]);
+    });
+
+    it("asks about THIS server, and uses the memory rather than last_seen_at (a 45 s old last_seen_at with nothing in memory is offline)", async () => {
+      const { status, asked } = statusWith(undefined);
+      expect((await status).online).toBe(false);
+      expect(asked).toEqual(["alpha"]);
+    });
+
+    it("a service built without the memory function reports enrolled agents as offline rather than guessing online", async () => {
+      const service = createAgentsService({ db: enrolledPool(), canManage: () => false, now: () => NOW });
+      expect((await service.getStatus("alpha")).online).toBe(false);
+    });
   });
 });

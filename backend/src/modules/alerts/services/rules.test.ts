@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULTS_BY_KIND, PRESET_RULES, RULE_KINDS, parseRuleParams } from "./rules.js";
+import { AGENT_OFFLINE_DEFAULT_SECONDS } from "@satisfactory-dash/shared";
+import { AGENT_PRESET_RULES, DEFAULTS_BY_KIND, PRESET_RULES, RULE_KINDS, parseRuleParams } from "./rules.js";
+
+describe("agent_offline's default window (ADR-0031)", () => {
+  it("is the shared constant the agent status's `online` also uses, so the alert and the badge agree by default", () => {
+    expect(AGENT_OFFLINE_DEFAULT_SECONDS).toBe(120);
+    expect(parseRuleParams("agent_offline", {})).toEqual({ kind: "agent_offline", params: { offlineSeconds: AGENT_OFFLINE_DEFAULT_SECONDS } });
+    expect(AGENT_PRESET_RULES[0]).toMatchObject({ kind: "agent_offline", params: { offlineSeconds: AGENT_OFFLINE_DEFAULT_SECONDS } });
+  });
+});
 
 describe("production_below_target params (ADR-0027 amendment 3)", () => {
   const valid = { item: "Desc_IronPlate_C", targetPerMinute: 120 };

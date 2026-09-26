@@ -102,9 +102,33 @@ export const ServerConnectionSchema = z.object({
 
 export const ServerConnectionResponseSchema = z.object({ server: ServerConnectionSchema });
 
+/**
+ * A server reached through an edge agent (ADR-0031), as the operator's managed list shows it. It has NO connection fields:
+ * enrolling an agent deletes the stored connection (host, ports, encrypted tokens), so there is nothing to edit but its name.
+ */
+export const AgentServerSchema = z.object({
+  id: ServerIdSchema,
+  displayName: z.string(),
+  kind: z.literal("agent").describe("How the backend reaches this server: through the player's edge agent, not directly."),
+});
+
 /** GET /api/servers/managed: every stored connection, including the ones this backend is not serving
  *  (unreadable or refused), which the members' list (GET /api/servers) cannot show. */
-export const ManagedServerListResponseSchema = z.object({ servers: z.array(ServerConnectionSchema) });
+export const ManagedServerListResponseSchema = z.object({
+  servers: z.array(ServerConnectionSchema),
+  agentServers: z
+    .array(AgentServerSchema)
+    .optional()
+    .describe(
+      "The servers reached through an edge agent, which have no stored connection and so are not in `servers`. Listed here so the " +
+        "operator can still see and rename them. Optional so an older backend's answer still parses (ADR-0007).",
+    ),
+});
+
+/** PATCH /api/servers/:serverId/name: renames a server. The only edit an agent server has (its `servers` twin, PATCH
+ *  /api/servers/:serverId, needs a stored connection). */
+export const RenameServerRequestSchema = z.strictObject({ displayName: DisplayNameSchema });
+export const RenameServerResponseSchema = z.object({ server: AgentServerSchema });
 export const DeleteServerResponseSchema = z.object({ deleted: z.literal(true) });
 
 export type CreateServerRequest = z.infer<typeof CreateServerRequestSchema>;
@@ -115,3 +139,6 @@ export type ServerConnection = z.infer<typeof ServerConnectionSchema>;
 export type ServerConnectionResponse = z.infer<typeof ServerConnectionResponseSchema>;
 export type ManagedServerListResponse = z.infer<typeof ManagedServerListResponseSchema>;
 export type DeleteServerResponse = z.infer<typeof DeleteServerResponseSchema>;
+export type AgentServer = z.infer<typeof AgentServerSchema>;
+export type RenameServerRequest = z.infer<typeof RenameServerRequestSchema>;
+export type RenameServerResponse = z.infer<typeof RenameServerResponseSchema>;

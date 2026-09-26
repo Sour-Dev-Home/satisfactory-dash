@@ -142,14 +142,19 @@ describe("server.ts ordering (issue #153)", () => {
     expect(source).not.toMatch(/workers\.push\(\s*\.\.\.identity\.workers\s*\)/);
   });
 
-  it("starts them only after the database check succeeded and the servers were registered", () => {
-    const startAt = source.indexOf("for (const worker of databaseWorkers)");
-    const registeredAt = source.indexOf('logger.info({ registered }, "configured servers registered")');
-    const databaseStartAt = source.indexOf("?.start()");
-    expect(startAt).toBeGreaterThan(-1);
+  it("starts them only after the database check succeeded and the servers were registered (the sequencing is platform/bootSequence.ts, whose own tests pin the order; server.ts hands it the workers)", () => {
+    const sequence = readFileSync(new URL("../../platform/bootSequence.ts", import.meta.url), "utf8");
+    // Whitespace-insensitive: a Windows checkout has CRLF line endings, which a literal "\n" would not match.
+    const databaseStartAt = sequence.search(/deps\.database\s*\.start\(\)/);
+    const loadAt = sequence.indexOf(".then(() => deps.loadServers())");
+    const workersAt = sequence.indexOf("for (const worker of deps.databaseWorkers)");
     expect(databaseStartAt).toBeGreaterThan(-1);
-    expect(registeredAt).toBeGreaterThan(databaseStartAt);
-    expect(startAt).toBeGreaterThan(registeredAt);
+    expect(loadAt).toBeGreaterThan(databaseStartAt);
+    expect(workersAt).toBeGreaterThan(loadAt);
+    expect(source).toMatch(/bootSequence\(\{[\s\S]*databaseWorkers,/); // server.ts passes the database workers to it
+    expect(source).toContain("no servers are stored in the database yet"); // the load step ends with servers loaded, or none stored (#196: nothing is registered from the environment)
+    expect(source).not.toContain("registerConfiguredServers");
+    expect(source).not.toContain("for (const worker of databaseWorkers)"); // and no longer starts them itself
   });
 
   it("stops them on shutdown with the other workers", () => {

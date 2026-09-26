@@ -228,7 +228,7 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
       const server = await newServer("agent");
       expect(await agents.getStatus(server.publicId)).toEqual({ enrolled: false, lastSeenAt: null, agentVersion: null, connectionKind: "agent" });
       const { agentSecret } = await enrollment.enroll((await agents.createEnrollmentCode(server.publicId, OWNER)).code, "0.1.0");
-      expect(await agents.getStatus(server.publicId)).toEqual({ enrolled: true, lastSeenAt: null, agentVersion: "0.1.0", connectionKind: "agent" });
+      expect(await agents.getStatus(server.publicId)).toEqual({ enrolled: true, online: false, lastSeenAt: null, agentVersion: "0.1.0", connectionKind: "agent" }); // online: nothing heard in memory (this service has no lastHeardAt)
       await admin.query("UPDATE agents.agent_credentials SET last_seen_at = now() WHERE server_id = $1", [server.id]);
       expect((await agents.getStatus(server.publicId)).lastSeenAt).not.toBeNull();
       expect(await agents.revoke(server.publicId, OWNER)).toEqual({ revoked: true });

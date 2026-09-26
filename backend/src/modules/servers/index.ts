@@ -10,7 +10,6 @@ export type { ServerRegistryEntry } from "./serverRegistry.js";
 export { resolveServer } from "./serverScope.js";
 export { createAuthorizeServer, createDbServerAccess } from "./serverAccess.js";
 export type { AuthorizeServerOptions, ServerAccess } from "./serverAccess.js";
-export { registerConfiguredServers } from "./registerConfiguredServers.js";
 export { createServersRouter } from "./serversRouter.js";
 export { createServerManagementService } from "./serverManagement.js";
 export type { ConnectionCandidate, ManagementDb, ServerManagementDeps, ServerManagementService } from "./serverManagement.js";
@@ -27,7 +26,7 @@ export {
   resolveAllowedAddress,
 } from "./addressGuard.js";
 export type { AddressLookup, AddressPolicy, AddressVerdict } from "./addressGuard.js";
-export { ServerRuntime } from "./serverRuntime.js";
+export { AgentRuntimeReplacedError, ServerRuntime } from "./serverRuntime.js";
 export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serverRuntime.js";
 // ADR-0031 PR 5a: the agents module switches a server to 'agent' in its enrolment transaction and looks servers up.
 export { findServerByPublicId, listAgentServers, switchToAgentConnection } from "./repositories/serverRepository.js";

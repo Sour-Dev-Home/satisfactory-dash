@@ -68,8 +68,8 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                 }
             }
 
-            gameAdapter = container "game-adapter package" "packages/game-adapter (ADR-0031 PR 2): the vanilla HTTPS API and FRM clients, raw zod schemas and the adapter for ONE game server. Imports only shared, zod and node; the backend uses it through gameserver, and the edge agent will lift it." "TypeScript"
-            agent = container "Edge agent" "Runs beside each game server; pushes snapshots outbound and executes commands (ADR-0014/0017)." "Node.js, TypeScript" "planned"
+            gameAdapter = container "game-adapter package" "packages/game-adapter (ADR-0031 PR 2): the vanilla HTTPS API and FRM clients, raw zod schemas and the adapter for ONE game server. Imports only shared, zod and node; the backend uses it through gameserver, and the edge agent uses it directly." "TypeScript"
+            agent = container "Edge agent" "agent/ (ADR-0031 PR 6): runs beside a player's game server on Windows; reads it over loopback with the game-adapter package, pushes snapshots outbound and executes commands. Secrets stored with DPAPI; imports only shared, game-adapter, zod and node." "Node.js, TypeScript"
             database = container "Database" "Users, sessions, servers, memberships, audit events (ADR-0025); latest snapshots and commands later (ADR-0020)." "PostgreSQL 18" "Database"
             provisioning = container "Provisioning service" "Creates and manages paid game servers as async jobs (ADR-0014)." "Node.js, TypeScript" "planned"
         }
@@ -109,14 +109,15 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.gameserver -> satis.api.platform "Uses error types" "In-process call" "platform-use"
         satis.api.root -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.gameserver -> satis.gameAdapter "Uses" "In-process call"
+        satis.agent -> satis.gameAdapter "Uses" "In-process call"
         satis.gameAdapter -> game "Calls the game and FRM APIs" "HTTPS :7777, HTTP :8080 (loopback)"
 
         # Planned relationships (ADR-0014, ADR-0017, ADR-0020)
         player -> satis.spa "Uses" "HTTPS" "planned"
         satis.api -> google "Signs users in" "OpenID Connect" "planned"
         satis.api -> satis.database "Reads and writes" "SQL over TCP (loopback)"
-        satis.agent -> satis.api "Pushes snapshots; polls commands" "HTTPS, outbound only" "planned"
-        satis.agent -> game "Reads state and data; applies commands" "HTTPS and HTTP (loopback)" "planned"
+        satis.agent -> satis.api "Pushes snapshots; polls commands" "HTTPS, outbound only"
+        satis.agent -> game "Reads state and data; applies commands" "HTTPS and HTTP (loopback)"
         satis.provisioning -> satis.database "Records provisioning jobs" "SQL" "planned"
         satis.provisioning -> game "Creates and starts managed servers" "AWS APIs" "planned"
 

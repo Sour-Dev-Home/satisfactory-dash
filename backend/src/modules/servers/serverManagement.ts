@@ -1,4 +1,5 @@
 import type {
+  AgentServer,
   CreateServerRequest,
   ServerConnection as ServerConnectionView,
   TestConnectionRequest,
@@ -32,7 +33,7 @@ import {
   updateConnection,
 } from "./repositories/connectionRepository.js";
 import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
-import { findServerByPublicId, renameServer, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, listAgentServers, renameServer, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
 
 /**
@@ -70,6 +71,9 @@ export interface ServerManagementDeps<TServices> {
   build: (connection: ServerConnection) => RuntimeServer<TServices>;
   /** Runs the two reads against the candidate (composition root: the gameserver module). */
   testConnection: (candidate: ConnectionCandidate) => Promise<TestConnectionResponse>;
+  /** Issue #195: ports that belong to this process's own machine services (the backend's listen port, the database's port). A
+   *  loopback game server may not use them: a test would otherwise probe the backend or Postgres. The composition root supplies them. */
+  forbiddenPorts?: readonly number[];
   /** The seeded operator account's id; undefined until the database is up. */
   getOperatorUserId: () => string | undefined;
   /** Names of the environment variables that still configure servers (composition root: the gameserver module).
@@ -91,6 +95,10 @@ export interface ServerManagementService {
   get(publicId: string): Promise<ServerConnectionView>;
   /** Every stored connection, including unreadable and refused ones (the operator's management list). */
   list(): Promise<ServerConnectionView[]>;
+  /** ADR-0031: the servers reached through an edge agent (no stored connection), for the managed list. */
+  listAgentServers(): Promise<AgentServer[]>;
+  /** ADR-0031: renames an agent server, the one edit it has. Not found for a `local` server or an unknown id. */
+  renameAgentServer(actorUserId: string, publicId: string, displayName: string): Promise<AgentServer>;
   update(actorUserId: string, publicId: string, patch: UpdateServerRequest): Promise<ServerConnectionView>;
   remove(actorUserId: string, publicId: string): Promise<void>;
   testCandidate(input: TestConnectionRequest): Promise<TestConnectionResponse>;
@@ -107,6 +115,13 @@ function refusedAddress(): ApiFailure {
   return new ApiFailure(
     "address_not_allowed",
     "That host is not a private address, or it could not be resolved.",
+  );
+}
+
+function refusedPort(): ApiFailure {
+  return new ApiFailure(
+    "address_not_allowed",
+    "That port is used by this backend or its database, so it cannot be a game server's.",
   );
 }
 
@@ -180,6 +195,17 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
     }
   };
 
+  /**
+   * Issue #195: a "game server" on THIS machine must not be this backend or its database. A test connection sends the entered
+   * API token to `pinnedIp:port`, so a loopback address with the backend's own port (or Postgres's) would make the backend probe
+   * and talk to its own internals, and the answer (a test result) would map them. Only loopback matters: a LAN address is a
+   * different machine, and LAN servers are refused anyway (amendment 1).
+   */
+  const assertPortsAllowed = (pinnedIp: string, ports: readonly number[]): void => {
+    const forbidden = deps.forbiddenPorts ?? [];
+    if (forbidden.length > 0 && isLoopbackAddress(pinnedIp) && ports.some((port) => forbidden.includes(port))) throw refusedPort();
+  };
+
   const requireMeta = async (publicId: string): Promise<ConnectionMeta> => {
     const meta = await getConnectionMetaByPublicId(deps.db, publicId);
     if (meta === undefined) throw new ServerNotFoundError();
@@ -217,6 +243,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     async testCandidate(input) {
       const pinnedIp = await pin(input.host);
+      assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
       return deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
     },
 
@@ -230,6 +257,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       if (storedVerdict === "lan") throw lanRequiresPinning();
       if (storedVerdict === "refused") throw refusedAddress();
       await pin(meta.host);
+      assertPortsAllowed(meta.pinnedIp, [meta.apiPort, meta.frmPort]); // a row stored before this rule (or edited in the database) is not tested either
       const tokens = await openTokens(ring, meta);
       if (tokens === undefined) throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
       return deps.testConnection({ pinnedIp: meta.pinnedIp, apiPort: meta.apiPort, frmPort: meta.frmPort, ...tokens });
@@ -237,6 +265,22 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     async get(publicId) {
       return viewFor(await requireMeta(publicId));
+    },
+
+    async listAgentServers() {
+      return (await listAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
+    },
+
+    /** Renames a server reached through an edge agent. Only for those: a `local` server has a connection and is renamed
+     *  through `update`; for anything else (or an unknown id) the answer is the same "no such server". */
+    renameAgentServer(actorUserId, publicId, displayName) {
+      return mutex.run(async () => {
+        const server = await findServerByPublicId(deps.db, publicId);
+        if (server === undefined || server.connectionKind !== "agent") throw new ServerNotFoundError();
+        if (!(await renameServer(deps.db, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
+        deps.runtime.rename(publicId, displayName);
+        return { id: publicId, displayName, kind: "agent" as const };
+      });
     },
 
     async list() {
@@ -256,6 +300,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const envConfigured = (deps.configuredServerEnvNames?.() ?? []).length > 0;
         if (envConfigured && (await countConnections(deps.db)) === 0) throw importRequired();
         const pinnedIp = await pin(input.host);
+        assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
         const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
         if (!test.ok) throw testFailure(test);
 
@@ -326,6 +371,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const ring = ringOrUnavailable();
         const host = patch.host ?? meta.host;
         const pinnedIp = await pin(host);
+        assertPortsAllowed(pinnedIp, [patch.apiPort ?? meta.apiPort, patch.frmPort ?? meta.frmPort]);
         const opened = await openTokens(ring, meta);
         let apiToken: string;
         let frmToken: string | undefined;

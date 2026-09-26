@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ServerRuntime } from "./serverRuntime.js";
+import { AgentRuntimeReplacedError, ServerRuntime } from "./serverRuntime.js";
 import type { RuntimeServer, RuntimeWorker } from "./serverRuntime.js";
 
 function fakeWorker(overrides: { start?: () => void; stop?: () => Promise<void> } = {}) {
@@ -86,6 +86,51 @@ describe("starting and stopping", () => {
   });
 });
 
+describe("an agent server's runtime is never replaced by a polled one (ADR-0031 invariant)", () => {
+  const agent = (id: string, workers: RuntimeWorker[] = [fakeWorker()]): RuntimeServer<{ tag: string }> => ({ ...server(id, workers), kind: "agent" });
+
+  it("refuses to replace an agent entry with a polled one, and leaves the running entry, its workers and its services untouched", async () => {
+    const running = fakeWorker();
+    const runtime = new ServerRuntime([agent("a", [running])]);
+    runtime.start();
+    const polled = fakeWorker();
+    await expect(runtime.replace(server("a", [polled]))).rejects.toBeInstanceOf(AgentRuntimeReplacedError);
+    expect(runtime.get("a")).toEqual({ tag: "a" });
+    expect(running.stop).not.toHaveBeenCalled();
+    expect(polled.start).not.toHaveBeenCalled();
+    expect(await runtime.replace(agent("a"))).toBeUndefined(); // still there to be replaced by another agent entry
+  });
+
+  it("the refusal names the server and holds before start() too", async () => {
+    const runtime = new ServerRuntime([agent("a")]);
+    const error = (await runtime.replace(server("a")).catch((err: unknown) => err)) as AgentRuntimeReplacedError;
+    expect(error).toBeInstanceOf(AgentRuntimeReplacedError);
+    expect(error.serverId).toBe("a");
+    expect(error.message).toContain('"a"');
+  });
+
+  it("enrolling is still allowed: a polled entry may be replaced by an agent one, and an agent by an agent", async () => {
+    const runtime = new ServerRuntime([server("a")]);
+    runtime.start();
+    await runtime.replace(agent("a"));
+    await runtime.replace(agent("a"));
+    expect(runtime.has("a")).toBe(true);
+  });
+
+  it("a rename keeps the agent kind, so the invariant still guards a renamed agent server", async () => {
+    const runtime = new ServerRuntime([agent("a")]);
+    runtime.rename("a", "Renamed");
+    await expect(runtime.replace(server("a"))).rejects.toBeInstanceOf(AgentRuntimeReplacedError);
+  });
+
+  it("remove then add is the explicit way to change a server's kind (an un-enrol), and is not blocked", async () => {
+    const runtime = new ServerRuntime([agent("a")]);
+    await runtime.remove("a");
+    runtime.add(server("a"));
+    expect(runtime.has("a")).toBe(true);
+  });
+});
+
 describe("remove and replace", () => {
   it("remove stops resolving at once, then stops the workers", async () => {
     const worker = fakeWorker();
@@ -160,5 +205,28 @@ describe("remove and replace", () => {
     expect(oldWorker.stop).toHaveBeenCalledTimes(1);
     expect(newWorker.start).toHaveBeenCalledTimes(1);
     expect(runtime.list()).toEqual([{ id: "a", displayName: "Renamed" }]);
+  });
+
+  it("(#239) a replaced-before-start entry's workers never start; the new entry starts exactly once", async () => {
+    const placeholder = fakeWorker();
+    const real = fakeWorker();
+    const runtime = new ServerRuntime([server("a", [placeholder])]);
+    await runtime.replace(server("a", [real]));
+    expect(real.start).not.toHaveBeenCalled();
+    runtime.start();
+    runtime.start();
+    expect(real.start).toHaveBeenCalledTimes(1);
+    expect(placeholder.start).not.toHaveBeenCalled();
+  });
+
+  it("(#239) an entry added before start() starts once; one removed before start() never starts", async () => {
+    const added = fakeWorker();
+    const removed = fakeWorker();
+    const runtime = new ServerRuntime([server("gone", [removed])]);
+    runtime.add(server("new", [added]));
+    await runtime.remove("gone");
+    runtime.start();
+    expect(added.start).toHaveBeenCalledTimes(1);
+    expect(removed.start).not.toHaveBeenCalled();
   });
 });

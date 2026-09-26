@@ -5,6 +5,7 @@ import {
   AGENT_RESULT_CODES,
   AgentCommandSchema,
   AgentCommandsQuerySchema,
+  AGENT_OFFLINE_DEFAULT_SECONDS,
   AgentStatusResponseSchema,
   ApiErrorResponseSchema,
   CadenceSchema,
@@ -285,6 +286,16 @@ describe("agent contract: what the user sees", () => {
     expect(fixtures.agentStatusNotEnrolled).toMatchObject({ enrolled: false, lastSeenAt: null, agentVersion: null, connectionKind: "local" });
     expect(fixtures.agentStatusEnrolledSilent.lastSeenAt).toBeNull();
     expect(KNOWN_CONNECTION_KINDS).toEqual(["local", "agent"]);
+  });
+
+  it("`online` is optional (an older backend omits it), a boolean when present, true/false for an enrolled agent, and absent when none is enrolled", () => {
+    const { online: _online, ...withoutOnline } = fixtures.agentStatusEnrolled;
+    expect(AgentStatusResponseSchema.safeParse(withoutOnline).success).toBe(true);
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusEnrolled).online).toBe(true);
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusEnrolledSilent).online).toBe(false); // enrolled but not heard: false, not absent
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusNotEnrolled)).not.toHaveProperty("online");
+    for (const bad of ["yes", 1, null]) expect(AgentStatusResponseSchema.safeParse({ ...fixtures.agentStatusEnrolled, online: bad }).success, String(bad)).toBe(false);
+    expect(AGENT_OFFLINE_DEFAULT_SECONDS).toBe(120);
   });
 
   it("kinds, types and statuses are plain strings, so a newer backend never breaks an older frontend", () => {

@@ -4,10 +4,12 @@ import { createLogger } from "./platform/logger.js";
 import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
+import { bootSequence } from "./platform/bootSequence.js";
+import { environmentServerEntries, warnEnvServersNotServed } from "./platform/envServers.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
-import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
+import { Database, databasePortOf, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
   configuredServerEnvNamesInUse,
   createGameServerConnection,
@@ -32,7 +34,6 @@ import {
   addressVerdict,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
-  registerConfiguredServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
 import {
@@ -150,10 +151,12 @@ function buildAgentServer(id: string, displayName: string) {
     resolveUnit, // ADR-0031: the agent sends rates without a unit; ingest resolves it from the same catalog as a polled server
     history: { db: database.pool, serverPublicId: id },
   });
-  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers };
+  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers, kind: "agent" as const };
 }
 
-const entries = orExit(() => {
+// Issue #196 (architect, option A): with a database the servers come ONLY from it, so nothing is built from the environment
+// (no placeholder runtime whose pollers could fire without credentials); without one the environment's servers are the servers.
+const entries = environmentServerEntries(database !== undefined, () => orExit(() => {
   // ADR-0025 PR 1: SATISFACTORY_SERVERS_FILE names any number of servers, each with its own
   // connection config. Without it, single-server mode: a registry of one that uses the
   // SATISFACTORY_* env (unchanged, so the running deploy needs no new config).
@@ -173,7 +176,7 @@ const entries = orExit(() => {
     );
   }
   return configured.map(({ id, displayName, config }) => buildServer(id, displayName, config));
-});
+}));
 // ADR-0030: the servers this process serves. Built from the config now; with a database, the servers
 // stored in it replace these once it is up (see loadDatabaseServers). The runtime starts and stops each
 // server's pollers (ADR-0022), also for servers added or removed while the backend runs.
@@ -248,6 +251,7 @@ function buildFromConnection(c: ServerConnection) {
   );
 }
 
+const databasePort = databasePortOf(databaseConfig?.url);
 const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
@@ -258,6 +262,8 @@ const serverManagement = database
         testGameServerConnection(createSatisfactoryServerConfig({ host: pinnedIp, apiPort, apiToken, frmPort, frmToken })),
       getOperatorUserId: () => operatorUserId,
       configuredServerEnvNames: () => configuredServerEnvNamesInUse(),
+      // Issue #195: a loopback "game server" may not be this backend or its database.
+      forbiddenPorts: databasePort === undefined ? [port] : [port, databasePort],
     })
   : undefined;
 const managementRouters = serverManagement
@@ -325,7 +331,12 @@ export const app = createApp({
       : []),
     // ADR-0031 PR 5a: the owner's side of the edge agent (enrolment code, agent status, revoke), after the servers router.
     ...(database && agentCommands
-      ? createAgentUserRouters(createAgentsService({ db: database.pool, canManage: (userId) => serverManagement?.canManage(userId) ?? false }), agentCommands)
+      ? createAgentUserRouters(createAgentsService({
+            db: database.pool,
+            canManage: (userId) => serverManagement?.canManage(userId) ?? false,
+            // In memory, from the last snapshot the ingest recorded: fresher than last_seen_at (written at most every 30 s).
+            lastHeardAt: (serverId) => directory.get(serverId)?.telemetry.observations?.snapshot().agent?.lastHeardAt,
+          }), agentCommands)
       : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
   ],
@@ -338,16 +349,27 @@ export const app = createApp({
 if (process.env.NODE_ENV !== "test") {
   const httpServer = app.listen(port, host, () => {
     logger.info({ host, port }, `backend listening on ${host}:${port}`);
-    for (const worker of workers) {
-      worker.start();
-    }
-    directory.start();
+    // Issue #239: with a database the servers' pollers start only AFTER the stored servers are loaded (platform/bootSequence.ts),
+    // so none of them fires against the placeholder runtime built from the environment (no credentials, one history gap).
     // ADR-0025 decision 6: a transient outage is retried with backoff (up to 5 minutes), then
     // (and for any setup error, e.g. a schema behind this build) the process exits 1, so the
     // Scheduled Task's restart-on-failure takes over and a broken setup still fails loudly.
-    database
-      ?.start()
-      .then(async () => {
+    bootSequence({
+      processWorkers: workers,
+      runtime: directory,
+      database,
+      databaseWorkers,
+      isShuttingDown: () => shuttingDown,
+      onStartupFailure: (err) => {
+        if (err instanceof ConfigError) {
+          logger.fatal(err.message);
+        } else {
+          logger.fatal({ code: errorCode(err) }, "database startup failed");
+        }
+        process.exit(1);
+      },
+      loadServers: async () => {
+        if (database === undefined) return; // bootSequence only calls this with a database
         const ownerId = await identity.ensureOperatorUserId?.();
         if (ownerId === undefined) {
           throw new Error("identity has no operator account in database mode");
@@ -364,10 +386,6 @@ if (process.env.NODE_ENV !== "test") {
           buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
         });
         if (stored.usingDatabase) {
-          const ignored = configuredServerEnvNamesInUse();
-          if (ignored.length > 0) {
-            logger.warn({ ignored }, "servers are stored in the database, so these server variables are ignored; remove them");
-          }
           logger.info({ servers: stored.loaded }, "servers loaded from the database");
           if (stored.unreadable.length > 0) {
             connectionsReadable = false;
@@ -385,31 +403,14 @@ if (process.env.NODE_ENV !== "test") {
           }
           serversRegistered = true;
         } else {
-          const { registered } = await registerConfiguredServers(
-            database.pool,
-            entries.map(({ id, displayName }) => ({ id, displayName })),
-            ownerId,
-          );
+          // Nothing is stored: the backend serves no server (create and import-servers add them). Servers configured in the
+          // environment are NOT served in database mode (#196); say so once, by variable name only.
+          warnEnvServersNotServed(logger, configuredServerEnvNamesInUse());
           serversRegistered = true;
-          logger.info({ registered }, "configured servers registered");
+          logger.info({ servers: 0 }, "no servers are stored in the database yet");
         }
-        if (!shuttingDown) {
-          for (const worker of databaseWorkers) {
-            worker.start();
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        if (shuttingDown) {
-          return; // a deliberate stop is exit 0, never a startup failure
-        }
-        if (err instanceof ConfigError) {
-          logger.fatal(err.message);
-        } else {
-          logger.fatal({ code: errorCode(err) }, "database startup failed");
-        }
-        process.exit(1);
-      });
+      },
+    });
   });
 
   // Graceful shutdown (Ctrl+C, or a container's SIGTERM): stop the workers, let in-flight

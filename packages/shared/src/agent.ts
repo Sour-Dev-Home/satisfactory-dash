@@ -172,9 +172,26 @@ export const CommandResultResponseSchema = z.object({ accepted: z.literal(true) 
 /** POST /agent/enrollment-codes (owner/admin), 201: valid for 10 minutes, single use. */
 export const EnrollmentCodeResponseSchema = z.object({ code: EnrollmentCodeSchema, expiresAt: IsoTimeSchema });
 
+/**
+ * How long an enrolled agent may stay silent before it counts as OFFLINE: the default of the `agent_offline` alert rule and
+ * the window of `online` in `AgentStatusResponse`, so the two never disagree about what "offline" means.
+ */
+export const AGENT_OFFLINE_DEFAULT_SECONDS = 120;
+
 /** GET /agent */
 export const AgentStatusResponseSchema = z.object({
   enrolled: z.boolean(),
+  online: z
+    .boolean()
+    .optional()
+    .describe(
+      "true when the backend received a snapshot from this server's agent within the last 2 minutes (AGENT_OFFLINE_DEFAULT_SECONDS, the " +
+        "agent_offline rule's default), from the backend's own memory of the last snapshot, so it is fresher than lastSeenAt (which moves " +
+        "at most every 30 s). false when none arrived in that window, including after a backend restart before the agent's next snapshot. " +
+        "It uses the DEFAULT window, not a per-server override of the agent_offline rule, so if an owner tunes that rule the badge and the " +
+        "alert may differ at the margins. Absent when no agent is enrolled. Optional so a newly deployed frontend still parses an older " +
+        "backend's answer (ADR-0007).",
+    ),
   lastSeenAt: IsoTimeSchema.nullable().describe("The agent's last request, or null when none is enrolled or it never reported"),
   agentVersion: z.string().nullable().describe("The version the agent last reported, or null"),
   connectionKind: z.string().describe("How the backend reaches this server. Known: local, agent"),
@@ -209,6 +226,7 @@ export const CommandIdSchema = z.string().min(1).max(100).describe("A command's 
 export type Cadence = z.infer<typeof CadenceSchema>;
 export type EnrollRequest = z.infer<typeof EnrollRequestSchema>;
 export type EnrollResponse = z.infer<typeof EnrollResponseSchema>;
+export type EnrollmentCodeResponse = z.infer<typeof EnrollmentCodeResponseSchema>;
 export type SnapshotRequest = z.input<typeof SnapshotRequestSchema>;
 export type AgentPower = z.infer<typeof AgentPowerSchema>;
 export type AgentFactory = z.infer<typeof AgentFactorySchema>;

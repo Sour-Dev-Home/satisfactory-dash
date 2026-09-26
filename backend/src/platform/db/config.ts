@@ -20,6 +20,32 @@ export interface DatabaseConfig {
   idleTimeoutMs?: number;
 }
 
+/** PostgreSQL's default port, used when DATABASE_URL names none. */
+export const DEFAULT_DATABASE_PORT = 5432;
+
+/**
+ * The TCP port DATABASE_URL points at (5432 when it names none), or undefined when the URL cannot be read. Used to keep a
+ * game-server connection from targeting the database (issue #195). It never throws and never puts any part of the URL (which
+ * holds the password) in an error or a log.
+ */
+export function databasePortOf(url: string | undefined, env: NodeJS.ProcessEnv = process.env): number | undefined {
+  if (url === undefined) return undefined;
+  const valid = (text: string | undefined): number | undefined => {
+    const port = Number(text);
+    return text !== undefined && /^\d+$/.test(text) && port >= 1 && port <= 65535 ? port : undefined;
+  };
+  try {
+    const parsed = new URL(url);
+    // pg (pg-connection-string) lets a ?port= query override the URL and falls back to PGPORT when the URL names none.
+    const query = parsed.searchParams.get("port");
+    if (query !== null) return valid(query) ?? undefined;
+    if (parsed.port === "") return valid(env.PGPORT) ?? DEFAULT_DATABASE_PORT;
+    return valid(parsed.port);
+  } catch {
+    return undefined;
+  }
+}
+
 const DEFAULT_POOL_MAX = 10;
 /** The readiness probe's budget (ADR-0025 decision 6). Was 1 s; two probes missed it on the busy game PC
  *  when a fresh connection had to be opened, so it is 3 s, and configurable. */

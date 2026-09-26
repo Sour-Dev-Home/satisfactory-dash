@@ -5,6 +5,8 @@ import {
   CreateServerRequestSchema,
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
+  RenameServerRequestSchema,
+  RenameServerResponseSchema,
   ServerConnectionResponseSchema,
   ServerIdSchema,
   TestConnectionRequestSchema,
@@ -95,13 +97,15 @@ export function createServerManagementRouters(
     return parsed.data;
   };
 
-  const { create, list, testConnection, get, update, remove, testSaved } = endpoints.serverManagement;
+  const { create, list, testConnection, get, update, renameAgent, remove, testSaved } = endpoints.serverManagement;
 
   const collection = Router();
   // "managed" is a reserved server id, and this router is mounted before the servers router, so the
   // list is never read as GET /servers/:serverId.
   collection.get(routePath(list.route), operatorOnly, async (_req, res) => {
-    sendValidated(res, ManagedServerListResponseSchema, { servers: await orUnavailable(() => service.list()) });
+    // ADR-0031: the servers reached through an edge agent have no stored connection, so they come from a second list.
+    const [servers, agentServers] = await orUnavailable(() => Promise.all([service.list(), service.listAgentServers()]));
+    sendValidated(res, ManagedServerListResponseSchema, { servers, agentServers });
   });
   collection.post(routePath(create.route), operatorOnly, limited(writeLimiter), async (req, res) => {
     const body = parseBody(CreateServerRequestSchema, req.body);
@@ -124,6 +128,12 @@ export function createServerManagementRouters(
     const body = parseBody(UpdateServerRequestSchema, req.body);
     const server = await orUnavailable(() => service.update(userId(res), id, body));
     sendValidated(res, ServerConnectionResponseSchema, { server });
+  });
+  // ADR-0031: the one edit a server reached through an edge agent has.
+  scoped.patch(routePath(renameAgent.route), operatorOnly, limited(writeLimiter), async (req, res) => {
+    const id = serverId(req.params.serverId);
+    const body = parseBody(RenameServerRequestSchema, req.body);
+    sendValidated(res, RenameServerResponseSchema, { server: await orUnavailable(() => service.renameAgentServer(userId(res), id, body.displayName)) });
   });
   scoped.delete(routePath(remove.route), operatorOnly, limited(writeLimiter), async (req, res) => {
     await orUnavailable(() => service.remove(userId(res), serverId(req.params.serverId)));

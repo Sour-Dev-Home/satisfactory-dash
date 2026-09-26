@@ -4,6 +4,8 @@ import {
   CreateServerRequestSchema,
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
+  RenameServerRequestSchema,
+  RenameServerResponseSchema,
   ServerConnectionResponseSchema,
   TestConnectionRequestSchema,
   TestConnectionResponseSchema,
@@ -206,6 +208,15 @@ export const endpoints = {
       path: (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`,
       request: UpdateServerRequestSchema,
       response: ServerConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    // ADR-0031: renames a server reached through an edge agent (it has no stored connection, so `update` cannot).
+    renameAgent: {
+      method: "PATCH",
+      route: "/api/servers/:serverId/name",
+      path: scoped("name"),
+      request: RenameServerRequestSchema,
+      response: RenameServerResponseSchema,
       operatorOnly: true,
     },
     // Removes the server: its memberships, its encrypted tokens and its pollers go.
