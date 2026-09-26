@@ -256,8 +256,8 @@ export const SCENARIOS = {
   },
   "servers-import-required": { servers: operatorSingle, createServer: fail(409, errorImportRequired) },
   "servers-test-failed": { servers: operatorSingle, testSaved: ok(testConnectionApiUnauthorized) },
-  // Alerts (ADR-0027 PR 9), at /app/alerts: the shadow week, muted, one alert firing (the bell's
-  // badge shows on every page), and a log with an older page.
+  // Alerts (ADR-0027 PR 9), in the bell's dropdown: the shadow week, muted, one alert firing (the
+  // bell's badge shows on every page), and a log with an older page.
   "alerts": { alertStatus: ok(alertStatusShadowMutedFiring), alertEvents: ok(alertEventsPage) },
   // Discord deleted the webhook: the destination turned itself off.
   "alerts-webhook-gone": { alertDestinations: ok(alertDestinationsWebhookGone) },

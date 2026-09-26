@@ -114,19 +114,35 @@ const CASES: StateCase[] = [
     shows: "Last 24 hours",
     act: (page) => page.getByRole("group", { name: "Power history range" }).getByRole("button", { name: "24 h" }).click(),
   },
-  // Alerts (ADR-0027 PR 9), opened from the header bell. "alerts" also shows the bell's badge.
-  { scenario: "alerts", path: "/app/alerts", shows: /Delivery is off \(shadow week\)/ },
+  // Alerts (ADR-0027 PR 9): the header bell's dropdown, opened. "alerts" also shows the bell's badge.
+  { scenario: "alerts", shows: /Delivery is off \(shadow week\)/, act: openAlerts },
   { scenario: "alerts", name: "alerts-badge-overview", shows: "Total play time on this save" },
-  { scenario: "alerts-webhook-gone", path: "/app/alerts", shows: /no longer exists/ },
-  { scenario: "alerts-empty", path: "/app/alerts", shows: "No alerts yet." },
+  // An alert expanded in place.
+  {
+    scenario: "alerts",
+    name: "alerts-expanded",
+    shows: /118\.4 per min against a target of 120 per min/,
+    act: async (page) => {
+      await openAlerts(page);
+      await page.getByRole("region", { name: "Recent" }).getByRole("button").first().click();
+    },
+  },
+  { scenario: "alerts-empty", shows: "No alerts yet.", act: openAlerts },
   // Settings → Alerts (ADR-0027 PR 9c): an owner gets the mute, the Discord setup and the rules
-  // editor; a viewer reads the same section with no controls.
+  // editor; a viewer reads the same section with no controls. A webhook Discord deleted shows there.
+  // The clock is fixed: the mute field defaults to an hour from now.
   { scenario: "alerts-owner", path: "/app/settings", shows: "New production target", clock: FIXTURE_NOW },
   { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules.", clock: FIXTURE_NOW },
+  { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/, clock: FIXTURE_NOW },
 ];
 
 async function openAddForm(page: Page) {
   await page.getByRole("button", { name: "Add a server" }).click();
+}
+
+/** Opens the header bell's dropdown (ADR-0027 PR 9). */
+async function openAlerts(page: Page) {
+  await page.getByRole("button", { name: /^Alerts/ }).click();
 }
 
 async function addServer(page: Page, host: string) {

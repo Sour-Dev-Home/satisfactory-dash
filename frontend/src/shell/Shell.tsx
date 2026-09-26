@@ -2,7 +2,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AlertsBell } from "../alerts/AlertsBell";
-import { AlertsView } from "../alerts/AlertsView";
 import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
 import { CrashProbe } from "../components/CrashProbe";
@@ -19,7 +18,7 @@ import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { AlertSettings } from "../alerts/settings/AlertSettings";
 import { StatusView } from "../status/StatusView";
-import { ToApp } from "./ToApp";
+import { ToAlertSettings, ToApp } from "./ToApp";
 
 /** One boundary per section: a crash in one leaves the rest of the page working. */
 function Section({ label, probe, children }: { label: string; probe: string; children: ReactNode }) {
@@ -32,14 +31,13 @@ function Section({ label, probe, children }: { label: string; probe: string; chi
 }
 
 /**
- * A page under a tab. The heading is for screen readers; the active tab shows it visually. A page
- * without a tab (Alerts, opened from the bell) shows its heading. Not a landmark itself: its panel
- * already is one, with the same name.
+ * A page under a tab. The heading is for screen readers; the active tab shows it visually.
+ * Not a landmark itself: its panel already is one, with the same name.
  */
-function Page({ title, showTitle = false, children }: { title: string; showTitle?: boolean; children: ReactNode }) {
+function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="grid gap-4">
-      <h2 tabIndex={-1} className={showTitle ? undefined : "sr-only"}>
+      <h2 tabIndex={-1} className="sr-only">
         {title}
       </h2>
       {children}
@@ -85,7 +83,8 @@ export function Shell() {
     // minmax(0,1fr): an implicit grid column sizes to its content's min-width, so the tab bar
     // would widen the whole app past a phone's width instead of scrolling on its own.
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
+      {/* relative: the bell's dropdown is positioned against this row, so it lines up with the page edge. */}
+      <div className="relative flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
         {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
         {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;
@@ -192,16 +191,8 @@ export function Shell() {
             </Page>
           }
         />
-        <Route
-          path="alerts"
-          element={
-            <Page key="alerts" title="Alerts" showTitle>
-              <Section label="Alerts" probe="alerts">
-                <AlertsView />
-              </Section>
-            </Page>
-          }
-        />
+        {/* The alerts page became the bell's dropdown plus a section on Settings: an old link lands there. */}
+        <Route path="alerts" element={<ToAlertSettings />} />
         {canManageServers && (
           <Route
             path="servers"
