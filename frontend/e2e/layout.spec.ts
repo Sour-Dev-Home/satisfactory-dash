@@ -46,3 +46,23 @@ test("the header and tabs stay put across every tab, scrolling or not", async ({
   expect(new Set(seen.map((s) => s.title)).size, `title x per tab: ${JSON.stringify(seen)}`).toBe(1);
   expect(new Set(seen.map((s) => s.tabs)).size, `tabs x per tab: ${JSON.stringify(seen)}`).toBe(1);
 });
+
+// With the operator's sixth tab (Servers), the tabs are wider than a phone: the nav must scroll
+// on its own, never the page, and every tab must stay reachable.
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("all six tabs are reachable and the page never scrolls sideways", async ({ page, mockApi }) => {
+    await mockApi("servers-manage");
+    await page.goto("/app");
+    const nav = page.getByRole("navigation", { name: "Main" });
+    for (const tab of ["Power", "Factory", "Map", "Settings", "Servers", "Overview"]) {
+      await nav.getByRole("link", { name: tab }).click();
+      await expect(nav.getByRole("link", { name: tab })).toHaveAttribute("aria-current", "page");
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `page overflow on ${tab}`).toBeLessThanOrEqual(0);
+    }
+    // The tabs don't fit, so this proves the nav itself scrolls (the check isn't vacuous).
+    expect(await nav.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  });
+});

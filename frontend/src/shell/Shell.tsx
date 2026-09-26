@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
+import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
 import { CrashProbe } from "../components/CrashProbe";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -10,6 +12,7 @@ import { OverviewView } from "../overview/OverviewView";
 import { PowerHistoryView } from "../power/PowerHistoryView";
 import { PowerView } from "../power/PowerView";
 import { useSelectedServer } from "../servers/ServerContext";
+import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { StatusView } from "../status/StatusView";
@@ -48,12 +51,17 @@ const TABS = [
   { to: "/app/settings", label: "Settings" },
 ];
 
+/** ADR-0030: the operator only (hiding it is UX; the backend enforces). */
+const SERVERS_TAB: (typeof TABS)[number] = { to: "/app/servers", label: "Servers" };
+
 /**
  * The signed-in app (ADR-0016 item 4), mounted under /app/* so / and future public pages stay
  * free (ADR-0021). Renders inside AuthGate and ServerGate.
  */
 export function Shell() {
   const server = useSelectedServer();
+  // ServerGate already loaded the list; this reads the same cache entry.
+  const canManageServers = useQuery(queries.servers()).data?.canManageServers === true;
   const pages = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const onOverview = useMatch("/app") !== null;
@@ -70,10 +78,14 @@ export function Shell() {
   }, [pathname]);
 
   return (
-    <div className="grid gap-5">
+    // minmax(0,1fr): an implicit grid column sizes to its content's min-width, so the tab bar
+    // would widen the whole app past a phone's width instead of scrolling on its own.
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
-        <nav aria-label="Main" className="-mx-1 flex max-w-full gap-1 overflow-x-auto">
-          {TABS.map((tab) => (
+        {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
+            without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
+        <nav aria-label="Main" className="-mx-1 flex min-w-0 max-w-full gap-1 overflow-x-auto">
+          {(canManageServers ? [...TABS, SERVERS_TAB] : TABS).map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
@@ -167,6 +179,18 @@ export function Shell() {
             </Page>
           }
         />
+        {canManageServers && (
+          <Route
+            path="servers"
+            element={
+              <Page key="servers" title="Servers">
+                <Section label="Server management" probe="servers">
+                  <ServerManagementView />
+                </Section>
+              </Page>
+            }
+          />
+        )}
         <Route path="*" element={<ToApp />} />
       </Routes>
       </div>

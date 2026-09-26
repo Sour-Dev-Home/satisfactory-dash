@@ -75,14 +75,50 @@ const CASES: StateCase[] = [
   { scenario: "unknown-error-code", shows: /^Something went wrong$/ },
   { scenario: "backend-unreachable", shows: "Couldn't reach the dashboard backend." },
   { scenario: "contract-drift", shows: /doesn't understand/ },
+  // Server management (ADR-0030), operator only: the three stored states, then the add form's refusals.
+  { scenario: "servers-manage", path: "/app/servers", shows: "This server's saved address isn't allowed. Edit the host or remove it." },
+  { scenario: "servers-manage", name: "servers-add-form", path: "/app/servers", shows: "Leave blank if FRM runs without a token.", act: openAddForm },
+  { scenario: "servers-first", shows: "No game servers yet. Add the first one; for now it has to run on this machine." },
+  {
+    scenario: "servers-lan-refused",
+    path: "/app/servers",
+    shows: "Only servers on this machine can be added for now.",
+    act: (page) => addServer(page, "192.168.1.20"),
+  },
+  {
+    scenario: "servers-import-required",
+    path: "/app/servers",
+    shows: /Import them first/,
+    act: (page) => addServer(page, "127.0.0.1"),
+  },
+  {
+    scenario: "servers-test-failed",
+    path: "/app/servers",
+    shows: "Game API: rejected the token",
+    act: (page) => page.getByRole("button", { name: "Test connection" }).first().click(),
+  },
 ];
+
+async function openAddForm(page: Page) {
+  await page.getByRole("button", { name: "Add a server" }).click();
+}
+
+async function addServer(page: Page, host: string) {
+  await openAddForm(page);
+  await page.getByLabel("Server id").fill("second");
+  await page.getByLabel("Name").fill("Second world");
+  await page.getByLabel("Host").fill(host);
+  await page.getByLabel("Game API token").fill("example-token");
+  await page.getByRole("button", { name: "Add server" }).click();
+}
 
 for (const { scenario, shows, path = "/app", name = scenario, act } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
     await mockApi(scenario);
     await page.goto(path);
     if (act) {
-      await page.getByRole("heading", { name: "Sign in" }).waitFor();
+      // Sign-in states act on the login form; the rest on the page they open.
+      await page.getByRole("heading", { name: scenario.startsWith("login") ? "Sign in" : "Game servers" }).waitFor();
       await act(page);
     }
     await expect(page.getByText(shows).first()).toBeVisible();

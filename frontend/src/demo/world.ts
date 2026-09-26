@@ -1,6 +1,7 @@
 import type {
   FactoryBuilding,
   FactoryResponse,
+  ManagedServerListResponse,
   PowerCircuit,
   PowerHistoryPoint,
   PowerHistoryResponse,
@@ -28,7 +29,30 @@ const envelope = (now: number) => ({
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
-export const servers: ServerListResponse = { servers: [{ id: DEMO_SERVER_ID, displayName: "Demo factory" }] };
+// The visitor is the operator, so the Servers screens can be shown (ADR-0030). Nothing they do
+// there is saved (demo/handlers.ts).
+export const servers: ServerListResponse = {
+  servers: [{ id: DEMO_SERVER_ID, displayName: "Demo factory" }],
+  canManageServers: true,
+};
+
+export const managedServers: ManagedServerListResponse = {
+  servers: [
+    {
+      id: DEMO_SERVER_ID,
+      displayName: "Demo factory",
+      host: "127.0.0.1",
+      apiPort: 7777,
+      frmPort: 8080,
+      apiTokenSet: true,
+      apiTokenLast4: "d3m0",
+      frmTokenSet: true,
+      frmTokenLast4: "f4k3",
+      state: "ok",
+      plainHttpOverLan: false,
+    },
+  ],
+};
 
 /** The demo save's play time: about 36 days at DEMO_EPOCH, growing with the clock. */
 export const DEMO_EPOCH = Date.parse("2026-09-24T18:00:00.000Z");

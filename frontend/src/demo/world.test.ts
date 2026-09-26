@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FactoryResponseSchema,
+  ManagedServerListResponseSchema,
   PowerHistoryResponseSchema,
   PowerResponseSchema,
   ServerListResponseSchema,
@@ -17,6 +18,7 @@ const TIMES = [world.DEMO_EPOCH, world.DEMO_EPOCH + 12_345, world.DEMO_EPOCH + 3
 describe("the demo world", () => {
   it.each(TIMES)("matches the shared schemas at t=%i", (now) => {
     expect(() => ServerListResponseSchema.parse(world.servers)).not.toThrow();
+    expect(() => ManagedServerListResponseSchema.parse(world.managedServers)).not.toThrow();
     expect(() => StatusResponseSchema.parse(world.status(now))).not.toThrow();
     expect(() => PowerResponseSchema.parse(world.power(now))).not.toThrow();
     expect(() => PowerHistoryResponseSchema.parse(world.powerHistory(now))).not.toThrow();
