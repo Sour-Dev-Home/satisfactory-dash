@@ -1,6 +1,8 @@
-import { useState } from "react";
-import type { FactoryBuilding, FactoryResponse } from "@satisfactory-dash/shared";
+import { Fragment, useState } from "react";
+import type { FactoryBuilding, FactoryResponse, ProductionRate } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
+import { cn } from "../lib/cn";
+import { machineState } from "./machineState";
 
 type Filter = "all" | "backedUp" | "paused" | "noRecipe";
 
@@ -30,6 +32,8 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
   );
   const paused = buildings.filter((b) => b.isPaused).length;
   const noRecipe = buildings.filter((b) => b.recipe === null).length;
+  // An older backend sends no ingredients at all: no Inputs column rather than an empty one.
+  const showInputs = buildings.some((b) => b.ingredients !== undefined);
 
   return (
     <section aria-labelledby="factory-heading" className="panel">
@@ -41,7 +45,7 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
       ) : (
         <>
           <p className="summary">
-            {buildings.length} machines · {backedUpCount} backed up · {paused} paused · {noRecipe} without a recipe
+            {buildings.length} {buildings.length === 1 ? "machine" : "machines"} · {backedUpCount} backed up · {paused} paused · {noRecipe} without a recipe
           </p>
           <div role="group" aria-label="Filter machines">
             {FILTERS.map((f) => (
@@ -63,14 +67,15 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
                 <tr>
                   <th scope="col">Machine</th>
                   <th scope="col">Recipe</th>
+                  {showInputs && <th scope="col">Inputs</th>}
                   <th scope="col">Outputs</th>
-                  <th scope="col">Notes</th>
+                  <th scope="col">State</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((building) => (
                   // id is unique within one response; never persisted (stability unverified).
-                  <BuildingRow key={building.id} building={building} />
+                  <BuildingRow key={building.id} building={building} showInputs={showInputs} />
                 ))}
               </tbody>
             </table>
@@ -85,36 +90,69 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
   );
 }
 
-function BuildingRow({ building }: { building: FactoryBuilding }) {
+function BuildingRow({ building, showInputs }: { building: FactoryBuilding; showInputs: boolean }) {
   return (
     <tr>
       <th scope="row">{building.name}</th>
       <td>{building.recipe ?? "No recipe"}</td>
+      {showInputs && (
+        <td>
+          {/* Absent (an older backend, ADR-0007) says nothing; [] is a machine with no recipe. */}
+          {building.ingredients && <Rates rates={building.ingredients} label="Inputs" />}
+        </td>
+      )}
       <td>
-        {building.production.length === 0 ? (
-          "—"
-        ) : (
-          <ul>
-            {/* Activity is the averaged percent, never the instantaneous isProducing flag. */}
-            {/* Index in the key: nothing in the contract says output class names are unique. */}
-            {building.production.map((rate, i) => (
-              <li key={`${i}-${rate.className}`}>
-                {/* unit is optional (ADR-0015): missing or null = unknown, shown as "per min". */}
-                {/* "current / max unit" never splits on a phone: a line can only break before the "(%)". */}
-                {`${rate.name}: `}
-                <span className="whitespace-nowrap">
-                  {formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit ?? null)}
-                </span>{" "}
-                ({formatPercent(rate.percent)})
-              </li>
-            ))}
-          </ul>
-        )}
+        <Rates rates={building.production} label="Outputs" />
       </td>
       <td>
-        {building.isBackedUp && <span className="tag">Backed up</span>}{" "}
-        {building.isPaused && <span className="tag">Paused</span>}
+        <StateTags building={building} />
       </td>
     </tr>
   );
+}
+
+/** A machine's inputs or outputs, one plain line each. */
+function Rates({ rates, label }: { rates: ProductionRate[]; label: "Inputs" | "Outputs" }) {
+  if (rates.length === 0) return "—";
+  return (
+    <>
+      {/* On a phone the table stacks and its header row is hidden: name the list there. */}
+      <span aria-hidden="true" className="block text-xs text-muted min-[601px]:hidden">
+        {label}
+      </span>
+      <ul aria-label={label}>
+        {/* Activity is the averaged percent, never the instantaneous isProducing flag. */}
+        {/* Index in the key: nothing in the contract says item class names are unique. */}
+        {rates.map((rate, i) => (
+          <li key={`${i}-${rate.className}`}>
+            {/* unit is optional (ADR-0015): missing or null = unknown, shown as "per min". */}
+            {/* "current / max unit" never splits on a phone: a line can only break before the "(%)". */}
+            {`${rate.name}: `}
+            <span className="whitespace-nowrap">
+              {formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit ?? null)}
+            </span>{" "}
+            ({formatPercent(rate.percent)})
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
+ * The backend's state as a label, plus any flag the state doesn't already say. From an older
+ * backend without `state`, or with one this frontend doesn't know, just the flags.
+ */
+function StateTags({ building }: { building: FactoryBuilding }) {
+  const tags = [
+    machineState(building.state),
+    building.isBackedUp && building.state !== "backedUp" ? machineState("backedUp") : null,
+    building.isPaused && building.state !== "paused" ? machineState("paused") : null,
+  ].filter((tag) => tag !== null);
+  return tags.map((tag, i) => (
+    <Fragment key={tag.label}>
+      {i > 0 && " "}
+      <span className={cn("whitespace-nowrap text-sm font-medium", tag.tone)}>{tag.label}</span>
+    </Fragment>
+  ));
 }

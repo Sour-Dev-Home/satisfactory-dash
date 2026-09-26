@@ -65,6 +65,19 @@ describe("the demo world", () => {
     for (const b of buildings) expect(circuits.has(b.circuitGroupId!)).toBe(true);
   });
 
+  it("gives every machine ingredients and a state the Factory view knows, counted the way the backend counts", () => {
+    const { buildings, stateCounts } = world.factory(world.DEMO_EPOCH).data;
+    const known = ["producing", "idle", "backedUp", "underfed", "paused", "unpowered"];
+    for (const b of buildings) {
+      expect(b.ingredients?.length).toBeGreaterThan(0);
+      expect(known).toContain(b.state);
+      // One signal, two fields: the flag and the state never disagree.
+      expect(b.isBackedUp).toBe(b.state === "backedUp");
+    }
+    expect(Object.values(stateCounts ?? {}).reduce((a, n) => a + n, 0)).toBe(buildings.length);
+    expect(stateCounts).toMatchObject({ underfed: 1, backedUp: 1 });
+  });
+
   it("has a slow tick episode every 10 minutes, healthy at the fixed clock, and agrees with tickHealth", () => {
     expect(world.tickAt(world.DEMO_EPOCH).tickHealth).toBe("healthy");
     const minutes = Array.from({ length: 20 }, (_, m) => world.tickAt(world.DEMO_EPOCH + m * 60_000 + 10_000));
