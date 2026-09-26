@@ -23,6 +23,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # ADR-0033: the merge queue runs e2e on its own commit (main plus the queued PRs). There the `changes` job's
+  # case below has no base to diff against, so it runs everything (deliberate: a queue entry is always tested in
+  # full). Baselines are NEVER regenerated in a merge group, and a missing baseline fails there.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       update_snapshots:
@@ -35,7 +40,8 @@ permissions:
 
 concurrency:
   group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  # A merge group's run is never cancelled by a newer one: each queue entry has its own ref and must report.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 env:
   # Must equal the @playwright/test version in package-lock.json; the first step checks it.
@@ -95,6 +101,7 @@ jobs:
       # Passed via env, never interpolated into a script, so the pattern stays
       # injection-safe even if this input's type ever changes.
       UPDATE_SNAPSHOTS: ${{ inputs.update_snapshots }}
+      EVENT: ${{ github.event_name }}
     steps:
       - uses: actions/checkout@v7
 
@@ -111,7 +118,18 @@ jobs:
       - name: Decide whether to compare or regenerate screenshots
         id: mode
         run: |
-          if [ "$UPDATE_SNAPSHOTS" = "true" ] || [ ! -d frontend/e2e/__screenshots__ ]; then
+          # ADR-0033: in a merge group pixels are always COMPARED. Nothing regenerates there, and a missing
+          # baseline directory is an error (not "report-only"): a queue entry must never pass without a comparison.
+          if [ "$EVENT" = "merge_group" ]; then
+            if [ ! -d frontend/e2e/__screenshots__ ]; then
+              echo "::error::No committed screenshot baselines (frontend/e2e/__screenshots__): a merge queue run compares pixels and does not regenerate them."
+              exit 1
+            fi
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Outside a merge group: regenerate only for a manual run with update_snapshots (or when none are committed yet).
+          if { [ "$EVENT" = "workflow_dispatch" ] && [ "$UPDATE_SNAPSHOTS" = "true" ]; } || [ ! -d frontend/e2e/__screenshots__ ]; then
             echo "update=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Regenerating screenshot baselines (none committed yet, or a manual update). Pixels are report-only for this run."
           else
