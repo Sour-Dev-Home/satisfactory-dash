@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type AgentStatusResponse, type ServerSummary } from "@satisfactory-dash/shared";
@@ -168,6 +168,31 @@ describe("AgentSettings", () => {
     fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Revoke…" })).toBeInTheDocument();
     expect(revoked).toBe(0);
+  });
+
+  // ui review: a keyboard user must hear the warning before reaching the destructive button.
+  it("moves focus to the warning when the confirm opens, and back to Revoke… on Cancel", async () => {
+    agentIs(agentStatusEnrolled);
+    renderSection(owner);
+    const revokeButton = await screen.findByRole("button", { name: "Revoke…" });
+    // Nothing is focused on first render: the section never steals focus on load.
+    expect(revokeButton).not.toHaveFocus();
+    fireEvent.click(revokeButton);
+    expect(screen.getByText(/The agent stops working at once/)).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Revoke…" })).toHaveFocus();
+  });
+
+  it("keeps focus where it is while the last-seen time ticks", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    agentIs(agentStatusEnrolled);
+    renderSection(owner);
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+    await act(() => vi.advanceTimersByTimeAsync(3_000));
+    expect(cancel).toHaveFocus();
   });
 
   it("revokes, then reads the status again", async () => {

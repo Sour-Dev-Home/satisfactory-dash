@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentStatusResponse } from "@satisfactory-dash/shared";
 import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
@@ -106,8 +106,15 @@ export function AgentPanel({
   // documented way to reset state when a prop changes, rather than an effect (which would commit
   // the stale confirm UI for a frame first).
   const [wasEnrolled, setWasEnrolled] = useState(agent.enrolled);
+  // Focus follows the confirm (ui review): into its warning when it opens, so a keyboard user hears
+  // it before reaching the destructive button; back to "Revoke…" on Cancel. Stable callbacks: this
+  // panel re-renders every second (the last-seen clock), and a new callback would re-focus each time.
+  const focusWarning = useCallback((el: HTMLElement | null) => el?.focus(), []);
+  const focusElement = useCallback((el: HTMLElement | null) => el?.focus(), []);
+  const [returnFocus, setReturnFocus] = useState(false);
   if (wasEnrolled !== agent.enrolled) {
     setWasEnrolled(agent.enrolled);
+    setReturnFocus(false);
     if (!agent.enrolled && confirming) setConfirming(false);
   }
   const local = agent.connectionKind === "local";
@@ -160,7 +167,7 @@ export function AgentPanel({
           </p>
           {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"). Whether --replace is
               needed depends on what the PC has stored, which the dashboard can't see, so it's only named. */}
-          <p className="mb-0 font-mono text-sm break-all">
+          <p className="mb-0 font-mono text-sm break-words">
             node agent.cjs enroll {code.code} --url {agentBackendUrl(import.meta.env.VITE_API_URL)}
           </p>
           <p className="mb-0 text-sm text-muted">
@@ -190,7 +197,7 @@ export function AgentPanel({
         <div className="grid gap-2">
           {confirming ? (
             <div role="group" aria-label="Confirm revoking the agent" className="grid gap-2">
-              <p className="mb-0">
+              <p ref={focusWarning} tabIndex={-1} className="mb-0">
                 The agent stops working at once. This server then shows no data, and can't be changed, until an agent is
                 enrolled again.
               </p>
@@ -198,14 +205,28 @@ export function AgentPanel({
                 <button type="button" onClick={onRevoke} disabled={revoking}>
                   {revoking ? "Revoking…" : "Revoke the agent"}
                 </button>
-                <button type="button" onClick={() => setConfirming(false)} disabled={revoking}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirming(false);
+                    setReturnFocus(true);
+                  }}
+                  disabled={revoking}
+                >
                   Cancel
                 </button>
               </div>
             </div>
           ) : (
             <div>
-              <button type="button" onClick={() => setConfirming(true)}>
+              <button
+                ref={returnFocus ? focusElement : undefined}
+                type="button"
+                onClick={() => {
+                  setConfirming(true);
+                  setReturnFocus(false);
+                }}
+              >
                 Revoke…
               </button>
             </div>
