@@ -2,7 +2,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AlertsBell } from "../alerts/AlertsBell";
-import { AlertsView } from "../alerts/AlertsView";
 import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
 import { CrashProbe } from "../components/CrashProbe";
@@ -18,7 +17,7 @@ import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { StatusView } from "../status/StatusView";
-import { ToApp } from "./ToApp";
+import { ToAlertSettings, ToApp } from "./ToApp";
 
 /** One boundary per section: a crash in one leaves the rest of the page working. */
 function Section({ label, probe, children }: { label: string; probe: string; children: ReactNode }) {
@@ -31,14 +30,13 @@ function Section({ label, probe, children }: { label: string; probe: string; chi
 }
 
 /**
- * A page under a tab. The heading is for screen readers; the active tab shows it visually. A page
- * without a tab (Alerts, opened from the bell) shows its heading. Not a landmark itself: its panel
- * already is one, with the same name.
+ * A page under a tab. The heading is for screen readers; the active tab shows it visually.
+ * Not a landmark itself: its panel already is one, with the same name.
  */
-function Page({ title, showTitle = false, children }: { title: string; showTitle?: boolean; children: ReactNode }) {
+function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="grid gap-4">
-      <h2 tabIndex={-1} className={showTitle ? undefined : "sr-only"}>
+      <h2 tabIndex={-1} className="sr-only">
         {title}
       </h2>
       {children}
@@ -188,16 +186,8 @@ export function Shell() {
             </Page>
           }
         />
-        <Route
-          path="alerts"
-          element={
-            <Page key="alerts" title="Alerts" showTitle>
-              <Section label="Alerts" probe="alerts">
-                <AlertsView />
-              </Section>
-            </Page>
-          }
-        />
+        {/* The alerts page became the bell's dropdown plus a section on Settings: an old link lands there. */}
+        <Route path="alerts" element={<ToAlertSettings />} />
         {canManageServers && (
           <Route
             path="servers"

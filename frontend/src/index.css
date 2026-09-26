@@ -39,6 +39,11 @@
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 
   --radius-card: 10px;
+
+  /* Overlays: the header's dropdowns sit above the page, fit any screen and scroll when long. */
+  --z-popover: 10;
+  --popover-width: min(24rem, calc(100vw - 2rem));
+  --popover-max-height: min(70vh, 36rem);
 }
 
 /*
