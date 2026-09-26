@@ -1,6 +1,8 @@
 import { Fragment, useState } from "react";
 import type { FactoryBuilding, FactoryResponse, ProductionRate } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
+import { POLL_MS } from "../api/queries";
+import { DataAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
 import { machineState } from "./machineState";
 
@@ -84,7 +86,7 @@ export function FactoryPanel({ snapshot }: { snapshot: FactoryResponse }) {
       )}
 
       <p className="as-of">
-        As of <time dateTime={snapshot.observedAt}>{formatTime(snapshot.observedAt)}</time>
+        <DataAge observedAt={snapshot.observedAt} pollMs={POLL_MS.factory} />
       </p>
     </section>
   );

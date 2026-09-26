@@ -31,7 +31,8 @@ describe("PowerPanel", () => {
     expect(valueIn(main, "Capacity")).toHaveTextContent("4,083.3 MW");
     expect(valueIn(main, "Peak demand")).toHaveTextContent("4,606.5 MW");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByText(/As of/)).toHaveTextContent(new Date(powerOk.observedAt).toLocaleString());
+    // How old the reading is (ADR-0032), tied to the snapshot's own time.
+    expect(screen.getByText(/^Updated /).closest("time")).toHaveAttribute("dateTime", powerOk.observedAt);
   });
 
   it("warns that a grid could overload when peak demand is above capacity", () => {

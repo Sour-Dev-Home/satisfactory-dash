@@ -1,4 +1,6 @@
 import type { PowerCircuit, PowerCircuitStatus, PowerResponse } from "@satisfactory-dash/shared";
+import { POLL_MS } from "../api/queries";
+import { DataAge } from "../components/DataAge";
 import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
 
 const STATUS_ORDER: Record<PowerCircuitStatus, number> = { outage: 0, at_risk: 1, ok: 2 };
@@ -52,7 +54,7 @@ export function PowerPanel({ snapshot }: { snapshot: PowerResponse }) {
       )}
 
       <p className="as-of">
-        As of <time dateTime={snapshot.observedAt}>{formatTime(snapshot.observedAt)}</time>
+        <DataAge observedAt={snapshot.observedAt} pollMs={POLL_MS.power} />
       </p>
     </section>
   );
