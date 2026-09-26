@@ -177,7 +177,8 @@ export function checkDesignTokens(file, text) {
   // Only a comment carries a hatch: help text in a string or JSX must not switch the lint off.
   const allowAt = (i) => {
     const m = i >= 0 ? comments[i].match(ALLOW) : null;
-    return m ? { index: i, reason: m[1].replace(/\*\/|\}|-->/g, "").trim() } : null;
+    // Comment text only (stripComments drops the `*/`), so the reason needs no cleanup.
+    return m ? { index: i, reason: m[1].trim() } : null;
   };
 
   code.forEach((line, i) => {

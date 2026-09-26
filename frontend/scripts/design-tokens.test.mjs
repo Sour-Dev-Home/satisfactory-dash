@@ -258,6 +258,13 @@ describe("design-token lint, escape hatch", () => {
     expect(above.exceptions).toHaveLength(1);
   });
 
+  it("takes the reason verbatim from the comment, with no HTML-comment parsing", () => {
+    const result = tsx('className="w-[37px]" // design-token-allow: keeps --> and --!> as written');
+    expect(result.exceptions).toEqual([{ line: 1, reason: "keeps --> and --!> as written" }]);
+    const jsx = tsx('className="w-[37px]" {/* design-token-allow: vendor box --!> */}');
+    expect(jsx.exceptions).toEqual([{ line: 1, reason: "vendor box --!>" }]);
+  });
+
   it("rejects a hatch without a reason", () => {
     const result = tsx('className="w-[37px]" // design-token-allow:');
     expect(result.violations).not.toHaveLength(0);
