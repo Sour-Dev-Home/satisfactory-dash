@@ -1,6 +1,11 @@
 import type {
   FactoryBuilding,
   FactoryResponse,
+  HistoryItemsResponse,
+  HistoryRange,
+  HistoryTransitions,
+  HistoryTransitionsResponse,
+  TransitionRange,
   ManagedServerListResponse,
   PowerCircuit,
   PowerHistoryPoint,
@@ -251,4 +256,113 @@ export function factory(now: number): FactoryResponse {
 
 export function settings(now: number, state: { autoPause: boolean; pending: boolean }): SettingsResponse {
   return { ...envelope(now), data: { ...state, editable: true } };
+}
+
+// Stored production history (ADR-0027 decision 3), invented like the rest: the demo's own items, a
+// gentle daily wave, a paused stretch two days ago (a gap), and a visible dip (ADR-0027 item 7):
+// the Rotor assembler backed up 5 hours ago and the Screw line has been short of rods for 6.
+
+const MINUTE = 60_000;
+const HOUR_MS = 60 * MINUTE;
+const DAY_MS = 24 * HOUR_MS;
+/** The range picks the bucket, as the backend does (packages/shared/src/history.ts). */
+const BUCKET_MS: Record<HistoryRange, number> = {
+  "1h": MINUTE,
+  "6h": MINUTE,
+  "24h": 5 * MINUTE,
+  "7d": HOUR_MS,
+  "30d": 6 * HOUR_MS,
+  "1y": DAY_MS,
+};
+const RANGE_MS: Record<HistoryRange, number> = {
+  "1h": HOUR_MS,
+  "6h": 6 * HOUR_MS,
+  "24h": DAY_MS,
+  "7d": 7 * DAY_MS,
+  "30d": 30 * DAY_MS,
+  "1y": 365 * DAY_MS,
+};
+
+/** Factory-wide rate and capacity per item before the dips, highest first (the order the backend sends). */
+const HISTORY_ITEMS: [className: string, perMinute: number, capacity: number][] = [
+  ["Desc_IronIngot_C", 75, 75],
+  ["Desc_Screw_C", 40, 40],
+  ["Desc_IronPlate_C", 20, 20],
+  ["Desc_Plastic_C", 20, 20],
+  ["Desc_IronRod_C", 15, 15],
+  ["Desc_HeavyOilResidue_C", 10, 10],
+  ["Desc_IronPlateReinforced_C", 5, 5],
+  ["Desc_Rotor_C", 4, 4],
+  ["Desc_ModularFrame_C", 2, 2],
+];
+
+/** Whether the game was running at `t` (a 2-hour pause two days before `now`). */
+const recordedAt = (t: number, now: number) => t < now - 50 * HOUR_MS || t >= now - 48 * HOUR_MS;
+
+/** An item's rate per minute at `t`, relative to `now` so the demo always shows the same story. */
+function itemRate(className: string, perMinute: number, t: number, now: number): number {
+  if (className === "Desc_Rotor_C" && t >= now - 5 * HOUR_MS) return 0;
+  if (className === "Desc_Screw_C" && t >= now - 6 * HOUR_MS) return 30;
+  const wave = 1 + 0.03 * Math.sin((2 * Math.PI * (t % DAY_MS)) / DAY_MS);
+  return round1(Math.min(perMinute, perMinute * wave));
+}
+
+export function historyItems(now: number, range: HistoryRange, item?: string): HistoryItemsResponse {
+  const bucket = BUCKET_MS[range];
+  const from = now - RANGE_MS[range];
+  const first = Math.floor(from / bucket) * bucket;
+  const series = HISTORY_ITEMS.filter(([className]) => item === undefined || className === item).map(
+    ([className, perMinute, capacity]) => {
+      const points = [];
+      for (let t = first; t <= now; t += bucket) {
+        // Samples every 30 s, probed at most 60 times a bucket (a 1-day bucket holds 2,880), so a year
+        // stays fast in the browser. A bucket that straddles the pause keeps only what was recorded.
+        const step = Math.max(1, Math.floor(bucket / 30_000 / 60)) * 30_000;
+        const probes = Array.from({ length: Math.max(1, bucket / step) }, (_, i) => t + i * step).filter(
+          (s) => s <= now && recordedAt(s, now),
+        );
+        if (probes.length === 0) continue;
+        const rates = probes.map((s) => itemRate(className, perMinute, s, now));
+        const avg = round1(rates.reduce((a, r) => a + r, 0) / rates.length);
+        points.push({
+          t,
+          samples: (probes.length * step) / 30_000,
+          currentPerMinute: { min: Math.min(...rates), avg, max: Math.max(...rates) },
+          maxPerMinute: capacity,
+        });
+      }
+      return { item: className, points };
+    },
+  );
+  return {
+    ...envelope(now),
+    data: { range, resolutionSeconds: bucket / 1000, from, to: now, truncated: false, series },
+  };
+}
+
+/** The Screw constructor flips between producing and underfed every 40 minutes; the Rotor assembler backed up. */
+export function historyTransitions(now: number, range: TransitionRange, limit: number): HistoryTransitionsResponse {
+  const from = now - RANGE_MS[range];
+  const all: HistoryTransitions["transitions"] = [];
+  const cadence = 40 * MINUTE;
+  for (let t = Math.floor(now / cadence) * cadence, i = 0; t >= from; t -= cadence, i++) {
+    if (!recordedAt(t, now)) continue;
+    const underfed = Math.floor(t / cadence) % 2 === 0;
+    all.push({
+      t,
+      buildingId: "demo-5",
+      className: "Build_ConstructorMk1_C",
+      fromState: underfed ? "producing" : "underfed",
+      toState: underfed ? "underfed" : "producing",
+    });
+  }
+  const backedUpAt = now - 5 * HOUR_MS;
+  if (backedUpAt >= from) {
+    all.push({ t: backedUpAt, buildingId: "demo-7", className: "Build_AssemblerMk1_C", fromState: "producing", toState: "backedUp" });
+  }
+  all.sort((a, b) => b.t - a.t);
+  return {
+    ...envelope(now),
+    data: { range, from, to: now, truncated: all.length > limit, transitions: all.slice(0, limit) },
+  };
 }

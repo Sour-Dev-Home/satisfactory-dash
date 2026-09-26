@@ -1,5 +1,7 @@
 import {
   endpoints,
+  HistoryItemsQuerySchema,
+  HistoryTransitionsQuerySchema,
   type SessionResponse,
   type SetAutoPauseRequest,
   type TestConnectionResponse,
@@ -106,6 +108,21 @@ export const demoHandlers = [
     guarded(params, () => Response.json(world.powerHistory(demoNow()))),
   ),
   get(endpoints.factory.route, ({ params }) => guarded(params, () => Response.json(world.factory(demoNow())))),
+  // Stored history (ADR-0027): the same query rules as the backend's, so a bad range is a 400 here too.
+  get(endpoints.history.items.route, ({ params, request }) =>
+    guarded(params, () => {
+      const query = HistoryItemsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!query.success) return error(400, "bad_request", "That history range isn't available.");
+      return Response.json(world.historyItems(demoNow(), query.data.range, query.data.item));
+    }),
+  ),
+  get(endpoints.history.transitions.route, ({ params, request }) =>
+    guarded(params, () => {
+      const query = HistoryTransitionsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!query.success) return error(400, "bad_request", "That history range isn't available.");
+      return Response.json(world.historyTransitions(demoNow(), query.data.range, query.data.limit));
+    }),
+  ),
   get(endpoints.settings.get.route, ({ params }) => guarded(params, () => Response.json(settingsNow()))),
   // A simulated write: in memory only, pending for a moment, then applied. Never sent anywhere.
   put(endpoints.settings.setAutoPause.route, async ({ params, request }) => {
