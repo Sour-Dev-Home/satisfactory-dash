@@ -100,7 +100,11 @@ function BuildingRow({ building }: { building: FactoryBuilding }) {
             {building.production.map((rate, i) => (
               <li key={`${i}-${rate.className}`}>
                 {/* unit is optional (ADR-0015): missing or null = unknown, shown as "per min". */}
-                {`${rate.name}: ${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit ?? null)}`}{" "}
+                {/* "current / max unit" never splits on a phone: a line can only break before the "(%)". */}
+                {`${rate.name}: `}
+                <span className="whitespace-nowrap">
+                  {formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit ?? null)}
+                </span>{" "}
                 ({formatPercent(rate.percent)})
               </li>
             ))}
