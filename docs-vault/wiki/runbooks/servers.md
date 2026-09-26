@@ -29,7 +29,8 @@ not start until `db:migrate` has run**.
 
 1. Generate `SERVER_SECRETS_KEY`, put it in `backend\.env`, and **back it up offline** (above).
 2. Stop the backend, pull, `npm ci`, `npm run build -w backend`, then **`npm run db:migrate -w backend`**.
-3. Start the backend as usual. It still uses the config (nothing is in the database yet).
+3. Start the backend as usual. With a database it serves **no** server until step 4 (the environment's servers are not served
+   when a database is used; it logs one warning naming the variables, and no values).
 4. Import: `npm run admin -- import-servers` (from `backend\`, with the same `.env`). It reads the servers file or the
    single-server variables, resolves each host and checks that every address is loopback or private (127/8, ::1,
    10/8, 172.16/12, 192.168/16), and stores the tokens encrypted, all in one transaction (any problem
@@ -40,8 +41,9 @@ not start until `db:migrate` has run**.
 5. Remove the retired config from `backend\.env`: `SATISFACTORY_SERVERS_FILE`, `SATISFACTORY_SERVER_ID`,
    `SATISFACTORY_SERVER_NAME`, `SATISFACTORY_SERVER_HOST`, `SATISFACTORY_API_PORT`, `SATISFACTORY_API_TOKEN`,
    `SATISFACTORY_API_REJECT_UNAUTHORIZED`, `FRM_WEB_PORT`, `FRM_AUTH_TOKEN`, `SATISFACTORY_REQUEST_TIMEOUT_MS`.
-   Delete the servers file too (it holds the tokens in plain text). If you forget, the backend starts anyway and logs
-   ONE warning naming the ignored variables (names only).
+   Delete the servers file too (it holds the tokens in plain text). If you forget, nothing breaks: once servers are
+   stored in the database the environment's are simply not used (the one warning, naming the variables, is logged only when
+   the database holds no server yet).
 6. Restart and verify: the log says `servers loaded from the database`, `/api/health/ready` answers 200, and the
    dashboard shows every server.
 
@@ -103,9 +105,10 @@ Rules the routes enforce:
   (10/8, 172.16/12, 192.168/16) is refused with `lan_requires_cert_pinning` (422); a stored LAN row shows as
   `refused` and is not started. This is a constant in the code (not a setting), lifted by the pinning change after
   its own security review. The address rules below describe the table that change will build on.
-  **Servers configured in the environment (the servers file or the single-server variables) are outside this gate**: they
-  keep the check they always had (loopback or private host, no certificate verification), because they are the
-  operator's own configuration. `import-servers` refuses a LAN one, so it stays on the environment path until pinning ships.
+  **Servers configured in the environment (the servers file or the single-server variables) are NOT served when a database
+  is used** (issue #196): with `DATABASE_URL` set, the servers come only from the database, whatever the environment says,
+  so LAN servers wait for certificate pinning like every other. The environment path remains for `import-servers`, the
+  capture script and no-database mode (development, the demo, tests), where it keeps the check it always had.
 - **The host must resolve only to loopback or private addresses** (127/8, ::1, 10/8, 172.16/12, 192.168/16; IPv4-mapped
   IPv6 by its IPv4). One public, link-local (169.254/16, including the cloud metadata address), CGNAT, multicast or
   unique-local address among the answers refuses the whole host (`address_not_allowed`, 422; the message never names the

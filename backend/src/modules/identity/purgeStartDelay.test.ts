@@ -151,7 +151,8 @@ describe("server.ts ordering (issue #153)", () => {
     expect(loadAt).toBeGreaterThan(databaseStartAt);
     expect(workersAt).toBeGreaterThan(loadAt);
     expect(source).toMatch(/bootSequence\(\{[\s\S]*databaseWorkers,/); // server.ts passes the database workers to it
-    expect(source).toContain('logger.info({ registered }, "configured servers registered")'); // the load step registers the configured servers
+    expect(source).toContain("no servers are stored in the database yet"); // the load step ends with servers loaded, or none stored (#196: nothing is registered from the environment)
+    expect(source).not.toContain("registerConfiguredServers");
     expect(source).not.toContain("for (const worker of databaseWorkers)"); // and no longer starts them itself
   });
 
