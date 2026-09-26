@@ -119,9 +119,9 @@ describe("isAllowedGameHost", () => {
 
 describe("resolveDataDir", () => {
   it("prefers SD_AGENT_HOME, then the local app data folder, then the home folder", () => {
-    expect(resolveDataDir({ SD_AGENT_HOME: "C:\\custom", LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local" }, "C:\\Users\\u")).toBe(path.resolve("C:\\custom"));
-    expect(resolveDataDir({ LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local" }, "C:\\Users\\u")).toBe(path.join("C:\\Users\\u\\AppData\\Local", "satisfactory-dash-agent"));
-    expect(resolveDataDir({}, "/home/u")).toBe(path.join("/home/u", ".satisfactory-dash-agent"));
-    expect(resolveDataDir({ SD_AGENT_HOME: "" }, "/home/u")).toBe(path.join("/home/u", ".satisfactory-dash-agent"));
+    expect(resolveDataDir({ SD_AGENT_HOME: "custom-dir", LOCALAPPDATA: "local-app-data" }, "home-dir")).toBe(path.resolve("custom-dir"));
+    expect(resolveDataDir({ LOCALAPPDATA: "local-app-data" }, "home-dir")).toBe(path.join("local-app-data", "satisfactory-dash-agent"));
+    expect(resolveDataDir({}, "home-dir")).toBe(path.join("home-dir", ".satisfactory-dash-agent"));
+    expect(resolveDataDir({ SD_AGENT_HOME: "" }, "home-dir")).toBe(path.join("home-dir", ".satisfactory-dash-agent"));
   });
 });
