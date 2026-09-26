@@ -2,6 +2,8 @@ import type { Logger } from "pino";
 import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import { noopHistoryRecorder, sessionKey, type HistoryRecorder } from "./historyRecorder.js";
+import { noopObservationSink, type ObservationSink } from "./observationBoard.js";
+import { classifyPowerCircuit } from "./powerService.js";
 import type { PowerHistoryStore, PowerSample } from "./powerHistoryStore.js";
 import { POWER_HISTORY_INTERVAL_SECONDS } from "./powerHistoryStore.js";
 
@@ -34,6 +36,8 @@ export interface PowerHistoryPollerOptions {
   now?: () => number;
   /** Where samples are also recorded for durable history; omitted means none (no database). */
   history?: HistoryRecorder;
+  /** Where the last readings are published for the alert engine (ADR-0027); omitted means nowhere. */
+  observations?: ObservationSink;
 }
 
 /** Comfortably above the adapters' own 5 s request timeout, so it only fires on a stall they miss. */
@@ -60,6 +64,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   private readonly now: () => number;
   private readonly logger: Logger;
   private readonly history: HistoryRecorder;
+  private readonly observations: ObservationSink;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
@@ -90,6 +95,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
     this.now = options.now ?? Date.now;
     this.logger = options.logger;
     this.history = options.history ?? noopHistoryRecorder;
+    this.observations = options.observations ?? noopObservationSink;
   }
 
   startedAt(): number | undefined {
@@ -183,6 +189,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
       ]);
     } catch (err) {
       this.consecutiveFailures++;
+      this.observations.recordPollFailure(this.now()); // the alert engine's "server unreachable" reads this
       if (this.consecutiveFailures === 1) {
         this.logger.warn({ err: formatErrorDetail(err) }, "power history poll failed; leaving a gap");
       }
@@ -199,6 +206,23 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
       this.consecutiveFailures = 0;
     }
     this.lastSuccessAtMs = this.now();
+    // What the alert engine reads (ADR-0027): the last status and circuits, with their own timestamp.
+    this.observations.recordPollSuccess(this.lastSuccessAtMs);
+    this.observations.publishStatus({
+      observedAt: this.lastSuccessAtMs,
+      intervalMs: this.intervalMs,
+      paused: status.isPaused,
+      session: status.sessionName,
+    });
+    this.observations.publishPower({
+      observedAt: this.lastSuccessAtMs,
+      intervalMs: this.intervalMs,
+      circuits: circuits.map((circuit) => ({
+        circuit: circuit.circuitGroupId,
+        status: classifyPowerCircuit(circuit),
+        fuseTripped: circuit.fuseTriggered === true,
+      })),
+    });
 
     if (
       this.lastSessionName !== undefined &&

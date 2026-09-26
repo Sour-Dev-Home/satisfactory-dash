@@ -2,8 +2,9 @@ import type { Logger } from "pino";
 import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { ItemSampleRow, TransitionRow } from "../repositories/historyRepository.js";
-import { classifyBuilding } from "./classifyBuilding.js";
+import { bestOutputPercent, classifyBuilding } from "./classifyBuilding.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
+import type { ObservationSink } from "./observationBoard.js";
 import type { BackgroundWorker } from "./powerHistoryPoller.js";
 import { isBackedUp } from "./productionService.js";
 
@@ -16,6 +17,8 @@ export interface FactoryHistoryPorts {
 export interface FactoryHistoryPollerOptions {
   logger: Logger;
   history: HistoryRecorder;
+  /** Where the last snapshot is published for the alert engine (ADR-0027); omitted means nowhere. */
+  observations?: ObservationSink;
   intervalSeconds?: number;
   /** A poll that takes longer than this is abandoned and counted as failed. */
   pollTimeoutMs?: number;
@@ -97,6 +100,8 @@ export class FactoryHistoryPoller implements BackgroundWorker {
   private readonly pollTimeoutMs: number;
   private readonly now: () => number;
   private readonly known = new Map<string, string>();
+  /** The last successful poll saw the game paused (so the next running snapshot is the first after a resume). */
+  private wasPaused = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
@@ -182,8 +187,24 @@ export class FactoryHistoryPoller implements BackgroundWorker {
       this.consecutiveFailures = 0;
     }
     if (status.isPaused) {
+      this.wasPaused = true;
       return; // frozen values: record nothing, and keep `known` as it is (a resume then makes no fake transitions)
     }
+    // What the alert engine reads (ADR-0027). The FIRST snapshot after a pause is flagged: FRM's values may still be
+    // frozen, so the evaluator counts it as unknown.
+    this.options.observations?.publishFactory({
+      observedAt: atMs,
+      intervalMs: this.intervalMs,
+      afterResume: this.wasPaused,
+      machines: buildings.map((building) => ({
+        id: building.id,
+        className: building.className,
+        recipe: building.recipe,
+        state: classifyBuilding(building, isBackedUp(building))?.state,
+        outputPercent: bestOutputPercent(building),
+      })),
+    });
+    this.wasPaused = false;
     this.options.history.recordItems(sumItemRates(buildings, atMs));
     this.options.history.recordTransitions(diffStates(this.known, buildings, atMs));
   }
