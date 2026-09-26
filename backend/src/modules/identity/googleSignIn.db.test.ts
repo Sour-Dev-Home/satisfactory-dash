@@ -65,7 +65,7 @@ describe.skipIf(!available)("Google sign-in against Postgres", () => {
       { db: pool, googleOidc: { issuer: issuer.issuer, allowInsecureRequests: true } },
     );
     operatorId = await identity.ensureOperatorUserId!();
-    // The operator owns a server, as registerConfiguredServers seeds it.
+    // The operator owns a server, as create and import-servers seed it.
     const server = await admin.query("INSERT INTO servers.servers (public_id, display_name) VALUES ('main', 'Main') RETURNING id");
     await admin.query("INSERT INTO servers.server_members (server_id, user_id, role) VALUES ($1, $2, 'owner')", [
       server.rows[0].id,

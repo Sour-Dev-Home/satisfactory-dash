@@ -5,6 +5,7 @@ import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { bootSequence } from "./platform/bootSequence.js";
+import { environmentServerEntries, warnEnvServersNotServed } from "./platform/envServers.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
@@ -33,7 +34,6 @@ import {
   addressVerdict,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
-  registerConfiguredServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
 import {
@@ -154,7 +154,9 @@ function buildAgentServer(id: string, displayName: string) {
   return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers, kind: "agent" as const };
 }
 
-const entries = orExit(() => {
+// Issue #196 (architect, option A): with a database the servers come ONLY from it, so nothing is built from the environment
+// (no placeholder runtime whose pollers could fire without credentials); without one the environment's servers are the servers.
+const entries = environmentServerEntries(database !== undefined, () => orExit(() => {
   // ADR-0025 PR 1: SATISFACTORY_SERVERS_FILE names any number of servers, each with its own
   // connection config. Without it, single-server mode: a registry of one that uses the
   // SATISFACTORY_* env (unchanged, so the running deploy needs no new config).
@@ -174,7 +176,7 @@ const entries = orExit(() => {
     );
   }
   return configured.map(({ id, displayName, config }) => buildServer(id, displayName, config));
-});
+}));
 // ADR-0030: the servers this process serves. Built from the config now; with a database, the servers
 // stored in it replace these once it is up (see loadDatabaseServers). The runtime starts and stops each
 // server's pollers (ADR-0022), also for servers added or removed while the backend runs.
@@ -376,10 +378,6 @@ if (process.env.NODE_ENV !== "test") {
           buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
         });
         if (stored.usingDatabase) {
-          const ignored = configuredServerEnvNamesInUse();
-          if (ignored.length > 0) {
-            logger.warn({ ignored }, "servers are stored in the database, so these server variables are ignored; remove them");
-          }
           logger.info({ servers: stored.loaded }, "servers loaded from the database");
           if (stored.unreadable.length > 0) {
             connectionsReadable = false;
@@ -397,13 +395,11 @@ if (process.env.NODE_ENV !== "test") {
           }
           serversRegistered = true;
         } else {
-          const { registered } = await registerConfiguredServers(
-            database.pool,
-            entries.map(({ id, displayName }) => ({ id, displayName })),
-            ownerId,
-          );
+          // Nothing is stored: the backend serves no server (create and import-servers add them). Servers configured in the
+          // environment are NOT served in database mode (#196); say so once, by variable name only.
+          warnEnvServersNotServed(logger, configuredServerEnvNamesInUse());
           serversRegistered = true;
-          logger.info({ registered }, "configured servers registered");
+          logger.info({ servers: 0 }, "no servers are stored in the database yet");
         }
       },
     });
