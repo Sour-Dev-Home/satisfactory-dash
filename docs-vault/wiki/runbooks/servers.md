@@ -113,6 +113,14 @@ Rules the routes enforce:
 - **The plain-HTTP warning**: for any address that is not loopback the response has `plainHttpOverLan: true`. FRM has
   no TLS, so its token (and data) cross the LAN in clear text, and anyone on the LAN could read it. The owner accepted
   this trade-off (ADR-0030); the screen shows it whenever a non-loopback host is entered.
+- **Known limits, accepted with the design (ADR-0030).**
+  - The vanilla API's self-signed certificate is not verified for a loopback or private host, so on a LAN the API
+    token could be taken by someone who can impersonate that machine (ARP spoofing). `plainHttpOverLan` covers FRM only.
+  - The operator chooses the ports, so a test connection tells them whether something answers on any port of an
+    allowed address (open, refusing, or not a game server), by code only and never with the response. Only the operator
+    can do this, and only against loopback or private addresses.
+  - Redirects are never followed (a 3xx from a game server is a failed test): the address guard checks the first hop
+    only, and a redirect would carry the FRM token to wherever it points.
 - **One change at a time**, in this process (a mutex) and across processes (a Postgres advisory lock around the count
   and the insert). Writes are limited to 30 per 15 minutes per user, test connections to 10 per minute.
 - **Audit**: `server.created`, `server.updated` (the names of the changed fields, never values) and `server.deleted`.

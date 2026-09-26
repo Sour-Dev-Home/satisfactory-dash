@@ -26,6 +26,13 @@ describe("FrmApiClient", () => {
     ]);
   });
 
+  it("never follows a redirect (the address guard checks the first hop only) and treats a 3xx as a failure", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 302, json: async () => ({}) });
+    const client = buildClient(fetchImpl, "test-token");
+    await expect(client.get("getPlayer")).rejects.toThrow(FrmApiRequestError);
+    expect(fetchImpl).toHaveBeenCalledWith("http://localhost:8080/getPlayer", expect.objectContaining({ redirect: "manual" }));
+  });
+
   it("sends the auth token as X-FRM-Authorization when configured", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     const client = buildClient(fetchImpl, "test-token");

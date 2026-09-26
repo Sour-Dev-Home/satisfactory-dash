@@ -62,6 +62,9 @@ export class FrmApiClient {
       res = await this.fetchImpl(url, {
         headers: this.options.authToken ? { "X-FRM-Authorization": this.options.authToken } : {},
         signal: AbortSignal.timeout(this.options.timeoutMs),
+        // Never follow a redirect (ADR-0030): the address guard checks the first hop only, and fetch would send the
+        // X-FRM-Authorization header on to wherever a 3xx points. A redirect is just an unexpected status below.
+        redirect: "manual",
       });
     } catch (err) {
       throw new FrmApiRequestError(`FRM request to ${endpoint} failed`, undefined, {
