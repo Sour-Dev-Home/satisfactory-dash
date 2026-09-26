@@ -13,7 +13,12 @@ import { VanillaApiClient } from "./vanillaApiClient.js";
 export * from "./domain.js";
 export { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 export type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
-export { createSatisfactoryServerConfig, loadSatisfactoryServerConfigFromEnv, parsePortEnv } from "./connectionConfig.js";
+export {
+  createSatisfactoryServerConfig,
+  loadSatisfactoryServerConfigFromEnv,
+  nonLoopbackServerIds,
+  parsePortEnv,
+} from "./connectionConfig.js";
 export type { SatisfactoryServerConfig } from "./connectionConfig.js";
 export { configuredServerEnvNamesInUse, ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
 export type { ConfiguredServer } from "./serversFile.js";

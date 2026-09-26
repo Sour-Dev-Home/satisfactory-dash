@@ -34,20 +34,21 @@ afterEach(() => {
 });
 
 describe("dismissing the warnings banner", () => {
-  it("hides the banner but keeps the section rows", async () => {
+  it("hides the warning but keeps the Health card and the section rows", async () => {
     renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
     expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Health" })).toHaveTextContent("Warning hidden until something changes.");
     expect(screen.getByRole("list", { name: "Sections" })).toHaveTextContent("Degraded");
   });
 
-  it("moves keyboard focus to the next card's heading, never leaving it on <body>", async () => {
+  it("moves keyboard focus to the Health card's heading, never leaving it on <body>", async () => {
     renderOverview();
     const button = await screen.findByRole("button", DISMISS);
     button.focus();
     fireEvent.click(button);
     expect(button).not.toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Players" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Health" }));
     expect(document.activeElement).not.toBe(document.body);
   });
 
@@ -61,7 +62,7 @@ describe("dismissing the warnings banner", () => {
     expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
   });
 
-  it("does not steal focus to the Players heading on a reload with an already-stored dismissal", async () => {
+  it("does not steal focus to the Health heading on a reload with an already-stored dismissal", async () => {
     // The focus move belongs only to a user's dismiss click. A remount that starts with the
     // banner already hidden (a stored dismissal from a previous visit) must not autofocus.
     const first = renderOverview();
@@ -70,8 +71,7 @@ describe("dismissing the warnings banner", () => {
 
     renderOverview();
     await screen.findByText("2 of 5 machines backed up");
-    const playersHeading = screen.getByRole("heading", { name: "Players" });
-    expect(document.activeElement).not.toBe(playersHeading);
+    expect(document.activeElement).not.toBe(screen.getByRole("heading", { name: "Health" }));
   });
 
   it("comes back when another section starts warning", async () => {

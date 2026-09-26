@@ -82,17 +82,32 @@ export function players(now: number): ServerPlayersResponse {
   return { available: true, players: DEMO_PLAYERS.map((name, i) => ({ name, online: i < online })) };
 }
 
+/**
+ * The server tick: around 29.6 ticks/s, with a 40-second "slow" episode (about 7 ticks/s, the
+ * dial's red zone) once every 10 minutes, so the demo can show every tick state. The episode
+ * starts 5 minutes after DEMO_EPOCH, so the fixed-clock renders stay healthy.
+ */
+const SLOW_CYCLE_MS = 600_000;
+const SLOW_FROM_MS = 300_000;
+const SLOW_FOR_MS = 40_000;
+export function tickAt(now: number): { tickRate: number; tickHealth: "healthy" | "slow" } {
+  const inCycle = (((now - DEMO_EPOCH) % SLOW_CYCLE_MS) + SLOW_CYCLE_MS) % SLOW_CYCLE_MS;
+  const slow = inCycle >= SLOW_FROM_MS && inCycle < SLOW_FROM_MS + SLOW_FOR_MS;
+  return slow
+    ? { tickRate: round1(7.2 + 0.4 * Math.sin(now / 5_000)), tickHealth: "slow" }
+    : { tickRate: round1(29.6 + 0.3 * Math.sin(now / 17_000)), tickHealth: "healthy" };
+}
+
 export function status(now: number): StatusResponse {
   return {
     ...envelope(now),
     data: {
-      tickHealth: "healthy",
+      ...tickAt(now),
       isGameRunning: true,
       gamePaused: false,
       sessionName: "Demo World",
       connectedPlayers: connectedPlayersAt(now),
       playerLimit: 4,
-      tickRate: round1(29.6 + 0.3 * Math.sin(now / 17_000)),
       totalGameDurationSeconds: Math.max(0, Math.floor(PLAY_TIME_AT_EPOCH_S + (now - DEMO_EPOCH) / 1000)),
     },
   };
