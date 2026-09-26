@@ -72,6 +72,12 @@ describe("PlayersCard", () => {
     expect(screen.getByText("The game is paused.")).toHaveClass("text-muted");
   });
 
+  it(`shows exactly "+1" right past the ${MAX_FIGURES}-figure boundary (off-by-one guard)`, () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: MAX_FIGURES + 1, playerLimit: MAX_FIGURES + 1 })} />);
+    expect(figures(container)).toEqual({ connected: MAX_FIGURES, free: 0 });
+    expect(screen.getByText("+1")).toBeInTheDocument();
+  });
+
   it("never shows more filled figures than slots when the server reports more players than the limit", () => {
     // A buggy or stale server can report connectedPlayers > playerLimit; the card must not
     // render a negative "free" count or more filled figures than slots.
@@ -150,5 +156,33 @@ describe("PlayersCard names (ADR-0029)", () => {
     const { container } = render(<PlayersCard state={running({ connectedPlayers: 2 })} roster={roster} />);
     expect(container.querySelector("b")).toBeNull();
     expect(screen.getAllByText("<b>X</b>")).toHaveLength(2);
+  });
+
+  it(`says "and 1 more" exactly one name past the ${MAX_NAMES}-name boundary (off-by-one guard)`, () => {
+    const roster = { available: true, players: Array.from({ length: MAX_NAMES + 1 }, (_, i) => ({ name: `P${i}`, online: true })) };
+    render(<PlayersCard state={running({ connectedPlayers: MAX_NAMES + 1, playerLimit: MAX_NAMES + 1 })} roster={roster} />);
+    expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(MAX_NAMES);
+    expect(screen.getByText("and 1 more")).toBeInTheDocument();
+  });
+
+  it("keeps names hidden when the server allows no players, even if a stale roster lists someone online", () => {
+    // playerLimit 0 returns early in PlayersBody before the roster is ever read; this locks
+    // in that a mismatched/stale roster can't leak a name onto a "no players" server.
+    render(<PlayersCard state={running({ isGameRunning: true, playerLimit: 0, connectedPlayers: 0 })} roster={playersAvailable} />);
+    expect(screen.getByText("The server allows no players.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Players online" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Pioneer-Alpha")).not.toBeInTheDocument();
+  });
+
+  it("lists more online names than there are figures when playerLimit is under the figure cap (roster is not capped to slots)", () => {
+    // FLAG: MAX_NAMES is tied to MAX_FIGURES (12), not to `slots` (min(playerLimit, MAX_FIGURES)).
+    // On a small server, a roster reporting more online players than playerLimit allows (stale
+    // or buggy FRM data) shows more names than figures, with no "+N"/"and N more" to reconcile
+    // the two. This test documents the current, observed behavior — flagging it for the author
+    // to confirm is intentional rather than asserting it's wrong.
+    const roster = { available: true, players: Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, online: true })) };
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 4, playerLimit: 4 })} roster={roster} />);
+    expect(figures(container)).toEqual({ connected: 4, free: 0 });
+    expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(6);
   });
 });
