@@ -112,6 +112,10 @@ export const RawFrmFactoryBuildingSchema = z.object({
   IsProducing: z.boolean(),
   IsPaused: z.boolean(),
   PowerInfo: RawFrmPowerInfoSchema.optional(),
+  /** Configured speed in percent (frm-getFactory.md:54; the 2026-09-22 running capture has 100 and one 160).
+   *  Optional, and tolerant: a value that is not a number (or not finite, e.g. JSON `1e999`) becomes undefined,
+   *  so one odd optional field never makes the whole factory response an upstream error. */
+  ManuSpeed: z.number().optional().catch(undefined),
   /** World position (frm-getFactory.md:23-27; units not documented, believed centimetres:
    *  ADR-0023). Optional so a building without it still maps, just without a location. */
   location: RawFrmLocationSchema.optional(),
