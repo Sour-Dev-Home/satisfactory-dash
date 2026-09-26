@@ -40,7 +40,7 @@ jobs:
     outputs:
       relevant: ${{ steps.diff.outputs.relevant }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Find the model
         id: model
@@ -138,7 +138,7 @@ jobs:
       # Phase 3 (ADR-0024): backend imports vs the model's component relationships.
       # REPORT-ONLY for now (the architect's rule): it becomes required after about a
       # week of green runs on main. The report ships in the diagrams artifact.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: steps.model.outputs.present == 'true'
         with:
           node-version: 22
@@ -163,7 +163,7 @@ jobs:
 
       - name: Upload diagrams
         if: steps.model.outputs.present == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: architecture-diagrams
           path: docs-vault/architecture-out/
