@@ -49,4 +49,13 @@ describe("HealthCard", () => {
     render(<HealthCard overall={{ health: "ok", headline: "x" }} />);
     expect(screen.getByRole("region")).not.toHaveClass("md:col-span-2");
   });
+
+  it("never shows the Hide button while hidden, even without onDismiss (hidden implies not dismissible-and-visible)", () => {
+    // Defensive: canDismiss gates hidden and onDismiss together in OverviewView, but the card
+    // itself doesn't assume that pairing. hidden=true with no onDismiss must still render
+    // safely and never surface a button with no handler.
+    render(<HealthCard overall={{ health: "outage", headline: "Power outage" }} hidden />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Warning hidden until something changes.");
+  });
 });
