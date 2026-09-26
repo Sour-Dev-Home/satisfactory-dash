@@ -23,7 +23,8 @@ describe("StatusPanel", () => {
     expect(valueOf("Save")).toHaveTextContent("ExampleSession");
     expect(valueOf("Players")).toHaveTextContent("0 / 4 connected");
     expect(valueOf("Total play time on this save")).toHaveTextContent("1 d 2 h 50 m");
-    expect(valueOf("As of")).toHaveTextContent(new Date(statusRunning.observedAt).toLocaleString());
+    expect(valueOf("Data").querySelector("time")).toHaveAttribute("dateTime", statusRunning.observedAt);
+    expect(valueOf("Data")).toHaveTextContent(/^Updated /);
     expect(screen.queryByText(/uptime/i)).not.toBeInTheDocument();
   });
 
@@ -41,7 +42,7 @@ describe("StatusPanel", () => {
 
   it("keeps showing a stale snapshot's values and its own observedAt", () => {
     render(<StatusPanel snapshot={statusStale} />);
-    expect(valueOf("As of")).toHaveTextContent(new Date(statusStale.observedAt).toLocaleString());
+    expect(valueOf("Data").querySelector("time")).toHaveAttribute("dateTime", statusStale.observedAt);
   });
 
   it("hides save-specific values when no save is loaded", () => {
