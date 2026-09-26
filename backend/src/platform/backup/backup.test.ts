@@ -146,7 +146,26 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
       }
     });
 
+    it("refuses more endpoint shapes that are not a plain https origin", () => {
+      for (const bad of ["HTTPS://s3.example.com", "https://user@s3.example.com", "https://:pw@s3.example.com", "https://s3.example.com:99999", "https:s3.example.com", "-https://s3.example.com", "https://s3 example.com"]) {
+        expect(() => loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: bad }, { localDir: "x" }), bad).toThrow(ConfigError);
+      }
+    });
+
+    it("normalizes port, query, fragment and IPv6 to a bare origin", () => {
+      const load = (v: string) => loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: v }, { localDir: "x" }).s3Endpoint;
+      expect(load("https://s3.example.com:443")).toBe("https://s3.example.com");
+      expect(load("https://s3.example.com:8443?x=1#f")).toBe("https://s3.example.com:8443");
+      expect(load("https://[::1]:9000/")).toBe("https://[::1]:9000");
+    });
+
     it("never echoes the endpoint value in the refusal message", () => {
+      for (const bad of ["not a url with secret", "http://user:secret@s3.example.com"]) {
+        expect(() => loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: bad }, { localDir: "x" })).toThrow(/^(?!.*secret)/s);
+      }
+    });
+
+    it("never echoes the endpoint value in the refusal message (userinfo)", () => {
       expect(() => loadBackupConfig({ ...ENV, BACKUP_S3_ENDPOINT: "https://user:secret@s3.example.com" }, { localDir: "x" })).toThrow(/^(?!.*secret)/s);
     });
   });
