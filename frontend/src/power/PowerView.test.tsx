@@ -73,4 +73,23 @@ describe("PowerView's data-age warning", () => {
     await waitFor(() => expect(screen.getByText(/newer data is overdue/)).toBeInTheDocument());
     expect(screen.getByRole("region", { name: "Power" })).toBeInTheDocument();
   });
+
+  it("clears the warning once a refresh recovers after a failed one", async () => {
+    let fail = false;
+    server.use(
+      http.get(endpoints.power.route, () =>
+        fail ? HttpResponse.json(errorUpstreamUnreachable, { status: 503 }) : HttpResponse.json(powerOk),
+      ),
+    );
+    const { client } = renderView();
+    await screen.findByRole("region", { name: "Power" });
+
+    fail = true;
+    await act(() => client.refetchQueries({ type: "active" }));
+    await waitFor(() => expect(screen.getByText(/newer data is overdue/)).toBeInTheDocument());
+
+    fail = false;
+    await act(() => client.refetchQueries({ type: "active" }));
+    await waitFor(() => expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument());
+  });
 });
