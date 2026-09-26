@@ -4,6 +4,7 @@ import cors from "cors";
 import type { Logger } from "pino";
 import { assignRequestId, createRequestLogger } from "./platform/requestContext.js";
 import { createErrorHandler, RouteNotFoundError } from "./platform/errorResponse.js";
+import { requestTiming } from "./platform/requestTiming.js";
 import { createCrossSiteGuard, requireJsonBody, securityHeaders } from "./platform/httpPolicy.js";
 
 export interface AppOptions {
@@ -43,6 +44,8 @@ export function createApp({
   const app = express();
   app.disable("x-powered-by");
   app.use(assignRequestId);
+  // ADR-0032: the request's timer (app time vs game-server time): the Server-Timing header and the log line's fields.
+  app.use(requestTiming({ allowedOrigins }));
   // Before CORS so a preflight answer carries them too (ADR-0019).
   app.use("/api", securityHeaders);
   // The agent API's responses (an enrolment answer holds the credential) are never cached either.

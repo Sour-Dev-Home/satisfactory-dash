@@ -125,12 +125,14 @@ export class SatisfactoryServerAdapter {
       authToken: config.apiToken,
       allowSelfSignedCert: config.apiAllowSelfSignedCert,
       timeoutMs: config.requestTimeoutMs,
+      onCall: config.onUpstreamCall,
     });
     const frmApi = new FrmApiClient({
       host: config.host,
       port: config.frmPort,
       authToken: config.frmToken,
       timeoutMs: config.requestTimeoutMs,
+      onCall: config.onUpstreamCall,
     });
     return new SatisfactoryServerAdapter(vanillaApi, frmApi);
   }

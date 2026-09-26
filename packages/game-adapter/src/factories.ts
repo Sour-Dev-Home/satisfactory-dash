@@ -14,6 +14,7 @@ export function createServerOptionsPort(config: SatisfactoryServerConfig): Serve
     authToken: config.apiToken,
     allowSelfSignedCert: config.apiAllowSelfSignedCert,
     timeoutMs: config.requestTimeoutMs,
+    onCall: config.onUpstreamCall,
   });
   return new ServerOptionsAdapter(vanillaApi, config.apiToken);
 }

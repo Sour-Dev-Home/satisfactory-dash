@@ -188,7 +188,11 @@ export const queries = {
       queryKey: ["servers", serverId, "alerts", "destinations"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.alerts.destinations.get, serverId),
     }),
-  /** The alert log, newest first, a page at a time: each page's `nextBefore` fetches the older one. */
+  /**
+   * The alert log, newest first, a page at a time: each page's `nextBefore` fetches the older one.
+   * Read when the bell's dropdown opens (the caller enables it then), fresh for a minute, and never
+   * polled in the background: only the badge's status is.
+   */
   alertEvents: (serverId: string) =>
     infiniteQueryOptions({
       queryKey: ["servers", serverId, "alerts", "events"],
@@ -196,7 +200,7 @@ export const queries = {
         apiGetQuery(signal, endpoints.alerts.events, { limit: ALERT_PAGE, before: pageParam }, serverId),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (page) => page.nextBefore ?? undefined,
-      refetchInterval: POLL_MS.alerts,
+      staleTime: POLL_MS.alerts,
     }),
   settings: (serverId: string) =>
     queryOptions({

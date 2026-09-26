@@ -52,7 +52,8 @@
   --radius-control: 8px;
 
   /* Sizes (Tailwind's spacing namespace, so `min-h-touch`, `px-button-x`, `h-map`...). */
-  --spacing-touch: 44px; /* the minimum touch target (#62) */
+  /* The smallest touch target (#62, WCAG 2.5.5): buttons, links and rows people tap. */
+  --spacing-touch: 44px;
   /* Pulls a one-line link's 44 px target back to its line height, so the row keeps its rhythm. */
   --spacing-touch-bleed: calc((var(--spacing-touch) - 1lh) / 2);
   --spacing-button-x: 14px;
@@ -66,7 +67,10 @@
   /* Below this the Factory table stacks its rows (index.css and FactoryPanel). */
   --breakpoint-table-rows: 601px;
 
+  /* Overlays: the header's dropdowns sit above the page, fit any screen and scroll when long. */
   --z-popover: 10;
+  --popover-width: min(24rem, calc(100vw - 2rem));
+  --popover-max-height: min(70vh, 36rem);
 }
 
 /*

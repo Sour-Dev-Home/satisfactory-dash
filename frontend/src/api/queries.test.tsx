@@ -24,7 +24,9 @@ describe("query options", () => {
   it("reads alerts once a minute, never at the page's rate: the bell polls on every page (ADR-0027 PR 9)", () => {
     expect(queries.alertStatus("default").refetchInterval).toBe(60_000);
     expect(queries.alertStatus("default").staleTime).toBe(60_000);
-    expect(queries.alertEvents("default").refetchInterval).toBe(60_000);
+    // The log is read when the dropdown opens, fresh for a minute, and never polled in the background.
+    expect(queries.alertEvents("default").refetchInterval).toBeUndefined();
+    expect(queries.alertEvents("default").staleTime).toBe(60_000);
     expect(queries.alertStatus("a").queryKey).toEqual(["servers", "a", "alerts", "status"]);
   });
 

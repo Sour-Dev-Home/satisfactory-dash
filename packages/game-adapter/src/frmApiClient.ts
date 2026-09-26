@@ -10,7 +10,9 @@
  * this client only implements the direct Web Server transport.
  */
 
+import type { UpstreamCallListener } from "./connection.js";
 import { UpstreamError } from "./errors.js";
+import { timedCall } from "./upstreamTiming.js";
 import type { RequestFailureKind } from "./errors.js";
 
 export type FrmApiFetch = (url: string, init: RequestInit) => Promise<Response>;
@@ -23,6 +25,8 @@ export interface FrmApiClientOptions {
   authToken?: string;
   timeoutMs: number;
   fetchImpl?: FrmApiFetch;
+  /** ADR-0032: told once per request, success or failure. Never affects the request. */
+  onCall?: UpstreamCallListener;
 }
 
 export class FrmApiRequestError extends UpstreamError {
@@ -43,7 +47,12 @@ export class FrmApiClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  async get<T>(endpoint: string): Promise<T> {
+  /** ADR-0032: timed from the request to the parsed body (or the failure), which is how long the caller waited. */
+  get<T>(endpoint: string): Promise<T> {
+    return timedCall("frm", this.options.onCall, () => this.getUntimed<T>(endpoint));
+  }
+
+  private async getUntimed<T>(endpoint: string): Promise<T> {
     // An IPv6 literal (a pinned address, ADR-0030) needs brackets in a URL.
     const host = this.options.host.includes(":") && !this.options.host.startsWith("[") ? `[${this.options.host}]` : this.options.host;
     const url = `http://${host}:${this.options.port}/${endpoint}`;
