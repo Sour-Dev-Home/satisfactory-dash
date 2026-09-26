@@ -1,13 +1,23 @@
 import type { MachineObservation, ObservationSnapshot } from "../../telemetry/index.js";
 import {
   INITIAL_ALERT_STATE,
+  belowWithHysteresis,
   resumeAfterSuppression,
   step,
   type AlertState,
   type AlertTiming,
   type AlertTransition,
 } from "./alertStateMachine.js";
-import type { Rule, RuleKind, ServerUnreachableParams, Severity, StoppedMachinesParams } from "./rules.js";
+import {
+  PRODUCTION_CLEAR_ABOVE_SHARE,
+  PRODUCTION_FIRE_BELOW_SHARE,
+  type ProductionBelowTargetParams,
+  type Rule,
+  type RuleKind,
+  type ServerUnreachableParams,
+  type Severity,
+  type StoppedMachinesParams,
+} from "./rules.js";
 
 /** What an alert event says happened. `updated` is only for a grouped alert that is already firing (see below). */
 export type EventTransition = AlertTransition | "updated";
@@ -55,6 +65,22 @@ const STALE_AFTER_INTERVALS = 2;
 const UPDATE_MIN_INTERVAL_MS = 10 * 60_000;
 const UNREACHABLE_DEFAULTS: ServerUnreachableParams = { failedPolls: 3, minSeconds: 120 };
 const SUMMARY_TOP_RECIPES = 5;
+
+/** One factory-wide reading of an item's rate, kept per rule in memory (never in the database). */
+interface RateSample {
+  at: number;
+  rate: number;
+}
+/**
+ * The rolling window of one `production_below_target` rule. It belongs to one item, one window size and one game
+ * session; if any of them changes it starts over, and so does a restart (it lives only in memory).
+ */
+interface RateWindow {
+  item: string;
+  windowMs: number;
+  session: string | undefined;
+  samples: RateSample[];
+}
 
 const isFresh = (reading: { observedAt: number; intervalMs: number } | undefined, now: number): boolean =>
   reading !== undefined && now - reading.observedAt <= STALE_AFTER_INTERVALS * reading.intervalMs;
@@ -130,6 +156,7 @@ function machineSummary(ids: ReadonlySet<string>, machines: readonly MachineObse
 export class ServerAlertEvaluator {
   private machineTimers = new Map<string, Map<string, AlertState>>();
   private notified = new Map<string, Set<string>>();
+  private rateWindows = new Map<string, RateWindow>();
   private wasSuppressed = false;
 
   evaluate(input: EvaluationInput): Evaluation {
@@ -220,6 +247,11 @@ export class ServerAlertEvaluator {
           this.evaluateStoppedMachines(rule, rule.params, obs, now, previous, stepSubject, events, writes, commits, resumed);
           break;
         }
+        case "production_below_target": {
+          if (suppressed) break;
+          this.evaluateProduction(rule, rule.params, obs, now, previous, stepSubject, commits);
+          break;
+        }
       }
     }
 
@@ -228,9 +260,70 @@ export class ServerAlertEvaluator {
     commits.push(() => {
       for (const id of this.machineTimers.keys()) if (!liveIds.has(id)) this.machineTimers.delete(id);
       for (const id of this.notified.keys()) if (!liveIds.has(id)) this.notified.delete(id);
+      // A rate window across a suppressed stretch (paused, unreachable, muted) would bridge a gap: drop them all.
+      for (const id of this.rateWindows.keys()) if (suppressed || !liveIds.has(id)) this.rateWindows.delete(id);
       this.wasSuppressed = suppressed;
     });
     return { writes: [...writes.values()], events, commit: () => commits.forEach((apply) => apply()) };
+  }
+
+  /**
+   * Amendment 3, "production below target", for one item. The condition is the average of the factory-wide rate over
+   * a rolling window, with a hysteresis band: below 90% of the target is true, above 95% is false, in between the last
+   * answer stands. Until the window is FULL (after a restart, a pause, a session change, a stale reading) the answer
+   * is "unknown", so a firing alert holds and a new one waits: a half-filled window would judge on too little.
+   */
+  private evaluateProduction(
+    rule: Rule & { kind: "production_below_target" },
+    params: ProductionBelowTargetParams,
+    obs: ObservationSnapshot,
+    now: number,
+    previous: (rule: Rule, subject: string) => AlertState,
+    stepSubject: (rule: Rule, subject: string, condition: boolean | "unknown", summary: () => Record<string, unknown>, timing?: AlertTiming) => { state: AlertState; transition?: AlertTransition },
+    commits: (() => void)[],
+  ): void {
+    const factory = obs.factory;
+    const usable = isFresh(factory, now) && factory !== undefined && !factory.afterResume;
+    const windowMs = params.windowMinutes * 60_000;
+    const existing = this.rateWindows.get(rule.id);
+    const sameWindow = existing !== undefined && existing.item === params.item && existing.windowMs === windowMs && existing.session === obs.session;
+    // The working copy: `evaluate` changes nothing until `commit`.
+    let samples: RateSample[] = usable && existing !== undefined && sameWindow ? [...existing.samples] : [];
+    let full = false;
+    let average = 0;
+    if (usable) {
+      const last = samples[samples.length - 1];
+      // The evaluator ticks more often than the factory poller: one sample per reading.
+      if (last === undefined || factory.observedAt > last.at) {
+        // An item nobody makes is absent from the map: that is a rate of 0 (a zero rate fires), not unknown.
+        samples.push({ at: factory.observedAt, rate: factory.itemRates.get(params.item) ?? 0 });
+      }
+      samples = samples.filter((sample) => sample.at >= factory.observedAt - windowMs);
+      // Full: the oldest sample is at most one poll interval short of the window, so a late poll does not stall it.
+      full = samples.length > 0 && samples[0]!.at <= factory.observedAt - windowMs + factory.intervalMs;
+      if (full) average = samples.reduce((sum, sample) => sum + sample.rate, 0) / samples.length;
+    }
+
+    const before = previous(rule, "item");
+    const condition: boolean | "unknown" = full
+      ? belowWithHysteresis(
+          average,
+          before.lastCondition,
+          params.targetPerMinute * PRODUCTION_FIRE_BELOW_SHARE,
+          params.targetPerMinute * PRODUCTION_CLEAR_ABOVE_SHARE,
+        )
+      : "unknown";
+    stepSubject(rule, "item", condition, () => ({
+      item: params.item,
+      targetPerMinute: params.targetPerMinute,
+      // Only from a full window: a reminder sent while the window refills must not report a made-up average.
+      ...(full ? { averagePerMinute: Math.round(average * 10) / 10 } : {}),
+      windowMinutes: params.windowMinutes,
+    }));
+    const stored: RateWindow = { item: params.item, windowMs, session: obs.session, samples };
+    commits.push(() => {
+      this.rateWindows.set(rule.id, stored);
+    });
   }
 
   private evaluateStoppedMachines(

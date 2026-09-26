@@ -6,7 +6,7 @@ import { z } from "zod";
  * with a logged code and never crashes a tick.
  */
 
-export const RULE_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable"] as const;
+export const RULE_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target"] as const;
 export type RuleKind = (typeof RULE_KINDS)[number];
 
 export const SEVERITIES = ["info", "warning", "critical"] as const;
@@ -27,14 +27,31 @@ export const ServerUnreachableParamsSchema = z.strictObject({
   minSeconds: z.number().int().min(0).max(86_400).default(120),
 });
 
+export const PRODUCTION_WINDOW_MIN_MINUTES = 5;
+export const PRODUCTION_WINDOW_MAX_MINUTES = 60;
+/** Amendment 3: fires below this share of the target, clears above the other (a hysteresis band, so 92% never flaps). */
+export const PRODUCTION_FIRE_BELOW_SHARE = 0.9;
+export const PRODUCTION_CLEAR_ABOVE_SHARE = 0.95;
+
+export const ProductionBelowTargetParamsSchema = z.strictObject({
+  /** The item's class name (e.g. `Desc_IronPlate_C`): game data, never trusted as text. */
+  item: z.string().min(1).max(200),
+  /** The wanted factory-wide production, items per minute. */
+  targetPerMinute: z.number().positive().finite(),
+  /** The rolling window the average is taken over. */
+  windowMinutes: z.number().min(PRODUCTION_WINDOW_MIN_MINUTES).max(PRODUCTION_WINDOW_MAX_MINUTES).default(10),
+});
+
 export type StoppedMachinesParams = z.infer<typeof StoppedMachinesParamsSchema>;
 export type ServerUnreachableParams = z.infer<typeof ServerUnreachableParamsSchema>;
+export type ProductionBelowTargetParams = z.infer<typeof ProductionBelowTargetParamsSchema>;
 
 export type ParsedRuleParams =
   | { kind: "power_outage"; params: Record<string, never> }
   | { kind: "fuse_trip"; params: Record<string, never> }
   | { kind: "stopped_machines"; params: StoppedMachinesParams }
-  | { kind: "server_unreachable"; params: ServerUnreachableParams };
+  | { kind: "server_unreachable"; params: ServerUnreachableParams }
+  | { kind: "production_below_target"; params: ProductionBelowTargetParams };
 
 /** A rule as the engine sees it: validated, for one server (by its public id). */
 export type Rule = ParsedRuleParams & {
@@ -62,6 +79,11 @@ export function parseRuleParams(kind: string, raw: unknown): ParsedRuleParams | 
       const parsed = ServerUnreachableParamsSchema.safeParse(raw ?? {});
       return parsed.success ? { kind, params: parsed.data } : undefined;
     }
+    case "production_below_target": {
+      // No `?? {}`: the item and the target have no default, so missing params are refused.
+      const parsed = ProductionBelowTargetParamsSchema.safeParse(raw);
+      return parsed.success ? { kind, params: parsed.data } : undefined;
+    }
     default:
       return undefined;
   }
@@ -80,7 +102,7 @@ export interface PresetDefaults {
  * The rules seeded for every server (idempotently, existing servers included). `fuse_trip` is NOT seeded: today the
  * dashboard's "outage" status IS a tripped fuse (powerService.classifyPowerCircuit), so `power_outage` and `fuse_trip`
  * would raise two alerts for one event; the kind exists for when the two can differ. "Newly underfed" is not offered
- * (ADR-0027 amendment 2), and "production below target" is undecided.
+ * (ADR-0027 amendment 2), and "production below target" (amendment 3) is opt-in per item, so it has NO preset.
  */
 export const PRESET_RULES: readonly PresetDefaults[] = [
   { kind: "power_outage", params: {}, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
@@ -89,8 +111,10 @@ export const PRESET_RULES: readonly PresetDefaults[] = [
   { kind: "server_unreachable", params: { failedPolls: 3, minSeconds: 120 }, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
 ];
 
-/** Every kind's defaults, seeded or not, for a rule created later (PR 7). */
+/** Every kind's defaults, seeded or not, for a rule created later (PR 7). `params` here are only the optional ones. */
 export const DEFAULTS_BY_KIND: Readonly<Record<RuleKind, PresetDefaults>> = {
+  // Amendment 3: `for` 10 min, clear 5 min, repeat 1 h.
+  production_below_target: { kind: "production_below_target", params: { windowMinutes: 10 }, forSeconds: 600, clearSeconds: 300, repeatSeconds: 3600, severity: "warning" },
   power_outage: PRESET_RULES[0]!,
   fuse_trip: { kind: "fuse_trip", params: {}, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
   stopped_machines: PRESET_RULES[1]!,

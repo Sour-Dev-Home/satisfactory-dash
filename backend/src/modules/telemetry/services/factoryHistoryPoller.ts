@@ -192,10 +192,12 @@ export class FactoryHistoryPoller implements BackgroundWorker {
     }
     // What the alert engine reads (ADR-0027). The FIRST snapshot after a pause is flagged: FRM's values may still be
     // frozen, so the evaluator counts it as unknown.
+    const itemRows = sumItemRates(buildings, atMs);
     this.options.observations?.publishFactory({
       observedAt: atMs,
       intervalMs: this.intervalMs,
       afterResume: this.wasPaused,
+      itemRates: new Map(itemRows.map((row) => [row.item, row.currentPerMinute])),
       machines: buildings.map((building) => {
         const classification = classifyBuilding(building, isBackedUp(building));
         return {
@@ -209,7 +211,7 @@ export class FactoryHistoryPoller implements BackgroundWorker {
       }),
     });
     this.wasPaused = false;
-    this.options.history.recordItems(sumItemRates(buildings, atMs));
+    this.options.history.recordItems(itemRows);
     this.options.history.recordTransitions(diffStates(this.known, buildings, atMs));
   }
 }
