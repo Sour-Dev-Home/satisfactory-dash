@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseFirst, parseOne, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 
 /**
@@ -109,6 +110,34 @@ export async function listServersForUser(db: Queryable, userId: string): Promise
   }));
 }
 
+const RENAME_SERVER = `
+  UPDATE servers.servers
+  SET display_name = $2
+  WHERE public_id = $1 AND deleted_at IS NULL
+  RETURNING id`;
+
+/** Renames a live server (an edit that changes nothing about how it is reached). The audit event
+ *  `server.updated` names only the field. False if the server is unknown or removed. */
+export async function renameServer(
+  pool: Parameters<typeof withTransaction>[0],
+  publicId: string,
+  displayName: string,
+  audit: { actorUserId: string | null },
+): Promise<boolean> {
+  return withTransaction(pool, async (client) => {
+    const result = await client.query(RENAME_SERVER, [publicId, displayName]);
+    const row = parseFirst(IdRowSchema, result.rows, "servers.renameServer");
+    if (row === undefined) return false;
+    await recordAuditEvent(client, {
+      action: "server.updated",
+      actorUserId: audit.actorUserId ?? undefined,
+      serverId: row.id,
+      detail: { fields: ["displayName"] },
+    });
+    return true;
+  });
+}
+
 const SOFT_DELETE = `
   UPDATE servers.servers
   SET deleted_at = now()
@@ -135,12 +164,17 @@ const IdRowSchema = z.object({ id: z.string() });
 export async function softDeleteServer(
   pool: Parameters<typeof withTransaction>[0],
   publicId: string,
+  /** When given, an audit event `server.deleted` (ids only) is written in the same transaction. */
+  audit?: { actorUserId: string | null },
 ): Promise<boolean> {
   return withTransaction(pool, async (client) => {
     const deleted = await client.query(SOFT_DELETE, [publicId]);
     const row = parseFirst(IdRowSchema, deleted.rows, "servers.softDeleteServer");
     if (row === undefined) {
       return false;
+    }
+    if (audit !== undefined) {
+      await recordAuditEvent(client, { action: "server.deleted", actorUserId: audit.actorUserId ?? undefined, serverId: row.id });
     }
     await client.query(DELETE_MEMBERS, [row.id]);
     // ADR-0030: a removed server keeps no credentials, not even encrypted ones.

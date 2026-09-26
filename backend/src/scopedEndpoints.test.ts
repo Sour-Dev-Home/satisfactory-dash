@@ -34,6 +34,14 @@ describe("scopedEndpoints (the selector the generated IDOR tests use)", () => {
     expect(scopedEndpoints(contract).find((e) => e.method === "PUT")?.name).toBe("nested.inner");
   });
 
+  it("carries the contract's operatorOnly flag (false when absent)", () => {
+    const marked = scopedEndpoints({
+      a: { method: "PATCH", route: "/api/servers/:serverId", operatorOnly: true },
+      b: { method: "GET", route: "/api/servers/:serverId/status" },
+    });
+    expect(marked.map((e) => [e.name, e.operatorOnly])).toEqual([["a", true], ["b", false]]);
+  });
+
   it("finds the real contract's server-scoped endpoints", () => {
     expect(scopedEndpoints(endpoints).length).toBeGreaterThanOrEqual(5);
   });

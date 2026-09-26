@@ -118,6 +118,39 @@ describe("remove and replace", () => {
     expect(fresh.start).toHaveBeenCalledTimes(1);
   });
 
+  it("reports a worker that fails to stop (by server id) on remove, replace and stop, without throwing", async () => {
+    const onWorkerStopError = vi.fn();
+    const bad = () => fakeWorker({ stop: async () => Promise.reject(new Error("boom")) });
+    const runtime = new ServerRuntime([server("a", [bad()]), server("b", [bad()]), server("c", [bad()])], { onWorkerStopError });
+    await runtime.remove("a");
+    await runtime.replace(server("b"));
+    await runtime.stop();
+    expect(onWorkerStopError.mock.calls.map((call) => call[0]).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("replace never leaves the id unresolved, and replacing an absent id just adds it", async () => {
+    let seenDuringStop: unknown;
+    const oldWorker = fakeWorker();
+    const runtime = new ServerRuntime([server("a", [oldWorker])]);
+    oldWorker.stop.mockImplementation(async () => {
+      seenDuringStop = runtime.get("a");
+    });
+    await runtime.replace(server("a", [fakeWorker()]));
+    expect(seenDuringStop).toEqual({ tag: "a" });
+    await runtime.replace(server("fresh"));
+    expect(runtime.has("fresh")).toBe(true);
+  });
+
+  it("concurrent replaces of one id both succeed (no duplicate-id error); the last one wins", async () => {
+    const runtime = new ServerRuntime([server("a")]);
+    runtime.start();
+    await Promise.all([
+      runtime.replace({ ...server("a"), displayName: "first" }),
+      runtime.replace({ ...server("a"), displayName: "second" }),
+    ]);
+    expect(runtime.list()).toEqual([{ id: "a", displayName: "second" }]);
+  });
+
   it("replace stops the old workers, then installs and starts the new entry", async () => {
     const oldWorker = fakeWorker();
     const newWorker = fakeWorker();

@@ -266,7 +266,7 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(15);
+    expect(all.length).toBe(21);
     for (const [name, endpoint] of all) {
       expect(endpoint.path("default"), name).toBe(endpoint.route.replace(":serverId", "default"));
     }

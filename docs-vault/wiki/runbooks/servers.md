@@ -80,7 +80,39 @@ npm run admin -- verify-secrets
 It opens every stored token and prints how many opened and which servers (by public id and key id) could not. It
 never prints a token. It exits 1 if any row cannot be opened, or if there are none to check.
 
-## What this does not change
+## Managing servers through the API (operator only)
 
-The frontend, the routes and the API contract are untouched. Adding, editing and removing servers from the app
-(operator only) is the next PR; until then the import CLI is the way in.
+The backend now has routes to add, edit, test and remove servers (the app's screen for them is a separate change;
+until then they can be called with the operator's session). **Only the seeded operator account may use them**: being
+the owner or an admin of a server is not enough (403). `GET /api/servers` says `canManageServers: true` for the operator.
+
+| Route | What it does |
+|---|---|
+| `POST /api/servers` | Add a server (`id`, `displayName`, `host`, `apiPort`, `frmPort`, `apiToken`, optional `frmToken`). 201. |
+| `POST /api/servers/test-connection` | Try entered values before saving. Always 200; `ok: false` names the failing side by code. |
+| `GET /api/servers/:serverId/connection` | The stored connection for the edit form: host, ports, `set` flags and the last 4 characters of each token. |
+| `PATCH /api/servers/:serverId` | Change any of the fields (`frmToken: null` clears the FRM token). |
+| `DELETE /api/servers/:serverId` | Remove: the memberships and the encrypted tokens are wiped and the pollers stop. |
+| `POST /api/servers/:serverId/test-connection` | Test the stored connection (the tokens are write-only, so they cannot be resent). |
+
+Rules the routes enforce:
+
+- **The host must resolve only to loopback or private addresses** (127/8, ::1, 10/8, 172.16/12, 192.168/16; IPv4-mapped
+  IPv6 by its IPv4). One public, link-local (169.254/16, including the cloud metadata address), CGNAT, multicast or
+  unique-local address among the answers refuses the whole host (`address_not_allowed`, 422; the message never names the
+  address). The host is checked again on every edit and every test, and the backend connects to the pinned address.
+- **A test connection must pass before anything is saved** (`connection_test_failed`, 422): the vanilla API's
+  `QueryServerState` and FRM's `getSessionInfo`. The result carries codes only (`unreachable`, `unauthorized`,
+  `invalid_response`), never a message from the game server.
+- **At most 8 servers** (`server_limit_reached`, 409), and an id that is taken is `server_exists` (409). Create never
+  overwrites; edits go through `PATCH`.
+- **Tokens are write-only.** A request may carry them; no response ever does. A token must be printable ASCII without
+  spaces, and an empty FRM token is refused (omit it, or send `null` on an edit).
+- **A row whose tokens cannot be opened** is `state: "unreadable"` on `GET .../connection`; a `PATCH` that carries
+  BOTH tokens (the FRM token may be `null`) repairs it, and anything less is `connection_unreadable` (409).
+- **The plain-HTTP warning**: for any address that is not loopback the response has `plainHttpOverLan: true`. FRM has
+  no TLS, so its token (and data) cross the LAN in clear text, and anyone on the LAN could read it. The owner accepted
+  this trade-off (ADR-0030); the screen shows it whenever a non-loopback host is entered.
+- **One change at a time**, in this process (a mutex) and across processes (a Postgres advisory lock around the count
+  and the insert). Writes are limited to 30 per 15 minutes per user, test connections to 10 per minute.
+- **Audit**: `server.created`, `server.updated` (the names of the changed fields, never values) and `server.deleted`.

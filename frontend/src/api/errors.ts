@@ -103,6 +103,13 @@ const kindByCode = {
   upstream_auth_rejected: "upstream_auth_rejected",
   upstream_invalid_response: "upstream",
   upstream_error: "upstream",
+  // ADR-0030: managing servers. The server-management screen (a later change) shows each of these next to
+  // the field or action that caused it; until then they are handled generically, like any unknown code.
+  address_not_allowed: "unknown",
+  connection_test_failed: "unknown",
+  connection_unreadable: "unknown",
+  server_exists: "unknown",
+  server_limit_reached: "unknown",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",

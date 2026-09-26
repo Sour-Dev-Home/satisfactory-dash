@@ -18,7 +18,10 @@ import { sendValidated } from "../../platform/sendValidated.js";
 export function createServersRouter(
   directory: ServerDirectory<unknown>,
   access?: ServerAccess,
-  options: AuthorizeServerOptions = {},
+  options: AuthorizeServerOptions & {
+    /** ADR-0030: when given, the list says whether this user may manage servers (the operator only). */
+    canManage?: (userId: string) => boolean;
+  } = {},
 ): Router {
   const router = Router();
   if (!access) {
@@ -36,7 +39,10 @@ export function createServersRouter(
       throw new ServiceUnavailableError();
     }
     const mine = new Set((await orUnavailable(() => access.listForUser(userId))).map((s) => s.publicId));
-    sendValidated(res, ServerListResponseSchema, { servers: directory.list().filter((s) => mine.has(s.id)) });
+    sendValidated(res, ServerListResponseSchema, {
+      servers: directory.list().filter((s) => mine.has(s.id)),
+      ...(options.canManage && { canManageServers: options.canManage(userId) }),
+    });
   });
   router.use("/servers/:serverId", createAuthorizeServer(access, options));
   return router;

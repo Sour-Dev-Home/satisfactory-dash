@@ -16,17 +16,22 @@ import {
   loadConfiguredServersFromFile,
   loadSatisfactoryServerConfigFromEnv,
   parsePortEnv,
+  testGameServerConnection,
 } from "./modules/gameserver/index.js";
 import type { SatisfactoryServerConfig } from "./modules/gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import {
   ServerRuntime,
   createDbServerAccess,
+  createServerManagementRouters,
+  createServerManagementService,
   createServersRouter,
+  isAllowedAddress,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
   registerConfiguredServers,
 } from "./modules/servers/index.js";
+import type { ServerConnection } from "./modules/servers/index.js";
 import { createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
@@ -113,6 +118,8 @@ const entries = orExit(() => {
 const directory = new ServerRuntime(entries, {
   onWorkerStartError: (serverId, err) =>
     logger.error({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to start"),
+  onWorkerStopError: (serverId, err) =>
+    logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to stop"),
 });
 // Process-wide workers. Started once the server is listening, and stopped on shutdown.
 const workers: { start(): void; stop(): Promise<void> }[] = [];
@@ -144,6 +151,36 @@ const databaseWorkers = identity.workers;
 // per user. The configured servers are registered, with the operator as owner, once the database
 // is up; until then those routes answer 503. Without a database nothing changes.
 let serversRegistered = database === undefined;
+// ADR-0030: the seeded operator account, known once the database is up. Only this account may manage servers.
+let operatorUserId: string | undefined;
+
+/** A stored connection becomes a running server that connects to its PINNED address. The address is
+ *  re-checked here as well (defence in depth): nothing but a loopback or private address is ever built. */
+function buildFromConnection(c: ServerConnection) {
+  if (!isAllowedAddress(c.pinnedIp)) {
+    throw new Error("refusing to build a server whose address is not loopback or private");
+  }
+  return buildServer(
+    c.publicId,
+    c.displayName,
+    createSatisfactoryServerConfig({ host: c.pinnedIp, apiPort: c.apiPort, apiToken: c.apiToken, frmPort: c.frmPort, frmToken: c.frmToken }),
+  );
+}
+
+const serverManagement = database
+  ? createServerManagementService({
+      db: database.pool,
+      ring: secretsKeyring,
+      runtime: directory,
+      build: buildFromConnection,
+      testConnection: ({ pinnedIp, apiPort, frmPort, apiToken, frmToken }) =>
+        testGameServerConnection(createSatisfactoryServerConfig({ host: pinnedIp, apiPort, apiToken, frmPort, frmToken })),
+      getOperatorUserId: () => operatorUserId,
+    })
+  : undefined;
+const managementRouters = serverManagement
+  ? createServerManagementRouters(serverManagement, { isReady: () => serversRegistered })
+  : undefined;
 // ADR-0030: false when a stored connection cannot be opened (no key, an unknown key id, a modified
 // value). The backend stays up and serves the readable servers, but reports not-ready.
 let connectionsReadable = true;
@@ -159,9 +196,16 @@ export const app = createApp({
   ],
   sessionGuard: identity.sessionGuard,
   protectedRouters: [
-    createServersRouter(directory, serverAccess, { isReady: () => serversRegistered }),
+    // The collection routes must come before the servers router (its /servers/:serverId check would
+    // read "test-connection" as a server id); the scoped ones after it (its membership check runs first).
+    ...(managementRouters ? [managementRouters.collection] : []),
+    createServersRouter(directory, serverAccess, {
+      isReady: () => serversRegistered,
+      canManage: serverManagement?.canManage,
+    }),
     ...createTelemetryRouters(directory),
     ...createSettingsRouters(directory),
+    ...(managementRouters ? [managementRouters.scoped] : []),
   ],
 });
 
@@ -182,6 +226,7 @@ if (process.env.NODE_ENV !== "test") {
         if (ownerId === undefined) {
           throw new Error("identity has no operator account in database mode");
         }
+        operatorUserId = ownerId;
         // ADR-0030 precedence: servers stored in the database win over the config. With none stored,
         // the configured servers are registered exactly as before.
         const stored = await loadDatabaseServers({
@@ -189,18 +234,7 @@ if (process.env.NODE_ENV !== "test") {
           ring: secretsKeyring,
           runtime: directory,
           operatorUserId: ownerId,
-          build: (c) =>
-            buildServer(
-              c.publicId,
-              c.displayName,
-              createSatisfactoryServerConfig({
-                host: c.pinnedIp,
-                apiPort: c.apiPort,
-                apiToken: c.apiToken,
-                frmPort: c.frmPort,
-                frmToken: c.frmToken,
-              }),
-            ),
+          build: buildFromConnection,
         });
         if (stored.usingDatabase) {
           const ignored = configuredServerEnvNamesInUse();

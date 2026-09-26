@@ -17,6 +17,8 @@ export { createSatisfactoryServerConfig, loadSatisfactoryServerConfigFromEnv, pa
 export type { SatisfactoryServerConfig } from "./connectionConfig.js";
 export { configuredServerEnvNamesInUse, ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
 export type { ConfiguredServer } from "./serversFile.js";
+export { testGameServerConnection } from "./connectionTest.js";
+export type { ConnectionCheck, ConnectionCheckError, ConnectionTestResult } from "./connectionTest.js";
 export { VanillaApiClient, VanillaApiRequestError } from "./vanillaApiClient.js";
 export { FrmApiClient, FrmApiRequestError } from "./frmApiClient.js";
 

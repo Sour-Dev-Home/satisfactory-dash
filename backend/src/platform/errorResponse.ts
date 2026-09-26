@@ -34,6 +34,12 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   not_editable: 409,
   rate_limited: 429,
   service_unavailable: 503,
+  // ADR-0030: managing servers.
+  address_not_allowed: 422,
+  connection_test_failed: 422,
+  connection_unreadable: 409,
+  server_exists: 409,
+  server_limit_reached: 409,
   internal: 500,
 };
 
@@ -145,10 +151,14 @@ export class ServiceUnavailableError extends Error {
   }
 }
 
-/** Too many failed logins from one IP (ADR-0011). Sets Retry-After. */
+/** Too many failed logins from one IP (ADR-0011), or too many requests to a rate-limited route
+ *  (ADR-0030's management routes pass their own message). Sets Retry-After. */
 export class RateLimitedError extends Error {
-  constructor(readonly retryAfterSeconds: number) {
-    super("Too many login attempts. Try again later.");
+  constructor(
+    readonly retryAfterSeconds: number,
+    message = "Too many login attempts. Try again later.",
+  ) {
+    super(message);
     this.name = "RateLimitedError";
   }
 }
@@ -175,6 +185,18 @@ export class BadRequestError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "BadRequestError";
+  }
+}
+
+/** A refusal with a stable public code and a fixed, safe message (ADR-0030's management routes). The
+ *  message is shown to the user and must never carry an address, a token or a game server's text. */
+export class ApiFailure extends Error {
+  constructor(
+    readonly code: KnownErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiFailure";
   }
 }
 
@@ -211,6 +233,9 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   }
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
+  }
+  if (err instanceof ApiFailure) {
+    return { code: err.code, message: err.message };
   }
   if (err instanceof UnauthorizedError) {
     return { code: "unauthorized", message: err.message };

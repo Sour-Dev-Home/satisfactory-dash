@@ -1,5 +1,13 @@
 import { HealthResponseSchema, ReadinessResponseSchema } from "./health";
 import { ServerListResponseSchema } from "./servers";
+import {
+  CreateServerRequestSchema,
+  DeleteServerResponseSchema,
+  ServerConnectionResponseSchema,
+  TestConnectionRequestSchema,
+  TestConnectionResponseSchema,
+  UpdateServerRequestSchema,
+} from "./serverManagement";
 import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
 import { PowerResponseSchema } from "./power";
@@ -85,6 +93,60 @@ export const endpoints = {
     // path, optionally with `?return=/app/...`; the answer is a 302, never JSON, so there is no
     // response schema. Offer it only when `signInMethods` includes "google" (Google off = 404).
     googleStart: { method: "GET", route: "/api/auth/google/start", path: () => "/api/auth/google/start" },
+  },
+  // ADR-0030 phase 1: the operator manages the local servers. Every entry is `operatorOnly`: the
+  // seeded operator account, not merely an owner or admin (a non-operator answers 403, a non-member
+  // of a scoped route 404). Tokens are write-only: requests carry them, responses never do.
+  serverManagement: {
+    create: {
+      method: "POST",
+      route: "/api/servers",
+      path: () => "/api/servers",
+      request: CreateServerRequestSchema,
+      response: ServerConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    // Try entered values before saving. Not server-scoped (there is no server yet).
+    testConnection: {
+      method: "POST",
+      route: "/api/servers/test-connection",
+      path: () => "/api/servers/test-connection",
+      request: TestConnectionRequestSchema,
+      response: TestConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    // The stored connection for the edit form: host, ports, token set + last 4.
+    get: {
+      method: "GET",
+      route: "/api/servers/:serverId/connection",
+      path: scoped("connection"),
+      response: ServerConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    update: {
+      method: "PATCH",
+      route: "/api/servers/:serverId",
+      path: (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`,
+      request: UpdateServerRequestSchema,
+      response: ServerConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    // Removes the server: its memberships, its encrypted tokens and its pollers go.
+    remove: {
+      method: "DELETE",
+      route: "/api/servers/:serverId",
+      path: (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`,
+      response: DeleteServerResponseSchema,
+      operatorOnly: true,
+    },
+    // Test the stored connection (the tokens are write-only, so the client cannot resend them).
+    testSaved: {
+      method: "POST",
+      route: "/api/servers/:serverId/test-connection",
+      path: scoped("test-connection"),
+      response: TestConnectionResponseSchema,
+      operatorOnly: true,
+    },
   },
   // ADR-0012.
   settings: {
