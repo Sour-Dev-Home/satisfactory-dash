@@ -130,11 +130,31 @@ describe("de-duplication and expiry (idempotent, architect rule)", () => {
   });
 
   it("an expired command is never run and never reported", async () => {
-    const t = setup([[command("old", { expiresAt: new Date(T0 - 1).toISOString() }), command("edge", { expiresAt: new Date(T0).toISOString() }), command("junk", { expiresAt: "not a time" })]]);
+    const t = setup([
+      [
+        command("old", { expiresAt: new Date(T0 - 1).toISOString() }),
+        command("edge", { expiresAt: new Date(T0).toISOString() }),
+        command("junk", { expiresAt: "not a time" }),
+        command("forever", { expiresAt: "2999-01-01T00:00:00.000Z" }), // far longer than the backend's 60 s: would pin its id in the ledger
+      ],
+    ]);
     const running = t.run();
-    await until(() => t.events.filter((entry) => entry.event === "command_expired_skipped").length === 3);
+    await until(() => t.events.some((entry) => entry.event === "command_skipped_expired_or_invalid_expiry"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(t.applyAutoPause).not.toHaveBeenCalled();
     expect(t.postResult).not.toHaveBeenCalled();
+    expect(t.events.filter((entry) => entry.event === "command_skipped_expired_or_invalid_expiry")).toHaveLength(1); // one line a minute, not one per command
+    await stop(t, running);
+  });
+
+  it("at most 20 commands from one poll are run: a huge list cannot keep the agent busy or flush real ids out of the ledger", async () => {
+    const many = Array.from({ length: 50 }, (_, i) => command(`c${i}`));
+    const t = setup([many]);
+    const running = t.run();
+    await until(() => t.results.length >= 20);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(t.results).toHaveLength(20);
+    expect(t.events).toContainEqual({ level: "warn", event: "commands_capped", fields: { received: 50, kept: 20 } });
     await stop(t, running);
   });
 

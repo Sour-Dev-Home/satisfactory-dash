@@ -7,11 +7,12 @@ import { DpapiError } from "./dpapi.js";
 import type { Dpapi } from "./dpapi.js";
 import { connectToGame } from "./gameReader.js";
 import type { GameConnectionInput } from "./gameReader.js";
+import { clearHalted, readHalted, writeHalted } from "./halted.js";
 import { createFileLogger } from "./logger.js";
 import { PromptAborted } from "./prompt.js";
 import { failureCode } from "./sampler.js";
 import type { GameReader } from "./sampler.js";
-import { AgentStore, DEFAULT_GAME, SECRET_NAMES, StoreError, resolveDataDir } from "./store.js";
+import { AgentStore, DEFAULT_GAME, SECRET_NAMES, StoreError, isAllowedGameHost, resolveDataDir } from "./store.js";
 import type { SecretName } from "./store.js";
 import { AGENT_VERSION } from "./version.js";
 
@@ -23,6 +24,7 @@ import { AGENT_VERSION } from "./version.js";
  *   agent run                                                   push snapshots and run commands until stopped
  *   agent status                                                what is set up (never a secret) and whether the store opens
  *   agent forget-credential                                     drop the agent's credential (before enrolling again)
+ *   agent resume                                                clear a "stopped" marker (after fixing the logon type)
  * Tokens are NEVER accepted as arguments or environment variables: command lines and environments are visible to other
  * processes and to process-audit logs. Exit codes: 0 ok, 1 failed or wrong usage, 2 the backend rejected the credential
  * (enrol again), 3 the store cannot be opened or unprotected (wrong Windows user or logon type).
@@ -56,6 +58,7 @@ Usage:
   agent run
   agent status
   agent forget-credential
+  agent resume
   agent --version
 
 First setup, in this order: set-tokens, check, enroll, run. (Enrolling makes the dashboard forget any game token it
@@ -126,8 +129,14 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         return await status(rest, deps);
       case "forget-credential":
         return await forgetCredential(rest, deps);
+      case "resume": {
+        parseArgs(rest, {});
+        clearHalted(resolveDataDir(deps.env));
+        deps.out("Cleared. `agent run` will start again.");
+        return EXIT_OK;
+      }
       default:
-        deps.err(`Unknown command "${command.slice(0, 40)}".\n\n${USAGE}`);
+        deps.err(`Unknown command.\n\n${USAGE}`);
         return EXIT_FAILED;
     }
   } catch (err) {
@@ -168,13 +177,16 @@ async function setTokens(argv: string[], deps: CliDeps): Promise<number> {
     apiPort: port(values["api-port"], "api-port", current.apiPort),
     frmPort: port(values["frm-port"], "frm-port", current.frmPort),
   };
-  store.setGame(game); // refuses a host that is not this machine or its own network
+  if (!isAllowedGameHost(game.host)) throw new StoreError("The game host must be this machine or an address on its own network (127.0.0.1, localhost, or a private IP), never a public one.");
+  // Ask first, save after: a cancelled prompt must leave the store exactly as it was.
   const apiToken = (await deps.prompt("Game API token (input hidden): ")).trim();
   if (apiToken === "") throw new UsageError("The game API token is required. Nothing was saved.");
   const frmToken = (await deps.prompt("FicsitRemoteMonitoring token (input hidden; press Enter if there is none): ")).trim();
+  store.setGame(game);
   await store.setSecret("apiToken", apiToken);
   if (frmToken !== "") await store.setSecret("frmToken", frmToken);
   else store.clearSecret("frmToken");
+  clearHalted(resolveDataDir(deps.env));
   deps.out(`Saved. The game is at ${game.host} (API port ${game.apiPort}, FRM port ${game.frmPort}); the tokens are stored encrypted for this Windows user.`);
   deps.out("Next: agent check");
   return EXIT_OK;
@@ -235,6 +247,8 @@ async function enroll(argv: string[], deps: CliDeps): Promise<number> {
   if (store.hasSecret("agentSecret") && !booleans.has("replace")) {
     throw new UsageError("This agent already has a credential. To enrol it again (for example after the backend rejected it), add --replace.");
   }
+  // The one-time code is spent by the backend the moment it answers, so prove BEFORE that the credential can be stored.
+  await store.probe();
   const client = new BackendClient({ baseUrl: values.url, fetch: deps.fetch });
   let response;
   try {
@@ -247,6 +261,7 @@ async function enroll(argv: string[], deps: CliDeps): Promise<number> {
   }
   await store.setSecret("agentSecret", response.agentSecret);
   store.setBackend({ backendUrl: new URL(values.url.trim()).origin, serverId: response.serverId });
+  clearHalted(resolveDataDir(deps.env));
   deps.out(`Enrolled for server "${response.serverId}". The credential is stored encrypted for this Windows user (it is never shown again).`);
   deps.out("Next: agent run   (see the runbook to keep it running as a Scheduled Task)");
   return EXIT_OK;
@@ -255,15 +270,32 @@ async function enroll(argv: string[], deps: CliDeps): Promise<number> {
 async function run(argv: string[], deps: CliDeps): Promise<number> {
   parseArgs(argv, {});
   const dir = resolveDataDir(deps.env);
-  const store = AgentStore.open(dir, deps.dpapi);
-  if (store.backendUrl === undefined || store.serverId === undefined || !store.hasSecret("agentSecret")) {
-    throw new UsageError("This agent is not enrolled. Run `agent enroll <CODE> --url <https://backend>` first.");
+  // A permanent condition already met: say so and end with SUCCESS, so a Scheduled Task that restarts on failure does not
+  // start the agent (and PowerShell, and a call to the backend) again and again. `resume` or a new setup clears it.
+  const halted = readHalted(dir);
+  if (halted !== undefined) {
+    deps.err(
+      halted.reason === "credential_rejected"
+        ? `The agent is stopped: the backend rejected its credential (${halted.at}). Create a new enrolment code in the dashboard, then run: agent enroll <CODE> --url <https://backend> --replace`
+        : `The agent is stopped: it could not unprotect its store (${halted.at}). Run it as the Windows user that set it up, with a logon type that loads that user's profile, then run: agent resume`,
+    );
+    return EXIT_OK;
   }
-  // Fail loudly and early when the store cannot be opened (wrong Windows user or logon type), before anything starts.
+  let store: AgentStore;
   const secrets = new Map<SecretName, string>();
-  for (const name of SECRET_NAMES) {
-    const value = await store.getSecret(name);
-    if (value !== undefined) secrets.set(name, value);
+  try {
+    store = AgentStore.open(dir, deps.dpapi);
+    if (store.backendUrl === undefined || store.serverId === undefined || !store.hasSecret("agentSecret")) {
+      throw new UsageError("This agent is not enrolled. Run `agent enroll <CODE> --url <https://backend>` first.");
+    }
+    // Fail loudly and early when the store cannot be opened (wrong Windows user or logon type), before anything starts.
+    for (const name of SECRET_NAMES) {
+      const value = await store.getSecret(name);
+      if (value !== undefined) secrets.set(name, value);
+    }
+  } catch (err) {
+    if (err instanceof DpapiError || err instanceof StoreError) writeHalted(dir, "store_unreadable");
+    throw err;
   }
   const apiToken = secrets.get("apiToken");
   if (apiToken === undefined) throw new UsageError("The game's tokens are not set. Run `agent set-tokens` first.");
@@ -273,6 +305,7 @@ async function run(argv: string[], deps: CliDeps): Promise<number> {
   const client = new BackendClient({ baseUrl: store.backendUrl, agentSecret: secrets.get("agentSecret"), fetch: deps.fetch });
   const outcome = await (deps.runAgent ?? runAgent)({ reader, client, logger, signal: deps.signal });
   if (outcome === "auth_rejected") {
+    writeHalted(dir, "credential_rejected");
     deps.err("The backend rejected this agent's credential, so the agent stopped and will not retry. It was probably revoked in the dashboard. Create a new enrolment code there, then run: agent enroll <CODE> --url <https://backend> --replace");
     return EXIT_CREDENTIAL_REJECTED;
   }
@@ -310,6 +343,7 @@ async function forgetCredential(argv: string[], deps: CliDeps): Promise<number> 
   parseArgs(argv, {});
   const store = openStore(deps);
   store.clearSecret("agentSecret");
+  clearHalted(resolveDataDir(deps.env));
   deps.out("The agent's credential was removed. Enrol again with `agent enroll <CODE> --url <https://backend>`.");
   return EXIT_OK;
 }

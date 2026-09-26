@@ -61,6 +61,7 @@ export class Sampler {
   private lastFactory = -Infinity;
   private lastAutoPause = -Infinity;
   private failing = new Set<string>();
+  private lastAdjustedLogAt = -Infinity;
 
   constructor(private readonly options: SamplerOptions) {}
 
@@ -111,7 +112,11 @@ export class Sampler {
       snapshot.players = conformed.value;
     }
     if (autoPause !== undefined) snapshot.settings = { autoPause };
-    if (adjusted > 0) logger.warn("readings_adjusted", { entries: adjusted });
+    // At most one line a minute: a game that keeps sending an out-of-range value must not fill the log every few seconds.
+    if (adjusted > 0 && (nowMs - this.lastAdjustedLogAt >= 60_000 || nowMs < this.lastAdjustedLogAt)) {
+      this.lastAdjustedLogAt = nowMs;
+      logger.warn("readings_adjusted", { entries: adjusted });
+    }
     return snapshot;
   }
 

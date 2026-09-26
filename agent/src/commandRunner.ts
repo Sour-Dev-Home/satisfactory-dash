@@ -29,6 +29,9 @@ export interface CommandRunnerOptions {
 
 /** The long-poll spacing floor: a server that answers an empty poll at once must not be polled in a tight loop. */
 export const MIN_POLL_SPACING_MS = 1_000;
+/** The most commands one poll may make the agent run, and the longest a command may claim to live (the backend uses 60 s; generous slack for clock differences). */
+export const MAX_COMMANDS_PER_POLL = 20;
+export const MAX_COMMAND_LIFETIME_MS = 10 * 60_000;
 const RESULT_ATTEMPTS = 5;
 
 /** What the game's failure means to the dashboard: a code from the contract's fixed list, never text. */
@@ -73,7 +76,10 @@ export class CommandRunner {
         const commands = await this.options.client.pollCommands(25, signal);
         if (failures > 0) this.options.logger.info("poll_recovered", { attempts: failures });
         failures = 0;
-        for (const command of commands) {
+        // A poll holds a handful of commands at most (the backend allows 5 open per server): more is a misbehaving backend, and
+        // the rest are left for the next poll, so a huge list cannot keep the agent busy or push real ids out of the ledger.
+        if (commands.length > MAX_COMMANDS_PER_POLL) this.options.logger.warn("commands_capped", { received: commands.length, kept: MAX_COMMANDS_PER_POLL });
+        for (const command of commands.slice(0, MAX_COMMANDS_PER_POLL)) {
           if (signal.aborted) return;
           if (await this.handle(command, signal, sleep)) return; // credential rejected
         }
@@ -114,9 +120,11 @@ export class CommandRunner {
   /** Handles one command; returns true when the credential was rejected and the runner must stop. */
   private async handle(command: AgentCommand, signal: AbortSignal, sleep: Sleep): Promise<boolean> {
     const expiresAtMs = Date.parse(command.expiresAt);
-    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= this.now()) {
-      this.options.logger.warn("command_expired_skipped", { type: safeType(command.type) });
-      return false; // never run an expired command
+    // Never run an expired command, nor one that claims to live far longer than the backend allows (60 s): a far-future expiry
+    // would keep its id in the ledger for good.
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= this.now() || expiresAtMs - this.now() > MAX_COMMAND_LIFETIME_MS) {
+      this.logSkipped(command);
+      return false;
     }
     const verdict = this.ledger.begin(command.id, expiresAtMs);
     if (verdict.kind === "running") return false;
@@ -130,6 +138,16 @@ export class CommandRunner {
       this.options.logger.info("command_done", { type: safeType(command.type), ok: result.ok, code: result.code });
     }
     return this.report(command, result, expiresAtMs, signal, sleep);
+  }
+
+  private lastSkippedLogAt = -Infinity;
+
+  /** At most one "skipped" line a minute: a backend that keeps handing out dead commands must not fill the log. */
+  private logSkipped(command: AgentCommand): void {
+    const at = this.now();
+    if (at - this.lastSkippedLogAt < 60_000 && at >= this.lastSkippedLogAt) return;
+    this.lastSkippedLogAt = at;
+    this.options.logger.warn("command_skipped_expired_or_invalid_expiry", { type: safeType(command.type) });
   }
 
   private async execute(command: AgentCommand): Promise<CommandResult> {

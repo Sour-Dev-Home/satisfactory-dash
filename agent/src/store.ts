@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { isIPv6 } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -90,7 +90,17 @@ export class AgentStore {
     }
     const result = StoreFileSchema.safeParse(parsed);
     if (!result.success) throw new StoreError(`The agent's store file (${file}) is not in the expected form. Fix or delete it and set the agent up again.`);
+    // The same rule as when it is set: a hand-edited file must not point the game token at a public host.
+    if (!isAllowedGameHost(result.data.game.host)) {
+      throw new StoreError(`The game host in the agent's store (${file}) is not this machine or an address on its own network. Run \`agent set-tokens --host 127.0.0.1\` again.`);
+    }
     return new AgentStore(dir, result.data, dpapi);
+  }
+
+  /** Proves DPAPI works for this user (protect, then unprotect a probe) WITHOUT storing anything: used before a one-time code is spent. */
+  async probe(): Promise<void> {
+    const marker = "probe-value";
+    if ((await this.dpapi.unprotect(await this.dpapi.protect(marker))) !== marker) throw new StoreError("Windows DPAPI did not return what was protected; the store cannot be trusted.");
   }
 
   get backendUrl(): string | undefined {
@@ -142,7 +152,16 @@ export class AgentStore {
     mkdirSync(this.dir, { recursive: true });
     const file = path.join(this.dir, "store.json");
     const temporary = `${file}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    renameSync(temporary, file);
+    try {
+      writeFileSync(temporary, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      renameSync(temporary, file);
+    } catch (err) {
+      try {
+        unlinkSync(temporary); // no half-written copy of the store is left behind (an antivirus lock can fail the rename)
+      } catch {
+        // nothing to remove
+      }
+      throw err;
+    }
   }
 }

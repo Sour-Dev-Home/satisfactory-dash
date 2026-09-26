@@ -80,7 +80,8 @@ describe("usage", () => {
     expect(t.out.at(-1)).toBe("0.1.0");
     expect(await runCli([], t.deps)).toBe(EXIT_FAILED);
     expect(await runCli(["frobnicate"], t.deps)).toBe(EXIT_FAILED);
-    expect(t.err.join("\n")).toContain('Unknown command "frobnicate"');
+    expect(t.err.join("\n")).toContain("Unknown command.");
+    expect(t.err.join("\n")).not.toContain("frobnicate"); // what was typed is not echoed back
   });
 });
 
@@ -107,7 +108,7 @@ describe("set-tokens (architect rule 3: a hidden prompt, never argv)", () => {
     const empty = setup({ answers: ["   "] });
     rmSync(path.join(dir, "store.json"));
     expect(await runCli(["set-tokens"], empty.deps)).toBe(EXIT_FAILED);
-    expect(existsSync(path.join(dir, "store.json"))).toBe(true); // the game settings were saved; no token was
+    expect(existsSync(path.join(dir, "store.json"))).toBe(false); // nothing at all was saved: ask first, save after
     expect(store(t.dpapi).hasSecret("apiToken")).toBe(false);
   });
 

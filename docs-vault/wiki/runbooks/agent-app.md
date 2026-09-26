@@ -40,7 +40,12 @@ Under `%LOCALAPPDATA%\satisfactory-dash-agent` (or the folder in `SD_AGENT_HOME`
 
 - `store.json`: the backend address, the server id, the game's host and ports, and **three secrets, each only as a Windows
   DPAPI blob for the current Windows user**: the agent's credential, the game's API token, the FRM token. A copy on another
-  machine or account is useless.
+  machine or account is useless. What DPAPI does not do: **any process running as the same Windows user can decrypt these
+  blobs** (no extra entropy is used, by design of the CurrentUser scope), so it protects against a copied file, not against
+  malware already running as you. Keep the data folder inside your own profile (the default does); the folder's permissions
+  are what protect the file, and a folder outside your profile (for example under `C:\ProgramData`) may be readable by
+  other accounts.
+- `halted.json`: present only while the agent is stopped for a permanent reason (see below).
 - `logs\agent-YYYY-MM-DD.log`: one JSON line per event, a file per UTC day, the **last 7 days kept**, and a day's file stops
   growing at 5 MB. Only codes and counts are logged: never the credential, the tokens, a snapshot body or a player name
   (the logger enforces this; a secret that somehow reached a line is replaced by `[redacted]`).
@@ -75,6 +80,14 @@ Either way, run it as **the same Windows user that ran `set-tokens` and `enroll`
 the task if it runs longer than" **off**, and "If the task fails, restart every 1 minute". After the first start, read the
 newest file in `logs\` for `agent_started`.
 
+**The restart policy and permanent failures.** Two conditions never fix themselves: the backend rejected the credential (exit
+2) and the store cannot be unprotected (exit 3). A task that restarts on failure would otherwise start the agent, and
+PowerShell, and call the backend again every minute for ever. So the agent, when it meets one, writes a marker
+(`halted.json` in the data folder: a reason and a time) and ends with that exit code **once**; every later start prints why
+and ends with **success** (exit 0), which the restart policy does not retry. Fix the cause, then clear it: a new enrolment
+(`enroll ... --replace`), `set-tokens` or `forget-credential` clear it, and `node agent.cjs resume` clears it by hand (for
+example after you changed the task's logon type).
+
 ## What it does while running
 
 - **Samples** the game every `min(cadence)` seconds; the backend sets the cadence (today 5 s status and power, 30 s factory)
@@ -104,8 +117,10 @@ be replayed at another address, and every request has a timeout.
 
 | Sign | Meaning | Do |
 |---|---|---|
-| exit 3, "could not unprotect the agent's store" | wrong Windows user, or a logon type without the profile | run as the user that set it up; use one of the two task types above |
+| exit 3, "could not unprotect the agent's store" | wrong Windows user, or a logon type without the profile | run as the user that set it up; use one of the two task types above; then `resume` |
 | exit 2, "rejected this agent's credential" | revoked or replaced in the dashboard | new code, then `enroll ... --replace` |
+| "The agent is stopped: ..." and exit 0 | the halted marker from one of the two above | do what it says, then `resume` (or enrol again) |
+| `commands_capped`, `command_skipped_expired_or_invalid_expiry` | the backend sent more than 20 commands, or one whose expiry is not about a minute away | nothing; the agent ignores them; check the backend |
 | `push_failed` then `push_recovered` in the log | the backend or the network was down | nothing; the queue kept the newest readings |
 | `queue_full_dropping_oldest` | a long outage; the oldest readings were dropped | nothing; check the backend |
 | `read_failed` with `upstream_unreachable` | the game is not running or the ports are wrong | start the game; `check` |

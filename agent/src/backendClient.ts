@@ -199,9 +199,24 @@ export class BackendClient {
       await response.body?.cancel().catch(() => undefined);
       throw new BackendError("transient", "The backend's answer is too large.", { status: response.status });
     }
-    const text = await response.text();
-    if (text.length > MAX_RESPONSE_CHARS) throw new BackendError("transient", "The backend's answer is too large.", { status: response.status });
-    return text;
+    // Read the stream and count as it arrives: a Content-Length can be missing or a lie (chunked, or a compression bomb), and
+    // `response.text()` would buffer all of it. Past the cap the read stops and the rest is discarded.
+    const reader = response.body?.getReader();
+    if (reader === undefined) return "";
+    const decoder = new TextDecoder("utf-8");
+    let text = "";
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_RESPONSE_CHARS) {
+        await reader.cancel().catch(() => undefined);
+        throw new BackendError("transient", "The backend's answer is too large.", { status: response.status });
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
   }
 }
 

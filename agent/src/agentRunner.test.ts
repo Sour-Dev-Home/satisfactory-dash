@@ -9,9 +9,12 @@ import { HARNESS_SECRET as SECRET, agentRunnerHarness } from "./agentRunner.harn
  * validates every snapshot with the contract's schema and reads gzip bodies exactly as the real one does) and a fake game.
  */
 
+/** A command lives about a minute (the backend's own lifetime). */
+const soon = () => new Date(Date.now() + 60_000).toISOString();
+
 describe("the whole agent", () => {
   it("pushes schema-valid snapshots with the auto-pause setting, applies the cadence the server sets, and runs a command it is handed", async () => {
-    const h = agentRunnerHarness({ commands: [[{ id: "c1", type: "set_auto_pause", params: { enabled: false }, expiresAt: "2999-01-01T00:00:00.000Z" }]] });
+    const h = agentRunnerHarness({ commands: [[{ id: "c1", type: "set_auto_pause", params: { enabled: false }, expiresAt: soon() }]] });
     const running = h.run();
     await h.until(() => h.snapshots.length >= 3 && h.results.length >= 1);
     h.stop();
@@ -93,7 +96,7 @@ describe("the whole agent", () => {
   });
 
   it("a command handed twice runs once (de-duplicated by id)", async () => {
-    const command = { id: "dup", type: "set_auto_pause", params: { enabled: true }, expiresAt: "2999-01-01T00:00:00.000Z" };
+    const command = { id: "dup", type: "set_auto_pause", params: { enabled: true }, expiresAt: soon() };
     const h = agentRunnerHarness({ commands: [[command], [command]] });
     const running = h.run();
     await h.until(() => h.results.length >= 2);
@@ -103,7 +106,7 @@ describe("the whole agent", () => {
   });
 
   it("nothing secret or personal reaches the log: no credential, no game token, no player name, no snapshot body", async () => {
-    const h = agentRunnerHarness({ commands: [[{ id: "c1", type: "set_auto_pause", params: { enabled: true }, expiresAt: "2999-01-01T00:00:00.000Z" }]] });
+    const h = agentRunnerHarness({ commands: [[{ id: "c1", type: "set_auto_pause", params: { enabled: true }, expiresAt: soon() }]] });
     h.game.readPlayers.mockImplementation(async () => ({ available: true, players: [{ name: "Alice the Builder", online: true }] }));
     h.game.applyAutoPause.mockImplementation(async () => Promise.reject(new UpstreamError(`rejected token ${SECRET} for Alice the Builder`, { status: 401 })));
     h.backend.snapshotHandler = (() => {
