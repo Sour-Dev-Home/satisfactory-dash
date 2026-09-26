@@ -34,6 +34,9 @@ import { BufferedHistoryRecorder, noopHistoryRecorder } from "./services/history
 import type { HistoryRecorder } from "./services/historyRecorder.js";
 import { FactoryHistoryPoller } from "./services/factoryHistoryPoller.js";
 import { HistoryMaintenanceWorker } from "./services/historyMaintenanceWorker.js";
+import { HistoryQueryService } from "./services/historyQueryService.js";
+import type { HistoryDb } from "./services/historyQueryService.js";
+import { createHistoryRouter } from "./routes/history.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
@@ -51,7 +54,7 @@ export interface TelemetryOptions {
   /** History window and sampling cadence; ADR-0022's 5 minutes at 5 seconds by default. */
   powerHistory?: { windowSeconds?: number; intervalSeconds?: number };
   /** ADR-0027: with a database, this server's samples are also written to durable history. Omitted: memory only. */
-  history?: { db: Queryable; serverPublicId: string };
+  history?: { db: Queryable & HistoryDb; serverPublicId: string };
 }
 
 /** The services plus the background workers the composition root must start and stop. */
@@ -86,6 +89,10 @@ export function createTelemetryServices(
     power: new PowerService(ports),
     powerHistory: new PowerHistoryService(store, poller, { intervalSeconds, now: options.now }),
     players: new PlayersService(ports),
+    // ADR-0027: the same server's stored history, for the history routes (absent without a database).
+    ...(options.history
+      ? { history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }) }
+      : {}),
     workers,
   };
 }
@@ -102,6 +109,7 @@ export function createTelemetryRouters(directory: ServerDirectory<TelemetryScope
     createFactoryRouter(directory),
     createPowerRouter(directory),
     createPowerHistoryRouter(directory),
+    createHistoryRouter(directory),
     createPlayersRouter(directory),
   ];
 }

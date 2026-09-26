@@ -4,6 +4,9 @@ import type { RequestHandler } from "express";
 import { ApiErrorResponseSchema, ServerListResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import {
   factoryMixed,
+  historyItems7d,
+  historyPower24h,
+  historyTransitions24h,
   powerHistoryNormal,
   powerOutage,
   statusRunning,
@@ -95,6 +98,12 @@ const services = {
       getPowerHistory: () => ({ data: powerHistoryNormal.data, observedAt: powerHistoryNormal.observedAt, stale: false }),
     },
     players: { getPlayers: async () => ({ available: true, players: [{ name: "Pioneer", online: true }] }) },
+    // ADR-0027: stored history (the generated tests reach the routes without a query string: the defaults apply).
+    history: {
+      power: async () => historyPower24h.data,
+      items: async () => historyItems7d.data,
+      transitions: async () => historyTransitions24h.data,
+    },
   },
   settings: {
     getSettings: async () => ({ autoPause: false, pending: false, editable: true }),
