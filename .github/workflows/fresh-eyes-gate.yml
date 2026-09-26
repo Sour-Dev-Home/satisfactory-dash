@@ -17,6 +17,15 @@ name: Fresh-eyes gate
 # - No untrusted text is interpolated into `run:`; everything reaches the script through env. The branch name is
 #   parsed with a strict regex in the script and refused if it is not exactly gh-readonly-queue/main/pr-<N>-<sha>.
 # - Actions are pinned by commit SHA.
+#
+# Requirements when the queue is switched on (security review of the gate, F1-F3):
+# - Merge group size MAX AND MIN = 1. The merge_group payload names only ONE PR (the last queued), so with larger
+#   groups the earlier PRs of the group would never be checked.
+# - Protect the files that vouch for the gate (this file, scripts/fresh-eyes-gate*, .github/CODEOWNERS) with a
+#   CODEOWNERS entry plus "require review from Code Owners", or a ruleset path restriction, or make the gate a
+#   required workflow pinned to main; a PR that edits this file otherwise controls what the gate posts.
+# - The gate trusts whoever can post the `fresh-eyes/test-hunter` status on a PR head (anyone with write access
+#   or a token with the statuses scope): the same trust the ruleset already places in that status.
 
 on:
   merge_group:

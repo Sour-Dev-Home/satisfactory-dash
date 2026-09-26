@@ -79,7 +79,10 @@ export function runGate({ repo, headRef, groupSha }, api = ghApi) {
   try {
     const pr = JSON.parse(api([`repos/${repo}/pulls/${number}`]));
     const prHeadSha = pr?.head?.sha;
-    if (typeof prHeadSha !== "string" || !SHA.test(prHeadSha)) {
+    if (pr?.base?.ref !== "main" || pr?.state !== "open") {
+      // Defence in depth (the queue names its own branches): the PR must be an open PR into main.
+      decision = { state: "failure", description: "the queued PR is not an open PR into main" };
+    } else if (typeof prHeadSha !== "string" || !SHA.test(prHeadSha)) {
       decision = { state: "failure", description: "no fresh-eyes success on PR head (PR head sha unknown)" };
     } else {
       // The combined-status list is paginated (30 per page by default), so a commit with many contexts could hide

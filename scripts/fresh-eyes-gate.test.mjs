@@ -80,7 +80,7 @@ test("decide fails when the PR head sha is unknown or malformed", () => {
 });
 
 /** A fake `gh api` that records calls and answers the two reads. */
-function fakeApi({ pr = { head: { sha: HEAD } }, statuses = [{ context: CONTEXT, state: "success" }], failReads = false } = {}) {
+function fakeApi({ pr = { head: { sha: HEAD }, base: { ref: "main" }, state: "open" }, statuses = [{ context: CONTEXT, state: "success" }], failReads = false } = {}) {
   const calls = [];
   const api = (args) => {
     calls.push(args);
@@ -138,6 +138,21 @@ test("runGate fails closed when the API reads fail or return junk", () => {
   assert.equal(runGate({ repo: REPO, headRef: ref(176), groupSha: GROUP }, fakeApi({ failReads: true }).api).state, "failure");
   assert.equal(runGate({ repo: REPO, headRef: ref(176), groupSha: GROUP }, fakeApi({ pr: { head: {} } }).api).state, "failure");
   assert.equal(runGate({ repo: REPO, headRef: ref(176), groupSha: GROUP }, fakeApi({ pr: null }).api).state, "failure");
+});
+
+test("runGate fails when the PR is not an open PR into main (defence in depth), even with a success on its head", () => {
+  const head = { sha: HEAD };
+  for (const pr of [
+    { head, base: { ref: "develop" }, state: "open" },
+    { head, base: { ref: "main" }, state: "closed" },
+    { head, base: { ref: "main" } },
+    { head, state: "open" },
+  ]) {
+    const { api, calls } = fakeApi({ pr });
+    const result = runGate({ repo: REPO, headRef: ref(176), groupSha: GROUP }, api);
+    assert.equal(result.state, "failure", JSON.stringify(pr));
+    assert.ok(posts(calls)[0].includes("state=failure"));
+  }
 });
 
 test("runGate refuses to run with a malformed repo or group sha, and posts nothing", () => {
