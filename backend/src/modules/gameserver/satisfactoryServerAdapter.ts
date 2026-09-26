@@ -189,7 +189,12 @@ export class SatisfactoryServerAdapter {
         maxPowerConsumed: building.PowerInfo?.MaxPowerConsumed ?? 0,
         ...(building.PowerInfo?.FuseTriggered !== undefined ? { fuseTriggered: building.PowerInfo.FuseTriggered } : {}),
         ...(building.location ? { location: mapLocation(building.location) } : {}),
-        ...(building.ManuSpeed !== undefined && Number.isFinite(building.ManuSpeed) ? { clockSpeedPercent: building.ManuSpeed } : {}),
+        // A clock of 0 or less is not a meaningful machine setting (showing "0%" would mislead), and a non-finite one
+        // is noise: both are omitted. No upper bound (mods). The shared schema stays unconstrained on purpose, so an
+        // odd value can never fail a whole factory response.
+        ...(building.ManuSpeed !== undefined && Number.isFinite(building.ManuSpeed) && building.ManuSpeed > 0
+          ? { clockSpeedPercent: building.ManuSpeed }
+          : {}),
       };
     });
   }

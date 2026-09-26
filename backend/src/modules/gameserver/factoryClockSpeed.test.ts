@@ -34,6 +34,19 @@ describe("clock speed mapping (FRM ManuSpeed)", () => {
     expect(building).not.toHaveProperty("clockSpeedPercent");
   });
 
+  it("omits a clock of 0 or less (not a meaningful setting; the architect's call), but keeps any positive one, mods included", async () => {
+    const [zero, negative, tiny, huge] = await adapterFor(
+      { ...capturedBackedUpAssembler, ManuSpeed: 0 },
+      { ...capturedBackedUpAssembler, ManuSpeed: -5 },
+      { ...capturedBackedUpAssembler, ManuSpeed: 0.01 },
+      { ...capturedBackedUpAssembler, ManuSpeed: 1000 },
+    ).getFactoryBuildings();
+    expect(zero).not.toHaveProperty("clockSpeedPercent");
+    expect(negative).not.toHaveProperty("clockSpeedPercent");
+    expect(tiny?.clockSpeedPercent).toBe(0.01);
+    expect(huge?.clockSpeedPercent).toBe(1000); // no upper bound
+  });
+
   it.each([
     ["null", null],
     ["a string", "160"],
