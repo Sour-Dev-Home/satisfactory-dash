@@ -179,4 +179,22 @@ describe("fuseStretches, duplicate and unaligned buckets", () => {
       { fromT: t0 + 5 * step, toT: t0 + 7 * step },
     ]);
   });
+
+  it("does not sort the caller's array in place", () => {
+    const points = Object.freeze([
+      { ...tripped, t: t0 + 5 * step },
+      { ...tripped, t: t0 + 2 * step },
+    ]);
+    // A frozen array throws if fuseStretches tried to sort it directly instead of a copy.
+    expect(() => fuseStretches(points, history.resolutionSeconds)).not.toThrow();
+    expect(points.map((p) => p.t)).toEqual([t0 + 5 * step, t0 + 2 * step]);
+  });
+
+  it("matches the un-sorted result for already oldest-first input", () => {
+    const points = [{ ...tripped, t: t0 + 2 * step }, { ...tripped, t: t0 + 5 * step }];
+    expect(fuseStretches(points, history.resolutionSeconds)).toEqual([
+      { fromT: t0 + 2 * step, toT: t0 + 3 * step },
+      { fromT: t0 + 5 * step, toT: t0 + 6 * step },
+    ]);
+  });
 });
