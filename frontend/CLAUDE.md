@@ -86,6 +86,10 @@ contract needs to grow, not that this module should special-case a backend detai
   - `npm run dev:mock -w frontend`: the dev server with the API mocked in the browser (MSW);
     pick a state with `/app?scenario=<name>` (`/` is the landing page). Use it with the Playwright MCP and the ui-reviewer.
     The MSW worker is served by a Vite plugin in mock mode only, never from `public/`.
+    **Never start it (or any local dev server, on :5173 or any port) without the owner's OK.** Ask the
+    coordinator session `reactapps-dc` for it, not the owner in your own session: the owner doesn't want to
+    dig through sessions for requests. The coordinator asks and relays the answer. Stop the server as soon
+    as the task that needed it is done. CI's e2e and screenshot runs need no local server.
   - `npm run e2e -w frontend` (ADR-0016 item 5): Playwright against the production build,
     served by `vite preview` with `public/_headers`, at 1440 and 390 px. Every test fails on
     a CSP violation or an unmocked `/api` call, with no exceptions: zod's eval probe is off
