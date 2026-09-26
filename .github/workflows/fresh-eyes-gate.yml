@@ -1,0 +1,51 @@
+name: Fresh-eyes gate
+
+# ADR-0033 (the merge queue). The `main` ruleset requires the commit status `fresh-eyes/test-hunter`, which a
+# review session posts on a PR's HEAD sha after a test-hunter pass. A merge queue tests a NEW commit (main plus
+# the queued PRs) that no session ever reviewed, so this job carries the status over: it finds the PR the queue
+# entry is for, and posts the same context on the merge group's commit ONLY if that PR's head has a success.
+# Anything it cannot establish is a failure (fail closed). The logic is scripts/fresh-eyes-gate.mjs, unit-tested.
+#
+# Harmless before the ruleset flips: merge_group events only exist once a merge queue is enabled.
+#
+# Safety notes for reviewers:
+# - Least privilege: statuses: write (to post), pull-requests: read (the PR's head sha) and contents: read
+#   (checkout). Nothing else.
+# - The script is checked out from the queue's BASE commit (main, already reviewed), not from the merge group
+#   commit, so a queued PR cannot change the code that vouches for it. The workflow FILE itself is read from the
+#   merge group commit by GitHub, so a PR that edits this file must get a security review before it merges.
+# - No untrusted text is interpolated into `run:`; everything reaches the script through env. The branch name is
+#   parsed with a strict regex in the script and refused if it is not exactly gh-readonly-queue/main/pr-<N>-<sha>.
+# - Actions are pinned by commit SHA.
+
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  statuses: write
+  pull-requests: read
+  contents: read
+
+concurrency:
+  group: fresh-eyes-gate-${{ github.event.merge_group.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # actions/checkout v7, by commit SHA. Checks out the queue's base (main), never the merge group commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.merge_group.base_sha }}
+          persist-credentials: false
+
+      - name: Carry the fresh-eyes status onto the merge group commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        run: node scripts/fresh-eyes-gate.mjs
