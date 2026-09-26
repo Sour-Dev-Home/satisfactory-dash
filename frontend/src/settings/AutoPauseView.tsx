@@ -23,7 +23,10 @@ export function AutoPauseView() {
   // ADR-0031 PR 4: a change relayed through the game PC's agent (the PUT answered 202 with a command),
   // followed until it lands. Only the command and "gave up" are kept; where it stands is derived from
   // the latest poll. It stays set after the result, so the result stays on screen until the next change.
-  const [relayed, setRelayed] = useState<{ command: Command; gaveUp: boolean } | null>(null);
+  // The server it was sent to is kept too: after switching servers, the other server's command is
+  // simply not this one's (never shown, never polled on this server's route).
+  const [sent, setRelayed] = useState<{ serverId: string; command: Command; gaveUp: boolean } | null>(null);
+  const relayed = sent?.serverId === server.id ? sent : null;
   const followed = useQuery({
     ...queries.command(server.id, relayed?.command.id ?? ""),
     enabled: relayed !== null && !relayed.gaveUp,
@@ -76,7 +79,7 @@ export function AutoPauseView() {
       // ADR-0031: for a server reached through an agent the answer is a 202 with a COMMAND, not the new setting. The
       // setting hasn't changed yet, so nothing goes in the cache: follow the command until it lands (above).
       if ("command" in snapshot) {
-        setRelayed({ command: snapshot.command, gaveUp: false });
+        setRelayed({ serverId: server.id, command: snapshot.command, gaveUp: false });
         return;
       }
       client.setQueryData(settingsQuery.queryKey, snapshot);
@@ -100,7 +103,7 @@ export function AutoPauseView() {
     if (client.isMutating({ mutationKey: saveKey }) !== 0 || phase === "waiting") return;
     // Clear the last result, but only when there is one: a state update here, even to the same
     // value, re-renders before the PUT and lets a stale settings read land after it.
-    if (relayed !== null) setRelayed(null);
+    if (sent !== null) setRelayed(null);
     save.mutate(enabled);
   };
 

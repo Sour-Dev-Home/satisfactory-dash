@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -8,6 +9,7 @@ import {
   commandFailed,
   commandPending,
   errorCommandNotFound,
+  serversMultiple,
   serversSingle,
   settingsEditable,
 } from "@satisfactory-dash/shared/fixtures";
@@ -144,5 +146,46 @@ describe("AutoPauseView, a change relayed through the agent", () => {
     // No answer ever arrives, so it ends like an expiry: the setting is re-read and the toggle freed.
     expect(await screen.findByRole("alert", {}, { timeout: 4000 })).toHaveTextContent(EXPIRED_TEXT);
     expect(checkbox()).toBeEnabled();
+  });
+
+  // Found by the test-hunter: switching servers mid-command leaked server A's command onto server B
+  // (B's toggle stuck on "Saving…", and A's command id polled on B's route). The view now ignores a
+  // command sent to another server, even without the key Shell.tsx also gives it.
+  it("drops the followed command when the selected server changes, instead of leaking it onto the new server", async () => {
+    let commandPollsForB = 0;
+    server.use(
+      http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
+      http.put(endpoints.settings.setAutoPause.route, () =>
+        HttpResponse.json(expiringIn(autoPauseResponseAccepted, 600_000), { status: 202 }),
+      ),
+      http.get(endpoints.commands.get.route, ({ params }) => {
+        if (params.serverId === "creative-test") commandPollsForB += 1;
+        // Never resolves within the test, so server A's command stays "waiting" forever.
+        return HttpResponse.json(expiringIn(commandPending, 600_000));
+      }),
+    );
+
+    function Switcher() {
+      const [selected, setSelected] = useState(serversMultiple.servers[0]);
+      return (
+        <>
+          <button onClick={() => setSelected(serversMultiple.servers[1])}>switch server</button>
+          <ServerContext value={selected}>
+            <AutoPauseView />
+          </ServerContext>
+        </>
+      );
+    }
+    renderWithClient(<Switcher />);
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    await screen.findByText("Saving…");
+
+    fireEvent.click(screen.getByRole("button", { name: "switch server" }));
+
+    // Server B (creative-test) has no change of its own in flight: its toggle should be usable,
+    // and its /commands/:id route should never be hit for A's command id.
+    await waitFor(() => expect(checkbox()).toBeEnabled());
+    expect(commandPollsForB).toBe(0);
   });
 });
