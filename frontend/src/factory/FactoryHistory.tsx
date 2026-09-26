@@ -65,6 +65,28 @@ export function SinceYesterdayView({ labels }: { labels: Map<string, ItemLabel> 
   );
 }
 
+/**
+ * Production history while it loads, in the loaded panel's shape: the picker row, a line of stats,
+ * the chart's slot, its note and the readings table's summary. It sits below the table, so a
+ * one-line status growing into the panel would push the footer (ADR-0032's tab-switch budget). The
+ * `invisible` lines hold the height their text will take without showing anything.
+ */
+function ItemHistorySkeleton() {
+  return (
+    <div className="grid gap-3">
+      <p role="status" className="flex min-h-touch items-center text-sm text-muted">
+        Loading production history…
+      </p>
+      <p className="invisible">Loading</p>
+      <div aria-hidden="true" className="h-chart-slot-phone rounded-md bg-surface-2 motion-safe:animate-pulse sm:h-chart-slot" />
+      <p className="invisible text-sm">
+        A break in the line means nothing was recorded then (the game was paused or the server couldn't be reached).
+      </p>
+      <p className="invisible text-sm">Readings table</p>
+    </div>
+  );
+}
+
 /** One stored range of item history: its own load and error states. */
 function ItemHistoryRange({
   range,
@@ -79,7 +101,7 @@ function ItemHistoryRange({
 }) {
   const server = useSelectedServer();
   const history = useQuery(queries.historyItems(server.id, range));
-  if (history.isPending) return <p role="status">Loading production history…</p>;
+  if (history.isPending) return <ItemHistorySkeleton />;
   if (!history.data) {
     return (
       <ErrorNotice

@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { StrictMode, useState } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
@@ -11,7 +12,7 @@ import {
   serversMultiple,
   serversSingle,
 } from "@satisfactory-dash/shared/fixtures";
-import { queries } from "../api/queries";
+import { createQueryClient, queries } from "../api/queries";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -31,6 +32,20 @@ function SwitchableView({ initial, other }: { initial: ServerSummary; other: Ser
   return (
     <ServerContext value={selected}>
       <button type="button" onClick={() => setSelected(other)}>
+        Switch server
+      </button>
+      <FactoryView />
+    </ServerContext>
+  );
+}
+
+/** Cycles through servers on each click (unlike SwitchableView's one-way switch), for tests
+ *  that need to switch back and forth or through more than two servers. */
+function CyclingView({ servers }: { servers: ServerSummary[] }) {
+  const [index, setIndex] = useState(0);
+  return (
+    <ServerContext value={servers[index]}>
+      <button type="button" onClick={() => setIndex((i) => (i + 1) % servers.length)}>
         Switch server
       </button>
       <FactoryView />
@@ -176,6 +191,98 @@ describe("FactoryView", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Game server unreachable.");
     expect(alert).toHaveTextContent(errorUpstreamUnreachable.error.requestId);
+  });
+
+  it("shows the factory error within the grace even while 'Since yesterday' is still pending", async () => {
+    server.use(
+      http.get(endpoints.factory.route, () => HttpResponse.json(errorUpstreamUnreachable, { status: 502 })),
+    );
+    const release = holdSinceYesterday();
+    renderView();
+    const alert = await screen.findByRole("alert", {}, WITHIN_GRACE);
+    expect(alert).toHaveTextContent("Game server unreachable.");
+    release();
+  });
+
+  it("waits on the factory itself past the grace, then reveals with 'Since yesterday' already in place", async () => {
+    server.use(
+      http.get(endpoints.factory.route, async () => {
+        await delay(REVEAL_GRACE_MS + 200);
+        return HttpResponse.json(factoryMixed);
+      }),
+    );
+    renderView();
+    // Still loading well past the grace: the factory's own read is what's pacing this, not history.
+    await act(() => delay(REVEAL_GRACE_MS + 50));
+    expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
+
+    expect(await screen.findByRole("region", { name: "Factory" }, WITHIN_GRACE)).toBeInTheDocument();
+    // "Since yesterday" was ready well before the factory landed, so it shows immediately too.
+    expect(screen.queryByText(/Loading what changed since yesterday/)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
+  });
+
+  it("shows an already-revealed server's content again immediately when switching back to it", async () => {
+    server.use(
+      http.get(endpoints.factory.route, ({ params }) =>
+        HttpResponse.json(params.serverId === "creative-test" ? factoryEmpty : factoryMixed),
+      ),
+    );
+    renderWithClient(<CyclingView servers={[serversMultiple.servers[0], serversMultiple.servers[1]]} />);
+    expect(await screen.findByText(/backed up/)).toBeInTheDocument();
+
+    const button = screen.getByRole("button", { name: "Switch server" });
+    fireEvent.click(button);
+    expect(await screen.findByText("No machines yet.")).toBeInTheDocument();
+
+    fireEvent.click(button);
+    // Back on the already-revealed first server: its cached content shows at once, no reload flash.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText(/backed up/)).toBeInTheDocument();
+  });
+
+  it("settles on the last of several rapid server switches without ever mixing servers' content", async () => {
+    server.use(
+      http.get(endpoints.factory.route, ({ params }) =>
+        HttpResponse.json(params.serverId === "creative-test" ? factoryEmpty : factoryMixed),
+      ),
+    );
+    renderWithClient(<CyclingView servers={serversMultiple.servers} />);
+    expect(await screen.findByText(/backed up/)).toBeInTheDocument();
+
+    // default -> creative-test -> friends-2 -> default, fired faster than any one settles.
+    const button = screen.getByRole("button", { name: "Switch server" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    // Whatever lands belongs to "default" alone: creative-test's marker never sticks around.
+    expect(await screen.findByText(/backed up/)).toBeInTheDocument();
+    expect(screen.queryByText("No machines yet.")).not.toBeInTheDocument();
+  });
+
+  it("clears its grace timer on unmount, so it never fires a late state update", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { unmount } = renderView();
+    unmount();
+    await delay(REVEAL_GRACE_MS + 100);
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("still reveals correctly once under StrictMode's double-invoked effects", async () => {
+    const client = createQueryClient();
+    render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <ServerContext value={serversSingle.servers[0]}>
+            <FactoryView />
+          </ServerContext>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
   });
 });
 
