@@ -6,8 +6,8 @@ import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
 import { UpstreamError } from "../../../platform/errors.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
-import { ServerOptionsAdapter } from "../../gameserver/serverOptionsAdapter.js";
-import type { VanillaApiClientLike } from "../../gameserver/satisfactoryServerAdapter.js";
+import { ServerOptionsAdapter } from "../../gameserver/index.js";
+import type { VanillaApiClientLike } from "../../gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "../index.js";
 
 // Fresh-eyes probes for PR #33 (independent of settings.test.ts).

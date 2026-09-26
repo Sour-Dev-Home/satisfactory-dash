@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
 import type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServerAdapter.js";
-import { UpstreamError } from "../../platform/errors.js";
+import { UpstreamError } from "./errors.js";
 import {
   healthCheckFixture,
   queryServerStateFixture,
@@ -10,13 +10,13 @@ import {
   powerUsageBuildingFixture,
   playerFixture,
   sessionInfoFixture,
-} from "./__fixtures__/rawFixtures.js";
+} from "../fixtures/rawFixtures.js";
 import {
   capturedBackedUpAssembler,
   capturedFuelRefinery,
   capturedTrippedGridRefinery,
   capturedUnassignedAssembler,
-} from "./__fixtures__/capturedFixtures.js";
+} from "../fixtures/capturedFixtures.js";
 
 function buildAdapter(overrides: { vanilla?: Partial<VanillaApiClientLike>; frm?: Partial<FrmApiClientLike> } = {}) {
   const vanillaApi: VanillaApiClientLike = {

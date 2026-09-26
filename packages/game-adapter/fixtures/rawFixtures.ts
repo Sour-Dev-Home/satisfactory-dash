@@ -5,7 +5,7 @@ import type {
   RawFrmPowerCircuit,
   RawFrmPowerUsageBuilding,
   RawFrmSessionInfo,
-} from "../rawTypes.js";
+} from "../src/rawTypes.js";
 
 /**
  * Fixture data for adapter/client tests. Real captured responses are copied

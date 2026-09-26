@@ -23,6 +23,7 @@
   "author": "",
   "license": "AGPL-3.0-only",
   "dependencies": {
+    "@satisfactory-dash/game-adapter": "*",
     "@satisfactory-dash/shared": "*",
     "cookie": "^0.7.2",
     "cors": "^2.8.6",

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { RESERVED_SERVER_IDS, ServerIdSchema } from "@satisfactory-dash/shared";
 import { ConfigError } from "../../platform/errors.js";
 import { loadSatisfactoryServerConfigFromEnv } from "./connectionConfig.js";
-import type { SatisfactoryServerConfig } from "./connectionConfig.js";
+import type { SatisfactoryServerConfig } from "@satisfactory-dash/game-adapter";
 
 /**
  * ADR-0025 PR 1: several game servers from one git-ignored JSON file named by

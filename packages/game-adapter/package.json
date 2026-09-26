@@ -1,0 +1,28 @@
+{
+  "name": "@satisfactory-dash/game-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./fixtures/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@satisfactory-dash/shared": "*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "oxlint": "^1.81.0",
+    "typescript": "~7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

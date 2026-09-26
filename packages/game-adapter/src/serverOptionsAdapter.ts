@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UpstreamError } from "../../platform/errors.js";
+import { UpstreamError } from "./errors.js";
 import type { VanillaApiClientLike } from "./satisfactoryServerAdapter.js";
 
 /**

@@ -9,7 +9,7 @@ import {
   powerCircuitFixture,
   queryServerStateFixture,
   healthCheckFixture,
-} from "../../gameserver/__fixtures__/rawFixtures.js";
+} from "@satisfactory-dash/game-adapter/fixtures";
 import { InMemoryServerDirectory } from "../../servers/index.js";
 import { createTelemetryRouters, createTelemetryServices } from "../index.js";
 

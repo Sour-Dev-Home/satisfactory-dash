@@ -35,7 +35,8 @@ against the workspace's security/CI baseline.
    Only build a custom mod for metrics neither source provides. Keep that gap list at
    `docs-vault/wiki/data-gap-analysis.md`.
 5. **Isolate the game-server adapter.** All communication with a Satisfactory server
-   (vanilla API or FRM) goes through `backend/src/modules/gameserver/`. No FRM- or
+   (vanilla API or FRM) lives in `packages/game-adapter/` (ADR-0031 PR 2) and reaches the
+   backend only through `backend/src/modules/gameserver/`. No FRM- or
    API-specific response shapes leak into React components or the database schema —
    the backend exposes its own clean REST/WebSocket contract, defined in
    `packages/shared/`, to the frontend.
@@ -63,7 +64,7 @@ boundaries without restructuring, once subagents are introduced:
 |---|---|---|
 | `frontend/` | frontend agent | `packages/shared/` types + `backend/` REST/WS contract only |
 | `backend/src/modules/{telemetry,servers,identity}/` (routes and services inside each) | backend agents | `backend/src/modules/gameserver/` via its `index.ts`, fixture data for tests; expose `packages/shared/` |
-| `backend/src/modules/gameserver/` | data-adapter agent | `docs-vault/` only — never guesses |
+| `packages/game-adapter/` (and the backend's thin `modules/gameserver/` facade) | data-adapter agent | `docs-vault/` and `packages/shared/` only — never guesses |
 | `packages/shared/` | shared by all — changes here require review from whichever agent owns the other side of the change |
 
 The point of drawing these lines now, before multiple agents exist, is that Conway's
@@ -91,7 +92,7 @@ and Satisfactory's EULA directly — don't assume either is settled.
 
 ## Stack (current)
 
-npm workspaces monorepo: `frontend`, `backend`, `packages/shared`. One install, one
+npm workspaces monorepo: `frontend`, `backend`, `packages/shared`, `packages/game-adapter`. One install, one
 lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 
 - `frontend/` — Vite + React + TypeScript SPA. Plain client-side React (hooks,
@@ -99,6 +100,9 @@ lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 - `backend/` — Express + TypeScript API server, bundled by `esbuild` into a single
   self-contained `dist/server.cjs` (no `node_modules` needed at runtime). Has a
   `Dockerfile` for portability to Render/Railway/AWS ECS later.
+- `packages/game-adapter/` — the vanilla-API and FRM clients, raw schemas and adapter for
+  one game server (ADR-0031 PR 2). Source-only; imports only shared, zod and node; the
+  backend uses it through `modules/gameserver/`, and the edge agent will lift it.
 - `packages/shared/` — TypeScript types shared between `frontend` and `backend`
   (the API contract). Source-only, no build step.
 

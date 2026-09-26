@@ -1,4 +1,4 @@
-import type { RawFrmFactoryBuilding } from "../rawTypes.js";
+import type { RawFrmFactoryBuilding } from "../src/rawTypes.js";
 
 // Real getFactory entries from the 2026-09-22 captures in
 // docs-vault/raw-sources/captured-responses/frm-getFactory-2026-09-22-*-trimmed.json,

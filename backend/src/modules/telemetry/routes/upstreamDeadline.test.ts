@@ -7,7 +7,7 @@ import { ApiErrorResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
 import { SatisfactoryServerAdapter, VanillaApiClient } from "../../gameserver/index.js";
-import { createVanillaApiTransport } from "../../gameserver/vanillaApiClient.js";
+import { createVanillaApiTransport } from "../../gameserver/index.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
 import { createTelemetryRouters, createTelemetryServices } from "../index.js";
 

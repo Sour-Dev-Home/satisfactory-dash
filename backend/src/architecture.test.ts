@@ -11,8 +11,9 @@ import { describe, it, expect } from "vitest";
  *
  *   1. platform/ imports no module.
  *   2. A module imports another module only through that module's index.ts.
- *   3. gameserver/ is liftable into the edge agent: no Express, no other module, and of
- *      platform/ only errors.ts.
+ *   3. gameserver/ is now a thin facade over the game-adapter package (ADR-0031 PR 2), which is what
+ *      the edge agent lifts: no Express, no other module, of platform/ only errors.ts, and of the
+ *      packages only shared and game-adapter. The package's own imports are checked by its own test.
  *   4. Only the listed module-to-module edges exist.
  *   5. Only app.ts / server.ts (the composition root) import everything, and nothing
  *      imports them.
@@ -20,6 +21,8 @@ import { describe, it, expect } from "vitest";
  *      "/browser" (it turns off zod's runtime compilation for the whole process; the
  *      frontend imports it, ADR-0016) and never "/fixtures" (tests only: test files are
  *      not scanned here) or a deep path into the package.
+ *   7. The same for "@satisfactory-dash/game-adapter", and only gameserver/ and platform/errors.ts
+ *      import it: every other module reaches the game server through gameserver's index.ts.
  */
 const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   gameserver: [],
@@ -33,7 +36,13 @@ const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
 };
 
 /** The only bare (package) imports gameserver may use. */
-const GAMESERVER_ALLOWED_PACKAGES = [/^node:/, /^zod$/, /^@satisfactory-dash\/shared$/];
+const GAMESERVER_ALLOWED_PACKAGES = [/^node:/, /^zod$/, /^@satisfactory-dash\/shared$/, /^@satisfactory-dash\/game-adapter$/];
+
+/** The game-adapter package (ADR-0031 PR 2): any specifier of it, and any subpath of it ("/fixtures", "/src/..."). */
+const GAME_ADAPTER = /^@satisfactory-dash\/game-adapter(\/|$)/;
+const GAME_ADAPTER_SUBPATH = /^@satisfactory-dash\/game-adapter\//;
+/** The only production files that may import the game-adapter package: the gameserver facade and the error re-export. */
+const mayImportGameAdapter = (file: string): boolean => file.startsWith("modules/gameserver/") || file === "platform/errors.ts";
 /** The only bare imports servers may use, besides platform/ and shared (per the architect). */
 const SERVERS_ALLOWED_PACKAGES = [/^node:/, /^express$/, /^zod$/, /^@satisfactory-dash\/shared$/];
 
@@ -92,6 +101,11 @@ export function findViolations(files: Map<string, string>): string[] {
       if (target === null) {
         if (SHARED_SUBPATH.test(specifier)) {
           fail('rule 6: import only the bare "@satisfactory-dash/shared" (not /browser, /fixtures or a deep path)');
+        }
+        if (GAME_ADAPTER_SUBPATH.test(specifier)) {
+          fail('rule 7: import only the bare "@satisfactory-dash/game-adapter" (not /fixtures, which is for tests, or a deep path)');
+        } else if (GAME_ADAPTER.test(specifier) && !mayImportGameAdapter(file)) {
+          fail("rule 7: only modules/gameserver/ and platform/errors.ts may import the game-adapter package; other modules use gameserver's index.ts");
         }
         if (fromModule === "gameserver" && !GAMESERVER_ALLOWED_PACKAGES.some((p) => p.test(specifier))) {
           fail("rule 3: gameserver must not import this package (no Express or HTTP framework)");
@@ -166,6 +180,11 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     ["a folder import into a module (platform)", "platform/x.ts", `import { a } from "../modules/identity";`, /rule 1/],
     ["a folder import along a forbidden edge", "modules/servers/x.ts", `import { a } from "../telemetry";`, /rule 4/],
     ["a folder import from gameserver", "modules/gameserver/x.ts", `import { a } from "../servers";`, /rule 4/],
+    ["telemetry importing the game-adapter package directly", "modules/telemetry/x.ts", `import { a } from "@satisfactory-dash/game-adapter";`, /rule 7/],
+    ["platform importing game-adapter outside errors.ts", "platform/x.ts", `import { a } from "@satisfactory-dash/game-adapter";`, /rule 7/],
+    ["production code importing game-adapter fixtures", "modules/gameserver/x.ts", `import { a } from "@satisfactory-dash/game-adapter/fixtures";`, /rule 7/],
+    ["a deep path into game-adapter", "modules/gameserver/x.ts", `import { a } from "@satisfactory-dash/game-adapter/src/errors";`, /rule 7/],
+    ["game-adapter via a dynamic import from a module", "modules/settings/x.ts", `const m = await import("@satisfactory-dash/game-adapter");`, /rule 7/],
     ["a trailing-slash folder import", "modules/servers/x.ts", `import { a } from "../telemetry/";`, /rule 4/],
     ["a file outside platform/ and modules/ reaching into a module", "routes/x.ts", `import { a } from "../modules/gameserver/domain.js";`, /rule 5/],
     ["gameserver importing a helper folder", "modules/gameserver/x.ts", `import { h } from "../../lib/httpHelpers.js";`, /rule 3/],
@@ -200,6 +219,8 @@ describe("architecture (ADR-0014 dependency rules)", () => {
     const ok = new Map([
       ["modules/telemetry/x.ts", `import { a } from "../gameserver/index.js";\nimport { b } from "../servers/index.js";`],
       ["modules/gameserver/x.ts", `import { E } from "../../platform/errors.js";\nimport { z } from "zod";`],
+      ["modules/gameserver/index.ts", `export * from "@satisfactory-dash/game-adapter";`],
+      ["platform/errors.ts", `export { UpstreamError } from "@satisfactory-dash/game-adapter";`],
       ["modules/servers/x.ts", `import type { Request } from "express";\nimport { e } from "../../platform/errorResponse.js";`],
       ["server.ts", `import { a } from "./modules/identity/index.js";\nimport { app } from "./app.js";`],
       ["modules/identity/y.ts", `import { LoginRequestSchema } from "@satisfactory-dash/shared";`],

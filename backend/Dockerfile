@@ -3,9 +3,11 @@ FROM node:22-slim AS build
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/game-adapter/package.json packages/game-adapter/package.json
 COPY backend/package.json backend/package.json
 RUN npm ci
 COPY packages/shared packages/shared
+COPY packages/game-adapter packages/game-adapter
 COPY backend backend
 RUN npm run build -w backend
 
