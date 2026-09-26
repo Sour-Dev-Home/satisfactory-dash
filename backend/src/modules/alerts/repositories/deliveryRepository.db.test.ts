@@ -247,16 +247,17 @@ describe.skipIf(!available)("alert delivery repository against a real Postgres",
 
     it("never claims a row of a soft-deleted server, and queues nothing for one", async () => {
       const server = await queue(2);
-      expect(await softDeleteServer(pool, server.publicId)).toBe(true);
+      expect(await outboxOf(server.id)).toHaveLength(2);
+      // Set the flag directly: softDeleteServer also removes the destination, which would hide what the joins guard against.
+      await admin.query("UPDATE servers.servers SET deleted_at = now() WHERE id = $1::uuid", [server.id]);
       expect((await claimDueDeliveries(pool, 10, 120)).filter((c) => c.serverPublicId === server.publicId)).toEqual([]);
-      const before = (await outboxOf(server.id)).length;
       await fire(server.outageRuleId, "circuit:99");
-      expect((await outboxOf(server.id)).length).toBe(before);
+      expect(await outboxOf(server.id)).toHaveLength(2); // nothing new was queued for it
     });
 
     it("disabling a destination gives up on its pending rows (dead), leaves sent ones and other servers alone", async () => {
+      const b = await queue(1); // queue() leases everything earlier, so the server whose rows are claimed goes last
       const a = await queue(2);
-      const b = await queue(1);
       const claimed = (await claimDueDeliveries(pool, 10, 120)).filter((c) => c.serverPublicId === a.publicId);
       await markDeliverySent(pool, claimed[0]!.outboxId);
       await disableDestination(pool, claimed[0]!.destinationId, "webhook_gone");

@@ -34,7 +34,7 @@ describe("parseDiscordWebhookUrl: the only URL shape the backend will send an al
     ["a fragment", `https://discord.com/api/webhooks/${ID}/${TOKEN}#x`, "query_or_fragment"],
     ["a bare question mark", `https://discord.com/api/webhooks/${ID}/${TOKEN}?`, "query_or_fragment"],
     ["a bare hash", `https://discord.com/api/webhooks/${ID}/${TOKEN}#`, "query_or_fragment"],
-    ["a different path", `https://discord.com/api/users/@me`, "path_not_a_webhook"],
+    ["a different path", `https://discord.com/api/channels/${ID}`, "path_not_a_webhook"],
     ["the webhook path without a token", `https://discord.com/api/webhooks/${ID}`, "path_not_a_webhook"],
     ["a token that is too short", `https://discord.com/api/webhooks/${ID}/abc`, "path_not_a_webhook"],
     ["a non-numeric id", `https://discord.com/api/webhooks/abc/${TOKEN}`, "path_not_a_webhook"],
