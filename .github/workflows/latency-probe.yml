@@ -2,7 +2,10 @@ name: Latency probe
 
 # ADR-0032 step 4: an external probe. About every 30 minutes it requests the public
 # readiness endpoint once, records DNS, TLS and total time in the job summary, and fails
-# when the answer is not a 200 or takes longer than 2 seconds. It sends no credentials and
+# only when it answers 200 but takes longer than 2 seconds. A backend that is down (a
+# failed request or a non-200) warns and stays green: it runs on a PC that is often off,
+# and downtime alerting belongs to the external uptime monitor (ADR-0028). A red run
+# therefore means "slow". It sends no credentials and
 # reads no data (the endpoint is public and already reachable by anyone). It does not
 # check out the repo, has no secrets and no token permissions. The hostname is the same
 # after the AWS move, so this keeps working unchanged.
@@ -40,8 +43,10 @@ jobs:
               echo "## Latency probe"
               echo "curl failed with exit code $code (no answer within 10 s, or a DNS or TLS failure)."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::probe request failed (curl exit $code)"
-            exit 1
+            # Down is not slow: the backend runs on a PC that is often off, and uptime alerting is the external
+            # monitor's job (ADR-0028). A red run must mean "slow", so a failed request only warns.
+            echo "::warning::backend not reachable, probe skipped (curl exit $code)"
+            exit 0
           fi
           read -r status dns connect tls first total <<< "$out"
           {
@@ -58,8 +63,8 @@ jobs:
             echo "| Limit | ${MAX_TOTAL_SECONDS} s |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" != "200" ]; then
-            echo "::error::readiness answered $status, expected 200"
-            exit 1
+            echo "::warning::readiness answered $status, expected 200; not a latency failure, so the run stays green"
+            exit 0
           fi
           if ! awk -v t="$total" -v m="$MAX_TOTAL_SECONDS" 'BEGIN { exit !(t <= m) }'; then
             echo "::error::readiness took ${total} s, over the ${MAX_TOTAL_SECONDS} s limit"
