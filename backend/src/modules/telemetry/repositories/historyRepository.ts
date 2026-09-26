@@ -53,8 +53,11 @@ export interface TransitionRow {
 const isFiniteNumber = (value: number): boolean => Number.isFinite(value);
 /** Fits Postgres `integer` (the session hash and circuit id columns). */
 const isInt4 = (value: number): boolean => Number.isInteger(value) && value >= -(2 ** 31) && value < 2 ** 31;
-/** Within JS's Date range (about year 275760), which is inside timestamptz's: to_timestamp() would error beyond it. */
-const isStorableTime = (value: number): boolean => Number.isFinite(value) && Math.abs(value) <= 8.64e15;
+/**
+ * timestamptz spans 4713 BC (about -2.1e14 ms) to 294276 AD; JS's Date maximum (8.64e15 ms, year 275760) is inside the
+ * upper end but its minimum is far below the lower one, so the lower bound is Postgres's, rounded in.
+ */
+const isStorableTime = (value: number): boolean => Number.isFinite(value) && value >= -2.1e14 && value <= 8.64e15;
 /** Postgres text cannot hold a NUL character; one would fail the whole statement, and the batch is retried as a unit. */
 const isStorableText = (value: string): boolean => !value.includes("\u0000");
 

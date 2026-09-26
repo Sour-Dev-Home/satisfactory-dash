@@ -43,6 +43,15 @@ describe("history repository: rows the database would reject are dropped", () =>
     expect(calls).toHaveLength(0);
   });
 
+  it("a timestamp before Postgres's minimum (4713 BC, about -2.1e14 ms) is dropped in all three inserts", async () => {
+    const { db, calls } = recordingDb();
+    const atMs = -1e15; // inside JS's Date range, but to_timestamp() would error
+    await insertPowerSamples(db, "s", [power({ atMs })]);
+    await insertItemSamples(db, "s", [{ item: "A", atMs, currentPerMinute: 1, maxPerMinute: 1 }]);
+    await insertTransitions(db, "s", [{ atMs, buildingId: "b", className: "c", fromState: null, toState: "on" }]);
+    expect(calls).toHaveLength(0);
+  });
+
   it("items: a name with a NUL character is dropped", async () => {
     const { db, calls } = recordingDb();
     await insertItemSamples(db, "s", [
