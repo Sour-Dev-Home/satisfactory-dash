@@ -4,6 +4,7 @@ import {
   type SetAutoPauseRequest,
   type TestConnectionResponse,
 } from "@satisfactory-dash/shared";
+import * as alerts from "./alerts";
 import { demoNow } from "./clock";
 import { del, get, patch, post, put, type Params } from "./router";
 import * as world from "./world";
@@ -25,6 +26,7 @@ const state = { signedIn: false, autoPause: false, pendingUntil: 0 };
 
 export function resetDemoState(): void {
   Object.assign(state, { signedIn: false, autoPause: false, pendingUntil: 0 });
+  alerts.resetDemoAlerts();
 }
 
 const error = (status: number, code: string, message: string) =>
@@ -58,6 +60,8 @@ async function bodyOf(request: Request): Promise<Record<string, unknown>> {
     return {};
   }
 }
+
+const answer = ({ status, body }: { status: number; body: unknown }) => Response.json(body, { status });
 
 const settingsNow = () => {
   const pending = Date.now() < state.pendingUntil;
@@ -144,4 +148,51 @@ export const demoHandlers = [
       return Response.json(settingsNow());
     });
   }),
+
+  // Alerts (ADR-0027 PR 9): the demo's own rules, log and pretend webhook (demo/alerts.ts). Writes
+  // change this tab's memory only; "Send test" never contacts Discord.
+  get(endpoints.alerts.status.route, ({ params }) => guarded(params, () => Response.json(alerts.status(demoNow())))),
+  get(endpoints.alerts.rules.list.route, ({ params }) =>
+    guarded(params, () => Response.json({ rules: alerts.rules(demoNow()) })),
+  ),
+  post(endpoints.alerts.rules.create.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    return guarded(params, () => answer(alerts.createRule(demoNow(), body)));
+  }),
+  patch(endpoints.alerts.rules.update.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    return guarded(params, () => answer(alerts.updateRule(demoNow(), params.ruleId ?? "", body)));
+  }),
+  del(endpoints.alerts.rules.remove.route, ({ params }) =>
+    guarded(params, () => answer(alerts.deleteRule(demoNow(), params.ruleId ?? ""))),
+  ),
+  get(endpoints.alerts.destinations.get.route, ({ params }) =>
+    guarded(params, () => Response.json(alerts.destinations(demoNow()))),
+  ),
+  put(endpoints.alerts.destinations.putDiscord.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    return guarded(params, () => answer(alerts.putDiscord(demoNow(), body)));
+  }),
+  patch(endpoints.alerts.destinations.patchDiscord.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    return guarded(params, () => answer(alerts.patchDiscord(demoNow(), body)));
+  }),
+  del(endpoints.alerts.destinations.removeDiscord.route, ({ params }) =>
+    guarded(params, () => answer(alerts.deleteDiscord(demoNow()))),
+  ),
+  post(endpoints.alerts.destinations.testDiscord.route, ({ params }) =>
+    guarded(params, () => answer(alerts.testDiscord(demoNow()))),
+  ),
+  get(endpoints.alerts.events.route, ({ params, request }) =>
+    guarded(params, () => {
+      const query = endpoints.alerts.events.query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!query.success) return error(400, "bad_request", "That page of the alert log isn't available.");
+      return Response.json(alerts.events(demoNow(), query.data.limit, query.data.before));
+    }),
+  ),
+  put(endpoints.alerts.mute.set.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    return guarded(params, () => answer(alerts.setMute(demoNow(), body)));
+  }),
+  del(endpoints.alerts.mute.clear.route, ({ params }) => guarded(params, () => answer(alerts.clearMute()))),
 ];

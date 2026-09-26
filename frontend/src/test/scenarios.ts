@@ -1,5 +1,14 @@
 import { endpoints } from "@satisfactory-dash/shared";
 import {
+  alertDestinationsConfigured,
+  alertDestinationsNone,
+  alertDestinationsWebhookGone,
+  alertEventsEmpty,
+  alertEventsLastPage,
+  alertEventsPage,
+  alertRulesList,
+  alertStatusQuiet,
+  alertStatusShadowMutedFiring,
   deleteServerDone,
   errorImportRequired,
   errorLanRequiresCertPinning,
@@ -88,6 +97,11 @@ export const ROUTES = {
   historyPower: endpoints.history.power,
   historyItems: endpoints.history.items,
   historyTransitions: endpoints.history.transitions,
+  // ADR-0027 PR 9 alerts. The status is read on every page (the header bell).
+  alertStatus: endpoints.alerts.status,
+  alertRules: endpoints.alerts.rules.list,
+  alertDestinations: endpoints.alerts.destinations.get,
+  alertEvents: endpoints.alerts.events,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -120,6 +134,11 @@ const BASE: Record<RouteKey, MockResponse> = {
   // Two hours only: "Since yesterday" says there isn't enough history yet (ADR-0027 PR 8b).
   historyItems: ok(historyItems7d),
   historyTransitions: ok(historyTransitions24h),
+  // Quiet: the bell shows no badge on every other state's screenshot.
+  alertStatus: ok(alertStatusQuiet),
+  alertRules: ok(alertRulesList),
+  alertDestinations: ok(alertDestinationsConfigured),
+  alertEvents: ok(alertEventsLastPage),
 };
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
@@ -207,6 +226,13 @@ export const SCENARIOS = {
   },
   "servers-import-required": { servers: operatorSingle, createServer: fail(409, errorImportRequired) },
   "servers-test-failed": { servers: operatorSingle, testSaved: ok(testConnectionApiUnauthorized) },
+  // Alerts (ADR-0027 PR 9), at /app/alerts: the shadow week, muted, one alert firing (the bell's
+  // badge shows on every page), and a log with an older page.
+  "alerts": { alertStatus: ok(alertStatusShadowMutedFiring), alertEvents: ok(alertEventsPage) },
+  // Discord deleted the webhook: the destination turned itself off.
+  "alerts-webhook-gone": { alertDestinations: ok(alertDestinationsWebhookGone) },
+  // A server with nothing set up yet.
+  "alerts-empty": { alertDestinations: ok(alertDestinationsNone), alertEvents: ok(alertEventsEmpty) },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 

@@ -18,7 +18,14 @@ describe("query options", () => {
     expect(queries.status("default").refetchInterval).toBe(10_000);
     expect(queries.power("default").refetchInterval).toBe(10_000);
     expect(queries.factory("default").refetchInterval).toBe(30_000);
-    expect(POLL_MS).toEqual({ status: 10_000, power: 10_000, factory: 30_000, settingsPending: 10_000 });
+    expect(POLL_MS).toEqual({ status: 10_000, power: 10_000, factory: 30_000, settingsPending: 10_000, alerts: 60_000 });
+  });
+
+  it("reads alerts once a minute, never at the page's rate: the bell polls on every page (ADR-0027 PR 9)", () => {
+    expect(queries.alertStatus("default").refetchInterval).toBe(60_000);
+    expect(queries.alertStatus("default").staleTime).toBe(60_000);
+    expect(queries.alertEvents("default").refetchInterval).toBe(60_000);
+    expect(queries.alertStatus("a").queryKey).toEqual(["servers", "a", "alerts", "status"]);
   });
 
   it("keys server-scoped queries by server id", () => {
