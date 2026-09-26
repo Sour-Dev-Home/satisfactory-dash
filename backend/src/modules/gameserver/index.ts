@@ -35,6 +35,8 @@ export type {
   VanillaApiClientLike,
   FrmApiClientLike,
   SatisfactoryServerConfig,
+  UpstreamCall,
+  UpstreamCallListener,
   ServerOptionsPort,
   AutoPauseState,
   ConnectionCheck,

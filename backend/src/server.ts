@@ -6,6 +6,7 @@ import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
+import { recordUpstreamCall } from "./platform/requestTiming.js";
 import { Database, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
   configuredServerEnvNamesInUse,
@@ -111,7 +112,9 @@ const database = databaseConfig ? new Database(databaseConfig, logger) : undefin
 
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
-function buildServer(id: string, displayName: string, config: SatisfactoryServerConfig) {
+function buildServer(id: string, displayName: string, untimedConfig: SatisfactoryServerConfig) {
+  // ADR-0032: every call to the game server reports how long it took, so a request's time splits into app and upstream.
+  const config: SatisfactoryServerConfig = { ...untimedConfig, onUpstreamCall: recordUpstreamCall };
   const telemetry = createTelemetryServices(createGameServerConnection(config), resolveUnit, {
     logger: logger.child({ worker: "power-history", serverId: id }),
     // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
