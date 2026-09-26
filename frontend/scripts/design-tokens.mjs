@@ -16,38 +16,81 @@ const ALLOW = /design-token-allow:(.*)$/;
 
 /** Tailwind classes with a bracketed value (`min-h-[44px]`, `max-[600px]:`) or an arbitrary property (`[transition:...]`). */
 const BRACKET = /(?<![\w\]])(?:-?[a-z][\w-]*-)?\[([^\]\s]+)\]/g;
-const Z_CLASS = /(?<![\w-])-?z-\d+(?![\w-])/;
+/** `z-10`, and `z-[999]` too: a z-index is a design value even though it has no unit. */
+const Z_CLASS = /(?<![\w-])-?z-(?:\d+|\[-?\d+\])(?![\w-])/;
 const TIMING_CLASS = /(?<![\w-])(?:duration|delay)-\d+(?![\w-])/;
 /** A string literal that is only a CSS length or time, e.g. `style={{ width: "24rem" }}`. */
 const RAW_STRING = /(["'`])-?\d*\.?\d+(?:px|rem|em|vh|vw|svh|dvh|ms|s)\1/;
 
-const isComment = (line) => /^\s*(?:\/\/|\/\*|\*|\{\/\*)/.test(line);
+/**
+ * The file with its comments blanked out, line for line, so a rule never fires on prose: block
+ * comments across lines, trailing `//` comments, JSX `{/* *\/}`. Strings are kept (class names live
+ * there) and skipped while looking for comments, so `"https://..."` stays code. `'` and `"` strings
+ * end at the line's end: an apostrophe in JSX text must not swallow the lines after it.
+ */
+function stripComments(lines, css) {
+  let inBlock = false;
+  let template = false;
+  return lines.map((line) => {
+    let out = "";
+    let quote = template ? "`" : null;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      const next = line[i + 1];
+      if (inBlock) {
+        if (ch === "*" && next === "/") {
+          inBlock = false;
+          i += 1;
+        }
+        out += " ";
+        continue;
+      }
+      if (quote) {
+        out += ch;
+        if (ch === "\\") {
+          out += next ?? "";
+          i += 1;
+        } else if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        inBlock = true;
+        out += " ";
+        i += 1;
+        continue;
+      }
+      if (!css && ch === "/" && next === "/") break;
+      if (ch === '"' || ch === "'" || (!css && ch === "`")) quote = ch;
+      out += ch;
+    }
+    template = quote === "`";
+    return out;
+  });
+}
 
-function scriptProblems(line) {
+function scriptProblems(code) {
   const problems = [];
-  if (isComment(line)) return problems;
-  for (const match of line.matchAll(BRACKET)) {
+  for (const match of code.matchAll(BRACKET)) {
     const inner = match[1];
     if (UNIT_VALUE.test(inner) || HEX.test(inner) || COLOR_FN.test(inner) || MOTION_FN.test(inner)) {
       problems.push(`bracketed raw value \`${match[0]}\``);
     }
   }
-  const quotedHex = line.match(/(["'`])#[0-9a-fA-F]{3,8}\1/);
+  const quotedHex = code.match(/(["'`])#[0-9a-fA-F]{3,8}\1/);
   if (quotedHex) problems.push(`raw colour ${quotedHex[0]}`);
-  if (COLOR_FN.test(line.replace(BRACKET, ""))) problems.push("raw colour function");
-  if (MOTION_FN.test(line.replace(BRACKET, ""))) problems.push("raw easing function");
-  const z = line.match(Z_CLASS);
+  if (COLOR_FN.test(code.replace(BRACKET, ""))) problems.push("raw colour function");
+  if (MOTION_FN.test(code.replace(BRACKET, ""))) problems.push("raw easing function");
+  const z = code.match(Z_CLASS);
   if (z) problems.push(`raw z-index \`${z[0]}\``);
-  const timing = line.match(TIMING_CLASS);
+  const timing = code.match(TIMING_CLASS);
   if (timing) problems.push(`raw timing \`${timing[0]}\``);
-  const raw = line.match(RAW_STRING);
+  const raw = code.match(RAW_STRING);
   if (raw) problems.push(`raw size or time ${raw[0]}`);
   return problems;
 }
 
-function cssProblems(line) {
+function cssProblems(code) {
   const problems = [];
-  const code = line.replace(/\/\*.*?\*\//g, "");
   if (HEX.test(code)) problems.push("raw hex colour");
   if (COLOR_FN.test(code)) problems.push("raw colour function");
   if (MOTION_FN.test(code)) problems.push("raw easing function");
@@ -56,23 +99,31 @@ function cssProblems(line) {
   return problems;
 }
 
-/** Lines inside `@theme { ... }` are the token definitions, so they may hold raw values. */
-function themeLines(lines) {
+/**
+ * Lines of `@theme { ... }` (the token definitions, which may hold raw values), from the
+ * `@theme` line to its closing brace, even when the `{` sits on a later line.
+ */
+function themeLines(code) {
   const inside = new Set();
-  let depth = 0;
   let open = false;
-  lines.forEach((line, i) => {
-    if (!open && /^\s*@theme\b[^{]*\{/.test(line)) {
+  let started = false;
+  let depth = 0;
+  code.forEach((line, i) => {
+    if (!open && /^\s*@theme\b/.test(line)) {
       open = true;
+      started = false;
       depth = 0;
     }
     if (!open) return;
     inside.add(i);
-    for (const ch of line.replace(/\/\*.*?\*\//g, "")) {
-      if (ch === "{") depth += 1;
+    for (const ch of line) {
+      if (ch === "{") {
+        depth += 1;
+        started = true;
+      }
       if (ch === "}") depth -= 1;
     }
-    if (depth === 0) open = false;
+    if (started && depth === 0) open = false;
   });
   return inside;
 }
@@ -85,18 +136,20 @@ function themeLines(lines) {
 export function checkDesignTokens(file, text) {
   const lines = text.split(/\r?\n/);
   const css = file.endsWith(".css");
-  const skip = css ? themeLines(lines) : new Set();
+  const code = stripComments(lines, css);
+  const skip = css ? themeLines(code) : new Set();
   const violations = [];
   const exceptions = [];
   const errors = [];
   const usedAllows = new Set();
 
+  // Read from the original line: the hatch lives in a comment.
   const allowAt = (i) => {
     const m = i >= 0 ? lines[i].match(ALLOW) : null;
     return m ? { index: i, reason: m[1].replace(/\*\/|\}|-->/g, "").trim() } : null;
   };
 
-  lines.forEach((line, i) => {
+  code.forEach((line, i) => {
     if (skip.has(i)) return;
     const problems = css ? cssProblems(line) : scriptProblems(line);
     if (problems.length === 0) return;

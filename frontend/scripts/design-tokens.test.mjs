@@ -46,8 +46,69 @@ describe("design-token lint, components", () => {
     "// see #193 and rgb(1 2 3) in the notes",
     "{/* the 44 px target (#62) */}",
     'stroke: token("--color-muted")',
+    // A bare (unquoted) numeric style prop isn't a length/time literal, so it's out of the
+    // raw-string rule's documented scope ("string literals that are only a length or time").
+    "style={{ zIndex: 999 }}",
+    // A string that mixes a unit value with other text isn't "only a length or time" either.
+    'style={{ transition: "opacity 200ms ease" }}',
+    'style={{ margin: "4px 8px" }}',
   ])("allows %s", (line) => {
     expect(tsx(line).violations).toEqual([]);
+  });
+
+  // A z-index is a design value even without a unit, bracketed or not.
+  it.each(['className="z-[999]"', 'className="-z-[5]"'])("flags %s", (line) => {
+    expect(tsx(line).violations).not.toHaveLength(0);
+  });
+
+  it("flags each bad line inside a multi-line cn() call independently", () => {
+    const text = ['const cls = cn(', '  "base",', '  isActive && "z-10",', '  "mt-[4px]"', ");"].join("\n");
+    const result = tsx(text);
+    expect(result.violations.map((v) => v.line)).toEqual([3, 4]);
+  });
+
+  it("counts a same-line JSX comment hatch as an exception", () => {
+    const result = tsx('className="w-[37px]" {/* design-token-allow: legacy asset */}');
+    expect(result.violations).toEqual([]);
+    expect(result.exceptions).toEqual([{ line: 1, reason: "legacy asset" }]);
+  });
+});
+
+// The fresh-eyes pass (2026-09-26) found these false positives; comments are now stripped first.
+describe("design-token lint, comments and formatting", () => {
+  it("does not treat code inside a trailing `//` comment as a raw-value violation", () => {
+    expect(tsx("const foo = doThing(); // migrated off z-10 last week").violations).toEqual([]);
+    expect(tsx('const bar = 2; // was "#ff8a82" before').violations).toEqual([]);
+    expect(tsx("const x = 1; // e.g. min-h-[44px] on mobile").violations).toEqual([]);
+  });
+
+  it("still scans code after a `//` inside a string", () => {
+    expect(tsx('<a href="https://example.com" className="z-10" />').violations).not.toHaveLength(0);
+  });
+
+  it("does not let an apostrophe in JSX text hide the next line", () => {
+    const text = ["<p>Don't panic</p>", '<div className="min-h-[44px]" />'].join("\n");
+    expect(tsx(text).violations.map((v) => v.line)).toEqual([2]);
+  });
+
+  it("scans class names inside a multi-line template literal", () => {
+    const text = ["const cls = `", "  grid", "  h-[250px]", "`;"].join("\n");
+    expect(tsx(text).violations.map((v) => v.line)).toEqual([3]);
+  });
+
+  it("does not scan the tail of a multi-line JS/TSX block comment as code", () => {
+    const text = ["/* TODO fix", "this z-10 class */"].join("\n");
+    expect(tsx(text).violations).toEqual([]);
+  });
+
+  it("does not scan the tail of a multi-line CSS comment as a declaration", () => {
+    const text = ["/* raw color reference", "   #fff */"].join("\n");
+    expect(css(text).violations).toEqual([]);
+  });
+
+  it("recognises an @theme block whose opening brace is on its own line", () => {
+    const text = ["@theme", "{", "  --color-bad: #f2564d;", "}", "a { color: #000; }"].join("\n");
+    expect(css(text).violations.map((v) => v.line)).toEqual([5]);
   });
 });
 
