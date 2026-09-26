@@ -97,6 +97,19 @@ const upstreamDown = (error: unknown): Partial<Record<RouteKey, MockResponse>> =
   settings: fail(502, error),
 });
 
+/** A full 12-slot server with `online` connected: the count and the FRM names agree (ADR-0029). */
+const players12 = (online: number): Partial<Record<RouteKey, MockResponse>> => ({
+  status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: online, playerLimit: 12 } }),
+  players: ok({
+    ...playersAvailable,
+    players: Array.from({ length: 12 }, (_, i) => ({
+      ...playersAvailable.players[0],
+      name: `Pioneer-${String(i + 1).padStart(2, "0")}`,
+      online: i < online,
+    })),
+  }),
+});
+
 /** Every state the visual checks cover (ADR-0016 item 5). Keys are URL-safe. */
 export const SCENARIOS = {
   default: {},
@@ -122,6 +135,10 @@ export const SCENARIOS = {
   "players-many": {
     status: ok({ ...statusRunning, data: { ...statusRunning.data, connectedPlayers: 10, playerLimit: 12 } }),
   },
+  // The game's default limit of 12, a figure per slot: empty, part full, full.
+  "players-0-of-12": players12(0),
+  "players-7-of-12": players12(7),
+  "players-12-of-12": players12(12),
   "no-game": { status: ok(statusNoGame), power: ok(powerEmpty), factory: ok(factoryEmpty) },
   "outage": { power: ok(powerOutage) },
   "at-risk": { power: ok(powerAtRisk) },

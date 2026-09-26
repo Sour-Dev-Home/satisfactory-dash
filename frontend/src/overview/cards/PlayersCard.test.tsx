@@ -33,11 +33,22 @@ describe("PlayersCard", () => {
     for (const svg of container.querySelectorAll("svg")) expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 
-  it(`shows at most ${MAX_FIGURES} figures, then "+N" for the other slots`, () => {
-    const { container } = render(<PlayersCard state={running({ connectedPlayers: 10, playerLimit: 12 })} />);
+  it.each([
+    [0, { connected: 0, free: 12 }],
+    [7, { connected: 7, free: 5 }],
+    [12, { connected: 12, free: 0 }],
+  ])("draws all 12 slots of the default limit with %i connected, and no \"+N\"", (connectedPlayers, expected) => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers, playerLimit: 12 })} />);
+    expect(figures(container)).toEqual(expected);
+    expect(screen.queryByText(/^\+\d+$/)).not.toBeInTheDocument();
+    expect(screen.getByText(`${connectedPlayers} of 12 players connected`)).toBeInTheDocument();
+  });
+
+  it(`shows at most ${MAX_FIGURES} figures, then "+N" for the slots a mod adds`, () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 14, playerLimit: 16 })} />);
     expect(figures(container)).toEqual({ connected: MAX_FIGURES, free: 0 });
     expect(screen.getByText("+4")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByText("10 of 12 players connected")).toBeInTheDocument();
+    expect(screen.getByText("14 of 16 players connected")).toBeInTheDocument();
   });
 
   it("uses no style attributes (the CSP forbids inline styles)", () => {

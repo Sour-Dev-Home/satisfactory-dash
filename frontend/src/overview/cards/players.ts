@@ -1,7 +1,7 @@
 import type { Status } from "@satisfactory-dash/shared";
 
-/** More slots than this show as "+N" (a mod or server config can raise the limit). */
-export const MAX_FIGURES = 8;
+/** A figure per slot up to the game's default 12; a mod can raise the limit, and more show as "+N". */
+export const MAX_FIGURES = 12;
 /** Online names listed on the card; more than this reads "and N more" (ADR-0029: a short list). */
 export const MAX_NAMES = 8;
 

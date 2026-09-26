@@ -48,6 +48,9 @@ const CASES: StateCase[] = [
   // With FicsitRemoteMonitoring, the online names show under the count (ADR-0029).
   { scenario: "players-some", shows: "Pioneer-Alpha" },
   { scenario: "players-many", shows: "10 of 12 players connected" },
+  { scenario: "players-0-of-12", shows: "0 of 12 players connected" },
+  { scenario: "players-7-of-12", shows: "Pioneer-07" },
+  { scenario: "players-12-of-12", shows: "12 of 12 players connected" },
   { scenario: "no-game", shows: "No save loaded" },
   // The Overview banner: its text also holds the hidden "!" icon, so no ^ anchor.
   { scenario: "outage", shows: /Power outage$/ },

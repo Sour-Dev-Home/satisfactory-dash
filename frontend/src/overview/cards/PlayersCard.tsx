@@ -54,10 +54,13 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
   const more = status.playerLimit - slots;
   return (
     <>
-      <div className="flex flex-wrap items-end gap-1.5">
-        {Array.from({ length: slots }, (_, i) => (
-          <StickFigure key={i} filled={i < filled} className={i < filled ? "text-fg-strong" : "text-muted"} />
-        ))}
+      <div className="flex items-end gap-1.5">
+        {/* Twelve figures don't fit one row on a phone: two even rows of six there, not 10 + 2. */}
+        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end">
+          {Array.from({ length: slots }, (_, i) => (
+            <StickFigure key={i} filled={i < filled} className={i < filled ? "text-fg-strong" : "text-muted"} />
+          ))}
+        </div>
         {more > 0 && (
           <span aria-hidden="true" className="ml-1 text-sm text-muted">
             +{more}
