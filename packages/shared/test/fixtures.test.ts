@@ -37,6 +37,8 @@ import {
   HistoryPowerResponseSchema,
   HistoryTransitionsResponseSchema,
   ManagedServerListResponseSchema,
+  RenameServerRequestSchema,
+  RenameServerResponseSchema,
   ServerConnectionResponseSchema,
   TestConnectionResponseSchema,
   HealthResponseSchema,
@@ -100,6 +102,9 @@ const schemaByPrefix: [string, z.ZodType][] = [
   // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
   ["serverConnection", ServerConnectionResponseSchema],
   ["managedServers", ManagedServerListResponseSchema],
+  ["managedServersWithAgent", ManagedServerListResponseSchema],
+  ["renameAgentServerRequest", RenameServerRequestSchema],
+  ["renameAgentServerResponse", RenameServerResponseSchema],
   ["testConnection", TestConnectionResponseSchema],
   ["deleteServer", DeleteServerResponseSchema],
   ["servers", ServerListResponseSchema],
@@ -401,7 +406,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 4 agent
     // endpoints (ADR-0031 PR 3).
-    expect(all.length).toBe(46);
+    expect(all.length).toBe(47); // + serverManagement.renameAgent (ADR-0031)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;

@@ -15,6 +15,7 @@ const repo = vi.hoisted(() => ({
   updateConnection: vi.fn(),
   addMember: vi.fn(),
   findServerByPublicId: vi.fn(),
+  listAgentServers: vi.fn(),
   renameServer: vi.fn(),
   softDeleteServer: vi.fn(),
   upsertConfiguredServer: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("./repositories/connectionRepository.js", () => ({
 vi.mock("./repositories/memberRepository.js", () => ({ addMember: repo.addMember }));
 vi.mock("./repositories/serverRepository.js", () => ({
   findServerByPublicId: repo.findServerByPublicId,
+  listAgentServers: repo.listAgentServers,
   renameServer: repo.renameServer,
   softDeleteServer: repo.softDeleteServer,
   upsertConfiguredServer: repo.upsertConfiguredServer,
@@ -277,6 +279,50 @@ describe("update", () => {
       expect(runtime.get("home")).toBe("new");
       expect(view.state).toBe("ok");
     });
+  });
+});
+
+describe("servers reached through an edge agent (ADR-0031): listed and renameable without a stored connection", () => {
+  const agentRow = { id: "uuid-agent", publicId: "alex", displayName: "Alex", hostingMode: "self", connectionKind: "agent" as const };
+
+  it("lists them in the contract's shape: id, name and kind `agent`, no connection field", async () => {
+    repo.listAgentServers.mockResolvedValue([{ publicId: "alex", displayName: "Alex" }, { publicId: "bo", displayName: "Bo" }]);
+    const { service } = setup();
+    expect(await service.listAgentServers()).toEqual([
+      { id: "alex", displayName: "Alex", kind: "agent" },
+      { id: "bo", displayName: "Bo", kind: "agent" },
+    ]);
+  });
+
+  it("renames one: saved with the operator as the actor, the running entry renamed in place, and NO connection lookup, test or token work", async () => {
+    repo.findServerByPublicId.mockResolvedValue(agentRow);
+    const { service, runtime, testConnection } = setup();
+    runtime.add({ id: "alex", displayName: "Alex", services: "agent", workers: [], kind: "agent" });
+    expect(await service.renameAgentServer(OPERATOR, "alex", "Alex's factory")).toEqual({ id: "alex", displayName: "Alex's factory", kind: "agent" });
+    expect(repo.renameServer).toHaveBeenCalledWith(expect.anything(), "alex", "Alex's factory", { actorUserId: OPERATOR });
+    expect(runtime.list().find((server) => server.id === "alex")?.displayName).toBe("Alex's factory");
+    expect(runtime.get("alex")).toBe("agent"); // the agent runtime is untouched
+    expect(repo.getConnectionMetaByPublicId).not.toHaveBeenCalled();
+    expect(repo.updateConnection).not.toHaveBeenCalled();
+    expect(testConnection).not.toHaveBeenCalled();
+  });
+
+  it("a `local` server, an unknown id and a server that vanished meanwhile are all the same not-found (a local one is renamed through update)", async () => {
+    const { service } = setup();
+    repo.findServerByPublicId.mockResolvedValue({ ...agentRow, connectionKind: "local" as const });
+    expect(await service.renameAgentServer(OPERATOR, "alex", "X").catch((err: unknown) => err)).toBeInstanceOf(ServerNotFoundError);
+    repo.findServerByPublicId.mockResolvedValue(undefined);
+    expect(await service.renameAgentServer(OPERATOR, "nope", "X").catch((err: unknown) => err)).toBeInstanceOf(ServerNotFoundError);
+    repo.findServerByPublicId.mockResolvedValue(agentRow);
+    repo.renameServer.mockResolvedValue(false);
+    expect(await service.renameAgentServer(OPERATOR, "alex", "X").catch((err: unknown) => err)).toBeInstanceOf(ServerNotFoundError);
+    expect(repo.renameServer).toHaveBeenCalledTimes(1); // only the last case got as far as writing
+  });
+
+  it("does not need the secrets key (an agent server has no tokens here): it works with none configured", async () => {
+    repo.findServerByPublicId.mockResolvedValue(agentRow);
+    const { service } = setup({ ring: null });
+    await expect(service.renameAgentServer(OPERATOR, "alex", "X")).resolves.toMatchObject({ kind: "agent" });
   });
 });
 

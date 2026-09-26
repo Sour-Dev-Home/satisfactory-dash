@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { RequestHandler } from "express";
-import { ApiErrorResponseSchema, ManagedServerListResponseSchema, ServerConnectionResponseSchema, ServerListResponseSchema, TestConnectionResponseSchema } from "@satisfactory-dash/shared";
+import { ApiErrorResponseSchema, ManagedServerListResponseSchema, RenameServerResponseSchema, ServerConnectionResponseSchema, ServerListResponseSchema, TestConnectionResponseSchema } from "@satisfactory-dash/shared";
 import { createApp } from "../../app.js";
 import { createLogger } from "../../platform/logger.js";
 import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
@@ -36,6 +36,8 @@ function fakeService(overrides: Partial<ServerManagementService> = {}) {
     create: vi.fn(async () => view),
     get: vi.fn(async () => view),
     list: vi.fn(async () => [view]),
+    listAgentServers: vi.fn(async () => [{ id: "agent-one", displayName: "Agent One", kind: "agent" as const }]),
+    renameAgentServer: vi.fn(async (_actor: string, id: string, displayName: string) => ({ id, displayName, kind: "agent" as const })),
     update: vi.fn(async () => view),
     remove: vi.fn(async () => undefined),
     testCandidate: vi.fn(async () => passed),
@@ -278,6 +280,40 @@ describe("the scoped routes", () => {
     expect((await send(app, "post", "/api/servers/alpha/test-connection", OPERATOR)).status).toBe(200);
     expect((await send(app, "post", "/api/servers/alpha/test-connection", OTHER)).status).toBe(403);
     expect(service.testSaved).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("agent servers in the operator's managed list, and renaming them (ADR-0031)", () => {
+  it("the managed list also carries the servers reached through an agent (kind `agent`, no connection fields), next to the connections", async () => {
+    const service = fakeService();
+    const res = await send(build(service), "get", "/api/servers/managed", OPERATOR);
+    expect(res.status).toBe(200);
+    const parsed = ManagedServerListResponseSchema.parse(res.body);
+    expect(parsed.servers.map((server) => server.id)).toEqual(["alpha"]);
+    expect(parsed.agentServers).toEqual([{ id: "agent-one", displayName: "Agent One", kind: "agent" }]);
+    expect(Object.keys(parsed.agentServers![0]!).sort()).toEqual(["displayName", "id", "kind"]); // nothing of a connection
+    expect(service.listAgentServers).toHaveBeenCalledTimes(1);
+  });
+
+  it("renames an agent server through PATCH /:serverId/name: operator only, validated, and the answer is the contract's shape", async () => {
+    const service = fakeService();
+    const app = build(service);
+    const ok = await send(app, "patch", "/api/servers/alpha/name", OPERATOR, { displayName: "  Renamed  " });
+    expect(ok.status).toBe(200);
+    expect(RenameServerResponseSchema.parse(ok.body).server).toEqual({ id: "alpha", displayName: "Renamed", kind: "agent" });
+    expect(service.renameAgentServer).toHaveBeenCalledWith(OPERATOR, "alpha", "Renamed"); // trimmed by the schema
+    expect((await send(app, "patch", "/api/servers/alpha/name", OTHER, { displayName: "X" })).status).toBe(403);
+    expect((await send(app, "patch", "/api/servers/alpha/name", undefined, { displayName: "X" })).status).toBe(401);
+    for (const bad of [{}, { displayName: "" }, { displayName: "x".repeat(65) }, { displayName: "ok", host: "10.0.0.1" }, { displayName: 5 }]) {
+      expect((await send(app, "patch", "/api/servers/alpha/name", OPERATOR, bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(service.renameAgentServer).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unknown or `local` server is the same not-found answer (a local one is renamed through PATCH /:serverId)", async () => {
+    const service = fakeService({ renameAgentServer: vi.fn(async () => Promise.reject(new ServerNotFoundError())) });
+    const res = await send(build(service), "patch", "/api/servers/alpha/name", OPERATOR, { displayName: "X" });
+    expect(res.status).toBe(404);
   });
 });
 

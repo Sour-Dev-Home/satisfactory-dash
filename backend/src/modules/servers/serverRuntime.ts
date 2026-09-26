@@ -17,6 +17,21 @@ export interface RuntimeWorker {
 export interface RuntimeServer<TServices> extends ServerSummary {
   services: TServices;
   workers: RuntimeWorker[];
+  /** ADR-0031: `agent` for a server reached through an edge agent (its runtime is fed by the agent's snapshots, not by pollers).
+   *  Absent for a server the backend polls itself. */
+  kind?: "agent";
+}
+
+/**
+ * Raised when something tries to replace an agent server's runtime with a polled one. Enrolling switches a server TO an agent
+ * (that replace is fine); nothing switches one back except a deliberate un-enrol, which is not a replace. A path that did it
+ * by accident would silently drop the agent's live data and its `online` state, so it is refused loudly (an invariant).
+ */
+export class AgentRuntimeReplacedError extends Error {
+  constructor(readonly serverId: string) {
+    super(`Refusing to replace the agent runtime of server "${serverId}" with a polled one`);
+    this.name = "AgentRuntimeReplacedError";
+  }
 }
 
 export interface ServerRuntimeOptions {
@@ -112,6 +127,8 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
    */
   async replace(entry: RuntimeServer<TServices>): Promise<void> {
     const old = this.byId.get(entry.id);
+    // Checked before anything changes, so a refused replace leaves the running entry exactly as it was.
+    if (old?.kind === "agent" && entry.kind !== "agent") throw new AgentRuntimeReplacedError(entry.id);
     this.byId.set(entry.id, entry);
     if (this.running) {
       this.startWorkers(entry);

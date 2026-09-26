@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import * as fixtures from "../fixtures/index";
 import {
   CreateServerRequestSchema,
   ManagedServerListResponseSchema,
+  RenameServerRequestSchema,
+  RenameServerResponseSchema,
   ServerConnectionSchema,
   ServerListResponseSchema,
   TestConnectionRequestSchema,
@@ -106,10 +109,34 @@ describe("the contract's operator-only endpoints", () => {
       "serverManagement.get",
       "serverManagement.list",
       "serverManagement.remove",
+      "serverManagement.renameAgent",
       "serverManagement.testConnection",
       "serverManagement.testSaved",
       "serverManagement.update",
     ]);
+  });
+
+  it("keeps the managed list additive: `agentServers` is optional, and each entry is id, name and kind `agent` only", () => {
+    expect(ManagedServerListResponseSchema.safeParse({ servers: [] }).success).toBe(true); // an older backend
+    expect(ManagedServerListResponseSchema.safeParse(fixtures.managedServersWithAgent).success).toBe(true);
+    const entry = fixtures.managedServersWithAgent.agentServers[0];
+    for (const bad of [{ ...entry, kind: "local" }, { ...entry, kind: undefined }, { id: entry.id, kind: "agent" }, { ...entry, id: "Not A Valid Id!" }]) {
+      expect(ManagedServerListResponseSchema.safeParse({ servers: [], agentServers: [bad] }).success, JSON.stringify(bad)).toBe(false);
+    }
+    // No connection field can ride along (they are stripped, never trusted): an agent server has none.
+    const parsed = ManagedServerListResponseSchema.parse({ servers: [], agentServers: [{ ...entry, host: "10.0.0.1", apiPort: 7777 }] });
+    expect(Object.keys(parsed.agentServers![0]!).sort()).toEqual(["displayName", "id", "kind"]);
+  });
+
+  it("the rename request is a trimmed name of 1 to 64 characters and nothing else, and its answer is the agent server", () => {
+    expect(RenameServerRequestSchema.parse({ displayName: "  Name  " })).toEqual({ displayName: "Name" });
+    for (const bad of [{}, { displayName: "" }, { displayName: "   " }, { displayName: "x".repeat(65) }, { displayName: "ok", host: "10.0.0.1" }, { displayName: 5 }]) {
+      expect(RenameServerRequestSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(RenameServerRequestSchema.safeParse(fixtures.renameAgentServerRequest).success).toBe(true);
+    expect(RenameServerResponseSchema.parse(fixtures.renameAgentServerResponse).server.kind).toBe("agent");
+    expect(endpoints.serverManagement.renameAgent).toMatchObject({ method: "PATCH", route: "/api/servers/:serverId/name", operatorOnly: true });
+    expect(endpoints.serverManagement.renameAgent.path("alex")).toBe("/api/servers/alex/name");
   });
 
   it("keeps the list additive: canManageServers is optional", () => {

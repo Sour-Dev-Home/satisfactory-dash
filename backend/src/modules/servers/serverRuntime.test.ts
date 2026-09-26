@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ServerRuntime } from "./serverRuntime.js";
+import { AgentRuntimeReplacedError, ServerRuntime } from "./serverRuntime.js";
 import type { RuntimeServer, RuntimeWorker } from "./serverRuntime.js";
 
 function fakeWorker(overrides: { start?: () => void; stop?: () => Promise<void> } = {}) {
@@ -83,6 +83,45 @@ describe("starting and stopping", () => {
   it("throws a start failure when no handler is given", () => {
     const bad = fakeWorker({ start: vi.fn(() => { throw new Error("nope"); }) });
     expect(() => new ServerRuntime([server("bad", [bad])]).start()).toThrow("nope");
+  });
+});
+
+describe("an agent server's runtime is never replaced by a polled one (ADR-0031 invariant)", () => {
+  const agent = (id: string, workers: RuntimeWorker[] = [fakeWorker()]): RuntimeServer<{ tag: string }> => ({ ...server(id, workers), kind: "agent" });
+
+  it("refuses to replace an agent entry with a polled one, and leaves the running entry, its workers and its services untouched", async () => {
+    const running = fakeWorker();
+    const runtime = new ServerRuntime([agent("a", [running])]);
+    runtime.start();
+    const polled = fakeWorker();
+    await expect(runtime.replace(server("a", [polled]))).rejects.toBeInstanceOf(AgentRuntimeReplacedError);
+    expect(runtime.get("a")).toEqual({ tag: "a" });
+    expect(running.stop).not.toHaveBeenCalled();
+    expect(polled.start).not.toHaveBeenCalled();
+    expect(await runtime.replace(agent("a"))).toBeUndefined(); // still there to be replaced by another agent entry
+  });
+
+  it("the refusal names the server and holds before start() too", async () => {
+    const runtime = new ServerRuntime([agent("a")]);
+    const error = (await runtime.replace(server("a")).catch((err: unknown) => err)) as AgentRuntimeReplacedError;
+    expect(error).toBeInstanceOf(AgentRuntimeReplacedError);
+    expect(error.serverId).toBe("a");
+    expect(error.message).toContain('"a"');
+  });
+
+  it("enrolling is still allowed: a polled entry may be replaced by an agent one, and an agent by an agent", async () => {
+    const runtime = new ServerRuntime([server("a")]);
+    runtime.start();
+    await runtime.replace(agent("a"));
+    await runtime.replace(agent("a"));
+    expect(runtime.has("a")).toBe(true);
+  });
+
+  it("remove then add is the explicit way to change a server's kind (an un-enrol), and is not blocked", async () => {
+    const runtime = new ServerRuntime([agent("a")]);
+    await runtime.remove("a");
+    runtime.add(server("a"));
+    expect(runtime.has("a")).toBe(true);
   });
 });
 

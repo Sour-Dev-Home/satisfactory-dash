@@ -27,7 +27,7 @@ export {
   resolveAllowedAddress,
 } from "./addressGuard.js";
 export type { AddressLookup, AddressPolicy, AddressVerdict } from "./addressGuard.js";
-export { ServerRuntime } from "./serverRuntime.js";
+export { AgentRuntimeReplacedError, ServerRuntime } from "./serverRuntime.js";
 export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serverRuntime.js";
 // ADR-0031 PR 5a: the agents module switches a server to 'agent' in its enrolment transaction and looks servers up.
 export { findServerByPublicId, listAgentServers, switchToAgentConnection } from "./repositories/serverRepository.js";
