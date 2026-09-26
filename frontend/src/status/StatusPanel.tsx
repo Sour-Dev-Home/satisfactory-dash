@@ -1,9 +1,10 @@
 import type { StatusResponse } from "@satisfactory-dash/shared";
-import { formatDuration, formatTickRate, formatTime } from "../format";
+import { formatDuration, formatTime } from "../format";
 
 /**
  * Presentational: renders one status snapshot. Units and labels per ADR-0006. Stale and
- * paused are shown by StatusBanners; this panel keeps showing the snapshot's values.
+ * paused are shown by StatusBanners; this panel keeps showing the snapshot's values. The
+ * server tick lives in the Overview's Health card (the owner's call), not here.
  */
 export function StatusPanel({ snapshot }: { snapshot: StatusResponse }) {
   const status = snapshot.data;
@@ -18,11 +19,6 @@ export function StatusPanel({ snapshot }: { snapshot: StatusResponse }) {
         <dt>Players</dt>
         <dd>
           {status.connectedPlayers} / {status.playerLimit} connected
-        </dd>
-
-        <dt>Server tick</dt>
-        <dd className={status.tickHealth === "slow" ? "warning" : undefined}>
-          {status.tickHealth === "healthy" ? "Healthy" : "Slow"} ({formatTickRate(status.tickRate)})
         </dd>
 
         {status.isGameRunning && (

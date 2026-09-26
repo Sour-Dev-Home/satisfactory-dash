@@ -159,6 +159,15 @@ describe("the LAN gate (amendment 1)", () => {
     expect(DEFAULT_ADDRESS_POLICY).toEqual({ allowLan: false });
   });
 
+  it("the default policy is frozen: nothing can flip it at runtime", () => {
+    expect(Object.isFrozen(DEFAULT_ADDRESS_POLICY)).toBe(true);
+    expect(() => {
+      (DEFAULT_ADDRESS_POLICY as { allowLan: boolean }).allowLan = true;
+    }).toThrow(TypeError);
+    expect(DEFAULT_ADDRESS_POLICY.allowLan).toBe(false);
+    expect(addressVerdict("192.168.1.20")).toBe("lan");
+  });
+
   it.each(["127.0.0.1", "127.9.9.9", "::1", "::ffff:127.0.0.1", "0:0:0:0:0:0:0:1"])("%s is usable", (address) => {
     expect(addressVerdict(address)).toBe("ok");
   });

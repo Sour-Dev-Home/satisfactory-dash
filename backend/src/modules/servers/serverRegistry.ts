@@ -1,3 +1,4 @@
+import { RESERVED_SERVER_IDS } from "@satisfactory-dash/shared";
 import { ConfigError } from "../../platform/errors.js";
 
 /** ADR-0001: server ids are opaque, lowercase and URL-safe, never a host or port. Kept
@@ -24,6 +25,10 @@ export function loadServerRegistryFromEnv(env: NodeJS.ProcessEnv = process.env):
     throw new ConfigError(
       `SATISFACTORY_SERVER_ID "${id}" is invalid: use 1-32 characters of lowercase letters, digits and dashes.`,
     );
+  }
+  // ADR-0030: these ids are fixed routes under /api/servers ("managed", "test-connection"), so no server may use them.
+  if ((RESERVED_SERVER_IDS as readonly string[]).includes(id)) {
+    throw new ConfigError(`SATISFACTORY_SERVER_ID "${id}" is reserved (it is a fixed API route): choose another id.`);
   }
   return [{ id, displayName: env.SATISFACTORY_SERVER_NAME?.trim() || "Satisfactory server" }];
 }

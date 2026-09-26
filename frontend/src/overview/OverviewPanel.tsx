@@ -3,7 +3,7 @@ import type { ServerPlayersResponse } from "@satisfactory-dash/shared";
 import { Link } from "react-router";
 import { cn } from "../lib/cn";
 import { CardGrid } from "./cards/CardGrid";
-import { HealthCard } from "./cards/HealthCard";
+import { HealthCard, type Tick } from "./cards/HealthCard";
 import { WORD, WORD_COLOR, type Shown } from "./cards/words";
 import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
 import type { SectionState } from "./health";
@@ -26,6 +26,7 @@ export function OverviewPanel({
   overall,
   sections,
   players,
+  tick,
   roster,
   bannerHidden = false,
   onDismiss,
@@ -33,6 +34,8 @@ export function OverviewPanel({
   overall: { health: Shown; headline: string };
   sections: OverviewSection[];
   players: PlayersState;
+  /** The server tick for the Health card; left out while the status loads or fails. */
+  tick?: Tick;
   /** Who is online, when the server can say (ADR-0029). */
   roster?: ServerPlayersResponse;
   /** The operator hid this warning (a warning only; see canDismiss). */
@@ -64,7 +67,7 @@ export function OverviewPanel({
         Overview
       </h2>
       <CardGrid>
-        <HealthCard overall={overall} hidden={bannerHidden} onDismiss={dismiss} headingRef={healthHeading} />
+        <HealthCard overall={overall} tick={tick} hidden={bannerHidden} onDismiss={dismiss} headingRef={healthHeading} />
         <PlayersCard state={players} roster={roster} />
       </CardGrid>
       <ul aria-label="Sections" className="divide-y divide-line rounded-card border border-line bg-surface">

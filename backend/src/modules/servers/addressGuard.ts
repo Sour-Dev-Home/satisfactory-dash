@@ -104,7 +104,8 @@ export const LAN_ALLOWED = false;
 export interface AddressPolicy {
   allowLan: boolean;
 }
-export const DEFAULT_ADDRESS_POLICY: AddressPolicy = { allowLan: LAN_ALLOWED };
+/** Frozen: nothing can flip the default at runtime (the constant above is the only switch, and it is code). */
+export const DEFAULT_ADDRESS_POLICY: Readonly<AddressPolicy> = Object.freeze({ allowLan: LAN_ALLOWED });
 
 /** `ok`: may be used. `lan`: private but not loopback, refused until pinning exists. `refused`: not in the table at all. */
 export type AddressVerdict = "ok" | "lan" | "refused";

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { ServerIdSchema } from "@satisfactory-dash/shared";
+import { RESERVED_SERVER_IDS, ServerIdSchema } from "@satisfactory-dash/shared";
 import { ConfigError } from "../../platform/errors.js";
 import { loadSatisfactoryServerConfigFromEnv } from "./connectionConfig.js";
 import type { SatisfactoryServerConfig } from "./connectionConfig.js";
@@ -18,7 +18,8 @@ import type { SatisfactoryServerConfig } from "./connectionConfig.js";
 const IntegerSchema = z.number().int();
 
 const ServerFileEntrySchema = z.strictObject({
-  id: ServerIdSchema,
+  // ADR-0030: "managed" and "test-connection" are fixed routes under /api/servers, so no server may use them.
+  id: ServerIdSchema.refine((id) => !(RESERVED_SERVER_IDS as readonly string[]).includes(id), "that id is reserved (it is a fixed API route)"),
   /** Shown to users by GET /api/servers. Never a host or port. */
   name: z.string().trim().min(1).max(64).optional(),
   host: z.string().trim().min(1).optional(),
