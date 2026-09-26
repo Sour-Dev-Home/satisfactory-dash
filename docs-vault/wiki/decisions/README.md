@@ -41,6 +41,7 @@ What changed and when is in [`../log.md`](../log.md) (frozen at 2026-09-25) and 
 | [0028](./0028-uptime-monitoring.md) | **Accepted:** external uptime monitoring and a public status page (Better Stack, an ops@ alias), in place at ADR-0025 gate A; the monitor and the status page depend on `/api/health` and `/api/health/ready`, which stay detail-free |
 | [0029](./0029-connected-players.md) | **Accepted:** showing who is connected: a members-only players route with the minimum data (`name`, `online`; no location, HP, inventory or "dead" marker), names never logged, and a privacy-outline row for third-party player names |
 | [0030](./0030-multiple-servers.md) | **Accepted:** managing multiple servers in two phases: the operator adds, edits and removes local servers (loopback or private LAN only, every resolved address checked and the IP pinned, tokens AES-256-GCM encrypted in the database with a key from `SERVER_SECRETS_KEY`); players' own servers come later through the edge agent (ADR-0031), never by our backend holding their credentials or connecting to their hosts |
+| [0033](./0033-delivery-workflow.md) | **Accepted:** the delivery workflow: per-PR log fragments (`log.d/`, `log.md` frozen) that end the conflict loops, a merge queue with a fresh-eyes gate that carries the reviewed status onto the queue's commit, and one task board |
 
 ## Terms used in the ADRs
 

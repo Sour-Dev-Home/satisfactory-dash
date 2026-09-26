@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
 import { createLogger } from "../../../platform/logger.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
+import { ObservationBoard } from "./observationBoard.js";
 import { PowerHistoryPoller } from "./powerHistoryPoller.js";
 import type { PowerHistoryPorts } from "./powerHistoryPoller.js";
 import { InMemoryPowerHistoryStore } from "./powerHistoryStore.js";
@@ -93,13 +94,58 @@ describe("PowerHistoryPoller (fake time)", () => {
     vi.useRealTimers();
   });
 
-  function setup(over: { store?: PowerHistoryStore; history?: HistoryRecorder } = {}) {
+  function setup(over: { store?: PowerHistoryStore; history?: HistoryRecorder; observations?: ObservationBoard } = {}) {
     const { ports, state } = fakePorts();
     const { logger, lines } = captureLogs();
     const store = over.store ?? new InMemoryPowerHistoryStore();
-    const poller = new PowerHistoryPoller(ports, store, { logger, history: over.history });
+    const poller = new PowerHistoryPoller(ports, store, { logger, history: over.history, observations: over.observations });
     return { ports, state, lines, store, poller };
   }
+
+  describe("observations for the alert engine (ADR-0027)", () => {
+    it("publishes the status, the circuits with the dashboard's own status, and counts a success", async () => {
+      const board = new ObservationBoard();
+      const { poller, state } = setup({ observations: board });
+      state.status = status({ isPaused: false, sessionName: "Session Z" });
+      state.circuits = [circuit(1, 50), circuit(2, 50, { fuseTriggered: true })];
+      poller.start();
+      await vi.advanceTimersByTimeAsync(0);
+      const snapshot = board.snapshot();
+      expect(snapshot.session).toBe("Session Z");
+      expect(snapshot.status).toEqual({ observedAt: T0, intervalMs: INTERVAL_MS, paused: false });
+      expect(snapshot.power?.circuits).toEqual([
+        { circuit: 1, status: "ok", fuseTripped: false },
+        { circuit: 2, status: "outage", fuseTripped: true },
+      ]);
+      expect(snapshot.power?.observedAt).toBe(T0);
+      expect(snapshot.polls).toEqual({ consecutiveFailures: 0, firstFailureAt: undefined, lastSuccessAt: T0 });
+      await poller.stop();
+    });
+
+    it("keeps publishing while the game is paused (the evaluator needs the pause flag), with paused: true", async () => {
+      const board = new ObservationBoard();
+      const { poller, state } = setup({ observations: board });
+      state.status = status({ isPaused: true });
+      poller.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(board.snapshot().status?.paused).toBe(true);
+      await poller.stop();
+    });
+
+    it("counts each failed poll from the first, and a recovery resets the count", async () => {
+      const board = new ObservationBoard();
+      const { poller, state } = setup({ observations: board });
+      state.failWith = new Error("offline");
+      poller.start();
+      await vi.advanceTimersByTimeAsync(2 * INTERVAL_MS);
+      expect(board.snapshot().polls).toMatchObject({ consecutiveFailures: 3, firstFailureAt: T0 });
+      expect(board.snapshot().power).toBeUndefined(); // nothing was ever observed
+      state.failWith = undefined;
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
+      expect(board.snapshot().polls).toMatchObject({ consecutiveFailures: 0, firstFailureAt: undefined, lastSuccessAt: T0 + 3 * INTERVAL_MS });
+      await poller.stop();
+    });
+  });
 
   describe("durable history (ADR-0027)", () => {
     const recorder = () => ({ recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() }) satisfies HistoryRecorder;

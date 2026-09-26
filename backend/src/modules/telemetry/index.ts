@@ -34,11 +34,20 @@ import { BufferedHistoryRecorder, noopHistoryRecorder } from "./services/history
 import type { HistoryRecorder } from "./services/historyRecorder.js";
 import { FactoryHistoryPoller } from "./services/factoryHistoryPoller.js";
 import { HistoryMaintenanceWorker } from "./services/historyMaintenanceWorker.js";
+import { HistoryQueryService } from "./services/historyQueryService.js";
+import { ObservationBoard } from "./services/observationBoard.js";
+import type { HistoryDb } from "./services/historyQueryService.js";
+import { createHistoryRouter } from "./routes/history.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 export type { BackgroundWorker } from "./services/powerHistoryPoller.js";
+export type {
+  MachineObservation,
+  ObservationSnapshot,
+  PowerCircuitObservation,
+} from "./services/observationBoard.js";
 export { createUnitResolver } from "./itemForms.js";
 
 export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike & PlayersAdapterLike;
@@ -51,7 +60,7 @@ export interface TelemetryOptions {
   /** History window and sampling cadence; ADR-0022's 5 minutes at 5 seconds by default. */
   powerHistory?: { windowSeconds?: number; intervalSeconds?: number };
   /** ADR-0027: with a database, this server's samples are also written to durable history. Omitted: memory only. */
-  history?: { db: Queryable; serverPublicId: string };
+  history?: { db: Queryable & HistoryDb; serverPublicId: string };
 }
 
 /** The services plus the background workers the composition root must start and stop. */
@@ -73,12 +82,15 @@ export function createTelemetryServices(
   const logger = options.logger ?? createLogger({ level: "silent" });
   const workers: BackgroundWorker[] = [];
   let history: HistoryRecorder = noopHistoryRecorder;
+  // ADR-0027 (alerts): with a database, the pollers also publish their last readings to this in-memory board.
+  let observations: ObservationBoard | undefined;
   if (options.history) {
     const recorder = new BufferedHistoryRecorder(options.history.db, options.history.serverPublicId, { logger });
     history = recorder;
-    workers.push(recorder, new FactoryHistoryPoller(ports, { logger, history: recorder, now: options.now }));
+    observations = new ObservationBoard();
+    workers.push(recorder, new FactoryHistoryPoller(ports, { logger, history: recorder, observations, now: options.now }));
   }
-  const poller = new PowerHistoryPoller(ports, store, { logger, intervalSeconds, now: options.now, history });
+  const poller = new PowerHistoryPoller(ports, store, { logger, intervalSeconds, now: options.now, history, observations });
   workers.unshift(poller);
   return {
     status: new ServerStatusService(ports),
@@ -86,6 +98,11 @@ export function createTelemetryServices(
     power: new PowerService(ports),
     powerHistory: new PowerHistoryService(store, poller, { intervalSeconds, now: options.now }),
     players: new PlayersService(ports),
+    // ADR-0027: the same server's stored history, for the history routes (absent without a database).
+    ...(observations ? { observations } : {}),
+    ...(options.history
+      ? { history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }) }
+      : {}),
     workers,
   };
 }
@@ -102,6 +119,7 @@ export function createTelemetryRouters(directory: ServerDirectory<TelemetryScope
     createFactoryRouter(directory),
     createPowerRouter(directory),
     createPowerHistoryRouter(directory),
+    createHistoryRouter(directory),
     createPlayersRouter(directory),
   ];
 }

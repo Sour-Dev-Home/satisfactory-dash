@@ -74,7 +74,7 @@ export function classifyBuilding(building: ClassifiableBuilding, backedUp: boole
 
 /** The highest averaged percent across the outputs: a machine with any output moving is not underfed.
  *  undefined when there is no finite percent to judge by. */
-function bestOutputPercent(building: ClassifiableBuilding): number | undefined {
+export function bestOutputPercent(building: ClassifiableBuilding): number | undefined {
   const percents = building.production.map((rate) => rate.percent).filter(Number.isFinite);
   return percents.length === 0 ? undefined : Math.max(...percents);
 }

@@ -19,6 +19,8 @@ added or removed.
   `import-servers` and `verify-secrets` commands, unreadable rows and key rotation.
 - [`runbooks/history.md`](./runbooks/history.md) — production history (ADR-0027 PR 3): the deploy
   order (`db:migrate` first), what is stored and for how long, the recorder, pollers and rollup worker.
+- [`runbooks/alerts.md`](./runbooks/alerts.md) — the alert engine (ADR-0027 PR 5): the deploy order (`db:migrate`
+  first), the rule kinds and presets, suppression, restarts, and the SQL to read the alert log during the shadow run.
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
@@ -32,6 +34,9 @@ added or removed.
 - [`lessons-learned.md`](./lessons-learned.md) — one-sentence-per-bug log of real bugs
   found by independent `test-hunter` review passes, with a counter that increments
   when the same pattern recurs, so repeated mistakes get visible sooner.
+- [`roadmap.md`](./roadmap.md) — where the product stands and what "a successful product" means as
+  checkable targets (time to dashboard, alert speed and quality, adoption, security, release safety), approved
+  by the owner on 2026-09-25 (ADR-0033).
 - [`decisions/`](./decisions/README.md) — architecture decision records (ADR-0001 onward,
   from 2026-09-22): contract, errors, units, versioning, logging, storage, caching,
   login, the auto-pause toggle, deployment, target architecture, the item-form catalog,

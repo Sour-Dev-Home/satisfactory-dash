@@ -3,6 +3,8 @@ import type { ProductionService } from "./services/productionService.js";
 import type { PowerService } from "./services/powerService.js";
 import type { PowerHistoryService } from "./services/powerHistoryService.js";
 import type { PlayersService } from "./services/playersService.js";
+import type { HistoryQueryService } from "./services/historyQueryService.js";
+import type { ObservationBoard } from "./services/observationBoard.js";
 
 /** The services the data routes need for one game server. Narrowed with Pick so route
  *  tests can supply stubs. */
@@ -12,6 +14,10 @@ export interface TelemetryServices {
   power: Pick<PowerService, "getPowerOverview">;
   powerHistory: Pick<PowerHistoryService, "getPowerHistory">;
   players: Pick<PlayersService, "getPlayers">;
+  /** ADR-0027: stored history for this server. Absent without a database (the history routes answer 503). */
+  history?: Pick<HistoryQueryService, "power" | "items" | "transitions">;
+  /** ADR-0027 (alerts): the pollers' last readings, read by the alert evaluator. Absent without a database. */
+  observations?: Pick<ObservationBoard, "snapshot">;
 }
 
 /** What the telemetry routes read from a server directory entry. The composition root

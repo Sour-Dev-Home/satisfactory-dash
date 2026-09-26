@@ -5,6 +5,9 @@ import {
   ApiErrorResponseSchema,
   DeleteServerResponseSchema,
   FactoryResponseSchema,
+  HistoryItemsResponseSchema,
+  HistoryPowerResponseSchema,
+  HistoryTransitionsResponseSchema,
   ManagedServerListResponseSchema,
   ServerConnectionResponseSchema,
   TestConnectionResponseSchema,
@@ -30,6 +33,10 @@ const schemaByPrefix: [string, z.ZodType][] = [
   // "powerHistory" must come before "power": the first matching prefix wins.
   ["powerHistory", PowerHistoryResponseSchema],
   ["power", PowerResponseSchema],
+  // ADR-0027: stored history, one fixture per source (1-minute and hourly rollups) plus the transitions.
+  ["historyPower", HistoryPowerResponseSchema],
+  ["historyItems", HistoryItemsResponseSchema],
+  ["historyTransitions", HistoryTransitionsResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
   // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
@@ -323,7 +330,7 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    expect(all.length).toBe(22);
+    expect(all.length).toBe(25); // 22 + the three history endpoints (ADR-0027)
     for (const [name, endpoint] of all) {
       expect(endpoint.path("default"), name).toBe(endpoint.route.replace(":serverId", "default"));
     }

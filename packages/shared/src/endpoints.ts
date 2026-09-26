@@ -13,6 +13,14 @@ import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
 import { PowerResponseSchema } from "./power";
 import { PowerHistoryResponseSchema } from "./powerHistory";
+import {
+  HistoryItemsQuerySchema,
+  HistoryItemsResponseSchema,
+  HistoryPowerQuerySchema,
+  HistoryPowerResponseSchema,
+  HistoryTransitionsQuerySchema,
+  HistoryTransitionsResponseSchema,
+} from "./history";
 import { ServerPlayersResponseSchema } from "./players";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
@@ -69,6 +77,31 @@ export const endpoints = {
     route: "/api/servers/:serverId/power/history",
     path: (serverId: string) => `${scoped("power")(serverId)}/history`,
     response: PowerHistoryResponseSchema,
+  },
+  // ADR-0027 decision 3: stored history, the range picks the resolution (see history.ts). Query strings are
+  // optional (range defaults to 24h); `query` is the schema the backend validates them with.
+  history: {
+    power: {
+      method: "GET",
+      route: "/api/servers/:serverId/history/power",
+      path: (serverId: string) => `${scoped("history")(serverId)}/power`,
+      query: HistoryPowerQuerySchema,
+      response: HistoryPowerResponseSchema,
+    },
+    items: {
+      method: "GET",
+      route: "/api/servers/:serverId/history/items",
+      path: (serverId: string) => `${scoped("history")(serverId)}/items`,
+      query: HistoryItemsQuerySchema,
+      response: HistoryItemsResponseSchema,
+    },
+    transitions: {
+      method: "GET",
+      route: "/api/servers/:serverId/history/transitions",
+      path: (serverId: string) => `${scoped("history")(serverId)}/transitions`,
+      query: HistoryTransitionsQuerySchema,
+      response: HistoryTransitionsResponseSchema,
+    },
   },
   // ADR-0011. Every /api route except health requires the session cookie these set.
   auth: {

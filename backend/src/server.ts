@@ -33,6 +33,7 @@ import {
   registerConfiguredServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
+import { createAlertEvaluator } from "./modules/alerts/index.js";
 import { createHistoryMaintenance, createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
@@ -161,6 +162,9 @@ const identity = orExit(() => createIdentityModule(process.env, { db: database?.
 const databaseWorkers = [
   ...identity.workers,
   ...(database ? [createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
+  // ADR-0027 PR 5: the alert engine evaluates every server's rules from the pollers' last readings and records the
+  // transitions in the alert log (delivery is a later PR). It needs the database up, so it starts with the others.
+  ...(database ? [createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }))] : []),
 ];
 
 // ADR-0025 PR 6: with a database, every /api/servers/:serverId route needs a membership (a
