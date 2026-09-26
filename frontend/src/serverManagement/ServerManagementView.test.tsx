@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
   errorConnectionTestFailed,
+  errorConnectionUnreadable,
   errorImportRequired,
   errorLanRequiresCertPinning,
   errorOperatorOnly,
   managedServersAllStates,
   managedServersEmpty,
+  serverConnectionOk,
   testConnectionApiUnauthorized,
   testConnectionFrmUnreachable,
 } from "@satisfactory-dash/shared/fixtures";
@@ -79,6 +81,24 @@ describe("ServerManagementView: the list", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Only the operator can manage servers.");
   });
 
+  it("shows the API and FRM token hints for every combination the contract allows", async () => {
+    const base = serverConnectionOk.server; // apiTokenLast4 "1a2b", frmTokenSet true, frmTokenLast4 "3c4d"
+    const bothSuffixes = { ...base, id: "both-suffixes", displayName: "Both suffixes" };
+    const noFrmToken = { ...base, id: "no-frm-token", displayName: "No FRM token", frmTokenSet: false, frmTokenLast4: null };
+    const frmSetNoSuffix = { ...base, id: "frm-no-suffix", displayName: "FRM set no suffix", frmTokenLast4: null };
+    const apiSetNoSuffix = { ...base, id: "api-no-suffix", displayName: "API set no suffix", apiTokenLast4: null };
+    server.use(
+      http.get(endpoints.serverManagement.list.route, () =>
+        HttpResponse.json({ servers: [bothSuffixes, noFrmToken, frmSetNoSuffix, apiSetNoSuffix] }),
+      ),
+    );
+    renderView();
+    expect(await screen.findByText("API token ends in 1a2b · FRM token ends in 3c4d")).toBeInTheDocument();
+    expect(within(row("No FRM token")).getByText("API token ends in 1a2b · no FRM token")).toBeInTheDocument();
+    expect(within(row("FRM set no suffix")).getByText("API token ends in 1a2b · FRM token set")).toBeInTheDocument();
+    expect(within(row("API set no suffix")).getByText("API token set · FRM token ends in 3c4d")).toBeInTheDocument();
+  });
+
   it("tests a saved connection and reports each check", async () => {
     server.use(http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionApiUnauthorized)));
     renderView();
@@ -109,6 +129,19 @@ describe("ServerManagementView: removing", () => {
     fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
     expect(await screen.findByText(`Removed ${okServer.displayName}.`)).toBeInTheDocument();
     expect(removed).toBe(okServer.id);
+  });
+
+  it("shows the backend's refusal when removing fails, and keeps the confirmation open", async () => {
+    server.use(http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(errorOperatorOnly, { status: 403 })));
+    renderView();
+    await screen.findByRole("list", { name: "Game servers" });
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Remove" }));
+    const confirm = screen.getByRole("group", { name: `Remove ${okServer.displayName}?` });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
+    expect(await within(confirm).findByRole("alert")).toHaveTextContent("Only the operator can manage servers.");
+    // Still there: the row was not removed, and the confirmation is still open.
+    expect(within(confirm).getByRole("button", { name: "Remove server" })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: okServer.displayName })).toBeInTheDocument();
   });
 
   it("keeps the server when the operator changes their mind", async () => {
@@ -375,5 +408,23 @@ describe("ServerManagementView: editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText(/^Saved /);
     expect(bodies).toEqual([{ displayName: "Renamed" }]);
+  });
+
+  it("shows connection_unreadable in plain words on the repair form, and stays on it", async () => {
+    server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
+    await openFor(unreadableServer.displayName, "Re-enter both tokens");
+    type("Game API token", "new-api-token");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(errorConnectionUnreadable.error.message);
+    expect(screen.getByLabelText("Game API token")).toHaveValue("new-api-token");
+  });
+
+  it("shows connection_unreadable in plain words on the rename form too, even though renaming needs no tokens", async () => {
+    server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
+    await openFor(unreadableServer.displayName, "Rename");
+    type("Name", "Renamed");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(errorConnectionUnreadable.error.message);
+    expect(screen.getByLabelText("Name")).toHaveValue("Renamed");
   });
 });

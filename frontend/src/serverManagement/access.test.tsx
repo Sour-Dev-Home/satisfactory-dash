@@ -1,9 +1,10 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints, type ServerListResponse } from "@satisfactory-dash/shared";
 import { serversMemberCannotManage, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import App from "../App";
+import { queries } from "../api/queries";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 
@@ -27,6 +28,24 @@ describe("the Servers tab", () => {
     listServers(list);
     window.history.pushState(null, "", "/app/servers");
     renderWithClient(<App />);
+    expect(await screen.findByRole("link", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Servers" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Game servers" })).not.toBeInTheDocument();
+  });
+
+  it("drops the tab and route, and redirects away, if canManageServers turns false while mounted on it", async () => {
+    let manage = true;
+    server.use(http.get(endpoints.servers.route, () => HttpResponse.json({ ...serversSingle, canManageServers: manage })));
+    window.history.pushState(null, "", "/app/servers");
+    const { client } = renderWithClient(<App />);
+    await screen.findByRole("list", { name: "Game servers" });
+    expect(screen.getByRole("link", { name: "Servers" })).toBeInTheDocument();
+
+    manage = false;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: queries.servers().queryKey, exact: true });
+    });
+
     expect(await screen.findByRole("link", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Servers" })).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Game servers" })).not.toBeInTheDocument();

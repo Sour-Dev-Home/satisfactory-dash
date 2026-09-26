@@ -4,14 +4,18 @@ import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints, type ServerListResponse } from "@satisfactory-dash/shared";
 import {
+  deleteServerDone,
   errorServerNotFound,
   errorUpstreamUnreachable,
+  managedServersEmpty,
+  serverConnectionOk,
   serversMultiple,
   serversNone,
   serversSingle,
   statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
+import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { useSelectedServer } from "./ServerContext";
@@ -127,6 +131,56 @@ describe("ServerGate", () => {
     await delay(100);
     expect(listCalls).toBe(2);
     expect(statusCalls).toBe(1);
+  });
+
+  it("moves from the empty state into the app once the operator adds the first server (ADR-0030)", async () => {
+    let added = false;
+    server.use(
+      http.get(endpoints.servers.route, () =>
+        HttpResponse.json(added ? { ...serversSingle, canManageServers: true } : { ...serversNone, canManageServers: true }),
+      ),
+      http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersEmpty)),
+      http.post(endpoints.serverManagement.create.route, () => {
+        added = true;
+        return HttpResponse.json(serverConnectionOk);
+      }),
+    );
+    renderGate();
+    fireEvent.click(await screen.findByRole("button", { name: "Add a server" }));
+    fireEvent.change(screen.getByLabelText("Server id"), { target: { value: "default" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Satisfactory server" } });
+    fireEvent.change(screen.getByLabelText("Game API token"), { target: { value: "some-token" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+    // The empty-state screen (and its "Added ..." notice) is replaced by the normal app once the
+    // server list refetches with one server: this is the whole gate re-rendering, not the form's
+    // own close/notice transition.
+    expect(await screen.findByText("status for default")).toBeInTheDocument();
+  });
+
+  it("falls back to the empty state after the operator removes the last server (ADR-0030)", async () => {
+    let removed = false;
+    server.use(
+      http.get(endpoints.servers.route, () =>
+        HttpResponse.json(removed ? { ...serversNone, canManageServers: true } : { ...serversSingle, canManageServers: true }),
+      ),
+      http.get(endpoints.serverManagement.list.route, () =>
+        HttpResponse.json(removed ? managedServersEmpty : { servers: [serverConnectionOk.server] }),
+      ),
+      http.delete(endpoints.serverManagement.remove.route, () => {
+        removed = true;
+        return HttpResponse.json(deleteServerDone);
+      }),
+    );
+    renderWithClient(
+      <ServerGate>
+        <ServerManagementView />
+      </ServerGate>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove server" }));
+    // The whole gate swaps to the empty-state screen: the management view that showed "Removed
+    // ..." a moment ago is gone, unmounted along with the rest of the app.
+    expect(await screen.findByRole("heading", { name: "Set up a game server" })).toBeInTheDocument();
   });
 
   it("lets the operator pick a lost server again explicitly", async () => {
