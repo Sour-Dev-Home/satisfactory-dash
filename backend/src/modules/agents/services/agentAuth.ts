@@ -1,10 +1,10 @@
 import type { RequestHandler } from "express";
 import { RateLimitedError, ServiceUnavailableError, UnauthorizedError } from "../../../platform/errorResponse.js";
-import { clientIp } from "../../../platform/clientIp.js";
 import { isDatabaseUnavailable } from "../../../platform/db/errors.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { LAST_SEEN_INTERVAL_MS } from "../config.js";
+import { rateLimitKey } from "./clientKey.js";
 import { findActiveAgent, sha256, touchAgent } from "../repositories/agentRepository.js";
 
 /**
@@ -30,6 +30,8 @@ export interface AgentAuthOptions {
   db: Queryable;
   /** Failed and successful attempts per client address per minute: an unauthenticated flood must not cost a database lookup each. */
   limiter?: UserRateLimiter;
+  /** Across every caller; default 6000 a minute for the whole process (an agent asks about every 5 seconds). */
+  globalLimiter?: UserRateLimiter;
   lastSeenIntervalMs?: number;
   now?: () => number;
 }
@@ -38,10 +40,12 @@ export function createAgentAuth(options: AgentAuthOptions): RequestHandler {
   const now = options.now ?? Date.now;
   const interval = options.lastSeenIntervalMs ?? LAST_SEEN_INTERVAL_MS;
   const limiter = options.limiter ?? new UserRateLimiter({ max: 600, windowMs: 60_000 });
+  // Process-wide too: the per-network table is bounded, so a flood of distinct addresses must not turn into a lookup each.
+  const globalLimiter = options.globalLimiter ?? new UserRateLimiter({ max: 6000, windowMs: 60_000 });
   const lastTouched = new Map<string, number>();
 
   return async (req, res, next) => {
-    const wait = limiter.hit(clientIp(req));
+    const wait = Math.max(limiter.hit(rateLimitKey(req)), globalLimiter.hit("all"));
     if (wait > 0) throw new RateLimitedError(wait, "Too many requests. Slow down.");
     const header = req.headers.authorization;
     const match = typeof header === "string" ? BEARER.exec(header) : null;

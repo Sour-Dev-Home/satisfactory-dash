@@ -6,7 +6,7 @@ import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { switchToAgentConnection } from "../../servers/index.js";
-import { consumeCode, sha256, upsertCredential } from "../repositories/agentRepository.js";
+import { consumeCode, findOpenCodeServer, lockServer, sha256, upsertCredential } from "../repositories/agentRepository.js";
 import { generateAgentSecret } from "./enrollmentCode.js";
 
 /**
@@ -39,7 +39,11 @@ export function createEnrollmentService(deps: EnrollmentServiceDeps): Enrollment
       let publicId: string;
       try {
         publicId = await withTransaction(deps.db, async (client) => {
-          const serverUuid = await consumeCode(client, sha256(code));
+          // Lock order: the server row first, then the code (as code creation and revoke do), so they cannot deadlock.
+          const codeHash = sha256(code);
+          const owner = await findOpenCodeServer(client, codeHash);
+          if (owner === undefined || (await lockServer(client, owner)) === undefined) throw codeInvalid();
+          const serverUuid = await consumeCode(client, codeHash);
           if (serverUuid === undefined) throw codeInvalid();
           await upsertCredential(client, { serverUuid, secretHash: sha256(agentSecret), agentVersion });
           const switched = await switchToAgentConnection(client, serverUuid);

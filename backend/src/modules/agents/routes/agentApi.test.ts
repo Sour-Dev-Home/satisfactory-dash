@@ -122,6 +122,14 @@ describe("POST /agent/v1/enroll", () => {
     expect(first.body.error.message).toBe(second.body.error.message);
   });
 
+  it("is also limited across every caller, so a flood of distinct addresses cannot guess codes freely", async () => {
+    const { app, enroll } = build({ globalEnrollLimiter: new UserRateLimiter({ max: 2, windowMs: 60_000 }) });
+    expect((await request(app).post("/agent/v1/enroll").send(agentEnrollRequest)).status).toBe(201);
+    expect((await request(app).post("/agent/v1/enroll").send(agentEnrollRequest)).status).toBe(201);
+    expect((await request(app).post("/agent/v1/enroll").send(agentEnrollRequest)).status).toBe(429);
+    expect(enroll).toHaveBeenCalledTimes(2);
+  });
+
   it("is rate limited per client address (429 with Retry-After)", async () => {
     const { app, enroll } = build({ enrollLimiter: new UserRateLimiter({ max: 3, windowMs: 60_000 }) });
     for (let i = 0; i < 3; i++) {

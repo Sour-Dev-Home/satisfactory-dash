@@ -47,6 +47,8 @@ export class AgentIngest implements AgentSnapshotSink {
   private readonly knownStates = new Map<string, string>();
   /** A paused snapshot was seen since the last factory reading: the next running one is the first after a resume. */
   private wasPaused = false;
+  private lastPowerRecordedAt = -Infinity;
+  private lastFactoryRecordedAt = -Infinity;
   private lastSession: string | undefined;
   private lastGameDuration: number | undefined;
 
@@ -56,7 +58,8 @@ export class AgentIngest implements AgentSnapshotSink {
     const { store, observations, history, powerStore } = this.deps;
     const cadence = this.deps.cadence();
     const agentMs = Date.parse(snapshot.observedAt);
-    const observedAtMs = Number.isFinite(agentMs) && Math.abs(agentMs - receivedAtMs) <= AGENT_CLOCK_TOLERANCE_MS ? agentMs : receivedAtMs;
+    // Never later than the arrival: a reading cannot be from the future, and a clock running ahead would make old data look fresh.
+    const observedAtMs = Number.isFinite(agentMs) && Math.abs(agentMs - receivedAtMs) <= AGENT_CLOCK_TOLERANCE_MS ? Math.min(agentMs, receivedAtMs) : receivedAtMs;
 
     if (!snapshot.reachable) {
       observations.recordPollFailure(receivedAtMs); // the alert engine's "server unreachable" reads this
@@ -107,7 +110,11 @@ export class AgentIngest implements AgentSnapshotSink {
       }));
       // One slot per interval: a second snapshot in the same slot is not newer and is ignored by the store.
       powerStore.append({ t: Math.floor(observedAtMs / intervalMs) * intervalMs, gamePaused: paused === true, circuits });
-      if (paused === false && this.lastSession !== undefined) {
+      // A credential may send up to about 5 snapshots a second, but a reading is recorded once per cadence: a faster
+      // (or repeated, or out-of-order) one is served live but adds no history rows.
+      const powerDue = observedAtMs - this.lastPowerRecordedAt >= intervalMs / 2;
+      if (paused === false && this.lastSession !== undefined && powerDue) {
+        this.lastPowerRecordedAt = observedAtMs;
         const session = sessionKey(this.lastSession);
         history.recordPower(
           circuits.map((circuit) => ({
@@ -123,7 +130,8 @@ export class AgentIngest implements AgentSnapshotSink {
         );
       }
     }
-    if (factory !== undefined && paused === false) {
+    if (factory !== undefined && paused === false && observedAtMs - this.lastFactoryRecordedAt >= (cadence.factorySeconds * 1000) / 2) {
+      this.lastFactoryRecordedAt = observedAtMs;
       const itemRows = sumItemRates(factory.buildings, observedAtMs);
       const machines: MachineObservation[] = factory.buildings.map((building) => {
         const missingInput = building.state === "underfed" ? lowestIngredient(building) : undefined;

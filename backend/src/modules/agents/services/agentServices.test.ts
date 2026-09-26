@@ -28,6 +28,7 @@ function fakePool(answer: (text: string, values: unknown[]) => { rows: unknown[]
 const kinds = (log: { text: string }[]) =>
   log.map(({ text }) => {
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(text)) return text;
+    if (text.includes("SELECT s.public_id AS public_id")) return "find-code";
     if (text.includes("UPDATE agents.enrollment_codes")) return "consume";
     if (text.includes("INSERT INTO agents.agent_credentials")) return "credential";
     if (text.includes("SET connection_kind = 'agent'")) return "switch";
@@ -44,6 +45,8 @@ const auditRow = { rows: [{ id: 1, at: new Date(), actor_user_id: null, server_i
 
 describe("the enrolment transaction", () => {
   const happy = (text: string) => {
+    if (text.includes("SELECT s.public_id AS public_id")) return { rows: [{ public_id: "alpha" }] };
+    if (text.includes("FOR NO KEY UPDATE")) return { rows: [{ id: SERVER_UUID, connection_kind: "local" }] };
     if (text.includes("UPDATE agents.enrollment_codes")) return { rows: [{ server_id: SERVER_UUID }] };
     if (text.includes("SET connection_kind = 'agent'")) return { rows: [{ public_id: "alpha" }] };
     if (text.includes("INSERT INTO audit.audit_events")) return auditRow;
@@ -56,12 +59,13 @@ describe("the enrolment transaction", () => {
     const attach = vi.fn(async () => undefined);
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: attach, logger: silent });
     const result = await service.enroll("AB3D-7XQ2", "0.1.0");
-    expect(kinds(log)).toEqual(["BEGIN", "consume", "credential", "switch", "delete-connection", "audit", "COMMIT"]);
+    // The server row is locked BEFORE the code is spent: the order code creation and revoke use, so they cannot deadlock.
+    expect(kinds(log)).toEqual(["BEGIN", "find-code", "lock", "consume", "credential", "switch", "delete-connection", "audit", "COMMIT"]);
     expect(result).toMatchObject({ serverId: "alpha", cadence: CADENCE });
     expect(result.agentSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
     // The code is looked up by its hash, and the secret is stored as its hash.
-    expect(log[1]!.values[0]).toEqual(sha256("AB3D-7XQ2"));
-    expect(log[2]!.values).toEqual([SERVER_UUID, sha256(result.agentSecret), "0.1.0"]);
+    expect(log[3]!.values[0]).toEqual(sha256("AB3D-7XQ2"));
+    expect(log[4]!.values).toEqual([SERVER_UUID, sha256(result.agentSecret), "0.1.0"]);
     // Nothing in any statement carries the secret or the code in clear.
     expect(JSON.stringify(log)).not.toContain(result.agentSecret);
     expect(JSON.stringify(log)).not.toContain("AB3D-7XQ2");
@@ -70,13 +74,13 @@ describe("the enrolment transaction", () => {
   });
 
   it("an unknown, used or expired code writes nothing and never touches the running server", async () => {
-    const { pool, log } = fakePool((text) => (text.includes("UPDATE agents.enrollment_codes") ? { rows: [] } : { rows: [] }));
+    const { pool, log } = fakePool(() => ({ rows: [] }));
     const attach = vi.fn(async () => undefined);
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: attach, logger: silent });
     const failure = await service.enroll("AB3D-7XQ2", "0.1.0").catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(ApiFailure);
     expect((failure as ApiFailure).code).toBe("enrollment_code_invalid");
-    expect(kinds(log)).toEqual(["BEGIN", "consume", "ROLLBACK"]);
+    expect(kinds(log)).toEqual(["BEGIN", "find-code", "ROLLBACK"]);
     expect(attach).not.toHaveBeenCalled();
   });
 

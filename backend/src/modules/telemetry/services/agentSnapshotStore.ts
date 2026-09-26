@@ -55,7 +55,8 @@ export class LatestSnapshotStore {
     if (!snapshot.reachable) return; // the parts stay as they were; reads say "unreachable" until a reachable snapshot arrives
     for (const part of ["status", "power", "factory", "players"] as const) {
       const data = snapshot[part];
-      if (data !== undefined) {
+      // A late or retried snapshot must not put an older reading over a newer one.
+      if (data !== undefined && snapshot.observedAtMs >= (this.parts[part]?.observedAtMs ?? -Infinity)) {
         (this.parts as Record<SnapshotPart, unknown>)[part] = { data, observedAtMs: snapshot.observedAtMs };
       }
     }

@@ -3,7 +3,6 @@ import type { RequestHandler, Response } from "express";
 import { EnrollRequestSchema, EnrollResponseSchema, SnapshotRequestSchema, SnapshotResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { Cadence } from "@satisfactory-dash/shared";
 import { BadRequestError, RateLimitedError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
-import { clientIp } from "../../../platform/clientIp.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
@@ -11,6 +10,7 @@ import type { ServerDirectory } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
 import { SNAPSHOT_MAX_BYTES } from "../config.js";
 import type { AgentIdentity } from "../services/agentAuth.js";
+import { rateLimitKey } from "../services/clientKey.js";
 import type { EnrollmentService } from "../services/enrollmentService.js";
 
 /** The agent API is mounted at /agent/v1 (not under /api): a shared route pattern is registered without that prefix. */
@@ -32,6 +32,8 @@ export interface AgentApiDeps {
   snapshotMaxBytes?: number;
   /** Per client address; default 10 enrolment attempts a minute. */
   enrollLimiter?: UserRateLimiter;
+  /** Across every caller; default 120 enrolment attempts a minute for the whole process. */
+  globalEnrollLimiter?: UserRateLimiter;
   /** Per server (credential); default 50 snapshots per 10 seconds: about 5 a second, bursts allowed. */
   snapshotLimiter?: UserRateLimiter;
   now?: () => number;
@@ -50,6 +52,7 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   const router = Router();
   const now = deps.now ?? Date.now;
   const enrollLimiter = deps.enrollLimiter ?? new UserRateLimiter({ max: 10, windowMs: 60_000 });
+  const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: 120, windowMs: 60_000 });
   const snapshotLimiter = deps.snapshotLimiter ?? new UserRateLimiter({ max: 50, windowMs: 10_000 });
   const versions = new Map<string, string>();
 
@@ -58,7 +61,9 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     requireJsonBody,
     express.json({ limit: "4kb" }),
     async (req, res) => {
-      const wait = enrollLimiter.hit(clientIp(req));
+      // Per network (an IPv6 /64 counts as one) AND process-wide: the per-network table is bounded, so a flood of distinct
+      // addresses could push counters out, and every open code on every server is a target for a guess.
+      const wait = Math.max(enrollLimiter.hit(rateLimitKey(req)), globalEnrollLimiter.hit("all"));
       if (wait > 0) throw new RateLimitedError(wait, "Too many enrollment attempts. Try again in a minute.");
       const body = EnrollRequestSchema.safeParse(req.body);
       if (!body.success) throw new BadRequestError("The request body is not valid");

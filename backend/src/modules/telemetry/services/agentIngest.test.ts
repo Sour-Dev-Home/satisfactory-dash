@@ -197,6 +197,16 @@ describe("the agent's clock", () => {
     expect(t.observations.publishStatus).toHaveBeenCalledWith(expect.objectContaining({ observedAt: skewed }));
   });
 
+  it("never puts a reading in the future: a clock running ahead cannot make an old reading look fresh for up to a minute", () => {
+    const t = setup();
+    const ahead = T0 + 50_000;
+    t.ingest.ingest(t.running({ observedAt: new Date(ahead).toISOString() }), T0);
+    expect(t.observations.publishStatus).toHaveBeenCalledWith(expect.objectContaining({ observedAt: T0 }));
+    expect(t.history.recordItems).toHaveBeenCalledWith([expect.objectContaining({ atMs: T0 })]);
+    t.advance(15_001);
+    expect(observedStale(t.store.read("status"))).toBe(true);
+  });
+
   it("is ignored when further off, so a wrong clock cannot back-date history or make old data look fresh", () => {
     for (const wrong of [T0 - AGENT_CLOCK_TOLERANCE_MS - 1, T0 + AGENT_CLOCK_TOLERANCE_MS + 1, Date.parse("1999-01-01T00:00:00Z")]) {
       const t = setup();
@@ -215,6 +225,33 @@ describe("a new game session", () => {
     t.ingest.ingest(t.running({ status: { ...statusRunning.data, gamePaused: false, sessionName: "Another save" } }), T0 + 5000);
     const times = t.powerStore.window(T0 + 6000).series[0]?.points.map((p) => p.t);
     expect(times).toEqual([T0 + 5000]);
+  });
+});
+
+describe("an agent that sends faster than its cadence", () => {
+  it("is served live but adds no more history than one reading per cadence (a leaked secret cannot inflate the database)", () => {
+    const t = setup();
+    for (let i = 0; i < 50; i++) t.ingest.ingest(t.running({ observedAt: new Date(T0 + i * 200).toISOString() }), T0 + i * 200);
+    expect(t.history.recordItems).toHaveBeenCalledTimes(1);
+    // Power: at most one reading per half interval (2.5 s) over these 10 s, not 50.
+    expect(t.history.recordPower.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(t.history.recordPower.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(t.observations.publishFactory).toHaveBeenCalledTimes(1);
+    // The next reading a whole cadence later is recorded again.
+    t.advance(30_000);
+    t.ingest.ingest(t.running(), T0 + 30_000);
+    expect(t.history.recordItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a late or retried snapshot put an older reading over a newer one", () => {
+    const t = setup();
+    const at = (ms: number) => new Date(T0 + ms).toISOString();
+    const named = (sessionName: string) => ({ ...statusRunning.data, gamePaused: false, sessionName });
+    t.ingest.ingest(t.running({ observedAt: at(10_000) }), T0 + 10_000);
+    t.ingest.ingest(t.running({ observedAt: at(12_000), status: named("Old news") }), T0 + 12_000);
+    t.ingest.ingest(t.running({ observedAt: at(11_000), status: named("Older") }), T0 + 13_000);
+    // Observed at 11 s, after one observed at 12 s: it must not replace it.
+    expect(t.store.session()).toBe("Old news");
   });
 });
 

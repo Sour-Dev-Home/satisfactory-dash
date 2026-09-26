@@ -63,6 +63,22 @@ export async function insertCode(
   return result.rows.length > 0;
 }
 
+const CODE_SERVER = `
+  SELECT s.public_id AS public_id
+  FROM agents.enrollment_codes c
+  JOIN servers.servers s ON s.id = c.server_id
+  WHERE c.code_hash = $1 AND c.consumed_at IS NULL AND c.expires_at > now() AND s.deleted_at IS NULL`;
+
+/**
+ * The public id of the server an open code belongs to (a plain read, no lock), or undefined. The enrolment locks that
+ * server BEFORE spending the code, the same order code creation and revoke use (server row, then code rows), so the
+ * three cannot deadlock on each other.
+ */
+export async function findOpenCodeServer(db: Queryable, codeHash: Buffer): Promise<string | undefined> {
+  const result = await db.query(CODE_SERVER, [codeHash]);
+  return parseFirst(z.object({ public_id: z.string() }), result.rows, "agents.findOpenCodeServer")?.public_id;
+}
+
 // The single statement that makes a code single-use: whoever's UPDATE finds it unconsumed and unexpired wins, everyone
 // else (a second request, a replay, a race) gets no row. The join makes a removed server's code dead too.
 const CONSUME_CODE = `
