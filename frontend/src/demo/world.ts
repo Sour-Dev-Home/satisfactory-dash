@@ -2,6 +2,7 @@ import type {
   FactoryBuilding,
   FactoryResponse,
   HistoryItemsResponse,
+  HistoryPowerResponse,
   HistoryRange,
   HistoryTransitions,
   HistoryTransitionsResponse,
@@ -192,6 +193,73 @@ export function powerHistory(now: number): PowerHistoryResponse {
   };
 }
 
+/** ADR-0027's table (packages/shared/src/history.ts): the range picks the bucket, in seconds. */
+const RANGE_MS: Record<HistoryRange, number> = {
+  "1h": 3_600_000,
+  "6h": 21_600_000,
+  "24h": 86_400_000,
+  "7d": 604_800_000,
+  "30d": 2_592_000_000,
+  "1y": 31_536_000_000,
+};
+const BUCKET_S: Record<HistoryRange, number> = { "1h": 60, "6h": 60, "24h": 300, "7d": 3600, "30d": 21_600, "1y": 86_400 };
+/** The demo save, as the stored history's session hash (any fixed 32-bit number). */
+const DEMO_SESSION = 20_260_924;
+// A stretch with nothing recorded (the game was paused), a few buckets before the newest one, so
+// every range can show a gap. Sized in buckets, not a fixed clock time: a 1h range's window (60
+// one-minute buckets) never reaches back 28-30 hours, so a fixed-time gap would only ever show up
+// in the 7d/30d/1y ranges. (test-hunter: found via demo/world.test.ts, was previously hours-based.)
+const GAP_BUCKETS = 2;
+const GAP_BUCKETS_AGO = 4;
+
+/**
+ * Stored power history (ADR-0027) for a range, from the same readings as power(): each bucket
+ * samples its circuit a few times for min/avg/max. Nothing in the gap, as the real history does.
+ */
+export function historyPower(now: number, range: HistoryRange): HistoryPowerResponse {
+  const step = BUCKET_S[range] * 1000;
+  const to = now;
+  const from = now - RANGE_MS[range];
+  const first = Math.ceil(from / step) * step;
+  const starts: number[] = [];
+  // Every bucket that has started (the newest is still filling, as on the real backend).
+  for (let t = first; t < now; t += step) starts.push(t);
+  const gapEnd = Math.max(0, starts.length - GAP_BUCKETS_AGO);
+  const gapStart = Math.max(0, gapEnd - GAP_BUCKETS);
+  starts.splice(gapStart, gapEnd - gapStart);
+  const stat = (values: number[]) => ({
+    min: round1(Math.min(...values)),
+    avg: round1(values.reduce((a, b) => a + b, 0) / values.length),
+    max: round1(Math.max(...values)),
+  });
+  const points = (id: 0 | 1) =>
+    starts.map((t) => {
+      const samples = Array.from({ length: 6 }, (_, i) => circuitAt(id, t + (i * step) / 6));
+      return {
+        t,
+        samples: Math.max(1, Math.round(step / SAMPLE_MS)),
+        productionMW: stat(samples.map((c) => c.productionMW)),
+        consumptionMW: stat(samples.map((c) => c.consumptionMW)),
+        capacityMW: samples[0].capacityMW,
+        batteryPercent: stat(samples.map((c) => c.batteryPercent)),
+        fuseTrippedSamples: 0,
+      };
+    });
+  return {
+    ...envelope(now),
+    data: {
+      range,
+      resolutionSeconds: BUCKET_S[range],
+      from,
+      to,
+      series: [
+        { session: DEMO_SESSION, circuit: 0, points: points(0) },
+        { session: DEMO_SESSION, circuit: 1, points: points(1) },
+      ],
+    },
+  };
+}
+
 type Output = [name: string, className: string, current: number, max: number, unit?: "m3/min"];
 
 const rates = (items: Output[]) =>
@@ -361,28 +429,12 @@ export function settings(now: number, state: { autoPause: boolean; pending: bool
 const MINUTE = 60_000;
 const HOUR_MS = 60 * MINUTE;
 const DAY_MS = 24 * HOUR_MS;
-/** The range picks the bucket, as the backend does (packages/shared/src/history.ts). */
-const BUCKET_MS: Record<HistoryRange, number> = {
-  "1h": MINUTE,
-  "6h": MINUTE,
-  "24h": 5 * MINUTE,
-  "7d": HOUR_MS,
-  "30d": 6 * HOUR_MS,
-  "1y": DAY_MS,
-};
-const RANGE_MS: Record<HistoryRange, number> = {
-  "1h": HOUR_MS,
-  "6h": 6 * HOUR_MS,
-  "24h": DAY_MS,
-  "7d": 7 * DAY_MS,
-  "30d": 30 * DAY_MS,
-  "1y": 365 * DAY_MS,
-};
+// The range→bucket table is the power history's RANGE_MS / BUCKET_S above: one copy for both.
 
 /** Factory-wide rate and capacity per item before the dips, highest first (the order the backend sends). */
 const HISTORY_ITEMS: [className: string, perMinute: number, capacity: number][] = [
   ["Desc_IronIngot_C", 75, 75],
-  ["Desc_Screw_C", 40, 40],
+  ["Desc_IronScrew_C", 40, 40],
   ["Desc_IronPlate_C", 20, 20],
   ["Desc_Plastic_C", 20, 20],
   ["Desc_IronRod_C", 15, 15],
@@ -398,13 +450,13 @@ const recordedAt = (t: number, now: number) => t < now - 50 * HOUR_MS || t >= no
 /** An item's rate per minute at `t`, relative to `now` so the demo always shows the same story. */
 function itemRate(className: string, perMinute: number, t: number, now: number): number {
   if (className === "Desc_Rotor_C" && t >= now - 5 * HOUR_MS) return 0;
-  if (className === "Desc_Screw_C" && t >= now - 6 * HOUR_MS) return 30;
+  if (className === "Desc_IronScrew_C" && t >= now - 6 * HOUR_MS) return 30;
   const wave = 1 + 0.03 * Math.sin((2 * Math.PI * (t % DAY_MS)) / DAY_MS);
   return round1(Math.min(perMinute, perMinute * wave));
 }
 
 export function historyItems(now: number, range: HistoryRange, item?: string): HistoryItemsResponse {
-  const bucket = BUCKET_MS[range];
+  const bucket = BUCKET_S[range] * 1000;
   const from = now - RANGE_MS[range];
   const first = Math.floor(from / bucket) * bucket;
   const series = HISTORY_ITEMS.filter(([className]) => item === undefined || className === item).map(

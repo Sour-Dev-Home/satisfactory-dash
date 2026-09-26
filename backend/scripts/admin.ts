@@ -1,5 +1,7 @@
 import "dotenv/config";
+import { createInterface } from "node:readline";
 import pg from "pg";
+import { saveDiscordDestination } from "../src/modules/alerts/index.js";
 import { loadDatabaseConfig } from "../src/platform/db/config.js";
 import { ConfigError } from "../src/platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "../src/platform/secrets/secrets.js";
@@ -20,7 +22,13 @@ import { ImportError, importServers, listConnections, loadServerRegistryFromEnv,
 //                                                      report how many open (never prints a token); used by the
 //                                                      restore rehearsal. Exits 1 if any cannot be opened.
 
-const USAGE = "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | import-servers | verify-secrets)";
+//   npm run admin -- set-alert-webhook <server-id>     ADR-0027: set a server's Discord webhook (until the rules API
+//                                                      exists). The URL is read from STDIN, never from an argument
+//                                                      (no shell history), validated against the Discord allowlist and
+//                                                      stored encrypted. Prints only its last 4 characters.
+
+const USAGE =
+  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | import-servers | verify-secrets | set-alert-webhook <server-id>)";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const [command, flag, value] = process.argv.slice(2);
@@ -28,7 +36,8 @@ const isRevoke =
   command === "revoke-sessions" && (flag === "--all" || (flag === "--user" && UUID.test(value ?? "")));
 const isImport = command === "import-servers" && flag === undefined;
 const isVerify = command === "verify-secrets" && flag === undefined;
-if (!isRevoke && !isImport && !isVerify) {
+const isSetWebhook = command === "set-alert-webhook" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(flag ?? "") && value === undefined;
+if (!isRevoke && !isImport && !isVerify && !isSetWebhook) {
   console.error(USAGE);
   process.exit(2);
 }
@@ -112,9 +121,54 @@ async function runVerify(pool: pg.Pool): Promise<void> {
   }
 }
 
+async function readFirstLine(): Promise<string> {
+  if (process.stdin.isTTY) console.error("Paste the Discord webhook URL, then press Enter:");
+  const lines = createInterface({ input: process.stdin });
+  for await (const line of lines) {
+    lines.close();
+    return line;
+  }
+  return "";
+}
+
+async function runSetWebhook(pool: pg.Pool, serverId: string): Promise<void> {
+  let ring;
+  try {
+    ring = loadSecretsKeyringFromEnv();
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      console.error(err.message);
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
+  if (ring === null) {
+    console.error("SERVER_SECRETS_KEY is not set: the webhook is stored encrypted with it.");
+    process.exitCode = 1;
+    return;
+  }
+  const url = (await readFirstLine()).trim();
+  try {
+    const saved = await saveDiscordDestination(pool, ring, serverId, url);
+    if (saved.ok) {
+      console.log(`Saved the Discord webhook for "${serverId}" (ends in ${saved.last4}). Alerts are sent only when ALERT_DELIVERY=on.`);
+    } else {
+      // A stable code only: the input is never echoed.
+      console.error(`Not saved: ${saved.code}. Expected https://discord.com/api/webhooks/<id>/<token> (or discordapp.com).`);
+      process.exitCode = 1;
+    }
+  } catch {
+    console.error("Could not save the webhook: is the database up and migrated (npm run db:migrate -w backend)?");
+    process.exitCode = 1;
+  }
+}
+
 const pool = new pg.Pool({ connectionString: config.url, max: 2 });
 try {
-  if (isImport) {
+  if (isSetWebhook) {
+    await runSetWebhook(pool, flag as string);
+  } else if (isImport) {
     await runImport(pool);
   } else if (isVerify) {
     await runVerify(pool);

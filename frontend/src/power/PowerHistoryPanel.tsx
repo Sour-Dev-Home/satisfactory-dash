@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
-import type { PowerHistory } from "@satisfactory-dash/shared";
+import type { PausedRange, PowerHistory } from "@satisfactory-dash/shared";
+import type uPlot from "uplot";
 import { formatMW, formatTime } from "../format";
 import { fuseTrips, seriesStats, toChartData, type LivePart, type Range } from "./history";
 
@@ -38,9 +39,26 @@ function ChartPlaceholder() {
   );
 }
 
+/** The lazily loaded chart with its placeholder: also used by the stored ranges (StoredPowerHistoryPanel). */
+export function ChartSlot({
+  data,
+  pausedRanges,
+  trippedRanges,
+}: {
+  data: uPlot.AlignedData;
+  pausedRanges: readonly PausedRange[];
+  trippedRanges?: readonly Pick<PausedRange, "fromT" | "toT">[];
+}) {
+  return (
+    <Suspense fallback={<ChartPlaceholder />}>
+      <PowerChart data={data} pausedRanges={pausedRanges} trippedRanges={trippedRanges} />
+    </Suspense>
+  );
+}
+
 const iso = (t: number) => new Date(t).toISOString();
 
-function RangeRow({ label, range }: { label: string; range: Range }) {
+export function RangeRow({ label, range }: { label: string; range: Range }) {
   return (
     <div className="grid gap-0.5">
       <dt className="text-xs text-muted">{label}</dt>
@@ -87,12 +105,10 @@ export function PowerHistoryPanel({ history, live }: { history: PowerHistory; li
               {series.points.length < 2 ? (
                 <p className="text-sm text-muted">Collecting readings. The chart starts after the next poll.</p>
               ) : (
-                <Suspense fallback={<ChartPlaceholder />}>
-                  <PowerChart
-                    data={toChartData(series.points, history.intervalSeconds, live)}
-                    pausedRanges={history.pausedRanges}
-                  />
-                </Suspense>
+                <ChartSlot
+                  data={toChartData(series.points, history.intervalSeconds, live)}
+                  pausedRanges={history.pausedRanges}
+                />
               )}
               {fuseTrips(series.points).map((trip) => (
                 <p key={trip.fromT} className="text-sm text-bad">

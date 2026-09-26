@@ -33,7 +33,7 @@ import {
   registerConfiguredServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
-import { createAlertEvaluator } from "./modules/alerts/index.js";
+import { createAlertDelivery, createAlertEvaluator, loadAlertDeliveryMode } from "./modules/alerts/index.js";
 import { createHistoryMaintenance, createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
@@ -155,6 +155,17 @@ const secretsKeyring = orExit(() => loadSecretsKeyringFromEnv());
 // With a database, sessions live in it (ADR-0025 decision 4) and a purge worker keeps retention;
 // without one, the original signed-token sessions still work.
 const identity = orExit(() => createIdentityModule(process.env, { db: database?.pool, logger }));
+// ADR-0027 decision 5: the alert delivery kill switch, default OFF. A value that is not on/off stops the backend here.
+// Delivery needs a database (the outbox) and the secrets key (the webhooks are stored encrypted): without either it
+// cannot be on, and that is a startup error rather than a silent "off".
+const alertDelivery = orExit(() => {
+  const mode = loadAlertDeliveryMode();
+  if (mode === "on" && (database === undefined || secretsKeyring === null)) {
+    throw new ConfigError("ALERT_DELIVERY=on needs DATABASE_URL and SERVER_SECRETS_KEY (webhooks are stored encrypted).");
+  }
+  return mode;
+});
+logger.info({ alertDelivery }, alertDelivery === "on" ? "alert delivery is ON: new alert events are sent to Discord" : "alert delivery is OFF: alert events are recorded but nothing is sent");
 // The identity module's workers need the database: they are started only AFTER the database startup
 // check has succeeded (plus their own delay), not at boot, so their first run does not race the slow first
 // connections of a new process (issue #153). They are stopped with the others.
@@ -163,8 +174,13 @@ const databaseWorkers = [
   ...identity.workers,
   ...(database ? [createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
   // ADR-0027 PR 5: the alert engine evaluates every server's rules from the pollers' last readings and records the
-  // transitions in the alert log (delivery is a later PR). It needs the database up, so it starts with the others.
-  ...(database ? [createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }))] : []),
+  // transitions in the alert log. It needs the database up, so it starts with the others. PR 6: with ALERT_DELIVERY
+  // on it also queues each new event for the server's destinations, and the sender delivers them; off (the default)
+  // it queues nothing and sends nothing.
+  ...(database ? [createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), { deliver: alertDelivery === "on" })] : []),
+  ...(database && alertDelivery === "on" && secretsKeyring
+    ? [createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }))]
+    : []),
 ];
 
 // ADR-0025 PR 6: with a database, every /api/servers/:serverId route needs a membership (a
