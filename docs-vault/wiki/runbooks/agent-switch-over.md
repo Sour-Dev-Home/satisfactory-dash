@@ -93,11 +93,14 @@ After a clean week:
 - **Stop the agent** (Stop-ScheduledTask; the dashboard then shows it offline and `agent_offline` fires when delivery is on).
 - **Revoke it** in the dashboard (Agent section): the credential stops working at once; a running agent gets a 401 and halts
   by itself (exit 2, marker, then quiet).
-- **Back to a backend-polled server**: **not available yet.** After a revoke the server stays an agent server with no
-  connection, and server management cannot re-add a local connection for it (create refuses the taken id, remove needs a
-  connection, and a revived row would stay an agent one). This needs the "switch back to local" change (ADR-0031 backlog);
-  until it ships, do not switch a server you cannot afford to lose live data for without a fallback, and use a **second,
-  new server id** if you want to try the agent beside an existing local server first.
+- **Back to a backend-polled server**: `POST /api/servers/:serverId/local-connection` (operator only; ADR-0031 amendment 2,
+  the dashboard's "Switch back to local" card is the frontend's) with the game server's address and tokens, exactly as when
+  adding a server. The backend tests the connection first, then in one step makes the server `local` again, stores the
+  connection, revokes the agent's credential, drops unspent enrolment codes and ends waiting commands as `expired`. Members
+  and history stay (they hang on the server's internal id). It answers `server_not_agent` (409) for a server that is not
+  reached through an agent. Afterwards **stop the agent** on the game PC (Stop-ScheduledTask); a running one gets a 401 and
+  halts by itself. If you revoked the agent first, the same call still works: the server just has no data until it runs.
+  See [`servers.md`](./servers.md).
 - **Re-enrol the same server** (new code in Settings, `enroll ... --replace`): works at any time, for a lost credential, a
   revoked one, a new PC or a reinstall; history and members are unchanged.
 
