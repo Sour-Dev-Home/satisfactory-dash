@@ -1,6 +1,9 @@
 import { http, HttpResponse } from "msw";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
+  agentEnrollmentCodeResponse,
+  agentRevokeResponse,
+  agentStatusNotEnrolled,
   alertDestinationsConfigured,
   alertEventsLastPage,
   alertRulesList,
@@ -60,4 +63,8 @@ export const handlers = [
   http.get(endpoints.alerts.rules.list.route, () => HttpResponse.json(alertRulesList)),
   http.get(endpoints.alerts.destinations.get.route, () => HttpResponse.json(alertDestinationsConfigured)),
   http.get(endpoints.alerts.events.route, () => HttpResponse.json(alertEventsLastPage)),
+  // The game PC agent (ADR-0031 PR 7): a directly reached server with none enrolled.
+  http.get(endpoints.agent.status.route, () => HttpResponse.json(agentStatusNotEnrolled)),
+  http.post(endpoints.agent.enrollmentCode.route, () => HttpResponse.json(agentEnrollmentCodeResponse, { status: 201 })),
+  http.delete(endpoints.agent.revoke.route, () => HttpResponse.json(agentRevokeResponse)),
 ];

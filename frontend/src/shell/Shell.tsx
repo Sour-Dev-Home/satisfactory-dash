@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
+import { AgentSettings } from "../agent/AgentSettings";
 import { AlertsBell } from "../alerts/AlertsBell";
 import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
@@ -187,6 +188,10 @@ export function Shell() {
                 {/* Keyed by server: a change still on its way to one server's game PC must not follow
                     the user to another server. */}
                 <AutoPauseView key={server.id} />
+              </Section>
+              <Section label="Game PC agent" probe="agent">
+                {/* Keyed by server: an enrolment code is for one server and must never follow the user. */}
+                <AgentSettings key={server.id} />
               </Section>
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />

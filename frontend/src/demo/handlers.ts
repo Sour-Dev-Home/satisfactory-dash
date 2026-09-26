@@ -149,6 +149,15 @@ export const demoHandlers = [
     });
   }),
 
+  // The game PC agent (ADR-0031 PR 7). A code can be shown; revoking is refused, like server changes.
+  get(endpoints.agent.status.route, ({ params }) => guarded(params, () => Response.json(world.agent(demoNow())))),
+  post(endpoints.agent.enrollmentCode.route, ({ params }) =>
+    guarded(params, () => Response.json(world.enrollmentCode(demoNow()), { status: 201 })),
+  ),
+  del(endpoints.agent.revoke.route, ({ params }) =>
+    guarded(params, () => error(403, "forbidden", "The demo doesn't revoke its agent.")),
+  ),
+
   // Alerts (ADR-0027 PR 9): the demo's own rules, log and pretend webhook (demo/alerts.ts). Writes
   // change this tab's memory only; "Send test" never contacts Discord.
   get(endpoints.alerts.status.route, ({ params }) => guarded(params, () => Response.json(alerts.status(demoNow())))),

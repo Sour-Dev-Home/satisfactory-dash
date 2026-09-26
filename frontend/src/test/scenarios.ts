@@ -1,5 +1,10 @@
 import { endpoints, type Command } from "@satisfactory-dash/shared";
 import {
+  agentEnrollmentCodeResponse,
+  agentRevokeResponse,
+  agentStatusEnrolled,
+  agentStatusEnrolledSilent,
+  agentStatusNotEnrolled,
   alertDeleteDestinationResponse,
   alertDeleteRuleResponse,
   alertDestinationsConfigured,
@@ -118,6 +123,10 @@ export const ROUTES = {
   alertEvents: endpoints.alerts.events,
   // ADR-0031: a change relayed through the game PC's agent, followed to its result.
   command: endpoints.commands.get,
+  // ADR-0031 PR 7: the game PC's agent on Settings (status and revoke share a path, told apart by method).
+  agentStatus: endpoints.agent.status,
+  agentEnrollmentCode: endpoints.agent.enrollmentCode,
+  agentRevoke: endpoints.agent.revoke,
   // ADR-0027 PR 9c: the owner/admin writes (same paths as the reads, told apart by method).
   alertRuleCreate: endpoints.alerts.rules.create,
   alertRuleUpdate: endpoints.alerts.rules.update,
@@ -178,6 +187,10 @@ const BASE: Record<RouteKey, MockResponse> = {
   alertDestinations: ok(alertDestinationsConfigured),
   alertEvents: ok(alertEventsLastPage),
   command: ok(live(commandSucceeded)),
+  // A server the backend reaches directly, with no agent: Settings shows the agent section's first state.
+  agentStatus: ok(agentStatusNotEnrolled),
+  agentEnrollmentCode: { status: 201, body: agentEnrollmentCodeResponse },
+  agentRevoke: ok(agentRevokeResponse),
   // Each write answers as the backend would; the page re-reads or patches its cache from these.
   alertRuleCreate: { status: 201, body: alertRuleCreated },
   alertRuleUpdate: ok(alertRuleUpdatedPresetDisabled),
@@ -289,6 +302,13 @@ export const SCENARIOS = {
   // setup and the rules editor show; and as a viewer, who reads the same section without controls.
   "alerts-owner": { servers: ok(serversRoleOwner), alertStatus: ok(alertStatusShadowMutedFiring) },
   "alerts-viewer": { servers: ok(serversRoleViewer), alertStatus: ok(alertStatusShadowMutedFiring) },
+  // ADR-0031 PR 7, Settings → Game PC agent. The operator on a server reached directly (can enrol);
+  // an owner of a server with a reporting agent (can revoke or enrol again); one enrolled but never
+  // heard from; and a viewer, who reads it with no controls.
+  "agent-local-operator": { servers: operatorSingle },
+  "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
+  "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
+  "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 

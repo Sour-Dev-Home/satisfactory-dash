@@ -32,6 +32,8 @@ interface StateCase {
 const FIXTURE_NOW = "2026-09-26T12:00:00.000Z";
 /** Eight seconds after the live fixtures were observed: every view reads "Updated 8 s ago". */
 const LIVE_NOW = "2026-09-22T22:25:12.000Z";
+/** 8 s after the agent fixtures' last-seen time, so "Last seen 8 s ago" holds still. */
+const AGENT_NOW = "2026-09-26T12:00:13.000Z";
 
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
@@ -154,6 +156,27 @@ const CASES: StateCase[] = [
   { scenario: "alerts-owner", path: "/app/settings", shows: "New production target", clock: FIXTURE_NOW },
   { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules.", clock: FIXTURE_NOW },
   { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/, clock: FIXTURE_NOW },
+  // Settings → Game PC agent (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
+  { scenario: "agent-local-operator", path: "/app/settings", shows: /forgets its stored game-server tokens/, clock: AGENT_NOW },
+  {
+    scenario: "agent-local-operator",
+    name: "agent-code",
+    path: "/app/settings",
+    shows: "AB3D-7XQ2",
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Create enrolment code" }).click(),
+  },
+  { scenario: "agent-enrolled-owner", path: "/app/settings", shows: "Last seen 8 s ago", clock: AGENT_NOW },
+  {
+    scenario: "agent-enrolled-owner",
+    name: "agent-revoke-confirm",
+    path: "/app/settings",
+    shows: /until an agent is enrolled again/,
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
+  },
+  { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the agent.", clock: AGENT_NOW },
 ];
 
 async function openAddForm(page: Page) {
