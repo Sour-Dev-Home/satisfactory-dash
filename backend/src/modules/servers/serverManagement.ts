@@ -106,7 +106,7 @@ const TAKE_ADVISORY_LOCK = TAKE_SERVER_MANAGEMENT_LOCK;
 function refusedAddress(): ApiFailure {
   return new ApiFailure(
     "address_not_allowed",
-    "That host is not a loopback or private (LAN) address, or it could not be resolved.",
+    "That host is not a private address, or it could not be resolved.",
   );
 }
 

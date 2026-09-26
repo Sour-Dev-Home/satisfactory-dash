@@ -211,3 +211,15 @@ describe("the LAN gate (amendment 1)", () => {
     await expect(resolveAllowedAddress("8.8.8.8")).rejects.not.toBeInstanceOf(LanRequiresPinningError);
   });
 });
+
+describe("hunt: loopback spellings that must not slip through the default policy", () => {
+  it.each(["::1%lo", "::1%1", "[::1%lo]", "::ffff:127.0.0.1%lo", "0.0.0.0", "::", "::ffff:0:127.0.0.1"])(
+    "refuses %s under the default policy",
+    async (host) => {
+      await expect(resolveAllowedAddress(host, async () => ["127.0.0.1"])).rejects.toBeInstanceOf(AddressRefusedError);
+    },
+  );
+  it("a name resolving to ::1 and 127.0.0.1 is fine, and pins IPv4", async () => {
+    await expect(resolveAllowedAddress("localhost", async () => ["::1", "127.0.0.1"])).resolves.toBe("127.0.0.1");
+  });
+});
