@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type AgentStatusResponse, type ServerSummary } from "@satisfactory-dash/shared";
 import {
@@ -53,6 +53,25 @@ describe("AgentSettings", () => {
     expect(within(code).getByRole("time")).toHaveAttribute("dateTime", agentEnrollmentCodeResponse.expiresAt);
     // Shown once: the create button is gone while the code is on screen.
     expect(screen.queryByRole("button", { name: /Create/ })).not.toBeInTheDocument();
+  });
+
+  it("ignores a second click while the first create is still in flight", async () => {
+    let hits = 0;
+    asOperator();
+    server.use(
+      http.post(endpoints.agent.enrollmentCode.route, async () => {
+        hits += 1;
+        await delay(20);
+        return HttpResponse.json(agentEnrollmentCodeResponse, { status: 201 });
+      }),
+    );
+    renderSection();
+    const button = await screen.findByRole("button", { name: "Create enrolment code" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await screen.findByText(agentEnrollmentCodeResponse.code);
+    expect(hits).toBe(1);
   });
 
   it("keeps the code out of TanStack's caches: the mutation isn't kept, and no query holds it", async () => {
@@ -134,6 +153,29 @@ describe("AgentSettings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
     fireEvent.click(screen.getByRole("button", { name: "Revoke the agent" }));
     expect(await screen.findByText("None enrolled")).toBeInTheDocument();
+  });
+
+  it("doesn't reopen the revoke confirm when the agent is enrolled again later", async () => {
+    let enrolled = true;
+    server.use(
+      http.get(endpoints.agent.status.route, () =>
+        HttpResponse.json(enrolled ? agentStatusEnrolled : { ...agentStatusEnrolled, enrolled: false, lastSeenAt: null }),
+      ),
+      http.delete(endpoints.agent.revoke.route, () => {
+        enrolled = false;
+        return HttpResponse.json({ revoked: true });
+      }),
+    );
+    const { client } = renderSection(owner);
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke the agent" }));
+    await screen.findByText("None enrolled");
+
+    // The 30 s poll picks up a fresh enrolment; the confirm the user closed out must not resurface.
+    enrolled = true;
+    await client.refetchQueries({ queryKey: ["servers", owner.id, "agent"] });
+    expect(await screen.findByRole("button", { name: "Revoke…" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Confirm revoking the agent" })).not.toBeInTheDocument();
   });
 
   it("shows a refused write like any error", async () => {

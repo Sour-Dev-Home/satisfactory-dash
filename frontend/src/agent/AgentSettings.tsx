@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentStatusResponse } from "@satisfactory-dash/shared";
 import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
@@ -21,14 +21,25 @@ export function AgentSettings() {
   const { createCode, revoke } = useAgentWrites(server.id);
   // The code lives only here: shown once, gone when the section unmounts (see useAgentWrites).
   const [code, setCode] = useState<EnrollmentCode | null>(null);
+  // `createCode.isPending` lags a synchronous double click (its state update isn't flushed between
+  // two clicks in the same tick), so a plain `disabled={creating}` still lets a second click through
+  // and creates a second code server-side. This ref is set synchronously, so the second click is a
+  // no-op regardless of when React re-renders the disabled button.
+  const creatingRef = useRef(false);
 
-  const onCreate = () =>
+  const onCreate = () => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     createCode.mutate(undefined, {
       onSuccess: (answer) => {
         setCode(answer);
         createCode.reset();
       },
+      onSettled: () => {
+        creatingRef.current = false;
+      },
     });
+  };
 
   return (
     <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4">
@@ -90,6 +101,15 @@ export function AgentPanel({
 }) {
   const now = useNow();
   const [confirming, setConfirming] = useState(false);
+  // `agent` is re-read (this panel stays mounted across polls), so a confirm left open by a revoke
+  // must not resurface if this server is later enrolled again. Adjusted during render, React's
+  // documented way to reset state when a prop changes, rather than an effect (which would commit
+  // the stale confirm UI for a frame first).
+  const [wasEnrolled, setWasEnrolled] = useState(agent.enrolled);
+  if (wasEnrolled !== agent.enrolled) {
+    setWasEnrolled(agent.enrolled);
+    if (!agent.enrolled && confirming) setConfirming(false);
+  }
   const local = agent.connectionKind === "local";
   return (
     <>
