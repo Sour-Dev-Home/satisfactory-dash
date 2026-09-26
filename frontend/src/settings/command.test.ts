@@ -29,11 +29,8 @@ describe("msUntilGiveUp", () => {
     expect(msUntilGiveUp(at("2099-01-01T00:00:00.000Z"), now)).toBe(2 ** 31 - 1);
   });
 
-  // Not reachable today (the shared schema validates expiresAt as a proper ISO datetime before
-  // this runs), but the function's own contract says "never negative" without saying what an
-  // unparseable expiresAt gives back. Date.parse("garbage") is NaN, and Math.max/Math.min propagate
-  // it, so this currently returns NaN -- which setTimeout(fn, NaN) treats as 0 and fires at once, by
-  // accident rather than by the function's own doing. Documenting the gap; not fixing the source.
+  // Not reachable today (the shared schema only lets a valid ISO time through), but Date.parse of
+  // anything else is NaN, which would otherwise flow through Math.max/Math.min.
   it("is 0, not NaN, when expiresAt can't be parsed", () => {
     expect(msUntilGiveUp(at("not-a-date"), now)).toBe(0);
   });
