@@ -21,7 +21,15 @@ interface StateCase {
   name?: string;
   /** Extra steps before the check, e.g. submitting the login form. */
   act?: (page: Page) => Promise<void>;
+  /**
+   * A fixed "now" (ISO) for a state that shows a value from the clock, such as the mute field's
+   * default of an hour ahead. Without it, the screenshot differs from run to run.
+   */
+  clock?: string;
 }
+
+/** The fixtures' own day, so a frozen clock sits among their times. */
+const FIXTURE_NOW = "2026-09-26T12:00:00.000Z";
 
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
@@ -122,9 +130,10 @@ const CASES: StateCase[] = [
   { scenario: "alerts-empty", shows: "No alerts yet.", act: openAlerts },
   // Settings → Alerts (ADR-0027 PR 9c): an owner gets the mute, the Discord setup and the rules
   // editor; a viewer reads the same section with no controls. A webhook Discord deleted shows there.
-  { scenario: "alerts-owner", path: "/app/settings", shows: "New production target" },
-  { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules." },
-  { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/ },
+  // The clock is fixed: the mute field defaults to an hour from now.
+  { scenario: "alerts-owner", path: "/app/settings", shows: "New production target", clock: FIXTURE_NOW },
+  { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules.", clock: FIXTURE_NOW },
+  { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/, clock: FIXTURE_NOW },
 ];
 
 async function openAddForm(page: Page) {
@@ -145,9 +154,11 @@ async function addServer(page: Page, host: string) {
   await page.getByRole("button", { name: "Add server" }).click();
 }
 
-for (const { scenario, shows, path = "/app", name = scenario, act } of CASES) {
+for (const { scenario, shows, path = "/app", name = scenario, act, clock } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
     await mockApi(scenario);
+    // Date.now() is fixed; timers still run, so polling and React behave as usual.
+    if (clock) await page.clock.setFixedTime(clock);
     await page.goto(path);
     if (act) {
       // Sign-in states act on the login form once it's there; the rest act on their page, and
