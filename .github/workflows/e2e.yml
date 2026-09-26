@@ -54,7 +54,7 @@ jobs:
     outputs:
       relevant: ${{ steps.diff.outputs.relevant }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -103,7 +103,7 @@ jobs:
       UPDATE_SNAPSHOTS: ${{ inputs.update_snapshots }}
       EVENT: ${{ github.event_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Check the image matches the locked Playwright version
         run: |
@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload regenerated baselines
         if: steps.mode.outputs.update == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-baselines
           path: frontend/e2e/__screenshots__/
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload the report on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-report
           path: |
