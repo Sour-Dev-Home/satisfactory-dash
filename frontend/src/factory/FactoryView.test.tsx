@@ -1,11 +1,15 @@
-import { screen } from "@testing-library/react";
+import { useState } from "react";
+import { fireEvent, screen } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import { endpoints } from "@satisfactory-dash/shared";
+import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
 import {
   errorUpstreamUnreachable,
+  factoryEmpty,
   factoryMixed,
+  historyItems7d,
   historyTransitions24h,
+  serversMultiple,
   serversSingle,
 } from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
@@ -19,6 +23,19 @@ function renderView() {
     <ServerContext value={serversSingle.servers[0]}>
       <FactoryView />
     </ServerContext>,
+  );
+}
+
+/** Switches the ServerContext value without remounting FactoryView, like the shell's server picker. */
+function SwitchableView({ initial, other }: { initial: ServerSummary; other: ServerSummary }) {
+  const [selected, setSelected] = useState(initial);
+  return (
+    <ServerContext value={selected}>
+      <button type="button" onClick={() => setSelected(other)}>
+        Switch server
+      </button>
+      <FactoryView />
+    </ServerContext>
   );
 }
 
@@ -76,6 +93,46 @@ describe("FactoryView", () => {
     await delay(200);
     expect(screen.getByRole("region", { name: "Factory" })).toBeInTheDocument();
     expect(calls).toBeLessThanOrEqual(2);
+  });
+
+  it("waits for a newly-selected server's own reads, without leaking the old server's reveal", async () => {
+    let releaseItems = () => {};
+    const itemsHeld = new Promise<void>((r) => (releaseItems = r));
+    server.use(
+      http.get(endpoints.factory.route, ({ params }) =>
+        HttpResponse.json(params.serverId === "creative-test" ? factoryEmpty : factoryMixed),
+      ),
+      http.get(endpoints.history.items.route, async ({ params, request }) => {
+        const range = new URL(request.url).searchParams.get("range");
+        if (params.serverId === "creative-test" && range === "7d") await itemsHeld;
+        return HttpResponse.json(historyItems7d);
+      }),
+    );
+    renderWithClient(
+      <SwitchableView initial={serversMultiple.servers[0]} other={serversMultiple.servers[1]} />,
+    );
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(screen.getByText(/backed up/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch server" }));
+    // The new server's "since yesterday" 7d read is still held: the page must go back to
+    // loading rather than keep showing the previous server's already-revealed content.
+    expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
+    expect(screen.queryByRole("region", { name: "Factory" })).not.toBeInTheDocument();
+
+    releaseItems();
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(screen.getByText("No machines yet.")).toBeInTheDocument();
+  });
+
+  it("reveals the page and lets 'Since yesterday' show its own error when the 7d history fails", async () => {
+    server.use(
+      http.get(endpoints.history.items.route, () => HttpResponse.json(errorUpstreamUnreachable, { status: 502 })),
+    );
+    renderView();
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.some((a) => a.textContent?.includes("Game server unreachable."))).toBe(true);
   });
 
   it("shows the error with its request ID when the factory can't be read", async () => {
