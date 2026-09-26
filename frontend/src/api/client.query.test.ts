@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints, type HistoryRange } from "@satisfactory-dash/shared";
-import { historyPower24h } from "@satisfactory-dash/shared/fixtures";
+import { alertEventsLastPage, historyPower24h } from "@satisfactory-dash/shared/fixtures";
 import { server } from "../test/server";
 import { apiGetQuery } from "./client";
 import { RequestValidationError } from "./errors";
@@ -35,5 +35,18 @@ describe("apiGetQuery", () => {
       apiGetQuery(signal(), endpoints.history.power, { range: "2w" as HistoryRange }, "default"),
     ).rejects.toBeInstanceOf(RequestValidationError);
     expect(sent).toBe(false);
+  });
+
+  it("leaves an optional parameter that is undefined out of the URL (the alert log's first page)", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get(endpoints.alerts.events.route, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(alertEventsLastPage);
+      }),
+    );
+    await apiGetQuery(signal(), endpoints.alerts.events, { limit: 50, before: undefined }, "default");
+    await apiGetQuery(signal(), endpoints.alerts.events, { limit: 50, before: "408" }, "default");
+    expect(urls.map((u) => new URL(u).search)).toEqual(["?limit=50", "?limit=50&before=408"]);
   });
 });

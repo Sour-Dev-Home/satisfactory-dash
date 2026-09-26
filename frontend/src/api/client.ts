@@ -56,8 +56,10 @@ interface QueryEndpoint<T, Q, A extends unknown[]> extends GetEndpoint<T, A> {
 /**
  * apiGetAbortable for an endpoint with a query string (ADR-0027 history: `?range=`). The query is
  * checked with the endpoint's schema first, like a request body, so a bad value never goes out.
+ * An optional parameter left undefined (e.g. the alert log's first page, with no `before`) is
+ * left out of the URL.
  */
-export function apiGetQuery<T, Q extends Record<string, string | number>, A extends unknown[]>(
+export function apiGetQuery<T, Q extends Record<string, string | number | undefined>, A extends unknown[]>(
   signal: AbortSignal,
   endpoint: QueryEndpoint<T, Q, A>,
   query: Q,
@@ -66,7 +68,9 @@ export function apiGetQuery<T, Q extends Record<string, string | number>, A exte
   const path = endpoint.path(...args);
   const parsed = endpoint.query.safeParse(query);
   if (!parsed.success) return Promise.reject(new RequestValidationError(path, formatIssues(parsed.error.issues)));
-  const search = new URLSearchParams(Object.entries(parsed.data).map(([k, v]) => [k, String(v)]));
+  const search = new URLSearchParams(
+    Object.entries(parsed.data).flatMap(([k, v]) => (v === undefined ? [] : [[k, String(v)]])),
+  );
   return request(endpoint.method, `${path}?${search}`, endpoint.response, undefined, signal);
 }
 
