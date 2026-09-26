@@ -112,6 +112,7 @@ const kindByCode = {
   server_limit_reached: "unknown",
   import_required: "unknown",
   lan_requires_cert_pinning: "unknown",
+  server_not_agent: "unknown", // ADR-0031 amendment: switching back to local a server that is not an agent server
   // ADR-0027 PR 7: alerts. The alerts screen words these itself (PR 9); anywhere else they are handled generically.
   rule_not_found: "unknown",
   rule_item_immutable: "unknown",

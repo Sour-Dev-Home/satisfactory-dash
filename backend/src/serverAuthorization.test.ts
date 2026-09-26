@@ -96,6 +96,7 @@ const managementService: ServerManagementService = {
   list: async () => [connectionView],
   listAgentServers: async () => [],
   renameAgentServer: async (_actor, id, displayName) => ({ id, displayName, kind: "agent" as const }),
+  switchToLocal: async () => connectionView,
   update: async () => connectionView,
   remove: async () => undefined,
   testCandidate: async () => testPassed,
@@ -201,7 +202,7 @@ const ALERT_BODIES: Record<string, unknown> = {
   "alerts.mute.set": alertSetMuteRequest,
 };
 const bodyFor = (name: string): unknown =>
-  name in ALERT_BODIES ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : { enabled: true };
+  name in ALERT_BODIES ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
 // POST .../test takes no body, like the other action endpoints.
 const hasBody = (name: string, method: Method) =>
   method !== "GET" &&
@@ -332,6 +333,7 @@ describe("the operator-only endpoints in the contract", () => {
       "serverManagement.get",
       "serverManagement.remove",
       "serverManagement.renameAgent",
+      "serverManagement.switchToLocal",
       "serverManagement.testSaved",
       "serverManagement.update",
     ]);

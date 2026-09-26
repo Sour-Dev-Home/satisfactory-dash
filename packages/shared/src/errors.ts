@@ -39,6 +39,8 @@ export const KnownErrorCode = z.enum([
   "import_required",
   // ADR-0030 amendment 1 (additive): a LAN (private, non-loopback) address; LAN servers wait for certificate pinning.
   "lan_requires_cert_pinning",
+  // ADR-0031 amendment (additive): "switch back to local" was asked of a server that is not reached through an agent (409).
+  "server_not_agent",
   // ADR-0027 PR 7 (additive): alerts. The rule does not exist on this server (404); `item` cannot be changed on a
   // rule (422); a preset can be disabled and tuned but not deleted (409); the kind cannot be created through the API
   // (422); no Discord destination is configured (404); the webhook URL was refused (422, with a `reason`, and the

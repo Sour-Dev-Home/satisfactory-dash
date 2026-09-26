@@ -1,5 +1,6 @@
 import type {
   AgentServer,
+  SwitchToLocalRequest,
   CreateServerRequest,
   ServerConnection as ServerConnectionView,
   TestConnectionRequest,
@@ -33,7 +34,7 @@ import {
   updateConnection,
 } from "./repositories/connectionRepository.js";
 import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
-import { findServerByPublicId, listAgentServers, renameServer, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, listAgentServers, lockServerByPublicId, renameServer, softDeleteServer, switchToLocalKind, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
 
 /**
@@ -74,6 +75,10 @@ export interface ServerManagementDeps<TServices> {
   /** Issue #195: ports that belong to this process's own machine services (the backend's listen port, the database's port). A
    *  loopback game server may not use them: a test would otherwise probe the backend or Postgres. The composition root supplies them. */
   forbiddenPorts?: readonly number[];
+  /** ADR-0031 amendment: releases the agent side of a server inside the caller's transaction (revoke the credential, drop
+   *  unspent enrolment codes, end waiting commands); the composition root supplies the agents module's function. Without it,
+   *  switching back to local is unavailable. */
+  releaseAgent?: (db: Queryable, serverUuid: string) => Promise<{ credentialRevoked: boolean; commandsEnded: number }>;
   /** The seeded operator account's id; undefined until the database is up. */
   getOperatorUserId: () => string | undefined;
   /** Names of the environment variables that still configure servers (composition root: the gameserver module).
@@ -97,6 +102,8 @@ export interface ServerManagementService {
   list(): Promise<ServerConnectionView[]>;
   /** ADR-0031: the servers reached through an edge agent (no stored connection), for the managed list. */
   listAgentServers(): Promise<AgentServer[]>;
+  /** ADR-0031 amendment: an agent server becomes a server this backend reads itself again. `server_not_agent` (409) for one that is not. */
+  switchToLocal(actorUserId: string, publicId: string, input: SwitchToLocalRequest): Promise<ServerConnectionView>;
   /** ADR-0031: renames an agent server, the one edit it has. Not found for a `local` server or an unknown id. */
   renameAgentServer(actorUserId: string, publicId: string, displayName: string): Promise<AgentServer>;
   update(actorUserId: string, publicId: string, patch: UpdateServerRequest): Promise<ServerConnectionView>;
@@ -116,6 +123,10 @@ function refusedAddress(): ApiFailure {
     "address_not_allowed",
     "That host is not a private address, or it could not be resolved.",
   );
+}
+
+function notAnAgentServer(): ApiFailure {
+  return new ApiFailure("server_not_agent", "That server is not reached through an agent, so there is nothing to switch back from.");
 }
 
 function refusedPort(): ApiFailure {
@@ -342,6 +353,77 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         await deps.runtime.replace(deps.build(connection));
         return viewOf(
           { publicId: input.id, displayName: input.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
+          { apiToken: input.apiToken, frmToken: input.frmToken },
+          policy,
+        );
+      });
+    },
+
+    /**
+     * ADR-0031 amendment, "Rollback: switch back to local". Order (the architect's rules):
+     *  1. Checks that need no lock: the server exists and is an agent server, the address gate, the own-port rule, and the
+     *     connection TEST (network I/O), all BEFORE the management lock is taken.
+     *  2. One transaction under the management lock: the server row is locked and its kind re-read (a concurrent change is
+     *     seen); the connection is stored (sealed tokens), the kind becomes `local`, the agent side is released (credential
+     *     revoked, unspent codes dropped, waiting commands ended), and one audit event records it. Members and history are
+     *     untouched: they are the server's, keyed on its internal id.
+     *  3. After the commit, the runtime entry is REMOVED and a polled one ADDED (an explicit switch of kind, which the runtime's
+     *     agent-to-polled `replace` guard deliberately allows only this way). The database is the truth: if `add` throws, the
+     *     error propagates (a 500 the request logger records with the request id) and the next startup rebuilds the runtime
+     *     from the database.
+     */
+    async switchToLocal(actorUserId, publicId, input) {
+      const ring = ringOrUnavailable();
+      if (deps.releaseAgent === undefined) throw new ApiFailure("service_unavailable", "Switching back to local is not set up on this backend.");
+      const before = await findServerByPublicId(deps.db, publicId);
+      if (before === undefined) throw new ServerNotFoundError();
+      if (before.connectionKind !== "agent") throw notAnAgentServer();
+      const pinnedIp = await pin(input.host);
+      assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
+      const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
+      if (!test.ok) throw testFailure(test);
+
+      // The runtime swap is inside the management lock too: otherwise a removal or edit of this server could run between the
+      // commit and the swap (a removed server re-added to the runtime, or a duplicate-id error on the add).
+      return mutex.run(async () => {
+        const server = await withTransaction(deps.db, async (client) => {
+          await client.query(TAKE_ADVISORY_LOCK);
+          const locked = await lockServerByPublicId(client, publicId);
+          if (locked === undefined) throw new ServerNotFoundError();
+          if (locked.connectionKind !== "agent") throw notAnAgentServer(); // changed since the first look (another switch, or a removal and re-add)
+          if ((await countConnections(client)) >= MAX_LOCAL_SERVERS) {
+            throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
+          }
+          // The kind flips first: `createConnection` only inserts for a 'local' server. Both are in this one transaction.
+          if (!(await switchToLocalKind(client, locked.id))) throw notAnAgentServer();
+          const outcome = await createConnection(client, ring, locked.id, {
+            host: input.host,
+            pinnedIp,
+            apiPort: input.apiPort,
+            frmPort: input.frmPort,
+            apiToken: input.apiToken,
+            frmToken: input.frmToken,
+          });
+          if (outcome !== "created") throw new ApiFailure("server_exists", "That server already has a stored connection.");
+          const released = await deps.releaseAgent!(client, locked.id);
+          await recordAuditEvent(client, {
+            action: "server.switched_to_local",
+            actorUserId,
+            serverId: locked.id,
+            // Counts and a flag only: never a secret, a code or a host.
+            detail: { credentialRevoked: released.credentialRevoked, commandsEnded: released.commandsEnded },
+          });
+          return locked;
+        });
+
+        const connection = connectionOf(
+          { serverId: server.id, publicId: server.publicId, displayName: server.displayName },
+          { host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken },
+        );
+        await deps.runtime.remove(publicId);
+        deps.runtime.add(deps.build(connection));
+        return viewOf(
+          { publicId, displayName: server.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
           { apiToken: input.apiToken, frmToken: input.frmToken },
           policy,
         );

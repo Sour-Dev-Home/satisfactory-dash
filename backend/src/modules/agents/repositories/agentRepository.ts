@@ -111,7 +111,8 @@ const FIND_ACTIVE = `
   SELECT c.server_id::text AS server_id, s.public_id AS public_id
   FROM agents.agent_credentials c
   JOIN servers.servers s ON s.id = c.server_id
-  WHERE c.secret_hash = $1 AND c.revoked_at IS NULL AND s.deleted_at IS NULL`;
+  WHERE c.secret_hash = $1 AND c.revoked_at IS NULL AND s.deleted_at IS NULL
+    AND s.connection_kind = 'agent'`; // defence in depth (ADR-0031 amendment): a valid secret of a server that is no longer an agent server is refused
 
 export interface ActiveAgent {
   /** The internal uuid, as text. Never sent to a client. */

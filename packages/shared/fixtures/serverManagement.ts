@@ -196,6 +196,18 @@ export const errorConnectionUnreadable = {
   },
 } satisfies ApiErrorResponse;
 
+/** POST /api/servers/:serverId/local-connection: the way back from an agent (ADR-0031 amendment). The answer is `serverConnection`. */
+export const switchToLocalRequest = { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456", frmToken: "frm-token-abcdef123456" };
+
+/** 409: the server is not reached through an agent, so there is nothing to switch back from. */
+export const errorServerNotAgent = {
+  error: {
+    code: "server_not_agent",
+    message: "That server is not reached through an agent.",
+    requestId: "00000000-0000-4000-8000-000000000029",
+  },
+} satisfies ApiErrorResponse;
+
 /** 409: that id is taken. */
 export const errorServerExists = {
   error: {

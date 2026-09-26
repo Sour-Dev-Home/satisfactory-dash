@@ -147,3 +147,7 @@ Rules the routes enforce:
 - **One change at a time**, in this process (a mutex) and across processes (a Postgres advisory lock around the count
   and the insert). Writes are limited to 30 per 15 minutes per user, test connections to 10 per minute.
 - **Audit**: `server.created`, `server.updated` (the names of the changed fields, never values) and `server.deleted`.
+- **Switching an agent server back to local** (ADR-0031 amendment 2): `POST /api/servers/:serverId/local-connection` with the
+  connection details (same rules and test connection as create). It answers `server_not_agent` (409) for a server that is
+  not reached through an agent. The agent's credential is revoked, unspent enrolment codes are dropped and open commands
+  end as `expired`; memberships and history stay. Audit: `server.switched_to_local`. Stop the agent on the game PC afterwards.

@@ -55,6 +55,7 @@ import {
   CommandNotifier,
   createAgentApiRouters,
   createAgentSettingsServices,
+  releaseAgentServer,
   createAgentUserRouters,
   createAgentsService,
   createCommandSweeper,
@@ -264,6 +265,8 @@ const serverManagement = database
       configuredServerEnvNames: () => configuredServerEnvNamesInUse(),
       // Issue #195: a loopback "game server" may not be this backend or its database.
       forbiddenPorts: databasePort === undefined ? [port] : [port, databasePort],
+      // ADR-0031 amendment: what the agent side lets go of when a server is switched back to local (in the same transaction).
+      releaseAgent: releaseAgentServer,
     })
   : undefined;
 const managementRouters = serverManagement
