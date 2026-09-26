@@ -6,7 +6,7 @@ import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
 import { UpstreamError } from "../../../platform/errors.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
-import { ServerOptionsAdapter } from "../../gameserver/index.js";
+import { ServerOptionsAdapter } from "@satisfactory-dash/game-adapter";
 import type { VanillaApiClientLike } from "../../gameserver/index.js";
 import { createSettingsRouters, createSettingsServices } from "../index.js";
 

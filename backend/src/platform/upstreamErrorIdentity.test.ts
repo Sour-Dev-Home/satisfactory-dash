@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { UpstreamError as PackageUpstreamError } from "@satisfactory-dash/game-adapter";
 import { UpstreamError as PlatformUpstreamError } from "./errors.js";
 import { describeFailure } from "./errorResponse.js";
-import { DEFAULT_REQUEST_TIMEOUT_MS, VanillaApiClient, FrmApiClient } from "../modules/gameserver/index.js";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "@satisfactory-dash/game-adapter";
+import { VanillaApiClient, FrmApiClient } from "../modules/gameserver/index.js";
 import { loadSatisfactoryServerConfigFromEnv } from "../modules/gameserver/connectionConfig.js";
 
 // ADR-0031 PR 2: the adapter (in the game-adapter package) throws the package's UpstreamError; the backend classifies
