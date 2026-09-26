@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import type { FactoryBuilding } from "../../gameserver/index.js";
+import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { ItemSampleRow, TransitionRow } from "../repositories/historyRepository.js";
 import { classifyBuilding } from "./classifyBuilding.js";
@@ -9,6 +9,8 @@ import { isBackedUp } from "./productionService.js";
 
 export interface FactoryHistoryPorts {
   getFactoryBuildings(): Promise<FactoryBuilding[]>;
+  /** For the pause check: FRM returns frozen values while the game is paused, which must not be recorded. */
+  getServerStatus(): Promise<ServerStatus>;
 }
 
 export interface FactoryHistoryPollerOptions {
@@ -153,13 +155,18 @@ export class FactoryHistoryPoller implements BackgroundWorker {
   async poll(): Promise<void> {
     const atMs = this.now();
     let buildings: FactoryBuilding[];
+    let status: ServerStatus;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
       const timedOut = new Promise<never>((_resolve, reject) => {
         deadline = setTimeout(() => reject(new Error(`poll timed out after ${this.pollTimeoutMs} ms`)), this.pollTimeoutMs);
         deadline.unref?.();
       });
-      buildings = await Promise.race([this.ports.getFactoryBuildings(), timedOut]);
+      // The pause state comes with the snapshot: if it cannot be read the poll fails and records nothing (never a guess).
+      [buildings, status] = await Promise.race([
+        Promise.all([this.ports.getFactoryBuildings(), this.ports.getServerStatus()]),
+        timedOut,
+      ]);
     } catch (err) {
       this.consecutiveFailures++;
       if (this.consecutiveFailures === 1) {
@@ -173,6 +180,9 @@ export class FactoryHistoryPoller implements BackgroundWorker {
     if (this.consecutiveFailures > 0) {
       this.options.logger.info({ failedPolls: this.consecutiveFailures }, "factory history polling recovered");
       this.consecutiveFailures = 0;
+    }
+    if (status.isPaused) {
+      return; // frozen values: record nothing, and keep `known` as it is (a resume then makes no fake transitions)
     }
     this.options.history.recordItems(sumItemRates(buildings, atMs));
     this.options.history.recordTransitions(diffStates(this.known, buildings, atMs));

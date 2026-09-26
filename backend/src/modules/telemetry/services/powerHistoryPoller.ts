@@ -229,6 +229,11 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
       this.store.append(sample);
     }
     // Durable history (ADR-0027): fire-and-forget into a buffer, so the database never slows or fails a poll.
+    // FRM returns FROZEN values while the game is paused (frm-api.md), so a paused sample would record phantom
+    // production: skip it and leave an honest gap in the stored history (the in-memory chart keeps its own rule).
+    if (status.isPaused) {
+      return;
+    }
     const session = sessionKey(status.sessionName);
     this.history.recordPower(
       sample.circuits.map((circuit) => ({

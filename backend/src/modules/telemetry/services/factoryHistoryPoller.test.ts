@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
-import type { FactoryBuilding } from "../../gameserver/index.js";
+import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
 import { diffStates, FactoryHistoryPoller, MAX_TRANSITIONS_PER_POLL, sumItemRates } from "./factoryHistoryPoller.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
 
@@ -104,6 +104,9 @@ describe("diffStates", () => {
   });
 });
 
+/** The status port of a running (not paused) game. */
+const running = { getServerStatus: async () => ({ isPaused: false }) as ServerStatus };
+
 describe("FactoryHistoryPoller.poll", () => {
   const logger = () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) as unknown as Logger & { warn: ReturnType<typeof vi.fn> };
   const recorder = () => ({ recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() }) satisfies HistoryRecorder;
@@ -115,7 +118,7 @@ describe("FactoryHistoryPoller.poll", () => {
       return Array.from({ length: n }, (_, i) => building(`b${i}`));
     }
     const poller = new FactoryHistoryPoller(
-      { getFactoryBuildings: async () => responses.shift() ?? [] },
+      { getFactoryBuildings: async () => responses.shift() ?? [], ...running },
       { logger: logger(), history, now: () => 5000 },
     );
     await poller.poll();
@@ -130,7 +133,7 @@ describe("FactoryHistoryPoller.poll", () => {
     const history = recorder();
     const log = logger();
     const poller = new FactoryHistoryPoller(
-      { getFactoryBuildings: async () => Promise.reject(new Error("offline")) },
+      { getFactoryBuildings: async () => Promise.reject(new Error("offline")), ...running },
       { logger: log, history },
     );
     await expect(poller.poll()).resolves.toBeUndefined();
@@ -143,10 +146,63 @@ describe("FactoryHistoryPoller.poll", () => {
     const history = recorder();
     const log = logger();
     const poller = new FactoryHistoryPoller(
-      { getFactoryBuildings: () => new Promise<FactoryBuilding[]>(() => {}) },
+      { getFactoryBuildings: () => new Promise<FactoryBuilding[]>(() => {}), ...running },
       { logger: log, history, pollTimeoutMs: 20 },
     );
     await poller.poll();
     expect(log.warn).toHaveBeenCalledTimes(1);
+  });
+
+  describe("while the game is paused (FRM returns frozen values)", () => {
+    const steered = () => {
+      const state = { paused: false, statusFails: false, buildings: [building("b0"), building("b1"), building("b2")] };
+      const ports = {
+        getFactoryBuildings: async () => state.buildings,
+        getServerStatus: async () => {
+          if (state.statusFails) throw new Error("status down");
+          return { isPaused: state.paused } as ServerStatus;
+        },
+      };
+      return { state, ports };
+    };
+
+    it("records nothing while paused, and records again on resume", async () => {
+      const history = recorder();
+      const { state, ports } = steered();
+      const poller = new FactoryHistoryPoller(ports, { logger: logger(), history, now: () => 1000 });
+      state.paused = true;
+      await poller.poll();
+      expect(history.recordItems).not.toHaveBeenCalled();
+      expect(history.recordTransitions).not.toHaveBeenCalled();
+      state.paused = false;
+      await poller.poll();
+      expect(history.recordItems).toHaveBeenCalledTimes(1);
+    });
+
+    it("makes no fake transitions on resume: `known` is untouched while paused", async () => {
+      const history = recorder();
+      const { state, ports } = steered();
+      const poller = new FactoryHistoryPoller(ports, { logger: logger(), history, now: () => 1000 });
+      await poller.poll(); // baseline: all producing
+      state.paused = true;
+      state.buildings = [building("b0"), building("b1"), stalled("b2")]; // frozen or odd values while paused
+      await poller.poll();
+      state.paused = false;
+      state.buildings = [building("b0"), building("b1"), building("b2")]; // back to the same as before the pause
+      await poller.poll();
+      expect(history.recordTransitions).toHaveBeenLastCalledWith([]);
+    });
+
+    it("records nothing when the pause state cannot be read (never a guess)", async () => {
+      const history = recorder();
+      const log = logger();
+      const { state, ports } = steered();
+      state.statusFails = true;
+      const poller = new FactoryHistoryPoller(ports, { logger: log, history });
+      await expect(poller.poll()).resolves.toBeUndefined();
+      expect(history.recordItems).not.toHaveBeenCalled();
+      expect(history.recordTransitions).not.toHaveBeenCalled();
+      expect(log.warn).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -40,6 +40,15 @@ No personal data: it describes the game world. The privacy page says so (`fronte
   whole 48 h raw window. It purges every ~10 minutes in batches. Both jobs are idempotent.
 - Servers are addressed by public id. A write for a server that is not registered inserts nothing.
 
+## Gaps in history
+
+**A gap in the stored history means the game was paused or the server was unreachable.** FRM returns
+frozen values while the game is paused (`frm-api.md`), and the owner's server auto-pauses when nobody is
+connected, so nothing is recorded then: no power rows, no item totals, no transitions. If the pause
+state cannot be read, nothing is recorded either (never a guess). On resume, machine states are
+compared with the last state seen before the pause, so frozen values make no fake transitions. Charts
+show honest gaps; shading pause periods would need a separate table of pause events (not built).
+
 ## When something looks wrong
 
 - Log line `history write failed; buffering and retrying`: the database refused a write. Logged once
