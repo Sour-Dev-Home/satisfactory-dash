@@ -105,6 +105,14 @@ export const demoHandlers = [
   get(endpoints.powerHistory.route, ({ params }) =>
     guarded(params, () => Response.json(world.powerHistory(demoNow()))),
   ),
+  // ADR-0027 stored history: `?range=` validated like the real route (a bad value is a 400).
+  get(endpoints.history.power.route, ({ params, request }) =>
+    guarded(params, () => {
+      const query = endpoints.history.power.query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!query.success) return error(400, "bad_request", "Invalid request: range");
+      return Response.json(world.historyPower(demoNow(), query.data.range));
+    }),
+  ),
   get(endpoints.factory.route, ({ params }) => guarded(params, () => Response.json(world.factory(demoNow())))),
   get(endpoints.settings.get.route, ({ params }) => guarded(params, () => Response.json(settingsNow()))),
   // A simulated write: in memory only, pending for a moment, then applied. Never sent anywhere.

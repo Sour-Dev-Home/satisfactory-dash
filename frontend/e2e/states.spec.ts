@@ -98,6 +98,14 @@ const CASES: StateCase[] = [
     shows: "Game API: rejected the token",
     act: (page) => page.getByRole("button", { name: "Test connection" }).first().click(),
   },
+  // Stored power history (ADR-0027, #74): the 24-hour range, with a gap and a fuse trip.
+  {
+    scenario: "default",
+    name: "power-history-24h",
+    path: "/app/power",
+    shows: "Last 24 hours",
+    act: (page) => page.getByRole("group", { name: "Power history range" }).getByRole("button", { name: "24 h" }).click(),
+  },
 ];
 
 async function openAddForm(page: Page) {
@@ -118,8 +126,9 @@ for (const { scenario, shows, path = "/app", name = scenario, act } of CASES) {
     await mockApi(scenario);
     await page.goto(path);
     if (act) {
-      // Sign-in states act on the login form; the rest on the page they open.
-      await page.getByRole("heading", { name: scenario.startsWith("login") ? "Sign in" : "Game servers" }).waitFor();
+      // Sign-in states act on the login form once it's there; the rest act on their page, and
+      // Playwright's actions wait for their own element.
+      if (scenario.startsWith("login")) await page.getByRole("heading", { name: "Sign in" }).waitFor();
       await act(page);
     }
     await expect(page.getByText(shows).first()).toBeVisible();

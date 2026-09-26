@@ -1,6 +1,6 @@
 import { MutationCache, QueryCache, QueryClient, queryOptions, type QueryKey } from "@tanstack/react-query";
-import { endpoints, type SessionResponse } from "@satisfactory-dash/shared";
-import { apiGetAbortable } from "./client";
+import { endpoints, type HistoryRange, type SessionResponse } from "@satisfactory-dash/shared";
+import { apiGetAbortable, apiGetQuery } from "./client";
 import { BackendUnreachableError, classifyError } from "./errors";
 
 /** ADR-0005 poll intervals. Settings poll only while a change is pending. */
@@ -123,6 +123,14 @@ export const queries = {
     queryOptions({
       queryKey: ["servers", serverId, "power", "history", sessionName],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.powerHistory, serverId),
+    }),
+  /** ADR-0027: stored power history for a range (the backend picks the resolution). Loaded
+   *  once per range and on refocus; the newest bucket moves at most about once a minute. */
+  historyPower: (serverId: string, range: HistoryRange) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "history", "power", range],
+      queryFn: ({ signal }) => apiGetQuery(signal, endpoints.history.power, { range }, serverId),
+      staleTime: 60_000,
     }),
   factory: (serverId: string) =>
     queryOptions({
