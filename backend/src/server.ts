@@ -4,6 +4,7 @@ import { createLogger } from "./platform/logger.js";
 import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
+import { bootSequence } from "./platform/bootSequence.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
@@ -338,16 +339,27 @@ export const app = createApp({
 if (process.env.NODE_ENV !== "test") {
   const httpServer = app.listen(port, host, () => {
     logger.info({ host, port }, `backend listening on ${host}:${port}`);
-    for (const worker of workers) {
-      worker.start();
-    }
-    directory.start();
+    // Issue #239: with a database the servers' pollers start only AFTER the stored servers are loaded (platform/bootSequence.ts),
+    // so none of them fires against the placeholder runtime built from the environment (no credentials, one history gap).
     // ADR-0025 decision 6: a transient outage is retried with backoff (up to 5 minutes), then
     // (and for any setup error, e.g. a schema behind this build) the process exits 1, so the
     // Scheduled Task's restart-on-failure takes over and a broken setup still fails loudly.
-    database
-      ?.start()
-      .then(async () => {
+    bootSequence({
+      processWorkers: workers,
+      runtime: directory,
+      database,
+      databaseWorkers,
+      isShuttingDown: () => shuttingDown,
+      onStartupFailure: (err) => {
+        if (err instanceof ConfigError) {
+          logger.fatal(err.message);
+        } else {
+          logger.fatal({ code: errorCode(err) }, "database startup failed");
+        }
+        process.exit(1);
+      },
+      loadServers: async () => {
+        if (database === undefined) return; // bootSequence only calls this with a database
         const ownerId = await identity.ensureOperatorUserId?.();
         if (ownerId === undefined) {
           throw new Error("identity has no operator account in database mode");
@@ -393,23 +405,8 @@ if (process.env.NODE_ENV !== "test") {
           serversRegistered = true;
           logger.info({ registered }, "configured servers registered");
         }
-        if (!shuttingDown) {
-          for (const worker of databaseWorkers) {
-            worker.start();
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        if (shuttingDown) {
-          return; // a deliberate stop is exit 0, never a startup failure
-        }
-        if (err instanceof ConfigError) {
-          logger.fatal(err.message);
-        } else {
-          logger.fatal({ code: errorCode(err) }, "database startup failed");
-        }
-        process.exit(1);
-      });
+      },
+    });
   });
 
   // Graceful shutdown (Ctrl+C, or a container's SIGTERM): stop the workers, let in-flight
