@@ -28,6 +28,26 @@ Nothing else needs configuring. History starts filling as soon as the database i
 
 No personal data: it describes the game world. The privacy page says so (`frontend/public/privacy.html`).
 
+## Reading it: the history API (ADR-0027 PR 4)
+
+Server-scoped, members only, `GET /api/servers/:serverId/history/{power,items,transitions}`; `503 service_unavailable`
+without a database. `range` is `1h|6h|24h|7d|30d|1y` (transitions: no `1y`; default `24h`); items take an optional
+`item` (a class name), transitions a `limit` (default 100, at most 500, `truncated` says there is more).
+
+**The range picks the resolution**: the smallest of 1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and 1 day that
+keeps a series at 600 points or fewer: `1h`/`6h` 1 minute, `24h` 5 minutes, `7d` 1 hour, `30d` 6 hours, `1y` 1 day
+(UTC-aligned buckets). A bucket under 1 hour is read from the 1-minute rollups, 1 hour or more from the hourly
+rollups (re-bucketing 30 days of minute rows per request would touch millions of rows). Consequences:
+
+- **The newest bucket can lag**: up to an hour on `7d`/`30d`/`1y` (the hourly rollup is recomputed while the hour is
+  open), about a minute on the shorter ranges.
+- **Power series never merge across game sessions** (a circuit id from another session is not the same circuit): one
+  series per `(session, circuit)`, the newest data first.
+- **"All items" returns at most 50**, the highest average rate first, with `truncated`.
+- Every read runs in a transaction with `statement_timeout` 5 s (`SET LOCAL`); a query that runs longer, or any
+  database failure, is a `503`, never a hang. Averages are weighted by samples; nothing is interpolated.
+- No caching yet: the trigger is measured latency (ADR-0032).
+
 ## How it works
 
 - Each server has a buffered recorder (flushed every 15 s, at most 20,000 rows per kind; when a
