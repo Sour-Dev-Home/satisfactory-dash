@@ -67,7 +67,8 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     const raw = (await pool.query("SELECT api_token_enc FROM servers.server_connections WHERE server_id = $1", [server!.id])).rows[0];
     expect(Buffer.from(raw.api_token_enc).includes(Buffer.from(API))).toBe(false);
     const audit = (await pool.query("SELECT action, detail FROM audit.audit_events WHERE server_id = $1", [server!.id])).rows;
-    expect(audit.map((row) => row.action)).toEqual(["server.created"]);
+    // Making the operator owner writes its own member_added event; the creation is audited too.
+    expect(audit.map((row) => row.action).sort()).toEqual(["member_added", "server.created"]);
     expect(JSON.stringify(audit)).not.toContain(API);
     expect(JSON.stringify(audit)).not.toContain(FRM);
   });

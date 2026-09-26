@@ -16,7 +16,7 @@ const OPERATOR = "op";
 const OTHER = "someone";
 
 const view = {
-  id: "home",
+  id: "alpha",
   displayName: "Home",
   host: "192.168.1.20",
   apiPort: 7777,
@@ -54,15 +54,15 @@ const guard: RequestHandler = (req, res, next) => {
   next();
 };
 
-// Everyone is a member of "home", so this file tests the operator check and the routes, not membership.
+// Everyone is a member of "alpha", so this file tests the operator check and the routes, not membership.
 const access: ServerAccess = {
-  getRole: async (publicId) => (publicId === "home" ? "admin" : undefined),
-  listForUser: async () => [{ publicId: "home", displayName: "Home", role: "admin" }],
+  getRole: async (publicId) => (publicId === "alpha" ? "admin" : undefined),
+  listForUser: async () => [{ publicId: "alpha", displayName: "Home", role: "admin" }],
 };
 
 function build(service: ServerManagementService, options: { isReady?: () => boolean; writeLimiter?: UserRateLimiter; testLimiter?: UserRateLimiter } = {}) {
   const management = createServerManagementRouters(service, options);
-  const directory = new InMemoryServerDirectory([{ id: "home", displayName: "Home", services: {} }]);
+  const directory = new InMemoryServerDirectory([{ id: "alpha", displayName: "Home", services: {} }]);
   return createApp({
     logger: createLogger({ level: "silent" }, { write: () => {} }),
     routers: [],
@@ -94,7 +94,7 @@ describe("POST /api/servers (create)", () => {
     const service = fakeService();
     const res = await send(build(service), "post", "/api/servers", OPERATOR, createBody);
     expect(res.status).toBe(201);
-    expect(ServerConnectionResponseSchema.parse(res.body).server.id).toBe("home");
+    expect(ServerConnectionResponseSchema.parse(res.body).server.id).toBe("alpha");
     expect(JSON.stringify(res.body)).not.toContain("api-token-abc123");
     expect(JSON.stringify(res.body)).not.toContain("frm-token-def456");
     expect(service.create).toHaveBeenCalledWith(OPERATOR, expect.objectContaining({ id: "alt", host: "192.168.1.30" }));
@@ -196,33 +196,33 @@ describe("POST /api/servers/test-connection", () => {
 describe("the scoped routes", () => {
   it("GET connection returns the write-only view", async () => {
     const service = fakeService();
-    const res = await send(build(service), "get", "/api/servers/home/connection", OPERATOR);
+    const res = await send(build(service), "get", "/api/servers/alpha/connection", OPERATOR);
     expect(res.status).toBe(200);
     expect(ServerConnectionResponseSchema.parse(res.body).server).toMatchObject({ apiTokenSet: true, apiTokenLast4: "1234" });
-    expect(service.get).toHaveBeenCalledWith("home");
+    expect(service.get).toHaveBeenCalledWith("alpha");
   });
 
   it("PATCH validates the body (at least one field; null clears the FRM token; an empty FRM token is refused)", async () => {
     const service = fakeService();
     const app = build(service);
-    expect((await send(app, "patch", "/api/servers/home", OPERATOR, {})).status).toBe(400);
-    expect((await send(app, "patch", "/api/servers/home", OPERATOR, { frmToken: "" })).status).toBe(400);
-    expect((await send(app, "patch", "/api/servers/home", OPERATOR, { id: "other" })).status).toBe(400);
-    expect((await send(app, "patch", "/api/servers/home", OPERATOR, { frmToken: null })).status).toBe(200);
-    expect(service.update).toHaveBeenCalledWith(OPERATOR, "home", { frmToken: null });
+    expect((await send(app, "patch", "/api/servers/alpha", OPERATOR, {})).status).toBe(400);
+    expect((await send(app, "patch", "/api/servers/alpha", OPERATOR, { frmToken: "" })).status).toBe(400);
+    expect((await send(app, "patch", "/api/servers/alpha", OPERATOR, { id: "other" })).status).toBe(400);
+    expect((await send(app, "patch", "/api/servers/alpha", OPERATOR, { frmToken: null })).status).toBe(200);
+    expect(service.update).toHaveBeenCalledWith(OPERATOR, "alpha", { frmToken: null });
   });
 
   it("DELETE removes and answers { deleted: true }", async () => {
     const service = fakeService();
-    const res = await send(build(service), "delete", "/api/servers/home", OPERATOR);
+    const res = await send(build(service), "delete", "/api/servers/alpha", OPERATOR);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ deleted: true });
-    expect(service.remove).toHaveBeenCalledWith(OPERATOR, "home");
+    expect(service.remove).toHaveBeenCalledWith(OPERATOR, "alpha");
   });
 
   it("a server the service does not know is the same 404 as any unknown server", async () => {
     const service = fakeService({ get: vi.fn(async () => Promise.reject(new ServerNotFoundError())) });
-    const res = await send(build(service), "get", "/api/servers/home/connection", OPERATOR);
+    const res = await send(build(service), "get", "/api/servers/alpha/connection", OPERATOR);
     expect(res.status).toBe(404);
     expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("server_not_found");
   });
@@ -230,15 +230,15 @@ describe("the scoped routes", () => {
   it("a database outage inside the service is a 503, not a 500", async () => {
     const outage = Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" });
     const service = fakeService({ update: vi.fn(async () => Promise.reject(outage)) });
-    const res = await send(build(service), "patch", "/api/servers/home", OPERATOR, { displayName: "New" });
+    const res = await send(build(service), "patch", "/api/servers/alpha", OPERATOR, { displayName: "New" });
     expect(res.status).toBe(503);
   });
 
   it("POST test-connection on a saved server needs no body and is operator only", async () => {
     const service = fakeService();
     const app = build(service);
-    expect((await send(app, "post", "/api/servers/home/test-connection", OPERATOR)).status).toBe(200);
-    expect((await send(app, "post", "/api/servers/home/test-connection", OTHER)).status).toBe(403);
+    expect((await send(app, "post", "/api/servers/alpha/test-connection", OPERATOR)).status).toBe(200);
+    expect((await send(app, "post", "/api/servers/alpha/test-connection", OTHER)).status).toBe(403);
     expect(service.testSaved).toHaveBeenCalledTimes(1);
   });
 });
