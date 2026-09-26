@@ -143,9 +143,8 @@ export function overallHealth(sections: SectionState[]): { health: Health | "pen
   if (pending && worst === "ok") return { health: "pending", headline: "Checking…" };
   if (worst === "degraded") {
     const causes = sections.flatMap((s) => (typeof s === "object" && s.health === "degraded" && s.cause ? [s.cause] : []));
-    if (causes.includes(SLOW_TICK)) {
-      return { health: worst, headline: [SLOW_TICK, ...causes.filter((c) => c !== SLOW_TICK)].join(" · ") };
-    }
+    // Each cause once, the tick first (a Set keeps insertion order).
+    if (causes.includes(SLOW_TICK)) return { health: worst, headline: [...new Set([SLOW_TICK, ...causes])].join(" · ") };
   }
   return { health: worst, headline: HEADLINE[worst] };
 }

@@ -233,23 +233,13 @@ describe("overallHealth", () => {
       expect(overallHealth([tick, "pending"])).toEqual({ health: "degraded", headline: "Server tick is slow" });
     });
 
-    // Two non-tick sections sharing a cause text is reachable only by a bug elsewhere (today's
-    // causes are all distinct strings), but overallHealth itself has no dedup for that case:
-    // document that a repeat prints twice rather than silently disappearing.
-    it("doesn't dedup a repeated non-tick cause", () => {
+    // Causes are named once each: a repeated text (today's are all distinct, so only a bug
+    // elsewhere could repeat one) prints once, the same rule for the tick's own text as any other.
+    it("names each cause once", () => {
       const dup = { health: "degraded", summary: "", cause: "Factory backed up" } as const;
-      expect(overallHealth([tick, dup, dup]).headline).toBe(
-        "Server tick is slow · Factory backed up · Factory backed up",
-      );
-    });
-
-    // A cause that happens to equal SLOW_TICK's own text is a special case worth pinning down:
-    // the "others" filter strips every match of that exact string, not just the one already
-    // prepended, so this collapses to one occurrence instead of the two you'd expect from a
-    // naive "no dedup" model.
-    it("swallows a non-tick cause that happens to collide with the tick's own text", () => {
-      const collision = { health: "degraded", summary: "", cause: "Server tick is slow" } as const;
-      expect(overallHealth([tick, collision]).headline).toBe("Server tick is slow");
+      expect(overallHealth([tick, dup, dup]).headline).toBe("Server tick is slow · Factory backed up");
+      const sameAsTick = { health: "degraded", summary: "", cause: "Server tick is slow" } as const;
+      expect(overallHealth([tick, sameAsTick]).headline).toBe("Server tick is slow");
     });
   });
 
