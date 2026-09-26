@@ -233,4 +233,52 @@ describe("AutoPauseView, a change relayed through the agent", () => {
     await screen.findByText("Saving…");
     expect(checkbox()).toBeDisabled();
   });
+
+  // onSuccess is captured fresh on every render (react-query updates the mutation observer's
+  // options on render), so if the selected server changes between the PUT starting and its 202
+  // resolving, the callback that finally runs closes over whichever server is selected *then* --
+  // not the one the mutate() call was actually made for.
+  it("credits a 202 to the server that started the change, even if another server got selected before it resolved", async () => {
+    let resolvePut!: (response: Response) => void;
+    server.use(
+      http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
+      http.put(
+        endpoints.settings.setAutoPause.route,
+        () => new Promise<Response>((resolve) => (resolvePut = resolve)),
+      ),
+      http.get(endpoints.commands.get.route, () => HttpResponse.json(expiringIn(commandPending, 600_000))),
+    );
+
+    function Switcher() {
+      const [selected, setSelected] = useState(serversMultiple.servers[0]);
+      return (
+        <>
+          <button onClick={() => setSelected(serversMultiple.servers[0])}>select A</button>
+          <button onClick={() => setSelected(serversMultiple.servers[1])}>select B</button>
+          <ServerContext value={selected}>
+            <AutoPauseView />
+          </ServerContext>
+        </>
+      );
+    }
+    renderWithClient(<Switcher />);
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox()); // starts server A's change; the PUT never resolves until we say so
+
+    fireEvent.click(screen.getByRole("button", { name: "select B" }));
+    await screen.findByRole("checkbox"); // B's own settings loaded; B has no change of its own
+
+    resolvePut(HttpResponse.json(expiringIn(autoPauseResponseAccepted, 600_000), { status: 202 }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    fireEvent.click(screen.getByRole("button", { name: "select A" }));
+    // The 202 was for A's PUT, so A should now be following its command.
+    await screen.findByText("Saving…");
+    expect(checkbox()).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "select B" }));
+    // B never started a change, so it must not have absorbed A's command.
+    await waitFor(() => expect(checkbox()).toBeEnabled());
+    expect(screen.queryByText("Saving…")).not.toBeInTheDocument();
+  });
 });

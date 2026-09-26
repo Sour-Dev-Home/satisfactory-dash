@@ -27,7 +27,10 @@ const MAX_TIMEOUT_MS = 2 ** 31 - 1;
  * setTimeout can wait (a far-off expiry would otherwise overflow and give up at once).
  */
 export function msUntilGiveUp(command: Pick<Command, "expiresAt">, now: number): number {
-  return Math.min(MAX_TIMEOUT_MS, Math.max(0, Date.parse(command.expiresAt) + EXPIRY_GRACE_MS - now));
+  const ms = Date.parse(command.expiresAt) + EXPIRY_GRACE_MS - now;
+  // The contract's schema only lets a valid time through; if one ever didn't parse, give up at once.
+  if (Number.isNaN(ms)) return 0;
+  return Math.min(MAX_TIMEOUT_MS, Math.max(0, ms));
 }
 
 export const EXPIRED_TEXT = "The game PC didn't answer in time; the setting didn't change.";
