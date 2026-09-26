@@ -1,7 +1,5 @@
 import {
   endpoints,
-  HistoryItemsQuerySchema,
-  HistoryTransitionsQuerySchema,
   type SessionResponse,
   type SetAutoPauseRequest,
   type TestConnectionResponse,
@@ -119,14 +117,14 @@ export const demoHandlers = [
   // Stored history (ADR-0027): the same query rules as the backend's, so a bad range is a 400 here too.
   get(endpoints.history.items.route, ({ params, request }) =>
     guarded(params, () => {
-      const query = HistoryItemsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      const query = endpoints.history.items.query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
       if (!query.success) return error(400, "bad_request", "That history range isn't available.");
       return Response.json(world.historyItems(demoNow(), query.data.range, query.data.item));
     }),
   ),
   get(endpoints.history.transitions.route, ({ params, request }) =>
     guarded(params, () => {
-      const query = HistoryTransitionsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      const query = endpoints.history.transitions.query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
       if (!query.success) return error(400, "bad_request", "That history range isn't available.");
       return Response.json(world.historyTransitions(demoNow(), query.data.range, query.data.limit));
     }),

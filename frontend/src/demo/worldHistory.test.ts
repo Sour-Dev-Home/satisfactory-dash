@@ -31,8 +31,13 @@ describe("the demo's production history", () => {
     }
   });
 
+  it("only records items the demo factory makes, so every name and unit resolves", () => {
+    const made = new Set(world.factory(now).data.buildings.flatMap((b) => b.production.map((r) => r.className)));
+    for (const { item } of world.historyItems(now, "24h").data.series) expect(made).toContain(item);
+  });
+
   it("answers one item when asked, and nothing for an item it doesn't make", () => {
-    expect(world.historyItems(now, "24h", "Desc_Screw_C").data.series.map((s) => s.item)).toEqual(["Desc_Screw_C"]);
+    expect(world.historyItems(now, "24h", "Desc_IronScrew_C").data.series.map((s) => s.item)).toEqual(["Desc_IronScrew_C"]);
     expect(world.historyItems(now, "24h", "Desc_Nope_C").data.series).toEqual([]);
   });
 
@@ -47,7 +52,7 @@ describe("the demo's production history", () => {
   it("shows a visible dip: since yesterday, the Rotor and Screw lines are down", () => {
     const result = sinceYesterday(world.historyItems(now, "7d").data);
     if (!result.enough) throw new Error("the demo should have a day of history");
-    expect(result.down.map((c) => c.item)).toEqual(["Desc_Rotor_C", "Desc_Screw_C"]);
+    expect(result.down.map((c) => c.item)).toEqual(["Desc_Rotor_C", "Desc_IronScrew_C"]);
     expect(result.down[0]).toMatchObject({ after: 0 });
   });
 

@@ -16,7 +16,7 @@ vi.mock("./ItemChart", () => ({
 
 const labels = new Map<string, ItemLabel>([
   ["Desc_IronPlate_C", { name: "Iron Plate", unit: "items/min" }],
-  ["Desc_Screw_C", { name: "Screw", unit: "items/min" }],
+  ["Desc_IronScrew_C", { name: "Screw", unit: "items/min" }],
   ["Desc_Rotor_C", { name: "Rotor", unit: "items/min" }],
   ["Desc_HeavyOilResidue_C", { name: "Heavy Oil Residue", unit: "m3/min" }],
 ]);
@@ -76,8 +76,8 @@ describe("ItemHistoryPanel", () => {
     const onItem = vi.fn();
     render(<ItemHistoryPanel history={day} labels={labels} item="Desc_HeavyOilResidue_C" onItem={onItem} />);
     expect(await screen.findByTestId("item-chart")).toHaveAttribute("data-unit", "m³/min");
-    fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Screw_C" } });
-    expect(onItem).toHaveBeenCalledWith("Desc_Screw_C");
+    fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_IronScrew_C" } });
+    expect(onItem).toHaveBeenCalledWith("Desc_IronScrew_C");
   });
 
   it("falls back to the first item when the chosen one isn't in this range", () => {

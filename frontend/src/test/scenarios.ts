@@ -14,7 +14,9 @@ import {
   factoryStatesAndIngredients,
   factoryUnknownItem,
   healthOk,
+  historyItems7d,
   historyPower24h,
+  historyTransitions24h,
   managedServersAllStates,
   managedServersEmpty,
   playersAvailable,
@@ -84,6 +86,8 @@ export const ROUTES = {
   removeServer: endpoints.serverManagement.remove,
   // ADR-0027 stored history (the query string doesn't change the route).
   historyPower: endpoints.history.power,
+  historyItems: endpoints.history.items,
+  historyTransitions: endpoints.history.transitions,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -113,6 +117,9 @@ const BASE: Record<RouteKey, MockResponse> = {
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
   historyPower: ok(historyPower24h),
+  // Two hours only: "Since yesterday" says there isn't enough history yet (ADR-0027 PR 8b).
+  historyItems: ok(historyItems7d),
+  historyTransitions: ok(historyTransitions24h),
 };
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */

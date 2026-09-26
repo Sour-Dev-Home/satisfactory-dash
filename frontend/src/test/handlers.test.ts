@@ -14,4 +14,10 @@ describe("the default MSW handlers", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(playersUnavailable);
   });
+
+  it("answer the Factory page's history routes, which FactoryView always queries", async () => {
+    for (const path of [endpoints.history.items.path("default"), endpoints.history.transitions.path("default")]) {
+      expect((await fetch(`${path}?range=24h`)).status).toBe(200);
+    }
+  });
 });
