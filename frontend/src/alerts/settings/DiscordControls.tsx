@@ -93,7 +93,8 @@ export function DiscordControls({
                 <button
                   type="button"
                   disabled={other.busy}
-                  onClick={() => void other.run(onRemove).then(() => setConfirming(false))}
+                  // The confirm stays open after a failure, so a retry is one click, beside the error.
+                  onClick={() => void other.run(onRemove).then((done) => done !== undefined && setConfirming(false))}
                 >
                   Remove
                 </button>

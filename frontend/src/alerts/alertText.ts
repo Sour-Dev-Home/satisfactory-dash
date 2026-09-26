@@ -146,7 +146,10 @@ const SEND_TEST_FAILED: Record<string, string> = {
  */
 export function sendTestText(answer: { ok: true } | { ok: false; code: string }, demo = false): string {
   if (answer.ok) return demo ? "Sent (demo): nothing was sent to Discord." : "Sent. Check your Discord channel.";
-  return SEND_TEST_FAILED[answer.code] ?? `Discord didn't take the test (${spellOut(answer.code).toLowerCase()}).`;
+  const known = SEND_TEST_FAILED[answer.code];
+  if (known) return known;
+  const code = spellOut(answer.code).toLowerCase();
+  return code ? `Discord didn't take the test (${code}).` : "Discord didn't take the test.";
 }
 
 /** Whether a role may change the server's alerts (ADR-0027 PR 7b). Absent or unknown is read-only. */
