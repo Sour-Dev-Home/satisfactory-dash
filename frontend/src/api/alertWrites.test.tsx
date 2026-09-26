@@ -61,15 +61,47 @@ describe("useAlertWrites", () => {
     expect(rules()?.some((r) => r.id === preset.id)).toBe(true);
   });
 
-  it("never caches the webhook URL: only the backend's last-4 answer", async () => {
+  it("never keeps the webhook URL: not in the query cache, and not as a mutation's variables", async () => {
     const url = "https://discord.com/api/webhooks/1/secret-token-9999";
-    server.use(http.put(endpoints.alerts.destinations.putDiscord.route, () => HttpResponse.json(alertDestinationsConfigured)));
+    let sent: unknown;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.put(endpoints.alerts.destinations.putDiscord.route, async ({ request }) => {
+        sent = await request.json();
+        await held;
+        return HttpResponse.json(alertDestinationsConfigured);
+      }),
+    );
     const { client, result } = setup();
-    await act(() => result.current.putDiscord.mutateAsync(url));
-    const cached = JSON.stringify(client.getQueryCache().getAll().map((q) => q.state.data));
-    expect(cached).not.toContain("secret-token");
-    const mutations = JSON.stringify(client.getMutationCache().getAll().map((m) => m.state.data));
-    expect(mutations).not.toContain("secret-token");
+    const mutationState = () =>
+      JSON.stringify(client.getMutationCache().getAll().map((m) => ({ variables: m.state.variables, data: m.state.data })));
+
+    let saving!: Promise<unknown>;
+    act(() => {
+      saving = result.current.saveWebhook(url);
+    });
+    // In flight: the request carries it, but the mutation doesn't hold it.
+    await waitFor(() => expect(sent).toEqual({ webhookUrl: url }));
+    expect(mutationState()).not.toContain("secret-token");
+
+    release();
+    await act(() => saving);
+    expect(JSON.stringify(client.getQueryCache().getAll().map((q) => q.state.data))).not.toContain("secret-token");
+    expect(mutationState()).not.toContain("secret-token");
+  });
+
+  it("refuses a webhook save without a URL rather than sending an empty body", async () => {
+    let calls = 0;
+    server.use(
+      http.put(endpoints.alerts.destinations.putDiscord.route, () => {
+        calls++;
+        return HttpResponse.json(alertDestinationsConfigured);
+      }),
+    );
+    const { result } = setup();
+    await act(() => expect(result.current.putDiscord.mutateAsync()).rejects.toThrow(/without a URL/));
+    expect(calls).toBe(0);
   });
 
   it("updates the destination from a PATCH, and clears it on DELETE", async () => {

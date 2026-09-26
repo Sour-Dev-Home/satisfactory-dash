@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import {
   endpoints,
@@ -51,11 +52,25 @@ export function useAlertWrites(serverId: string) {
   const setDestination = (answer: AlertDestinationsResponse) =>
     settle(destinationsKey, () => client.setQueryData(destinationsKey, answer));
 
-  // The webhook URL exists only in this request body: it's never cached, logged or read back.
+  // The webhook URL is a bearer secret. It travels through this ref, not as the mutation's `variables`:
+  // TanStack keeps a mutation's variables in its cache after it settles (and devtools show them), the
+  // same reason ServerForm.tsx passes a server's token this way. The ref is cleared as soon as the
+  // request is built, and the mutation isn't kept once it settles (gcTime 0). Call `saveWebhook(url)`.
+  const pendingWebhook = useRef<string | null>(null);
   const putDiscord = useMutation({
-    mutationFn: (webhookUrl: string) => apiSend(endpoints.alerts.destinations.putDiscord, { webhookUrl }, serverId),
+    mutationFn: () => {
+      const webhookUrl = pendingWebhook.current;
+      pendingWebhook.current = null;
+      if (webhookUrl === null) throw new Error("webhook save submitted without a URL");
+      return apiSend(endpoints.alerts.destinations.putDiscord, { webhookUrl }, serverId);
+    },
+    gcTime: 0,
     onSuccess: setDestination,
   });
+  const saveWebhook = (webhookUrl: string) => {
+    pendingWebhook.current = webhookUrl;
+    return putDiscord.mutateAsync();
+  };
 
   const patchDiscord = useMutation({
     mutationFn: (enabled: boolean) => apiSend(endpoints.alerts.destinations.patchDiscord, { enabled }, serverId),
@@ -84,5 +99,5 @@ export function useAlertWrites(serverId: string) {
     onSuccess: () => client.invalidateQueries({ queryKey: statusKey }),
   });
 
-  return { createRule, updateRule, deleteRule, putDiscord, patchDiscord, removeDiscord, testDiscord, setMute, clearMute };
+  return { createRule, updateRule, deleteRule, putDiscord, saveWebhook, patchDiscord, removeDiscord, testDiscord, setMute, clearMute };
 }
