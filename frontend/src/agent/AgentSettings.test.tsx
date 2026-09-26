@@ -51,6 +51,11 @@ describe("AgentSettings", () => {
     expect(within(code).getByText(agentEnrollmentCodeResponse.code)).toBeInTheDocument();
     expect(within(code).getByText(/10 minutes/)).toBeInTheDocument();
     expect(within(code).getByRole("time")).toHaveAttribute("dateTime", agentEnrollmentCodeResponse.expiresAt);
+    // The agent app's own command (runbooks/agent-app.md), with this code filled in.
+    expect(
+      within(code).getByText(`node agent.cjs enroll ${agentEnrollmentCodeResponse.code} --url https://<your backend>`),
+    ).toBeInTheDocument();
+    expect(within(code).getByText("--replace")).toBeInTheDocument();
     // Shown once: the create button is gone while the code is on screen.
     expect(screen.queryByRole("button", { name: /Create/ })).not.toBeInTheDocument();
   });
@@ -118,6 +123,33 @@ describe("AgentSettings", () => {
     renderSection(owner);
     expect(await screen.findByText(/Hasn't reported yet/)).toBeInTheDocument();
     expect(screen.getByText("Not reported yet")).toBeInTheDocument();
+  });
+
+  // #263: `online` is the backend's call (a snapshot within 2 minutes), never this clock's.
+  it("shows the backend's online state: Online, Offline, or nothing from an older backend", async () => {
+    agentIs(agentStatusEnrolled);
+    const first = renderSection(owner);
+    expect(await screen.findByText("Online")).toHaveClass("text-ok");
+    first.unmount();
+
+    agentIs(agentStatusEnrolledSilent);
+    const second = renderSection(owner);
+    expect(await screen.findByText("Offline")).toHaveClass("text-warn");
+    second.unmount();
+
+    const { online: _online, ...olderBackend } = agentStatusEnrolled;
+    agentIs(olderBackend);
+    renderSection(owner);
+    await screen.findByText("Last seen 8 s ago");
+    expect(screen.queryByText(/^(Online|Offline)$/)).not.toBeInTheDocument();
+  });
+
+  it("keeps Online even when this PC's clock says the last-seen time is old", async () => {
+    vi.setSystemTime(Date.parse(agentStatusEnrolled.lastSeenAt) + 86_400_000);
+    agentIs(agentStatusEnrolled);
+    renderSection(owner);
+    expect(await screen.findByText("Online")).toBeInTheDocument();
+    expect(screen.getByText(/^Last seen 1 d /)).toBeInTheDocument();
   });
 
   it("asks before revoking, says what it does, and can be cancelled", async () => {

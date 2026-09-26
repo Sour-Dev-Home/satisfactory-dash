@@ -121,6 +121,13 @@ export function AgentPanel({
           {agent.enrolled ? (
             <>
               Enrolled ·{" "}
+              {/* The backend's call (a snapshot within 2 minutes, #263); absent from an older backend. */}
+              {agent.online !== undefined && (
+                <>
+                  <span className={agent.online ? "text-ok" : "text-warn"}>{agent.online ? "Online" : "Offline"}</span>
+                  {" · "}
+                </>
+              )}
               {agent.lastSeenAt === null ? (
                 lastSeenText(null, now)
               ) : (
@@ -148,9 +155,14 @@ export function AgentPanel({
           </h4>
           <p className="mb-0 font-mono text-lg text-fg-strong">{code.code}</p>
           <p className="mb-0 text-sm text-muted">
-            Enter it on the game PC when the agent asks for it. It works once, until{" "}
-            <time dateTime={code.expiresAt}>{formatTime(code.expiresAt)}</time> (10 minutes), and isn't shown again
-            after you leave this page.
+            It works once, until <time dateTime={code.expiresAt}>{formatTime(code.expiresAt)}</time> (10 minutes), and
+            isn't shown again after you leave this page. On the game PC, in the agent's folder, run:
+          </p>
+          {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"). Whether --replace is
+              needed depends on what the PC has stored, which the dashboard can't see, so it's only named. */}
+          <p className="mb-0 font-mono text-sm break-all">node agent.cjs enroll {code.code} --url https://&lt;your backend&gt;</p>
+          <p className="mb-0 text-sm text-muted">
+            If this PC was enrolled before (or the agent was revoked), add <code>--replace</code>.
           </p>
         </div>
       ) : (
