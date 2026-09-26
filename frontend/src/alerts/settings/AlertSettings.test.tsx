@@ -16,24 +16,45 @@ import {
   serversRoleViewer,
   serversSingle,
 } from "@satisfactory-dash/shared/fixtures";
-import { ServerContext } from "../servers/ServerContext";
-import { renderWithClient } from "../test/render";
-import { server } from "../test/server";
-import { AlertsView } from "./AlertsView";
+import { ServerContext } from "../../servers/ServerContext";
+import { renderWithClient } from "../../test/render";
+import { server } from "../../test/server";
+import { AlertSettings } from "./AlertSettings";
 
-// The owner/admin controls on the Alerts page (ADR-0027 PR 9c): who sees them, and that each one
+// Settings → Alerts (ADR-0027 PR 9c): the owner/admin controls: who sees them, and that each one
 // sends its write and shows the answer. The backend is the real control (a viewer's write is 403).
 
 function renderAs(summary: ServerSummary) {
   return renderWithClient(
     <ServerContext value={summary}>
-      <AlertsView />
+      <AlertSettings />
     </ServerContext>,
   );
 }
 const owner = serversRoleOwner.servers[0];
 const forbidden = () =>
   HttpResponse.json({ error: { code: "forbidden", message: "Only an owner or admin can change this.", requestId: "req-403" } }, { status: 403 });
+
+describe("the section", () => {
+  it("is the #alerts target the header's alert dropdown links to, named Alerts", async () => {
+    const { container } = renderAs(owner);
+    const section = await screen.findByRole("region", { name: "Alerts" });
+    expect(section).toHaveAttribute("id", "alerts");
+    expect(container.querySelectorAll("#alerts")).toHaveLength(1);
+    for (const part of ["Status", "Discord", "Rules"]) expect(within(section).getByRole("heading", { name: part })).toBeInTheDocument();
+  });
+
+  it("loads each part on its own: a failing Discord read leaves the rules", async () => {
+    server.use(
+      http.get(endpoints.alerts.destinations.get.route, () =>
+        HttpResponse.json({ error: { code: "internal", message: "Something went wrong", requestId: "r" } }, { status: 500 }),
+      ),
+    );
+    renderAs(owner);
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(await screen.findByRole("form", { name: "New production target" })).toBeInTheDocument();
+  });
+});
 
 describe("who gets the controls", () => {
   it.each([
@@ -139,7 +160,7 @@ describe("the Discord controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove webhook" }));
     fireEvent.click(within(screen.getByRole("group", { name: "Confirm remove" })).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(removed).toHaveBeenCalled());
-    expect(await screen.findByText("No Discord webhook is set, so alerts are only logged here.")).toBeInTheDocument();
+    expect(await screen.findByText("No Discord webhook is set, so alerts are only logged.")).toBeInTheDocument();
   });
 
   it("shows a 403 like any other error: the backend is the real control", async () => {

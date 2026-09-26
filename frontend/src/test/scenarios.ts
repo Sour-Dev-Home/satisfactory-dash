@@ -53,6 +53,7 @@ import {
   serversMultiple,
   serversNone,
   serversRoleOwner,
+  serversRoleViewer,
   serversSingle,
   sessionAnonymous,
   sessionAuthenticated,
@@ -262,8 +263,10 @@ export const SCENARIOS = {
   "alerts-webhook-gone": { alertDestinations: ok(alertDestinationsWebhookGone) },
   // A server with nothing set up yet.
   "alerts-empty": { alertDestinations: ok(alertDestinationsNone), alertEvents: ok(alertEventsEmpty) },
-  // The server's owner (ADR-0027 PR 7b role): the mute, the Discord setup and the rules editor show (9c).
+  // Settings → Alerts (ADR-0027 PR 9c) as the server's owner (PR 7b role): the mute, the Discord
+  // setup and the rules editor show; and as a viewer, who reads the same section without controls.
   "alerts-owner": { servers: ok(serversRoleOwner), alertStatus: ok(alertStatusShadowMutedFiring) },
+  "alerts-viewer": { servers: ok(serversRoleViewer), alertStatus: ok(alertStatusShadowMutedFiring) },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 

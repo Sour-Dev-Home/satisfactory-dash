@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
-import { ErrorNotice } from "../components/ErrorNotice";
-import { FormField } from "./rules/FormField";
-import { fieldAttrs } from "./rules/fieldAttrs";
+import { ErrorNotice } from "../../components/ErrorNotice";
+import { FormField } from "../rules/FormField";
+import { fieldAttrs } from "../rules/fieldAttrs";
 
 import { defaultMuteUntil, MAX_MUTE_MS, muteUntilIso, toLocalInput } from "./muteTime";
 

@@ -17,6 +17,7 @@ import { useSelectedServer } from "../servers/ServerContext";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
+import { AlertSettings } from "../alerts/settings/AlertSettings";
 import { StatusView } from "../status/StatusView";
 import { ToApp } from "./ToApp";
 
@@ -184,6 +185,9 @@ export function Shell() {
             <Page key="settings" title="Settings">
               <Section label="Server settings" probe="settings">
                 <AutoPauseView />
+              </Section>
+              <Section label="Alert settings" probe="alert-settings">
+                <AlertSettings />
               </Section>
             </Page>
           }

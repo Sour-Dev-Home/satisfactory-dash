@@ -1,9 +1,9 @@
 import { useId, useState, type FormEvent } from "react";
 import type { DiscordDestination } from "@satisfactory-dash/shared";
-import { ErrorNotice } from "../components/ErrorNotice";
-import { FormField } from "./rules/FormField";
-import { fieldAttrs } from "./rules/fieldAttrs";
-import { sendTestText } from "./alertText";
+import { ErrorNotice } from "../../components/ErrorNotice";
+import { FormField } from "../rules/FormField";
+import { fieldAttrs } from "../rules/fieldAttrs";
+import { sendTestText } from "../alertText";
 
 type SendTestAnswer = { ok: true } | { ok: false; code: string };
 
