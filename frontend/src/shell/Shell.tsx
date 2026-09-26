@@ -183,7 +183,9 @@ export function Shell() {
           element={
             <Page key="settings" title="Settings">
               <Section label="Server settings" probe="settings">
-                <AutoPauseView />
+                {/* Keyed by server: a change still on its way to one server's game PC must not follow
+                    the user to another server. */}
+                <AutoPauseView key={server.id} />
               </Section>
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />
