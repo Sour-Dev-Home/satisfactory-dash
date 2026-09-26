@@ -108,7 +108,7 @@ const ITEM_BUCKETS = `
 
 // $1 server public id, $2 from, $3 to, $4 how many rows
 const TRANSITIONS = `
-  SELECT (extract(epoch FROM t.at) * 1000)::float8 AS t, t.building_id AS building_id, t.class_name AS class_name,
+  SELECT floor(extract(epoch FROM t.at) * 1000)::float8 AS t, t.building_id AS building_id, t.class_name AS class_name,
          t.from_state AS from_state, t.to_state AS to_state
   FROM telemetry.building_transitions t
   JOIN servers.servers s ON s.id = t.server_id
