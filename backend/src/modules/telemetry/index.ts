@@ -52,6 +52,7 @@ export type {
   PowerCircuitObservation,
 } from "./services/observationBoard.js";
 export type { AgentSnapshotSink } from "./services/agentIngest.js";
+export type { AutoPauseReading } from "./services/agentSnapshotStore.js";
 export { createUnitResolver } from "./itemForms.js";
 
 export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike & PlayersAdapterLike;
@@ -145,6 +146,7 @@ export function createAgentTelemetryServices(options: AgentTelemetryOptions): Te
     history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }),
     observations,
     agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore }),
+    agentAutoPause: () => store.autoPause(),
     workers: [recorder],
   };
 }

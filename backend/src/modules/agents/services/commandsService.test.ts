@@ -7,6 +7,8 @@ import { MAX_OPEN_COMMANDS } from "../repositories/commandRepository.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { CommandNotifier } from "./commandNotifier.js";
 import { createCommandsService } from "./commandsService.js";
+import type { ReportedAutoPause } from "./commandsService.js";
+import { snapshot } from "../../../platform/snapshot.js";
 
 const SERVER_UUID = "11111111-1111-4111-8111-111111111111";
 const COMMAND_ID = "6f1c0a52-9b1e-4c53-8a52-0d5d7e2f3a11";
@@ -232,6 +234,41 @@ describe("readAutoPause", () => {
   it("an unknown server is server_not_found", async () => {
     const { pool } = fakePool(() => ({ rows: [] }));
     expect(await read(pool).catch((err: unknown) => err)).toBeInstanceOf(ServerNotFoundError);
+  });
+
+  describe("with the agent's own reading (settings.autoPause in its snapshots)", () => {
+    const readWith = (pool: never, reported?: ReportedAutoPause) => createCommandsService({ db: pool, notifier: new CommandNotifier() }).readAutoPause("alpha", reported);
+    const reading = (autoPause: boolean, atMs: number, stale = false): ReportedAutoPause => ({ autoPause, observedAtMs: atMs, stale });
+    const confirmedAt = (enabled: boolean, atMs: number) => row({ id: "c1", status: "succeeded", params: { enabled }, completed_at: new Date(atMs) });
+
+    it("is known from the reading alone, with the reading's own time and staleness on the envelope", async () => {
+      const data = await readWith(withRecent([]), reading(true, T0, true));
+      expect(data).toEqual({ autoPause: true, pending: false, editable: true });
+      expect(snapshot("alpha", data)).toMatchObject({ observedAt: new Date(T0).toISOString(), stale: true, data: { autoPause: true } });
+    });
+
+    it("a change being applied wins over the reading, and stays pending", async () => {
+      const pool = withRecent([row({ status: "pending", params: { enabled: true } })]);
+      expect(await readWith(pool, reading(false, T0))).toEqual({ autoPause: true, pending: true, editable: true });
+    });
+
+    it("a reading taken AFTER the last confirmed change wins (an edit made in the game since)", async () => {
+      const pool = withRecent([confirmedAt(false, T0)]);
+      expect(await readWith(pool, reading(true, T0 + 5000))).toEqual({ autoPause: true, pending: false, editable: true });
+    });
+
+    it("a reading taken BEFORE the last confirmed change is out of date: the confirmed value wins", async () => {
+      const pool = withRecent([confirmedAt(false, T0)]);
+      const data = await readWith(pool, reading(true, T0 - 5000));
+      expect(data).toEqual({ autoPause: false, pending: false, editable: true });
+      expect(snapshot("alpha", data).stale).toBe(false); // the confirmed value is served as before this change
+    });
+
+    it("no reading changes nothing: the last confirmed value, or unknown", async () => {
+      expect(await readWith(withRecent([confirmedAt(false, T0)]), undefined)).toEqual({ autoPause: false, pending: false, editable: true });
+      const failure = await readWith(withRecent([]), undefined).catch((err: unknown) => err);
+      expect((failure as ApiFailure).code).toBe("upstream_unreachable");
+    });
   });
 });
 

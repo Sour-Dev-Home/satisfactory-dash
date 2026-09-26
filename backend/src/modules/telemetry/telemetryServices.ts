@@ -6,6 +6,7 @@ import type { PlayersService } from "./services/playersService.js";
 import type { HistoryQueryService } from "./services/historyQueryService.js";
 import type { ObservationBoard } from "./services/observationBoard.js";
 import type { AgentSnapshotSink } from "./services/agentIngest.js";
+import type { AutoPauseReading } from "./services/agentSnapshotStore.js";
 
 /** The services the data routes need for one game server. Narrowed with Pick so route
  *  tests can supply stubs. */
@@ -21,6 +22,8 @@ export interface TelemetryServices {
   observations?: Pick<ObservationBoard, "snapshot">;
   /** ADR-0031 PR 5a: present only on a server reached through an edge agent; the agents module hands each snapshot to it. */
   agentIngest?: AgentSnapshotSink;
+  /** The auto-pause value the agent last reported (a server reached through an agent only); the composition root hands it to the settings service. */
+  agentAutoPause?: () => AutoPauseReading | undefined;
 }
 
 /** What the telemetry routes read from a server directory entry. The composition root

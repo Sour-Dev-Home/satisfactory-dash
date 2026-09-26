@@ -149,7 +149,7 @@ function buildAgentServer(id: string, displayName: string) {
     cadence: () => AGENT_CADENCE,
     history: { db: database.pool, serverPublicId: id },
   });
-  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id) }, workers: telemetry.workers };
+  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers };
 }
 
 const entries = orExit(() => {

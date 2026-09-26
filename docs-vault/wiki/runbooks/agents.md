@@ -53,10 +53,14 @@ idempotent (`set_auto_pause { enabled }` is), and the agent app (ADR-0031 PR 6) 
 `expiresAt`, so it never executes one twice. A future command type that is not idempotent needs an explicit claim step
 in the backend first.
 
-Reading the setting of an agent server (`GET /settings`) gives the last value the agent **confirmed** (or the one
-being applied, with `pending`). The agent's snapshot has no auto-pause field, so before the first confirmed change the
-value is unknown and the read answers `upstream_unreachable`. Adding the field to the snapshot is a contract change for a
-later PR.
+Reading the setting of an agent server (`GET /settings`) gives, in this order: the value **being applied** (a waiting
+command, with `pending`); else the **newer** of the last confirmed change and the agent's latest reading. The reading is
+`settings.autoPause` in a snapshot: the agent sends it whenever it read the setting in that snapshot (each status
+cadence), never on an unreachable snapshot. A reading taken after the last confirmed change shows an edit made in the
+game since; one taken before it is out of date. While the game is unreachable the last reading is kept, and the envelope's
+`observedAt` is its time and `stale` is true once it is older than three status intervals. With neither a reading nor a
+confirmed change (an agent that sends no `settings`) the value is unknown and the read answers `upstream_unreachable`.
+Restarting the backend forgets the reading until the next snapshot.
 
 ## Agent offline (alert)
 

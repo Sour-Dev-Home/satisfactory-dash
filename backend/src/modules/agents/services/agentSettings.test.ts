@@ -24,7 +24,17 @@ describe("createAgentSettingsServices", () => {
     const commands = commandsStub();
     const settings = await createAgentSettingsServices(commands, "alpha").getSettings();
     expect(settings).toEqual({ autoPause: false, pending: false, editable: true });
-    expect(commands.readAutoPause).toHaveBeenCalledWith("alpha");
+    expect(commands.readAutoPause).toHaveBeenCalledWith("alpha", undefined);
+  });
+
+  it("hands the agent's latest reported reading to the commands service, read at the moment of the request", async () => {
+    const commands = commandsStub();
+    let reading: { autoPause: boolean; observedAtMs: number; stale: boolean } | undefined;
+    const service = createAgentSettingsServices(commands, "alpha", () => reading);
+    await service.getSettings();
+    reading = { autoPause: true, observedAtMs: 1000, stale: false };
+    await service.getSettings();
+    expect(commands.readAutoPause.mock.calls).toEqual([["alpha", undefined], ["alpha", { autoPause: true, observedAtMs: 1000, stale: false }]]);
   });
 
   it("changing it creates a command and returns it, passing who asked, and never calls the write hook (nothing is applied here)", async () => {

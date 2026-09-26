@@ -4,6 +4,7 @@ import { isDatabaseUnavailable } from "../../../platform/db/errors.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
+import { observed } from "../../../platform/snapshot.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { getAgentStatus, lockServer } from "../repositories/agentRepository.js";
 import {
@@ -34,11 +35,19 @@ export interface CommandsService {
   /** One command of this server, in the contract's shape. server_not_found is not used: an unknown id is command_not_found. */
   getCommand(serverId: string, commandId: string): Promise<Command>;
   /**
-   * What the dashboard shows for the setting of an agent server: the last value the agent confirmed (or the one being
-   * applied now), whether a change is waiting, and whether it can be changed (an agent is enrolled). The snapshot carries
-   * no auto-pause field, so before any change has been confirmed the value is unknown (upstream_unreachable).
+   * What the dashboard shows for the setting of an agent server: the value being applied now, else the newer of the last
+   * value the agent confirmed and the agent's latest reading (`reported`, from its snapshots; it carries its own time and
+   * staleness), whether a change is waiting, and whether it can be changed (an agent is enrolled). With neither the value
+   * is unknown (upstream_unreachable), as for an agent that reports no settings before any change was confirmed.
    */
-  readAutoPause(serverId: string): Promise<{ autoPause: boolean; pending: boolean; editable: boolean }>;
+  readAutoPause(serverId: string, reported?: ReportedAutoPause): Promise<{ autoPause: boolean; pending: boolean; editable: boolean }>;
+}
+
+/** An auto-pause value the agent reported in a snapshot; the composition root passes the telemetry store's reading in this shape. */
+export interface ReportedAutoPause {
+  autoPause: boolean;
+  observedAtMs: number;
+  stale: boolean;
 }
 
 export interface AgentCommandsService {
@@ -125,18 +134,29 @@ export function createCommandsService(deps: CommandsServiceDeps): CommandsServic
         return toCommand(row);
       }),
 
-    readAutoPause: (serverId) =>
+    readAutoPause: (serverId, reported) =>
       orUnavailable(async () => {
         const status = await getAgentStatus(db, serverId);
         if (status === undefined) throw new ServerNotFoundError();
         const recent = await recentCommandsOfType(db, serverId, SET_AUTO_PAUSE);
         const open = recent.find((row) => row.status === "pending" || row.status === "sent");
         const confirmed = recent.find((row) => row.status === "succeeded");
-        const autoPause = (open !== undefined ? enabledOf(open) : undefined) ?? (confirmed !== undefined ? enabledOf(confirmed) : undefined);
-        if (autoPause === undefined) {
-          throw new ApiFailure("upstream_unreachable", "This server's auto-pause setting is not known yet: the agent has not confirmed a change");
+        const editable = status.enrolled;
+        // A change being applied is what the user asked for, so it wins over everything.
+        const applying = open !== undefined ? enabledOf(open) : undefined;
+        if (applying !== undefined) return { autoPause: applying, pending: true, editable };
+        const confirmedValue = confirmed !== undefined ? enabledOf(confirmed) : undefined;
+        const confirmedAtMs = confirmed?.completedAt?.getTime();
+        // Otherwise the NEWER of the last confirmed change and the agent's latest reading: a reading taken after the change
+        // shows an edit made in the game since, and one taken before it is out of date.
+        if (reported !== undefined && (confirmedValue === undefined || confirmedAtMs === undefined || reported.observedAtMs >= confirmedAtMs)) {
+          // Kept while the game is unreachable, then marked stale by the reading's age.
+          return observed({ autoPause: reported.autoPause, pending: open !== undefined, editable }, { observedAt: new Date(reported.observedAtMs).toISOString(), stale: reported.stale });
         }
-        return { autoPause, pending: open !== undefined, editable: status.enrolled };
+        if (confirmedValue === undefined) {
+          throw new ApiFailure("upstream_unreachable", "This server's auto-pause setting is not known yet: the agent has not reported it or confirmed a change");
+        }
+        return { autoPause: confirmedValue, pending: open !== undefined, editable };
       }),
 
     async poll(agent, waitSeconds, signal) {
