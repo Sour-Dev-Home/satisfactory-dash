@@ -229,6 +229,32 @@ export async function switchToAgentConnection(db: Queryable, serverId: string): 
   return row.public_id;
 }
 
+const LOCK_SERVER = `
+  SELECT id, public_id, display_name, hosting_mode, connection_kind
+  FROM servers.servers
+  WHERE public_id = $1 AND deleted_at IS NULL
+  FOR NO KEY UPDATE`;
+
+/** The live server row, LOCKED for this transaction (the same order enrolment and revoke take: the server row first), so a
+ *  concurrent enrol, revoke or removal waits and the kind read here is the kind the caller then changes. */
+export async function lockServerByPublicId(db: Queryable, publicId: string): Promise<RegisteredServer | undefined> {
+  const result = await db.query(LOCK_SERVER, [publicId]);
+  const row = parseFirst(ServerRowSchema, result.rows, "servers.lockServerByPublicId");
+  return row === undefined ? undefined : toServer(row);
+}
+
+const SWITCH_TO_LOCAL = `
+  UPDATE servers.servers
+  SET connection_kind = 'local'
+  WHERE id = $1 AND connection_kind = 'agent' AND deleted_at IS NULL
+  RETURNING id`;
+
+/** ADR-0031 amendment: an agent server is read by this backend again. Only an agent server changes (false otherwise). The
+ *  caller has already stored the new connection in the same transaction. */
+export async function switchToLocalKind(db: Queryable, serverId: string): Promise<boolean> {
+  return (await db.query(SWITCH_TO_LOCAL, [serverId])).rows.length > 0;
+}
+
 const LIST_AGENT_SERVERS = `
   SELECT public_id, display_name
   FROM servers.servers

@@ -6,6 +6,7 @@ import {
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
+  SwitchToLocalRequestSchema,
   RenameServerResponseSchema,
   ServerConnectionResponseSchema,
   ServerIdSchema,
@@ -97,7 +98,7 @@ export function createServerManagementRouters(
     return parsed.data;
   };
 
-  const { create, list, testConnection, get, update, renameAgent, remove, testSaved } = endpoints.serverManagement;
+  const { create, list, testConnection, get, update, renameAgent, switchToLocal, remove, testSaved } = endpoints.serverManagement;
 
   const collection = Router();
   // "managed" is a reserved server id, and this router is mounted before the servers router, so the
@@ -127,6 +128,13 @@ export function createServerManagementRouters(
     const id = serverId(req.params.serverId);
     const body = parseBody(UpdateServerRequestSchema, req.body);
     const server = await orUnavailable(() => service.update(userId(res), id, body));
+    sendValidated(res, ServerConnectionResponseSchema, { server });
+  });
+  // ADR-0031 amendment: the way back from an agent. Write-limited like create (it stores tokens and runs a connection test).
+  scoped.post(routePath(switchToLocal.route), operatorOnly, limited(writeLimiter), async (req, res) => {
+    const id = serverId(req.params.serverId);
+    const body = parseBody(SwitchToLocalRequestSchema, req.body);
+    const server = await orUnavailable(() => service.switchToLocal(userId(res), id, body));
     sendValidated(res, ServerConnectionResponseSchema, { server });
   });
   // ADR-0031: the one edit a server reached through an edge agent has.

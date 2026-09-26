@@ -38,6 +38,7 @@ function fakeService(overrides: Partial<ServerManagementService> = {}) {
     list: vi.fn(async () => [view]),
     listAgentServers: vi.fn(async () => [{ id: "agent-one", displayName: "Agent One", kind: "agent" as const }]),
     renameAgentServer: vi.fn(async (_actor: string, id: string, displayName: string) => ({ id, displayName, kind: "agent" as const })),
+    switchToLocal: vi.fn(async () => view),
     update: vi.fn(async () => view),
     remove: vi.fn(async () => undefined),
     testCandidate: vi.fn(async () => passed),
@@ -314,6 +315,43 @@ describe("agent servers in the operator's managed list, and renaming them (ADR-0
     const service = fakeService({ renameAgentServer: vi.fn(async () => Promise.reject(new ServerNotFoundError())) });
     const res = await send(build(service), "patch", "/api/servers/alpha/name", OPERATOR, { displayName: "X" });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/servers/:serverId/local-connection (switch back to local, ADR-0031 amendment)", () => {
+  const good = { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abc123", frmToken: "frm-token-def456" };
+
+  it("is operator only (401 without a session, 403 for anyone else), calls the service once for the operator, and answers the stored connection without any token", async () => {
+    const service = fakeService();
+    const app = build(service);
+    expect((await send(app, "post", "/api/servers/alpha/local-connection", undefined, good)).status).toBe(401);
+    expect((await send(app, "post", "/api/servers/alpha/local-connection", OTHER, good)).status).toBe(403);
+    expect(service.switchToLocal).not.toHaveBeenCalled();
+    const ok = await send(app, "post", "/api/servers/alpha/local-connection", OPERATOR, good);
+    expect(ok.status).toBe(200);
+    expect(ServerConnectionResponseSchema.parse(ok.body).server.id).toBe("alpha");
+    expect(service.switchToLocal).toHaveBeenCalledWith(OPERATOR, "alpha", good);
+    expect(JSON.stringify(ok.body)).not.toMatch(/api-token-abc123|frm-token-def456/);
+  });
+
+  it("validates the body strictly: no id or name, a real port, a printable token: 400, and the service is not called", async () => {
+    const service = fakeService();
+    const app = build(service);
+    for (const bad of [{}, { ...good, id: "alt" }, { ...good, displayName: "X" }, { ...good, apiPort: 0 }, { ...good, apiToken: "has space" }, { host: good.host, apiPort: 7777, frmPort: 8080 }]) {
+      expect((await send(app, "post", "/api/servers/alpha/local-connection", OPERATOR, bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(service.switchToLocal).not.toHaveBeenCalled();
+  });
+
+  it("a server that is not an agent server is 409 with the stable code server_not_agent; the refusals of create (address, test, ports) keep their statuses", async () => {
+    const notAgent = fakeService({ switchToLocal: vi.fn(async () => Promise.reject(new ApiFailure("server_not_agent", "That server is not reached through an agent."))) });
+    const res = await send(build(notAgent), "post", "/api/servers/alpha/local-connection", OPERATOR, good);
+    expect(res.status).toBe(409);
+    expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("server_not_agent");
+    const refused = fakeService({ switchToLocal: vi.fn(async () => Promise.reject(new ApiFailure("address_not_allowed", "no"))) });
+    expect((await send(build(refused), "post", "/api/servers/alpha/local-connection", OPERATOR, good)).status).toBe(422);
+    const unknown = fakeService({ switchToLocal: vi.fn(async () => Promise.reject(new ServerNotFoundError())) });
+    expect((await send(build(unknown), "post", "/api/servers/alpha/local-connection", OPERATOR, good)).status).toBe(404);
   });
 });
 

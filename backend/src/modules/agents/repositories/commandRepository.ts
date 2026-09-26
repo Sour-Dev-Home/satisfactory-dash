@@ -192,6 +192,20 @@ const EXPIRE_STALE = `
   WHERE status IN ('pending', 'sent') AND expires_at <= now()
   RETURNING id`;
 
+// ADR-0031 amendment (switch back to local): the server is no longer reached through an agent, so nothing will fetch its waiting
+// commands. They end now in the existing terminal state `expired` ("dropped, will not run", the same as one that ran out its
+// 60 s), rather than sitting queued or being run by a later agent. No result code: none was ever reported.
+const END_OPEN_OF_SERVER = `
+  UPDATE agents.commands
+  SET status = 'expired', completed_at = now()
+  WHERE server_id = $1 AND status IN ('pending', 'sent')
+  RETURNING id`;
+
+/** Ends every waiting command of one server (`pending` or `sent`) as `expired`. Returns how many. */
+export async function endOpenCommandsOf(db: Queryable, serverUuid: string): Promise<number> {
+  return (await db.query(END_OPEN_OF_SERVER, [serverUuid])).rows.length;
+}
+
 const PURGE_OLD = `
   DELETE FROM agents.commands
   WHERE status IN ('succeeded', 'failed', 'expired') AND COALESCE(completed_at, expires_at) < now() - ($1::int * interval '1 day')

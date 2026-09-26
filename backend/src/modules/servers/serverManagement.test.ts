@@ -16,6 +16,8 @@ const repo = vi.hoisted(() => ({
   addMember: vi.fn(),
   findServerByPublicId: vi.fn(),
   listAgentServers: vi.fn(),
+  lockServerByPublicId: vi.fn(),
+  switchToLocalKind: vi.fn(),
   renameServer: vi.fn(),
   softDeleteServer: vi.fn(),
   upsertConfiguredServer: vi.fn(),
@@ -35,6 +37,8 @@ vi.mock("./repositories/memberRepository.js", () => ({ addMember: repo.addMember
 vi.mock("./repositories/serverRepository.js", () => ({
   findServerByPublicId: repo.findServerByPublicId,
   listAgentServers: repo.listAgentServers,
+  lockServerByPublicId: repo.lockServerByPublicId,
+  switchToLocalKind: repo.switchToLocalKind,
   renameServer: repo.renameServer,
   softDeleteServer: repo.softDeleteServer,
   upsertConfiguredServer: repo.upsertConfiguredServer,
@@ -58,7 +62,7 @@ const failed = { ok: false, api: { ok: false, error: "unreachable" as const }, f
 
 const meta = { serverId: "uuid-home", publicId: "home", displayName: "Home", host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, frmTokenSet: true, keyId: "k1" };
 
-function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[]; allowLan?: boolean; forbiddenPorts?: number[] } = {}) {
+function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => Promise<string[]>; test?: () => Promise<typeof passed | typeof failed>; envNames?: string[]; allowLan?: boolean; forbiddenPorts?: number[]; releaseAgent?: ((db: unknown, serverUuid: string) => Promise<{ credentialRevoked: boolean; commandsEnded: number }>) | null } = {}) {
   const runtime = new ServerRuntime<string>([{ id: "home", displayName: "Home", services: "old", workers: [] }]);
   const build = vi.fn((c: { publicId: string; displayName: string }) => ({ id: c.publicId, displayName: c.displayName, services: "new", workers: [] }));
   const testConnection = vi.fn(options.test ?? (async () => passed));
@@ -75,6 +79,7 @@ function setup(options: { ring?: typeof ring | null; lookup?: (host: string) => 
     policy: { allowLan: options.allowLan ?? true },
     lookup: options.lookup ?? (async () => ["192.168.1.30"]),
     forbiddenPorts: options.forbiddenPorts,
+    releaseAgent: options.releaseAgent === null ? undefined : (options.releaseAgent ?? (async () => ({ credentialRevoked: true, commandsEnded: 0 }))) as never,
   });
   return { service, runtime, build, testConnection };
 }
@@ -405,6 +410,136 @@ describe("a loopback game server may not be this backend or its database (issue 
     const error = (await service.testCandidate({ host: "localhost", apiPort: BACKEND, frmPort: 8080, apiToken: API }).catch((err: unknown) => err)) as ApiFailure;
     expect(error.message).not.toMatch(/3001|5432|127\.0\.0\.1/);
     expect(error.message).not.toContain(API);
+  });
+});
+
+describe("switch back to local (ADR-0031 amendment)", () => {
+  const agentServer = { id: "uuid-alex", publicId: "alex", displayName: "Alex", hostingMode: "self" as const, connectionKind: "agent" as const };
+  const localServer = { ...agentServer, connectionKind: "local" as const };
+  const body = { host: "localhost", apiPort: 7777, frmPort: 8080, apiToken: API, frmToken: FRM };
+  const loopbackOnly = { lookup: async () => ["127.0.0.1"] };
+  const code = (err: unknown) => (err instanceof ApiFailure ? err.code : err instanceof ServerNotFoundError ? "server_not_found" : "other");
+
+  function arrange(over: { test?: () => Promise<typeof passed | typeof failed>; releaseAgent?: NonNullable<Parameters<typeof setup>[0]>["releaseAgent"]; ring?: typeof ring | null; forbiddenPorts?: number[]; count?: number } = {}) {
+    const events: string[] = [];
+    repo.findServerByPublicId.mockResolvedValue(agentServer);
+    repo.lockServerByPublicId.mockImplementation(async () => {
+      events.push("lock-server");
+      return agentServer;
+    });
+    repo.switchToLocalKind.mockImplementation(async () => {
+      events.push("set-kind-local");
+      return true;
+    });
+    repo.createConnection.mockImplementation(async () => {
+      events.push("store-connection");
+      return "created";
+    });
+    repo.countConnections.mockResolvedValue(over.count ?? 1);
+    repo.recordAuditEvent.mockImplementation(async () => {
+      events.push("audit");
+    });
+    const releaseAgent = vi.fn(async () => {
+      events.push("release-agent");
+      return { credentialRevoked: true, commandsEnded: 2 };
+    });
+    const test = over.test ?? (async () => {
+      events.push("connection-test");
+      return passed;
+    });
+    const made = setup({ ...loopbackOnly, test, releaseAgent: over.releaseAgent === undefined ? releaseAgent : over.releaseAgent, ring: over.ring, forbiddenPorts: over.forbiddenPorts });
+    made.runtime.add({ id: "alex", displayName: "Alex", services: "agent-runtime", workers: [], kind: "agent" });
+    return { ...made, events, releaseAgent };
+  }
+
+  it("happy path: tests FIRST (no network under the lock), then one transaction stores the connection, sets the kind, releases the agent and audits; then the runtime is swapped", async () => {
+    const { service, runtime, build, events, releaseAgent } = arrange();
+    const view = await service.switchToLocal(OPERATOR, "alex", body);
+    expect(events).toEqual(["connection-test", "lock-server", "store-connection", "set-kind-local", "release-agent", "audit"]);
+    expect(releaseAgent).toHaveBeenCalledWith(expect.anything(), "uuid-alex");
+    expect(repo.recordAuditEvent).toHaveBeenCalledWith(expect.anything(), { action: "server.switched_to_local", actorUserId: OPERATOR, serverId: "uuid-alex", detail: { credentialRevoked: true, commandsEnded: 2 } });
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(runtime.get("alex")).toBe("new"); // the polled entry replaced the agent one (through remove + add, not replace)
+    expect(view).toMatchObject({ id: "alex", displayName: "Alex", apiTokenSet: true, state: "ok" });
+    expect(JSON.stringify(view)).not.toContain(API);
+  });
+
+  it("keeps the server's members and history: nothing is added to or deleted from them (no membership write, no history delete)", async () => {
+    const { service } = arrange();
+    await service.switchToLocal(OPERATOR, "alex", body);
+    expect(repo.addMember).not.toHaveBeenCalled();
+    expect(repo.softDeleteServer).not.toHaveBeenCalled();
+    expect(repo.renameServer).not.toHaveBeenCalled();
+    expect(repo.clientQueries.every((query) => !/server_members|history|DELETE/i.test(query))).toBe(true); // only the management lock is taken directly
+  });
+
+  it("a `local` server is 409 server_not_agent before anything else (no lookup, no test, no write); an unknown id is not found", async () => {
+    const { service, testConnection } = arrange();
+    repo.findServerByPublicId.mockResolvedValue(localServer);
+    expect(await service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_not_agent");
+    repo.findServerByPublicId.mockResolvedValue(undefined);
+    expect(await service.switchToLocal(OPERATOR, "nope", body).catch(code)).toBe("server_not_found");
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.createConnection).not.toHaveBeenCalled();
+  });
+
+  it("the kind is re-read UNDER the lock: a server switched (or removed) after the first look is refused and nothing is written", async () => {
+    const { service, releaseAgent } = arrange();
+    repo.lockServerByPublicId.mockResolvedValue(localServer);
+    expect(await service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_not_agent");
+    repo.lockServerByPublicId.mockResolvedValue(undefined);
+    expect(await service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_not_found");
+    expect(repo.createConnection).not.toHaveBeenCalled();
+    expect(repo.switchToLocalKind).not.toHaveBeenCalled();
+    expect(releaseAgent).not.toHaveBeenCalled();
+  });
+
+  it("a failing connection test, a refused address and the backend's own ports stop it before any transaction", async () => {
+    const failing = arrange({ test: async () => failed });
+    expect(await failing.service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("connection_test_failed");
+    const publicHost = arrange();
+    expect(await publicHost.service.switchToLocal(OPERATOR, "alex", { ...body, host: "8.8.8.8" }).catch(code)).toBe("address_not_allowed");
+    const ports = arrange({ forbiddenPorts: [3001, 5432] });
+    expect(await ports.service.switchToLocal(OPERATOR, "alex", { ...body, apiPort: 3001 }).catch(code)).toBe("address_not_allowed");
+    expect(repo.lockServerByPublicId).not.toHaveBeenCalled();
+    expect(repo.createConnection).not.toHaveBeenCalled();
+  });
+
+  it("the server cap counts it (a server that becomes local is a stored connection), and an existing connection row is server_exists", async () => {
+    const full = arrange({ count: 8 });
+    expect(await full.service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_limit_reached");
+    const taken = arrange();
+    repo.createConnection.mockResolvedValue("conflict");
+    expect(await taken.service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_exists");
+    expect(repo.switchToLocalKind).not.toHaveBeenCalled();
+  });
+
+  it("if the kind change finds nothing to change (lost a race), it is server_not_agent and the agent is NOT released", async () => {
+    const { service, releaseAgent } = arrange();
+    repo.switchToLocalKind.mockResolvedValue(false);
+    expect(await service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("server_not_agent");
+    expect(releaseAgent).not.toHaveBeenCalled();
+  });
+
+  it("without the secrets key, or without the agent release wired, it is unavailable rather than half-done", async () => {
+    expect(await arrange({ ring: null }).service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("service_unavailable");
+    expect(await arrange({ releaseAgent: null }).service.switchToLocal(OPERATOR, "alex", body).catch(code)).toBe("service_unavailable");
+    expect(repo.createConnection).not.toHaveBeenCalled();
+  });
+
+  it("if building the polled runtime fails AFTER the commit, the error propagates (the database is the truth; startup rebuilds the runtime), and the agent runtime is already gone", async () => {
+    const { service, runtime, build } = arrange();
+    build.mockImplementation(() => {
+      throw new Error("build failed");
+    });
+    await expect(service.switchToLocal(OPERATOR, "alex", body)).rejects.toThrow("build failed");
+    expect(repo.switchToLocalKind).toHaveBeenCalledTimes(1); // committed
+    expect(runtime.has("alex")).toBe(false); // removed, not left half-swapped
+  });
+
+  it("the runtime guard still refuses a plain replace of the agent entry: the switch works only through remove + add", async () => {
+    const { runtime } = arrange();
+    await expect(runtime.replace({ id: "alex", displayName: "Alex", services: "polled", workers: [] })).rejects.toThrow(/Refusing to replace the agent runtime/);
   });
 });
 
