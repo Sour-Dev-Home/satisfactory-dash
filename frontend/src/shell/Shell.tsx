@@ -98,7 +98,7 @@ export function Shell() {
               className={({ isActive }) =>
                 [
                   // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
-                  "inline-flex min-h-[44px] flex-none items-center rounded-md px-2.5 font-medium sm:px-3 no-underline focus-visible:-outline-offset-2",
+                  "inline-flex min-h-touch flex-none items-center rounded-md px-2.5 font-medium sm:px-3 no-underline focus-visible:-outline-offset-2",
                   isActive ? "bg-surface-2 text-fg-strong" : "text-muted hover:text-fg-strong",
                 ].join(" ")
               }

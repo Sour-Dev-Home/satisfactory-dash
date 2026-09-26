@@ -299,7 +299,7 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
           })}
       </div>
       {keepsTokens && server?.frmTokenSet && (
-        <label className="flex min-h-[44px] items-center gap-2 text-sm">
+        <label className="flex min-h-touch items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={clearFrm}

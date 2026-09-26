@@ -64,7 +64,7 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
       <fieldset className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <legend className="sr-only">Layers</legend>
         {LAYERS.map((layer) => (
-          <label key={layer.id} className="flex min-h-[44px] items-center gap-2">
+          <label key={layer.id} className="flex min-h-touch items-center gap-2">
             <input type="checkbox" checked={visible.has(layer.id)} onChange={() => toggle(layer.id)} />
             {layer.label}
           </label>
@@ -74,7 +74,7 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
         <div key={layer.id}>{layer.legend()}</div>
       ))}
 
-      <Suspense fallback={<div className="grid h-[60svh] min-h-[320px] place-items-center rounded-card border border-line text-muted">Loading the map…</div>}>
+      <Suspense fallback={<div className="grid h-map min-h-map-min place-items-center rounded-card border border-line text-muted">Loading the map…</div>}>
         <MapCanvas config={GRID_BASE_MAP} layers={drawn} fitTo={fitTo} onView={setView} />
       </Suspense>
       <p className="text-sm text-muted">

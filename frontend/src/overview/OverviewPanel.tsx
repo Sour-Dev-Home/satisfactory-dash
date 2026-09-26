@@ -85,7 +85,7 @@ export function OverviewPanel({
               </span>
             </>
           );
-          const row = "flex min-h-[44px] items-center gap-4 px-5 py-4";
+          const row = "flex min-h-touch items-center gap-4 px-5 py-4";
           return (
             <li key={section.name}>
               {section.to ? (

@@ -68,7 +68,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
           {/* A link, not fetch: the backend answers with a redirect to Google. */}
           <a
             href={googleStartHref(pathname)}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-accent bg-accent px-[14px] font-semibold text-on-accent no-underline"
+            className="inline-flex min-h-touch items-center justify-center rounded-lg border border-accent bg-accent px-button-x font-semibold text-on-accent no-underline"
           >
             Sign in with Google
           </a>

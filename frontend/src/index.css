@@ -4,6 +4,8 @@
  * Design tokens: direction B2 (energy monitor + status page), picked by the owner in
  * ADR-0016 step 3. Dark only for now. Every UI PR is judged against these; add a token here
  * rather than a one-off hex value in a component.
+ * `npm run lint` (scripts/check-design-tokens.mjs) fails on raw colours, motion values, z-index
+ * and bracketed lengths outside this block.
  *
  * Status colors come in three strengths:
  *   --color-{ok,warn,bad,info}       text and marks on the dark surfaces
@@ -34,14 +36,36 @@
   --color-info-soft: rgb(122 156 255 / 0.13);
   --color-info-solid: #3d57b8;
   --color-idle-solid: #4b5563;
+  /* Borders and text on the soft status backgrounds (banners, the error notice). */
+  --color-bad-edge: rgb(242 86 77 / 0.35);
+  --color-bad-on-soft: #ff8a82;
+  --color-error-fg: #ffb3ad;
+  --color-warn-edge: rgb(227 163 43 / 0.35);
+  --color-warn-on-soft: #f0bd5c;
+  --color-info-edge: rgb(122 156 255 / 0.35);
+  --color-info-on-soft: #b4c5ff;
 
   --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 
   --radius-card: 10px;
+  --radius-control: 8px;
 
-  /* The smallest touch target (WCAG 2.5.5): buttons, links and rows people tap. */
-  --size-target: 44px;
+  /* Sizes (Tailwind's spacing namespace, so `min-h-touch`, `px-button-x`, `h-map`...). */
+  /* The smallest touch target (#62, WCAG 2.5.5): buttons, links and rows people tap. */
+  --spacing-touch: 44px;
+  /* Pulls a one-line link's 44 px target back to its line height, so the row keeps its rhythm. */
+  --spacing-touch-bleed: calc((var(--spacing-touch) - 1lh) / 2);
+  --spacing-button-x: 14px;
+  /* History chart placeholders, the measured chart heights: phone width wraps the legend. */
+  --spacing-chart-slot: 250px;
+  --spacing-chart-slot-phone: 279px;
+  --spacing-map: 60svh;
+  --spacing-map-min: 320px;
+  --spacing-overview-rail: 17rem;
+
+  /* Below this the Factory table stacks its rows (index.css and FactoryPanel). */
+  --breakpoint-table-rows: 601px;
 
   /* Overlays: the header's dropdowns sit above the page, fit any screen and scroll when long. */
   --z-popover: 10;
@@ -95,10 +119,10 @@
   }
   /* 44 px touch targets everywhere (#62). */
   button {
-    min-height: 44px;
-    padding-inline: 14px;
+    min-height: var(--spacing-touch);
+    padding-inline: var(--spacing-button-x);
     border: 1px solid var(--color-line);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--color-surface-2);
     color: var(--color-fg-strong);
     font-weight: 500;
@@ -119,10 +143,10 @@
   /* Selects look like the inputs beside them: the same 44 px target, border and background. */
   input:not([type="checkbox"]),
   select {
-    min-height: 44px;
+    min-height: var(--spacing-touch);
     padding-inline: 12px;
     border: 1px solid var(--color-line);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--color-canvas);
     color: var(--color-fg-strong);
   }
@@ -140,10 +164,10 @@
     outline-offset: 2px;
   }
   [role="alert"]:not(.banner) {
-    border: 1px solid rgb(242 86 77 / 0.35);
+    border: 1px solid var(--color-bad-edge);
     background: var(--color-bad-soft);
-    color: #ffb3ad;
-    border-radius: 8px;
+    color: var(--color-error-fg);
+    border-radius: var(--radius-control);
     padding: 12px 14px;
   }
   table {
@@ -209,7 +233,7 @@
   .circuits {
     display: grid;
     border: 1px solid var(--color-line);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
   }
   .circuits > li + li {
     border-top: 1px solid var(--color-line);
@@ -272,7 +296,7 @@
     gap: 10px;
     padding: 10px 14px;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     font-weight: 550;
   }
   .banner::before {
@@ -285,19 +309,19 @@
   }
   .banner-alarm {
     background: var(--color-bad-soft);
-    border-color: rgb(242 86 77 / 0.35);
-    color: #ff8a82;
+    border-color: var(--color-bad-edge);
+    color: var(--color-bad-on-soft);
   }
   .banner-warning {
     background: var(--color-warn-soft);
-    border-color: rgb(227 163 43 / 0.35);
-    color: #f0bd5c;
+    border-color: var(--color-warn-edge);
+    color: var(--color-warn-on-soft);
   }
   .banner-stale,
   .banner-paused {
     background: var(--color-info-soft);
-    border-color: rgb(122 156 255 / 0.35);
-    color: #b4c5ff;
+    border-color: var(--color-info-edge);
+    color: var(--color-info-on-soft);
   }
   [role="group"] {
     display: flex;
@@ -306,7 +330,7 @@
   }
   /* Stacked rows at phone width, for the Factory table. Not the power chart's legend (also a
      table) or its readings table, which scrolls in its own box instead. */
-  @media (max-width: 600px) {
+  @media (width < theme(--breakpoint-table-rows)) {
     .panel table:not(.readings, .u-legend) thead {
       display: none;
     }
@@ -356,9 +380,9 @@
 }
 /* 44 px touch targets (#62), in the dashboard's colours. */
 .map-canvas.leaflet-container .leaflet-bar a {
-  width: 44px;
-  height: 44px;
-  line-height: 44px;
+  width: var(--spacing-touch);
+  height: var(--spacing-touch);
+  line-height: var(--spacing-touch);
   background: var(--color-surface-2);
   color: var(--color-fg-strong);
   border-color: var(--color-line);
