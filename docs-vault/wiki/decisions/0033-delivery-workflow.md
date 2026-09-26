@@ -84,3 +84,16 @@ Status: accepted (owner, 2026-09-25: all of it, with the merge queue after the l
 ## Revisit when
 - The repo becomes private (merge queue then needs GitHub Enterprise Cloud), or another tool (e.g.
   changesets for releases) replaces the log.
+
+
+## Amendment 1 (2026-09-25): queue group size and workflow edits
+- The merge queue uses a **minimum and maximum** group size of 1. The `merge_group` payload names
+  only the last PR in a group, so `fresh-eyes-gate.yml` can vouch for exactly one PR.
+- A merge group runs the workflow files from the merge-group commit. A queued PR that edits
+  `.github/workflows/` or `scripts/fresh-eyes-gate*` therefore controls what those checks do. This is
+  the same trust as merging that PR: once merged, the edited workflows run on `main` with the same
+  token. So the control is the same as for merging. The coordinator enqueues such a PR only after the
+  architect has reviewed its workflow diff, and never enqueues a fork PR that touches `.github/`.
+- CODEOWNERS with a required code-owner review is not used. Every PR is authored by the single owner
+  account, so a required code-owner review could never be satisfied without a bypass. Revisit when
+  a second human maintainer exists.
