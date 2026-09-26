@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { historyPower24h } from "@satisfactory-dash/shared/fixtures";
-import { currentSession, fuseStretches, storedStats, toStoredChartData } from "./storedHistory";
+import { currentSession, fuseStretches, missingStretches, storedStats, toStoredChartData } from "./storedHistory";
 
 const history = historyPower24h.data;
 const newest = history.series[0];
@@ -97,5 +97,31 @@ describe("fuseStretches", () => {
 
   it("finds the fixture's tripped bucket", () => {
     expect(fuseStretches(newest.points, history.resolutionSeconds)).toHaveLength(1);
+  });
+});
+
+describe("missingStretches", () => {
+  const step = history.resolutionSeconds * 1000;
+  const t0 = newest.points[0].t;
+  const at = (t: number) => ({ ...newest.points[0], t });
+
+  it("spans from the end of the last recorded bucket to the next recorded one", () => {
+    const points = [at(t0), at(t0 + step), at(t0 + 4 * step), at(t0 + 6 * step)];
+    expect(missingStretches(points, history.resolutionSeconds)).toEqual([
+      { fromT: t0 + 2 * step, toT: t0 + 4 * step },
+      { fromT: t0 + 5 * step, toT: t0 + 6 * step },
+    ]);
+  });
+
+  it("is empty for consecutive buckets, one point, or none", () => {
+    expect(missingStretches([at(t0), at(t0 + step)], history.resolutionSeconds)).toEqual([]);
+    expect(missingStretches([at(t0)], history.resolutionSeconds)).toEqual([]);
+    expect(missingStretches([], history.resolutionSeconds)).toEqual([]);
+  });
+
+  it("matches the breaks toStoredChartData draws", () => {
+    const [xs, production] = toStoredChartData(newest.points, history.resolutionSeconds);
+    const breaks = xs.filter((_, i) => production[i] === null).map((x) => x * 1000);
+    expect(missingStretches(newest.points, history.resolutionSeconds).map((m) => m.fromT)).toEqual(breaks);
   });
 });

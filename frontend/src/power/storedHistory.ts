@@ -86,6 +86,17 @@ export function storedStats(points: readonly Point[]): { production: StoredRange
   return { production: range((p) => p.productionMW), consumption: range((p) => p.consumptionMW) };
 }
 
+/** Stretches with no bucket recorded between two recorded ones: [from, to) in ms. */
+export function missingStretches(points: readonly Point[], resolutionSeconds: number): { fromT: number; toT: number }[] {
+  const step = resolutionSeconds * 1000;
+  const stretches: { fromT: number; toT: number }[] = [];
+  points.forEach((p, i) => {
+    const previous = points[i - 1];
+    if (previous && p.t - previous.t > step) stretches.push({ fromT: previous.t + step, toT: p.t });
+  });
+  return stretches;
+}
+
 /** Stretches of consecutive buckets with the fuse tripped in some sample: [from, to) in ms. */
 export function fuseStretches(points: readonly Point[], resolutionSeconds: number): { fromT: number; toT: number }[] {
   const step = resolutionSeconds * 1000;

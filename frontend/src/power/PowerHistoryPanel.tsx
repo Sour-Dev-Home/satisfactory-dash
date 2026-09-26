@@ -40,10 +40,18 @@ function ChartPlaceholder() {
 }
 
 /** The lazily loaded chart with its placeholder: also used by the stored ranges (StoredPowerHistoryPanel). */
-export function ChartSlot({ data, pausedRanges }: { data: uPlot.AlignedData; pausedRanges: readonly PausedRange[] }) {
+export function ChartSlot({
+  data,
+  pausedRanges,
+  trippedRanges,
+}: {
+  data: uPlot.AlignedData;
+  pausedRanges: readonly PausedRange[];
+  trippedRanges?: readonly Pick<PausedRange, "fromT" | "toT">[];
+}) {
   return (
     <Suspense fallback={<ChartPlaceholder />}>
-      <PowerChart data={data} pausedRanges={pausedRanges} />
+      <PowerChart data={data} pausedRanges={pausedRanges} trippedRanges={trippedRanges} />
     </Suspense>
   );
 }

@@ -1,9 +1,19 @@
+import { Fragment } from "react";
 import type { HistoryPower } from "@satisfactory-dash/shared";
 import { formatMW, formatTime } from "../format";
 import { ChartSlot, RangeRow } from "./PowerHistoryPanel";
-import { currentSession, fuseStretches, RANGE_WORDS, storedStats, toStoredChartData } from "./storedHistory";
+import {
+  currentSession,
+  fuseStretches,
+  missingStretches,
+  RANGE_WORDS,
+  storedStats,
+  toStoredChartData,
+} from "./storedHistory";
 
 const iso = (t: number) => new Date(t).toISOString();
+/** Stored buckets have no paused stretches of their own: a pause is simply a missing bucket. */
+const NONE: readonly never[] = [];
 
 /** Bucket length in words, e.g. "5-minute" or "1-day" averages. */
 function bucketWords(seconds: number): string {
@@ -24,16 +34,24 @@ export function StoredPowerHistoryPanel({ history }: { history: HistoryPower }) 
       <h3 id="power-history-heading">{RANGE_WORDS[history.range]}</h3>
       <p className="text-sm text-muted">
         {bucketWords(history.resolutionSeconds)} averages. A break in a line means nothing was recorded then (the game
-        was paused or the server couldn't be reached).
+        was paused or the server couldn't be reached); a lone reading between breaks is a dot. Red shading marks a
+        tripped fuse.
       </p>
       {shown.length === 0 ? (
         <p>No power history recorded in this range yet.</p>
       ) : (
         shown.map((series) => {
           const stats = storedStats(series.points);
+          const fuse = fuseStretches(series.points, history.resolutionSeconds);
+          const missing = missingStretches(series.points, history.resolutionSeconds);
+          const gapBefore = new Map(missing.map((m) => [m.toT, m]));
+          const newestTripped = (series.points.at(-1)?.fuseTrippedSamples ?? 0) > 0;
           return (
             <article key={series.circuit} aria-label={`Circuit ${series.circuit} history`} className="grid gap-3">
-              <h4>Circuit {series.circuit}</h4>
+              <h4 className="flex items-baseline gap-3">
+                Circuit {series.circuit}{" "}
+                {newestTripped &&<span className="badge text-bad">Fuse tripped</span>}
+              </h4>
               {stats && (
                 <dl className="flex flex-wrap gap-x-8 gap-y-2">
                   <RangeRow label="Production" range={{ current: stats.production.latest, ...stats.production }} />
@@ -43,9 +61,25 @@ export function StoredPowerHistoryPanel({ history }: { history: HistoryPower }) 
               {series.points.length < 2 ? (
                 <p className="text-sm text-muted">Only one reading in this range so far.</p>
               ) : (
-                <ChartSlot data={toStoredChartData(series.points, history.resolutionSeconds)} pausedRanges={[]} />
+                <ChartSlot
+                  data={toStoredChartData(series.points, history.resolutionSeconds)}
+                  pausedRanges={NONE}
+                  trippedRanges={fuse}
+                />
               )}
-              {fuseStretches(series.points, history.resolutionSeconds).map((s) => (
+              {missing.length > 0 && (
+                <p className="text-sm text-muted">
+                  No data recorded:{" "}
+                  {missing.map((m, i) => (
+                    <span key={m.fromT}>
+                      {i > 0 && ", "}
+                      <time dateTime={iso(m.fromT)}>{formatTime(iso(m.fromT))}</time> to{" "}
+                      <time dateTime={iso(m.toT)}>{formatTime(iso(m.toT))}</time>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {fuse.map((s) => (
                 <p key={s.fromT} className="text-sm text-bad">
                   Fuse tripped between <time dateTime={iso(s.fromT)}>{formatTime(iso(s.fromT))}</time> and{" "}
                   <time dateTime={iso(s.toT)}>{formatTime(iso(s.toT))}</time>.
@@ -65,17 +99,32 @@ export function StoredPowerHistoryPanel({ history }: { history: HistoryPower }) 
                       </tr>
                     </thead>
                     <tbody>
-                      {series.points.map((p) => (
-                        <tr key={p.t}>
-                          <th scope="row">
-                            <time dateTime={iso(p.t)}>{formatTime(iso(p.t))}</time>
-                          </th>
-                          <td>{formatMW(p.productionMW.avg)}</td>
-                          <td>{formatMW(p.consumptionMW.avg)}</td>
-                          <td>{formatMW(p.capacityMW)}</td>
-                          <td>{p.fuseTrippedSamples > 0 ? "Tripped" : "OK"}</td>
-                        </tr>
-                      ))}
+                      {series.points.map((p) => {
+                        const gap = gapBefore.get(p.t);
+                        return (
+                          <Fragment key={p.t}>
+                            {gap && (
+                              <tr>
+                                <th scope="row">
+                                  <time dateTime={iso(gap.fromT)}>{formatTime(iso(gap.fromT))}</time>
+                                </th>
+                                <td colSpan={4} className="text-muted">
+                                  No data recorded
+                                </td>
+                              </tr>
+                            )}
+                            <tr>
+                              <th scope="row">
+                                <time dateTime={iso(p.t)}>{formatTime(iso(p.t))}</time>
+                              </th>
+                              <td>{formatMW(p.productionMW.avg)}</td>
+                              <td>{formatMW(p.consumptionMW.avg)}</td>
+                              <td>{formatMW(p.capacityMW)}</td>
+                              {p.fuseTrippedSamples > 0 ? <td className="text-bad">Tripped</td> : <td>OK</td>}
+                            </tr>
+                          </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

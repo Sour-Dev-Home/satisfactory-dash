@@ -3,14 +3,25 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { PausedRange } from "@satisfactory-dash/shared";
 import { formatMW } from "../format";
+import { isolatedIndices } from "./chartGaps";
 
 const HEIGHT = 220;
+const NONE: readonly never[] = [];
 
 /** Legend value: "–" off the data (a gap), else MW like the rest of the page. */
 const mw = (_u: uPlot, value: number | null) => (value == null ? "–" : formatMW(value));
 
-/** Shades each paused stretch (ADR-0012), under the lines. */
-function shadePaused(u: uPlot, ranges: readonly PausedRange[], fill: string) {
+/** A time stretch in ms, [fromT, toT). */
+type Stretch = Pick<PausedRange, "fromT" | "toT">;
+
+/** A dot only for a reading with gaps on both sides (see isolatedIndices). */
+const isolatedPoints = (u: uPlot, seriesIdx: number) => isolatedIndices(u.data[seriesIdx]);
+
+/** A new object per series: uPlot writes its resolved settings back into it. */
+const dots = (): uPlot.Series.Points => ({ show: false, filter: isolatedPoints, size: 6 });
+
+/** Shades each stretch (paused per ADR-0012, or fuse tripped), under the lines. */
+function shade(u: uPlot, ranges: readonly Stretch[], fill: string) {
   const { ctx, bbox } = u;
   ctx.save();
   ctx.fillStyle = fill;
@@ -31,11 +42,21 @@ function shadePaused(u: uPlot, ranges: readonly PausedRange[], fill: string) {
  * uPlot sets styles only through the CSSOM and its CSS is a static file, so the strict
  * CSP (style-src 'self') holds; the e2e CSP guard checks that.
  */
-export function PowerChart({ data, pausedRanges }: { data: uPlot.AlignedData; pausedRanges: readonly PausedRange[] }) {
+export function PowerChart({
+  data,
+  pausedRanges,
+  trippedRanges = NONE,
+}: {
+  data: uPlot.AlignedData;
+  pausedRanges: readonly Stretch[];
+  /** Fuse-tripped stretches, shaded red (the stored view; the live view lists trips in text). */
+  trippedRanges?: readonly Stretch[];
+}) {
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   const initialData = useRef(data);
   const paused = useRef(pausedRanges);
+  const tripped = useRef(trippedRanges);
 
   useEffect(() => {
     const el = host.current;
@@ -56,15 +77,23 @@ export function PowerChart({ data, pausedRanges }: { data: uPlot.AlignedData; pa
         scales: { x: { time: true } },
         series: [
           {},
-          // Lines only, stock-chart style: no dot per sample. Legend values use the same
-          // formatter as the rest of the page (ADR-0006: rounded, never rescaled).
-          { label: "Production", stroke: token("--color-ok"), fill: token("--color-ok-soft"), width: 2, points: { show: false }, value: mw },
-          { label: "Consumption", stroke: token("--color-accent"), width: 2, points: { show: false }, value: mw },
-          { label: "Capacity", stroke: token("--color-muted"), width: 1, dash: [6, 4], points: { show: false }, value: mw },
+          // Lines only, stock-chart style: a dot only for a reading with gaps on both sides.
+          // Legend values use the same formatter as the rest of the page (ADR-0006: rounded,
+          // never rescaled).
+          { label: "Production", stroke: token("--color-ok"), fill: token("--color-ok-soft"), width: 2, points: dots(), value: mw },
+          { label: "Consumption", stroke: token("--color-accent"), width: 2, points: dots(), value: mw },
+          { label: "Capacity", stroke: token("--color-muted"), width: 1, dash: [6, 4], points: dots(), value: mw },
         ],
         axes: [axis(), { ...axis(), size: 72, values: (_u, ticks) => ticks.map((v) => `${v} MW`) }],
         cursor: { drag: { x: false, y: false } },
-        hooks: { drawClear: [(self) => shadePaused(self, paused.current, token("--color-info-soft"))] },
+        hooks: {
+          drawClear: [
+            (self) => {
+              shade(self, paused.current, token("--color-info-soft"));
+              shade(self, tripped.current, token("--color-bad-soft"));
+            },
+          ],
+        },
       },
       initialData.current,
       el,
@@ -86,10 +115,11 @@ export function PowerChart({ data, pausedRanges }: { data: uPlot.AlignedData; pa
   // Only when the ranges change after creation: uPlot's redraw() right after construction,
   // before its first draw, leaves the x scale unset for good (no lines, no time axis).
   useEffect(() => {
-    if (paused.current === pausedRanges) return;
+    if (paused.current === pausedRanges && tripped.current === trippedRanges) return;
     paused.current = pausedRanges;
+    tripped.current = trippedRanges;
     plot.current?.redraw();
-  }, [pausedRanges]);
+  }, [pausedRanges, trippedRanges]);
 
   // contain: inline-size, so the canvas's fixed pixel width never widens the grid around it;
   // the width comes from the container, and the ResizeObserver passes it to uPlot.

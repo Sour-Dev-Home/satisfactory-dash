@@ -7,6 +7,7 @@ import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { PowerHistorySection } from "./PowerHistorySection";
+import { missingStretches } from "./storedHistory";
 
 function renderSection() {
   return renderWithClient(
@@ -58,8 +59,45 @@ describe("PowerHistorySection", () => {
     choose("24 h");
     await screen.findByRole("heading", { name: "Last 24 hours" });
     expect(screen.getByText(/Fuse tripped between/)).toBeInTheDocument();
-    const rows = screen.getByRole("table").querySelectorAll("tbody tr");
-    expect(rows).toHaveLength(historyPower24h.data.series[0].points.length);
+    const { points } = historyPower24h.data.series[0];
+    const missing = missingStretches(points, historyPower24h.data.resolutionSeconds);
+    expect(missing.length).toBeGreaterThan(0);
+    const table = screen.getByRole("table");
+    // One row per bucket, plus one "No data recorded" row per gap.
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(points.length + missing.length);
+    expect(within(table).getAllByText("No data recorded")).toHaveLength(missing.length);
+    expect(within(table).getByText("Tripped")).toHaveClass("text-bad");
+  });
+
+  it("lists the stretches with no data in text, since the chart is hidden from screen readers", async () => {
+    renderSection();
+    choose("24 h");
+    await screen.findByRole("heading", { name: "Last 24 hours" });
+    expect(screen.getByText(/^No data recorded:/)).toBeInTheDocument();
+  });
+
+  it("badges the circuit when its newest bucket tripped the fuse", async () => {
+    expect(historyPower24h.data.series[0].points.at(-1)!.fuseTrippedSamples).toBeGreaterThan(0);
+    renderSection();
+    choose("24 h");
+    expect(await screen.findByRole("heading", { name: /Circuit \d+ Fuse tripped/ })).toBeInTheDocument();
+  });
+
+  it("has no fuse badge when the newest bucket is fine, even if an earlier one tripped", async () => {
+    const [first, ...rest] = historyPower24h.data.series;
+    const step = historyPower24h.data.resolutionSeconds * 1000;
+    const last = first.points.at(-1)!;
+    const recovered = { ...first, points: [...first.points, { ...last, t: last.t + step, fuseTrippedSamples: 0 }] };
+    server.use(
+      http.get(endpoints.history.power.route, () =>
+        HttpResponse.json({ ...historyPower24h, data: { ...historyPower24h.data, series: [recovered, ...rest] } }),
+      ),
+    );
+    renderSection();
+    choose("24 h");
+    await screen.findByRole("heading", { name: "Last 24 hours" });
+    expect(screen.getByText(/Fuse tripped between/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Fuse tripped/ })).not.toBeInTheDocument();
   });
 
   it("says so when the range has no recorded history yet", async () => {
