@@ -113,7 +113,7 @@ test("an added data-flow line under frontend/src fails, for every pattern of the
   }
 });
 
-test("the amendment's patterns are exactly the fourteen it lists", () => {
+test("the literal patterns are the amendment's thirteen plus the architect's four browser network APIs (`fetch(` is a regex, tested below)", () => {
   assert.deepEqual(DATA_FLOW, [
     "useQuery",
     "useInfiniteQuery",
@@ -122,14 +122,99 @@ test("the amendment's patterns are exactly the fourteen it lists", () => {
     "apiSend",
     "apiGet",
     "endpoints.",
-    "fetch(",
     "localStorage",
     "sessionStorage",
     "document.cookie",
     "indexedDB",
     "postMessage",
     "dangerouslySetInnerHTML",
+    "XMLHttpRequest",
+    "WebSocket",
+    "EventSource",
+    "sendBeacon",
   ]);
+});
+
+const failsWith = (line, expected) => {
+  const result = checkTier(pr([file("frontend/src/components/A.tsx", { patch: patchOf(line) })]));
+  assert.equal(result.ok, false, line);
+  assert.ok(result.problems[0].includes(expected), `${line} -> ${result.problems[0]}`);
+};
+const passes = (line) => assert.equal(checkTier(pr([file("frontend/src/components/A.tsx", { patch: patchOf(line) })])).ok, true, line);
+
+test("the four browser network APIs fail, in a call or a type position", () => {
+  failsWith("const xhr = new XMLHttpRequest();", "XMLHttpRequest");
+  failsWith("const socket = new WebSocket(url);", "WebSocket");
+  failsWith("const events = new EventSource('/stream');", "EventSource");
+  failsWith("navigator.sendBeacon(url, body);", "sendBeacon");
+  failsWith("let s: WebSocket | undefined;", "WebSocket");
+});
+
+test("`fetch` is matched with optional whitespace before the parenthesis, however it is spaced", () => {
+  for (const line of ["await fetch(url);", "await fetch (url);", "await fetch\t(url);", "await  fetch   (url);", "window.fetch (url)", "const again = refetch();", "return fetch(\n"]) {
+    failsWith(line, "fetch(");
+  }
+  // A word that only contains fetch, or a call on another line, is not a fetch call.
+  passes("const fetched = true;");
+  passes("// fetch the colours from the theme");
+  passes("const prefetchedTabs = new Set();");
+});
+
+test("an import of the data layer's package fails, in every import shape", () => {
+  for (const line of [
+    'import { QueryClient } from "@tanstack/react-query";',
+    "import type { QueryKey } from '@tanstack/react-query';",
+    'import * as rq from "@tanstack/react-query"',
+    '} from "@tanstack/react-query";',
+    'const rq = await import("@tanstack/react-query");',
+    'export { QueryClient } from "@tanstack/react-query";',
+  ]) {
+    failsWith(line, "@tanstack/react-query");
+  }
+  passes('import { Card } from "@tanstack/react-table";');
+});
+
+test("an import from a path with an /api or /auth segment fails, in every import shape and spelling", () => {
+  const expected = "an import from an api/ or auth/ path";
+  for (const line of [
+    'import { client } from "../api/client";',
+    "import { client } from '../../api/client';",
+    'import { client } from "./api";',
+    'import { client } from "../api";',
+    'import { session } from "@/auth/session";',
+    'import { session } from "../auth";',
+    '} from "../api/client";',
+    'import "../api/setup";',
+    'const client = await import("./api/client");',
+    'const client = require("../api/client");',
+    'export * from "../api/types";',
+    "import type { Session } from `../auth/session`;",
+  ]) {
+    failsWith(line, expected);
+  }
+});
+
+test("look-alike import paths and plain strings are not import-of-api findings", () => {
+  for (const line of [
+    'import { Card } from "./components/Card";',
+    'import { x } from "../capital/x";',
+    'import { x } from "./apiary";',
+    'import { x } from "./authors/list";',
+    'import { x } from "../rapid/x";',
+    'const label = "the api/ folder";',
+    "// see the /api/ docs",
+    'const path = "/api/servers";', // not an import: the call that would use it is caught by the other patterns
+    'import { x } from "./components/auth-badge";',
+  ]) {
+    passes(line);
+  }
+});
+
+test("the accepted limits are real, and named in the script: a split token or a case change is not seen", () => {
+  passes('const f = window["fe" + "tch"];');
+  passes("const s = localstorage;");
+  passes("const call = fet"); // a token split across two added lines: neither line has it
+  passes("ch(url);");
 });
 
 test("only ADDED lines count: a removed or unchanged line with a pattern does not fail", () => {
