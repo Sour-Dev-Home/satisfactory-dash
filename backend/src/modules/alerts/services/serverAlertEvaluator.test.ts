@@ -311,6 +311,15 @@ describe("stopped_machines (grouped)", () => {
     expect(transitions(sim.at(11.5, { machines: [stoppedMachine("a")] }))).toEqual(["group:fired"]);
   });
 
+  it("an underfed or backedUp machine with no output percent is unknown: it holds its run, it does not end it", () => {
+    for (const state of ["underfed", "backedUp"]) {
+      const sim = new Sim([stopped]);
+      run(sim, 0, 3, { machines: [machine("a", state, 0)] });
+      run(sim, 3.5, 4.5, { machines: [machine("a", state, undefined)] });
+      expect(transitions(sim.at(5, { machines: [machine("a", state, 0)] }))).toEqual(["group:fired"]);
+    }
+  });
+
   it("an undecidable machine (no state) holds its last condition instead of breaking the run", () => {
     const sim = new Sim([stopped]);
     run(sim, 0, 3, { machines: [stoppedMachine("a")] });
