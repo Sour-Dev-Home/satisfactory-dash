@@ -19,9 +19,15 @@ export function commandPhase(status: string): CommandPhase {
  */
 export const EXPIRY_GRACE_MS = 5_000;
 
-/** Milliseconds until the page stops waiting for this command (never negative). */
+/** The longest delay setTimeout honours (about 24.8 days); anything longer fires at once. */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/**
+ * Milliseconds until the page stops waiting for this command: never negative, and never past what
+ * setTimeout can wait (a far-off expiry would otherwise overflow and give up at once).
+ */
 export function msUntilGiveUp(command: Pick<Command, "expiresAt">, now: number): number {
-  return Math.max(0, Date.parse(command.expiresAt) + EXPIRY_GRACE_MS - now);
+  return Math.min(MAX_TIMEOUT_MS, Math.max(0, Date.parse(command.expiresAt) + EXPIRY_GRACE_MS - now));
 }
 
 export const EXPIRED_TEXT = "The game PC didn't answer in time; the setting didn't change.";
