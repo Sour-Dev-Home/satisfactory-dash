@@ -1,4 +1,5 @@
 import type { ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
+import { cn } from "../../lib/cn";
 import { MAX_FIGURES, MAX_NAMES, playersText } from "./players";
 import { StickFigure } from "./StickFigure";
 
@@ -55,10 +56,15 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
   return (
     <>
       <div className="flex items-end gap-1.5">
-        {/* Twelve figures don't fit one row on a phone: two even rows of six there, not 10 + 2. */}
-        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end">
+        {/* Twelve figures don't fit one row on a phone: two even rows of six there, not 10 + 2.
+            From md up the card is as tall as the Health square beside it: bigger figures fill it. */}
+        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end md:gap-2.5">
           {Array.from({ length: slots }, (_, i) => (
-            <StickFigure key={i} filled={i < filled} className={i < filled ? "text-fg-strong" : "text-muted"} />
+            <StickFigure
+              key={i}
+              filled={i < filled}
+              className={cn("md:h-13.5 md:w-9", i < filled ? "text-fg-strong" : "text-muted")}
+            />
           ))}
         </div>
         {more > 0 && (

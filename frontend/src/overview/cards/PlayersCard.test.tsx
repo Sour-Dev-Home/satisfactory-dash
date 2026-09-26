@@ -138,6 +138,13 @@ describe("PlayersCard names (ADR-0029)", () => {
     expect(screen.getByText("and 3 more")).toBeInTheDocument();
   });
 
+  it("names every player on a full server of the default 12, one per figure", () => {
+    const full = { available: true, players: Array.from({ length: 12 }, (_, i) => ({ name: `P${i}`, online: true })) };
+    render(<PlayersCard state={running({ connectedPlayers: 12, playerLimit: 12 })} roster={full} />);
+    expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(12);
+    expect(screen.queryByText(/^and \d+ more$/)).not.toBeInTheDocument();
+  });
+
   it("renders a name as text, never as HTML, and allows duplicate names", () => {
     const roster = { available: true, players: [{ name: "<b>X</b>", online: true }, { name: "<b>X</b>", online: true }] };
     const { container } = render(<PlayersCard state={running({ connectedPlayers: 2 })} roster={roster} />);
