@@ -36,11 +36,17 @@ export function FactoryView() {
     const timer = setTimeout(() => setGraceOverFor(server.id), REVEAL_GRACE_MS);
     return () => clearTimeout(timer);
   }, [server.id]);
+  // The grace is only for a page that had to load the factory anyway. When the factory is already
+  // cached (a tab switch), the page shows at once: its box is reserved, and waiting would only
+  // turn a still page into a late reveal.
+  const [loadedFactoryFor, setLoadedFactoryFor] = useState<string>();
+  if (factory.isPending && loadedFactoryFor !== server.id) setLoadedFactoryFor(server.id);
   // Once shown, the page stays shown for that server. A failed read goes back to pending when
   // "Since yesterday" mounts and retries it, which would otherwise hide the page and loop.
   const [revealedFor, setRevealedFor] = useState<string>();
   const sinceSettled = !sinceHistory.isPending && !sinceTransitions.isPending;
-  const ready = !factory.isPending && (sinceSettled || graceOverFor === server.id);
+  const mayWait = loadedFactoryFor === server.id && graceOverFor !== server.id;
+  const ready = !factory.isPending && (sinceSettled || !mayWait);
   if (ready && revealedFor !== server.id) setRevealedFor(server.id);
 
   if (factory.isPending || (!ready && revealedFor !== server.id)) {

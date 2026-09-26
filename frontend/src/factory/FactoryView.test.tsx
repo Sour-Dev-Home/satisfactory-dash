@@ -111,6 +111,30 @@ describe("FactoryView", () => {
     expect(screen.getByText("Loading what changed since yesterday…")).toBeInTheDocument();
   });
 
+  // A tab switch with the factory already cached (the Overview reads it): nothing to wait for, since
+  // the box is reserved. A grace here would only turn a still page into a late reveal (ADR-0032).
+  it("shows the table at once, without the grace, when the factory is already cached", async () => {
+    holdSinceYesterday();
+    function OpenLater() {
+      const [open, setOpen] = useState(false);
+      return open ? (
+        <ServerContext value={serversSingle.servers[0]}>
+          <FactoryView />
+        </ServerContext>
+      ) : (
+        <button type="button" onClick={() => setOpen(true)}>
+          Open Factory
+        </button>
+      );
+    }
+    const { client } = renderWithClient(<OpenLater />);
+    await client.prefetchQuery(queries.factory(serversSingle.servers[0].id));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Factory" }));
+    expect(screen.getByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(screen.getByText("Loading what changed since yesterday…")).toBeInTheDocument();
+  });
+
   it("fills 'Since yesterday' in its box once its late read lands, with the table already shown", async () => {
     const release = holdSinceYesterday();
     renderView();

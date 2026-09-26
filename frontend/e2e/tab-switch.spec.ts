@@ -61,6 +61,9 @@ async function watchShifts(page: Page): Promise<void> {
       return `${node.tagName.toLowerCase()} "${text}"`;
     };
     w.__shifts = [];
+    // The report's timeline reads resource timings; the default buffer (250) fills up on a long run.
+    performance.clearResourceTimings();
+    performance.setResourceTimingBufferSize(5_000);
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as unknown as { startTime: number; value: number; sources: Source[] }[]) {
         w.__shifts.push({
