@@ -2,6 +2,9 @@ import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentStatusResponse } from "@satisfactory-dash/shared";
 import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
+// The API origin through the transport (never import.meta.env here): the demo build swaps the
+// transport, so its bundle never carries the real API's URL (e2e/build-output.spec.ts).
+import { apiHref } from "../api/client";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
@@ -168,7 +171,7 @@ export function AgentPanel({
           {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"). Whether --replace is
               needed depends on what the PC has stored, which the dashboard can't see, so it's only named. */}
           <p className="mb-0 font-mono text-sm break-words">
-            node agent.cjs enroll {code.code} --url {agentBackendUrl(import.meta.env.VITE_API_URL)}
+            node agent.cjs enroll {code.code} --url {agentBackendUrl(apiHref(""))}
           </p>
           <p className="mb-0 text-sm text-muted">
             If this PC was enrolled before (or the agent was revoked), add <code>--replace</code>.

@@ -31,7 +31,7 @@ export function canCreateCode(kind: string, role: ServerSummary["role"], isOpera
 }
 
 /**
- * The backend address for the agent's `--url`: the frontend's configured API origin (VITE_API_URL) when
+ * The backend address for the agent's `--url`: the frontend's configured API origin (`apiHref("")`) when
  * it has one, so the command can be pasted as is. In development (Vite proxies only /api, not the
  * agent's /agent/v1) and in the demo it's empty, so the placeholder stays.
  */
