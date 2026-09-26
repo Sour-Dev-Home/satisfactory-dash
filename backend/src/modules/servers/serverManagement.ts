@@ -14,7 +14,7 @@ import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
 import { AddressRefusedError, isAllowedAddress, isLoopbackAddress, resolveAllowedAddress } from "./addressGuard.js";
 import type { AddressLookup } from "./addressGuard.js";
-import { MAX_LOCAL_SERVERS } from "./importServers.js";
+import { MAX_LOCAL_SERVERS, TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
 import { addMember } from "./repositories/memberRepository.js";
 import {
   countConnections,
@@ -91,12 +91,19 @@ export interface ServerManagementService {
 const LAST4_MIN_LENGTH = 12;
 const last4 = (token: string): string | null => (token.length >= LAST4_MIN_LENGTH ? token.slice(-4) : null);
 
-const TAKE_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext('satis.server_management'))";
+const TAKE_ADVISORY_LOCK = TAKE_SERVER_MANAGEMENT_LOCK;
 
 function refusedAddress(): ApiFailure {
   return new ApiFailure(
     "address_not_allowed",
     "That host is not a loopback or private (LAN) address, or it could not be resolved.",
+  );
+}
+
+function importRequired(): ApiFailure {
+  return new ApiFailure(
+    "import_required",
+    "Servers are still configured in the environment and none is stored yet. Import them first (npm run admin -- import-servers; see the servers runbook) or remove those variables, then add more.",
   );
 }
 
@@ -196,9 +203,9 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       const meta = await requireMeta(publicId);
       // The host must still resolve to allowed addresses; the test then uses the STORED pinned address
       // (what the backend really connects to), never a fresh answer for the name.
-      await pin(meta.host);
-      // A stored address that is not allowed is never connected to, not even to test it.
+      // A stored address that is not allowed is never connected to, not even to test it (checked before any lookup).
       if (!isAllowedAddress(meta.pinnedIp)) throw refusedAddress();
+      await pin(meta.host);
       const tokens = await openTokens(ring, meta);
       if (tokens === undefined) throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
       return deps.testConnection({ pinnedIp: meta.pinnedIp, apiPort: meta.apiPort, frmPort: meta.frmPort, ...tokens });
@@ -221,12 +228,9 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const ring = ringOrUnavailable();
         // While the servers still come from the environment and none is stored, adding one would make the
         // database win at the next restart and silently drop them: the import comes first.
-        if ((deps.configuredServerEnvNames?.() ?? []).length > 0 && (await countConnections(deps.db)) === 0) {
-          throw new ApiFailure(
-            "import_required",
-            "Servers are still configured in the environment. Import them first (npm run admin -- import-servers; see the servers runbook), then add more.",
-          );
-        }
+        // Checked here for an early answer, and again under the advisory lock below (the import CLI takes the same lock).
+        const envConfigured = (deps.configuredServerEnvNames?.() ?? []).length > 0;
+        if (envConfigured && (await countConnections(deps.db)) === 0) throw importRequired();
         const pinnedIp = await pin(input.host);
         const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
         if (!test.ok) throw testFailure(test);
@@ -234,7 +238,9 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         const serverId = await withTransaction(deps.db, async (client) => {
           // Serialises the count and the insert across processes and instances; released at COMMIT.
           await client.query(TAKE_ADVISORY_LOCK);
-          if ((await countConnections(client)) >= MAX_LOCAL_SERVERS) {
+          const stored = await countConnections(client);
+          if (envConfigured && stored === 0) throw importRequired();
+          if (stored >= MAX_LOCAL_SERVERS) {
             throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
           }
           if ((await findServerByPublicId(client, input.id)) !== undefined) {
@@ -274,7 +280,6 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     update(actorUserId, publicId, patch) {
       return mutex.run(async () => {
-        const ring = ringOrUnavailable();
         const meta = await requireMeta(publicId);
         const touchesConnection =
           patch.host !== undefined ||
@@ -288,10 +293,12 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
           const displayName = patch.displayName ?? meta.displayName;
           if (!(await renameServer(deps.db, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
           deps.runtime.rename(publicId, displayName);
-          const renamed = { ...meta, displayName };
-          return viewOf(renamed, await openTokens(ring, renamed));
+          // viewFor, not openTokens: a refused address's tokens are never opened.
+          return viewFor({ ...meta, displayName });
         }
 
+        // Anything that touches the connection re-seals the tokens, so it needs the key.
+        const ring = ringOrUnavailable();
         const host = patch.host ?? meta.host;
         const pinnedIp = await pin(host);
         const opened = await openTokens(ring, meta);

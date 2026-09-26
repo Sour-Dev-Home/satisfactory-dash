@@ -383,6 +383,13 @@ describe("the management list and the states (unreadable, refused)", () => {
     expect(repo.getConnection).not.toHaveBeenCalled();
   });
 
+  it("a rename alone of a refused row stays refused and never opens its tokens", async () => {
+    repo.getConnectionMetaByPublicId.mockResolvedValue(tampered);
+    const view = await setup().service.update(OPERATOR, "tampered", { displayName: "New" });
+    expect(view).toMatchObject({ state: "refused", displayName: "New", apiTokenLast4: null });
+    expect(repo.getConnection).not.toHaveBeenCalled();
+  });
+
   it("is empty when nothing is stored", async () => {
     repo.listConnectionMetas.mockResolvedValue([]);
     expect(await setup().service.list()).toEqual([]);
@@ -429,6 +436,23 @@ describe("remove without a keyring, and create before the import", () => {
     expect((err as ApiFailure).message).toContain("import-servers");
     expect(testConnection).not.toHaveBeenCalled();
     expect(repo.upsertConfiguredServer).not.toHaveBeenCalled();
+  });
+
+  it("re-checks the import gate under the advisory lock (an import that lands after the early check is not missed)", async () => {
+    // Early check sees a stored connection (an import just landed), the locked count sees none: the locked one decides.
+    repo.countConnections.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    const { service } = setup({ envNames: ["SATISFACTORY_SERVER_HOST"] });
+    const err = await service.create(OPERATOR, createInput).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("import_required");
+    expect(repo.clientQueries[0]).toContain("pg_advisory_xact_lock");
+    expect(repo.createConnection).not.toHaveBeenCalled();
+  });
+
+  it("a rename alone works without a keyring (it re-seals nothing)", async () => {
+    const { service } = setup({ ring: null });
+    expect(await service.update(OPERATOR, "home", { displayName: "Renamed" })).toMatchObject({ displayName: "Renamed", state: "unreadable" });
+    const err = await setup({ ring: null }).service.update(OPERATOR, "home", { apiPort: 9999 }).catch((e: unknown) => e);
+    expect((err as ApiFailure).code).toBe("service_unavailable");
   });
 
   it("create is allowed once something is stored (the database already wins), or when nothing is configured in the environment", async () => {

@@ -10,12 +10,13 @@ const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
 function fakePool(existingConnections: string[] = []) {
   const connections = new Map<string, unknown[]>(existingConnections.map((id) => [id, []]));
   const serverIds = new Map<string, string>();
-  const state = { began: 0, committed: 0, rolledBack: 0 };
+  const state = { began: 0, committed: 0, rolledBack: 0, texts: [] as string[] };
   const client = {
     on: () => client,
     removeListener: () => client,
     release: () => undefined,
     async query(text: string, values: unknown[] = []) {
+      state.texts.push(text);
       if (text.startsWith("BEGIN")) state.began++;
       if (text.startsWith("COMMIT")) state.committed++;
       if (text.startsWith("ROLLBACK")) state.rolledBack++;
@@ -70,6 +71,15 @@ describe("importServers", () => {
     expect([host, pinnedIp, apiPort, frmPort, keyId]).toEqual(["localhost", "127.0.0.1", 7777, 8080, "k1"]);
     expect(frmEnc).toBeNull();
     expect((apiEnc as Buffer).includes(Buffer.from("api-token-for-b"))).toBe(false);
+  });
+
+  it("takes the server-management advisory lock first (the create route takes the same one)", async () => {
+    const { pool, state } = fakePool();
+    await importServers(pool, ring, [configured("a")], resolve);
+    const lockIndex = state.texts.findIndex((text) => text.includes("pg_advisory_xact_lock"));
+    const firstInsert = state.texts.findIndex((text) => text.includes("INSERT INTO servers.servers"));
+    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(lockIndex).toBeLessThan(firstInsert);
   });
 
   it("is idempotent: a server that already has a connection is skipped, not overwritten", async () => {
