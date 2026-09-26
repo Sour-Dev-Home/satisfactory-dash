@@ -128,11 +128,22 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
   const shows = SHOWS[mode.kind];
   const server = mode.kind === "create" ? undefined : mode.server;
 
+  // The token travels through these refs, not as a mutation's `variables`: TanStack keeps a
+  // mutation's variables in its cache for minutes (see LoginForm.tsx), and a token shouldn't
+  // live there any more than a password should. Each ref is cleared as soon as its request is
+  // built, and the two are separate so a save and a test in flight together can't clobber it.
+  const pendingSave = useRef<Record<string, unknown> | null>(null);
+  const pendingTest = useRef<Record<string, unknown> | null>(null);
+
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      mode.kind === "create"
+    mutationFn: () => {
+      const body = pendingSave.current;
+      pendingSave.current = null;
+      if (!body) throw new Error("save submitted without a body");
+      return mode.kind === "create"
         ? apiSend(endpoints.serverManagement.create, body as never)
-        : apiSend(endpoints.serverManagement.update, body as never, mode.server.id),
+        : apiSend(endpoints.serverManagement.update, body as never, mode.server.id);
+    },
     onSuccess: async ({ server: saved }) => {
       await Promise.all([
         client.invalidateQueries({ queryKey: MANAGED_KEY }),
@@ -142,7 +153,12 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
     },
   });
   const test = useMutation({
-    mutationFn: (body: Record<string, unknown>) => apiSend(endpoints.serverManagement.testConnection, body as never),
+    mutationFn: () => {
+      const body = pendingTest.current;
+      pendingTest.current = null;
+      if (!body) throw new Error("test submitted without a body");
+      return apiSend(endpoints.serverManagement.testConnection, body as never);
+    },
     onSuccess: setTested,
   });
 
@@ -172,13 +188,19 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
       return;
     }
     const schema = mode.kind === "create" ? CreateServerRequestSchema : UpdateServerRequestSchema;
-    if (validated(schema, body)) save.mutate(body);
+    if (validated(schema, body)) {
+      pendingSave.current = body;
+      save.mutate();
+    }
   }
 
   function runTest() {
     const body = bodyFor({ kind: "create" }, values, false)!;
     const { id: _id, displayName: _name, ...connection } = body;
-    if (validated(TestConnectionRequestSchema, connection)) test.mutate(connection);
+    if (validated(TestConnectionRequestSchema, connection)) {
+      pendingTest.current = connection;
+      test.mutate();
+    }
   }
 
   const field = (name: Field, label: string, extra: { hint?: ReactNode; password?: boolean; numeric?: boolean } = {}) => {

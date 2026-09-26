@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
@@ -146,6 +146,33 @@ describe("ServerManagementView: adding", () => {
     expect(bodies).toEqual([]);
   });
 
+  it.each(["7777.5", "0x1F", "", "-1", "1e3"])(
+    "rejects a port of %j instead of coercing it to a number",
+    async (rawPort) => {
+      const bodies = capture("post", endpoints.serverManagement.create.route, () => HttpResponse.json({}));
+      await openAdd();
+      fillValid();
+      type("Game API port", rawPort);
+      fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+      expect(screen.getByText("Enter a port from 1 to 65535.")).toBeInTheDocument();
+      expect(bodies).toEqual([]);
+    },
+  );
+
+  it("trims surrounding whitespace from a port before parsing it", async () => {
+    const bodies = capture("post", endpoints.serverManagement.create.route, () =>
+      HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
+    );
+    await openAdd();
+    fillValid();
+    type("Game API port", " 7777 ");
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+    await screen.findByText("Added Second world.");
+    expect(bodies).toEqual([
+      { id: "second", displayName: "Second world", host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-value" },
+    ]);
+  });
+
   it("says a reserved id is reserved", async () => {
     await openAdd();
     fillValid();
@@ -209,6 +236,89 @@ describe("ServerManagementView: adding", () => {
     await openAdd();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Game servers" })).toHaveFocus());
+  });
+
+  it("sends only one request for two submits that land before React re-renders", async () => {
+    // Unlike LoginForm and LogoutButton, ServerForm has no `client.isMutating(...)` guard, and
+    // save.isPending only updates on the next render, so nothing stops the handler itself from
+    // running twice for two fast submits. It's still safe: the second run's mutationFn finds
+    // `pendingSave.current` already cleared by the first and throws before ever calling apiSend,
+    // so only one request reaches the network. That's incidental to how the ref is cleared, not
+    // a deliberate guard, so this pins the behavior down.
+    const bodies = capture("post", endpoints.serverManagement.create.route, () =>
+      HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
+    );
+    await openAdd();
+    fillValid();
+    const form = screen.getByRole("button", { name: "Add server" }).closest("form")!;
+    // A single outer act() batches both submits before React flushes any state update, the same
+    // way two fast physical clicks in a browser can both land before a re-render disables the button.
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    await screen.findByText("Added Second world.");
+    expect(bodies.length).toBe(1);
+  });
+});
+
+describe("ServerManagementView: keeping tokens out of the mutation cache", () => {
+  // LoginForm (src/auth/LoginForm.tsx) deliberately keeps the password out of `mutate()`'s
+  // variables because TanStack Query keeps a mutation's variables in its cache for minutes
+  // (see its comment). ServerForm's save and test-connection mutations pass the token straight
+  // as `mutate(body)`, so it lands in `client.getMutationCache()` the same way the password would.
+  async function openAdd(client: ReturnType<typeof renderView>["client"]) {
+    fireEvent.click(await screen.findByRole("button", { name: "Add a server" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Add a server" })).toHaveFocus());
+    void client;
+  }
+
+  it("does not keep the API token in the mutation cache after adding a server", async () => {
+    server.use(
+      http.post(endpoints.serverManagement.create.route, () =>
+        HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
+      ),
+    );
+    const { client } = renderView();
+    await openAdd(client);
+    type("Server id", "second");
+    type("Name", "Second world");
+    type("Game API token", "secret-api-token");
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+    await screen.findByText("Added Second world.");
+
+    const mutations = client.getMutationCache().getAll();
+    expect(mutations.length).toBeGreaterThan(0);
+    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("secret-api-token");
+  });
+
+  it("does not keep the API token in the mutation cache after testing a new connection", async () => {
+    server.use(http.post(endpoints.serverManagement.testConnection.route, () => HttpResponse.json(testConnectionApiUnauthorized)));
+    const { client } = renderView();
+    await openAdd(client);
+    type("Server id", "second");
+    type("Name", "Second world");
+    type("Game API token", "secret-api-token");
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByText("Connection test failed.");
+
+    const mutations = client.getMutationCache().getAll();
+    expect(mutations.length).toBeGreaterThan(0);
+    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("secret-api-token");
+  });
+
+  it("does not keep a re-entered token in the mutation cache after editing a server", async () => {
+    server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer })));
+    const { client } = renderView();
+    await screen.findByRole("list", { name: "Game servers" });
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Edit" }));
+    type("Game API token", "secret-edit-token");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(`Saved ${okServer.displayName}.`);
+
+    const mutations = client.getMutationCache().getAll();
+    expect(mutations.length).toBeGreaterThan(0);
+    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("secret-edit-token");
   });
 });
 
