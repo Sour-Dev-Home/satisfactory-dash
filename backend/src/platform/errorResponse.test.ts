@@ -242,6 +242,24 @@ describe("error middleware (ADR-0003 envelope)", () => {
     expect(res.body.error.code).toBe("bad_request");
   });
 
+  // ADR-0030 security review (L1): body-parser's SyntaxError message quotes a snippet of the body, which on a
+  // management route can be part of a token. Neither the log nor a development response may carry it.
+  it("never logs or returns a fragment of a rejected request body", async () => {
+    process.env.NODE_ENV = "development";
+    const { app, lines } = appThrowing(unreachable());
+    const secret = "tok-SECRET-fragment-1234567890";
+    // An unquoted value makes V8 quote the surrounding text in its message; a missing comma (the earlier
+    // body here) does not, which made the SECRET assertions below pass even on the unfixed code.
+    const body = `{"apiToken": ${secret}}`;
+    expect(() => JSON.parse(body)).toThrow(/SECRET/);
+    const res = await request(app).post("/api/echo").set("Content-Type", "application/json").send(body);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).not.toContain("SECRET");
+    expect(lines.length).toBeGreaterThan(0);
+    expect(JSON.stringify(lines)).not.toContain("SECRET");
+    expect(lines.some((line) => String(line.detail).startsWith("request rejected: entity.parse.failed (400)"))).toBe(true);
+  });
+
   // Found by PR #13's fresh-eyes review: body-parser 4xx errors were all flattened
   // to 400. Each now has its own code, and each code keeps one status (ADR-0003).
   // Found by PR #16's fresh-eyes review: Express's router throws a URIError with a

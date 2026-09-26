@@ -77,8 +77,10 @@ built around them than to set up correctly now, while the codebase is still smal
 - `docs-vault/raw-sources/` — immutable. Saved copies of official docs, captured API
   responses, SML references. Never edit these, only add to them.
 - `docs-vault/wiki/` — living, AI-maintained notes derived from raw-sources: summaries,
-  the data-gap analysis, decisions. `index.md` catalogs every page; `log.md` is an
-  append-only record of what changed and when.
+  the data-gap analysis, decisions. `index.md` catalogs every page; `log.md` is the frozen
+  record of what changed and when up to 2026-09-25, and every PR since adds one fragment
+  file `log.d/<YYYY-MM-DD>-<branch-slug>.md` instead (ADR-0033; CI enforces it, and
+  `npm run log` prints the whole log in order). Never edit `log.md` or an existing fragment.
 
 ## Legal
 
@@ -143,7 +145,7 @@ so it reviews with genuinely no memory of why the code was built a certain way.
 
 ## Drafting PR descriptions and log entries with the local model
 
-Before writing a PR description or a `docs-vault/wiki/log.md` entry for a non-trivial PR,
+Before writing a PR description or a `docs-vault/wiki/log.d/` fragment for a non-trivial PR,
 save the diff to a temp file (e.g. `git diff origin/main...HEAD > "$TMPDIR/pr.diff"`) and
 call the `local-worker` MCP tool `local_llm` on it, e.g. "Summarize what behavior changed
 per source file, list new exports, and note any config or contract changes." Use the

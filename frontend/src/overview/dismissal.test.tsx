@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { factoryEmpty, powerAtRisk, powerOutage, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { factoryEmpty, powerAtRisk, powerOutage, serversSingle, statusSlow } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -81,6 +81,45 @@ describe("dismissing the warnings banner", () => {
     server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerAtRisk)));
     await refetchAll(client);
     expect(await screen.findByText("Running with warnings")).toBeInTheDocument();
+  });
+
+  it("comes back when the tick turns slow, even though the tick has no row of its own", async () => {
+    const { client } = renderOverview();
+    fireEvent.click(await screen.findByRole("button", DISMISS));
+
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)));
+    await refetchAll(client);
+    // With the tick among the warnings, the headline names the causes (the owner's option A).
+    expect(await screen.findByText("Server tick is slow · Factory backed up")).toBeInTheDocument();
+  });
+
+  it("stays dismissed across a refetch that reports the exact same tick warning again", async () => {
+    server.use(
+      http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)),
+      http.get(endpoints.factory.route, () => HttpResponse.json(factoryEmpty)),
+    );
+    const { client } = renderOverview();
+    fireEvent.click(await screen.findByRole("button", DISMISS));
+    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+
+    // Only the tick is warning here, and it comes back with the same health both times: the
+    // dismissal must survive, since nothing about the warning itself changed.
+    await refetchAll(client);
+    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+  });
+
+  it("keeps a tick warning dismissed through a failed background refetch (data wins over error)", async () => {
+    server.use(
+      http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)),
+      http.get(endpoints.factory.route, () => HttpResponse.json(factoryEmpty)),
+    );
+    const { client } = renderOverview();
+    fireEvent.click(await screen.findByRole("button", DISMISS));
+    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json({ error: "boom" }, { status: 500 })));
+    await act(() => client.refetchQueries({ type: "active" }).catch(() => undefined));
+    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
   });
 
   it("can't hide an outage, and an outage shows even after a dismissal", async () => {

@@ -12,9 +12,13 @@ added or removed.
 - [`runbooks/backups.md`](./runbooks/backups.md) — the nightly encrypted database backup (pg_dump, age,
   put-only S3 upload): the owner's one-time AWS and age setup, a local trial without AWS, and the
   restore rehearsal (ADR-0025 decision 7).
+- [`log.md`](./log.md) and [`log.d/`](./log.d/README.md) — the wiki's change log: `log.md` is frozen at
+  2026-09-25 and each PR since adds one fragment file in `log.d/` (ADR-0033); `npm run log` prints both in order.
 - [`runbooks/servers.md`](./runbooks/servers.md) — servers stored in the database with encrypted tokens
   (ADR-0030): the `SERVER_SECRETS_KEY` and its offline backup, the deploy order (migrate first), the
   `import-servers` and `verify-secrets` commands, unreadable rows and key rotation.
+- [`runbooks/history.md`](./runbooks/history.md) — production history (ADR-0027 PR 3): the deploy
+  order (`db:migrate` first), what is stored and for how long, the recorder, pollers and rollup worker.
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power

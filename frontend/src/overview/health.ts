@@ -11,6 +11,8 @@ export type Health = "ok" | "paused" | "degraded" | "unavailable" | "outage";
 export interface SectionHealth {
   health: Health;
   summary: string;
+  /** A warning's cause in a few words, for the Health card's headline ("Factory backed up"). */
+  cause?: string;
 }
 
 /** A section still loading, or one that failed with no data to show. */
@@ -21,18 +23,35 @@ export const BACKED_UP_DEGRADED_SHARE = 0.25;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+const SLOW_TICK = "Server tick is slow";
+
 export function serverHealth({ data, stale }: StatusResponse): SectionHealth {
-  if (!data.isGameRunning) return { health: "degraded", summary: "No save loaded" };
+  if (!data.isGameRunning) return { health: "degraded", summary: "No save loaded", cause: "No save loaded" };
   // The Overview has no paused banner (the owner's call), so this row is the only place it
   // says "paused": keep saying it when a worse state wins.
   const alsoPaused = data.gamePaused ? " · game paused" : "";
-  if (stale) return { health: "degraded", summary: `Showing last known data${alsoPaused}` };
-  if (data.tickHealth === "slow") return { health: "degraded", summary: `Server tick is slow${alsoPaused}` };
+  if (stale) {
+    return { health: "degraded", summary: `Showing last known data${alsoPaused}`, cause: "Server data is stale" };
+  }
+  // The tick isn't this row's (the owner's call): it lives in the Health card, and tickState
+  // below feeds it into the overall health instead.
   if (data.gamePaused) return { health: "paused", summary: "Paused: no players connected" };
   return {
     health: "ok",
     summary: `${data.sessionName} · ${data.connectedPlayers} / ${data.playerLimit} players`,
   };
+}
+
+/**
+ * The server tick as an input to the overall health, with no row of its own (the Health card
+ * shows it): the backend's tickHealth "slow" is a warning, anything else counts as ok. A save
+ * that isn't loaded has no tick to judge; the Server row already says so.
+ */
+export function tickState({ data }: StatusResponse): SectionHealth {
+  if (data.isGameRunning && data.tickHealth === "slow") {
+    return { health: "degraded", summary: "Server tick is slow", cause: SLOW_TICK };
+  }
+  return { health: "ok", summary: "Server tick is healthy" };
 }
 
 export function powerHealth({ data, stale }: PowerResponse): SectionHealth {
@@ -44,8 +63,10 @@ export function powerHealth({ data, stale }: PowerResponse): SectionHealth {
       summary: outages > 0 ? `${plural(outages, "circuit has", "circuits have")} a tripped fuse` : "Outage reported",
     };
   }
-  if (atRisk > 0) return { health: "degraded", summary: `${plural(atRisk, "circuit is", "circuits are")} at risk` };
-  if (stale) return { health: "degraded", summary: "Showing last known power data" };
+  if (atRisk > 0) {
+    return { health: "degraded", summary: `${plural(atRisk, "circuit is", "circuits are")} at risk`, cause: "Power at risk" };
+  }
+  if (stale) return { health: "degraded", summary: "Showing last known power data", cause: "Power data is stale" };
   if (data.circuits.length === 0) return { health: "ok", summary: "No power circuits yet" };
   const production = data.circuits.reduce((sum, c) => sum + c.productionMW, 0);
   const capacity = data.circuits.reduce((sum, c) => sum + c.capacityMW, 0);
@@ -59,9 +80,13 @@ export function factoryHealth({ data, stale }: FactoryResponse): SectionHealth {
   const total = data.buildings.length;
   const backedUp = data.backedUpCount;
   if (total > 0 && backedUp / total > BACKED_UP_DEGRADED_SHARE) {
-    return { health: "degraded", summary: `${backedUp} of ${plural(total, "machine", "machines")} backed up` };
+    return {
+      health: "degraded",
+      summary: `${backedUp} of ${plural(total, "machine", "machines")} backed up`,
+      cause: "Factory backed up",
+    };
   }
-  if (stale) return { health: "degraded", summary: "Showing last known factory data" };
+  if (stale) return { health: "degraded", summary: "Showing last known factory data", cause: "Factory data is stale" };
   if (total === 0) return { health: "ok", summary: "No machines yet" };
   return { health: "ok", summary: `${plural(total, "machine", "machines")} · ${backedUp} backed up` };
 }
@@ -98,7 +123,12 @@ const HEADLINE: Record<Health, string> = {
   outage: "Power outage",
 };
 
-/** The worst section decides the banner. Loading sections only hold back an "all clear". */
+/**
+ * The worst section decides the banner. Loading sections only hold back an "all clear".
+ * One rule of the owner's: the tick has no row, so when a slow tick is among the warnings the
+ * headline names the causes ("Server tick is slow · Factory backed up") instead of the generic
+ * "Running with warnings", or nothing on the page would say why.
+ */
 export function overallHealth(sections: SectionState[]): { health: Health | "pending"; headline: string } {
   let worst: Health = "ok";
   let pending = false;
@@ -111,5 +141,10 @@ export function overallHealth(sections: SectionState[]): { health: Health | "pen
     if (RANK[health] > RANK[worst]) worst = health;
   }
   if (pending && worst === "ok") return { health: "pending", headline: "Checking…" };
+  if (worst === "degraded") {
+    const causes = sections.flatMap((s) => (typeof s === "object" && s.health === "degraded" && s.cause ? [s.cause] : []));
+    // Each cause once, the tick first (a Set keeps insertion order).
+    if (causes.includes(SLOW_TICK)) return { health: worst, headline: [...new Set([SLOW_TICK, ...causes])].join(" · ") };
+  }
   return { health: worst, headline: HEADLINE[worst] };
 }

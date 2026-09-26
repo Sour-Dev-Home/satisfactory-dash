@@ -72,8 +72,8 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
    - Account data: until you delete your account.
    - Sign-in attempts: 10 minutes. Sessions: 8 hours active, records purged after 30 days
      `[BUILD: purge job]`.
-   - Telemetry: raw 48 h, per-minute rollups 30 days, hourly rollups 1 year (ADR-0027, pending
-     the owner's decision).
+   - Telemetry: raw 48 h, per-minute rollups 30 days, hourly rollups 1 year, machine state
+     changes 30 days (ADR-0027; recording since ADR-0027 PR 3).
    - Backups: encrypted; kept 30 days, then removed within a further 7 days, so deleted data can
      survive in backups for up to 37 days (ADR-0025). The bucket is versioned: its lifecycle rule
      turns a 30-day-old backup into a noncurrent version, and noncurrent versions are deleted 7

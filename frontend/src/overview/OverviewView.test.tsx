@@ -1,9 +1,17 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { errorServiceUnavailable, serversSingle, statusNoGame, statusSlow } from "@satisfactory-dash/shared/fixtures";
+import {
+  errorServiceUnavailable,
+  factoryEmpty,
+  factoryMixed,
+  powerOk,
+  serversSingle,
+  statusNoGame,
+  statusSlow,
+} from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -37,6 +45,39 @@ describe("OverviewView: the Health card's tick", () => {
     renderOverview();
     expect(await screen.findByText("8.2 ticks/s")).toBeInTheDocument();
     expect(healthCard()).toHaveTextContent("Slow");
+  });
+
+  it("keeps a slow tick out of the Server row, but still counts it in the overall health", async () => {
+    // Everything else is healthy here (no machines backed up), so only the tick can warn.
+    server.use(
+      http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)),
+      http.get(endpoints.factory.route, () => HttpResponse.json(factoryEmpty)),
+    );
+    renderOverview();
+    expect(await screen.findByText("8.2 ticks/s")).toBeInTheDocument();
+    expect(await within(healthCard()).findByText("Degraded")).toBeInTheDocument();
+    const rows = screen.getByRole("list", { name: "Sections" });
+    expect(rows).not.toHaveTextContent(/tick/i);
+    expect(within(rows).getAllByText("Operational")).toHaveLength(3);
+  });
+
+  it("counts a slow tick as a warning as soon as the status query has data, even while Power and Factory are still loading", async () => {
+    server.use(
+      http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)),
+      http.get(endpoints.power.route, async () => {
+        await delay("infinite");
+        return HttpResponse.json(powerOk);
+      }),
+      http.get(endpoints.factory.route, async () => {
+        await delay("infinite");
+        return HttpResponse.json(factoryMixed);
+      }),
+    );
+    renderOverview();
+    expect(await within(healthCard()).findByText("Degraded")).toBeInTheDocument();
+    expect(healthCard()).toHaveTextContent("Server tick is slow");
+    const rows = screen.getByRole("list", { name: "Sections" });
+    expect(within(rows).getAllByText("Checking…")).toHaveLength(2);
   });
 
   it("says no game is running instead of a tick when isGameRunning is false", async () => {

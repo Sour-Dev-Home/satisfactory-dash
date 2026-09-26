@@ -58,6 +58,41 @@ describe("FactoryPanel rate units (exact text)", () => {
     }
   });
 
+  it("keeps 'current / max unit' in one unbreakable group, so a phone only wraps before the '(%)' (#59)", () => {
+    render(<FactoryPanel snapshot={factoryMixed} />);
+    const groups = within(screen.getByRole("table"))
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector(".whitespace-nowrap")?.textContent);
+    expect(groups).toContain("40 / 40 m³/min");
+    expect(groups).toContain("30 / 30 items/min");
+    expect(groups).not.toContain(undefined);
+  });
+
+  it("keeps the name prefix and percent suffix out of the nowrap span (#59)", () => {
+    render(<FactoryPanel snapshot={factoryMixed} />);
+    const spans = within(screen.getByRole("table"))
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector(".whitespace-nowrap")?.textContent ?? "");
+    for (const text of spans) {
+      // The span should hold exactly "current / max unit" -- neither the leading
+      // "Name: " nor the trailing " (pct%)" should have leaked inside it.
+      expect(text).not.toMatch(/:/);
+      expect(text).not.toMatch(/[()%]/);
+    }
+  });
+
+  it("wraps the unknown-unit fallback ('per min') in the nowrap span too (#59)", () => {
+    render(<FactoryPanel snapshot={factoryUnknownItem} />);
+    const li = within(screen.getByRole("table")).getByRole("listitem");
+    expect(li.querySelector(".whitespace-nowrap")?.textContent).toBe("10 / 10 per min");
+  });
+
+  it("wraps the absent-unit (older-backend) fallback in the nowrap span too (#59)", () => {
+    render(<FactoryPanel snapshot={factoryOldBackend} />);
+    const li = within(screen.getByRole("table")).getByRole("listitem");
+    expect(li.querySelector(".whitespace-nowrap")?.textContent).toBe("20 / 20 per min");
+  });
+
   it("renders the unknown-unit fallback exactly (null unit)", () => {
     render(<FactoryPanel snapshot={factoryUnknownItem} />);
     expect(outputs()).toEqual(["Modded Widget: 10 / 10 per min (100%)"]);
@@ -85,6 +120,11 @@ describe("FactoryPanel rate units (exact text)", () => {
     } satisfies FactoryResponse;
     render(<FactoryPanel snapshot={idle} />);
     expect(outputs()).toEqual(["Fuel: 0 / 40 m³/min (0%)"]);
+
+    // The nowrap group must hold "0 / 40 m³/min" -- a 0% row shouldn't drop the span or
+    // its content just because the current rate is zero.
+    const li = within(screen.getByRole("table")).getByRole("listitem");
+    expect(li.querySelector(".whitespace-nowrap")?.textContent).toBe("0 / 40 m³/min");
   });
 });
 
