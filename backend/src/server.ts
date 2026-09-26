@@ -32,7 +32,7 @@ import {
   registerConfiguredServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
-import { createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
+import { createHistoryMaintenance, createTelemetryRouters, createTelemetryServices, createUnitResolver } from "./modules/telemetry/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -86,11 +86,20 @@ const resolveUnit = createUnitResolver((className) =>
   logger.warn({ className }, "item not in the item-form catalog; its unit is reported as unknown"),
 );
 
+// ADR-0025: the database is optional until deploy A. Without DATABASE_URL nothing changes (and
+// /api/health/ready answers 200); with it, the process listens first, then connects in the
+// background (retrying transient errors), and /api/health/ready reports 503 until it is up.
+// Declared before buildServer: every server's history recorder writes through its pool (ADR-0027).
+const databaseConfig = orExit(() => loadDatabaseConfig());
+const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
+
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
 function buildServer(id: string, displayName: string, config: SatisfactoryServerConfig) {
   const telemetry = createTelemetryServices(createGameServerConnection(config), resolveUnit, {
     logger: logger.child({ worker: "power-history", serverId: id }),
+    // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
+    history: database ? { db: database.pool, serverPublicId: id } : undefined,
   });
   return {
     id,
@@ -127,12 +136,6 @@ const workers: { start(): void; stop(): Promise<void> }[] = [];
 // exceeds EVENT_LOOP_STALL_MS, to tell a machine-wide stall from our own loop being blocked.
 workers.push(createEventLoopMonitor({ logger, thresholdMs: orExit(() => loadEventLoopStallMs()) }));
 
-// ADR-0025: the database is optional until deploy A. Without DATABASE_URL nothing changes (and
-// /api/health/ready answers 200); with it, the process listens first, then connects in the
-// background (retrying transient errors), and /api/health/ready reports 503 until it is up.
-const databaseConfig = orExit(() => loadDatabaseConfig());
-const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
-
 // ADR-0030: the key that encrypts stored game-server tokens. Unset is fine while no server is stored in
 // the database; a set-but-malformed key stops the backend here rather than at the first use.
 const secretsKeyring = orExit(() => loadSecretsKeyringFromEnv());
@@ -144,7 +147,11 @@ const identity = orExit(() => createIdentityModule(process.env, { db: database?.
 // The identity module's workers need the database: they are started only AFTER the database startup
 // check has succeeded (plus their own delay), not at boot, so their first run does not race the slow first
 // connections of a new process (issue #153). They are stopped with the others.
-const databaseWorkers = identity.workers;
+// ADR-0027: the history rollup and retention worker joins them, for the same reason (it needs the database up).
+const databaseWorkers = [
+  ...identity.workers,
+  ...(database ? [createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
+];
 
 // ADR-0025 PR 6: with a database, every /api/servers/:serverId route needs a membership (a
 // non-member gets the same 404 as an unknown server; a viewer's write is a 403) and the list is

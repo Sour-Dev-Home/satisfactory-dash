@@ -75,7 +75,7 @@ export function diffStates(
   }
   // Forget buildings that are gone, but keep the last state of ones that are present with an undecidable state.
   const present = new Set(buildings.map((building) => building.id));
-  for (const id of [...known.keys()]) {
+  for (const id of known.keys()) {
     if (!present.has(id)) known.delete(id);
   }
   if (rebaseline) known.clear();
