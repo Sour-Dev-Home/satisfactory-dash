@@ -40,12 +40,17 @@ describe("the demo world", () => {
     }
   });
 
-  it("leaves a stretch with nothing recorded in the stored history, like a paused game", () => {
-    const history = world.historyPower(world.DEMO_EPOCH, "7d").data;
-    const ts = history.series[0].points.map((p) => p.t);
-    const step = history.resolutionSeconds * 1000;
-    expect(ts.some((t, i) => i > 0 && t - ts[i - 1] > step)).toBe(true);
-  });
+  it.each(HistoryRangeSchema.options)(
+    "leaves a stretch with nothing recorded in the stored history for %s, like a paused game",
+    (range) => {
+      // Regression: the gap used to be defined by a fixed clock time (28-30h ago), which a 1h/6h/24h
+      // range's window never reaches, so those ranges could never show a gap.
+      const history = world.historyPower(world.DEMO_EPOCH, range).data;
+      const ts = history.series[0].points.map((p) => p.t);
+      const step = history.resolutionSeconds * 1000;
+      expect(ts.some((t, i) => i > 0 && t - ts[i - 1] > step)).toBe(true);
+    },
+  );
 
   it("is deterministic: the same time gives the same data", () => {
     expect(world.power(world.DEMO_EPOCH)).toEqual(world.power(world.DEMO_EPOCH));

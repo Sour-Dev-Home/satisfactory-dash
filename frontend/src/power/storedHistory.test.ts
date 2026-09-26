@@ -15,6 +15,16 @@ describe("currentSession", () => {
   it("is empty for no series", () => {
     expect(currentSession([])).toEqual({ shown: [], olderSessions: 0 });
   });
+
+  it("sorts the newest session's circuits by id, even when the backend sends them out of order", () => {
+    const outOfOrder = [
+      { ...newest, circuit: 5 },
+      { ...newest, circuit: 1 },
+      { ...newest, circuit: 3 },
+    ];
+    const { shown } = currentSession(outOfOrder);
+    expect(shown.map((s) => s.circuit)).toEqual([1, 3, 5]);
+  });
 });
 
 describe("toStoredChartData", () => {
@@ -34,6 +44,25 @@ describe("toStoredChartData", () => {
     const [xs] = toStoredChartData(newest.points.slice(0, 2), history.resolutionSeconds);
     expect(xs).toHaveLength(2);
   });
+
+  it("still only inserts a single null for multiple consecutive missing buckets", () => {
+    const step = history.resolutionSeconds * 1000;
+    const points = [newest.points[0], { ...newest.points[0], t: newest.points[0].t + 4 * step }];
+    const [xs, production] = toStoredChartData(points, history.resolutionSeconds);
+    // One point, one gap marker, one point: not one marker per missing bucket.
+    expect(xs).toHaveLength(3);
+    expect(production[1]).toBeNull();
+  });
+
+  it("draws a single point with no break", () => {
+    const [xs, production] = toStoredChartData(newest.points.slice(0, 1), history.resolutionSeconds);
+    expect(xs).toEqual([newest.points[0].t / 1000]);
+    expect(production).toEqual([newest.points[0].productionMW.avg]);
+  });
+
+  it("draws nothing for an empty series", () => {
+    expect(toStoredChartData([], history.resolutionSeconds)).toEqual([[], [], [], []]);
+  });
 });
 
 describe("storedStats", () => {
@@ -46,6 +75,12 @@ describe("storedStats", () => {
 
   it("is null without points", () => {
     expect(storedStats([])).toBeNull();
+  });
+
+  it("takes the only point's own min/avg/max for a single-point series", () => {
+    const [only] = newest.points;
+    const stats = storedStats([only])!;
+    expect(stats.production).toEqual({ latest: only.productionMW.avg, min: only.productionMW.min, max: only.productionMW.max });
   });
 });
 

@@ -201,9 +201,12 @@ const RANGE_MS: Record<HistoryRange, number> = {
 const BUCKET_S: Record<HistoryRange, number> = { "1h": 60, "6h": 60, "24h": 300, "7d": 3600, "30d": 21_600, "1y": 86_400 };
 /** The demo save, as the stored history's session hash (any fixed 32-bit number). */
 const DEMO_SESSION = 20_260_924;
-/** A 2-hour stretch with nothing recorded (the game was paused), so every range can show a gap. */
-const GAP_FROM_AGO_MS = 30 * 3_600_000;
-const GAP_TO_AGO_MS = 28 * 3_600_000;
+// A stretch with nothing recorded (the game was paused), a few buckets before the newest one, so
+// every range can show a gap. Sized in buckets, not a fixed clock time: a 1h range's window (60
+// one-minute buckets) never reaches back 28-30 hours, so a fixed-time gap would only ever show up
+// in the 7d/30d/1y ranges. (test-hunter: found via demo/world.test.ts, was previously hours-based.)
+const GAP_BUCKETS = 2;
+const GAP_BUCKETS_AGO = 4;
 
 /**
  * Stored power history (ADR-0027) for a range, from the same readings as power(): each bucket
@@ -216,10 +219,10 @@ export function historyPower(now: number, range: HistoryRange): HistoryPowerResp
   const first = Math.ceil(from / step) * step;
   const starts: number[] = [];
   // Every bucket that has started (the newest is still filling, as on the real backend).
-  for (let t = first; t < now; t += step) {
-    if (t + step > now - GAP_FROM_AGO_MS && t < now - GAP_TO_AGO_MS) continue;
-    starts.push(t);
-  }
+  for (let t = first; t < now; t += step) starts.push(t);
+  const gapEnd = Math.max(0, starts.length - GAP_BUCKETS_AGO);
+  const gapStart = Math.max(0, gapEnd - GAP_BUCKETS);
+  starts.splice(gapStart, gapEnd - gapStart);
   const stat = (values: number[]) => ({
     min: round1(Math.min(...values)),
     avg: round1(values.reduce((a, b) => a + b, 0) / values.length),
