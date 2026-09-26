@@ -56,8 +56,11 @@ const QUERY_PACKAGE = "@tanstack/react-query";
 /** An added line that imports (static, re-export, dynamic or require) from a module specifier with an `/api` or `/auth`
  *  path segment: `"../api/client"`, `"@/auth/session"`, `"./api"`. Only import-shaped lines, so a string that merely holds
  *  a URL is not caught here (the fetch that would use it is). */
-const IMPORT_LINE = /\b(from|import|require)\b/;
-const API_OR_AUTH_SPECIFIER = /["'`][^"'`\n]*\/(api|auth)(\/[^"'`\n]*)?["'`]/;
+// Import-SHAPED, not just containing the word: a statement that starts with `import`, an `export ... from`, the `} from`
+// that closes a multi-line import, or a dynamic `import(` / `require(` call. JSX text like `Log in from here` next to a
+// `/auth/login` link is not an import.
+const IMPORT_LINE = /^\s*import\b|^\s*export\b[^\n]*\bfrom\b|^\s*\}?\s*from\b|\b(import|require)\s*\(/;
+const API_OR_AUTH_SPECIFIER = /["'`][^"'`\n]*\/(api|auth)(?=[/?#"'`])/;
 
 /**
  * What in an added line makes it data-flow code, or undefined. Literal token, `fetch(` regex, the query package, and

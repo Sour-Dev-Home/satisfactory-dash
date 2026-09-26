@@ -205,6 +205,9 @@ test("look-alike import paths and plain strings are not import-of-api findings",
     "// see the /api/ docs",
     'const path = "/api/servers";', // not an import: the call that would use it is caught by the other patterns
     'import { x } from "./components/auth-badge";',
+    '<Link to="/auth/login">Log in from here</Link>', // the word `from` in JSX text is not an import
+    '<a href="/api/docs">Read the docs, then import the sample</a>',
+    'export const LOGIN_PATH = "/auth/login";',
   ]) {
     passes(line);
   }
@@ -351,4 +354,14 @@ test("CLI: missing labels fail closed", () => {
   const result = spawnSync(process.execPath, [script], { env: { PATH: process.env.PATH }, encoding: "utf8" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /PR_LABELS_JSON is missing or not JSON/);
+});
+
+test("dataFlowHit: an api/auth specifier with a query or hash still counts, and a 100k-character line is scanned in linear time", async () => {
+  const { dataFlowHit } = await import("./tier-check.mjs");
+  assert.ok(dataFlowHit(String.raw`import a from "../api?raw"`));
+  assert.ok(dataFlowHit(String.raw`import("../auth#x")`));
+  assert.equal(dataFlowHit(String.raw`import a from "./api-badge"`), undefined);
+  const start = Date.now();
+  dataFlowHit(`from "${"/api/".repeat(25000)}`);
+  assert.ok(Date.now() - start < 200);
 });
