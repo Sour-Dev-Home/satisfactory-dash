@@ -97,3 +97,15 @@ Status: accepted (owner, 2026-09-25: all of it, with the merge queue after the l
 - CODEOWNERS with a required code-owner review is not used. Every PR is authored by the single owner
   account, so a required code-owner review could never be satisfied without a bypass. Revisit when
   a second human maintainer exists.
+
+
+## Amendment 2 (2026-09-25): fixing the gate itself
+- The gate runs the script from `main` (`merge_group.base_sha`), so a queued PR cannot replace it.
+  The same property means a fix to `scripts/fresh-eyes-gate*` can never pass through the queue while
+  the script on `main` is broken. The path for such a fix: remove the merge-queue rule from the `main`
+  ruleset, merge the fix as a normal PR (required checks, the fresh-eyes status on its head, the
+  architect's review of the diff), then restore the rule with the same settings and re-queue the
+  waiting PRs. There is no bypass actor, and none is added.
+- The first queued run found the `merge_group.head_ref` value to be the full ref
+  (`refs/heads/gh-readonly-queue/main/pr-<N>-<sha>`). The parser strips an optional `refs/heads/`
+  prefix and is otherwise strict. Anything else fails closed.

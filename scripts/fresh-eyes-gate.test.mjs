@@ -13,6 +13,59 @@ test("parsePrNumber reads the queue's branch format", () => {
   assert.equal(parsePrNumber(ref(123456789)), 123456789);
 });
 
+// The exact value GitHub sent in the first real merge queue run (PR 207): the FULL ref, with refs/heads/.
+const REAL_HEAD_REF = "refs/heads/gh-readonly-queue/main/pr-207-74f570b015298fe338ba763e9220be541a14bc92";
+
+test("parsePrNumber accepts the real merge_group.head_ref (with refs/heads/) and the bare branch name", () => {
+  assert.equal(parsePrNumber(REAL_HEAD_REF), 207);
+  assert.equal(parsePrNumber("gh-readonly-queue/main/pr-207-74f570b015298fe338ba763e9220be541a14bc92"), 207);
+  assert.equal(parsePrNumber(`refs/heads/${ref(176)}`), 176);
+});
+
+test("parsePrNumber strips only ONE leading refs/heads/ and still fails closed on everything else", () => {
+  const branch = "gh-readonly-queue/main/pr-207-74f570b015298fe338ba763e9220be541a14bc92";
+  for (const bad of [
+    `refs/heads/refs/heads/${branch}`, // a doubled prefix
+    `refs/tags/${branch}`, // the wrong kind of ref
+    `refs/remotes/origin/${branch}`,
+    `heads/${branch}`,
+    `/refs/heads/${branch}`,
+    `refs/heads//${branch}`,
+    `REFS/HEADS/${branch}`, // case matters
+    `refs/heads/`, // the prefix alone
+    "refs/heads/main",
+    `refs/heads/gh-readonly-queue/main/pr-abc-${"b".repeat(40)}`, // a non-numeric PR
+    `refs/heads/gh-readonly-queue/main/pr--207-${"b".repeat(40)}`,
+    `refs/heads/gh-readonly-queue/develop/pr-207-${"b".repeat(40)}`, // not the main queue
+    `${REAL_HEAD_REF}x`, // trailing junk
+    `${REAL_HEAD_REF}/extra`,
+    `${REAL_HEAD_REF}\n`,
+    `${REAL_HEAD_REF} `,
+    ` ${REAL_HEAD_REF}`,
+    `refs/heads/gh-readonly-queue/main/pr-207-${"b".repeat(39)}`, // a short sha
+  ]) {
+    assert.equal(parsePrNumber(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("runGate with the real head ref reads the PR and posts the carried status on the group commit", () => {
+  const calls = [];
+  const api = (args) => {
+    calls.push(args);
+    const url = args[0];
+    if (url.startsWith(`repos/${REPO}/statuses/`)) return "{}";
+    if (url === `repos/${REPO}/pulls/207`) return JSON.stringify({ head: { sha: HEAD }, base: { ref: "main" }, state: "open" });
+    if (url.startsWith(`repos/${REPO}/commits/${HEAD}/status`)) return JSON.stringify({ statuses: [{ context: CONTEXT, state: "success" }] });
+    throw new Error(`unexpected read ${url}`);
+  };
+  const result = runGate({ repo: REPO, headRef: REAL_HEAD_REF, groupSha: GROUP }, api);
+  assert.equal(result.state, "success");
+  assert.ok(calls.some((args) => args[0] === `repos/${REPO}/pulls/207`), "asked about PR 207");
+  const post = calls.find((args) => args[0].includes("/statuses/"));
+  assert.equal(post[0], `repos/${REPO}/statuses/${GROUP}`);
+  assert.ok(post.includes("state=success"));
+});
+
 test("parsePrNumber refuses anything that is not exactly that format (fail closed)", () => {
   for (const bad of [
     "",
