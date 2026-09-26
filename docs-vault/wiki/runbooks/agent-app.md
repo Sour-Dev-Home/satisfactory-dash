@@ -5,9 +5,14 @@ snapshots **out** to the backend, and runs the commands the dashboard asks for (
 no port: the backend never reaches into the player's network. The backend side is in [`agents.md`](./agents.md).
 
 Source: `agent/` (npm workspace `@satisfactory-dash/agent`). Build: `npm run build -w agent` produces one file,
-`agent/dist/agent.cjs`, that runs with Node 22 or newer (`node agent.cjs <command>`). How the file reaches a player (a
-release download, a packaged executable) is not decided yet [NEEDS VERIFICATION with the owner]; this page assumes the
-file and Node are on the PC.
+`agent/dist/agent.cjs`, that runs with Node 22 or newer (`node agent.cjs <command>`).
+
+**How it gets onto the PC (ADR-0031, owner, 2026-09-26): from the repo checkout, until there is a first other player.**
+On the game PC, in a checkout of this repository: `git pull`, `npm ci`, `npm run build -w agent`, and the Scheduled Task
+runs `node "<checkout>\agent\dist\agent.cjs" run` (see "Keeping it running" below; never an S4U task). Updating is the same
+three commands and a restart of the task. Packaging (a single executable, signed updates) is an ADR-0031 "revisit when the
+first other player" item, not part of this setup. The end-to-end order for the owner's own server, including the parity
+week and the way back, is in [`agent-switch-over.md`](./agent-switch-over.md).
 
 ## First setup, in this order
 
