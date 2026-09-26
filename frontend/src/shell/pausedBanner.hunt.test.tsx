@@ -104,7 +104,9 @@ describe("paused banner: the Overview still says paused in every paused state", 
     pausedStatus(body);
     renderWithClient(<App />);
     const rows = await overviewRows();
-    await within(rows).findByText(/Showing last known data|Server tick is slow/);
+    // The tick left the Server row (it's in the Health card), so slow-and-paused now says
+    // "Paused" in the row itself; stale still wins there, with "· game paused" appended.
+    await within(rows).findByText(/Showing last known data|Paused: no players connected/);
     expect(screen.queryAllByText(/paused/i).length).toBeGreaterThan(0);
   });
 });
