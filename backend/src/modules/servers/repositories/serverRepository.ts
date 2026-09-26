@@ -152,6 +152,17 @@ const DELETE_CONNECTION = `
   DELETE FROM servers.server_connections
   WHERE server_id = $1`;
 
+// ADR-0027 history belongs to the server it was recorded on. A soft-deleted server keeps its row, and creating
+// the same public id again revives that row (same internal id), so without this a new physical server would
+// inherit the old one's history (ADR-0030 security review). Constants, one per table: no dynamic table names.
+const DELETE_HISTORY = [
+  "DELETE FROM telemetry.power_samples WHERE server_id = $1",
+  "DELETE FROM telemetry.item_samples WHERE server_id = $1",
+  "DELETE FROM telemetry.power_rollups WHERE server_id = $1",
+  "DELETE FROM telemetry.item_rollups WHERE server_id = $1",
+  "DELETE FROM telemetry.building_transitions WHERE server_id = $1",
+] as const;
+
 const IdRowSchema = z.object({ id: z.string() });
 
 /**
@@ -179,6 +190,9 @@ export async function softDeleteServer(
     await client.query(DELETE_MEMBERS, [row.id]);
     // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
     await client.query(DELETE_CONNECTION, [row.id]);
+    for (const statement of DELETE_HISTORY) {
+      await client.query(statement, [row.id]);
+    }
     return true;
   });
 }
