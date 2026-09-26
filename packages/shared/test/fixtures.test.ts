@@ -289,6 +289,17 @@ describe("schemas accept what the contract allows", () => {
     const withExtra = { ...fixtures.serversSingle, internalHost: "10.0.0.5:7777" };
     expect(ServerListResponseSchema.parse(withExtra)).toEqual(fixtures.serversSingle);
   });
+
+  it("the server list can carry the signed-in user's role per server (a UX hint), and an older list without it still parses", () => {
+    expect(fixtures.serversRoleOwner.servers[0].role).toBe("owner");
+    expect(fixtures.serversRoleAdmin.servers[0].role).toBe("admin");
+    expect(fixtures.serversRoleViewer.servers[0].role).toBe("viewer");
+    expect(fixtures.serversRolesMixed.servers.map((server) => server.role)).toEqual(["owner", "viewer", "moderator"]); // an unknown role parses
+    expect("role" in fixtures.serversSingle.servers[0]).toBe(false); // the no-database and older-backend path omits it
+    expect(ServerListResponseSchema.safeParse(fixtures.serversSingle).success).toBe(true);
+    // A role is a plain string, so a newer backend's new role never breaks an older frontend.
+    expect(ServerListResponseSchema.safeParse({ servers: [{ id: "x", displayName: "X", role: "auditor" }] }).success).toBe(true);
+  });
 });
 
 // ADR-0025 PR 4: additive contract pieces. Each one must leave an older peer's messages valid.

@@ -3,6 +3,22 @@ import request from "supertest";
 import type { RequestHandler } from "express";
 import { ApiErrorResponseSchema, ServerListResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import {
+  alertCreateRuleRequest,
+  alertDeleteDestinationResponse,
+  alertDeleteRuleResponse,
+  alertDestinationsConfigured,
+  alertEventsPage,
+  alertMuteClearedResponse,
+  alertMuteSetResponse,
+  alertPatchDiscordRequest,
+  alertPutDiscordRequest,
+  alertRuleCreated,
+  alertRulesList,
+  alertRuleUpdatedPresetDisabled,
+  alertSendTestOk,
+  alertSetMuteRequest,
+  alertStatusQuiet,
+  alertUpdateRuleRequest,
   factoryMixed,
   historyItems7d,
   historyPower24h,
@@ -17,6 +33,8 @@ import { InMemoryServerDirectory, createServerManagementRouters, createServersRo
 import type { ServerAccess, ServerManagementService } from "./modules/servers/index.js";
 import { createTelemetryRouters } from "./modules/telemetry/index.js";
 import { createSettingsRouters } from "./modules/settings/index.js";
+import { createAlertsRouters } from "./modules/alerts/index.js";
+import type { AlertsService } from "./modules/alerts/index.js";
 import { scopedEndpoints } from "../test-support/scopedEndpoints.js";
 import type { Method } from "../test-support/scopedEndpoints.js";
 
@@ -28,15 +46,14 @@ import type { Method } from "../test-support/scopedEndpoints.js";
  * real membership middleware, with stub services and an in-memory membership table.
  */
 
-// ADR-0027 PR 7a added the alerts endpoints to the contract BEFORE their routes (contract first, so the frontend can
-// build against the fixtures). Until PR 7b mounts them there is nothing to guard, so exactly these are exempt. PR 7b
-// deletes this line, and the generated tests then cover them like every other scoped route.
-const NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("alerts.");
+// ADR-0027 PR 7a added the alerts endpoints to the contract before their routes; PR 7b mounted them, so nothing about
+// alerts is exempt any more and the generated tests cover all of them like every other scoped route.
 // ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
 // contract before their routes. PR 5 mounts them and deletes this line. A guard test below makes that impossible to forget.
 const AGENT_NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("agent.") || name.startsWith("commands.");
-const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name) && !AGENT_NOT_YET_MOUNTED(endpoint.name));
-const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":commandId", "cmd-1");
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !AGENT_NOT_YET_MOUNTED(endpoint.name));
+const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
+const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1");
 
 const OWNER = "user-owner";
 const ADMIN = "user-admin";
@@ -118,6 +135,24 @@ const services = {
   },
 };
 
+/** A stand-in for the alerts service: every method answers with its contract fixture, so the real router, its body and
+ *  query validation and the real membership middleware are what the generated tests exercise. */
+const alertsService: AlertsService = {
+  listRules: async () => alertRulesList,
+  createRule: async () => alertRuleCreated,
+  updateRule: async () => alertRuleUpdatedPresetDisabled,
+  deleteRule: async () => alertDeleteRuleResponse,
+  getDestinations: async () => alertDestinationsConfigured,
+  putDiscord: async () => alertDestinationsConfigured as { discord: NonNullable<typeof alertDestinationsConfigured.discord> },
+  patchDiscord: async () => alertDestinationsConfigured as { discord: NonNullable<typeof alertDestinationsConfigured.discord> },
+  removeDiscord: async () => alertDeleteDestinationResponse,
+  testDiscord: async () => alertSendTestOk,
+  listEvents: async () => alertEventsPage,
+  getStatus: async () => alertStatusQuiet,
+  setMute: async () => alertMuteSetResponse,
+  clearMute: async () => alertMuteClearedResponse,
+};
+
 function buildApp(options: { isReady?: () => boolean } = {}) {
   // Both servers exist on this process: what differs is who belongs to them.
   const directory = new InMemoryServerDirectory([
@@ -135,14 +170,27 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
       createServersRouter(directory, access, options),
       ...createTelemetryRouters(directory),
       ...createSettingsRouters(directory),
+      ...createAlertsRouters(alertsService),
       management.scoped,
     ],
   });
 }
 
 /** A valid body for each write endpoint that takes one (the auto-pause toggle, or an edit's fields). */
-const bodyFor = (name: string): unknown => (name === "serverManagement.update" ? { displayName: "Renamed" } : { enabled: true });
-const hasBody = (name: string, method: Method) => method !== "GET" && method !== "DELETE" && name !== "serverManagement.testSaved";
+const ALERT_BODIES: Record<string, unknown> = {
+  "alerts.rules.create": alertCreateRuleRequest,
+  "alerts.rules.update": alertUpdateRuleRequest,
+  "alerts.destinations.putDiscord": alertPutDiscordRequest,
+  "alerts.destinations.patchDiscord": alertPatchDiscordRequest,
+  "alerts.mute.set": alertSetMuteRequest,
+};
+const bodyFor = (name: string): unknown =>
+  name in ALERT_BODIES ? ALERT_BODIES[name] : name === "serverManagement.update" ? { displayName: "Renamed" } : { enabled: true };
+// POST .../test takes no body, like the other action endpoints.
+const hasBody = (name: string, method: Method) =>
+  method !== "GET" && method !== "DELETE" && name !== "serverManagement.testSaved" && name !== "alerts.destinations.testDiscord";
+/** What a successful write answers: 200, except a create (201). */
+const successStatus = (name: string): number => (name === "alerts.rules.create" ? 201 : 200);
 
 const call = (app: ReturnType<typeof buildApp>, name: string, method: Method, url: string, user: string) => {
   const req = request(app)[method.toLowerCase() as "get"](url).set("x-test-user", user);
@@ -155,22 +203,11 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     expect(SCOPED.some((e) => e.method !== "GET")).toBe(true);
   });
 
-  it("exempts only the alerts endpoints that are in the contract but not mounted yet (PR 7a), and no other", () => {
-    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
-    expect(exempt.length).toBe(13);
-    expect(exempt.every((endpoint) => endpoint.route.startsWith("/api/servers/:serverId/alerts/"))).toBe(true);
-  });
-
-  // The exemption expires on its own: the moment PR 7b mounts ANY alerts route, this fails until NOT_YET_MOUNTED is
-  // deleted, so the routes can never ship without the generated authorization tests.
-  it("the exempt endpoints are still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
-    const app = buildApp();
-    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
-      const url = urlFor(endpoint.route, "alpha").replace(":ruleId", "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04");
-      const res = await call(app, endpoint.name, endpoint.method, url, OWNER);
-      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0027 PR 7b)`;
-      expect(res.status, mounted).toBe(404);
-      expect(res.body?.error?.code, mounted).toBe("not_found");
+  it("covers all 13 alerts endpoints (ADR-0027 PR 7b), none of them exempt, with a valid body for each write", () => {
+    const alerts = SCOPED.filter((endpoint) => endpoint.name.startsWith("alerts."));
+    expect(alerts).toHaveLength(13);
+    for (const endpoint of alerts.filter((e) => hasBody(e.name, e.method))) {
+      expect(ALERT_BODIES, endpoint.name).toHaveProperty([endpoint.name]);
     }
   });
 
@@ -253,7 +290,7 @@ describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operator
 
     it.each([OWNER, ADMIN])("the %s can write", async (user) => {
       const res = await call(app, name, method, urlFor(route, "alpha"), user);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(successStatus(name));
     });
   }
 
