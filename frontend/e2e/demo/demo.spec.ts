@@ -65,6 +65,22 @@ test("every screen works offline: enter, overview, power, factory, settings, log
   await expect(page.getByText("Change pending: the server will apply it.")).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
 
+  // Server management (ADR-0030): a simulated test, a LAN server refused, and nothing saved.
+  await nav.getByRole("link", { name: "Servers" }).click();
+  await page.getByRole("button", { name: "Test connection" }).click();
+  await expect(page.getByText("Connection test passed.")).toBeVisible();
+  await page.getByRole("button", { name: "Add a server" }).click();
+  await page.getByLabel("Server id").fill("second");
+  await page.getByLabel("Name").fill("Second world");
+  await page.getByLabel("Host").fill("192.168.1.20");
+  await page.getByLabel("Game API token").fill("demo-token");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Only servers on this machine can be added for now.");
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await expect(page.getByRole("alert")).toContainText("The demo doesn't change servers.");
+  await expectNoAxeViolations(page, testInfo);
+
   // The account menu (ADR-0025): axe-checked open, then Sign out. The demo offers no Google.
   await page.getByRole("button", { name: "Account" }).click();
   await expect(page.getByRole("button", { name: "Sign out everywhere" })).toBeVisible();

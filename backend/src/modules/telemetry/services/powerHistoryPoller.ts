@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import { noopHistoryRecorder, sessionKey, type HistoryRecorder } from "./historyRecorder.js";
 import type { PowerHistoryStore, PowerSample } from "./powerHistoryStore.js";
 import { POWER_HISTORY_INTERVAL_SECONDS } from "./powerHistoryStore.js";
 
@@ -31,6 +32,8 @@ export interface PowerHistoryPollerOptions {
   pollTimeoutMs?: number;
   /** Injectable clock, so tests run on fake time. */
   now?: () => number;
+  /** Where samples are also recorded for durable history; omitted means none (no database). */
+  history?: HistoryRecorder;
 }
 
 /** Comfortably above the adapters' own 5 s request timeout, so it only fires on a stall they miss. */
@@ -56,6 +59,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   private readonly pollTimeoutMs: number;
   private readonly now: () => number;
   private readonly logger: Logger;
+  private readonly history: HistoryRecorder;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
@@ -85,6 +89,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
     }
     this.now = options.now ?? Date.now;
     this.logger = options.logger;
+    this.history = options.history ?? noopHistoryRecorder;
   }
 
   startedAt(): number | undefined {
@@ -223,5 +228,24 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
       this.store.reset();
       this.store.append(sample);
     }
+    // Durable history (ADR-0027): fire-and-forget into a buffer, so the database never slows or fails a poll.
+    // FRM returns FROZEN values while the game is paused (frm-api.md), so a paused sample would record phantom
+    // production: skip it and leave an honest gap in the stored history (the in-memory chart keeps its own rule).
+    if (status.isPaused) {
+      return;
+    }
+    const session = sessionKey(status.sessionName);
+    this.history.recordPower(
+      sample.circuits.map((circuit) => ({
+        session,
+        circuit: circuit.circuitGroupId,
+        atMs: sample.t,
+        productionMW: circuit.productionMW,
+        consumptionMW: circuit.consumptionMW,
+        capacityMW: circuit.capacityMW,
+        batteryPercent: circuit.batteryPercent,
+        fuseTripped: circuit.fuseTriggered,
+      })),
+    );
   }
 }

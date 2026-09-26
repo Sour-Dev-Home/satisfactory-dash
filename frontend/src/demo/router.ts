@@ -22,6 +22,8 @@ const route =
 export const get = route("GET");
 export const post = route("POST");
 export const put = route("PUT");
+export const patch = route("PATCH");
+export const del = route("DELETE");
 
 /** Matches a whole path; each :name segment captures one URL-decoded segment. */
 function match(routePattern: string, pathname: string): Params | null {

@@ -21,6 +21,9 @@ export const LOGIN_MUTATION_KEY = ["auth", "login"] as const;
 
 const signedOut: SessionResponse = { authenticated: false };
 
+/** The operator's list of stored connections (ADR-0030). */
+export const MANAGED_KEY = ["serverManagement"] as const;
+
 /**
  * Marks the session signed out and drops every other cached response, so no data from the
  * old session stays on screen. The auth gate reacts to the session and shows the login screen.
@@ -126,6 +129,13 @@ export const queries = {
       queryKey: ["servers", serverId, "factory"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.factory, serverId),
       refetchInterval: POLL_MS.factory,
+    }),
+  // ADR-0030, operator only: every stored connection, with what the edit form needs. Not under
+  // ["servers", ...], so ServerGate's "the selected server is gone" handling never sees it.
+  managedServers: () =>
+    queryOptions({
+      queryKey: MANAGED_KEY,
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.serverManagement.list),
     }),
   settings: (serverId: string) =>
     queryOptions({
