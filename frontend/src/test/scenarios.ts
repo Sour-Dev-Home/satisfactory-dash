@@ -1,4 +1,4 @@
-import { endpoints } from "@satisfactory-dash/shared";
+import { endpoints, type Command } from "@satisfactory-dash/shared";
 import {
   alertDeleteDestinationResponse,
   alertDeleteRuleResponse,
@@ -17,6 +17,10 @@ import {
   alertSendTestOk,
   alertStatusQuiet,
   alertStatusShadowMutedFiring,
+  autoPauseResponseAccepted,
+  commandFailed,
+  commandSent,
+  commandSucceeded,
   deleteServerDone,
   errorImportRequired,
   errorLanRequiresCertPinning,
@@ -112,6 +116,8 @@ export const ROUTES = {
   alertRules: endpoints.alerts.rules.list,
   alertDestinations: endpoints.alerts.destinations.get,
   alertEvents: endpoints.alerts.events,
+  // ADR-0031: a change relayed through the game PC's agent, followed to its result.
+  command: endpoints.commands.get,
   // ADR-0027 PR 9c: the owner/admin writes (same paths as the reads, told apart by method).
   alertRuleCreate: endpoints.alerts.rules.create,
   alertRuleUpdate: endpoints.alerts.rules.update,
@@ -127,6 +133,18 @@ export type RouteKey = keyof typeof ROUTES;
 
 const ok = (body: unknown): MockResponse => ({ status: 200, body });
 const fail = (status: number, body: unknown): MockResponse => ({ status, body });
+
+/**
+ * A relayed command with its expiry moved far ahead: the fixtures' fixed expiry is in the past on a
+ * real clock, and the page stops waiting at a command's expiry.
+ */
+const live = (answer: { command: Command }) => ({ command: { ...answer.command, expiresAt: "2099-01-01T00:00:00.000Z" } });
+
+/** Auto-pause on a server reached through the agent: the PUT answers 202 with the command to follow. */
+const relayed = (result: { command: Command }): Partial<Record<RouteKey, MockResponse>> => ({
+  setAutoPause: { status: 202, body: live(autoPauseResponseAccepted) },
+  command: ok(live(result)),
+});
 
 /** A signed-in operator with one healthy server. */
 const BASE: Record<RouteKey, MockResponse> = {
@@ -159,6 +177,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   alertRules: ok(alertRulesList),
   alertDestinations: ok(alertDestinationsConfigured),
   alertEvents: ok(alertEventsLastPage),
+  command: ok(live(commandSucceeded)),
   // Each write answers as the backend would; the page re-reads or patches its cache from these.
   alertRuleCreate: { status: 201, body: alertRuleCreated },
   alertRuleUpdate: ok(alertRuleUpdatedPresetDisabled),
@@ -238,6 +257,9 @@ export const SCENARIOS = {
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },
+  // ADR-0031 PR 4: after the toggle, the change is on its way to the game PC, or it failed there.
+  "settings-relayed-saving": relayed(commandSent),
+  "settings-relayed-failed": relayed(commandFailed),
   "upstream-unreachable": upstreamDown(errorUpstreamUnreachable),
   "upstream-auth-rejected": upstreamDown(errorUpstreamAuthRejected),
   "upstream-invalid": upstreamDown(errorWithDetail),

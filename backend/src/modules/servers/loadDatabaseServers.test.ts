@@ -19,7 +19,8 @@ async function fakeDb(servers: { uuid: string; publicId: string; sealedWith?: ty
   const rows: unknown[] = [];
   for (const server of servers) {
     let written: unknown[] = [];
-    await saveConnection({ query: async (_t, v = []) => { written = v; return { rows: [{}] }; } }, server.sealedWith ?? ring, server.uuid, { ...input, pinnedIp: server.pinnedIp ?? input.pinnedIp });
+    // Saving also drops the server's open enrolment codes (ADR-0031): only the connection write's values are wanted here.
+    await saveConnection({ query: async (t, v = []) => { if (t.includes("INSERT INTO servers.server_connections")) written = v; return { rows: [{}] }; } }, server.sealedWith ?? ring, server.uuid, { ...input, pinnedIp: server.pinnedIp ?? input.pinnedIp });
     const [, host, pinned, apiPort, frmPort, apiEnc, frmEnc, keyId] = written;
     rows.push({
       server_id: server.uuid, public_id: server.publicId, display_name: `Name ${server.publicId}`, connection_kind: "local",

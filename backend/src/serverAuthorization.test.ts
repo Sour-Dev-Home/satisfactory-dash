@@ -20,6 +20,7 @@ import {
   alertStatusQuiet,
   alertUpdateRuleRequest,
   agentEnrollmentCodeResponse,
+  commandPending,
   agentRevokeResponse,
   agentStatusEnrolled,
   factoryMixed,
@@ -54,11 +55,9 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // ADR-0027 PR 7a added the alerts endpoints to the contract before their routes; PR 7b mounted them, so nothing about
 // alerts is exempt any more and the generated tests cover all of them like every other scoped route.
 // ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
-// contract before their routes. PR 5a mounted the three agent ones, so the generated tests cover them like every other
-// scoped route; the command's status (`GET /commands/:commandId`) arrives with the commands table in PR 5b, which deletes
-// this line. A guard test below makes that impossible to forget.
-const COMMANDS_NOT_YET_MOUNTED = (name: string): boolean => name.startsWith("commands.");
-const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !COMMANDS_NOT_YET_MOUNTED(endpoint.name));
+// contract before their routes. PR 5a mounted the three agent ones and PR 5b the command's status (`GET
+// /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
+const SCOPED = scopedEndpoints(endpoints);
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1");
 
@@ -185,7 +184,7 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
       ...createTelemetryRouters(directory),
       ...createSettingsRouters(directory),
       ...createAlertsRouters(alertsService),
-      ...createAgentUserRouters(agentsService),
+      ...createAgentUserRouters(agentsService, { getCommand: async () => commandPending.command }),
       management.scoped,
     ],
   });
@@ -239,22 +238,20 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     ]);
   });
 
-  it("exempts only the command status endpoint (ADR-0031 PR 5b), and no other", () => {
-    const exempt = scopedEndpoints(endpoints).filter((endpoint) => COMMANDS_NOT_YET_MOUNTED(endpoint.name));
-    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`).sort()).toEqual([
+  it("covers the command status endpoint (ADR-0031 PR 5b), and nothing in the contract is left out", () => {
+    expect(SCOPED.filter((endpoint) => endpoint.name.startsWith("commands.")).map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`)).toEqual([
       "GET /commands/:commandId",
     ]);
+    expect(SCOPED).toEqual(scopedEndpoints(endpoints));
   });
 
-  // Expires on its own: the moment PR 5b mounts it, this fails until COMMANDS_NOT_YET_MOUNTED is deleted, so the
-  // route can never ship without the generated authorization tests.
-  it("the exempt command endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+  // A route that is in the contract but not mounted answers the app's own 404 to an authorized owner; every scoped
+  // endpoint must be served (the generated tests below assert the success status, so this only names the culprit).
+  it("every scoped endpoint is mounted: an authorized owner never gets the unmatched-route 404", async () => {
     const app = buildApp();
-    for (const endpoint of scopedEndpoints(endpoints).filter((e) => COMMANDS_NOT_YET_MOUNTED(e.name))) {
+    for (const endpoint of SCOPED.filter((e) => !e.operatorOnly)) {
       const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
-      const mounted = `${endpoint.name} is now mounted: delete COMMANDS_NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0031 PR 5b)`;
-      expect(res.status, mounted).toBe(404);
-      expect(res.body?.error?.code, mounted).toBe("not_found");
+      expect(res.body?.error?.code, `${endpoint.name} is not mounted`).not.toBe("not_found");
     }
   });
 

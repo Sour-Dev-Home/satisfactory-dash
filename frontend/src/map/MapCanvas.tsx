@@ -119,7 +119,7 @@ export default function MapCanvas({
       ref={host}
       role="application"
       aria-label="Factory map. Arrow keys pan, plus and minus zoom."
-      className="map-canvas h-[60svh] min-h-[320px] w-full rounded-card border border-line"
+      className="map-canvas h-map min-h-map-min w-full rounded-card border border-line"
     />
   );
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
-import { InMemoryServerDirectory } from "../../servers/index.js";
+import { InMemoryServerDirectory, ServerRuntime } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
 import { ObservationBoard } from "../../telemetry/services/observationBoard.js";
 import { AlertEvaluatorWorker, type AlertsDb } from "./alertEvaluatorWorker.js";
@@ -211,6 +211,59 @@ describe("AlertEvaluatorWorker.tick", () => {
     await worker.tick();
     expect(fake.calls).not.toContain("seed");
     expect(fake.events).toEqual([]);
+  });
+
+  describe("a server reached through an edge agent (ADR-0031)", () => {
+    const agentEntry = (id: string, board: ObservationBoard) => ({
+      id,
+      displayName: id,
+      services: { telemetry: { observations: board } } as unknown as TelemetryScope,
+      workers: [],
+    });
+
+    it("also gets the 'agent offline' preset, and a polled server does not", async () => {
+      const fake = fakeDb();
+      const directory = new ServerRuntime<TelemetryScope>([agentEntry("alpha", new ObservationBoard()), agentEntry("friend", new ObservationBoard({ agentStartedAt: now }))]);
+      await new AlertEvaluatorWorker(fake.db, directory, { logger: logger().logger, now: () => now }).tick();
+      const kinds = (id: string) => fake.rules.filter((rule) => rule.server_public_id === id).map((rule) => rule.kind).sort();
+      expect(kinds("alpha")).toEqual(["power_outage", "server_unreachable", "stopped_machines"]);
+      expect(kinds("friend")).toEqual(["agent_offline", "power_outage", "server_unreachable", "stopped_machines"]);
+    });
+
+    it("a server that becomes an agent server later (its enrolment) is seeded again, once, without a restart", async () => {
+      const fake = fakeDb();
+      const directory = new ServerRuntime<TelemetryScope>([agentEntry("alpha", new ObservationBoard())]);
+      const worker = new AlertEvaluatorWorker(fake.db, directory, { logger: logger().logger, now: () => now });
+      await worker.tick();
+      await worker.tick();
+      expect(fake.rules.map((rule) => rule.kind)).not.toContain("agent_offline");
+      await directory.replace(agentEntry("alpha", new ObservationBoard({ agentStartedAt: now })));
+      await worker.tick();
+      await worker.tick();
+      expect(fake.rules.filter((rule) => rule.kind === "agent_offline")).toHaveLength(1);
+      expect(fake.calls.filter((call) => call === "seed")).toHaveLength(2);
+    });
+
+    it("fires agent_offline after two minutes of silence and resolves once the agent is heard again", async () => {
+      const fake = fakeDb();
+      const board = new ObservationBoard({ agentStartedAt: now });
+      const directory = new ServerRuntime<TelemetryScope>([agentEntry("friend", board)]);
+      const worker = new AlertEvaluatorWorker(fake.db, directory, { logger: logger().logger, now: () => now });
+      board.recordAgentSeen(now);
+      await worker.tick();
+      now += 100 * SEC;
+      await worker.tick();
+      expect(fake.events).toEqual([]);
+      now += 30 * SEC; // 130 s since the last snapshot
+      await worker.tick();
+      expect(fake.events).toMatchObject([{ kind: "agent_offline", severity: "critical", subject: "agent", transition: "fired" }]);
+      board.recordAgentSeen(now);
+      await worker.tick();
+      now += 70 * SEC;
+      board.recordAgentSeen(now);
+      await worker.tick();
+      expect(fake.events.map((event) => `${event.kind}:${event.transition}`)).toEqual(["agent_offline:fired", "agent_offline:resolved"]);
+    });
   });
 
   it("records an outage as fired exactly once, persists the state, and resolves it after the clear duration", async () => {

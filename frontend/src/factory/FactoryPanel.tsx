@@ -137,11 +137,11 @@ function Clock({ percent }: { percent: number | undefined }) {
 /** A machine's inputs or outputs, one plain line each. */
 function Rates({ rates, label }: { rates: ProductionRate[]; label: "Inputs" | "Outputs" }) {
   // Stacked on a phone, two bare dashes under "No recipe" say nothing more: the table shows them.
-  if (rates.length === 0) return <span className="max-[600px]:hidden">—</span>;
+  if (rates.length === 0) return <span className="max-table-rows:hidden">—</span>;
   return (
     <>
       {/* On a phone the table stacks and its header row is hidden: name the list there. */}
-      <span aria-hidden="true" className="block text-xs text-muted min-[601px]:hidden">
+      <span aria-hidden="true" className="block text-xs text-muted table-rows:hidden">
         {label}
       </span>
       <ul aria-label={label}>

@@ -90,7 +90,7 @@ export function ItemHistorySection({ labels }: { labels: Map<string, ItemLabel> 
             // The visible label is the accessible name (WCAG 2.5.3); the title spells it out.
             title={RANGE_WORDS[r]}
             onClick={() => setRange(r)}
-            className="min-w-[44px]"
+            className="min-w-touch"
           >
             {RANGE_LABEL[r]}
           </button>

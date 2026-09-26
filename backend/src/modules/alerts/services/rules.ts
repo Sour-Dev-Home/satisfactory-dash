@@ -6,7 +6,7 @@ import { z } from "zod";
  * with a logged code and never crashes a tick.
  */
 
-export const RULE_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target"] as const;
+export const RULE_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target", "agent_offline"] as const;
 export type RuleKind = (typeof RULE_KINDS)[number];
 
 export const SEVERITIES = ["info", "warning", "critical"] as const;
@@ -27,6 +27,13 @@ export const ServerUnreachableParamsSchema = z.strictObject({
   minSeconds: z.number().int().min(0).max(86_400).default(120),
 });
 
+/** ADR-0031: an edge agent that has sent no snapshot for this long is offline (its PC is off, the network is down or the
+ *  agent stopped). Only for a server reached through an agent; a `local` server has no agent and no subject. */
+export const AGENT_OFFLINE_MIN_SECONDS = 60;
+export const AgentOfflineParamsSchema = z.strictObject({
+  offlineSeconds: z.number().int().min(AGENT_OFFLINE_MIN_SECONDS).max(86_400).default(120),
+});
+
 export const PRODUCTION_WINDOW_MIN_MINUTES = 5;
 export const PRODUCTION_WINDOW_MAX_MINUTES = 60;
 /** Amendment 3: fires below this share of the target, clears above the other (a hysteresis band, so 92% never flaps). */
@@ -45,13 +52,15 @@ export const ProductionBelowTargetParamsSchema = z.strictObject({
 export type StoppedMachinesParams = z.infer<typeof StoppedMachinesParamsSchema>;
 export type ServerUnreachableParams = z.infer<typeof ServerUnreachableParamsSchema>;
 export type ProductionBelowTargetParams = z.infer<typeof ProductionBelowTargetParamsSchema>;
+export type AgentOfflineParams = z.infer<typeof AgentOfflineParamsSchema>;
 
 export type ParsedRuleParams =
   | { kind: "power_outage"; params: Record<string, never> }
   | { kind: "fuse_trip"; params: Record<string, never> }
   | { kind: "stopped_machines"; params: StoppedMachinesParams }
   | { kind: "server_unreachable"; params: ServerUnreachableParams }
-  | { kind: "production_below_target"; params: ProductionBelowTargetParams };
+  | { kind: "production_below_target"; params: ProductionBelowTargetParams }
+  | { kind: "agent_offline"; params: AgentOfflineParams };
 
 /** A rule as the engine sees it: validated, for one server (by its public id). */
 export type Rule = ParsedRuleParams & {
@@ -77,6 +86,10 @@ export function parseRuleParams(kind: string, raw: unknown): ParsedRuleParams | 
     }
     case "server_unreachable": {
       const parsed = ServerUnreachableParamsSchema.safeParse(raw ?? {});
+      return parsed.success ? { kind, params: parsed.data } : undefined;
+    }
+    case "agent_offline": {
+      const parsed = AgentOfflineParamsSchema.safeParse(raw ?? {});
       return parsed.success ? { kind, params: parsed.data } : undefined;
     }
     case "production_below_target": {
@@ -111,8 +124,17 @@ export const PRESET_RULES: readonly PresetDefaults[] = [
   { kind: "server_unreachable", params: { failedPolls: 3, minSeconds: 120 }, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
 ];
 
+/**
+ * ADR-0031 PR 5b: seeded, on top of the presets above, only for a server reached through an edge agent ("agent offline"
+ * is a default preset there; a `local` server has no agent to lose). Same kill switch and shadow week as every alert.
+ */
+export const AGENT_PRESET_RULES: readonly PresetDefaults[] = [
+  { kind: "agent_offline", params: { offlineSeconds: 120 }, forSeconds: 0, clearSeconds: 60, repeatSeconds: 3600, severity: "critical" },
+];
+
 /** Every kind's defaults, seeded or not, for a rule created later (PR 7). `params` here are only the optional ones. */
 export const DEFAULTS_BY_KIND: Readonly<Record<RuleKind, PresetDefaults>> = {
+  agent_offline: AGENT_PRESET_RULES[0]!,
   // Amendment 3: `for` 10 min, clear 5 min, repeat 1 h.
   production_below_target: { kind: "production_below_target", params: { windowMinutes: 10 }, forSeconds: 600, clearSeconds: 300, repeatSeconds: 3600, severity: "warning" },
   power_outage: PRESET_RULES[0]!,

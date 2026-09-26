@@ -11,10 +11,20 @@ import { apiGetAbortable, apiGetQuery } from "./client";
 import { BackendUnreachableError, classifyError } from "./errors";
 
 /** ADR-0005 poll intervals. Settings poll only while a change is pending. */
-export const POLL_MS = { status: 10_000, power: 10_000, factory: 30_000, settingsPending: 10_000, alerts: 60_000 } as const;
+export const POLL_MS = {
+  status: 10_000,
+  power: 10_000,
+  factory: 30_000,
+  settingsPending: 10_000,
+  alerts: 60_000,
+  command: 1_000,
+} as const;
 
 /** Alert log events per page (the backend allows 1 to 100). */
 export const ALERT_PAGE = 50;
+
+/** A relayed command's statuses that won't change again (ADR-0031). Anything else is still on its way. */
+export const FINAL_COMMAND_STATUSES: readonly string[] = ["succeeded", "failed", "expired"];
 
 /**
  * Retry at most once, and only when the backend itself couldn't be reached. An ApiError
@@ -168,6 +178,17 @@ export const queries = {
     queryOptions({
       queryKey: MANAGED_KEY,
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.serverManagement.list),
+    }),
+  // ADR-0031 PR 4: a change relayed through the edge agent, followed to its result. Polled about once
+  // a second while it's on its way (it usually lands within seconds), never once it's final.
+  command: (serverId: string, commandId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "commands", commandId],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.commands.get, serverId, commandId),
+      refetchInterval: (query) => {
+        const status = query.state.data?.command.status;
+        return status !== undefined && FINAL_COMMAND_STATUSES.includes(status) ? false : POLL_MS.command;
+      },
     }),
   // ADR-0027 PR 9: alerts. Alerts change on minute scales, and the header bell reads the status on
   // every page, so it's polled once a minute (never at the page's rate).

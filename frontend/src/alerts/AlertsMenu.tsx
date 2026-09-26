@@ -26,7 +26,7 @@ export function AlertsMenu({ onNavigate }: { onNavigate: () => void }) {
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base">Alerts</h2>
-        <Link to="/app/settings#alerts" onClick={onNavigate} className="inline-flex min-h-(--size-target) items-center text-sm">
+        <Link to="/app/settings#alerts" onClick={onNavigate} className="inline-flex min-h-touch items-center text-sm">
           Manage alerts
         </Link>
       </div>
@@ -159,7 +159,7 @@ function AlertLine({
         aria-expanded={open}
         aria-controls={detailId}
         onClick={() => setOpen((o) => !o)}
-        className="grid min-h-(--size-target) w-full gap-0.5 rounded-md border-0 bg-transparent px-3 py-2 text-left font-normal"
+        className="grid min-h-touch w-full gap-0.5 rounded-md border-0 bg-transparent px-3 py-2 text-left font-normal"
       >
         <span>
           <span className={cn("font-semibold", severity === "resolved" ? "text-ok" : severityClass(severity))}>
@@ -170,7 +170,7 @@ function AlertLine({
         <span className="text-sm text-muted">{meta}</span>
       </button>
       {open && (
-        <div id={detailId} className="border-t border-line px-3 py-2 text-sm">
+        <div id={detailId} className="animate-reveal border-t border-line px-3 py-2 text-sm">
           {children}
         </div>
       )}

@@ -21,7 +21,7 @@ import {
   testGameServerConnection,
 } from "./modules/gameserver/index.js";
 import type { SatisfactoryServerConfig } from "./modules/gameserver/index.js";
-import { createAgentSettingsServices, createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
+import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
 import {
   ServerRuntime,
   findServerByPublicId,
@@ -49,7 +49,16 @@ import {
   createTelemetryServices,
   createUnitResolver,
 } from "./modules/telemetry/index.js";
-import { AGENT_CADENCE, createAgentApiRouters, createAgentUserRouters, createAgentsService } from "./modules/agents/index.js";
+import {
+  AGENT_CADENCE,
+  CommandNotifier,
+  createAgentApiRouters,
+  createAgentSettingsServices,
+  createAgentUserRouters,
+  createAgentsService,
+  createCommandSweeper,
+  createCommandsService,
+} from "./modules/agents/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -109,6 +118,9 @@ const resolveUnit = createUnitResolver((className) =>
 // Declared before buildServer: every server's history recorder writes through its pool (ADR-0027).
 const databaseConfig = orExit(() => loadDatabaseConfig());
 const database = databaseConfig ? new Database(databaseConfig, logger) : undefined;
+// ADR-0031 PR 5b: commands to edge agents (auto-pause today). One notifier, so a command created by a dashboard request
+// wakes the agent's long-poll; both faces of the service share it.
+const agentCommands = database ? createCommandsService({ db: database.pool, notifier: new CommandNotifier() }) : undefined;
 
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
@@ -131,13 +143,13 @@ function buildServer(id: string, displayName: string, untimedConfig: Satisfactor
 /** ADR-0031 PR 5a: a server reached through an edge agent. No game connection and no pollers: its live reads serve the
  *  agent's last snapshot and its history is fed by the snapshots. Only built with a database (an agent needs one). */
 function buildAgentServer(id: string, displayName: string) {
-  if (!database) throw new Error("an agent server needs a database");
+  if (!database || !agentCommands) throw new Error("an agent server needs a database");
   const telemetry = createAgentTelemetryServices({
     logger: logger.child({ worker: "agent-history", serverId: id }),
     cadence: () => AGENT_CADENCE,
     history: { db: database.pool, serverPublicId: id },
   });
-  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices() }, workers: telemetry.workers };
+  return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers };
 }
 
 const entries = orExit(() => {
@@ -202,6 +214,8 @@ logger.info({ alertDelivery }, alertDelivery === "on" ? "alert delivery is ON: n
 const databaseWorkers = [
   ...identity.workers,
   ...(database ? [createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
+  // ADR-0031 PR 5b: expires agent commands that ran out and purges old finished ones.
+  ...(database ? [createCommandSweeper(database.pool, logger.child({ worker: "agent-commands" }))] : []),
   // ADR-0027 PR 5: the alert engine evaluates every server's rules from the pollers' last readings and records the
   // transitions in the alert log. It needs the database up, so it starts with the others. PR 6: with ALERT_DELIVERY
   // on it also queues each new event for the server's destinations, and the sender delivers them; off (the default)
@@ -309,12 +323,14 @@ export const app = createApp({
         )
       : []),
     // ADR-0031 PR 5a: the owner's side of the edge agent (enrolment code, agent status, revoke), after the servers router.
-    ...(database ? createAgentUserRouters(createAgentsService({ db: database.pool, canManage: (userId) => serverManagement?.canManage(userId) ?? false })) : []),
+    ...(database && agentCommands
+      ? createAgentUserRouters(createAgentsService({ db: database.pool, canManage: (userId) => serverManagement?.canManage(userId) ?? false }), agentCommands)
+      : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
   ],
   // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
-  agentRouters: database
-    ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), directory, attachAgentRuntime, isReady: () => serversRegistered })
+  agentRouters: database && agentCommands
+    ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered })
     : [],
 });
 

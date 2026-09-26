@@ -6,7 +6,7 @@ describe("matchRoute", () => {
   it("maps every endpoint's own client path and method to its key", () => {
     for (const key of Object.keys(ROUTES) as RouteKey[]) {
       const route = ROUTES[key];
-      // A second argument for the paths that take one (a rule's id); the others ignore it.
+      // A second argument for the paths that take one (a rule's or a command's id); the others ignore it.
       const path = (route.path as (...args: string[]) => string)("default", "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e01");
       expect(matchRoute(route.method, path), key).toBe(key);
     }

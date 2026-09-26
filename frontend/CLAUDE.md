@@ -30,7 +30,13 @@ contract needs to grow, not that this module should special-case a backend detai
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
   (direction B2, dark only). Use the token utilities (`bg-surface`, `text-muted`,
-  `text-ok`...); add a token rather than a raw hex value. `cn()` in `src/lib/cn.ts` merges
+  `text-ok`, `min-h-touch`...). Every colour, size, radius, z-index, breakpoint and motion
+  value (duration, easing, delay) is a named token in that `@theme` block, never a raw value
+  in a component: no hex, no `min-h-[44px]`, no `z-10`, no `180ms`. Need a new value? Add
+  the token first. Tailwind's own scale (`p-4`, `rounded-md`, `sm:`) counts as tokens.
+  `npm run lint` (`scripts/check-design-tokens.mjs`) fails on raw values outside `@theme`;
+  the escape hatch is `design-token-allow: <reason>` on or above the line, plus bumping
+  `ALLOWED_EXCEPTIONS` in that script so a reviewer sees it. `cn()` in `src/lib/cn.ts` merges
   classes. shadcn/ui components get copied into `src/components/ui/` only when a view needs
   one; prefer non-modal variants (ADR-0016 item 8). The old `.panel`/`.banner`/`.circuit`
   classes in `index.css` are there until each view is restyled (step 5), then deleted.

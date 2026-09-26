@@ -178,7 +178,8 @@ export class ServerAlertEvaluator {
       const byId = new Map(rules.map((rule) => [rule.id, rule]));
       for (const [key, state] of input.states) {
         const rule = byId.get(key.slice(0, key.indexOf("\u0000")));
-        if (rule === undefined || rule.kind === "server_unreachable") continue;
+        // The two "the link is down" alerts speak through every suppression, so a resume does not touch their states.
+        if (rule === undefined || rule.kind === "server_unreachable" || rule.kind === "agent_offline") continue;
         const next = resumeAfterSuppression(state);
         if (!sameState(state, next)) {
           effective.set(key, next);
@@ -214,6 +215,24 @@ export class ServerAlertEvaluator {
           stepSubject(rule, "server", condition, () => ({
             failedPolls: obs.polls.consecutiveFailures,
             downForSeconds: obs.polls.firstFailureAt === undefined ? 0 : Math.max(0, Math.round((now - obs.polls.firstFailureAt) / 1000)),
+          }));
+          break;
+        }
+        case "agent_offline": {
+          // ADR-0031: only a server reached through an edge agent has this subject; a `local` server's board has none.
+          if (obs.agent === undefined) break;
+          // Silence is measured from the later of "the agent's last snapshot" and "this board began": after a restart the
+          // clock starts again, so an agent that is gone is noticed `offlineSeconds` after the restart, and one that was
+          // enrolled a moment ago is not offline before it had the time to report.
+          const since = Math.max(obs.agent.startedAt, obs.agent.lastHeardAt ?? obs.agent.startedAt);
+          const silentMs = Math.max(0, now - since);
+          const silent = silentMs >= rule.params.offlineSeconds * 1000;
+          // Nothing heard since this board began and the window not yet over: that is no evidence the agent is back, so a
+          // firing alert HOLDS (unknown) instead of clearing and re-firing after every backend restart.
+          const condition: boolean | "unknown" = silent ? true : obs.agent.lastHeardAt === undefined ? "unknown" : false;
+          stepSubject(rule, "agent", condition, () => ({
+            silentForSeconds: Math.round(silentMs / 1000),
+            neverHeard: obs.agent?.lastHeardAt === undefined,
           }));
           break;
         }

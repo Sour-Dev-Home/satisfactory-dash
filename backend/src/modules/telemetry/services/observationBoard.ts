@@ -44,6 +44,13 @@ export interface ObservationSnapshot {
     | undefined;
   /** Health of the status/power poll: how the server looks from here. */
   polls: { consecutiveFailures: number; firstFailureAt: number | undefined; lastSuccessAt: number | undefined };
+  /**
+   * ADR-0031: present only for a server reached through an edge agent. `startedAt` is when this board (this process's
+   * view of the server) began, and `lastHeardAt` when the agent's last snapshot of any kind arrived (undefined until the
+   * first one after a restart). "No snapshot for two minutes" is measured from the later of the two, so an agent that is
+   * gone after a restart is still noticed, two minutes after the restart.
+   */
+  agent?: { startedAt: number; lastHeardAt: number | undefined };
 }
 
 export interface FactoryObservationInput {
@@ -61,9 +68,19 @@ export interface ObservationSink {
   publishFactory(input: FactoryObservationInput): void;
   recordPollFailure(at: number): void;
   recordPollSuccess(at: number): void;
+  /** An edge agent's snapshot of any kind arrived (ADR-0031). The pollers never call it. */
+  recordAgentSeen(at: number): void;
 }
 
 export class ObservationBoard implements ObservationSink {
+  /** Set for a server reached through an edge agent: when this board began (see `ObservationSnapshot.agent`). */
+  private readonly agentStartedAt: number | undefined;
+  private lastHeardAt: number | undefined;
+
+  constructor(options: { agentStartedAt?: number } = {}) {
+    this.agentStartedAt = options.agentStartedAt;
+  }
+
   private session: string | undefined;
   private status: ObservationSnapshot["status"];
   private power: ObservationSnapshot["power"];
@@ -102,6 +119,11 @@ export class ObservationBoard implements ObservationSink {
     this.lastSuccessAt = at;
   }
 
+  recordAgentSeen(at: number): void {
+    // Never moves backwards: a late or retried snapshot must not make the agent look silent for longer.
+    this.lastHeardAt = this.lastHeardAt === undefined ? at : Math.max(this.lastHeardAt, at);
+  }
+
   /** The current readings. The arrays are shared, not copied: pollers replace them whole and never mutate them. */
   snapshot(): ObservationSnapshot {
     return {
@@ -114,6 +136,7 @@ export class ObservationBoard implements ObservationSink {
         firstFailureAt: this.firstFailureAt,
         lastSuccessAt: this.lastSuccessAt,
       },
+      ...(this.agentStartedAt !== undefined ? { agent: { startedAt: this.agentStartedAt, lastHeardAt: this.lastHeardAt } } : {}),
     };
   }
 }
@@ -124,4 +147,5 @@ export const noopObservationSink: ObservationSink = {
   publishFactory() {},
   recordPollFailure() {},
   recordPollSuccess() {},
+  recordAgentSeen() {},
 };

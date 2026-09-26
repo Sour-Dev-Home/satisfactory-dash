@@ -172,6 +172,7 @@ const DELETE_HISTORY = [
   // id can never be reached by the old agent.
   "DELETE FROM agents.enrollment_codes WHERE server_id = $1",
   "DELETE FROM agents.agent_credentials WHERE server_id = $1",
+  "DELETE FROM agents.commands WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });

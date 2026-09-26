@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { ScenarioName } from "../src/test/scenarios";
-import { expect, expectNoAxeViolations, test } from "./fixtures";
+import { expect, expectNoAxeViolations, settleAnimations, test } from "./fixtures";
 
 // Every UI state from ADR-0016 item 5, at 1440 and 390 px (the two projects): wait until the
 // state is actually on screen, fail on any axe violation, then compare a full-page screenshot.
@@ -79,6 +79,19 @@ const CASES: StateCase[] = [
   { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },
+  // ADR-0031 PR 4: auto-pause on a server reached through the game PC's agent, after the toggle.
+  {
+    scenario: "settings-relayed-saving",
+    path: "/app/settings",
+    shows: "Saving…",
+    act: (page) => page.getByRole("checkbox", { name: /Auto-pause when no players are connected/ }).click(),
+  },
+  {
+    scenario: "settings-relayed-failed",
+    path: "/app/settings",
+    shows: /couldn't reach the game server, so the setting didn't change/,
+    act: (page) => page.getByRole("checkbox", { name: /Auto-pause when no players are connected/ }).click(),
+  },
   { scenario: "upstream-unreachable", shows: "Game server unreachable." },
   { scenario: "upstream-auth-rejected", shows: /credentials for the game server were rejected/ },
   { scenario: "upstream-invalid", shows: "The game server returned an error." },
@@ -142,9 +155,10 @@ async function openAddForm(page: Page) {
   await page.getByRole("button", { name: "Add a server" }).click();
 }
 
-/** Opens the header bell's dropdown (ADR-0027 PR 9). */
+/** Opens the header bell's dropdown (ADR-0027 PR 9) and lets it finish popping in. */
 async function openAlerts(page: Page) {
   await page.getByRole("button", { name: /^Alerts/ }).click();
+  await settleAnimations(page);
 }
 
 async function addServer(page: Page, host: string) {

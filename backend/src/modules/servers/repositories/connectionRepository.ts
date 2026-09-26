@@ -244,7 +244,18 @@ export async function saveConnection(
     frm?.data ?? null,
     api.keyId,
   ]);
-  return result.rows.length > 0;
+  if (result.rows.length === 0) return false;
+  await dropOpenEnrollmentCodes(db, serverId);
+  return true;
+}
+
+// ADR-0031 PR 5b: a code created for this server while it was one kind must not enrol an agent once the operator has
+// saved a local connection (enrolling replaces the connection and deletes its tokens). Saving a connection therefore
+// drops the server's unspent codes, so the permission that was checked when a code was CREATED cannot go stale.
+const DROP_OPEN_CODES = "DELETE FROM agents.enrollment_codes WHERE server_id = $1 AND consumed_at IS NULL";
+
+async function dropOpenEnrollmentCodes(db: Queryable, serverId: string): Promise<void> {
+  await db.query(DROP_OPEN_CODES, [serverId]);
 }
 
 const INSERT_IF_ABSENT = `
@@ -283,7 +294,10 @@ export async function createConnection(
     frm?.data ?? null,
     api.keyId,
   ]);
-  if (inserted.rows.length > 0) return "created";
+  if (inserted.rows.length > 0) {
+    await dropOpenEnrollmentCodes(db, serverId);
+    return "created";
+  }
   const existing = await db.query(CONNECTION_EXISTS, [serverId]);
   return existing.rows.length > 0 ? "exists" : "not_local_server";
 }
@@ -353,6 +367,9 @@ export async function updateConnection(
     if (patch.displayName !== undefined) {
       await client.query(RENAME, [serverId, patch.displayName]);
     }
+    // A rename alone changes nothing about how the server is reached: its codes stay.
+    const reachesDifferently = [patch.host, patch.pinnedIp, patch.apiPort, patch.frmPort, patch.apiToken, patch.frmToken].some((value) => value !== undefined);
+    if (reachesDifferently) await dropOpenEnrollmentCodes(client, serverId);
     if (audit !== undefined) {
       await recordAuditEvent(client, {
         action: "server.updated",

@@ -34,9 +34,10 @@ function Section({ label, probe, children }: { label: string; probe: string; chi
  * A page under a tab. The heading is for screen readers; the active tab shows it visually.
  * Not a landmark itself: its panel already is one, with the same name.
  */
+// Each page fades in once when its tab opens (the key remounts it); the data inside never waits.
 function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid animate-reveal gap-4">
       <h2 tabIndex={-1} className="sr-only">
         {title}
       </h2>
@@ -98,7 +99,7 @@ export function Shell() {
               className={({ isActive }) =>
                 [
                   // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
-                  "inline-flex min-h-[44px] flex-none items-center rounded-md px-2.5 font-medium sm:px-3 no-underline focus-visible:-outline-offset-2",
+                  "inline-flex min-h-touch flex-none items-center rounded-md px-2.5 font-medium sm:px-3 no-underline transition-colors focus-visible:-outline-offset-2",
                   isActive ? "bg-surface-2 text-fg-strong" : "text-muted hover:text-fg-strong",
                 ].join(" ")
               }
@@ -133,7 +134,7 @@ export function Shell() {
         <Route
           index
           element={
-            <div key="overview" className="grid gap-5">
+            <div key="overview" className="grid animate-reveal gap-5">
               <Section label="Overview" probe="overview">
                 <OverviewView />
               </Section>
@@ -183,7 +184,9 @@ export function Shell() {
           element={
             <Page key="settings" title="Settings">
               <Section label="Server settings" probe="settings">
-                <AutoPauseView />
+                {/* Keyed by server: a change still on its way to one server's game PC must not follow
+                    the user to another server. */}
+                <AutoPauseView key={server.id} />
               </Section>
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />

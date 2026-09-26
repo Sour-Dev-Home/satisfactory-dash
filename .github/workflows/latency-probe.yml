@@ -1,0 +1,72 @@
+name: Latency probe
+
+# ADR-0032 step 4: an external probe. About every 30 minutes it requests the public
+# readiness endpoint once, records DNS, TLS and total time in the job summary, and fails
+# only when it answers 200 but takes longer than 2 seconds. A backend that is down (a
+# failed request or a non-200) warns and stays green: it runs on a PC that is often off,
+# and downtime alerting belongs to the external uptime monitor (ADR-0028). A red run
+# therefore means "slow". It sends no credentials and
+# reads no data (the endpoint is public and already reachable by anyone). It does not
+# check out the repo, has no secrets and no token permissions. The hostname is the same
+# after the AWS move, so this keeps working unchanged.
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: latency-probe
+  cancel-in-progress: false
+
+env:
+  PROBE_URL: https://api.satis-manager.com/api/health/ready
+  MAX_TOTAL_SECONDS: "2"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Time one request
+        run: |
+          set -o pipefail
+          # Plain text only: the summary carries the status and the timings, never the body.
+          code=0
+          out=$(curl --silent --show-error --output /dev/null --max-time 10 --user-agent "satisfactory-dash-latency-probe" \
+            --write-out '%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total}' \
+            "$PROBE_URL") || code=$?
+          if [ "$code" -ne 0 ]; then
+            {
+              echo "## Latency probe"
+              echo "curl failed with exit code $code (no answer within 10 s, or a DNS or TLS failure)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Down is not slow: the backend runs on a PC that is often off, and uptime alerting is the external
+            # monitor's job (ADR-0028). A red run must mean "slow", so a failed request only warns.
+            echo "::warning::backend not reachable, probe skipped (curl exit $code)"
+            exit 0
+          fi
+          read -r status dns connect tls first total <<< "$out"
+          {
+            echo "## Latency probe"
+            echo ""
+            echo "| Measure | Value |"
+            echo "|---|---|"
+            echo "| Status | $status |"
+            echo "| DNS | ${dns} s |"
+            echo "| TCP connect (cumulative) | ${connect} s |"
+            echo "| TLS done (cumulative) | ${tls} s |"
+            echo "| First byte (cumulative) | ${first} s |"
+            echo "| Total | ${total} s |"
+            echo "| Limit | ${MAX_TOTAL_SECONDS} s |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" != "200" ]; then
+            echo "::warning::readiness answered $status, expected 200; not a latency failure, so the run stays green"
+            exit 0
+          fi
+          if ! awk -v t="$total" -v m="$MAX_TOTAL_SECONDS" 'BEGIN { exit !(t <= m) }'; then
+            echo "::error::readiness took ${total} s, over the ${MAX_TOTAL_SECONDS} s limit"
+            exit 1
+          fi
