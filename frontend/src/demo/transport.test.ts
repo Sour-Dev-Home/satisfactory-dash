@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { endpoints, SessionResponseSchema, SettingsResponseSchema, StatusResponseSchema } from "@satisfactory-dash/shared";
+import {
+  endpoints,
+  HistoryPowerResponseSchema,
+  SessionResponseSchema,
+  SettingsResponseSchema,
+  StatusResponseSchema,
+} from "@satisfactory-dash/shared";
 import { PENDING_MS, resetDemoState } from "./handlers";
 import { transport } from "./transport";
 import { DEMO_SERVER_ID } from "./world";
@@ -49,6 +55,15 @@ describe("the demo transport", () => {
     const res = await call("GET", endpoints.power.path("somewhere-else"));
     expect(res.status).toBe(404);
     expect((await res.json()).error.code).toBe("server_not_found");
+  });
+
+  it("serves stored power history for the asked range, and a 400 for a bad one (ADR-0027)", async () => {
+    await enter();
+    const ok = await call("GET", `${endpoints.history.power.path(DEMO_SERVER_ID)}?range=7d`);
+    expect(ok.status).toBe(200);
+    expect(HistoryPowerResponseSchema.parse(await ok.json()).data.range).toBe("7d");
+    const bad = await call("GET", `${endpoints.history.power.path(DEMO_SERVER_ID)}?range=2w`);
+    expect(bad.status).toBe(400);
   });
 
   it("answers a path the demo doesn't have with a visible error, never a request", async () => {

@@ -9,7 +9,7 @@ import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { MapView } from "../map/MapView";
 import { OverviewView } from "../overview/OverviewView";
-import { PowerHistoryView } from "../power/PowerHistoryView";
+import { PowerHistorySection } from "../power/PowerHistorySection";
 import { PowerView } from "../power/PowerView";
 import { useSelectedServer } from "../servers/ServerContext";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
@@ -143,7 +143,7 @@ export function Shell() {
               </Section>
               <Section label="Power history" probe="power-history">
                 {/* Keyed by server: its polls must never carry over to another server's chart. */}
-                <PowerHistoryView key={server.id} />
+                <PowerHistorySection key={server.id} />
               </Section>
             </Page>
           }

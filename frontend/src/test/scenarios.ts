@@ -13,6 +13,7 @@ import {
   factoryMixed,
   factoryUnknownItem,
   healthOk,
+  historyPower24h,
   managedServersAllStates,
   managedServersEmpty,
   playersAvailable,
@@ -80,6 +81,8 @@ export const ROUTES = {
   createServer: endpoints.serverManagement.create,
   updateServer: endpoints.serverManagement.update,
   removeServer: endpoints.serverManagement.remove,
+  // ADR-0027 stored history (the query string doesn't change the route).
+  historyPower: endpoints.history.power,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -108,6 +111,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   createServer: ok(serverConnectionOk),
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
+  historyPower: ok(historyPower24h),
 };
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
