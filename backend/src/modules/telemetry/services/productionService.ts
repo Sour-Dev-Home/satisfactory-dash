@@ -36,7 +36,9 @@ export class ProductionService {
    */
   async getFactoryOverview(): Promise<Factory> {
     const buildings = await this.adapter.getFactoryBuildings();
-    const fuseById = new Map(buildings.map((building) => [building.id, building.fuseTriggered]));
-    return deriveFactory({ buildings: buildings.map(mapFactoryBuilding) }, (building) => fuseById.get(building.id), this.resolveUnit);
+    // Keyed by the mapped object, not by id: building ids need not be unique, and each machine keeps the fuse it was sent with.
+    const mapped = buildings.map(mapFactoryBuilding);
+    const fuseOf = new Map(mapped.map((building, index) => [building, buildings[index]!.fuseTriggered] as const));
+    return deriveFactory({ buildings: mapped }, (building) => fuseOf.get(building), this.resolveUnit);
   }
 }
