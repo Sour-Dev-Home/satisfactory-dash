@@ -14,8 +14,11 @@ and how much evidence stands behind each rule. Decision: [ADR-0027](./decisions/
    (architect-accepted deviation from the ADR's "building, circuit" signature).
 3. **idle**: no recipe (FRM reports an unconfigured machine as recipe "Unassigned"; the adapter maps it to null).
 4. **backedUp**: the existing overflow signal (`isBackedUp`: an output slot is at capacity).
-5. **starved**: powered, configured, not backed up, and the best averaged output percent is below
-   `STARVED_BELOW_PERCENT`. `missingInput` is the ingredient with the lowest `ConsPercent`.
+5. **underfed** (was "starved" before ADR-0027 amendment 2): powered, configured, not backed up, and the best
+   averaged output percent is below `UNDERFED_BELOW_PERCENT` (95, the owner's rule: fewer resources than the
+   machine is set for). FRM's `MaxProd` already includes the clock speed, so the percent is relative to the
+   SET clock and a fully fed underclocked or overclocked machine reads about 100.
+   `missingInput` is the ingredient with the lowest `ConsPercent`.
 6. **producing**: otherwise.
 
 `isProducing` is never used (it is instantaneous and noisy); FRM's `ProdPercent` is already an average, which
@@ -26,7 +29,7 @@ information for a connected machine, or no finite output percent.
 
 | Constant | Value | Evidence |
 |---|---|---|
-| `STARVED_BELOW_PERCENT` | 5 | Two trimmed getFactory snapshots (2026-09-22, 10 buildings). Running machines read 100, 100, 24.7 and 9.4 percent; every 0 percent machine in them is backed up or unpowered; **no captured machine was truly starved**. 5 sits below the lowest running machine (9.4) so a slow but working machine is not flagged. |
+| `UNDERFED_BELOW_PERCENT` | 95 | The owner's rule (2026-09-25, ADR-0027 amendment 2), not yet tuned by a capture. Two trimmed getFactory snapshots (2026-09-22, 10 buildings): running machines read 100, 100, 24.7 and 9.4 percent; every 0 percent machine in them is backed up or unpowered. There is no capture yet of a fully fed underclocked machine (it must read producing) or a Somersloop machine (whether `MaxProd` includes the amplification is [NEEDS VERIFICATION]). Confirming 95 waits for the capture session replay (2b-2). |
 
 Known limits, so nobody over-trusts it:
 
@@ -34,15 +37,17 @@ Known limits, so nobody over-trusts it:
   output slot is full" (and the machine is neither paused nor unconfigured); `state` puts paused and unpowered
   first. A backed-up machine that is unpowered has `isBackedUp` true and state `unpowered`, and one whose fuse
   information is missing has `isBackedUp` true and no state. So `stateCounts.backedUp` can be lower than
-  `backedUpCount`: do not mix the two numbers in one total. A negative percent counts as starved; NaN and
+  `backedUpCount`: do not mix the two numbers in one total. A negative percent counts as underfed; NaN and
   Infinity give no state.
 - The capture script writes the file once at the end (Ctrl+C saves nothing, up to 2 hours of samples lost)
   and refuses to overwrite a file that appeared meanwhile.
 
-- The machine at 9.4 percent has full input buffers and an output buffer 98 of 100 full: it is throttled by its
-  output, not starved of input. A percent-only rule cannot tell that from starvation once the percent is low
-  enough; the threshold is what keeps it out. Input-buffer data (FRM's `InputInventory`) could sharpen the
-  rule; it is not read today.
+- **A known false "underfed"**: the machine at 9.4 percent (Assembler ...2147397136 in the 2026-09-22 capture)
+  has full input buffers and an output buffer 98 of 100 full: it is throttled by its output, not short of input.
+  Under the old 5 percent rule it read "producing"; under the 95 percent rule it reads "underfed", so the golden
+  file changed for exactly this machine. A percent-only rule cannot tell an output-throttled machine from an
+  input-starved one; the capture session (2b-2) should measure how often this happens. Input-buffer data (FRM's
+  `InputInventory`) could sharpen the rule; it is not read today.
 - Nothing here is time-based. "Held for N minutes" and hysteresis belong to the alert engine (ADR-0027 PR 5).
 - The golden file `telemetry/services/__golden__/machineStates.golden.json` pins the outcome for the 10
   captured buildings; a rule or threshold change shows up there as a reviewed diff.

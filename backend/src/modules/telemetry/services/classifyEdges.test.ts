@@ -47,8 +47,8 @@ describe("classifyBuilding edge cases", () => {
   it("does not treat Infinity as a usable percent", () => {
     expect(classifyBuilding(base({ production: [rate("A", Infinity)] }), false)).toBeUndefined();
   });
-  it("a negative percent is below the threshold (starved), not an error", () => {
-    expect(classifyBuilding(base({ production: [rate("A", -1)] }), false)?.state).toBe("starved");
+  it("a negative percent is below the threshold (underfed), not an error", () => {
+    expect(classifyBuilding(base({ production: [rate("A", -1)] }), false)?.state).toBe("underfed");
   });
   it("circuitGroupId 0 is connected", () => {
     expect(classifyBuilding(base({ circuitGroupId: 0 }), false)?.state).toBe("producing");

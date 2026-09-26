@@ -16,7 +16,7 @@ const base = {
 describe("factory machine state (ADR-0027)", () => {
   it("parses a building with and without ingredients, state and stateCounts (an older backend omits them)", () => {
     expect(FactoryBuildingSchema.safeParse(base).success).toBe(true);
-    expect(FactoryBuildingSchema.safeParse({ ...base, ingredients: [], state: "starved" }).success).toBe(true);
+    expect(FactoryBuildingSchema.safeParse({ ...base, ingredients: [], state: "underfed" }).success).toBe(true);
     expect(FactorySchema.safeParse({ buildings: [base], backedUpCount: 0 }).success).toBe(true);
     expect(FactorySchema.safeParse({ buildings: [base], backedUpCount: 0, stateCounts: { producing: 1 } }).success).toBe(true);
   });

@@ -37,8 +37,8 @@ const serviceFor = (buildings: FactoryBuilding[]) =>
 describe("factory state and stateCounts (ADR-0027 PR 2)", () => {
   const fleet = [
     building("producing-1"),
-    building("producing-2", { production: [rate("Desc_Stator_C", 60)] }),
-    building("starved", { production: [rate("Desc_Stator_C", 0)], consumption: [rate("Desc_Wire_C", 0)] }),
+    building("producing-2", { production: [rate("Desc_Stator_C", 96)] }),
+    building("underfed", { production: [rate("Desc_Stator_C", 0)], consumption: [rate("Desc_Wire_C", 0)] }),
     building("backed-up", { outputInventory: [{ name: "x", className: "x", amount: 100, maxAmount: 100 }] }),
     building("paused", { isPaused: true }),
     building("unpowered", { circuitGroupId: -1 }),
@@ -51,7 +51,7 @@ describe("factory state and stateCounts (ADR-0027 PR 2)", () => {
     expect(Object.fromEntries(buildings.map((b) => [b.id, b.state]))).toEqual({
       "producing-1": "producing",
       "producing-2": "producing",
-      starved: "starved",
+      underfed: "underfed",
       "backed-up": "backedUp",
       paused: "paused",
       unpowered: "unpowered",
@@ -62,7 +62,7 @@ describe("factory state and stateCounts (ADR-0027 PR 2)", () => {
 
   it("counts buildings per state, and the counts add up to the buildings that have a state", async () => {
     const factory = await serviceFor(fleet).getFactoryOverview();
-    expect(factory.stateCounts).toEqual({ producing: 2, starved: 1, backedUp: 1, paused: 1, unpowered: 2, idle: 1 });
+    expect(factory.stateCounts).toEqual({ producing: 2, underfed: 1, backedUp: 1, paused: 1, unpowered: 2, idle: 1 });
     expect(Object.values(factory.stateCounts!).reduce((a, b) => a + b, 0)).toBe(fleet.length);
   });
 

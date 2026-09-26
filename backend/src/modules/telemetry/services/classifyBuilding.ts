@@ -7,17 +7,20 @@ import type { FactoryBuilding } from "../../gameserver/index.js";
  */
 
 /** FRM's averaged output percent below which a powered, configured, not-backed-up machine counts as
- *  STARVED rather than producing. Evidence: the running machines in the 2026-09-22 snapshot read
- *  100, 100, 24.7 and 9.4 percent; every 0 percent reading there is backed up or unpowered; no
- *  captured machine was truly starved. 5 sits under the lowest running machine (9.4) so a slow but
- *  working machine is not flagged. PROVISIONAL. */
-export const STARVED_BELOW_PERCENT = 5;
+ *  UNDERFED rather than producing (ADR-0027 amendment 2, the owner's rule: below 95 percent of what the
+ *  machine is set for, it gets fewer resources than it needs). The percent is relative to the SET clock:
+ *  FRM's MaxProd already includes the clock speed (frm-api.md, Production), so a fully fed underclocked or
+ *  overclocked machine reads about 100. Evidence so far: the running machines in the 2026-09-22 snapshot
+ *  read 100, 100, 24.7 and 9.4 percent (the last two are input-limited, i.e. underfed by this rule). No
+ *  capture yet of a fully fed underclocked machine or a Somersloop machine (whether MaxProd includes the
+ *  Somersloop's amplification is [NEEDS VERIFICATION]). PROVISIONAL until the capture session replay (2b-2). */
+export const UNDERFED_BELOW_PERCENT = 95;
 
-export type MachineState = "producing" | "idle" | "backedUp" | "starved" | "paused" | "unpowered";
+export type MachineState = "producing" | "idle" | "backedUp" | "underfed" | "paused" | "unpowered";
 
 export interface Classification {
   state: MachineState;
-  /** For "starved": the ingredient FRM reports consuming the least (lowest ConsPercent), by item
+  /** For "underfed": the ingredient FRM reports consuming the least (lowest ConsPercent), by item
    *  class name. Absent when no ingredient data exists. */
   missingInput?: string;
 }
@@ -32,11 +35,11 @@ export type ClassifiableBuilding = Pick<
 /**
  * ADR-0027 decision 2, per snapshot and pure: nothing here is time-based. FRM's own `percent` is
  * already an average while `isProducing` is instantaneous (contract factory.ts), so a single
- * snapshot decides producing vs starved. Holding a state for N minutes, or hysteresis, belongs to
+ * snapshot decides producing vs underfed. Holding a state for N minutes, or hysteresis, belongs to
  * the alert engine only. NEVER decided from `isProducing` alone (it is noisy).
  *
  * Order matters: paused, unpowered (not connected, or the circuit's fuse tripped), idle (no
- * recipe), backedUp, starved, producing. Returns undefined, never a guess, when the data needed to
+ * recipe), backedUp, underfed, producing. Returns undefined, never a guess, when the data needed to
  * decide is missing (no fuse information, or no usable output percent).
  */
 export function classifyBuilding(building: ClassifiableBuilding, backedUp: boolean): Classification | undefined {
@@ -61,14 +64,14 @@ export function classifyBuilding(building: ClassifiableBuilding, backedUp: boole
   if (outputPercent === undefined) {
     return undefined;
   }
-  if (outputPercent < STARVED_BELOW_PERCENT) {
+  if (outputPercent < UNDERFED_BELOW_PERCENT) {
     const missingInput = lowestIngredient(building);
-    return { state: "starved", ...(missingInput !== undefined ? { missingInput } : {}) };
+    return { state: "underfed", ...(missingInput !== undefined ? { missingInput } : {}) };
   }
   return { state: "producing" };
 }
 
-/** The highest averaged percent across the outputs: a machine with any output moving is not starved.
+/** The highest averaged percent across the outputs: a machine with any output moving is not underfed.
  *  undefined when there is no finite percent to judge by. */
 function bestOutputPercent(building: ClassifiableBuilding): number | undefined {
   const percents = building.production.map((rate) => rate.percent).filter(Number.isFinite);
