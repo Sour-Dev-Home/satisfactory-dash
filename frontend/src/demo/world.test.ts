@@ -63,6 +63,16 @@ describe("the demo world", () => {
     for (const b of buildings) expect(circuits.has(b.circuitGroupId!)).toBe(true);
   });
 
+  it("has a slow tick episode every 10 minutes, healthy at the fixed clock, and agrees with tickHealth", () => {
+    expect(world.tickAt(world.DEMO_EPOCH).tickHealth).toBe("healthy");
+    const minutes = Array.from({ length: 20 }, (_, m) => world.tickAt(world.DEMO_EPOCH + m * 60_000 + 10_000));
+    expect(minutes.map((t) => t.tickHealth)).toEqual(
+      Array.from({ length: 20 }, (_, m) => (m % 10 === 5 ? "slow" : "healthy")),
+    );
+    // The vanilla API's rule: slow means at or below 10 ticks/s, healthy above.
+    for (const tick of minutes) expect(tick.tickRate > 10).toBe(tick.tickHealth === "healthy");
+  });
+
   it("varies the players from 0 to the limit over a few minutes, starting at 3 (the fixed clock)", () => {
     expect(world.status(world.DEMO_EPOCH).data.connectedPlayers).toBe(3);
     const seen = new Set<number>();
