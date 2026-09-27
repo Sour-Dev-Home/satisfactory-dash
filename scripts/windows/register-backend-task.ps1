@@ -25,6 +25,11 @@
 .PARAMETER Port
   The port the backend listens on, checked before starting. Default: 3001.
 
+.PARAMETER RunFileDir
+  Issue #320: where the backend writes backend.json (commit, pid, startedAt) once listening, so
+  deploy-update.ps1 can confirm the NEW build is serving after a restart, entirely locally (no
+  public exposure). Default: %LOCALAPPDATA%\satisfactory-dash\run.
+
 .PARAMETER Start
   Also start the task right now (otherwise it starts at the next logon). If the task is
   already running it is stopped first, and it refuses to start while anything else is
@@ -39,6 +44,7 @@ param(
   [string]$TaskName = "SatisfactoryDashBackend",
   [string]$LogDir = (Join-Path $env:LOCALAPPDATA "satisfactory-dash\logs"),
   [int]$Port = 3001,
+  [string]$RunFileDir = (Join-Path $env:LOCALAPPDATA "satisfactory-dash\run"),
   [switch]$Start
 )
 
@@ -66,7 +72,7 @@ if (-not (Test-Path (Join-Path $PSScriptRoot "run-backend.ps1"))) {
 # own restart-on-failure did not restart a killed backend (tested), hence the wrapper.
 $wrapper = Join-Path $PSScriptRoot "run-backend.ps1"
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapper`" -BackendDir `"$backendDir`" -Node `"$node`" -Log `"$log`"" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapper`" -BackendDir `"$backendDir`" -Node `"$node`" -Log `"$log`" -RunFileDir `"$RunFileDir`"" `
   -WorkingDirectory $backendDir
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
@@ -87,7 +93,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register Scheduled Task (node $node, bun
   Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal `
     -Description "satisfactory-dash backend: starts at logon, restarts on failure (3 tries)." -Force | Out-Null
-  Write-Host "Registered '$TaskName'. Log file: $log"
+  Write-Host "Registered '$TaskName'. Log file: $log. Run file: $(Join-Path $RunFileDir 'backend.json')"
   if ($Start) {
     # -Force replaced the definition, but a running instance keeps the OLD one: stop it first.
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
