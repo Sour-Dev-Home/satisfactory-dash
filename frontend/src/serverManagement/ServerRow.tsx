@@ -88,27 +88,42 @@ export function ServerRow({
           </div>
         </div>
       ) : (
+        // Every row has the same buttons, so each one's name carries its server for a screen reader
+        // (#305). The name starts with the visible text (WCAG 2.5.3: label in name).
         <div className="flex flex-wrap gap-3">
           {server.state === "ok" && (
-            <button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
+            <button
+              type="button"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+              aria-label={`${test.isPending ? "Testing…" : "Test connection"} to ${server.displayName}`}
+            >
               {test.isPending ? "Testing…" : "Test connection"}
             </button>
           )}
           {server.state === "unreadable" ? (
             <>
-              <button type="button" onClick={() => onEdit({ kind: "repair", server })}>
+              <button
+                type="button"
+                onClick={() => onEdit({ kind: "repair", server })}
+                aria-label={`Re-enter both tokens for ${server.displayName}`}
+              >
                 Re-enter both tokens
               </button>
-              <button type="button" onClick={() => onEdit({ kind: "rename", server })}>
+              <button type="button" onClick={() => onEdit({ kind: "rename", server })} aria-label={`Rename ${server.displayName}`}>
                 Rename
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => onEdit({ kind: "edit", server })}>
+            <button
+              type="button"
+              onClick={() => onEdit({ kind: "edit", server })}
+              aria-label={server.state === "refused" ? `Edit host of ${server.displayName}` : `Edit ${server.displayName}`}
+            >
               {server.state === "refused" ? "Edit host" : "Edit"}
             </button>
           )}
-          <button type="button" onClick={() => setConfirming(true)}>
+          <button type="button" onClick={() => setConfirming(true)} aria-label={`Remove ${server.displayName}`}>
             Remove
           </button>
         </div>

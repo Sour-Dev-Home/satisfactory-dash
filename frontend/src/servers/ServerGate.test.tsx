@@ -176,7 +176,8 @@ describe("ServerGate", () => {
         <ServerManagementView />
       </ServerGate>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    // The row's opener names its server (#305); the confirm below is "Remove server".
+    fireEvent.click(await screen.findByRole("button", { name: /^Remove (?!server$)/ }));
     fireEvent.click(screen.getByRole("button", { name: "Remove server" }));
     // The whole gate swaps to the empty-state screen: the management view that showed "Removed
     // ..." a moment ago is gone, unmounted along with the rest of the app.
