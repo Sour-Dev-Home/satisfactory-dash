@@ -107,7 +107,9 @@ export function paletteGroups({ isOperator, serverCount, power, factory, labels 
         label: k.recipe ? `${k.name} · ${k.recipe}` : k.name,
         hint: k.count === 1 ? "1 machine" : `${k.count} machines`,
         keywords: [k.name, ...(k.recipe ? [k.recipe] : [])],
-        to: factorySearchLink(k.recipe ?? k.name),
+        // `||`, not `??`: an empty-string recipe (a valid value per the schema) means "no recipe"
+        // just like null does, and the label above already treats it that way.
+        to: factorySearchLink(k.recipe || k.name),
       })),
     });
   }

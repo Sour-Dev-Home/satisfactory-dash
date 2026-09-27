@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { factoryMixed, powerOk } from "@satisfactory-dash/shared/fixtures";
 import { itemLabels } from "../factory/itemLabels";
+import { factorySearchLink } from "../lib/deepLinks";
 import { isPaletteShortcut, MAX_MACHINES, paletteGroups, type PaletteInput } from "./paletteCommands";
 
 const base: PaletteInput = { isOperator: false, serverCount: 1, labels: new Map() };
@@ -64,6 +65,37 @@ describe("paletteGroups", () => {
     const names = items.map((i) => i.label);
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     expect(items[0].to).toMatch(/^\/app\/factory\?item=\w+#history$/);
+  });
+
+  it("treats an empty-string recipe as no recipe, same as null, for the search link", () => {
+    const factory = {
+      ...factoryMixed,
+      data: {
+        ...factoryMixed.data,
+        buildings: [{ ...factoryMixed.data.buildings[0], id: "empty-recipe", name: "Blender", recipe: "" }],
+      },
+    };
+    const machines = group({ ...base, factory }, "Machines")?.commands ?? [];
+    expect(machines).toHaveLength(1);
+    expect(machines[0].label).toBe("Blender");
+    expect(machines[0].to).toBe(factorySearchLink("Blender"));
+  });
+
+  it("merges a null-recipe and an empty-string-recipe machine of the same name into one group", () => {
+    const factory = {
+      ...factoryMixed,
+      data: {
+        ...factoryMixed.data,
+        buildings: [
+          { ...factoryMixed.data.buildings[0], id: "a", name: "Blender", recipe: null },
+          { ...factoryMixed.data.buildings[0], id: "b", name: "Blender", recipe: "" },
+        ],
+      },
+    };
+    const machines = group({ ...base, factory }, "Machines")?.commands ?? [];
+    expect(machines).toHaveLength(1);
+    expect(machines[0].hint).toBe("2 machines");
+    expect(machines[0].to).toBe(factorySearchLink("Blender"));
   });
 
   it("gives every command a unique id (cmdk's value)", () => {
