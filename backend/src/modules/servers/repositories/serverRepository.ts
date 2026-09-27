@@ -256,15 +256,17 @@ export async function switchToLocalKind(db: Queryable, serverId: string): Promis
 }
 
 const LIST_AGENT_SERVERS = `
-  SELECT public_id, display_name
+  SELECT id, public_id, display_name
   FROM servers.servers
   WHERE connection_kind = 'agent' AND deleted_at IS NULL
   ORDER BY public_id`;
 
-/** The live servers reached through an agent (they have no connection row), for building their runtime entries at startup. */
-export async function listAgentServers(db: Queryable): Promise<{ publicId: string; displayName: string }[]> {
+/** The live servers reached through an agent (they have no connection row), for building their runtime entries at startup
+ *  (`serverId` is the internal id, for seeding an owner). */
+export async function listAgentServers(db: Queryable): Promise<{ serverId: string; publicId: string; displayName: string }[]> {
   const result = await db.query(LIST_AGENT_SERVERS);
-  return parseRows(z.object({ public_id: z.string(), display_name: z.string() }), result.rows, "servers.listAgentServers").map((row) => ({
+  return parseRows(z.object({ id: z.string(), public_id: z.string(), display_name: z.string() }), result.rows, "servers.listAgentServers").map((row) => ({
+    serverId: row.id,
     publicId: row.public_id,
     displayName: row.display_name,
   }));
