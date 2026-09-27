@@ -67,6 +67,28 @@ test("a repeated key is an error, since which value is right can't be known", ()
   assert.throws(() => parseRun(`${fragment({ bugs: 0 })}\n- bugs: 5`, "dup.md"), /dup\.md: "bugs" appears more than once/);
 });
 
+test("a repeated key still errors even when it isn't one of the known fields", () => {
+  assert.throws(
+    () => parseRun(`${fragment()}\n- note: hi\n- note: bye`, "dup-note.md"),
+    /dup-note\.md: "note" appears more than once/,
+  );
+});
+
+test("fixed equal to bugs, and rounds equal to 1, are the allowed boundary, not an error", () => {
+  assert.equal(run({ bugs: 3, fixed: 3 }).fixed, 3);
+  assert.equal(run({ rounds: 1 }).rounds, 1);
+  assert.throws(() => parseRun(fragment({ rounds: "0.99" })), /"rounds" must be at least 1/);
+});
+
+test("a bullet indented with leading whitespace isn't recognised as a field line", () => {
+  // The format is `- key: value` starting at column 0; an indented "  - pr: 1" is
+  // ordinary ignored text, so the field reads as missing, not as a parse of "1".
+  assert.throws(
+    () => parseRun(fragment().replace("- pr: 1", "  - pr: 1"), "indent.md"),
+    /indent\.md: "pr" must be a number of 0 or more \(got nothing\)/,
+  );
+});
+
 test("formatReport renders a single row's numbers correctly, including a non-exact 0-bug share", () => {
   const rows = [
     run({ tier: "FULL", area: "backend", tokens: 100, minutes: 1, bugs: 0 }),
