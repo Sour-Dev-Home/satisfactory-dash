@@ -171,6 +171,35 @@ test("fingerprint: a rebase onto a newer main and a merge from main keep it; a c
   }
 });
 
+// The diff keeps its default 3 lines of context, on purpose. The fresh-eyes pass found the cost: a main edit within
+// 3 lines of the PR's change alters the context, so the fp changes and the hunter runs again. Dropping the context
+// (-U0) would avoid that, but patch-id ignores line numbers, so the same line added in a different function would
+// then keep the fp and reuse a review of other code. An extra hunter run is the safe side of that trade.
+test("fingerprint: the same added line in another function differs; a nearby main edit costs a re-run", () => {
+  const r = repo();
+  try {
+    r.write("app.js", "function a() {\n  one();\n}\n\nfunction b() {\n  two();\n}\n\n\n\nfunction c() {}\n");
+    r.commit("functions");
+    r.gitRun(["switch", "-q", "-c", "in-a"]);
+    r.write("app.js", "function a() {\n  one();\n  return true;\n}\n\nfunction b() {\n  two();\n}\n\n\n\nfunction c() {}\n");
+    const inA = r.commit("return in a");
+    r.gitRun(["switch", "-q", "-c", "in-b", "main"]);
+    r.write("app.js", "function a() {\n  one();\n}\n\nfunction b() {\n  two();\n  return true;\n}\n\n\n\nfunction c() {}\n");
+    assert.notEqual(r.fp(r.commit("return in b")), r.fp(inA), "moving the line to another function must change the fp");
+
+    // main edits a line next to the PR's: no conflict, but the context moved, so the fp changes (a re-run).
+    const original = r.fp(inA);
+    r.gitRun(["switch", "-q", "main"]);
+    r.write("app.js", "function a(x) {\n  one();\n}\n\nfunction b() {\n  two();\n}\n\n\n\nfunction c() {}\n");
+    r.commit("main edits a nearby line");
+    r.gitRun(["switch", "-q", "-c", "rebased", inA]);
+    r.gitRun(["rebase", "-q", "main"]);
+    assert.notEqual(r.fp("HEAD"), original);
+  } finally {
+    rmSync(r.dir, { recursive: true, force: true });
+  }
+});
+
 test("fingerprint: two different binary edits differ, and a PR with no changes throws", () => {
   const r = repo();
   try {

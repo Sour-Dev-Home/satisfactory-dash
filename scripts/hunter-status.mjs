@@ -44,6 +44,8 @@ const git = (args, input) => run("git", ["-c", `core.attributesFile=${devNull}`,
 export function fingerprint({ base, head }, gitRun = git) {
   const mergeBase = gitRun(["merge-base", base, head]).trim();
   if (!SHA.test(mergeBase)) throw new Error(`no merge-base between ${base} and ${head}`);
+  // Default context (3 lines), on purpose: patch-id ignores line numbers, so with -U0 the same line added in another
+  // function would keep the fp. The cost is a re-run when main edits a line next to the PR's (see the tests).
   const diff = gitRun(["diff", "--binary", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-color", mergeBase, head]);
   if (diff.trim() === "") throw new Error("the PR has no changes of its own");
   const patchId = gitRun(["patch-id", "--verbatim"], diff).trim().split(/\s+/)[0] ?? "";
