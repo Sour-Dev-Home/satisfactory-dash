@@ -53,8 +53,23 @@ describe("ServerManagementView: the list", () => {
     await screen.findByRole("list", { name: "Game servers" });
     const item = within(row(unreadableServer.displayName));
     expect(item.getByText(/saved tokens can't be read/)).toBeInTheDocument();
-    for (const name of ["Re-enter both tokens", "Rename", "Remove"]) expect(item.getByRole("button", { name })).toBeInTheDocument();
-    expect(item.queryByRole("button", { name: "Test connection" })).not.toBeInTheDocument();
+    const who = unreadableServer.displayName;
+    for (const name of [`Re-enter both tokens for ${who}`, `Rename ${who}`, `Remove ${who}`]) {
+      expect(item.getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(item.queryByRole("button", { name: /^Test connection/ })).not.toBeInTheDocument();
+  });
+
+  // #305: every row has the same buttons, so each name carries its server for a screen reader,
+  // starting with the visible text (WCAG 2.5.3).
+  it("names each row's buttons after their server, starting with the visible label", async () => {
+    renderView();
+    await screen.findByRole("list", { name: "Game servers" });
+    const removes = screen.getAllByRole("button", { name: /^Remove / }).map((b) => b.getAttribute("aria-label"));
+    expect(new Set(removes).size).toBe(removes.length);
+    for (const button of within(row(okServer.displayName)).getAllByRole("button")) {
+      expect(button.getAttribute("aria-label")).toMatch(new RegExp(`^${button.textContent}\\b.*${okServer.displayName}$`));
+    }
   });
 
   it("says a refused address isn't allowed, and warns about both tokens only for a LAN address", async () => {
@@ -62,7 +77,7 @@ describe("ServerManagementView: the list", () => {
     await screen.findByRole("list", { name: "Game servers" });
     const refused = within(row(refusedServer.displayName));
     expect(refused.getByText("This server's saved address isn't allowed. Edit the host or remove it.")).toBeInTheDocument();
-    expect(refused.getByRole("button", { name: "Edit host" })).toBeInTheDocument();
+    expect(refused.getByRole("button", { name: `Edit host of ${refusedServer.displayName}` })).toBeInTheDocument();
     expect(refused.getByText(/token and data travel unencrypted/)).toHaveTextContent(/Both tokens/);
     // Loopback servers get no LAN warning.
     expect(within(row(okServer.displayName)).queryByText(/unencrypted/)).not.toBeInTheDocument();
@@ -103,7 +118,7 @@ describe("ServerManagementView: the list", () => {
     server.use(http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionApiUnauthorized)));
     renderView();
     await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Test connection" }));
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Test connection to ${okServer.displayName}` }));
     const result = await within(row(okServer.displayName)).findByText("Connection test failed.");
     expect(result.parentElement).toHaveTextContent("Game API: rejected the token");
     expect(result.parentElement).toHaveTextContent("FicsitRemoteMonitoring: OK");
@@ -121,7 +136,7 @@ describe("ServerManagementView: removing", () => {
     );
     renderView();
     await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Remove ${okServer.displayName}` }));
     const confirm = screen.getByRole("group", { name: `Remove ${okServer.displayName}?` });
     // Only what the backend really does: removing a server deletes its recorded history too (#193).
     expect(confirm).toHaveTextContent("its saved tokens and recorded history are deleted");
@@ -135,7 +150,7 @@ describe("ServerManagementView: removing", () => {
     server.use(http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(errorOperatorOnly, { status: 403 })));
     renderView();
     await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Remove ${okServer.displayName}` }));
     const confirm = screen.getByRole("group", { name: `Remove ${okServer.displayName}?` });
     fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
     expect(await within(confirm).findByRole("alert")).toHaveTextContent("Only the operator can manage servers.");
@@ -147,7 +162,7 @@ describe("ServerManagementView: removing", () => {
   it("keeps the server when the operator changes their mind", async () => {
     renderView();
     await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Remove ${okServer.displayName}` }));
     fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
     expect(screen.queryByRole("group")).not.toBeInTheDocument();
   });
@@ -341,7 +356,7 @@ describe("ServerManagementView: keeping tokens out of the mutation cache", () =>
     server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer })));
     const { client } = renderView();
     await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: "Edit" }));
+    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Edit ${okServer.displayName}` }));
     type("Game API token", "secret-edit-token");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText(`Saved ${okServer.displayName}.`);
@@ -361,7 +376,7 @@ describe("ServerManagementView: editing", () => {
 
   it("never prefills a token, shows only its suffix, and sends only what changed", async () => {
     const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer }));
-    await openFor(okServer.displayName, "Edit");
+    await openFor(okServer.displayName, `Edit ${okServer.displayName}`);
     expect(screen.getByLabelText("Game API token")).toHaveValue("");
     expect(screen.getByLabelText("Game API token")).toHaveAttribute("type", "password");
     expect(screen.getByText("Set, ends in 1a2b. Leave blank to keep it.")).toBeInTheDocument();
@@ -373,7 +388,7 @@ describe("ServerManagementView: editing", () => {
 
   it("clears the FRM token with null when asked", async () => {
     const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer }));
-    await openFor(okServer.displayName, "Edit");
+    await openFor(okServer.displayName, `Edit ${okServer.displayName}`);
     fireEvent.click(screen.getByLabelText(/Remove the FRM token/));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText(`Saved ${okServer.displayName}.`);
@@ -382,7 +397,7 @@ describe("ServerManagementView: editing", () => {
 
   it("sends nothing when nothing changed", async () => {
     const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer }));
-    await openFor(okServer.displayName, "Edit");
+    await openFor(okServer.displayName, `Edit ${okServer.displayName}`);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
     expect(bodies).toEqual([]);
@@ -392,7 +407,7 @@ describe("ServerManagementView: editing", () => {
     const bodies = capture("patch", endpoints.serverManagement.update.route, () =>
       HttpResponse.json({ server: { ...unreadableServer, state: "ok" } }),
     );
-    await openFor(unreadableServer.displayName, "Re-enter both tokens");
+    await openFor(unreadableServer.displayName, `Re-enter both tokens for ${unreadableServer.displayName}`);
     expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
     type("Game API token", "new-api-token");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -402,7 +417,7 @@ describe("ServerManagementView: editing", () => {
 
   it("renames an unreadable server with only the name", async () => {
     const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: unreadableServer }));
-    await openFor(unreadableServer.displayName, "Rename");
+    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
     expect(screen.queryByLabelText("Game API token")).not.toBeInTheDocument();
     type("Name", "Renamed");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -412,7 +427,7 @@ describe("ServerManagementView: editing", () => {
 
   it("shows connection_unreadable in plain words on the repair form, and stays on it", async () => {
     server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
-    await openFor(unreadableServer.displayName, "Re-enter both tokens");
+    await openFor(unreadableServer.displayName, `Re-enter both tokens for ${unreadableServer.displayName}`);
     type("Game API token", "new-api-token");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(errorConnectionUnreadable.error.message);
@@ -421,7 +436,7 @@ describe("ServerManagementView: editing", () => {
 
   it("shows connection_unreadable in plain words on the rename form too, even though renaming needs no tokens", async () => {
     server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
-    await openFor(unreadableServer.displayName, "Rename");
+    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
     type("Name", "Renamed");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(errorConnectionUnreadable.error.message);
