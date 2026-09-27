@@ -225,6 +225,71 @@ describe("SatisfactoryServerAdapter", () => {
     await expect(adapter.getRails()).resolves.toEqual([{ id: trainRailFixture.ID, points: [[-1119, -1504]] }]);
   });
 
+  // test-hunter pass: rails/resourceNodes should reject a malformed item the same way every other
+  // array endpoint does (null entry, wrong field type) -- not because the schemas are wired
+  // differently, but this was never exercised for these two new methods specifically.
+  it("rejects a getTrainRails response with a null entry", async () => {
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([trainRailFixture, null]) } });
+    const err = await adapter.getRails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect(err).toMatchObject({ failureKind: "invalid_response" });
+    expect((err as Error).message).toContain("getTrainRails response failed validation");
+  });
+
+  it("rejects a getTrainRails segment with a non-numeric spline point", async () => {
+    const bad = { ...trainRailFixture, SplineData: [{ x: "0", y: 0 }] };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getRails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("getTrainRails response failed validation");
+  });
+
+  it("rejects a getTrainRails segment with an empty-string ID", async () => {
+    const bad = { ...trainRailFixture, ID: "" };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getRails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("ID");
+  });
+
+  it("rejects a getResourceNode response with a null entry", async () => {
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, null]) } });
+    const err = await adapter.getResourceNodes().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("getResourceNode response failed validation");
+  });
+
+  it("rejects a getResourceNode item missing location (unlike getFactory, location is required here)", async () => {
+    const { location: _omitted, ...bad } = resourceNodeFixture;
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getResourceNodes().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("location");
+  });
+
+  it("rejects a getResourceNode item with a non-boolean Exploited", async () => {
+    const bad = { ...resourceNodeFixture, Exploited: "false" };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getResourceNodes().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("Exploited");
+  });
+
+  // Unlike getPower/getFactory (whose raw schemas enforce every downstream contract constraint,
+  // per this file's PR-1 architect ruling comment: "a response-contract failure only ever means
+  // our own mapping bug"), RawFrmTrainRailSchema/RawFrmResourceNodeSchema declare x/y as plain
+  // z.number() with no bound matching the M1 contract's WholeMetreSchema (+/-1,000,000 m). This
+  // documents that gap: the adapter does NOT reject upstream coordinates that would fail M1's own
+  // schema -- that's deferred to the not-yet-built M3 ingest route, per rawSchemas.ts's own
+  // comment about the min(2)-points case. Confirming the same applies to the coordinate bound,
+  // which that comment doesn't call out.
+  it("does NOT reject a rail coordinate that would violate the M1 WholeMetreSchema bound (deferred to M3 ingest)", async () => {
+    const huge = { ID: "x", SplineData: [{ x: 0, y: 0 }, { x: 3_000_000_00, y: 0 }] }; // 3,000,000 m > 1,000,000 m cap
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([huge]) } });
+    const [segment] = await adapter.getRails();
+    expect(segment!.points[1]).toEqual([3_000_000, 0]);
+  });
+
   it("maps getResourceNode items, including nodeType (#352 follow-up)", async () => {
     const satellite = { ...resourceNodeFixture, Name: "Nitrogen Gas", NodeType: "Fracking Satellite" };
     const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, satellite]) } });

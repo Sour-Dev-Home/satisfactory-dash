@@ -66,4 +66,43 @@ describe("mapResourceNodes (ADR-0038 M2, #352 follow-up)", () => {
     const node = mapResourceNode({ Name: "x", Purity: "Normal", NodeType: "Node", Exploited: false, location: { x: 149, y: -151, z: 0 } });
     expect([node.x, node.y]).toEqual([1, -2]);
   });
+
+  // test-hunter pass: the frm-getResourceNode-2026-09-27-trimmed.json capture header itself says
+  // "In the full response: 459 Node, 118 Fracking Satellite, 31 Geyser" -- a real, live-observed
+  // third NodeType value that never made it into the 14-item trimmed sample (the sampling only
+  // reached Node/Fracking Satellite combos before hitting its 14-item cap), and so isn't in
+  // NODE_TYPE_CAMEL_CASE. It falls through the documented pass-through path -- covered by the
+  // existing "unrecognized future NodeType" test above using this exact value -- but note what
+  // that means for a real server today: a resourceNodes layer will contain nodeType: "node" and
+  // nodeType: "frackingSatellite" (camelCase) side by side with nodeType: "Geyser" (untouched,
+  // PascalCase-with-a-space-removed), which is an inconsistent casing convention for the same
+  // field on wire data a frontend will branch on. Not asserting this is wrong -- the code comment
+  // says it's deliberate -- just pinning down that it does NOT get camelCased like its siblings.
+  it("does NOT camelCase the real, live-observed 'Geyser' NodeType (documented gap, not a crash)", () => {
+    const node = mapResourceNode({ Name: "Water", Purity: "Pure", NodeType: "Geyser", Exploited: false, location: { x: 0, y: 0, z: 0 } });
+    expect(node.nodeType).toBe("Geyser");
+    expect(node.nodeType).not.toBe("geyser");
+  });
+
+  it("is case-sensitive and whitespace-sensitive: a variant of a known NodeType is not recognized either", () => {
+    // FRM has never been observed sending these variants; this documents that the lookup is an
+    // exact string match, not a normalized one, so any future casing/whitespace drift from FRM
+    // (or a mod) silently falls through to raw pass-through rather than being caught by the table.
+    for (const variant of ["node", "NODE", " Node", "Node ", "fracking satellite", "Fracking  Satellite"]) {
+      const node = mapResourceNode({ Name: "x", Purity: "Normal", NodeType: variant, Exploited: false, location: { x: 0, y: 0, z: 0 } });
+      expect(node.nodeType).toBe(variant); // unchanged, not normalized to node/frackingSatellite
+    }
+  });
+
+  it("maps an empty array to an empty array without throwing", () => {
+    expect(mapResourceNodes([])).toEqual([]);
+  });
+
+  it("maps a large batch (608 items, the full live capture's documented size) without throwing or dropping items", () => {
+    const base = { Name: "Iron Ore", Purity: "Normal", NodeType: "Node", Exploited: false, location: { x: 0, y: 0, z: 0 } };
+    const many = Array.from({ length: 608 }, (_, i) => ({ ...base, location: { x: i * 100, y: -i * 100, z: 0 } }));
+    const mapped = mapResourceNodes(many);
+    expect(mapped).toHaveLength(608);
+    expect(mapped[607]).toEqual({ type: "Iron Ore", purity: "normal", nodeType: "node", x: 607, y: -607, exploited: false });
+  });
 });

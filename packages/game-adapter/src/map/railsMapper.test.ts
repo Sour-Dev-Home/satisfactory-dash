@@ -54,4 +54,27 @@ describe("mapRailSegments (ADR-0038 M2)", () => {
     expect(segment.points).toEqual([[0, 0]]);
     expect(RailsLayerDataSchema.safeParse([segment]).success).toBe(false); // caught by the M1 schema, as documented
   });
+
+  it("maps an empty array to an empty array without throwing", () => {
+    expect(mapRailSegments([])).toEqual([]);
+  });
+
+  it("does not deduplicate or validate uniqueness of rail IDs (not this layer's job)", () => {
+    const raw = [
+      { ID: "same", SplineData: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+      { ID: "same", SplineData: [{ x: 200, y: 200 }, { x: 300, y: 300 }] },
+    ];
+    expect(mapRailSegments(raw)).toHaveLength(2);
+  });
+
+  it("maps a large batch (65 segments x 127 points, the full live capture's documented upper bound) without throwing", () => {
+    const many = Array.from({ length: 65 }, (_, seg) => ({
+      ID: `rail-${seg}`,
+      SplineData: Array.from({ length: 127 }, (_, p) => ({ x: seg * 1000 + p, y: -(seg * 1000 + p) })),
+    }));
+    const mapped = mapRailSegments(many);
+    expect(mapped).toHaveLength(65);
+    expect(mapped[64]!.points).toHaveLength(127);
+    expect(mapped[64]!.points[126]).toEqual([641, -641]); // (64*1000+126)/100 = 641.26 -> round 641
+  });
 });
