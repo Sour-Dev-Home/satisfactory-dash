@@ -63,6 +63,9 @@
   --spacing-map: 60svh;
   --spacing-map-min: 320px;
   --spacing-overview-rail: 17rem;
+  /* The command bar (#351): its width, and its result list's height before it scrolls. */
+  --spacing-palette: 36rem;
+  --spacing-palette-list: 24rem;
   /* "Since yesterday" on the Factory page keeps one height while it loads, fails or fills, so its
      content arriving can't push the table below it (ADR-0032). From 640 px it fits the fullest
      content (3 drops, 3 rises) at each width; on a phone it fits the common states and a longer
