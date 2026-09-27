@@ -94,6 +94,22 @@ describe("useHashTarget", () => {
     expect(screen.getByRole("region", { name: "Section heading" }).scrollIntoView).toHaveBeenCalled();
   });
 
+  it("focuses the section itself when it has no h2/h3 heading", () => {
+    function Sections() {
+      useHashTarget((id) => id === "no-heading-section");
+      return (
+        <section id="no-heading-section" aria-label="No heading">
+          <p>Body</p>
+        </section>
+      );
+    }
+    navigate("#no-heading-section", "n");
+    render(<Sections />);
+    const region = screen.getByRole("region", { name: "No heading" });
+    expect(region).toHaveFocus();
+    expect(region).toHaveAttribute("tabindex", "-1");
+  });
+
   it("leaves an id it doesn't render alone, and a page with no fragment", () => {
     navigate("#other", "f");
     render(<Page />);

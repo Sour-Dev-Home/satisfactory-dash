@@ -309,6 +309,26 @@ describe("FactoryView", () => {
     expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
   });
+
+  // StrictMode double-invokes render (a render-phase setState like seenLocation's must be idempotent
+  // on the repeat invocation) as well as effects; the search box must still start from ?q= and keep
+  // taking keystrokes normally.
+  it("opens with ?q= filled in and keeps typing working under StrictMode", async () => {
+    const client = createQueryClient();
+    render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <ServerContext value={serversSingle.servers[0]}>
+            <MemoryRouter initialEntries={["/app/factory?q=Smelter"]}><FactoryView /></MemoryRouter>
+          </ServerContext>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    expect(box).toHaveValue("Smelter");
+    fireEvent.change(box, { target: { value: "Smelter Mk1" } });
+    expect(box).toHaveValue("Smelter Mk1");
+  });
 });
 
 // Whether the data is late is the backend's call (`stale`) or a failed refresh, never this PC's
@@ -479,5 +499,71 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
     const box = await screen.findByRole("searchbox", { name: "Search machines" });
     fireEvent.click(screen.getByRole("button", { name: "Jump" }));
     await waitFor(() => expect(box).toHaveValue("Constructor"));
+  });
+
+  // Back/forward (POP): a real history entry, not a same-idx replace, so the box must pick up
+  // whatever ?q= that entry actually carries rather than keeping the last-typed text.
+  it("updates the box on a back navigation (POP) to an entry with a different ?q=", async () => {
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    function Jump() {
+      const go = useNavigate();
+      return (
+        <button type="button" onClick={() => go("/app/factory?q=Constructor")}>
+          Jump
+        </button>
+      );
+    }
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter>
+          <FactoryView />
+          <Jump />
+        </BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.click(screen.getByRole("button", { name: "Jump" }));
+    await waitFor(() => expect(box).toHaveValue("Constructor"));
+
+    await act(async () => {
+      window.history.back();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(box).toHaveValue("Smelter"));
+  });
+
+  // The item picker is still URL-driven; the search box holds local text until each keystroke's
+  // replace lands. Picking an item shouldn't wipe a just-typed ?q=, and vice versa.
+  it("keeps a just-typed ?q= when the item picker is changed right after", async () => {
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron" } });
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    fireEvent.change(picker, { target: { value: "Desc_IronPlate_C" } });
+
+    expect(window.location.search).toContain("q=iron");
+    expect(window.location.search).toContain("item=Desc_IronPlate_C");
+    expect(box).toHaveValue("iron");
+  });
+
+  it("keeps a just-picked item when the search box is typed into right after", async () => {
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    fireEvent.change(picker, { target: { value: "Desc_IronPlate_C" } });
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron" } });
+
+    expect(window.location.search).toContain("q=iron");
+    expect(window.location.search).toContain("item=Desc_IronPlate_C");
   });
 });
