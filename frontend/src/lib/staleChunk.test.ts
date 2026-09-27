@@ -61,6 +61,35 @@ describe("reloadOnce", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it("never reloads offline, and keeps its one reload for when the browser is back online", () => {
+    const onLine = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const reload = vi.fn();
+    expect(reloadOnce(1_000_000, reload)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+
+    onLine.mockReturnValue(true);
+    expect(reloadOnce(1_000_001, reload)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not record a reload attempt in sessionStorage while offline", () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    reloadOnce(1_000_000, vi.fn());
+    expect(window.sessionStorage.getItem("satis-manager.stale-chunk-reload-at")).toBeNull();
+  });
+
+  it("still honors a guard set before going offline once back online", () => {
+    const reload = vi.fn();
+    expect(reloadOnce(1_000_000, reload)).toBe(true);
+
+    const onLine = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    expect(reloadOnce(1_000_000 + RELOAD_GUARD_MS - 1, reload)).toBe(false);
+
+    onLine.mockReturnValue(true);
+    expect(reloadOnce(1_000_000 + RELOAD_GUARD_MS - 1, reload)).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back to window.location.reload when no reload function is given", () => {
     const reloadSpy = vi.fn();
     const originalLocation = window.location;
