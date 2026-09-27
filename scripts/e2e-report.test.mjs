@@ -6,8 +6,73 @@ import {
   parseClsReports,
   parseSnapshots,
   parseSummary,
+  runsState,
   stripLogPrefix,
+  waitTimeoutMessage,
 } from "./e2e-report.mjs";
+
+const run = (name, status = "completed", event = "pull_request") => ({ name, status, event });
+
+test("runs are in once CI and E2E exist and none is still going", () => {
+  assert.equal(runsState([run("CI"), run("E2E"), run("CLA")]).done, true);
+  assert.deepEqual(runsState([run("CI"), run("E2E", "in_progress")]), { done: false, missing: [], pending: ["E2E"] });
+  assert.deepEqual(runsState([run("CLA")]), { done: false, missing: ["CI", "E2E"], pending: [] });
+});
+
+test("with --dispatch, an update_snapshots run is needed too", () => {
+  const runs = [run("CI"), run("E2E")];
+  assert.deepEqual(runsState(runs, { needDispatch: true }).missing, ["E2E (dispatch)"]);
+  assert.equal(runsState([...runs, run("E2E", "completed", "workflow_dispatch")], { needDispatch: true }).done, true);
+});
+
+test("the timeout says whether the runs never started or are still going", () => {
+  const sha = "9bfc8832d174f60da2cdb0a914626571f4a9195a";
+  assert.equal(
+    waitTimeoutMessage(sha, { missing: ["CI", "E2E"], pending: [] }, 60),
+    "no CI, E2E runs for 9bfc883 after 60 min; is the head pushed and the workflow enabled?",
+  );
+  assert.equal(waitTimeoutMessage(sha, { missing: [], pending: ["E2E"] }, 60), "runs still pending for 9bfc883 after 60 min: E2E");
+});
+
+test("when a head has both a still-missing run and a still-pending one, the missing message wins", () => {
+  const sha = "9bfc8832d174f60da2cdb0a914626571f4a9195a";
+  // E.g. CI is still in_progress and E2E hasn't been created at all yet: both `missing` and
+  // `pending` are non-empty. The push/workflow hint only makes sense for the missing run.
+  assert.equal(
+    waitTimeoutMessage(sha, { missing: ["E2E"], pending: ["CI"] }, 60),
+    "no E2E runs for 9bfc883 after 60 min; is the head pushed and the workflow enabled?",
+  );
+});
+
+test("a duplicate run name (a re-run creates a second entry) keeps waiting on the still-pending copy", () => {
+  // gh lists newest first; the stale completed run must not let a fresh queued one slip by.
+  const runs = [run("E2E", "queued", "workflow_dispatch"), run("E2E", "completed", "workflow_dispatch"), run("CI"), run("E2E")];
+  assert.deepEqual(runsState(runs, { needDispatch: true }), { done: false, missing: [], pending: ["E2E"] });
+});
+
+test("needDispatch is satisfied by a single run that is both the plain and the dispatch E2E", () => {
+  // Contract: needDispatch only requires *an* E2E run with event workflow_dispatch to exist, not a
+  // separate plain-event E2E run in addition. Documented here as the current (literal) behavior.
+  const runs = [run("CI"), run("E2E", "completed", "workflow_dispatch")];
+  assert.equal(runsState(runs, { needDispatch: true }).done, true);
+});
+
+test("non-completed statuses other than the obvious ones ('queued', 'waiting', 'requested') all count as pending", () => {
+  for (const status of ["queued", "waiting", "requested", "in_progress", "pending"]) {
+    assert.deepEqual(runsState([run("CI"), run("E2E", status)]).pending, ["E2E"], `status ${status} should be pending`);
+  }
+});
+
+test("an empty run list is entirely missing, not pending", () => {
+  assert.deepEqual(runsState([]), { done: false, missing: ["CI", "E2E"], pending: [] });
+});
+
+test("a pending run outside CI/E2E (e.g. CodeQL, CLA) blocks done, per the letter of the contract", () => {
+  // The contract says "no run has a status other than completed" without carving out an exception
+  // for non-required checks. Documented here as current behavior, not asserted as desirable design.
+  const runs = [run("CI"), run("E2E"), run("CodeQL", "in_progress")];
+  assert.deepEqual(runsState(runs), { done: false, missing: [], pending: ["CodeQL"] });
+});
 
 // What `gh run view --log` prints: job, step, timestamp, then the line.
 const gh = (line) => `e2e\tRun e2e (compare against committed baselines)\t2026-09-26T20:04:09.5401807Z ${line}`;
