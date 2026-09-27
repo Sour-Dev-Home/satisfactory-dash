@@ -98,9 +98,29 @@ test("the paths the tier allows are allowed", () => {
     "frontend/src/test/setup.ts",
     "frontend/e2e/anything/at/all.png",
     "docs-vault/wiki/log.d/2026-09-26-x.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359-2.md",
   ]) {
     assert.equal(isUiTierPath(name), true, name);
   }
+});
+
+test("only a hunter-log fragment is allowed in hunter-log.d, and nothing else in docs-vault", () => {
+  for (const name of [
+    "docs-vault/wiki/hunter-log.d/README.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-x.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md.bak",
+    "docs-vault/wiki/hunter-log.d/sub/2026-09-27-359.md",
+    "docs-vault/wiki/hunter-log.dx/2026-09-27-359.md",
+    "docs-vault/wiki/hunter-log.d/../decisions/2026-09-27-359.md",
+    "docs-vault/wiki/frm-api.md",
+    "docs-vault/raw-sources/2026-09-27-359.md",
+  ]) {
+    assert.equal(isUiTierPath(name), false, name);
+  }
+  const fragment = { filename: "docs-vault/wiki/hunter-log.d/2026-09-27-359.md", status: "added", patch: patchOf("- pr: 359") };
+  assert.equal(checkTier(pr([file("frontend/src/App.tsx"), fragment])).ok, true);
+  assert.equal(checkTier(pr([file("frontend/src/App.tsx"), file("docs-vault/wiki/frm-api.md")])).ok, false);
 });
 
 test("an added data-flow line under frontend/src fails, for every pattern of the amendment", () => {
