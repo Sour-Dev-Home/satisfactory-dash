@@ -11,6 +11,7 @@ import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { MapView } from "../map/MapView";
 import { OverviewView } from "../overview/OverviewView";
+import { CommandBar } from "../palette/CommandBar";
 import { PowerHistorySection } from "../power/PowerHistorySection";
 import { PowerView } from "../power/PowerView";
 import { useSelectedServer } from "../servers/ServerContext";
@@ -113,6 +114,8 @@ export function Shell() {
           <ServerSwitcher />
           {/* The bell sits with the account: both are about you, not the game. */}
           <div className="flex items-center gap-2">
+            {/* Search (#351): Ctrl+K / Cmd+K anywhere, or this button on touch. */}
+            <CommandBar />
             <AlertsBell />
             <AccountMenu />
           </div>
