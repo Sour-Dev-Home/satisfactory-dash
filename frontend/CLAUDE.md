@@ -43,6 +43,8 @@ contract needs to grow, not that this module should special-case a backend detai
 - The Overview's status-page summary (`src/overview/health.ts`) only aggregates what the
   backend classified. Its one rule of its own: Factory is degraded above
   `BACKED_UP_DEGRADED_SHARE` (25%, the owner's pick).
+- Adding an endpoint or a screen? Follow `docs-vault/wiki/frontend-wiring-checklist.md`: every file to
+  change, in order (queries and writes, the three mocks, the demo, e2e states, checks, tier).
 - `src/api/client.ts` builds every API request and `src/api/transport.ts` sends it, the
   only place that calls `fetch` (oxlint's `no-restricted-globals` enforces it; ADR-0026's
   demo build swaps the transport). Use `apiGet`/`apiSend` with
