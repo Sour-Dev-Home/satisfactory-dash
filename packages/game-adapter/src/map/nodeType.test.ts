@@ -11,6 +11,22 @@ describe("mapNodeType / genericCamelCase adversarial inputs", () => {
     expect(mapNodeType("Geyser")).toBe("geyser");
   });
 
+  // Architect follow-up: same bug class as #361's registry bypass. KNOWN_NODE_TYPES is a plain
+  // object, so a raw value that names an inherited Object.prototype member must not silently
+  // resolve to that member (a function) instead of falling through to genericCamelCase.
+  it("a raw value that collides with an inherited Object.prototype member falls through to genericCamelCase, not the inherited function", () => {
+    // Each of these is one word (no space), so genericCamelCase lowercases it wholesale — the
+    // point of this test is that the result is a STRING equal to what genericCamelCase actually
+    // produces, not the raw value unchanged and definitely not the inherited function itself.
+    expect(mapNodeType("constructor")).toBe("constructor");
+    expect(mapNodeType("toString")).toBe("tostring");
+    expect(mapNodeType("__proto__")).toBe("__proto__");
+    expect(mapNodeType("hasOwnProperty")).toBe("hasownproperty");
+    for (const raw of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
+      expect(typeof mapNodeType(raw)).toBe("string");
+    }
+  });
+
   it("empty string does not throw, and returns the input unchanged (no words to camelCase)", () => {
     expect(mapNodeType("")).toBe("");
   });

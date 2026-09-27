@@ -21,5 +21,10 @@ function genericCamelCase(value: string): string {
 }
 
 export function mapNodeType(raw: string): string {
-  return KNOWN_NODE_TYPES[raw] ?? genericCamelCase(raw);
+  // Object.hasOwn, not a plain KNOWN_NODE_TYPES[raw] lookup (architect follow-up, same bug class as
+  // #361's registry bypass): KNOWN_NODE_TYPES is a plain object, so raw === "constructor" or
+  // "toString" would otherwise resolve to an inherited Object.prototype FUNCTION, not undefined —
+  // returning a function where the M1 contract expects a string, which fails M3's schema and takes
+  // the whole layer down, the opposite of this file's own conform-don't-reject rule.
+  return Object.hasOwn(KNOWN_NODE_TYPES, raw) ? KNOWN_NODE_TYPES[raw]! : genericCamelCase(raw);
 }
