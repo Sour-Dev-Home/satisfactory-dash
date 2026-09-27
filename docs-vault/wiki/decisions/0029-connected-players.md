@@ -5,9 +5,9 @@ adapter maps only `name` and `online`). The owner requested it (Players card, ph
 
 ## Context
 - The owner wants the Players card to eventually show who is connected. The vanilla API gives
-  only counts (`NumConnectedPlayers` / `PlayerLimit`, raw-sources/dedicated-server-api.md:381-382).
+  only counts (`NumConnectedPlayers` / `PlayerLimit`, raw-sources/dedicated-server-api.md E8).
   FRM's getPlayer returns per player: ID, Name, ClassName, world location, rotation, PlayerHP,
-  Speed, Online, Dead and a full Inventory (raw-sources/frm-getPlayer.md:12-34).
+  Speed, Online, Dead and a full Inventory (raw-sources/frm-getPlayer.md E2).
 - **Player names are personal data about third parties**: the people on the owner's game server
   aren't users of this service and never agreed to our privacy policy. The privacy outline
   (docs-vault/wiki/legal/privacy-terms-outline.md) doesn't cover them yet.

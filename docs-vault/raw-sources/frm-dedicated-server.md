@@ -1,7 +1,14 @@
 Source: https://docs.ficsit.app/ficsitremotemonitoring/latest/dedicatedserver.html
-Captured: 2026-09-21
+Captured: 2026-09-21. Trimmed 2026-09-27 (#343).
+
+FicsitRemoteMonitoring's docs carry no licence (all rights reserved), so this file keeps only the
+excerpts this repo cites, verbatim, numbered E1, E2, ... Cite them as `frm-dedicated-server.md` E<n>, never by line
+number. The full page is at the source URL; a full copy of the 2026-09-21 capture is kept outside
+the repo, and this file's git history has it too.
 
 ---
+
+### E1 — FRM through the game's API port (https://<ServerIP>:7777/api/v1/)
 
 ## Dedicated Server API
 
@@ -9,18 +16,14 @@ FRM can, now as of 1.1, interface with Satisfactory's Dedicated Server API Port 
 accessed, by default, at `https://<ServerIP>:7777/api/v1/` (Ex. `https://localhost:7777/api/v1/`).
 The Network Port will depend on the port you set for your Dedicated Server.
 
-This feature is not available for the base game, and is only available for the Dedicated
-Server. This is Coffee Stain Studios' design for the game, and we cannot enable this feature
-for the base game.
-
-For setting up your Dedicated Server, please refer to the official documentation at
-https://satisfactory.wiki.gg/wiki/Dedicated_servers. Also for documentation on the
-**Official** API, please refer to https://satisfactory.wiki.gg/wiki/Dedicated_servers/HTTPS_API.
+### E2 — A fallback when the FRM Web Server can't be reached
 
 Please note that this is not the same as the FRM Web Server, and is not intended to be used
 in the same way. This is due to how Coffee Stain Studios designed the Satisfactory Dedicated
 Server API. However, if you cannot access the FRM Web Server, you can use the Game Port API
 as a fallback as the TCP Port is required to be accessible for normal gameplay.
+
+### E3 — Every request through the game port runs in the game thread; big requests can cause hiccups
 
 There are some differences between the FRM Web Server and the Game Port API, which are
 listed below:
@@ -44,6 +47,9 @@ listed below:
     mod is routinely tested on saves with 1000+ hours of playtime and 10000+ items in the
     factory. However, please note that this is not a guarantee that you will not experience
     any issues.
+
+### E4 — POST only, and the example request
+
 - The Game Port API does not support simple GET requests for API data. You must use a POST
   request in the following format to get data returned. Please refer to each endpoint's
   documentation for the specific request body.
@@ -54,73 +60,10 @@ listed below:
     Invoke-WebRequest -Uri https://localhost:7777/api/v1 -Method POST -ContentType application/json -Body '{"function": "frm", "endpoint": "getPlayer"}' -SkipCertificateCheck
     ```
 
-    Example response:
+## Our notes (2026-09-21, updated 2026-09-27)
 
-    ```
-    StatusCode        : 200
-    StatusDescription : OK
-    Content           : [{"ID":"Char_Player_C_2146409224","Name":"","ClassName":"Char_Player_C","location":{"x":-258596.109
-                        375,"y":-48086.0078125,"z":439.743896484375,"rotation":353.14453212390106},"Online":false,"PlayerHP
-                        ":...
-    RawContent        : HTTP/1.1 200 OK
-                        Server: FactoryGame/++FactoryGame+rel-main-1.1.0-CL-415558
-                        Server: (Windows)
-                        Keep-Alive: timeout=15.000000
-                        Content-Type: application/json; charset=utf-8
-                        Content-Disposition: inlin...
-    Headers           : {[Server, System.String[]], [Keep-Alive, System.String[]], [Content-Type, System.String[]],
-                        [Content-Disposition, System.String[]]...}
-    Images            : {}
-    InputFields       : {}
-    Links             : {}
-    RawContentLength  : 1522
-    RelationLink      : {}
-    ```
-
-  - Example request body for getting the list of players on the server (see each endpoint's
-    own documentation page for its JSON response shape):
-
-    ```json
-    {
-        "function": "frm",
-        "endpoint": "getPlayer"
-    }
-    ```
-
-  - Example using the `sendChatMessage` endpoint to send a message to the server, with
-    request and response:
-
-    Request:
-    ```json
-    {
-        "function": "frm",
-        "endpoint": "sendChatMessage",
-        "data":
-        {
-            "message": "Hello World :)"
-        }
-    }
-    ```
-
-    Response:
-    ```json
-    {
-        "IsSent": true,
-        "Message": "Hello World :)"
-    }
-    ```
-
-More optimizations and endpoints are planned for the future. Please refer to the official
-and mod documentations for more information.
-
-## Notes
-
-- This describes FRM's endpoints being reachable *through* the vanilla Dedicated Server API
-  port (7777) as an alternative transport, not the vanilla API's own native function set.
-  The vanilla API's own functions (`QueryServerState`, `GetServerOptions`, etc.) are
-  documented separately in `CommunityResources/DedicatedServerAPIDocs.md` from the dedicated
-  server install — see `dedicated-server-api.md` in this folder [NOT YET CAPTURED — no local
-  dedicated server install found on this machine as of 2026-09-21, see docs-vault/wiki/log.md].
-- The page links out to https://satisfactory.wiki.gg/wiki/Dedicated_servers/HTTPS_API as an
-  alternate reference for the official API; that page has not been captured here and should
-  be treated as [NEEDS VERIFICATION] until it is.
+- This page describes FRM's endpoints reachable *through* the vanilla Dedicated Server API port (7777) as
+  an alternative transport, not the vanilla API's own functions (those are in `dedicated-server-api.md`).
+  Tried live in the Phase 2 spike: it answered 404 (`captured-responses/frm-tunneled-transport-404.md`).
+- The page links to https://satisfactory.wiki.gg/wiki/Dedicated_servers/HTTPS_API as another reference for
+  the official API; that page has not been captured here and should be treated as [NEEDS VERIFICATION].

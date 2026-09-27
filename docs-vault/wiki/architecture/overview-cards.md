@@ -7,7 +7,7 @@ is frontend-only, using fields already in the contract. Phase 2 ("who is connect
 - `StatusSchema` already carries `connectedPlayers`, `playerLimit`, `tickRate` (the server's
   average ticks/s) and `tickHealth` (`healthy | slow`) (packages/shared/src/status.ts:6-21).
 - The only authoritative threshold: the vanilla API reports "healthy" when the tick rate is above
-  10 ticks/s, else "slow" (raw-sources/dedicated-server-api.md:310).
+  10 ticks/s, else "slow" (raw-sources/dedicated-server-api.md E6).
 - Observed values: a fresh save runs at 29.9 ticks/s (captured-responses/vanilla-QueryServerState-sample.json).
   The owner's large factory runs at 21.4-21.8 ticks/s, even while healthy
   (captured-responses/vanilla-QueryServerState-2026-09-22-*). The player limit is 4 in every capture.

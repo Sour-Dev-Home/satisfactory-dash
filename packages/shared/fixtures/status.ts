@@ -35,7 +35,7 @@ export const statusPaused = {
 
 /**
  * SYNTHETIC (no capture): the server is up but no save is loaded (isGameRunning false, per
- * dedicated-server-api.md:386, "waiting for the session to be created"). What
+ * dedicated-server-api.md E8, "waiting for the session to be created"). What
  * QueryServerState returns for the other fields in that state is [NEEDS VERIFICATION]:
  * the empty session name, zero duration and zero tick rate are placeholders, and
  * tickHealth "healthy" is a guess. Update from a real capture once one exists.

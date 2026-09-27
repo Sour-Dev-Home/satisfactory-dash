@@ -130,7 +130,7 @@ describe("canEditOptions", () => {
   });
 
   // Administrator, and APIToken: an application token from server.GenerateAPIToken, which
-  // third-party apps are told to use (dedicated-server-api.md:279-284).
+  // third-party apps are told to use (dedicated-server-api.md E5).
   it.each(["Administrator", "APIToken"])("is true for a %s token the server accepts", async (pl) => {
     const { api, calls } = fakeApi(() => optionsResponse());
     expect(await new ServerOptionsAdapter(api, tokenWithPrivilege(pl)).canEditOptions()).toBe(true);

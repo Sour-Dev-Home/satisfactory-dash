@@ -1,0 +1,8 @@
+Captured: 2026-09-27T19:23:44Z, live dedicated server (the owner's game PC), GameVersion and FRM version not re-read for this capture (last recorded 2026-09-22: GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3); the save was 82 in-game days old (getSessionInfo PassedDays).
+Method: GET http://127.0.0.1:8080/getResourceGeyser (FRM Web Server over loopback, no token needed)
+Scenario: whichever state the live game was in at capture time; the number of connected players was not recorded. Geothermal geyser nodes. The answer was an empty list, although the world has geysers [NEEDS VERIFICATION: whether FRM lists only geysers with a generator on them, or none at all on this version].
+Full response: 0 items, 2 bytes (0.0 KB).
+Not trimmed: this is the complete response.
+Redacted: nothing to redact (empty).
+---
+null

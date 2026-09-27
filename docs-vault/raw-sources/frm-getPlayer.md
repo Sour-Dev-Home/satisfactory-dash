@@ -1,11 +1,21 @@
 Source: https://docs.ficsit.app/ficsitremotemonitoring/latest/json/Read/getPlayer.html
-Captured: 2026-09-21
+Captured: 2026-09-21. Trimmed 2026-09-27 (#343).
+
+FicsitRemoteMonitoring's docs carry no licence (all rights reserved), so this file keeps only the
+excerpts this repo cites, verbatim, numbered E1, E2, ... Cite them as `frm-getPlayer.md` E<n>, never by line
+number. The full page is at the source URL; a full copy of the 2026-09-21 capture is kept outside
+the repo, and this file's git history has it too.
+Not excerpted: the table's features rows.
 
 ---
+
+### E1 — What the endpoint returns
 
 ## Get Player
 
 Get a list of all Players.
+
+### E2 — Response body: ID, Name, location, PlayerHP, Speed, Online, Dead, Inventory
 
 ## Response Body
 
@@ -28,16 +38,8 @@ Get a list of all Players.
 | ClassName | String | Class Name of the item. |
 | Amount | Integer | Amount of the item. |
 | MaxAmount | Integer | Stack size of the item. |
-| features | Object | An object with actor coordinates and name information. |
-| properties | Object | Name information about the actor. |
-| name | String | Display Name of the Actor. |
-| type | String | Type of the Object. |
-| geometry | Object | Geometry information about the Actor. |
-| coordinates | Object | The Actor coordinates. |
-| x | Float | X Location of the Actor. |
-| y | Float | Y Location of the Actor. |
-| z | Float | Z Location of the Actor. |
-| type | String | It’s always "Point". |
+
+### E3 — Example response, up to the Inventory (its items and the features object are not excerpted)
 
 ## Example Response
 
@@ -56,64 +58,3 @@ Get a list of all Players.
     "Online": true,
     "PlayerHP": 100,
     "Dead": false,
-    "Inventory": [
-      {
-        "Name": "Beryl Nut",
-        "ClassName": "Desc_Nut_C",
-        "Amount": 10,
-        "MaxAmount": 100
-      },
-      {
-        "Name": "Paleberry",
-        "ClassName": "Desc_Berry_C",
-        "Amount": 50,
-        "MaxAmount": 50
-      },
-      {
-        "Name": "FICSIT Coupon",
-        "ClassName": "Desc_ResourceSinkCoupon_C",
-        "Amount": 11,
-        "MaxAmount": 500
-      },
-      {
-        "Name": "Hard Drive",
-        "ClassName": "Desc_HardDrive_C",
-        "Amount": 48,
-        "MaxAmount": 100
-      },
-      {
-        "Name": "Mercer Sphere",
-        "ClassName": "Desc_WAT2_C",
-        "Amount": 1,
-        "MaxAmount": 50
-      },
-      {
-        "Name": "Wood",
-        "ClassName": "Desc_Wood_C",
-        "Amount": 51,
-        "MaxAmount": 200
-      },
-      {
-        "Name": "Hoverpack",
-        "ClassName": "BP_EquipmentDescriptorHoverPack_C",
-        "Amount": 1,
-        "MaxAmount": 1
-      }
-    ],
-    "features": {
-      "properties": {
-        "name": "derpierre65",
-        "type": "Player"
-      },
-      "geometry": {
-        "coordinates": {
-          "x": -57604.6796875,
-          "y": 260436.1875,
-          "z": -3018.36083984375
-        },
-        "type": "Point"
-      }
-    }
-  }
-]
-```

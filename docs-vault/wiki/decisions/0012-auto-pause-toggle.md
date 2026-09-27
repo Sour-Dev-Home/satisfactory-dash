@@ -7,7 +7,7 @@ Status: accepted (the project owner), 2026-09-22
 FG.DSAutoPause=True pauses the sim with 0 players, and FRM then returns frozen values
 (observed 2026-09-22). Users want different behavior. A paused server is billed the same (the
 process keeps running), and live values, alerts and history can't work while it's paused.
-GetServerOptions, the only documented way to read the setting (dedicated-server-api.md:392-401),
+GetServerOptions, the only documented way to read the setting (dedicated-server-api.md E9),
 also returns FRM's uWS.AuthenticationToken in plaintext.
 
 ## Decision
@@ -15,9 +15,9 @@ also returns FRM's uWS.AuthenticationToken in plaintext.
 The dashboard changes the setting only on an explicit user action; docs recommend off.
 GET /api/servers/:serverId/settings -> ADR-0004 envelope with
 { autoPause, pending, editable }. PUT /api/servers/:serverId/settings/auto-pause { enabled }
-calls ApplyServerOptions (dedicated-server-api.md:541-551, Admin), re-reads, and returns the
+calls ApplyServerOptions (dedicated-server-api.md E10, Admin), re-reads, and returns the
 settings envelope. editable = apiToken configured AND VerifyAuthenticationToken succeeds
-(:313-316) AND the token payload pl == "Administrator" (:248-268). Not editable -> 409
+(E7) AND the token payload pl == "Administrator" (also E5). Not editable -> 409
 not_editable. The backend never proxies, logs, stores or returns GetServerOptions output. One
 adapter function reads it and keeps only FG.DSAutoPause from ServerOptions and
 PendingServerOptions; a test with a fake token asserts the token appears in no output or log.
@@ -47,7 +47,7 @@ Amended 2026-09-23 (architect): `editable` accepts `pl` in {"Administrator", "AP
 (never "InitialAdmin", "Client" or "NotAuthenticated"), not `Administrator` alone. The
 dashboard is a third-party application, and the docs tell those to use application tokens
 (`server.GenerateAPIToken`; do not expire; `server.InvalidateAPITokens` revokes them;
-dedicated-server-api.md:279-284), whose privilege level is `APIToken` (:248-268).
+dedicated-server-api.md E5), whose privilege level is `APIToken` (also E5).
 
 Verified live 2026-09-23 with a real application token (`pl` = `APIToken`, from
 `server.GenerateAPIToken`) on the local server: GetServerOptions is readable with it, and
@@ -55,7 +55,7 @@ ApplyServerOptions accepts it (204; the value changed and was restored). A wrong
 answered 401 `invalid_token` even with AllowInsecureLocalAccess, so the header is checked.
 
 Amended 2026-09-23 (found by that live check): **VerifyAuthenticationToken does not work as
-documented** (dedicated-server-api.md:313-316 says no parameters and 204). On the live
+documented** (dedicated-server-api.md E7 says no parameters and 204). On the live
 server it answers HTTP 200 with `errorCode: missing_params` (missing `authenticationToken`
 and `privilegeLevel`), and with those supplied it answers 401 `token_validation_failed` for
 every privilege level, even for the working token. So `editable` no longer uses it: the
