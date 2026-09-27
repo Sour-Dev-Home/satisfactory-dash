@@ -1,0 +1,8 @@
+Captured: 2026-09-27T04:54:27Z, live dedicated server (the owner's game PC), GameVersion and FRM version not re-read for this capture (last recorded 2026-09-22: GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3); the save was 77 in-game days old (getSessionInfo PassedDays).
+Method: GET http://127.0.0.1:8080/getResourceSink (FRM Web Server over loopback, no token needed)
+Scenario: whichever state the live game was in at capture time; the number of connected players was not recorded. The AWESOME Sink totals.
+Full response: 1 items, 306 bytes (0.3 KB).
+Not trimmed: this is the complete response.
+Redacted: nothing needed redacting: the response holds no player name, player id or save name (only game data).
+---
+[{"Name":"Resource","ClassName":"FGResourceSinkSubsystem","CouponType":{"Name":"FICSIT Coupon","ClassName":"Desc_ResourceSinkCoupon_C"},"NumCoupon":122,"Percent":0.8801943063735962,"GraphPoints":[21812,22428,21682,21642,21762,20846,21762,21562,21762,21587],"TotalPoints":63086253,"PointsToCoupon":118997}]
