@@ -1,11 +1,20 @@
 Source: https://docs.ficsit.app/ficsitremotemonitoring/latest/json/Read/getPowerUsage.html
-Captured: 2026-09-21
+Captured: 2026-09-21. Trimmed 2026-09-27 (#343).
+
+FicsitRemoteMonitoring's docs carry no licence (all rights reserved), so this file keeps only the
+excerpts this repo cites, verbatim, numbered E1, E2, ... Cite them as `frm-getPowerUsage.md` E<n>, never by line
+number. The full page is at the source URL; a full copy of the 2026-09-21 capture is kept outside
+the repo, and this file's git history has it too.
 
 ---
+
+### E1 — What the endpoint returns
 
 ## Get Power Usage
 
 Gets a list of buildings with power usage.
+
+### E2 — Response body: every field
 
 ## Response Body
 
@@ -25,6 +34,8 @@ Gets a list of buildings with power usage.
 | FuseTriggered | Boolean | Has the fuse tripped? |
 | PowerConsumed | Float | Current power consumption. |
 | MaxPowerConsumed | Float | Current maximum power consumption. |
+
+### E3 — Example response, the first of its buildings
 
 ## Example Response
 
@@ -47,24 +58,3 @@ Gets a list of buildings with power usage.
       "PowerConsumed": 0,
       "MaxPowerConsumed": 0
     }
-  },
-  {
-    "ID": "Build_OilRefinery_C_2147345106",
-    "Name": "Refinery",
-    "ClassName": "Build_OilRefinery_C",
-    "location": {
-      "x": 150500,
-      "y": 214300,
-      "z": -7499.9814453125,
-      "rotation": 90
-    },
-    "PowerInfo": {
-      "CircuitGroupID": -1,
-      "CircuitID": -1,
-      "FuseTriggered": false,
-      "PowerConsumed": 0,
-      "MaxPowerConsumed": 0
-    }
-  }
-]
-```

@@ -23,6 +23,9 @@ const FRONTEND_SRC_FILE = /^frontend\/src\/.+\.(ts|tsx|css)$/;
 const FRONTEND_SRC = "frontend/src/";
 const E2E = /^frontend\/e2e\/.+/;
 const LOG_FRAGMENTS = /^docs-vault\/wiki\/log\.d\/.+/;
+// The per-PR test-hunter log file (#341), the same kind of fragment. Only `<date>-<pr>[-<n>].md`, so the folder's
+// README (the format everyone follows) still needs the architect.
+const HUNTER_LOG_FRAGMENTS = /^docs-vault\/wiki\/hunter-log\.d\/\d{4}-\d{2}-\d{2}-\d+(-\d+)?\.md$/;
 
 /**
  * The data-flow pattern of amendment 3: an added line under frontend/src that contains any of these is not UI work.
@@ -84,7 +87,7 @@ export function dataFlowHit(line) {
 export function isUiTierPath(file) {
   if (file.split("/").includes("..")) return false;
   if (FRONTEND_SRC_FILE.test(file)) return !FRONTEND_SRC_EXCLUDED.some((excluded) => excluded.test(file));
-  return E2E.test(file) || LOG_FRAGMENTS.test(file);
+  return E2E.test(file) || LOG_FRAGMENTS.test(file) || HUNTER_LOG_FRAGMENTS.test(file);
 }
 
 /** The lines a unified-diff patch adds (without the leading "+"). A GitHub patch has no "+++" file header, so a "+++x" line is an added "++x". */

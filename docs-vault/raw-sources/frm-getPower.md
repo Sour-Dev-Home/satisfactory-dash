@@ -1,11 +1,20 @@
 Source: https://docs.ficsit.app/ficsitremotemonitoring/latest/json/Read/getPower.html
-Captured: 2026-09-21
+Captured: 2026-09-21. Trimmed 2026-09-27 (#343).
+
+FicsitRemoteMonitoring's docs carry no licence (all rights reserved), so this file keeps only the
+excerpts this repo cites, verbatim, numbered E1, E2, ... Cite them as `frm-getPower.md` E<n>, never by line
+number. The full page is at the source URL; a full copy of the 2026-09-21 capture is kept outside
+the repo, and this file's git history has it too.
 
 ---
+
+### E1 — What the endpoint returns
 
 ## Get Power
 
 Gets a list of all power circuits.
+
+### E2 — Response body: every field (units not documented)
 
 ## Response Body
 
@@ -25,6 +34,8 @@ Gets a list of all power circuits.
 | BatteryTimeFull | String | Time until Batteries are full. Format: Hours:Minutes:Seconds |
 | AssociatedCircuits | Integer\[\] | All the circuit IDs that this group owns. |
 | FuseTriggered | Boolean | Has the fuse been triggered? |
+
+### E3 — Example response (an idle circuit: capacity and consumption 0)
 
 ## Example Response
 

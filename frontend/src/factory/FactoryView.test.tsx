@@ -1,6 +1,7 @@
 import { StrictMode, useState } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, MemoryRouter, useLocation, useNavigate } from "react-router";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
@@ -21,7 +22,7 @@ import { FactoryView, REVEAL_GRACE_MS } from "./FactoryView";
 function renderView() {
   return renderWithClient(
     <ServerContext value={serversSingle.servers[0]}>
-      <FactoryView />
+      <MemoryRouter><FactoryView /></MemoryRouter>
     </ServerContext>,
   );
 }
@@ -34,7 +35,7 @@ function SwitchableView({ initial, other }: { initial: ServerSummary; other: Ser
       <button type="button" onClick={() => setSelected(other)}>
         Switch server
       </button>
-      <FactoryView />
+      <MemoryRouter><FactoryView /></MemoryRouter>
     </ServerContext>
   );
 }
@@ -48,7 +49,7 @@ function CyclingView({ servers }: { servers: ServerSummary[] }) {
       <button type="button" onClick={() => setIndex((i) => (i + 1) % servers.length)}>
         Switch server
       </button>
-      <FactoryView />
+      <MemoryRouter><FactoryView /></MemoryRouter>
     </ServerContext>
   );
 }
@@ -119,7 +120,7 @@ describe("FactoryView", () => {
       const [open, setOpen] = useState(false);
       return open ? (
         <ServerContext value={serversSingle.servers[0]}>
-          <FactoryView />
+          <MemoryRouter><FactoryView /></MemoryRouter>
         </ServerContext>
       ) : (
         <button type="button" onClick={() => setOpen(true)}>
@@ -300,13 +301,33 @@ describe("FactoryView", () => {
       <StrictMode>
         <QueryClientProvider client={client}>
           <ServerContext value={serversSingle.servers[0]}>
-            <FactoryView />
+            <MemoryRouter><FactoryView /></MemoryRouter>
           </ServerContext>
         </QueryClientProvider>
       </StrictMode>,
     );
     expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
+  });
+
+  // StrictMode double-invokes render (a render-phase setState like seenLocation's must be idempotent
+  // on the repeat invocation) as well as effects; the search box must still start from ?q= and keep
+  // taking keystrokes normally.
+  it("opens with ?q= filled in and keeps typing working under StrictMode", async () => {
+    const client = createQueryClient();
+    render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <ServerContext value={serversSingle.servers[0]}>
+            <MemoryRouter initialEntries={["/app/factory?q=Smelter"]}><FactoryView /></MemoryRouter>
+          </ServerContext>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    expect(box).toHaveValue("Smelter");
+    fireEvent.change(box, { target: { value: "Smelter Mk1" } });
+    expect(box).toHaveValue("Smelter Mk1");
   });
 });
 
@@ -348,5 +369,201 @@ describe("FactoryView's data-age warning", () => {
     fail = false;
     await act(() => client.refetchQueries({ type: "active" }));
     await waitFor(() => expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument());
+  });
+});
+
+/** Shows the router's current URL, so a test can see what the page wrote there. */
+function Where() {
+  const { pathname, search, hash } = useLocation();
+  return <output aria-label="URL">{`${pathname}${search}${hash}`}</output>;
+}
+
+function renderAt(url: string) {
+  return renderWithClient(
+    <ServerContext value={serversSingle.servers[0]}>
+      <MemoryRouter initialEntries={[url]}>
+        <FactoryView />
+        <Where />
+      </MemoryRouter>
+    </ServerContext>,
+  );
+}
+
+// #351's deep links: the machine search and the history's item live in the URL.
+describe("FactoryView deep links", () => {
+  it("opens with the machine search from ?q= filled in and applied", async () => {
+    renderAt(`/app/factory?q=${encodeURIComponent(factoryMixed.data.buildings[0].name)}`);
+    expect(await screen.findByRole("searchbox", { name: "Search machines" })).toHaveValue(factoryMixed.data.buildings[0].name);
+  });
+
+  it("writes the search back to the URL as typed, keeping other parameters, and drops it when cleared", async () => {
+    renderAt("/app/factory?scenario=default");
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron " } });
+    expect(box).toHaveValue("iron ");
+    expect(screen.getByRole("status", { name: "URL" })).toHaveTextContent("/app/factory?scenario=default&q=iron+");
+    fireEvent.change(box, { target: { value: "" } });
+    expect(screen.getByRole("status", { name: "URL" })).toHaveTextContent(/^\/app\/factory\?scenario=default$/);
+  });
+
+  it("opens production history on the item from ?item=, and writes a new pick back", async () => {
+    renderAt("/app/factory?item=Desc_Wire_C#history");
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    expect(picker).toHaveValue("Desc_Wire_C");
+    fireEvent.change(picker, { target: { value: "Desc_IronPlate_C" } });
+    expect(screen.getByRole("status", { name: "URL" })).toHaveTextContent("item=Desc_IronPlate_C");
+  });
+
+  it("ignores an ?item= that isn't a class name, and shows the first item", async () => {
+    renderAt("/app/factory?item=%3Cscript%3E");
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    expect(picker).toHaveValue("Desc_IronPlate_C");
+  });
+});
+
+// A real BrowserRouter, not MemoryRouter: useHashTarget reads window.location/history directly
+// (by design), and react-router only touches those through a real (or Browser-backed) history.
+// This is the one place that can catch the two interacting: typing in ?q= replaces the URL, which
+// must not re-trigger #history's jump and steal focus back from the search box.
+describe("FactoryView deep links + #history jump, on a real history (#351)", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("keeps #history in the URL when the search is edited (react-router's setSearchParams drops the fragment)", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron" } });
+    expect(window.location.hash).toBe("#history");
+    expect(window.location.search).toContain("q=iron");
+  });
+
+  it("typing in the machine search doesn't steal focus back from the box, with #history open", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    // The initial deep link jumps to #history; a whole section takes focus on its heading (ui review).
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Production history" })).toHaveFocus());
+
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    box.focus();
+    expect(box).toHaveFocus();
+    fireEvent.change(box, { target: { value: "iron" } });
+    fireEvent.change(box, { target: { value: "iron p" } });
+    expect(box).toHaveFocus();
+  });
+
+  // ui review: on a real history each keystroke's URL update lands a render late; the box must keep
+  // exactly what was typed (it used to drop keystrokes and jump the cursor to the end).
+  it("keeps every keystroke in the search box while the URL catches up", async () => {
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    expect(box).toHaveValue("Smelter");
+    for (const value of ["Smelter ", "Smelter M", "Smelter Mk", "Smelter Mk1"]) fireEvent.change(box, { target: { value } });
+    expect(box).toHaveValue("Smelter Mk1");
+    await waitFor(() => expect(window.location.search).toBe("?q=Smelter+Mk1"));
+    expect(box).toHaveValue("Smelter Mk1");
+  });
+
+  it("takes a new ?q= from a navigation (a link or the command bar), not only on first load", async () => {
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    function Jump() {
+      const go = useNavigate();
+      return (
+        <button type="button" onClick={() => go("/app/factory?q=Constructor")}>
+          Jump
+        </button>
+      );
+    }
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter>
+          <FactoryView />
+          <Jump />
+        </BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.click(screen.getByRole("button", { name: "Jump" }));
+    await waitFor(() => expect(box).toHaveValue("Constructor"));
+  });
+
+  // Back/forward (POP): a real history entry, not a same-idx replace, so the box must pick up
+  // whatever ?q= that entry actually carries rather than keeping the last-typed text.
+  it("updates the box on a back navigation (POP) to an entry with a different ?q=", async () => {
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    function Jump() {
+      const go = useNavigate();
+      return (
+        <button type="button" onClick={() => go("/app/factory?q=Constructor")}>
+          Jump
+        </button>
+      );
+    }
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter>
+          <FactoryView />
+          <Jump />
+        </BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.click(screen.getByRole("button", { name: "Jump" }));
+    await waitFor(() => expect(box).toHaveValue("Constructor"));
+
+    await act(async () => {
+      window.history.back();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(box).toHaveValue("Smelter"));
+  });
+
+  // The item picker is still URL-driven; the search box holds local text until each keystroke's
+  // replace lands. Picking an item shouldn't wipe a just-typed ?q=, and vice versa.
+  it("keeps a just-typed ?q= when the item picker is changed right after", async () => {
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron" } });
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    fireEvent.change(picker, { target: { value: "Desc_IronPlate_C" } });
+
+    expect(window.location.search).toContain("q=iron");
+    expect(window.location.search).toContain("item=Desc_IronPlate_C");
+    expect(box).toHaveValue("iron");
+  });
+
+  it("keeps a just-picked item when the search box is typed into right after", async () => {
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    fireEvent.change(picker, { target: { value: "Desc_IronPlate_C" } });
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron" } });
+
+    expect(window.location.search).toContain("q=iron");
+    expect(window.location.search).toContain("item=Desc_IronPlate_C");
   });
 });

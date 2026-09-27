@@ -6,7 +6,7 @@
 
 export interface ServerHealth {
   /** Vanilla HealthCheck: "healthy" above 10 ticks/s, else "slow"
-   *  (docs-vault/raw-sources/dedicated-server-api.md:310). */
+   *  (docs-vault/raw-sources/dedicated-server-api.md E6). */
   tickHealth: "healthy" | "slow";
 }
 
@@ -17,7 +17,7 @@ export interface ServerStatus {
   connectedPlayers: number;
   playerLimit: number;
   /** Ticks per second, averaged. Below ~10 is FRM/vanilla's own "slow" threshold
-   *  (docs-vault/raw-sources/dedicated-server-api.md, HealthCheck). */
+   *  (docs-vault/raw-sources/dedicated-server-api.md E6, HealthCheck). */
   tickRate: number;
   totalGameDurationSeconds: number;
 }

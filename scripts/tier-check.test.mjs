@@ -98,8 +98,45 @@ test("the paths the tier allows are allowed", () => {
     "frontend/src/test/setup.ts",
     "frontend/e2e/anything/at/all.png",
     "docs-vault/wiki/log.d/2026-09-26-x.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359-2.md",
   ]) {
     assert.equal(isUiTierPath(name), true, name);
+  }
+});
+
+test("only a hunter-log fragment is allowed in hunter-log.d, and nothing else in docs-vault", () => {
+  for (const name of [
+    "docs-vault/wiki/hunter-log.d/README.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-x.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md.bak",
+    "docs-vault/wiki/hunter-log.d/sub/2026-09-27-359.md",
+    "docs-vault/wiki/hunter-log.dx/2026-09-27-359.md",
+    "docs-vault/wiki/hunter-log.d/../decisions/2026-09-27-359.md",
+    "docs-vault/wiki/frm-api.md",
+    "docs-vault/raw-sources/2026-09-27-359.md",
+  ]) {
+    assert.equal(isUiTierPath(name), false, name);
+  }
+  const fragment = { filename: "docs-vault/wiki/hunter-log.d/2026-09-27-359.md", status: "added", patch: patchOf("- pr: 359") };
+  assert.equal(checkTier(pr([file("frontend/src/App.tsx"), fragment])).ok, true);
+  assert.equal(checkTier(pr([file("frontend/src/App.tsx"), file("docs-vault/wiki/frm-api.md")])).ok, false);
+});
+
+test("hunter-log fragment names: a second suffix number, an uppercase extension and an un-padded date are all refused", () => {
+  for (const name of [
+    // Only one optional "-<n>" group: a third number is not a valid fragment name.
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359-2-3.md",
+    // The extension is matched literally; GitHub paths are case-sensitive, so this is a different (disallowed) file.
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.MD",
+    // Month/day must be zero-padded to two digits, matching the <YYYY-MM-DD> format.
+    "docs-vault/wiki/hunter-log.d/2026-9-27-359.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-7-359.md",
+    // Trailing slash or trailing junk after the extension.
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md/",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md ",
+  ]) {
+    assert.equal(isUiTierPath(name), false, name);
   }
 });
 

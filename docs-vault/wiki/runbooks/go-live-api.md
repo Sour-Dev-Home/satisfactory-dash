@@ -32,7 +32,7 @@ Copy `backend\.env.example` to `backend\.env` if you haven't, then set these. Le
 | `DASHBOARD_ADMIN_USER` | The username you'll sign in with. |
 | `DASHBOARD_ADMIN_PASSWORD_HASH` | `npm run --silent hash-password -w backend`. It prompts for a password (12+ characters, no echo) and prints one line starting with `scrypt$`. Paste that whole line, never the password. Quotes around the value are optional. |
 | `SESSION_SECRET` | At least 32 random bytes. `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))` prints one; copy it into the file. Changing it later signs every session out (and is how a stolen session is revoked). |
-| `SATISFACTORY_API_TOKEN` | An **application token**: run `server.GenerateAPIToken` in the game server's console. Application tokens don't expire; `server.InvalidateAPITokens` revokes all of them (`dedicated-server-api.md:279-284`). Don't use a password-login token. |
+| `SATISFACTORY_API_TOKEN` | An **application token**: run `server.GenerateAPIToken` in the game server's console. Application tokens don't expire; `server.InvalidateAPITokens` revokes all of them (`dedicated-server-api.md E5`). Don't use a password-login token. |
 | `FRM_AUTH_TOKEN` | FRM's token: the value of `FicsitRemoteMonitoring.Server.uWS.AuthenticationToken` in `FactoryGame\Saved\Config\WindowsServer\GameUserSettings.ini` in the server install (`frm-authentication.md`). Rotating it by hand is optional and deferred; ADR-0017 designs the automated version. |
 | `CORS_ALLOWED_ORIGINS` | `https://satis-manager.com` (exactly one origin, never `*`). |
 
@@ -76,7 +76,7 @@ work. Turn that off:
    with a `SaveName`, then `Shutdown`) while insecure local access still works, or type
    `server.SaveGame <name>` then `server.Shutdown` in the server's console. The
    `-ini:Engine:[SystemSettings]:FG.DedicatedServer.AllowInsecureLocalAccess=1` argument
-   (`dedicated-server-api.md:287-289`) exists only on the running process's command line
+   (`dedicated-server-api.md E5`) exists only on the running process's command line
    if you started the server by hand; there may be no launcher file to edit. Check the
    running process's command line, or wherever you launch it from (a shortcut, a `.bat`, a
    service), and make sure the new launch does not include it.

@@ -14,8 +14,9 @@
     4. npm run db:migrate (every time: migrations are forward-only and idempotent);
     5. restart the backend Scheduled Task with scripts\windows\register-backend-task.ps1 -Start,
        taken from the NEW checkout;
-    6. wait for /api/health/ready and, if the backend does not come up, fail with the tail of the
-       wrapper log;
+    6. wait for /api/health/ready, then confirm from the local run file (issue #320) that the
+       commit actually serving is the NEW one, not a leftover old process; fail with the tail of
+       the wrapper log if either check fails;
     7. print the old and the new commit.
 
   It stops at the first failing step. A failure BEFORE step 5 leaves the running backend untouched
@@ -64,6 +65,13 @@
 .PARAMETER AwsDir
   Folder holding the AWS CLI, for the backup step. Default: %ProgramFiles%\Amazon\AWSCLIV2.
 
+.PARAMETER RunFileDir
+  Issue #320: passed through to register-backend-task.ps1's -RunFileDir. After the readiness wait
+  (step 6), this script also reads <RunFileDir>\backend.json and requires its commit to equal the
+  deployed SHA and its startedAt to be later than this script's own restart step — proving the NEW
+  build is the one that answered readiness, not a leftover old process or a second instance.
+  Default: %LOCALAPPDATA%\satisfactory-dash\run (register-backend-task.ps1's own default).
+
 .PARAMETER HealthTimeoutSeconds
   How long to wait for the backend to answer /api/health/ready with 200. Default: 90.
 
@@ -86,6 +94,7 @@ param(
   [string]$PostgresBin = "",
   [string]$AgeDir = "",
   [string]$AwsDir = "",
+  [string]$RunFileDir = (Join-Path $env:LOCALAPPDATA "satisfactory-dash\run"),
   [int]$HealthTimeoutSeconds = 90,
   [int]$LogTailLines = 40
 )
@@ -285,9 +294,15 @@ try {
 
   # ---- 5. Restart the backend task (the helper of the NEW checkout) ----
   $register = Join-Path $DeployDir "scripts\windows\register-backend-task.ps1"
+  # Captured right before the restart: issue #320's proof (step 6) requires the run file's
+  # startedAt to be later than this, so a leftover OLD process (which started earlier) can't pass.
+  # UTC, to match $startedAt below (RoundtripKind on the backend's "Z"-suffixed ISO string): DateTime
+  # comparison operators compare raw ticks and ignore Kind, so comparing a Local Get-Date against a
+  # UTC-parsed value would silently be off by the machine's UTC offset.
+  $restartTime = (Get-Date).ToUniversalTime()
   if ($PSCmdlet.ShouldProcess($TaskName, "5. restart the Scheduled Task: $register -Start")) {
     Write-Step "5/7 Restarting the backend task '$TaskName'"
-    & $register -TaskName $TaskName -LogDir $LogDir -Port $Port -Start
+    & $register -TaskName $TaskName -LogDir $LogDir -Port $Port -RunFileDir $RunFileDir -Start
   }
 
   # ---- 6. Wait for readiness ----
@@ -317,6 +332,58 @@ try {
       throw "Deploy FAILED at the readiness check: the checkout is at $newSha; the backend is not serving. See the log tail above."
     }
     Write-Step "Ready: /api/health/ready answered 200."
+
+    # ---- Issue #320: prove the NEW build is the one that answered, not a leftover old process ----
+    # /api/health/ready is public, so it deliberately carries no version; this local run file
+    # (option C of the design note) is what actually proves it. The backend writes it fire-and-forget
+    # from inside its listen callback, so right after a 200 the file may not exist yet, or may still
+    # hold the OLD process's content for a moment: retry briefly (the same spirit as the readiness
+    # wait above) rather than reading it exactly once and risking a false "Deploy FAILED" for a
+    # genuinely good deploy.
+    $runFile = Join-Path $RunFileDir "backend.json"
+    $runFileDeadline = (Get-Date).AddSeconds(10)
+    $problem = $null
+    $info = $null
+    # Set inside the SAME iteration that produces the final $problem below, and read back after the
+    # loop instead of a second, independent Test-Path: a re-query there would race the file's own
+    # existence (it's only ever replaced by writeRunFile's same-directory rename, never deleted, but
+    # a second review round flagged the theoretical gap) and could downgrade a genuine "wrong build
+    # serving" failure into a soft warning if the file vanished in between the two checks.
+    $fileExisted = $false
+    do {
+      $problem = $null
+      $fileExisted = Test-Path -LiteralPath $runFile
+      if (-not $fileExisted) {
+        $problem = "no run file yet"
+      } else {
+        $info = Get-Content -LiteralPath $runFile -Raw | ConvertFrom-Json
+        if (-not $info.commit) {
+          $problem = "the run file has no commit."
+        } elseif ($info.commit -ne $newSha) {
+          $problem = "the run file's commit ($($info.commit)) does not match the deployed commit ($newSha)."
+        } elseif (-not $info.startedAt) {
+          $problem = "the run file has no startedAt."
+        } else {
+          $startedAt = [DateTime]::Parse($info.startedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+          if ($startedAt -le $restartTime) {
+            $problem = "the run file's startedAt ($($info.startedAt)) is not after this deploy's restart ($($restartTime.ToString('o')))."
+          }
+        }
+      }
+      if ($problem -and (Get-Date) -lt $runFileDeadline) { Start-Sleep -Milliseconds 500 }
+    } while ($problem -and (Get-Date) -lt $runFileDeadline)
+
+    if (-not $problem) {
+      Write-Step "Confirmed: the run file shows commit $($info.commit), started $($info.startedAt) (after the restart) - the NEW build is serving."
+    } elseif (-not $fileExisted) {
+      Write-Warning "No run file at $runFile after waiting: cannot confirm the NEW build is serving beyond the readiness 200 (RUN_FILE_DIR may not be set on this deploy, or the deployed commit predates issue #320)."
+    } else {
+      $state = try { (Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop).State } catch { "unknown" }
+      Write-Host ""
+      Write-Host "Readiness answered 200, but the run file doesn't prove the NEW build is serving: $problem (task state: $state)"
+      Show-LogTail
+      throw "Deploy FAILED: readiness answered 200, but the run file shows a stale process is still serving ($problem)."
+    }
   }
 
   # ---- 7. Report ----

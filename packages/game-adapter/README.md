@@ -42,7 +42,7 @@ which specific game server — the data came from. That indirection is what make
   ADR-0012), and its `pl` claim is
   `Administrator` or `APIToken`). Configure `SATISFACTORY_API_TOKEN` with an application
   token from `server.GenerateAPIToken`, which third-party apps are told to use
-  (`dedicated-server-api.md:279-284`), not a password-login token. Every upstream error
+  (`dedicated-server-api.md E5`), not a password-login token. Every upstream error
   from this file is rebuilt without its `cause` or `errorData`. Consumed by
   `modules/settings`.
 - `rawSchemas.ts` — zod schemas for every raw response, grounded in

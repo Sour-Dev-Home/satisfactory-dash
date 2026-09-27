@@ -12,7 +12,7 @@ The stated end goal changes the drivers:
 1. **Accounts:** many users, each managing several servers (multi-tenant).
 2. **Live map:** buildings drawn at their real world positions, with switchable layers for
    production, power and more. FRM already exposes location x/y/z/rotation per building
-   (frm-getFactory.md:23-27; verified in capture 01-running).
+   (frm-getFactory.md E2; verified in capture 01-running).
 3. **Managed servers:** the project provisions dedicated servers on AWS with SML + FRM
    preinstalled, as an alternative to self-hosting.
 4. **Self-hosted servers:** these sit behind home NAT, and FRM is plain HTTP only (ADR-0013,

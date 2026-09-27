@@ -8,7 +8,7 @@ import type { RequestFailureKind } from "./errors.js";
  * Low-level client for the vanilla Satisfactory Dedicated Server HTTPS API. One POST
  * endpoint, JSON-RPC-style: {"function": name, "data": {...}} in, either a Success
  * Response ({"data": ...}) or an Error Response ({"errorCode", ...}) out. See
- * docs-vault/raw-sources/dedicated-server-api.md for the documented schema.
+ * docs-vault/raw-sources/dedicated-server-api.md E4 for the documented schema.
  *
  * Response field casing is camelCase in practice (confirmed live in the Phase 2
  * spike), not the PascalCase shown in the docs — see
