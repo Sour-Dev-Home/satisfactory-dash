@@ -13,6 +13,9 @@ import { formatTime } from "../format";
 import { useNow } from "../lib/useNow";
 import { useSelectedServer } from "../servers/ServerContext";
 import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText } from "./agentText";
+import { useHashTarget } from "../lib/useHashTarget";
+
+const isAgentAnchor = (id: string) => id === "agent";
 
 /**
  * Settings → Game PC agent (ADR-0031 PR 7): whether an agent reports for this server, when it was
@@ -21,6 +24,8 @@ import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText
  */
 export function AgentSettings() {
   const server = useSelectedServer();
+  // /app/settings#agent (#351's deep links) scrolls here.
+  useHashTarget(isAgentAnchor);
   const isOperator = useQuery(queries.servers()).data?.canManageServers === true;
   const status = useQuery(queries.agentStatus(server.id));
   const { createCode, revoke } = useAgentWrites(server.id);

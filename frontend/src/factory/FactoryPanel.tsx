@@ -19,11 +19,24 @@ const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boole
  * information, not an alarm: on a real save a large share of machines is backed up in
  * normal steady-state play, so it's a count and a filter, never a red banner.
  * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
+ * `search`/`onSearch`: the view keeps the search in the URL (?q=, #351); without them it's local.
  */
-export function FactoryPanel({ snapshot, refetchFailed = false }: { snapshot: FactoryResponse; refetchFailed?: boolean }) {
+export function FactoryPanel({
+  snapshot,
+  refetchFailed = false,
+  search: searchProp,
+  onSearch,
+}: {
+  snapshot: FactoryResponse;
+  refetchFailed?: boolean;
+  search?: string;
+  onSearch?: (search: string) => void;
+}) {
   const { buildings, backedUpCount } = snapshot.data;
   const [filter, setFilter] = useState<Filter>("all");
-  const [search, setSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+  const search = searchProp ?? localSearch;
+  const setSearch = onSearch ?? setLocalSearch;
 
   const active = FILTERS.find((f) => f.id === filter) ?? FILTERS[0];
   const needle = search.trim().toLowerCase();

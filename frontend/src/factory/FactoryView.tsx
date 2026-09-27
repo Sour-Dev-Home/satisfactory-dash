@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router";
+import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
 import { queries } from "../api/queries";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ErrorNotice } from "../components/ErrorNotice";
@@ -22,6 +24,37 @@ export const REVEAL_GRACE_MS = 300;
 export function FactoryView() {
   const server = useSelectedServer();
   const factory = useQuery(queries.factory(server.id));
+  // Deep links (#351): the machine search (?q=) and the history's item (?item=) live in the URL, so
+  // a link or the command bar can open the page with them set. Replaced, not pushed: typing a
+  // search mustn't fill the back button. Other parameters (e.g. dev:mock's scenario) are kept.
+  // `useSearchParams().setSearchParams` navigates to a bare "?<params>" (react-router's
+  // `useSearchParams` hook, dist/development/lib/dom/lib.js), which drops the URL's fragment — so a
+  // deep link into #history would vanish the moment the search box is typed into. Go through
+  // `navigate` directly instead, carrying the current hash along.
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const item = readItem(params);
+  // The search box keeps its own value while you type; the URL only mirrors it. Reading it back
+  // from the URL made the box lag a render behind the router (the cursor jumped to the end and fast
+  // keystrokes were dropped: the ui review). A new ?q= is taken from the URL only when a navigation
+  // brings one (a link, the command bar, back/forward); this page's own replaces are just echoes.
+  const [search, setSearch] = useState(() => readSearch(params));
+  const [seenLocation, setSeenLocation] = useState(location.key);
+  if (location.key !== seenLocation) {
+    setSeenLocation(location.key);
+    if (navigationType !== "REPLACE") setSearch(readSearch(params));
+  }
+  const setParam = (name: string, value: string | undefined) => {
+    const next = new URLSearchParams(params);
+    if (value === undefined) next.delete(name);
+    else next.set(name, value);
+    navigate(
+      { search: next.toString(), hash: location.hash },
+      { replace: true, preventScrollReset: true },
+    );
+  };
   // History carries only class names: names and units come from the live factory.
   const buildings = factory.data?.data.buildings;
   const labels = useMemo(() => itemLabels(buildings ?? []), [buildings]);
@@ -58,9 +91,19 @@ export function FactoryView() {
         <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
       {factory.isError && <ErrorNotice error={factory.error} />}
-      {factory.data && <FactoryPanel snapshot={factory.data} refetchFailed={factory.isRefetchError} />}
+      {factory.data && (
+        <FactoryPanel
+          snapshot={factory.data}
+          refetchFailed={factory.isRefetchError}
+          search={search}
+          onSearch={(value) => {
+            setSearch(value);
+            setParam(FACTORY_SEARCH_PARAM, value === "" ? undefined : value);
+          }}
+        />
+      )}
       <ErrorBoundary label="Production history">
-        <ItemHistorySection labels={labels} />
+        <ItemHistorySection labels={labels} item={item} onItem={(value) => setParam(FACTORY_ITEM_PARAM, value)} />
       </ErrorBoundary>
     </>
   );

@@ -14,6 +14,9 @@ import { RulesEditor } from "../rules/RulesEditor";
 import type { EditorItem } from "../rules/ruleDraft";
 import { DiscordControls } from "./DiscordControls";
 import { MuteControl } from "./MuteControl";
+import { useHashTarget } from "../../lib/useHashTarget";
+
+const isAlertsAnchor = (id: string) => id === "alerts";
 
 /**
  * Settings → Alerts (ADR-0027 PR 9c): whether alerts go out and the mute, the Discord webhook, and
@@ -23,6 +26,8 @@ import { MuteControl } from "./MuteControl";
  */
 export function AlertSettings() {
   const server = useSelectedServer();
+  // /app/settings#alerts (the bell's link, #351's deep links) scrolls here.
+  useHashTarget(isAlertsAnchor);
   const canEdit = canEditAlerts(server.role);
   const writes = useAlertWrites(server.id);
   const status = useQuery(queries.alertStatus(server.id));

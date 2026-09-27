@@ -4,6 +4,8 @@ import type { HistoryRange } from "@satisfactory-dash/shared";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { cn } from "../lib/cn";
+import { HISTORY_ANCHOR } from "../lib/deepLinks";
+import { useHashTarget } from "../lib/useHashTarget";
 import { useSelectedServer } from "../servers/ServerContext";
 import type { ItemLabel } from "./itemLabels";
 import { ItemHistoryPanel } from "./ItemHistoryPanel";
@@ -20,6 +22,8 @@ export function sinceYesterdayQueries(serverId: string) {
     transitions: queries.historyTransitions(serverId, "24h", TRANSITION_LIMIT),
   };
 }
+
+const isHistoryAnchor = (id: string) => id === HISTORY_ANCHOR;
 
 /** The box "Since yesterday" reserves in every state, so nothing it shows moves the table below. */
 const SINCE_YESTERDAY_BOX = "h-since-yesterday-phone sm:h-since-yesterday-mid lg:h-since-yesterday-wide";
@@ -124,13 +128,26 @@ function ItemHistoryRange({
 
 /**
  * The Factory page's production history (ADR-0027 decision 3): a range picker like the Power
- * page's, then one item's chart. The range and item are per visit, never stored.
+ * page's, then one item's chart. The range and item are per visit, never stored. `item`/`onItem`:
+ * the view keeps the item in the URL (?item=, #351); without them it's local. /app/factory#history
+ * scrolls here.
  */
-export function ItemHistorySection({ labels }: { labels: Map<string, ItemLabel> }) {
+export function ItemHistorySection({
+  labels,
+  item: itemProp,
+  onItem,
+}: {
+  labels: Map<string, ItemLabel>;
+  item?: string;
+  onItem?: (item: string) => void;
+}) {
   const [range, setRange] = useState<HistoryRange>("24h");
-  const [item, setItem] = useState<string>();
+  const [localItem, setLocalItem] = useState<string>();
+  const item = itemProp ?? localItem;
+  const setItem = onItem ?? setLocalItem;
+  useHashTarget(isHistoryAnchor);
   return (
-    <section aria-labelledby="production-history-heading" className="panel grid gap-3">
+    <section id={HISTORY_ANCHOR} aria-labelledby="production-history-heading" className="panel grid gap-3">
       <h3 id="production-history-heading">Production history</h3>
       <div role="group" aria-label="Production history range" className="flex flex-wrap gap-2">
         {RANGES.map((r) => (
