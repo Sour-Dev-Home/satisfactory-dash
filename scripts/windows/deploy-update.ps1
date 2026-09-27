@@ -16,7 +16,7 @@
     6. print the old and the new commit.
 
   It stops at the first failing step. A failure BEFORE step 4 leaves the running backend untouched
-  (the old process keeps serving); the only thing already changed is the checkout.
+  (the old process keeps serving); the checkout, node_modules and backend\dist have already changed (a wrapper restart of the old process would load the new build).
 
   Secrets: it reads none and prints none. Step 3 needs MIGRATOR_DATABASE_URL, which db-migrate.ts
   reads itself from this shell's environment (or backend\.env, as it always did): set it in the
@@ -142,7 +142,10 @@ try {
   }
   $DeployDir = (Resolve-Path -LiteralPath $DeployDir).Path
   $git = (Get-Command git -ErrorAction Stop).Source
-  $npm = (Get-Command npm -ErrorAction Stop).Source
+  # Prefer npm.cmd: plain "npm" resolves to npm.ps1 first, which an execution policy can block.
+  $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $npmCmd) { $npmCmd = Get-Command npm -ErrorAction Stop | Select-Object -First 1 }
+  $npm = $npmCmd.Source
 
   Set-Location -LiteralPath $DeployDir
   $top = Read-Native "Finding the repository root" $git @("rev-parse", "--show-toplevel")
@@ -208,7 +211,7 @@ try {
     try {
       Invoke-Native "npm run db:migrate" $npm @("run", "db:migrate", "-w", "backend")
     } catch {
-      throw "$($_.Exception.Message)`nThe backend was NOT restarted and still runs the previous build. MIGRATOR_DATABASE_URL must be set in this shell (runbooks\database.md); the migrator script reports it if it is missing."
+      throw "$($_.Exception.Message)`nThe backend was NOT restarted: the running process still has the previous build loaded, but the checkout ($newSha) and backend\dist are already the NEW build, so do not let the backend restart before this is fixed. MIGRATOR_DATABASE_URL must be set in this shell (runbooks\database.md); the migrator script reports it if it is missing."
     }
   }
 

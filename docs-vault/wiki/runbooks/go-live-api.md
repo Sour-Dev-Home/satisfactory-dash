@@ -295,8 +295,9 @@ readable) to answer 200, starting the task once more if nothing listens after a 
 2026-09-24 flake above); (6) print the old and the new commit. If the wait fails it prints the
 task state and the last 40 lines of `backend.log`, and exits with code 1.
 
-- **A failure before step 4 leaves the running backend alone** (it keeps serving the old build; only the
-  checkout has moved). A failed migration says so and does not restart. `MIGRATOR_DATABASE_URL`
+- **A failure before step 4 leaves the running backend alone** (the old process keeps serving; the
+  checkout, `node_modules` and `backend\dist` already hold the new build, so a crash-restart of the
+  wrapper before you fix and re-run would load it). A failed migration says so and does not restart. `MIGRATOR_DATABASE_URL`
   missing is reported by the migrator itself; the script never reads or prints it, nor `.env`.
 - **Rolling the code back** (`-Ref <older branch>`) warns that migrations do not go back.
 - **It updates the backend only.** The frontend deploys itself from `main` (Cloudflare); the
