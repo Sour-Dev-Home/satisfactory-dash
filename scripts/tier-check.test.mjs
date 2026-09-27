@@ -123,6 +123,23 @@ test("only a hunter-log fragment is allowed in hunter-log.d, and nothing else in
   assert.equal(checkTier(pr([file("frontend/src/App.tsx"), file("docs-vault/wiki/frm-api.md")])).ok, false);
 });
 
+test("hunter-log fragment names: a second suffix number, an uppercase extension and an un-padded date are all refused", () => {
+  for (const name of [
+    // Only one optional "-<n>" group: a third number is not a valid fragment name.
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359-2-3.md",
+    // The extension is matched literally; GitHub paths are case-sensitive, so this is a different (disallowed) file.
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.MD",
+    // Month/day must be zero-padded to two digits, matching the <YYYY-MM-DD> format.
+    "docs-vault/wiki/hunter-log.d/2026-9-27-359.md",
+    "docs-vault/wiki/hunter-log.d/2026-09-7-359.md",
+    // Trailing slash or trailing junk after the extension.
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md/",
+    "docs-vault/wiki/hunter-log.d/2026-09-27-359.md ",
+  ]) {
+    assert.equal(isUiTierPath(name), false, name);
+  }
+});
+
 test("an added data-flow line under frontend/src fails, for every pattern of the amendment", () => {
   for (const pattern of DATA_FLOW) {
     const result = checkTier(pr([file("frontend/src/components/A.tsx", { patch: patchOf(`const x = ${pattern} something;`) })]));
