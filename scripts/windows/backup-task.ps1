@@ -54,7 +54,13 @@ $ErrorActionPreference = 'Continue'
 
 # The defaults and the PATH setup are shared with deploy-update.ps1 (tool-paths.ps1). A parameter default cannot
 # call a function from a dot-sourced file, so an empty parameter means "the default" and is resolved here.
-. (Join-Path $PSScriptRoot 'tool-paths.ps1')
+$toolPathsFile = Join-Path $PSScriptRoot 'tool-paths.ps1'
+if (-not (Test-Path -LiteralPath $toolPathsFile)) {
+  # Stop instead of running without the tool folders: exit 1 shows in Task Scheduler's history.
+  Write-Error "tool-paths.ps1 is missing next to backup-task.ps1 ($PSScriptRoot); the backup was not run."
+  exit 1
+}
+. $toolPathsFile
 if (-not $PostgresBin) { $PostgresBin = Get-DefaultPostgresBin }
 if (-not $AgeDir) { $AgeDir = Get-DefaultAgeDir }
 if (-not $AwsDir) { $AwsDir = Get-DefaultAwsDir }
