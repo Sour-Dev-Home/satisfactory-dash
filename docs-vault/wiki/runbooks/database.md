@@ -82,13 +82,12 @@ must be running.
 - **Run a DB test before you push it** (#284): `npm run test:db -w backend` runs every `*.db.test.ts` (about 10 s of
   container start, then the files), and `npm run test -w backend -- <path>.db.test.ts` runs one. A DB test that has only
   ever been typechecked usually costs several CI rounds (wrong id type, wrong error class, a rate limiter, statement order).
-  If the run prints `DATABASE TESTS SKIPPED`, nothing ran: start Docker Desktop and run it again.
-  **Known local-only failures on this Windows machine (they pass in CI):** three tests that connect to a closed or
-  stopped database, in `src/platform/db/database.db.test.ts` ("classifies REAL driver errors ... a refused port is
-  transient", and "refuses to start, saying to run db:migrate ...") and `src/modules/identity/dbSessions.db.test.ts`
-  ("when the database is down ... 503"). Two of them show a refused connection classified differently (`fatal` where
-  `transient` is expected, `500` where `503` is expected); the third was not investigated. Ignore those three; anything
-  else that fails is yours.
+  `test:db` sets `REQUIRE_DB=1`, so with Docker off it fails instead of skipping (a plain `npm run test` still skips
+  locally, with the `DATABASE TESTS SKIPPED` line: nothing ran, start Docker Desktop and run it again).
+  **3 known local failures on this Windows machine, tracked in #298** (they pass in CI): two in
+  `src/platform/db/database.db.test.ts` and one in `src/modules/identity/dbSessions.db.test.ts`. Cause found: on Windows
+  a refused connection to `localhost` is an `AggregateError` of `::1` `EACCES` and `127.0.0.1` `ECONNREFUSED`, which the
+  classifier calls fatal, and this may affect production; see the issue before treating them as noise.
 - `SKIP_DB_TESTS=1 npx vitest run <file>` skips the container start for a narrow run of unrelated
   tests (ignored when `CI` is set).
 - If Docker Desktop is running but a shell can't find it (`spawn docker-credential-desktop
