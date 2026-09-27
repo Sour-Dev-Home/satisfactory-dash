@@ -4,9 +4,13 @@ import { defineConfig, devices } from "@playwright/test";
 // `vite preview` with the same security headers as the live site (public/_headers), so a
 // CSP violation here is one users would hit. The API is mocked per test with page.route().
 // e2e/demo/ runs against the DEMO build (ADR-0026), on its own port with demo/_headers.
+// IPv4, never `localhost`: on Windows, vite resolves localhost to ::1 and listens there only, and
+// Playwright's readiness check couldn't connect to ::1 (EACCES), so local runs timed out (#283).
+// Both the server and every URL use the same address. CI's Linux resolves localhost to it anyway.
+const HOST = "127.0.0.1";
 const PORT = 4173;
 const DEMO_PORT = 4174;
-const DEMO_URL = `http://localhost:${DEMO_PORT}`;
+const DEMO_URL = `http://${HOST}:${DEMO_PORT}`;
 const DEMO_SPECS = /[\\/]demo[\\/].*\.spec\.ts/;
 
 export default defineConfig({
@@ -26,7 +30,7 @@ export default defineConfig({
   // pass, and made `--update-snapshots` skip real changes, so keep this an absolute count.
   expect: { toHaveScreenshot: { maxDiffPixels: 50, animations: "disabled" } },
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: `http://${HOST}:${PORT}`,
     // Fixed so rendered timestamps and number formats are identical on every machine.
     timezoneId: "UTC",
     locale: "en-US",
@@ -77,15 +81,15 @@ export default defineConfig({
   webServer: [
     {
       // VITE_API_URL stays empty, so the app calls same-origin /api, which the tests mock.
-      command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
-      url: `http://localhost:${PORT}`,
+      command: `npm run build && npx vite preview --host ${HOST} --port ${PORT} --strictPort`,
+      url: `http://${HOST}:${PORT}`,
       reuseExistingServer: false,
       timeout: 180_000,
     },
     {
       // The demo site (dist-demo/), built with the production API URL set (see build-demo.mjs).
       // build-output.spec.ts also reads dist-demo/; every server is up before any test starts.
-      command: `node e2e/build-demo.mjs && npx vite preview --mode demo --port ${DEMO_PORT} --strictPort`,
+      command: `node e2e/build-demo.mjs && npx vite preview --mode demo --host ${HOST} --port ${DEMO_PORT} --strictPort`,
       url: DEMO_URL,
       reuseExistingServer: false,
       timeout: 180_000,
