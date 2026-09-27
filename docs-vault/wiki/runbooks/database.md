@@ -84,10 +84,7 @@ must be running.
   ever been typechecked usually costs several CI rounds (wrong id type, wrong error class, a rate limiter, statement order).
   `test:db` sets `REQUIRE_DB=1`, so with Docker off it fails instead of skipping (a plain `npm run test` still skips
   locally, with the `DATABASE TESTS SKIPPED` line: nothing ran, start Docker Desktop and run it again).
-  **3 known local failures on this Windows machine, tracked in #298** (they pass in CI): two in
-  `src/platform/db/database.db.test.ts` and one in `src/modules/identity/dbSessions.db.test.ts`. Cause found: on Windows
-  a refused connection to `localhost` is an `AggregateError` of `::1` `EACCES` and `127.0.0.1` `ECONNREFUSED`, which the
-  classifier calls fatal, and this may affect production; see the issue before treating them as noise.
+  Fixed in #306 (#298): all DB tests pass locally on Windows.
 - `SKIP_DB_TESTS=1 npx vitest run <file>` skips the container start for a narrow run of unrelated
   tests (ignored when `CI` is set).
 - If Docker Desktop is running but a shell can't find it (`spawn docker-credential-desktop
