@@ -7,6 +7,10 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.tsx'
 import { createQueryClient } from './api/queries'
+import { reloadOnStaleChunk } from './lib/staleChunk'
+
+// A tab open across a deploy reloads once when a lazy chunk it asks for is gone (#325).
+reloadOnStaleChunk()
 
 // Dev mock mode (`npm run dev:mock`) serves the shared fixtures in the browser. MODE is a
 // build-time constant, so a production build drops this branch and never emits the mock code.

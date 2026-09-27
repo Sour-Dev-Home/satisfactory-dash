@@ -109,4 +109,65 @@ describe("ErrorBoundary", () => {
     );
     expect(screen.getByRole("alert")).toContainElement(screen.getByRole("button", { name: "Log out" }));
   });
+
+  describe("a chunk a deploy removed (#325)", () => {
+    function Stale(): never {
+      throw new TypeError("Failed to fetch dynamically imported module: https://example.test/assets/PowerChart-abc.js");
+    }
+    const RELOAD_KEY = "satis-manager.stale-chunk-reload-at";
+    beforeEach(() => window.sessionStorage.clear());
+
+    it("asks for a reload instead of Try again, when a reload just happened", () => {
+      window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+      render(
+        <ErrorBoundary label="Power history">
+          <Stale />
+        </ErrorBoundary>,
+      );
+      const alert = screen.getByRole("alert", { name: "Power history error" });
+      expect(alert).toHaveTextContent("A new version of the dashboard is available. Reload the page to see it.");
+      expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    });
+
+    it("reloads by itself once when no reload happened lately", () => {
+      render(
+        <ErrorBoundary label="Power history">
+          <Stale />
+        </ErrorBoundary>,
+      );
+      // jsdom can't navigate; the guard's record shows the reload was attempted.
+      expect(Number(window.sessionStorage.getItem(RELOAD_KEY))).toBeGreaterThan(0);
+    });
+
+    it("keeps Try again for any other error", () => {
+      render(
+        <ErrorBoundary label="Power">
+          <Flaky />
+        </ErrorBoundary>,
+      );
+      expect(window.sessionStorage.getItem(RELOAD_KEY)).toBeNull();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    });
+
+    it("reloads the page when Reload is clicked, unguarded (an explicit user request)", () => {
+      window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+      // jsdom's window.location.reload isn't configurable enough for vi.spyOn; replace the
+      // whole location object instead, then restore it so other tests get the real jsdom one.
+      const originalLocation = window.location;
+      const reload = vi.fn();
+      Object.defineProperty(window, "location", { value: { ...originalLocation, reload }, writable: true });
+      try {
+        render(
+          <ErrorBoundary label="Power history">
+            <Stale />
+          </ErrorBoundary>,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+        expect(reload).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(window, "location", { value: originalLocation, writable: true });
+      }
+    });
+  });
 });
