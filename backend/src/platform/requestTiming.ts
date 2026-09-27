@@ -113,6 +113,11 @@ export function timingLogFields(res: Response): Record<string, number> {
 
 const frozenSummary = (res: Response): TimingSummary | undefined => (res.locals as { [FROZEN]?: TimingSummary })[FROZEN];
 
+/** The frozen summary for a finished response, or undefined if the request never went through
+ *  `requestTiming()`. Exported for `platform/metrics/requestMetrics.ts` (ADR-0037): the request
+ *  histogram's value is the same total the `Server-Timing` header and the log line already agree on. */
+export const timingSummary = frozenSummary;
+
 export interface RequestTimingOptions {
   /** The exact origins allowed to call the API (the frontend's). One of them, echoed back, is the `Timing-Allow-Origin`, so the
    *  browser lets the page read `serverTiming` from the resource timing entry. Empty: the header is never sent. */
