@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { endpoints, type ServerConnection } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { MANAGED_KEY, queries } from "../api/queries";
+import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import type { FormMode } from "./ServerForm";
 import { LanWarning } from "./LanWarning";
 import { ManagementError } from "./ManagementError";
@@ -81,7 +82,7 @@ export function ServerRow({
               type="button"
               disabled={remove.isPending}
               onClick={() => remove.mutate()}
-              className="border-bad-solid bg-bad-solid text-white"
+              className={DANGER_BUTTON}
             >
               {remove.isPending ? "Removing…" : "Remove server"}
             </button>
@@ -123,7 +124,12 @@ export function ServerRow({
               {server.state === "refused" ? "Edit host" : "Edit"}
             </button>
           )}
-          <button type="button" onClick={() => setConfirming(true)} aria-label={`Remove ${server.displayName}`}>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className={DANGER_BUTTON_QUIET}
+            aria-label={`Remove ${server.displayName}`}
+          >
             Remove
           </button>
         </div>

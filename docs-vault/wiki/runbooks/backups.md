@@ -176,7 +176,7 @@ absent ping.
 ## Recommended database role
 
 Create the read-only `satis_backup` role (`DB_BACKUP_PASSWORD` when running `npm run db:init -w backend`, see the
-database runbook) and set `BACKUP_DATABASE_URL=postgres://satis_backup:<password>@localhost:5432/satis` in
+database runbook) and set `BACKUP_DATABASE_URL=postgres://satis_backup:<password>@127.0.0.1:5432/satis` in
 `backend\.env`. It can read every table and sequence (so a dump is complete by construction) and change nothing,
 and the backup never borrows the app's or the migrator's credentials. Without `BACKUP_DATABASE_URL` the backup
 uses `DATABASE_URL` (the app role).
