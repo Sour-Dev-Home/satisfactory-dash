@@ -14,11 +14,11 @@ const entry = (id: string, services: string): RuntimeServer<string> => ({
 });
 
 /** A database with no connection rows and the given agent servers. */
-function agentDb(agents: { publicId: string; displayName: string }[]): Queryable {
+function agentDb(agents: { publicId: string; displayName: string; serverId?: string }[]): Queryable {
   return {
     async query(text) {
       if (text.includes("connection_kind = 'agent'")) {
-        return { rows: agents.map((a) => ({ public_id: a.publicId, display_name: a.displayName })) };
+        return { rows: agents.map((a) => ({ id: a.serverId ?? `uuid-${a.publicId}`, public_id: a.publicId, display_name: a.displayName })) };
       }
       return { rows: [] };
     },
@@ -69,16 +69,40 @@ describe("loadDatabaseServers with agent servers", () => {
     expect(built[0]!.workers[0]!.start).toHaveBeenCalledTimes(1);
   });
 
-  it("does not seed the operator as owner of a server that is not theirs to own (an agent server has its own owner)", async () => {
-    const statements: string[] = [];
+  it("seeds the operator as owner of each agent server by its internal id (#267), the same call as for any database server", async () => {
+    const seeded: unknown[][] = [];
     const db: Queryable = {
       async query(text, values) {
-        statements.push(text);
-        return agentDb([{ publicId: "friend", displayName: "F" }]).query(text, values);
+        if (text.includes("server_members")) {
+          seeded.push(values ?? []);
+          return { rows: [] };
+        }
+        return agentDb([
+          { publicId: "one", displayName: "One", serverId: "uuid-1" },
+          { publicId: "two", displayName: "Two", serverId: "uuid-2" },
+        ]).query(text, values);
       },
     };
     await loadDatabaseServers({ db, ring: null, runtime: new ServerRuntime<string>(), operatorUserId: "op", build, buildAgent });
-    expect(statements.some((text) => text.includes("server_members"))).toBe(false);
+    expect(seeded).toEqual([
+      ["uuid-1", "op", "owner", null],
+      ["uuid-2", "op", "owner", null],
+    ]);
+  });
+
+  it("an agent server that already has an owner is left alone: the one-owner index makes the seed a no-op, not an error", async () => {
+    const db: Queryable = {
+      async query(text, values) {
+        if (text.includes("server_members")) {
+          throw Object.assign(new Error("duplicate key"), { code: "23505", constraint: "server_members_one_owner" });
+        }
+        return agentDb([{ publicId: "friend", displayName: "F" }]).query(text, values);
+      },
+    };
+    const runtime = new ServerRuntime<string>();
+    const result = await loadDatabaseServers({ db, ring: null, runtime, operatorUserId: "op", build, buildAgent });
+    expect(result.usingDatabase).toBe(true);
+    expect(runtime.list()).toEqual([{ id: "friend", displayName: "F" }]);
   });
 
   it("changes nothing when there are no connections and no agent servers (the config keeps serving)", async () => {

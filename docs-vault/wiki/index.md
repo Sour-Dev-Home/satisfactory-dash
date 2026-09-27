@@ -12,6 +12,9 @@ added or removed.
 - [`runbooks/backups.md`](./runbooks/backups.md) — the nightly encrypted database backup (pg_dump, age,
   put-only S3 upload): the owner's one-time AWS and age setup, a local trial without AWS, and the
   restore rehearsal (ADR-0025 decision 7).
+- [`runbooks/delivery-metrics.md`](./runbooks/delivery-metrics.md) — `npm run delivery-metrics` (#280): DORA-style
+  aggregates from the GitHub API and the log fragments (throughput, lead time, merge-queue bounce rate, change-failure
+  proxies), the stable JSON shape, and the definitions and limits.
 - [`log.md`](./log.md) and [`log.d/`](./log.d/README.md) — the wiki's change log: `log.md` is frozen at
   2026-09-25 and each PR since adds one fragment file in `log.d/` (ADR-0033); `npm run log` prints both in order.
 - [`runbooks/servers.md`](./runbooks/servers.md) — servers stored in the database with encrypted tokens
@@ -24,9 +27,17 @@ added or removed.
 - [`runbooks/agents.md`](./runbooks/agents.md) — the backend side of the edge agent (ADR-0031 PR 5a and 5b): the deploy
   order (`db:migrate` first), enrolment codes and what enrolling does to a local server, revoking (the only way back is
   re-enrolling), commands (auto-pause answers `202`), and the `agent_offline` alert.
+- [`runbooks/backend-cheat-sheet.md`](./runbooks/backend-cheat-sheet.md) — facts that cost CI rounds when guessed: the two
+  server ids (public string vs internal UUID), which errors are `ApiFailure` and which are plain classes, the rate-limiter
+  defaults that bite in tests, ordering rules in the servers module, running DB tests locally, the CI-wait one-liner, and
+  the worktree git rules.
 - [`runbooks/agent-app.md`](./runbooks/agent-app.md) — the edge agent program itself (ADR-0031 PR 6): first setup in order
   (set the game's tokens at a hidden prompt, `check`, enrol, run), where the DPAPI-protected store and the 7-day logs
   live, the Scheduled Task and its logon-type trap, what it sends, and troubleshooting by exit code and log event.
+- [`runbooks/agent-switch-over.md`](./runbooks/agent-switch-over.md) — the owner's switch-over from a backend-polled server
+  to the edge agent (ADR-0031 PR 8): the checklist, the order (agent from the checkout, `set-tokens`, `check`, a code in
+  Settings, `enroll`, the Scheduled Task), the parity week (history and alerts against the week before), retiring the local
+  connection, and the way back (revoke, re-enrol, or switch back to local).
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power

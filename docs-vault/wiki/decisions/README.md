@@ -46,6 +46,7 @@ What changed and when is in [`../log.md`](../log.md) (frozen at 2026-09-25) and 
 | [0033](./0033-delivery-workflow.md) | **Accepted:** the delivery workflow: per-PR log fragments (`log.d/`, `log.md` frozen) that end the conflict loops, a merge queue with a fresh-eyes gate that carries the reviewed status onto the queue's commit, and one task board |
 | [0034](./0034-backend-on-aws.md) | **Accepted:** the backend and database move to AWS, time-boxed on the account's credits, with portability requirements (no AWS SDK in the app path, environment-only configuration, JSON logs to stdout), an exit trigger and a rehearsed exit (Oracle Cloud Always Free is the named target) |
 | [0035](./0035-backups-off-aws.md) | **Accepted:** nightly encrypted backups move off AWS to Backblaze B2 (Object Lock, upload-only key), so backups do not depend on the AWS account that closes with the credits; the privacy page says up to 37 days |
+| [0036](./0036-metrics-page.md) | **Accepted:** an operator-only metrics page: one `GET /api/admin/metrics` with a shared schema whose sections are available or not, latency from the backend's own histogram rollups in Postgres (not log files), delivery and CI computed in GitHub Actions and pushed to a hashed-secret ingest endpoint (the backend holds no GitHub token), alert quality first from `alert_events`, uptime as a status-page link; built after the agent parity week, tracked in #281 |
 
 ## Terms used in the ADRs
 

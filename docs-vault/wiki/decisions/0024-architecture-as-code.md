@@ -18,7 +18,9 @@ the code. Current practice, from research:
   analysis, in CI (dependency-cruiser for TypeScript; fitness functions).
 - **Decisions attached to the model:** Structurizr's `!adrs` imports ADR markdown into the
   workspace (adr-tools default, MADR, log4brains, or a custom importer; docs.structurizr.com/dsl/adrs).
-- This machine has neither Docker nor Java. GitHub-hosted CI runners have Docker.
+- This machine had neither Docker nor Java when this was decided. GitHub-hosted CI runners have Docker. (Update
+  2026-09-26: Docker Desktop is now installed here and runs the database tests locally, `runbooks/database.md`; Java is
+  still absent.)
 
 ## Decision
 1. **One source of truth:** `docs-vault/workspace.dsl` (at docs-vault/ root so `!adrs wiki/decisions` is a subdirectory, as Structurizr requires) models people, software systems,
