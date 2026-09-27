@@ -24,6 +24,13 @@
 
 .PARAMETER Bundle
   The bundle to run, relative to -BackendDir. Default: dist\server.cjs.
+
+.PARAMETER RunFileDir
+  Sets RUN_FILE_DIR for the node process (issue #320): with it set, the backend writes
+  <RunFileDir>\backend.json = {commit, pid, startedAt} once it is listening, so
+  deploy-update.ps1 can confirm the NEW build is actually serving after a restart. Default: none
+  (the variable is left unset, and the backend writes no run file). register-backend-task.ps1
+  passes its own default here.
 #>
 [CmdletBinding()]
 param(
@@ -33,7 +40,8 @@ param(
   [string]$Bundle = "dist\server.cjs",
   [int]$MaxRestarts = 3,
   [int]$DelaySeconds = 60,
-  [int]$HealthyAfterSeconds = 300
+  [int]$HealthyAfterSeconds = 300,
+  [string]$RunFileDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,6 +52,13 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 if (-not $Node) { $Node = (Get-Command node -ErrorAction Stop).Source }
 $Log = [System.IO.Path]::GetFullPath($Log)
 New-Item -ItemType Directory -Force -Path (Split-Path $Log) | Out-Null
+if ($RunFileDir) {
+  # Set in THIS process's environment, before the loop below starts node: every launch (including
+  # a restart) inherits it, since a child process always inherits its parent's environment.
+  $RunFileDir = [System.IO.Path]::GetFullPath($RunFileDir)
+  New-Item -ItemType Directory -Force -Path $RunFileDir | Out-Null
+  $env:RUN_FILE_DIR = $RunFileDir
+}
 
 # Set explicitly so a machine-wide NODE_ENV=development can't turn on error `detail` in
 # responses.

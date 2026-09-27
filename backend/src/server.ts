@@ -9,6 +9,9 @@ import { environmentServerEntries, warnEnvServersNotServed } from "./platform/en
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
+import { buildCommit } from "./platform/buildInfo.js";
+import { writeRunFile } from "./platform/runFile.js";
+import { formatErrorDetail } from "./platform/formatErrorDetail.js";
 import { Database, databasePortOf, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import {
   configuredServerEnvNamesInUse,
@@ -352,6 +355,13 @@ export const app = createApp({
 if (process.env.NODE_ENV !== "test") {
   const httpServer = app.listen(port, host, () => {
     logger.info({ host, port }, `backend listening on ${host}:${port}`);
+    logger.info({ commit: buildCommit }, "backend started");
+    // Issue #320, option C: a purely local proof of which build is serving, for deploy-update.ps1's
+    // post-readiness check. Never blocks startup on a failure to write it (a bad RUN_FILE_DIR is an
+    // ops problem, not a reason to refuse traffic); logged once if it happens.
+    writeRunFile(process.env.RUN_FILE_DIR, { commit: buildCommit, pid: process.pid, startedAt: new Date().toISOString() }).catch(
+      (err: unknown) => logger.warn({ err: formatErrorDetail(err) }, "failed to write the run file"),
+    );
     // Issue #239: with a database the servers' pollers start only AFTER the stored servers are loaded (platform/bootSequence.ts),
     // so none of them fires against the placeholder runtime built from the environment (no credentials, one history gap).
     // ADR-0025 decision 6: a transient outage is retried with backoff (up to 5 minutes), then
