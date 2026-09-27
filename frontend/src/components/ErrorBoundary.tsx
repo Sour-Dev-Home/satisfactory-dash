@@ -1,4 +1,5 @@
 import { Component, createRef, type ErrorInfo, type ReactNode } from "react";
+import { isChunkLoadError, reloadOnce } from "../lib/staleChunk";
 
 interface Props {
   /** What the operator calls this part of the page, e.g. "Power". */
@@ -30,6 +31,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error(`[${this.props.label}] failed to render`, error, info.componentStack);
+    // A chunk a deploy removed (#325): reload once. vite:preloadError usually got there first,
+    // and then the guard makes this a no-op.
+    if (isChunkLoadError(error)) reloadOnce();
   }
 
   /** Whether focus is inside the part, so a crash that unmounts it doesn't drop focus on <body>. */
@@ -57,11 +61,17 @@ export class ErrorBoundary extends Component<Props, State> {
         </div>
       );
     }
+    // Try again can't fetch a chunk that no longer exists; only a reload gets the new version.
+    const stale = isChunkLoadError(this.state.error);
     return (
       <section ref={this.notice} tabIndex={-1} role="alert" aria-label={`${this.props.label} error`}>
-        <p>{this.props.label} hit an error and couldn't be shown.</p>
-        <button type="button" onClick={this.retry}>
-          Try again
+        <p>
+          {stale
+            ? "A new version of the dashboard is available. Reload the page to see it."
+            : `${this.props.label} hit an error and couldn't be shown.`}
+        </p>
+        <button type="button" onClick={stale ? () => window.location.reload() : this.retry}>
+          {stale ? "Reload" : "Try again"}
         </button>
         {this.props.actions}
       </section>

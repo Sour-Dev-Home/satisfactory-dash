@@ -1,0 +1,8 @@
+Captured: 2026-09-27T04:54:27Z, live dedicated server (the owner's game PC), GameVersion and FRM version not re-read for this capture (last recorded 2026-09-22: GameVersion 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3); the save was 77 in-game days old (getSessionInfo PassedDays).
+Method: GET http://127.0.0.1:8080/getSessionInfo (FRM Web Server over loopback, no token needed)
+Scenario: whichever state the live game was in at capture time; the number of connected players was not recorded. One object with the session clock and rules.
+Full response: 1 object, 353 bytes (0.3 KB).
+Not trimmed: this is the complete response.
+Redacted: SessionName (the save name) replaced by "REDACTED-SAVE-NAME".
+---
+{"SessionName":"REDACTED-SAVE-NAME","IsPaused":false,"DayLength":50,"NightLength":10,"PassedDays":77,"NumberOfDaysSinceLastDeath":50,"Hours":11,"Minutes":28,"Seconds":30.890625,"IsDay":true,"TotalPlayDuration":276096,"TotalPlayDurationText":"76:41:36","Seed":0,"SpaceElevatorCost":1,"RecipeCost":1,"PowerCost":1,"NodeRando":"Default","NodePurity":"Default"}

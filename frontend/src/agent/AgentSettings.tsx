@@ -6,6 +6,7 @@ import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
 // transport, so its bundle never carries the real API's URL (e2e/build-output.spec.ts).
 import { apiHref } from "../api/client";
 import { queries } from "../api/queries";
+import { CopyButton } from "../components/CopyButton";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
@@ -164,7 +165,10 @@ export function AgentPanel({
           <h4 id="agent-code-heading" className="mb-0">
             Enrolment code
           </h4>
-          <p className="mb-0 font-mono text-lg text-fg-strong">{code.code}</p>
+          <div className="flex items-center gap-2">
+            <p className="mb-0 font-mono text-lg text-fg-strong">{code.code}</p>
+            <CopyButton text={code.code} label="Copy the enrolment code" />
+          </div>
           <p className="mb-0 text-sm text-muted">
             It works once, until <time dateTime={code.expiresAt}>{formatTime(code.expiresAt)}</time> (10 minutes), and
             isn't shown again after you leave this page. On the game PC, in the agent's folder, run:
