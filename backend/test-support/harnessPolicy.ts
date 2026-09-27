@@ -5,6 +5,8 @@
  */
 export interface HarnessEnv {
   CI?: string;
+  /** Set by `npm run test:db`: a run that exists to run the DB tests must not silently run none. */
+  REQUIRE_DB?: string;
 }
 
 export async function startOrSkip<T>(
@@ -16,9 +18,9 @@ export async function startOrSkip<T>(
     return await start();
   } catch (err) {
     const reason = err instanceof Error ? err.message.split("\n")[0] : "unknown error";
-    if (env.CI) {
+    if (env.CI || env.REQUIRE_DB) {
       throw new Error(
-        `The Postgres test container could not start, and CI is set, so the database tests must not be skipped: ${reason}`,
+        `The Postgres test container could not start, and ${env.CI ? "CI" : "REQUIRE_DB"} is set, so the database tests must not be skipped: ${reason}`,
       );
     }
     notice(

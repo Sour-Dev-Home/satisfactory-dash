@@ -37,6 +37,20 @@ describe("startOrSkip (the Docker guard)", () => {
     expect(notice).not.toHaveBeenCalled();
   });
 
+  it("with REQUIRE_DB set (npm run test:db), a missing Docker is an ERROR too, so a run that ran nothing cannot pass", async () => {
+    const notice = vi.fn();
+    await expect(
+      startOrSkip(
+        async () => {
+          throw new Error("no docker here");
+        },
+        { REQUIRE_DB: "1" },
+        notice,
+      ),
+    ).rejects.toThrow(/REQUIRE_DB is set, so the database tests must not be skipped: no docker here/);
+    expect(notice).not.toHaveBeenCalled();
+  });
+
   it("with CI set to any non-empty value the guard applies", async () => {
     for (const ci of ["1", "true", "yes"]) {
       await expect(
