@@ -5,6 +5,7 @@ import { PowerCircuitSchema } from "./power";
 import { FactoryBuildingSchema, ProductionRateSchema } from "./factory";
 import { PlayerSchema, ServerPlayersResponseSchema } from "./players";
 import { SettingsResponseSchema } from "./settings";
+import { MapLiveSchema } from "./map";
 
 /**
  * ADR-0031 PR 3: the edge agent's protocol and the user-facing side of it (enrolment, agent status, commands). The agent
@@ -127,13 +128,18 @@ export const SnapshotRequestSchema = z
     power: AgentPowerSchema.optional(),
     factory: AgentFactorySchema.optional(),
     players: AgentPlayersSchema.optional(),
+    // ADR-0038 M1 (#352): fast-changing positions (train and station), at the snapshot cadence,
+    // unlike the slow-changing world layers (rails, resourceNodes), which go through their own
+    // ingest route (map.ts) rather than the snapshot.
+    mapLive: MapLiveSchema.optional(),
   })
   .refine(
     (snapshot) => snapshot.reachable || (snapshot.status === undefined &&
         snapshot.power === undefined &&
         snapshot.factory === undefined &&
         snapshot.players === undefined &&
-        snapshot.settings === undefined),
+        snapshot.settings === undefined &&
+        snapshot.mapLive === undefined),
     "An unreachable game sends no data parts",
   );
 /** 200. The backend answers every snapshot with the current cadence and whether a command is waiting. */

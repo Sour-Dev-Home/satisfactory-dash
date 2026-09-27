@@ -11,4 +11,5 @@ export * from "./alerts";
 export * from "./auth";
 export * from "./settings";
 export * from "./players";
+export * from "./map";
 export * from "./agent";
