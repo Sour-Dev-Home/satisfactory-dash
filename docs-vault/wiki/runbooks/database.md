@@ -9,7 +9,7 @@ without `DATABASE_URL` the backend behaves exactly as before.
 
 | Variable | Meaning |
 |---|---|
-| `DATABASE_URL` | `postgres://satis_app:<password>@localhost:5432/satis` (add `?sslmode=verify-full` for a remote database). Unset or blank = no database. Never commit it or paste it into chat. |
+| `DATABASE_URL` | `postgres://satis_app:<password>@127.0.0.1:5432/satis` (use `127.0.0.1`, not `localhost`: on Windows `localhost` tries `::1` first, where a closed port answers `EACCES`, #298; add `?sslmode=verify-full` for a remote database). Unset or blank = no database. Never commit it or paste it into chat. |
 | `DATABASE_POOL_MAX` | Pool size, 1-100 (default 10) |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | Server-side statement timeout, 100-120000 (default 10000) |
 | `DATABASE_READINESS_TIMEOUT_MS` | How long `/api/health/ready` may take to borrow a connection and run `SELECT 1`, 100-10000 (default 3000). A miss logs ONE warn line: `readiness_probe_slow` (timed out) or `readiness_probe_failed` (error, with the database error code), each with `elapsed_ms` and `phase` (`acquire` = getting a connection, `query` = the `SELECT 1`). The public body stays `{"status":"unavailable"}`. |
@@ -23,14 +23,14 @@ Start order: **Postgres, `npm run db:migrate`, backend.** The backend never migr
 
 ```powershell
 # 1. Once, with a Postgres superuser (idempotent; the passwords are never printed).
-$env:DATABASE_ADMIN_URL   = "postgres://postgres:<admin password>@localhost:5432/postgres"
+$env:DATABASE_ADMIN_URL   = "postgres://postgres:<admin password>@127.0.0.1:5432/postgres"
 $env:DB_MIGRATOR_PASSWORD = "<16+ characters>"
 $env:DB_APP_PASSWORD      = "<16+ characters, different>"
 $env:DB_BACKUP_PASSWORD   = "<16+ characters, different from both; optional, see below>"
 npm run db:init -w backend        # roles + database with the builtin C.UTF-8 locale
 
 # 2. After every pull that adds a migration (forward-only).
-$env:MIGRATOR_DATABASE_URL = "postgres://satis_migrator:<password>@localhost:5432/satis"
+$env:MIGRATOR_DATABASE_URL = "postgres://satis_migrator:<password>@127.0.0.1:5432/satis"
 npm run db:migrate -w backend
 ```
 
@@ -38,7 +38,7 @@ npm run db:migrate -w backend
 `satis_backup`: it can connect, is a member of PostgreSQL's predefined `pg_read_all_data` role (SELECT on every
 table, view and sequence and USAGE on every schema, including ones created later, so a `pg_dump` is complete
 by construction), is read-only by default, and can change nothing. It is used only by the nightly backup
-(`BACKUP_DATABASE_URL=postgres://satis_backup:<password>@localhost:5432/satis`, see the backups runbook), never
+(`BACKUP_DATABASE_URL=postgres://satis_backup:<password>@127.0.0.1:5432/satis`, see the backups runbook), never
 by the backend or the migrations. Left unset, no backup role is created or touched. Note for later: `pg_read_all_data` does not bypass
 row-level security, so if a migration ever enables RLS on a table, give `satis_backup` `BYPASSRLS` in the same
 change or its dumps would silently miss rows (no migration uses RLS today). Re-running `db:init` is safe
@@ -79,6 +79,12 @@ must be running.
 
 - **CI**: always runs them, and **fails the run if Docker is missing** (it never skips).
 - **Locally without Docker**: they skip, with a loud `DATABASE TESTS SKIPPED` line.
+- **Run a DB test before you push it** (#284): `npm run test:db -w backend` runs every `*.db.test.ts` (about 10 s of
+  container start, then the files), and `npm run test -w backend -- <path>.db.test.ts` runs one. A DB test that has only
+  ever been typechecked usually costs several CI rounds (wrong id type, wrong error class, a rate limiter, statement order).
+  `test:db` sets `REQUIRE_DB=1`, so with Docker off it fails instead of skipping (a plain `npm run test` still skips
+  locally, with the `DATABASE TESTS SKIPPED` line: nothing ran, start Docker Desktop and run it again).
+  Fixed in #306 (#298): all DB tests pass locally on Windows.
 - `SKIP_DB_TESTS=1 npx vitest run <file>` skips the container start for a narrow run of unrelated
   tests (ignored when `CI` is set).
 - If Docker Desktop is running but a shell can't find it (`spawn docker-credential-desktop

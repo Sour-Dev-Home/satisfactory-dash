@@ -35,6 +35,9 @@ tests build exactly what production runs.
 - Build: `esbuild` bundles `src/server.ts` into a single self-contained
   `dist/server.cjs` (no `node_modules` needed at runtime — verified by running it in
   isolation). This is what the `Dockerfile` ships.
+- `*.db.test.ts` run locally too, against a Testcontainers Postgres: run them with `npm run test:db`
+  (Docker Desktop must be running) BEFORE pushing; never rely on CI for a first run. See
+  `docs-vault/wiki/runbooks/database.md`.
 - Tests: Vitest + Supertest (`npm run test`). Route tests should hit the Express `app`
   export directly (see `server.test.ts`), not a running process. Service tests should
   use fixture data shaped like adapter output — no live game server required.

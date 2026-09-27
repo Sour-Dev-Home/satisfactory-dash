@@ -102,3 +102,17 @@ Then ADR-0034's AWS build.
 ## Amendment 1 (2026-09-26, PR 5b): where the 202 applies
 - The auto-pause PUT answers `202` + a command only for a server reached through an agent. A `local` server keeps answering `200` with the setting, so the frontend's `200` or `202` handling (PR 4) is what makes this safe, and turning `local` into `202` is not part of PR 5.
 - Reading the auto-pause of an agent server returns the last value the agent confirmed (`pending` while a change is on its way). The snapshot has no auto-pause field yet, so before the first confirmed change the value is unknown (`upstream_unreachable`); adding the field is a contract change for a later PR.
+
+## Amendment 2 (2026-09-26): Rollback: switch back to local
+**Context.** Switching a server to an agent has no way back. Before the parity week the owner needs one: if the agent misbehaves, the backend must read the game server itself again.
+
+**Decision.** `POST /api/servers/:serverId/local-connection` (operator only) turns an agent server into a `local` one, with the connection details in the request.
+- The connection is tested BEFORE the mutex and the transaction, like create and update, so a slow game server never holds the lock. A server that is not an agent server answers `server_not_agent` (409).
+- In one transaction: advisory lock, re-check the kind under the row lock, the server-count cap, flip the kind to `local` (first, because `createConnection` only inserts for a `local` server), save the connection, and release the agent side (unspent enrolment codes dropped, the credential revoked, pending and sent commands ended as the existing state `expired`; no new state or result code). The audit row `server.switched_to_local` carries counts, never secrets.
+- After the commit, still under the management lock (so a concurrent removal or edit cannot interleave), the runtime removes and re-adds the server (`replace` refuses agent to polled by design), so polling starts without a restart.
+- Ingest accepts snapshots only for `connection_kind = 'agent'`, so an old agent that keeps pushing is refused (`401`) once its credential is revoked and the kind has flipped.
+
+**Consequences.**
+- Memberships and history are kept: history keys on the internal server id, which does not change.
+- Enrolment codes are dropped so an old code cannot re-enrol the server after the switch.
+- Switching to the agent again later goes through the normal flow (a new code, a new credential).

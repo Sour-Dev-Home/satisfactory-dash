@@ -1,0 +1,1 @@
+- 2026-09-26 — `npm run e2e:report` stops waiting after 60 minutes (the architect's #293 note): a head that was never pushed, or a disabled workflow, used to make it wait forever. It now exits with an error that says whether CI and E2E runs never started or are still pending. The readiness check is a pure, tested function (`runsState`).

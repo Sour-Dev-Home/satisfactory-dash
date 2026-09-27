@@ -34,8 +34,8 @@ local connection also drops that server's unspent codes.
 
 **After a revoke the server stays an `agent` server with no data until an agent is enrolled again.** Its live routes
 answer `upstream_unreachable` once the last snapshot is stale, its auto-pause can no longer be changed (`not_editable`),
-and there is no "switch back to local" action yet (it is a Backlog card). The only way back is to create a new
-enrollment code and enrol an agent.
+and it stays that way until you either create a new enrollment code and enrol an agent, or switch the server back to
+`local` with `POST /api/servers/:serverId/local-connection` ([`servers.md`](./servers.md), ADR-0031 amendment 2).
 
 ## Commands
 

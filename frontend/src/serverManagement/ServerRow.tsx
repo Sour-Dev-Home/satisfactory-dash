@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { endpoints, type ServerConnection } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { MANAGED_KEY, queries } from "../api/queries";
+import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import type { FormMode } from "./ServerForm";
 import { LanWarning } from "./LanWarning";
 import { ManagementError } from "./ManagementError";
@@ -81,34 +82,54 @@ export function ServerRow({
               type="button"
               disabled={remove.isPending}
               onClick={() => remove.mutate()}
-              className="border-bad-solid bg-bad-solid text-white"
+              className={DANGER_BUTTON}
             >
               {remove.isPending ? "Removing…" : "Remove server"}
             </button>
           </div>
         </div>
       ) : (
+        // Every row has the same buttons, so each one's name carries its server for a screen reader
+        // (#305). The name starts with the visible text (WCAG 2.5.3: label in name).
         <div className="flex flex-wrap gap-3">
           {server.state === "ok" && (
-            <button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
+            <button
+              type="button"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+              aria-label={`${test.isPending ? "Testing…" : "Test connection"} to ${server.displayName}`}
+            >
               {test.isPending ? "Testing…" : "Test connection"}
             </button>
           )}
           {server.state === "unreadable" ? (
             <>
-              <button type="button" onClick={() => onEdit({ kind: "repair", server })}>
+              <button
+                type="button"
+                onClick={() => onEdit({ kind: "repair", server })}
+                aria-label={`Re-enter both tokens for ${server.displayName}`}
+              >
                 Re-enter both tokens
               </button>
-              <button type="button" onClick={() => onEdit({ kind: "rename", server })}>
+              <button type="button" onClick={() => onEdit({ kind: "rename", server })} aria-label={`Rename ${server.displayName}`}>
                 Rename
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => onEdit({ kind: "edit", server })}>
+            <button
+              type="button"
+              onClick={() => onEdit({ kind: "edit", server })}
+              aria-label={server.state === "refused" ? `Edit host of ${server.displayName}` : `Edit ${server.displayName}`}
+            >
               {server.state === "refused" ? "Edit host" : "Edit"}
             </button>
           )}
-          <button type="button" onClick={() => setConfirming(true)}>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className={DANGER_BUTTON_QUIET}
+            aria-label={`Remove ${server.displayName}`}
+          >
             Remove
           </button>
         </div>

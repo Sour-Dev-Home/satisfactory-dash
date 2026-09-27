@@ -40,11 +40,32 @@ describe("classifyStartupError (ADR-0025 decision 6)", () => {
     expect(classifyStartupError(new Error("Query read timeout")).kind).toBe("transient");
   });
 
-  it("treats a dual-stack AggregateError as transient only if every attempt was", () => {
+  it("treats a dual-stack AggregateError as transient if ANY attempt was (#298)", () => {
     const refused = new AggregateError([withCode("ECONNREFUSED"), withCode("ECONNREFUSED")]);
     expect(classifyStartupError(refused).kind).toBe("transient");
-    const mixed = new AggregateError([withCode("ECONNREFUSED"), withCode("ENOTFOUND")]);
-    expect(classifyStartupError(mixed).kind).toBe("fatal");
+    // Windows, closed port: ::1 answers EACCES, 127.0.0.1 answers ECONNREFUSED (the aggregate's own code is the first's).
+    const windows = Object.assign(new AggregateError([withCode("EACCES"), withCode("ECONNREFUSED")]), { code: "EACCES" });
+    const verdict = classifyStartupError(windows);
+    expect(verdict.kind).toBe("transient");
+    expect(verdict.reason).toContain("ECONNREFUSED");
+    expect(verdict.reason).not.toContain("EACCES");
+  });
+
+  it("keeps an AggregateError fatal when no attempt was transient, and a plain EACCES fatal", () => {
+    expect(classifyStartupError(new AggregateError([withCode("EACCES"), withCode("EACCES")])).kind).toBe("fatal");
+    expect(classifyStartupError(new AggregateError([withCode("ENOTFOUND")])).kind).toBe("fatal");
+    expect(classifyStartupError(withCode("EACCES")).kind).toBe("fatal");
+    expect(isTransientConnectionError(withCode("EACCES"))).toBe(false);
+  });
+
+  it("handles nested aggregates, non-Error inners and mixed codes", () => {
+    const nested = new AggregateError([withCode("EACCES"), new AggregateError([withCode("EACCES"), withCode("ECONNREFUSED")])]);
+    const verdict = classifyStartupError(nested);
+    expect(verdict.kind).toBe("transient");
+    expect(verdict.reason).toContain("ECONNREFUSED");
+    expect(isTransientConnectionError(new AggregateError([null, "x", undefined, 5]))).toBe(false);
+    expect(isTransientConnectionError(new AggregateError([null, withCode("57P03")]))).toBe(true);
+    expect(isTransientConnectionError(new AggregateError([new AggregateError([])]))).toBe(false);
   });
 
   it("never puts the driver's message (which can quote the URL) in the reason", () => {

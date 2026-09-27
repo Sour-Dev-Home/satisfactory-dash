@@ -5,6 +5,7 @@ import {
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
+  SwitchToLocalRequestSchema,
   RenameServerResponseSchema,
   ServerConnectionResponseSchema,
   TestConnectionRequestSchema,
@@ -207,6 +208,15 @@ export const endpoints = {
       route: "/api/servers/:serverId",
       path: (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`,
       request: UpdateServerRequestSchema,
+      response: ServerConnectionResponseSchema,
+      operatorOnly: true,
+    },
+    // ADR-0031 amendment: an agent server goes back to being read by this backend (the way back from an agent).
+    switchToLocal: {
+      method: "POST",
+      route: "/api/servers/:serverId/local-connection",
+      path: scoped("local-connection"),
+      request: SwitchToLocalRequestSchema,
       response: ServerConnectionResponseSchema,
       operatorOnly: true,
     },

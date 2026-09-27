@@ -30,6 +30,7 @@ export interface LoadDatabaseServersResult {
  *
  * The operator is also made owner of any of these servers that has none (idempotent; the one-owner
  * index makes it a no-op once ownership has moved), so a server added by the import CLI is not ownerless.
+ * That includes servers reached through an agent (#267).
  */
 export async function loadDatabaseServers<TServices>(deps: {
   db: Queryable;
@@ -68,7 +69,10 @@ export async function loadDatabaseServers<TServices>(deps: {
   for (const server of agentServers) {
     deps.runtime.add(deps.buildAgent!(server));
   }
-  const seedIds = [...listed.connections.map((c) => c.serverId), ...unreadable.map((u) => u.serverId)];
+  // A server reached through an agent is seeded the same way (#267): only when it has NO owner (an ownerless server is
+  // unreachable for everyone, the operator included, since routes 404 for a non-member). It never takes ownership from
+  // an existing owner: the one-owner index turns that into "owner_exists", a no-op.
+  const seedIds = [...listed.connections.map((c) => c.serverId), ...unreadable.map((u) => u.serverId), ...agentServers.map((s) => s.serverId)];
   for (const serverId of seedIds) {
     const outcome = await addMember(deps.db, { serverId, userId: deps.operatorUserId, role: "owner", actorUserId: null });
     if (outcome === "unknown_server_or_user") {

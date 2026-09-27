@@ -16,7 +16,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Log fragment (ADR-0033)
         # Pull requests only (not push or merge_group): the PR must ADD its own file under
@@ -52,7 +52,7 @@ jobs:
           export PR_LABELS_JSON PR_FILES_FILE="$RUNNER_TEMP/pr-files.json"
           node scripts/tier-check.mjs
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -70,7 +70,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Check for PII or hardcoded local paths
         # The identifiers to look for live in the PII_PATTERNS repo SECRET (one fixed
@@ -101,7 +101,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { CookieOptions, Request, Response } from "express";
-import { parse as parseCookies } from "cookie";
+import { parseCookie as parseCookies } from "cookie";
 import * as oidc from "openid-client";
 import { RouteNotFoundError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import { isDatabaseUnavailable } from "../../../platform/db/errors.js";
