@@ -1,0 +1,410 @@
+Source: https://github.com/satisfactorymodding/Documentation at commit d35cc911d6849cb39740cb884735ec5d9ffb2f67 (the AsciiDoc source of https://docs.ficsit.app/satisfactory-modding/latest/)
+Captured: 2026-09-27T05:29:45Z
+Method: the repository tarball fetched with the GitHub API (gh api repos/satisfactorymodding/Documentation/tarball/master), files copied unedited. AsciiDoc source, not rendered HTML; {attributes} such as {engine-version} come from the include files captured with the pages.
+Item 6: SML's config system: where a mod's config lives and its format (the mod developer's page, the SML config page, and the player-facing page).
+Convention: each captured item sits between a BEGIN line and an END line written by the capture (they are not part of the source); everything between them is the source text, unedited (a final newline is added when the source file has none), with one exception: a line holding an example file path that this repository's PII scan rejects is replaced by an '[OMITTED by the capture ...]' marker (only the FAQ in sml-dedicated-servers-2026-09-27.adoc has such lines).
+NOT FOUND (recorded, not guessed):
+  - The config folder for a DEDICATED server as its own statement: Configuration.adoc gives it generally (`<game install directory>/FactoryGame/Configs`, one `<ModID>.cfg` per mod, JSON format) and does not restate it for a dedicated server. [NEEDS VERIFICATION on the real server for claim C6, together with who can read that folder.]
+---
+
+##### BEGIN Development/ModLoader/Configuration.adoc #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/ModLoader/Configuration.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/ModLoader/Configuration.html)
+= Configuration
+
+[NOTE]
+====
+If you are looking to implement configurable keybindings,
+check out the Mod Key Bind Registry section on the 
+xref:Development/ModLoader/Registry.adoc#_mod_key_bind_registry[Registry page].
+====
+
+SML adds a neat configuration system that allows you to easily define
+a config structure based on default values.
+These defaults can then be changed by the user,
+either from the in-game Mods menu,
+or via editing json files in their file system.
+
+These configuration files are then loaded automatically on game boot
+and override the default values with the values specified by the user.
+
+The mod can then access this configuration data to
+change its behavior depending on this static user input.
+
+== Using the Mod Configuration system
+
+1. Create a new blueprint that extends ModConfiguration.
+Call it "<your mod reference>_Config" or similar.
+2. Set the 'Mod Reference' to your mod reference
+and configure the display name and description as desired.
+3. Set the Root Section to `BP Config Property Section`
+4. Your config items go in the Root Section's "Section Properties"
+Left is the property name, right is the type
+If you want to have sub-categories in your config,
+use property type `BP Config Property Section` again.
+You can define custom widgets for your config properties if desired,
+otherwise SML will automatically select one for you based on the property type.
+5. Right click on your configuration asset from the content browser
+
+* If you want your configuration accessible in {cpp},
+choose "Generate {cpp} Configuration Header,"
+then save the header in your plugin's source folders.
+
+* Next, select "Regenerate Configuration Structs,"
+and SML will generate your mod's config struct for you. Very convenient!
+Note that you will need to do this every time you make changes to your config.
+
+6. You need to create a Game Instance Module for your mod,
+if you haven't already made one yet,
+and specify your config under Mod Configurations there.
+Make sure to mark it as the root module if you've just made it.
+
+== Preview your Config
+
+You can use the fancy SML Menu Preview Widget to view your mod config as it would appear in the game!
+In a content browser, navigate to `SMLEditor Content/Menu Preview` and right click on SML_MenuPreviewWidget,
+then choose Run Editor Utility Widget. You should probably make the window fullscreen.
+
+To look at your mod's config in the previewer,
+select your ModConfiguration in the content browser,
+then press the Set Selected Mod Config button inside the preview window.
+Scroll down to see the config UI.
+
+== Interacting with the Config System in Blueprints
+
+The following image shows how to interact with the Configuration System from Blueprints.
+image:ModLoader/NewConfigurationSystemExample.png[image]
+
+Below is a text explanation of the above image.
+
+=== Creating a reference to your config
+
+To interact with your config, you first need to create a reference to it:
+
+* Inside your blueprint, add a node called 'MC to ConfigProperty' and set the input class to your configuration's class
+* From the node you just created, drag off the output pin and create a cast node to 'BP_ConfigPropertySection'
+
+=== Creating a reference to a property
+
+To create a reference to a property in your config, you will need a reference to a ConfigPropertySection.
+See the above section if you haven't done so already
+
+* From the ConfigPropertySection, search for the node "To Section". The string input this node requires is the key of the property you want to retrieve
+
+=== Get Value
+
+To get the value of a property from your config, you will need a reference to that property.
+See the above section if you haven't done so already
+
+* Drag from the "To Section" node output pin and search for "CP to". This should list a number of "CP to " nodes followed by a type. Select the type of the config property you're trying to get the value from. The output pin of the "CP to" node will give you the value of the config property.
+* If you have nested layers of Config Sections in your config, you can use another cast to 'BP_ConfigPropertySection', and then keep going as needed to get to the final value.
+
+=== Set Value
+
+To set the value of a property from your config, you will need a reference to that property.
+See the "Creating a reference to a property" section above if you haven't done so already
+
+* You first have to cast your property to the correct type. Drag from the "To Section" node output pin and search for "BP_ConfigProperty". This should list a number of cast nodes to different BP_ConfigProperty classes. Select the type of the config property you're trying to get the value from.
+* From your Cast output pin search for "Set Value" and assign the new value you wish to set
+
+=== Saving your config after changing a value
+
+If you make a change to a config property from your code and want it saved,
+you must explicitly tell the configuration system to save changes.
+You'll need a reference to your config;
+see the "Creating a reference to your config" section above if you haven't done so already.
+
+* Drag from the output pin of the To Instance node you created and search for the function "Mark Dirty". This will save the whole config.
+
+You can also save just one property if you want to. To do that, use the "Mark Property Dirty" function with the output from the "To Section" node as an input.
+
+=== Further Examples
+
+Check out the ExampleMod's configs for a great demo of all the valid fields and how they appear in the editor.
+Be sure to check out the custom widget (with custom button) for something cool.
+
+For a more detailed demonstration of how to read configuration values from Blueprint code,
+check out how ExampleMod does it in `ExampleModGameInstanceModule`
+
+== Interacting with the Config System in {cpp}
+
+[WARNING]
+====
+This section was written while the SML Configuration system was still being developed.
+As such, these partially out of date, and are still being worked on.
+If you would like to use this system, see
+https://discord.com/channels/555424930502541343/555515791592652823/826653787514470450[this message chain]
+and ask on the discord for help.
+====
+
+[TIP]
+====
+If you are looking to implement configs with Blueprints,
+you should read about the helper functions provided by the 
+xref:Development/ModLoader/BlueprintInterface.adoc#_config[SML Blueprint Interface]
+and check out the ExampleMod.
+====
+
+== Configuration Manager
+
+The configuration manager is a Game Instance subsystem that manages all configurations loaded into the game.
+
+It will then be able to load and save registered configurations.
+
+The registered mod configurations can get marked as dirty.
+This means that the user applied changes to the configuration values and that these changes need to be saved.
+
+When loading a configuration, first the configuration value gets loaded based on default values.
+Then, or when the manager gets told to, it will load the configuration file, parse it and make the changes
+defined in these config files to the loaded configuration value.
+
+It is important to differentiate between 'schema' and 'value' of the configuration.
+The Schema works like a class or declaration of how the configuration is structured and what attributes it has.
+The value is then basically the actual config values, which should be structured as described in the schema.
+
+=== `ReloadModConfigurations(bool bSaveOnSchemaChange)`
+Reloads all registered mod configurations from disk.
+Optionally saving changes to the schema.
+
+=== `FlushPendingSaves()`
+Saves all changes in the loaded config instances to the filesystem.
+
+=== `MarkConfigurationDirty(FConfigId ConfigId)`
+Marks the configuration referenced by the given ID as dirty and pending save.
+
+=== `FillConfigurationStruct(FConfigId ConfigId, <struct>)`
+Fills the passed struct with data obtained from the active configuration referenced by the given config id.
+
+=== `UUserWidget CreateConfigurationWidget(FConfigId ConfigId, UUserWidget Outer)`
+Creates a configuration widget hierarchy for the active configuration referenced by the given config id.
+
+=== `RegisterModConfiguration(FConfigId ConfigId, SubclassOf<UModConfiguration> Configuration)`
+Registers the given configuration under the given config ID.
+
+Should only be called on start-up.
+
+== FConfigId
+An identifier for a configuration consisting of the mod the configuration is part of and a category.
+
+=== `FString ModReference`
+The mod reference referencing the parent mod of this configuration.
+
+=== `FString ConfigCategory`
+The category or name for this configuration. This basically allows you to further identify multiple configurations for the same mod.
+
+== UModConfiguration
+A `UModConfiguration` is essentially the object that holds the whole schema of a configuration.
+
+It works like a descriptor, meaning, the structure only needs to be defined in the class (aka default object)
+so we can simply reference the schema (aka mod configuration) by just passing the UClass around.
+
+That means if you want to define your own configuration schema, you need to create new class based on this one.
+Then apply the changes (defining the schema itself and additional metadata) in the default values or the constructor.
+
+=== `FString DisplayName`
+Display of this configuration, as it will be visible to the user.
+
+=== `FString Description`
+The description of this configuration shown to the user.
+
+=== `UConfigPropertySection RootSection`
+Holds the root "node" of your configuration schema.
+
+This is an instanceable variable, meaning, you can create inline an instance of this object and define its default values in the editors "defaults" panel.
+
+== `UConfigProperty`
+A config property is essentially a node of a configuration schema, describing a specific value.
+
+This used for creating the config value in the end.
+
+Default values of child classes are also instanceable, so you can further define the schema.
+
+=== `FString DisplayName`
+The display name of this property that is shown to the user.
+
+=== `FString Tooltip`
+The short description of this property that is shown to the user when he hovers over the property.
+
+=== `SubclassOf<UConfigValue> GetValueClass()`
+Allows to retrieve the type of the configuration value the property is based on.
+
+=== `ApplyDefaultPropertyValue(UConfigValue Value)`
+Fills the given config value object with the default value of this property.
+
+=== `UConfigValue CreateNewValue(UObject Outer)`
+Creates a new config value based on the type of this property and fills it with the default value defined by this property.
+
+=== `UUserWidget CreateEditorWidget(UUserWidget* ParentWidget)`
+Creates a widget instance that allows for editing config values described by this property.
+
+=== `FConfigVariableDescriptor CreatePropertyDescriptor(UConfigGenerationContext Context, FString OuterPath)`
+Creates a config property descriptor for code generation.
+
+== Config Property Children
+There are multiple classes inheriting `<<_uconfigproperty, UConfigProperty>>` describing a specific type of property.
+
+There are classes for all main primitives like:
+
+* bool
+* int
+* float
+* string
+* class
+* color
+
+There are also two special ones that allow for more complex configuration structures.
+
+=== `UConfigPropertyArray`
+A config value array allows you to store multiple values of the same type in a list.
+
+For this you have the `ElementValue` attribute, with which you can define the type of these list entries.
+
+The list is dynamic, meaning, the amount of entries in the list can vary depending on what the user defined.
+
+=== `UConfigPropertySection`
+A config value section allows you to store multiple values of different types in one object.
+
+For each entry you can have there is one property describing the type of this entry.
+
+So with this you can basically have nested configurations allowing for more complex configuration structures.
+
+== Config Values
+For each <<_uconfigproperty>> there is a value counterpart.
+
+It essentially holds then a value described by the property.
+
+Like the actual state, or... configuration loaded from the file / default values.
+
+=== `UConfigProperty GetAssociatedProperty()`
+Returns the property that describes this value.
+
+=== `FString DescribeValue()`
+Converts the value into a string.
+
+Useful for debugging purposes.
+
+=== `URawFormatValue Serialize(UObject Outer)`
+Converts the value into the raw configuration format.
+
+=== `Deserialize(URawFormatValue Value)`
+Converts the given value in the raw configuration format to the type of this value and stores it in this value object.
+
+=== `FillConfigStruct(FReflectedObject ReflectedObject, FString VariableName)`
+Fills the given config struct with the data provided by the referencing property and this value.
+
+=== `InitializedFromProperty()`
+Gets called when the config value is initialized with the associated property.
+
+=== `MarkDirty()`
+Marks the value as dirty, e.g. that it needs to be synced with the file system.
+##### END Development/ModLoader/Configuration.adoc #####
+
+##### BEGIN SMLConfiguration.adoc #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/SMLConfiguration.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/SMLConfiguration.html)
+= SML Configuration
+
+SML's configuration file system makes it easy for mod developers to create config files for their mods
+and easy for users to change mod settings.
+
+== Config Folder
+
+The config files for all mods (and SML itself) reside in the same configuration file folder.
+
+The folder is located under `<game install directory>/FactoryGame/Configs`.
+
+You can find your game install directory via the steps
+xref:faq.adoc#_where_are_my_game_files_located[described in the FAQ].
+
+== Config File
+
+SML's configuration system uses json format.
+
+All config files are located in the aforementioned <<Config Folder>> and share the same naming scheme, `<ModID>.cfg`. The config file for SML is called `SML.cfg`.
+
+If you don't see a mod's config file listed here, it's most likely because the mod doesn't have a config file.
+
+== SML configuration options
+
+SML itself also provides a couple of configuration settings allowing you to control its behavior.
+
+[cols="1,1,1,4a"]
+|===
+|Name |Type |Default |Description
+
+|enableFunchookLogging
+|bool
+|false
+|Enables additional logging functionality to assist with troubleshooting a
+https://github.com/satisfactorymodding/SatisfactoryModLoader/issues/131[rare crash].
+
+|disabledChatCommands
+|string array
+|[ ]
+|Allows you to disable specific chat commands by listing their fully qualified command names.
+In Multiplayer, if the host lists commands here, they will also be disabled for clients.
+
+For example, to exclude `/ExampleCommand` from the mod with Mod Reference `ExampleMod`,
+the setting value would look like this:
+
+```json
+"disabledChatCommands": [
+    "ExampleMod:ExampleCommand"
+],
+```
+
+|===
+##### END SMLConfiguration.adoc #####
+
+##### BEGIN ForUsers/ConfiguringMods.adoc #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/ForUsers/ConfiguringMods.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/ForUsers/ConfiguringMods.html)
+= Configuring Mods
+
+There are two primary ways that mods offer configuration options:
+**Mod Configuration Options** and **Mod Savegame Settings**.
+
+== Mod Configuration Options
+
+Mods using the SML Configuration System can have their configuration edited in-game
+via the "Mods" button on the main menu and pause menu.
+
+Some mod configuration options can only be edited from the main menu.
+If this is the case,
+the game will prevent you from modifying them mid-game
+and explain this in the hover tooltip for the configuration option.
+
+Note that some mods may not offer any configuration options,
+or may manage them in another manner.
+If so, it is up to the mod developer to communicate this information to you.
+Try checking the mod's page on ficsit.app for more information.
+
+=== Configuration file location
+
+The xref:faq.adoc#Files_ModConfig[FAQ] covers where mod configuration files are stored.
+You should not normally need to edit these files directly.
+
+== Mod Savegame Settings
+
+xref:Development/ModLoader/SessionSettings.adoc[Mod Savegame Settings]
+are special type of configuration option that only apply to a single game file,
+similar to the base game's link:https://satisfactory.wiki.gg/wiki/Creative_Mode[Creative Mode (formerly named Advanced Game Settings, abbreviated AGS)].
+
+You can set Mod Savegame Settings when creating a new save file on the main menu
+or via the "Mod Savegame Settings" entry in the pause menu.
+
+=== Mod Savegame Setting file location
+
+Mod Savegame Settings values are stored inside the save file as part of the Map Travel URL,
+so they can not be edited externally without third party tools.
+
+No third party tools are currently known to support editing Mod Savegame Settings.
+
+== Writing a Patch Mod
+
+If you'd like to change something about a mod that you can't configure,
+you might be able to write a mod of your own to make that change.
+
+For example, it's fairly straightforward to create or change a recipe using
+xref:Development/BeginnersGuide/overwriting.adoc#_use_a_library_mod[various community-created libraries.]
+
+Check out the modding xref:Development/BeginnersGuide/index.adoc[Getting Started Guide]
+to learn how to make your own mods.
+##### END ForUsers/ConfiguringMods.adoc #####
