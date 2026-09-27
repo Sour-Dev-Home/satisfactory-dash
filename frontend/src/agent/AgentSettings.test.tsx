@@ -51,6 +51,8 @@ describe("AgentSettings", () => {
     expect(within(code).getByText(agentEnrollmentCodeResponse.code)).toBeInTheDocument();
     expect(within(code).getByText(/10 minutes/)).toBeInTheDocument();
     expect(within(code).getByRole("time")).toHaveAttribute("dateTime", agentEnrollmentCodeResponse.expiresAt);
+    // #328: the code can be copied in one click.
+    expect(within(code).getByRole("button", { name: "Copy the enrolment code" })).toBeInTheDocument();
     // The agent app's own command (runbooks/agent-app.md), with this code filled in.
     expect(
       within(code).getByText(`node agent.cjs enroll ${agentEnrollmentCodeResponse.code} --url https://<your backend>`),
