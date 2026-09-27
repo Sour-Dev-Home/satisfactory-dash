@@ -56,13 +56,13 @@ optional `limiter` in its deps, so pass `new UserRateLimiter({ max: 1000, window
 ## Waiting on CI (one line)
 
 ```
-gh pr checks N --watch --interval 45 | cut -c1-60 | grep -vE "pass|skipping"
+gh pr checks N --watch --interval 45 | tail -3; gh pr checks N | cut -c1-40 | grep -vE "pass|skipping"
 ```
 
-Stderr stays visible. **Empty output means every check passed** (the exit code is then 1, because `grep -v` found nothing
-to print, so do not read it as a failure); a failing or pending check is printed by name, and an error from `gh` itself
-(auth, network) is printed too. If it says "no checks reported", `sleep 5` and run it again (the checks have not
-started yet). Then `gh run view <run-id> --log-failed | tail -40` for a failing one; the run id is in
+The first command waits (`--watch` prints every refresh when it is not a terminal, hence `tail`); the second lists every
+check that did not pass. Stderr stays visible in both, so an auth or network error from `gh` shows. **No line from the
+second command means every check passed** (its exit code is then 1, because `grep -v` found nothing to print; do not read
+that as a failure). If it says "no checks reported", `sleep 5` and run it again (the checks have not started yet). Then `gh run view <run-id> --log-failed | tail -40` for a failing one; the run id is in
 `gh run list --branch <b>`.
 
 ## Git in a worktree session
