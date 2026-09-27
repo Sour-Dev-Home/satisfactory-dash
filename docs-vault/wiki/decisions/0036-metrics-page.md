@@ -1,4 +1,4 @@
-# ADR-0036: An operator-only metrics page (draft)
+# ADR-0036: An operator-only metrics page
 
 Status: accepted (owner, 2026-09-26): D1 push from Actions to a hashed-secret ingest endpoint;
 D2 build after the agent parity week, step 0 (#280's output shape) now; D3 uptime = status-page
@@ -23,7 +23,7 @@ link only; D4 the "false alarm?" mark after the alert shadow week. Build tracked
 - **Demo** is a separate build with an in-house router over fixtures (ADR-0026 amendment #113).
   `e2e/build-output.spec` already proves that no real API origin gets into the demo bundle.
 
-## Decision (proposed)
+## Decision
 1. **One read endpoint and one schema.** `GET /api/admin/metrics` returns `MetricsOverview`, a zod
    schema in `packages/shared`. Every section (`latency`, `delivery`, `ci`, `alerts`, `uptime`) is
    either `{ available: true, asOf, ... }` or `{ available: false, reason }`, so the page ships
@@ -73,7 +73,7 @@ link only; D4 the "false alarm?" mark after the alert shadow week. Build tracked
 ## Build order (each its own PR, smallest first)
 | # | What | Owner | Tests |
 |---|---|---|---|
-| 0 | #280 emits JSON matching a `DeliverySnapshot` shape, aggregates only (do this now; it's the cheapest step that keeps D1 open) | dev | unit: no author/login fields in the output |
+| 0 | #280 emits JSON matching a `DeliverySnapshot` shape, aggregates only (do this now; it's the cheapest step that keeps D1 open). Done in #307 (schemaVersion 1). | dev | unit: no author/login fields in the output |
 | 1 | Contract: `MetricsOverview`, `DeliverySnapshot`, demo fixture + parse test | dev | contract test |
 | 2 | Operator gate moved to identity; `GET /api/admin/metrics` with alerts phase 1 + uptime link | dev | 403 for a member, 200 for the operator |
 | 3 | Latency histogram + `metrics.route_latency_hourly` migration + purge | dev | bucket merge math; no URL stored; retention |
