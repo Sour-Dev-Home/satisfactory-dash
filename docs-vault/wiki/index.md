@@ -48,6 +48,10 @@ added or removed.
   #330): measured size and item count from real captures (2026-09-27), whether it runs on the game thread, and whether the
   vanilla API or the agent's current snapshot already covers it; three responses are large (schematics, resource nodes,
   train rails, about 1.4 MB together).
+- [`mod-claims.md`](./mod-claims.md) — ADR-0039 gate G1: the claims table ("the mod can ...", C1 to C7) with the source of
+  each claim in `raw-sources/`, the spike that would test it, and its status (all `unverified`); the facts found by gate G0
+  (Unreal Engine 5.6.1, licences, no reachable Coffee Stain terms), the owner's licence choice for the mod repository
+  (GPL-3.0-or-later) and the open questions.
 - [`machine-states.md`](./machine-states.md) — how a machine's state (producing, idle, backed up,
   underfed, paused, unpowered) is derived per snapshot (ADR-0027), the provisional threshold and its
   evidence, and how to tune it with a capture session.
