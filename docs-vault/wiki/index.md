@@ -17,6 +17,8 @@ added or removed.
   proxies), the stable JSON shape, and the definitions and limits.
 - [`log.md`](./log.md) and [`log.d/`](./log.d/README.md) — the wiki's change log: `log.md` is frozen at
   2026-09-25 and each PR since adds one fragment file in `log.d/` (ADR-0033); `npm run log` prints both in order.
+- [`hunter-log.d/`](./hunter-log.d/README.md) — one file per PR's test-hunter work (tier, area, minutes, tokens,
+  real bugs, rounds), written by the session that ran it; `npm run hunter-report` summarises it to tune the tiers (#341).
 - [`runbooks/servers.md`](./runbooks/servers.md) — servers stored in the database with encrypted tokens
   (ADR-0030): the `SERVER_SECRETS_KEY` and its offline backup, the deploy order (migrate first), the
   `import-servers` and `verify-secrets` commands, unreadable rows and key rotation.
