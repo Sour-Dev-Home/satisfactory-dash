@@ -44,6 +44,41 @@ test("parseRun names the file and field on bad input", () => {
   assert.throws(() => parseRun(fragment({ rounds: 0 })), /"rounds" must be at least 1/);
 });
 
+// Found by the fresh-eyes pass: Number() read an empty value as 0 and "0x10" as 16.
+test("an empty value fails loudly instead of reading as 0", () => {
+  for (const blank of ["- bugs:    ", "- bugs:"]) {
+    assert.throws(
+      () => parseRun(fragment().replace("- bugs: 0", blank), "blank.md"),
+      /blank\.md: "bugs" must be a number of 0 or more \(got nothing\)/,
+    );
+  }
+  assert.throws(() => parseRun(fragment().replace("- tier: QUICK", "- tier:")), /"tier" must be one of FULL, QUICK \(got nothing\)/);
+});
+
+test("numbers are plain decimals: hex, octal, binary, exponents and signs are refused", () => {
+  for (const bad of ["0x10", "0b101", "0o17", "1e3", "+5", " 1 2", "Infinity", "1."]) {
+    assert.throws(() => parseRun(fragment({ tokens: bad }), "x.md"), /"tokens" must be a number/, `accepted "${bad}"`);
+  }
+  assert.equal(parseRun(fragment({ minutes: "10.1" })).minutes, 10.1);
+  assert.equal(parseRun(fragment({ tokens: "007" })).tokens, 7);
+});
+
+test("a repeated key is an error, since which value is right can't be known", () => {
+  assert.throws(() => parseRun(`${fragment({ bugs: 0 })}\n- bugs: 5`, "dup.md"), /dup\.md: "bugs" appears more than once/);
+});
+
+test("formatReport renders a single row's numbers correctly, including a non-exact 0-bug share", () => {
+  const rows = [
+    run({ tier: "FULL", area: "backend", tokens: 100, minutes: 1, bugs: 0 }),
+    run({ tier: "FULL", area: "backend", tokens: 100, minutes: 1, bugs: 0 }),
+    run({ tier: "FULL", area: "backend", tokens: 100, minutes: 1, bugs: 1 }),
+  ];
+  const report = formatReport(rows);
+  assert.match(report, /^3 hunter run\(s\)$/m);
+  assert.match(report, /^FULL {3}backend {10}3 {12}100 {9}1\.0 {6}0\.33 {10}67%$/m);
+  assert.doesNotMatch(report, /Downgrade candidates/);
+});
+
 test("the template parses once filled in", () => {
   const filled = template()
     .replace("<number>", "5")

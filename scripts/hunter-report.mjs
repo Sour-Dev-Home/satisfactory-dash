@@ -38,19 +38,23 @@ export function template() {
 export function parseRun(text, name = "fragment") {
   const fields = {};
   for (const line of text.split(/\r?\n/)) {
-    const match = /^-\s*([a-z-]+):\s*(.+?)\s*$/.exec(line);
-    if (match) fields[match[1]] = match[2];
+    const match = /^-\s*([a-z-]+):(.*)$/.exec(line);
+    if (!match) continue;
+    // A repeated key is a copy-paste slip, not a correction: which one is right can't be known.
+    if (match[1] in fields) throw new Error(`${name}: "${match[1]}" appears more than once`);
+    fields[match[1]] = match[2].trim();
   }
   const run = {};
   for (const key of NUMBERS) {
-    const value = Number(fields[key]);
-    if (fields[key] === undefined || !Number.isFinite(value) || value < 0) {
-      throw new Error(`${name}: "${key}" must be a number of 0 or more (got ${fields[key] ?? "nothing"})`);
+    // Plain decimals only: Number() would read "" as 0 and "0x10" as 16, hiding a typo.
+    const value = /^\d+(\.\d+)?$/.test(fields[key] ?? "") ? Number(fields[key]) : NaN;
+    if (!Number.isFinite(value)) {
+      throw new Error(`${name}: "${key}" must be a number of 0 or more (got ${fields[key] || "nothing"})`);
     }
     run[key] = value;
   }
-  if (!TIERS.includes(fields.tier)) throw new Error(`${name}: "tier" must be one of ${TIERS.join(", ")} (got ${fields.tier ?? "nothing"})`);
-  if (!AREAS.includes(fields.area)) throw new Error(`${name}: "area" must be one of ${AREAS.join(", ")} (got ${fields.area ?? "nothing"})`);
+  if (!TIERS.includes(fields.tier)) throw new Error(`${name}: "tier" must be one of ${TIERS.join(", ")} (got ${fields.tier || "nothing"})`);
+  if (!AREAS.includes(fields.area)) throw new Error(`${name}: "area" must be one of ${AREAS.join(", ")} (got ${fields.area || "nothing"})`);
   if (run.fixed > run.bugs) throw new Error(`${name}: "fixed" (${run.fixed}) is more than "bugs" (${run.bugs})`);
   if (run.rounds < 1) throw new Error(`${name}: "rounds" must be at least 1`);
   return { ...run, tier: fields.tier, area: fields.area };
