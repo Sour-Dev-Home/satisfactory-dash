@@ -46,6 +46,11 @@ import {
   KnownErrorCode,
   LoginRequestSchema,
   ReadinessResponseSchema,
+  MapLiveSchema,
+  RailsWorldIngestRequestSchema,
+  RailsWorldLayerResponseSchema,
+  ResourceNodesWorldIngestRequestSchema,
+  ResourceNodesWorldLayerResponseSchema,
   PowerHistoryResponseSchema,
   PowerResponseSchema,
   SessionResponseSchema,
@@ -96,6 +101,14 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["agentResultResponse", CommandResultResponseSchema],
   ["agentStatus", AgentStatusResponseSchema],
   ["agentRevokeResponse", RevokeAgentResponseSchema],
+  // ADR-0038 M1 (#352): the map contract's fixtures. "railsWorldResponse" and "resourceNodesWorldResponse" must come
+  // before nothing else here (neither is a prefix of another listed name); "railsSample"/"resourceNodesSample" are the
+  // ingest requests, kept separate since they are a different schema (no `layer`/`hash`/`truncated`/`count`).
+  ["railsWorldResponse", RailsWorldLayerResponseSchema],
+  ["railsSample", RailsWorldIngestRequestSchema],
+  ["resourceNodesWorldResponse", ResourceNodesWorldLayerResponseSchema],
+  ["resourceNodesSample", ResourceNodesWorldIngestRequestSchema],
+  ["mapLive", MapLiveSchema],
   ["command", CommandResponseSchema],
   ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],

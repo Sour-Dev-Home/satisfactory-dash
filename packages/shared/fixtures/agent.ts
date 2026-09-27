@@ -15,6 +15,7 @@ import { playersAvailable } from "./players";
 import { powerOk } from "./power";
 import { settingsEditable } from "./settings";
 import { statusRunning } from "./status";
+import { mapLiveSample } from "./map";
 
 /** ADR-0031 PR 3: invented values for the edge agent's protocol. The secret and the codes below are made up. */
 
@@ -55,6 +56,14 @@ export const agentSnapshotRequestPartial = {
   paused: false,
   status: statusRunning.data,
   power: agentPowerOk,
+} satisfies SnapshotRequest;
+
+/** ADR-0038 M1 (#352): a full snapshot that also carries mapLive (trains and stations), layered on
+ *  top of the full snapshot without changing it, so this fixture (and only this one) exercises the
+ *  new optional part. */
+export const agentSnapshotRequestWithMapLive = {
+  ...agentSnapshotRequestFull,
+  mapLive: mapLiveSample,
 } satisfies SnapshotRequest;
 
 /** The game (or FRM) could not be reached: `reachable: false`, `paused` unknown, and no parts. */

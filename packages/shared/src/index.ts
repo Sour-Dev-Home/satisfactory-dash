@@ -13,5 +13,6 @@ export * from "./history";
 export * from "./alerts";
 export * from "./auth";
 export * from "./settings";
+export * from "./map";
 export * from "./agent";
 export * from "./endpoints";
