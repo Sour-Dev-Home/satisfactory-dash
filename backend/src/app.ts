@@ -6,6 +6,8 @@ import { assignRequestId, createRequestLogger } from "./platform/requestContext.
 import { createErrorHandler, RouteNotFoundError } from "./platform/errorResponse.js";
 import { requestTiming } from "./platform/requestTiming.js";
 import { createCrossSiteGuard, requireJsonBody, securityHeaders } from "./platform/httpPolicy.js";
+import { createMetricsAggregator, type MetricsAggregator } from "./platform/metrics/aggregator.js";
+import { requestMetrics } from "./platform/metrics/requestMetrics.js";
 
 export interface AppOptions {
   logger: Logger;
@@ -19,6 +21,10 @@ export interface AppOptions {
   /** ADR-0031 PR 5a: the edge agent's API, mounted at /agent/v1. No session guard, no cross-site guard and no
    *  JSON-body policy of /api (an agent is not a browser); each route authenticates its own way and parses its own body. */
   agentRouters?: Router[];
+  /** ADR-0037: where `http.server.request.duration` samples go. server.ts creates one instance and
+   *  passes the SAME one here and to the flush worker; a test that doesn't care about metrics can
+   *  leave this out (a private instance is created, recorded into, and never read). */
+  metricsAggregator?: MetricsAggregator;
 }
 
 /**
@@ -37,6 +43,7 @@ export function createApp({
   sessionGuard,
   allowedOrigins = [],
   agentRouters = [],
+  metricsAggregator = createMetricsAggregator(),
 }: AppOptions): Express {
   if (protectedRouters.length > 0 && !sessionGuard) {
     throw new Error("createApp: protectedRouters require a sessionGuard");
@@ -46,6 +53,9 @@ export function createApp({
   app.use(assignRequestId);
   // ADR-0032: the request's timer (app time vs game-server time): the Server-Timing header and the log line's fields.
   app.use(requestTiming({ allowedOrigins }));
+  // ADR-0037: records http.server.request.duration once the response is on its way out. After requestTiming so the
+  // summary it reads is already frozen; before routing doesn't matter, since it only acts on res's "finish" event.
+  app.use(requestMetrics(metricsAggregator, logger));
   // Before CORS so a preflight answer carries them too (ADR-0019).
   app.use("/api", securityHeaders);
   // The agent API's responses (an enrolment answer holds the credential) are never cached either.

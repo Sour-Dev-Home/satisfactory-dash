@@ -19,8 +19,10 @@ export function assignRequestId(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-/** The route pattern the request matched (mount path plus route path), or undefined for a request no route handled. */
-function matchedRoute(req: Request): string | undefined {
+/** The route pattern the request matched (mount path plus route path), or undefined for a request no route handled.
+ *  Exported for `platform/metrics/requestMetrics.ts` (ADR-0037): the same pattern used for logging is the metric's
+ *  "route" label, since it is never the concrete URL a client sent (ids appear as `:paramName`, not their value). */
+export function matchedRoute(req: Request): string | undefined {
   const pattern: unknown = req.route?.path;
   return typeof pattern === "string" ? `${req.baseUrl}${pattern}` : undefined;
 }

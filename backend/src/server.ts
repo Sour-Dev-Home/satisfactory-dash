@@ -9,6 +9,7 @@ import { environmentServerEntries, warnEnvServersNotServed } from "./platform/en
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
+import { createMetricsAggregator, createSeriesFlushWorker } from "./platform/metrics/index.js";
 import { buildCommit } from "./platform/buildInfo.js";
 import { writeRunFile } from "./platform/runFile.js";
 import { formatErrorDetail } from "./platform/formatErrorDetail.js";
@@ -219,9 +220,14 @@ logger.info({ alertDelivery }, alertDelivery === "on" ? "alert delivery is ON: n
 // check has succeeded (plus their own delay), not at boot, so their first run does not race the slow first
 // connections of a new process (issue #153). They are stopped with the others.
 // ADR-0027: the history rollup and retention worker joins them, for the same reason (it needs the database up).
+// ADR-0037 PR 2: one instance, shared between the request middleware (records into it) and the flush
+// worker below (drains it into Postgres every 60 s). Created unconditionally: without a database it
+// still exists so the middleware has something to record into, just nothing ever flushes it.
+const metricsAggregator = createMetricsAggregator();
 const databaseWorkers = [
   ...identity.workers,
   ...(database ? [createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
+  ...(database ? [createSeriesFlushWorker(database.pool, metricsAggregator, logger.child({ worker: "metrics-flush" }))] : []),
   // ADR-0031 PR 5b: expires agent commands that ran out and purges old finished ones.
   ...(database ? [createCommandSweeper(database.pool, logger.child({ worker: "agent-commands" }))] : []),
   // ADR-0027 PR 5: the alert engine evaluates every server's rules from the pollers' last readings and records the
@@ -307,6 +313,7 @@ function attachAgentRuntime(publicId: string): Promise<void> {
 export const app = createApp({
   logger,
   allowedOrigins: identity.allowedOrigins,
+  metricsAggregator,
   routers: [
     healthRouter,
     createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered && connectionsReadable : true)),
