@@ -51,6 +51,9 @@ added or removed.
 - [`lessons-learned.md`](./lessons-learned.md) — one-sentence-per-bug log of real bugs
   found by independent `test-hunter` review passes, with a counter that increments
   when the same pattern recurs, so repeated mistakes get visible sooner.
+- [`frontend-wiring-checklist.md`](./frontend-wiring-checklist.md) — every file to change, in order, when the
+  frontend gains an endpoint or a screen: the query or write hook, secrets kept out of caches, the three mocks
+  (unit, e2e/dev:mock, demo), e2e states and baselines, checks and tier (#289).
 - [`roadmap.md`](./roadmap.md) — where the product stands and what "a successful product" means as
   checkable targets (time to dashboard, alert speed and quality, adoption, security, release safety), approved
   by the owner on 2026-09-25 (ADR-0033).
