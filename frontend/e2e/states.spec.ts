@@ -191,7 +191,8 @@ const CASES: StateCase[] = [
   {
     scenario: "default",
     name: "command-bar",
-    shows: "Search pages, settings, circuits, machines, items…",
+    // A command's text: the search box's placeholder isn't text getByText can find.
+    shows: "Game PC agent",
     act: async (page) => {
       await page.getByRole("heading", { name: "Health" }).waitFor();
       await page.keyboard.press("Control+K");
