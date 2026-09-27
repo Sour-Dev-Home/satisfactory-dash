@@ -24,8 +24,12 @@ export function useHashTarget(accepts: (id: string) => boolean): void {
   useEffect(() => {
     const id = hashId(window.location.hash);
     if (!id || !accepts(id)) return;
-    // One jump per navigation: the router stores a key for each history entry.
-    const entry = `${(window.history.state as { key?: string } | null)?.key ?? ""}${window.location.hash}`;
+    // One jump per navigation: react-router's history keeps `idx` for the current history entry
+    // (it only bumps `idx` on a push; a replace, e.g. typing in a search box that keeps its pick in
+    // the URL, reuses the same `idx` even though it hands out a fresh `key` every time). Keying off
+    // `key` instead would re-run this jump on every such replace and steal focus back from whatever
+    // the user is doing.
+    const entry = `${(window.history.state as { idx?: number } | null)?.idx ?? ""}${window.location.hash}`;
     if (handled.current === entry) return;
     const target = document.getElementById(id);
     if (!target) return;

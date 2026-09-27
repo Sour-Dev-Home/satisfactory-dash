@@ -34,7 +34,11 @@ export function circuitLink(circuitGroupId: number): string {
  * table trims when it filters), capped at 100 characters, empty when absent.
  */
 export function readSearch(params: URLSearchParams): string {
-  return (params.get(FACTORY_SEARCH_PARAM) ?? "").slice(0, 100);
+  const capped = (params.get(FACTORY_SEARCH_PARAM) ?? "").slice(0, 100);
+  // slice() counts UTF-16 code units, so a cap can land inside a surrogate pair (an emoji, etc.):
+  // drop a trailing lone high surrogate rather than hand the search box half a character.
+  const last = capped.charCodeAt(capped.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? capped.slice(0, -1) : capped;
 }
 
 /** An item class from the URL, or undefined when absent or not a plausible class name. */

@@ -1,7 +1,7 @@
 import { StrictMode, useState } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useLocation } from "react-router";
+import { BrowserRouter, MemoryRouter, useLocation } from "react-router";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
@@ -398,5 +398,46 @@ describe("FactoryView deep links", () => {
     renderAt("/app/factory?item=%3Cscript%3E");
     const picker = await screen.findByRole("combobox", { name: "Item" });
     expect(picker).toHaveValue("Desc_IronPlate_C");
+  });
+});
+
+// A real BrowserRouter, not MemoryRouter: useHashTarget reads window.location/history directly
+// (by design), and react-router only touches those through a real (or Browser-backed) history.
+// This is the one place that can catch the two interacting: typing in ?q= replaces the URL, which
+// must not re-trigger #history's jump and steal focus back from the search box.
+describe("FactoryView deep links + #history jump, on a real history (#351)", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("keeps #history in the URL when the search is edited (react-router's setSearchParams drops the fragment)", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron" } });
+    expect(window.location.hash).toBe("#history");
+    expect(window.location.search).toContain("q=iron");
+  });
+
+  it("typing in the machine search doesn't steal focus back from the box, with #history open", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    // The initial deep link jumps to #history, same as the MemoryRouter tests above prove it applies.
+    await waitFor(() => expect(document.getElementById("history")).toHaveFocus());
+
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    box.focus();
+    expect(box).toHaveFocus();
+    fireEvent.change(box, { target: { value: "iron" } });
+    fireEvent.change(box, { target: { value: "iron p" } });
+    expect(box).toHaveFocus();
   });
 });

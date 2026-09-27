@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
 import { queries } from "../api/queries";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -27,19 +27,24 @@ export function FactoryView() {
   // Deep links (#351): the machine search (?q=) and the history's item (?item=) live in the URL, so
   // a link or the command bar can open the page with them set. Replaced, not pushed: typing a
   // search mustn't fill the back button. Other parameters (e.g. dev:mock's scenario) are kept.
-  const [params, setParams] = useSearchParams();
+  // `useSearchParams().setSearchParams` navigates to a bare "?<params>" (react-router's
+  // `useSearchParams` hook, dist/development/lib/dom/lib.js), which drops the URL's fragment — so a
+  // deep link into #history would vanish the moment the search box is typed into. Go through
+  // `navigate` directly instead, carrying the current hash along.
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const search = readSearch(params);
   const item = readItem(params);
-  const setParam = (name: string, value: string | undefined) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (value === undefined) next.delete(name);
-        else next.set(name, value);
-        return next;
-      },
+  const setParam = (name: string, value: string | undefined) => {
+    const next = new URLSearchParams(params);
+    if (value === undefined) next.delete(name);
+    else next.set(name, value);
+    navigate(
+      { search: next.toString(), hash: location.hash },
       { replace: true, preventScrollReset: true },
     );
+  };
   // History carries only class names: names and units come from the live factory.
   const buildings = factory.data?.data.buildings;
   const labels = useMemo(() => itemLabels(buildings ?? []), [buildings]);

@@ -14,8 +14,14 @@ function Page({ show = true, tick = 0 }: { show?: boolean; tick?: number }) {
   );
 }
 
-/** A navigation as the router makes one: a new history entry, with its own key. */
-const navigate = (hash: string, key: string) => window.history.pushState({ key }, "", `/app${hash}`);
+/** A navigation as the router makes one: a new history entry, with its own key and (react-router's
+ *  actual shape) an incrementing `idx`. */
+let entryIdx = 0;
+const navigate = (hash: string, key: string) => window.history.pushState({ key, idx: ++entryIdx }, "", `/app${hash}`);
+
+/** A same-entry URL update, as react-router's `replace()` makes one: a fresh key, but the same
+ *  `idx` as the last navigation (it only bumps `idx` on a push). */
+const replaceInPlace = (hash: string, key: string) => window.history.replaceState({ key, idx: entryIdx }, "", `/app${hash}`);
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -57,6 +63,19 @@ describe("useHashTarget", () => {
     navigate("#target-1", "e");
     rerender(<Page tick={1} />);
     expect(screen.getByText("Target")).toHaveFocus();
+  });
+
+  // A component that keeps a value in the URL (?q=, FactoryView) replaces on every keystroke; that
+  // must not steal focus back from the field the user is typing in.
+  it("a same-entry URL update (same idx, new key) doesn't refocus, e.g. typing in a search box while #history is open", () => {
+    navigate("#target-1", "g");
+    const { rerender } = render(<Page tick={0} />);
+    expect(screen.getByText("Target")).toHaveFocus();
+    screen.getByText("Other").setAttribute("tabindex", "-1");
+    screen.getByText("Other").focus();
+    replaceInPlace("#target-1", "h");
+    rerender(<Page tick={1} />);
+    expect(screen.getByText("Other")).toHaveFocus();
   });
 
   it("leaves an id it doesn't render alone, and a page with no fragment", () => {

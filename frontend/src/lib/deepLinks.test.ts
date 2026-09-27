@@ -32,6 +32,20 @@ describe("deep links (#351)", () => {
     expect(readSearch(params(`q=${"x".repeat(150)}`))).toHaveLength(100);
   });
 
+  it("round-trips '+', '#', '%' and unicode typed into the search box", () => {
+    for (const typed of ["a+b", "iron#3", "100%", "café", "🎉 party"]) {
+      expect(readSearch(new URL(factorySearchLink(typed), "https://x").searchParams)).toBe(typed);
+    }
+  });
+
+  it("caps a search without splitting a surrogate pair (an emoji) in two", () => {
+    const search = `a${"🎉".repeat(60)}`; // length 121; a naive slice(0, 100) cuts mid-emoji
+    const capped = readSearch(params(`q=${encodeURIComponent(search)}`));
+    expect(capped).toBe(search.slice(0, capped.length));
+    // A lone trailing high surrogate is well-formed JS but can't be re-encoded as UTF-8/URI text.
+    expect(() => encodeURIComponent(capped)).not.toThrow();
+  });
+
   it("accepts only a plausible item class name", () => {
     expect(readItem(params("item=Desc_IronPlate_C"))).toBe("Desc_IronPlate_C");
     expect(readItem(params("item=%20Desc_Wire_C%20"))).toBe("Desc_Wire_C");
