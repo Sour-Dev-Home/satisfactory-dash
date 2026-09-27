@@ -3,9 +3,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CreateServerRequestSchema,
   endpoints,
+  RenameServerRequestSchema,
   RESERVED_SERVER_IDS,
+  SwitchToLocalRequestSchema,
   TestConnectionRequestSchema,
   UpdateServerRequestSchema,
+  type AgentServer,
   type ServerConnection,
   type TestConnectionResponse,
 } from "@satisfactory-dash/shared";
@@ -20,11 +23,14 @@ import { TestResult } from "./TestResult";
 /**
  * create: a new server. edit: any field; a blank token keeps the stored one. repair: the stored
  * tokens can't be read, so both are entered again. rename: only the name (works whatever the
- * tokens' state).
+ * tokens' state). For a server reached through the game PC's agent (ADR-0031), which has no stored
+ * connection: renameAgent, only the name; switchToLocal, a connection entered afresh so this backend
+ * reads the server itself again (the backend tests it first, then revokes the agent).
  */
 export type FormMode =
   | { kind: "create" }
-  | { kind: "edit" | "repair" | "rename"; server: ServerConnection };
+  | { kind: "edit" | "repair" | "rename"; server: ServerConnection }
+  | { kind: "renameAgent" | "switchToLocal"; server: AgentServer };
 
 type Field = "id" | "displayName" | "host" | "apiPort" | "frmPort" | "apiToken" | "frmToken";
 
@@ -43,6 +49,8 @@ const SHOWS: Record<FormMode["kind"], readonly Field[]> = {
   edit: ["displayName", "host", "apiPort", "frmPort", "apiToken", "frmToken"],
   repair: ["apiToken", "frmToken"],
   rename: ["displayName"],
+  renameAgent: ["displayName"],
+  switchToLocal: ["host", "apiPort", "frmPort", "apiToken", "frmToken"],
 };
 
 const TITLE: Record<FormMode["kind"], string> = {
@@ -50,15 +58,22 @@ const TITLE: Record<FormMode["kind"], string> = {
   edit: "Edit server",
   repair: "Re-enter both tokens",
   rename: "Rename server",
+  renameAgent: "Rename server",
+  switchToLocal: "Switch back to reading the server directly",
 };
+
+/** The stored connection behind a mode, when it has one (an agent server has none). */
+function connectionOf(mode: FormMode): ServerConnection | undefined {
+  return mode.kind === "edit" || mode.kind === "repair" || mode.kind === "rename" ? mode.server : undefined;
+}
 
 type Values = Record<Field, string>;
 
 function initialValues(mode: FormMode): Values {
-  const server = mode.kind === "create" ? undefined : mode.server;
+  const server = connectionOf(mode);
   return {
     id: "",
-    displayName: server?.displayName ?? "",
+    displayName: mode.kind === "create" ? "" : mode.server.displayName,
     host: server?.host ?? "127.0.0.1",
     apiPort: String(server?.apiPort ?? 7777),
     frmPort: String(server?.frmPort ?? 8080),
@@ -83,9 +98,21 @@ function bodyFor(mode: FormMode, v: Values, clearFrm: boolean): Record<string, u
       ...(v.frmToken !== "" && { frmToken: v.frmToken }),
     };
   }
-  const { server } = mode;
-  if (mode.kind === "rename") return v.displayName.trim() === server.displayName ? undefined : { displayName: v.displayName };
+  if (mode.kind === "switchToLocal") {
+    return {
+      host: v.host,
+      apiPort: port(v.apiPort),
+      frmPort: port(v.frmPort),
+      apiToken: v.apiToken,
+      ...(v.frmToken !== "" && { frmToken: v.frmToken }),
+    };
+  }
+  if (mode.kind === "rename" || mode.kind === "renameAgent") {
+    return v.displayName.trim() === mode.server.displayName ? undefined : { displayName: v.displayName };
+  }
   if (mode.kind === "repair") return { apiToken: v.apiToken, frmToken: v.frmToken === "" ? null : v.frmToken };
+  const server = connectionOf(mode);
+  if (!server) return undefined;
   const body: Record<string, unknown> = {};
   if (v.displayName.trim() !== server.displayName) body.displayName = v.displayName;
   if (v.host.trim() !== server.host) body.host = v.host;
@@ -97,7 +124,17 @@ function bodyFor(mode: FormMode, v: Values, clearFrm: boolean): Record<string, u
   return Object.keys(body).length > 0 ? body : undefined;
 }
 
-type Issues = readonly { path: readonly PropertyKey[] }[];
+type Issues = readonly { path: readonly PropertyKey[]; code?: string; message?: string }[];
+
+/**
+ * A name can be refused for its length or for characters that aren't printable text (#271); the
+ * shared schema says which, so its own message is shown rather than one line for every refusal.
+ */
+function nameError(issue: Issues[number]): string {
+  if (issue.code === "too_small") return "Enter a name.";
+  if (issue.code === "custom" && issue.message) return issue.message.endsWith(".") ? issue.message : `${issue.message}.`;
+  return FIELD_ERROR.displayName;
+}
 
 function fieldErrors(issues: Issues, values: Values): Partial<Record<Field, string>> {
   const errors: Partial<Record<Field, string>> = {};
@@ -107,7 +144,9 @@ function fieldErrors(issues: Issues, values: Values): Partial<Record<Field, stri
     errors[field] =
       field === "id" && (RESERVED_SERVER_IDS as readonly string[]).includes(values.id.trim())
         ? "That id is reserved."
-        : FIELD_ERROR[field];
+        : field === "displayName"
+          ? nameError(issue)
+          : FIELD_ERROR[field];
   }
   return errors;
 }
@@ -127,7 +166,9 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
   const [tested, setTested] = useState<TestConnectionResponse>();
   const inputs = useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
   const shows = SHOWS[mode.kind];
-  const server = mode.kind === "create" ? undefined : mode.server;
+  const named = mode.kind === "create" ? undefined : mode.server;
+  const server = connectionOf(mode);
+  const switching = mode.kind === "switchToLocal";
 
   // The token travels through these refs, not as a mutation's `variables`: TanStack keeps a
   // mutation's variables in its cache for minutes (see LoginForm.tsx), and a token shouldn't
@@ -136,21 +177,34 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
   const pendingSave = useRef<Record<string, unknown> | null>(null);
   const pendingTest = useRef<Record<string, unknown> | null>(null);
 
-  const save = useMutation({
+  // Create, update and switch answer the stored connection; renaming an agent server answers the
+  // agent server. What happens next needs only the id and name.
+  const save = useMutation<{ server: { id: string; displayName: string } }>({
     mutationFn: () => {
       const body = pendingSave.current;
       pendingSave.current = null;
       if (!body) throw new Error("save submitted without a body");
-      return mode.kind === "create"
-        ? apiSend(endpoints.serverManagement.create, body as never)
-        : apiSend(endpoints.serverManagement.update, body as never, mode.server.id);
+      if (mode.kind === "create") return apiSend(endpoints.serverManagement.create, body as never);
+      if (mode.kind === "switchToLocal") {
+        return apiSend(endpoints.serverManagement.switchToLocal, body as never, mode.server.id);
+      }
+      if (mode.kind === "renameAgent") return apiSend(endpoints.serverManagement.renameAgent, body as never, mode.server.id);
+      return apiSend(endpoints.serverManagement.update, body as never, mode.server.id);
     },
     onSuccess: async ({ server: saved }) => {
       await Promise.all([
         client.invalidateQueries({ queryKey: MANAGED_KEY }),
         client.invalidateQueries({ queryKey: queries.servers().queryKey, exact: true }),
+        // Switching back revokes the agent: Settings' agent section must not show it still enrolled.
+        switching && client.invalidateQueries({ queryKey: queries.agentStatus(saved.id).queryKey }),
       ]);
-      onDone(mode.kind === "create" ? `Added ${saved.displayName}.` : `Saved ${saved.displayName}.`);
+      onDone(
+        mode.kind === "create"
+          ? `Added ${saved.displayName}.`
+          : switching
+            ? `${saved.displayName} is read directly again, and its agent is revoked. Stop the agent on the game PC (its Scheduled Task).`
+            : `Saved ${saved.displayName}.`,
+      );
     },
   });
   const test = useMutation({
@@ -188,7 +242,14 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
       setNothingToChange(true);
       return;
     }
-    const schema = mode.kind === "create" ? CreateServerRequestSchema : UpdateServerRequestSchema;
+    const schema =
+      mode.kind === "create"
+        ? CreateServerRequestSchema
+        : mode.kind === "switchToLocal"
+          ? SwitchToLocalRequestSchema
+          : mode.kind === "renameAgent"
+            ? RenameServerRequestSchema
+            : UpdateServerRequestSchema;
     // A second submit before the first request is built (isPending only updates on the next
     // render) is dropped here, rather than becoming a failed mutation that shows an error.
     if (pendingSave.current || save.isPending) return;
@@ -263,8 +324,15 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
     >
       <h3 id={`${formId}-title`} className="mb-0">
         {TITLE[mode.kind]}
-        {server && <span className="font-normal text-muted">: {server.displayName}</span>}
+        {named && <span className="font-normal text-muted">: {named.displayName}</span>}
       </h3>
+      {switching && (
+        <p className="mb-0 text-sm text-muted">
+          This server is read through the game PC's agent. Enter how this dashboard can reach the game server itself.
+          The connection is tested first and nothing changes if it fails. Then the agent is revoked; members and
+          history stay. Afterwards, stop the agent on the game PC.
+        </p>
+      )}
       {mode.kind === "repair" && (
         <p className="mb-0 text-sm text-muted">
           The saved tokens can't be read by this backend (its key changed). Enter both again; leave the FRM token
@@ -317,9 +385,9 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
       {saveError && !busy && <ManagementError error={saveError} />}
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={busy} className="border-accent bg-accent text-on-accent">
-          {save.isPending ? "Saving…" : mode.kind === "create" ? "Add server" : "Save"}
+          {save.isPending ? "Saving…" : mode.kind === "create" ? "Add server" : switching ? "Test and switch back" : "Save"}
         </button>
-        {mode.kind === "create" && (
+        {(mode.kind === "create" || switching) && (
           <button type="button" disabled={busy} onClick={runTest}>
             {test.isPending ? "Testing…" : "Test connection"}
           </button>

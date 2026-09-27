@@ -190,7 +190,24 @@ describe("ServerManagementView: adding", () => {
     expect(screen.getByLabelText("Server id")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Server id")).toHaveFocus();
     expect(screen.getByText("Enter a port from 1 to 65535.")).toBeInTheDocument();
-    expect(screen.getByText("Enter a name of up to 64 characters.")).toBeInTheDocument();
+    // An empty name says so, not "up to 64 characters".
+    expect(screen.getByText("Enter a name.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  // #271: a name is refused for its length or for characters that aren't printable text, and the
+  // form says which (the shared schema's own message), rather than one line for every refusal.
+  it.each([
+    ["too long", "x".repeat(65), "Enter a name of up to 64 characters."],
+    ["a direction-changing character", "Main‮world", /^A name is printable text: no control, invisible or direction-changing characters\.$/],
+  ])("says why a name is refused: %s", async (_case, name, message) => {
+    const bodies = capture("post", endpoints.serverManagement.create.route, () => HttpResponse.json({}));
+    await openAdd();
+    fillValid();
+    type("Name", name);
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
     expect(bodies).toEqual([]);
   });
 
@@ -423,6 +440,16 @@ describe("ServerManagementView: editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText(/^Saved /);
     expect(bodies).toEqual([{ displayName: "Renamed" }]);
+  });
+
+  // The plain "rename" and "renameAgent" modes share one bodyFor branch (ServerForm.tsx); this
+  // guards the "rename" side of that shared line against a regression from the agent-mode refactor.
+  it("says nothing to change for a plain rename with no edit", async () => {
+    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: unreadableServer }));
+    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
   });
 
   it("shows connection_unreadable in plain words on the repair form, and stays on it", async () => {

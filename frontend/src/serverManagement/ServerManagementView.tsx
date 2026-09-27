@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { AgentServerRow } from "./AgentServerRow";
 import { ServerForm, type FormMode } from "./ServerForm";
 import { ServerRow } from "./ServerRow";
 
@@ -44,6 +45,8 @@ export function ServerManagementView() {
   }
 
   const servers = managed.data?.servers;
+  // Optional: an older backend doesn't list them (ADR-0007).
+  const agentServers = managed.data?.agentServers ?? [];
   return (
     <section aria-labelledby="servers-heading" className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -72,16 +75,36 @@ export function ServerManagementView() {
         ) : (
           <p role="status">Loading servers…</p>
         )
-      ) : servers.length === 0 ? (
+      ) : servers.length === 0 && agentServers.length === 0 ? (
         <p className="rounded-card border border-line bg-surface p-5 text-muted">
           No game servers yet. Add the first one; for now it has to run on this machine.
         </p>
       ) : (
-        <ul aria-label="Game servers" className="divide-y divide-line rounded-card border border-line bg-surface">
-          {servers.map((server) => (
-            <ServerRow key={server.id} server={server} onEdit={open} onRemoved={close} />
-          ))}
-        </ul>
+        <>
+          {servers.length > 0 && (
+            <ul aria-label="Game servers" className="divide-y divide-line rounded-card border border-line bg-surface">
+              {servers.map((server) => (
+                <ServerRow key={server.id} server={server} onEdit={open} onRemoved={close} />
+              ))}
+            </ul>
+          )}
+          {agentServers.length > 0 && (
+            // A visible heading (ui review): sighted users see why this group is apart, not only a second card.
+            <div className="grid gap-2">
+              <h4 id="agent-servers-heading" className="mb-0">
+                Servers read through an agent
+              </h4>
+              <ul
+                aria-labelledby="agent-servers-heading"
+                className="divide-y divide-line rounded-card border border-line bg-surface"
+              >
+                {agentServers.map((server) => (
+                  <AgentServerRow key={server.id} server={server} onEdit={open} />
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

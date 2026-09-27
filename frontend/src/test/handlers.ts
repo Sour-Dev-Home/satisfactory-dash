@@ -18,6 +18,7 @@ import {
   playersUnavailable,
   powerHistoryNormal,
   powerOk,
+  renameAgentServerResponse,
   serverConnectionOk,
   serversSingle,
   sessionAnonymous,
@@ -57,6 +58,9 @@ export const handlers = [
   http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
   http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(serverConnectionOk)),
   http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
+  // ADR-0031: an agent server's two edits.
+  http.patch(endpoints.serverManagement.renameAgent.route, () => HttpResponse.json(renameAgentServerResponse)),
+  http.post(endpoints.serverManagement.switchToLocal.route, () => HttpResponse.json(serverConnectionOk)),
   // Alerts (ADR-0027 PR 9). The header bell reads the status on every page: quiet by default, so
   // no badge shows unless a test asks for one.
   http.get(endpoints.alerts.status.route, () => HttpResponse.json(alertStatusQuiet)),

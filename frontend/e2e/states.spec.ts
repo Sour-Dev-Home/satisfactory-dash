@@ -104,6 +104,15 @@ const CASES: StateCase[] = [
   // Server management (ADR-0030), operator only: the three stored states, then the add form's refusals.
   { scenario: "servers-manage", path: "/app/servers", shows: "This server's saved address isn't allowed. Edit the host or remove it." },
   { scenario: "servers-manage", name: "servers-add-form", path: "/app/servers", shows: "Leave blank if FRM runs without a token.", act: openAddForm },
+  // ADR-0031: a server read through the game PC's agent (#266), and its switch back to local (#273).
+  { scenario: "servers-with-agent", path: "/app/servers", shows: /read through the game PC's agent/ },
+  {
+    scenario: "servers-with-agent",
+    name: "servers-switch-to-local",
+    path: "/app/servers",
+    shows: /tested first and nothing changes if it fails/,
+    act: (page) => page.getByRole("button", { name: "Switch back to local for Factory two" }).click(),
+  },
   { scenario: "servers-first", shows: "No game servers yet. Add the first one; for now it has to run on this machine." },
   {
     scenario: "servers-lan-refused",
