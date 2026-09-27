@@ -1,5 +1,5 @@
 import type { CookieOptions, Request, RequestHandler, Response } from "express";
-import { parse as parseCookies } from "cookie";
+import { parseCookie as parseCookies } from "cookie";
 import type { SessionStore, SessionUser } from "./sessionStore.js";
 import { UnauthorizedError } from "../../platform/errorResponse.js";
 
