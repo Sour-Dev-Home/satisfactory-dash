@@ -46,19 +46,27 @@ param(
   [int]$Attempts = 4,
   [int]$RetryMinutes = 30,
   [string]$Log = (Join-Path $env:LOCALAPPDATA 'satisfactory-dash\logs\backup.log'),
-  [string]$PostgresBin = $(
-    $newest = Get-ChildItem (Join-Path $env:ProgramFiles 'PostgreSQL') -Directory -ErrorAction SilentlyContinue |
-      Sort-Object { [int]($_.Name -replace '\D', '') } -Descending | Select-Object -First 1
-    if ($newest) { Join-Path $newest.FullName 'bin' } else { '' }
-  ),
-  [string]$AgeDir = (Join-Path $env:USERPROFILE '.local\bin'),
-  [string]$AwsDir = (Join-Path $env:ProgramFiles 'Amazon\AWSCLIV2')
+  [string]$PostgresBin = '',
+  [string]$AgeDir = '',
+  [string]$AwsDir = ''
 )
 $ErrorActionPreference = 'Continue'
 
+# The defaults and the PATH setup are shared with deploy-update.ps1 (tool-paths.ps1). A parameter default cannot
+# call a function from a dot-sourced file, so an empty parameter means "the default" and is resolved here.
+$toolPathsFile = Join-Path $PSScriptRoot 'tool-paths.ps1'
+if (-not (Test-Path -LiteralPath $toolPathsFile)) {
+  # Stop instead of running without the tool folders: exit 1 shows in Task Scheduler's history.
+  Write-Error "tool-paths.ps1 is missing next to backup-task.ps1 ($PSScriptRoot); the backup was not run."
+  exit 1
+}
+. $toolPathsFile
+if (-not $PostgresBin) { $PostgresBin = Get-DefaultPostgresBin }
+if (-not $AgeDir) { $AgeDir = Get-DefaultAgeDir }
+if (-not $AwsDir) { $AwsDir = Get-DefaultAwsDir }
+
 # Tool folders first, for this process only. Empty or missing folders are skipped.
-$toolDirs = @($PostgresBin, $AgeDir, $AwsDir) | Where-Object { $_ -and (Test-Path $_) }
-if ($toolDirs) { $env:Path = ($toolDirs -join ';') + ';' + $env:Path }
+Add-ToolDirsToPath @($PostgresBin, $AgeDir, $AwsDir)
 
 New-Item -ItemType Directory -Force -Path (Split-Path $Log) | Out-Null
 Set-Location $RepoDir

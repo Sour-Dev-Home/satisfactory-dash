@@ -319,8 +319,14 @@ task state and the last 40 lines of `backend.log`, and exits with code 1.
 - **Rolling the code back** (`-Ref <older branch>`) warns that migrations do not go back.
 - **It updates the backend only.** The frontend deploys itself from `main` (Cloudflare); the
   `cloudflared` service and the game-PC agent are not touched.
+- **A plain shell is enough for the backup step (#322).** Like the nightly `backup-task.ps1`, it puts the
+  folders of `pg_dump` (the newest `%ProgramFiles%\PostgreSQL\<n>\bin`), `age` (`%USERPROFILE%\.local\bin`) and
+  the AWS CLI (`%ProgramFiles%\Amazon\AWSCLIV2`) in front of `PATH` for that step only (then restores it), from
+  the shared `scripts\windows\tool-paths.ps1`. It lists the folders it used, stops by name if `pg_dump` or `age`
+  is still not found (the AWS CLI only gets a warning, since a local-only backup does not need it), and the
+  parameters `-PostgresBin`, `-AgeDir`, `-AwsDir` override the defaults when your tools live elsewhere.
 - Options: `-Remote` (default `origin`), `-Ref` (default `main`), `-TaskName`, `-Port`, `-LogDir`
-  (where `backend.log` is), `-HealthTimeoutSeconds`, `-LogTailLines`.
+  (where `backend.log` is), `-PostgresBin`, `-AgeDir`, `-AwsDir`, `-HealthTimeoutSeconds`, `-LogTailLines`.
 - It was reviewed and dry-reviewed, not run, by the session that wrote it: run it with `-WhatIf`
   first, then for real, and report anything that surprises you.
 

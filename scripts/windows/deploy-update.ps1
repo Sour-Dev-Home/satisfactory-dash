@@ -54,6 +54,16 @@
   The folder of the wrapper log (backend.log). Default: %LOCALAPPDATA%\satisfactory-dash\logs,
   the same default as register-backend-task.ps1.
 
+.PARAMETER PostgresBin
+  Folder holding pg_dump, for the backup step. Default: the newest bin folder under
+  %ProgramFiles%\PostgreSQL, if any (the same default as backup-task.ps1, from tool-paths.ps1).
+
+.PARAMETER AgeDir
+  Folder holding age, for the backup step. Default: %USERPROFILE%\.local\bin.
+
+.PARAMETER AwsDir
+  Folder holding the AWS CLI, for the backup step. Default: %ProgramFiles%\Amazon\AWSCLIV2.
+
 .PARAMETER HealthTimeoutSeconds
   How long to wait for the backend to answer /api/health/ready with 200. Default: 90.
 
@@ -73,6 +83,9 @@ param(
   [string]$TaskName = "SatisfactoryDashBackend",
   [int]$Port = 3001,
   [string]$LogDir = (Join-Path $env:LOCALAPPDATA "satisfactory-dash\logs"),
+  [string]$PostgresBin = "",
+  [string]$AgeDir = "",
+  [string]$AwsDir = "",
   [int]$HealthTimeoutSeconds = 90,
   [int]$LogTailLines = 40
 )
@@ -138,6 +151,13 @@ function Test-Listening {
 
 $startedIn = (Get-Location).Path
 try {
+  # The tool-folder defaults and PATH helper shared with backup-task.ps1 (only defines functions).
+  $toolPathsFile = Join-Path $PSScriptRoot "tool-paths.ps1"
+  if (-not (Test-Path -LiteralPath $toolPathsFile)) {
+    throw "tool-paths.ps1 is missing next to this script ($PSScriptRoot). Run the script from a complete checkout."
+  }
+  . $toolPathsFile
+
   # ---- Checks (read-only) ----
   if (-not $DeployDir) {
     throw "No deploy checkout given. Pass -DeployDir <path> or set the environment variable SATISFACTORY_DASH_DEPLOY_DIR."
@@ -224,12 +244,32 @@ try {
   }
 
   # ---- 3. Back up the database (the only way back for a forward-only migration) ----
-  if ($PSCmdlet.ShouldProcess($DeployDir, "3. npm run backup -w backend (a fresh encrypted backup; reads backend\.env itself)")) {
-    Write-Step "3/7 Backing up the database before migrating"
+  # pg_dump, age and the AWS CLI are often not on a plain shell's PATH: their folders (the same defaults as
+  # backup-task.ps1, from tool-paths.ps1) go in front of PATH for this step only, and PATH is restored after it.
+  if (-not $PostgresBin) { $PostgresBin = Get-DefaultPostgresBin }
+  if (-not $AgeDir) { $AgeDir = Get-DefaultAgeDir }
+  if (-not $AwsDir) { $AwsDir = Get-DefaultAwsDir }
+  $backupToolDirs = @(Get-ExistingToolDirs @($PostgresBin, $AgeDir, $AwsDir))
+  $toolText = if ($backupToolDirs.Count -gt 0) { $backupToolDirs -join "; " } else { "none of the default tool folders exist; PATH is used as it is" }
+  if ($PSCmdlet.ShouldProcess($DeployDir, "3. npm run backup -w backend (a fresh encrypted backup; reads backend\.env itself; tool folders in front of PATH: $toolText)")) {
+    Write-Step "3/7 Backing up the database before migrating (tool folders in front of PATH: $toolText)"
+    $savedPath = $env:Path
     try {
+      Add-ToolDirsToPath $backupToolDirs
+      # Fail early and by name, not deep inside the backup: the dump and the encryption need these two.
+      foreach ($tool in @("pg_dump", "age")) {
+        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
+          throw "'$tool' was not found on PATH or in the tool folders above. Pass the folder that holds it (-PostgresBin for pg_dump, -AgeDir for age) or add it to PATH."
+        }
+      }
+      if (-not (Get-Command aws -ErrorAction SilentlyContinue)) {
+        Write-Warning "The AWS CLI ('aws') was not found: an off-machine upload will fail. Pass -AwsDir, or leave BACKUP_S3_BUCKET empty for a local-only backup."
+      }
       Invoke-Native "npm run backup" $npm @("run", "backup", "-w", "backend")
     } catch {
-      throw "$($_.Exception.Message)`nThe deploy was ABORTED before the migration and the restart, because there is no fresh backup to go back to. The running process still has the previous build loaded, but the checkout ($newSha) and backend\dist are already the NEW build, so do not let the backend restart before this is fixed. Fix the backup (runbooks\backups.md: backend\.env BACKUP_* settings, the AWS profile, pg_dump and age on PATH) and run this script again; it is safe to re-run."
+      throw "$($_.Exception.Message)`nThe deploy was ABORTED before the migration and the restart, because there is no fresh backup to go back to. The running process still has the previous build loaded, but the checkout ($newSha) and backend\dist are already the NEW build, so do not let the backend restart before this is fixed. Fix the backup (runbooks\backups.md: backend\.env BACKUP_* settings, the AWS profile, pg_dump and age reachable, see -PostgresBin, -AgeDir, -AwsDir) and run this script again; it is safe to re-run."
+    } finally {
+      $env:Path = $savedPath
     }
   }
 

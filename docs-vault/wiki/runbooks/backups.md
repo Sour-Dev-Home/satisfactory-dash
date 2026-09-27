@@ -262,7 +262,8 @@ uploaded backup, so the monitor alerts when all attempts fail. **Why a wrapper:*
 failure" setting only covers a task that failed to *launch*, not one that ran and exited non-zero, so the retry
 lives in the script. The wrapper also puts the folders of `pg_dump`, `age` and the AWS CLI in front of `PATH` for
 its own run (parameters `-PostgresBin`, `-AgeDir`, `-AwsDir`, with defaults that follow the standard install
-locations), because the task's `PATH` often lacks them. Other parameters: `-RepoDir` (default: the repo that
+locations), because the task's `PATH` often lacks them. That setup lives in `scripts\windows\tool-paths.ps1`, which
+`deploy-update.ps1` shares for its pre-migration backup ([`go-live-api.md`](./go-live-api.md) section 4). Other parameters: `-RepoDir` (default: the repo that
 holds the script), `-Attempts`, `-RetryMinutes`, `-Log`.
 
 The task's settings:
