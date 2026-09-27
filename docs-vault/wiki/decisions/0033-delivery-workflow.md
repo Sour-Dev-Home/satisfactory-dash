@@ -121,7 +121,8 @@ passed as a TanStack mutation variable and kept in the browser's mutation cache.
   - `frontend/src/**/*.{ts,tsx,css}`, except `frontend/src/api/**`, `frontend/src/auth/**`,
     `frontend/src/demo/handlers.ts` and `frontend/src/test/browser.ts`;
   - `frontend/e2e/**` (specs and screenshot baselines);
-  - `docs-vault/wiki/log.d/**`.
+  - `docs-vault/wiki/log.d/**`;
+  - `docs-vault/wiki/hunter-log.d/<date>-<pr>[-<n>].md` (a per-PR fragment like `log.d`; #341, #359, #362).
 
   **And** no added line in `frontend/src` matches the data-flow pattern: `useQuery`,
   `useInfiniteQuery`, `useMutation`, `queryOptions`, `apiSend`, `apiGet`, `endpoints.`, `fetch(`,
