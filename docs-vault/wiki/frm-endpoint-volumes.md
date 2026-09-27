@@ -56,6 +56,46 @@ save (`raw-sources/frm-dedicated-server.md`).
 - `getProdStats` only contained the `Solid` type in this capture (49 items); whether fluids and gases appear there is not
   shown [NEEDS VERIFICATION].
 
+## Map layer captures (#355, ADR-0038 capture cards)
+
+Five more endpoints, captured from the same live server on 2026-09-27 at 19:23 UTC (the save was then 82 in-game days
+old), the same way: `GET http://127.0.0.1:8080/<endpoint>` over loopback, no token. Files:
+`raw-sources/captured-responses/frm-<endpoint>-2026-09-27-{trimmed,empty}.json`, each header giving the full size and
+count and how the sample was chosen. Nothing needed redacting: none of the five responses contains a player name, player
+id or save name (checked mechanically against the session name and the player list).
+
+| Card | Endpoint | Game thread (docs) | Items | Full size | Committed sample | Projected, whole-metre x/y (estimate) |
+| --- | --- | --- | ---: | ---: | --- | ---: |
+| CAP-1 | `getBelts` | No | 1987 | **3.27 MB** | 4 items (shortest and longest spline, one per belt tier) | about 412 KB |
+| CAP-1 | `getPipes` | No | 156 | 251.4 KB | 2 items (shortest and longest spline) | about 29 KB |
+| CAP-2 | `getCables` | No | 843 | 576.7 KB | 2 items (shortest and longest line) | about 23 KB |
+| CAP-3 | `getResourceWell` | **Yes** | 118 | 56.0 KB | 9 items (one per resource, purity, node type and exploited combination) | small |
+| CAP-3 | `getResourceGeyser` | **Yes** | 0 | 2 B (`[]`) | empty | n/a |
+| CAP-4 | `getVehiclePaths`, `getTruckStation`, `getVehicles`, `getDrone`, `getDroneStation` | | | | **not captured**: waiting on the owner | |
+
+The last column is a rough size for a layer that keeps only whole-metre x/y points per segment, as ADR-0038's rails
+mapper does: the JSON of `[[x, y], ...]` per belt or pipe spline, and of the two end points per power line. It is an
+estimate made from these captures, not the mapper's real output.
+
+- **`getBelts` alone is over the 2 MB per-layer cap as FRM sends it**: 1987 segments, 31,953 spline points, 3.27 MB raw.
+  Most of that is per-segment baggage (`BoundingBox`, `ColorSlot`, `features`, z and floats). Projected as above it is
+  about 412 KB, within the cap, but it grows with the factory: this is a mid-size save. The belt tiers carry their speed
+  in `ItemsPerMinute` (Mk.1 60, Mk.2 120, Mk.3 270, Mk.4 480); 1944 of 1987 segments are connected at both ends.
+- **`getPipes`** has the same shape as belts with `Speed` instead of `ItemsPerMinute`; every segment here was
+  `Pipeline Mk.1` with `Speed` 5 [NEEDS VERIFICATION: what `Speed` measures, and its value on a Mk.2 pipeline].
+- **`getCables` has no spline**: each power line is its two end points (`location0`, `location1`) and a `Length` in
+  centimetres (2 m to 257 m here). So the layer is straight segments.
+- **`getResourceWell` lists fracking satellites only**: all 118 are `NodeType: "Fracking Satellite"` and
+  `Exploited: false` on this save, so the capture shows neither a well core (the pressurizer's node) nor a tapped
+  satellite [NEEDS VERIFICATION: capture again once a resource well pressurizer is built]. Each item has `Purity`,
+  `EnumPurity`, `ResourceForm` and `location`, like `getResourceNode`, so it can extend the nodes layer.
+- **`getResourceGeyser` answered `[]`** although the world has geysers [NEEDS VERIFICATION: whether FRM lists only
+  geysers with a geothermal generator on them, or none on this version]. The layer can't be designed from this capture.
+- **Both resource endpoints run on the game thread** (the docs' index), like `getResourceNode`, so they belong with the
+  rarely read, on-change data, not the snapshot cadence.
+- **CAP-4 waits on the owner**: vehicles, vehicle paths, truck stations, drones and drone stations need one of each built
+  in-game first (this world has none; `getDrone` and `getVehicles` were `[]` in the first capture too).
+
 ## `getPlayer` and `getSessionInfo`: what the captures show (for #329 option C)
 
 Both captures are one sample from one world (one known player, offline), so each answer says what was seen and what was
