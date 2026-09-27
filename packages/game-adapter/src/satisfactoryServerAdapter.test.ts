@@ -206,23 +206,25 @@ describe("SatisfactoryServerAdapter", () => {
     ]);
   });
 
-  // ADR-0038 M2.
+  // ADR-0038 M2. Points drop from 17 to 13: the mapper collapses consecutive duplicate points
+  // after rounding (map/railsMapper.ts), same as packages/shared/fixtures/map.ts's railsSample.
   it("maps getTrainRails segments to the M1 contract's whole-metre polylines", async () => {
     const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([trainRailFixture]) } });
-    const [segment] = await adapter.getRails();
-    expect(segment.id).toBe("Build_RailroadTrack_C_2147304732");
-    expect(segment.points).toHaveLength(17);
-    expect(segment.points[0]).toEqual([-1119, -1504]);
+    const { data, dropped } = await adapter.getRails();
+    expect(data[0]!.id).toBe("Build_RailroadTrack_C_2147304732");
+    expect(data[0]!.points).toHaveLength(13);
+    expect(data[0]!.points[0]).toEqual([-1119, -1504]);
+    expect(dropped).toBe(0);
     expect(frmApi.get).toHaveBeenCalledWith("getTrainRails");
   });
 
-  it("rejects a getTrainRails segment with fewer than 2 spline points as invalid (caught here, not silently accepted)", async () => {
-    const oneSided = { ...trainRailFixture, SplineData: [trainRailFixture.SplineData[0]] };
+  // Architect follow-up on #367: a segment with fewer than 2 points (here, after rounding, since a
+  // 1-point spline can never reach 2) is dropped by the mapper itself, not sent — the agent's own
+  // conform-don't-reject rule (docs-vault/wiki/runbooks/agent-app.md).
+  it("drops a getTrainRails segment with fewer than 2 spline points, reporting it in `dropped`", async () => {
+    const oneSided = { ...trainRailFixture, SplineData: [trainRailFixture.SplineData[0]!] };
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([oneSided]) } });
-    // The raw schema accepts it (FRM could send a degenerate segment); the M1 contract does not
-    // (RailsLayerDataSchema requires at least 2 points), so a real M3 route would refuse it at that
-    // later validation, not here — this test only confirms the adapter itself does not throw.
-    await expect(adapter.getRails()).resolves.toEqual([{ id: trainRailFixture.ID, points: [[-1119, -1504]] }]);
+    await expect(adapter.getRails()).resolves.toEqual({ data: [], dropped: 1 });
   });
 
   // test-hunter pass: rails/resourceNodes should reject a malformed item the same way every other
@@ -275,28 +277,25 @@ describe("SatisfactoryServerAdapter", () => {
     expect((err as Error).message).toContain("Exploited");
   });
 
-  // Unlike getPower/getFactory (whose raw schemas enforce every downstream contract constraint,
-  // per this file's PR-1 architect ruling comment: "a response-contract failure only ever means
-  // our own mapping bug"), RawFrmTrainRailSchema/RawFrmResourceNodeSchema declare x/y as plain
-  // z.number() with no bound matching the M1 contract's WholeMetreSchema (+/-1,000,000 m). This
-  // documents that gap: the adapter does NOT reject upstream coordinates that would fail M1's own
-  // schema -- that's deferred to the not-yet-built M3 ingest route, per rawSchemas.ts's own
-  // comment about the min(2)-points case. Confirming the same applies to the coordinate bound,
-  // which that comment doesn't call out.
-  it("does NOT reject a rail coordinate that would violate the M1 WholeMetreSchema bound (deferred to M3 ingest)", async () => {
+  // Architect follow-up on #367 (closes a gap round 1 of fresh-eyes flagged): a coordinate outside
+  // the M1 contract's WholeMetreSchema bound (+/-1,000,000 m) is now dropped by the mapper itself
+  // (its point is skipped; the segment collapses below 2 points and is dropped too here), not
+  // passed through for M3 to catch later.
+  it("drops a rail point that would violate the M1 WholeMetreSchema bound, collapsing the segment below 2 points", async () => {
     const huge = { ID: "x", SplineData: [{ x: 0, y: 0 }, { x: 3_000_000_00, y: 0 }] }; // 3,000,000 m > 1,000,000 m cap
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([huge]) } });
-    const [segment] = await adapter.getRails();
-    expect(segment!.points[1]).toEqual([3_000_000, 0]);
+    await expect(adapter.getRails()).resolves.toEqual({ data: [], dropped: 1 });
   });
 
-  it("maps getResourceNode items, including nodeType (#352 follow-up)", async () => {
+  it("maps getResourceNode items, including nodeType (#352, #367 follow-ups)", async () => {
     const satellite = { ...resourceNodeFixture, Name: "Nitrogen Gas", NodeType: "Fracking Satellite" };
     const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, satellite]) } });
-    await expect(adapter.getResourceNodes()).resolves.toEqual([
+    const { data, dropped } = await adapter.getResourceNodes();
+    expect(data).toEqual([
       { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false },
       { type: "Nitrogen Gas", purity: "normal", nodeType: "frackingSatellite", x: 1783, y: 2061, exploited: false },
     ]);
+    expect(dropped).toBe(0);
     expect(frmApi.get).toHaveBeenCalledWith("getResourceNode");
   });
 

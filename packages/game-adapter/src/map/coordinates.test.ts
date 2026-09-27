@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toWholeMetres } from "./coordinates.js";
+import { toWholeMetres, inWholeMetreBounds, MAX_WHOLE_METRES } from "./coordinates.js";
 
 /**
  * test-hunter pass (fresh-eyes, ADR-0038 M2): toWholeMetres is a one-line Math.round wrapper, but
@@ -58,5 +58,32 @@ describe("toWholeMetres", () => {
     expect(toWholeMetres(-49)).toBe(-0); // -0.49 -> -0 (still ties-to-+Infinity semantics off Math.round(-0.49))
     expect(toWholeMetres(51)).toBe(1); // 0.51 -> 1
     expect(toWholeMetres(-51)).toBe(-1); // -0.51 -> -1
+  });
+});
+
+// Architect follow-up on #367: the M1 contract's WholeMetreSchema bound, used by the mappers to
+// drop a bad item instead of rejecting a whole layer.
+describe("inWholeMetreBounds", () => {
+  it("is +-1,000,000 m", () => {
+    expect(MAX_WHOLE_METRES).toBe(1_000_000);
+  });
+
+  it("rejects non-finite values", () => {
+    expect(inWholeMetreBounds(Infinity)).toBe(false);
+    expect(inWholeMetreBounds(-Infinity)).toBe(false);
+    expect(inWholeMetreBounds(NaN)).toBe(false);
+  });
+
+  it("accepts the boundary itself (inclusive), rejects one past it", () => {
+    expect(inWholeMetreBounds(1_000_000)).toBe(true);
+    expect(inWholeMetreBounds(-1_000_000)).toBe(true);
+    expect(inWholeMetreBounds(1_000_001)).toBe(false);
+    expect(inWholeMetreBounds(-1_000_001)).toBe(false);
+  });
+
+  it("accepts 0, -0 and ordinary in-range values", () => {
+    expect(inWholeMetreBounds(0)).toBe(true);
+    expect(inWholeMetreBounds(-0)).toBe(true);
+    expect(inWholeMetreBounds(1783)).toBe(true);
   });
 });

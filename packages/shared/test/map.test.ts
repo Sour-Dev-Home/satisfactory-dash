@@ -284,9 +284,13 @@ describe("map fixtures independently recomputed from the raw FRM captures (fresh
   ];
   const rawRailYCentimetres = -150400;
 
-  it("rails: recomputing x/100 rounded to the nearest whole metre for all 17 points matches the fixture exactly", () => {
-    const recomputedX = rawRailXCentimetres.map((cm) => Math.round(cm / 100));
-    expect(recomputedX).toEqual(fixtures.railsSample.data[0].points.map((p) => p[0]));
+  // M2's mapper (game-adapter) collapses consecutive duplicate points after rounding — the game's
+  // spline is far finer than a whole metre, so several adjacent raw points round to the same
+  // value. This fixture represents that mapper's real output, so the recomputation dedupes too.
+  it("rails: recomputing x/100 rounded to the nearest whole metre, with consecutive duplicates collapsed, matches the fixture exactly", () => {
+    const rounded = rawRailXCentimetres.map((cm) => Math.round(cm / 100));
+    const deduped = rounded.filter((x, i) => i === 0 || x !== rounded[i - 1]);
+    expect(deduped).toEqual(fixtures.railsSample.data[0].points.map((p) => p[0]));
     expect(fixtures.railsSample.data[0].points.every((p) => p[1] === Math.round(rawRailYCentimetres / 100))).toBe(true);
   });
 
