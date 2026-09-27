@@ -42,6 +42,10 @@ added or removed.
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
   monitoring (field-level schemas still need capturing — see `log.md`).
+- [`frm-endpoint-volumes.md`](./frm-endpoint-volumes.md) — per FRM endpoint of the Players card and map-overlay work (#329,
+  #330): measured size and item count from real captures (2026-09-27), whether it runs on the game thread, and whether the
+  vanilla API or the agent's current snapshot already covers it; three responses are large (schematics, resource nodes,
+  train rails, about 1.4 MB together).
 - [`machine-states.md`](./machine-states.md) — how a machine's state (producing, idle, backed up,
   underfed, paused, unpowered) is derived per snapshot (ADR-0027), the provisional threshold and its
   evidence, and how to tune it with a capture session.
