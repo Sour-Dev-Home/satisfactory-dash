@@ -53,11 +53,75 @@ test("clean lines and blank patterns produce no hits", () => {
   assert.deepEqual(scanLines([{ file: "x.md", line: 1, text: "nothing to see" }], [...PATH_PATTERNS, ""]), []);
 });
 
-test("this script and its test are exempt from the scan, as is the LICENSE", () => {
-  for (const file of ["scripts/preflight.mjs", "scripts/preflight.test.mjs", "LICENSE"]) {
+test("only the files CI's scan skips are exempt, and no wider", () => {
+  for (const file of ["LICENSE", "CLAUDE.md", "backend/CLAUDE.md", ".github/workflows/ci.yml", "frontend/public/privacy.html"]) {
     assert.deepEqual(scanLines([{ file, line: 1, text: WINDOWS_PATH }], PATH_PATTERNS), [], file);
   }
-  assert.equal(scanLines([{ file: "scripts/other.mjs", line: 1, text: WINDOWS_PATH }], PATH_PATTERNS).length, 1);
+  for (const file of ["scripts/other.mjs", "scripts/preflight.mjs", "docs/LICENSE", "frontend/public/terms.html", "README.md"]) {
+    assert.equal(scanLines([{ file, line: 1, text: WINDOWS_PATH }], PATH_PATTERNS).length, 1, file);
+  }
+});
+
+test("an added line whose text starts with '++ ' is content, not a file header", () => {
+  const diff = ["diff --git a/x.md b/x.md", "--- a/x.md", "+++ b/x.md", "@@ -0,0 +1,2 @@", "+++ b/other.md", "+second"].join("\n");
+  assert.deepEqual(addedLines(diff), [
+    { file: "x.md", line: 1, text: "++ b/other.md" },
+    { file: "x.md", line: 2, text: "second" },
+  ]);
+  const devNull = ["diff --git a/x.md b/x.md", "--- a/x.md", "+++ b/x.md", "@@ -0,0 +1 @@", "+++ /dev/null"].join("\n");
+  assert.equal(addedLines(devNull)[0].file, "x.md");
+});
+
+test("file names with spaces (trailing tab), quoted non-ASCII names and CRLF are read correctly", () => {
+  const diff = [
+    "diff --git a/my file.md b/my file.md",
+    "--- a/my file.md\t",
+    "+++ b/my file.md\t",
+    "@@ -0,0 +1 @@",
+    "+one\r",
+    'diff --git "a/caf\\303\\251.md" "b/caf\\303\\251.md"',
+    '--- "a/caf\\303\\251.md"',
+    '+++ "b/caf\\303\\251.md"',
+    "@@ -0,0 +4 @@",
+    "+two",
+  ].join("\n");
+  assert.deepEqual(addedLines(diff), [
+    { file: "my file.md", line: 1, text: "one\r" },
+    { file: "café.md", line: 4, text: "two" },
+  ]);
+  assert.equal(scanLines([{ file: "a.md", line: 1, text: `${WINDOWS_PATH}\r` }], PATH_PATTERNS).length, 1);
+});
+
+test("binary, deleted and pure-rename entries add nothing and do not corrupt the next file", () => {
+  const diff = [
+    "diff --git a/img.png b/img.png",
+    "Binary files a/img.png and b/img.png differ",
+    "diff --git a/old.md b/new.md",
+    "similarity index 100%",
+    "rename from old.md",
+    "rename to new.md",
+    "diff --git a/gone.md b/gone.md",
+    "--- a/gone.md",
+    "+++ /dev/null",
+    "@@ -1 +0,0 @@",
+    "-x",
+    "diff --git a/n.md b/n.md",
+    "--- a/n.md",
+    "+++ b/n.md",
+    "@@ -0,0 +2 @@",
+    "+added",
+  ].join("\n");
+  assert.deepEqual(addedLines(diff), [{ file: "n.md", line: 2, text: "added" }]);
+});
+
+test("an added line whose file name cannot be read is still reported, under a placeholder", () => {
+  const diff = ["diff --git x y", "@@ -0,0 +1 @@", "+leak"].join("\n");
+  assert.deepEqual(addedLines(diff), [{ file: "(unknown file)", line: 1, text: "leak" }]);
+});
+
+test("the JSON-escaped form of the Windows path is caught too", () => {
+  const hits = scanLines([{ file: "a.json", line: 1, text: `"${PATH_PATTERNS[4]}"` }], PATH_PATTERNS);
+  assert.deepEqual(hits, [{ file: "a.json", line: 1, pattern: 4 }]);
 });
 
 test("commit messages are scanned line by line", () => {
