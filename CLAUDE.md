@@ -171,3 +171,6 @@ Run from the project root (`satisfactory-dash/`):
   http://localhost:5173, backend on http://localhost:3001)
 - `npm run lint` / `npm run typecheck` / `npm run test` / `npm run build` — run across
   all workspaces; each also works scoped, e.g. `npm run test -w backend`
+- `npm run preflight` — run before every push: the branch's PR is still open and not conflicting, no local
+  absolute path (or private identifier from `PREFLIGHT_PATTERNS_FILE`) in the diff or commit messages, and the
+  worktree has `node_modules`
