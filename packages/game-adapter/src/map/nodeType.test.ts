@@ -22,8 +22,29 @@ describe("mapNodeType / genericCamelCase adversarial inputs", () => {
     expect(mapNodeType("toString")).toBe("tostring");
     expect(mapNodeType("__proto__")).toBe("__proto__");
     expect(mapNodeType("hasOwnProperty")).toBe("hasownproperty");
-    for (const raw of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
-      expect(typeof mapNodeType(raw)).toBe("string");
+    // Every own-enumerable-from-instance member of Object.prototype, not just the 5 above: the
+    // fix is Object.hasOwn (an own-property check), so its correctness doesn't depend on which
+    // prototype member's name is being probed - this loop is here so a future regression (e.g. a
+    // name-specific denylist swapped back in for Object.hasOwn) would be caught on names this
+    // suite doesn't otherwise exercise, not just the ones already asserted above.
+    for (const raw of [
+      "constructor",
+      "toString",
+      "toLocaleString",
+      "valueOf",
+      "hasOwnProperty",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "__proto__",
+      "__defineGetter__",
+      "__defineSetter__",
+      "__lookupGetter__",
+      "__lookupSetter__",
+    ]) {
+      // Each name above is a single word (no whitespace), so genericCamelCase's output for it is
+      // exactly its lowercase form - asserting against raw.toLowerCase() here (not re-deriving the
+      // algorithm) keeps this a check on mapNodeType's actual behavior, not a restatement of it.
+      expect(mapNodeType(raw)).toBe(raw.toLowerCase());
     }
   });
 
