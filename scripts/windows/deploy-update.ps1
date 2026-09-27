@@ -8,20 +8,25 @@
 
     1. git fetch, then check out origin/main DETACHED in the deploy checkout;
     2. npm ci --include=dev, then build the backend (npm run build -w backend);
-    3. npm run db:migrate (every time: migrations are forward-only and idempotent);
-    4. restart the backend Scheduled Task with scripts\windows\register-backend-task.ps1 -Start,
+    3. npm run backup -w backend: a fresh encrypted database backup BEFORE the migration
+       (migrations are forward-only, so this backup is the only way back for the schema); a failed
+       backup aborts the deploy. There is deliberately no switch to skip it;
+    4. npm run db:migrate (every time: migrations are forward-only and idempotent);
+    5. restart the backend Scheduled Task with scripts\windows\register-backend-task.ps1 -Start,
        taken from the NEW checkout;
-    5. wait for /api/health/ready and, if the backend does not come up, fail with the tail of the
+    6. wait for /api/health/ready and, if the backend does not come up, fail with the tail of the
        wrapper log;
-    6. print the old and the new commit.
+    7. print the old and the new commit.
 
-  It stops at the first failing step. A failure BEFORE step 4 leaves the running backend untouched
+  It stops at the first failing step. A failure BEFORE step 5 leaves the running backend untouched
   (the old process keeps serving); the checkout, node_modules and backend\dist have already changed (a wrapper restart of the old process would load the new build).
 
-  Secrets: it reads none and prints none. Step 3 needs MIGRATOR_DATABASE_URL, which db-migrate.ts
+  Secrets: it reads none and prints none. Step 3 runs `npm run backup`, which reads DATABASE_URL and
+  the BACKUP_* settings from backend\.env itself and prints no secret (its messages never contain a
+  password, key or URL). Step 4 needs MIGRATOR_DATABASE_URL, which db-migrate.ts
   reads itself from this shell's environment (or backend\.env, as it always did): set it in the
   shell before running (runbooks\database.md). This script never looks at .env or the variable.
-  The log tail in step 5 is the wrapper log (backend.log), which run-backend.ps1 already writes.
+  The log tail in step 6 is the wrapper log (backend.log), which run-backend.ps1 already writes.
 
   Use -WhatIf to print the steps without doing any of them. It still reads (never changes) the
   checkout to show the current commit.
@@ -185,7 +190,7 @@ try {
   # ---- 1. Fetch and check out detached ----
   $newSha = $oldSha
   if ($PSCmdlet.ShouldProcess($DeployDir, "1. git fetch $Remote, then git checkout --detach $target")) {
-    Write-Step "1/6 Fetching $Remote and checking out $target detached"
+    Write-Step "1/7 Fetching $Remote and checking out $target detached"
     # Never wait for a credential prompt in an unattended step: fail instead (restored right after).
     $previousPrompt = $env:GIT_TERMINAL_PROMPT
     $env:GIT_TERMINAL_PROMPT = "0"
@@ -208,7 +213,7 @@ try {
 
   # ---- 2. Install and build ----
   if ($PSCmdlet.ShouldProcess($DeployDir, "2. npm ci, then npm run build -w backend")) {
-    Write-Step "2/6 npm ci (from the lockfile) and building the backend"
+    Write-Step "2/7 npm ci (from the lockfile) and building the backend"
     # --include=dev: the build and the migrator (esbuild, tsx) are dev dependencies, and a machine-wide
     # NODE_ENV=production would otherwise make npm ci skip them.
     Invoke-Native "npm ci" $npm @("ci", "--include=dev")
@@ -218,9 +223,19 @@ try {
     }
   }
 
-  # ---- 3. Migrate ----
-  if ($PSCmdlet.ShouldProcess($DeployDir, "3. npm run db:migrate -w backend (needs MIGRATOR_DATABASE_URL in this shell)")) {
-    Write-Step "3/6 Applying database migrations (idempotent)"
+  # ---- 3. Back up the database (the only way back for a forward-only migration) ----
+  if ($PSCmdlet.ShouldProcess($DeployDir, "3. npm run backup -w backend (a fresh encrypted backup; reads backend\.env itself)")) {
+    Write-Step "3/7 Backing up the database before migrating"
+    try {
+      Invoke-Native "npm run backup" $npm @("run", "backup", "-w", "backend")
+    } catch {
+      throw "$($_.Exception.Message)`nThe deploy was ABORTED before the migration and the restart, because there is no fresh backup to go back to. The running process still has the previous build loaded, but the checkout ($newSha) and backend\dist are already the NEW build, so do not let the backend restart before this is fixed. Fix the backup (runbooks\backups.md: backend\.env BACKUP_* settings, the AWS profile, pg_dump and age on PATH) and run this script again; it is safe to re-run."
+    }
+  }
+
+  # ---- 4. Migrate ----
+  if ($PSCmdlet.ShouldProcess($DeployDir, "4. npm run db:migrate -w backend (needs MIGRATOR_DATABASE_URL in this shell)")) {
+    Write-Step "4/7 Applying database migrations (idempotent)"
     try {
       Invoke-Native "npm run db:migrate" $npm @("run", "db:migrate", "-w", "backend")
     } catch {
@@ -228,16 +243,16 @@ try {
     }
   }
 
-  # ---- 4. Restart the backend task (the helper of the NEW checkout) ----
+  # ---- 5. Restart the backend task (the helper of the NEW checkout) ----
   $register = Join-Path $DeployDir "scripts\windows\register-backend-task.ps1"
-  if ($PSCmdlet.ShouldProcess($TaskName, "4. restart the Scheduled Task: $register -Start")) {
-    Write-Step "4/6 Restarting the backend task '$TaskName'"
+  if ($PSCmdlet.ShouldProcess($TaskName, "5. restart the Scheduled Task: $register -Start")) {
+    Write-Step "5/7 Restarting the backend task '$TaskName'"
     & $register -TaskName $TaskName -LogDir $LogDir -Port $Port -Start
   }
 
-  # ---- 5. Wait for readiness ----
-  if ($PSCmdlet.ShouldProcess("http://127.0.0.1:$Port/api/health/ready", "5. wait up to $HealthTimeoutSeconds s for HTTP 200")) {
-    Write-Step "5/6 Waiting up to $HealthTimeoutSeconds s for the backend to be ready"
+  # ---- 6. Wait for readiness ----
+  if ($PSCmdlet.ShouldProcess("http://127.0.0.1:$Port/api/health/ready", "6. wait up to $HealthTimeoutSeconds s for HTTP 200")) {
+    Write-Step "6/7 Waiting up to $HealthTimeoutSeconds s for the backend to be ready"
     $deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
     $retried = $false
     $seen = ""
@@ -264,9 +279,9 @@ try {
     Write-Step "Ready: /api/health/ready answered 200."
   }
 
-  # ---- 6. Report ----
+  # ---- 7. Report ----
   $newLine = Read-Native "Reading the new commit" $git @("log", "-1", "--format=%h %s", "HEAD")
-  Write-Step "6/6 Done"
+  Write-Step "7/7 Done"
   Write-Host "Old commit: $oldLine"
   Write-Host "New commit: $newLine"
   if ($WhatIfPreference) {

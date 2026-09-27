@@ -287,18 +287,34 @@ $env:SATISFACTORY_DASH_DEPLOY_DIR = "<the deploy checkout>"   # or pass -DeployD
 
 In order, stopping at the first failure: (1) `git fetch`, then check out `origin/main` **detached**
 (it refuses if tracked files in the checkout have uncommitted changes); (2) `npm ci --include=dev`
-and `npm run build -w backend`; (3) `npm run db:migrate` every time (forward-only and idempotent);
-(4) restart the task with `register-backend-task.ps1 -Start` from the NEW checkout, so it also
+and `npm run build -w backend`; (3) **`npm run backup -w backend`: a fresh encrypted database backup
+before the migration** (#319); (4) `npm run db:migrate` every time (forward-only and idempotent);
+(5) restart the task with `register-backend-task.ps1 -Start` from the NEW checkout, so it also
 stops a leftover `node` on the port and refuses to start while something else holds it;
-(5) wait up to 90 seconds for `/api/health/ready` (database, servers registered, connections
+(6) wait up to 90 seconds for `/api/health/ready` (database, servers registered, connections
 readable) to answer 200, starting the task once more if nothing listens after a while (the
-2026-09-24 flake above); (6) print the old and the new commit. If the wait fails it prints the
+2026-09-24 flake above); (7) print the old and the new commit. If the wait fails it prints the
 task state and the last 40 lines of `backend.log`, and exits with code 1.
 
-- **A failure before step 4 leaves the running backend alone** (the old process keeps serving; the
+- **A failure before step 5 leaves the running backend alone** (the old process keeps serving; the
   checkout, `node_modules` and `backend\dist` already hold the new build, so a crash-restart of the
-  wrapper before you fix and re-run would load it). A failed migration says so and does not restart. `MIGRATOR_DATABASE_URL`
-  missing is reported by the migrator itself; the script never reads or prints it, nor `.env`.
+  wrapper before you fix and re-run would load it). A failed backup or migration says so and does
+  not restart. `MIGRATOR_DATABASE_URL` missing is reported by the migrator itself; the script never
+  reads or prints it, nor `.env`.
+- **The backup is why there is no rollback of the schema.** Migrations are forward-only, so the backup
+  taken in step 3 is the only way back ([`backups.md`](./backups.md), restore rehearsal). Step 3 runs the
+  same `npm run backup` as the nightly task: it needs `DATABASE_URL`, `BACKUP_AGE_RECIPIENT` and the
+  other `BACKUP_*` settings in the deploy checkout's `backend\.env`, `pg_dump` and `age` on `PATH`, and (for
+  the off-machine copy) `BACKUP_S3_BUCKET` and the AWS profile named by `BACKUP_AWS_PROFILE`, which must
+  exist for the Windows user that runs the script. The script reads none of it. **With
+  `BACKUP_S3_BUCKET` empty the backup is a local trial only and still exits 0**: its last line reads
+  `[backup] done: <file> (uploaded)` or `(local only)`; check it says `(uploaded)` before you rely on it
+  (a local-only copy sits on the same PC as the database).
+- **There is deliberately no `-SkipBackup`.** A switch that removes the only way back would be used
+  exactly when it hurts. If the backup cannot run (the bucket or the profile is broken), fix that
+  first: the nightly backup is failing for the same reason. Only if you must ship a fix with nothing to
+  migrate, do the steps by hand (fetch and check out, `npm ci`, build, restart the task) knowing there
+  is no fresh backup.
 - **Rolling the code back** (`-Ref <older branch>`) warns that migrations do not go back.
 - **It updates the backend only.** The frontend deploys itself from `main` (Cloudflare); the
   `cloudflared` service and the game-PC agent are not touched.
