@@ -112,17 +112,28 @@ const FATAL_REASONS: Record<string, string> = {
   ENOTFOUND: "the host in DATABASE_URL could not be resolved",
 };
 
+/** The code of the (possibly nested) attempt that made an error transient. */
+function transientCode(err: unknown): string | undefined {
+  const inner = innerErrors(err);
+  if (inner.length === 0) {
+    return errorCode(err);
+  }
+  for (const e of inner.filter(isTransientConnectionError)) {
+    const c = transientCode(e);
+    if (c !== undefined) {
+      return c;
+    }
+  }
+  return undefined;
+}
+
 export function classifyStartupError(err: unknown): StartupErrorClass {
   if (err instanceof DatabaseSetupError) {
     return { kind: "fatal", reason: err.message };
   }
   if (isTransientConnectionError(err)) {
     // For an AggregateError, name the attempt that made it transient (its own code can be the other family's EACCES).
-    const inner = innerErrors(err);
-    const code =
-      inner.length > 0
-        ? inner.filter(isTransientConnectionError).map(errorCode).find((c) => c !== undefined)
-        : errorCode(err);
+    const code = transientCode(err);
     return { kind: "transient", reason: code ? `the database is not reachable yet (${code})` : "the database is not reachable yet" };
   }
   const code = errorCode(err) ?? innerErrors(err).map(errorCode).find((c) => c !== undefined);
