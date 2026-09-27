@@ -76,7 +76,7 @@ link only; D4 the "false alarm?" mark after the alert shadow week. Build tracked
 | 0 | #280 emits JSON matching a `DeliverySnapshot` shape, aggregates only (do this now; it's the cheapest step that keeps D1 open). Done in #307 (schemaVersion 1). | dev | unit: no author/login fields in the output |
 | 1 | Contract: `MetricsOverview`, `DeliverySnapshot`, demo fixture + parse test | dev | contract test |
 | 2 | Operator gate moved to identity; `GET /api/admin/metrics` with alerts phase 1 + uptime link | dev | 403 for a member, 200 for the operator |
-| 3 | Latency histogram + `metrics.route_latency_hourly` migration + purge | dev | bucket merge math; no URL stored; retention |
+| 3 | Latency histogram + `metrics.route_latency_hourly` migration + purge. Amended by ADR-0037 §2: one general `metrics.series_hourly` table replaces `route_latency_hourly`. | dev | bucket merge math; no URL stored; retention |
 | 4 | Delivery ingest endpoint + scheduled workflow (architect reviews the workflow) | dev | hashed secret, cap, 401 on a bad secret; soft-fail when offline |
 | 5 | `/admin/metrics` page + demo fixture route | frontend | tier:ui, CLS/INP budgets (ADR-0032), demo build-output spec |
 
