@@ -1,7 +1,7 @@
 import { StrictMode, useState } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, MemoryRouter, useLocation } from "react-router";
+import { BrowserRouter, MemoryRouter, useLocation, useNavigate } from "react-router";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
@@ -430,8 +430,8 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
         <BrowserRouter><FactoryView /></BrowserRouter>
       </ServerContext>,
     );
-    // The initial deep link jumps to #history, same as the MemoryRouter tests above prove it applies.
-    await waitFor(() => expect(document.getElementById("history")).toHaveFocus());
+    // The initial deep link jumps to #history; a whole section takes focus on its heading (ui review).
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Production history" })).toHaveFocus());
 
     const box = await screen.findByRole("searchbox", { name: "Search machines" });
     box.focus();
@@ -439,5 +439,45 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
     fireEvent.change(box, { target: { value: "iron" } });
     fireEvent.change(box, { target: { value: "iron p" } });
     expect(box).toHaveFocus();
+  });
+
+  // ui review: on a real history each keystroke's URL update lands a render late; the box must keep
+  // exactly what was typed (it used to drop keystrokes and jump the cursor to the end).
+  it("keeps every keystroke in the search box while the URL catches up", async () => {
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    expect(box).toHaveValue("Smelter");
+    for (const value of ["Smelter ", "Smelter M", "Smelter Mk", "Smelter Mk1"]) fireEvent.change(box, { target: { value } });
+    expect(box).toHaveValue("Smelter Mk1");
+    await waitFor(() => expect(window.location.search).toBe("?q=Smelter+Mk1"));
+    expect(box).toHaveValue("Smelter Mk1");
+  });
+
+  it("takes a new ?q= from a navigation (a link or the command bar), not only on first load", async () => {
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    function Jump() {
+      const go = useNavigate();
+      return (
+        <button type="button" onClick={() => go("/app/factory?q=Constructor")}>
+          Jump
+        </button>
+      );
+    }
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter>
+          <FactoryView />
+          <Jump />
+        </BrowserRouter>
+      </ServerContext>,
+    );
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.click(screen.getByRole("button", { name: "Jump" }));
+    await waitFor(() => expect(box).toHaveValue("Constructor"));
   });
 });

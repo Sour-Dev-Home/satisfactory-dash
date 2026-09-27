@@ -78,6 +78,22 @@ describe("useHashTarget", () => {
     expect(screen.getByText("Other")).toHaveFocus();
   });
 
+  it("focuses a whole section's heading rather than the section, so the ring outlines the heading", () => {
+    function Sections() {
+      useHashTarget((id) => id === "target-section");
+      return (
+        <section id="target-section" aria-labelledby="section-heading">
+          <h3 id="section-heading">Section heading</h3>
+          <p>Body</p>
+        </section>
+      );
+    }
+    navigate("#target-section", "s");
+    render(<Sections />);
+    expect(screen.getByRole("heading", { name: "Section heading" })).toHaveFocus();
+    expect(screen.getByRole("region", { name: "Section heading" }).scrollIntoView).toHaveBeenCalled();
+  });
+
   it("leaves an id it doesn't render alone, and a page with no fragment", () => {
     navigate("#other", "f");
     render(<Page />);

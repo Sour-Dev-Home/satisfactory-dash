@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router";
 import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
 import { queries } from "../api/queries";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -34,8 +34,18 @@ export function FactoryView() {
   const [params] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const search = readSearch(params);
+  const navigationType = useNavigationType();
   const item = readItem(params);
+  // The search box keeps its own value while you type; the URL only mirrors it. Reading it back
+  // from the URL made the box lag a render behind the router (the cursor jumped to the end and fast
+  // keystrokes were dropped: the ui review). A new ?q= is taken from the URL only when a navigation
+  // brings one (a link, the command bar, back/forward); this page's own replaces are just echoes.
+  const [search, setSearch] = useState(() => readSearch(params));
+  const [seenLocation, setSeenLocation] = useState(location.key);
+  if (location.key !== seenLocation) {
+    setSeenLocation(location.key);
+    if (navigationType !== "REPLACE") setSearch(readSearch(params));
+  }
   const setParam = (name: string, value: string | undefined) => {
     const next = new URLSearchParams(params);
     if (value === undefined) next.delete(name);
@@ -86,7 +96,10 @@ export function FactoryView() {
           snapshot={factory.data}
           refetchFailed={factory.isRefetchError}
           search={search}
-          onSearch={(value) => setParam(FACTORY_SEARCH_PARAM, value === "" ? undefined : value)}
+          onSearch={(value) => {
+            setSearch(value);
+            setParam(FACTORY_SEARCH_PARAM, value === "" ? undefined : value);
+          }}
         />
       )}
       <ErrorBoundary label="Production history">

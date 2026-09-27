@@ -34,8 +34,12 @@ export function useHashTarget(accepts: (id: string) => boolean): void {
     const target = document.getElementById(id);
     if (!target) return;
     handled.current = entry;
-    if (!target.hasAttribute("tabindex") && target.tabIndex < 0) target.setAttribute("tabindex", "-1");
     target.scrollIntoView?.({ block: "start" });
-    target.focus({ preventScroll: true });
+    // A whole section (a page-wide panel) takes focus on its heading, so the focus ring outlines the
+    // heading rather than a panel the size of the screen (ui review); a card takes it itself. Either
+    // way a keyboard user sees where they landed (WCAG 2.4.7).
+    const focusable = (target.tagName === "SECTION" && target.querySelector<HTMLElement>("h2, h3")) || target;
+    if (!focusable.hasAttribute("tabindex") && focusable.tabIndex < 0) focusable.setAttribute("tabindex", "-1");
+    focusable.focus({ preventScroll: true });
   });
 }
