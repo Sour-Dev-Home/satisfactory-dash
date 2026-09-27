@@ -49,16 +49,21 @@ optional `limiter` in its deps, so pass `new UserRateLimiter({ max: 1000, window
 - DB tests (`*.db.test.ts`) run locally against a Testcontainers Postgres: `npm run test:db -w backend` with Docker Desktop
   running ([`database.md`](./database.md)). Run them before you push; do not use CI for the first run.
 - Narrow first: `SKIP_DB_TESTS=1 npm run test -w backend -- <file> --reporter=dot` for a file that needs no database.
-- Typecheck with `npm run typecheck >/dev/null 2>&1; echo $?`; lint the same way.
+- Typecheck and lint with `set -o pipefail; npm run typecheck 2>&1 | tail -5` (and the same for `npm run lint`): read
+  tsc's and oxlint's own output. Never send a build, test, git or gh command's stderr to `/dev/null`: that hides auth
+  failures and real errors, and a pipe alone reports only the last command's exit code, so `set -o pipefail` matters.
 
 ## Waiting on CI (one line)
 
 ```
-gh pr checks N --watch --interval 45 >/dev/null 2>&1; gh pr checks N | cut -c1-50 | grep -vE "pass|skipping"
+gh pr checks N --watch --interval 45 | cut -c1-60 | grep -vE "pass|skipping"
 ```
 
-Empty output means every check passed. If it prints "no checks reported", `sleep 5` and run it again (the checks have
-not started yet). Then `gh run view <run-id> --log-failed` for a failing one; the run id is in `gh run list --branch <b>`.
+Stderr stays visible. **Empty output means every check passed** (the exit code is then 1, because `grep -v` found nothing
+to print, so do not read it as a failure); a failing or pending check is printed by name, and an error from `gh` itself
+(auth, network) is printed too. If it says "no checks reported", `sleep 5` and run it again (the checks have not
+started yet). Then `gh run view <run-id> --log-failed | tail -40` for a failing one; the run id is in
+`gh run list --branch <b>`.
 
 ## Git in a worktree session
 
