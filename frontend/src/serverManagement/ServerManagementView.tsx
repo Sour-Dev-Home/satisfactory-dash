@@ -89,14 +89,20 @@ export function ServerManagementView() {
             </ul>
           )}
           {agentServers.length > 0 && (
-            <ul
-              aria-label="Servers read through an agent"
-              className="divide-y divide-line rounded-card border border-line bg-surface"
-            >
-              {agentServers.map((server) => (
-                <AgentServerRow key={server.id} server={server} onEdit={open} />
-              ))}
-            </ul>
+            // A visible heading (ui review): sighted users see why this group is apart, not only a second card.
+            <div className="grid gap-2">
+              <h4 id="agent-servers-heading" className="mb-0">
+                Servers read through an agent
+              </h4>
+              <ul
+                aria-labelledby="agent-servers-heading"
+                className="divide-y divide-line rounded-card border border-line bg-surface"
+              >
+                {agentServers.map((server) => (
+                  <AgentServerRow key={server.id} server={server} onEdit={open} />
+                ))}
+              </ul>
+            </div>
           )}
         </>
       )}

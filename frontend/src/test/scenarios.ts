@@ -289,7 +289,18 @@ export const SCENARIOS = {
   // Server management (ADR-0030), at /app/servers: one row per stored state (ok, unreadable, refused).
   "servers-manage": { servers: operatorSingle },
   // ADR-0031: a stored connection plus a server read through the game PC's agent.
-  "servers-with-agent": { servers: operatorSingle, managedServers: ok(managedServersWithAgent) },
+  // Its switch back answers for that same server, so the success notice names it (ui review).
+  "servers-with-agent": {
+    servers: operatorSingle,
+    managedServers: ok(managedServersWithAgent),
+    switchToLocal: ok({
+      server: {
+        ...serverConnectionOk.server,
+        id: managedServersWithAgent.agentServers[0].id,
+        displayName: managedServersWithAgent.agentServers[0].displayName,
+      },
+    }),
+  },
   // No server the backend can serve yet: the operator sets one up from the server gate.
   "servers-first": { servers: ok({ ...serversNone, canManageServers: true }), managedServers: ok(managedServersEmpty) },
   // Adding a LAN server is refused until certificate pinning exists (ADR-0030 amendment 1).
