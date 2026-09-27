@@ -69,12 +69,17 @@ export const RailSegmentSchema = z.object({
 export const RailsLayerDataSchema = z.array(RailSegmentSchema).max(MAP_WORLD_MAX_ITEMS);
 
 /** A resource node, a fracking satellite, or (once its capture is explained) a geyser: one point on
- *  the map. `type` is the resource's name (Iron Ore, Crude Oil, SAM, ...; FRM's `Name`), not FRM's
- *  separate `NodeType` (Node / Fracking Satellite) — the map's minimum need is which resource and
- *  whether it's exploited, per #352's `{type, purity, x, y, exploited}`. */
+ *  the map. `type` is the resource's name (Iron Ore, Crude Oil, SAM, ...; FRM's `Name`). `nodeType`
+ *  is a 6th field added after #352's initial `{type, purity, x, y, exploited}`: the architect's own
+ *  `getResourceNode` capture (docs-vault/raw-sources/captured-responses/
+ *  frm-getResourceNode-2026-09-27-trimmed.json) already returns both `NodeType: "Node"` (10 items)
+ *  and `NodeType: "Fracking Satellite"` (4 items) from this ONE endpoint, and the map needs to draw
+ *  them differently (a different icon; only a Node is a "miner" buildable) — without the field
+ *  there is no way to tell them apart. */
 export const ResourceNodeSchema = z.object({
   type: boundedString.describe("The resource's name, e.g. Iron Ore, Crude Oil, SAM. Grows with the game's resource list."),
   purity: z.string().max(40).describe("Known: impure, normal, pure (FRM's Purity field, lowercased; its 'Inpure' typo is corrected to 'impure')"),
+  nodeType: z.string().max(40).describe("Known: node, frackingSatellite (FRM's NodeType, camelCased)"),
   x: WholeMetreSchema,
   y: WholeMetreSchema,
   exploited: z.boolean(),

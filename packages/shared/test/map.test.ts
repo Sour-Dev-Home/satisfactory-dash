@@ -91,14 +91,21 @@ describe("resourceNodes layer", () => {
     expect(ResourceNodesWorldLayerResponseSchema.safeParse(fixtures.resourceNodesWorldResponseEmpty).success).toBe(true);
   });
 
-  it("has one entry per distinct type/purity/exploited combination sampled, matching the capture's own count", () => {
-    expect(fixtures.resourceNodesSample.data).toHaveLength(6);
+  it("has one entry per distinct type/purity/nodeType/exploited combination sampled, matching the capture's own count", () => {
+    expect(fixtures.resourceNodesSample.data).toHaveLength(7);
     expect(fixtures.resourceNodesSample.data.filter((n) => n.exploited)).toHaveLength(2);
   });
 
-  it("purity and type are plain strings (deploy skew: a purity or resource this contract doesn't yet know about still parses)", () => {
+  it("nodeType tells a miner-able Node apart from a Fracking Satellite, since one capture returns both (architect, #352 follow-up)", () => {
+    const byNodeType = (nodeType: string) => fixtures.resourceNodesSample.data.filter((n) => n.nodeType === nodeType);
+    expect(byNodeType("node")).toHaveLength(6);
+    expect(byNodeType("frackingSatellite")).toHaveLength(1);
+    expect(byNodeType("frackingSatellite")[0]).toMatchObject({ type: "Nitrogen Gas", purity: "pure" });
+  });
+
+  it("purity, type and nodeType are plain strings (deploy skew: a value this contract doesn't yet know about still parses)", () => {
     const node = fixtures.resourceNodesSample.data[0];
-    expect(ResourceNodeSchema.safeParse({ ...node, type: "Bauxite", purity: "unknown-future-purity" }).success).toBe(true);
+    expect(ResourceNodeSchema.safeParse({ ...node, type: "Bauxite", purity: "unknown-future-purity", nodeType: "geyser" }).success).toBe(true);
   });
 
   it("requires x/y to be whole-metre integers and exploited to be a real boolean", () => {
@@ -296,8 +303,22 @@ describe("map fixtures independently recomputed from the raw FRM captures (fresh
 
   it("resourceNodes: recomputing x/100 and y/100 rounded to the nearest whole metre matches the fixture exactly, in order", () => {
     const recomputed = rawResourceNodes.map((n) => ({ x: Math.round(n.x / 100), y: Math.round(n.y / 100), exploited: n.exploited }));
-    const actual = fixtures.resourceNodesSample.data.map((n) => ({ x: n.x, y: n.y, exploited: n.exploited }));
+    // The first 6 items are the Node rows this list was built against; the 7th (a Fracking Satellite, added for
+    // #352's nodeType follow-up) is checked separately below and in "nodeType tells a miner-able Node apart...".
+    const actual = fixtures.resourceNodesSample.data.slice(0, 6).map((n) => ({ x: n.x, y: n.y, exploited: n.exploited }));
     expect(actual).toEqual(recomputed);
+  });
+
+  // frm-getResourceNode-2026-09-27-trimmed.json, item 11: Nitrogen Gas, Fracking Satellite, RP_Pure, not exploited.
+  it("the fracking satellite sample matches the raw capture too", () => {
+    const satellite = fixtures.resourceNodesSample.data.find((n) => n.nodeType === "frackingSatellite");
+    expect(satellite).toMatchObject({
+      type: "Nitrogen Gas",
+      purity: "pure",
+      exploited: false,
+      x: Math.round(212492.40625 / 100),
+      y: Math.round(138086.90625 / 100),
+    });
   });
 
   // frm-getTrains-2026-09-27-full.json and frm-getTrainStation-2026-09-27-full.json.
@@ -316,7 +337,7 @@ describe("map fixtures independently recomputed from the raw FRM captures (fresh
     // from the one the schema's .describe() comment names. This is a documentation nit, not a schema defect:
     // `purity` is a plain string, so any real mapper's actual output still parses either way.
     const purities = fixtures.resourceNodesSample.data.map((n) => n.purity);
-    expect(purities).toEqual(["normal", "impure", "pure", "normal", "normal", "pure"]);
+    expect(purities).toEqual(["normal", "impure", "pure", "normal", "normal", "pure", "pure"]);
     expect(purities).not.toContain("rp_normal");
   });
 });
