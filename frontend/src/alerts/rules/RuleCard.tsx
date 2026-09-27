@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import type { AlertRule, UpdateAlertRuleRequest } from "@satisfactory-dash/shared";
 import { KNOWN_SEVERITIES } from "@satisfactory-dash/shared";
+import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../../components/dangerButton";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { kindLabel, severityLabel } from "../alertText";
 import { labelFor, type ItemLabel } from "../../factory/itemLabels";
@@ -184,7 +185,7 @@ export function RuleCard({
               (confirming ? (
                 <span role="group" aria-label="Confirm delete" className="flex flex-wrap items-center gap-2 text-sm">
                   Delete this rule?
-                  <button type="button" onClick={() => void remove()} disabled={deleting}>
+                  <button type="button" onClick={() => void remove()} disabled={deleting} className={DANGER_BUTTON}>
                     {deleting ? "Deleting…" : "Delete"}
                   </button>
                   <button type="button" onClick={() => setConfirming(false)} disabled={deleting}>
@@ -192,7 +193,7 @@ export function RuleCard({
                   </button>
                 </span>
               ) : (
-                <button type="button" onClick={() => setConfirming(true)}>
+                <button type="button" onClick={() => setConfirming(true)} className={DANGER_BUTTON_QUIET}>
                   Delete rule
                 </button>
               ))}

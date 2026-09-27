@@ -6,6 +6,7 @@ import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
 // transport, so its bundle never carries the real API's URL (e2e/build-output.spec.ts).
 import { apiHref } from "../api/client";
 import { queries } from "../api/queries";
+import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
 import { useNow } from "../lib/useNow";
@@ -205,7 +206,7 @@ export function AgentPanel({
                 enrolled again.
               </p>
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={onRevoke} disabled={revoking}>
+                <button type="button" onClick={onRevoke} disabled={revoking} className={DANGER_BUTTON}>
                   {revoking ? "Revoking…" : "Revoke the agent"}
                 </button>
                 <button
@@ -229,6 +230,7 @@ export function AgentPanel({
                   setConfirming(true);
                   setReturnFocus(false);
                 }}
+                className={DANGER_BUTTON_QUIET}
               >
                 Revoke…
               </button>

@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import type { DiscordDestination } from "@satisfactory-dash/shared";
+import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../../components/dangerButton";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { FormField } from "../rules/FormField";
 import { fieldAttrs } from "../rules/fieldAttrs";
@@ -95,6 +96,7 @@ export function DiscordControls({
                   disabled={other.busy}
                   // The confirm stays open after a failure, so a retry is one click, beside the error.
                   onClick={() => void other.run(onRemove).then((done) => done !== undefined && setConfirming(false))}
+                  className={DANGER_BUTTON}
                 >
                   Remove
                 </button>
@@ -103,7 +105,7 @@ export function DiscordControls({
                 </button>
               </span>
             ) : (
-              <button type="button" disabled={other.busy} onClick={() => setConfirming(true)}>
+              <button type="button" disabled={other.busy} onClick={() => setConfirming(true)} className={DANGER_BUTTON_QUIET}>
                 Remove webhook
               </button>
             )}
