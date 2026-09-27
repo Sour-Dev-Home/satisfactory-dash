@@ -307,8 +307,9 @@ task state and the last 40 lines of `backend.log`, and exits with code 1.
   other `BACKUP_*` settings in the deploy checkout's `backend\.env`, `pg_dump` and `age` on `PATH`, and (for
   the off-machine copy) `BACKUP_S3_BUCKET` and the AWS profile named by `BACKUP_AWS_PROFILE`, which must
   exist for the Windows user that runs the script. The script reads none of it. **With
-  `BACKUP_S3_BUCKET` empty the backup is a local trial only and still exits 0**: its last line reads
-  `[backup] done: <file> (uploaded)` or `(local only)`; check it says `(uploaded)` before you rely on it
+  `BACKUP_S3_BUCKET` empty the backup is a local trial only and still exits 0**: its `[backup] done:` line
+  reads `[backup] done: <file> (uploaded), N old local copy(ies) removed` or `(local only)` (a heartbeat line may
+  follow it, so it is not always the last line); check it says `(uploaded)` before you rely on it
   (a local-only copy sits on the same PC as the database).
 - **There is deliberately no `-SkipBackup`.** A switch that removes the only way back would be used
   exactly when it hurts. If the backup cannot run (the bucket or the profile is broken), fix that

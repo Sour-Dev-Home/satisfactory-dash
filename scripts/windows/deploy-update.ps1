@@ -287,7 +287,7 @@ try {
   if ($WhatIfPreference) {
     Write-Host "(-WhatIf: nothing was changed.)"
   } elseif ($newSha -eq $oldSha) {
-    Write-Host "The checkout was already at $target; the backend was rebuilt, migrated and restarted anyway."
+    Write-Host "The checkout was already at $target; the backend was rebuilt, backed up, migrated and restarted anyway."
   }
 } catch {
   Write-Host ""
