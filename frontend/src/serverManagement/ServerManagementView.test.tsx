@@ -190,7 +190,24 @@ describe("ServerManagementView: adding", () => {
     expect(screen.getByLabelText("Server id")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Server id")).toHaveFocus();
     expect(screen.getByText("Enter a port from 1 to 65535.")).toBeInTheDocument();
-    expect(screen.getByText("Enter a name of up to 64 characters.")).toBeInTheDocument();
+    // An empty name says so, not "up to 64 characters".
+    expect(screen.getByText("Enter a name.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  // #271: a name is refused for its length or for characters that aren't printable text, and the
+  // form says which (the shared schema's own message), rather than one line for every refusal.
+  it.each([
+    ["too long", "x".repeat(65), "Enter a name of up to 64 characters."],
+    ["a direction-changing character", "Main‮world", /^A name is printable text: no control, invisible or direction-changing characters\.$/],
+  ])("says why a name is refused: %s", async (_case, name, message) => {
+    const bodies = capture("post", endpoints.serverManagement.create.route, () => HttpResponse.json({}));
+    await openAdd();
+    fillValid();
+    type("Name", name);
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
     expect(bodies).toEqual([]);
   });
 

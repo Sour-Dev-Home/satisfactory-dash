@@ -103,6 +103,9 @@ export const demoHandlers = [
     return guarded(params, () => (body.host === undefined || onThisMachine(body.host) ? NOT_SAVED() : LAN_REFUSED()));
   }),
   del(endpoints.serverManagement.remove.route, ({ params }) => guarded(params, NOT_SAVED)),
+  // ADR-0031: an agent server's rename and switch back to local are server changes too, refused alike.
+  patch(endpoints.serverManagement.renameAgent.route, ({ params }) => guarded(params, NOT_SAVED)),
+  post(endpoints.serverManagement.switchToLocal.route, ({ params }) => guarded(params, NOT_SAVED)),
   get(endpoints.status.route, ({ params }) => guarded(params, () => Response.json(world.status(demoNow())))),
   get(endpoints.players.route, ({ params }) => guarded(params, () => Response.json(world.players(demoNow())))),
   get(endpoints.power.route, ({ params }) => guarded(params, () => Response.json(world.power(demoNow())))),

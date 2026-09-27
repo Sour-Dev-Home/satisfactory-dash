@@ -44,6 +44,8 @@ import {
   historyPower24h,
   historyTransitions24h,
   managedServersAllStates,
+  managedServersWithAgent,
+  renameAgentServerResponse,
   managedServersEmpty,
   playersAvailable,
   playersUnavailable,
@@ -112,6 +114,9 @@ export const ROUTES = {
   createServer: endpoints.serverManagement.create,
   updateServer: endpoints.serverManagement.update,
   removeServer: endpoints.serverManagement.remove,
+  // ADR-0031: an agent server's only edits (#266 rename, #273 switch back to local).
+  renameAgent: endpoints.serverManagement.renameAgent,
+  switchToLocal: endpoints.serverManagement.switchToLocal,
   // ADR-0027 stored history (the query string doesn't change the route).
   historyPower: endpoints.history.power,
   historyItems: endpoints.history.items,
@@ -177,6 +182,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   createServer: ok(serverConnectionOk),
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
+  renameAgent: ok(renameAgentServerResponse),
+  switchToLocal: ok(serverConnectionOk),
   historyPower: ok(historyPower24h),
   // Two hours only: "Since yesterday" says there isn't enough history yet (ADR-0027 PR 8b).
   historyItems: ok(historyItems7d),
@@ -281,6 +288,8 @@ export const SCENARIOS = {
   "contract-drift": { status: ok({ ...statusRunning, data: { ...statusRunning.data, gamePaused: "no" } }) },
   // Server management (ADR-0030), at /app/servers: one row per stored state (ok, unreadable, refused).
   "servers-manage": { servers: operatorSingle },
+  // ADR-0031: a stored connection plus a server read through the game PC's agent.
+  "servers-with-agent": { servers: operatorSingle, managedServers: ok(managedServersWithAgent) },
   // No server the backend can serve yet: the operator sets one up from the server gate.
   "servers-first": { servers: ok({ ...serversNone, canManageServers: true }), managedServers: ok(managedServersEmpty) },
   // Adding a LAN server is refused until certificate pinning exists (ADR-0030 amendment 1).
