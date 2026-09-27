@@ -43,7 +43,7 @@ function toBoolean(value: unknown, where: string): boolean {
 }
 
 /** The privilege level (`pl`) inside a vanilla API token: Base64 JSON, then ".", then a
- *  hex fingerprint (docs-vault/raw-sources/dedicated-server-api.md, "Authentication").
+ *  hex fingerprint (docs-vault/raw-sources/dedicated-server-api.md E5, "Authentication").
  *  Only reads the claim; the server verifies the fingerprint on every call (canEditOptions explains why not
  *  VerifyAuthenticationToken). */
 function privilegeLevelOf(token: string): string | undefined {
@@ -84,9 +84,9 @@ async function scrubbed<T>(fn: string, run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Token privilege levels that may change server options (dedicated-server-api.md:248-268).
+/** Token privilege levels that may change server options (dedicated-server-api.md E5).
  *  `APIToken` is an application token (`server.GenerateAPIToken`), which third-party
- *  apps are told to use (:279-284). Never InitialAdmin, Client or NotAuthenticated. */
+ *  apps are told to use (E5). Never InitialAdmin, Client or NotAuthenticated. */
 const EDITING_PRIVILEGE_LEVELS = new Set(["Administrator", "APIToken"]);
 
 export interface AutoPauseState {
@@ -131,7 +131,7 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
   }
 
   async applyAutoPause(enabled: boolean): Promise<void> {
-    // Request keys are PascalCase, as in the docs (dedicated-server-api.md:541-551);
+    // Request keys are PascalCase, as in the docs (dedicated-server-api.md E10);
     // verified live 2026-09-23: this shape returns 204 and applies immediately.
     const updated: Record<(typeof WRITABLE_OPTION_KEYS)[number], string> = { [AUTO_PAUSE_KEY]: enabled ? "True" : "False" };
     await scrubbed("ApplyServerOptions", () => this.vanillaApi.call("ApplyServerOptions", { UpdatedServerOptions: updated }));
@@ -143,7 +143,7 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
       return false;
     }
     // The server must accept the token. The documented way, VerifyAuthenticationToken
-    // (dedicated-server-api.md:313-316, "no parameters"), doesn't work on the live server:
+    // (dedicated-server-api.md E7, "no parameters"), doesn't work on the live server:
     // it answers `missing_params` (authenticationToken, privilegeLevel) and then 401 for
     // even a working token (checked live 2026-09-23). An authenticated call does: a bad
     // token gets 401 invalid_token and a working one is accepted, so the read we already

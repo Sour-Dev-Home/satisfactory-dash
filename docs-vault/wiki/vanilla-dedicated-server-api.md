@@ -111,7 +111,7 @@ replaced with a placeholder).
 Local server, AllowInsecureLocalAccess on, token from `server.GenerateAPIToken` (its `pl`
 claim is `APIToken`). Documented-vs-observed:
 
-- **`VerifyAuthenticationToken` does not behave as documented.** `dedicated-server-api.md:313-316`
+- **`VerifyAuthenticationToken` does not behave as documented.** `dedicated-server-api.md E7`
   says it takes no parameters and returns 204 for a valid token. Live, it answers
   **HTTP 200 with `errorCode: missing_params`** (missing `authenticationToken` and
   `privilegeLevel`, whether or not a token is sent). With both supplied it answers **401
@@ -132,7 +132,9 @@ claim is `APIToken`). Documented-vs-observed:
 
 ## Full reference
 
-For exact request/response field types and error codes, see
-`docs-vault/raw-sources/dedicated-server-api.md` directly — this page is a navigation
-aid, not a replacement. Treat the field casing there as approximate; confirm against a
-live response before hardcoding a field name into the adapter.
+For exact request/response field types and error codes, see the excerpts in
+`docs-vault/raw-sources/dedicated-server-api.md` (E1-E11, trimmed in #343 to what this repo
+cites), or the full `CommunityResources/DedicatedServerAPIDocs.md` in any dedicated server
+install for functions not excerpted there. This page is a navigation aid, not a replacement.
+Treat the field casing there as approximate; confirm against a live response before
+hardcoding a field name into the adapter.
