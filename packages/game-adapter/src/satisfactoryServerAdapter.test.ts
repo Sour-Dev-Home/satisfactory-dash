@@ -10,6 +10,8 @@ import {
   powerUsageBuildingFixture,
   playerFixture,
   sessionInfoFixture,
+  trainRailFixture,
+  resourceNodeFixture,
 } from "../fixtures/rawFixtures.js";
 import {
   capturedBackedUpAssembler,
@@ -177,6 +179,8 @@ describe("SatisfactoryServerAdapter", () => {
     ["getPower", (a: SatisfactoryServerAdapter) => a.getPowerCircuits()],
     ["getPowerUsage", (a: SatisfactoryServerAdapter) => a.getPowerUsage()],
     ["getPlayer", (a: SatisfactoryServerAdapter) => a.getPlayers()],
+    ["getTrainRails", (a: SatisfactoryServerAdapter) => a.getRails()],
+    ["getResourceNode", (a: SatisfactoryServerAdapter) => a.getResourceNodes()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -200,6 +204,35 @@ describe("SatisfactoryServerAdapter", () => {
         fuseTriggered: false,
       },
     ]);
+  });
+
+  // ADR-0038 M2.
+  it("maps getTrainRails segments to the M1 contract's whole-metre polylines", async () => {
+    const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([trainRailFixture]) } });
+    const [segment] = await adapter.getRails();
+    expect(segment.id).toBe("Build_RailroadTrack_C_2147304732");
+    expect(segment.points).toHaveLength(17);
+    expect(segment.points[0]).toEqual([-1119, -1504]);
+    expect(frmApi.get).toHaveBeenCalledWith("getTrainRails");
+  });
+
+  it("rejects a getTrainRails segment with fewer than 2 spline points as invalid (caught here, not silently accepted)", async () => {
+    const oneSided = { ...trainRailFixture, SplineData: [trainRailFixture.SplineData[0]] };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([oneSided]) } });
+    // The raw schema accepts it (FRM could send a degenerate segment); the M1 contract does not
+    // (RailsLayerDataSchema requires at least 2 points), so a real M3 route would refuse it at that
+    // later validation, not here — this test only confirms the adapter itself does not throw.
+    await expect(adapter.getRails()).resolves.toEqual([{ id: trainRailFixture.ID, points: [[-1119, -1504]] }]);
+  });
+
+  it("maps getResourceNode items, including nodeType (#352 follow-up)", async () => {
+    const satellite = { ...resourceNodeFixture, Name: "Nitrogen Gas", NodeType: "Fracking Satellite" };
+    const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, satellite]) } });
+    await expect(adapter.getResourceNodes()).resolves.toEqual([
+      { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false },
+      { type: "Nitrogen Gas", purity: "normal", nodeType: "frackingSatellite", x: 1783, y: 2061, exploited: false },
+    ]);
+    expect(frmApi.get).toHaveBeenCalledWith("getResourceNode");
   });
 
   it("maps getPlayer to name and online ONLY (ADR-0029: ID, location, HP, dead are dropped)", async () => {
