@@ -1,0 +1,55 @@
+name: Fresh-eyes reuse
+
+# #340. When a PR's head moves (a push, a rebase, a merge from main), carry its fresh-eyes/test-hunter success over to
+# the new head, but only if the PR's OWN changes are unchanged: the fingerprint (git patch-id --verbatim of the diff
+# from the merge-base with main) must match the one the owner's session posted. Otherwise post nothing, and a session
+# runs the hunter again. The logic is scripts/hunter-status.mjs, unit-tested.
+#
+# Safety notes for reviewers:
+# - pull_request_target, not pull_request: GitHub runs THIS file and the script from main, so a PR cannot change the
+#   code that vouches for it. The PR's code is never checked out or run: its head is fetched as git objects only
+#   (--no-tags), and git only diffs commit objects, with main's checkout as the working tree, no attributes file
+#   from outside, and no external diff or textconv.
+# - Same-repo PRs only (the `if` below): a fork PR always gets a fresh hunter run.
+# - Only a success created by the owner's account is trusted. A reuse this job posted names that original's full
+#   sha, and the next reuse re-checks the original (one hop): any workflow with statuses: write posts as
+#   github-actions[bot], so the bot's login alone proves nothing.
+# - Least privilege: statuses: write (to post) and contents: read. Nothing else. No untrusted text reaches `run:`;
+#   everything goes through env and is validated by the script. Actions are pinned by commit SHA.
+# - Fails closed: any error means no status, which leaves the PR where it was without a reuse.
+
+on:
+  pull_request_target:
+    types: [synchronize]
+    branches: [main]
+
+permissions:
+  statuses: write
+  contents: read
+
+concurrency:
+  group: fresh-eyes-reuse-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  reuse:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # actions/checkout v7, by commit SHA. Checks out main (the default for pull_request_target), with its history
+      # for the merge-base; never the PR.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reuse the fresh-eyes status if the PR's own changes are unchanged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+          BASE_SHA: ${{ github.sha }}
+        run: node scripts/hunter-status.mjs reuse
