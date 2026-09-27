@@ -275,6 +275,38 @@ few seconds). Once (2026-09-24) a start issued 4 seconds after the stop left the
 `Ready` with nothing listening; if that happens, run `Start-ScheduledTask` again. If it
 recurs, have the wrapper log its start and stop so we can see which side dropped it.
 
+**Updating the backend to the latest `main`: `deploy-update.ps1` (#317).** Instead of typing
+those steps, run this from the deploy checkout, in the shell where `MIGRATOR_DATABASE_URL`
+is set ([`database.md`](./database.md)):
+
+```powershell
+$env:SATISFACTORY_DASH_DEPLOY_DIR = "<the deploy checkout>"   # or pass -DeployDir; there is no default path
+.\scripts\windows\deploy-update.ps1 -WhatIf     # prints the steps and the current commit; changes nothing
+.\scripts\windows\deploy-update.ps1
+```
+
+In order, stopping at the first failure: (1) `git fetch`, then check out `origin/main` **detached**
+(it refuses if tracked files in the checkout have uncommitted changes); (2) `npm ci --include=dev`
+and `npm run build -w backend`; (3) `npm run db:migrate` every time (forward-only and idempotent);
+(4) restart the task with `register-backend-task.ps1 -Start` from the NEW checkout, so it also
+stops a leftover `node` on the port and refuses to start while something else holds it;
+(5) wait up to 90 seconds for `/api/health/ready` (database, servers registered, connections
+readable) to answer 200, starting the task once more if nothing listens after a while (the
+2026-09-24 flake above); (6) print the old and the new commit. If the wait fails it prints the
+task state and the last 40 lines of `backend.log`, and exits with code 1.
+
+- **A failure before step 4 leaves the running backend alone** (the old process keeps serving; the
+  checkout, `node_modules` and `backend\dist` already hold the new build, so a crash-restart of the
+  wrapper before you fix and re-run would load it). A failed migration says so and does not restart. `MIGRATOR_DATABASE_URL`
+  missing is reported by the migrator itself; the script never reads or prints it, nor `.env`.
+- **Rolling the code back** (`-Ref <older branch>`) warns that migrations do not go back.
+- **It updates the backend only.** The frontend deploys itself from `main` (Cloudflare); the
+  `cloudflared` service and the game-PC agent are not touched.
+- Options: `-Remote` (default `origin`), `-Ref` (default `main`), `-TaskName`, `-Port`, `-LogDir`
+  (where `backend.log` is), `-HealthTimeoutSeconds`, `-LogTailLines`.
+- It was reviewed and dry-reviewed, not run, by the session that wrote it: run it with `-WhatIf`
+  first, then for real, and report anything that surprises you.
+
 ## 5. Create the Cloudflare Tunnel (in the Cloudflare dashboard)
 
 Do this only after steps 1 to 4 pass, and after the ADR-0019 security changes are merged
