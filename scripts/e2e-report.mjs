@@ -146,17 +146,38 @@ function runsFor(sha) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Waits until the head has its CI and E2E runs and every run on it has finished. */
+/** How long to wait for a head's runs before giving up: a head never pushed, or a workflow off. */
+const MAX_WAIT_MS = 60 * 60_000;
+
+/**
+ * Whether a head's runs are all in: its CI and E2E (and an update_snapshots run when asked for)
+ * exist and none is still going. `pending` names what's still running, `missing` what never started.
+ */
+export function runsState(runs, { needDispatch = false } = {}) {
+  const names = new Set(runs.map((r) => r.name));
+  const missing = ["CI", "E2E"].filter((n) => !names.has(n));
+  if (needDispatch && !runs.some((r) => r.name === "E2E" && r.event === "workflow_dispatch")) missing.push("E2E (dispatch)");
+  const pending = runs.filter((r) => r.status !== "completed").map((r) => r.name);
+  return { done: missing.length === 0 && pending.length === 0, missing, pending };
+}
+
+/** Why the wait gave up, for the error message. */
+export function waitTimeoutMessage(sha, state, minutes) {
+  const what = state.missing.length
+    ? `no ${state.missing.join(", ")} runs for ${sha.slice(0, 7)}`
+    : `runs still pending for ${sha.slice(0, 7)}: ${state.pending.join(", ")}`;
+  return `${what} after ${minutes} min; is the head pushed and the workflow enabled?`;
+}
+
+/** Waits until the head has its CI and E2E runs and every run on it has finished, for up to MAX_WAIT_MS. */
 async function waitForRuns(sha, { needDispatch = false } = {}) {
   for (let waited = 0; ; waited += POLL_MS) {
     const runs = runsFor(sha);
-    const names = new Set(runs.map((r) => r.name));
-    const haveDispatch = runs.some((r) => r.name === "E2E" && r.event === "workflow_dispatch");
-    const pending = runs.filter((r) => r.status !== "completed");
-    const present = names.has("CI") && names.has("E2E") && (!needDispatch || haveDispatch);
-    if (present && pending.length === 0) return runs;
+    const state = runsState(runs, { needDispatch });
+    if (state.done) return runs;
+    if (waited >= MAX_WAIT_MS) throw new Error(waitTimeoutMessage(sha, state, Math.round(waited / 60_000)));
     if (waited === 0 || waited % (5 * 60_000) === 0) {
-      console.error(`waiting: ${pending.map((r) => r.name).join(", ") || "runs not created yet"} (${Math.round(waited / 60_000)} min)`);
+      console.error(`waiting: ${state.pending.join(", ") || "runs not created yet"} (${Math.round(waited / 60_000)} min)`);
     }
     await sleep(POLL_MS);
   }

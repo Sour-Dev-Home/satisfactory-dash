@@ -6,8 +6,33 @@ import {
   parseClsReports,
   parseSnapshots,
   parseSummary,
+  runsState,
   stripLogPrefix,
+  waitTimeoutMessage,
 } from "./e2e-report.mjs";
+
+const run = (name, status = "completed", event = "pull_request") => ({ name, status, event });
+
+test("runs are in once CI and E2E exist and none is still going", () => {
+  assert.equal(runsState([run("CI"), run("E2E"), run("CLA")]).done, true);
+  assert.deepEqual(runsState([run("CI"), run("E2E", "in_progress")]), { done: false, missing: [], pending: ["E2E"] });
+  assert.deepEqual(runsState([run("CLA")]), { done: false, missing: ["CI", "E2E"], pending: [] });
+});
+
+test("with --dispatch, an update_snapshots run is needed too", () => {
+  const runs = [run("CI"), run("E2E")];
+  assert.deepEqual(runsState(runs, { needDispatch: true }).missing, ["E2E (dispatch)"]);
+  assert.equal(runsState([...runs, run("E2E", "completed", "workflow_dispatch")], { needDispatch: true }).done, true);
+});
+
+test("the timeout says whether the runs never started or are still going", () => {
+  const sha = "9bfc8832d174f60da2cdb0a914626571f4a9195a";
+  assert.equal(
+    waitTimeoutMessage(sha, { missing: ["CI", "E2E"], pending: [] }, 60),
+    "no CI, E2E runs for 9bfc883 after 60 min; is the head pushed and the workflow enabled?",
+  );
+  assert.match(waitTimeoutMessage(sha, { missing: [], pending: ["E2E"] }, 60), /^runs still pending for 9bfc883: E2E after 60 min/);
+});
 
 // What `gh run view --log` prints: job, step, timestamp, then the line.
 const gh = (line) => `e2e\tRun e2e (compare against committed baselines)\t2026-09-26T20:04:09.5401807Z ${line}`;
