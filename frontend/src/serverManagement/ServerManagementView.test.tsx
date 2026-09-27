@@ -442,6 +442,16 @@ describe("ServerManagementView: editing", () => {
     expect(bodies).toEqual([{ displayName: "Renamed" }]);
   });
 
+  // The plain "rename" and "renameAgent" modes share one bodyFor branch (ServerForm.tsx); this
+  // guards the "rename" side of that shared line against a regression from the agent-mode refactor.
+  it("says nothing to change for a plain rename with no edit", async () => {
+    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: unreadableServer }));
+    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
   it("shows connection_unreadable in plain words on the repair form, and stays on it", async () => {
     server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
     await openFor(unreadableServer.displayName, `Re-enter both tokens for ${unreadableServer.displayName}`);

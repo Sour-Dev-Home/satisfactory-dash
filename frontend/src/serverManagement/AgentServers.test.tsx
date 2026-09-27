@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
@@ -103,6 +103,21 @@ describe("ServerManagementView: servers read through an agent", () => {
     expect(screen.getByText(/^A name is printable text/)).toBeInTheDocument();
     expect(bodies).toEqual([]);
   });
+
+  // The rename/renameAgent branches share one line in bodyFor (ServerForm.tsx): a plain "rename"
+  // already has "nothing to change" coverage (ServerManagementView.test.tsx); this is the same
+  // check for the agent branch of that shared line, so the refactor can't quietly diverge them.
+  it("says nothing to change when the name is unchanged, and sends nothing", async () => {
+    withAgentServer();
+    const bodies = capture("patch", endpoints.serverManagement.renameAgent.route, () =>
+      HttpResponse.json(renameAgentServerResponse),
+    );
+    renderWithClient(<ServerManagementView />);
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${agentServer.displayName}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
 });
 
 describe("ServerManagementView: switching an agent server back to local (#273)", () => {
@@ -132,31 +147,70 @@ describe("ServerManagementView: switching an agent server back to local (#273)",
     ]);
   });
 
-  it("offers Test connection before switching", async () => {
-    let tested = 0;
-    server.use(
-      http.post(endpoints.serverManagement.testConnection.route, () => {
-        tested += 1;
-        return HttpResponse.json({ ok: true, api: { ok: true }, frm: { ok: true } });
-      }),
+  it("offers Test connection before switching, with the same connection the switch itself sends", async () => {
+    const testBodies = capture("post", endpoints.serverManagement.testConnection.route, () =>
+      HttpResponse.json({ ok: true, api: { ok: true }, frm: { ok: true } }),
     );
     await openSwitch();
     fillConnection();
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    await waitFor(() => expect(tested).toBe(1));
+    await waitFor(() => expect(testBodies.length).toBe(1));
+    // Only the connection: no id or name field exists on this form to leak into the test body.
+    expect(testBodies).toEqual([
+      {
+        host: switchToLocalRequest.host,
+        apiPort: switchToLocalRequest.apiPort,
+        frmPort: switchToLocalRequest.frmPort,
+        apiToken: switchToLocalRequest.apiToken,
+      },
+    ]);
   });
 
-  it("re-reads the lists and this server's agent status afterwards", async () => {
+  it("re-reads the managed list, the member list and this server's agent status afterwards", async () => {
+    // The managed list is actively mounted here, so invalidating it triggers an immediate refetch
+    // (its `isInvalidated` flag would already be back to false by the time we could check it) -
+    // a call count is what actually shows the invalidation happened. `servers()` isn't mounted by
+    // this view (only by ServerGate elsewhere), so its `isInvalidated` flag does stay observable.
+    let managedGets = 0;
+    server.use(
+      http.get(endpoints.serverManagement.list.route, () => {
+        managedGets += 1;
+        return HttpResponse.json(managedServersWithAgent);
+      }),
+    );
     capture("post", endpoints.serverManagement.switchToLocal.route, () =>
       HttpResponse.json({ server: { ...serverConnectionOk.server, id: agentServer.id, displayName: agentServer.displayName } }),
     );
-    const { client } = await openSwitch();
+    const view = renderWithClient(<ServerManagementView />);
+    fireEvent.click(await screen.findByRole("button", { name: `Switch back to local for ${agentServer.displayName}` }));
+    await waitFor(() => expect(managedGets).toBe(1));
+    const { client } = view;
     const agentKey = queries.agentStatus(agentServer.id).queryKey;
     client.setQueryData(agentKey, { enrolled: true, online: true, lastSeenAt: null, agentVersion: "0.1.0", connectionKind: "agent" });
+    client.setQueryData(queries.servers().queryKey, { servers: [], canManageServers: true });
     fillConnection();
     fireEvent.click(screen.getByRole("button", { name: "Test and switch back" }));
     await screen.findByText(/is read directly again/);
     expect(client.getQueryState(agentKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(queries.servers().queryKey)?.isInvalidated).toBe(true);
+    await waitFor(() => expect(managedGets).toBe(2));
+  });
+
+  it("sends only one switch request for two submits that land before React re-renders", async () => {
+    // Mirrors the same guard's create-mode test (ServerManagementView.test.tsx): the pendingSave
+    // ref must also drop a duplicate submit for the newer switchToLocal branch.
+    const bodies = capture("post", endpoints.serverManagement.switchToLocal.route, () =>
+      HttpResponse.json({ server: { ...serverConnectionOk.server, id: agentServer.id, displayName: agentServer.displayName } }),
+    );
+    await openSwitch();
+    fillConnection();
+    const form = screen.getByRole("button", { name: "Test and switch back" }).closest("form")!;
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    await screen.findByText(/is read directly again/);
+    expect(bodies.length).toBe(1);
   });
 
   it("shows the backend's reason when the connection test fails, and stays on the form", async () => {
