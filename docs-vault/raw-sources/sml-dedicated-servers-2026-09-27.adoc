@@ -1,0 +1,103 @@
+Source: https://github.com/satisfactorymodding/Documentation at commit d35cc911d6849cb39740cb884735ec5d9ffb2f67 (AsciiDoc source of https://docs.ficsit.app/satisfactory-modding/latest/)
+Captured: 2026-09-27T05:39:34Z
+Method: the repository tarball via the GitHub API (gh api repos/satisfactorymodding/Documentation/tarball/master); passages copied unedited from the AsciiDoc source (not the rendered HTML), so {attributes} such as {engine-version} appear as in the source and are defined in the include files quoted in item 1.
+Excerpts only: Only quoted excerpts are committed. The source is third-party documentation without a licence that permits redistributing it (the SML Documentation repository has no licence; Epic's API pages are Epic's), so the full text stays verifiable at the pinned URL and a complete local copy is kept outside this repository (the owner's Documents folder, dash-captures/mod-g0-full/, not committed).
+Item: 3 of 9: SML on dedicated servers, in addition to raw-sources/sml-dedicated-server-setup.md (a 2026-09-21 whole-page capture of ForUsers/DedicatedServerSetup, left untouched).
+FINDINGS:
+  - SML 3.7 introduced dedicated-server support; a mod must be recompiled with the dedicated-server packaging settings (targets Windows Server and Linux Server) to run there; mods built for 3.6 only work for the Windows client target (UpdatingFromSml36).
+  - Whether a mod is needed on connecting clients is controlled by the uplugin fields RequiredOnRemote (default true) and RemoteVersionRange (default: the mod's own version). Since SML 3.9 clients also refuse servers that lack mods the client has.
+  - The docs say dedicated servers have no host player, and mention that 'some mods only exist client or server side'.
+  - FAQ: the game's log FactoryGame.log; a dedicated server's copy 'could' be under <install dir>/FactoryGame/Saved/Logs 'or potentially another location depending on how the server is hosted' (relevant to C1).
+NOT FOUND (recorded, not guessed):
+  - A page that treats a 'server-side-only mod' as its own topic: none exists in the docs source; the relevant text is the uplugin fields above and the one FAQ answer.
+Convention: each excerpt sits between a BEGIN line and an END line written by the capture (they are not part of the source); the text between them is the source, unedited, with "[... skipped ...]" lines between separate ranges.
+---
+
+##### BEGIN Development/BeginnersGuide/ReleaseMod.adoc, lines 244-262 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/BeginnersGuide/ReleaseMod.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/BeginnersGuide/ReleaseMod.html)
+# Note: Nearest heading(s): === Special Fields. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+|RemoteVersionRange
+| A Semver range of versions accepted from the remote side in multiplayer.
+This requires remotes to have a certain version of the mod installed to be able to join.
+See the Plugins `SemVersion` item above for the format for this field.
+{blank} +
+{blank} +
+This field is optional, and defaults to your `SemVersion` if unspecified,
+meaning both sides must have the exact same mod version installed.
+If you aren't using this behavior, you should exclude the field.
+
+|RequiredOnRemote
+| Controls if the mod is required to be on both sides in multiplayer.
+When a client connects, the host checks its own mod list against what the client is connecting with.
+If the host's mod has `RequiredOnRemote` set to true,
+`RemoteVersionRange` is used to check the client's reported version to ensure it's compatible.
+The reverse (client checking host) is implemented as of SML 3.9.0.
+{blank} +
+{blank} +
+This field is optional, and defaults to `true`.
+##### END Development/BeginnersGuide/ReleaseMod.adoc, lines 244-262 #####
+
+##### BEGIN Development/UpdatingFromSml36.adoc, lines 9-14, 154-163 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/UpdatingFromSml36.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/UpdatingFromSml36.html)
+# Note: Nearest heading(s): = Upgrading from SML 3.6.x to 3.7.x | ==== Configuring Release Targets. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+SML3.7 brings the first round of features required for dedicated server support
+and introduces a few useful utilities.
+
+**Mods compiled for SML3.6 should™ still work when SML3.7 is installed**,
+but **they will only work for the Windows Client target** (the game client and host-and-play multiplayer).
+Mods that wish to support dedicated servers must be updated and recompiled with the new packaging settings described on this page.
+[... skipped ...]
+In most cases, you probably want to check every release target (Windows, Windows Server, Linux Server).
+
+==== Testing your Mod on a Dedicated Server
+
+The xref:Development/TestingResources.adoc#TestingDedicatedServers[Testing/Multiplayer Testing]
+covers how to set up and connect to a dedicated server to test your mods on.
+
+Remember that dedicated servers have no host player.
+Any issues your mod already has with host-and-play multiplayer are probably still present on dedicated servers,
+potentially exacerbated due to the lack of a host player.
+##### END Development/UpdatingFromSml36.adoc, lines 9-14, 154-163 #####
+
+##### BEGIN Development/UpdatingFromSml38.adoc, lines 20-25 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/UpdatingFromSml38.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/UpdatingFromSml38.html)
+# Note: Nearest heading(s): === Clients Check Server Mods when Joining. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+=== Clients Check Server Mods when Joining
+
+In previous SML versions, servers were able to reject client connections if the client was missing required mods installed on the server.
+SML 3.9 now implements this check for clients.
+Clients will refuse to join servers that are missing mods present on the client side.
+The existing `RequiredOnRemote` and `RemoteVersionRange` uplugin fields control this behavior.
+##### END Development/UpdatingFromSml38.adoc, lines 20-25 #####
+
+##### BEGIN ForUsers/DedicatedServerSetup.adoc, lines 297-305 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/ForUsers/DedicatedServerSetup.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/ForUsers/DedicatedServerSetup.html)
+# Note: Nearest heading(s): === Important: Server-Client Mod Consistency. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+Although it is possible to use ficsit-cli or the Mod Manager to install mods one-by-one on the server,
+this is not recommended as you could easily end up with a mismatch between client and server mod versions,
+preventing you from connecting.
+
+It is not feasible to export a profile created in SMM for a client to be used on a server
+because there are some mods that only exist client or server side.
+In the future, the ability to create and share "modpacks" will be introduced to resolve this problem,
+as modpacks will be able to keep track of mods that may not apply for a game target.
+##### END ForUsers/DedicatedServerSetup.adoc, lines 297-305 #####
+
+##### BEGIN faq.adoc, lines 158-163, 353-359 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/faq.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/faq.html)
+# Note: Nearest heading(s): == Do mods work on consoles? | === Mod Configuration Files. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+No, mods do not work with Satisfactory for consoles (Xbox, Playstation).
+Limitations imposed by console manufacturers make this infeasible.
+
+Satisfactory https://satisfactory.wiki.gg/wiki/Console_release#Crossplay_and_interoperability[does not support PC-to-console cross-play, nor console dedicated servers],
+so playing with server side only mods is unfortunately also out of the question.
+
+[... skipped ...]
+[id="Files_Logs"]
+=== Log Files
+
+* `FactoryGame.log` is produced by running the game and includes both base-game and mod log messages.
+  ** The game client stores its logs in `%LOCALAPPDATA%/FactoryGame/Saved/Logs`
+  ** Dedicated servers could have this file in `InstallDirectoryHere/FactoryGame/Saved/Logs`
+    or potentially another location depending on how the server is hosted
+##### END faq.adoc, lines 158-163, 353-359 #####
