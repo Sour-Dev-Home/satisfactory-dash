@@ -60,6 +60,18 @@ describe("reloadOnce", () => {
     expect(reloadOnce(1_000_000, reload)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it("falls back to window.location.reload when no reload function is given", () => {
+    const reloadSpy = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...originalLocation, reload: reloadSpy } });
+    try {
+      expect(reloadOnce(1_000_000)).toBe(true);
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
+    }
+  });
 });
 
 describe("reloadOnStaleChunk", () => {
@@ -99,5 +111,19 @@ describe("reloadOnStaleChunk", () => {
     target.dispatchEvent(preloadError(payload));
     expect(reload).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem("satis-manager.stale-chunk-reload-at")).toBeNull();
+  });
+
+  it("wires up on the real window and the real reload by default", () => {
+    const reloadSpy = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...originalLocation, reload: reloadSpy } });
+    const stop = reloadOnStaleChunk();
+    try {
+      window.dispatchEvent(preloadError(missingChunk()));
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+      Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
+    }
   });
 });
