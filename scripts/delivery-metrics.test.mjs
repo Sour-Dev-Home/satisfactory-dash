@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SCHEMA_VERSION, buildReport, normalizePr, parseArgs, percentile, renderMarkdown, safeReason, weekStart } from "./delivery-metrics.mjs";
+import { SCHEMA_VERSION, buildReport, normalizePr, parseArgs, parseGraphql, percentile, renderMarkdown, safeReason, weekStart } from "./delivery-metrics.mjs";
 
 const NOW = new Date("2026-09-27T12:00:00Z");
 
@@ -156,4 +156,27 @@ test("parseArgs takes --days, --json and --out and rejects anything else", () =>
   assert.throws(() => parseArgs(["--days", "0"]), /--days/);
   assert.throws(() => parseArgs(["--days", "abc"]), /--days/);
   assert.throws(() => parseArgs(["--bogus"]), /Unknown argument/);
+});
+
+test("parseArgs rejects a missing value, hex, decimals and a flag swallowed as a value", () => {
+  assert.throws(() => parseArgs(["--days"]), /--days/);
+  assert.throws(() => parseArgs(["--days", "0x10"]), /--days/);
+  assert.throws(() => parseArgs(["--days", "1.5"]), /--days/);
+  assert.throws(() => parseArgs(["--days", "366"]), /--days/);
+  assert.throws(() => parseArgs(["--days", "--json"]), /--days/);
+  assert.throws(() => parseArgs(["--out"]), /--out/);
+  assert.throws(() => parseArgs(["--out", "--json"]), /--out/);
+});
+
+test("safeReason is case-insensitive for slugs and still folds free text", () => {
+  assert.equal(safeReason("FAILED_CHECKS"), "failed_checks");
+  assert.equal(safeReason("Alice broke it"), "other");
+  assert.equal(safeReason(undefined), "other");
+});
+
+test("parseGraphql never echoes raw API text in an error", () => {
+  assert.throws(() => parseGraphql("secret@example.com not json"), (error) => !/secret/.test(error.message));
+  assert.throws(() => parseGraphql(JSON.stringify({ errors: [{ message: "secret@example.com" }] })), (error) => !/secret/.test(error.message));
+  const page = { nodes: [], pageInfo: { hasNextPage: false } };
+  assert.equal(parseGraphql(JSON.stringify({ data: { repository: { pullRequests: page } } })).nodes.length, 0);
 });

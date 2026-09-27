@@ -54,7 +54,8 @@ export function weekStart(iso) {
 
 /** A merge-queue removal reason is a short slug; anything else is folded into "other" so free text never leaks. */
 export function safeReason(reason) {
-  return typeof reason === "string" && /^[a-z_]{1,32}$/.test(reason) ? reason : "other";
+  const slug = typeof reason === "string" ? reason.toLowerCase() : "";
+  return /^[a-z_]{1,32}$/.test(slug) ? slug : "other";
 }
 
 /**
@@ -172,8 +173,8 @@ const PR_QUERY = `query($owner: String!, $name: String!, $cursor: String) {
     pullRequests(states: MERGED, first: 50, after: $cursor, orderBy: { field: UPDATED_AT, direction: DESC }) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        createdAt mergedAt updatedAt additions deletions title
-        timelineItems(first: 30, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT, REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        number createdAt mergedAt updatedAt additions deletions title
+        timelineItems(first: 100, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT, REMOVED_FROM_MERGE_QUEUE_EVENT]) {
           nodes { __typename ... on RemovedFromMergeQueueEvent { reason } }
         }
       }
@@ -186,15 +187,36 @@ function repoSlug() {
   return { owner, name };
 }
 
+/** Parses a GraphQL response without ever echoing raw API text in an error (JSON.parse messages quote the input). */
+export function parseGraphql(text) {
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error("GitHub returned a response that is not JSON");
+  }
+  const page = body?.data?.repository?.pullRequests;
+  if (!page || !Array.isArray(page.nodes) || typeof page.pageInfo?.hasNextPage !== "boolean") {
+    throw new Error("GitHub returned an unexpected GraphQL response");
+  }
+  return page;
+}
+
 function fetchMergedPrs(from) {
   const { owner, name } = repoSlug();
   const prs = [];
+  const seen = new Set();
   let cursor = null;
   for (;;) {
     const args = ["api", "graphql", "-f", `query=${PR_QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`];
     if (cursor !== null) args.push("-F", `cursor=${cursor}`);
-    const page = JSON.parse(gh(args)).data.repository.pullRequests;
-    for (const node of page.nodes) prs.push(normalizePr(node));
+    const page = parseGraphql(gh(args));
+    // A PR updated while paging can shift onto the next page: count each PR number once.
+    for (const node of page.nodes) {
+      if (seen.has(node.number)) continue;
+      seen.add(node.number);
+      prs.push(normalizePr(node));
+    }
     // Ordered by update time: once a whole page was last touched before the window, nothing older can have merged inside it.
     const stale = page.nodes.length > 0 && page.nodes.every((node) => new Date(node.updatedAt) < from);
     if (!page.pageInfo.hasNextPage || stale) return prs;
@@ -218,9 +240,16 @@ export function parseArgs(argv) {
   const options = { days: 30, json: false, out: undefined };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--json") options.json = true;
-    else if (argv[i] === "--days") options.days = Number(argv[++i]);
-    else if (argv[i] === "--out") options.out = argv[++i];
-    else throw new Error(`Unknown argument: ${argv[i]}`);
+    else if (argv[i] === "--days") {
+      const value = argv[i + 1] ?? "";
+      if (!value.startsWith("--")) i += 1;
+      options.days = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+    }
+    else if (argv[i] === "--out") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) throw new Error("--out needs a directory");
+      options.out = value;
+    } else throw new Error(`Unknown argument: ${argv[i]}`);
   }
   if (!Number.isInteger(options.days) || options.days < 1 || options.days > 365) throw new Error("--days must be a whole number from 1 to 365");
   return options;
