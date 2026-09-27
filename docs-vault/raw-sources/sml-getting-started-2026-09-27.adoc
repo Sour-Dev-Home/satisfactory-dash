@@ -1,0 +1,118 @@
+Source: https://github.com/satisfactorymodding/Documentation at commit d35cc911d6849cb39740cb884735ec5d9ffb2f67 (AsciiDoc source of https://docs.ficsit.app/satisfactory-modding/latest/)
+Captured: 2026-09-27T05:39:34Z
+Method: the repository tarball via the GitHub API (gh api repos/satisfactorymodding/Documentation/tarball/master); passages copied unedited from the AsciiDoc source (not the rendered HTML), so {attributes} such as {engine-version} appear as in the source and are defined in the include files quoted in item 1.
+Excerpts only: Only quoted excerpts are committed. The source is third-party documentation without a licence that permits redistributing it (the SML Documentation repository has no licence; Epic's API pages are Epic's), so the full text stays verifiable at the pinned URL and a complete local copy is kept outside this repository (the owner's Documents folder, dash-captures/mod-g0-full/, not committed).
+Item: 1 of 9 (ADR-0039 G0 card): what a mod developer must install (editor, compilers, SDKs, versions, disk space).
+FINDINGS:
+  - Disk: 'the modding environment can take up a lot of space once everything is installed and built - 30+ GB is possible' (dependencies.adoc).
+  - Compiler: Visual Studio 2022, not 2026; the components listed below (a .NET desktop workload, C++ desktop and game workloads, MSVC v143 v14.38-17.8, .NET 8 runtime, .NET Framework 4.8.1 SDK).
+  - Engine: a CUSTOM Unreal Engine (Coffee Stain's changes) that must be obtained through Epic and satisfactorymodding GitHub account linking and installed from four release files; an ordinary UE install does not work.
+  - Other pages of the same guide, not quoted: project_setup.adoc (sections: Setting up Wwise, Generate Visual Studio Files, Project Compilation, Building the Solution, Build Troubleshooting), StarterProject/*, index.adoc. The full text is at the pinned URL.
+Not found: nothing was missing for this item.
+Convention: each excerpt sits between a BEGIN line and an END line written by the capture (they are not part of the source); the text between them is the source, unedited, with "[... skipped ...]" lines between separate ranges.
+---
+
+##### BEGIN Development/BeginnersGuide/dependencies.adoc, lines 14-17, 72-78, 120-133, 163-164, 170-176, 236-249 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/BeginnersGuide/dependencies.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/BeginnersGuide/dependencies.html)
+# Note: Nearest heading(s): = Required Software | == Visual Studio | === Option 2: Manually Select Components | == Clang Toolchain for Linux Dedicated Server Support | == Custom Unreal Engine Version | === Download the Custom Engine. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+Beware that the modding environment can take up a lot of space
+once everything is installed and built - 30+ GB is possible.
+Keep this in mind when deciding where put all your files
+- don't keep them on a drive with very little space left.
+[... skipped ...]
+====
+This version of Satisfactory works best with Visual Studio _2022_,
+not the latest release version 2026.
+
+If you were to proceed with Visual Studio 2026 installed,
+you would have to select different Components than the ones we listed here,
+and certain editor functionalities like the Create {cpp} Class wizard will not work.
+[... skipped ...]
+From the `Workloads` tab, select:
+
+- "Desktop & Mobile" > `.NET Desktop Development`
+- "Desktop & Mobile" > `Desktop development with {cpp}`
+- "Gaming" > `Game development with {cpp}`.
+
+You might have to scroll a bit to find them.
+
+Next, from the `Individual Components` tab,
+search for and select:
+
+- `MSVC v143 - VS 2022 C++ x64/x86 build tools (v14.38-17.8) (Out of Support)`
+- `.NET 8.0 Runtime (Long Term Support)`
+- `.NET Framework 4.8.1 SDK`
+[... skipped ...]
+Currently, Satisfactory uses Unreal Engine {engine-version} with custom changes provided by Coffee Stain Studios.
+Therefore, the Cross-Compile Toolchain version required is `{clang-cc-toolchain-version}`.
+[... skipped ...]
+== Custom Unreal Engine Version
+
+Because Satisfactory uses a modified version of Unreal Engine,
+we modders need to be using that same version as well to develop our mods.
+
+If you already have Unreal Engine installed for something else,
+that installation **will not work** for Satisfactory modding
+[... skipped ...]
+Download this engine version: +
+https://github.com/satisfactorymodding/UnrealEngine/releases/{engine-gh-release}
+====
+
+Download the following files from the release linked above:
+
+- `UnrealEngine-CSS-Editor-Win64-1.bin`
+- `UnrealEngine-CSS-Editor-Win64-2.bin`
+- `UnrealEngine-CSS-Editor-Win64-3.bin`
+- `UnrealEngine-CSS-Editor-Win64.exe`
+
+Save all 4 files in the same folder,
+and make sure that their names are _exactly the same as listed above_
+otherwise the installer will not work.
+##### END Development/BeginnersGuide/dependencies.adoc, lines 14-17, 72-78, 120-133, 163-164, 170-176, 236-249 #####
+
+##### BEGIN Development/_includes/software-versions.adoc (whole file, 12 lines) #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/_includes/software-versions.adoc
+# Note: Included by dependencies.adoc: defines {engine-version} and the toolchain versions.
+// UE version (make sure ./BeginnersGuide/_includes/repo-versions.adoc is also accurate)
+:engine-version: 5.6.1
+
+// Clang cross-compile toolchain version
+:clang-cc-toolchain-version: v25 clang-18.1.0-based
+
+// Wwise versions
+:wwise-version-major: 2023.1
+:wwise-version-major-minor: 2023.1.14
+:wwise-version-full: 2023.1.14.8770
+// This one is used by the Wwise api, so by our CI and the Linux setup directions
+:wwise-version-stupid-api-suffix: 3555
+##### END Development/_includes/software-versions.adoc (whole file, 12 lines) #####
+
+##### BEGIN Development/BeginnersGuide/_includes/repo-versions.adoc (whole file) #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/BeginnersGuide/_includes/repo-versions.adoc
+// :suggested-branch: master
+:suggested-branch: dev
+
+// If this is an archived docs branch, this should be set to the SML version it corresponds to.
+:this-archive-version: NOT-AN-ARCHIVE
+// :this-archive-version: 3.9.1
+
+// Modding UE-CSS release to download (used in URL)
+//(make sure ./../_includes/software-versions.adoc is also accurate)
+// If this is an archived docs branch, this should be set to the Unreal Engine this SML version needs
+:engine-gh-release: latest
+// :engine-gh-release: tag/5.6.1-css-83
+##### END Development/BeginnersGuide/_includes/repo-versions.adoc (whole file) #####
+
+##### BEGIN Development/BeginnersGuide/StarterProject/ObtainStarterProject.adoc, lines 1-9 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/BeginnersGuide/StarterProject/ObtainStarterProject.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/BeginnersGuide/StarterProject/ObtainStarterProject.html)
+# Note: Nearest heading(s): = Starter Project. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+= Starter Project
+
+The Starter Project is distributed by the Satisfactory Modding team
+as a GitHub repository named "Satisfactory Mod Loader".
+Despite the name, the repository is actually an Unreal Engine project
+that includes the source code of the Satisfactory Mod Loader (as a plugin),
+the game's {cpp} headers,
+placeholder assets for base game content,
+and some useful developer plugins.
+##### END Development/BeginnersGuide/StarterProject/ObtainStarterProject.adoc, lines 1-9 #####

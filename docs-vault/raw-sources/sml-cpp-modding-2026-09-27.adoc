@@ -1,0 +1,84 @@
+Source: https://github.com/satisfactorymodding/Documentation at commit d35cc911d6849cb39740cb884735ec5d9ffb2f67 (AsciiDoc source of https://docs.ficsit.app/satisfactory-modding/latest/)
+Captured: 2026-09-27T05:39:34Z
+Method: the repository tarball via the GitHub API (gh api repos/satisfactorymodding/Documentation/tarball/master); passages copied unedited from the AsciiDoc source (not the rendered HTML), so {attributes} such as {engine-version} appear as in the source and are defined in the include files quoted in item 1.
+Excerpts only: Only quoted excerpts are committed. The source is third-party documentation without a licence that permits redistributing it (the SML Documentation repository has no licence; Epic's API pages are Epic's), so the full text stays verifiable at the pinned URL and a complete local copy is kept outside this repository (the owner's Documents folder, dash-captures/mod-g0-full/, not committed).
+Item: 2 of 9: SML C++ modding: module setup and the mod's entry points.
+FINDINGS:
+  - Entry points: SML 'Mod Modules', three types: a game-instance-bound module (called once while the game launches), a menu-world module and a game-world module (called when a save is loaded); the first is the natural place for a mod that has to start work at server start (claim C1).
+  - A mod is built as a UBT module in the starter project; mods use the base game's targets and do not define their own.
+  - Subsystems: actors that exist once in the world; a subsystem's replication policy defaults to SpawnOnServer, and the page says SpawnOnClient means there is no server side on dedicated servers.
+  - Not quoted: Cpp/index.adoc, Cpp/thirdparty.adoc (third-party libraries, relevant to HTTPS/TLS libraries), ModLoader/index.adoc. The full text is at the pinned URL.
+Not found: nothing was missing for this item.
+Convention: each excerpt sits between a BEGIN line and an END line written by the capture (they are not part of the source); the text between them is the source, unedited, with "[... skipped ...]" lines between separate ranges.
+---
+
+##### BEGIN Development/ModLoader/ModModules.adoc, lines 1-19, 97-113 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/ModLoader/ModModules.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/ModLoader/ModModules.html)
+# Note: Nearest heading(s): = Mod Modules | === Game Instance-Bound Module (`UGameInstanceModule`). An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+= Mod Modules
+
+Mod Modules are a system provided by SML that allows for simple hooking into the engine life-cycle
+at key locations important for Satisfactory modding.
+
+This is done by creating mod module classes in your mod files
+which will then be automatically loaded by SML at the correct times.
+
+Instances and Functions of these classes are then called automatically when such a life-cycle location is reached.
+
+This system allows you as a modder more control over the initialization of your content.
+It is also helpful for doing cross-mod interaction.
+
+There are currently 3 types of Mod Modules:
+
+* <<Game Instance-Bound Module (`UGameInstanceModule`)>>, called once while the game is launching, and lives until it is closed.
+* <<Menu World Module (`UMenuWorldModule`)>>, called once whenever the main menu is loaded.
+* <<Game World Module (`UGameWorldModule`)>>, called once whenever a save is loaded.
+
+[... skipped ...]
+=== Game Instance-Bound Module (`UGameInstanceModule`)
+
+**Suggested Root Module Name: `RootInstance_YourModReferenceHere`**
+
+**Suggested Submodule Name: `SubInstance_MoreDetails_YourModReferenceHere`**
+
+The Game Instance Module is bound to the Game Instance and lives until the game is exited.
+This ultimately means that it gets called once per game session.
+In order for this module to be called again, you'd have to re-launch Satisfactory.
+It will persist through world reloads and can be accessed without world context.
+
+It also provides some standard handling of things you might need to register at this point like:
+
+- xref:Development/ModLoader/Configuration.adoc[Custom Mod Configurations]
+- xref:Development/ModLoader/Registry.adoc#_mod_key_bind_registry[Custom Keybindings and Axis Bindings]
+- xref:Development/ModLoader/Subsystems.adoc[Subsystems]
+- Global Item Tooltip Providers
+##### END Development/ModLoader/ModModules.adoc, lines 1-19, 97-113 #####
+
+##### BEGIN Development/ModLoader/Subsystems.adoc, lines 50-59, 88-89 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/ModLoader/Subsystems.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/ModLoader/Subsystems.html)
+# Note: Nearest heading(s): == Replication Policy. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+== Replication Policy
+
+A subsystem's replication policy determines which side(s) the subsystem will exist on in multiplayer
+and if data will be shared between the server and clients' instances of the subsystem.
+
+Subsystems have the `SpawnOnServer` replication policy by default,
+meaninging clients do not have an instance of the subsystem.
+If this is not the desired behavior,
+review the table below to find the replication policy that best suits your needs,
+then change it in the Class Defaults (Blueprint) or constructor ({cpp}).
+[... skipped ...]
+| `SpawnOnClient` (Spawn on Client Only)
+| ✘ - Either there is no server side to share data with (dedicated servers) or the server and client sides do not communicate (host and play)
+##### END Development/ModLoader/Subsystems.adoc, lines 50-59, 88-89 #####
+
+##### BEGIN Development/Cpp/setup.adoc, lines 22-27 #####
+# Source: https://github.com/satisfactorymodding/Documentation/blob/d35cc911d6849cb39740cb884735ec5d9ffb2f67/modules/ROOT/pages/Development/Cpp/setup.adoc (rendered: https://docs.ficsit.app/satisfactory-modding/latest/Development/Cpp/setup.html)
+# Note: Nearest heading(s): === Targets. An excerpt: the ranges are joined by "[... skipped ...]" lines that are not part of the source.
+=== Targets
+
+Targets are like UBT "programs" that define how the game gets packaged.
+As of the 1.0 release, mods no longer define their own Targets, instead using the base game's targets,
+which you can find in `Source/TargetName.Target.cs`.
+You should not modify these target files.
+##### END Development/Cpp/setup.adoc, lines 22-27 #####

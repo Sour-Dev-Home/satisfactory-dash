@@ -33,10 +33,11 @@ function Heart({ health, quiet }: { health: Shown; quiet: boolean }) {
 }
 
 function TickRow({ tick }: { tick: Tick }) {
-  if (tick === null) return <p className="mb-0 text-sm text-muted">Server tick: no game running.</p>;
+  // flex-none: beside the status from lg, the gauge keeps its size and the status text wraps instead.
+  if (tick === null) return <p className="mb-0 flex-none text-sm text-muted">Server tick: no game running.</p>;
   const slow = tick.health === "slow";
   return (
-    <div className="flex items-end gap-3">
+    <div className="flex flex-none items-end gap-3">
       <TickGauge rate={tick.rate} />
       <p className="mb-0 grid text-sm">
         <span className="text-muted">Server tick</span>
@@ -72,8 +73,10 @@ export function HealthCard({
   return (
     <section
       aria-labelledby="health-heading"
-      // Square from md up (its grid column is narrow); on a phone, just as tall as its content.
-      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:aspect-square"
+      // Square between md and lg (its grid column is the narrow rail). On a phone, and from lg up where
+      // it takes half the row (#329, option A), just as tall as its content: a half-width square would
+      // make the whole row about 500 px tall.
+      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:aspect-square lg:aspect-auto"
     >
       {/* 44 px whether or not Hide shows, like Players' header: the two cards' bodies line up. */}
       <div className="flex min-h-touch items-center gap-3">
@@ -93,18 +96,25 @@ export function HealthCard({
           </button>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        <Heart health={overall.health} quiet={hidden} />
-        <p role="status" className="mb-0 grid">
-          <span className={cn("text-xl font-semibold", hidden ? "text-muted" : WORD_COLOR[overall.health])}>
-            {WORD[overall.health]}
-          </span>
-          <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
-            {hidden ? "Warning hidden until something changes." : overall.headline}
-          </span>
-        </p>
+      {/* Stacked in the narrow column; from lg up, where the card takes half the row (#329), the
+          status and the tick gauge sit side by side so the card's width isn't left empty (the owner's
+          pick, after the ui review). Reading order stays status first. */}
+      {/* No wrapping from lg: a long headline wraps inside the status block (min-w-0, flex-1) while the
+          gauge keeps its size, so the two never fall onto separate lines at the lg boundary (ui review). */}
+      <div className="grid gap-3 lg:flex lg:items-center lg:justify-between lg:gap-4">
+        <div className="flex min-w-0 items-center gap-3 lg:flex-1">
+          <Heart health={overall.health} quiet={hidden} />
+          <p role="status" className="mb-0 grid">
+            <span className={cn("text-xl font-semibold", hidden ? "text-muted" : WORD_COLOR[overall.health])}>
+              {WORD[overall.health]}
+            </span>
+            <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
+              {hidden ? "Warning hidden until something changes." : overall.headline}
+            </span>
+          </p>
+        </div>
+        {tick !== undefined && <TickRow tick={tick} />}
       </div>
-      {tick !== undefined && <TickRow tick={tick} />}
     </section>
   );
 }
