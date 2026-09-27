@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router";
+import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
 import { queries } from "../api/queries";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ErrorNotice } from "../components/ErrorNotice";
@@ -22,6 +24,22 @@ export const REVEAL_GRACE_MS = 300;
 export function FactoryView() {
   const server = useSelectedServer();
   const factory = useQuery(queries.factory(server.id));
+  // Deep links (#351): the machine search (?q=) and the history's item (?item=) live in the URL, so
+  // a link or the command bar can open the page with them set. Replaced, not pushed: typing a
+  // search mustn't fill the back button. Other parameters (e.g. dev:mock's scenario) are kept.
+  const [params, setParams] = useSearchParams();
+  const search = readSearch(params);
+  const item = readItem(params);
+  const setParam = (name: string, value: string | undefined) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === undefined) next.delete(name);
+        else next.set(name, value);
+        return next;
+      },
+      { replace: true, preventScrollReset: true },
+    );
   // History carries only class names: names and units come from the live factory.
   const buildings = factory.data?.data.buildings;
   const labels = useMemo(() => itemLabels(buildings ?? []), [buildings]);
@@ -58,9 +76,16 @@ export function FactoryView() {
         <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
       {factory.isError && <ErrorNotice error={factory.error} />}
-      {factory.data && <FactoryPanel snapshot={factory.data} refetchFailed={factory.isRefetchError} />}
+      {factory.data && (
+        <FactoryPanel
+          snapshot={factory.data}
+          refetchFailed={factory.isRefetchError}
+          search={search}
+          onSearch={(value) => setParam(FACTORY_SEARCH_PARAM, value === "" ? undefined : value)}
+        />
+      )}
       <ErrorBoundary label="Production history">
-        <ItemHistorySection labels={labels} />
+        <ItemHistorySection labels={labels} item={item} onItem={(value) => setParam(FACTORY_ITEM_PARAM, value)} />
       </ErrorBoundary>
     </>
   );

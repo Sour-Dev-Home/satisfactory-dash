@@ -1,6 +1,7 @@
 import { StrictMode, useState } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, useLocation } from "react-router";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
@@ -21,7 +22,7 @@ import { FactoryView, REVEAL_GRACE_MS } from "./FactoryView";
 function renderView() {
   return renderWithClient(
     <ServerContext value={serversSingle.servers[0]}>
-      <FactoryView />
+      <MemoryRouter><FactoryView /></MemoryRouter>
     </ServerContext>,
   );
 }
@@ -34,7 +35,7 @@ function SwitchableView({ initial, other }: { initial: ServerSummary; other: Ser
       <button type="button" onClick={() => setSelected(other)}>
         Switch server
       </button>
-      <FactoryView />
+      <MemoryRouter><FactoryView /></MemoryRouter>
     </ServerContext>
   );
 }
@@ -48,7 +49,7 @@ function CyclingView({ servers }: { servers: ServerSummary[] }) {
       <button type="button" onClick={() => setIndex((i) => (i + 1) % servers.length)}>
         Switch server
       </button>
-      <FactoryView />
+      <MemoryRouter><FactoryView /></MemoryRouter>
     </ServerContext>
   );
 }
@@ -119,7 +120,7 @@ describe("FactoryView", () => {
       const [open, setOpen] = useState(false);
       return open ? (
         <ServerContext value={serversSingle.servers[0]}>
-          <FactoryView />
+          <MemoryRouter><FactoryView /></MemoryRouter>
         </ServerContext>
       ) : (
         <button type="button" onClick={() => setOpen(true)}>
@@ -300,7 +301,7 @@ describe("FactoryView", () => {
       <StrictMode>
         <QueryClientProvider client={client}>
           <ServerContext value={serversSingle.servers[0]}>
-            <FactoryView />
+            <MemoryRouter><FactoryView /></MemoryRouter>
           </ServerContext>
         </QueryClientProvider>
       </StrictMode>,
@@ -348,5 +349,54 @@ describe("FactoryView's data-age warning", () => {
     fail = false;
     await act(() => client.refetchQueries({ type: "active" }));
     await waitFor(() => expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument());
+  });
+});
+
+/** Shows the router's current URL, so a test can see what the page wrote there. */
+function Where() {
+  const { pathname, search, hash } = useLocation();
+  return <output aria-label="URL">{`${pathname}${search}${hash}`}</output>;
+}
+
+function renderAt(url: string) {
+  return renderWithClient(
+    <ServerContext value={serversSingle.servers[0]}>
+      <MemoryRouter initialEntries={[url]}>
+        <FactoryView />
+        <Where />
+      </MemoryRouter>
+    </ServerContext>,
+  );
+}
+
+// #351's deep links: the machine search and the history's item live in the URL.
+describe("FactoryView deep links", () => {
+  it("opens with the machine search from ?q= filled in and applied", async () => {
+    renderAt(`/app/factory?q=${encodeURIComponent(factoryMixed.data.buildings[0].name)}`);
+    expect(await screen.findByRole("searchbox", { name: "Search machines" })).toHaveValue(factoryMixed.data.buildings[0].name);
+  });
+
+  it("writes the search back to the URL as typed, keeping other parameters, and drops it when cleared", async () => {
+    renderAt("/app/factory?scenario=default");
+    const box = await screen.findByRole("searchbox", { name: "Search machines" });
+    fireEvent.change(box, { target: { value: "iron " } });
+    expect(box).toHaveValue("iron ");
+    expect(screen.getByRole("status", { name: "URL" })).toHaveTextContent("/app/factory?scenario=default&q=iron+");
+    fireEvent.change(box, { target: { value: "" } });
+    expect(screen.getByRole("status", { name: "URL" })).toHaveTextContent(/^\/app\/factory\?scenario=default$/);
+  });
+
+  it("opens production history on the item from ?item=, and writes a new pick back", async () => {
+    renderAt("/app/factory?item=Desc_Wire_C#history");
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    expect(picker).toHaveValue("Desc_Wire_C");
+    fireEvent.change(picker, { target: { value: "Desc_IronPlate_C" } });
+    expect(screen.getByRole("status", { name: "URL" })).toHaveTextContent("item=Desc_IronPlate_C");
+  });
+
+  it("ignores an ?item= that isn't a class name, and shows the first item", async () => {
+    renderAt("/app/factory?item=%3Cscript%3E");
+    const picker = await screen.findByRole("combobox", { name: "Item" });
+    expect(picker).toHaveValue("Desc_IronPlate_C");
   });
 });

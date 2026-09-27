@@ -1,6 +1,8 @@
 import type { PowerCircuit, PowerCircuitStatus, PowerResponse } from "@satisfactory-dash/shared";
 import { DataAge } from "../components/DataAge";
 import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
+import { circuitAnchor, isCircuitAnchor } from "../lib/deepLinks";
+import { useHashTarget } from "../lib/useHashTarget";
 
 const STATUS_ORDER: Record<PowerCircuitStatus, number> = { outage: 0, at_risk: 1, ok: 2 };
 const STATUS_LABEL: Record<PowerCircuitStatus, string> = {
@@ -22,6 +24,8 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
   const ordered = [...circuits].sort(
     (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.circuitGroupId - b.circuitGroupId,
   );
+  // /app/power#circuit-3 (#351): scroll to that circuit's card once it's drawn.
+  useHashTarget(isCircuitAnchor);
 
   return (
     <section aria-labelledby="power-heading" className="panel">
@@ -66,7 +70,11 @@ function CircuitCard({ circuit }: { circuit: PowerCircuit }) {
   const couldOverload = !tripped && circuit.maxConsumptionMW > circuit.capacityMW;
 
   return (
-    <article aria-label={`Circuit ${circuit.circuitGroupId}`} className={`circuit circuit-${circuit.status}`}>
+    <article
+      id={circuitAnchor(circuit.circuitGroupId)}
+      aria-label={`Circuit ${circuit.circuitGroupId}`}
+      className={`circuit circuit-${circuit.status}`}
+    >
       <h4>
         Circuit {circuit.circuitGroupId} <span className="badge">{STATUS_LABEL[circuit.status]}</span>
       </h4>
