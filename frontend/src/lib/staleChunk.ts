@@ -24,9 +24,12 @@ export function isChunkLoadError(error: unknown): boolean {
 /**
  * Reloads the page unless it was reloaded for this within RELOAD_GUARD_MS; returns whether it did.
  * With no session storage (private mode, blocked site data) it can't remember the reload, so it
- * never reloads and the section asks instead.
+ * never reloads and the section asks instead. Nor does it reload offline.
  */
 export function reloadOnce(now: number = Date.now(), reload: () => void = () => window.location.reload()): boolean {
+  // Offline fails the import the same way, and a reload would swap the app for the browser's
+  // offline page. The section asks instead, and the guard stays unset for when it's back online.
+  if (!navigator.onLine) return false;
   try {
     const last = Number(window.sessionStorage.getItem(RELOAD_KEY));
     if (last > 0 && now - last >= 0 && now - last < RELOAD_GUARD_MS) return false;
