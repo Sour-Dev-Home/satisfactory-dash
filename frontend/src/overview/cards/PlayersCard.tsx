@@ -1,5 +1,4 @@
 import type { ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
-import { cn } from "../../lib/cn";
 import { MAX_FIGURES, MAX_NAMES, playersText } from "./players";
 import { StickFigure } from "./StickFigure";
 
@@ -55,18 +54,14 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
   const more = status.playerLimit - slots;
   return (
     <>
-      {/* From lg up the card is as tall as the Health square beside it: bigger figures, centred in
-          whatever height the text leaves, so a quiet server doesn't leave a gap at the bottom. */}
+      {/* From lg up the card is half the row, as tall as Health beside it: the figures stay their
+          normal size (twelve fit one row there) and sit centred in the height the text leaves. */}
       <div className="flex items-end gap-1.5 lg:flex-1 lg:items-center">
         {/* Twelve figures don't fit one row on a phone, or in the narrow column beside Health
             between md and lg: two even rows of six there, not 10 + 2. */}
-        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end md:grid lg:flex lg:gap-2.5">
+        <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end md:grid lg:flex">
           {Array.from({ length: slots }, (_, i) => (
-            <StickFigure
-              key={i}
-              filled={i < filled}
-              className={cn("lg:h-15 lg:w-10", i < filled ? "text-fg-strong" : "text-muted")}
-            />
+            <StickFigure key={i} filled={i < filled} className={i < filled ? "text-fg-strong" : "text-muted"} />
           ))}
         </div>
         {more > 0 && (
