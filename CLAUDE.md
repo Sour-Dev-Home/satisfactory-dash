@@ -33,7 +33,10 @@ against the workspace's security/CI baseline.
    - Vanilla Dedicated Server HTTPS API (`docs-vault/raw-sources/dedicated-server-api.md`)
    - FicsitRemoteMonitoring JSON API (`docs-vault/raw-sources/frm-*.md`)
    Only build a custom mod for metrics neither source provides. Keep that gap list at
-   `docs-vault/wiki/data-gap-analysis.md`.
+   `docs-vault/wiki/data-gap-analysis.md`. A mod replaces the agent only after the
+   ADR-0039 gates pass and the owner approves a build ADR (G3); exploration spikes
+   under ADR-0039 are allowed (see
+   `docs-vault/wiki/decisions/0039-mod-as-end-state-research.md`).
 5. **Isolate the game-server adapter.** All communication with a Satisfactory server
    (vanilla API or FRM) lives in `packages/game-adapter/` (ADR-0031 PR 2) and reaches the
    backend only through `backend/src/modules/gameserver/`. No FRM- or
@@ -148,7 +151,8 @@ so it reviews with genuinely no memory of why the code was built a certain way.
   fork, which would inherit your context) scoped to the changed files, land its tests
   and any fixes on the same branch, and repeat until it stops finding real bugs.
   Docs-only and config-only PRs skip it. (This replaced a CI job of the same purpose,
-  which ran on API credit and was retired.)
+  which ran on API credit and was retired.) Log each hunter run in
+  `docs-vault/wiki/hunter-log.d/` (format in its README; `npm run hunter-report`).
 
 ## Drafting PR descriptions and log entries with the local model
 
