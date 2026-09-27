@@ -20,7 +20,8 @@
     "log": "node scripts/log.mjs",
     "latency-report": "node scripts/latency-report.mjs",
     "e2e:report": "node scripts/e2e-report.mjs",
-    "test:scripts":"node --test scripts/architecture-drift.test.mjs scripts/log.test.mjs scripts/log-check.test.mjs scripts/tier-check.test.mjs scripts/latency-report.test.mjs scripts/fresh-eyes-gate.test.mjs scripts/e2e-report.test.mjs"
+    "delivery-metrics": "node scripts/delivery-metrics.mjs",
+    "test:scripts":"node --test scripts/architecture-drift.test.mjs scripts/log.test.mjs scripts/log-check.test.mjs scripts/tier-check.test.mjs scripts/latency-report.test.mjs scripts/fresh-eyes-gate.test.mjs scripts/e2e-report.test.mjs scripts/delivery-metrics.test.mjs"
   },
   "devDependencies": {
     "concurrently": "^10.0.5",
