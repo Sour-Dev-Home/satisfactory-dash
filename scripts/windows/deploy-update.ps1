@@ -141,6 +141,12 @@ try {
     throw "The deploy checkout '$DeployDir' does not exist or is not a folder."
   }
   $DeployDir = (Resolve-Path -LiteralPath $DeployDir).Path
+  # -Remote and -Ref go to git: allow only plain names, and never one that starts with "-" (git would read it as an option).
+  foreach ($pair in @(@("Remote", $Remote), @("Ref", $Ref))) {
+    if ($pair[1] -notmatch '^[A-Za-z0-9_][A-Za-z0-9._/-]*$') {
+      throw "-$($pair[0]) '$($pair[1])' is not a plain git name (letters, digits, . _ / - only, not starting with - or .)."
+    }
+  }
   $git = (Get-Command git -ErrorAction Stop).Source
   # Prefer npm.cmd: plain "npm" resolves to npm.ps1 first, which an execution policy can block.
   $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -180,7 +186,14 @@ try {
   $newSha = $oldSha
   if ($PSCmdlet.ShouldProcess($DeployDir, "1. git fetch $Remote, then git checkout --detach $target")) {
     Write-Step "1/6 Fetching $Remote and checking out $target detached"
-    Invoke-Native "git fetch" $git @("fetch", "--quiet", "--prune", $Remote)
+    # Never wait for a credential prompt in an unattended step: fail instead (restored right after).
+    $previousPrompt = $env:GIT_TERMINAL_PROMPT
+    $env:GIT_TERMINAL_PROMPT = "0"
+    try {
+      Invoke-Native "git fetch" $git @("fetch", "--quiet", "--prune", $Remote)
+    } finally {
+      $env:GIT_TERMINAL_PROMPT = $previousPrompt
+    }
     $newSha = Read-Native "Resolving $target" $git @("rev-parse", "--verify", "--quiet", "$target^{commit}")
     # Warn (do not block) about going back: migrations are forward-only.
     if ($newSha -ne $oldSha) {
