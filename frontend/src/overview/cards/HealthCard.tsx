@@ -72,8 +72,10 @@ export function HealthCard({
   return (
     <section
       aria-labelledby="health-heading"
-      // Square from md up (its grid column is narrow); on a phone, just as tall as its content.
-      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:aspect-square"
+      // Square between md and lg (its grid column is the narrow rail). On a phone, and from lg up where
+      // it takes half the row (#329, option A), just as tall as its content: a half-width square would
+      // make the whole row about 500 px tall.
+      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:aspect-square lg:aspect-auto"
     >
       {/* 44 px whether or not Hide shows, like Players' header: the two cards' bodies line up. */}
       <div className="flex min-h-touch items-center gap-3">
