@@ -63,22 +63,41 @@ describe("reloadOnce", () => {
 });
 
 describe("reloadOnStaleChunk", () => {
+  // Vite's handlePreloadError sets `payload` to the import's error before dispatching.
+  const preloadError = (payload?: unknown) =>
+    Object.assign(new Event("vite:preloadError", { cancelable: true }), { payload });
+  const missingChunk = () => new TypeError("Failed to fetch dynamically imported module: https://example.test/assets/x.js");
+
   it("reloads once on vite:preloadError without cancelling the event, and stops when removed", () => {
     const target = new EventTarget() as unknown as Window;
     const reload = vi.fn();
     const stop = reloadOnStaleChunk(target, reload);
-    const event = new Event("vite:preloadError", { cancelable: true });
+    const event = preloadError(missingChunk());
     target.dispatchEvent(event);
     // Cancelling would make Vite resolve the import to undefined instead of reaching the boundary.
     expect(event.defaultPrevented).toBe(false);
     expect(reload).toHaveBeenCalledTimes(1);
 
-    target.dispatchEvent(new Event("vite:preloadError", { cancelable: true }));
+    target.dispatchEvent(preloadError(missingChunk()));
     expect(reload).toHaveBeenCalledTimes(1);
 
     window.sessionStorage.clear();
     stop();
-    target.dispatchEvent(new Event("vite:preloadError", { cancelable: true }));
+    target.dispatchEvent(preloadError(missingChunk()));
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  // Found by the fresh-eyes pass: a bug in the lazy module's own code also fires the event, and a
+  // reload wouldn't fix it; the section's Try again should show instead.
+  it.each([
+    ["a bug in the lazy module", new TypeError("Cannot read properties of undefined (reading 'render')")],
+    ["no payload", undefined],
+  ])("does not reload for %s", (_name, payload) => {
+    const target = new EventTarget() as unknown as Window;
+    const reload = vi.fn();
+    reloadOnStaleChunk(target, reload);
+    target.dispatchEvent(preloadError(payload));
+    expect(reload).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("satis-manager.stale-chunk-reload-at")).toBeNull();
   });
 });

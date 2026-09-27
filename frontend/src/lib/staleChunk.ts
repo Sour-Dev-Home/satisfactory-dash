@@ -42,10 +42,12 @@ export function reloadOnce(now: number = Date.now(), reload: () => void = () => 
  * Vite dispatches `vite:preloadError` when a lazy import fails. The error is left to reach the
  * section's ErrorBoundary (no preventDefault: that would resolve the import to undefined), which
  * shows "a new version is available" while the reload happens, or if the guard stopped it.
+ * Vite fires it for any failed lazy import, including a bug in the module's own code, which a
+ * reload wouldn't fix: only a chunk that failed to load (its `payload`) reloads.
  */
 export function reloadOnStaleChunk(target: Window = window, reload?: () => void): () => void {
-  const onPreloadError = () => {
-    reloadOnce(Date.now(), reload);
+  const onPreloadError = (event: Event) => {
+    if (isChunkLoadError((event as Event & { payload?: unknown }).payload)) reloadOnce(Date.now(), reload);
   };
   target.addEventListener("vite:preloadError", onPreloadError);
   return () => target.removeEventListener("vite:preloadError", onPreloadError);

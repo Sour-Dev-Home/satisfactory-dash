@@ -149,5 +149,25 @@ describe("ErrorBoundary", () => {
       expect(window.sessionStorage.getItem(RELOAD_KEY)).toBeNull();
       expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     });
+
+    it("reloads the page when Reload is clicked, unguarded (an explicit user request)", () => {
+      window.sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+      // jsdom's window.location.reload isn't configurable enough for vi.spyOn; replace the
+      // whole location object instead, then restore it so other tests get the real jsdom one.
+      const originalLocation = window.location;
+      const reload = vi.fn();
+      Object.defineProperty(window, "location", { value: { ...originalLocation, reload }, writable: true });
+      try {
+        render(
+          <ErrorBoundary label="Power history">
+            <Stale />
+          </ErrorBoundary>,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+        expect(reload).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(window, "location", { value: originalLocation, writable: true });
+      }
+    });
   });
 });
