@@ -4,8 +4,8 @@ import { createTestDatabase, dbTestsAvailable } from "../../../test-support/test
 import type { TestDatabase } from "../../../test-support/testDb.js";
 import { createUser } from "../identity/repositories/userRepository.js";
 import { loadDatabaseServers } from "./loadDatabaseServers.js";
-import { addMember, getMemberRole } from "./repositories/memberRepository.js";
-import { switchToAgentConnection, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { addMember, getMemberRole, transferOwnership } from "./repositories/memberRepository.js";
+import { softDeleteServer, switchToAgentConnection, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import { ServerRuntime } from "./serverRuntime.js";
 import type { RuntimeServer } from "./serverRuntime.js";
 
@@ -67,6 +67,35 @@ describe.skipIf(!available)("seeding the operator as owner of agent servers, aga
   it("an operator who is already a non-owner member is left as it is when someone else owns the server", async () => {
     const { publicId, id } = await agentServer();
     await addMember(pool, { serverId: id, userId: otherId, role: "owner", actorUserId: null });
+    await addMember(pool, { serverId: id, userId: operatorId, role: "viewer", actorUserId: null });
+    await load();
+    expect(await getMemberRole(pool, { publicId, userId: operatorId })).toBe("viewer");
+  });
+
+  it("after ownership moved from the operator to another member, a restart does not take it back", async () => {
+    const { publicId, id } = await agentServer();
+    await load();
+    await addMember(pool, { serverId: id, userId: otherId, role: "admin", actorUserId: null });
+    expect(await transferOwnership(pool, { serverId: id, fromUserId: operatorId, toUserId: otherId })).toBe("transferred");
+    await load();
+    expect(await getMemberRole(pool, { publicId, userId: otherId })).toBe("owner");
+    expect(await getMemberRole(pool, { publicId, userId: operatorId })).toBe("admin");
+    const owners = await pool.query("SELECT count(*)::int AS n FROM servers.server_members WHERE server_id = $1 AND role = 'owner'", [id]);
+    expect(owners.rows[0].n).toBe(1);
+  });
+
+  it("a soft-deleted agent server is neither served nor given an owner", async () => {
+    const { publicId, id } = await agentServer();
+    await softDeleteServer(pool, publicId, { actorUserId: null });
+    const runtime = new ServerRuntime<string>();
+    await loadDatabaseServers({ db: pool, ring: null, runtime, operatorUserId: operatorId, build, buildAgent });
+    expect(runtime.list().some((s) => s.id === publicId)).toBe(false);
+    const members = await pool.query("SELECT count(*)::int AS n FROM servers.server_members WHERE server_id = $1", [id]);
+    expect(members.rows[0].n).toBe(0);
+  });
+
+  it("an ownerless server whose operator is already a viewer stays as it is (documented limit: no promotion)", async () => {
+    const { publicId, id } = await agentServer();
     await addMember(pool, { serverId: id, userId: operatorId, role: "viewer", actorUserId: null });
     await load();
     expect(await getMemberRole(pool, { publicId, userId: operatorId })).toBe("viewer");
