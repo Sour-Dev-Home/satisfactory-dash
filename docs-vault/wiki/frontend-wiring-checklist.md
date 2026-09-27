@@ -28,9 +28,10 @@ behind each step; this page is the order and the files. The worked example is th
       test that the MutationCache is empty and no query holds the secret.
 - [ ] **A synchronous guard** on a create button (a ref), when a double click would create two things:
       `isPending` lags two clicks in the same tick.
-- [ ] **Nothing reads `import.meta.env` outside `api/transport.ts`.** Use `apiHref("")` from `api/client.ts`
-      for the API origin. Reading `VITE_API_URL` elsewhere inlines the real URL into the demo bundle
-      (`e2e/build-output.spec.ts` fails).
+- [ ] **Nothing reads `VITE_API_URL` outside `api/transport.ts`.** Use `apiHref("")` from `api/client.ts`
+      for the API origin. Reading it elsewhere inlines the real URL into the demo bundle
+      (`e2e/build-output.spec.ts` fails). Checking `import.meta.env.MODE` is fine (`demo/mode.ts` has
+      `IS_DEMO`).
 
 ## 2. The screen (`src/<area>/`)
 
@@ -45,6 +46,11 @@ behind each step; this page is the order and the files. The worked example is th
       token in `@theme` in `index.css` if none fits.
 - [ ] **The client clock never drives a warning.** Ages are text; "late", "offline" and "expired" come from the
       backend (e.g. `stale`, `online`).
+- [ ] **Destructive actions** use `DANGER_BUTTON` (the confirm) and `DANGER_BUTTON_QUIET` (the button that
+      opens it) from `components/dangerButton.ts` (#275), with the safe choice first.
+- [ ] **Repeated controls name their item.** When every row or card has the same button, give each an
+      `aria-label` that starts with the visible text and ends with the item, e.g. `Remove ${name}` (#305,
+      `serverManagement/ServerRow.tsx`).
 - [ ] **Focus:** a control that swaps itself for a confirm moves focus into it, and back on cancel. Use a
       stable `useCallback` ref: a view that re-renders every second re-focuses with an inline one.
 - [ ] **Layout-stable loading:** a placeholder above other content reserves its final height (a token), or the
@@ -64,10 +70,12 @@ behind each step; this page is the order and the files. The worked example is th
 - [ ] Vitest + RTL + MSW for the container: every role, loading, error with Retry, and each write's success and
       error. `@testing-library/user-event` isn't installed; use `fireEvent`.
 - [ ] A case in `e2e/states.spec.ts` for each new state (`path`, `act`, and a fixed `clock` whenever time
-      shows on screen). Local e2e may be blocked; `gh workflow run e2e.yml --ref <branch> -f
-      update_snapshots=true`, then download `playwright-baselines`.
-- [ ] **Commit only the images your change explains.** Other drift is noise: the PR's own e2e passing on
-      the old baselines proves it.
+      shows on screen). Screenshots are compared only in CI's Linux image, so regenerate them there:
+      `npm run e2e:report -- <branch> --baselines --dispatch`, then rerun without `--dispatch` once the run
+      is done. It sorts the images into new, changed and sub-threshold drift.
+- [ ] **Commit only the images your change explains.** `--apply` copies only the new and changed ones and
+      leaves the drift alone. `npm run e2e:report -- <pr>` prints a failed run's tests, differing snapshots
+      and tab-switch CLS timelines.
 
 ## 5. Before "ready"
 
@@ -75,6 +83,8 @@ behind each step; this page is the order and the files. The worked example is th
       with `set -o pipefail`).
 - [ ] A `docs-vault/wiki/log.d/` fragment. No real name or local path anywhere: files, commit messages, PR
       title and body.
-- [ ] **Tier:** anything under `api/`, `auth/`, `demo/handlers.ts` or `test/browser.ts`, or any new query, is
-      not tier:ui (the architect reviews). A QUICK test-hunter on new `.ts` logic, and a ui-review for
+- [ ] **Tier:** a change under `api/`, `auth/`, `demo/handlers.ts` or `test/browser.ts` is not tier:ui (the
+      architect reviews), and neither is any added line under `frontend/src` with data flow: `useQuery`,
+      `useMutation`, `apiSend`, `endpoints.`, browser storage or network APIs, or an import from an `api/`
+      or `auth/` path (the full list is `DATA_FLOW` in `scripts/tier-check.mjs`). A QUICK test-hunter on new `.ts` logic, and a ui-review for
       anything users see (the mock server needs the owner's OK via `reactapps-dc`).
