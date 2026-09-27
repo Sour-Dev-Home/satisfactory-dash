@@ -69,11 +69,13 @@ function innerErrors(err: unknown): unknown[] {
 }
 
 /** The database is (probably) temporarily unavailable, as opposed to misconfigured. An
- *  AggregateError (dual-stack connect) is transient only if every attempt was. */
+ *  AggregateError (dual-stack connect) means no address family reached the server, so it is transient
+ *  if ANY attempt was: on Windows a closed port answers EACCES on ::1 and ECONNREFUSED on 127.0.0.1,
+ *  and the refusal is the truth (#298). A plain EACCES (a firewall, permissions) stays fatal. */
 export function isTransientConnectionError(err: unknown): boolean {
   const inner = innerErrors(err);
   if (inner.length > 0) {
-    return inner.every(isTransientConnectionError);
+    return inner.some(isTransientConnectionError);
   }
   const code = errorCode(err);
   if (code !== undefined) {
@@ -110,12 +112,28 @@ const FATAL_REASONS: Record<string, string> = {
   ENOTFOUND: "the host in DATABASE_URL could not be resolved",
 };
 
+/** The code of the (possibly nested) attempt that made an error transient. */
+function transientCode(err: unknown): string | undefined {
+  const inner = innerErrors(err);
+  if (inner.length === 0) {
+    return errorCode(err);
+  }
+  for (const e of inner.filter(isTransientConnectionError)) {
+    const c = transientCode(e);
+    if (c !== undefined) {
+      return c;
+    }
+  }
+  return undefined;
+}
+
 export function classifyStartupError(err: unknown): StartupErrorClass {
   if (err instanceof DatabaseSetupError) {
     return { kind: "fatal", reason: err.message };
   }
   if (isTransientConnectionError(err)) {
-    const code = errorCode(err) ?? innerErrors(err).map(errorCode).find((c) => c !== undefined);
+    // For an AggregateError, name the attempt that made it transient (its own code can be the other family's EACCES).
+    const code = transientCode(err);
     return { kind: "transient", reason: code ? `the database is not reachable yet (${code})` : "the database is not reachable yet" };
   }
   const code = errorCode(err) ?? innerErrors(err).map(errorCode).find((c) => c !== undefined);

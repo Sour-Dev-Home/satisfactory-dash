@@ -3,7 +3,7 @@ import { provisionDatabase } from "../src/platform/db/admin.js";
 
 // ADR-0025: one-time (idempotent) database setup, run by the operator with a Postgres superuser
 // URL. Creates the satis_migrator and satis_app roles and the database (builtin C.UTF-8 locale).
-//   DATABASE_ADMIN_URL      postgres://postgres:<admin password>@localhost:5432/postgres
+//   DATABASE_ADMIN_URL      postgres://postgres:<admin password>@127.0.0.1:5432/postgres
 //   DB_MIGRATOR_PASSWORD    password to set for satis_migrator (16+ characters)
 //   DB_APP_PASSWORD         password to set for satis_app (16+ characters)
 //   DB_BACKUP_PASSWORD      optional: also create the read-only satis_backup role (16+ characters)
