@@ -14,7 +14,9 @@ const KNOWN_NODE_TYPES: Readonly<Record<string, string>> = {
  *  is a plain string, deploy skew) — this keeps the output on one casing convention regardless. */
 function genericCamelCase(value: string): string {
   const words = value.trim().split(/\s+/).filter((word) => word.length > 0);
-  if (words.length === 0) return value;
+  // No words (empty or all-whitespace input): "" either way, not the original untrimmed value —
+  // every other path here normalizes, so this one does too (test-hunter finding, #367 follow-up).
+  if (words.length === 0) return "";
   return words.map((word, index) => (index === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())).join("");
 }
 

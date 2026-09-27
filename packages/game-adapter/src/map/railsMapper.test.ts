@@ -104,6 +104,28 @@ describe("mapRailSegments (ADR-0038 M2)", () => {
     expect(mapRailSegments(raw).data).toHaveLength(2);
   });
 
+  it("dedup treats a bad point as invisible: two equal-value points separated only by a dropped bad point still collapse (fresh-eyes: filter-then-dedup happens in one pass, not two separate passes)", () => {
+    const segment = mapRailSegment({
+      ID: "x",
+      SplineData: [{ x: 0, y: 0 }, { x: Infinity, y: 0 }, { x: 0, y: 0 }, { x: 100, y: 0 }],
+    });
+    // If bad-point filtering and dedup were two independent passes over the ORIGINAL sequence, the
+    // two [0,0] points are not textually adjacent (Infinity sits between them) and would NOT be
+    // treated as consecutive duplicates. The actual implementation instead filters and dedups in a
+    // single pass, comparing each new point against the last point actually PUSHED — so the bad
+    // point in between is invisible to the dedup check, and the two [0,0]s collapse to one.
+    expect(segment?.points).toEqual([[0, 0], [1, 0]]);
+  });
+
+  it("a bad point between two genuinely DIFFERENT values does not cause a false collapse", () => {
+    const segment = mapRailSegment({
+      ID: "x",
+      SplineData: [{ x: 0, y: 0 }, { x: NaN, y: 0 }, { x: 200, y: 0 }],
+    });
+    // 0cm -> 0m, 200cm -> 2m: distinct values, so no collapse regardless of the NaN between them.
+    expect(segment?.points).toEqual([[0, 0], [2, 0]]);
+  });
+
   it("maps a large batch (65 segments x 127 points, the full live capture's documented upper bound) without throwing", () => {
     // Each point exactly 100 cm (1 m) apart, so it rounds to a genuinely new whole metre every
     // time — nothing here collapses under the consecutive-duplicate dedup being tested above.
