@@ -64,7 +64,7 @@ export const RawFrmLocationSchema = z.object({
 export const RawFrmProductionItemSchema = z.object({
   Name: z.string(),
   ClassName: z.string(),
-  // A number despite frm-getFactory.md:33 saying String (2026-09-22 captures).
+  // A number despite frm-getFactory.md E3 saying String (2026-09-22 captures).
   Amount: nonNegative,
   CurrentProd: nonNegative,
   MaxProd: nonNegative,
@@ -102,7 +102,7 @@ export const RawFrmFactoryBuildingSchema = z.object({
   /** "Unassigned" (not absent) when no recipe is set; see IsConfigured. Never empty:
    *  an empty recipe would get past the adapter's unconfigured check (PR #12 review). */
   Recipe: z.string().min(1).optional(),
-  /** "Is a recipe configured?" (frm-getFactory.md:57). Present on every building in
+  /** "Is a recipe configured?" (frm-getFactory.md E6). Present on every building in
    *  the 2026-09-22 live captures, and false exactly when Recipe is "Unassigned". */
   IsConfigured: z.boolean().optional(),
   production: z.array(RawFrmProductionItemSchema).optional(),
@@ -112,11 +112,11 @@ export const RawFrmFactoryBuildingSchema = z.object({
   IsProducing: z.boolean(),
   IsPaused: z.boolean(),
   PowerInfo: RawFrmPowerInfoSchema.optional(),
-  /** Configured speed in percent (frm-getFactory.md:54; the 2026-09-22 running capture has 100 and one 160).
+  /** Configured speed in percent (frm-getFactory.md E6; the 2026-09-22 running capture has 100 and one 160).
    *  Optional, and tolerant: a value that is not a number (or not finite, e.g. JSON `1e999`) becomes undefined,
    *  so one odd optional field never makes the whole factory response an upstream error. */
   ManuSpeed: z.number().optional().catch(undefined),
-  /** World position (frm-getFactory.md:23-27; units not documented, believed centimetres:
+  /** World position (frm-getFactory.md E2; units not documented, believed centimetres:
    *  ADR-0023). Optional so a building without it still maps, just without a location. */
   location: RawFrmLocationSchema.optional(),
 });

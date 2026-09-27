@@ -2,7 +2,7 @@
 
 Captured 2026-09-24 for ADR-0023 (live factory map). Two independent sources, both about how
 Satisfactory's world coordinates (the `location { x, y, z }` FRM reports per building,
-`frm-getFactory.md:23-27`) relate to metres and to a 2D map. Neither is official; treat the
+`frm-getFactory.md E2`) relate to metres and to a 2D map. Neither is official; treat the
 figures as **decently imprecise** (the project owner's words) and confirm with an in-game check.
 
 ## Source A: SCIM (community interactive map)

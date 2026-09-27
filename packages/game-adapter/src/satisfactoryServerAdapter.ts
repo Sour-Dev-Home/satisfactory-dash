@@ -169,7 +169,7 @@ export class SatisfactoryServerAdapter {
     return raw.map((building) => {
       // B2 (2026-09-22 captures): FRM reports an unconfigured machine as Recipe
       // "Unassigned" plus a placeholder "Unassigned" production/ingredient entry, not
-      // as a missing recipe. IsConfigured (frm-getFactory.md:57) is the explicit
+      // as a missing recipe. IsConfigured (frm-getFactory.md E6) is the explicit
       // signal; "Unassigned" is checked too so the mapping still holds if a response
       // ever omits the flag (the PR's fresh-eyes review found that gap), and a missing
       // Recipe counts as unconfigured so recipe and production can't disagree (PR #17).

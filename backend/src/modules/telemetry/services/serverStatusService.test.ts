@@ -38,7 +38,7 @@ describe("ServerStatusService", () => {
     expect(StatusSchema.parse(status)).toEqual(status);
   });
 
-  // Per docs-vault/raw-sources/dedicated-server-api.md:310, HealthCheck reports
+  // Per docs-vault/raw-sources/dedicated-server-api.md E6, HealthCheck reports
   // "slow" below 10 ticks/s rather than failing, so it's a normal resolved value.
   it("passes a slow tick health through without throwing", async () => {
     const service = new ServerStatusService(adapterWith({ getServerHealth: async () => ({ tickHealth: "slow" }) }));

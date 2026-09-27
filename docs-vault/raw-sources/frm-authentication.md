@@ -1,7 +1,14 @@
 Source: https://docs.ficsit.app/ficsitremotemonitoring/latest/json/authentication.html
-Captured: 2026-09-21
+Captured: 2026-09-21. Trimmed 2026-09-27 (#343).
+
+FicsitRemoteMonitoring's docs carry no licence (all rights reserved), so this file keeps only the
+excerpts this repo cites, verbatim, numbered E1, E2, ... Cite them as `frm-authentication.md` E<n>, never by line
+number. The full page is at the source URL; a full copy of the 2026-09-21 capture is kept outside
+the repo, and this file's git history has it too.
 
 ---
+
+### E1 — Where the token lives, and the X-FRM-Authorization header
 
 ## Authentication
 
@@ -13,6 +20,9 @@ If left empty, a new token will be generated.
 ## Passing the token to the API
 
 Use it to set an API request’s Authorization header. `X-FRM-Authorization: <token goes here>`
+
+## Our note (2026-09-21)
+
 Note: this page describes the token file location using the legacy config path
 (Configs/FicsitRemoteMonitoring/WebServer.cfg). As of Satisfactory 1.2+, per
 frm-config.md, the actual config system is FGUserSettings; the same token is

@@ -6,7 +6,7 @@
 export interface SatisfactoryServerConfig {
   host: string;
   /** Vanilla Dedicated Server HTTPS API port. Always TLS, self-signed by default
-   *  (docs-vault/raw-sources/dedicated-server-api.md, "Certificate Validation and
+   *  (docs-vault/raw-sources/dedicated-server-api.md E3, "Certificate Validation and
    *  Encryption"). */
   apiPort: number;
   /** Bearer token for admin-privileged vanilla API functions. Not required for the

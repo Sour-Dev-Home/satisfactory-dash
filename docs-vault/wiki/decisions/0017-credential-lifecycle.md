@@ -6,7 +6,7 @@ Status: accepted (project owner), 2026-09-24
 Three kinds of secret protect a game server:
 - the FRM auth token (`uWS.AuthenticationToken`, plain-HTTP API)
 - the vanilla application token (`server.GenerateAPIToken`; doesn't expire; `server.InvalidateAPITokens`
-  revokes ALL of them; dedicated-server-api.md:279-284)
+  revokes ALL of them; dedicated-server-api.md E5)
 - the server admin password
 Today one operator pastes them into backend/.env by hand. ADR-0014's end state has many users and
 servers: self-hosted ones behind home NAT, and managed ones on AWS. Two facts constrain the design:

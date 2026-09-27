@@ -5,7 +5,7 @@ Status: accepted (project owner), 2026-09-24
 ## Context
 The live map is the product's end-goal feature (ADR-0014): buildings drawn at their real in-game
 positions, with switchable layers (factory status, power, later belts and trains). Evidence:
-- FRM gives every factory building `location { x, y, z, rotation }` (frm-getFactory.md:23-27; units
+- FRM gives every factory building `location { x, y, z, rotation }` (frm-getFactory.md E2; units
   not documented). In the 2026-09-22 capture, all 338 buildings have it; 333 sit exactly on a
   100-unit grid; rotations are mostly 0/90/180/270; the base spans about 264,000 x 141,500 units.
   That's consistent with Unreal centimetres (buildings snapping to 1 m). Corroborated (amendment

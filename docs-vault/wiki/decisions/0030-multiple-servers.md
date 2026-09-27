@@ -14,7 +14,7 @@ allowed in phase 1; encrypted DB tokens as the single source; caps 8 / 3.
   pollers, started once at boot.
 - The backend runs on the owner's home PC behind the tunnel (ADR-0013). A server's tokens are
   powerful: the app uses an `APIToken` (privilege level "Third Party Application",
-  raw-sources/dedicated-server-api.md:262-268), which can change server options (our auto-pause toggle
+  raw-sources/dedicated-server-api.md E5), which can change server options (our auto-pause toggle
   relies on it). FRM speaks plain HTTP with its own token.
 - ADR-0014/0017/0020 already chose the **edge agent** for servers not on the owner's PC: the agent
   holds the game credentials beside the server, connects OUT, and enrolls with a single-use code.

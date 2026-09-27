@@ -3,7 +3,7 @@ import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
 import { ProductionService } from "./productionService.js";
 import { capturedBackedUpAssembler, capturedFuelRefinery } from "@satisfactory-dash/game-adapter/fixtures";
 
-// ADR-0027 amendment 2: FRM's ManuSpeed (configured speed in percent, frm-getFactory.md:54; the committed
+// ADR-0027 amendment 2: FRM's ManuSpeed (configured speed in percent, frm-getFactory.md E6; the committed
 // 2026-09-22 running capture has six machines at 100 and one at 160) becomes the optional `clockSpeedPercent`.
 
 function adapterFor(...raw: unknown[]) {
