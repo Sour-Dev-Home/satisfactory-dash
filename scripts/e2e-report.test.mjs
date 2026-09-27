@@ -31,7 +31,7 @@ test("the timeout says whether the runs never started or are still going", () =>
     waitTimeoutMessage(sha, { missing: ["CI", "E2E"], pending: [] }, 60),
     "no CI, E2E runs for 9bfc883 after 60 min; is the head pushed and the workflow enabled?",
   );
-  assert.match(waitTimeoutMessage(sha, { missing: [], pending: ["E2E"] }, 60), /^runs still pending for 9bfc883: E2E after 60 min/);
+  assert.equal(waitTimeoutMessage(sha, { missing: [], pending: ["E2E"] }, 60), "runs still pending for 9bfc883 after 60 min: E2E");
 });
 
 // What `gh run view --log` prints: job, step, timestamp, then the line.

@@ -163,10 +163,10 @@ export function runsState(runs, { needDispatch = false } = {}) {
 
 /** Why the wait gave up, for the error message. */
 export function waitTimeoutMessage(sha, state, minutes) {
-  const what = state.missing.length
-    ? `no ${state.missing.join(", ")} runs for ${sha.slice(0, 7)}`
-    : `runs still pending for ${sha.slice(0, 7)}: ${state.pending.join(", ")}`;
-  return `${what} after ${minutes} min; is the head pushed and the workflow enabled?`;
+  if (state.missing.length) {
+    return `no ${state.missing.join(", ")} runs for ${sha.slice(0, 7)} after ${minutes} min; is the head pushed and the workflow enabled?`;
+  }
+  return `runs still pending for ${sha.slice(0, 7)} after ${minutes} min: ${state.pending.join(", ")}`;
 }
 
 /** Waits until the head has its CI and E2E runs and every run on it has finished, for up to MAX_WAIT_MS. */
