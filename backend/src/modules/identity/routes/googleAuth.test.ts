@@ -355,6 +355,17 @@ describe("Google sign-in routes", () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
+    it("treats a quoted, oversized or __proto__-shadowed attempt cookie as expired, without querying the database (cookie 2 keeps quotes)", async () => {
+      const id = "A".repeat(43);
+      for (const header of [`${LOGIN_ATTEMPT_COOKIE}="${id}"`, `${LOGIN_ATTEMPT_COOKIE}=${id}${id}`, `__proto__=1; ${LOGIN_ATTEMPT_COOKIE}="${id}"`, `${LOGIN_ATTEMPT_COOKIE}=; ${LOGIN_ATTEMPT_COOKIE}=${id}`]) {
+        const { app, db } = build();
+        const spy = vi.spyOn(db, "query");
+        const res = await request(app).get("/api/auth/google/callback?code=x&state=y").set("Cookie", header);
+        expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=expired`);
+        expect(spy).not.toHaveBeenCalled();
+      }
+    });
+
     it("logs a code and no claims, cookies or provider text on failure", async () => {
       const { app, lines } = build();
       const begun = await beginGoogleSignIn(app);
