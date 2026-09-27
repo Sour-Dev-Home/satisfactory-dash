@@ -95,18 +95,23 @@ export function HealthCard({
           </button>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        <Heart health={overall.health} quiet={hidden} />
-        <p role="status" className="mb-0 grid">
-          <span className={cn("text-xl font-semibold", hidden ? "text-muted" : WORD_COLOR[overall.health])}>
-            {WORD[overall.health]}
-          </span>
-          <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
-            {hidden ? "Warning hidden until something changes." : overall.headline}
-          </span>
-        </p>
+      {/* Stacked in the narrow column; from lg up, where the card takes half the row (#329), the
+          status and the tick gauge sit side by side so the card's width isn't left empty (the owner's
+          pick, after the ui review). Reading order stays status first. */}
+      <div className="grid gap-3 lg:flex lg:flex-wrap lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <Heart health={overall.health} quiet={hidden} />
+          <p role="status" className="mb-0 grid">
+            <span className={cn("text-xl font-semibold", hidden ? "text-muted" : WORD_COLOR[overall.health])}>
+              {WORD[overall.health]}
+            </span>
+            <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
+              {hidden ? "Warning hidden until something changes." : overall.headline}
+            </span>
+          </p>
+        </div>
+        {tick !== undefined && <TickRow tick={tick} />}
       </div>
-      {tick !== undefined && <TickRow tick={tick} />}
     </section>
   );
 }
