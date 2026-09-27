@@ -1,10 +1,13 @@
 Source: https://github.com/satisfactorymodding/SatisfactoryModLoader/blob/d2162c999bbaa9650594ee9ad6e6e06190306009/LICENSE.txt (GitHub's license API reports GPL-3.0 for the repository)
-Captured: 2026-09-27T05:29:45Z
-Method: raw.githubusercontent.com, copied unedited.
-Item 7: SML's LICENSE file, verbatim, and whether it says 'only' or 'or later'. FINDING: LICENSE.txt is the unmodified GNU GPL version 3 text and contains NO statement of 'version 3 only' or 'or any later version' as applied to SML; the only occurrence of the phrase 'any later version' in the repository is the boilerplate inside the license text itself (GitHub code search, 2026-09-27: 1 match, LICENSE.txt). SML's README.md and CREDITS.md contain no licence statement, and the repository has no per-file licence headers (a search for 'General Public License' finds only LICENSE.txt). So SML's own text does not decide between GPL-3.0-only and GPL-3.0-or-later.
-Convention: each captured item sits between a BEGIN line and an END line written by the capture (they are not part of the source); everything between them is the source text, unedited (a final newline is added when the source file has none), with one exception: a line holding an example file path that this repository's PII scan rejects is replaced by an '[OMITTED by the capture ...]' marker (only the FAQ in sml-dedicated-servers-2026-09-27.adoc has such lines).
+Captured: 2026-09-27T05:39:34Z
+Method: raw.githubusercontent.com, copied unedited (the GNU GPL permits verbatim copies).
+Item: 7 of 9: SML's LICENSE file, verbatim, and whether it says 'only' or 'or later'.
+FINDINGS:
+  - LICENSE.txt is the unmodified GNU General Public License version 3 text. It contains NO statement of 'version 3 only' or 'or any later version' as applied to SML: the only occurrence of 'any later version' in the repository is the boilerplate inside the license text itself (GitHub code search, 2026-09-27: 1 match, LICENSE.txt).
+  - SML's README.md and CREDITS.md contain no licence statement, and the repository has no per-file licence headers (a search for 'General Public License' finds only LICENSE.txt). So SML's own text does not decide between GPL-3.0-only and GPL-3.0-or-later.
 NOT FOUND (recorded, not guessed):
   - A per-file or README statement choosing 'only' or 'or later' for SML: none found.
+Convention: each excerpt sits between a BEGIN line and an END line written by the capture (they are not part of the source); the text between them is the source, unedited, with "[... skipped ...]" lines between separate ranges.
 ---
 
 ##### BEGIN LICENSE.txt #####

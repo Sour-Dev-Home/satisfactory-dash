@@ -20,3 +20,4 @@ Priorities, in order:
    docs miss.
 5. Anything else you find useful: SML docs, Discord/forum answers, GitHub issues.
    Note the source URL and date at the top of each file.
+6. Third-party docs without a licence permitting redistribution: capture the pinned URL plus quoted excerpts, not whole pages.
