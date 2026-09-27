@@ -63,6 +63,27 @@ describe("requestMetrics", () => {
     expect(aggregator.drain()[0].labels.status_class).toBe("5xx");
   });
 
+  it.each([
+    [0, "1xx"], // never happens over HTTP, but statusClass must not produce "0xx" (outside the registry's isStatusClass)
+    [99, "1xx"],
+    [100, "1xx"],
+    [199, "1xx"],
+    [200, "2xx"],
+    [599, "5xx"],
+    [600, "5xx"],
+    [999, "5xx"],
+  ])("clamps status %i to status_class %s, never a value the registry would refuse", (statusCode, expectedClass) => {
+    const req = fakeRequest("/x");
+    const res = fakeResponse();
+    const aggregator = createMetricsAggregator();
+    drive(req, res, aggregator, { warn: vi.fn() } as unknown as Logger);
+    res.statusCode = statusCode;
+    res.writeHead();
+    res.emit("finish");
+    const [delta] = aggregator.drain();
+    expect(delta.labels.status_class).toBe(expectedClass);
+  });
+
   it("skips a request with no matched route (e.g. a 404), rather than recording an open-ended label", () => {
     const req = fakeRequest(undefined);
     const res = fakeResponse();

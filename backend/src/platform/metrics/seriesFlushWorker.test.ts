@@ -98,6 +98,29 @@ describe("SeriesFlushWorker", () => {
     ]);
   });
 
+  it("a mid-batch failure is a torn write, not an all-or-nothing one: earlier deltas in the same flush are already committed when a later one throws", async () => {
+    // flushOnce's own comment says a failed write "drops that interval's deltas" (plural, read as
+    // all of them); addSeriesDeltas actually awaits one INSERT per delta with no transaction, so a
+    // failure partway through leaves the earlier ones durably written and only the rest lost. This
+    // documents the actual (torn) behaviour rather than the all-or-nothing framing.
+    let calls = 0;
+    const { worker, aggregator, statements } = setup({
+      upsert: () => {
+        calls++;
+        if (calls === 2) throw new Error("db down for this one delta");
+      },
+    });
+    aggregator.recordHistogram("http.server.request.duration", { route: "/a", status_class: "2xx" }, 1);
+    aggregator.recordHistogram("http.server.request.duration", { route: "/b", status_class: "2xx" }, 1);
+    aggregator.recordHistogram("http.server.request.duration", { route: "/c", status_class: "2xx" }, 1);
+    await worker.flushOnce();
+    // All three deltas were attempted (the loop doesn't stop drained data from being iterated further
+    // once queued)...
+    expect(calls).toBe(2); // ...but the loop DOES stop as soon as one throws: /c's insert never even ran.
+    expect(upserts(statements)).toHaveLength(2); // /a committed, /b's statement was sent (and failed), /c never sent
+    expect(aggregator.drain()).toEqual([]); // /c is gone from the aggregator too: drain() already removed it, so it is not retried
+  });
+
   it("runs every 60 s once started, and stop() ends it and waits for a flush in flight", async () => {
     const { worker } = setup();
     const flushOnce = vi.spyOn(worker, "flushOnce");

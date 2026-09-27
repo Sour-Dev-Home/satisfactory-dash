@@ -29,6 +29,29 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
     expect(() => validateRecording("http.server.upstream.duration", "histogram", { api: "not-a-real-api" })).toThrow(InvalidLabelError);
   });
 
+  it("refuses a label key that shadows an inherited Object.prototype member (no bypass via `in`)", () => {
+    // `"toString" in {}` is true (inherited), so a naive `!(key in definition.labels)` check would
+    // let this sail through with its value never run against any predicate. Object.hasOwn is what
+    // must be used instead.
+    const labels = JSON.parse(
+      '{"route":"/x","status_class":"2xx","toString":"http://evil.example.com/pwned?token=secret and spaces"}',
+    );
+    expect(() => validateRecording("http.server.request.duration", "histogram", labels)).toThrow(InvalidLabelError);
+  });
+
+  it("refuses a label set with an own '__proto__' key from JSON.parse (a real own property, not the object-literal special case)", () => {
+    const labels = JSON.parse(
+      '{"route":"/x","status_class":"2xx","__proto__":"free text with spaces and @ and ? and <script>"}',
+    );
+    expect(() => validateRecording("http.server.request.duration", "histogram", labels)).toThrow(InvalidLabelError);
+  });
+
+  it("refuses a metric name that collides with an inherited Object.prototype member as UnknownMetricError, not a confusing kind mismatch", () => {
+    for (const name of ["__proto__", "toString", "constructor", "hasOwnProperty", "valueOf"]) {
+      expect(() => validateRecording(name, "histogram", {}), name).toThrow(UnknownMetricError);
+    }
+  });
+
   it("every metric in the registry is reachable with an all-valid label set (no metric is unrecordable by construction)", () => {
     const sample: Record<string, string> = {
       route: "/servers/:serverId/status",

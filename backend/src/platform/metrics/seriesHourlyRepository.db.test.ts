@@ -52,6 +52,17 @@ describe.skipIf(!available)("metrics.series_hourly", () => {
       expect(await mergeBucketCountsInDb(app, null, a)).toEqual(a);
       expect(await mergeBucketCountsInDb(app, null, null)).toBeNull();
     });
+
+    // Unlike its "in-process mirror" (histogramBuckets.ts's mergeBucketCounts, which throws on a
+    // length mismatch), the SQL function's inner JOIN silently drops any ordinal past the shorter
+    // array's length instead of erroring. Not reachable through the application (the table's CHECK
+    // constraint refuses any stored bucket_counts that isn't exactly length 13 or null, so two
+    // stored rows can never actually differ in length) — documented here so the "mirror" framing in
+    // the migration's comment isn't read as "identical behaviour in every case", and so a future
+    // caller of mergeBucketCountsInDb directly (outside the upsert) knows it can silently truncate.
+    it("silently truncates to the shorter length on a mismatch, unlike the JS mirror (which throws)", async () => {
+      expect(await mergeBucketCountsInDb(app, [1, 2, 3], [10, 20])).toEqual([11, 22]);
+    });
   });
 
   describe("addSeriesDelta (the flush's upsert)", () => {

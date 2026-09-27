@@ -103,17 +103,23 @@ export function validateRecording(
   kind: MetricKind,
   labels: Readonly<Record<string, string>>,
 ): MetricDefinition {
-  const definition = METRIC_REGISTRY[metric];
-  if (definition === undefined) {
+  // Object.hasOwn, not `METRIC_REGISTRY[metric]` / `in`: METRIC_REGISTRY (and every `labels`
+  // object below) is a plain object, so a metric or label key that collides with something
+  // Object.prototype already has (`toString`, `constructor`, `__proto__`, ...) is truthy / "in"
+  // via the prototype chain even though it was never registered. A metric string picked that way
+  // must still be refused as unknown, and a label key picked that way must still be refused as
+  // undeclared — not silently treated as present with no check run against its value at all.
+  if (!Object.hasOwn(METRIC_REGISTRY, metric)) {
     throw new UnknownMetricError(metric);
   }
+  const definition = METRIC_REGISTRY[metric];
   if (definition.kind !== kind) {
     throw new InvalidLabelError(metric, `recorded as a ${kind}, but the registry declares it a ${definition.kind}`);
   }
   const declaredKeys = Object.keys(definition.labels);
   const givenKeys = Object.keys(labels);
   for (const key of givenKeys) {
-    if (!(key in definition.labels)) {
+    if (!Object.hasOwn(definition.labels, key)) {
       throw new InvalidLabelError(metric, `label "${key}" is not declared for this metric`);
     }
   }
