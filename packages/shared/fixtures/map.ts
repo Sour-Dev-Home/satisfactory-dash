@@ -61,7 +61,8 @@ export const railsWorldResponseTruncated = {
 } satisfies RailsWorldLayerResponse;
 
 /** Six of the fourteen captured resource-type/purity/exploited combinations, projected. Purity is
- *  lowercased from FRM's EnumPurity (RP_Normal, RP_Inpure, RP_Pure). */
+ *  lowercased from FRM's own Purity field (Normal, Impure, Pure — not the separate EnumPurity
+ *  field, RP_Normal/RP_Inpure/RP_Pure, which lowercases to nothing anyone uses). */
 export const resourceNodesSample = {
   observedAt: "2026-09-27T04:54:27.000Z",
   data: [

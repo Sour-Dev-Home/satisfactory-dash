@@ -153,6 +153,42 @@ describe("fixtures", () => {
   });
 });
 
+// test-hunter (fresh-eyes pass, FULL tier, ADR-0038 M1): item 5 of the review brief — do the new prefixes
+// ("railsWorldResponse", "railsSample", "resourceNodesWorldResponse", "resourceNodesSample", "mapLive") shadow, or
+// get shadowed by, any EXISTING prefix in schemaByPrefix? The round-trip test above would already catch most such
+// drift (a fixture parsed by the wrong schema usually fails to round-trip), but it can't catch a wrong-but-still-
+// valid match. These tests pin the EXACT schema each new fixture resolves to, by reference, so a future reordering
+// or a new overlapping prefix is caught even if the wrongly-matched schema happens to still validate the fixture.
+describe("ADR-0038 M1 map fixtures resolve to the exact intended schema, not a same-prefix collision (#352)", () => {
+  it("rails fixtures resolve to the rails schemas, never to a resourceNodes or agent schema", () => {
+    expect(schemaFor("railsWorldResponse")).toBe(RailsWorldLayerResponseSchema);
+    expect(schemaFor("railsWorldResponseEmpty")).toBe(RailsWorldLayerResponseSchema);
+    expect(schemaFor("railsWorldResponseTruncated")).toBe(RailsWorldLayerResponseSchema);
+    expect(schemaFor("railsSample")).toBe(RailsWorldIngestRequestSchema);
+  });
+
+  it("resourceNodes fixtures resolve to the resourceNodes schemas, never to the rails schemas", () => {
+    expect(schemaFor("resourceNodesWorldResponse")).toBe(ResourceNodesWorldLayerResponseSchema);
+    expect(schemaFor("resourceNodesWorldResponseEmpty")).toBe(ResourceNodesWorldLayerResponseSchema);
+    expect(schemaFor("resourceNodesSample")).toBe(ResourceNodesWorldIngestRequestSchema);
+  });
+
+  it("mapLive fixtures resolve to MapLiveSchema, and are not accidentally swallowed by an unrelated earlier prefix", () => {
+    expect(schemaFor("mapLiveSample")).toBe(MapLiveSchema);
+    expect(schemaFor("mapLiveEmpty")).toBe(MapLiveSchema);
+  });
+
+  it("no existing (pre-#352) fixture name is accidentally captured by one of the five new prefixes", () => {
+    const newPrefixes = ["railsWorldResponse", "railsSample", "resourceNodesWorldResponse", "resourceNodesSample", "mapLive"];
+    const preExisting = Object.keys(fixtures).filter(
+      (name) => !name.startsWith("rails") && !name.startsWith("resourceNodes") && !name.startsWith("mapLive") && !name.startsWith("agentSnapshotRequestWithMapLive"),
+    );
+    for (const name of preExisting) {
+      expect(newPrefixes.some((p) => name.startsWith(p)), name).toBe(false);
+    }
+  });
+});
+
 describe("scenario fixtures show what their names say", () => {
   it("statusNoGame is a server with no save loaded", () => {
     expect(fixtures.statusNoGame.data.isGameRunning).toBe(false);

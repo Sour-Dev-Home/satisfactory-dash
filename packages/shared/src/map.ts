@@ -74,7 +74,7 @@ export const RailsLayerDataSchema = z.array(RailSegmentSchema).max(MAP_WORLD_MAX
  *  whether it's exploited, per #352's `{type, purity, x, y, exploited}`. */
 export const ResourceNodeSchema = z.object({
   type: boundedString.describe("The resource's name, e.g. Iron Ore, Crude Oil, SAM. Grows with the game's resource list."),
-  purity: z.string().max(40).describe("Known: impure, normal, pure (FRM's EnumPurity, lowercased)"),
+  purity: z.string().max(40).describe("Known: impure, normal, pure (FRM's Purity field, lowercased; its 'Inpure' typo is corrected to 'impure')"),
   x: WholeMetreSchema,
   y: WholeMetreSchema,
   exploited: z.boolean(),
