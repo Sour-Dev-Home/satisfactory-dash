@@ -1,6 +1,6 @@
 import express, { Router } from "express";
 import type { RequestHandler } from "express";
-import { KNOWN_MAP_WORLD_LAYERS, MAP_WORLD_LAYER_MAX_BYTES, WorldIngestResponseSchema, endpoints } from "@satisfactory-dash/shared";
+import { IsoTimeSchema, KNOWN_MAP_WORLD_LAYERS, MAP_WORLD_LAYER_MAX_BYTES, WorldIngestResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { MapWorldLayer } from "@satisfactory-dash/shared";
 import { BadRequestError } from "../../../platform/errorResponse.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
@@ -49,7 +49,10 @@ export function createAgentWorldRouter(deps: AgentWorldRoutesDeps): Router {
       if (
         typeof body !== "object" ||
         body === null ||
-        typeof (body as { observedAt?: unknown }).observedAt !== "string" ||
+        // Format, not just typeof "string" (test-hunter, PR #374): a non-ISO value must not reach
+        // the database as an invalid ::timestamptz cast, which would fail the WHOLE ingest instead
+        // of a clean 400 — the opposite of this module's own conform-don't-reject rule.
+        !IsoTimeSchema.safeParse((body as { observedAt?: unknown }).observedAt).success ||
         !Array.isArray((body as { data?: unknown }).data)
       ) {
         throw new BadRequestError("The request body is not valid");

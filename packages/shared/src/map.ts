@@ -107,7 +107,12 @@ export const MAP_WORLD_LAYER_ITEM_SCHEMAS = {
   resourceNodes: ResourceNodeSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
-const IsoTimeSchema = z.iso.datetime({ offset: true });
+/** Exported (test-hunter, PR #374): the ingest route validates a body's `observedAt` FORMAT against
+ *  this directly, without parsing the whole body against `MAP_WORLD_LAYER_INGEST_SCHEMAS[layer]`
+ *  (whose `.max(MAP_WORLD_MAX_ITEMS)` would reject an over-cap body outright, defeating "truncate,
+ *  don't reject" for item count) — a non-ISO string must not sail through to the database as an
+ *  invalid `::timestamptz` cast, turning one bad field into a hard failure of the whole ingest. */
+export const IsoTimeSchema = z.iso.datetime({ offset: true });
 
 /** POST /api/agent/world/:layer (ADR-0038 M3): what the agent or the local-server poller sends for
  *  one layer. No `layer` field in the body — the URL's `:layer` says which, and `hash`/`truncated`/

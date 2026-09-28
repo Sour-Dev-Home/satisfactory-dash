@@ -28,8 +28,9 @@ export interface WorldRoutesDeps {
 /**
  * ADR-0038 M3 (#353): the member-facing map reads. Mounted AFTER the servers router in the
  * protected-routers array (its membership check, matching "member of the server only", covers
- * these `/servers/:serverId/...` paths too — see telemetry's history.ts for the same convention);
- * without a database there is no `map.world_layers` table at all, so both routes answer 503.
+ * these `/servers/:serverId/...` paths too — see telemetry's history.ts for the same convention).
+ * Without a database there is no `map.world_layers` table, so the world-layer route answers 503;
+ * `map/live` is in-memory only (never the database) and always answers, database or not.
  */
 export function createWorldRoutes(directory: ServerDirectory<unknown>, deps?: WorldRoutesDeps): Router {
   const router = Router();

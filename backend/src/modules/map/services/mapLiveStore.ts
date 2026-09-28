@@ -1,3 +1,4 @@
+import { MAP_LIVE_MAX_STATIONS, MAP_LIVE_MAX_TRAINS, MapTrainSchema, MapTrainStationSchema } from "@satisfactory-dash/shared";
 import type { MapLive } from "@satisfactory-dash/shared";
 
 /**
@@ -18,11 +19,28 @@ export interface MapLiveSink {
   record(data: MapLive, observedAtMs: number): void;
 }
 
+/**
+ * Conform, don't reject (test-hunter, PR #374): an agent's `mapLive` reaches here only after
+ * `SnapshotRequestSchema` already validated it at the wire (agentApi.ts's snapshot route), but the
+ * LOCAL poller's `getTrains`/`getTrainStations` reach here with no such boundary in between — only
+ * a coordinate-bounds check (game-adapter's trainsMapper.ts/stationsMapper.ts), never a string-length
+ * one. Without this, one oversized/malformed train or station name would store un-conforming data
+ * that later fails `MapLiveResponseSchema` at GET .../map/live (a 500 for that whole server, until
+ * a later, conforming reading overwrites it). A bad item is dropped, never the whole reading; the
+ * two arrays are also capped here, same as the schema would cap them on the wire.
+ */
+function conformMapLive(data: MapLive): MapLive {
+  return {
+    trains: data.trains.filter((train) => MapTrainSchema.safeParse(train).success).slice(0, MAP_LIVE_MAX_TRAINS),
+    stations: data.stations.filter((station) => MapTrainStationSchema.safeParse(station).success).slice(0, MAP_LIVE_MAX_STATIONS),
+  };
+}
+
 export class MapLiveStore {
   private readonly byServer = new Map<string, MapLiveReading>();
 
   record(serverPublicId: string, data: MapLive, observedAtMs: number): void {
-    this.byServer.set(serverPublicId, { data, observedAtMs });
+    this.byServer.set(serverPublicId, { data: conformMapLive(data), observedAtMs });
   }
 
   /** The server's own bound sink (server.ts wires this into telemetry's AgentIngestDeps and into

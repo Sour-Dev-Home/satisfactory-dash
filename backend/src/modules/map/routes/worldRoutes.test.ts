@@ -82,4 +82,19 @@ describe("GET /api/servers/:serverId/map/live", () => {
     expect(res.body.data.trains).toEqual([{ id: "t1", name: "Train", x: 1, y: 2, status: "Self-Driving" }]);
     expect(res.body.observedAt).toBe(new Date(1_700_000_000_000).toISOString());
   });
+
+  // Found by test-hunter (PR #374): unlike the world-layer ingest path (WorldIngestService
+  // re-validates every item, "conform, don't reject"), nothing validated a mapLive reading before
+  // MapLiveStore.record() stored it — a train name over MapTrainSchema's 200-char bound (which the
+  // game-adapter's trainsMapper.ts only checks for coordinate bounds, never string length) would be
+  // stored as-is, and this route's own `sendValidated` would then throw for every later caller,
+  // turning one bad reading into a persistent 500. Fixed in MapLiveStore.record() itself (conforms
+  // both the local-poller and, as defense in depth, the already-validated agent path).
+  it("an overlong train name recorded by the local poller is dropped, not stored, so later reads stay healthy", async () => {
+    const mapLive = new MapLiveStore();
+    mapLive.record("default", { trains: [{ id: "t1", name: "x".repeat(300), x: 1, y: 2, status: "Self-Driving" }], stations: [] }, 1_700_000_000_000);
+    const res = await request(build({ mapLive })).get(endpoints.map.live.path("default"));
+    expect(res.status).toBe(200);
+    expect(res.body.data.trains).toEqual([]); // the whole reading is kept; only the bad train is dropped
+  });
 });

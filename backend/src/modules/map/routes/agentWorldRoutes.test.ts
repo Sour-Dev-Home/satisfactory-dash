@@ -75,4 +75,20 @@ describe("POST /agent/v1/world/:layer", () => {
     await request(app).post(endpoints.agentApi.world.path("rails")).send(railBody);
     expect(ingest.ingest).not.toHaveBeenCalled();
   });
+
+  // Found by test-hunter (PR #374): the route's body check originally only asserted
+  // `typeof observedAt === "string"`, never its FORMAT — a non-ISO string would sail through and
+  // reach `WorldIngestPort.ingest` unmodified, to be written as `$4::timestamptz` by
+  // worldLayerRepository.ts's UPSERT_IF_CHANGED, which would throw at the database instead of
+  // answering a clean 400 — rejecting the WHOLE ingest, contrary to this module's own
+  // "conform, don't reject" rule for everything else in the same body. Fixed by validating against
+  // the now-exported `IsoTimeSchema` (packages/shared/src/map.ts) before calling ingest.
+  it("a non-ISO observedAt is a 400, never forwarded to the ingest service", async () => {
+    const { app, ingest } = build();
+    const res = await request(app)
+      .post(endpoints.agentApi.world.path("rails"))
+      .send({ ...railBody, observedAt: "not-a-real-timestamp" });
+    expect(res.status).toBe(400);
+    expect(ingest.ingest).not.toHaveBeenCalled();
+  });
 });
