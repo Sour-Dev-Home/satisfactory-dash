@@ -15,11 +15,15 @@ const TABLE_NAME = /^[A-Z][A-Z0-9_]+$/;
 /** Wrappers that don't change which value is read: `T[k]!`, `(T[k])`, `T[k] as X`, `T?.[k]`. */
 const TRANSPARENT = new Set(["TSNonNullExpression", "ParenthesizedExpression", "TSAsExpression", "TSSatisfiesExpression", "ChainExpression"]);
 
-/** The table a destructuring pattern reads from: `const { [k]: v } = TABLE` or `({ [k]: v } = TABLE)`. */
+/**
+ * The table a destructuring pattern reads from: `const { [k]: v } = TABLE`, `({ [k]: v } = TABLE)`, or a parameter
+ * default `({ [k]: v } = TABLE) => ...`.
+ */
 function destructuredFrom(pattern) {
   const parent = pattern.parent;
   if (parent?.type === "VariableDeclarator" && parent.id === pattern) return parent.init;
   if (parent?.type === "AssignmentExpression" && parent.left === pattern) return parent.right;
+  if (parent?.type === "AssignmentPattern" && parent.left === pattern) return parent.right;
   return null;
 }
 

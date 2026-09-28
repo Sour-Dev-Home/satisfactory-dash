@@ -102,6 +102,18 @@ const found = lint({
   destructureLowercase: `const table: Record<string, number> = {}; export const f = (k: string) => { const { [k]: v } = table; return v; };`,
   // Found by the fresh-eyes pass: the guard, with the lookup written `TABLE?.[k]` (a ChainExpression wrapper).
   guardOptionalChain: `const TABLE: Record<string, string> = {}; export const f = (k: string) => (Object.hasOwn(TABLE, k) ? TABLE?.[k] : "x");`,
+  // The ChainExpression exemption must stay as narrow as the non-chain guard: same table, same key, true branch only.
+  guardOtherKeyChain: `const TABLE: Record<string, string> = {}; export const f = (k: string, j: string) => (Object.hasOwn(TABLE, k) ? TABLE?.[j] : "x");`,
+  guardOtherTableChain: `const TABLE: Record<string, string> = {}; const U = {}; export const f = (k: string) => (Object.hasOwn(U, k) ? TABLE?.[k] : "x");`,
+  guardElseBranchChain: `const TABLE: Record<string, string> = {}; export const f = (k: string) => (Object.hasOwn(TABLE, k) ? "x" : TABLE?.[k]);`,
+  // Fresh-eyes pass: destructuring inside a for-of body reads the same TABLE per iteration, same as a plain const.
+  destructureForOfBody: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const f = (keys: string[]) => { for (const k of keys) { const { [k]: v } = TABLE; console.log(v); } };`,
+  // A destructured parameter default (`= TABLE`) sits under an AssignmentPattern.
+  destructureParamDefault: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const f = (k: string, { [k]: v }: any = TABLE) => v;`,
 });
 
 test("#361's old registry lookups are flagged: the table index and the `in` check", () => {
@@ -144,4 +156,19 @@ test("destructuring a computed key from a lookup table is flagged like TABLE[k]"
 
 test("the hasOwn-ternary guard is recognised when the lookup uses optional chaining", () => {
   assert.deepEqual(found.guardOptionalChain, []);
+});
+
+test("the optional-chain guard exemption stays as narrow as the non-chain guard", () => {
+  for (const name of ["guardOtherKeyChain", "guardOtherTableChain", "guardElseBranchChain"]) {
+    assert.deepEqual(found[name], ["no-table-index"], name);
+  }
+});
+
+test("destructuring inside a for-of body is flagged like any other const destructure", () => {
+  assert.deepEqual(found.destructureForOfBody, ["no-table-index"]);
+});
+
+// Found by the second fresh-eyes round, fixed in destructuredFrom (an AssignmentPattern parent).
+test("a destructured computed key as a parameter default is flagged", () => {
+  assert.deepEqual(found.destructureParamDefault, ["no-table-index"]);
 });
