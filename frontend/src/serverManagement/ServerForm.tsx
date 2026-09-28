@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CreateServerRequestSchema,
   endpoints,
+  ownValue,
   RenameServerRequestSchema,
   RESERVED_SERVER_IDS,
   SwitchToLocalRequestSchema,
@@ -140,13 +141,15 @@ function fieldErrors(issues: Issues, values: Values): Partial<Record<Field, stri
   const errors: Partial<Record<Field, string>> = {};
   for (const issue of issues) {
     const field = issue.path[0] as Field;
-    if (!(field in FIELD_ERROR) || errors[field]) continue;
+    // The path comes from validation: own keys only (#368).
+    const message = ownValue(FIELD_ERROR, field);
+    if (message === undefined || errors[field]) continue;
     errors[field] =
       field === "id" && (RESERVED_SERVER_IDS as readonly string[]).includes(values.id.trim())
         ? "That id is reserved."
         : field === "displayName"
           ? nameError(issue)
-          : FIELD_ERROR[field];
+          : message;
   }
   return errors;
 }
@@ -165,7 +168,7 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
   const [nothingToChange, setNothingToChange] = useState(false);
   const [tested, setTested] = useState<TestConnectionResponse>();
   const inputs = useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
-  const shows = SHOWS[mode.kind];
+  const shows = ownValue(SHOWS, mode.kind) ?? [];
   const named = mode.kind === "create" ? undefined : mode.server;
   const server = connectionOf(mode);
   const switching = mode.kind === "switchToLocal";
@@ -323,7 +326,7 @@ export function ServerForm({ mode, onDone }: { mode: FormMode; onDone: (message:
       className="grid gap-4 rounded-card border border-line bg-surface p-5"
     >
       <h3 id={`${formId}-title`} className="mb-0">
-        {TITLE[mode.kind]}
+        {ownValue(TITLE, mode.kind)}
         {named && <span className="font-normal text-muted">: {named.displayName}</span>}
       </h3>
       {switching && (

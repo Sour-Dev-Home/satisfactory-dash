@@ -76,7 +76,7 @@ export default {
       create(context) {
         return {
           "BinaryExpression[operator='in'][left.type!='Literal']"(node) {
-            context.report({ node, message: "use Object.hasOwn(obj, key), or a Map" });
+            context.report({ node, message: "use Object.hasOwn(obj, key), ownValue(table, key) from @satisfactory-dash/shared, or a Map" });
           },
         };
       },
@@ -89,7 +89,7 @@ export default {
             if (tableName(node.object) !== null && !guardedByHasOwn(node, context.sourceCode)) {
               context.report({
                 node,
-                message: "lookup tables indexed by a variable: use Object.hasOwn(...) ? T[k] : fallback, or a Map",
+                message: "lookup tables indexed by a variable: use ownValue(TABLE, k) ?? fallback (@satisfactory-dash/shared), Object.hasOwn(TABLE, k) ? TABLE[k] : fallback, or a Map",
               });
             }
           },
@@ -98,7 +98,7 @@ export default {
             if (tableName(destructuredFrom(node.parent)) !== null) {
               context.report({
                 node,
-                message: "lookup tables indexed by a variable: use Object.hasOwn(...) ? T[k] : fallback, or a Map",
+                message: "lookup tables indexed by a variable: use ownValue(TABLE, k) ?? fallback (@satisfactory-dash/shared), Object.hasOwn(TABLE, k) ? TABLE[k] : fallback, or a Map",
               });
             }
           },

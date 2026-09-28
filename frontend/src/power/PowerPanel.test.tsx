@@ -70,6 +70,27 @@ describe("PowerPanel", () => {
     expect(within(circuit(0)).getByText("At risk")).toBeInTheDocument();
   });
 
+  // #368: `status` is a closed schema enum today, but the label/sort lookups read own keys
+  // only, so a status this build has never seen (including an inherited name like "toString")
+  // shows as itself, not `Object.prototype.toString`, and sorts after "ok".
+  it("shows a status this build doesn't know as itself, sorted last", () => {
+    const unknown = {
+      ...powerOk,
+      data: {
+        ...powerOk.data,
+        circuits: [
+          { ...powerOk.data.circuits[0], circuitGroupId: 9, status: "toString" as const },
+          { ...powerOk.data.circuits[0], circuitGroupId: 0, status: "ok" as const },
+        ],
+      },
+    } as unknown as PowerResponse;
+    render(<PowerPanel snapshot={unknown} />);
+    const cards = screen.getAllByRole("article");
+    expect(cards[0]).toHaveAccessibleName("Circuit 0");
+    expect(cards[1]).toHaveAccessibleName("Circuit 9");
+    expect(within(cards[1]).getByText("toString")).toBeInTheDocument();
+  });
+
   it("shows battery rows only when the circuit has batteries", () => {
     render(<PowerPanel snapshot={powerOk} />);
     expect(screen.queryByText("Battery storage")).not.toBeInTheDocument();

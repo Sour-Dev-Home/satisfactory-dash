@@ -6,7 +6,7 @@ import {
   currentSession,
   fuseStretches,
   missingStretches,
-  RANGE_WORDS,
+  rangeWords,
   storedStats,
   toStoredChartData,
 } from "./storedHistory";
@@ -31,7 +31,7 @@ export function StoredPowerHistoryPanel({ history }: { history: HistoryPower }) 
   const { shown, olderSessions } = currentSession(history.series);
   return (
     <section aria-labelledby="power-history-heading" className="panel">
-      <h3 id="power-history-heading">{RANGE_WORDS[history.range]}</h3>
+      <h3 id="power-history-heading">{rangeWords(history.range)}</h3>
       <p className="text-sm text-muted">
         {bucketWords(history.resolutionSeconds)} averages. A break in a line means nothing was recorded then (the game
         was paused or the server couldn't be reached); a lone reading between breaks is a dot. Red shading marks a

@@ -1,4 +1,5 @@
 import type { Cadence, Factory, Power, ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
+import { ownValue } from "@satisfactory-dash/shared";
 import { ApiFailure } from "../../../platform/errorResponse.js";
 import { observed } from "../../../platform/snapshot.js";
 import { STALE_AFTER_INTERVALS } from "./powerHistoryService.js";
@@ -130,7 +131,11 @@ export class LatestSnapshotStore {
       }
       throw new ApiFailure("upstream_unreachable", "This server's agent has not reported that yet");
     }
-    const staleAfterMs = STALE_AFTER_INTERVALS * this.cadence()[CADENCE_KEY[part]] * 1000;
+    const cadenceKey = ownValue(CADENCE_KEY, part);
+    if (cadenceKey === undefined) {
+      throw new Error(`no cadence for snapshot part ${String(part)}`);
+    }
+    const staleAfterMs = STALE_AFTER_INTERVALS * this.cadence()[cadenceKey] * 1000;
     return observed(stored.data as object, {
       observedAt: new Date(stored.observedAtMs).toISOString(),
       stale: this.now() - stored.observedAtMs > staleAfterMs,

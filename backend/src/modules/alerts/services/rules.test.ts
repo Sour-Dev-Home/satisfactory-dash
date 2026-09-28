@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_OFFLINE_DEFAULT_SECONDS } from "@satisfactory-dash/shared";
+import { AGENT_OFFLINE_DEFAULT_SECONDS, ownValue } from "@satisfactory-dash/shared";
 import { AGENT_PRESET_RULES, DEFAULTS_BY_KIND, PRESET_RULES, RULE_KINDS, parseRuleParams } from "./rules.js";
 
 describe("agent_offline's default window (ADR-0031)", () => {
@@ -52,6 +52,6 @@ describe("production_below_target params (ADR-0027 amendment 3)", () => {
 
   it("every kind can be parsed, and an unknown kind cannot", () => {
     expect(parseRuleParams("unknown_kind", {})).toBeUndefined();
-    for (const kind of RULE_KINDS) expect(DEFAULTS_BY_KIND[kind]?.kind).toBe(kind);
+    for (const kind of RULE_KINDS) expect(ownValue(DEFAULTS_BY_KIND, kind)?.kind).toBe(kind);
   });
 });

@@ -1,11 +1,11 @@
 import { ApiErrorResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import { describe, expect, it } from "vitest";
-import { isScenario, matchRoute, responsesFor, ROUTES, SCENARIOS, type RouteKey, type ScenarioName } from "./scenarios";
+import { isScenario, matchRoute, responsesFor, routeFor, ROUTES, SCENARIOS, type RouteKey, type ScenarioName } from "./scenarios";
 
 describe("matchRoute", () => {
   it("maps every endpoint's own client path and method to its key", () => {
     for (const key of Object.keys(ROUTES) as RouteKey[]) {
-      const route = ROUTES[key];
+      const route = routeFor(key);
       // A second argument for the paths that take one (a rule's or a command's id); the others ignore it.
       const path = (route.path as (...args: string[]) => string)("default", "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e01");
       expect(matchRoute(route.method, path), key).toBe(key);
@@ -64,7 +64,7 @@ describe("scenarios", () => {
         const response = responses[key];
         if (response.delay === "never" || response.text !== undefined) continue;
         const label = `${name}:${key}`;
-        const schema = response.status < 400 ? ROUTES[key].response : ApiErrorResponseSchema;
+        const schema = response.status < 400 ? routeFor(key).response : ApiErrorResponseSchema;
         expect(schema.safeParse(response.body).success, label).toBe(!deliberate.has(label));
       }
     }

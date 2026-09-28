@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import type { Factory, FactoryResponse } from "@satisfactory-dash/shared";
 import { formatPercent } from "../format";
 import { buildingsLayer, placed } from "./buildingsLayer";
-import { STATE_LABEL, buildingState, outputPercent } from "./buildingState";
+import { buildingState, outputPercent, stateLabel } from "./buildingState";
 import type { MapLayer } from "./layers";
 import type { ViewM } from "./MapCanvas";
 import { GRID_BASE_MAP } from "./projection";
@@ -109,7 +109,7 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
                         <td>{b.name}</td>
                         <td>{b.recipe ?? "No recipe"}</td>
                         <td>
-                          {STATE_LABEL[buildingState(b)]}
+                          {stateLabel(buildingState(b))}
                           {percent !== null && ` · ${formatPercent(percent)}`}
                           {b.isBackedUp && " · Backed up"}
                         </td>

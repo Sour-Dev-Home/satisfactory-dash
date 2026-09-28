@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
+import { ownValue } from "@satisfactory-dash/shared";
 
 /**
  * ADR-0014 step 1: the module boundaries are enforced by this fitness function, not by
@@ -137,7 +138,7 @@ export function findViolations(files: Map<string, string>): string[] {
         if (target !== `modules/${toModule}/index` && target !== `modules/${toModule}`) {
           fail(`rule 2: import module "${toModule}" only through its index.ts`);
         }
-        if (!(ALLOWED_MODULE_EDGES[fromModule] ?? []).includes(toModule)) {
+        if (!(ownValue(ALLOWED_MODULE_EDGES, fromModule) ?? []).includes(toModule)) {
           fail(`rule 4: edge ${fromModule} -> ${toModule} is not allowed`);
         }
       }

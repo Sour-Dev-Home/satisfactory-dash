@@ -186,6 +186,19 @@ const CASES: StateCase[] = [
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
   { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the agent.", clock: AGENT_NOW },
+  // The command bar (#351), open over the Overview: a native modal dialog, so the CSP guard here
+  // also proves it injects no <style> (ADR-0016 item 8).
+  {
+    scenario: "default",
+    name: "command-bar",
+    // A command's text: the search box's placeholder isn't text getByText can find.
+    shows: "Game PC agent",
+    act: async (page) => {
+      await page.getByRole("heading", { name: "Health" }).waitFor();
+      await page.keyboard.press("Control+K");
+      await page.getByRole("combobox").waitFor();
+    },
+  },
 ];
 
 async function openAddForm(page: Page) {

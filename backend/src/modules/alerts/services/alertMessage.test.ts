@@ -87,6 +87,18 @@ describe("formatAlertMessage: the words per kind and transition", () => {
     expect(embed(base()).footer.text).toBe("power outage · critical");
   });
 
+  // #368: the delivery worker casts a stored outbox row's `event.severity` (untyped JSON) to
+  // `Severity` without a runtime check, so a row from a different build (or a bad write) can carry
+  // a value that was never a real Severity, including one that collides with Object.prototype
+  // (COLORS[severity] would give a function on "toString" etc). It must fall back to the info colour
+  // like any other unrecognized severity, not throw and not leak a prototype member into the payload.
+  it("falls back to the info colour for a severity that was never a real one, including an inherited name", () => {
+    for (const bogus of ["constructor", "toString", "__proto__", "hasOwnProperty", "critical-ish"]) {
+      const out = embed(base({ severity: bogus as AlertMessageInput["severity"] }));
+      expect(out.color, bogus).toBe(0x3498db);
+    }
+  });
+
   it("can never ping: allowed_mentions.parse is empty on every message", () => {
     for (const kind of ["power_outage", "fuse_trip", "server_unreachable", "stopped_machines", "production_below_target"] as const) {
       expect(formatAlertMessage(base({ kind, serverName: "@everyone <@123>" })).allowed_mentions).toEqual({ parse: [] });

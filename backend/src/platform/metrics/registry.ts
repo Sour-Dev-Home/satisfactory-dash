@@ -12,6 +12,7 @@
  * The rest of the table is registered now so PRs 3-4 slot into an already-fixed shape instead of
  * each inventing its own ad hoc metric name.
  */
+import { ownValue } from "@satisfactory-dash/shared";
 
 export type MetricKind = "histogram" | "counter";
 
@@ -103,16 +104,17 @@ export function validateRecording(
   kind: MetricKind,
   labels: Readonly<Record<string, string>>,
 ): MetricDefinition {
-  // Object.hasOwn, not `METRIC_REGISTRY[metric]` / `in`: METRIC_REGISTRY (and every `labels`
-  // object below) is a plain object, so a metric or label key that collides with something
+  // ownValue / Object.hasOwn, not `METRIC_REGISTRY[metric]` / `in`: METRIC_REGISTRY (and every
+  // `labels` object below) is a plain object, so a metric or label key that collides with something
   // Object.prototype already has (`toString`, `constructor`, `__proto__`, ...) is truthy / "in"
   // via the prototype chain even though it was never registered. A metric string picked that way
   // must still be refused as unknown, and a label key picked that way must still be refused as
   // undeclared — not silently treated as present with no check run against its value at all.
-  if (!Object.hasOwn(METRIC_REGISTRY, metric)) {
+  // (The lint rule safe-lookup/no-table-index enforces this, #368.)
+  const definition = ownValue(METRIC_REGISTRY, metric);
+  if (definition === undefined) {
     throw new UnknownMetricError(metric);
   }
-  const definition = METRIC_REGISTRY[metric];
   if (definition.kind !== kind) {
     throw new InvalidLabelError(metric, `recorded as a ${kind}, but the registry declares it a ${definition.kind}`);
   }

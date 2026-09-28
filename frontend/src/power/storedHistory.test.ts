@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { historyPower24h } from "@satisfactory-dash/shared/fixtures";
-import { currentSession, fuseStretches, missingStretches, storedStats, toStoredChartData } from "./storedHistory";
+import { currentSession, fuseStretches, missingStretches, storedStats, toStoredChartData, rangeLabel, rangeWords, type PowerRange } from "./storedHistory";
 
 const history = historyPower24h.data;
 const newest = history.series[0];
+
+describe("rangeLabel / rangeWords", () => {
+  it("names every known range, including the live one only rangeLabel takes", () => {
+    expect(rangeLabel("live")).toBe("Live");
+    expect(rangeLabel("24h")).toBe("24 h");
+    expect(rangeWords("24h")).toBe("Last 24 hours");
+  });
+
+  // range is a closed schema enum today, but the lookup reads own keys only, so a range this
+  // build has never seen (including an inherited name like "toString") falls back to the raw
+  // value instead of rendering `Object.prototype.toString` in the heading.
+  it("falls back to the raw value for a range this build doesn't know", () => {
+    const range = "toString" as PowerRange;
+    expect(rangeLabel(range)).toBe("toString");
+    expect(rangeWords(range as Parameters<typeof rangeWords>[0])).toBe("toString");
+  });
+});
 
 describe("currentSession", () => {
   it("keeps the newest session's circuits and counts the older sessions", () => {

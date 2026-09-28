@@ -1,7 +1,7 @@
 import { CreateAlertRuleRequestSchema, UpdateAlertRuleRequestSchema, type AlertRule } from "@satisfactory-dash/shared";
 import { alertRulesList } from "@satisfactory-dash/shared/fixtures";
 import { describe, expect, it } from "vitest";
-import { buildCreate, buildUpdate, draftFrom, FIELD_HINT, NEW_TARGET } from "./ruleDraft";
+import { buildCreate, buildUpdate, draftFrom, FIELD_HINT, hintFor, NEW_TARGET } from "./ruleDraft";
 
 const [outage, stopped, unreachable, production] = alertRulesList.rules as AlertRule[];
 
@@ -52,7 +52,7 @@ describe("buildUpdate", () => {
     ["clearMinutes", ""],
   ] as const)("refuses %s = %j", (field, value) => {
     const result = buildUpdate(stopped, { ...draftFrom(stopped), [field]: value });
-    expect(result).toEqual({ ok: false, errors: { [field]: FIELD_HINT[field] } });
+    expect(result).toEqual({ ok: false, errors: { [field]: hintFor(field) } });
   });
 
   it("sends the stopped-machines threshold", () => {
@@ -83,7 +83,7 @@ describe("buildUpdate", () => {
     ["windowMinutes", "61"],
   ] as const)("refuses a production %s of %s", (field, value) => {
     const draft = { ...draftFrom(production), params: { ...draftFrom(production).params, [field]: value } };
-    expect(buildUpdate(production, draft)).toEqual({ ok: false, errors: { [field]: FIELD_HINT[field] } });
+    expect(buildUpdate(production, draft)).toEqual({ ok: false, errors: { [field]: hintFor(field) } });
   });
 
   it("keeps an unknown severity unless the user picks another, and never touches an unknown kind's params", () => {

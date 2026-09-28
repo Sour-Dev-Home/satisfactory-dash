@@ -1,4 +1,4 @@
-import type { PowerCircuit, PowerCircuitStatus, PowerResponse } from "@satisfactory-dash/shared";
+import { ownValue, type PowerCircuit, type PowerCircuitStatus, type PowerResponse } from "@satisfactory-dash/shared";
 import { DataAge } from "../components/DataAge";
 import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
 import { circuitAnchor, isCircuitAnchor } from "../lib/deepLinks";
@@ -10,6 +10,8 @@ const STATUS_LABEL: Record<PowerCircuitStatus, string> = {
   at_risk: "At risk",
   ok: "OK",
 };
+/** A status this build doesn't know (a newer backend) sorts last, after ok (#368). */
+const statusOrder = (status: string) => ownValue(STATUS_ORDER, status) ?? 3;
 
 /**
  * Presentational: one power snapshot. Alarms come only from the backend's classification
@@ -22,7 +24,7 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
   const atRisk = circuits.filter((c) => c.status === "at_risk").length;
   // Worst first; circuitGroupId only breaks ties within one response (never persisted).
   const ordered = [...circuits].sort(
-    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.circuitGroupId - b.circuitGroupId,
+    (a, b) => statusOrder(a.status) - statusOrder(b.status) || a.circuitGroupId - b.circuitGroupId,
   );
   // /app/power#circuit-3 (#351): scroll to that circuit's card once it's drawn.
   useHashTarget(isCircuitAnchor);
@@ -76,7 +78,7 @@ function CircuitCard({ circuit }: { circuit: PowerCircuit }) {
       className={`circuit circuit-${circuit.status}`}
     >
       <h4>
-        Circuit {circuit.circuitGroupId} <span className="badge">{STATUS_LABEL[circuit.status]}</span>
+        Circuit {circuit.circuitGroupId} <span className="badge">{ownValue(STATUS_LABEL, circuit.status) ?? circuit.status}</span>
       </h4>
       {tripped && <p>Reads 0 MW while the fuse is tripped.</p>}
       <dl>

@@ -60,6 +60,19 @@ describe("alert words", () => {
     expect(disabledReasonText("webhook_gone")).toMatch(/no longer exists/);
     expect(disabledReasonText("quota")).toBe("Turned off (quota).");
   });
+
+  // kind, severity, transition and disabledReason are all open strings in the contract (deploy
+  // skew), so a value that names an inherited property (Object.prototype.toString,
+  // .constructor, .hasOwnProperty) is a real value a newer backend could send, not just a
+  // defensive case. Each lookup must read its own keys only, or these would render a function.
+  it("treats an inherited property name as just another unknown value, never the inherited member itself", () => {
+    expect(kindLabel("toString")).toBe("ToString");
+    expect(kindLabel("constructor")).toBe("Constructor");
+    expect(severityLabel("hasOwnProperty")).toBe("HasOwnProperty");
+    expect(transitionLabel("toString")).toBe("ToString");
+    expect(disabledReasonText("constructor")).toBe("Turned off (constructor).");
+    expect(sendTestText({ ok: false, code: "toString" })).toBe("Discord didn't take the test (tostring).");
+  });
 });
 
 describe("eventDetail", () => {

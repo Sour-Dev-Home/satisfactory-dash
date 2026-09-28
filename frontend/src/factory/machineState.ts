@@ -1,3 +1,4 @@
+import { ownValue } from "@satisfactory-dash/shared";
 /**
  * The backend's machine `state` (ADR-0027) as a label and a colour token. The label carries the
  * meaning; the colour only repeats it. `state` is a plain string in the contract so a newer
@@ -24,5 +25,5 @@ export type MachineState = keyof typeof STATES;
 
 /** The view for a known state; null for a missing or unknown one (including "constructor" and friends). */
 export function machineState(state: string | undefined): MachineStateView | null {
-  return state !== undefined && Object.hasOwn(STATES, state) ? STATES[state as MachineState] : null;
+  return (state !== undefined && ownValue(STATES, state)) || null;
 }

@@ -24,7 +24,7 @@ const access: ServerAccess = {
   listForUser: async (userId) => {
     if (failWith) throw failWith;
     return Object.entries(roles)
-      .filter(([, m]) => userId in m)
+      .filter(([, m]) => Object.hasOwn(m, userId))
       .map(([publicId, m]) => ({ publicId, displayName: publicId, role: m[userId]! }));
   },
 };
