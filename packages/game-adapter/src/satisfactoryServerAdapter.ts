@@ -10,6 +10,8 @@ import {
   RawFrmPowerUsageBuildingSchema,
   RawFrmPlayerSchema,
   RawFrmSessionInfoSchema,
+  RawFrmTrainRailSchema,
+  RawFrmResourceNodeSchema,
 } from "./rawSchemas.js";
 import type { RawFrmProductionItem, RawFrmIngredientItem, RawFrmInventorySlot, RawFrmLocation } from "./rawTypes.js";
 import type {
@@ -23,6 +25,8 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
+import { mapRailSegments, mapResourceNodes } from "./map/index.js";
+import type { MappedRailSegments, MappedResourceNodes } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
 
 const MAX_REPORTED_ISSUES = 5;
@@ -245,5 +249,24 @@ export class SatisfactoryServerAdapter {
       passedDays: raw.PassedDays,
       totalPlayDurationSeconds: raw.TotalPlayDuration,
     };
+  }
+
+  /** ADR-0038 M2: every railway track segment, projected to the map contract's whole-metre
+   *  polylines (map/railsMapper.ts). A bad point or an under-length segment is dropped, not the
+   *  whole layer (`dropped`, for M3/M4 to log). Read on-change/every 10 min (M3/M4), not the
+   *  snapshot cadence. */
+  async getRails(): Promise<MappedRailSegments> {
+    const raw = parseUpstream("getTrainRails", z.array(RawFrmTrainRailSchema), await this.frmApi.get<unknown>("getTrainRails"));
+    return mapRailSegments(raw);
+  }
+
+  /** ADR-0038 M2: every resource node, fracking satellite and geyser (map/resourceNodesMapper.ts;
+   *  a live getResourceNode returns all three NodeType values, which is also why
+   *  getResourceGeyser answers `[]`, frm-endpoint-volumes.md). A bad coordinate is dropped, not the
+   *  whole layer (`dropped`). Read on-change/every 30 min (M3/M4), not the snapshot cadence — this
+   *  endpoint runs on the game thread. */
+  async getResourceNodes(): Promise<MappedResourceNodes> {
+    const raw = parseUpstream("getResourceNode", z.array(RawFrmResourceNodeSchema), await this.frmApi.get<unknown>("getResourceNode"));
+    return mapResourceNodes(raw);
   }
 }

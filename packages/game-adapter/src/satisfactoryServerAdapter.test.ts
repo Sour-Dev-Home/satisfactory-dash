@@ -10,6 +10,8 @@ import {
   powerUsageBuildingFixture,
   playerFixture,
   sessionInfoFixture,
+  trainRailFixture,
+  resourceNodeFixture,
 } from "../fixtures/rawFixtures.js";
 import {
   capturedBackedUpAssembler,
@@ -177,6 +179,8 @@ describe("SatisfactoryServerAdapter", () => {
     ["getPower", (a: SatisfactoryServerAdapter) => a.getPowerCircuits()],
     ["getPowerUsage", (a: SatisfactoryServerAdapter) => a.getPowerUsage()],
     ["getPlayer", (a: SatisfactoryServerAdapter) => a.getPlayers()],
+    ["getTrainRails", (a: SatisfactoryServerAdapter) => a.getRails()],
+    ["getResourceNode", (a: SatisfactoryServerAdapter) => a.getResourceNodes()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -200,6 +204,99 @@ describe("SatisfactoryServerAdapter", () => {
         fuseTriggered: false,
       },
     ]);
+  });
+
+  // ADR-0038 M2. Points drop from 17 to 13: the mapper collapses consecutive duplicate points
+  // after rounding (map/railsMapper.ts), same as packages/shared/fixtures/map.ts's railsSample.
+  it("maps getTrainRails segments to the M1 contract's whole-metre polylines", async () => {
+    const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([trainRailFixture]) } });
+    const { data, dropped } = await adapter.getRails();
+    expect(data[0]!.id).toBe("Build_RailroadTrack_C_2147304732");
+    expect(data[0]!.points).toHaveLength(13);
+    expect(data[0]!.points[0]).toEqual([-1119, -1504]);
+    expect(dropped).toBe(0);
+    expect(frmApi.get).toHaveBeenCalledWith("getTrainRails");
+  });
+
+  // Architect follow-up on #367: a segment with fewer than 2 points (here, after rounding, since a
+  // 1-point spline can never reach 2) is dropped by the mapper itself, not sent — the agent's own
+  // conform-don't-reject rule (docs-vault/wiki/runbooks/agent-app.md).
+  it("drops a getTrainRails segment with fewer than 2 spline points, reporting it in `dropped`", async () => {
+    const oneSided = { ...trainRailFixture, SplineData: [trainRailFixture.SplineData[0]!] };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([oneSided]) } });
+    await expect(adapter.getRails()).resolves.toEqual({ data: [], dropped: 1 });
+  });
+
+  // test-hunter pass: rails/resourceNodes should reject a malformed item the same way every other
+  // array endpoint does (null entry, wrong field type) -- not because the schemas are wired
+  // differently, but this was never exercised for these two new methods specifically.
+  it("rejects a getTrainRails response with a null entry", async () => {
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([trainRailFixture, null]) } });
+    const err = await adapter.getRails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect(err).toMatchObject({ failureKind: "invalid_response" });
+    expect((err as Error).message).toContain("getTrainRails response failed validation");
+  });
+
+  it("rejects a getTrainRails segment with a non-numeric spline point", async () => {
+    const bad = { ...trainRailFixture, SplineData: [{ x: "0", y: 0 }] };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getRails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("getTrainRails response failed validation");
+  });
+
+  it("rejects a getTrainRails segment with an empty-string ID", async () => {
+    const bad = { ...trainRailFixture, ID: "" };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getRails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("ID");
+  });
+
+  it("rejects a getResourceNode response with a null entry", async () => {
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, null]) } });
+    const err = await adapter.getResourceNodes().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("getResourceNode response failed validation");
+  });
+
+  it("rejects a getResourceNode item missing location (unlike getFactory, location is required here)", async () => {
+    const { location: _omitted, ...bad } = resourceNodeFixture;
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getResourceNodes().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("location");
+  });
+
+  it("rejects a getResourceNode item with a non-boolean Exploited", async () => {
+    const bad = { ...resourceNodeFixture, Exploited: "false" };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([bad]) } });
+    const err = await adapter.getResourceNodes().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect((err as Error).message).toContain("Exploited");
+  });
+
+  // Architect follow-up on #367 (closes a gap round 1 of fresh-eyes flagged): a coordinate outside
+  // the M1 contract's WholeMetreSchema bound (+/-1,000,000 m) is now dropped by the mapper itself
+  // (its point is skipped; the segment collapses below 2 points and is dropped too here), not
+  // passed through for M3 to catch later.
+  it("drops a rail point that would violate the M1 WholeMetreSchema bound, collapsing the segment below 2 points", async () => {
+    const huge = { ID: "x", SplineData: [{ x: 0, y: 0 }, { x: 3_000_000_00, y: 0 }] }; // 3,000,000 m > 1,000,000 m cap
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([huge]) } });
+    await expect(adapter.getRails()).resolves.toEqual({ data: [], dropped: 1 });
+  });
+
+  it("maps getResourceNode items, including nodeType (#352, #367 follow-ups)", async () => {
+    const satellite = { ...resourceNodeFixture, Name: "Nitrogen Gas", NodeType: "Fracking Satellite" };
+    const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, satellite]) } });
+    const { data, dropped } = await adapter.getResourceNodes();
+    expect(data).toEqual([
+      { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false },
+      { type: "Nitrogen Gas", purity: "normal", nodeType: "frackingSatellite", x: 1783, y: 2061, exploited: false },
+    ]);
+    expect(dropped).toBe(0);
+    expect(frmApi.get).toHaveBeenCalledWith("getResourceNode");
   });
 
   it("maps getPlayer to name and online ONLY (ADR-0029: ID, location, HP, dead are dropped)", async () => {

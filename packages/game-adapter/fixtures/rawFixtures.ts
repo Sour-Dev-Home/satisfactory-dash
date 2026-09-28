@@ -5,6 +5,8 @@ import type {
   RawFrmPowerCircuit,
   RawFrmPowerUsageBuilding,
   RawFrmSessionInfo,
+  RawFrmTrainRail,
+  RawFrmResourceNode,
 } from "../src/rawTypes.js";
 
 /**
@@ -100,4 +102,27 @@ export const playerFixture = {
   Online: true,
   PlayerHP: 100,
   Dead: false,
+};
+
+// Real capture: docs-vault/raw-sources/captured-responses/frm-getTrainRails-2026-09-27-trimmed.json,
+// the shorter of the two trimmed segments (17 spline points).
+export const trainRailFixture: RawFrmTrainRail = {
+  ID: "Build_RailroadTrack_C_2147304732",
+  SplineData: [
+    { x: -111900, y: -150400 }, { x: -111827.58079429774, y: -150400 }, { x: -111754.80246639732, y: -150400 },
+    { x: -111682.02742033168, y: -150400 }, { x: -111609.30488775825, y: -150400 }, { x: -111536.40248749494, y: -150400 },
+    { x: -111463.64841158094, y: -150400 }, { x: -111390.78347491259, y: -150400 }, { x: -111317.94462871869, y: -150400 },
+    { x: -111245.08165218907, y: -150400 }, { x: -111172.27148772354, y: -150400 }, { x: -111099.39619405456, y: -150400 },
+    { x: -111026.5777148786, y: -150400 }, { x: -110953.82986631832, y: -150400 }, { x: -110880.96652673393, y: -150400 },
+    { x: -110808.37622046052, y: -150400 }, { x: -110735.56460883941, y: -150400 },
+  ],
+};
+
+// Real capture: docs-vault/raw-sources/captured-responses/frm-getResourceNode-2026-09-27-trimmed.json, item 1.
+export const resourceNodeFixture: RawFrmResourceNode = {
+  Name: "Crude Oil",
+  Purity: "Normal",
+  NodeType: "Node",
+  Exploited: false,
+  location: { x: 178265.375, y: 206095.640625, z: -9238.5712890625, rotation: 123.25028610229492 },
 };

@@ -1,0 +1,101 @@
+import { describe, it, expect } from "vitest";
+import { mapNodeType } from "./nodeType.js";
+
+// fresh-eyes pass (architect follow-up on #367): nodeType.ts had no dedicated test file before
+// this — only exercised indirectly through resourceNodesMapper.test.ts with 3 known values plus a
+// couple of generic-algorithm examples. These target genericCamelCase's edge behavior directly.
+describe("mapNodeType / genericCamelCase adversarial inputs", () => {
+  it("known values map explicitly, not through the generic algorithm", () => {
+    expect(mapNodeType("Node")).toBe("node");
+    expect(mapNodeType("Fracking Satellite")).toBe("frackingSatellite");
+    expect(mapNodeType("Geyser")).toBe("geyser");
+  });
+
+  // Architect follow-up: same bug class as #361's registry bypass. KNOWN_NODE_TYPES is a plain
+  // object, so a raw value that names an inherited Object.prototype member must not silently
+  // resolve to that member (a function) instead of falling through to genericCamelCase.
+  it("a raw value that collides with an inherited Object.prototype member falls through to genericCamelCase, not the inherited function", () => {
+    // Each of these is one word (no space), so genericCamelCase lowercases it wholesale — the
+    // point of this test is that the result is a STRING equal to what genericCamelCase actually
+    // produces, not the raw value unchanged and definitely not the inherited function itself.
+    expect(mapNodeType("constructor")).toBe("constructor");
+    expect(mapNodeType("toString")).toBe("tostring");
+    expect(mapNodeType("__proto__")).toBe("__proto__");
+    expect(mapNodeType("hasOwnProperty")).toBe("hasownproperty");
+    // Every own-enumerable-from-instance member of Object.prototype, not just the 5 above: the
+    // fix is Object.hasOwn (an own-property check), so its correctness doesn't depend on which
+    // prototype member's name is being probed - this loop is here so a future regression (e.g. a
+    // name-specific denylist swapped back in for Object.hasOwn) would be caught on names this
+    // suite doesn't otherwise exercise, not just the ones already asserted above.
+    for (const raw of [
+      "constructor",
+      "toString",
+      "toLocaleString",
+      "valueOf",
+      "hasOwnProperty",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "__proto__",
+      "__defineGetter__",
+      "__defineSetter__",
+      "__lookupGetter__",
+      "__lookupSetter__",
+    ]) {
+      // Each name above is a single word (no whitespace), so genericCamelCase's output for it is
+      // exactly its lowercase form - asserting against raw.toLowerCase() here (not re-deriving the
+      // algorithm) keeps this a check on mapNodeType's actual behavior, not a restatement of it.
+      expect(mapNodeType(raw)).toBe(raw.toLowerCase());
+    }
+  });
+
+  it("empty string does not throw, and returns the input unchanged (no words to camelCase)", () => {
+    expect(mapNodeType("")).toBe("");
+  });
+
+  it("an all-whitespace string does not throw, and normalizes to \"\" like an empty string does", () => {
+    // Fixed after a fresh-eyes finding: this branch used to return the ORIGINAL untrimmed `value`
+    // for a whitespace-only input (e.g. mapNodeType("   ") === "   "), the one path in this
+    // function that didn't normalize. Now consistent with the empty-string case.
+    expect(mapNodeType("   ")).toBe("");
+    expect(mapNodeType("\t\n")).toBe("");
+  });
+
+  it("a single character is lowercased, not left upper/mixed case", () => {
+    expect(mapNodeType("N")).toBe("n");
+  });
+
+  it("multiple consecutive spaces between words collapse exactly like a single space would", () => {
+    expect(mapNodeType("Some    New   Type")).toBe("someNewType");
+  });
+
+  it("leading and trailing whitespace around an otherwise-known-shaped value is trimmed before camelCasing", () => {
+    expect(mapNodeType("  Some New Type  ")).toBe("someNewType");
+    // leading/trailing whitespace is NOT part of KNOWN_NODE_TYPES's exact-match keys, so " Node "
+    // does not hit the known-value fast path - it still lands on the same output via the generic
+    // algorithm, which is the point of having a generic fallback at all.
+    expect(mapNodeType(" Node ")).toBe("node");
+  });
+
+  it("non-letter characters inside a single word do not throw and are lowercased wholesale", () => {
+    expect(mapNodeType("Node-2")).toBe("node-2");
+    expect(mapNodeType("123abc")).toBe("123abc");
+  });
+
+  it("a word made entirely of non-letter characters does not throw when upper-cased as a later word", () => {
+    expect(mapNodeType("Node 123")).toBe("node123");
+    expect(mapNodeType("Node !!!")).toBe("node!!!");
+  });
+
+  it("unicode letters are handled without throwing, using JS's built-in case conversion", () => {
+    expect(mapNodeType("Öre")).toBe("öre");
+    expect(mapNodeType("Öre Vein")).toBe("öreVein");
+  });
+
+  it("an astral (surrogate-pair) character as the very first character of a later word does not throw", () => {
+    // U+1F600 (grinning face emoji) is a surrogate pair in UTF-16; charAt(0) only grabs the high
+    // surrogate. This asserts the function completes without throwing and returns a string -
+    // documenting actual behavior, not a claim about what the "correct" camelCase of an emoji is.
+    expect(() => mapNodeType("Node 😀Satellite")).not.toThrow();
+    expect(typeof mapNodeType("Node 😀Satellite")).toBe("string");
+  });
+});

@@ -22,6 +22,8 @@ import type {
   RawFrmPowerUsageBuildingSchema,
   RawFrmPlayerSchema,
   RawFrmSessionInfoSchema,
+  RawFrmTrainRailSchema,
+  RawFrmResourceNodeSchema,
 } from "./rawSchemas.js";
 
 // --- Vanilla Dedicated Server HTTPS API ---
@@ -40,3 +42,5 @@ export type RawFrmPowerCircuit = z.infer<typeof RawFrmPowerCircuitSchema>;
 export type RawFrmPowerUsageBuilding = z.infer<typeof RawFrmPowerUsageBuildingSchema>;
 export type RawFrmPlayer = z.infer<typeof RawFrmPlayerSchema>;
 export type RawFrmSessionInfo = z.infer<typeof RawFrmSessionInfoSchema>;
+export type RawFrmTrainRail = z.infer<typeof RawFrmTrainRailSchema>;
+export type RawFrmResourceNode = z.infer<typeof RawFrmResourceNodeSchema>;

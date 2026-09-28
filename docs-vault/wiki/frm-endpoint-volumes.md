@@ -91,6 +91,11 @@ estimate made from these captures, not the mapper's real output.
   `EnumPurity`, `ResourceForm` and `location`, like `getResourceNode`, so it can extend the nodes layer.
 - **`getResourceGeyser` answered `[]`** although the world has geysers [NEEDS VERIFICATION: whether FRM lists only
   geysers with a geothermal generator on them, or none on this version]. The layer can't be designed from this capture.
+- **Resolved (ADR-0038 M2, #353, architect follow-up on #367):** `getResourceGeyser`'s empty capture is explained —
+  geysers arrive through `getResourceNode` too, with `NodeType: "Geyser"` (the trimmed 14-item sample in
+  `frm-getResourceNode-2026-09-27-trimmed.json` never happened to include one, only `Node` and `Fracking Satellite`).
+  The `resourceNodes` map layer already covers geysers through this one endpoint; no separate geyser layer or
+  capture is needed.
 - **Both resource endpoints run on the game thread** (the docs' index), like `getResourceNode`, so they belong with the
   rarely read, on-change data, not the snapshot cadence.
 - **CAP-4 waits on the owner**: vehicles, vehicle paths, truck stations, drones and drone stations need one of each built

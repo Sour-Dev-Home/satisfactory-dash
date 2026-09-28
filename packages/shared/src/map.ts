@@ -7,9 +7,10 @@ import { z } from "zod";
  * carries fast-changing positions at the snapshot/live-poll cadence.
  *
  * SCOPE (per #352's comment, after the #360 captures): this PR covers `rails` and `resourceNodes`
- * only. No geyser layer until `getResourceGeyser`'s empty `[]` capture is explained
- * (docs-vault/wiki/frm-endpoint-volumes.md); belts, pipes, cables and wells are captured
- * (docs-vault/raw-sources/captured-responses/) but not yet built into a layer.
+ * only; belts, pipes, cables and wells are captured (docs-vault/raw-sources/captured-responses/) but
+ * not yet built into a layer. `getResourceGeyser`'s empty `[]` capture is now explained (M2, #353
+ * follow-up): geysers arrive through `getResourceNode` too, with `NodeType: "Geyser"` — the
+ * `resourceNodes` layer already covers them, so there is no separate geyser layer to build.
  *
  * PROJECTION: every coordinate here is a WHOLE METRE (the game's own unit is the centimetre,
  * docs-vault/raw-sources/world-coordinates.md), rounded by whichever mapper produced the data
@@ -68,18 +69,20 @@ export const RailSegmentSchema = z.object({
 });
 export const RailsLayerDataSchema = z.array(RailSegmentSchema).max(MAP_WORLD_MAX_ITEMS);
 
-/** A resource node, a fracking satellite, or (once its capture is explained) a geyser: one point on
- *  the map. `type` is the resource's name (Iron Ore, Crude Oil, SAM, ...; FRM's `Name`). `nodeType`
- *  is a 6th field added after #352's initial `{type, purity, x, y, exploited}`: the architect's own
- *  `getResourceNode` capture (docs-vault/raw-sources/captured-responses/
- *  frm-getResourceNode-2026-09-27-trimmed.json) already returns both `NodeType: "Node"` (10 items)
- *  and `NodeType: "Fracking Satellite"` (4 items) from this ONE endpoint, and the map needs to draw
- *  them differently (a different icon; only a Node is a "miner" buildable) — without the field
- *  there is no way to tell them apart. */
+/** A resource node, a fracking satellite or a geyser: one point on the map. `type` is the resource's
+ *  name (Iron Ore, Crude Oil, SAM, ...; FRM's `Name`). `nodeType` is a 6th field added after #352's
+ *  initial `{type, purity, x, y, exploited}`: the architect's own `getResourceNode` capture
+ *  (docs-vault/raw-sources/captured-responses/frm-getResourceNode-2026-09-27-trimmed.json) already
+ *  returns `NodeType: "Node"` and `"Fracking Satellite"` from this ONE endpoint, and the map needs
+ *  to draw them differently (a different icon; only a Node is a "miner" buildable) — without the
+ *  field there is no way to tell them apart. A live server also returns `NodeType: "Geyser"` here
+ *  (M2, #353 follow-up: the endpoint-volumes capture just never sampled one), which explains why
+ *  `getResourceGeyser` answered `[]` — geysers were never missing, just reached through this
+ *  endpoint instead. */
 export const ResourceNodeSchema = z.object({
   type: boundedString.describe("The resource's name, e.g. Iron Ore, Crude Oil, SAM. Grows with the game's resource list."),
   purity: z.string().max(40).describe("Known: impure, normal, pure (FRM's Purity field, lowercased; its 'Inpure' typo is corrected to 'impure')"),
-  nodeType: z.string().max(40).describe("Known: node, frackingSatellite (FRM's NodeType, camelCased)"),
+  nodeType: z.string().max(40).describe("Known: node, frackingSatellite, geyser (FRM's NodeType, camelCased)"),
   x: WholeMetreSchema,
   y: WholeMetreSchema,
   exploited: z.boolean(),

@@ -184,3 +184,33 @@ export const RawFrmSessionInfoSchema = z.object({
   IsDay: z.boolean(),
   TotalPlayDuration: nonNegative,
 });
+
+/**
+ * ADR-0038 M2: GET /getTrainRails (docs-vault/raw-sources/captured-responses/
+ * frm-getTrainRails-2026-09-27-trimmed.json). `SplineData` is every point along the track, in game
+ * units (centimetres, world-coordinates.md); the capture's segments have 17 to 127 points, all
+ * `Connected0`/`Connected1` true, which the map layer doesn't need to draw a line, so they aren't
+ * declared here — an object schema strips them, per this file's own convention. At least 2 points is
+ * what the M1 contract requires (a line needs two ends); that isn't asserted here (this schema
+ * describes what FRM returns, not the contract's own floor), so a rail with fewer would fail
+ * downstream at RailsLayerDataSchema.parse, not silently here.
+ */
+export const RawFrmTrainRailSchema = z.object({
+  ID: z.string().min(1),
+  SplineData: z.array(z.object({ x: z.number(), y: z.number() })),
+});
+
+/**
+ * ADR-0038 M2: GET /getResourceNode (docs-vault/raw-sources/captured-responses/
+ * frm-getResourceNode-2026-09-27-trimmed.json). One endpoint returns both `NodeType: "Node"` and
+ * `NodeType: "Fracking Satellite"` (architect, #352 follow-up). `Purity` ("Normal"/"Impure"/"Pure")
+ * is used, not the separate `EnumPurity` field (RP_Normal/RP_Inpure/RP_Pure) — `Purity` has no typo
+ * and needs no correction, unlike `EnumPurity`.
+ */
+export const RawFrmResourceNodeSchema = z.object({
+  Name: z.string(),
+  Purity: z.string(),
+  NodeType: z.string(),
+  Exploited: z.boolean(),
+  location: RawFrmLocationSchema,
+});

@@ -15,18 +15,18 @@ import type {
  * nearest whole metre — exactly what ADR-0038 M2's mapper will do, not this PR's job to build.
  */
 
-/** The shortest captured rail segment (17 spline points), projected. Adjacent points a metre or
- *  less apart round to the same whole-metre value more than once — real projected output, not a
- *  fixture mistake: the game's spline is far finer than a whole metre. */
+/** The shortest captured rail segment (17 raw spline points), projected. The game's spline is far
+ *  finer than a whole metre, so several adjacent points round to the same value — M2's mapper
+ *  collapses those consecutive duplicates (architect follow-up on #367), leaving 13 of the 17. */
 export const railsSample = {
   observedAt: "2026-09-27T04:54:27.000Z",
   data: [
     {
       id: "Build_RailroadTrack_C_2147304732",
       points: [
-        [-1119, -1504], [-1118, -1504], [-1118, -1504], [-1117, -1504], [-1116, -1504], [-1115, -1504],
-        [-1115, -1504], [-1114, -1504], [-1113, -1504], [-1112, -1504], [-1112, -1504], [-1111, -1504],
-        [-1110, -1504], [-1110, -1504], [-1109, -1504], [-1108, -1504], [-1107, -1504],
+        [-1119, -1504], [-1118, -1504], [-1117, -1504], [-1116, -1504], [-1115, -1504], [-1114, -1504],
+        [-1113, -1504], [-1112, -1504], [-1111, -1504], [-1110, -1504], [-1109, -1504], [-1108, -1504],
+        [-1107, -1504],
       ],
     },
   ],
