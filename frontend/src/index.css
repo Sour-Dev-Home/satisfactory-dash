@@ -14,6 +14,9 @@
  */
 @theme {
   --color-canvas: #0e1217;
+  /* Behind a modal (the command bar, #351): the canvas at 85%, so the page clearly steps back on
+     the dark theme (70% read as too subtle, the owner's call). */
+  --color-scrim: color-mix(in oklab, var(--color-canvas) 85%, transparent);
   --color-surface: #161c23;
   --color-surface-2: #1d252e;
   --color-line: #29333e;

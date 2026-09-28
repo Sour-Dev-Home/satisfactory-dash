@@ -26,6 +26,23 @@ export function isPaletteShortcut(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "me
   return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k";
 }
 
+/**
+ * How well a command matches what was typed, for cmdk's `filter` (0 hides it). Every typed word must
+ * appear in the command's words (its label first, then its keywords); a label starting with the
+ * first word ranks first, then any label word starting with it. cmdk's default scoring matched
+ * scattered letters, so "circuit" found "Empty Canister" (the ui review).
+ */
+export function paletteScore(search: string, words: readonly string[]): number {
+  const typed = search.toLowerCase().split(/\s+/).filter(Boolean);
+  if (typed.length === 0) return 1;
+  const haystack = words.join(" ").toLowerCase();
+  if (!typed.every((word) => haystack.includes(word))) return 0;
+  const label = (words[0] ?? "").toLowerCase();
+  if (label.startsWith(typed[0])) return 1;
+  if (label.split(/[\s·:]+/).some((word) => word.startsWith(typed[0]))) return 0.8;
+  return 0.5;
+}
+
 /** The most machines listed: they're grouped by name and recipe, so a big factory stays short. */
 export const MAX_MACHINES = 200;
 

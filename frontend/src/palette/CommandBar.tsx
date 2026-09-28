@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { queries } from "../api/queries";
 import { itemLabels } from "../factory/itemLabels";
 import { useSelectedServer, useServerSwitch } from "../servers/ServerContext";
-import { isPaletteShortcut, paletteGroups, type PaletteCommand } from "./paletteCommands";
+import { isPaletteShortcut, paletteGroups, paletteScore, type PaletteCommand } from "./paletteCommands";
 
 /**
  * The command bar (#351): Ctrl+K / Cmd+K anywhere in the app, or the header's Search button, opens a
@@ -81,7 +81,7 @@ export function CommandBar() {
           if (e.target === dialog.current) setOpen(false);
         }}
         // The browser's own dialog styles cap the width with a margin, so a phone keeps its gutter.
-        className="mx-auto mt-16 w-palette animate-pop rounded-card border border-line bg-surface p-0 text-fg shadow-lg backdrop:bg-canvas/70 max-sm:mt-4"
+        className="mx-auto mt-16 w-palette animate-pop rounded-card border border-line bg-surface p-0 text-fg shadow-lg backdrop:bg-scrim backdrop:backdrop-blur-sm max-sm:mt-4"
       >
         {open && <Palette onDone={() => setOpen(false)} />}
       </dialog>
@@ -111,10 +111,17 @@ function Palette({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <Command label="Search the dashboard" loop className="grid">
+    <Command
+      label="Search the dashboard"
+      loop
+      // Whole words, not scattered letters (paletteScore); the item's value is only its id.
+      filter={(_value, search, keywords) => paletteScore(search, keywords ?? [])}
+      className="grid"
+    >
       <Command.Input
         autoFocus
-        placeholder="Search pages, settings, circuits, machines, items…"
+        // Short enough for a phone; the groups below say what can be found.
+        placeholder="Search the dashboard…"
         className="min-h-touch w-full rounded-none border-0 border-b border-line bg-transparent px-4 text-fg-strong outline-none"
       />
       <Command.List className="max-h-palette overflow-y-auto p-2">

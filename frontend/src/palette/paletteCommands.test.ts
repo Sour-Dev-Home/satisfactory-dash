@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { factoryMixed, powerOk } from "@satisfactory-dash/shared/fixtures";
 import { itemLabels } from "../factory/itemLabels";
 import { factorySearchLink } from "../lib/deepLinks";
-import { isPaletteShortcut, MAX_MACHINES, paletteGroups, type PaletteInput } from "./paletteCommands";
+import { isPaletteShortcut, MAX_MACHINES, paletteGroups, paletteScore, type PaletteInput } from "./paletteCommands";
 
 const base: PaletteInput = { isOperator: false, serverCount: 1, labels: new Map() };
 const headings = (input: PaletteInput) => paletteGroups(input).map((g) => g.heading);
@@ -104,6 +104,33 @@ describe("paletteGroups", () => {
       (g) => g.commands,
     );
     expect(new Set(all.map((c) => c.id)).size).toBe(all.length);
+  });
+});
+
+describe("paletteScore (ui review: whole words, not scattered letters)", () => {
+  it("keeps everything for an empty search", () => {
+    expect(paletteScore("", ["Power"])).toBe(1);
+    expect(paletteScore("   ", ["Power"])).toBe(1);
+  });
+
+  it("needs every typed word somewhere in the label or keywords", () => {
+    expect(paletteScore("circuit", ["Empty Canister", "Desc_FluidCanister_C"])).toBe(0);
+    expect(paletteScore("iron plate", ["Assembler · Reinforced Iron Plate", "Assembler"])).toBeGreaterThan(0);
+    expect(paletteScore("iron rotor", ["Assembler · Reinforced Iron Plate", "Assembler"])).toBe(0);
+    expect(paletteScore("webhook", ["Alerts", "discord", "webhook"])).toBeGreaterThan(0);
+  });
+
+  it("ranks a label that starts with it, then a label word that does, then any other match", () => {
+    const starts = paletteScore("cir", ["Circuit 0"]);
+    const wordStarts = paletteScore("plate", ["Assembler · Reinforced Iron Plate"]);
+    const elsewhere = paletteScore("desc_wire", ["Wire", "Desc_Wire_C"]);
+    expect(starts).toBeGreaterThan(wordStarts);
+    expect(wordStarts).toBeGreaterThan(elsewhere);
+    expect(elsewhere).toBeGreaterThan(0);
+  });
+
+  it("ignores case", () => {
+    expect(paletteScore("POWER", ["Power"])).toBe(1);
   });
 });
 
