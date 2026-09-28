@@ -4,6 +4,7 @@ import request from "supertest";
 import { endpoints } from "@satisfactory-dash/shared";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
+import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { createAgentWorldRouter } from "./agentWorldRoutes.js";
 import type { WorldIngestPort } from "../services/worldIngestService.js";
 
@@ -16,9 +17,14 @@ function fakeAuth(publicId = "default") {
   };
 }
 
-function build(overrides: { ingest?: WorldIngestPort; auth?: ReturnType<typeof fakeAuth>; worldLayerMaxBytes?: number } = {}) {
+function build(overrides: { ingest?: WorldIngestPort; auth?: ReturnType<typeof fakeAuth>; worldLayerMaxBytes?: number; worldRateLimiter?: UserRateLimiter } = {}) {
   const ingest = overrides.ingest ?? { ingest: vi.fn(async () => ({ accepted: true as const, unchanged: false })) };
-  const router = createAgentWorldRouter({ auth: overrides.auth ?? fakeAuth(), ingest, worldLayerMaxBytes: overrides.worldLayerMaxBytes });
+  const router = createAgentWorldRouter({
+    auth: overrides.auth ?? fakeAuth(),
+    ingest,
+    worldLayerMaxBytes: overrides.worldLayerMaxBytes,
+    worldRateLimiter: overrides.worldRateLimiter,
+  });
   return { app: createApp({ logger: createLogger({ level: "silent" }), routers: [], agentRouters: [router] }), ingest };
 }
 
@@ -90,5 +96,48 @@ describe("POST /agent/v1/world/:layer", () => {
       .send({ ...railBody, observedAt: "not-a-real-timestamp" });
     expect(res.status).toBe(400);
     expect(ingest.ingest).not.toHaveBeenCalled();
+  });
+
+  // Architect review, PR #374: unlike the snapshot route (agentApi.ts's snapshotRateLimit), this
+  // route had no per-credential rate limit — a valid credential could loop 2 MB bodies, each a
+  // potential 2 MB jsonb upsert. Per credential (serverUuid), across every layer, default 20/10 min.
+  describe("per-credential rate limit (architect review, PR #374)", () => {
+    it("the 21st request in the window is 429, with Retry-After; the 20th still succeeds", async () => {
+      const { app, ingest } = build({ worldRateLimiter: new UserRateLimiter({ max: 20, windowMs: 10 * 60_000 }) });
+      for (let i = 0; i < 20; i++) {
+        const res = await request(app).post(endpoints.agentApi.world.path("rails")).send(railBody);
+        expect(res.status, `request ${i + 1}`).toBe(200);
+      }
+      const res = await request(app).post(endpoints.agentApi.world.path("rails")).send(railBody);
+      expect(res.status).toBe(429);
+      expect(res.headers["retry-after"]).toBeTruthy();
+      expect(ingest.ingest).toHaveBeenCalledTimes(20);
+    });
+
+    it("the limit is per credential, not global: a different agent's requests are unaffected", async () => {
+      const limiter = new UserRateLimiter({ max: 1, windowMs: 10 * 60_000 });
+      const { app: appA } = build({ auth: fakeAuth("srv-a"), worldRateLimiter: limiter });
+      const { app: appB } = build({ auth: fakeAuth("srv-b"), worldRateLimiter: limiter });
+      await request(appA).post(endpoints.agentApi.world.path("rails")).send(railBody);
+      const blocked = await request(appA).post(endpoints.agentApi.world.path("rails")).send(railBody);
+      expect(blocked.status).toBe(429);
+      const other = await request(appB).post(endpoints.agentApi.world.path("rails")).send(railBody);
+      expect(other.status).toBe(200);
+    });
+
+    it("counts across every layer, not per layer", async () => {
+      const { app } = build({ worldRateLimiter: new UserRateLimiter({ max: 1, windowMs: 10 * 60_000 }) });
+      await request(app).post(endpoints.agentApi.world.path("rails")).send(railBody);
+      const res = await request(app).post(endpoints.agentApi.world.path("resourceNodes")).send({ observedAt: railBody.observedAt, data: [] });
+      expect(res.status).toBe(429);
+    });
+
+    it("checks the rate limit before parsing the body: once past the limit, an over-cap body is still 429, not 413", async () => {
+      const { app, ingest } = build({ worldRateLimiter: new UserRateLimiter({ max: 1, windowMs: 10 * 60_000 }), worldLayerMaxBytes: 1 });
+      await request(app).post(endpoints.agentApi.world.path("rails")).send(railBody); // consumes the one allowed request (itself over the 1-byte cap, but that's not what this asserts)
+      const res = await request(app).post(endpoints.agentApi.world.path("rails")).send(railBody);
+      expect(res.status).toBe(429);
+      expect(ingest.ingest).not.toHaveBeenCalled();
+    });
   });
 });

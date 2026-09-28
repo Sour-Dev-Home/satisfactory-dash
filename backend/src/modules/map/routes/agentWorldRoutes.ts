@@ -2,9 +2,10 @@ import express, { Router } from "express";
 import type { RequestHandler } from "express";
 import { IsoTimeSchema, KNOWN_MAP_WORLD_LAYERS, MAP_WORLD_LAYER_MAX_BYTES, WorldIngestResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { MapWorldLayer } from "@satisfactory-dash/shared";
-import { BadRequestError } from "../../../platform/errorResponse.js";
+import { BadRequestError, RateLimitedError } from "../../../platform/errorResponse.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
+import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import type { WorldIngestPort } from "../services/worldIngestService.js";
 
 /** The agent API is mounted at /agent/v1, not under /api (agentApi.ts's own convention). */
@@ -19,6 +20,10 @@ export interface AgentWorldRoutesDeps {
   ingest: WorldIngestPort;
   /** Tests only: the decompressed size cap (default MAP_WORLD_LAYER_MAX_BYTES). */
   worldLayerMaxBytes?: number;
+  /** Per credential, across every layer; default 20 per 10 minutes (architect, PR #374 review) —
+   *  generous against the real cadence (a send every 10-30 min per layer), but a valid credential
+   *  looping POSTs of up to 2 MB, each a potential 2 MB jsonb upsert, must not go unbounded. */
+  worldRateLimiter?: UserRateLimiter;
 }
 
 interface AgentIdentity {
@@ -36,9 +41,17 @@ interface AgentIdentity {
  */
 export function createAgentWorldRouter(deps: AgentWorldRoutesDeps): Router {
   const router = Router();
+  const worldRateLimiter = deps.worldRateLimiter ?? new UserRateLimiter({ max: 20, windowMs: 10 * 60_000 });
+  const worldRateLimit: RequestHandler = (_req, res, next) => {
+    const agent = res.locals.agent as AgentIdentity;
+    const wait = worldRateLimiter.hit(agent.serverUuid);
+    if (wait > 0) throw new RateLimitedError(wait, "Too many world-layer ingests. Slow down.");
+    next();
+  };
   router.post(
     agentRoutePath(endpoints.agentApi.world.route),
     deps.auth,
+    worldRateLimit,
     requireJsonBody,
     express.json({ limit: deps.worldLayerMaxBytes ?? MAP_WORLD_LAYER_MAX_BYTES, inflate: true }),
     async (req, res) => {

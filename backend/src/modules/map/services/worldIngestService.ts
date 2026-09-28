@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { MAP_WORLD_LAYER_ITEM_SCHEMAS, MAP_WORLD_MAX_ITEMS } from "@satisfactory-dash/shared";
+import { MAP_WORLD_LAYER_ITEM_SCHEMAS, MAP_WORLD_MAX_ITEMS, ownValue } from "@satisfactory-dash/shared";
 import type { MapWorldLayer } from "@satisfactory-dash/shared";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { upsertWorldLayerIfChanged } from "../repositories/worldLayerRepository.js";
@@ -42,7 +42,13 @@ export class WorldIngestService implements WorldIngestPort {
   async ingest(serverPublicId: string, layer: MapWorldLayer, body: WorldIngestBody): Promise<WorldIngestResult> {
     const truncated = body.data.length > MAP_WORLD_MAX_ITEMS;
     const capped = truncated ? body.data.slice(0, MAP_WORLD_MAX_ITEMS) : body.data;
-    const itemSchema = MAP_WORLD_LAYER_ITEM_SCHEMAS[layer];
+    // safe-lookup (#368): `layer` is already a validated MapWorldLayer, so an own-value miss here is
+    // a bug (the table not covering every layer), never bad input — same convention as
+    // historyQueryService.ts's rangeSeconds.
+    const itemSchema = ownValue(MAP_WORLD_LAYER_ITEM_SCHEMAS, layer);
+    if (itemSchema === undefined) {
+      throw new Error(`unknown map world layer: ${String(layer)}`);
+    }
     const valid: unknown[] = [];
     let dropped = 0;
     for (const item of capped) {

@@ -4,6 +4,7 @@ import {
   MAP_WORLD_LAYER_DATA_SCHEMAS,
   MapLiveResponseSchema,
   endpoints,
+  ownValue,
   worldLayerResponseSchema,
 } from "@satisfactory-dash/shared";
 import type { MapWorldLayer, MapWorldLayerResponse } from "@satisfactory-dash/shared";
@@ -54,10 +55,16 @@ export function createWorldRoutes(directory: ServerDirectory<unknown>, deps?: Wo
       return;
     }
     res.setHeader("ETag", etag);
-    // MAP_WORLD_LAYER_DATA_SCHEMAS[layer]'s value type is the UNION of every layer's schema (TS can't
-    // narrow a keyed lookup from the `isKnownLayer` guard above), but `sendValidated` re-validates
-    // the real shape at runtime regardless — same trust boundary as any other zod call here.
-    sendValidated(res, worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS[layer]), { layer, ...body } as MapWorldLayerResponse);
+    // safe-lookup (#368): an own-value read, not a bare index; `layer` is already a validated
+    // MapWorldLayer, so a miss here is a bug (the table not covering every layer), never bad input.
+    const dataSchema = ownValue(MAP_WORLD_LAYER_DATA_SCHEMAS, layer);
+    if (dataSchema === undefined) {
+      throw new Error(`unknown map world layer: ${String(layer)}`);
+    }
+    // dataSchema's static type is the UNION of every layer's schema (TS can't narrow a keyed lookup
+    // from the `isKnownLayer` guard above), but `sendValidated` re-validates the real shape at
+    // runtime regardless — same trust boundary as any other zod call here.
+    sendValidated(res, worldLayerResponseSchema(dataSchema), { layer, ...body } as MapWorldLayerResponse);
   });
 
   router.get(routePath(endpoints.map.live.route), (req, res) => {

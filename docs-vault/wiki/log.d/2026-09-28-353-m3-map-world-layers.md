@@ -13,4 +13,12 @@
   to `map` was needed for that. `packages/game-adapter` gained `getTrains`/`getTrainStations`
   adapter methods and their mappers (M2's rails/resourceNodes pattern, extended), grounded in the
   `frm-getTrains`/`frm-getTrainStation` captures. `packages/shared` gained the per-item and
-  ingest-response schemas the ingest service and routes need, plus the three new endpoint entries.
+  ingest-response schemas the ingest service and routes need, plus the three new endpoint entries
+  (and now exports `IsoTimeSchema`, used to reject a non-ISO `observedAt` before it can reach the
+  database as an invalid `timestamptz` cast). The world-ingest route is rate-limited per credential
+  across every layer (20/10 min, same 429+Retry-After convention as the snapshot route) — a review
+  finding, since a valid credential could otherwise loop 2 MB upserts. Fresh-eyes test-hunter (2
+  rounds) found and fixed two real bugs: that missing `observedAt` format check, and `MapLiveStore`
+  storing a reading with no validation at all (an oversized train/station name from the local poller
+  could later break `GET .../map/live` for everyone); it now conforms a reading before storing it,
+  same drop-and-count pattern `WorldIngestService` already uses for world layers.
