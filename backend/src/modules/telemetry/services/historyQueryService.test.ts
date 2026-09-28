@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HistoryRangeSchema, TransitionRangeSchema } from "@satisfactory-dash/shared";
 import { RowShapeError } from "../../../platform/db/rows.js";
 import { ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import {
@@ -79,6 +80,25 @@ describe("chooseResolution: the range picks the resolution", () => {
       const { bucketSeconds, source } = chooseResolution(range);
       expect(seconds[range] / bucketSeconds, range).toBeLessThanOrEqual(MAX_POINTS);
       expect(source, range).toBe(bucketSeconds < 3600 ? 60 : 3600);
+    }
+  });
+
+  // #368: RANGE_SECONDS is a plain object; a HistoryRange value that never validated (a bug upstream,
+  // or a value forged past the route's zod schema) must not resolve to Object.prototype's "constructor"
+  // etc. through `RANGE_SECONDS[range]` - it must throw, same as any other unknown range.
+  it("throws on a range outside HistoryRange, including one that collides with Object.prototype", () => {
+    for (const bogus of ["constructor", "toString", "__proto__", "hasOwnProperty", "2h"]) {
+      expect(() => chooseResolution(bogus as unknown as Parameters<typeof chooseResolution>[0])).toThrow(/unknown history range/);
+    }
+  });
+
+  // transitions() reuses the same RANGE_SECONDS lookup with a TransitionRange, a narrower type: every
+  // value it can hold must be a HistoryRange key too, or that call would throw for a value the route's
+  // own zod schema accepted as valid.
+  it("every TransitionRange value is a valid HistoryRange key", () => {
+    for (const range of TransitionRangeSchema.options) {
+      expect(HistoryRangeSchema.options).toContain(range);
+      expect(() => chooseResolution(range)).not.toThrow();
     }
   });
 });

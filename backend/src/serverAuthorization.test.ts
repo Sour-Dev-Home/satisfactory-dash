@@ -107,7 +107,7 @@ const access: ServerAccess = {
   getRole: async (publicId, userId) => members[publicId]?.[userId],
   listForUser: async (userId) =>
     Object.entries(members)
-      .filter(([, roles]) => userId in roles)
+      .filter(([, roles]) => Object.hasOwn(roles, userId))
       .map(([publicId, roles]) => ({ publicId, displayName: publicId, role: roles[userId]! })),
 };
 
@@ -202,7 +202,7 @@ const ALERT_BODIES: Record<string, unknown> = {
   "alerts.mute.set": alertSetMuteRequest,
 };
 const bodyFor = (name: string): unknown =>
-  name in ALERT_BODIES ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
+  Object.hasOwn(ALERT_BODIES, name) ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
 // POST .../test takes no body, like the other action endpoints.
 const hasBody = (name: string, method: Method) =>
   method !== "GET" &&

@@ -31,7 +31,7 @@ export function trimFactoryBuilding(building: unknown): Record<string, unknown> 
   const source = building as Record<string, unknown>;
   const kept: Record<string, unknown> = {};
   for (const field of KEPT_FACTORY_FIELDS) {
-    if (field in source) {
+    if (Object.hasOwn(source, field)) {
       kept[field] = source[field];
     }
   }

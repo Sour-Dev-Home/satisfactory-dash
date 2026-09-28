@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProductionRate } from "@satisfactory-dash/shared";
+import { ownValue } from "@satisfactory-dash/shared";
 import type { ItemForm } from "./parseGameDocs.js";
 import catalogFile from "./itemForms.generated.json";
 
@@ -46,8 +47,10 @@ export function createUnitResolver(
   return (className) => {
     // Own keys only: a className like "constructor" or "__proto__" must not resolve.
     const form = Object.hasOwn(forms, className) ? forms[className] : undefined;
-    if (form) {
-      return UNIT_BY_FORM[form];
+    // The form comes from the catalog file: one this build doesn't know goes the unknown path too (#368).
+    const unit = form === undefined ? undefined : ownValue(UNIT_BY_FORM, form);
+    if (unit !== undefined) {
+      return unit;
     }
     if (!reported.has(className)) {
       reported.add(className);
