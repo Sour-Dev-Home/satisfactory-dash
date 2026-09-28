@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { ownValue } from "@satisfactory-dash/shared";
 import type {
   AgentStatusResponse,
   EnrollmentCodeResponseSchema,
@@ -77,7 +78,7 @@ const PLAYER_CYCLE = [3, 3, 4, 4, 2, 1, 0, 0, 1, 2] as const;
 const PLAYER_STEP_MS = 30_000;
 export function connectedPlayersAt(now: number): number {
   const step = Math.floor((now - DEMO_EPOCH) / PLAYER_STEP_MS);
-  return PLAYER_CYCLE[((step % PLAYER_CYCLE.length) + PLAYER_CYCLE.length) % PLAYER_CYCLE.length];
+  return PLAYER_CYCLE.at(((step % PLAYER_CYCLE.length) + PLAYER_CYCLE.length) % PLAYER_CYCLE.length) ?? 0;
 }
 
 /**
@@ -207,6 +208,18 @@ const RANGE_MS: Record<HistoryRange, number> = {
   "1y": 31_536_000_000,
 };
 const BUCKET_S: Record<HistoryRange, number> = { "1h": 60, "6h": 60, "24h": 300, "7d": 3600, "30d": 21_600, "1y": 86_400 };
+
+/** A range's length and bucket, reading own keys only (#368); the handlers validate the range first. */
+function rangeMs(range: HistoryRange): number {
+  const ms = ownValue(RANGE_MS, range);
+  if (ms === undefined) throw new Error(`unknown history range: ${String(range)}`);
+  return ms;
+}
+function bucketS(range: HistoryRange): number {
+  const seconds = ownValue(BUCKET_S, range);
+  if (seconds === undefined) throw new Error(`unknown history range: ${String(range)}`);
+  return seconds;
+}
 /** The demo save, as the stored history's session hash (any fixed 32-bit number). */
 const DEMO_SESSION = 20_260_924;
 // A stretch with nothing recorded (the game was paused), a few buckets before the newest one, so
@@ -221,9 +234,9 @@ const GAP_BUCKETS_AGO = 4;
  * samples its circuit a few times for min/avg/max. Nothing in the gap, as the real history does.
  */
 export function historyPower(now: number, range: HistoryRange): HistoryPowerResponse {
-  const step = BUCKET_S[range] * 1000;
+  const step = bucketS(range) * 1000;
   const to = now;
-  const from = now - RANGE_MS[range];
+  const from = now - rangeMs(range);
   const first = Math.ceil(from / step) * step;
   const starts: number[] = [];
   // Every bucket that has started (the newest is still filling, as on the real backend).
@@ -253,7 +266,7 @@ export function historyPower(now: number, range: HistoryRange): HistoryPowerResp
     ...envelope(now),
     data: {
       range,
-      resolutionSeconds: BUCKET_S[range],
+      resolutionSeconds: bucketS(range),
       from,
       to,
       series: [
@@ -470,8 +483,8 @@ function itemRate(className: string, perMinute: number, t: number, now: number):
 }
 
 export function historyItems(now: number, range: HistoryRange, item?: string): HistoryItemsResponse {
-  const bucket = BUCKET_S[range] * 1000;
-  const from = now - RANGE_MS[range];
+  const bucket = bucketS(range) * 1000;
+  const from = now - rangeMs(range);
   const first = Math.floor(from / bucket) * bucket;
   const series = HISTORY_ITEMS.filter(([className]) => item === undefined || className === item).map(
     ([className, perMinute, capacity]) => {
@@ -504,7 +517,7 @@ export function historyItems(now: number, range: HistoryRange, item?: string): H
 
 /** The Screw constructor flips between producing and underfed every 40 minutes; the Rotor assembler backed up. */
 export function historyTransitions(now: number, range: TransitionRange, limit: number): HistoryTransitionsResponse {
-  const from = now - RANGE_MS[range];
+  const from = now - rangeMs(range);
   const all: HistoryTransitions["transitions"] = [];
   const cadence = 40 * MINUTE;
   for (let t = Math.floor(now / cadence) * cadence, i = 0; t >= from; t -= cadence, i++) {

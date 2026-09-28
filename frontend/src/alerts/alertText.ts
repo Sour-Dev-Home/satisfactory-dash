@@ -3,6 +3,7 @@ import {
   ProductionBelowTargetSummarySchema,
   ServerUnreachableSummarySchema,
   StoppedMachinesSummarySchema,
+  ownValue,
   type AlertEvent,
 } from "@satisfactory-dash/shared";
 import { formatDuration, formatPerMinute } from "../format";
@@ -24,13 +25,13 @@ const KIND_LABEL: Record<string, string> = {
 
 /** "power_outage" -> "Power outage"; an unknown kind is spelled out from its name. */
 export function kindLabel(kind: string): string {
-  return KIND_LABEL[kind] ?? spellOut(kind);
+  return ownValue(KIND_LABEL, kind) ?? spellOut(kind);
 }
 
 const SEVERITY_LABEL: Record<string, string> = { info: "Info", warning: "Warning", critical: "Critical" };
 
 export function severityLabel(severity: string): string {
-  return SEVERITY_LABEL[severity] ?? spellOut(severity);
+  return ownValue(SEVERITY_LABEL, severity) ?? spellOut(severity);
 }
 
 /** Text colour per severity: the token utilities, never a raw colour. Unknown is neutral. */
@@ -48,7 +49,7 @@ const TRANSITION_LABEL: Record<string, string> = {
 };
 
 export function transitionLabel(transition: string): string {
-  return TRANSITION_LABEL[transition] ?? spellOut(transition);
+  return ownValue(TRANSITION_LABEL, transition) ?? spellOut(transition);
 }
 
 /**
@@ -90,7 +91,7 @@ const DISABLED_REASON: Record<string, string> = {
 /** Why the Discord destination is off; null while it's on. */
 export function disabledReasonText(reason: string | null): string | null {
   if (reason === null) return null;
-  return DISABLED_REASON[reason] ?? `Turned off (${reason}).`;
+  return ownValue(DISABLED_REASON, reason) ?? `Turned off (${reason}).`;
 }
 
 /**
@@ -146,7 +147,7 @@ const SEND_TEST_FAILED: Record<string, string> = {
  */
 export function sendTestText(answer: { ok: true } | { ok: false; code: string }, demo = false): string {
   if (answer.ok) return demo ? "Sent (demo): nothing was sent to Discord." : "Sent. Check your Discord channel.";
-  const known = SEND_TEST_FAILED[answer.code];
+  const known = ownValue(SEND_TEST_FAILED, answer.code);
   if (known) return known;
   const code = spellOut(answer.code).toLowerCase();
   return code ? `Discord didn't take the test (${code}).` : "Discord didn't take the test.";

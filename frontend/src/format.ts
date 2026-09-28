@@ -1,6 +1,6 @@
 // Pure display formatters, shared by views (and later by map layers). They round for
 // display only; they never change a value's unit or meaning (ADR-0006).
-import type { ProductionRate } from "@satisfactory-dash/shared";
+import { ownValue, type ProductionRate } from "@satisfactory-dash/shared";
 
 /** An ADR-0004 observedAt (UTC ISO string) in the viewer's local time. */
 export function formatTime(iso: string): string {
@@ -66,7 +66,7 @@ export function formatRate(currentPerMinute: number, maxPerMinute: number, unit?
 
 /** The label after a rate: "items/min", "m³/min", or "per min" when the unit is unknown. */
 export function unitLabel(unit?: RateUnit | null): string {
-  return unit ? UNIT_LABEL[unit] : "per min";
+  return (unit && ownValue(UNIT_LABEL, unit)) || "per min";
 }
 
 /** One rate per minute, e.g. "18.2 items/min" (rounded like formatRate, never rescaled). */

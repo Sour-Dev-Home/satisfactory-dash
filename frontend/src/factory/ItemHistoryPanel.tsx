@@ -2,7 +2,7 @@ import { lazy, Suspense, useId } from "react";
 import type { HistoryItems } from "@satisfactory-dash/shared";
 import { formatPerMinute, formatTime, unitLabel } from "../format";
 import { labelFor, type ItemLabel } from "./itemLabels";
-import { itemStats, RANGE_WORDS, toItemChartData } from "./itemHistory";
+import { itemStats, rangeWords, toItemChartData } from "./itemHistory";
 
 // uPlot is only needed once a chart shows: a separate chunk, as on the Power page. React.lazy caches
 // a failed import for good, so on failure swap in a fresh lazy component and a retry imports again.
@@ -69,7 +69,7 @@ export function ItemHistoryPanel({
       {history.truncated && <p className="text-sm text-muted">Showing the 50 items made fastest in this range.</p>}
       {stats && (
         <p>
-          {label.name}, {RANGE_WORDS[history.range].toLowerCase()}: average {formatPerMinute(stats.average, label.unit)}, low{" "}
+          {label.name}, {rangeWords(history.range).toLowerCase()}: average {formatPerMinute(stats.average, label.unit)}, low{" "}
           {formatPerMinute(stats.low, label.unit)}, high {formatPerMinute(stats.high, label.unit)}; capacity{" "}
           {formatPerMinute(stats.capacity, label.unit)}.
         </p>

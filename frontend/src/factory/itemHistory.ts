@@ -1,4 +1,4 @@
-import type { HistoryItems, HistoryRange } from "@satisfactory-dash/shared";
+import { ownValue, type HistoryItems, type HistoryRange } from "@satisfactory-dash/shared";
 import type uPlot from "uplot";
 
 type Point = HistoryItems["series"][number]["points"][number];
@@ -24,6 +24,10 @@ export const RANGE_WORDS: Record<HistoryRange, string> = {
   "30d": "Last 30 days",
   "1y": "Last year",
 };
+
+/** A range's label and words, reading own keys only (#368): the range comes back in the server's response. */
+export const rangeLabel = (range: HistoryRange) => ownValue(RANGE_LABEL, range) ?? range;
+export const rangeWords = (range: HistoryRange) => ownValue(RANGE_WORDS, range) ?? range;
 
 /**
  * uPlot data (seconds on x): the bucket average rate and the capacity. Nothing is interpolated:

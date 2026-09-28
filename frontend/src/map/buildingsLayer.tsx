@@ -1,9 +1,9 @@
-import type { Factory, FactoryBuilding } from "@satisfactory-dash/shared";
+import { ownValue, type Factory, type FactoryBuilding } from "@satisfactory-dash/shared";
 import { formatPercent } from "../format";
 import {
   BACKED_UP_TOKEN,
-  STATE_LABEL,
-  STATE_TOKEN,
+  stateLabel,
+  stateToken,
   buildingState,
   outputPercent,
   type BuildingState,
@@ -36,7 +36,7 @@ function tooltip(building: FactoryBuilding): HTMLElement {
   line(building.name, true);
   line(building.recipe ?? "No recipe");
   const percent = outputPercent(building);
-  const state = STATE_LABEL[buildingState(building)];
+  const state = stateLabel(buildingState(building));
   line(percent === null ? state : `${state} · ${formatPercent(percent)}`);
   if (building.isBackedUp) line("Backed up");
   return box;
@@ -52,7 +52,7 @@ export const buildingsLayer: MapLayer<Factory> = {
     const group = L.layerGroup();
     const ring = color(BACKED_UP_TOKEN);
     for (const building of placed(data.buildings)) {
-      const fill = color(STATE_TOKEN[buildingState(building)]);
+      const fill = color(stateToken(buildingState(building)));
       L.circleMarker(project(building.location.xM, building.location.yM), {
         renderer,
         radius: 6,
@@ -75,8 +75,8 @@ export const buildingsLayer: MapLayer<Factory> = {
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       {STATES.map((state) => (
         <li key={state} className="flex items-center gap-1.5">
-          <span aria-hidden="true" className={`size-3 rounded-full ${SWATCH[state]}`} />
-          {STATE_LABEL[state]}
+          <span aria-hidden="true" className={`size-3 rounded-full ${ownValue(SWATCH, state) ?? ""}`} />
+          {stateLabel(state)}
         </li>
       ))}
       <li className="flex items-center gap-1.5">

@@ -2,7 +2,7 @@ import type { Ref } from "react";
 import { formatTickRate } from "../../format";
 import { cn } from "../../lib/cn";
 import { TickGauge } from "./TickGauge";
-import { WORD, WORD_COLOR, type Shown } from "./words";
+import { wordColor, wordFor, type Shown } from "./words";
 
 export type { Shown };
 
@@ -21,7 +21,7 @@ function Heart({ health, quiet }: { health: Shown; quiet: boolean }) {
       aria-hidden="true"
       data-icon="heart"
       data-filled={!outlined}
-      className={cn("size-9 flex-none", outlined ? "text-muted" : WORD_COLOR[health])}
+      className={cn("size-9 flex-none", outlined ? "text-muted" : wordColor(health))}
       fill={outlined ? "none" : "currentColor"}
       stroke="currentColor"
       strokeWidth={1.75}
@@ -105,8 +105,8 @@ export function HealthCard({
         <div className="flex min-w-0 items-center gap-3 lg:flex-1">
           <Heart health={overall.health} quiet={hidden} />
           <p role="status" className="mb-0 grid">
-            <span className={cn("text-xl font-semibold", hidden ? "text-muted" : WORD_COLOR[overall.health])}>
-              {WORD[overall.health]}
+            <span className={cn("text-xl font-semibold", hidden ? "text-muted" : wordColor(overall.health))}>
+              {wordFor(overall.health)}
             </span>
             <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
               {hidden ? "Warning hidden until something changes." : overall.headline}

@@ -1,4 +1,4 @@
-import type { Command } from "@satisfactory-dash/shared";
+import { ownValue, type Command } from "@satisfactory-dash/shared";
 import { FINAL_COMMAND_STATUSES } from "../api/queries";
 
 /**
@@ -44,5 +44,5 @@ const FAILURE_TEXT: Record<string, string> = {
 
 /** Why a relayed change failed, by the agent's result code; an unknown or missing code gets a general line. */
 export function failureText(resultCode: string | null): string {
-  return (resultCode !== null && FAILURE_TEXT[resultCode]) || "The change failed on the game PC; the setting didn't change.";
+  return (resultCode !== null && ownValue(FAILURE_TEXT, resultCode)) || "The change failed on the game PC; the setting didn't change.";
 }

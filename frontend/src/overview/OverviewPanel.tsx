@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { cn } from "../lib/cn";
 import { CardGrid } from "./cards/CardGrid";
 import { HealthCard, type Tick } from "./cards/HealthCard";
-import { WORD, WORD_COLOR, type Shown } from "./cards/words";
+import { wordColor, wordFor, type Shown } from "./cards/words";
 import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
 import type { SectionState } from "./health";
 
@@ -79,9 +79,9 @@ export function OverviewPanel({
                 <span className="font-semibold text-fg-strong">{section.name}</span>
                 <span className="text-sm text-muted">{summary}</span>
               </span>
-              <span className={cn("ml-auto flex flex-none items-center gap-2 text-sm font-medium", WORD_COLOR[health])}>
+              <span className={cn("ml-auto flex flex-none items-center gap-2 text-sm font-medium", wordColor(health))}>
                 <span aria-hidden="true" className="size-2 rounded-full bg-current" />
-                {WORD[health]}
+                {wordFor(health)}
               </span>
             </>
           );

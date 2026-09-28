@@ -1,3 +1,4 @@
+import { ownValue } from "@satisfactory-dash/shared";
 import type { Health } from "../health";
 
 /** A health level, or still loading. */
@@ -21,3 +22,8 @@ export const WORD_COLOR: Record<Shown, string> = {
   outage: "text-bad",
   pending: "text-muted",
 };
+
+/** The one-word state; lookups read own keys only (#368), so an unexpected value shows as "Checking…". */
+export const wordFor = (shown: Shown) => ownValue(WORD, shown) ?? WORD.pending;
+/** The colour for a state, muted for an unexpected value. */
+export const wordColor = (shown: Shown) => ownValue(WORD_COLOR, shown) ?? WORD_COLOR.pending;

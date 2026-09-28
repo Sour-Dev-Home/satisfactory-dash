@@ -5,7 +5,7 @@ import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useSelectedServer } from "../servers/ServerContext";
 import { PowerHistoryView } from "./PowerHistoryView";
-import { RANGE_LABEL, RANGE_WORDS, type PowerRange } from "./storedHistory";
+import { RANGE_LABEL, rangeLabel, rangeWords, type PowerRange } from "./storedHistory";
 import { StoredPowerHistoryPanel } from "./StoredPowerHistoryPanel";
 
 const RANGES = Object.keys(RANGE_LABEL) as PowerRange[];
@@ -50,11 +50,11 @@ export function PowerHistorySection() {
             type="button"
             aria-pressed={r === range}
             // The visible label is the accessible name (WCAG 2.5.3); the title spells it out.
-            title={r === "live" ? "Live, last 5 minutes" : RANGE_WORDS[r]}
+            title={r === "live" ? "Live, last 5 minutes" : rangeWords(r)}
             onClick={() => setRange(r)}
             className="min-w-touch"
           >
-            {RANGE_LABEL[r]}
+            {rangeLabel(r)}
           </button>
         ))}
       </div>

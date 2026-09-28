@@ -6,6 +6,7 @@ import {
   ServerUnreachableParamsSchema,
   StoppedMachinesParamsSchema,
   UpdateAlertRuleRequestSchema,
+  ownValue,
   type AlertRule,
   type CreateAlertRuleRequest,
   type UpdateAlertRuleRequest,
@@ -50,6 +51,9 @@ export const FIELD_HINT: Record<Field, string> = {
   targetPerMinute: "More than 0.",
   windowMinutes: "From 5 to 60 minutes.",
 };
+
+/** A field's hint, reading own keys only (#368). */
+export const hintFor = (field: Field): string => ownValue(FIELD_HINT, field) ?? "";
 
 /** Seconds to the minutes shown in a field: whole, or one decimal ("1.5"). */
 export const toMinutesText = (seconds: number) => String(Math.round((seconds / 60) * 10) / 10);
@@ -178,14 +182,14 @@ export function buildUpdate(rule: AlertRule, draft: Draft): Built<UpdateAlertRul
   for (const [field, key] of timing) {
     const seconds = toSeconds(draft[field]);
     if (seconds === null) {
-      errors[field] = FIELD_HINT[field];
+      errors[field] = hintFor(field);
       continue;
     }
     if (seconds === rule[key]) continue;
     // Bounds after rounding: "0.5" minutes of repeat is 30 s, under the 60 s minimum.
     const one = UpdateAlertRuleRequestSchema.safeParse({ [key]: seconds });
     if (one.success) body[key] = seconds;
-    else errors[field] = FIELD_HINT[field];
+    else errors[field] = hintFor(field);
   }
   const params = paramsUpdate(rule, draft, errors);
   if (params) body.params = params;
