@@ -147,6 +147,24 @@ const found = lint({
     const TABLE: Record<string, number> = { a: 1 };
     const other: Record<string, number> = {};
     export const f = (k: string) => { const { [k]: v = TABLE.a } = other; return v; };`,
+  // False positive check: the selector dropped [object.type='Identifier'], so these must still not match through
+  // tableName's Identifier check on a MemberExpression object.
+  thisMember: `
+    class C { X: Record<string, number> = {}; f(k: string) { return this.X[k]; } }`,
+  objectConstMember: `
+    const obj = { CONST: { a: 1 } as Record<string, number> };
+    export const f = (k: string) => obj.CONST[k];`,
+  enumLikeMember: `
+    const ENUM_LIKE = { member: { a: 1 } as Record<string, number> };
+    export const f = (k: string) => ENUM_LIKE.member[k];`,
+  // A guarded lookup where the *lookup side* (not just the guard's table argument) is wrapped, e.g. a cast applied
+  // after Object.hasOwn already narrowed. Same table/key as the guard, so this should be exempt like guardAs.
+  guardAsWrappedTable: `
+    const TABLE: Record<string, string> = {};
+    export const f = (k: string) => (Object.hasOwn(TABLE, k) ? (TABLE as Record<string, string>)[k] : "x");`,
+  // An unguarded optional-chain lookup must still be flagged; ChainExpression being added to TRANSPARENT (for the
+  // guard's parent-walk) must not accidentally exempt this too.
+  unguardedOptionalChain: `const TABLE: Record<string, string> = {}; export const f = (k: string) => TABLE?.[k];`,
 });
 
 test("#361's old registry lookups are flagged: the table index and the `in` check", () => {
@@ -236,4 +254,18 @@ test("an object literal (not a pattern) with a computed table-named key is not f
 
 test("a pattern's own default value mentioning the table doesn't flag when the destructuring source isn't the table", () => {
   assert.deepEqual(found.destructureDefaultValueIsTable, []);
+});
+
+// The MemberExpression selector dropped [object.type='Identifier'] (relying on tableName() instead); these confirm
+// that non-table member accesses still aren't flagged.
+test("a non-table object (this.X, obj.CONST, ENUM_LIKE.member) is not flagged even when a member name is ALL_CAPS", () => {
+  for (const name of ["thisMember", "objectConstMember", "enumLikeMember"]) assert.deepEqual(found[name], [], name);
+});
+
+test("the hasOwn guard is recognised when the lookup side (not the guard's argument) is wrapped", () => {
+  assert.deepEqual(found.guardAsWrappedTable, []);
+});
+
+test("an unguarded optional-chain lookup is still flagged", () => {
+  assert.deepEqual(found.unguardedOptionalChain, ["no-table-index"]);
 });
