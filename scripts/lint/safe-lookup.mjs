@@ -16,6 +16,16 @@ const TABLE_NAME = /^[A-Z][A-Z0-9_]+$/;
 const TRANSPARENT = new Set(["TSNonNullExpression", "ParenthesizedExpression", "TSAsExpression", "TSSatisfiesExpression", "ChainExpression"]);
 
 /**
+ * The lookup table's name when `expr` is one, seen through the same wrappers (`(TABLE as X)`, `TABLE!`), or null.
+ * Found by the fresh-eyes pass: a cast table hid both the index and the destructuring form.
+ */
+function tableName(expr) {
+  let node = expr;
+  while (node && TRANSPARENT.has(node.type)) node = node.expression;
+  return node?.type === "Identifier" && TABLE_NAME.test(node.name) ? node.name : null;
+}
+
+/**
  * The table a destructuring pattern reads from: `const { [k]: v } = TABLE`, `({ [k]: v } = TABLE)`, or a parameter
  * default `({ [k]: v } = TABLE) => ...`.
  */
@@ -50,7 +60,8 @@ function guardedByHasOwn(node, sourceCode) {
     test.arguments.length === 2;
   if (!isHasOwn) return false;
   const [table, key] = test.arguments;
-  return table.type === "Identifier" && table.name === node.object.name && sourceCode.getText(key) === sourceCode.getText(node.property);
+  const name = tableName(table);
+  return name !== null && name === tableName(node.object) && sourceCode.getText(key) === sourceCode.getText(node.property);
 }
 
 export default {
@@ -74,8 +85,8 @@ export default {
       meta: { type: "problem", docs: { description: "TABLE[variable] returns inherited members for names like toString." } },
       create(context) {
         return {
-          "MemberExpression[computed=true][object.type='Identifier'][property.type!='Literal']"(node) {
-            if (TABLE_NAME.test(node.object.name) && !guardedByHasOwn(node, context.sourceCode)) {
+          "MemberExpression[computed=true][property.type!='Literal']"(node) {
+            if (tableName(node.object) !== null && !guardedByHasOwn(node, context.sourceCode)) {
               context.report({
                 node,
                 message: "lookup tables indexed by a variable: use Object.hasOwn(...) ? T[k] : fallback, or a Map",
@@ -84,8 +95,7 @@ export default {
           },
           // The same read as a destructuring: `const { [k]: v } = TABLE` (found by the fresh-eyes pass).
           "ObjectPattern > Property[computed=true][key.type!='Literal']"(node) {
-            const source = destructuredFrom(node.parent);
-            if (source?.type === "Identifier" && TABLE_NAME.test(source.name)) {
+            if (tableName(destructuredFrom(node.parent)) !== null) {
               context.report({
                 node,
                 message: "lookup tables indexed by a variable: use Object.hasOwn(...) ? T[k] : fallback, or a Map",

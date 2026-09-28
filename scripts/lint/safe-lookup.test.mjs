@@ -114,6 +114,39 @@ const found = lint({
   destructureParamDefault: `
     const TABLE: Record<string, number> = { a: 1 };
     export const f = (k: string, { [k]: v }: any = TABLE) => v;`,
+  // Realistic shapes not yet in the fixture: a rest sibling, a function declaration default, a method default.
+  destructureRestSibling: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const f = (k: string) => { const { [k]: v, ...rest } = TABLE; return [v, rest]; };`,
+  destructureFunctionDeclDefault: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export function f(k: string, { [k]: v }: any = TABLE) { return v; }`,
+  destructureMethodDefault: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export class C { f(k: string, { [k]: v }: any = TABLE) { return v; } }`,
+  destructureObjectMethodDefault: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const obj = { f(k: string, { [k]: v }: any = TABLE) { return v; } };`,
+  // A catch-bound identifier matching the naming convention is treated like any other table: the rule is name-based,
+  // not scope-aware, by design (same as any other Identifier check in this plugin).
+  destructureCatchBinding: `
+    export const f = (k: string) => { try { throw {}; } catch (TABLE) { const { [k]: v } = TABLE; return v; } };`,
+  // A cast around the table itself (third fresh-eyes round).
+  destructureAsExpressionSource: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const f = (k: string) => { const { [k]: v } = TABLE as Record<string, number>; return v; };`,
+  memberAsExpressionSource: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const f = (k: string) => (TABLE as Record<string, number>)[k];`,
+  // False positive check: an object *literal* using a computed table-named key isn't a pattern at all.
+  objectLiteralNotPattern: `
+    const TABLE: Record<string, number> = { a: 1 };
+    export const f = (k: string) => ({ [k]: TABLE });`,
+  // False positive check: the pattern's own default *value* mentions the table; the destructuring *source* does not.
+  destructureDefaultValueIsTable: `
+    const TABLE: Record<string, number> = { a: 1 };
+    const other: Record<string, number> = {};
+    export const f = (k: string) => { const { [k]: v = TABLE.a } = other; return v; };`,
 });
 
 test("#361's old registry lookups are flagged: the table index and the `in` check", () => {
@@ -171,4 +204,36 @@ test("destructuring inside a for-of body is flagged like any other const destruc
 // Found by the second fresh-eyes round, fixed in destructuredFrom (an AssignmentPattern parent).
 test("a destructured computed key as a parameter default is flagged", () => {
   assert.deepEqual(found.destructureParamDefault, ["no-table-index"]);
+});
+
+test("a rest sibling doesn't hide the flagged computed key", () => {
+  assert.deepEqual(found.destructureRestSibling, ["no-table-index"]);
+});
+
+test("a destructured parameter default is flagged on a function declaration, a class method, and an object method", () => {
+  for (const name of ["destructureFunctionDeclDefault", "destructureMethodDefault", "destructureObjectMethodDefault"]) {
+    assert.deepEqual(found[name], ["no-table-index"], name);
+  }
+});
+
+test("a catch-bound identifier is checked by name like any other, since the rule isn't scope-aware", () => {
+  assert.deepEqual(found.destructureCatchBinding, ["no-table-index"]);
+});
+
+// Found by the third fresh-eyes round, fixed with tableName(): a cast or non-null table (`TABLE as X`, `TABLE!`,
+// `(TABLE)`) is still the table, in both forms.
+test("a wrapped table is still flagged (destructuring form)", () => {
+  assert.deepEqual(found.destructureAsExpressionSource, ["no-table-index"]);
+});
+
+test("a wrapped table is still flagged (plain TABLE[k] form)", () => {
+  assert.deepEqual(found.memberAsExpressionSource, ["no-table-index"]);
+});
+
+test("an object literal (not a pattern) with a computed table-named key is not flagged", () => {
+  assert.deepEqual(found.objectLiteralNotPattern, []);
+});
+
+test("a pattern's own default value mentioning the table doesn't flag when the destructuring source isn't the table", () => {
+  assert.deepEqual(found.destructureDefaultValueIsTable, []);
 });
