@@ -136,6 +136,10 @@ you know exists, that's not a bug to debug — it means this session predates th
 inherits full context, defeating the point) after a chunk of backend logic is written,
 so it reviews with genuinely no memory of why the code was built a certain way.
 
+## Conventions
+
+- New lookup tables keyed by external or untrusted strings are Maps (or Object.create(null)).
+
 ## Testing
 
 - `npm run test` from the root runs both workspaces' suites (Vitest everywhere;

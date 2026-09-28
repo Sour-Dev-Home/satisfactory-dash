@@ -1,3 +1,4 @@
+import { ownValue } from "@satisfactory-dash/shared";
 import type { RuleKind, Severity } from "./rules.js";
 
 /**
@@ -212,7 +213,7 @@ export function formatAlertMessage(input: AlertMessageInput): DiscordPayload {
       {
         title: cutAt(title, MAX_TITLE),
         description,
-        color: input.transition === "resolved" ? COLORS.resolved : COLORS[input.severity],
+        color: input.transition === "resolved" ? COLORS.resolved : (ownValue(COLORS, input.severity) ?? COLORS.info),
         timestamp: at.toISOString(),
         footer: { text: `${input.kind.replace(/_/g, " ")} · ${input.severity}` },
       },

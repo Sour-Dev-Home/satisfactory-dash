@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { DisplayNameSchema, RESERVED_SERVER_IDS, ServerIdSchema } from "@satisfactory-dash/shared";
+import { DisplayNameSchema, RESERVED_SERVER_IDS, ServerIdSchema, ownValue } from "@satisfactory-dash/shared";
 import { ConfigError } from "../../platform/errors.js";
 import { loadSatisfactoryServerConfigFromEnv } from "./connectionConfig.js";
 import type { SatisfactoryServerConfig } from "@satisfactory-dash/game-adapter";
@@ -115,7 +115,7 @@ const FILE_FIELD_FOR_ENV_NAME: Record<string, string> = {
 };
 
 function inFileTerms(message: string): string {
-  return message.replace(/\b(SATISFACTORY_SERVER_HOST|SATISFACTORY_API_PORT|FRM_WEB_PORT|SATISFACTORY_REQUEST_TIMEOUT_MS)\b/g, (name) => FILE_FIELD_FOR_ENV_NAME[name]);
+  return message.replace(/\b(SATISFACTORY_SERVER_HOST|SATISFACTORY_API_PORT|FRM_WEB_PORT|SATISFACTORY_REQUEST_TIMEOUT_MS)\b/g, (name) => ownValue(FILE_FIELD_FOR_ENV_NAME, name) ?? name);
 }
 
 /**

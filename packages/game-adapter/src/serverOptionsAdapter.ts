@@ -121,12 +121,12 @@ export class ServerOptionsAdapter implements ServerOptionsPort {
       throw invalidResponse("the response is not { serverOptions, pendingServerOptions }");
     }
     const { serverOptions, pendingServerOptions } = parsed.data;
-    if (!(AUTO_PAUSE_KEY in serverOptions)) {
+    if (!Object.hasOwn(serverOptions, AUTO_PAUSE_KEY)) {
       throw invalidResponse(`serverOptions has no ${AUTO_PAUSE_KEY}`);
     }
     return {
       autoPause: toBoolean(serverOptions[AUTO_PAUSE_KEY], `serverOptions.${AUTO_PAUSE_KEY}`),
-      pending: AUTO_PAUSE_KEY in pendingServerOptions,
+      pending: Object.hasOwn(pendingServerOptions, AUTO_PAUSE_KEY),
     };
   }
 

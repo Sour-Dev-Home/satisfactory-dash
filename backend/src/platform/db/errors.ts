@@ -1,4 +1,5 @@
 import { ConfigError } from "../errors.js";
+import { ownValue } from "@satisfactory-dash/shared";
 
 /**
  * Central pg error mapping (ADR-0025 decisions 2 and 6). Repositories and the startup code ask
@@ -137,8 +138,10 @@ export function classifyStartupError(err: unknown): StartupErrorClass {
     return { kind: "transient", reason: code ? `the database is not reachable yet (${code})` : "the database is not reachable yet" };
   }
   const code = errorCode(err) ?? innerErrors(err).map(errorCode).find((c) => c !== undefined);
-  if (code !== undefined && FATAL_REASONS[code]) {
-    return { kind: "fatal", reason: FATAL_REASONS[code] };
+  // ownValue: the code comes from the driver, and FATAL_REASONS["constructor"] would be a function (#368).
+  const fatal = code === undefined ? undefined : ownValue(FATAL_REASONS, code);
+  if (fatal) {
+    return { kind: "fatal", reason: fatal };
   }
   // Anything unrecognized fails fast: better a clear exit than an endless retry loop.
   return { kind: "fatal", reason: `an unexpected database error${code ? ` (${code})` : ""}` };

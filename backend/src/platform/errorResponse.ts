@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler } from "express";
 import type { Logger } from "pino";
 import type { ApiErrorResponse, KnownErrorCode } from "@satisfactory-dash/shared";
+import { ownValue } from "@satisfactory-dash/shared";
 import { formatErrorDetail } from "./formatErrorDetail.js";
 import { ContractViolationError } from "./sendValidated.js";
 import { UpstreamError } from "./errors.js";
@@ -366,10 +367,11 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     }
     const { code, message, reason } = classifyRequestFailure(err);
     const detail = detailFor(err);
+    const status = ownValue(HTTP_STATUS_BY_CODE, code) ?? 500;
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
     // Only real failures are errors (a 401 is routine while signed out, other 4xx are warnings).
-    log[requestLogLevel(HTTP_STATUS_BY_CODE[code], err)]({ code, detail, requestId }, message);
+    log[requestLogLevel(status, err)]({ code, detail, requestId }, message);
 
     if (err instanceof RateLimitedError) {
       res.setHeader("Retry-After", String(err.retryAfterSeconds));
@@ -380,6 +382,6 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     if (code !== "service_unavailable" && DETAIL_SAFE_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
       body.error.detail = detail;
     }
-    res.status(HTTP_STATUS_BY_CODE[code]).json(body);
+    res.status(status).json(body);
   };
 }
