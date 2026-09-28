@@ -1,0 +1,178 @@
+import { describe, expect, it } from "vitest";
+import { factoryMixed, powerOk } from "@satisfactory-dash/shared/fixtures";
+import { itemLabels } from "../factory/itemLabels";
+import { factorySearchLink } from "../lib/deepLinks";
+import { isPaletteShortcut, MAX_MACHINES, paletteGroups, paletteScore, type PaletteInput } from "./paletteCommands";
+
+const base: PaletteInput = { isOperator: false, serverCount: 1, labels: new Map() };
+const headings = (input: PaletteInput) => paletteGroups(input).map((g) => g.heading);
+const group = (input: PaletteInput, heading: string) => paletteGroups(input).find((g) => g.heading === heading);
+
+describe("paletteGroups", () => {
+  it("always offers the pages and settings; Servers only to the operator", () => {
+    expect(headings(base)).toEqual(["Pages", "Settings"]);
+    expect(group(base, "Pages")?.commands.map((c) => c.label)).not.toContain("Servers");
+    expect(group({ ...base, isOperator: true }, "Pages")?.commands.map((c) => c.to)).toContain("/app/servers");
+    expect(group(base, "Settings")?.commands.map((c) => c.to)).toEqual([
+      "/app/settings",
+      "/app/settings#agent",
+      "/app/settings#alerts",
+    ]);
+  });
+
+  it("offers Change server only when there's more than one", () => {
+    expect(headings({ ...base, serverCount: 2 })).toContain("Servers");
+    expect(group({ ...base, serverCount: 2 }, "Servers")?.commands[0]).toMatchObject({ action: "changeServer" });
+  });
+
+  it("lists each circuit, linking to its card, in id order", () => {
+    const circuits = group({ ...base, power: powerOk }, "Circuits")?.commands ?? [];
+    expect(circuits).toHaveLength(powerOk.data.circuits.length);
+    const first = powerOk.data.circuits[0];
+    expect(circuits[0]).toMatchObject({ label: `Circuit ${first.circuitGroupId}`, to: `/app/power#circuit-${first.circuitGroupId}` });
+    expect(circuits[0].hint).toMatch(/ MW of .* MW$/);
+  });
+
+  it("lists machines once per name and recipe, with how many, searching the table for the recipe", () => {
+    const machines = group({ ...base, factory: factoryMixed }, "Machines")?.commands ?? [];
+    const kinds = new Set(factoryMixed.data.buildings.map((b) => `${b.name}|${b.recipe ?? ""}`));
+    expect(machines).toHaveLength(kinds.size);
+    const withRecipe = factoryMixed.data.buildings.find((b) => b.recipe !== null)!;
+    const entry = machines.find((m) => m.label === `${withRecipe.name} · ${withRecipe.recipe}`)!;
+    expect(entry.to).toBe(`/app/factory?q=${encodeURIComponent(withRecipe.recipe!).replace(/%20/g, "+")}`);
+    expect(entry.hint).toMatch(/^\d+ machines?$/);
+  });
+
+  it("caps the machines at MAX_MACHINES for a very large factory", () => {
+    const many = {
+      ...factoryMixed,
+      data: {
+        ...factoryMixed.data,
+        buildings: Array.from({ length: MAX_MACHINES + 50 }, (_, i) => ({
+          ...factoryMixed.data.buildings[0],
+          id: `b${i}`,
+          recipe: `Recipe ${String(i).padStart(3, "0")}`,
+        })),
+      },
+    };
+    expect(group({ ...base, factory: many }, "Machines")?.commands).toHaveLength(MAX_MACHINES);
+  });
+
+  it("lists items by name, linking to their production history", () => {
+    const labels = itemLabels(factoryMixed.data.buildings);
+    const items = group({ ...base, labels }, "Items")?.commands ?? [];
+    expect(items).toHaveLength(labels.size);
+    const names = items.map((i) => i.label);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    expect(items[0].to).toMatch(/^\/app\/factory\?item=\w+#history$/);
+  });
+
+  it("treats an empty-string recipe as no recipe, same as null, for the search link", () => {
+    const factory = {
+      ...factoryMixed,
+      data: {
+        ...factoryMixed.data,
+        buildings: [{ ...factoryMixed.data.buildings[0], id: "empty-recipe", name: "Blender", recipe: "" }],
+      },
+    };
+    const machines = group({ ...base, factory }, "Machines")?.commands ?? [];
+    expect(machines).toHaveLength(1);
+    expect(machines[0].label).toBe("Blender");
+    expect(machines[0].to).toBe(factorySearchLink("Blender"));
+  });
+
+  it("merges a null-recipe and an empty-string-recipe machine of the same name into one group", () => {
+    const factory = {
+      ...factoryMixed,
+      data: {
+        ...factoryMixed.data,
+        buildings: [
+          { ...factoryMixed.data.buildings[0], id: "a", name: "Blender", recipe: null },
+          { ...factoryMixed.data.buildings[0], id: "b", name: "Blender", recipe: "" },
+        ],
+      },
+    };
+    const machines = group({ ...base, factory }, "Machines")?.commands ?? [];
+    expect(machines).toHaveLength(1);
+    expect(machines[0].hint).toBe("2 machines");
+    expect(machines[0].to).toBe(factorySearchLink("Blender"));
+  });
+
+  it("gives every command a unique id (cmdk's value)", () => {
+    const labels = itemLabels(factoryMixed.data.buildings);
+    const all = paletteGroups({ isOperator: true, serverCount: 2, power: powerOk, factory: factoryMixed, labels }).flatMap(
+      (g) => g.commands,
+    );
+    expect(new Set(all.map((c) => c.id)).size).toBe(all.length);
+  });
+});
+
+describe("paletteScore (ui review: whole words, not scattered letters)", () => {
+  it("keeps everything for an empty search", () => {
+    expect(paletteScore("", ["Power"])).toBe(1);
+    expect(paletteScore("   ", ["Power"])).toBe(1);
+  });
+
+  it("needs every typed word somewhere in the label or keywords", () => {
+    expect(paletteScore("circuit", ["Empty Canister", "Desc_FluidCanister_C"])).toBe(0);
+    expect(paletteScore("iron plate", ["Assembler · Reinforced Iron Plate", "Assembler"])).toBeGreaterThan(0);
+    expect(paletteScore("iron rotor", ["Assembler · Reinforced Iron Plate", "Assembler"])).toBe(0);
+    expect(paletteScore("webhook", ["Alerts", "discord", "webhook"])).toBeGreaterThan(0);
+  });
+
+  it("ranks a label that starts with it, then a label word that does, then any other match", () => {
+    const starts = paletteScore("cir", ["Circuit 0"]);
+    const wordStarts = paletteScore("plate", ["Assembler · Reinforced Iron Plate"]);
+    const elsewhere = paletteScore("desc_wire", ["Wire", "Desc_Wire_C"]);
+    expect(starts).toBeGreaterThan(wordStarts);
+    expect(wordStarts).toBeGreaterThan(elsewhere);
+    expect(elsewhere).toBeGreaterThan(0);
+  });
+
+  it("ignores case", () => {
+    expect(paletteScore("POWER", ["Power"])).toBe(1);
+  });
+
+  it("matches two typed words each found in a different word, but never a single typed word spanning the joined space", () => {
+    // "reinforced" only in the label, "iron" only in a separate keyword: each typed word is its own
+    // substring check, so this matches (by design, not because they're adjacent).
+    expect(paletteScore("reinforced iron", ["Reinforced Casing", "Iron Rod"])).toBeGreaterThan(0);
+    // A single typed word can never straddle the space `.join(" ")` inserts between two words, since
+    // a typed word (split on whitespace) can't itself contain a space.
+    expect(paletteScore("dcasing", ["Reinforced Casing", "Iron Rod"])).toBe(0);
+    expect(paletteScore("ironed", ["Reinforced", "Iron"])).toBe(0);
+  });
+
+  it("treats regex metacharacters in the search as literal text, not a pattern", () => {
+    expect(paletteScore("a.b", ["a.b test"])).toBeGreaterThan(0);
+    expect(paletteScore("a.b", ["axb test"])).toBe(0);
+    expect(paletteScore("(iron)", ["Assembler (Iron) Mk2"])).toBeGreaterThan(0);
+    expect(paletteScore("a+b*c", ["nothing here"])).toBe(0);
+    expect(() => paletteScore("a(b", ["a(b"])).not.toThrow();
+  });
+
+  it("handles unicode input without throwing or false-matching", () => {
+    expect(paletteScore("café", ["Café Overlook"])).toBe(1);
+    expect(paletteScore("🔥", ["Fire Coal"])).toBe(0);
+    expect(() => paletteScore("İstanbul", ["Overview"])).not.toThrow();
+  });
+});
+
+describe("isPaletteShortcut", () => {
+  const key = (k: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
+    key: k,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...mods,
+  });
+  it("is Ctrl+K or Cmd+K, either case, and nothing else", () => {
+    expect(isPaletteShortcut(key("k", { ctrlKey: true }))).toBe(true);
+    expect(isPaletteShortcut(key("K", { metaKey: true }))).toBe(true);
+    expect(isPaletteShortcut(key("k"))).toBe(false);
+    expect(isPaletteShortcut(key("k", { ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(isPaletteShortcut(key("k", { ctrlKey: true, altKey: true }))).toBe(false);
+    expect(isPaletteShortcut(key("j", { ctrlKey: true }))).toBe(false);
+  });
+});

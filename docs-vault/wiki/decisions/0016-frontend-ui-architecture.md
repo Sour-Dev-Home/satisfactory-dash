@@ -67,6 +67,10 @@ The owner wants a professional-looking site. Constraints:
        - `style-src 'self' 'unsafe-inline'`, which is lower risk than script injection;
          script-src stays 'self'
    Never loosen script-src.
+   **Exception (the owner, 2026-09-27, #351):** command palettes are modal by convention, so the
+   command bar is one. It is a native `<dialog>` opened with `showModal()`, not a Radix Dialog: the
+   injection is confirmed (react-remove-scroll → react-style-singleton creates a <style>), and the
+   native element needs neither option (2), so the CSP stays as it is.
 
 ## Consequences
 - Looks become reviewable and regress-proof instead of subjective.
