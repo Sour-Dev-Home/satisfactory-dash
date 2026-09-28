@@ -36,6 +36,16 @@ describe("parseItemForms odd shapes", () => {
     expect(({} as Record<string, unknown>).solid).toBeUndefined();
   });
 
+  // #368: FORM_BY_RESOURCE_FORM is a plain object; an mForm of "constructor" etc. read from the
+  // (external, game-supplied) Docs file must not resolve through the prototype chain to a function
+  // and be treated as a form. It must be skipped like any other unrecognized mForm.
+  it("skips an mForm that collides with Object.prototype instead of resolving it through the prototype chain", () => {
+    for (const mForm of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const out = parseItemForms(docs({ ClassName: "A", mForm }));
+      expect(out, mForm).toEqual({});
+    }
+  });
+
   it("handles a huge Classes list", () => {
     const many = Array.from({ length: 200_000 }, (_, i) => ({ ClassName: `C${i}`, mForm: "RF_GAS" }));
     expect(Object.keys(parseItemForms([{ NativeClass: "x", Classes: many }]))).toHaveLength(200_000);

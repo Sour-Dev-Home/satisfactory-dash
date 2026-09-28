@@ -33,6 +33,17 @@ describe("classifyStartupError (ADR-0025 decision 6)", () => {
     expect(classifyStartupError(new DatabaseSetupError("run npm run db:migrate")).kind).toBe("fatal");
   });
 
+  // #368: FATAL_REASONS is a plain object; a driver-supplied code of "constructor" etc. must not
+  // resolve to Object.prototype's member (a function) through FATAL_REASONS[code] and must fall
+  // through to the generic "unexpected database error" reason, same as any other unmapped code.
+  it("a driver code that collides with Object.prototype is treated as unrecognized, not as a fatal reason", () => {
+    for (const code of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const verdict = classifyStartupError(withCode(code));
+      expect(verdict.kind).toBe("fatal");
+      expect(verdict.reason).toBe(`an unexpected database error (${code})`);
+    }
+  });
+
   it("retries pg's code-less connect timeout and early close", () => {
     expect(classifyStartupError(new Error("timeout exceeded when trying to connect")).kind).toBe("transient");
     expect(classifyStartupError(new Error("Connection terminated unexpectedly")).kind).toBe("transient");
