@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentFactory, Factory, SnapshotRequest } from "@satisfactory-dash/shared";
-import { agentSnapshotRequestFull, agentSnapshotRequestUnreachable, powerOk, statusRunning } from "@satisfactory-dash/shared/fixtures";
+import { agentSnapshotRequestFull, agentSnapshotRequestUnreachable, agentSnapshotRequestWithMapLive, powerOk, statusRunning } from "@satisfactory-dash/shared/fixtures";
 import { AgentIngest, AGENT_CLOCK_TOLERANCE_MS } from "./agentIngest.js";
 import { LatestSnapshotStore } from "./agentSnapshotStore.js";
 import { sessionKey } from "./historyRecorder.js";
@@ -47,12 +47,14 @@ function setup(startMs = T0) {
   };
   const history = { recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() };
   const powerStore = new InMemoryPowerHistoryStore({ intervalSeconds: 5 });
-  const ingest = new AgentIngest({ store, cadence: () => CADENCE, observations, history, powerStore, resolveUnit: () => "items/min" });
+  const mapLive = { record: vi.fn() };
+  const ingest = new AgentIngest({ store, cadence: () => CADENCE, observations, history, powerStore, resolveUnit: () => "items/min", mapLive });
   return {
     store,
     observations,
     history,
     powerStore,
+    mapLive,
     ingest,
     advance: (ms: number) => {
       nowMs += ms;
@@ -422,5 +424,32 @@ describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
     t.advance(60_000);
     t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(t.now()).toISOString() }, t.now());
     expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: true });
+  });
+});
+
+describe("mapLive (ADR-0038 M3, #353): forwarded to the injected sink, never stored anywhere else", () => {
+  it("forwards a snapshot's mapLive to the sink, observed at this ingest's own time", () => {
+    const t = setup();
+    t.ingest.ingest({ ...agentSnapshotRequestWithMapLive, observedAt: new Date(T0).toISOString() }, T0);
+    expect(t.mapLive.record).toHaveBeenCalledWith(agentSnapshotRequestWithMapLive.mapLive, T0);
+  });
+
+  it("never calls the sink when the snapshot carries no mapLive", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    expect(t.mapLive.record).not.toHaveBeenCalled();
+  });
+
+  it("works with no sink at all (the map module isn't wired up)", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0);
+    const ingest = new AgentIngest({
+      store,
+      cadence: () => CADENCE,
+      observations: { publishStatus: vi.fn(), publishPower: vi.fn(), publishFactory: vi.fn(), recordPollFailure: vi.fn(), recordPollSuccess: vi.fn(), recordAgentSeen: vi.fn() },
+      history: { recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() },
+      powerStore: new InMemoryPowerHistoryStore({ intervalSeconds: 5 }),
+      resolveUnit: () => "items/min",
+    });
+    expect(() => ingest.ingest(agentSnapshotRequestWithMapLive, T0)).not.toThrow();
   });
 });

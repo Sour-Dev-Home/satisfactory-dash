@@ -455,14 +455,16 @@ describe("endpoints", () => {
 
   it("keeps each route pattern consistent with its path builder", () => {
     const all = flatEndpoints();
-    // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 4 agent
-    // endpoints (ADR-0031 PR 3).
-    expect(all.length).toBe(48); // + serverManagement.renameAgent and switchToLocal (ADR-0031)
+    // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
+    // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
+    expect(all.length).toBe(51); // + serverManagement.renameAgent and switchToLocal (ADR-0031)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;
-      // The two-parameter builders (a rule or command id) take a placeholder that must land where the parameter is.
-      expect(endpoint.path("default", "RULE"), name).toBe(endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE").replace(":commandId", "RULE"));
+      // The two-parameter builders (a rule, command or layer id) take a placeholder that must land where the parameter is.
+      expect(endpoint.path("default", "RULE"), name).toBe(
+        endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE").replace(":commandId", "RULE").replace(":layer", "RULE"),
+      );
     }
   });
 

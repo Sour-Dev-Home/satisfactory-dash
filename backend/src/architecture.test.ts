@@ -38,6 +38,12 @@ const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   // agent-backed server and switch a server's connection kind (servers), both through their index.ts; it owns the
   // `agents` schema.
   agents: ["telemetry", "servers"],
+  // ADR-0038 M3 (#353): the map's world layers and mapLive. Resolves servers (servers) and, for a
+  // LOCAL server's own poller, reads rails/resourceNodes/trains/stations through gameserver's
+  // facade — never telemetry: mapLive from an AGENT-backed server reaches this module's
+  // MapLiveStore through a narrow port telemetry itself defines (AgentIngestDeps.mapLive),
+  // satisfied structurally, not through an import edge. Owns the `map` schema.
+  map: ["gameserver", "servers"],
 };
 
 /** The only bare (package) imports gameserver may use. */
