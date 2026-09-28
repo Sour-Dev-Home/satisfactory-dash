@@ -7,6 +7,7 @@ import {
   formatRate,
   formatTickRate,
   formatTime,
+  unitLabel,
 } from "./format";
 
 describe("formatDuration", () => {
@@ -58,6 +59,22 @@ describe("formatRate", () => {
   it("uses the unit once one is known", () => {
     expect(formatRate(30, 30, "items/min")).toBe("30 / 30 items/min");
     expect(formatRate(40, 40, "m3/min")).toBe("40 / 40 m³/min");
+  });
+});
+
+describe("unitLabel", () => {
+  it("names a known unit, or falls back to \"per min\" for none, null or an unknown value", () => {
+    expect(unitLabel("items/min")).toBe("items/min");
+    expect(unitLabel("m3/min")).toBe("m³/min");
+    expect(unitLabel(undefined)).toBe("per min");
+    expect(unitLabel(null)).toBe("per min");
+  });
+
+  // #368: `unit` is a closed schema enum today, but the lookup reads own keys only, so a unit
+  // this build has never seen (including an inherited name like "toString") falls back to
+  // "per min" instead of rendering `Object.prototype.toString` in the label.
+  it("falls back to \"per min\" for a unit this build doesn't know", () => {
+    expect(unitLabel("toString" as Parameters<typeof unitLabel>[0])).toBe("per min");
   });
 });
 

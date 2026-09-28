@@ -44,4 +44,11 @@ describe("failureText", () => {
     expect(failureText("disk_on_fire")).toBe("The change failed on the game PC; the setting didn't change.");
     expect(failureText(null)).toBe("The change failed on the game PC; the setting didn't change.");
   });
+
+  // resultCode is an open string in the contract (deploy skew), so an inherited name like
+  // "toString" or "constructor" is a real value the agent could send, not just a defensive case.
+  it("falls back for a result code that names an inherited property", () => {
+    expect(failureText("toString")).toBe("The change failed on the game PC; the setting didn't change.");
+    expect(failureText("constructor")).toBe("The change failed on the game PC; the setting didn't change.");
+  });
 });

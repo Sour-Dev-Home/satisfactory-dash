@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { itemStats, toItemChartData } from "./itemHistory";
+import type { HistoryRange } from "@satisfactory-dash/shared";
+import { itemStats, rangeLabel, rangeWords, toItemChartData } from "./itemHistory";
+
+describe("rangeLabel / rangeWords", () => {
+  it("names every known range", () => {
+    expect(rangeLabel("1h")).toBe("1 h");
+    expect(rangeWords("1h")).toBe("Last hour");
+    expect(rangeWords("1y")).toBe("Last year");
+  });
+
+  // range is a closed schema enum today, but the lookup reads own keys only, so a range this
+  // build has never seen (including an inherited name like "toString") falls back to the raw
+  // value instead of rendering `Object.prototype.toString` in the tab title.
+  it("falls back to the raw value for a range this build doesn't know", () => {
+    const range = "toString" as HistoryRange;
+    expect(rangeLabel(range)).toBe("toString");
+    expect(rangeWords(range)).toBe("toString");
+  });
+});
 
 /** A minimal bucket point, defaults chosen so the fields under test are obvious at the call site. */
 const point = (
