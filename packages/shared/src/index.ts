@@ -16,3 +16,4 @@ export * from "./settings";
 export * from "./map";
 export * from "./agent";
 export * from "./endpoints";
+export * from "./ownValue";

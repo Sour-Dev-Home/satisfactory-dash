@@ -1,5 +1,8 @@
 version: 2
 updates:
+  # oxlint (pinned in each workspace's package.json, which can't hold a comment): scripts/lint/safe-lookup.mjs uses its
+  # ALPHA JS-plugin API (#368). A bump that breaks the plugin fails scripts/lint/safe-lookup.test.mjs loudly in CI;
+  # fix the plugin in that PR rather than merging the bump with the rules gone quiet.
   - package-ecosystem: npm
     directory: /
     schedule:

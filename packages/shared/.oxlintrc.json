@@ -1,0 +1,8 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": ["../../scripts/lint/safe-lookup.mjs"],
+  "rules": {
+    "safe-lookup/no-in-operator": "error",
+    "safe-lookup/no-table-index": "error"
+  }
+}
