@@ -147,6 +147,44 @@ describe("CommandBar (#351)", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
+  it("matches on a keyword alone (cmdk really passes Item's keywords into the filter, not just the label)", async () => {
+    renderBar();
+    openWithKeys();
+    // "discord" is only in settings-alerts' keywords, never in its label "Alerts".
+    fireEvent.change(input(), { target: { value: "discord" } });
+    expect(await screen.findByRole("option", { name: "Alerts" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Power" })).not.toBeInTheDocument();
+  });
+
+  it("doesn't match a word that's only in a hint, never passed as a keyword", async () => {
+    renderBar();
+    openWithKeys();
+    // Every circuit's hint reads "... MW of ... MW", but hints aren't part of Item's keywords.
+    fireEvent.change(input(), { target: { value: "MW" } });
+    await screen.findByText("Nothing matches.");
+  });
+
+  it("keeps commands that tie in score in their original (paletteGroups) order", async () => {
+    renderBar();
+    openWithKeys();
+    // factoryMixed has four "Assembler" machines (one per recipe); all four labels start with
+    // "Assembler", so they all tie at score 1 and should stay in paletteGroups' sorted order
+    // (recipe name, "" for none) rather than being reshuffled by cmdk.
+    fireEvent.change(input(), { target: { value: "assembler" } });
+    const options = await screen.findAllByRole("option");
+    // The label lives in the option's first span; a second span (when present) is the hint, which
+    // would otherwise run into the label with no separator in textContent.
+    const assemblerLabels = options
+      .map((o) => o.querySelector("span")?.textContent)
+      .filter((l) => l?.startsWith("Assembler"));
+    expect(assemblerLabels).toEqual([
+      "Assembler",
+      "Assembler · Alternate: Coated Iron Canister",
+      "Assembler · Reinforced Iron Plate",
+      "Assembler · Stator",
+    ]);
+  });
+
   it("does nothing on Enter when nothing matches: stays open, doesn't navigate", async () => {
     renderBar();
     openWithKeys();

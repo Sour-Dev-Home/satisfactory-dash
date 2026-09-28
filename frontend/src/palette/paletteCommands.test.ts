@@ -132,6 +132,30 @@ describe("paletteScore (ui review: whole words, not scattered letters)", () => {
   it("ignores case", () => {
     expect(paletteScore("POWER", ["Power"])).toBe(1);
   });
+
+  it("matches two typed words each found in a different word, but never a single typed word spanning the joined space", () => {
+    // "reinforced" only in the label, "iron" only in a separate keyword: each typed word is its own
+    // substring check, so this matches (by design, not because they're adjacent).
+    expect(paletteScore("reinforced iron", ["Reinforced Casing", "Iron Rod"])).toBeGreaterThan(0);
+    // A single typed word can never straddle the space `.join(" ")` inserts between two words, since
+    // a typed word (split on whitespace) can't itself contain a space.
+    expect(paletteScore("dcasing", ["Reinforced Casing", "Iron Rod"])).toBe(0);
+    expect(paletteScore("ironed", ["Reinforced", "Iron"])).toBe(0);
+  });
+
+  it("treats regex metacharacters in the search as literal text, not a pattern", () => {
+    expect(paletteScore("a.b", ["a.b test"])).toBeGreaterThan(0);
+    expect(paletteScore("a.b", ["axb test"])).toBe(0);
+    expect(paletteScore("(iron)", ["Assembler (Iron) Mk2"])).toBeGreaterThan(0);
+    expect(paletteScore("a+b*c", ["nothing here"])).toBe(0);
+    expect(() => paletteScore("a(b", ["a(b"])).not.toThrow();
+  });
+
+  it("handles unicode input without throwing or false-matching", () => {
+    expect(paletteScore("café", ["Café Overlook"])).toBe(1);
+    expect(paletteScore("🔥", ["Fire Coal"])).toBe(0);
+    expect(() => paletteScore("İstanbul", ["Overview"])).not.toThrow();
+  });
 });
 
 describe("isPaletteShortcut", () => {
