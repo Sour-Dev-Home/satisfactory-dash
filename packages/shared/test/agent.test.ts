@@ -368,6 +368,7 @@ describe("agent contract: endpoints", () => {
       "POST /agent/v1/snapshots",
       "GET /agent/v1/commands",
       "POST /agent/v1/commands/:commandId/result",
+      "POST /agent/v1/world/:layer",
     ]);
     expect(all.every((e) => !e.route.startsWith("/api"))).toBe(true);
   });
@@ -377,6 +378,11 @@ describe("agent contract: endpoints", () => {
     expect(endpoints.agentApi.result.path("cmd_1")).toBe("/agent/v1/commands/cmd_1/result");
     expect(endpoints.agentApi.result.path("a/b c")).toBe("/agent/v1/commands/a%2Fb%20c/result");
     expect(endpoints.commands.get.path("srv", "a/b")).toBe("/api/servers/srv/commands/a%2Fb");
+  });
+
+  it("the world ingest path builder encodes the layer (ADR-0038 M3, #353)", () => {
+    expect(endpoints.agentApi.world.path("rails")).toBe("/agent/v1/world/rails");
+    expect(endpoints.agentApi.world.path("a/b c")).toBe("/agent/v1/world/a%2Fb%20c");
   });
 
   it("the user-facing routes are under /api/servers/:serverId (so the membership tests select them)", () => {

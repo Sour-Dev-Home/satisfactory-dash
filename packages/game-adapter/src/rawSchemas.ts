@@ -214,3 +214,27 @@ export const RawFrmResourceNodeSchema = z.object({
   Exploited: z.boolean(),
   location: RawFrmLocationSchema,
 });
+
+/**
+ * ADR-0038 M3: GET /getTrains (docs-vault/raw-sources/captured-responses/
+ * frm-getTrains-2026-09-27-full.json). `Status` is a game-defined string ("Self-Driving",
+ * "Manual", ...), passed through as-is; the timetable, cars, mass and power are not the map's
+ * concern and this object schema strips them (this file's own convention).
+ */
+export const RawFrmTrainSchema = z.object({
+  ID: z.string().min(1),
+  Name: z.string(),
+  Status: z.string(),
+  location: RawFrmLocationSchema,
+});
+
+/**
+ * ADR-0038 M3: GET /getTrainStation (docs-vault/raw-sources/captured-responses/
+ * frm-getTrainStation-2026-09-27-full.json). The docking platforms (`CargoInventory`), bounding
+ * box and power are not the map's concern.
+ */
+export const RawFrmTrainStationSchema = z.object({
+  ID: z.string().min(1),
+  Name: z.string(),
+  location: RawFrmLocationSchema,
+});

@@ -25,6 +25,7 @@ import {
   HistoryTransitionsResponseSchema,
 } from "./history";
 import { ServerPlayersResponseSchema } from "./players";
+import { MapLiveResponseSchema, MapWorldLayerResponseSchema, WorldIngestResponseSchema } from "./map";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
 import {
@@ -138,6 +139,22 @@ export const endpoints = {
       path: (serverId: string) => `${scoped("history")(serverId)}/transitions`,
       query: HistoryTransitionsQuerySchema,
       response: HistoryTransitionsResponseSchema,
+    },
+  },
+  // ADR-0038 M3 (#353): the map's world layers (stored, latest only, ETag/304) and mapLive
+  // (read-through, ADR-0004). Member-only like every other /api/servers/:serverId route.
+  map: {
+    worldLayer: {
+      method: "GET",
+      route: "/api/servers/:serverId/map/world/:layer",
+      path: (serverId: string, layer: string) => `${scoped("map/world")(serverId)}/${encodeURIComponent(layer)}`,
+      response: MapWorldLayerResponseSchema,
+    },
+    live: {
+      method: "GET",
+      route: "/api/servers/:serverId/map/live",
+      path: scoped("map/live"),
+      response: MapLiveResponseSchema,
     },
   },
   // ADR-0011. Every /api route except health requires the session cookie these set.
@@ -424,6 +441,15 @@ export const endpoints = {
       path: (commandId: string) => `/agent/v1/commands/${encodeURIComponent(commandId)}/result`,
       request: CommandResultRequestSchema,
       response: CommandResultResponseSchema,
+    },
+    // ADR-0038 M3 (#353): one world layer (rails or resourceNodes), gzip-able, capped at
+    // MAP_WORLD_LAYER_MAX_BYTES decompressed. No static `request` schema here (it differs per
+    // layer, `MAP_WORLD_LAYER_INGEST_SCHEMAS` in map.ts); the route validates by the URL's `:layer`.
+    world: {
+      method: "POST",
+      route: "/agent/v1/world/:layer",
+      path: (layer: string) => `/agent/v1/world/${encodeURIComponent(layer)}`,
+      response: WorldIngestResponseSchema,
     },
   },
 } as const;
