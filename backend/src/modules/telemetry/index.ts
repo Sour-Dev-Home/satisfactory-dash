@@ -42,6 +42,7 @@ import { createHistoryRouter } from "./routes/history.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { Cadence } from "@satisfactory-dash/shared";
 import { AgentIngest } from "./services/agentIngest.js";
+import type { MapLiveSink } from "./services/agentIngest.js";
 import { LatestSnapshotStore } from "./services/agentSnapshotStore.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
@@ -52,7 +53,7 @@ export type {
   ObservationSnapshot,
   PowerCircuitObservation,
 } from "./services/observationBoard.js";
-export type { AgentSnapshotSink } from "./services/agentIngest.js";
+export type { AgentSnapshotSink, MapLiveSink } from "./services/agentIngest.js";
 export type { AutoPauseReading } from "./services/agentSnapshotStore.js";
 export { createUnitResolver } from "./itemForms.js";
 
@@ -122,6 +123,9 @@ export interface AgentTelemetryOptions {
   resolveUnit?: UnitResolver;
   /** History is written for an agent server exactly as for a polled one (a database is what makes agents possible at all). */
   history: { db: Queryable & HistoryDb; serverPublicId: string };
+  /** ADR-0038 M3: where this server's `mapLive` (trains, stations) goes; absent when the map
+   *  module isn't wired up. */
+  mapLive?: MapLiveSink;
 }
 
 /**
@@ -148,7 +152,7 @@ export function createAgentTelemetryServices(options: AgentTelemetryOptions): Te
     players: { getPlayers: async () => store.read("players", { available: false, players: [] }) },
     history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }),
     observations,
-    agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore, resolveUnit: options.resolveUnit ?? createUnitResolver(() => {}) }),
+    agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore, resolveUnit: options.resolveUnit ?? createUnitResolver(() => {}), mapLive: options.mapLive }),
     agentAutoPause: () => store.autoPause(),
     workers: [recorder],
   };

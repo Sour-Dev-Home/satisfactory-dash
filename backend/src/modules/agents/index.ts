@@ -30,6 +30,11 @@ export { releaseAgentServer } from "./services/releaseAgent.js";
 export type { ReleasedAgent } from "./services/releaseAgent.js";
 export { createAgentSettingsServices } from "./services/agentSettings.js";
 export type { AgentSettingsServices } from "./services/agentSettings.js";
+// ADR-0038 M3 (#353): the map module's own agent-authed ingest route needs the SAME credential
+// check, injected as a plain RequestHandler (its own AgentWorldRoutesDeps.auth) rather than an
+// import edge — server.ts (which already imports both modules) builds a second instance with this.
+export { createAgentAuth } from "./services/agentAuth.js";
+export type { AgentAuthOptions, AgentIdentity } from "./services/agentAuth.js";
 
 /** The process-wide worker that expires stale commands and purges old ones; start it once the database is up. */
 export function createCommandSweeper(db: Queryable, logger: Logger): { start(): void; stop(): Promise<void> } {

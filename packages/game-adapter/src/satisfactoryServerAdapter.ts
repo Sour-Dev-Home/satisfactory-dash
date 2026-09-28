@@ -12,6 +12,8 @@ import {
   RawFrmSessionInfoSchema,
   RawFrmTrainRailSchema,
   RawFrmResourceNodeSchema,
+  RawFrmTrainSchema,
+  RawFrmTrainStationSchema,
 } from "./rawSchemas.js";
 import type { RawFrmProductionItem, RawFrmIngredientItem, RawFrmInventorySlot, RawFrmLocation } from "./rawTypes.js";
 import type {
@@ -25,8 +27,8 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
-import { mapRailSegments, mapResourceNodes } from "./map/index.js";
-import type { MappedRailSegments, MappedResourceNodes } from "./map/index.js";
+import { mapRailSegments, mapResourceNodes, mapTrains, mapTrainStations } from "./map/index.js";
+import type { MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
 
 const MAX_REPORTED_ISSUES = 5;
@@ -268,5 +270,20 @@ export class SatisfactoryServerAdapter {
   async getResourceNodes(): Promise<MappedResourceNodes> {
     const raw = parseUpstream("getResourceNode", z.array(RawFrmResourceNodeSchema), await this.frmApi.get<unknown>("getResourceNode"));
     return mapResourceNodes(raw);
+  }
+
+  /** ADR-0038 M3: every self-driving train's live position and status (map/trainsMapper.ts), part
+   *  of `mapLive`, not a world layer — read at the factory cadence (30 s), not on-change. A bad
+   *  coordinate is dropped, not the whole read (`dropped`, logged at warn). */
+  async getTrains(): Promise<MappedTrains> {
+    const raw = parseUpstream("getTrains", z.array(RawFrmTrainSchema), await this.frmApi.get<unknown>("getTrains"));
+    return mapTrains(raw);
+  }
+
+  /** ADR-0038 M3: every train station's position (map/stationsMapper.ts), part of `mapLive`. Same
+   *  cadence and drop rule as getTrains. */
+  async getTrainStations(): Promise<MappedTrainStations> {
+    const raw = parseUpstream("getTrainStation", z.array(RawFrmTrainStationSchema), await this.frmApi.get<unknown>("getTrainStation"));
+    return mapTrainStations(raw);
   }
 }

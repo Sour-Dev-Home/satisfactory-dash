@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { snapshotEnvelope } from "./envelope";
 
 /**
  * ADR-0038 build card M1 (#352, Refs #330): the map's world-layer contract. "World" layers are the
@@ -96,6 +97,16 @@ export const MAP_WORLD_LAYER_DATA_SCHEMAS = {
   resourceNodes: ResourceNodesLayerDataSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
+/** The PER-ITEM schema for one layer (a single `RailSegment`/`ResourceNode`, not the capped array).
+ *  M3's ingest route re-validates each item against this after truncating an over-cap `data` array
+ *  to `MAP_WORLD_MAX_ITEMS` (conform, don't reject: an item that still fails is dropped and counted,
+ *  logged at warn with the layer and server id as labels — defense in depth, since the game-adapter
+ *  mappers already filter bad items before the wire). */
+export const MAP_WORLD_LAYER_ITEM_SCHEMAS = {
+  rails: RailSegmentSchema,
+  resourceNodes: ResourceNodeSchema,
+} satisfies Record<MapWorldLayer, z.ZodType>;
+
 const IsoTimeSchema = z.iso.datetime({ offset: true });
 
 /** POST /api/agent/world/:layer (ADR-0038 M3): what the agent or the local-server poller sends for
@@ -103,6 +114,20 @@ const IsoTimeSchema = z.iso.datetime({ offset: true });
  *  `count` are the BACKEND's job to compute at ingest, not the sender's to assert. */
 export const RailsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: RailsLayerDataSchema });
 export const ResourceNodesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ResourceNodesLayerDataSchema });
+
+/** Keyed by `MapWorldLayer`, same reason as `MAP_WORLD_LAYER_DATA_SCHEMAS` above. This is the FULL
+ *  ingest schema (its `data` still carries `.max(MAP_WORLD_MAX_ITEMS)`): the route uses it once an
+ *  incoming body is already known to be within the item cap (after its own truncate-and-count-
+ *  dropped pass against `MAP_WORLD_LAYER_ITEM_SCHEMAS`), not to parse the raw body directly. */
+export const MAP_WORLD_LAYER_INGEST_SCHEMAS = {
+  rails: RailsWorldIngestRequestSchema,
+  resourceNodes: ResourceNodesWorldIngestRequestSchema,
+} satisfies Record<MapWorldLayer, z.ZodType>;
+
+/** 200/202. What POST /agent/v1/world/:layer answers: `unchanged` is true when the content hash
+ *  matched what was already stored, so nothing was written (ADR-0038 M3's "an unchanged hash writes
+ *  nothing"). Never the hash itself: the sender doesn't need it back. */
+export const WorldIngestResponseSchema = z.object({ accepted: z.boolean(), unchanged: z.boolean() });
 
 /**
  * GET /api/servers/:id/map/world/:layer (ADR-0038 M3): one wrapper shape, reused for every layer
@@ -124,6 +149,10 @@ export function worldLayerResponseSchema<T extends z.ZodType>(dataSchema: T) {
 }
 export const RailsWorldLayerResponseSchema = worldLayerResponseSchema(RailsLayerDataSchema);
 export const ResourceNodesWorldLayerResponseSchema = worldLayerResponseSchema(ResourceNodesLayerDataSchema);
+/** For the endpoint registry (endpoints.ts), which needs one static schema per route: the client
+ *  re-validates against the specific layer's schema via `MAP_WORLD_LAYER_DATA_SCHEMAS`, same as the
+ *  route itself does at write time. */
+export const MapWorldLayerResponseSchema = z.union([RailsWorldLayerResponseSchema, ResourceNodesWorldLayerResponseSchema]);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // mapLive: fast-changing positions, part of the AGENT's snapshot (agent.ts's SnapshotRequestSchema), not the world
@@ -158,6 +187,10 @@ export const MapLiveSchema = z.object({
   stations: z.array(MapTrainStationSchema).max(MAP_LIVE_MAX_STATIONS),
 });
 
+/** GET /api/servers/:serverId/map/live (ADR-0038 M3/M6): the ADR-0004 snapshot envelope around
+ *  `MapLiveSchema` — read-through only, never stored (unlike the world layers above). */
+export const MapLiveResponseSchema = snapshotEnvelope(MapLiveSchema);
+
 export type RailSegment = z.infer<typeof RailSegmentSchema>;
 export type RailsLayerData = z.infer<typeof RailsLayerDataSchema>;
 export type ResourceNode = z.infer<typeof ResourceNodeSchema>;
@@ -169,3 +202,6 @@ export type ResourceNodesWorldLayerResponse = z.infer<typeof ResourceNodesWorldL
 export type MapTrain = z.infer<typeof MapTrainSchema>;
 export type MapTrainStation = z.infer<typeof MapTrainStationSchema>;
 export type MapLive = z.infer<typeof MapLiveSchema>;
+export type MapLiveResponse = z.infer<typeof MapLiveResponseSchema>;
+export type MapWorldLayerResponse = z.infer<typeof MapWorldLayerResponseSchema>;
+export type WorldIngestResponse = z.infer<typeof WorldIngestResponseSchema>;

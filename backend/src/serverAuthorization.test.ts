@@ -41,6 +41,7 @@ import { createAlertsRouters } from "./modules/alerts/index.js";
 import type { AlertsService } from "./modules/alerts/index.js";
 import { createAgentUserRouters } from "./modules/agents/index.js";
 import type { AgentsService } from "./modules/agents/index.js";
+import { MapLiveStore, createWorldRoutes } from "./modules/map/index.js";
 import { scopedEndpoints } from "../test-support/scopedEndpoints.js";
 import type { Method } from "../test-support/scopedEndpoints.js";
 
@@ -59,7 +60,8 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
 const SCOPED = scopedEndpoints(endpoints);
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
-const urlFor = (route: string, serverId: string) => route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1");
+const urlFor = (route: string, serverId: string) =>
+  route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
 
 const OWNER = "user-owner";
 const ADMIN = "user-admin";
@@ -184,6 +186,9 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
     protectedRouters: [
       management.collection,
       createServersRouter(directory, access, options),
+      // ADR-0038 M3 (#353): no row for either server yet, which is a valid 200 (a synthetic empty
+      // response), so a plain empty fake db is enough to cover "a member can read it" here.
+      createWorldRoutes(directory, { db: { query: () => Promise.resolve({ rows: [] }) }, mapLive: new MapLiveStore() }),
       ...createTelemetryRouters(directory),
       ...createSettingsRouters(directory),
       ...createAlertsRouters(alertsService),

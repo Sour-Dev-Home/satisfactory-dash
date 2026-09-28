@@ -58,6 +58,7 @@ import {
   AGENT_CADENCE,
   CommandNotifier,
   createAgentApiRouters,
+  createAgentAuth,
   createAgentSettingsServices,
   releaseAgentServer,
   createAgentUserRouters,
@@ -66,6 +67,7 @@ import {
   createCommandsService,
 } from "./modules/agents/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
+import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
@@ -127,22 +129,39 @@ const database = databaseConfig ? new Database(databaseConfig, logger) : undefin
 // ADR-0031 PR 5b: commands to edge agents (auto-pause today). One notifier, so a command created by a dashboard request
 // wakes the agent's long-poll; both faces of the service share it.
 const agentCommands = database ? createCommandsService({ db: database.pool, notifier: new CommandNotifier() }) : undefined;
+// ADR-0038 M3 (#353): mapLive (trains, stations) is read-through only, one process-wide store keyed
+// by server public id (map/services/mapLiveStore.ts); world layers (rails, resourceNodes) need the
+// database, so ingest is undefined without one, same as the other database-gated services below.
+const mapLiveStore = new MapLiveStore();
+const worldIngest = database ? new WorldIngestService(database.pool, logger.child({ module: "map" })) : undefined;
 
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
 function buildServer(id: string, displayName: string, untimedConfig: SatisfactoryServerConfig) {
   // ADR-0032: every call to the game server reports how long it took, so a request's time splits into app and upstream.
   const config: SatisfactoryServerConfig = { ...untimedConfig, onUpstreamCall: recordUpstreamCall };
-  const telemetry = createTelemetryServices(createGameServerConnection(config), resolveUnit, {
+  const connection = createGameServerConnection(config);
+  const telemetry = createTelemetryServices(connection, resolveUnit, {
     logger: logger.child({ worker: "power-history", serverId: id }),
     // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
     history: database ? { db: database.pool, serverPublicId: id } : undefined,
   });
+  // ADR-0038 M3: a LOCAL server has no edge agent, so the backend reads its own world layers and
+  // mapLive directly (`connection` satisfies LocalWorldPollerPorts structurally: getRails,
+  // getResourceNodes, getTrains, getTrainStations). Needs the database (world layers are stored).
+  const mapPoller = worldIngest
+    ? new LocalWorldPoller(connection, {
+        logger: logger.child({ worker: "map-world", serverId: id }),
+        serverPublicId: id,
+        ingest: worldIngest,
+        mapLive: mapLiveStore.sinkFor(id),
+      })
+    : undefined;
   return {
     id,
     displayName,
     services: { telemetry, settings: createSettingsServices(createServerOptionsPort(config)) },
-    workers: telemetry.workers,
+    workers: mapPoller ? [...telemetry.workers, mapPoller] : telemetry.workers,
   };
 }
 
@@ -155,6 +174,8 @@ function buildAgentServer(id: string, displayName: string) {
     cadence: () => AGENT_CADENCE,
     resolveUnit, // ADR-0031: the agent sends rates without a unit; ingest resolves it from the same catalog as a polled server
     history: { db: database.pool, serverPublicId: id },
+    // ADR-0038 M3: an agent-backed server's mapLive arrives through its snapshot (M4), not a poller.
+    mapLive: mapLiveStore.sinkFor(id),
   });
   return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers, kind: "agent" as const };
 }
@@ -328,6 +349,8 @@ export const app = createApp({
       isReady: () => serversRegistered,
       canManage: serverManagement?.canManage,
     }),
+    // ADR-0038 M3 (#353): after the servers router, same as every other /servers/:serverId route.
+    createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
     ...createTelemetryRouters(directory),
     ...createSettingsRouters(directory),
     // ADR-0027 PR 7b: the alerts API. After the servers router (its membership check covers these paths), and only with a
@@ -354,9 +377,14 @@ export const app = createApp({
     ...(managementRouters ? [managementRouters.scoped] : []),
   ],
   // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
-  agentRouters: database && agentCommands
-    ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered })
-    : [],
+  agentRouters: [
+    ...(database && agentCommands
+      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered })
+      : []),
+    // ADR-0038 M3 (#353): a second createAgentAuth instance (its own last-seen throttling map), same
+    // pattern as agentApi.ts's own construction — map has no edge to agents, so this is injected.
+    ...(database && worldIngest ? [createAgentWorldRouter({ auth: createAgentAuth({ db: database.pool }), ingest: worldIngest })] : []),
+  ],
 });
 
 if (process.env.NODE_ENV !== "test") {

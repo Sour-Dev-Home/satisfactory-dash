@@ -19,6 +19,10 @@ export type {
   BuildingPowerUsage,
   Player,
   SessionInfo,
+  MappedRailSegments,
+  MappedResourceNodes,
+  MappedTrains,
+  MappedTrainStations,
 } from "@satisfactory-dash/game-adapter";
 export {
   SatisfactoryServerAdapter,

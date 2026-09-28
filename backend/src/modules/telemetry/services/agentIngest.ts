@@ -22,6 +22,13 @@ export interface AgentSnapshotSink {
   ingest(snapshot: SnapshotRequest, receivedAtMs: number): void;
 }
 
+/** ADR-0038 M3 (#353): where `mapLive` (trains, stations) goes, for an agent-backed server —
+ *  narrow and defined HERE, not imported from `map` (no such module edge exists): the composition
+ *  root (server.ts) wires in `map`'s `MapLiveStore.sinkFor(id)`, which satisfies this structurally. */
+export interface MapLiveSink {
+  record(data: NonNullable<SnapshotRequest["mapLive"]>, observedAtMs: number): void;
+}
+
 /** How far an agent's own clock may differ from the backend's before its `observedAt` is ignored. */
 export const AGENT_CLOCK_TOLERANCE_MS = 60_000;
 
@@ -33,6 +40,9 @@ export interface AgentIngestDeps {
   powerStore: PowerHistoryStore;
   /** ADR-0015: an item's unit, from the backend's catalog (the agent sends none). */
   resolveUnit: UnitResolver;
+  /** ADR-0038 M3: where this server's `mapLive` goes; absent when the map module isn't wired up
+   *  (no database) — a snapshot's mapLive is then simply not kept anywhere. */
+  mapLive?: MapLiveSink;
 }
 
 /** The highest finite percent across a machine's outputs (the classifier's own rule), or undefined. */
@@ -89,6 +99,9 @@ export class AgentIngest implements AgentSnapshotSink {
       autoPause: snapshot.settings?.autoPause,
     });
     observations.recordPollSuccess(receivedAtMs);
+    if (snapshot.mapLive !== undefined) {
+      this.deps.mapLive?.record(snapshot.mapLive, observedAtMs);
+    }
 
     // Unknown (null, and no status to say) is never treated as running: nothing is recorded, as for a poll that cannot read the pause state.
     const paused = snapshot.paused ?? snapshot.status?.gamePaused ?? null;
