@@ -123,7 +123,9 @@ function Palette({ onDone }: { onDone: () => void }) {
           <Command.Group
             key={group.heading}
             heading={group.heading}
-            className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted"
+            // cmdk marks a group's items role="group", which index.css lays out as a wrapping row of
+            // buttons: here they're a list, one per line.
+            className="[&_[cmdk-group-items]]:grid [&_[cmdk-group-items]]:gap-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted"
           >
             {group.commands.map((command) => (
               <Command.Item
