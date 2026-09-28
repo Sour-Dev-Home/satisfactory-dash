@@ -1,4 +1,4 @@
-import type { FactoryBuilding } from "@satisfactory-dash/shared";
+import { ownValue, type FactoryBuilding } from "@satisfactory-dash/shared";
 
 /** A building's state on the map (ADR-0023 layer a). Backed up is a ring on top, not a state. */
 export type BuildingState = "producing" | "idle" | "paused" | "noRecipe";
@@ -18,6 +18,10 @@ export const STATE_TOKEN: Record<BuildingState, string> = {
   noRecipe: "--color-idle-solid",
 };
 export const BACKED_UP_TOKEN = "--color-warn";
+
+/** A state's label and token, reading own keys only (#368). */
+export const stateLabel = (state: BuildingState) => ownValue(STATE_LABEL, state) ?? state;
+export const stateToken = (state: BuildingState) => ownValue(STATE_TOKEN, state) ?? STATE_TOKEN.idle;
 
 /** Average output percent; the per-output figures are already averaged by the game. */
 export function outputPercent(building: FactoryBuilding): number | null {

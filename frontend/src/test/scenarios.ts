@@ -1,4 +1,4 @@
-import { endpoints, type Command } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, type Command } from "@satisfactory-dash/shared";
 import {
   agentEnrollmentCodeResponse,
   agentRevokeResponse,
@@ -144,6 +144,13 @@ export const ROUTES = {
   alertMuteClear: endpoints.alerts.mute.clear,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
+
+/** A route's entry, reading own keys only (#368); an unknown key is a bug in the mocks, so it throws. */
+export function routeFor<K extends RouteKey>(key: K): (typeof ROUTES)[K] {
+  const route = ownValue(ROUTES, key);
+  if (route === undefined) throw new Error(`no mock route ${String(key)}`);
+  return route as (typeof ROUTES)[K];
+}
 
 const ok = (body: unknown): MockResponse => ({ status: 200, body });
 const fail = (status: number, body: unknown): MockResponse => ({ status, body });
@@ -338,13 +345,13 @@ export function isScenario(name: string): name is ScenarioName {
 
 /** The full route table for a scenario: BASE with the scenario's overrides. */
 export function responsesFor(name: ScenarioName): Record<RouteKey, MockResponse> {
-  return { ...BASE, ...SCENARIOS[name] };
+  return { ...BASE, ...ownValue(SCENARIOS, name) };
 }
 
 /** Which route an /api request is, by method and path; undefined for anything else. */
 export function matchRoute(method: string, pathname: string): RouteKey | undefined {
   return (Object.keys(ROUTES) as RouteKey[]).find((key) => {
-    const route = ROUTES[key];
+    const route = routeFor(key);
     if (route.method !== method.toUpperCase()) return false;
     const pattern = new RegExp(`^${route.route.replace(/:[^/]+/g, "[^/]+")}$`);
     return pattern.test(pathname);

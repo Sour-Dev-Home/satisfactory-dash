@@ -1,4 +1,4 @@
-import type { TestConnectionResponse } from "@satisfactory-dash/shared";
+import { ownValue, type TestConnectionResponse } from "@satisfactory-dash/shared";
 import { ApiError } from "../api/errors";
 
 /** ADR-0030 amendment 1, in plain words (the envelope's own message cites the ADR). */
@@ -38,6 +38,6 @@ export function checkLines(result: TestConnectionResponse): { label: string; ok:
   ].map(({ label, check }) => ({
     label,
     ok: check.ok,
-    text: check.ok ? "OK" : check.error ? CHECK_TEXT[check.error] : "failed",
+    text: check.ok ? "OK" : ((check.error && ownValue(CHECK_TEXT, check.error)) || "failed"),
   }));
 }

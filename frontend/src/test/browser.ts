@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 import { setupWorker } from "msw/browser";
-import { isScenario, responsesFor, ROUTES, type MockResponse, type RouteKey } from "./scenarios";
+import { isScenario, responsesFor, routeFor, ROUTES, type MockResponse, type RouteKey } from "./scenarios";
 
 // Dev mock mode (`npm run dev:mock`): serves the shared fixtures in the browser so every UI
 // state can be opened and reviewed without a backend. Pick one with ?scenario=<name>
@@ -21,7 +21,7 @@ export async function startMockApi(search: string): Promise<void> {
   const scenario = isScenario(requested) ? requested : "default";
   const responses = responsesFor(scenario);
   const handlers = (Object.keys(ROUTES) as RouteKey[]).map((key) => {
-    const { method, route } = ROUTES[key];
+    const { method, route } = routeFor(key);
     // Every method its own handler: PATCH and DELETE used to fall through to POST and never match.
     const verb = { GET: http.get, POST: http.post, PUT: http.put, PATCH: http.patch, DELETE: http.delete }[method];
     return verb(route, respond(responses[key]));

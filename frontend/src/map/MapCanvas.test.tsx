@@ -12,7 +12,7 @@ function stubCanvasContext() {
   const ctx = new Proxy(
     {},
     {
-      get: (_target, prop) => (prop in { canvas: 1 } ? undefined : noop),
+      get: (_target, prop) => (prop === "canvas" ? undefined : noop),
     },
   );
   const original = HTMLCanvasElement.prototype.getContext;

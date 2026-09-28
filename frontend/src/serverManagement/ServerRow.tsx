@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { endpoints, type ServerConnection } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, type ServerConnection } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { MANAGED_KEY, queries } from "../api/queries";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
@@ -46,7 +46,7 @@ export function ServerRow({
       onRemoved(`Removed ${server.displayName}.`);
     },
   });
-  const note = STATE_NOTE[server.state];
+  const note = ownValue(STATE_NOTE, server.state);
   const headingId = `server-${server.id}`;
 
   return (

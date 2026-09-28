@@ -9,7 +9,7 @@ import { useHashTarget } from "../lib/useHashTarget";
 import { useSelectedServer } from "../servers/ServerContext";
 import type { ItemLabel } from "./itemLabels";
 import { ItemHistoryPanel } from "./ItemHistoryPanel";
-import { RANGE_LABEL, RANGE_WORDS, RANGES } from "./itemHistory";
+import { RANGES, rangeLabel, rangeWords } from "./itemHistory";
 import { SinceYesterdayPanel } from "./SinceYesterdayPanel";
 
 /** The most transitions the backend sends in one answer; more reads "500+". */
@@ -156,11 +156,11 @@ export function ItemHistorySection({
             type="button"
             aria-pressed={r === range}
             // The visible label is the accessible name (WCAG 2.5.3); the title spells it out.
-            title={RANGE_WORDS[r]}
+            title={rangeWords(r)}
             onClick={() => setRange(r)}
             className="min-w-touch"
           >
-            {RANGE_LABEL[r]}
+            {rangeLabel(r)}
           </button>
         ))}
       </div>

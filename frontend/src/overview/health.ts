@@ -1,4 +1,4 @@
-import type { FactoryResponse, PowerResponse, StatusResponse } from "@satisfactory-dash/shared";
+import { ownValue, type FactoryResponse, type PowerResponse, type StatusResponse } from "@satisfactory-dash/shared";
 import { formatMW } from "../format";
 
 /**
@@ -114,6 +114,7 @@ export function warningKey(sections: readonly { name: string; state: SectionStat
 }
 
 const RANK: Record<Health, number> = { ok: 0, paused: 1, degraded: 2, unavailable: 3, outage: 4 };
+const rank = (health: Health) => ownValue(RANK, health) ?? 0;
 
 const HEADLINE: Record<Health, string> = {
   ok: "All systems operational",
@@ -138,7 +139,7 @@ export function overallHealth(sections: SectionState[]): { health: Health | "pen
       continue;
     }
     const health = section === "error" ? "unavailable" : section.health;
-    if (RANK[health] > RANK[worst]) worst = health;
+    if (rank(health) > rank(worst)) worst = health;
   }
   if (pending && worst === "ok") return { health: "pending", headline: "Checking…" };
   if (worst === "degraded") {
@@ -146,5 +147,5 @@ export function overallHealth(sections: SectionState[]): { health: Health | "pen
     // Each cause once, the tick first (a Set keeps insertion order).
     if (causes.includes(SLOW_TICK)) return { health: worst, headline: [...new Set([SLOW_TICK, ...causes])].join(" · ") };
   }
-  return { health: worst, headline: HEADLINE[worst] };
+  return { health: worst, headline: ownValue(HEADLINE, worst) ?? "" };
 }
