@@ -12,8 +12,16 @@
 /** An ALL_CAPS identifier: this repo's naming for lookup tables (METRIC_REGISTRY, KNOWN_NODE_TYPES, ...). */
 const TABLE_NAME = /^[A-Z][A-Z0-9_]+$/;
 
-/** Wrappers that don't change which value is read: `T[k]!`, `(T[k])`, `T[k] as X`. */
-const TRANSPARENT = new Set(["TSNonNullExpression", "ParenthesizedExpression", "TSAsExpression", "TSSatisfiesExpression"]);
+/** Wrappers that don't change which value is read: `T[k]!`, `(T[k])`, `T[k] as X`, `T?.[k]`. */
+const TRANSPARENT = new Set(["TSNonNullExpression", "ParenthesizedExpression", "TSAsExpression", "TSSatisfiesExpression", "ChainExpression"]);
+
+/** The table a destructuring pattern reads from: `const { [k]: v } = TABLE` or `({ [k]: v } = TABLE)`. */
+function destructuredFrom(pattern) {
+  const parent = pattern.parent;
+  if (parent?.type === "VariableDeclarator" && parent.id === pattern) return parent.init;
+  if (parent?.type === "AssignmentExpression" && parent.left === pattern) return parent.right;
+  return null;
+}
 
 /**
  * True for the form the message recommends: `Object.hasOwn(T, k) ? T[k] : fallback`, where the lookup is (possibly
@@ -64,6 +72,16 @@ export default {
         return {
           "MemberExpression[computed=true][object.type='Identifier'][property.type!='Literal']"(node) {
             if (TABLE_NAME.test(node.object.name) && !guardedByHasOwn(node, context.sourceCode)) {
+              context.report({
+                node,
+                message: "lookup tables indexed by a variable: use Object.hasOwn(...) ? T[k] : fallback, or a Map",
+              });
+            }
+          },
+          // The same read as a destructuring: `const { [k]: v } = TABLE` (found by the fresh-eyes pass).
+          "ObjectPattern > Property[computed=true][key.type!='Literal']"(node) {
+            const source = destructuredFrom(node.parent);
+            if (source?.type === "Identifier" && TABLE_NAME.test(source.name)) {
               context.report({
                 node,
                 message: "lookup tables indexed by a variable: use Object.hasOwn(...) ? T[k] : fallback, or a Map",

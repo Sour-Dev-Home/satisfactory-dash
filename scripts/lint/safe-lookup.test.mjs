@@ -95,6 +95,13 @@ const found = lint({
   guardNegated: `const TABLE: Record<string, string> = {}; export const f = (k: string) => (!Object.hasOwn(TABLE, k) ? TABLE[k] : "x");`,
   guardElseBranch: `const TABLE: Record<string, string> = {}; export const f = (k: string) => (Object.hasOwn(TABLE, k) ? "x" : TABLE[k]);`,
   guardInIf: `const TABLE: Record<string, string> = {}; export const f = (k: string) => { if (Object.hasOwn(TABLE, k)) return TABLE[k]; return "x"; };`,
+  // Found by the fresh-eyes pass: destructuring a computed key reads an inherited member exactly like `TABLE[k]`.
+  destructureComputed: `const TABLE: Record<string, number> = { a: 1 }; export const f = (k: string) => { const { [k]: v } = TABLE; return v; };`,
+  destructureAssign: `const TABLE: Record<string, number> = {}; let v: number | undefined; export const f = (k: string) => { ({ [k]: v } = TABLE); return v; };`,
+  destructureLiteral: `const TABLE = { a: 1 }; export const f = () => { const { ["a"]: v } = TABLE; return v; };`,
+  destructureLowercase: `const table: Record<string, number> = {}; export const f = (k: string) => { const { [k]: v } = table; return v; };`,
+  // Found by the fresh-eyes pass: the guard, with the lookup written `TABLE?.[k]` (a ChainExpression wrapper).
+  guardOptionalChain: `const TABLE: Record<string, string> = {}; export const f = (k: string) => (Object.hasOwn(TABLE, k) ? TABLE?.[k] : "x");`,
 });
 
 test("#361's old registry lookups are flagged: the table index and the `in` check", () => {
@@ -125,4 +132,16 @@ test("a variable key is flagged, whatever its form", () => {
   assert.deepEqual(found.variableIn, ["no-in-operator"]);
   assert.deepEqual(found.templateKey, ["no-table-index"]);
   assert.deepEqual(found.memberKey, ["no-table-index"]);
+});
+
+// Two gaps the fresh-eyes pass found, now fixed in the plugin.
+test("destructuring a computed key from a lookup table is flagged like TABLE[k]", () => {
+  assert.deepEqual(found.destructureComputed, ["no-table-index"]);
+  assert.deepEqual(found.destructureAssign, ["no-table-index"]);
+  assert.deepEqual(found.destructureLiteral, []);
+  assert.deepEqual(found.destructureLowercase, []);
+});
+
+test("the hasOwn-ternary guard is recognised when the lookup uses optional chaining", () => {
+  assert.deepEqual(found.guardOptionalChain, []);
 });
