@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownValue } from "@satisfactory-dash/shared";
 
 /**
  * Parsing of the game's own item data (ADR-0015). Kept apart from itemForms.ts, which
@@ -46,7 +47,7 @@ export function parseItemForms(docsJson: unknown): Record<string, ItemForm> {
   const forms: Record<string, ItemForm> = {};
   for (const group of parsed.data) {
     for (const item of group.Classes) {
-      const form = item.mForm === undefined ? undefined : FORM_BY_RESOURCE_FORM[item.mForm];
+      const form = item.mForm === undefined ? undefined : ownValue(FORM_BY_RESOURCE_FORM, item.mForm);
       if (form) {
         // The same className with two different forms means the data isn't what we assume
         // (a bad merge, or a format change): fail instead of silently keeping the last one.

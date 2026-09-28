@@ -5,6 +5,7 @@ import type {
   HistoryTransitions,
   TransitionRange,
 } from "@satisfactory-dash/shared";
+import { ownValue } from "@satisfactory-dash/shared";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { RowShapeError } from "../../../platform/db/rows.js";
 import { ServiceUnavailableError } from "../../../platform/errorResponse.js";
@@ -29,6 +30,15 @@ const RANGE_SECONDS: Record<HistoryRange, number> = {
   "30d": 2_592_000,
   "1y": 31_536_000,
 };
+
+/** A range's length in seconds. The route validates the range first; an unknown one is a bug, so it throws (#368). */
+function rangeSeconds(range: HistoryRange): number {
+  const seconds = ownValue(RANGE_SECONDS, range);
+  if (seconds === undefined) {
+    throw new Error(`unknown history range: ${String(range)}`);
+  }
+  return seconds;
+}
 /** The bucket lengths the API can answer with, finest first. */
 const BUCKETS = [60, 300, 900, 3600, 21_600, 86_400] as const;
 /** The API aims at no more points than this per series. */
@@ -53,8 +63,8 @@ export interface Resolution {
  * time would touch millions of rows per request; the hourly rollups have 720 a series).
  */
 export function chooseResolution(range: HistoryRange): Resolution {
-  const seconds = RANGE_SECONDS[range];
-  const bucketSeconds = BUCKETS.find((bucket) => seconds / bucket <= MAX_POINTS) ?? BUCKETS[BUCKETS.length - 1];
+  const seconds = rangeSeconds(range);
+  const bucketSeconds = BUCKETS.find((bucket) => seconds / bucket <= MAX_POINTS) ?? BUCKETS.at(-1)!;
   return { bucketSeconds, source: bucketSeconds >= HOURLY_FROM_SECONDS ? 3600 : 60 };
 }
 
@@ -159,7 +169,7 @@ export class HistoryQueryService {
 
   async transitions(range: TransitionRange, limit: number): Promise<HistoryTransitions> {
     const toMs = this.now();
-    const fromMs = toMs - RANGE_SECONDS[range] * SECOND;
+    const fromMs = toMs - rangeSeconds(range) * SECOND;
     const rows = await this.read((client) =>
       queryTransitions(client, { serverPublicId: this.serverPublicId, fromMs, toMs, limit: limit + 1 }),
     );
@@ -183,7 +193,7 @@ export class HistoryQueryService {
     const { bucketSeconds, source } = chooseResolution(range);
     const toMs = this.now();
     const bucketMs = bucketSeconds * SECOND;
-    const fromMs = Math.floor((toMs - RANGE_SECONDS[range] * SECOND) / bucketMs) * bucketMs;
+    const fromMs = Math.floor((toMs - rangeSeconds(range) * SECOND) / bucketMs) * bucketMs;
     return { bucketSeconds, source, fromMs, toMs };
   }
 

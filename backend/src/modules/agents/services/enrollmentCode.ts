@@ -7,7 +7,7 @@ const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
  *  5 bits are uniform and there is no modulo bias. */
 export function generateEnrollmentCode(): string {
   const bytes = randomBytes(8);
-  const chars = Array.from(bytes, (byte) => ALPHABET[byte & 31]);
+  const chars = Array.from(bytes, (byte) => ALPHABET.charAt(byte & 31));
   return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
 }
 
