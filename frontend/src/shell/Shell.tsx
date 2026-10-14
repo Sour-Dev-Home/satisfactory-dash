@@ -133,6 +133,7 @@ export function CommandBar({ load = loadPalette }: { load?: () => Promise<Palett
 function PaletteLoading() {
   return (
     <p
+      role="status"
       data-palette-loading=""
       className="flex min-h-touch items-center border-b border-line px-4 text-sm text-muted motion-safe:animate-pulse"
     >

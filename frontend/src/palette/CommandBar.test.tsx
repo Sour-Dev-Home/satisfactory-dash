@@ -268,6 +268,21 @@ describe("CommandBar's lazy chunk (#387)", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it("closing while the chunk is still loading, then opening again, shows the search once it arrives", async () => {
+    let finish: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (finish = resolve));
+    const load = vi.fn(() => gate.then(realPalette));
+    renderWith(load);
+    pressCtrlK();
+    expect(screen.getByText("Loading search…")).toBeInTheDocument();
+    pressCtrlK();
+    expect(screen.queryByText("Loading search…")).not.toBeInTheDocument();
+    pressCtrlK();
+    finish();
+    expect(await screen.findByRole("combobox")).toHaveFocus();
+    expect(load).toHaveBeenCalledOnce();
+  });
+
   it("closing after a failure and opening again retries the import", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const load = vi.fn<() => ReturnType<typeof realPalette>>().mockRejectedValueOnce(missingChunk()).mockImplementation(realPalette);
