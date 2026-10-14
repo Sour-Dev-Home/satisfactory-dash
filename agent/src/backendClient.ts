@@ -1,6 +1,17 @@
 import { gzipSync } from "node:zlib";
-import { AgentCommandsResponseSchema, ApiErrorResponseSchema, CommandResultResponseSchema, EnrollResponseSchema, SnapshotResponseSchema, endpoints } from "@satisfactory-dash/shared";
-import type { AgentCommand, Cadence, CommandResultRequest, EnrollResponse, SnapshotRequest, SnapshotResponse } from "@satisfactory-dash/shared";
+import { AgentCommandsResponseSchema, ApiErrorResponseSchema, CommandResultResponseSchema, EnrollResponseSchema, SnapshotResponseSchema, WorldIngestResponseSchema, endpoints } from "@satisfactory-dash/shared";
+import type {
+  AgentCommand,
+  Cadence,
+  CommandResultRequest,
+  EnrollResponse,
+  MapWorldLayer,
+  RailsWorldIngestRequest,
+  ResourceNodesWorldIngestRequest,
+  SnapshotRequest,
+  SnapshotResponse,
+  WorldIngestResponse,
+} from "@satisfactory-dash/shared";
 import type { z } from "zod";
 import { AGENT_VERSION } from "./version.js";
 
@@ -38,7 +49,13 @@ export class BackendError extends Error {
   }
 }
 
-export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+/** The ingest body for each world layer (packages/shared/src/map.ts), so a layer cannot be sent another layer's data. */
+export interface WorldIngestBodies {
+  rails: RailsWorldIngestRequest;
+  resourceNodes: ResourceNodesWorldIngestRequest;
+}
+
+export type FetchLike =(url: string, init: RequestInit) => Promise<Response>;
 
 export const REQUEST_TIMEOUT_MS = 15_000;
 /** A long-poll may sit at the server for up to 25 s; the client waits that plus this much. */
@@ -138,6 +155,12 @@ export class BackendClient {
   /** POST /agent/v1/commands/:id/result. `command_not_found` and `command_expired` arrive as a fatal BackendError with that code. */
   async postResult(commandId: string, result: CommandResultRequest): Promise<void> {
     await this.request({ method: "POST", path: endpoints.agentApi.result.path(commandId), body: result, authenticated: true, schema: CommandResultResponseSchema });
+  }
+
+  /** POST /agent/v1/world/:layer (ADR-0038 M4): one world layer's ingest body. Classified like every other call: the caller
+   *  (worldReader.ts) backs off on transient, drops on fatal and stops on auth_rejected. Large bodies are gzipped as usual. */
+  postWorldLayer<L extends MapWorldLayer>(layer: L, body: WorldIngestBodies[L], signal?: AbortSignal): Promise<WorldIngestResponse> {
+    return this.request({ method: "POST", path: endpoints.agentApi.world.path(layer), body, authenticated: true, schema: WorldIngestResponseSchema, signal });
   }
 
   private async request<S extends z.ZodType>(spec: RequestSpec<S>): Promise<z.infer<S>> {
