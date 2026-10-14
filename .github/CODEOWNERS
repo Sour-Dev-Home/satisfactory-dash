@@ -1,0 +1,11 @@
+# Owner-only paths: a change to any of them waits for SourE-dev's review (ADR 0031). Review this file, then commit it.
+/.github/ @SourE-dev
+/.claude/ @SourE-dev
+/scripts/lanes/ @SourE-dev
+/lanes.config.json @SourE-dev
+/lanes.lock.json @SourE-dev
+/CLAUDE.md @SourE-dev
+/package.json @SourE-dev
+/package-lock.json @SourE-dev
+/pnpm-lock.yaml @SourE-dev
+/yarn.lock @SourE-dev

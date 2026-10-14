@@ -81,9 +81,11 @@ jobs:
         env:
           PII_PATTERNS: ${{ secrets.PII_PATTERNS }}
         run: |
-          PATTERNS=$(mktemp)
-          printf '%s\n' "$PII_PATTERNS" | sed '/^[[:space:]]*$/d' > "$PATTERNS"
-          printf '%s\n' 'C:\Users' 'C:/Users' '/home/' '/Users/' >> "$PATTERNS"
+          PII=$(mktemp)
+          PATHS=$(mktemp)
+          FILES=$(mktemp)
+          printf '%s\n' "$PII_PATTERNS" | sed '/^[[:space:]]*$/d' > "$PII"
+          printf '%s\n' 'C:\Users' 'C:/Users' '/home/' '/Users/' > "$PATHS"
           if [ -z "$PII_PATTERNS" ]; then
             echo "::warning::PII_PATTERNS secret is not available (e.g. a fork PR); only checking for local paths."
           fi
@@ -93,8 +95,13 @@ jobs:
           # page, which names the owner as data controller (decided 2026-09-24; the terms
           # page never carries the name and stays scanned). -H is required: with a single
           # file grep omits the filename, and `cut -f1,2` would then keep the matched text
-          # and print it.
-          HITS=$(git ls-files | grep -vE '^(\.github/|.*CLAUDE\.md$|LICENSE$|frontend/public/privacy\.html$)' | xargs -r grep -H -n -iF -f "$PATTERNS" | cut -d: -f1,2 || true)
+          # and print it. The vendored OWASP cheat sheets (lanes, third-party text) quote URLs
+          # and code such as `/home/` and `/users/`, so they skip the path patterns only; the
+          # PII patterns still scan them.
+          git ls-files -z | grep -zvE '^(\.github/|.*CLAUDE\.md$|LICENSE$|frontend/public/privacy\.html$)' > "$FILES" || true
+          PII_HITS=$(xargs -0 -r grep -H -n -iF -f "$PII" < "$FILES" | cut -d: -f1,2 || true)
+          PATH_HITS=$(grep -zvE '^vendor/owasp-cheatsheets/sheets/' "$FILES" | xargs -0 -r grep -H -n -iF -f "$PATHS" | cut -d: -f1,2 || true)
+          HITS=$(printf '%s\n%s\n' "$PII_HITS" "$PATH_HITS" | sed '/^$/d' | sort -u)
           if [ -n "$HITS" ]; then
             echo "$HITS"
             echo "::error::Possible PII or hardcoded-path leak at the file:line locations above (see CLAUDE.md ground rule 7)."

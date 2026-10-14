@@ -1,0 +1,54 @@
+{
+  "requiredChecks": [
+    "verify",
+    "security",
+    "lanes/gate"
+  ],
+  "paths": {
+    "skip": [
+      "^docs/",
+      "\\.md$",
+      "\\.test\\.m?[jt]sx?$",
+      "(^|/)__tests__/",
+      "(^|/)test/"
+    ],
+    "contract": [
+      "^contracts/",
+      "\\.schema\\.json$",
+      "(^|/)schema\\.ts$"
+    ],
+    "sensitive": [
+      "^\\.github/",
+      "^\\.claude/",
+      "^\\.githooks/",
+      "^scripts/lanes/",
+      "^scripts/preflight\\.mjs$",
+      "^lanes\\.config\\.json$",
+      "(^|/)auth/",
+      "(^|/)secrets?/",
+      "^deploy/",
+      "^dashboard/",
+      "(^|/)\\.env",
+      "^package(-lock)?\\.json$",
+      "(^|/)(pnpm-lock\\.yaml|yarn\\.lock)$",
+      "^vendor/",
+      "(^|/)CLAUDE\\.md$",
+      "^\\.gitattributes$"
+    ],
+    "ui": [
+      "^frontend/src/",
+      "^src/ui/",
+      "\\.css$",
+      "^dashboard/"
+    ],
+    "owner": []
+  },
+  "identity": {
+    "profile": "team",
+    "app": {
+      "id": 5313898,
+      "installationId": 171316917,
+      "botLogin": "lanes-97a036[bot]"
+    }
+  }
+}
