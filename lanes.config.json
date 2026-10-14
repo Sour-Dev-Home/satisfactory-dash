@@ -46,6 +46,9 @@
   "metrics": {
     "mainWorkflow": "ci.yml"
   },
+  "dependabot": {
+    "actionBumps": true
+  },
   "identity": {
     "profile": "team",
     "app": {
