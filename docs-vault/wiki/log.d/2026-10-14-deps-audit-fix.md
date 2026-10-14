@@ -1,0 +1,1 @@
+- 2026-10-14 — Security: `npm audit fix` on the lockfile only (no install scripts run). shell-quote 1.9.0 to 1.12.0 (critical: `quote()` command injection, Dependabot alert 1), source-map-js 1.2.1 to 1.2.2 (high: event-loop denial of service, GHSA-68fv-2mgg-jv7q, which failed the `security` audit step on every PR), concurrently 10.0.5 to 10.0.6. Supersedes Dependabot PR #377.
