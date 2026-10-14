@@ -242,6 +242,16 @@ describe("mapLive: trains and stations on the 30 s cadence (ADR-0038 step 5)", (
     expect(events.filter((e) => e.event === "map_live_over_cap")).toHaveLength(2);
   });
 
+  it("edge: exactly 500 of each kind is sent whole with no adjusted warning (the cap is inclusive)", async () => {
+    const { sampler, events } = setup({ readMapLive: live(Array.from({ length: 500 }, (_, i) => train(i)), Array.from({ length: 500 }, (_, i) => station(i))) });
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot.mapLive!.trains).toHaveLength(500);
+    expect(snapshot.mapLive!.stations).toHaveLength(500);
+    expect(snapshot.mapLive!.trains[499]).toEqual(train(499));
+    expect(events.some((e) => e.event === "readings_adjusted")).toBe(false);
+    expect(valid(snapshot)).toBe(true);
+  });
+
   it("edge: empty lists are still sent (no trains is a reading, not a failure)", async () => {
     const { sampler } = setup({ readMapLive: live([], []) });
     const snapshot = await sampler.sample(T0);
