@@ -1,5 +1,6 @@
 import { UpstreamError } from "@satisfactory-dash/game-adapter";
-import type { AgentFactory, AgentPower, Cadence, ServerPlayersResponse, SnapshotRequest, Status } from "@satisfactory-dash/shared";
+import { AGENT_INPUT_MAX_STRING } from "@satisfactory-dash/shared";
+import type { AgentFactory, AgentPower, Cadence, MapLive, ServerPlayersResponse, SnapshotRequest, Status } from "@satisfactory-dash/shared";
 import { conformFactory, conformPlayers, conformPower, conformStatus } from "./conform.js";
 import type { AgentLogger } from "./logger.js";
 import { AGENT_VERSION } from "./version.js";
@@ -16,6 +17,28 @@ export interface GameReader {
   readPlayers(): Promise<ServerPlayersResponse>;
   readAutoPause(): Promise<boolean>;
   applyAutoPause(enabled: boolean): Promise<void>;
+  /** Trains and stations for the map (ADR-0038 step 5), with the mappers' dropped count. Optional: a reader without it sends no `mapLive`. */
+  readMapLive?(): Promise<MapLive & { dropped: number }>;
+}
+
+/** ADR-0038's live-tier caps, tighter than the schema's sanity caps (`MAP_LIVE_MAX_TRAINS`/`_STATIONS`): items per kind... */
+export const MAP_LIVE_AGENT_MAX_ITEMS = 500;
+/** ...and the serialized part's size, uncompressed, measured the way the world reader measures its layers. */
+export const MAP_LIVE_AGENT_MAX_BYTES = 256_000;
+
+const cut = (text: string): string => (text.length > AGENT_INPUT_MAX_STRING ? text.slice(0, AGENT_INPUT_MAX_STRING) : text);
+
+/** Cuts each kind to the item cap and each string to the contract's length; `adjusted` counts the items and strings cut. */
+function conformMapLive(live: MapLive): { value: MapLive; adjusted: number } {
+  let adjusted = Math.max(0, live.trains.length - MAP_LIVE_AGENT_MAX_ITEMS) + Math.max(0, live.stations.length - MAP_LIVE_AGENT_MAX_ITEMS);
+  const text = (value: string): string => {
+    const conformed = cut(value);
+    if (conformed !== value) adjusted++;
+    return conformed;
+  };
+  const trains = live.trains.slice(0, MAP_LIVE_AGENT_MAX_ITEMS).map((t) => ({ id: text(t.id), name: text(t.name), x: t.x, y: t.y, status: text(t.status) }));
+  const stations = live.stations.slice(0, MAP_LIVE_AGENT_MAX_ITEMS).map((s) => ({ id: text(s.id), name: text(s.name), x: s.x, y: s.y }));
+  return { value: { trains, stations }, adjusted };
 }
 
 /** A short plain code for a failure, safe to log: never the error's message (it could carry a URL, an address or a token). */
@@ -54,11 +77,16 @@ export interface SamplerOptions {
  *  - `settings.autoPause` is read on each status cadence and sent ONLY when the game is reachable and the read worked;
  *    a failed read is left out (never a stale or guessed value) and logged once per change, not per call;
  *  - a part that fails while the game is otherwise reachable is left out and logged as a code, never with its message;
- *  - every part is conformed to the backend's input bounds first (conform.ts).
+ *  - every part is conformed to the backend's input bounds first (conform.ts);
+ *  - `mapLive` (trains, stations; ADR-0038 step 5) follows the factory cadence, is cut to 500 items per kind, and is left
+ *    out whole, warned once per streak, when its JSON passes 256 KB (a map missing trains it doesn't say it's missing
+ *    would mislead, so it is never cut short by bytes).
  */
 export class Sampler {
   private lastPower = -Infinity;
   private lastFactory = -Infinity;
+  private lastMapLive = -Infinity;
+  private mapLiveOverCap = false;
   private lastAutoPause = -Infinity;
   private failing = new Set<string>();
   private lastAdjustedLogAt = -Infinity;
@@ -83,15 +111,19 @@ export class Sampler {
     const powerDue = isDue(nowMs, this.lastPower, cadence.powerSeconds);
     const factoryDue = isDue(nowMs, this.lastFactory, cadence.factorySeconds);
     const autoPauseDue = isDue(nowMs, this.lastAutoPause, cadence.statusSeconds);
+    const readMapLive = reader.readMapLive?.bind(reader);
+    const mapLiveDue = readMapLive !== undefined && isDue(nowMs, this.lastMapLive, cadence.factorySeconds);
     if (powerDue) this.lastPower = nowMs;
     if (factoryDue) this.lastFactory = nowMs;
     if (autoPauseDue) this.lastAutoPause = nowMs;
+    if (mapLiveDue) this.lastMapLive = nowMs;
 
-    const [power, factory, players, autoPause] = await Promise.all([
+    const [power, factory, players, autoPause, mapLive] = await Promise.all([
       powerDue ? this.part("power", () => reader.readPower()) : undefined,
       factoryDue ? this.part("factory", () => reader.readFactory()) : undefined,
       this.part("players", () => reader.readPlayers()), // the player list follows the status cadence
       autoPauseDue ? this.part("auto_pause", () => reader.readAutoPause()) : undefined,
+      mapLiveDue ? this.part("map_live", () => readMapLive()) : undefined,
     ]);
 
     let adjusted = 0;
@@ -112,6 +144,18 @@ export class Sampler {
       snapshot.players = conformed.value;
     }
     if (autoPause !== undefined) snapshot.settings = { autoPause };
+    if (mapLive !== undefined) {
+      const conformed = conformMapLive(mapLive);
+      adjusted += conformed.adjusted + mapLive.dropped;
+      const bytes = Buffer.byteLength(JSON.stringify(conformed.value));
+      if (bytes > MAP_LIVE_AGENT_MAX_BYTES) {
+        if (!this.mapLiveOverCap) logger.warn("map_live_over_cap", { bytes, maxBytes: MAP_LIVE_AGENT_MAX_BYTES });
+        this.mapLiveOverCap = true;
+      } else {
+        this.mapLiveOverCap = false;
+        snapshot.mapLive = conformed.value;
+      }
+    }
     // At most one line a minute: a game that keeps sending an out-of-range value must not fill the log every few seconds.
     if (adjusted > 0 && (nowMs - this.lastAdjustedLogAt >= 60_000 || nowMs < this.lastAdjustedLogAt)) {
       this.lastAdjustedLogAt = nowMs;

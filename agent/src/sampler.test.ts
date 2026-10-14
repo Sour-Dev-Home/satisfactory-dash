@@ -4,7 +4,7 @@ import { SnapshotRequestSchema } from "@satisfactory-dash/shared";
 import type { AgentFactory, AgentPower } from "@satisfactory-dash/shared";
 import { agentSnapshotRequestFull, playersAvailable, statusRunning } from "@satisfactory-dash/shared/fixtures";
 import type { AgentLogger, LogFields } from "./logger.js";
-import { Sampler, failureCode } from "./sampler.js";
+import { MAP_LIVE_AGENT_MAX_BYTES, MAP_LIVE_AGENT_MAX_ITEMS, Sampler, failureCode } from "./sampler.js";
 import type { GameReader } from "./sampler.js";
 
 const T0 = Date.parse("2026-09-26T12:00:00.000Z");
@@ -158,5 +158,120 @@ describe("failureCode", () => {
     expect(failureCode(new UpstreamError("x", { status: 500 }))).toBe("upstream_error");
     expect(failureCode(new Error("x"))).toBe("internal_error");
     expect(failureCode("string")).toBe("internal_error");
+  });
+});
+
+describe("mapLive: trains and stations on the 30 s cadence (ADR-0038 step 5)", () => {
+  const train = (i: number, name = `Train ${i}`) => ({ id: `t${i}`, name, x: i, y: -i, status: "Self-Driving" });
+  const station = (i: number, name = `Station ${i}`) => ({ id: `s${i}`, name, x: -i, y: i });
+  const live = (trains: ReturnType<typeof train>[], stations: ReturnType<typeof station>[], dropped = 0) => vi.fn(async () => ({ trains, stations, dropped }));
+  const longName = "N".repeat(200);
+  // 500 of each kind with 200-character ids and names: about 440 KB, within the item caps but over the byte cap.
+  const longId = (prefix: string, i: number) => `${prefix}${i}`.padEnd(200, "0");
+  const overByteCap = () => ({
+    trains: Array.from({ length: 500 }, (_, i) => ({ ...train(i, longName), id: longId("t", i) })),
+    stations: Array.from({ length: 500 }, (_, i) => ({ ...station(i, longName), id: longId("s", i) })),
+    dropped: 0,
+  });
+
+  it("present: the first snapshot carries the trains and stations as read, and the backend's schema accepts it", async () => {
+    const { sampler } = setup({ readMapLive: live([train(1)], [station(1), station(2)]) });
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot.mapLive).toEqual({ trains: [train(1)], stations: [station(1), station(2)] });
+    expect(valid(snapshot)).toBe(true);
+  });
+
+  it("follows the factory cadence (30 s), not the status one", async () => {
+    const { sampler, reader } = setup({ readMapLive: live([train(1)], []) });
+    await sampler.sample(T0);
+    expect((await sampler.sample(T0 + 5_000)).mapLive).toBeUndefined();
+    expect((await sampler.sample(T0 + 30_000)).mapLive).toBeDefined();
+    expect(reader.readMapLive).toHaveBeenCalledTimes(2);
+  });
+
+  it("absent on failure: the snapshot goes without mapLive (the rest intact and valid), logged once per streak, then recovered", async () => {
+    let fail = true;
+    const { sampler, events } = setup({ readMapLive: vi.fn(async () => (fail ? Promise.reject(unreachable()) : { trains: [train(1)], stations: [], dropped: 0 })) });
+    for (let pass = 0; pass < 4; pass++) {
+      const snapshot = await sampler.sample(T0 + pass * 30_000);
+      expect(snapshot).not.toHaveProperty("mapLive");
+      expect(snapshot.factory).toBeDefined();
+      expect(valid(snapshot)).toBe(true);
+    }
+    const failures = events.filter((e) => e.event === "read_failed" && e.fields?.part === "map_live");
+    expect(failures).toEqual([{ level: "warn", event: "read_failed", fields: { part: "map_live", code: "upstream_unreachable" } }]);
+    expect(JSON.stringify(events)).not.toContain("TOKEN-abc-123");
+    fail = false;
+    expect((await sampler.sample(T0 + 120_000)).mapLive).toEqual({ trains: [train(1)], stations: [] });
+    expect(events.filter((e) => e.event === "read_recovered" && e.fields?.part === "map_live")).toHaveLength(1);
+  });
+
+  it("capped: at most 500 of each kind, the cut entries counted in the adjusted warning", async () => {
+    const trains = Array.from({ length: 600 }, (_, i) => train(i));
+    const stations = Array.from({ length: 700 }, (_, i) => station(i));
+    const { sampler, events } = setup({ readMapLive: live(trains, stations) });
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot.mapLive!.trains).toHaveLength(MAP_LIVE_AGENT_MAX_ITEMS);
+    expect(snapshot.mapLive!.stations).toHaveLength(MAP_LIVE_AGENT_MAX_ITEMS);
+    expect(snapshot.mapLive!.trains[0]).toEqual(train(0));
+    expect(valid(snapshot)).toBe(true);
+    expect(events).toContainEqual({ level: "warn", event: "readings_adjusted", fields: { entries: 300 } });
+  });
+
+  it("capped: a part over 256 KB is left out (never sent cut short by bytes), warned once per streak", async () => {
+    const { sampler, events } = setup({ readMapLive: vi.fn(async () => overByteCap()) });
+    for (let pass = 0; pass < 3; pass++) {
+      const snapshot = await sampler.sample(T0 + pass * 30_000);
+      expect(snapshot).not.toHaveProperty("mapLive");
+      expect(valid(snapshot)).toBe(true);
+    }
+    const overCap = events.filter((e) => e.event === "map_live_over_cap");
+    expect(overCap).toHaveLength(1);
+    expect(overCap[0]!.fields).toMatchObject({ maxBytes: MAP_LIVE_AGENT_MAX_BYTES });
+    expect(overCap[0]!.fields!.bytes).toBeGreaterThan(MAP_LIVE_AGENT_MAX_BYTES);
+  });
+
+  it("edge: a part back under 256 KB is sent again, and a later breach warns again", async () => {
+    let big = true;
+    const { sampler, events } = setup({ readMapLive: vi.fn(async () => (big ? overByteCap() : { trains: [train(1)], stations: [], dropped: 0 })) });
+    await sampler.sample(T0);
+    big = false;
+    expect((await sampler.sample(T0 + 30_000)).mapLive).toEqual({ trains: [train(1)], stations: [] });
+    big = true;
+    await sampler.sample(T0 + 60_000);
+    expect(events.filter((e) => e.event === "map_live_over_cap")).toHaveLength(2);
+  });
+
+  it("edge: empty lists are still sent (no trains is a reading, not a failure)", async () => {
+    const { sampler } = setup({ readMapLive: live([], []) });
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot.mapLive).toEqual({ trains: [], stations: [] });
+    expect(valid(snapshot)).toBe(true);
+  });
+
+  it("edge: over-long ids, names and statuses are cut to the contract's 200 characters, and counted", async () => {
+    const long = "x".repeat(250);
+    const { sampler, events } = setup({ readMapLive: live([{ id: long, name: long, x: 1, y: 2, status: long }], [{ id: long, name: long, x: 3, y: 4 }]) });
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot.mapLive!.trains[0]).toEqual({ id: "x".repeat(200), name: "x".repeat(200), x: 1, y: 2, status: "x".repeat(200) });
+    expect(snapshot.mapLive!.stations[0]).toEqual({ id: "x".repeat(200), name: "x".repeat(200), x: 3, y: 4 });
+    expect(valid(snapshot)).toBe(true);
+    expect(events).toContainEqual({ level: "warn", event: "readings_adjusted", fields: { entries: 5 } });
+  });
+
+  it("edge: items the mappers dropped (a bad coordinate) are counted in the adjusted warning", async () => {
+    const { sampler, events } = setup({ readMapLive: live([train(1)], [], 4) });
+    await sampler.sample(T0);
+    expect(events).toContainEqual({ level: "warn", event: "readings_adjusted", fields: { entries: 4 } });
+  });
+
+  it("edge: an unreachable game sends no mapLive and does not read it; a reader without the method sends none", async () => {
+    const down = setup({ readStatus: vi.fn(async () => Promise.reject(unreachable())), readMapLive: live([train(1)], []) });
+    const snapshot = await down.sampler.sample(T0);
+    expect(snapshot).not.toHaveProperty("mapLive");
+    expect(down.reader.readMapLive).not.toHaveBeenCalled();
+    expect(valid(snapshot)).toBe(true);
+    const old = setup();
+    expect(await old.sampler.sample(T0)).not.toHaveProperty("mapLive");
   });
 });
