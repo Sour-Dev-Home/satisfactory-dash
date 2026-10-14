@@ -136,6 +136,24 @@ you know exists, that's not a bug to debug — it means this session predates th
 inherits full context, defeating the point) after a chunk of backend logic is written,
 so it reviews with genuinely no memory of why the code was built a certain way.
 
+## Lanes
+
+The repo runs lanes (adopted in #378): a lane is a session that owns one task issue end to end via
+`/lane <issue>` (see `.claude/commands/lane.md`). An issue becomes lane work only when it uses the Task
+form (Goal, Acceptance criteria, Interface contract, Scope, Blocked by, Tier); the `issue-contract`
+check then labels it `ready` and one `tier:*`. New task issues come from `/plan-issues`, and the owner
+approves the draft before anything is created. A stopped lane labels its issue `needs-owner`.
+`node scripts/lanes/status.mjs` shows the queue.
+
+Known gaps in this repo (reported upstream as lanes#770 and lanes#771):
+- Lanes reads ADRs from `docs/adr/`, but ours live in `docs-vault/wiki/decisions/`, so the lanes gate
+  and reviewer routing see no ADRs here. Until it's configurable, any new ADR a lane drafts goes in
+  `docs-vault/wiki/decisions/`, numbered after the latest one there, and a lane whose change falls
+  under an ADR asks for the architect by name in its PR.
+- `/night` and `/health` check a `verify.yml` workflow; ours is `ci.yml` (its `verify` job). Don't
+  run `/night` until that's fixed. `metrics.mainWorkflow` in `lanes.config.json` already points
+  delivery metrics at `ci.yml`.
+
 ## Conventions
 
 - New lookup tables keyed by external or untrusted strings are Maps (or Object.create(null)).
