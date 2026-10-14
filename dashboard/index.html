@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Lanes dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>Lanes <span id="age" class="age"></span></h1>
+  <p id="generated" class="muted">Loading snapshot…</p>
+  <p id="stale" class="stale" role="status" hidden></p>
+</header>
+<main>
+  <section aria-labelledby="waiting-h">
+    <h2 id="waiting-h">Waiting on you <span id="waiting-age" class="age"></span></h2>
+    <p id="waiting-note" class="stale" role="status" hidden></p>
+    <div id="waiting"></div>
+  </section>
+  <section aria-labelledby="legend-h">
+    <h2 id="legend-h">Legend</h2>
+    <ul id="legend" class="legend"></ul>
+  </section>
+  <section aria-labelledby="tasks-h">
+    <h2 id="tasks-h">Tasks</h2>
+    <ul id="tasks" class="tasks"></ul>
+  </section>
+  <section id="metrics" class="metrics" aria-labelledby="metrics-h" hidden>
+    <h2 id="metrics-h">Lane metrics</h2>
+    <div id="metrics-body"></div>
+  </section>
+  <section aria-labelledby="graph-h">
+    <h2 id="graph-h">Dependency graph</h2>
+    <p class="muted">An arrow runs from the blocking task to the one it blocks. A dashed line joins two tasks that touch the same files, so they run one at a time. The critical path is outlined.</p>
+    <p id="graph-note" class="muted" hidden></p>
+    <div id="graph" class="graph"></div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
