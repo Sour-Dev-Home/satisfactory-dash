@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { UpstreamError } from "@satisfactory-dash/game-adapter";
+import type { MappedRailSegments } from "@satisfactory-dash/game-adapter";
 import { SnapshotRequestSchema } from "@satisfactory-dash/shared";
-import { statusRunning } from "@satisfactory-dash/shared/fixtures";
+import type { AgentFactory, AgentPower, MapWorldLayer } from "@satisfactory-dash/shared";
+import { agentSnapshotRequestFull, playersAvailable, statusRunning } from "@satisfactory-dash/shared/fixtures";
 import { HARNESS_SECRET as SECRET, agentRunnerHarness } from "./agentRunner.harness.js";
+import { runAgent } from "./agentRunner.js";
+import type { RunAgentOptions } from "./agentRunner.js";
+import { BackendError } from "./backendClient.js";
+import { silentLogger } from "./logger.js";
+import type { WorldClient, WorldPorts } from "./worldReader.js";
 
 /**
  * End to end, without a network or a game: the REAL client, sampler, pusher and command runner against a fake backend (which
@@ -128,5 +135,81 @@ describe("the whole agent", () => {
     expect(h.results[0]!.body).toEqual({ ok: false, code: "upstream_auth_rejected" });
     // The snapshot the backend received did carry the player list: it is data for the dashboard, just never logged.
     expect(h.snapshots.some((snapshot) => snapshot.players?.players.length === 1)).toBe(true);
+  });
+});
+
+describe("the world reader inside the agent (ADR-0038 M4)", () => {
+  /** A fake game, a fake backend client and a fast clock: just enough for runAgent's loops, without the harness's network. */
+  function worldRun(options: { world?: boolean; postWorldLayer?: WorldClient["postWorldLayer"] } = {}) {
+    const reader = {
+      readStatus: vi.fn(async () => ({ ...statusRunning.data })),
+      readPower: vi.fn(async () => agentSnapshotRequestFull.power as AgentPower),
+      readFactory: vi.fn(async () => agentSnapshotRequestFull.factory as AgentFactory),
+      readPlayers: vi.fn(async () => playersAvailable),
+      readAutoPause: vi.fn(async () => true),
+      applyAutoPause: vi.fn(async (_enabled: boolean) => undefined),
+    };
+    const world = {
+      getRails: vi.fn<WorldPorts["getRails"]>(async () => ({ data: [], dropped: 0 }) as MappedRailSegments),
+      getResourceNodes: vi.fn<WorldPorts["getResourceNodes"]>(async () => ({ data: [], dropped: 0 })),
+    };
+    const posted: MapWorldLayer[] = [];
+    const client: RunAgentOptions["client"] & WorldClient = {
+      postSnapshot: vi.fn(async () => ({ cadence: { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 }, commandsPending: false })),
+      pollCommands: vi.fn(
+        (_wait: number, signal?: AbortSignal) => new Promise<never>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true })),
+      ),
+      postResult: vi.fn(async () => undefined),
+      postWorldLayer:
+        options.postWorldLayer ??
+        (async (layer) => {
+          posted.push(layer);
+          return { accepted: true, unchanged: false };
+        }),
+    };
+    const controller = new AbortController();
+    const sleep = (ms: number, signal: AbortSignal) =>
+      new Promise<void>((resolve) => {
+        if (signal.aborted) return resolve();
+        const timer = setTimeout(done, Math.min(ms, 2)); // fast clock
+        function done() {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", done);
+          resolve();
+        }
+        signal.addEventListener("abort", done, { once: true });
+      });
+    const running = runAgent({ reader, client, logger: silentLogger, signal: controller.signal, sleep, random: () => 0, ...(options.world === false ? {} : { world }) });
+    const until = async (condition: () => boolean) => {
+      const deadline = Date.now() + 4_000;
+      while (!condition() && Date.now() < deadline) await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    };
+    return { world, posted, client, running, until, stop: () => controller.abort() };
+  }
+
+  it("starts the reader with the agent: each layer is sent once (unchanged later reads send nothing), and stopping the agent stops it", async () => {
+    const h = worldRun();
+    await h.until(() => h.world.getRails.mock.calls.length >= 3 && h.world.getResourceNodes.mock.calls.length >= 3);
+    expect(h.posted.filter((l) => l === "rails")).toHaveLength(1);
+    expect(h.posted.filter((l) => l === "resourceNodes")).toHaveLength(1);
+    h.stop();
+    expect(await h.running).toBe("stopped");
+    const reads = h.world.getRails.mock.calls.length;
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    expect(h.world.getRails.mock.calls.length).toBe(reads);
+  });
+
+  it("edge: without `world` no world layer is read or sent (an agent built before M4 wiring behaves as before)", async () => {
+    const h = worldRun({ world: false });
+    await h.until(() => (h.client.postSnapshot as ReturnType<typeof vi.fn>).mock.calls.length >= 2);
+    h.stop();
+    expect(await h.running).toBe("stopped");
+    expect(h.world.getRails).not.toHaveBeenCalled();
+    expect(h.posted).toEqual([]);
+  });
+
+  it("a 401 on a world send stops the whole agent with auth_rejected", async () => {
+    const h = worldRun({ postWorldLayer: async () => Promise.reject(new BackendError("auth_rejected", "401", { status: 401 })) });
+    expect(await h.running).toBe("auth_rejected");
   });
 });

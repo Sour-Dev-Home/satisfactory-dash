@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { agentEnrollResponse, agentSnapshotRequestFull, agentSnapshotResponse } from "@satisfactory-dash/shared/fixtures";
 import { BackendClient, BackendError, GZIP_OVER_BYTES, parseBackendUrl } from "./backendClient.js";
 import type { FetchLike } from "./backendClient.js";
+import type { RailsWorldIngestRequest } from "@satisfactory-dash/shared";
 
 const SECRET = "SECRET-credential-VALUE-1234567890abcdefghijklmnopqrstuv";
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -216,5 +217,55 @@ describe("classifying what goes wrong", () => {
   it("a good answer is parsed by the contract's schema: the cadence the server sets is what the caller gets", async () => {
     const answer = await client(async () => json({ cadence: { statusSeconds: 10, powerSeconds: 10, factorySeconds: 60 }, commandsPending: true })).postSnapshot(agentSnapshotRequestFull);
     expect(answer).toEqual({ cadence: { statusSeconds: 10, powerSeconds: 10, factorySeconds: 60 }, commandsPending: true });
+  });
+});
+
+describe("postWorldLayer (ADR-0038 M4)", () => {
+  const rails = { observedAt: "2026-10-14T12:00:00.000Z", data: [{ points: [[0, 0], [10, 0]] }] } as unknown as RailsWorldIngestRequest;
+
+  it("POSTs the ingest body to /agent/v1/world/:layer with the Bearer, no redirects, and parses the contract's answer", async () => {
+    const seen: { url: string; init: RequestInit }[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      seen.push({ url, init });
+      return json({ accepted: true, unchanged: true });
+    };
+    const answer = await client(fetchImpl).postWorldLayer("rails", rails);
+    expect(answer).toEqual({ accepted: true, unchanged: true });
+    expect(seen[0]!.url).toBe("https://api.example.test/agent/v1/world/rails");
+    expect(seen[0]!.init.method).toBe("POST");
+    expect(seen[0]!.init.redirect).toBe("manual");
+    expect((seen[0]!.init.headers as Record<string, string>).authorization).toBe(`Bearer ${SECRET}`);
+    expect(JSON.parse(seen[0]!.init.body as string)).toEqual(rails);
+  });
+
+  it("edge: a large layer is gzipped (the backend's world route inflates it)", async () => {
+    let init: RequestInit | undefined;
+    const big = { observedAt: rails.observedAt, data: Array.from({ length: 200 }, (_, i) => ({ points: [[i, 0], [i + 1, 0]] })) } as unknown as RailsWorldIngestRequest;
+    await client(async (_url, given) => {
+      init = given;
+      return json({ accepted: true, unchanged: false });
+    }).postWorldLayer("rails", big);
+    expect((init!.headers as Record<string, string>)["content-encoding"]).toBe("gzip");
+    expect(JSON.parse(gunzipSync(init!.body as Buffer).toString("utf8"))).toEqual(big);
+  });
+
+  it("a 4xx is fatal (not retried), a 5xx or network failure transient, a 401 auth_rejected", async () => {
+    const fatal = await failure(client(async () => json(errorBody("validation_failed"), 422)).postWorldLayer("resourceNodes", { observedAt: rails.observedAt, data: [] }));
+    expect([fatal.kind, fatal.status, fatal.code]).toEqual(["fatal", 422, "validation_failed"]);
+    const server = await failure(client(async () => json(errorBody("internal"), 503)).postWorldLayer("rails", rails));
+    expect(server.kind).toBe("transient");
+    const down = await failure(client(async () => Promise.reject(new TypeError("fetch failed"))).postWorldLayer("rails", rails));
+    expect(down.kind).toBe("transient");
+    const auth = await failure(client(async () => json(errorBody("unauthorized"), 401)).postWorldLayer("rails", rails));
+    expect(auth.kind).toBe("auth_rejected");
+  });
+
+  it("edge: an answer not in the contract's shape is transient, and no credential means no request", async () => {
+    const wrong = await failure(client(async () => json({ accepted: "yes" })).postWorldLayer("rails", rails));
+    expect(wrong.kind).toBe("transient");
+    const fetchImpl = vi.fn<FetchLike>();
+    const none = await failure(client(fetchImpl, { agentSecret: undefined }).postWorldLayer("rails", rails));
+    expect(none.kind).toBe("fatal");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

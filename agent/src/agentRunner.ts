@@ -7,6 +7,8 @@ import type { PusherOptions, Sleep } from "./pusher.js";
 import { BoundedQueue } from "./queue.js";
 import { Sampler } from "./sampler.js";
 import type { GameReader } from "./sampler.js";
+import { WorldReader } from "./worldReader.js";
+import type { WorldClient, WorldPorts } from "./worldReader.js";
 
 /** Until the first answer says otherwise, the cadence the backend starts every agent with (backend/agents/config.ts). */
 export const INITIAL_CADENCE: Cadence = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
@@ -15,7 +17,18 @@ export const QUEUE_MAX_SNAPSHOTS = 120;
 
 export type RunOutcome = "stopped" | "auth_rejected";
 
-export interface RunAgentOptions {
+export type RunAgentOptions = BaseRunAgentOptions &
+  (
+    | { world?: undefined }
+    | {
+        /** The game-adapter's world projections (ADR-0038 M4). When given, the world reader runs beside the other loops,
+         *  and the client must also send world layers. */
+        world: WorldPorts;
+        client: WorldClient;
+      }
+  );
+
+interface BaseRunAgentOptions {
   reader: GameReader;
   client: PusherOptions["client"] & CommandRunnerOptions["client"];
   logger: AgentLogger;
@@ -28,7 +41,8 @@ export interface RunAgentOptions {
 }
 
 /**
- * The agent's main loop (ADR-0031 PR 6): three cooperating loops that share one stop signal.
+ * The agent's main loop (ADR-0031 PR 6): three cooperating loops that share one stop signal, plus the world reader when
+ * `world` is given (worldReader.ts, ADR-0038 M4: rails and resource nodes, sent only on change).
  *  - SAMPLE: every `min(cadence)` it reads the game and queues a snapshot; the cadence comes from the backend's answers.
  *  - PUSH: sends the queue oldest first, with backoff and jitter (pusher.ts).
  *  - COMMANDS: the long-poll for what the dashboard asked (commandRunner.ts); a snapshot answer that says "a command is
@@ -82,9 +96,11 @@ export async function runAgent(options: RunAgentOptions): Promise<RunOutcome> {
     }
   };
 
+  const world = options.world === undefined ? undefined : new WorldReader({ ports: options.world, client: options.client, logger, onAuthRejected: authRejected, now, sleep, random: options.random });
+
   logger.info("agent_started", { statusSeconds: cadence.statusSeconds });
   try {
-    await Promise.all([sampleLoop(), pusher.run(stop.signal), commands.run(stop.signal)]);
+    await Promise.all([sampleLoop(), pusher.run(stop.signal), commands.run(stop.signal), world?.run(stop.signal)]);
   } finally {
     options.signal.removeEventListener("abort", stopFromOutside);
   }
