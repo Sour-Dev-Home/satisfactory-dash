@@ -1,4 +1,14 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AgentSettings } from "../agent/AgentSettings";
@@ -11,7 +21,7 @@ import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { MapView } from "../map/MapView";
 import { OverviewView } from "../overview/OverviewView";
-import { CommandBar } from "../palette/CommandBar";
+import { isPaletteShortcut } from "../palette/paletteCommands";
 import { PowerHistorySection } from "../power/PowerHistorySection";
 import { PowerView } from "../power/PowerView";
 import { useSelectedServer } from "../servers/ServerContext";
@@ -21,6 +31,164 @@ import { AutoPauseView } from "../settings/AutoPauseView";
 import { AlertSettings } from "../alerts/settings/AlertSettings";
 import { StatusView } from "../status/StatusView";
 import { ToAlertSettings, ToApp } from "./ToApp";
+
+type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
+
+// cmdk is only needed once the bar opens (#387): its own chunk, loaded on the first Ctrl+K or click.
+const loadPalette = (): Promise<PaletteModule> =>
+  import("../palette/CommandBar").then((m) => ({ default: m.Palette }));
+
+/**
+ * The command bar (#351): Ctrl+K / Cmd+K anywhere in the app, or the header's Search button, opens a
+ * search over pages, settings, circuits, machines and items, and Enter jumps there. Modal by
+ * convention (the owner's exception to ADR-0016 item 8). The dialog is a native <dialog> opened with
+ * showModal(): a real modal (the page behind is inert; Esc closes), with no library dialog, because
+ * Radix Dialog's scroll lock injects a <style> element that the CSP (style-src 'self') blocks. The
+ * search inside (`palette/CommandBar.tsx`, cmdk) loads on the first open. Focus goes back where it
+ * was on close. `load` is for tests.
+ */
+export function CommandBar({ load = loadPalette }: { load?: () => Promise<PaletteModule> }) {
+  const [open, setOpen] = useState(false);
+  // React.lazy keeps a failed import for good, so a failure swaps in a fresh one to import again.
+  const [Palette, setPalette] = useState(() => lazy(load));
+  const dialog = useRef<HTMLDialogElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+
+  // Where focus was, taken as the bar opens: by the time an effect runs, the search box has it.
+  const rememberFocus = () => {
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  const openBar = () => {
+    rememberFocus();
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isPaletteShortcut(e)) return;
+      e.preventDefault();
+      if (!dialog.current?.hasAttribute("open")) rememberFocus();
+      setOpen((wasOpen) => !wasOpen);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const el = dialog.current;
+    if (!el) return;
+    // The attribute, not `el.open`: the same in every browser, and set even where showModal isn't.
+    const shown = el.hasAttribute("open");
+    if (open && !shown) {
+      // jsdom has no showModal; the attribute is the same dialog, just not modal.
+      if (typeof el.showModal === "function") el.showModal();
+      else el.setAttribute("open", "");
+    } else if (!open && shown) {
+      if (typeof el.close === "function") el.close();
+      else el.removeAttribute("open");
+      returnFocus.current?.focus();
+    }
+  }, [open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openBar}
+        aria-label="Search (Ctrl+K)"
+        title="Search (Ctrl+K)"
+        aria-haspopup="dialog"
+        className="inline-grid min-w-touch place-items-center px-0"
+      >
+        <SearchIcon />
+      </button>
+      <dialog
+        ref={dialog}
+        aria-label="Search"
+        // Esc: the browser closes a modal dialog itself; keep the state in step.
+        onCancel={(e) => {
+          e.preventDefault();
+          setOpen(false);
+        }}
+        // A click on the backdrop lands on the dialog element itself.
+        onClick={(e) => {
+          if (e.target === dialog.current) setOpen(false);
+        }}
+        // The browser's own dialog styles cap the width with a margin, so a phone keeps its gutter.
+        className="mx-auto mt-16 w-palette animate-pop rounded-card border border-line bg-surface p-0 text-fg shadow-lg backdrop:bg-scrim backdrop:backdrop-blur-sm max-sm:mt-4"
+      >
+        {open && (
+          <PaletteBoundary onError={() => setPalette(() => lazy(load))}>
+            <Suspense fallback={<PaletteLoading />}>
+              <Palette onDone={() => setOpen(false)} />
+            </Suspense>
+          </PaletteBoundary>
+        )}
+      </dialog>
+    </>
+  );
+}
+
+/** Holds the search box's row while the chunk loads, so the dialog doesn't jump when it arrives. */
+function PaletteLoading() {
+  return (
+    <p
+      data-palette-loading=""
+      className="flex min-h-touch items-center border-b border-line px-4 text-sm text-muted motion-safe:animate-pulse"
+    >
+      Loading search…
+    </p>
+  );
+}
+
+/**
+ * The palette's chunk failed to load (offline, usually). It says so and offers Try again, inside
+ * the dialog. It never reloads the page: unlike a section's ErrorBoundary it doesn't call #325's
+ * reloadOnce, and offline a reload would only swap the app for the browser's offline page.
+ */
+class PaletteBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error("[Search] failed to load", error, info.componentStack);
+    this.props.onError();
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div role="alert" className="grid gap-3 p-4 text-sm">
+        <p>Search couldn't load. Check your connection, then try again.</p>
+        <button type="button" autoFocus onClick={() => this.setState({ failed: false })} className="justify-self-start">
+          Try again
+        </button>
+      </div>
+    );
+  }
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      data-icon="search"
+      className="size-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </svg>
+  );
+}
 
 /** One boundary per section: a crash in one leaves the rest of the page working. */
 function Section({ label, probe, children }: { label: string; probe: string; children: ReactNode }) {
