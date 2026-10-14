@@ -43,6 +43,9 @@
     ],
     "owner": []
   },
+  "metrics": {
+    "mainWorkflow": "ci.yml"
+  },
   "identity": {
     "profile": "team",
     "app": {
