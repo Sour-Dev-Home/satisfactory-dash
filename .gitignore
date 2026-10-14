@@ -29,3 +29,6 @@ docs-vault/architecture-out/
 *.dump.age
 *.age
 *.key
+
+# lanes' working folder: verdicts, logs and the queue's reap files (#392)
+.lanes/
