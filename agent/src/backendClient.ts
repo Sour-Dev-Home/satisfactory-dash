@@ -55,7 +55,7 @@ export interface WorldIngestBodies {
   resourceNodes: ResourceNodesWorldIngestRequest;
 }
 
-export type FetchLike =(url: string, init: RequestInit) => Promise<Response>;
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 export const REQUEST_TIMEOUT_MS = 15_000;
 /** A long-poll may sit at the server for up to 25 s; the client waits that plus this much. */
