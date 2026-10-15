@@ -45,7 +45,7 @@ concurrency:
 
 env:
   # Must equal the @playwright/test version in package-lock.json; the first step checks it.
-  PLAYWRIGHT_VERSION: "1.63.0"
+  PLAYWRIGHT_VERSION: "1.64.1"
 
 jobs:
   changes:
@@ -94,7 +94,7 @@ jobs:
     # change what runs. To upgrade: bump PLAYWRIGHT_VERSION, the tag and the digest
     # together (the digest comes from the registry's Docker-Content-Digest header for
     # the new tag), then regenerate baselines.
-    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+    container: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
     env:
       CI: "true"
       PLAYWRIGHT_SNAPSHOTS: "1"

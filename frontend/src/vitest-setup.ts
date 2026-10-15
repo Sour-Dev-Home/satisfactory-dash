@@ -33,7 +33,8 @@ globalThis.ResizeObserver ??= class {
 };
 
 // A request with no handler fails the test instead of silently hitting the network.
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+// (MSW 3 renamed onUnhandledRequest to onUnhandledFrame; unhandledRequest.test.ts pins it.)
+beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 

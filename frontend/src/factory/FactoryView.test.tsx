@@ -19,6 +19,12 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { FactoryView, REVEAL_GRACE_MS } from "./FactoryView";
 
+// Testing Library's cleanup unmounts the view, which aborts every query still in flight. MSW 3's
+// interceptor throws an unhandled InterceptorError when that abort lands in the few microtasks
+// between a handler responding and the interceptor settling, which happens under CI load (#386).
+// One macrotask before cleanup (this hook runs first) lets every response already sent settle.
+afterEach(() => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0))));
+
 function renderView() {
   return renderWithClient(
     <ServerContext value={serversSingle.servers[0]}>

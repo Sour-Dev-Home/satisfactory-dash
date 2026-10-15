@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { useNavigate } from "react-router";
@@ -27,6 +27,14 @@ export function Palette({ onDone }: { onDone: () => void }) {
     [isOperator, serverCount, power, factory, labels],
   );
 
+  // autoFocus runs at mount. On a reopen (module already loaded) that is before the shell's
+  // effect opens the <dialog>, so the input sits in a closed, display:none dialog and can't
+  // take focus. Focus it once more after that effect, which runs later in the same flush.
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    queueMicrotask(() => input.current?.focus());
+  }, []);
+
   const run = (command: PaletteCommand) => {
     onDone();
     if (command.action === "changeServer") change();
@@ -42,6 +50,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
       className="grid"
     >
       <Command.Input
+        ref={input}
         autoFocus
         // Short enough for a phone; the groups below say what can be found.
         placeholder="Search the dashboard…"

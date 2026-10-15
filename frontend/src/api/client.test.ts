@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
   errorLoginFailed,
@@ -45,15 +45,17 @@ describe("apiGet", () => {
   });
 
   it("sends credentials with every request", async () => {
-    let credentials = "";
-    server.use(
-      http.get(endpoints.servers.route, ({ request }) => {
-        credentials = request.credentials;
-        return HttpResponse.json({ servers: [] });
-      }),
-    );
-    await apiGet(endpoints.servers);
-    expect(credentials).toBe("include");
+    // Asserted on the RequestInit the transport hands to fetch: MSW 3 rebuilds the request in
+    // Node with credentials "same-origin", so the handler's request.credentials can't show it.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      server.use(http.get(endpoints.servers.route, () => HttpResponse.json({ servers: [] })));
+      await apiGet(endpoints.servers);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      expect(fetchSpy.mock.calls[0]?.[1]?.credentials).toBe("include");
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("throws ApiError with status, code, message and requestId for an error envelope", async () => {

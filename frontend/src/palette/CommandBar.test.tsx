@@ -237,10 +237,29 @@ describe("CommandBar's lazy chunk (#387)", () => {
     pressCtrlK();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     // Second open: already loaded, so the search box is there at once, with no loading state.
+    // It mounts before the shell opens the dialog, so autoFocus finds it unfocusable (inside a
+    // closed, display:none dialog); the palette focuses it again once the dialog is open (#386).
     pressCtrlK();
-    expect(screen.getByRole("combobox")).toHaveFocus();
+    const search = screen.getByRole("combobox");
+    await waitFor(() => expect(search).toHaveFocus());
     expect(screen.queryByText("Loading search…")).not.toBeInTheDocument();
     expect(load).toHaveBeenCalledOnce();
+  });
+
+  it("drops the queued refocus when the bar closes again before it runs (#386)", async () => {
+    const load = vi.fn(realPalette);
+    renderWith(load);
+    pressCtrlK();
+    expect(await screen.findByRole("combobox")).toHaveFocus();
+    pressCtrlK();
+
+    // Reopen and close in the same tick: the palette unmounts before its refocus runs.
+    pressCtrlK();
+    const search = screen.getByRole("combobox");
+    pressCtrlK();
+    await act(async () => {});
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(search).not.toHaveFocus();
   });
 
   it("says so when the chunk fails to load (offline) and never reloads the page", async () => {

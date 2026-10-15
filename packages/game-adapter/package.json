@@ -17,12 +17,12 @@
   },
   "dependencies": {
     "@satisfactory-dash/shared": "*",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "oxlint": "^1.81.0",
+    "@types/node": "^26.6.5",
+    "oxlint": "^1.87.0",
     "typescript": "~7.0.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   }
 }

@@ -26,6 +26,6 @@ export async function startMockApi(search: string): Promise<void> {
     const verb = { GET: http.get, POST: http.post, PUT: http.put, PATCH: http.patch, DELETE: http.delete }[method];
     return verb(route, respond(responses[key]));
   });
-  await setupWorker(...handlers).start({ onUnhandledRequest: "bypass", quiet: true });
+  await setupWorker(...handlers).start({ onUnhandledFrame: "bypass", quiet: true });
   console.info(`[mock api] scenario "${scenario}"`);
 }
