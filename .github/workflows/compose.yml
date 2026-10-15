@@ -1,0 +1,106 @@
+name: Compose stack
+
+# ADR-0034 §3 (#406): compose.yaml boots. Builds the app and ops images from this commit, starts the
+# stack without the `tunnel` profile (postgres, migrate, backend), checks that GET /api/health/ready
+# answers 200 from inside the backend's network namespace (the backend listens on 127.0.0.1 only and
+# publishes no port), then removes the stack and its volume.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_IMAGE: compose/app:ci
+      OPS_IMAGE: compose/ops:ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Load the ops image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: ops
+          platforms: linux/amd64
+          load: true
+          tags: compose/ops:ci
+          cache-from: type=gha,scope=ops
+      - name: Load the app image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          tags: compose/app:ci
+          cache-from: type=gha,scope=runtime
+      - name: Write a throwaway .env
+        run: |
+          set -euo pipefail
+          # The login settings are required to boot (ADR-0011); the hash is of a random password
+          # nobody keeps, made by the ops image's own hash-password script.
+          openssl rand -hex 24 > "$RUNNER_TEMP/pw"
+          hash="$(docker run --rm -i "$OPS_IMAGE" npm run --silent hash-password -w backend < "$RUNNER_TEMP/pw")"
+          rm -f "$RUNNER_TEMP/pw"
+          postgres="$(openssl rand -hex 24)"
+          migrator="$(openssl rand -hex 24)"
+          app="$(openssl rand -hex 24)"
+          session="$(openssl rand -base64 48)"
+          for secret in "$postgres" "$migrator" "$app" "$session" "$hash"; do echo "::add-mask::$secret"; done
+          umask 077
+          {
+            echo "POSTGRES_PASSWORD=$postgres"
+            echo "DB_MIGRATOR_PASSWORD=$migrator"
+            echo "DB_APP_PASSWORD=$app"
+            echo "DASHBOARD_ADMIN_USER=compose-ci"
+            # Single quotes: the hash contains $, which compose would read as a variable.
+            echo "DASHBOARD_ADMIN_PASSWORD_HASH='$hash'"
+            echo "SESSION_SECRET=$session"
+          } > .env
+      - name: docker compose up (no tunnel profile)
+        run: docker compose up -d
+      - name: /api/health/ready answers 200 inside the backend's namespace
+        run: |
+          set -euo pipefail
+          probe="fetch('http://127.0.0.1:3001/api/health/ready').then(r=>{console.log(r.status);process.exit(r.status===200?0:1)},()=>{console.log('no answer');process.exit(1)})"
+          deadline=$((SECONDS + 90))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if docker compose exec -T backend node -e "$probe"; then
+              echo "ready after $((90 - (deadline - SECONDS))) s"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::/api/health/ready did not answer 200 within 90 s"
+          exit 1
+      - name: The backend publishes no port
+        run: |
+          set -euo pipefail
+          published="$(docker compose ps -a --format json | jq -r 'select(any(.Publishers[]?; .PublishedPort != 0)) | .Service')"
+          if [ -n "$published" ]; then
+            echo "::error::these services publish a port: $published"
+            exit 1
+          fi
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: docker compose down -v
+        if: always()
+        run: |
+          docker compose down -v
+          rm -f .env
