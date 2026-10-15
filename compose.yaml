@@ -1,0 +1,105 @@
+# The backend, PostgreSQL 18 and cloudflared on one machine (ADR-0034 §3, issue #406): the AWS exit
+# target's deployment and the PC rehearsal's stack. Runbook: docs-vault/wiki/runbooks/compose.md.
+#
+#   cp .env.example .env        # then fill it in; .env is git-ignored and never committed
+#   docker compose up -d                     # postgres, migrate, backend (no tunnel)
+#   docker compose --profile tunnel up -d    # the same plus cloudflared
+#
+# Networking (decision D2, loopback): nothing publishes a port. The backend listens on 127.0.0.1
+# only, and cloudflared joins the backend's network namespace, so it reaches the backend at
+# 127.0.0.1:3001 and connects FROM 127.0.0.1, the one peer platform/clientIp.ts trusts for
+# CF-Connecting-IP (see backend/Dockerfile). Never publish 3001 or give cloudflared its own network.
+#
+# Images: the ones #404 publishes to GHCR (tag main). APP_IMAGE and OPS_IMAGE override them, which is
+# how CI (.github/workflows/compose.yml) boots the images it just built from the PR.
+
+name: satis
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      # PostgreSQL 18's image keeps its data under /var/lib/postgresql/18/docker, inside this mount.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # One-off job on every `up`: roles and database (db:init, idempotent), then the migrations. The
+  # backend starts only after it exits 0.
+  migrate:
+    image: ${OPS_IMAGE:-ghcr.io/sour-dev-home/satisfactory-dash-ops:main}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?set DB_MIGRATOR_PASSWORD in .env}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?set DB_APP_PASSWORD in .env}
+      MIGRATOR_DATABASE_URL: postgres://satis_migrator:${DB_MIGRATOR_PASSWORD}@postgres:5432/satis
+    command: ["sh", "-c", "npm run db:init -w backend && npm run db:migrate -w backend"]
+
+  backend:
+    image: ${APP_IMAGE:-ghcr.io/sour-dev-home/satisfactory-dash-backend:main}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # Only the keys the backend reads, never the whole .env (that also holds the tunnel token and
+    # the database superuser's password).
+    environment:
+      HOST: 127.0.0.1
+      DATABASE_URL: postgres://satis_app:${DB_APP_PASSWORD}@postgres:5432/satis
+      DASHBOARD_ADMIN_USER: ${DASHBOARD_ADMIN_USER:?set DASHBOARD_ADMIN_USER in .env}
+      DASHBOARD_ADMIN_PASSWORD_HASH: ${DASHBOARD_ADMIN_PASSWORD_HASH:?set DASHBOARD_ADMIN_PASSWORD_HASH in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      SERVER_SECRETS_KEY: ${SERVER_SECRETS_KEY:-}
+      SERVER_SECRETS_KEY_ID: ${SERVER_SECRETS_KEY_ID:-}
+      SERVER_SECRETS_PREVIOUS_KEYS: ${SERVER_SECRETS_PREVIOUS_KEYS:-}
+      ALERT_DELIVERY: ${ALERT_DELIVERY:-off}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      BOOTSTRAP_OWNER_EMAIL: ${BOOTSTRAP_OWNER_EMAIL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # The runtime image has node but no curl; the probe runs inside the backend's own namespace.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  cloudflared:
+    # cloudflared 2026.10.1, pinned by its multi-arch index digest: a re-pushed tag can't change it.
+    image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
+    profiles: [tunnel]
+    restart: unless-stopped
+    network_mode: "service:backend"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Not `:?`: compose interpolates every service, so that would fail the stack without the profile.
+      # An empty token makes cloudflared exit at start, and `docker compose logs cloudflared` says why.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+      # The origin when the tunnel has no ingress rules of its own; the dashboard route must name the
+      # same URL. 127.0.0.1, never localhost, which can resolve to IPv6 first (the backend is IPv4).
+      TUNNEL_URL: http://127.0.0.1:3001
+    # Metrics on loopback only: the default binds 0.0.0.0 in a container.
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
+
+volumes:
+  pgdata:
