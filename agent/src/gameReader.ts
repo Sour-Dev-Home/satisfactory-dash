@@ -1,6 +1,7 @@
 import { createGameServerConnection, createSatisfactoryServerConfig, createServerOptionsPort, mapFactoryBuilding, mapPowerCircuit, mapStatus, readPlayers } from "@satisfactory-dash/game-adapter";
 import type { ServerOptionsPort, SatisfactoryServerAdapter } from "@satisfactory-dash/game-adapter";
 import type { GameReader } from "./sampler.js";
+import type { WorldPorts } from "./worldReader.js";
 
 /**
  * The agent's window on the game (ADR-0031 PR 6): the game-adapter package's connection and options port, with the SAME shape
@@ -22,13 +23,23 @@ export interface GameConnectionInput {
 
 /** The two collaborators the reader wraps: injectable so tests need no game. */
 export interface GameReaderDeps {
-  adapter: Pick<SatisfactoryServerAdapter, "getServerHealth" | "getServerStatus" | "getPowerCircuits" | "getFactoryBuildings" | "getPlayers" | "getTrains" | "getTrainStations">;
+  adapter: Pick<SatisfactoryServerAdapter, "getServerHealth" | "getServerStatus" | "getPowerCircuits" | "getFactoryBuildings" | "getPlayers" | "getTrains" | "getTrainStations" | "getRails" | "getResourceNodes">;
   options: ServerOptionsPort;
 }
 
-export function createGameReader(deps: GameReaderDeps): GameReader {
+/** The snapshot reads and, from the same connection, the world ports the world reader uses (ADR-0038 M4). */
+export interface AgentGame extends GameReader {
+  world: WorldPorts;
+}
+
+export function createGameReader(deps: GameReaderDeps): AgentGame {
   const { adapter, options } = deps;
   return {
+    // The adapter's projections, the same ones the backend's local world poller reads; read only when the world reader asks.
+    world: {
+      getRails: () => adapter.getRails(),
+      getResourceNodes: () => adapter.getResourceNodes(),
+    },
     async readStatus() {
       const [health, status] = await Promise.all([adapter.getServerHealth(), adapter.getServerStatus()]);
       return mapStatus(health, status);
@@ -53,8 +64,8 @@ export function createGameReader(deps: GameReaderDeps): GameReader {
   };
 }
 
-/** The real reader for one game server. */
-export function connectToGame(input: GameConnectionInput): GameReader {
+/** The real reader for one game server: one config and one connection serve the snapshot reads and the world ports. */
+export function connectToGame(input: GameConnectionInput): AgentGame {
   const config = createSatisfactoryServerConfig({ host: input.host, apiPort: input.apiPort, apiToken: input.apiToken, frmPort: input.frmPort, frmToken: input.frmToken });
   return createGameReader({ adapter: createGameServerConnection(config), options: createServerOptionsPort(config) });
 }
