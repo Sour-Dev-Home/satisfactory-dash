@@ -111,6 +111,22 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
       expect(c.database).toMatchObject({ host: "::1", port: "5433", sslmode: "require" });
     });
 
+    it("keeps sslrootcert next to sslmode (the RDS CA bundle path the images carry)", () => {
+      const c = loadBackupConfig(
+        { ...ENV, DATABASE_URL: "postgres://u:p@db.example.com/satis?sslmode=verify-full&sslrootcert=/etc/ssl/rds/global-bundle.pem" },
+        { localDir: "x" },
+      );
+      expect(c.database).toMatchObject({ sslmode: "verify-full", sslrootcert: "/etc/ssl/rds/global-bundle.pem" });
+      expect(loadBackupConfig(ENV, { localDir: "x" }).database.sslrootcert).toBeUndefined();
+    });
+
+    it("rejects an empty or control-character sslrootcert as ConfigError, without echoing it", () => {
+      for (const u of ["postgres://u:p@h/db?sslrootcert=", "postgres://u:p@h/db?sslrootcert=%20", "postgres://u:p@h/db?sslrootcert=/a%0Asecret"]) {
+        expect(() => loadBackupConfig({ ...ENV, DATABASE_URL: u }, { localDir: "x" }), u).toThrow(ConfigError);
+        expect(() => loadBackupConfig({ ...ENV, DATABASE_URL: u }, { localDir: "x" }), u).toThrow(/^(?!.*secret)/s);
+      }
+    });
+
     it("rejects a bad percent-escape and an unknown sslmode as ConfigError (no password in message)", () => {
       for (const u of ["postgres://u:p%zz@h/db", "postgres://u:p@h/db?sslmode=bogus"]) {
         expect(() => loadBackupConfig({ ...ENV, DATABASE_URL: u }, { localDir: "x" })).toThrow(ConfigError);
@@ -216,9 +232,27 @@ describe("backup (ADR-0025 decision 7, PR 8b)", () => {
       expect(call.args.join(" ")).not.toContain(encodeURIComponent(PASSWORD));
     }
     expect(JSON.stringify({ result, logs })).not.toContain(PASSWORD);
+    expect(dump.args.join(" ")).not.toMatch(/sslrootcert|sslmode/);
     expect(dump.args).toContain("--format=custom");
     expect(dump.args).toContain("--no-owner");
     expect(dump.args).not.toContain("--no-acl"); // grants are kept so a restore works without re-granting
+  });
+
+  it("passes sslmode and sslrootcert to pg_dump as PGSSLMODE and PGSSLROOTCERT, each only when set", async () => {
+    const both = fakeRunner();
+    await runBackup({ ...config, database: { ...config.database, sslmode: "verify-full", sslrootcert: "/etc/ssl/rds/global-bundle.pem" } }, deps(both.run));
+    expect(both.calls.find((c) => c.command === "pg_dump")!.env).toEqual({
+      PGPASSWORD: PASSWORD,
+      PGSSLMODE: "verify-full",
+      PGSSLROOTCERT: "/etc/ssl/rds/global-bundle.pem",
+    });
+    const rootOnly = fakeRunner();
+    await runBackup({ ...config, database: { ...config.database, sslrootcert: "system" } }, deps(rootOnly.run));
+    expect(rootOnly.calls.find((c) => c.command === "pg_dump")!.env).toEqual({ PGPASSWORD: PASSWORD, PGSSLROOTCERT: "system" });
+    // age and aws never get the database settings
+    for (const call of [...both.calls, ...rootOnly.calls].filter((c) => c.command !== "pg_dump")) {
+      expect(call.env).toBeUndefined();
+    }
   });
 
   it("removes the plaintext dump after a successful run", async () => {

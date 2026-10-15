@@ -3,7 +3,8 @@ name: Compose stack
 # ADR-0034 §3 (#406): compose.yaml boots. Builds the app and ops images from this commit, starts the
 # stack without the `tunnel` profile (postgres, migrate, backend), checks that GET /api/health/ready
 # answers 200 from inside the backend's network namespace (the backend listens on 127.0.0.1 only and
-# publishes no port), then removes the stack and its volume.
+# publishes no port), runs a local-trial backup (#407: no bucket) and checks its encrypted dump, then
+# removes the stack and its volumes.
 
 on:
   push:
@@ -61,7 +62,13 @@ jobs:
           migrator="$(openssl rand -hex 24)"
           app="$(openssl rand -hex 24)"
           session="$(openssl rand -base64 48)"
-          for secret in "$postgres" "$migrator" "$app" "$session" "$hash"; do echo "::add-mask::$secret"; done
+          backup="$(openssl rand -hex 24)"
+          # A throwaway age key for the backup trial (#407): the private half stays in RUNNER_TEMP for the
+          # decrypt check; readable by the ops image's node user, since it protects nothing.
+          docker run --rm "$OPS_IMAGE" sh -c 'age-keygen 2>/dev/null' | grep '^AGE-SECRET-KEY-' > "$RUNNER_TEMP/age.key"
+          chmod 644 "$RUNNER_TEMP/age.key"
+          recipient="$(docker run --rm -i "$OPS_IMAGE" age-keygen -y < "$RUNNER_TEMP/age.key")"
+          for secret in "$postgres" "$migrator" "$app" "$session" "$hash" "$backup" "$(cat "$RUNNER_TEMP/age.key")"; do echo "::add-mask::$secret"; done
           umask 077
           {
             echo "POSTGRES_PASSWORD=$postgres"
@@ -71,6 +78,8 @@ jobs:
             # Single quotes: the hash contains $, which compose would read as a variable.
             echo "DASHBOARD_ADMIN_PASSWORD_HASH='$hash'"
             echo "SESSION_SECRET=$session"
+            echo "DB_BACKUP_PASSWORD=$backup"
+            echo "BACKUP_AGE_RECIPIENT=$recipient"
           } > .env
       - name: docker compose up (no tunnel profile)
         run: docker compose up -d
@@ -96,11 +105,25 @@ jobs:
             echo "::error::these services publish a port: $published"
             exit 1
           fi
+      - name: A local-trial backup writes an encrypted dump that decrypts to a pg_dump archive
+        run: |
+          set -euo pipefail
+          # No BACKUP_S3_BUCKET: a local trial, nothing leaves the runner.
+          docker compose run --rm -T backup
+          docker compose run --rm -T -v "$RUNNER_TEMP/age.key:/tmp/age.key:ro" backup sh -c '
+            set -eu
+            set -- /var/backups/satis/satis-*.dump.age
+            [ "$#" -eq 1 ] && [ -s "$1" ] || { echo "expected one encrypted dump, found: $*"; exit 1; }
+            [ "$(head -c 21 "$1")" = "age-encryption.org/v1" ] || { echo "not an age file: $1"; exit 1; }
+            age --decrypt --identity /tmp/age.key "$1" | pg_restore --list > /tmp/toc
+            grep -q pgmigrations /tmp/toc || { echo "the dump lacks the migrations table"; exit 1; }
+            echo "encrypted dump ok: $(basename "$1")"
+          '
       - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color
       - name: docker compose down -v
         if: always()
         run: |
-          docker compose down -v
-          rm -f .env
+          docker compose --profile backup down -v
+          rm -f .env "$RUNNER_TEMP/age.key"

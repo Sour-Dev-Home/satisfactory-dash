@@ -298,6 +298,71 @@ working directory that only you can write to (PowerShell and Windows search the 
 `age` and `aws` before `PATH`); the repo checkout you deploy from is that. Check it after a week: a new object
 in the bucket every day, and the local folder holding at most `BACKUP_LOCAL_KEEP` files.
 
+### On a Linux host: the compose `backup` service (#407)
+
+On the compose stack ([`compose.md`](./compose.md)) the same script runs from the ops image, which carries
+`pg_dump` (PostgreSQL 18 client), `age` and the AWS CLI. The service is in the `backup` profile, so
+`docker compose up` never starts it; one run is
+
+```sh
+docker compose run --rm -T backup
+```
+
+from the folder holding `compose.yaml` and `.env`. It dumps as the read-only `satis_backup` role, so set
+`DB_BACKUP_PASSWORD` in `.env` (16+ characters, different from the app's and the migrator's) before the `migrate`
+job runs, and `BACKUP_AGE_RECIPIENT` (the public key). The encrypted copies stay in the `backups` volume
+(`/var/backups/satis` inside the container, newest `BACKUP_LOCAL_KEEP` kept). With `BACKUP_S3_BUCKET` empty the run
+is a local trial; CI runs exactly that on every PR (`.github/workflows/compose.yml`) and decrypts the result with a
+throwaway key. For Backblaze B2 set `BACKUP_S3_BUCKET`, `BACKUP_S3_ENDPOINT` and `BACKUP_AWS_PROFILE` as in the B2
+section, and `BACKUP_AWS_DIR` to a host folder holding the AWS CLI `config` and `credentials` files for that profile.
+The folder is mounted read-only at `/etc/satis-aws` (`AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` point the
+CLI there); the container runs as uid 1000, so make the files readable by
+that uid only (`chown -R 1000:1000 <folder>`, `chmod 700 <folder>`, `chmod 600 <folder>/*`) and keep the folder
+outside the checkout.
+
+Schedule it with one of these on the host (daily at 03:00, like the Windows task; `/opt/satis` stands for the folder
+holding `compose.yaml`):
+
+- **cron**: `0 3 * * * cd /opt/satis && docker compose run --rm -T backup >> /var/log/satis-backup.log 2>&1`
+- **a systemd timer** (preferred: a missed run starts at the next boot, and `journalctl -u satis-backup` keeps the
+  log): `/etc/systemd/system/satis-backup.service`
+
+  ```ini
+  [Unit]
+  Description=satisfactory-dash nightly backup
+  Wants=network-online.target
+  After=network-online.target docker.service
+
+  [Service]
+  Type=oneshot
+  WorkingDirectory=/opt/satis
+  ExecStart=/usr/bin/docker compose run --rm -T backup
+  ```
+
+  and `/etc/systemd/system/satis-backup.timer`
+
+  ```ini
+  [Unit]
+  Description=Run the satisfactory-dash backup daily
+
+  [Timer]
+  OnCalendar=*-*-* 03:00:00
+  Persistent=true
+
+  [Install]
+  WantedBy=timers.target
+  ```
+
+  then `systemctl daemon-reload && systemctl enable --now satis-backup.timer`, and try one run with
+  `systemctl start satis-backup.service`.
+
+Neither retries a failed run the way the Windows wrapper does; set `BACKUP_HEARTBEAT_URL` so a missed upload alerts.
+
+**On AWS (a later issue):** EventBridge Scheduler starts the same ops image as a one-off ECS task with the command
+`npm run backup -w backend`, because the database is private to the VPC. Its database URL ends in
+`?sslmode=verify-full&sslrootcert=/etc/ssl/rds/global-bundle.pem` (the RDS CA bundle the image carries); the backup
+hands both to `pg_dump` as `PGSSLMODE` and `PGSSLROOTCERT`.
+
 ### Setting up the `satis_backup` role by hand
 
 `db:init` with `DB_BACKUP_PASSWORD` creates the read-only `satis_backup` role and does all of this for you. If the
