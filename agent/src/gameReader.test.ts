@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { UpstreamError } from "@satisfactory-dash/game-adapter";
 import type { FactoryBuilding, PowerCircuit } from "@satisfactory-dash/game-adapter";
-import { AgentFactorySchema, AgentPowerSchema, ServerPlayersResponseSchema, StatusSchema } from "@satisfactory-dash/shared";
+import { AgentFactorySchema, AgentPowerSchema, MapLiveSchema, ServerPlayersResponseSchema, StatusSchema } from "@satisfactory-dash/shared";
 import { createGameReader } from "./gameReader.js";
 import type { GameReaderDeps } from "./gameReader.js";
 
@@ -29,6 +29,8 @@ function deps(overrides: Partial<GameReaderDeps["adapter"]> = {}, options: Parti
     getPowerCircuits: vi.fn(async () => [circuit]),
     getFactoryBuildings: vi.fn(async () => [building]),
     getPlayers: vi.fn(async () => [{ name: "Ada", online: true }]),
+    getTrains: vi.fn(async () => ({ data: [{ id: "t1", name: "Iron Express", x: 120, y: -40, status: "Self-Driving" }], dropped: 1 })),
+    getTrainStations: vi.fn(async () => ({ data: [{ id: "s1", name: "Iron Mine", x: 100, y: -50 }], dropped: 2 })),
     ...overrides,
   };
   const portOptions = {
@@ -81,6 +83,25 @@ describe("what the reader gives the sampler", () => {
     expect(await reader.readAutoPause()).toBe(false);
     await reader.applyAutoPause(true);
     expect(d.raw.portOptions.applyAutoPause).toHaveBeenCalledWith(true);
+  });
+
+  it("mapLive is the adapter's trains and stations, with both mappers' dropped counts added up", async () => {
+    const d = deps();
+    const live = await createGameReader(d).readMapLive!();
+    expect(live).toEqual({
+      trains: [{ id: "t1", name: "Iron Express", x: 120, y: -40, status: "Self-Driving" }],
+      stations: [{ id: "s1", name: "Iron Mine", x: 100, y: -50 }],
+      dropped: 3,
+    });
+    expect(MapLiveSchema.safeParse({ trains: live.trains, stations: live.stations }).success).toBe(true);
+    expect(d.raw.adapter.getTrains).toHaveBeenCalledTimes(1);
+    expect(d.raw.adapter.getTrainStations).toHaveBeenCalledTimes(1);
+  });
+
+  it("mapLive fails as a whole when either read fails (the sampler leaves the part out), with the adapter's error unchanged", async () => {
+    const down = new UpstreamError("down", { failureKind: "unreachable" });
+    await expect(createGameReader(deps({ getTrains: vi.fn(async () => Promise.reject(down)) })).readMapLive!()).rejects.toBe(down);
+    await expect(createGameReader(deps({ getTrainStations: vi.fn(async () => Promise.reject(down)) })).readMapLive!()).rejects.toBe(down);
   });
 
   it("a failing game read is the adapter's error, unchanged (the sampler turns it into a code)", async () => {

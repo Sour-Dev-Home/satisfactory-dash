@@ -4,7 +4,8 @@ import type { GameReader } from "./sampler.js";
 
 /**
  * The agent's window on the game (ADR-0031 PR 6): the game-adapter package's connection and options port, with the SAME shape
- * mappers the backend's services use (`mapStatus`, `mapPowerCircuit`, `mapFactoryBuilding`, `readPlayers`), so what the agent
+ * mappers the backend's services use (`mapStatus`, `mapPowerCircuit`, `mapFactoryBuilding`, `readPlayers`, the trains and
+ * stations mappers behind `getTrains`/`getTrainStations`), so what the agent
  * sends is exactly what the backend would have built itself. It reads the game over loopback (or the machine's own network:
  * the store refuses any other host) and knows nothing about classification: no `state`, no `status`, no units (those are the
  * backend's rules, applied at ingest).
@@ -21,7 +22,7 @@ export interface GameConnectionInput {
 
 /** The two collaborators the reader wraps: injectable so tests need no game. */
 export interface GameReaderDeps {
-  adapter: Pick<SatisfactoryServerAdapter, "getServerHealth" | "getServerStatus" | "getPowerCircuits" | "getFactoryBuildings" | "getPlayers">;
+  adapter: Pick<SatisfactoryServerAdapter, "getServerHealth" | "getServerStatus" | "getPowerCircuits" | "getFactoryBuildings" | "getPlayers" | "getTrains" | "getTrainStations">;
   options: ServerOptionsPort;
 }
 
@@ -39,6 +40,11 @@ export function createGameReader(deps: GameReaderDeps): GameReader {
       return { buildings: (await adapter.getFactoryBuildings()).map(mapFactoryBuilding) };
     },
     readPlayers: () => readPlayers(() => adapter.getPlayers()),
+    // ADR-0038 step 5: the adapter's projections (the same ones the backend's local poller reads); one failing read fails both.
+    async readMapLive() {
+      const [trains, stations] = await Promise.all([adapter.getTrains(), adapter.getTrainStations()]);
+      return { trains: trains.data, stations: stations.data, dropped: trains.dropped + stations.dropped };
+    },
     // The value in force now; a change waiting for the next session start (`pending`) is not what the game is running.
     async readAutoPause() {
       return (await options.readAutoPause()).autoPause;
