@@ -32,3 +32,18 @@ output "ssm_parameter_arns" {
   description = "Environment variable name => SSM parameter ARN, for the task execution role."
   value       = local.ssm_parameter_arns
 }
+
+output "ecs_cluster_name" {
+  description = "The ECS cluster, for `aws ecs` commands (logs, service events, a forced redeploy)."
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_service_name" {
+  description = "The backend + cloudflared service."
+  value       = aws_ecs_service.main.name
+}
+
+output "log_group_names" {
+  description = "The 14-day CloudWatch log groups, by container."
+  value       = { backend = aws_cloudwatch_log_group.backend.name, cloudflared = aws_cloudwatch_log_group.cloudflared.name }
+}
