@@ -17,7 +17,8 @@ import { ConfigError } from "../errors.js";
  */
 
 export interface BackupConfig {
-  database: { host: string; port: string; user: string; password: string; name: string; sslmode?: string };
+  /** `sslrootcert` is the CA bundle pg_dump verifies the server with (e.g. the RDS bundle the images carry). */
+  database: { host: string; port: string; user: string; password: string; name: string; sslmode?: string; sslrootcert?: string };
   /** A public age recipient (`age1...`). */
   ageRecipient: string;
   /** Empty = no upload (local trial runs without AWS). */
@@ -111,6 +112,12 @@ export function loadBackupConfig(env: NodeJS.ProcessEnv, defaults: { localDir: s
   if (sslmode !== undefined && !/^(disable|allow|prefer|require|verify-ca|verify-full)$/.test(sslmode)) {
     throw new ConfigError("DATABASE_URL has an unsupported sslmode.");
   }
+  // pg_dump gets the connection as separate settings, not the URL, so the CA bundle travels as PGSSLROOTCERT.
+  const sslrootcert = url.searchParams.get("sslrootcert") ?? undefined;
+  // eslint-disable-next-line no-control-regex
+  if (sslrootcert !== undefined && (sslrootcert.trim() === "" || /[\u0000-\u001f\u007f]/.test(sslrootcert))) {
+    throw new ConfigError("DATABASE_URL has an empty or invalid sslrootcert.");
+  }
   const ageRecipient = env.BACKUP_AGE_RECIPIENT?.trim() ?? "";
   if (!AGE_RECIPIENT.test(ageRecipient)) {
     throw new ConfigError("BACKUP_AGE_RECIPIENT must be an age PUBLIC key (starts with age1). Never put the private key here.");
@@ -137,6 +144,7 @@ export function loadBackupConfig(env: NodeJS.ProcessEnv, defaults: { localDir: s
       password,
       name,
       ...(sslmode ? { sslmode } : {}),
+      ...(sslrootcert ? { sslrootcert } : {}),
     },
     ageRecipient,
     s3Bucket,
@@ -201,7 +209,13 @@ export async function runBackup(config: BackupConfig, deps: BackupDeps): Promise
         `--dbname=${config.database.name}`,
         `--file=${plainPath}`,
       ],
-      { env: { PGPASSWORD: config.database.password, ...(config.database.sslmode ? { PGSSLMODE: config.database.sslmode } : {}) } },
+      {
+        env: {
+          PGPASSWORD: config.database.password,
+          ...(config.database.sslmode ? { PGSSLMODE: config.database.sslmode } : {}),
+          ...(config.database.sslrootcert ? { PGSSLROOTCERT: config.database.sslrootcert } : {}),
+        },
+      },
     );
     if (dump.code !== 0) {
       fail("pg_dump", dump);

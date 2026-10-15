@@ -2,6 +2,8 @@
 #   runtime  the app: only the bundled server.cjs, no node_modules, no source.
 #   ops      the one-off jobs (npm run db:init / db:migrate / backup -w backend), run by command, e.g.
 #            docker run --rm -e MIGRATOR_DATABASE_URL ... <ops image> npm run db:migrate -w backend
+#            The backup (#407) needs pg_dump, age and the AWS CLI (its uploader, also for Backblaze B2
+#            through BACKUP_S3_ENDPOINT); compose.yaml's `backup` service runs it.
 #
 # TLS to Amazon RDS: both images carry the RDS global CA bundle (backend/rds-global-bundle.pem) at
 #   /etc/ssl/rds/global-bundle.pem
@@ -63,6 +65,9 @@ COPY --from=ops-deps /repo/backend/node_modules backend/node_modules
 COPY --from=ops-deps /repo/backend/scripts backend/scripts
 COPY --from=ops-deps /repo/backend/src backend/src
 COPY --from=ops-deps /repo/backend/migrations backend/migrations
+# The backup's local encrypted copies (BACKUP_LOCAL_DIR in compose.yaml's backup service), owned by the
+# node user: a named volume mounted here starts with this ownership, so the job can write to it.
+RUN install -d -o node -g node -m 700 /var/backups/satis
 ENV NODE_ENV=production
 USER node
 # No default job: running the image bare lists the scripts it can run.

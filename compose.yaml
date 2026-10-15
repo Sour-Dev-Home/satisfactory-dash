@@ -42,6 +42,8 @@ services:
       DATABASE_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?set DB_MIGRATOR_PASSWORD in .env}
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:?set DB_APP_PASSWORD in .env}
+      # Optional: also creates the read-only satis_backup role the backup service dumps as.
+      DB_BACKUP_PASSWORD: ${DB_BACKUP_PASSWORD:-}
       MIGRATOR_DATABASE_URL: postgres://satis_migrator:${DB_MIGRATOR_PASSWORD}@postgres:5432/satis
     command: ["sh", "-c", "npm run db:init -w backend && npm run db:migrate -w backend"]
 
@@ -101,5 +103,38 @@ services:
     # Metrics on loopback only: the default binds 0.0.0.0 in a container.
     command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
 
+  # The nightly age-encrypted dump (ADR-0025 decision 7, ADR-0035), on demand:
+  #   docker compose run --rm backup
+  # In the `backup` profile, so `up` never starts it; a host schedules the command instead (cron, a systemd
+  # timer, later EventBridge on AWS): docs-vault/wiki/runbooks/backups.md, "Scheduling". It dumps as the
+  # read-only satis_backup role (DB_BACKUP_PASSWORD, created by migrate). With BACKUP_S3_BUCKET empty it is
+  # a local trial: the encrypted copy stays in the backups volume and nothing is uploaded.
+  backup:
+    image: ${OPS_IMAGE:-ghcr.io/sour-dev-home/satisfactory-dash-ops:main}
+    profiles: [backup]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Only the keys the backup reads. Not `:?`: compose interpolates every service, so that would fail
+    # `up` for a stack that never runs the backup; the backup itself refuses a missing setting by name.
+    environment:
+      BACKUP_DATABASE_URL: postgres://satis_backup:${DB_BACKUP_PASSWORD:-}@postgres:5432/satis
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_AWS_PROFILE: ${BACKUP_AWS_PROFILE:-}
+      BACKUP_LOCAL_KEEP: ${BACKUP_LOCAL_KEEP:-}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      BACKUP_LOCAL_DIR: /var/backups/satis
+    volumes:
+      - backups:/var/backups/satis
+      # The upload key's AWS CLI profile (BACKUP_AWS_PROFILE), read-only. BACKUP_AWS_DIR names a host
+      # folder holding `config` and `credentials`; unset, an empty volume (fine for a local trial).
+      - ${BACKUP_AWS_DIR:-backup-aws}:/home/node/.aws:ro
+    command: ["npm", "run", "--silent", "backup", "-w", "backend"]
+
 volumes:
   pgdata:
+  backups:
+  backup-aws:
