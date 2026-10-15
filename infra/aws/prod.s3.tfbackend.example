@@ -1,0 +1,3 @@
+# Copy to prod.s3.tfbackend (git-ignored), set the bucket bootstrap/ created, then:
+#   terraform init -backend-config=prod.s3.tfbackend
+bucket = "satis-tfstate-ACCOUNT_ID"

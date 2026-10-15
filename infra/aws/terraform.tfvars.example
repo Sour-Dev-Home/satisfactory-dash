@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. Everything else has a default in variables.tf.
+budget_alert_email = "you@example.com"
