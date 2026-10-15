@@ -145,7 +145,32 @@ check then labels it `ready` and one `tier:*`. New task issues come from `/plan-
 approves the draft before anything is created. A stopped lane labels its issue `needs-owner`.
 `node scripts/lanes/status.mjs` shows the queue.
 
-Known gaps in this repo (reported upstream as lanes#770 and lanes#771):
+**When a lane fits.** Use a lane when the done-criteria can be written as tests and the files can be
+named up front: backend routes, services and storage with tests; frontend components, hooks and
+logic with tests; a bug fix with a failing test that reproduces it; a refactor existing tests cover;
+code changes that follow a dependency bump. Keep it in a normal session when it can't: spikes and
+"how should this work?" questions, visual polish judged by eye (map layers, layout, feel), ADRs and
+docs-vault writing, log compaction, deploys, secrets, infrastructure and rulesets, one-line fixes and
+urgent hotfixes. A good rhythm is to explore in a normal session, then turn the settled design into
+2 to 5 issues with `/plan-issues` and let the queue build them.
+
+**Filing issues.**
+- Lane work starts as a Task issue: from `/plan-issues` (preferred) or GitHub's New issue → Task
+  template. A free-text issue never becomes `ready`, so no lane picks it up; `issue-contract` says
+  nothing about it.
+- Every Scope names real repository paths, including the tests the change will touch, and every PR,
+  lane or not, adds its `docs-vault/wiki/log.d/` fragment (see Docs vault).
+- A bug in lanes itself (its scripts, workflows, commands or agents) is filed in the lanes repository,
+  not here: what happened, the exact error or evidence, and what was expected. The lanes owner session
+  turns it into a Task issue there; never patch `scripts/lanes/` or the lanes workflows in this repo,
+  since `upgrade --apply` would overwrite the change.
+
+Known gaps in this repo (reported upstream as lanes#770 and lanes#771; the first one below is being
+planned there):
+- Every PR to `main` must pass `lanes/gate`, and the gate fails a PR that doesn't say `Closes #N` for a
+  ready Task issue. Until lanes gives non-lane PRs their own path, a manual PR (yours or a normal
+  session's) and a Dependabot npm PR can only merge after the owner sets the `main (lanes)` ruleset to
+  Disabled, merges, and sets it back to Active. Prefer a lane for anything that fits one.
 - Lanes reads ADRs from `docs/adr/`, but ours live in `docs-vault/wiki/decisions/`, so the lanes gate
   and reviewer routing see no ADRs here. Until it's configurable, any new ADR a lane drafts goes in
   `docs-vault/wiki/decisions/`, numbered after the latest one there, and a lane whose change falls

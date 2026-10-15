@@ -1,0 +1,1 @@
+- 2026-10-14 — CLAUDE.md: when a lane fits and when to keep work in a normal session, how to file issues (Task form via `/plan-issues`; lanes bugs go to the lanes repository, never patched here), and the known gap that a non-lane PR needs the `main (lanes)` ruleset briefly disabled to merge until lanes gives such PRs their own path.
