@@ -127,11 +127,14 @@ services:
       BACKUP_LOCAL_KEEP: ${BACKUP_LOCAL_KEEP:-}
       BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
       BACKUP_LOCAL_DIR: /var/backups/satis
+      # The AWS CLI reads its profile from the mount below (the backup passes AWS_* on to it).
+      AWS_CONFIG_FILE: /etc/satis-aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /etc/satis-aws/credentials
     volumes:
       - backups:/var/backups/satis
       # The upload key's AWS CLI profile (BACKUP_AWS_PROFILE), read-only. BACKUP_AWS_DIR names a host
       # folder holding `config` and `credentials`; unset, an empty volume (fine for a local trial).
-      - ${BACKUP_AWS_DIR:-backup-aws}:/home/node/.aws:ro
+      - ${BACKUP_AWS_DIR:-backup-aws}:/etc/satis-aws:ro
     command: ["npm", "run", "--silent", "backup", "-w", "backend"]
 
 volumes:

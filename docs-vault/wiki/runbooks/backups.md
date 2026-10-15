@@ -315,7 +315,8 @@ job runs, and `BACKUP_AGE_RECIPIENT` (the public key). The encrypted copies stay
 is a local trial; CI runs exactly that on every PR (`.github/workflows/compose.yml`) and decrypts the result with a
 throwaway key. For Backblaze B2 set `BACKUP_S3_BUCKET`, `BACKUP_S3_ENDPOINT` and `BACKUP_AWS_PROFILE` as in the B2
 section, and `BACKUP_AWS_DIR` to a host folder holding the AWS CLI `config` and `credentials` files for that profile.
-The folder is mounted read-only at `/home/node/.aws`; the container runs as uid 1000, so make the files readable by
+The folder is mounted read-only at `/etc/satis-aws` (`AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` point the
+CLI there); the container runs as uid 1000, so make the files readable by
 that uid only (`chown -R 1000:1000 <folder>`, `chmod 700 <folder>`, `chmod 600 <folder>/*`) and keep the folder
 outside the checkout.
 
