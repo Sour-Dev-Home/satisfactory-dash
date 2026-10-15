@@ -51,7 +51,20 @@ The exit (ADR-0034 §6): set `db_deletion_protection = false`, apply, take the f
 - [Choosing a plan](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-plans.html):
   the Free plan excludes "services and features that could possibly deplete your credits, or hardware
   purchases" (Savings Plans, Reserved Instances, some Marketplace offers).
-- **Not found in AWS documentation:** a line naming Fargate, or Fargate on ARM, specifically. ECS is
-  on the list and Fargate is ECS's serverless launch type, but no AWS page we found says so for the
-  Free plan. The first `terraform apply` of the ECS issue is the real check; this module creates no
-  Fargate resource.
+- **Not found in AWS documentation:** a line naming Fargate, or Fargate on ARM, specifically, or
+  PostgreSQL 18 specifically. ECS is on the list and Fargate is ECS's serverless launch type, and the
+  RDS page covers the engine, not its versions. The owner decided (2026-10-15, #405) that both are
+  confirmed at the first `terraform apply` in the owner's operational session, not in CI or a PR.
+
+### Fallbacks if AWS refuses at apply
+
+- **PostgreSQL 18 refused on db.t4g.micro:** set `engine_version = "17"` in `rds.tf` and update the
+  version assertion in `tests/base.tftest.hcl` (`rds_matches_adr_0034`). Nothing else changes: the
+  app uses plain PostgreSQL (ADR-0034 §3), so a later in-place major upgrade to 18 is
+  `allow_major_version_upgrade` for one apply. Mind the cutover: the PC's database is PostgreSQL 18,
+  and a dump from a newer server isn't guaranteed to restore into an older one, so dump with the
+  plain format and rehearse that restore into 17 before the move.
+- **Fargate on ARM refused:** run the task on x86 instead, with `runtime_platform { cpu_architecture = "X86_64" }`
+  in the ECS task definition (the ECS issue). The backend image is already multi-arch (linux/amd64 and
+  linux/arm64), so only the platform changes. x86 Fargate costs about 25% more per vCPU and GB-hour
+  than ARM, so re-check ADR-0034's monthly estimate against the credits.
