@@ -1,0 +1,193 @@
+name: Backend images
+
+# ADR-0034 (#404): the backend's two images from backend/Dockerfile, for linux/amd64 and linux/arm64.
+#   runtime -> ghcr.io/sour-dev-home/satisfactory-dash-backend   (the app)
+#   ops     -> ghcr.io/sour-dev-home/satisfactory-dash-ops       (db:init, db:migrate, backup)
+# Every PR builds both for both platforms and boots them against Postgres 18 (smoke). A push to main
+# also publishes :main and :<sha> of each; only that job can write packages.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [runtime, ops]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build both platforms
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max
+
+  smoke:
+    # The amd64 images, as built above (from the cache): the ops image creates the roles and runs the
+    # migrations, then the app image must answer 200 on /api/health/ready within 60 s.
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          # A throwaway superuser for this job's own container; nothing else can reach it.
+          POSTGRES_PASSWORD: smoke-only-not-a-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Load the ops image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: ops
+          platforms: linux/amd64
+          load: true
+          tags: smoke/ops:ci
+          cache-from: type=gha,scope=ops
+      - name: Load the app image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          tags: smoke/app:ci
+          cache-from: type=gha,scope=runtime
+      - name: Generate throwaway credentials
+        run: |
+          set -euo pipefail
+          migrator="$(openssl rand -hex 24)"
+          app="$(openssl rand -hex 24)"
+          session="$(openssl rand -base64 48)"
+          echo "::add-mask::$migrator"
+          echo "::add-mask::$app"
+          echo "::add-mask::$session"
+          {
+            echo "DB_MIGRATOR_PASSWORD=$migrator"
+            echo "DB_APP_PASSWORD=$app"
+            echo "SESSION_SECRET=$session"
+          } >> "$GITHUB_ENV"
+      - name: db:init (ops image)
+        env:
+          DATABASE_ADMIN_URL: postgres://postgres:smoke-only-not-a-secret@127.0.0.1:5432/postgres
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_ADMIN_URL -e DB_MIGRATOR_PASSWORD -e DB_APP_PASSWORD \
+            smoke/ops:ci npm run db:init -w backend
+      - name: db:migrate (ops image)
+        run: |
+          export MIGRATOR_DATABASE_URL="postgres://satis_migrator:${DB_MIGRATOR_PASSWORD}@127.0.0.1:5432/satis"
+          docker run --rm --network host -e MIGRATOR_DATABASE_URL \
+            smoke/ops:ci npm run db:migrate -w backend
+      - name: App image answers /api/health/ready
+        run: |
+          set -euo pipefail
+          # The login settings are required to boot (ADR-0011); the hash is of a random password
+          # nobody keeps, made by the ops image's own hash-password script.
+          openssl rand -hex 24 > "$RUNNER_TEMP/pw"
+          hash="$(docker run --rm -i smoke/ops:ci npm run --silent hash-password -w backend < "$RUNNER_TEMP/pw")"
+          rm -f "$RUNNER_TEMP/pw"
+          export DASHBOARD_ADMIN_USER=smoke
+          export DASHBOARD_ADMIN_PASSWORD_HASH="$hash"
+          export DATABASE_URL="postgres://satis_app:${DB_APP_PASSWORD}@127.0.0.1:5432/satis"
+          docker run -d --name app --network host -e HOST=0.0.0.0 \
+            -e DATABASE_URL -e DASHBOARD_ADMIN_USER -e DASHBOARD_ADMIN_PASSWORD_HASH -e SESSION_SECRET \
+            smoke/app:ci
+          deadline=$((SECONDS + 60))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/health/ready || true)"
+            if [ "$code" = "200" ]; then
+              echo "ready after $((60 - (deadline - SECONDS))) s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::/api/health/ready did not answer 200 within 60 s (last: $code)"
+          docker logs app || true
+          exit 1
+
+  push:
+    # main only, after both builds and the smoke test. The only job with packages: write.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [build, smoke]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: runtime
+            image: ghcr.io/sour-dev-home/satisfactory-dash-backend
+          - target: ops
+            image: ghcr.io/sour-dev-home/satisfactory-dash-ops
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ matrix.image }}:main
+            ${{ matrix.image }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+          cache-from: type=gha,scope=${{ matrix.target }}
+      - name: Both platforms are published
+        env:
+          REF: ${{ matrix.image }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          platforms="$(docker buildx imagetools inspect "$REF" --format '{{json .Manifest}}' \
+            | jq -r '.manifests[] | select(.platform.os != "unknown") | "\(.platform.os)/\(.platform.architecture)"' | sort -u)"
+          echo "$platforms"
+          for want in linux/amd64 linux/arm64; do
+            grep -qx "$want" <<< "$platforms" || { echo "::error::$REF has no $want image"; exit 1; }
+          done
