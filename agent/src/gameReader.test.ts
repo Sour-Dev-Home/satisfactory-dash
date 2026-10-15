@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { UpstreamError } from "@satisfactory-dash/game-adapter";
+import { UpstreamError, createGameServerConnection, createSatisfactoryServerConfig } from "@satisfactory-dash/game-adapter";
 import type { FactoryBuilding, PowerCircuit } from "@satisfactory-dash/game-adapter";
 import { AgentFactorySchema, AgentPowerSchema, MapLiveSchema, ServerPlayersResponseSchema, StatusSchema } from "@satisfactory-dash/shared";
-import { createGameReader } from "./gameReader.js";
+import { connectToGame, createGameReader } from "./gameReader.js";
 import type { GameReaderDeps } from "./gameReader.js";
+
+// The real factories, wrapped only to count calls: `connectToGame` must build one connection, not one per port.
+vi.mock("@satisfactory-dash/game-adapter", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@satisfactory-dash/game-adapter")>();
+  return { ...real, createGameServerConnection: vi.fn(real.createGameServerConnection), createSatisfactoryServerConfig: vi.fn(real.createSatisfactoryServerConfig) };
+});
 
 const building: FactoryBuilding = {
   id: "b1",
@@ -31,6 +37,8 @@ function deps(overrides: Partial<GameReaderDeps["adapter"]> = {}, options: Parti
     getPlayers: vi.fn(async () => [{ name: "Ada", online: true }]),
     getTrains: vi.fn(async () => ({ data: [{ id: "t1", name: "Iron Express", x: 120, y: -40, status: "Self-Driving" }], dropped: 1 })),
     getTrainStations: vi.fn(async () => ({ data: [{ id: "s1", name: "Iron Mine", x: 100, y: -50 }], dropped: 2 })),
+    getRails: vi.fn(async () => ({ data: [], dropped: 4 })),
+    getResourceNodes: vi.fn(async () => ({ data: [], dropped: 5 })),
     ...overrides,
   };
   const portOptions = {
@@ -104,9 +112,44 @@ describe("what the reader gives the sampler", () => {
     await expect(createGameReader(deps({ getTrainStations: vi.fn(async () => Promise.reject(down)) })).readMapLive!()).rejects.toBe(down);
   });
 
+  it("world: the ports are the SAME adapter's getRails/getResourceNodes, results and errors unchanged (ADR-0038 M4)", async () => {
+    const d = deps();
+    const game = createGameReader(d);
+    expect(await game.world.getRails()).toEqual({ data: [], dropped: 4 });
+    expect(await game.world.getResourceNodes()).toEqual({ data: [], dropped: 5 });
+    expect(d.raw.adapter.getRails).toHaveBeenCalledTimes(1);
+    expect(d.raw.adapter.getResourceNodes).toHaveBeenCalledTimes(1);
+    const down = new UpstreamError("down", { failureKind: "unreachable" });
+    await expect(createGameReader(deps({ getRails: vi.fn(async () => Promise.reject(down)) })).world.getRails()).rejects.toBe(down);
+  });
+
+  it("edge: the world ports are not read until the world reader asks (building the reader reads nothing)", () => {
+    const d = deps();
+    createGameReader(d);
+    expect(d.raw.adapter.getRails).not.toHaveBeenCalled();
+    expect(d.raw.adapter.getResourceNodes).not.toHaveBeenCalled();
+  });
+
   it("a failing game read is the adapter's error, unchanged (the sampler turns it into a code)", async () => {
     const error = new UpstreamError("unreachable", { failureKind: "unreachable" });
     const reader = createGameReader(deps({ getServerHealth: vi.fn(async () => Promise.reject(error)) }));
     await expect(reader.readStatus()).rejects.toBe(error);
+  });
+});
+
+describe("connectToGame (one connection for the snapshot reads and the world ports)", () => {
+  it("builds ONE config and ONE adapter connection, and the world ports read through that connection", async () => {
+    vi.mocked(createSatisfactoryServerConfig).mockClear();
+    vi.mocked(createGameServerConnection).mockClear();
+    const game = connectToGame({ host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "t" });
+    expect(createSatisfactoryServerConfig).toHaveBeenCalledTimes(1);
+    expect(createGameServerConnection).toHaveBeenCalledTimes(1);
+    const connection = vi.mocked(createGameServerConnection).mock.results[0]!.value as Record<"getRails" | "getResourceNodes", () => Promise<unknown>>;
+    const rails = vi.spyOn(connection, "getRails").mockResolvedValue({ data: [], dropped: 0 });
+    const nodes = vi.spyOn(connection, "getResourceNodes").mockResolvedValue({ data: [], dropped: 0 });
+    await game.world.getRails();
+    await game.world.getResourceNodes();
+    expect(rails).toHaveBeenCalledTimes(1);
+    expect(nodes).toHaveBeenCalledTimes(1);
   });
 });

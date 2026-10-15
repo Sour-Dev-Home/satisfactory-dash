@@ -3,14 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UpstreamError } from "@satisfactory-dash/game-adapter";
-import { agentEnrollResponse, playersAvailable, statusRunning } from "@satisfactory-dash/shared/fixtures";
+import { agentCommandsEmpty, agentEnrollResponse, agentSnapshotResponse, playersAvailable, statusRunning } from "@satisfactory-dash/shared/fixtures";
+import { runAgent } from "./agentRunner.js";
+import type { RunAgentOptions } from "./agentRunner.js";
 import { EXIT_CREDENTIAL_REJECTED, EXIT_FAILED, EXIT_OK, EXIT_STORE, runCli } from "./cli.js";
 import type { CliDeps } from "./cli.js";
 import { DpapiError } from "./dpapi.js";
 import type { Dpapi } from "./dpapi.js";
 import type { GameReader } from "./sampler.js";
 import { PromptAborted } from "./prompt.js";
+import type { Sleep } from "./pusher.js";
 import { AgentStore } from "./store.js";
+import type { WorldPorts } from "./worldReader.js";
 
 const API_TOKEN = "api-token-VALUE-0123456789abcdef";
 const FRM_TOKEN = "frm-token-VALUE-fedcba9876543210";
@@ -299,6 +303,75 @@ describe("run", () => {
     expect(log).not.toContain(agentEnrollResponse.agentSecret);
     expect(log).not.toContain(API_TOKEN);
     expect(t.all()).not.toContain(API_TOKEN);
+  });
+
+  const worldPorts = (): WorldPorts => ({ getRails: vi.fn(async () => ({ data: [], dropped: 0 })), getResourceNodes: vi.fn(async () => ({ data: [], dropped: 0 })) });
+
+  it("passes the game connection's world ports to runAgent as `world`, beside the reader and a client that can send world layers (ADR-0038 M4)", async () => {
+    const dpapi = await enrolled();
+    const world = worldPorts();
+    const game = { ...reader(), world };
+    const started = vi.fn(async () => "stopped" as const);
+    const t = setup({ dpapi, connect: () => game, runAgent: started as never });
+    expect(await runCli(["run"], t.deps)).toBe(EXIT_OK);
+    expect(started).toHaveBeenCalledTimes(1);
+    const options = (started.mock.calls[0] as unknown as [RunAgentOptions])[0];
+    expect(options.world).toBe(world);
+    expect(options.reader).toBe(game);
+    expect(typeof (options.client as { postWorldLayer?: unknown }).postWorldLayer).toBe("function");
+  });
+
+  it("edge: a connection with no world ports starts the agent without `world` (no world reader)", async () => {
+    const dpapi = await enrolled();
+    const started = vi.fn(async () => "stopped" as const);
+    const t = setup({ dpapi, connect: () => reader(), runAgent: started as never });
+    expect(await runCli(["run"], t.deps)).toBe(EXIT_OK);
+    expect((started.mock.calls[0] as unknown as [RunAgentOptions])[0]).not.toHaveProperty("world");
+  });
+
+  it("a backend that does not know /agent/v1/world/:layer yet (404): the agent keeps running and pushing snapshots, one world_layer_refused per layer streak", async () => {
+    const dpapi = await enrolled();
+    const world = worldPorts();
+    const calls: string[] = [];
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const fetch: CliDeps["fetch"] = async (url, init) => {
+      const { pathname } = new URL(String(url));
+      calls.push(`${init?.method ?? "GET"} ${pathname}`);
+      if (pathname.startsWith("/agent/v1/world/")) return json({ error: { code: "not_found", message: "Not found", requestId: "r" } }, 404);
+      if (pathname === "/agent/v1/snapshots") return json(agentSnapshotResponse);
+      return json(agentCommandsEmpty);
+    };
+    const controller = new AbortController();
+    // Each world layer is read every 0..1 interval with these sleeps, so each refusal repeats: the streak must log once.
+    const fastSleep: Sleep = (_ms, signal) =>
+      new Promise((resolve) => {
+        const timer = setTimeout(resolve, 2);
+        signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
+      });
+    const snapshots = () => calls.filter((c) => c === "POST /agent/v1/snapshots").length;
+    const worldPosts = () => calls.filter((c) => c.startsWith("POST /agent/v1/world/")).length;
+    const t = setup({
+      dpapi,
+      fetch,
+      signal: controller.signal,
+      connect: () => ({ ...reader(), world }),
+      runAgent: (options) => {
+        const running = runAgent({ ...options, sleep: fastSleep, random: () => 0 });
+        const check = setInterval(() => {
+          if (snapshots() >= 3 && worldPosts() >= 6) controller.abort();
+        }, 5);
+        return running.finally(() => clearInterval(check));
+      },
+    });
+    expect(await runCli(["run"], t.deps)).toBe(EXIT_OK);
+    expect(snapshots()).toBeGreaterThanOrEqual(3);
+    expect(vi.mocked(world.getRails).mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(vi.mocked(world.getResourceNodes).mock.calls.length).toBeGreaterThanOrEqual(2);
+    const refused = t.out.filter((line) => line.includes("world_layer_refused"));
+    expect(refused).toHaveLength(2);
+    expect(refused.filter((line) => line.includes("rails"))).toHaveLength(1);
+    expect(refused.filter((line) => line.includes("resourceNodes"))).toHaveLength(1);
+    expect(t.out.join("\n")).toContain("agent_stopped");
   });
 
   it("a rejected credential ends with exit 2 and tells the owner exactly how to enrol again", async () => {

@@ -15,6 +15,7 @@ import type { GameReader } from "./sampler.js";
 import { AgentStore, DEFAULT_GAME, SECRET_NAMES, StoreError, isAllowedGameHost, resolveDataDir } from "./store.js";
 import type { SecretName } from "./store.js";
 import { AGENT_VERSION } from "./version.js";
+import type { WorldPorts } from "./worldReader.js";
 
 /**
  * The agent's command line (ADR-0031 PR 6). Commands, in the order a first setup needs them (the runbook explains why):
@@ -43,7 +44,8 @@ export interface CliDeps {
   /** A hidden prompt: the answer is never echoed. */
   prompt: (question: string) => Promise<string>;
   fetch?: FetchLike;
-  connect?: (input: GameConnectionInput) => GameReader;
+  /** The game connection. Its `world` ports, when present, start the world reader in `run` (ADR-0038 M4). */
+  connect?: (input: GameConnectionInput) => GameReader & { world?: WorldPorts };
   runAgent?: typeof runAgent;
   /** Ends `run` (SIGINT/SIGTERM). */
   signal: AbortSignal;
@@ -303,7 +305,10 @@ async function run(argv: string[], deps: CliDeps): Promise<number> {
   for (const secret of secrets.values()) logger.addSecret(secret);
   const reader = (deps.connect ?? connectToGame)({ ...store.game, apiToken, ...(secrets.has("frmToken") ? { frmToken: secrets.get("frmToken") } : {}) });
   const client = new BackendClient({ baseUrl: store.backendUrl, agentSecret: secrets.get("agentSecret"), fetch: deps.fetch });
-  const outcome = await (deps.runAgent ?? runAgent)({ reader, client, logger, signal: deps.signal });
+  // The world ports come from the same connection as the reader. A backend without the world route answers 404: the world
+  // reader logs it once per streak and the snapshot loops carry on (worldReader.ts).
+  const { world } = reader;
+  const outcome = await (deps.runAgent ?? runAgent)(world === undefined ? { reader, client, logger, signal: deps.signal } : { reader, client, logger, signal: deps.signal, world });
   if (outcome === "auth_rejected") {
     writeHalted(dir, "credential_rejected");
     deps.err("The backend rejected this agent's credential, so the agent stopped and will not retry. It was probably revoked in the dashboard. Create a new enrolment code there, then run: agent enroll <CODE> --url <https://backend> --replace");
