@@ -78,15 +78,18 @@ outside the repo, so you have `restore\satis.dump`.
 
 ```powershell
 docker compose --profile tunnel down                       # backend and tunnel off
-docker compose up -d postgres                              # only the database; pgdata must be empty
+docker compose up -d --wait postgres                       # only the database (pgdata must be empty), healthy
 docker compose run --rm --no-deps migrate npm run db:init -w backend          # 1. roles + empty database
 docker compose run --rm --no-deps -v "<full path to restore folder>:/restore:ro" migrate `
-  sh -c 'pg_restore --no-owner --dbname "${DATABASE_ADMIN_URL%/postgres}/satis" /restore/satis.dump'   # 2.
+  sh -c 'pg_restore --no-owner --role=satis_migrator --dbname "${DATABASE_ADMIN_URL%/postgres}/satis" /restore/satis.dump'   # 2.
 docker compose --profile tunnel up -d                      # 3. migrate runs db:migrate, then the backend
 ```
 
-Step 2 runs the ops image's PostgreSQL 18 `pg_restore` as the `postgres` superuser against the `satis`
-database (the single quotes keep your shell from expanding `$`; the container does). In bash, end the
+Step 2 runs the ops image's PostgreSQL 18 `pg_restore` against the `satis` database, connected as the
+`postgres` superuser but creating every object as `satis_migrator` (`--role`). Without `--role` the
+tables, `pgmigrations` included, would belong to `postgres`, and step 3's `db:migrate` (which runs as
+`satis_migrator`) fails with `relation "pgmigrations" already exists` (checked 2026-10-15 on a dump of
+this stack). The single quotes keep your shell from expanding `$`; the container does. In bash, end the
 first line with `\` instead of the backtick. Then check the restore as `backups.md` does: `/api/health/ready`
 answers 200, a known account can sign in, and with `SERVER_SECRETS_KEY` set the server tokens decrypt.
 Delete the `restore` folder afterwards; it holds an unencrypted dump.
