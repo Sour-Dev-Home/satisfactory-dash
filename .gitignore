@@ -30,5 +30,15 @@ docs-vault/architecture-out/
 *.age
 *.key
 
+# Terraform (infra/aws/, #405): provider caches, state, plans, and the real variable and backend files,
+# which hold the alert address and bucket name. The .example files next to them are tracked.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+*.tfbackend
+crash.log
+
 # lanes' working folder: verdicts, logs and the queue's reap files (#392)
 .lanes/
