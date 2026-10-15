@@ -106,19 +106,25 @@ describe("session lifecycle", () => {
   it("is not signed out again by a 401 from a request that started before re-login", async () => {
     let factoryReads = 0;
     let powerReads = 0;
+    let factoryStarted = () => {};
+    const firstFactoryRead = new Promise<void>((resolve) => (factoryStarted = resolve));
     server.use(
       http.get(endpoints.factory.route, async () => {
         // The first factory read is slow: it outlives the session and the re-login.
         if (++factoryReads === 1) {
+          factoryStarted();
           await delay(150);
           return HttpResponse.json(errorSessionRequired, { status: 401 });
         }
         return HttpResponse.json(factoryMixed);
       }),
-      // The first power read finds the session expired.
-      http.get(endpoints.power.route, () =>
-        ++powerReads === 1 ? HttpResponse.json(errorSessionRequired, { status: 401 }) : HttpResponse.json(powerOk),
-      ),
+      // The first power read finds the session expired, but only once the first factory read has
+      // reached the server: under load (MSW 3) the sign-out could otherwise win that race (#386).
+      http.get(endpoints.power.route, async () => {
+        if (++powerReads > 1) return HttpResponse.json(powerOk);
+        await firstFactoryRead;
+        return HttpResponse.json(errorSessionRequired, { status: 401 });
+      }),
     );
     renderWithClient(<App />);
     await screen.findByRole("heading", { name: "Sign in" });
