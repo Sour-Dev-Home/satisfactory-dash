@@ -289,3 +289,36 @@ run "edge_extra_environment_is_passed_through" {
     error_message = "plain settings reach the backend as environment variables"
   }
 }
+
+run "hunter_execution_policy_is_not_vacuous" {
+  command = apply
+
+  assert {
+    condition     = length([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s if contains(flatten([s.Action]), "ssm:GetParameters")]) == 1 && length(flatten([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s.Resource if contains(flatten([s.Action]), "ssm:GetParameters")])) == 5
+    error_message = "exactly one ssm statement, naming the four required secrets and the tunnel token (the alltrue checks above would pass on an empty list)"
+  }
+
+  assert {
+    condition     = alltrue([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : alltrue([for r in flatten([s.Resource]) : endswith(r, ":log-stream:*")]) if contains(flatten([s.Action]), "logs:PutLogEvents")]) && length(flatten([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s.Resource if contains(flatten([s.Action]), "logs:PutLogEvents")])) == 2
+    error_message = "log writes are scoped to the two groups' log streams"
+  }
+}
+
+run "edge_backend_secret_lists_stay_inside_the_ssm_names" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for k in concat(local.backend_required_secrets, local.backend_optional_secret_keys) : contains(local.ssm_secret_keys, k)])
+    error_message = "every backend secret, required or optional, is a name in ssm.tf"
+  }
+}
+
+run "edge_extra_environment_refuses_a_secret_looking_name" {
+  command = plan
+
+  variables {
+    backend_environment = { STRIPE_API_KEY = "sk_live_placeholder" }
+  }
+
+  expect_failures = [var.backend_environment]
+}

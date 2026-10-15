@@ -9,8 +9,14 @@ locals {
 
   # compose.yaml's `:?` keys: the backend refuses to start without them.
   backend_required_secrets = ["DATABASE_URL", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH", "SESSION_SECRET"]
-  backend_secret_keys      = distinct(concat(local.backend_required_secrets, var.backend_optional_secrets))
-  task_secret_keys         = concat(local.backend_secret_keys, ["TUNNEL_TOKEN"])
+  # The rest of the backend's SSM keys, injected only when listed in var.backend_optional_secrets (a
+  # test keeps both lists inside ssm.tf's names).
+  backend_optional_secret_keys = [
+    "SERVER_SECRETS_KEY", "SERVER_SECRETS_KEY_ID", "SERVER_SECRETS_PREVIOUS_KEYS",
+    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "BOOTSTRAP_OWNER_EMAIL",
+  ]
+  backend_secret_keys = distinct(concat(local.backend_required_secrets, var.backend_optional_secrets))
+  task_secret_keys    = concat(local.backend_secret_keys, ["TUNNEL_TOKEN"])
 
   # The runtime image has node but no curl (backend/Dockerfile); the same probe as compose.yaml.
   backend_health_probe = "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
@@ -75,7 +81,8 @@ resource "aws_ecs_task_definition" "main" {
       dependsOn = [{ containerName = "backend", condition = "HEALTHY" }]
       # Metrics on loopback only, as in compose.yaml.
       command = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
-      # 127.0.0.1, never localhost, which can resolve to IPv6 first (the backend is IPv4).
+      # The origin when the tunnel has no ingress rules of its own; the dashboard route must name the
+      # same URL (as in compose.yaml). 127.0.0.1, never localhost, which can resolve to IPv6 first.
       environment = [{ name = "TUNNEL_URL", value = "http://127.0.0.1:3001" }]
       secrets     = [{ name = "TUNNEL_TOKEN", valueFrom = local.ssm_parameter_arns["TUNNEL_TOKEN"] }]
       logConfiguration = {

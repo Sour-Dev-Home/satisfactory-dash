@@ -60,7 +60,8 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
   and `terraform.tfvars` still names the bad digest, so put the good one back.
 - **Credentials.** The execution role reads exactly the parameters the task injects (all under
   `/satis/prod/`) and writes the two log groups. There's no task role, so the containers hold no AWS
-  credentials, and no access key exists (the B2 key is an SSM value).
+  credentials, and no access key exists (the B2 key is an SSM value). Listing an optional secret
+  widens the policy on the next apply. The ops tasks (migrate, backup) get their own role, not this one.
 - **Logs.** `/ecs/satis-prod/backend` and `/ecs/satis-prod/cloudflared`, 14 days. Container
   Insights is off.
 

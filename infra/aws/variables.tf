@@ -81,10 +81,7 @@ variable "backend_optional_secrets" {
   default     = []
 
   validation {
-    condition = alltrue([for k in var.backend_optional_secrets : contains([
-      "SERVER_SECRETS_KEY", "SERVER_SECRETS_KEY_ID", "SERVER_SECRETS_PREVIOUS_KEYS",
-      "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "BOOTSTRAP_OWNER_EMAIL",
-    ], k)])
+    condition     = alltrue([for k in var.backend_optional_secrets : contains(local.backend_optional_secret_keys, k)])
     error_message = "backend_optional_secrets holds only the backend's optional SSM settings (see ecs.tf)."
   }
 }
@@ -95,7 +92,10 @@ variable "backend_environment" {
   default     = {}
 
   validation {
-    condition     = alltrue([for k in keys(var.backend_environment) : k != "HOST" && !contains(local.ssm_secret_keys, k)])
-    error_message = "backend_environment cannot set HOST or a name kept in SSM."
+    # A plain value lands in state and the task definition, so a secret-looking name is refused too.
+    condition = alltrue([for k in keys(var.backend_environment) :
+      k != "HOST" && !contains(local.ssm_secret_keys, k) && !can(regex("(?i)(SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE|KEY)", k))
+    ])
+    error_message = "backend_environment cannot set HOST, a name kept in SSM, or a secret-looking name (put secrets in SSM)."
   }
 }
