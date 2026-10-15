@@ -145,7 +145,41 @@ check then labels it `ready` and one `tier:*`. New task issues come from `/plan-
 approves the draft before anything is created. A stopped lane labels its issue `needs-owner`.
 `node scripts/lanes/status.mjs` shows the queue.
 
+**When a lane fits.** Use a lane when the done-criteria can be written as tests and the files can be
+named up front: backend routes, services and storage with tests; frontend components, hooks and
+logic with tests; a bug fix with a failing test that reproduces it; a refactor existing tests cover;
+code changes that follow a dependency bump. Keep it in a normal session when it can't: spikes and
+"how should this work?" questions, visual polish judged by eye (map layers, layout, feel), ADRs and
+docs-vault writing, log compaction, deploys, secrets, infrastructure and rulesets, one-line fixes and
+urgent hotfixes. A good rhythm is to explore in a normal session first, then turn the settled design
+into 2 to 5 issues with `/plan-issues` and let the queue build them.
+
+**Filing issues.**
+- Lane work starts as a Task issue: from `/plan-issues` (preferred) or GitHub's New issue → Task
+  template. A free-text issue never becomes `ready`, so no lane picks it up; `issue-contract` says
+  nothing about it.
+- Every Scope names real repository paths, including the tests the change will touch, and every PR,
+  lane or not, adds its `docs-vault/wiki/log.d/` fragment (see Docs vault).
+- A bug in lanes itself (its scripts, workflows, commands or agents) is filed in the lanes repository
+  as a bug report, not here: what happened, the exact error or evidence, and what was expected. The
+  lanes owner session turns it into a Task issue there; never patch `scripts/lanes/` or the lanes
+  workflows in this repo, since `upgrade --apply` would overwrite the change.
+
+**Task-form rules** (learned in the trial):
+- Tier is only `skip`, `quick` or `full`. There is no UI tier: the ui-reviewer is added when the
+  diff touches `frontend/src/` paths, whatever the tier.
+- Owner-only and sensitive paths (`CLAUDE.md`, `lanes.config.json`, `package*.json`, `.github/`,
+  `.claude/`, `.gitignore`) can't be tier `skip`; an issue whose Scope names one is `quick` or `full`.
+- "Blocked by" is one `#N` per line, or a bare `none`.
+- Criteria cite the contract as it was merged (the real export, route or type in the code), not an
+  ADR's wording of it.
+
 Known gaps in this repo (reported upstream as lanes#770 and lanes#771):
+- Every PR to `main` must pass `lanes/gate`: it says `Closes #N` for a `ready` Task issue, comes
+  from an `issue-N-*` branch, and carries the lanes reviewer statuses. So the route for any change,
+  a Dependabot npm update included, is a Task issue that a lane builds (as #381 and #386 did).
+  Dependabot action SHA re-pins pass with the owner's review alone (`dependabot.actionBumps`).
+  Setting the `main (lanes)` ruleset to Disabled is the owner's last resort only, never a session's.
 - Lanes reads ADRs from `docs/adr/`, but ours live in `docs-vault/wiki/decisions/`, so the lanes gate
   and reviewer routing see no ADRs here. Until it's configurable, any new ADR a lane drafts goes in
   `docs-vault/wiki/decisions/`, numbered after the latest one there, and a lane whose change falls
