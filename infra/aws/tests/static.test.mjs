@@ -3,8 +3,9 @@
 // `node --test infra/aws/tests/`; the terraform workflow runs it next to fmt, validate and tflint.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -157,7 +158,76 @@ test('#408 criterion 4: no IAM user or access key exists anywhere', () => {
   const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
   assert.doesNotMatch(all, /resource\s+"aws_iam_access_key"/);
   assert.doesNotMatch(all, /resource\s+"aws_iam_user"/);
-  assert.doesNotMatch(all, /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/);
+  // #409: the AWS CLI in the restore task reads the per-run Backblaze B2 read key under these names (the
+  // backup writes its key to a profile file instead). Each mention must be exactly that mapping, so no
+  // AWS key can appear.
+  const lines = all.split('\n').filter((l) => /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/.test(l));
+  const b2 = [
+    /^\s*AWS_ACCESS_KEY_ID\s*=\s*local\.restore_ssm_arns\["B2_READ_KEY_ID"\]\s*$/,
+    /^\s*AWS_SECRET_ACCESS_KEY\s*=\s*local\.restore_ssm_arns\["B2_READ_APPLICATION_KEY"\]\s*$/,
+  ];
+  // The restore script drops the read key from its environment once the download is done.
+  const unset = /^\s*unset AGE_IDENTITY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY\s*$/;
+  for (const line of lines) {
+    assert.ok(b2.some((re) => re.test(line)) || unset.test(line), `only a B2 key from SSM may be named AWS_*_KEY: ${line.trim()}`);
+  }
+  assert.equal(lines.filter((l) => !unset.test(l)).length, 2, 'the restore maps one B2 key id and secret');
+});
+
+test('#409 criterion 1: only the ops files read Secrets Manager, and only for db-init', () => {
+  for (const f of tfFiles()) {
+    if (['ops.tf', 'ops_iam.tf'].includes(relative(root, f).replace(/\\/g, '/'))) continue;
+    // outputs.tf may print the secret's ARN; no other file grants or injects it.
+    assert.doesNotMatch(code(readFileSync(f, 'utf8')), /secretsmanager:|db_master_secret_arn|:password::/, `${relative(root, f)} reads no secret`);
+  }
+  const ops = code(read('ops.tf'));
+  const init = block(ops, '"db-init" = {');
+  assert.ok(init, 'ops.tf has a db-init task');
+  assert.match(init, /master_secret\s*=\s*true/);
+  assert.equal((ops.match(/master_secret\s*=\s*true/g) ?? []).length, 1, 'one task reads the master secret');
+});
+
+test('#409 criterion 2: the age private key has no permanent parameter and Terraform never holds it', () => {
+  const ssm = code(read('ssm.tf'));
+  assert.doesNotMatch(ssm, /AGE_IDENTITY|AGE_SECRET|B2_READ_/, 'ssm.tf names no restore-only value');
+  const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
+  assert.doesNotMatch(all, /resource\s+"aws_secretsmanager_secret/);
+  assert.doesNotMatch(all, /AGE-SECRET-KEY-/);
+  assert.match(code(read('ops.tf')), /restore_ssm_prefix\s*=\s*"\/satis\/restore\/"/);
+});
+
+test('#409: the restore reads the same B2 key prefix the backup writes', () => {
+  const backup = readFileSync(join(root, '..', '..', 'backend', 'src', 'platform', 'backup', 'backup.ts'), 'utf8');
+  const prefix = backup.match(/export const S3_KEY_PREFIX = "([^"]+)"/)?.[1];
+  assert.ok(prefix, 'backup.ts exports S3_KEY_PREFIX');
+  assert.ok(code(read('ops.tf')).includes(`"s3://$BACKUP_S3_BUCKET/${prefix}$RESTORE_FILE"`), `the restore downloads from ${prefix}`);
+});
+
+test('#409 criterion 3: an EventBridge schedule runs the backup task', () => {
+  const tf = code(read('schedule.tf'));
+  assert.match(tf, /resource\s+"aws_scheduler_schedule"\s+"backup"/);
+  assert.match(tf, /task_definition_arn\s*=\s*aws_ecs_task_definition\.ops\["backup"\]\.arn/);
+});
+
+test('#409 criterion 4: the AWS runbook covers apply, deploy, migrate, restore, scale to 0, credits and the backup grant', () => {
+  const runbook = readFileSync(join(root, '..', '..', 'docs-vault', 'wiki', 'runbooks', 'aws.md'), 'utf8');
+  const sections = ['## Apply', '## Deploy', '## Migrate', '## Restore', '## Scale to 0', '## Monthly credit check', '## Check the backup role'];
+  for (const s of sections) assert.ok(runbook.includes(`\n${s}`), `the runbook has "${s}"`);
+  for (const needle of [
+    'backend_image',
+    'terraform apply',
+    'satis-prod-ops-db-migrate',
+    'satis-prod-ops-restore',
+    'RESTORE_FILE',
+    '/satis/restore/AGE_IDENTITY',
+    'aws ssm delete-parameter',
+    '--desired-count 0',
+    'aws freetier get-account-plan-state',
+    'pg_read_all_data',
+  ]) {
+    assert.ok(runbook.includes(needle), `the runbook mentions ${needle}`);
+  }
+  assert.doesNotMatch(runbook, /[A-Za-z]:\\Users\\|AGE-SECRET-KEY-1[0-9A-Z]{10,}/);
 });
 
 test('#408 criterion 4: the execution role has no managed policy that would widen it', () => {
@@ -179,4 +249,145 @@ test('the .gitignore keeps state, plans, real tfvars and provider caches out', (
   for (const line of ['.terraform/', '*.tfstate', '*.tfstate.*', '*.tfvars', '*.tfplan', '*.tfbackend']) {
     assert.ok(gi.split(/\r?\n/).includes(line), `.gitignore has ${line}`);
   }
+});
+
+// #409: the db-init and restore task commands are shell scripts in ops.tf heredocs. Run them for real
+// with stub aws, age, pg_restore and npm on PATH, so their checks and hand-offs are tested, not read.
+function heredoc(name) {
+  const m = read('ops.tf').match(new RegExp(`${name} = <<-EOT\\r?\\n([\\s\\S]*?)\\r?\\n\\s*EOT`));
+  assert.ok(m, `ops.tf has the ${name} heredoc`);
+  const lines = m[1].split(/\r?\n/);
+  const indent = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length));
+  return lines.map((l) => l.slice(indent)).join('\n').replace(/\$\$\{/g, '${');
+}
+
+function sandbox(stubs) {
+  const dir = mkdtempSync(join(tmpdir(), 'satis-ops-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  for (const [name, body] of Object.entries(stubs)) {
+    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "$STUB_LOG"\n${body}\n`, { mode: 0o755 });
+  }
+  const log = join(dir, 'calls.log');
+  writeFileSync(log, '');
+  const sep = process.platform === 'win32' ? ';' : ':';
+  return { dir, log, path: `${bin}${sep}${process.env.PATH}` };
+}
+
+function runScript(script, box, env) {
+  const r = spawnSync('sh', ['-c', script], {
+    encoding: 'utf8',
+    // The MSYS_* keys stop Git for Windows' sh rewriting /etc/... values for node; Linux ignores them.
+    env: { PATH: box.path, STUB_LOG: box.log, TMPDIR: box.dir, MSYS_NO_PATHCONV: '1', MSYS2_ENV_CONV_EXCL: '*', ...env },
+  });
+  return { code: r.status, stderr: r.stderr, stdout: r.stdout, calls: readFileSync(box.log, 'utf8').trim().split('\n').filter(Boolean) };
+}
+
+const RESTORE_ENV = {
+  BACKUP_S3_BUCKET: 'example-bucket',
+  BACKUP_S3_ENDPOINT: 'https://s3.example-region.backblazeb2.com',
+  AGE_IDENTITY: '# test identity\nAGE-SECRET-KEY-PLACEHOLDER',
+  AWS_ACCESS_KEY_ID: 'read-key-id',
+  AWS_SECRET_ACCESS_KEY: 'read-key-secret',
+  RESTORE_DATABASE_URL: 'postgres://satis_migrator:pw@db.example.com:5432/satis?sslmode=verify-full',
+};
+
+// age copies the identity it was given next to the output, so the test can read what it received.
+const RESTORE_STUBS = {
+  aws: 'last=""; for a in "$@"; do last="$a"; done; : > "$last"',
+  age: 'while [ $# -gt 0 ]; do case "$1" in --identity) cp "$2" "$STUB_LOG.identity";; --output) : > "$2";; esac; shift; done',
+  pg_restore: 'env | grep -c -E "^(AGE_IDENTITY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY)=" >> "$STUB_LOG.env"; true',
+};
+
+test('#409 edge: the restore refuses a missing, path-like or wrongly named RESTORE_FILE before any download', () => {
+  const script = heredoc('restore_script');
+  for (const file of [undefined, '', '../satis-1.dump.age', 'x/satis-1.dump.age', 'satis-1..dump.age', 'other.dump.age', 'satis-1.dump']) {
+    const box = sandbox(RESTORE_STUBS);
+    const env = { ...RESTORE_ENV };
+    if (file !== undefined) env.RESTORE_FILE = file;
+    const r = runScript(script, box, env);
+    assert.equal(r.code, 2, `RESTORE_FILE=${file} exits 2`);
+    assert.deepEqual(r.calls, [], `RESTORE_FILE=${file} runs nothing`);
+    assert.match(r.stderr, /\[restore\]/);
+  }
+});
+
+test('#409 edge: the restore downloads, decrypts and restores in one transaction, without the keys in pg_restore', () => {
+  const box = sandbox(RESTORE_STUBS);
+  const r = runScript(heredoc('restore_script'), box, { ...RESTORE_ENV, RESTORE_FILE: 'satis-20261015T090000Z.dump.age' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.calls.length, 3);
+  assert.match(r.calls[0], /^aws s3 cp --only-show-errors --endpoint-url https:\/\/s3\.example-region\.backblazeb2\.com s3:\/\/example-bucket\/satis-dash\/satis-20261015T090000Z\.dump\.age \S+\/backup\.age$/);
+  assert.match(r.calls[1], /^age --decrypt --identity \S+\/identity --output \S+\/satis\.dump \S+\/backup\.age$/);
+  assert.match(r.calls[2], /^pg_restore --no-owner --single-transaction --dbname postgres:\/\/satis_migrator:pw@db\.example\.com:5432\/satis\?sslmode=verify-full \S+\/satis\.dump$/);
+  assert.equal(readFileSync(`${box.log}.identity`, 'utf8'), `${RESTORE_ENV.AGE_IDENTITY}\n`, 'age gets the whole identity, comment line included');
+  assert.equal(readFileSync(`${box.log}.env`, 'utf8').trim(), '0', 'pg_restore runs without the age key or the B2 read key');
+  assert.deepEqual(readdirSync(box.dir).filter((f) => f.startsWith('tmp.')), [], 'the work folder is removed');
+  assert.match(r.stdout, /\[restore\] done: satis-20261015T090000Z\.dump\.age/);
+});
+
+test('#409 edge: a failed download or decrypt stops the restore before pg_restore', () => {
+  for (const failing of ['aws', 'age']) {
+    const box = sandbox({ ...RESTORE_STUBS, [failing]: 'exit 1' });
+    const r = runScript(heredoc('restore_script'), box, { ...RESTORE_ENV, RESTORE_FILE: 'satis-1.dump.age' });
+    assert.notEqual(r.code, 0, `${failing} failing fails the task`);
+    assert.ok(!r.calls.some((c) => c.startsWith('pg_restore')), `no pg_restore after ${failing} fails`);
+  }
+});
+
+test('#409 edge: db-init builds DATABASE_ADMIN_URL with the master password URL-encoded, then drops the password', () => {
+  const box = sandbox({ npm: 'printf "%s\\n" "$DATABASE_ADMIN_URL" > "$STUB_LOG.url"; printf "%s" "${DB_MASTER_PASSWORD-unset}" > "$STUB_LOG.pw"' });
+  const password = 'p@ss:w/rd#?%&+ x';
+  const r = runScript(heredoc('db_init_script'), box, {
+    DB_MASTER_USERNAME: 'satis_admin',
+    DB_MASTER_PASSWORD: password,
+    DB_HOST: 'satis-prod.example.us-east-1.rds.amazonaws.com',
+    DB_PORT: '5432',
+    DB_TLS_QUERY: 'sslmode=verify-full&sslrootcert=/etc/ssl/rds/global-bundle.pem',
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(r.calls, ['npm run --silent db:init -w backend']);
+  const url = new URL(readFileSync(`${box.log}.url`, 'utf8').trim());
+  assert.equal(decodeURIComponent(url.password), password, 'the password survives the round trip');
+  assert.equal(url.username, 'satis_admin');
+  assert.equal(url.host, 'satis-prod.example.us-east-1.rds.amazonaws.com:5432');
+  assert.equal(url.pathname, '/postgres');
+  assert.equal(url.searchParams.get('sslmode'), 'verify-full');
+  assert.equal(url.searchParams.get('sslrootcert'), '/etc/ssl/rds/global-bundle.pem');
+  assert.equal(readFileSync(`${box.log}.pw`, 'utf8'), 'unset', 'db:init never sees DB_MASTER_PASSWORD itself');
+});
+
+test('#409 edge: the backup task gives the CLI the satis-backup profile the backup always passes, taking the key from the environment', () => {
+  const box = sandbox({
+    npm: 'cp "$AWS_CONFIG_FILE" "$STUB_LOG.cfg"; cp "$AWS_SHARED_CREDENTIALS_FILE" "$STUB_LOG.cred"; env | grep -c "^B2_" > "$STUB_LOG.env"; true',
+  });
+  const r = runScript(heredoc('backup_script'), box, {
+    BACKUP_AWS_PROFILE: 'satis-backup',
+    AWS_DEFAULT_REGION: 'example-region',
+    B2_ACCESS_KEY_ID: 'up-key',
+    B2_SECRET_ACCESS_KEY: 'up-secret',
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(r.calls, ['npm run --silent backup -w backend']);
+  assert.equal(readFileSync(`${box.log}.cfg`, 'utf8'), '[profile satis-backup]\nregion = example-region\n');
+  assert.equal(readFileSync(`${box.log}.cred`, 'utf8'), '[satis-backup]\naws_access_key_id = up-key\naws_secret_access_key = up-secret\n');
+  assert.equal(readFileSync(`${box.log}.env`, 'utf8').trim(), '0', 'the key reaches the CLI by its file only');
+  // backup.ts defaults the profile to this name; the task must set the same one.
+  assert.match(read('ops.tf'), /BACKUP_AWS_PROFILE = "satis-backup"/);
+  assert.match(readFileSync(join(root, '../../backend/src/platform/backup/backup.ts'), 'utf8'), /\|\| "satis-backup"/);
+});
+
+test('#409 edge: a B2 key with printf-special characters reaches the credentials file literally', () => {
+  const box = sandbox({ npm: 'cp "$AWS_SHARED_CREDENTIALS_FILE" "$STUB_LOG.cred"; true' });
+  const r = runScript(heredoc('backup_script'), box, {
+    BACKUP_AWS_PROFILE: 'satis-backup',
+    AWS_DEFAULT_REGION: 'example-region',
+    B2_ACCESS_KEY_ID: 'id%s\\n',
+    B2_SECRET_ACCESS_KEY: 'sec%d\\t/+=',
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(
+    readFileSync(`${box.log}.cred`, 'utf8'),
+    '[satis-backup]\naws_access_key_id = id%s\\n\naws_secret_access_key = sec%d\\t/+=\n',
+  );
 });

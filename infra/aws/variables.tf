@@ -99,3 +99,51 @@ variable "backend_environment" {
     error_message = "backend_environment cannot set HOST, a name kept in SSM, or a secret-looking name (put secrets in SSM)."
   }
 }
+
+variable "ops_image" {
+  description = "The ops image by digest (repo@sha256:...), for the db-init, db-migrate, backup and restore tasks. Never a tag such as :main."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9./_-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$", var.ops_image))
+    error_message = "ops_image must be pinned by digest: <repository>@sha256:<64 hex>."
+  }
+}
+
+variable "backup_b2" {
+  description = "The Backblaze B2 bucket the backup writes to and the restore reads from (ADR-0035): bucket name, S3 endpoint (https://s3.<region>.backblazeb2.com) and that region. Not secret, but kept out of the repo in terraform.tfvars."
+  type        = object({ bucket = string, endpoint = string, region = string })
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9-]{4,61}[A-Za-z0-9]$", var.backup_b2.bucket))
+    error_message = "backup_b2.bucket must be a B2 bucket name (6 to 63 letters, digits and dashes)."
+  }
+
+  validation {
+    # The backup's own BACKUP_S3_ENDPOINT rule, tightened: an https origin, no credentials, no path.
+    condition     = can(regex("^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$", var.backup_b2.endpoint))
+    error_message = "backup_b2.endpoint must be an https:// origin without credentials or a path."
+  }
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]+$", var.backup_b2.region))
+    error_message = "backup_b2.region must be a region name, the one in the endpoint."
+  }
+}
+
+variable "backup_schedule" {
+  description = "When EventBridge Scheduler runs the backup task, in UTC. The default is after the RDS backup (07:00) and maintenance (08:00) windows."
+  type        = string
+  default     = "cron(0 9 * * ? *)"
+
+  validation {
+    condition     = can(regex("^(cron|rate)\\(.+\\)$", var.backup_schedule))
+    error_message = "backup_schedule must be a Scheduler cron(...) or rate(...) expression."
+  }
+}
+
+variable "backup_heartbeat_enabled" {
+  description = "Inject /satis/prod/BACKUP_HEARTBEAT_URL into the backup task. Create the parameter first: a missing one stops the task from starting."
+  type        = bool
+  default     = false
+}

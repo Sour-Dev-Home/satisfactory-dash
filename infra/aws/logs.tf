@@ -10,3 +10,9 @@ resource "aws_cloudwatch_log_group" "cloudflared" {
   name              = "/ecs/satis-${local.environment}/cloudflared"
   retention_in_days = 14
 }
+
+# The ops tasks (ops.tf): db-init, db-migrate, backup and restore, one stream prefix each.
+resource "aws_cloudwatch_log_group" "ops" {
+  name              = "/ecs/satis-${local.environment}/ops"
+  retention_in_days = 14
+}

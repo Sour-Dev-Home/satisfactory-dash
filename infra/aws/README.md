@@ -15,7 +15,10 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
 | `budget.tf` | Monthly budget on gross spend (credits excluded) with two email alerts |
 | `ecs.tf` | Cluster (Container Insights off), the 0.5 vCPU / 1 GB ARM64 task (backend + cloudflared), the service (#408) |
 | `iam.tf` | The task execution role: reads the task's `/satis/prod/` parameters and writes its logs; no task role |
-| `logs.tf` | One CloudWatch log group per container, 14 days |
+| `logs.tf` | One CloudWatch log group per container and one for the ops tasks, 14 days |
+| `ops.tf` | The ops-image tasks `db-init`, `db-migrate`, `backup` and `restore` (#409) |
+| `ops_iam.tf` | One execution role per ops task (only `db-init` reads the RDS master secret), and the scheduler's role |
+| `schedule.tf` | EventBridge Scheduler runs the backup task nightly |
 | `bootstrap/` | Creates the state bucket (versioned, SSE-S3, block-public-access, TLS only) |
 
 ## First apply (owner, by hand)
@@ -35,8 +38,9 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
    (a file, so the value stays out of shell history). Terraform never reads them, so they're never in
    state. `DATABASE_URL` uses `terraform output db_endpoint` and the `satis_app` role's password.
 5. Confirm the budget subscription email AWS sends to the alert address.
-6. **Migrate**, then **the service.** Run `db:init` and `db:migrate` against RDS (the ops task
-   definition is the next issue), then the full `terraform plan -out=ecs.tfplan` and apply. The task
+6. **Migrate**, then **the service.** Apply the ops tasks and run `db-init` and `db-migrate` as ECS
+   tasks inside the VPC (`docs-vault/wiki/runbooks/aws.md`, "Apply"), then the full
+   `terraform plan -out=ecs.tfplan` and apply. The task
    needs `/satis/prod/` values for `DATABASE_URL`, `DASHBOARD_ADMIN_USER`,
    `DASHBOARD_ADMIN_PASSWORD_HASH`, `SESSION_SECRET` and `TUNNEL_TOKEN`; each optional setting listed in
    `backend_optional_secrets` needs its value too (SSM can't hold an empty one, and a missing parameter
@@ -61,7 +65,7 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
 - **Credentials.** The execution role reads exactly the parameters the task injects (all under
   `/satis/prod/`) and writes the two log groups. There's no task role, so the containers hold no AWS
   credentials, and no access key exists (the B2 key is an SSM value). Listing an optional secret
-  widens the policy on the next apply. The ops tasks (migrate, backup) get their own role, not this one.
+  widens the policy on the next apply. The ops tasks get one role each (`ops_iam.tf`), not this one.
 - **Logs.** `/ecs/satis-prod/backend` and `/ecs/satis-prod/cloudflared`, 14 days. Container
   Insights is off.
 

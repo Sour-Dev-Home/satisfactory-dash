@@ -12,11 +12,17 @@ mock_provider "aws" {
   mock_resource "aws_ecs_task_definition" {
     defaults = { arn = "arn:aws:ecs:us-east-1:123456789012:task-definition/satis-prod:1" }
   }
+  # The ops tasks (#409) read the master secret's ARN, which a real RDS instance always has.
+  mock_resource "aws_db_instance" {
+    defaults = { master_user_secret = [{ secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!db-mock", kms_key_id = "", secret_status = "active" }] }
+  }
 }
 
 variables {
   budget_alert_email = "alerts@example.com"
   backend_image      = "ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  ops_image          = "ghcr.io/sour-dev-home/satisfactory-dash-ops@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+  backup_b2          = { bucket = "example-bucket", endpoint = "https://s3.example-region.backblazeb2.com", region = "example-region" }
 }
 
 run "network_is_public_subnets_without_nat" {

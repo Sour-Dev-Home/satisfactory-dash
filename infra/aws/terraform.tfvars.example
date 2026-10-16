@@ -3,3 +3,13 @@ budget_alert_email = "you@example.com"
 # The backend image by digest, from the image workflow's GHCR push (never :main):
 #   docker buildx imagetools inspect ghcr.io/sour-dev-home/satisfactory-dash-backend:main --format '{{json .Manifest.Digest}}'
 backend_image = "ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:<64 hex digits>"
+# The ops image by digest, the same way (`-ops:main`), for the db-init, db-migrate, backup and restore tasks:
+ops_image = "ghcr.io/sour-dev-home/satisfactory-dash-ops@sha256:<64 hex digits>"
+# The Backblaze B2 bucket for backups (docs-vault/wiki/runbooks/backups.md, the B2 section):
+backup_b2 = {
+  bucket   = "<bucket name>"
+  endpoint = "https://s3.<region>.backblazeb2.com"
+  region   = "<region>"
+}
+# Optional: inject /satis/prod/BACKUP_HEARTBEAT_URL (create it first).
+# backup_heartbeat_enabled = true
