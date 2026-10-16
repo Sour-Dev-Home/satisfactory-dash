@@ -1,10 +1,22 @@
 # `terraform test` for the AWS base (#405). A mock provider stands in for AWS, so this needs no
 # credentials and touches no account; `apply` here only fills computed attributes with fake values.
 
-mock_provider "aws" {}
+mock_provider "aws" {
+  # The provider checks these are ARNs, so the mock's random strings won't do (#408).
+  mock_resource "aws_iam_role" {
+    defaults = { arn = "arn:aws:iam::123456789012:role/satis-prod-ecs-execution" }
+  }
+  mock_resource "aws_ecs_cluster" {
+    defaults = { arn = "arn:aws:ecs:us-east-1:123456789012:cluster/satis-prod" }
+  }
+  mock_resource "aws_ecs_task_definition" {
+    defaults = { arn = "arn:aws:ecs:us-east-1:123456789012:task-definition/satis-prod:1" }
+  }
+}
 
 variables {
   budget_alert_email = "alerts@example.com"
+  backend_image      = "ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 
 run "network_is_public_subnets_without_nat" {

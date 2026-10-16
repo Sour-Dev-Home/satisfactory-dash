@@ -64,3 +64,38 @@ variable "budget_alert_email" {
     error_message = "budget_alert_email must be an email address."
   }
 }
+
+variable "backend_image" {
+  description = "The backend app image by digest (repo@sha256:...), from the image workflow's GHCR push. Never a tag such as :main."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9./_-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$", var.backend_image))
+    error_message = "backend_image must be pinned by digest: <repository>@sha256:<64 hex>."
+  }
+}
+
+variable "backend_optional_secrets" {
+  description = "Optional backend settings to inject from SSM besides the four required ones. Create each /satis/prod/<NAME> before adding it here: a missing parameter stops the task from starting."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for k in var.backend_optional_secrets : contains(local.backend_optional_secret_keys, k)])
+    error_message = "backend_optional_secrets holds only the backend's optional SSM settings (see ecs.tf)."
+  }
+}
+
+variable "backend_environment" {
+  description = "Plain, non-secret backend settings (e.g. FRONTEND_ORIGIN, CORS_ALLOWED_ORIGINS, GOOGLE_REDIRECT_URI, ALERT_DELIVERY, LOG_LEVEL)."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    # A plain value lands in state and the task definition, so a secret-looking name is refused too.
+    condition = alltrue([for k in keys(var.backend_environment) :
+      k != "HOST" && !contains(local.ssm_secret_keys, k) && !can(regex("(?i)(SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE|KEY)", k))
+    ])
+    error_message = "backend_environment cannot set HOST, a name kept in SSM, or a secret-looking name (put secrets in SSM)."
+  }
+}

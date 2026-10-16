@@ -128,6 +128,52 @@ test('criterion 5: a monthly cost budget alerts an address given at apply time',
   assert.doesNotMatch(variable, /default\s*=/, 'the address is never committed');
 });
 
+// #408: the ECS service. The plan-level checks are in ecs.tftest.hcl; these read the source.
+
+test('#408 criterion 1: the backend image is a digest variable, never a tag like :main', () => {
+  const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
+  assert.doesNotMatch(all, /satisfactory-dash-backend:main/);
+  const variable = block(code(read('variables.tf')), 'variable "backend_image"');
+  assert.ok(variable, 'variables.tf has backend_image');
+  assert.doesNotMatch(variable, /default\s*=/, 'the digest is given at apply time');
+  assert.match(variable, /@sha256:\[0-9a-f\]\{64\}\$/);
+});
+
+test('#408 criterion 1: cloudflared runs the same pinned version and digest as compose.yaml', () => {
+  const pin = (text) => text.match(/cloudflare\/cloudflared:[0-9.]+@sha256:[0-9a-f]{64}/g);
+  const ecs = pin(code(read('ecs.tf')));
+  const compose = pin(readFileSync(join(root, '..', '..', 'compose.yaml'), 'utf8'));
+  assert.ok(ecs && ecs.length === 1, 'ecs.tf pins cloudflared once');
+  assert.deepEqual(ecs, compose);
+});
+
+test('#408 criterion 2: the backend health check uses node, since the image has no curl', () => {
+  const tf = code(read('ecs.tf'));
+  assert.match(tf, /"CMD",\s*"node",\s*"-e"/);
+  assert.doesNotMatch(tf, /curl|wget/);
+});
+
+test('#408 criterion 4: no IAM user or access key exists anywhere', () => {
+  const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
+  assert.doesNotMatch(all, /resource\s+"aws_iam_access_key"/);
+  assert.doesNotMatch(all, /resource\s+"aws_iam_user"/);
+  assert.doesNotMatch(all, /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/);
+});
+
+test('#408 criterion 4: the execution role has no managed policy that would widen it', () => {
+  const tf = code(read('iam.tf'));
+  assert.doesNotMatch(tf, /aws_iam_role_policy_attachment|managed_policy_arns|AmazonECSTaskExecutionRolePolicy/);
+});
+
+test('#408 criterion 5: log groups keep 14 days and Container Insights is off', () => {
+  const logs = code(read('logs.tf'));
+  const groups = logs.match(/resource\s+"aws_cloudwatch_log_group"/g) ?? [];
+  const days = logs.match(/retention_in_days\s*=\s*14\b/g) ?? [];
+  assert.ok(groups.length >= 2);
+  assert.equal(days.length, groups.length, 'every log group keeps 14 days');
+  assert.match(code(read('ecs.tf')), /name\s*=\s*"containerInsights"\s*\n\s*value\s*=\s*"disabled"/);
+});
+
 test('the .gitignore keeps state, plans, real tfvars and provider caches out', () => {
   const gi = readFileSync(join(root, '..', '..', '.gitignore'), 'utf8');
   for (const line of ['.terraform/', '*.tfstate', '*.tfstate.*', '*.tfvars', '*.tfplan', '*.tfbackend']) {
