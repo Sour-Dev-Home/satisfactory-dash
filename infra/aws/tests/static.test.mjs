@@ -376,3 +376,18 @@ test('#409 edge: the backup task gives the CLI the satis-backup profile the back
   assert.match(read('ops.tf'), /BACKUP_AWS_PROFILE = "satis-backup"/);
   assert.match(readFileSync(join(root, '../../backend/src/platform/backup/backup.ts'), 'utf8'), /\|\| "satis-backup"/);
 });
+
+test('#409 edge: a B2 key with printf-special characters reaches the credentials file literally', () => {
+  const box = sandbox({ npm: 'cp "$AWS_SHARED_CREDENTIALS_FILE" "$STUB_LOG.cred"; true' });
+  const r = runScript(heredoc('backup_script'), box, {
+    BACKUP_AWS_PROFILE: 'satis-backup',
+    AWS_DEFAULT_REGION: 'example-region',
+    B2_ACCESS_KEY_ID: 'id%s\\n',
+    B2_SECRET_ACCESS_KEY: 'sec%d\\t/+=',
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(
+    readFileSync(`${box.log}.cred`, 'utf8'),
+    '[satis-backup]\naws_access_key_id = id%s\\n\naws_secret_access_key = sec%d\\t/+=\n',
+  );
+});
