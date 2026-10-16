@@ -68,8 +68,8 @@ run "criterion_1_four_ops_tasks_run_their_npm_scripts_on_the_ops_image" {
   }
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.ops["backup"].container_definitions)[0].command == ["npm", "run", "--silent", "backup", "-w", "backend"]
-    error_message = "the backup task runs npm run backup, the same command as compose.yaml"
+    condition     = jsondecode(aws_ecs_task_definition.ops["backup"].container_definitions)[0].command == ["sh", "-c", local.backup_script] && strcontains(local.backup_script, "exec npm run --silent backup -w backend")
+    error_message = "the backup task writes the satis-backup AWS profile, then runs npm run backup, the same command as compose.yaml"
   }
 
   assert {
@@ -228,21 +228,21 @@ run "backup_task_uploads_to_b2_with_the_upload_key" {
 
   assert {
     condition = toset([for e in jsondecode(aws_ecs_task_definition.ops["backup"].container_definitions)[0].environment : e.name]) == toset(
-      ["AWS_DEFAULT_REGION", "BACKUP_LOCAL_DIR", "BACKUP_S3_BUCKET", "BACKUP_S3_ENDPOINT"]
+      ["AWS_DEFAULT_REGION", "BACKUP_AWS_PROFILE", "BACKUP_LOCAL_DIR", "BACKUP_S3_BUCKET", "BACKUP_S3_ENDPOINT"]
     )
     error_message = "the backup's plain settings: the B2 bucket, endpoint and region, and the image's local dir"
   }
 
   assert {
     condition = toset([for s in jsondecode(aws_ecs_task_definition.ops["backup"].container_definitions)[0].secrets : s.name]) == toset(
-      ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "BACKUP_AGE_RECIPIENT", "BACKUP_DATABASE_URL"]
+      ["B2_ACCESS_KEY_ID", "B2_SECRET_ACCESS_KEY", "BACKUP_AGE_RECIPIENT", "BACKUP_DATABASE_URL"]
     )
     error_message = "the backup's secrets, with no heartbeat until backup_heartbeat_enabled is set"
   }
 
   assert {
-    condition     = contains([for s in jsondecode(aws_ecs_task_definition.ops["backup"].container_definitions)[0].secrets : s.valueFrom if s.name == "AWS_ACCESS_KEY_ID"], local.ssm_parameter_arns["B2_ACCESS_KEY_ID"])
-    error_message = "the AWS CLI's key is the B2 upload key from SSM, never an AWS key"
+    condition     = contains([for s in jsondecode(aws_ecs_task_definition.ops["backup"].container_definitions)[0].secrets : s.valueFrom if s.name == "B2_ACCESS_KEY_ID"], local.ssm_parameter_arns["B2_ACCESS_KEY_ID"])
+    error_message = "the backup's profile key is the B2 upload key from SSM, never an AWS key"
   }
 
   assert {

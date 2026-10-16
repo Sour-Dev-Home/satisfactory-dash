@@ -29,13 +29,27 @@ locals {
   }
 
   # DATABASE_ADMIN_URL from the master password, URL-encoded by node since RDS generates it with
-  # punctuation. The password leaves the environment before db:init starts.
+  # punctuation. Only DATABASE_ADMIN_URL carries the password into db:init, which never prints it.
   db_init_script = <<-EOT
     set -eu
     DATABASE_ADMIN_URL="$(node -e 'const e = process.env; process.stdout.write("postgres://" + encodeURIComponent(e.DB_MASTER_USERNAME) + ":" + encodeURIComponent(e.DB_MASTER_PASSWORD) + "@" + e.DB_HOST + ":" + e.DB_PORT + "/postgres?" + e.DB_TLS_QUERY)')"
     export DATABASE_ADMIN_URL
     unset DB_MASTER_PASSWORD
     exec npm run --silent db:init -w backend
+  EOT
+
+  # backup.ts always runs `aws s3 cp --profile <BACKUP_AWS_PROFILE>`, and an explicit profile makes the AWS
+  # CLI ignore key variables in the environment, so the task needs a profile of that name. As on the compose
+  # host (a mounted credentials file), it writes one, private to the container, with the B2 upload key.
+  backup_script = <<-EOT
+    set -eu
+    umask 077
+    cfg="$(mktemp -d)"
+    printf '[profile %s]\nregion = %s\n' "$BACKUP_AWS_PROFILE" "$AWS_DEFAULT_REGION" > "$cfg/config"
+    printf '[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\n' "$BACKUP_AWS_PROFILE" "$B2_ACCESS_KEY_ID" "$B2_SECRET_ACCESS_KEY" > "$cfg/credentials"
+    unset B2_ACCESS_KEY_ID B2_SECRET_ACCESS_KEY
+    export AWS_CONFIG_FILE="$cfg/config" AWS_SHARED_CREDENTIALS_FILE="$cfg/credentials"
+    exec npm run --silent backup -w backend
   EOT
 
   # One backup from B2 (RESTORE_FILE, set per run) into the database MIGRATOR_DATABASE_URL names, as
@@ -87,14 +101,14 @@ locals {
     }
     # The same command as compose.yaml's backup service, as the read-only satis_backup role.
     "backup" = {
-      command     = ["npm", "run", "--silent", "backup", "-w", "backend"]
-      environment = merge(local.b2_environment, { BACKUP_LOCAL_DIR = "/var/backups/satis" })
+      command     = ["sh", "-c", local.backup_script]
+      environment = merge(local.b2_environment, { BACKUP_LOCAL_DIR = "/var/backups/satis", BACKUP_AWS_PROFILE = "satis-backup" })
       ssm = merge(
         {
-          BACKUP_DATABASE_URL   = local.ssm_parameter_arns["BACKUP_DATABASE_URL"]
-          BACKUP_AGE_RECIPIENT  = local.ssm_parameter_arns["BACKUP_AGE_RECIPIENT"]
-          AWS_ACCESS_KEY_ID     = local.ssm_parameter_arns["B2_ACCESS_KEY_ID"]
-          AWS_SECRET_ACCESS_KEY = local.ssm_parameter_arns["B2_SECRET_ACCESS_KEY"]
+          BACKUP_DATABASE_URL  = local.ssm_parameter_arns["BACKUP_DATABASE_URL"]
+          BACKUP_AGE_RECIPIENT = local.ssm_parameter_arns["BACKUP_AGE_RECIPIENT"]
+          B2_ACCESS_KEY_ID     = local.ssm_parameter_arns["B2_ACCESS_KEY_ID"]
+          B2_SECRET_ACCESS_KEY = local.ssm_parameter_arns["B2_SECRET_ACCESS_KEY"]
         },
         var.backup_heartbeat_enabled ? { BACKUP_HEARTBEAT_URL = local.ssm_parameter_arns["BACKUP_HEARTBEAT_URL"] } : {},
       )

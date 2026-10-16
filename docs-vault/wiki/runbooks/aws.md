@@ -121,11 +121,11 @@ Secrets Manager, and Terraform never names their values.
    aws ssm put-parameter --type SecureString --name /satis/restore/B2_READ_APPLICATION_KEY --value file://<key file>
    ```
 
-4. Run it with the file name, then delete the three values **whatever the result**:
+4. Run it with the file name. The delete is on the same line after `;`, so it runs **whatever the
+   result**:
 
    ```sh
-   run_ops restore --overrides '{"containerOverrides":[{"name":"ops","environment":[{"name":"RESTORE_FILE","value":"satis-<time>.dump.age"}]}]}'
-   aws ssm delete-parameters --names /satis/restore/AGE_IDENTITY /satis/restore/B2_READ_KEY_ID /satis/restore/B2_READ_APPLICATION_KEY
+   run_ops restore --overrides '{"containerOverrides":[{"name":"ops","environment":[{"name":"RESTORE_FILE","value":"satis-<time>.dump.age"}]}]}'; aws ssm delete-parameters --names /satis/restore/AGE_IDENTITY /satis/restore/B2_READ_KEY_ID /satis/restore/B2_READ_APPLICATION_KEY
    ```
 
    ECS reads the values when the task starts, so they can go as soon as it is running. Check they are

@@ -158,19 +158,20 @@ test('#408 criterion 4: no IAM user or access key exists anywhere', () => {
   const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
   assert.doesNotMatch(all, /resource\s+"aws_iam_access_key"/);
   assert.doesNotMatch(all, /resource\s+"aws_iam_user"/);
-  // #409: the AWS CLI in the backup and restore tasks reads the Backblaze B2 key under these names. Each
-  // mention must be exactly that mapping, from a B2 key's SSM parameter, so no AWS key can appear.
+  // #409: the AWS CLI in the restore task reads the per-run Backblaze B2 read key under these names (the
+  // backup writes its key to a profile file instead). Each mention must be exactly that mapping, so no
+  // AWS key can appear.
   const lines = all.split('\n').filter((l) => /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/.test(l));
   const b2 = [
-    /^\s*AWS_ACCESS_KEY_ID\s*=\s*local\.(ssm_parameter_arns\["B2_ACCESS_KEY_ID"\]|restore_ssm_arns\["B2_READ_KEY_ID"\])\s*$/,
-    /^\s*AWS_SECRET_ACCESS_KEY\s*=\s*local\.(ssm_parameter_arns\["B2_SECRET_ACCESS_KEY"\]|restore_ssm_arns\["B2_READ_APPLICATION_KEY"\])\s*$/,
+    /^\s*AWS_ACCESS_KEY_ID\s*=\s*local\.restore_ssm_arns\["B2_READ_KEY_ID"\]\s*$/,
+    /^\s*AWS_SECRET_ACCESS_KEY\s*=\s*local\.restore_ssm_arns\["B2_READ_APPLICATION_KEY"\]\s*$/,
   ];
   // The restore script drops the read key from its environment once the download is done.
   const unset = /^\s*unset AGE_IDENTITY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY\s*$/;
   for (const line of lines) {
     assert.ok(b2.some((re) => re.test(line)) || unset.test(line), `only a B2 key from SSM may be named AWS_*_KEY: ${line.trim()}`);
   }
-  assert.equal(lines.filter((l) => !unset.test(l)).length, 4, 'the backup and the restore each map one B2 key id and secret');
+  assert.equal(lines.filter((l) => !unset.test(l)).length, 2, 'the restore maps one B2 key id and secret');
 });
 
 test('#409 criterion 1: only the ops files read Secrets Manager, and only for db-init', () => {
@@ -354,4 +355,24 @@ test('#409 edge: db-init builds DATABASE_ADMIN_URL with the master password URL-
   assert.equal(url.searchParams.get('sslmode'), 'verify-full');
   assert.equal(url.searchParams.get('sslrootcert'), '/etc/ssl/rds/global-bundle.pem');
   assert.equal(readFileSync(`${box.log}.pw`, 'utf8'), 'unset', 'db:init never sees DB_MASTER_PASSWORD itself');
+});
+
+test('#409 edge: the backup task gives the CLI the satis-backup profile the backup always passes, taking the key from the environment', () => {
+  const box = sandbox({
+    npm: 'cp "$AWS_CONFIG_FILE" "$STUB_LOG.cfg"; cp "$AWS_SHARED_CREDENTIALS_FILE" "$STUB_LOG.cred"; env | grep -c "^B2_" > "$STUB_LOG.env"; true',
+  });
+  const r = runScript(heredoc('backup_script'), box, {
+    BACKUP_AWS_PROFILE: 'satis-backup',
+    AWS_DEFAULT_REGION: 'example-region',
+    B2_ACCESS_KEY_ID: 'up-key',
+    B2_SECRET_ACCESS_KEY: 'up-secret',
+  });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(r.calls, ['npm run --silent backup -w backend']);
+  assert.equal(readFileSync(`${box.log}.cfg`, 'utf8'), '[profile satis-backup]\nregion = example-region\n');
+  assert.equal(readFileSync(`${box.log}.cred`, 'utf8'), '[satis-backup]\naws_access_key_id = up-key\naws_secret_access_key = up-secret\n');
+  assert.equal(readFileSync(`${box.log}.env`, 'utf8').trim(), '0', 'the key reaches the CLI by its file only');
+  // backup.ts defaults the profile to this name; the task must set the same one.
+  assert.match(read('ops.tf'), /BACKUP_AWS_PROFILE = "satis-backup"/);
+  assert.match(readFileSync(join(root, '../../backend/src/platform/backup/backup.ts'), 'utf8'), /\|\| "satis-backup"/);
 });
