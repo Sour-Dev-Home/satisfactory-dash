@@ -37,6 +37,24 @@ run_ops() {  # run_ops <task> [extra run-task arguments]: runs it, waits, prints
 }
 ```
 
+The same in PowerShell (set the region first; the sh form takes it from your AWS profile):
+
+```powershell
+$env:AWS_DEFAULT_REGION = 'us-east-1'
+$subnets = (terraform output -json public_subnet_ids | ConvertFrom-Json) -join ','
+$NET = "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$(terraform output -raw task_security_group_id)],assignPublicIp=ENABLED}"
+function run_ops {  # run_ops <task> [extra run-task arguments]: runs it, waits, prints the exit code
+  $task = $args[0]; $rest = @($args | Select-Object -Skip 1)
+  $arn = aws ecs run-task --cluster satis-prod --launch-type FARGATE --task-definition "satis-prod-ops-$task" `
+    --network-configuration $NET @rest --query 'tasks[0].taskArn' --output text
+  if ($LASTEXITCODE -ne 0) { return }
+  aws ecs wait tasks-stopped --cluster satis-prod --tasks $arn
+  aws ecs describe-tasks --cluster satis-prod --tasks $arn `
+    --query 'tasks[0].{exit:containers[0].exitCode,reason:stoppedReason}' --output table
+  aws logs tail /ecs/satis-prod/ops --log-stream-name-prefix "$task/" --since 30m
+}
+```
+
 Exit code `0` is success. A task that never started (a missing SSM parameter, an image pull refused)
 shows no exit code and says why in `reason`.
 
@@ -62,8 +80,18 @@ The first apply follows `infra/aws/README.md` ("First apply"), with the ops piec
      ops tasks hand the B2 key to the AWS CLI as its access key; it is never an AWS key.
    - `BACKUP_HEARTBEAT_URL` only if you set `backup_heartbeat_enabled = true` (recommended: a backup
      that starts and fails alerts nobody otherwise).
-4. **The ops tasks**: `terraform plan -target=aws_ecs_task_definition.ops -out=ops.tfplan`, read it,
-   `terraform apply ops.tfplan` (it brings their roles and the log group along).
+4. **The ops tasks**, with every target the first ops run needs (as used on 2026-10-16): without the
+   policy the tasks can't read SSM, and without the cluster and the network they can't start.
+
+   ```sh
+   terraform plan -target=aws_ecs_task_definition.ops -target=aws_iam_role_policy.ops_execution \
+     -target=aws_ecs_cluster.main -target=aws_internet_gateway.main -target=aws_route_table.public \
+     -target=aws_route_table_association.public -target=aws_default_security_group.main -out=ops.tfplan
+   ```
+
+   Read it, then `terraform apply ops.tfplan` (it brings their roles and the log group along). In
+   PowerShell, quote each `-target=...` (and `-backend-config=...` at `terraform init`), e.g.
+   `'-target=aws_ecs_task_definition.ops'`: unquoted, PowerShell splits the argument at the `.`.
 5. **Database**: `run_ops db-init`, then **Check the backup role** (below), then `run_ops db-migrate`.
    At the cutover, restore the PC's latest backup in between (see Restore).
 6. **Everything else**: `terraform plan -out=all.tfplan`, read it, `terraform apply all.tfplan`. This
@@ -166,8 +194,18 @@ The budget alert in `budget.tf` is the second signal; confirm its email subscrip
 ## Check the backup role
 
 `db-init` grants `pg_read_all_data` to `satis_backup` as the RDS master user, which on RDS is a member
-of `rds_superuser`, not a superuser. [NEEDS VERIFICATION] that `rds_superuser` may grant that
-predefined role on RDS PostgreSQL 18; check it once, right after the first `db-init`:
+of `rds_superuser`, not a superuser. That grant succeeded on RDS PostgreSQL 18 at the first `db-init`
+(2026-10-16). Two other things a non-superuser master runs into, which `db-init` handles since #421:
+
+- Since PostgreSQL 16 a `CREATEROLE` user holds the roles it creates with `ADMIN` but without `SET` or
+  `INHERIT`, so it can neither make `satis_migrator` a database owner nor act as it. `db-init` grants
+  itself `SET` (never `INHERIT`) on `satis_migrator` for those steps only and revokes it afterwards,
+  also when a step fails; the master keeps no role membership (check: `pg_auth_members`).
+- RDS creates the `db_name` database (`satis`) at launch, owned by the master. `db-init` hands it to
+  `satis_migrator` (the `public` schema follows, being owned by `pg_database_owner`) and keeps
+  `CONNECT` on it for the master, so a re-run can still connect.
+
+To check the grant on a new instance, right after its first `db-init`:
 
 1. The `db-init` log ends with `Database "satis" and roles satis_migrator, satis_app, satis_backup are
    ready`. A refused grant fails the task with `permission denied to grant role "pg_read_all_data"`.
