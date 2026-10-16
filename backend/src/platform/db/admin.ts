@@ -51,7 +51,9 @@ function urlForDatabase(url: string, database: string): string {
  * Idempotent. Creates the two roles (passwords set or reset), the database owned by the
  * migrator with the builtin C.UTF-8 locale (the same in every environment, so sorting doesn't
  * differ between Windows and Linux), and the baseline grants: the app role may connect and
- * read the migrations table, and nobody else may use the public schema.
+ * read the migrations table, and nobody else may use the public schema. An existing database
+ * with another owner (RDS creates `db_name` owned by the master user) is handed to the migrator.
+ * Works with a superuser admin and with a non-superuser CREATEROLE CREATEDB one (RDS).
  */
 export async function provisionDatabase(options: ProvisionOptions): Promise<void> {
   if (!IDENTIFIER.test(options.database)) {
@@ -77,32 +79,80 @@ export async function provisionDatabase(options: ProvisionOptions): Promise<void
       await admin.query(`GRANT pg_read_all_data TO ${BACKUP_ROLE}`);
       await admin.query(`ALTER ROLE ${BACKUP_ROLE} SET default_transaction_read_only = on`);
     }
-    const database = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [options.database]);
-    if (database.rows.length === 0) {
-      await admin.query(
-        `CREATE DATABASE ${admin.escapeIdentifier(options.database)} OWNER ${MIGRATOR_ROLE} TEMPLATE template0 ` +
-          "ENCODING 'UTF8' LOCALE_PROVIDER builtin BUILTIN_LOCALE 'C.UTF-8'",
+    await withMigratorSet(admin, async () => {
+      const name = admin.escapeIdentifier(options.database);
+      const database = await admin.query(
+        "SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = $1",
+        [options.database],
       );
-    }
+      if (database.rows.length === 0) {
+        await admin.query(
+          `CREATE DATABASE ${name} OWNER ${MIGRATOR_ROLE} TEMPLATE template0 ` +
+            "ENCODING 'UTF8' LOCALE_PROVIDER builtin BUILTIN_LOCALE 'C.UTF-8'",
+        );
+      } else if (database.rows[0].owner !== MIGRATOR_ROLE) {
+        // RDS creates `db_name` itself, owned by the master user. The public schema is owned by
+        // pg_database_owner, so it follows the database to the migrator.
+        await admin.query(`ALTER DATABASE ${name} OWNER TO ${MIGRATOR_ROLE}`);
+      }
+      // As the owner, from here: once PUBLIC loses CONNECT, an admin that is neither the owner nor a
+      // superuser could not connect to the database at all (on a re-run either), so it keeps CONNECT
+      // for itself. A privilege on this database only, not a role membership.
+      await admin.query(`SET ROLE ${MIGRATOR_ROLE}`);
+      await admin.query(`REVOKE ALL ON DATABASE ${name} FROM PUBLIC`);
+      for (const role of ["SESSION_USER", APP_ROLE, ...(options.backupPassword === undefined ? [] : [BACKUP_ROLE])]) {
+        await admin.query(`GRANT CONNECT ON DATABASE ${name} TO ${role}`);
+      }
+      await admin.query("RESET ROLE");
+      await withClient(urlForDatabase(options.adminUrl, options.database), grantInSchema);
+    });
   });
-  await withClient(urlForDatabase(options.adminUrl, options.database), async (db) => {
-    const name = db.escapeIdentifier(options.database);
-    await db.query(`REVOKE ALL ON DATABASE ${name} FROM PUBLIC`);
-    await db.query(`GRANT CONNECT ON DATABASE ${name} TO ${APP_ROLE}`);
-    if (options.backupPassword !== undefined) {
-      await db.query(`GRANT CONNECT ON DATABASE ${name} TO ${BACKUP_ROLE}`);
+}
+
+/**
+ * Runs fn while the admin may SET ROLE to the migrator. A superuser, or an admin that already
+ * holds SET on it, needs nothing. A non-superuser CREATEROLE admin (RDS) holds the roles it created
+ * with ADMIN TRUE, INHERIT FALSE, SET FALSE (PostgreSQL 16+), so it can neither make the migrator a
+ * database owner nor act as it: it grants itself SET (never INHERIT) for these steps only and revokes
+ * the grant afterwards, also when a step fails, so it keeps no lasting membership.
+ */
+async function withMigratorSet<T>(admin: pg.Client, fn: () => Promise<T>): Promise<T> {
+  const held = await admin.query("SELECT pg_has_role(session_user, $1, 'SET') AS held", [MIGRATOR_ROLE]);
+  if (held.rows[0].held === true) {
+    return fn();
+  }
+  await admin.query(`GRANT ${MIGRATOR_ROLE} TO SESSION_USER WITH INHERIT FALSE, SET TRUE`);
+  let failure: unknown = null;
+  try {
+    return await fn();
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    try {
+      // A step may have failed under SET ROLE: revoke as the admin itself, from the admin itself.
+      await admin.query("RESET ROLE");
+      await admin.query(`REVOKE ${MIGRATOR_ROLE} FROM SESSION_USER`);
+    } catch (revokeError) {
+      // Never let a lingering grant go unnoticed, but keep the step's own error when there was one.
+      const message = `db:init could not revoke its temporary grant: run REVOKE ${MIGRATOR_ROLE} FROM <the admin role> by hand.`;
+      // eslint-disable-next-line no-unsafe-finally
+      throw failure === null ? new Error(message, { cause: revokeError }) : new AggregateError([failure, revokeError], message);
     }
-    await db.query("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
-    await db.query(`GRANT USAGE ON SCHEMA public TO ${APP_ROLE}`);
-    // node-pg-migrate's bookkeeping table is created by the migrator; the app reads it for the
-    // startup schema check and nothing else in public.
-    await db.query(
-      `ALTER DEFAULT PRIVILEGES FOR ROLE ${MIGRATOR_ROLE} IN SCHEMA public GRANT SELECT ON TABLES TO ${APP_ROLE}`,
-    );
-    // Also cover a bookkeeping table that already exists (re-running db:init after the first
-    // migration): default privileges only apply to tables created later.
-    await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${APP_ROLE}`);
-  });
+  }
+}
+
+/** The public-schema baseline, run as the migrator (the database owner, and so the owner of public). */
+async function grantInSchema(db: pg.Client): Promise<void> {
+  await db.query(`SET ROLE ${MIGRATOR_ROLE}`);
+  await db.query("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
+  await db.query(`GRANT USAGE ON SCHEMA public TO ${APP_ROLE}`);
+  // node-pg-migrate's bookkeeping table is created by the migrator; the app reads it for the
+  // startup schema check and nothing else in public.
+  await db.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${APP_ROLE}`);
+  // Also cover a bookkeeping table that already exists (re-running db:init after the first
+  // migration): default privileges only apply to tables created later.
+  await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${APP_ROLE}`);
 }
 
 /** backend/migrations, resolved from this file so it works from src and from the repo root. */
