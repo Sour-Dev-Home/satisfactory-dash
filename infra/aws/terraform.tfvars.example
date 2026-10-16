@@ -11,5 +11,8 @@ backup_b2 = {
   endpoint = "https://s3.<region>.backblazeb2.com"
   region   = "<region>"
 }
+# Optional: days of RDS automated backups, 0 to 7. Set 0 if the Free plan refuses 1 too; the nightly
+# B2 backup is the backup either way.
+# db_backup_retention_days = 1
 # Optional: inject /satis/prod/BACKUP_HEARTBEAT_URL (create it first).
 # backup_heartbeat_enabled = true

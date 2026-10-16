@@ -44,6 +44,17 @@ variable "db_deletion_protection" {
   default     = true
 }
 
+variable "db_backup_retention_days" {
+  description = "Days of RDS automated backups (point-in-time restore). The AWS Free plan refused 7 at the first apply (#418); set 0 to turn automated backups off if it refuses 1 too. The nightly B2 backup (ADR-0035) is the backup either way."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 7 && floor(var.db_backup_retention_days) == var.db_backup_retention_days
+    error_message = "db_backup_retention_days must be a whole number from 0 to 7."
+  }
+}
+
 variable "monthly_budget_usd" {
   description = "Monthly gross spend (before credits) that triggers the budget alerts. ADR-0034 expects about $33."
   type        = number

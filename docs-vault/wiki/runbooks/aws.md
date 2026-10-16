@@ -104,7 +104,9 @@ The restore task takes one backup from B2 and restores it into the database `MIG
 names, as `satis_migrator` (which owns it), in **one transaction**: into a database that already has
 tables it fails and changes nothing. So it is for an **empty** database, right after `db-init` and
 before `db-migrate`: the cutover from the PC, or a new RDS instance after a loss. To undo a bad change
-on a live RDS database, use RDS point-in-time restore instead (7 days of automated backups).
+on a live RDS database, use RDS point-in-time restore instead, within `db_backup_retention_days` of
+automated backups (default 1 day, since the AWS Free plan refused 7). With
+`db_backup_retention_days = 0` there is no point-in-time restore, and the B2 backup is the only way back.
 
 The age private key and the B2 **read** key are given **for that run only**: put into
 `/satis/restore/`, used by the task when it starts, then deleted. They are never kept in SSM or

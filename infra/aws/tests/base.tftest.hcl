@@ -87,8 +87,8 @@ run "rds_matches_adr_0034" {
   }
 
   assert {
-    condition     = aws_db_instance.main.backup_retention_period == 7
-    error_message = "7-day automated backups"
+    condition     = aws_db_instance.main.backup_retention_period == 1
+    error_message = "1-day automated backups by default: the AWS Free plan refused 7 (#418)"
   }
 
   assert {
@@ -192,6 +192,49 @@ run "budget_limit_must_be_positive" {
   }
 
   expect_failures = [var.monthly_budget_usd]
+}
+
+run "backup_retention_above_seven_days_is_refused" {
+  command = plan
+
+  variables {
+    db_backup_retention_days = 8
+  }
+
+  expect_failures = [var.db_backup_retention_days]
+}
+
+run "edge_negative_backup_retention_is_refused" {
+  command = plan
+
+  variables {
+    db_backup_retention_days = -1
+  }
+
+  expect_failures = [var.db_backup_retention_days]
+}
+
+run "edge_fractional_backup_retention_is_refused" {
+  command = plan
+
+  variables {
+    db_backup_retention_days = 1.5
+  }
+
+  expect_failures = [var.db_backup_retention_days]
+}
+
+run "edge_zero_backup_retention_turns_backups_off" {
+  command = plan
+
+  variables {
+    db_backup_retention_days = 0
+  }
+
+  assert {
+    condition     = aws_db_instance.main.backup_retention_period == 0
+    error_message = "0 is allowed and turns RDS automated backups off"
+  }
 }
 
 run "edge_one_availability_zone_is_refused" {
