@@ -148,6 +148,15 @@ describe.skipIf(!available)("provisionDatabase with a non-superuser CREATEROLE C
     await expectProvisioned("satis_halfdone");
   });
 
+  it("edge: a superuser admin makes no membership grant at all", async () => {
+    const superUrl = withUser(adminUrl, "postgres", "postgres", "postgres");
+    await provisionDatabase({ ...options("satis_super"), adminUrl: superUrl });
+    await provisionDatabase({ ...options("satis_super"), adminUrl: superUrl });
+    expect(await memberships("postgres")).toEqual([]);
+    const owner = await superuser.query("SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = 'satis_super'");
+    expect(owner.rows[0]?.owner).toBe("satis_migrator");
+  });
+
   it("edge: leaves an admin that already held SET on the migrator exactly as it was", async () => {
     const holder = "rds_holder";
     await superuser.query(`CREATE ROLE ${holder} LOGIN CREATEROLE CREATEDB PASSWORD '${ADMIN_PASSWORD}'`);
