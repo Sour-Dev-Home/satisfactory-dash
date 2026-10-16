@@ -1,4 +1,4 @@
-# ADR-0034 §2: RDS PostgreSQL 18, db.t4g.micro, single-AZ, 20 GB gp3, private, 7-day backups.
+# ADR-0034 §2: RDS PostgreSQL 18, db.t4g.micro, single-AZ, 20 GB gp3, private, automated backups for var.db_backup_retention_days days (default 1: the Free plan refused 7, #418).
 # Plain PostgreSQL only (§3): no RDS-only extensions, so pg_dump/pg_restore moves the data off AWS.
 
 resource "aws_db_subnet_group" "main" {
@@ -30,7 +30,7 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
 
-  backup_retention_period  = 7
+  backup_retention_period  = var.db_backup_retention_days
   backup_window            = "07:00-07:30"
   maintenance_window       = "sun:08:00-sun:08:30"
   copy_tags_to_snapshot    = true

@@ -10,7 +10,7 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
 | `versions.tf` | Terraform `>= 1.11`, the AWS provider, the S3 backend with `use_lockfile` (us-east-1) |
 | `providers.tf` | Region and default tags |
 | `network.tf` | VPC, two public subnets, internet gateway; no NAT gateway. Task group: no inbound rules. |
-| `rds.tf` | PostgreSQL 18, db.t4g.micro, single-AZ, 20 GB gp3, private, 7-day backups, password in Secrets Manager |
+| `rds.tf` | PostgreSQL 18, db.t4g.micro, single-AZ, 20 GB gp3, private, automated backups for `db_backup_retention_days` (default 1, 0 turns them off), password in Secrets Manager |
 | `ssm.tf` | The `/satis/prod/*` names (never values) and their ARNs |
 | `budget.tf` | Monthly budget on gross spend (credits excluded) with two email alerts |
 | `ecs.tf` | Cluster (Container Insights off), the 0.5 vCPU / 1 GB ARM64 task (backend + cloudflared), the service (#408) |
@@ -102,6 +102,12 @@ The exit (ADR-0034 §6): set `db_deletion_protection = false`, apply, take the f
   `allow_major_version_upgrade` for one apply. Mind the cutover: the PC's database is PostgreSQL 18,
   and a dump from a newer server isn't guaranteed to restore into an older one, so dump with the
   plain format and rehearse that restore into 17 before the move.
+- **RDS backup retention refused (seen 2026-10-16, #418):** the first apply failed with
+  `FreeTierRestrictionError: The specified backup retention period exceeds the maximum available to
+  free tier customers` at the old hard-coded 7 days. Retention is now `db_backup_retention_days`,
+  default 1. If 1 is refused too, set `db_backup_retention_days = 0` in `terraform.tfvars`, which
+  turns RDS automated backups (and point-in-time restore) off. The nightly age-encrypted B2 backup
+  (ADR-0035) is the real backup either way; RDS automated backups are only the fast-restore extra.
 - **Fargate on ARM refused:** run the task on x86 instead, with `runtime_platform { cpu_architecture = "X86_64" }`
   in the ECS task definition (the ECS issue). The backend image is already multi-arch (linux/amd64 and
   linux/arm64), so only the platform changes. x86 Fargate costs about 25% more per vCPU and GB-hour
