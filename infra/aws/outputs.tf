@@ -45,5 +45,20 @@ output "ecs_service_name" {
 
 output "log_group_names" {
   description = "The 14-day CloudWatch log groups, by container."
-  value       = { backend = aws_cloudwatch_log_group.backend.name, cloudflared = aws_cloudwatch_log_group.cloudflared.name }
+  value       = { backend = aws_cloudwatch_log_group.backend.name, cloudflared = aws_cloudwatch_log_group.cloudflared.name, ops = aws_cloudwatch_log_group.ops.name }
+}
+
+output "ops_task_families" {
+  description = "Ops task => task definition family, for `aws ecs run-task --task-definition` (docs-vault/wiki/runbooks/aws.md)."
+  value       = { for k, td in aws_ecs_task_definition.ops : k => td.family }
+}
+
+output "restore_parameter_names" {
+  description = "The per-run restore values: put each in just before a restore and delete it right after."
+  value       = { for k in local.restore_ssm_keys : k => "${local.restore_ssm_prefix}${k}" }
+}
+
+output "backup_schedule_name" {
+  description = "The EventBridge Scheduler schedule that runs the backup task."
+  value       = aws_scheduler_schedule.backup.name
 }

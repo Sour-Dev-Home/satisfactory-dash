@@ -20,9 +20,13 @@ locals {
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "BOOTSTRAP_OWNER_EMAIL",
-    # The migrate job's role passwords
+    # The db-init task's role passwords (DB_BACKUP_PASSWORD creates satis_backup), and the URLs the
+    # db-migrate and restore tasks (satis_migrator) and the backup task (satis_backup) connect with (ops.tf)
     "DB_MIGRATOR_PASSWORD",
     "DB_APP_PASSWORD",
+    "DB_BACKUP_PASSWORD",
+    "MIGRATOR_DATABASE_URL",
+    "BACKUP_DATABASE_URL",
     # cloudflared
     "TUNNEL_TOKEN",
     # The backup job (ADR-0035: Backblaze B2 through its S3-compatible API, and the heartbeat)
