@@ -65,7 +65,7 @@ comes later. `[OWNER]` = the owner decides; `[LEGAL]` = get legal review before 
    - Google (sign-in: you share your email and id with us)
    - Cloudflare (hosting, DNS, the tunnel and firewall: sees every request's IP and metadata)
    - Backblaze (encrypted backups, ADR-0035; the nightly backup moved there on 2026-09-26)
-   - Amazon Web Services (the older encrypted backups in S3, read-only and removed within 37 days of 2026-09-26; later, email via SES if it is ever added)
+   - Amazon Web Services (hosts the app server, its database and the server logs, kept 14 days, from the cutover, ADR-0034 §7; still holds the older encrypted backups in S3, read-only and removed within 37 days of 2026-09-26; later, email via SES if it is ever added)
    - Discord (only if you configure a webhook: alert text is posted under Discord's terms)
    `[LEGAL]` transfers outside the owner's country (US providers) and whether a DPA / terms
    acceptance is needed per provider.

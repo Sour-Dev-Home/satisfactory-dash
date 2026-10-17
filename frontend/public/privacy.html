@@ -12,7 +12,7 @@
     <header><a href="/">Satis Manager</a></header>
     <main>
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 26 September 2026</p>
+      <p class="updated">Last updated: 16 October 2026</p>
 
       <p>
         Satis Manager is a free dashboard for a Satisfactory dedicated server. This page says what
@@ -110,7 +110,11 @@
         <li>Google: signing in. You share your email address and account id with us through it.</li>
         <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
         <li>Backblaze: stores our encrypted backups.</li>
-        <li>Amazon Web Services: still holds our older encrypted backups. Nothing new is added to them, and they're removed within 37 days.</li>
+        <li>
+          Amazon Web Services: hosts our app server, its database and the server logs (kept 14 days).
+          It also still holds our older encrypted backups. Nothing new is added to them, and they're
+          removed within 37 days.
+        </li>
         <li>
           Discord: only if a server's owner or an admin sets up a webhook. It receives that server's
           alert messages (the server's name and what the alert is about: a circuit, or a count of
