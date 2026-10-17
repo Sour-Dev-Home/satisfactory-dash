@@ -18,8 +18,10 @@ locals {
   backend_secret_keys = distinct(concat(local.backend_required_secrets, var.backend_optional_secrets))
   task_secret_keys    = concat(local.backend_secret_keys, ["TUNNEL_TOKEN"])
 
-  # The runtime image has node but no curl (backend/Dockerfile); the same probe as compose.yaml.
-  backend_health_probe = "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
+  # The runtime image has node but no curl (backend/Dockerfile). Liveness, not compose.yaml's readiness
+  # probe (#425): /ready fails while RDS restarts, and ECS would replace a healthy task. An external
+  # uptime monitor watches /api/health/ready instead (runbooks/aws.md).
+  backend_health_probe = "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"
 }
 
 resource "aws_ecs_cluster" "main" {
@@ -78,6 +80,8 @@ resource "aws_ecs_task_definition" "main" {
       name      = "cloudflared"
       image     = local.cloudflared_image
       essential = true
+      # HEALTHY is liveness (#425): the tunnel connects once the process is up, possibly before the
+      # database answers, and /api/health/ready returns 503 until it does.
       dependsOn = [{ containerName = "backend", condition = "HEALTHY" }]
       # Metrics on loopback only, as in compose.yaml.
       command = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]

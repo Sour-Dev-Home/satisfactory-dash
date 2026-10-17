@@ -105,7 +105,7 @@ run "criterion_1_cloudflared_is_pinned_waits_for_a_healthy_backend_and_targets_l
   }
 }
 
-run "criterion_2_backend_health_check_is_node_fetching_ready" {
+run "criterion_2_backend_health_check_is_node_fetching_liveness" {
   command = apply
 
   assert {
@@ -114,8 +114,18 @@ run "criterion_2_backend_health_check_is_node_fetching_ready" {
   }
 
   assert {
-    condition     = strcontains([for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : c.healthCheck.command if c.name == "backend"][0][3], "fetch('http://127.0.0.1:3001/api/health/ready')")
-    error_message = "the health check fetches http://127.0.0.1:3001/api/health/ready"
+    condition     = strcontains([for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : c.healthCheck.command if c.name == "backend"][0][3], "fetch('http://127.0.0.1:3001/api/health')")
+    error_message = "the health check fetches http://127.0.0.1:3001/api/health (liveness, #425)"
+  }
+
+  assert {
+    condition     = !strcontains([for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : c.healthCheck.command if c.name == "backend"][0][3], "/api/health/ready")
+    error_message = "the health check does not use /api/health/ready, which fails while RDS restarts (#425)"
+  }
+
+  assert {
+    condition     = [for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : [c.healthCheck.interval, c.healthCheck.retries, c.healthCheck.startPeriod] if c.name == "backend"][0] == [10, 6, 30]
+    error_message = "interval, retries and start period are unchanged (#425)"
   }
 }
 
