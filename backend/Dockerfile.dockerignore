@@ -1,0 +1,21 @@
+# BuildKit's per-Dockerfile ignore file (#428): every build of backend/Dockerfile uses the repository
+# root as its context (image.yml, compose.yml, `docker build -f backend/Dockerfile .`), so these
+# patterns are relative to the root, not to backend/. The old backend/.dockerignore never applied:
+# Docker reads .dockerignore only from the root of the context.
+**/node_modules
+**/dist
+**/build
+**/.env
+**/.env.*
+!**/.env.example
+backend/servers.json
+.git
+.claude
+.lanes
+**/.terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.dump
+**/*.age
+**/*.key

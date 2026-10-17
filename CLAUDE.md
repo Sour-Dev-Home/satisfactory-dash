@@ -54,9 +54,11 @@ against the workspace's security/CI baseline.
    the workspace root) or in a git-ignored location — never inside `satisfactory-dash/`
    itself. Before committing, check `git status`/`git diff` for anything that looks
    like a leaked path or contact detail, not just for correctness.
-   **One deliberate exception (ADR-0018):** the root `LICENSE` file names the copyright
-   holder, and CI's PII scan excludes exactly that file. The name appears nowhere else;
-   don't "fix" it, and don't add it to any other file.
+   **Two deliberate exceptions:** the root `LICENSE` file names the copyright holder
+   (ADR-0018), and `frontend/public/privacy.html` names the owner as data controller
+   (decided 2026-09-24; the terms page never carries the name). CI's PII scan excludes
+   exactly those two files. The name appears nowhere else; don't "fix" either, and don't
+   add it to any other file.
 
 ## Team topology (Conway's Law)
 
