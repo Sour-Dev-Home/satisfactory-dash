@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import pg from "pg";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
@@ -171,5 +171,113 @@ describe.skipIf(!available)("provisionDatabase with a non-superuser CREATEROLE C
       set: true,
       inherit: false,
     });
+  });
+
+  // Issue #427: a revoke that failed in an earlier run (the connection dropped between the steps)
+  // leaves the admin's own SET grant behind, and the next run would see "already held" and keep it.
+  async function leaveSelfGrant(url: string): Promise<void> {
+    await oneShot(url, (admin) => admin.query("GRANT satis_migrator TO SESSION_USER WITH INHERIT FALSE, SET TRUE"));
+  }
+
+  it("removes a SET grant the admin left on itself in an earlier run", async () => {
+    await provisionDatabase(options("satis_leftover"));
+    await leaveSelfGrant(adminUrl);
+    expect(await lastingSetOrInherit()).toHaveLength(1);
+    await provisionDatabase(options("satis_leftover"));
+    await expectProvisioned("satis_leftover");
+  });
+
+  it("edge: removes the leftover but keeps a SET membership someone else granted", async () => {
+    const holder = "rds_holder_leftover";
+    await superuser.query(`CREATE ROLE ${holder} LOGIN CREATEROLE CREATEDB PASSWORD '${ADMIN_PASSWORD}'`);
+    await superuser.query(`GRANT satis_migrator TO ${holder} WITH ADMIN TRUE, INHERIT FALSE, SET TRUE`);
+    await superuser.query(
+      `GRANT satis_app, satis_backup, pg_read_all_data TO ${holder} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE`,
+    );
+    const holderUrl = withUser(adminUrl, holder, ADMIN_PASSWORD, "postgres");
+    await leaveSelfGrant(holderUrl);
+    await provisionDatabase({ ...options("satis_holder_leftover"), adminUrl: holderUrl });
+    const grants = await superuser.query(
+      `SELECT pg_get_userbyid(m.grantor) AS grantor, m.set_option AS set
+         FROM pg_auth_members m
+        WHERE m.roleid = 'satis_migrator'::regrole AND m.member = $1::regrole`,
+      [holder],
+    );
+    expect(grants.rows).toEqual([{ grantor: "postgres", set: true }]);
+  });
+
+  it("edge: fails naming the manual revoke when the leftover cannot be revoked", async () => {
+    await provisionDatabase(options("satis_stuck"));
+    await leaveSelfGrant(adminUrl);
+    const real = pg.Client.prototype.query;
+    const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, ...args: unknown[]) {
+      if (typeof args[0] === "string" && args[0].startsWith("REVOKE satis_migrator")) {
+        return Promise.reject(new Error("connection dropped"));
+      }
+      return (real as (...a: unknown[]) => unknown).apply(this, args);
+    } as never);
+    try {
+      await expect(provisionDatabase(options("satis_stuck"))).rejects.toThrow('run REVOKE satis_migrator FROM "rds_admin" by hand');
+    } finally {
+      spy.mockRestore();
+    }
+    // Nothing ran past the check: the leftover is still there for the operator to revoke.
+    expect(await lastingSetOrInherit()).toHaveLength(1);
+    await oneShot(adminUrl, (admin) => admin.query("REVOKE satis_migrator FROM SESSION_USER"));
+  });
+
+  // Issue #427: CREATE/ALTER ROLE ... PASSWORD carries a SCRAM-SHA-256 verifier, never the password,
+  // so a failing statement logged by the server (log_min_error_statement) cannot leak it.
+  it("sends SCRAM verifiers, never a plaintext password, and the roles still log in", async () => {
+    const real = pg.Client.prototype.query;
+    const sent: string[] = [];
+    const spy = vi.spyOn(pg.Client.prototype, "query").mockImplementation(function (this: pg.Client, ...args: unknown[]) {
+      if (typeof args[0] === "string") sent.push(args[0]);
+      return (real as (...a: unknown[]) => unknown).apply(this, args);
+    } as never);
+    try {
+      await provisionDatabase(options("satis_scram"));
+      await provisionDatabase(options("satis_scram"));
+    } finally {
+      spy.mockRestore();
+    }
+    const passwordStatements = sent.filter((text) => text.includes(" PASSWORD "));
+    expect(passwordStatements).toHaveLength(6);
+    for (const text of sent) {
+      for (const password of [MIGRATOR_PASSWORD, APP_PASSWORD, BACKUP_PASSWORD]) {
+        expect(text).not.toContain(password);
+      }
+    }
+
+    const stored = await superuser.query(
+      "SELECT rolname, rolpassword FROM pg_authid WHERE rolname IN ('satis_migrator', 'satis_app', 'satis_backup') ORDER BY rolname",
+    );
+    expect(stored.rows).toHaveLength(3);
+    for (const row of stored.rows) {
+      expect(row.rolpassword).toMatch(/^SCRAM-SHA-256\$4096:[A-Za-z0-9+/]+=*\$[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
+    }
+    for (const [role, password] of [
+      ["satis_migrator", MIGRATOR_PASSWORD],
+      ["satis_app", APP_PASSWORD],
+      ["satis_backup", BACKUP_PASSWORD],
+    ]) {
+      await oneShot(withUser(adminUrl, role, password, "satis_scram"), async (client) => {
+        expect((await client.query("SELECT current_user AS who")).rows).toEqual([{ who: role }]);
+      });
+    }
+    // The server checks the password: a wrong one is refused.
+    await expect(oneShot(withUser(adminUrl, "satis_app", "not-the-app-password", "satis_scram"), () => Promise.resolve())).rejects.toMatchObject({
+      code: "28P01",
+    });
+  });
+
+  it("edge: a password SASLprep changes (non-ASCII space, ligature) still logs in", async () => {
+    const appPassword = "app passﬁword-­-test";
+    await provisionDatabase({ ...options("satis_saslprep"), appPassword });
+    await oneShot(withUser(adminUrl, "satis_app", appPassword, "satis_saslprep"), async (client) => {
+      expect((await client.query("SELECT current_user AS who")).rows).toEqual([{ who: "satis_app" }]);
+    });
+    // Back to the shared password for the tests that follow.
+    await provisionDatabase(options("satis_saslprep"));
   });
 });

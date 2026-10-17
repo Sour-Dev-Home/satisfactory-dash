@@ -1,3 +1,4 @@
+import { createHash, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -41,6 +42,35 @@ async function withClient<T>(url: string, fn: (client: pg.Client) => Promise<T>)
   }
 }
 
+/** PostgreSQL's default scram_iterations. */
+const SCRAM_ITERATIONS = 4096;
+
+/**
+ * SASLprep (RFC 4013) as node-pg applies it before SCRAM: non-ASCII spaces to a space, the
+ * "mapped to nothing" characters removed, then NFKC. Unchanged for printable ASCII.
+ */
+function saslprep(password: string): string {
+  // eslint-disable-next-line no-misleading-character-class
+  const mappedToNothing = /[­͏᠆᠋᠌᠍‌‍⁠︀-️﻿]/g;
+  return password
+    .replace(/[   -​  　]/g, " ")
+    .replace(mappedToNothing, "")
+    .normalize("NFKC");
+}
+
+/**
+ * The SCRAM-SHA-256 verifier PostgreSQL would store for this password (RFC 5802/7677, the
+ * pg_authid format). Sent in place of the password, so the plaintext never reaches the server
+ * and a failing statement it logs (log_min_error_statement) cannot leak it.
+ */
+function scramVerifier(password: string): string {
+  const salt = randomBytes(16);
+  const salted = pbkdf2Sync(saslprep(password), salt, SCRAM_ITERATIONS, 32, "sha256");
+  const storedKey = createHash("sha256").update(createHmac("sha256", salted).update("Client Key").digest()).digest();
+  const serverKey = createHmac("sha256", salted).update("Server Key").digest();
+  return `SCRAM-SHA-256$${SCRAM_ITERATIONS}:${salt.toString("base64")}$${storedKey.toString("base64")}:${serverKey.toString("base64")}`;
+}
+
 function urlForDatabase(url: string, database: string): string {
   const parsed = new URL(url);
   parsed.pathname = `/${database}`;
@@ -70,7 +100,7 @@ export async function provisionDatabase(options: ProvisionOptions): Promise<void
     for (const [role, password] of roles) {
       const exists = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [role]);
       const verb = exists.rows.length > 0 ? "ALTER" : "CREATE";
-      await admin.query(`${verb} ROLE ${role} LOGIN PASSWORD ${admin.escapeLiteral(password)}`);
+      await admin.query(`${verb} ROLE ${role} LOGIN PASSWORD ${admin.escapeLiteral(scramVerifier(password))}`);
     }
     if (options.backupPassword !== undefined) {
       // pg_read_all_data (PostgreSQL 14+) is SELECT on every table, view and sequence plus USAGE on
@@ -114,9 +144,28 @@ export async function provisionDatabase(options: ProvisionOptions): Promise<void
  * holds SET on it, needs nothing. A non-superuser CREATEROLE admin (RDS) holds the roles it created
  * with ADMIN TRUE, INHERIT FALSE, SET FALSE (PostgreSQL 16+), so it can neither make the migrator a
  * database owner nor act as it: it grants itself SET (never INHERIT) for these steps only and revokes
- * the grant afterwards, also when a step fails, so it keeps no lasting membership.
+ * the grant afterwards, also when a step fails, so it keeps no lasting membership. A grant of its own
+ * that an earlier run failed to revoke is revoked first, so it is never mistaken for one already held;
+ * a SET membership someone else granted is left alone.
  */
 async function withMigratorSet<T>(admin: pg.Client, fn: () => Promise<T>): Promise<T> {
+  const state = await admin.query(
+    `SELECT r.rolname AS admin, r.rolsuper AS superuser,
+            EXISTS (SELECT 1 FROM pg_auth_members m
+                     WHERE m.roleid = to_regrole($1) AND m.member = r.oid AND m.grantor = r.oid
+                       AND m.set_option) AS leftover
+       FROM pg_roles r WHERE r.rolname = session_user`,
+    [MIGRATOR_ROLE],
+  );
+  if (state.rows[0].superuser !== true && state.rows[0].leftover === true) {
+    try {
+      await admin.query(`REVOKE ${MIGRATOR_ROLE} FROM SESSION_USER`);
+    } catch (revokeError) {
+      const self = admin.escapeIdentifier(state.rows[0].admin);
+      const message = `db:init could not revoke the SET grant on ${MIGRATOR_ROLE} an earlier run left behind: run REVOKE ${MIGRATOR_ROLE} FROM ${self} by hand.`;
+      throw new Error(message, { cause: revokeError });
+    }
+  }
   const held = await admin.query("SELECT pg_has_role(session_user, $1, 'SET') AS held", [MIGRATOR_ROLE]);
   if (held.rows[0].held === true) {
     return fn();
