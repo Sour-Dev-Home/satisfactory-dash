@@ -154,6 +154,35 @@ test('#408 criterion 2: the backend health check uses node, since the image has 
   assert.doesNotMatch(tf, /curl|wget/);
 });
 
+test('#425 criterion 1: the backend health check tests liveness, not the database', () => {
+  const tf = code(read('ecs.tf'));
+  const probe = tf.match(/backend_health_probe\s*=\s*"([^"\n]*)"/);
+  assert.ok(probe, 'ecs.tf defines backend_health_probe');
+  assert.match(probe[1], /fetch\('http:\/\/127\.0\.0\.1:3001\/api\/health'\)/);
+  // A short RDS restart must not fail the check, so /ready (which needs the database) stays out of ECS.
+  assert.doesNotMatch(tf, /\/api\/health\/ready/);
+  const check = tf.match(/healthCheck\s*=\s*\{([^}]*)\}/);
+  assert.ok(check, 'the backend container has a healthCheck');
+  assert.match(check[1], /interval\s*=\s*10\b/);
+  assert.match(check[1], /retries\s*=\s*6\b/);
+  assert.match(check[1], /startPeriod\s*=\s*30\b/);
+});
+
+test('#425 edge: the liveness probe still fails on a non-200 answer and on a refused connection', () => {
+  const probe = code(read('ecs.tf')).match(/backend_health_probe\s*=\s*"([^"\n]*)"/)[1];
+  assert.match(probe, /\.then\(r=>process\.exit\(r\.status===200\?0:1\),\(\)=>process\.exit\(1\)\)$/);
+});
+
+test('#425 criterion 2: cloudflared still waits for a healthy backend', () => {
+  const tf = code(read('ecs.tf'));
+  assert.match(tf, /dependsOn\s*=\s*\[\{\s*containerName\s*=\s*"backend",\s*condition\s*=\s*"HEALTHY"\s*\}\]/);
+});
+
+test('#425 criterion 4: the AWS runbook leaves readiness to an external uptime monitor', () => {
+  const runbook = readFileSync(join(root, '..', '..', 'docs-vault', 'wiki', 'runbooks', 'aws.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(runbook, /Readiness is watched by an external uptime monitor on `\/api\/health\/ready`, not by ECS/);
+});
+
 test('#408 criterion 4: no IAM user or access key exists anywhere', () => {
   const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
   assert.doesNotMatch(all, /resource\s+"aws_iam_access_key"/);

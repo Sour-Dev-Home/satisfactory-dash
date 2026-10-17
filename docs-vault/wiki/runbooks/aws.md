@@ -119,6 +119,16 @@ The service stops the old task before starting the new one (one backend, ADR-001
 outage. A new task that never turns healthy trips the circuit breaker, which rolls back; the apply
 then fails. Put the last good `backend_image` back in `terraform.tfvars` and apply again.
 
+### Health checks
+
+ECS checks liveness only: the backend container's health check fetches `/api/health`, which answers
+while the process is up and never touches the database (#425). Readiness is watched by an external
+uptime monitor on `/api/health/ready`, not by ECS, so a short RDS restart (weekly maintenance, a minor
+upgrade) makes the monitor alert without ECS replacing a healthy task. cloudflared still waits for the
+backend to turn healthy, which now means the tunnel connects once the process is up, before the
+database may be reachable; `/api/health/ready` answers 503 until it is. Set the monitor up during the
+cutover and point it at `https://<dashboard host>/api/health/ready`.
+
 ## Migrate
 
 `run_ops db-migrate`. It applies every pending migration in `backend/migrations` as `satis_migrator`
