@@ -89,6 +89,18 @@ where the backend runs.
 - If the exit slips past the credits, the AWS account closes. The data survives in the off-AWS
   backups (ADR-0035), not in RDS.
 
+## Amendment, 2026-10-17
+Two places the build differs from §2's text (architect and security reviews of the running staging
+stack, 2026-10-16; #426):
+- **RDS automated backups are kept 1 day, not 7.** The AWS Free plan refused a 7-day retention, so
+  `db_backup_retention_days` defaults to 1 (#418). Point-in-time restore covers the last day only. The
+  nightly encrypted dump to B2 (ADR-0035) remains the backup, so the worst-case loss is 24 hours.
+- **Secrets are injected by the execution role, and no task has a task role.** ECS reads the
+  `/satis/prod/*` values with each task's execution role when the task starts; the containers hold no
+  AWS credentials at all. §2's "the ECS task role injects secrets" should read "the execution role".
+
+The cutover sequence that follows from §7 is the "Cutover" section of `runbooks/aws.md`.
+
 ## Revisit when
 - The monthly credit check shows the exit trigger.
 - The owner changes his mind about the Paid plan.
