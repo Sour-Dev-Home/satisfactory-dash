@@ -233,3 +233,118 @@ To check the grant on a new instance, right after its first `db-init`:
 If the grant is refused, stop and file an issue: the fallback (per-schema `SELECT` grants from the
 migrator) is a change to `backend/src/platform/db/admin.ts`. Never point `BACKUP_DATABASE_URL` at the
 master or the migrator role.
+
+## Tunnel
+
+The AWS tunnel (its token is `/satis/prod/TUNNEL_TOKEN`) has exactly one public-hostname rule, to
+`http://127.0.0.1:3001` (the backend, in the same task), followed by the catch-all `http_status:404`.
+No other service, port or hostname goes on it: anything that reaches cloudflared and matches no rule
+gets a 404. While staging runs, that one rule is the staging hostname; at the cutover (step 5) it
+becomes `api.satis-manager.com`.
+
+The Cloudflare account keeps two-factor authentication on: whoever holds the dashboard can re-point
+the tunnel, the DNS and the Workers deploy (security review of the staging stack, 2026-10-16, finding 3).
+
+## Cutover
+
+The move from the PC to AWS (ADR-0034 §7, #217), in order. Each step has its rollback; don't start a
+step until the one before it checked out. Steps 1 to 5 are one short window; the backend is down from
+step 1 until step 5's route switch, and the agent's posts fail (and retry) in between.
+
+**0. Days before the window**
+
+- **Re-enrol the PC agent** against the public hostname while the backend is still on the PC:
+  `agent enroll <CODE> --url https://api.satis-manager.com --replace` (a fresh enrolment code from the
+  dashboard; [`agent-app.md`](./agent-app.md)). Watch a day of posts arrive. Then the agent never
+  notices the move (ADR-0034 §1). *Rollback:* enrol again with the URL it had before.
+- **Reset RDS** by replacing the instance, so production starts from an empty database (owner,
+  2026-10-16: not by ad-hoc SQL on the staging data).
+  1. Scale the service to 0 (**Scale to 0**).
+  2. Set `db_deletion_protection = false` in `terraform.tfvars`, then
+     `terraform plan -target=aws_db_instance.main -out=unprotect.tfplan`, read it (only
+     `deletion_protection` changes, in place), `terraform apply unprotect.tfplan`.
+  3. ```sh
+     terraform plan -replace=aws_db_instance.main -target=aws_db_instance.main \
+       -target=aws_ecs_task_definition.ops -target=aws_iam_role_policy.ops_execution -out=reset.tfplan
+     ```
+     Read it: the instance is replaced, and the ops task definitions and `ops_execution` change
+     because the RDS master-secret ARN changes. The plan must not touch `aws_ecs_service.main`; if it
+     does, don't apply. Then `terraform apply reset.tfplan`. Destroying the old instance takes the final
+     snapshot `satis-prod-final` (`rds.tf`).
+  4. Set `db_deletion_protection = true` again, plan, read, apply.
+  5. `terraform output -raw db_endpoint` keeps its value (the identifier is unchanged); if it ever
+     differs, update the three database URLs in SSM (**Apply**, step 3) before going on.
+  6. `run_ops db-init`, then **Check the backup role**. No `db-migrate`: the database stays empty for
+     the restore (step 3).
+  7. Delete the staging snapshot, so the exit's final snapshot can take the name:
+     `aws rds delete-db-snapshot --db-snapshot-identifier satis-prod-final`.
+
+  The service stays at 0 until step 4. *Rollback:* none needed; staging data is disposable, and
+  until step 1 the PC still serves everything.
+
+**1. Freeze.** Disable the PC agent's scheduled task (`Disable-ScheduledTask -TaskName "Satisfactory
+Dash Agent"`) and stop the PC backend, so nothing writes. *Rollback:* start the PC backend and enable
+the task again; nothing has moved yet.
+
+**2. Final PC backup.** Run the PC backup by hand (`Start-ScheduledTask -TaskName
+SatisfactoryDashBackup`, [`backups.md`](./backups.md)), note the uploaded file name and the row count
+of each table (as `backups.md`'s rehearsal records them), then disable the PC nightly task
+(`Disable-ScheduledTask -TaskName SatisfactoryDashBackup`). *Rollback:* enable the nightly task, then
+step 1's rollback.
+
+**3. Restore into RDS** that file (**Restore**, steps 2 to 4; the service is already at 0), then
+`run_ops db-migrate`, then compare the row counts with step 2's (the backup role can count, as in
+**Check the backup role**, with a `psql -Atc "select count(*) from <table>"` per table). Any mismatch
+stops the cutover. *Rollback:* the PC data is untouched; step 2's rollback. RDS is re-reset (step 0)
+before another try, since the restore needs an empty database.
+
+**4. Start on AWS.** Scale to 1 (`--desired-count 1`, wait for `services-stable`). The staging
+hostname's `/api/health/ready` answers 200, and a known account can sign in there. *Rollback:* scale
+to 0, step 2's rollback.
+
+**5. Switch the route.** In Cloudflare, take `api.satis-manager.com` off the PC tunnel and put it on
+the AWS tunnel as its one rule, `http://127.0.0.1:3001` (**Tunnel**). Check
+`https://api.satis-manager.com/api/health/ready` answers 200, enable the agent's task on the PC, and
+see its posts arrive (the dashboard's latest snapshot moves). *Rollback:* put the hostname back on the
+PC tunnel, scale AWS to 0, then step 2's rollback. Anything written on AWS since step 4 is lost on
+the PC, so roll back within the window.
+
+**6. Production settings.** In `terraform.tfvars`: remove the staging `backup_schedule` line (the
+default nightly schedule takes over), create `/satis/prod/BACKUP_HEARTBEAT_URL` (**Apply**, step 3)
+and set `backup_heartbeat_enabled = true`, and set `ALERT_DELIVERY` in the backend settings to the
+PC's value. `terraform plan -out=prod.tfplan`, read it, `terraform apply prod.tfplan`. Then
+`run_ops backup` once, check the file is in B2 and the heartbeat shows the ping. *Rollback:* put the
+old lines back, plan, read, apply.
+
+**7. Privacy page.** Merge the privacy page's PR (its hosting row says AWS; its own issue).
+*Rollback:* revert that PR with step 5's rollback.
+
+**8. Two quiet weeks.** The PC backend and PostgreSQL stay installed but stopped, the PC tunnel
+stays defined with no hostname. *Rollback:* step 5's rollback, then start the PC backend; data
+written on AWS since step 4 must first be backed up from AWS (`run_ops backup`) and restored on the
+PC ([`backups.md`](./backups.md)).
+
+**9. Retire the PC.** Do the **Before retiring** list below first. Then uninstall the PC backend,
+delete `backend\.env`, remove the PostgreSQL service and its data directory, uninstall the PC
+cloudflared service, delete the PC tunnel in Cloudflare, and remove the staging hostname from the AWS
+tunnel and DNS. *Rollback:* none after this step; the way back is the exit (below), not the PC.
+
+**Before retiring**
+
+- **Keep `SERVER_SECRETS_KEY` offline**, with any `SERVER_SECRETS_KEY_ID` and
+  `SERVER_SECRETS_PREVIOUS_KEYS`, next to the age private key. The B2 dumps hold data sealed with it,
+  and the SSM copy goes when the AWS account closes; without it a restored dump's sealed secrets can't
+  be opened.
+- **Add a free external uptime monitor** on `https://api.satis-manager.com/api/health/ready`
+  (**Health checks**: ECS doesn't watch readiness).
+- **Confirm the AWS Budgets email subscription** (`budget.tf`; the email AWS sends asks you to).
+
+## Exit
+
+The way off AWS before the credits end (ADR-0034 §4 to §6; the trigger is in **Monthly credit
+check**). Follow ADR-0034 §6 and [`compose.md`](./compose.md) ("Switching the tunnel route").
+
+- `terraform destroy` with `db_deletion_protection = false` leaves the final snapshot
+  `satis-prod-final`. **Delete it within 37 days of the exit**
+  (`aws rds delete-db-snapshot --db-snapshot-identifier satis-prod-final`): the privacy page promises
+  that deleted data is gone from backups within 37 days (security review, 2026-10-16, finding 8).
