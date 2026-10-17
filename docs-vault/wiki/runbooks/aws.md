@@ -271,7 +271,10 @@ step 1 until step 5's route switch, and the agent's posts fail (and retry) in be
      because the RDS master-secret ARN changes. The plan must not touch `aws_ecs_service.main`; if it
      does, don't apply. Then `terraform apply reset.tfplan`. Destroying the old instance takes the final
      snapshot `satis-prod-final` (`rds.tf`).
-  4. Set `db_deletion_protection = true` again, plan, read, apply.
+  4. Set `db_deletion_protection = true` again, then `terraform plan -target=aws_db_instance.main
+     -out=protect.tfplan`, read it (only `deletion_protection` changes), apply it. Keep `-target` here:
+     `ecs.tf` sets `desired_count = 1`, so an untargeted apply would scale the service back up onto the
+     empty database.
   5. `terraform output -raw db_endpoint` keeps its value (the identifier is unchanged); if it ever
      differs, update the three database URLs in SSM (**Apply**, step 3) before going on.
   6. `run_ops db-init`, then **Check the backup role**. No `db-migrate`: the database stays empty for
