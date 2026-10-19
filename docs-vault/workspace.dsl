@@ -115,39 +115,53 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         # Planned relationships (ADR-0014, ADR-0017, ADR-0020)
         player -> satis.spa "Uses" "HTTPS" "planned"
         satis.api -> google "Signs users in" "OpenID Connect" "planned"
-        satis.api -> satis.database "Reads and writes" "SQL over TCP (loopback)"
+        satis.api -> satis.database "Reads and writes" "SQL over TCP"
         satis.agent -> satis.api "Pushes snapshots; polls commands" "HTTPS, outbound only"
         satis.agent -> game "Reads state and data; applies commands" "HTTPS and HTTP (loopback)"
         satis.provisioning -> satis.database "Records provisioning jobs" "SQL" "planned"
         satis.provisioning -> game "Creates and starts managed servers" "AWS APIs" "planned"
 
+        # Since the cut-over (ADR-0034 §7, #217); the facts are runbooks/aws.md and infra/aws/.
         deploymentEnvironment "Today" {
             cloudflare = deploymentNode "Cloudflare" "Edge network: static hosting, TLS, WAF." "Cloudflare" {
-                workers = deploymentNode "Workers static assets" "satis-manager.com; SPA fallback; strict CSP." "Cloudflare Workers" {
+                workers = deploymentNode "Workers static assets" "satis-manager.com; SPA fallback; strict CSP; deployed on every merge to main." "Cloudflare Workers" {
                     spaInstance = containerInstance satis.spa
                 }
-                edge = infrastructureNode "api.satis-manager.com" "TLS termination; WAF login rate limit." "Cloudflare"
+                edge = infrastructureNode "api.satis-manager.com" "TLS termination; WAF login rate limit; the tunnel's one public-hostname rule." "Cloudflare Tunnel"
             }
-            pc = deploymentNode "Owner's gaming PC" "No inbound ports open." "Windows" {
-                tunnel = infrastructureNode "cloudflared" "Outbound-only tunnel to Cloudflare." "Cloudflare Tunnel"
-                node = deploymentNode "Node.js" "Scheduled Task; bound to 127.0.0.1:3001." "Node.js" {
-                    apiInstance = containerInstance satis.api
+            amazon = deploymentNode "AWS" "Owner's account on the Free plan, time-boxed with a rehearsed exit (ADR-0034). Terraform in infra/aws/." "Amazon Web Services" {
+                vpc = deploymentNode "VPC" "Public subnets only: no NAT gateway, no load balancer, no inbound security-group rules." "Amazon VPC" {
+                    task = deploymentNode "ECS Fargate task" "Service satis-prod: one ARM task (0.5 vCPU, 1 GB); a public IP for outbound traffic only." "AWS Fargate" {
+                        tunnel = infrastructureNode "cloudflared" "Sidecar; outbound-only tunnel to Cloudflare." "Cloudflare Tunnel"
+                        apiInstance = containerInstance satis.api
+                    }
+                    db = deploymentNode "RDS" "db.t4g.micro, single-AZ; not publicly accessible, port 5432 open to the task's security group only." "Amazon RDS for PostgreSQL 18" {
+                        dbInstance = containerInstance satis.database
+                    }
+                    ops = infrastructureNode "Ops tasks" "One-off ECS tasks on the ops image: db-init, db-migrate, restore, and the nightly backup (pg_dump, encrypted with age)." "AWS Fargate"
                 }
-                gameNode = deploymentNode "Dedicated server process" "Game server with the FRM mod; auto-pause off by default." "Satisfactory 1.x" {
+                scheduler = infrastructureNode "EventBridge Scheduler" "Starts the backup ops task nightly." "Amazon EventBridge Scheduler"
+                ssm = infrastructureNode "SSM Parameter Store" "/satis/prod/* SecureStrings, read by each task's execution role at start; no task holds AWS credentials." "AWS Systems Manager"
+                masterSecret = infrastructureNode "Secrets Manager" "The RDS master password, kept by RDS; only the db-init ops task reads it." "AWS Secrets Manager"
+            }
+            b2 = deploymentNode "Backblaze B2" "Off-site: a different provider from the hosting (ADR-0035)." "Backblaze" {
+                bucket = infrastructureNode "Backup bucket" "Private; Object Lock, 30 days; encrypted dumps kept up to 37 days." "Backblaze B2"
+            }
+            pc = deploymentNode "Owner's gaming PC" "Runs only the game and the edge agent; no inbound ports open." "Windows" {
+                agentNode = deploymentNode "Edge agent" "Scheduled Task; outbound only; secrets stored with DPAPI (ADR-0031)." "Node.js" {
+                    agentInstance = containerInstance satis.agent
+                }
+                gameNode = deploymentNode "Dedicated server process" "Game server with the FRM mod; FRM listens on loopback only." "Satisfactory 1.x" {
                     gameInstance = softwareSystemInstance game
                 }
-                pg = deploymentNode "PostgreSQL service" "Windows service; listens on loopback only." "PostgreSQL 18" {
-                    dbInstance = containerInstance satis.database
-                }
-                backupTask = infrastructureNode "Nightly backup task" "pg_dump, encrypted with age on this PC (ADR-0025)." "Windows Scheduled Task"
             }
-            backups = deploymentNode "AWS (backups only)" "Owner's AWS account." "Amazon Web Services" {
-                s3 = infrastructureNode "S3 bucket" "Encrypted backups; versioned, 30 d + 7 d retention." "Amazon S3"
-            }
-            cloudflare.edge -> pc.tunnel "Routes API traffic" "Cloudflare Tunnel"
-            pc.tunnel -> pc.node.apiInstance "Forwards" "HTTP (loopback)"
-            pc.backupTask -> pc.pg.dbInstance "Dumps (read-only role)" "SQL (loopback)"
-            pc.backupTask -> backups.s3 "Uploads encrypted backups" "HTTPS, put-only"
+            cloudflare.edge -> amazon.vpc.task.tunnel "Routes API traffic over the tunnel cloudflared opened" "Cloudflare Tunnel"
+            amazon.vpc.task.tunnel -> amazon.vpc.task.apiInstance "Forwards" "HTTP (127.0.0.1:3001)"
+            amazon.ssm -> amazon.vpc.task "Injects /satis/prod/* as environment variables" "ECS execution role"
+            amazon.masterSecret -> amazon.vpc.ops "Gives db-init the master password" "ECS execution role"
+            amazon.scheduler -> amazon.vpc.ops "Starts the backup nightly" "ECS RunTask"
+            amazon.vpc.ops -> amazon.vpc.db.dbInstance "Migrates; dumps with the backup role; restores" "SQL"
+            amazon.vpc.ops -> b2.bucket "Uploads encrypted backups" "HTTPS (S3-compatible), upload-only key"
         }
 
         deploymentEnvironment "Target" {
@@ -215,8 +229,9 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
             autolayout tb
         }
 
-        deployment satis "Today" "DeploymentToday" "Deployed today (ADR-0013)." {
+        deployment satis "Today" "DeploymentToday" "Deployed today: the backend on AWS, the agent on the game PC (ADR-0013, ADR-0031, ADR-0034, ADR-0035)." {
             include *
+            exclude "relationship.tag==direct-game-access"
             autolayout lr 300 150
         }
 
