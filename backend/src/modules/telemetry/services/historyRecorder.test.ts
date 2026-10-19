@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { BufferedHistoryRecorder, sessionKey } from "./historyRecorder.js";
+import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 
 const logger = () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) as unknown as Logger & { warn: ReturnType<typeof vi.fn> };
 
@@ -117,5 +118,78 @@ describe("BufferedHistoryRecorder", () => {
     recorder.recordPower([powerRow(2)]); // after stop: ignored
     await recorder.flush();
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("BufferedHistoryRecorder metrics (ADR-0037 build step 3)", () => {
+  const itemRow = (atMs: number) => ({ item: "Desc_IronPlate_C", atMs, currentPerMinute: 10, maxPerMinute: 20 });
+  const transitionRow = (atMs: number) => ({ atMs, buildingId: "b1", className: "Build_Constructor_C", fromState: null, toState: "producing" });
+
+  /** A database whose writes to one table can be made to fail. */
+  function tableDb(failTable?: string) {
+    return {
+      query: vi.fn(async (sql: string) => {
+        if (failTable !== undefined && sql.includes(`telemetry.${failTable}`)) throw new Error("db down");
+        return { rows: [] };
+      }),
+    } as unknown as Queryable;
+  }
+  const written = (metrics: ReturnType<typeof createMetricsAggregator>) =>
+    Object.fromEntries(
+      metrics
+        .drain()
+        .filter((delta) => delta.metric === "satis.history.rows_written")
+        .map((delta) => [delta.labels.table, delta.sum]),
+    );
+
+  it("counts the rows each table actually received, per table", async () => {
+    const metrics = createMetricsAggregator(() => 0);
+    const recorder = new BufferedHistoryRecorder(tableDb(), "srv", { logger: logger(), metrics });
+    recorder.recordPower([powerRow(1), powerRow(2)]);
+    recorder.recordItems([itemRow(1), itemRow(2), itemRow(3)]);
+    recorder.recordTransitions([transitionRow(1)]);
+    await recorder.flush();
+    expect(written(metrics)).toEqual({ power_samples: 2, item_samples: 3, building_transitions: 1 });
+  });
+
+  it("counts nothing for a failed write (the rows are requeued, not written), and counts them when they land", async () => {
+    const metrics = createMetricsAggregator(() => 0);
+    let db = tableDb("item_samples");
+    const recorder = new BufferedHistoryRecorder({ query: (...args: Parameters<Queryable["query"]>) => db.query(...args) } as Queryable, "srv", { logger: logger(), metrics });
+    recorder.recordPower([powerRow(1)]);
+    recorder.recordItems([itemRow(1), itemRow(2)]);
+    await recorder.flush();
+    expect(written(metrics)).toEqual({ power_samples: 1 });
+    db = tableDb();
+    await recorder.flush();
+    expect(written(metrics)).toEqual({ item_samples: 2 });
+  });
+
+  it("counts nothing for an empty flush", async () => {
+    const metrics = createMetricsAggregator(() => 0);
+    await new BufferedHistoryRecorder(tableDb(), "srv", { logger: logger(), metrics }).flush();
+    expect(metrics.drain()).toEqual([]);
+  });
+
+  it("a metrics sink that throws never reaches the writer: the rows are written once, not requeued, and it is logged once", async () => {
+    const { db, calls } = fakeDb();
+    const log = logger();
+    const throwing: MetricsSink = {
+      recordHistogram() {
+        throw new Error("metrics broken");
+      },
+      recordCounter() {
+        throw new Error("metrics broken");
+      },
+    };
+    const recorder = new BufferedHistoryRecorder(db, "srv", { logger: log, metrics: throwing });
+    recorder.recordPower([powerRow(1)]);
+    await recorder.flush();
+    recorder.recordPower([powerRow(2)]);
+    await recorder.flush();
+    await recorder.flush();
+    expect(calls).toHaveLength(2); // two writes, no retry of rows that did land
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn.mock.calls[0]?.[1]).toBe("failed to record a metric; dropping it");
   });
 });

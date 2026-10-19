@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import { noopHistoryRecorder, sessionKey, type HistoryRecorder } from "./historyRecorder.js";
 import { noopObservationSink, type ObservationSink } from "./observationBoard.js";
 import { classifyPowerCircuit } from "./powerService.js";
@@ -38,6 +39,10 @@ export interface PowerHistoryPollerOptions {
   history?: HistoryRecorder;
   /** Where the last readings are published for the alert engine (ADR-0027); omitted means nowhere. */
   observations?: ObservationSink;
+  /** ADR-0037: the `server` label of this poller's metrics; omitted (no database, nothing flushes them) records none. */
+  serverPublicId?: string;
+  /** Tests only: where the metrics go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
 }
 
 /** Comfortably above the adapters' own 5 s request timeout, so it only fires on a stall they miss. */
@@ -65,6 +70,8 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
   private readonly logger: Logger;
   private readonly history: HistoryRecorder;
   private readonly observations: ObservationSink;
+  private readonly metrics: MetricsRecorder;
+  private readonly metricLabels: { server: string; group: string } | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
@@ -96,6 +103,8 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
     this.logger = options.logger;
     this.history = options.history ?? noopHistoryRecorder;
     this.observations = options.observations ?? noopObservationSink;
+    this.metrics = createBackgroundRecorder(this.logger, options.metrics);
+    this.metricLabels = options.serverPublicId === undefined ? undefined : { server: options.serverPublicId, group: "power" };
   }
 
   startedAt(): number | undefined {
@@ -146,6 +155,7 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
 
   private async tick(): Promise<void> {
     const tickAt = this.nextTickAt;
+    const cycleStartedAt = this.now();
     try {
       await this.poll(tickAt);
       if (this.consecutiveCrashes > 0) {
@@ -161,6 +171,8 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
         this.logger.error({ err: formatErrorDetail(err) }, "power history poll crashed unexpectedly");
       }
     } finally {
+      // ADR-0037: every cycle's duration, a failed or crashed one included.
+      if (this.metricLabels) this.metrics.histogram("satis.poller.cycle.duration", this.metricLabels, this.now() - cycleStartedAt);
       this.nextTickAt += this.intervalMs;
       if (this.now() - this.nextTickAt >= this.intervalMs) {
         this.nextTickAt = this.now(); // fell a whole interval behind: skip, don't burst
@@ -252,6 +264,8 @@ export class PowerHistoryPoller implements BackgroundWorker, PollerHealth {
       this.store.reset();
       this.store.append(sample);
     }
+    // ADR-0037: from the planned (nominal) tick to the stored sample, so a late timer shows up here too.
+    if (this.metricLabels) this.metrics.histogram("satis.poller.lag", this.metricLabels, this.now() - tickAt);
     // Durable history (ADR-0027): fire-and-forget into a buffer, so the database never slows or fails a poll.
     // FRM returns FROZEN values while the game is paused (frm-api.md), so a paused sample would record phantom
     // production: skip it and leave an honest gap in the stored history (the in-memory chart keeps its own rule).

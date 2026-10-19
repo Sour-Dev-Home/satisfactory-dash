@@ -8,9 +8,10 @@
  * than reaching Postgres. Names follow OpenTelemetry semantic conventions where one exists, so a
  * later exporter is a mapping, not a rewrite (ADR-0037 §4).
  *
- * Only `http.server.request.duration` is wired to a recorder in this PR (ADR-0037 build order #2).
- * The rest of the table is registered now so PRs 3-4 slot into an already-fixed shape instead of
- * each inventing its own ad hoc metric name.
+ * `http.server.request.duration` is recorded by `requestMetrics.ts` (ADR-0037 build order #2), the
+ * `satis.*` background metrics by their sources through `backgroundMetrics.ts` (#3). The rest of the
+ * table is registered now so PR 4 slots into an already-fixed shape instead of inventing its own ad
+ * hoc metric name.
  */
 import { ownValue } from "@satisfactory-dash/shared";
 
@@ -57,6 +58,13 @@ export const isOneOf =
   (value) =>
     allowed.includes(value);
 
+/** ADR-0037 build step 3's closed sets. platform/ imports no module, so these are spelled out here: a
+ *  new poller group, history table or alert kind is a registry change, and each source's tests check
+ *  that every value it records is a member (the alert kinds against `RULE_KINDS` itself). */
+const POLLER_GROUPS = ["power", "factory"];
+const HISTORY_TABLES = ["power_samples", "item_samples", "building_transitions"];
+const ALERT_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target", "agent_offline"];
+
 /** ADR-0037 §1's table, in order. */
 export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Object.freeze({
   "http.server.request.duration": {
@@ -71,21 +79,24 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
     kind: "histogram",
     labels: { query: isBoundedToken(200) },
   },
+  // `server` is the server's public id; `group` the poller's endpoint group.
   "satis.poller.cycle.duration": {
     kind: "histogram",
-    labels: { server: isBoundedToken(64), group: isBoundedToken(64) },
+    labels: { server: isBoundedToken(64), group: isOneOf(...POLLER_GROUPS) },
   },
   "satis.poller.lag": {
     kind: "histogram",
-    labels: { server: isBoundedToken(64), group: isBoundedToken(64) },
+    labels: { server: isBoundedToken(64), group: isOneOf(...POLLER_GROUPS) },
   },
+  // "Apparent" lag: received-at minus the agent's own `observedAt`, so the agent's clock skew is
+  // included; clamped at 0 by the recorder, never negative.
   "satis.agent.ingest.lag": {
     kind: "histogram",
     labels: { server: isBoundedToken(64) },
   },
   "satis.history.rows_written": {
     kind: "counter",
-    labels: { table: isBoundedToken(64) },
+    labels: { table: isOneOf(...HISTORY_TABLES) },
   },
   "satis.alerts.evaluation.duration": {
     kind: "histogram",
@@ -93,7 +104,7 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   },
   "satis.alerts.fire.lag": {
     kind: "histogram",
-    labels: { kind: isBoundedToken(64) },
+    labels: { kind: isOneOf(...ALERT_KINDS) },
   },
 });
 

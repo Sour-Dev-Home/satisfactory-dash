@@ -95,9 +95,21 @@ export function createTelemetryServices(
     const recorder = new BufferedHistoryRecorder(options.history.db, options.history.serverPublicId, { logger });
     history = recorder;
     observations = new ObservationBoard();
-    workers.push(recorder, new FactoryHistoryPoller(ports, { logger, history: recorder, observations, now: options.now }));
+    workers.push(
+      recorder,
+      new FactoryHistoryPoller(ports, { logger, history: recorder, observations, now: options.now, serverPublicId: options.history.serverPublicId }),
+    );
   }
-  const poller = new PowerHistoryPoller(ports, store, { logger, intervalSeconds, now: options.now, history, observations });
+  // ADR-0037: the pollers label their metrics with the server's public id, known only with a database (which is also
+  // what flushes the metrics); without one they record none.
+  const poller = new PowerHistoryPoller(ports, store, {
+    logger,
+    intervalSeconds,
+    now: options.now,
+    history,
+    observations,
+    serverPublicId: options.history?.serverPublicId,
+  });
   workers.unshift(poller);
   return {
     status: new ServerStatusService(ports),

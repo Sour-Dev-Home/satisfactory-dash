@@ -4,6 +4,8 @@ import { InMemoryServerDirectory, ServerRuntime } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
 import { ObservationBoard } from "../../telemetry/services/observationBoard.js";
 import { AlertEvaluatorWorker, type AlertsDb } from "./alertEvaluatorWorker.js";
+import { RULE_KINDS } from "./rules.js";
+import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 
 const SEC = 1000;
 const MIN = 60 * SEC;
@@ -596,5 +598,138 @@ describe("AlertEvaluatorWorker loop", () => {
     worker.start(); // a stopped worker is not restartable
     await vi.advanceTimersByTimeAsync(60_000);
     expect(fake.calls.length).toBe(before);
+  });
+});
+
+describe("AlertEvaluatorWorker metrics (ADR-0037 build step 3, fake clock)", () => {
+  let now = T0;
+  beforeEach(() => {
+    now = T0;
+  });
+
+  const make = (fake: ReturnType<typeof fakeDb>, w: ReturnType<typeof world>, metrics: MetricsSink, l = logger()) => ({
+    worker: new AlertEvaluatorWorker(fake.db, w.directory, { logger: l.logger, now: () => now, metrics }),
+    ...l,
+  });
+  const fireLags = (metrics: ReturnType<typeof createMetricsAggregator>) =>
+    metrics
+      .drain()
+      .filter((delta) => delta.metric === "satis.alerts.fire.lag")
+      .map((delta) => ({ kind: delta.labels.kind, count: delta.count, sum: delta.sum }));
+
+  it("records each tick's evaluation duration, with no labels, measured on the clock", async () => {
+    const fake = fakeDb();
+    const metrics = createMetricsAggregator(() => now);
+    const { worker } = make(fake, world(), metrics);
+    const query = fake.db.query.bind(fake.db);
+    fake.db.query = (async (sql: string, params?: unknown[]) => {
+      if (sql.includes("FROM alerts.rules r")) now += 120; // the database takes 120 ms to list the rules
+      return query(sql, params);
+    }) as typeof fake.db.query;
+    await worker.tick();
+    expect(metrics.drain().filter((d) => d.metric === "satis.alerts.evaluation.duration")).toEqual([
+      expect.objectContaining({ labels: {}, count: 1, sum: 120 }),
+    ]);
+  });
+
+  it("a failed tick still records its duration, and still throws for the loop to log", async () => {
+    const fake = fakeDb();
+    const metrics = createMetricsAggregator(() => now);
+    const { worker } = make(fake, world(), metrics);
+    fake.failWhen.list = true;
+    await expect(worker.tick()).rejects.toThrow();
+    expect(metrics.drain().filter((d) => d.metric === "satis.alerts.evaluation.duration")).toHaveLength(1);
+  });
+
+  it("records the fire lag, by kind, as the event time minus the reading that triggered it", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const metrics = createMetricsAggregator(() => now);
+    const { worker } = make(fake, w, metrics);
+    await worker.tick(); // seeds
+    publishOutage(w.boards.get("alpha")!, now - 4 * SEC, true); // the poll's reading is 4 s old when the engine runs
+    await worker.tick();
+    expect(fake.events.map((event) => `${event.kind}:${event.transition}`)).toEqual(["power_outage:fired"]);
+    expect(fireLags(metrics)).toEqual([{ kind: "power_outage", count: 1, sum: 4 * SEC }]);
+  });
+
+  it("records no fire lag for a renotify or a resolve, only for a fire", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const metrics = createMetricsAggregator(() => now);
+    const { worker } = make(fake, w, metrics);
+    await worker.tick();
+    publishOutage(w.boards.get("alpha")!, now, true);
+    await worker.tick();
+    metrics.drain();
+    for (let i = 0; i < 4; i++) {
+      now += 60 * SEC;
+      publishOutage(w.boards.get("alpha")!, now, false);
+      await worker.tick();
+    }
+    expect(fake.events.some((event) => event.transition === "resolved")).toBe(true);
+    expect(fireLags(metrics)).toEqual([]);
+  });
+
+  it("records no fire lag for a fire that was not stored (a failed write): it is recorded when the retry stores it", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const metrics = createMetricsAggregator(() => now);
+    const { worker } = make(fake, w, metrics);
+    await worker.tick();
+    publishOutage(w.boards.get("alpha")!, now - 1 * SEC, true);
+    fake.failWhen.events = true;
+    await expect(worker.tick()).rejects.toThrow();
+    expect(fireLags(metrics)).toEqual([]);
+    fake.failWhen.events = false;
+    now += 30 * SEC;
+    publishOutage(w.boards.get("alpha")!, now - 2 * SEC, true);
+    await worker.tick();
+    expect(fireLags(metrics)).toContainEqual({ kind: "power_outage", count: 1, sum: 2 * SEC });
+  });
+
+  it("records no fire lag for server_unreachable: it fires on a timer, with no reading to measure from", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const metrics = createMetricsAggregator(() => now);
+    const { worker } = make(fake, w, metrics);
+    await worker.tick();
+    for (let i = 0; i < 6; i++) {
+      w.boards.get("alpha")!.recordPollFailure(now);
+      await worker.tick();
+      now += 30 * SEC;
+    }
+    expect(fake.events.map((event) => `${event.kind}:${event.transition}`)).toEqual(["server_unreachable:fired"]);
+    expect(fireLags(metrics)).toEqual([]);
+  });
+
+  it("every rule kind is a value the registry accepts for the kind label", () => {
+    const metrics = createMetricsAggregator(() => now);
+    for (const kind of RULE_KINDS) {
+      expect(() => metrics.recordHistogram("satis.alerts.fire.lag", { kind }, 1), kind).not.toThrow();
+    }
+  });
+
+  it("a metrics sink that throws never reaches the engine: the events are stored and it is logged once per metric", async () => {
+    const fake = fakeDb();
+    const w = world();
+    const throwing: MetricsSink = {
+      recordHistogram() {
+        throw new Error("metrics broken");
+      },
+      recordCounter() {
+        throw new Error("metrics broken");
+      },
+    };
+    const { worker, lines } = make(fake, w, throwing);
+    await worker.tick();
+    publishOutage(w.boards.get("alpha")!, now, true);
+    await expect(worker.tick()).resolves.toBeUndefined();
+    await worker.tick();
+    expect(fake.events.map((event) => event.kind)).toEqual(["power_outage"]);
+    expect(lines.filter((line) => line.msg === "failed to record a metric; dropping it").map((line) => line.obj.metric).sort()).toEqual([
+      "satis.alerts.evaluation.duration",
+      "satis.alerts.fire.lag",
+    ]);
   });
 });
