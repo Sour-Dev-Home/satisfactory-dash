@@ -42,9 +42,13 @@ npm workspaces monorepo:
 - **Frontend** → Cloudflare Workers static assets at `https://satis-manager.com`
   (ADR-0013 and its amendment; configured by `frontend/wrangler.jsonc`). Cloudflare's Git
   build deploys it on every merge to `main`.
-- **Backend** → runs on the game-server PC and is reached through a Cloudflare Tunnel at
-  `api.satis-manager.com`. The tunnel is currently gated off until the go-live checklist
-  (issue #19) is done. It has a `Dockerfile` for a later move to Render/Railway/AWS.
+- **Backend** → runs on AWS: one ECS Fargate service (the backend and cloudflared in one task)
+  with RDS PostgreSQL private to the VPC, reached through the Cloudflare Tunnel at
+  `api.satis-manager.com`. See [`docs-vault/wiki/runbooks/aws.md`](docs-vault/wiki/runbooks/aws.md)
+  and the cutover issue #217.
+- **Game-server PC** → runs only the edge agent (`agent/`), which reads the game server over
+  loopback and posts its snapshots to `https://api.satis-manager.com`; see
+  [`docs-vault/wiki/runbooks/agent-app.md`](docs-vault/wiki/runbooks/agent-app.md).
 
 ## License
 

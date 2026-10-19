@@ -1,0 +1,1 @@
+- 2026-10-19 — README's Deployment section now says the backend runs on AWS (ECS Fargate with RDS PostgreSQL, behind the Cloudflare Tunnel at `api.satis-manager.com`), linking the AWS runbook and the cutover issue #217, and that the game-server PC runs only the edge agent; the old "runs on the PC, tunnel gated off, AWS later" text is gone (#435).
