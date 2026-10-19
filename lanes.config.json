@@ -48,10 +48,17 @@
     "mainWorkflow": "ci.yml"
   },
   "start": {
-    "softPaths": ["^docs-vault/wiki/log\\.d/", "^docs/USING\\.md$", "^README\\.md$", "^lanes\\.config\\.json$"]
+    "softPaths": [
+      "^docs-vault/wiki/log\\.d/",
+      "^docs/USING\\.md$",
+      "^README\\.md$",
+      "^lanes\\.config\\.json$"
+    ]
   },
   "install": {
-    "skip": [".github/workflows/security.yml"]
+    "skip": [
+      ".github/workflows/security.yml"
+    ]
   },
   "adr": {
     "dir": "docs-vault/wiki/decisions"
@@ -66,5 +73,8 @@
       "installationId": 171316917,
       "botLogin": "lanes-97a036[bot]"
     }
+  },
+  "gate": {
+    "nonLanePrs": true
   }
 }

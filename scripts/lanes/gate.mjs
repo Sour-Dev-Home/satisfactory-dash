@@ -1,5 +1,6 @@
 // Posts the `lanes/gate` commit status. Run by .github/workflows/lanes-gate.yml, always from the default branch.
 // Inputs (environment): REPO, EVENT_NAME, PR_NUMBER, STATUS_SHA, STATUS_CONTEXT, STATUS_STATE, HEAD_REF, GROUP_SHA, ISSUE_NUMBER, GH_TOKEN.
+// On issues (#767): ISSUE_ACTION (`labeled` or `closed`) and LABEL_NAME (the label a `labeled` event added).
 // On workflow_run (the review ping, ADR 0021): RUN_PR_NUMBER (workflow_run.pull_requests[0].number, may be empty) and RUN_HEAD_SHA (workflow_run.head_sha).
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -280,6 +281,19 @@ export function readNativeApproval(api, repo, pr, config, codeOwnersPath = ".git
 }
 
 /**
+ * ADR 0034 part 1: the user owners of `.github/CODEOWNERS` in this checkout (the default branch's), for the
+ * non-lane "authored by a code owner" pass. Read only when the switch is on; fails closed to `[]` on any read error.
+ */
+export function readCodeOwners(config, codeOwnersPath = ".github/CODEOWNERS") {
+  if (config.gate?.nonLanePrs !== true) return [];
+  try {
+    return parseCodeOwnerUsers(readFileSync(codeOwnersPath, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * ADR 0032 part 4: the extra `pulls/{n}/files` call, made only when the switch is on (read from the default-branch
  * config) and the PR author is `dependabot[bot]`. Returns `dependabotActionBump`'s input, or `null` ("not a bump")
  * when no call is due or on any API or parse error.
@@ -355,6 +369,8 @@ export function decideForPr(api, repo, number, config, adrs = []) {
     pendingHeadHashes: pendingHeadHashes(api, repo, verdicts, pr.head.sha, reused),
     nativeApproval: readNativeApproval(api, repo, { number, user: pr.user, head: pr.head }, config),
     dependabotFiles: readDependabotFiles(api, repo, { number, user: pr.user }, config),
+    prAuthor: pr.user?.login,
+    codeOwners: readCodeOwners(config),
     prBody: pr.body,
     issueLabels,
     issueState,
@@ -426,6 +442,26 @@ export function reevaluateBlocked(api, repo, closed, config, adrs = []) {
   return out;
 }
 
+/**
+ * #767: after issue #`ready` gets the `ready` label, re-evaluates each open PR whose body closes it ("Closes #N", as
+ * `parsePrBody` reads it), and no other PR, so the PR does not keep a stale "not labelled ready" failure.
+ */
+export function reevaluateClosing(api, repo, ready, config, adrs = []) {
+  const prs = api([`repos/${repo}/pulls?state=open&per_page=100`, "--paginate", "--jq", ".[] | {number, body} | @json"]).split("\n").filter(Boolean);
+  const out = [];
+  for (const line of prs) {
+    let pr;
+    try {
+      pr = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsePrBody(pr?.body).closes !== ready || !Number.isInteger(pr.number)) continue;
+    out.push(evaluatePr(api, repo, pr.number, config, adrs));
+  }
+  return out;
+}
+
 export function evaluatePr(api, repo, number, config, adrs = []) {
   const result = decideForPr(api, repo, number, config, adrs);
   if (result === null) return null;
@@ -485,7 +521,7 @@ function decide(env, api) {
   const repo = env.REPO ?? "";
   if (!REPO.test(repo)) throw new Error("REPO is missing or malformed");
   // #45: the ADRs in this checkout (the default branch), so a PR's own ADR edits never change its required reviewers.
-  const adrs = loadAdrs();
+  const adrs = loadAdrs(config.adr.dir);
   switch (env.EVENT_NAME) {
     // pull_request_target (I3): the workflow trigger changed from pull_request so a PR cannot rewrite its own gate;
     // GitHub sets this exact event name on the resulting run, so both must be accepted here.
@@ -517,6 +553,12 @@ function decide(env, api) {
     }
     case "issues": {
       if (!/^[1-9][0-9]{0,8}$/.test(env.ISSUE_NUMBER ?? "")) throw new Error("ISSUE_NUMBER is missing or malformed");
+      // #767: a `labeled` event matters only for the `ready` label; any other label returns without reading PRs.
+      if (env.ISSUE_ACTION === "labeled") {
+        if (env.LABEL_NAME !== "ready") return;
+        for (const d of reevaluateClosing(api, repo, Number(env.ISSUE_NUMBER), config, adrs)) console.log(JSON.stringify(d));
+        return;
+      }
       for (const d of reevaluateBlocked(api, repo, Number(env.ISSUE_NUMBER), config, adrs)) console.log(JSON.stringify(d));
       return;
     }
