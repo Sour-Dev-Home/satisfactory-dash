@@ -7,6 +7,8 @@ import { PowerHistoryPoller } from "./powerHistoryPoller.js";
 import type { PowerHistoryPorts } from "./powerHistoryPoller.js";
 import { InMemoryPowerHistoryStore } from "./powerHistoryStore.js";
 import type { PowerHistoryStore } from "./powerHistoryStore.js";
+import { createMetricsAggregator } from "../../../platform/metrics/index.js";
+import type { MetricsSink } from "../../../platform/metrics/index.js";
 
 const T0 = 1_700_000_000_000;
 const INTERVAL_MS = 5000;
@@ -592,5 +594,95 @@ describe("PowerHistoryPoller (fake time)", () => {
       expect(state.polls).toBe(polls);
       expect(vi.getTimerCount()).toBe(0);
     });
+  });
+});
+
+describe("PowerHistoryPoller metrics (ADR-0037 build step 3, fake time)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const labels = { server: "srv-1", group: "power" };
+
+  function setup(over: { metrics?: MetricsSink; serverPublicId?: string } = {}) {
+    const { ports, state } = fakePorts();
+    const { logger, lines } = captureLogs();
+    const store = new InMemoryPowerHistoryStore();
+    const metrics = createMetricsAggregator(() => Date.now());
+    const poller = new PowerHistoryPoller(ports, store, {
+      logger,
+      serverPublicId: "serverPublicId" in over ? over.serverPublicId : "srv-1",
+      metrics: over.metrics ?? metrics,
+    });
+    return { state, lines, store, metrics, poller };
+  }
+
+  it("records the cycle's duration and the lag from the planned tick to the stored sample", async () => {
+    const { poller, state, metrics } = setup();
+    state.delayMs = 300;
+    poller.start();
+    await vi.advanceTimersByTimeAsync(300);
+    const deltas = metrics.drain();
+    expect(deltas.find((d) => d.metric === "satis.poller.cycle.duration")).toMatchObject({ labels, count: 1, sum: 300 });
+    expect(deltas.find((d) => d.metric === "satis.poller.lag")).toMatchObject({ labels, count: 1, sum: 300 });
+    await poller.stop();
+  });
+
+  it("measures the lag from the nominal tick, so a late timer shows up as lag but not as cycle time", async () => {
+    const { poller, metrics } = setup();
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    metrics.drain();
+    // The process stalls for 2 s just as the next tick is due: the wall clock jumps, the timer fires late.
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS - 1);
+    vi.setSystemTime(T0 + INTERVAL_MS + 1999);
+    await vi.advanceTimersByTimeAsync(1);
+    const deltas = metrics.drain();
+    expect(deltas.find((d) => d.metric === "satis.poller.lag")).toMatchObject({ sum: 2000 });
+    expect(deltas.find((d) => d.metric === "satis.poller.cycle.duration")).toMatchObject({ sum: 0 });
+    await poller.stop();
+  });
+
+  it("a failed poll records its cycle duration but no lag (nothing was stored)", async () => {
+    const { poller, state, metrics } = setup();
+    state.failWith = new Error("offline");
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const deltas = metrics.drain();
+    expect(deltas.find((d) => d.metric === "satis.poller.cycle.duration")).toMatchObject({ labels, count: 1 });
+    expect(deltas.some((d) => d.metric === "satis.poller.lag")).toBe(false);
+    await poller.stop();
+  });
+
+  it("records nothing without a server public id (no database, so nothing would flush it)", async () => {
+    const { poller, metrics, store } = setup({ serverPublicId: undefined });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(metrics.drain()).toEqual([]);
+    expect(store.window(T0).series).toHaveLength(1); // the poller itself still worked
+    await poller.stop();
+  });
+
+  it("a metrics sink that throws never reaches the poller: samples are still stored and it is logged once", async () => {
+    const throwing: MetricsSink = {
+      recordHistogram() {
+        throw new Error("metrics broken");
+      },
+      recordCounter() {
+        throw new Error("metrics broken");
+      },
+    };
+    const { poller, store, lines } = setup({ metrics: throwing });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(INTERVAL_MS * 2);
+    expect(times(store, T0 + INTERVAL_MS * 2)).toEqual([T0, T0 + INTERVAL_MS, T0 + INTERVAL_MS * 2]);
+    const metricWarnings = lines.filter((line) => line.msg === "failed to record a metric; dropping it");
+    expect(metricWarnings.map((line) => line.metric)).toEqual(["satis.poller.lag", "satis.poller.cycle.duration"]);
+    expect(lines.some((line) => /crash/.test(line.msg))).toBe(false);
+    await poller.stop();
   });
 });

@@ -4,6 +4,7 @@ import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
 import { diffStates, FactoryHistoryPoller, MAX_TRANSITIONS_PER_POLL, sumItemRates } from "./factoryHistoryPoller.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
 import { ObservationBoard } from "./observationBoard.js";
+import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 
 const rate = (className: string, current: number, max = 100) => ({
   name: className,
@@ -274,5 +275,104 @@ describe("FactoryHistoryPoller.poll", () => {
       expect(history.recordTransitions).not.toHaveBeenCalled();
       expect(log.warn).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("FactoryHistoryPoller metrics (ADR-0037 build step 3, fake clock)", () => {
+  const labels = { server: "srv-1", group: "factory" };
+  const quietLogger = () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) as unknown as Logger & { warn: ReturnType<typeof vi.fn> };
+  const history = () => ({ recordPower: vi.fn(), recordItems: vi.fn(), recordTransitions: vi.fn() }) satisfies HistoryRecorder;
+
+  /** A clock the ports advance, so a poll "takes" `pollMs`. */
+  function setup(over: { paused?: boolean; fail?: boolean; metrics?: MetricsSink; serverPublicId?: string | undefined } = {}) {
+    const clock = { now: 10_000 };
+    const pollMs = 250;
+    const metrics = createMetricsAggregator(() => clock.now);
+    const log = quietLogger();
+    const poller = new FactoryHistoryPoller(
+      {
+        getFactoryBuildings: async () => {
+          clock.now += pollMs;
+          if (over.fail) throw new Error("offline");
+          return [building("b0")];
+        },
+        getServerStatus: async () => ({ isPaused: over.paused === true }) as ServerStatus,
+      },
+      {
+        logger: log,
+        history: history(),
+        now: () => clock.now,
+        serverPublicId: "serverPublicId" in over ? over.serverPublicId : "srv-1",
+        metrics: over.metrics ?? metrics,
+      },
+    );
+    return { clock, metrics, poller, log };
+  }
+
+  it("records the cycle's duration, and the lag from the planned time to the stored snapshot", async () => {
+    const { clock, metrics, poller } = setup();
+    await poller.poll(clock.now - 40); // planned 40 ms before the poll actually began
+    const deltas = metrics.drain();
+    expect(deltas.find((d) => d.metric === "satis.poller.cycle.duration")).toMatchObject({ labels, count: 1, sum: 250 });
+    expect(deltas.find((d) => d.metric === "satis.poller.lag")).toMatchObject({ labels, count: 1, sum: 290 });
+  });
+
+  it("called with no planned time (a direct call), measures the lag from the poll's own start", async () => {
+    const { metrics, poller } = setup();
+    await poller.poll();
+    expect(metrics.drain().find((d) => d.metric === "satis.poller.lag")).toMatchObject({ sum: 250 });
+  });
+
+  it("a failed or paused poll records its cycle but no lag: nothing was stored", async () => {
+    for (const over of [{ fail: true }, { paused: true }]) {
+      const { metrics, poller } = setup(over);
+      await poller.poll();
+      const deltas = metrics.drain();
+      expect(deltas.map((d) => d.metric), JSON.stringify(over)).toEqual(["satis.poller.cycle.duration"]);
+    }
+  });
+
+  it("records nothing without a server public id", async () => {
+    const { metrics, poller } = setup({ serverPublicId: undefined });
+    await poller.poll();
+    expect(metrics.drain()).toEqual([]);
+  });
+
+  it("a metrics sink that throws never reaches the poll, which still stores its rows", async () => {
+    const throwing: MetricsSink = {
+      recordHistogram() {
+        throw new Error("metrics broken");
+      },
+      recordCounter() {
+        throw new Error("metrics broken");
+      },
+    };
+    const { poller, log } = setup({ metrics: throwing });
+    await expect(poller.poll()).resolves.toBeUndefined();
+    await expect(poller.poll()).resolves.toBeUndefined();
+    expect(log.warn).toHaveBeenCalledTimes(2); // once per metric, not per poll
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("the scheduled loop passes its planned time: a timer that fires late shows up as lag", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(50_000);
+      const metrics = createMetricsAggregator(() => Date.now());
+      const poller = new FactoryHistoryPoller(
+        { getFactoryBuildings: async () => [building("b0")], ...running },
+        { logger: quietLogger(), history: history(), serverPublicId: "srv-1", metrics, intervalSeconds: 30 },
+      );
+      poller.start();
+      await vi.advanceTimersByTimeAsync(0);
+      metrics.drain();
+      await vi.advanceTimersByTimeAsync(29_999);
+      vi.setSystemTime(Date.now() + 1_500); // the process stalls just before the next tick
+      await vi.advanceTimersByTimeAsync(1);
+      expect(metrics.drain().find((d) => d.metric === "satis.poller.lag")).toMatchObject({ labels, sum: 1_500 });
+      await poller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

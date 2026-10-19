@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import type { ItemSampleRow, TransitionRow } from "../repositories/historyRepository.js";
 import { bestOutputPercent, classifyBuilding } from "./classifyBuilding.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
@@ -23,6 +24,10 @@ export interface FactoryHistoryPollerOptions {
   /** A poll that takes longer than this is abandoned and counted as failed. */
   pollTimeoutMs?: number;
   now?: () => number;
+  /** ADR-0037: the `server` label of this poller's metrics; omitted records none. */
+  serverPublicId?: string;
+  /** Tests only: where the metrics go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
 }
 
 export const FACTORY_HISTORY_INTERVAL_SECONDS = 30;
@@ -119,6 +124,10 @@ export class FactoryHistoryPoller implements BackgroundWorker {
   private readonly known = new Map<string, string>();
   /** The last successful poll saw the game paused (so the next running snapshot is the first after a resume). */
   private wasPaused = false;
+  private readonly metrics: MetricsRecorder;
+  private readonly metricLabels: { server: string; group: string } | undefined;
+  /** When the scheduled poll is due (its timer may fire later than this). */
+  private plannedAt: number | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
@@ -136,6 +145,8 @@ export class FactoryHistoryPoller implements BackgroundWorker {
     this.intervalMs = seconds * 1000;
     this.pollTimeoutMs = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     this.now = options.now ?? Date.now;
+    this.metrics = createBackgroundRecorder(options.logger, options.metrics);
+    this.metricLabels = options.serverPublicId === undefined ? undefined : { server: options.serverPublicId, group: "factory" };
   }
 
   start(): void {
@@ -155,6 +166,7 @@ export class FactoryHistoryPoller implements BackgroundWorker {
 
   private schedule(delayMs: number): void {
     if (this.stopped) return;
+    this.plannedAt = this.now() + delayMs;
     this.timer = setTimeout(() => {
       this.timer = undefined;
       this.inFlight = this.tick();
@@ -164,7 +176,7 @@ export class FactoryHistoryPoller implements BackgroundWorker {
 
   private async tick(): Promise<void> {
     try {
-      await this.poll();
+      await this.poll(this.plannedAt);
     } catch (err) {
       this.options.logger.error({ err: formatErrorDetail(err) }, "factory history poll crashed unexpectedly");
     } finally {
@@ -173,9 +185,22 @@ export class FactoryHistoryPoller implements BackgroundWorker {
     }
   }
 
-  /** One poll; exposed for tests. Never throws for an upstream failure. */
-  async poll(): Promise<void> {
+  /** One poll; exposed for tests. Never throws for an upstream failure. `plannedAtMs` is when it was due (the
+   *  poll's own start when omitted), what ADR-0037's `satis.poller.lag` measures from. */
+  async poll(plannedAtMs?: number): Promise<void> {
     const atMs = this.now();
+    try {
+      if (await this.pollOnce(atMs) && this.metricLabels) {
+        this.metrics.histogram("satis.poller.lag", this.metricLabels, this.now() - (plannedAtMs ?? atMs));
+      }
+    } finally {
+      // Every cycle's duration, a failed or paused one included.
+      if (this.metricLabels) this.metrics.histogram("satis.poller.cycle.duration", this.metricLabels, this.now() - atMs);
+    }
+  }
+
+  /** True once this poll's snapshot is stored. */
+  private async pollOnce(atMs: number): Promise<boolean> {
     let buildings: FactoryBuilding[];
     let status: ServerStatus;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -194,18 +219,18 @@ export class FactoryHistoryPoller implements BackgroundWorker {
       if (this.consecutiveFailures === 1) {
         this.options.logger.warn({ err: formatErrorDetail(err) }, "factory history poll failed; leaving a gap");
       }
-      return;
+      return false;
     } finally {
       clearTimeout(deadline);
     }
-    if (this.stopped) return;
+    if (this.stopped) return false;
     if (this.consecutiveFailures > 0) {
       this.options.logger.info({ failedPolls: this.consecutiveFailures }, "factory history polling recovered");
       this.consecutiveFailures = 0;
     }
     if (status.isPaused) {
       this.wasPaused = true;
-      return; // frozen values: record nothing, and keep `known` as it is (a resume then makes no fake transitions)
+      return false; // frozen values: record nothing, and keep `known` as it is (a resume then makes no fake transitions)
     }
     // What the alert engine reads (ADR-0027). The FIRST snapshot after a pause is flagged: FRM's values may still be
     // frozen, so the evaluator counts it as unknown.
@@ -230,5 +255,6 @@ export class FactoryHistoryPoller implements BackgroundWorker {
     this.wasPaused = false;
     this.options.history.recordItems(itemRows);
     this.options.history.recordTransitions(diffStates(this.known, buildings, atMs));
+    return true;
   }
 }

@@ -13,7 +13,10 @@ import {
   endpoints,
 } from "@satisfactory-dash/shared";
 import type { Cadence } from "@satisfactory-dash/shared";
+import type { Logger } from "pino";
 import { BadRequestError, RateLimitedError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
+import { createLogger } from "../../../platform/logger.js";
+import { createBackgroundRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
@@ -51,6 +54,10 @@ export interface AgentApiDeps {
   /** Per server (credential); default 50 snapshots per 10 seconds: about 5 a second, bursts allowed. */
   snapshotLimiter?: UserRateLimiter;
   now?: () => number;
+  /** Where a metrics failure is logged (once); default a logger of its own. */
+  logger?: Logger;
+  /** Tests only: where the metrics go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
 }
 
 /**
@@ -69,6 +76,7 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: 120, windowMs: 60_000 });
   const snapshotLimiter = deps.snapshotLimiter ?? new UserRateLimiter({ max: 50, windowMs: 10_000 });
   const versions = new Map<string, string>();
+  const metrics = createBackgroundRecorder(deps.logger ?? createLogger(), deps.metrics);
 
   router.post(
     agentRoutePath(endpoints.agentApi.enroll.route),
@@ -113,7 +121,11 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
         ingest = deps.directory.get(agent.publicId)?.telemetry.agentIngest;
       }
       if (ingest === undefined) throw new ServiceUnavailableError();
-      ingest.ingest(snapshot.data, now());
+      const receivedAtMs = now();
+      ingest.ingest(snapshot.data, receivedAtMs);
+      // ADR-0037: "apparent" ingest lag, since the agent's clock skew is included; an agent clock running ahead would
+      // make it negative, so it is clamped at 0.
+      metrics.histogram("satis.agent.ingest.lag", { server: agent.publicId }, Math.max(0, receivedAtMs - Date.parse(snapshot.data.observedAt)));
       if (versions.get(agent.serverUuid) !== snapshot.data.agentVersion) {
         versions.set(agent.serverUuid, snapshot.data.agentVersion);
         void deps.recordVersion(agent.serverUuid, snapshot.data.agentVersion).catch(() => versions.delete(agent.serverUuid));

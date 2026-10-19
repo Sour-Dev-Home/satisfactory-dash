@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import {
   insertItemSamples,
   insertPowerSamples,
@@ -30,6 +31,8 @@ export interface BufferedHistoryRecorderOptions {
   flushIntervalMs?: number;
   /** Per kind. When a database outage fills a buffer, the OLDEST rows are dropped so memory stays bounded. */
   maxBuffered?: number;
+  /** Tests only: where the metrics go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
 }
 
 const DEFAULT_FLUSH_INTERVAL_MS = 15_000;
@@ -61,6 +64,7 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
   private readonly flushIntervalMs: number;
   private readonly maxBuffered: number;
   private readonly logger: Logger;
+  private readonly metrics: MetricsRecorder;
 
   constructor(
     private readonly db: Queryable,
@@ -70,6 +74,7 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
     this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
     this.maxBuffered = options.maxBuffered ?? DEFAULT_MAX_BUFFERED;
     this.logger = options.logger;
+    this.metrics = createBackgroundRecorder(options.logger, options.metrics);
   }
 
   recordPower(rows: PowerSampleRow[]): void {
@@ -133,7 +138,7 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
     this.transitions = [];
     let failed = false;
     // Each kind is written on its own, so a failing table does not lose the others' rows.
-    const attempt = async (rows: unknown[], write: () => Promise<void>, requeue: () => void): Promise<void> => {
+    const attempt = async (table: string, rows: unknown[], write: () => Promise<void>, requeue: () => void): Promise<void> => {
       if (rows.length === 0) {
         return;
       }
@@ -145,15 +150,18 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
         if (this.consecutiveFailures === 0) {
           this.logger.warn({ err: formatErrorDetail(err) }, "history write failed; buffering and retrying");
         }
+        return;
       }
+      // ADR-0037: the rows that landed (a requeued batch counts when it is finally written).
+      this.metrics.counter("satis.history.rows_written", { table }, rows.length);
     };
-    await attempt(power, () => insertPowerSamples(this.db, this.serverPublicId, power), () => {
+    await attempt("power_samples", power, () => insertPowerSamples(this.db, this.serverPublicId, power), () => {
       this.power = this.bounded(power, this.power);
     });
-    await attempt(items, () => insertItemSamples(this.db, this.serverPublicId, items), () => {
+    await attempt("item_samples", items, () => insertItemSamples(this.db, this.serverPublicId, items), () => {
       this.items = this.bounded(items, this.items);
     });
-    await attempt(transitions, () => insertTransitions(this.db, this.serverPublicId, transitions), () => {
+    await attempt("building_transitions", transitions, () => insertTransitions(this.db, this.serverPublicId, transitions), () => {
       this.transitions = this.bounded(transitions, this.transitions);
     });
     if (failed) {

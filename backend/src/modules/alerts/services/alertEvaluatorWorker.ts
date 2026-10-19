@@ -1,8 +1,9 @@
 import type { Logger } from "pino";
 import type { ServerDirectory } from "../../servers/index.js";
-import type { BackgroundWorker, TelemetryScope } from "../../telemetry/index.js";
+import type { BackgroundWorker, ObservationSnapshot, TelemetryScope } from "../../telemetry/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import type { withTransaction } from "../../../platform/db/transaction.js";
 import {
   listRules,
@@ -13,7 +14,7 @@ import {
   writeEvaluation,
   type RuleRow,
 } from "../repositories/alertRepository.js";
-import { parseRuleParams, SEVERITIES, type Rule, type Severity } from "./rules.js";
+import { parseRuleParams, SEVERITIES, type Rule, type RuleKind, type Severity } from "./rules.js";
 import { ServerAlertEvaluator } from "./serverAlertEvaluator.js";
 
 /** What the worker needs from the database: queries and transactions (a pool). */
@@ -28,6 +29,24 @@ export interface AlertEvaluatorOptions {
   now?: () => number;
   /** ALERT_DELIVERY is on: new events are also queued for delivery (in the same transaction). Default off: nothing queued. */
   deliver?: boolean;
+  /** Tests only: where the metrics go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
+}
+
+/** ADR-0037 `satis.alerts.fire.lag`: the reading a fired event of this kind was decided from. `server_unreachable` and
+ *  `agent_offline` fire on a timer (the ABSENCE of readings), so they have none and record no lag. */
+function triggeringSampleAt(kind: RuleKind, observations: ObservationSnapshot): number | undefined {
+  switch (kind) {
+    case "power_outage":
+    case "fuse_trip":
+      return observations.power?.observedAt;
+    case "stopped_machines":
+    case "production_below_target":
+      return observations.factory?.observedAt;
+    case "server_unreachable":
+    case "agent_offline":
+      return undefined;
+  }
 }
 
 const DEFAULT_TICK_MS = 30_000;
@@ -69,6 +88,7 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   private stopped = false;
   private lastPurgeAt: number | undefined;
   private failing = false;
+  private readonly metrics: MetricsRecorder;
 
   constructor(
     private readonly db: AlertsDb,
@@ -78,6 +98,7 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
     this.tickMs = options.tickMs ?? DEFAULT_TICK_MS;
     this.purgeIntervalMs = options.purgeIntervalMs ?? DEFAULT_PURGE_INTERVAL_MS;
     this.now = options.now ?? Date.now;
+    this.metrics = createBackgroundRecorder(options.logger, options.metrics);
   }
 
   start(): void {
@@ -125,6 +146,15 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   /** One evaluation of every server; exposed for tests. Throws when the database fails (the loop catches it). */
   async tick(): Promise<void> {
     const now = this.now();
+    try {
+      await this.evaluateAll(now);
+    } finally {
+      // ADR-0037: every tick's duration, a failed one included.
+      this.metrics.histogram("satis.alerts.evaluation.duration", {}, this.now() - now);
+    }
+  }
+
+  private async evaluateAll(now: number): Promise<void> {
     const servers = this.directory.list().flatMap((summary) => {
       const observations = this.directory.get(summary.id)?.telemetry.observations;
       return observations === undefined ? [] : [{ id: summary.id, observations }];
@@ -174,9 +204,10 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           this.evaluators.set(server.id, evaluator);
         }
         const states = await loadStates(this.db, server.id);
+        const observations = server.observations.snapshot();
         const evaluation = evaluator.evaluate({
           now,
-          observations: server.observations.snapshot(),
+          observations,
           rules,
           states,
           muted: (mutes.get(server.id) ?? 0) > now,
@@ -186,6 +217,9 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
         for (const event of evaluation.events) {
           // The alert log's own line: ids and counts only, never a name or a secret.
           this.options.logger.info({ serverId: server.id, alert: event.kind, subject: event.subject, transition: event.transition }, "alert event recorded");
+          // ADR-0037: a stored fire's lag, the event time (this tick) minus the reading that triggered it.
+          const sampleAt = event.transition === "fired" ? triggeringSampleAt(event.kind, observations) : undefined;
+          if (sampleAt !== undefined) this.metrics.histogram("satis.alerts.fire.lag", { kind: event.kind }, Math.max(0, now - sampleAt));
         }
       } catch (err) {
         if (!failed) {

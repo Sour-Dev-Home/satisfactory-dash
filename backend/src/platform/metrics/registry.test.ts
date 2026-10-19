@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { ownValue } from "@satisfactory-dash/shared";
 import { METRIC_REGISTRY, UnknownMetricError, InvalidLabelError, validateRecording, isBoundedToken, isStatusClass, isOneOf } from "./registry.js";
 
 describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)", () => {
@@ -59,7 +60,7 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
       api: "vanilla",
       query: "servers.lockServerByPublicId",
       server: "abc123",
-      group: "status",
+      group: "power",
       table: "power_samples",
       kind: "power_outage",
     };
@@ -68,6 +69,39 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
       for (const key of Object.keys(definition.labels)) labels[key] = sample[key];
       expect(() => validateRecording(metric, definition.kind, labels)).not.toThrow();
     }
+  });
+});
+
+describe("the background metrics (ADR-0037 §1, build step 3)", () => {
+  // Each metric with exactly the label keys the ADR's table gives, and one valid value per key.
+  const table: [string, "histogram" | "counter", Record<string, string>][] = [
+    ["satis.poller.cycle.duration", "histogram", { server: "abc123", group: "power" }],
+    ["satis.poller.lag", "histogram", { server: "abc123", group: "factory" }],
+    ["satis.agent.ingest.lag", "histogram", { server: "abc123" }],
+    ["satis.history.rows_written", "counter", { table: "item_samples" }],
+    ["satis.alerts.evaluation.duration", "histogram", {}],
+    ["satis.alerts.fire.lag", "histogram", { kind: "fuse_trip" }],
+  ];
+
+  it.each(table)("%s is registered as a %s with exactly its table's labels", (metric, kind, labels) => {
+    expect(Object.keys(ownValue(METRIC_REGISTRY, metric)?.labels ?? { missing: true }).sort()).toEqual(Object.keys(labels).sort());
+    expect(() => validateRecording(metric, kind, labels)).not.toThrow();
+  });
+
+  it.each(table)("%s refuses a value outside each of its label sets", (metric, kind, labels) => {
+    for (const key of Object.keys(labels)) {
+      expect(() => validateRecording(metric, kind, { ...labels, [key]: "not a member" }), key).toThrow(InvalidLabelError);
+    }
+  });
+
+  it("refuses an endpoint group, history table or alert kind that is a valid token but not in its set", () => {
+    expect(() => validateRecording("satis.poller.lag", "histogram", { server: "abc123", group: "status" })).toThrow(InvalidLabelError);
+    expect(() => validateRecording("satis.history.rows_written", "counter", { table: "power_rollups" })).toThrow(InvalidLabelError);
+    expect(() => validateRecording("satis.alerts.fire.lag", "histogram", { kind: "made_up_kind" })).toThrow(InvalidLabelError);
+  });
+
+  it("still refuses an unregistered satis.* name", () => {
+    expect(() => validateRecording("satis.poller.made_up", "histogram", { server: "abc123", group: "power" })).toThrow(UnknownMetricError);
   });
 });
 

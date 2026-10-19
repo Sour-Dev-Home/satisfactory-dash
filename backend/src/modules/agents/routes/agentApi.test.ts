@@ -8,6 +8,7 @@ import { createLogger } from "../../../platform/logger.js";
 import { ApiFailure, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
+import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
 import { sha256 } from "../repositories/agentRepository.js";
 import { createAgentAuth } from "../services/agentAuth.js";
@@ -536,5 +537,62 @@ describe("the rest of /agent", () => {
     const res = await request(build().app).get("/agent/v1/nothing-here");
     expect(res.status).toBe(404);
     expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("not_found");
+  });
+});
+
+describe("POST /agent/v1/snapshots records satis.agent.ingest.lag (ADR-0037 build step 3, fake clock)", () => {
+  const RECEIVED_AT = Date.parse("2026-09-26T12:00:10.000Z");
+  const lagOf = (metrics: ReturnType<typeof createMetricsAggregator>) =>
+    metrics.drain().filter((delta) => delta.metric === "satis.agent.ingest.lag");
+
+  it("records received-at minus the agent's observedAt, labelled with the server's public id", async () => {
+    const metrics = createMetricsAggregator(() => RECEIVED_AT);
+    const { app, ingest } = build({ now: () => RECEIVED_AT, metrics });
+    const res = await postSnapshot(app, { ...agentSnapshotRequestFull, observedAt: "2026-09-26T12:00:07.500Z" });
+    expect(res.status).toBe(200);
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(lagOf(metrics)).toEqual([expect.objectContaining({ labels: { server: "alpha" }, count: 1, sum: 2500 })]);
+  });
+
+  it("reads an observedAt with an offset as the instant it names", async () => {
+    const metrics = createMetricsAggregator(() => RECEIVED_AT);
+    const { app } = build({ now: () => RECEIVED_AT, metrics });
+    await postSnapshot(app, { ...agentSnapshotRequestFull, observedAt: "2026-09-26T14:00:09.000+02:00" });
+    expect(lagOf(metrics)).toEqual([expect.objectContaining({ sum: 1000 })]);
+  });
+
+  it("clamps an observedAt in the future (an agent clock running ahead) to 0, never a negative lag", async () => {
+    const metrics = createMetricsAggregator(() => RECEIVED_AT);
+    const { app } = build({ now: () => RECEIVED_AT, metrics });
+    await postSnapshot(app, { ...agentSnapshotRequestFull, observedAt: "2026-09-26T12:05:00.000Z" });
+    const [delta] = lagOf(metrics);
+    expect(delta).toMatchObject({ count: 1, sum: 0 });
+    expect(delta?.bucketCounts?.[0]).toBe(1); // the lowest bucket, not a negative value
+  });
+
+  it("records nothing for a snapshot that is refused (invalid body, not ready)", async () => {
+    const metrics = createMetricsAggregator(() => RECEIVED_AT);
+    const invalid = build({ now: () => RECEIVED_AT, metrics });
+    expect((await postSnapshot(invalid.app, { ...agentSnapshotRequestFull, observedAt: "not a time" })).status).toBe(400);
+    const notReady = build({ now: () => RECEIVED_AT, metrics, isReady: () => false });
+    expect((await postSnapshot(notReady.app)).status).toBe(503);
+    expect(lagOf(metrics)).toEqual([]);
+  });
+
+  it("a metrics sink that throws never reaches the route: the snapshot is still ingested and answered 200, and it is logged once", async () => {
+    const throwing: MetricsSink = {
+      recordHistogram() {
+        throw new Error("metrics broken");
+      },
+      recordCounter() {
+        throw new Error("metrics broken");
+      },
+    };
+    const warn = vi.fn();
+    const { app, ingest } = build({ now: () => RECEIVED_AT, metrics: throwing, logger: { warn } as never });
+    expect((await postSnapshot(app)).status).toBe(200);
+    expect((await postSnapshot(app)).status).toBe(200);
+    expect(ingest).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,6 +3,8 @@ import type { Logger } from "pino";
 import type { Queryable } from "../db/schemaVersion.js";
 import { createMetricsAggregator } from "./aggregator.js";
 import { SeriesFlushWorker, FLUSH_INTERVAL_MS } from "./seriesFlushWorker.js";
+import { backgroundAggregator } from "./backgroundMetrics.js";
+import { createSeriesFlushWorker } from "./index.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -31,7 +33,7 @@ function setup(behaviour: { upsert?: () => unknown; purge?: () => unknown[] } = 
   const aggregator = createMetricsAggregator();
   return { statements, lines, aggregator, worker: new SeriesFlushWorker(db, aggregator, { logger }) };
 }
-const upserts = (statements: { text: string }[]) => statements.filter((s) => s.text.includes("INSERT INTO metrics.series_hourly"));
+const upserts = <T extends { text: string }>(statements: T[]) => statements.filter((s) => s.text.includes("INSERT INTO metrics.series_hourly"));
 const purges = (statements: { text: string }[]) => statements.filter((s) => s.text.includes("DELETE FROM metrics.series_hourly"));
 
 describe("SeriesFlushWorker", () => {
@@ -119,6 +121,49 @@ describe("SeriesFlushWorker", () => {
     expect(calls).toBe(2); // ...but the loop DOES stop as soon as one throws: /c's insert never even ran.
     expect(upserts(statements)).toHaveLength(2); // /a committed, /b's statement was sent (and failed), /c never sent
     expect(aggregator.drain()).toEqual([]); // /c is gone from the aggregator too: drain() already removed it, so it is not retried
+  });
+
+  it("flushes every ADR-0037 build-step-3 background series with its metric name, labels, count and sum", async () => {
+    const { worker, aggregator, statements } = setup();
+    aggregator.recordHistogram("satis.poller.cycle.duration", { server: "abc123", group: "power" }, 40);
+    aggregator.recordHistogram("satis.poller.lag", { server: "abc123", group: "factory" }, 7);
+    aggregator.recordHistogram("satis.agent.ingest.lag", { server: "abc123" }, 0);
+    aggregator.recordCounter("satis.history.rows_written", { table: "building_transitions" }, 5);
+    aggregator.recordHistogram("satis.alerts.evaluation.duration", {}, 3);
+    aggregator.recordHistogram("satis.alerts.fire.lag", { kind: "power_outage" }, 1500);
+    await worker.flushOnce();
+    const written = upserts(statements).map((s) => s.values.slice(1, 5));
+    expect(written).toEqual([
+      ["satis.poller.cycle.duration", JSON.stringify({ server: "abc123", group: "power" }), 1, 40],
+      ["satis.poller.lag", JSON.stringify({ server: "abc123", group: "factory" }), 1, 7],
+      ["satis.agent.ingest.lag", JSON.stringify({ server: "abc123" }), 1, 0],
+      ["satis.history.rows_written", JSON.stringify({ table: "building_transitions" }), 1, 5],
+      ["satis.alerts.evaluation.duration", JSON.stringify({}), 1, 3],
+      ["satis.alerts.fire.lag", JSON.stringify({ kind: "power_outage" }), 1, 1500],
+    ]);
+  });
+
+  it("createSeriesFlushWorker also drains the process-wide background aggregator the pollers, ingest, history and alerts record into", async () => {
+    const { statements } = setup();
+    const db: Queryable = {
+      async query(text, values = []) {
+        statements.push({ text, values });
+        return { rows: text.includes("DELETE") ? [{ deleted: 0 }] : [] };
+      },
+    };
+    const requests = createMetricsAggregator();
+    const worker = createSeriesFlushWorker(db, requests, { info() {}, warn() {} } as unknown as Logger);
+    backgroundAggregator.drain(); // whatever another test in this process left behind
+    requests.recordHistogram("http.server.request.duration", { route: "/a", status_class: "2xx" }, 1);
+    backgroundAggregator.recordHistogram("satis.alerts.evaluation.duration", {}, 2);
+    await worker.flushOnce();
+    expect(upserts(statements).map((s) => s.values[1])).toEqual(["http.server.request.duration", "satis.alerts.evaluation.duration"]);
+    expect(backgroundAggregator.drain()).toEqual([]);
+    // Handed the background aggregator itself, it is drained once, not twice.
+    backgroundAggregator.recordHistogram("satis.alerts.evaluation.duration", {}, 2);
+    statements.length = 0;
+    await createSeriesFlushWorker(db, backgroundAggregator, { info() {}, warn() {} } as unknown as Logger).flushOnce();
+    expect(upserts(statements)).toHaveLength(1);
   });
 
   it("runs every 60 s once started, and stop() ends it and waits for a flush in flight", async () => {
