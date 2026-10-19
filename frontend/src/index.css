@@ -228,6 +228,11 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
+  /* The condensed face makes a short label ("Map") narrower than a touch target (#62). */
+  nav[aria-label="Main"] a {
+    min-width: var(--spacing-touch);
+    justify-content: center;
+  }
   h2 {
     font-size: 17px;
     font-weight: 600;
