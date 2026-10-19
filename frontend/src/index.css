@@ -1,54 +1,63 @@
 @import "tailwindcss";
 
 /*
- * Design tokens: direction B2 (energy monitor + status page), picked by the owner in
- * ADR-0016 step 3. Dark only for now. Every UI PR is judged against these; add a token here
- * rather than a one-off hex value in a component.
+ * Design tokens: the FICSIT-industrial direction (ADR-0041, which replaced ADR-0016's B2).
+ * Dark only for now. Every UI PR is judged against these; add a token here rather than a
+ * one-off hex value in a component.
  * `npm run lint` (scripts/check-design-tokens.mjs) fails on raw colours, motion values, z-index
  * and bracketed lengths outside this block.
+ *
+ * Colour rules (ADR-0041): red only for failure, blue only for "paused", and amber is the accent
+ * and power, never a status.
  *
  * Status colors come in three strengths:
  *   --color-{ok,warn,bad,info}       text and marks on the dark surfaces
  *   --color-{ok,warn,bad,info}-soft  tinted backgrounds behind that text
  *   --color-{ok,warn,bad,info}-solid filled banners with white text (WCAG AA at any size)
+ * `bad` text clears AA on the canvas and the surface but not on surface-2 (3.8:1); text on a
+ * red tint uses `bad-on-soft`.
  */
 @theme {
-  --color-canvas: #0e1217;
+  --color-canvas: #17191c;
   /* Behind a modal (the command bar, #351): the canvas at 85%, so the page clearly steps back on
      the dark theme (70% read as too subtle, the owner's call). */
   --color-scrim: color-mix(in oklab, var(--color-canvas) 85%, transparent);
-  --color-surface: #161c23;
-  --color-surface-2: #1d252e;
-  --color-line: #29333e;
-  --color-fg: #c3ccd6;
-  --color-fg-strong: #f2f5f8;
-  --color-muted: #8b97a5;
-  --color-accent: #5cb8e6;
-  --color-on-accent: #06121a;
+  --color-surface: #1f2226;
+  --color-surface-2: #2b3035;
+  --color-line: #353b41;
+  --color-fg: #ece7dc;
+  --color-fg-strong: #fbf8f2;
+  --color-muted: #a3a9ae;
+  --color-accent: #fa9549; /* FICSIT amber */
+  --color-on-accent: #1b1b1b;
 
-  --color-ok: #3fbf6a;
-  --color-ok-soft: rgb(63 191 106 / 0.12);
-  --color-ok-solid: #1f7a3f;
-  --color-warn: #e3a32b;
-  --color-warn-soft: rgb(227 163 43 / 0.13);
-  --color-warn-solid: #8f5f0a;
-  --color-bad: #f2564d;
-  --color-bad-soft: rgb(242 86 77 / 0.14);
-  --color-bad-solid: #b3302a;
-  --color-info: #8fa8ff;
-  --color-info-soft: rgb(122 156 255 / 0.13);
-  --color-info-solid: #3d57b8;
-  --color-idle-solid: #4b5563;
+  --color-ok: #6fd49a;
+  --color-ok-soft: rgb(111 212 154 / 0.12);
+  --color-ok-solid: #1e7a45;
+  --color-warn: #e9c46a;
+  --color-warn-soft: rgb(233 196 106 / 0.13);
+  --color-warn-solid: #86600c;
+  --color-bad: #ef5350;
+  --color-bad-soft: rgb(239 83 80 / 0.14);
+  --color-bad-solid: #c62828;
+  --color-info: #9cc0e2; /* "paused" */
+  --color-info-soft: rgb(156 192 226 / 0.13);
+  --color-info-solid: #3a6690;
+  --color-idle-solid: #5a6168;
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
-  --color-bad-edge: rgb(242 86 77 / 0.35);
-  --color-bad-on-soft: #ff8a82;
-  --color-error-fg: #ffb3ad;
-  --color-warn-edge: rgb(227 163 43 / 0.35);
-  --color-warn-on-soft: #f0bd5c;
-  --color-info-edge: rgb(122 156 255 / 0.35);
-  --color-info-on-soft: #b4c5ff;
+  --color-bad-edge: rgb(239 83 80 / 0.35);
+  --color-bad-on-soft: #ff8a80;
+  --color-error-fg: #ffb4ab;
+  --color-warn-edge: rgb(233 196 106 / 0.35);
+  --color-warn-on-soft: #f0d08a;
+  --color-info-edge: rgb(156 192 226 / 0.35);
+  --color-info-on-soft: #c3dbf0;
 
-  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  /* Self-hosted (the CSP is font-src 'self'); the @font-face rules follow this block. Each falls
+     back to a size-adjusted local Arial first, so text barely moves when the font arrives. */
+  --font-sans: Barlow, "Barlow Fallback", system-ui, "Segoe UI", Roboto, sans-serif;
+  /* Headings, card titles, table headers and tabs: uppercase, letter-spaced. */
+  --font-display: "Barlow Condensed", "Barlow Condensed Fallback", var(--font-sans);
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 
   --radius-card: 10px;
@@ -120,6 +129,76 @@
 }
 
 /*
+ * Fonts (ADR-0041), from frontend/public/fonts/ with their OFL licence beside them: only the
+ * latin subset of the weights the direction uses. The "Fallback" faces are local Arial (or its
+ * metric twin Liberation Sans) scaled to Barlow's average width and vertical metrics, measured
+ * from the woff2 files, so the swap doesn't reflow the page. Condensed headings are 600 and 700,
+ * so their fallback is Arial Bold.
+ */
+@font-face {
+  font-family: Barlow;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/barlow-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: Barlow;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/barlow-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: Barlow;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Fallback";
+  font-weight: 400 500;
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans");
+  size-adjust: 95.65%;
+  ascent-override: 104.55%;
+  descent-override: 20.91%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Barlow Fallback";
+  font-weight: 600 700;
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold");
+  size-adjust: 91.23%;
+  ascent-override: 109.61%;
+  descent-override: 21.92%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Barlow Condensed Fallback";
+  font-weight: 600 700;
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold");
+  size-adjust: 75.1%;
+  ascent-override: 133.16%;
+  descent-override: 26.63%;
+  line-gap-override: 0%;
+}
+
+/*
  * Element defaults. The views not yet restyled (ADR-0016 step 5, one per PR) still use plain
  * elements and the classes below, so these keep them readable under Tailwind's reset.
  */
@@ -137,6 +216,17 @@
   }
   body {
     min-height: 100svh;
+  }
+  /* The display face (ADR-0041): headings and card titles, table headers and the main tabs. */
+  h1,
+  h2,
+  h3,
+  h4,
+  thead th,
+  nav[aria-label="Main"] a {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   h2 {
     font-size: 17px;
