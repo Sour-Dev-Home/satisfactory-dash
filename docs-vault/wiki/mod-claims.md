@@ -16,7 +16,7 @@ no G3 without the owner's explicit go.
   exact game and SML versions); then the row's "Verified on the real server" cell is filled.
 - If a spike fails, stop and report; the design is reconsidered before the next spike.
 
-## Known facts from G0 (sources: `raw-sources/*-2026-09-27.*`, pinned URLs inside)
+## Known facts from G0 (sources: `raw-sources/*-2026-09-27.*` and the 2026-10-19 addendum's `raw-sources/*-2026-10-19.md`, pinned URLs inside)
 
 - **Engine and versions:** Unreal Engine 5.6.1 with Coffee Stain's custom changes (`ue-version`); SML 3.12.0 on the SML
   commit the docs pin, the same SML version last recorded on the owner's server (2026-09-22, game 1.2.4.0, CL 502094). The
@@ -31,6 +31,20 @@ no G3 without the owner's explicit go.
 - **Coffee Stain's terms on mods:** not found (`coffee-stain-mod-terms`); stays open.
 - **The mod repository** is `Sour-Dev-Home/satisfactory-dash-mod`, public from the start, GPL-3.0-or-later, created after G0
   with the organisation's PII check from its first commit and an exploration README (owner, 2026-09-27).
+- **Building without the editor UI (G0 addendum, #452; `sml-alpakit-packaging-2026-10-19.md`):** the SML docs describe
+  packaging only through the editor's Alpakit windows (E1, E2): a documented command line is **NOT FOUND** in the docs.
+  The SML source has one: Alpakit is the Unreal Automation Tool command `PackagePlugin` (E3), the editor builds its
+  command line from a format string that adds `-server -serverplatform=<server platforms>` for server targets (E4), and
+  SML's own CI packages SML with the exact invocation in E5 (`RunUAT.sh ... PackagePlugin ... -dlcname=SML -merge -build
+  -server ... -serverplatform=Win64+Linux ...`, after `Build.sh FactoryEditor Linux Development`). That invocation runs on
+  a Linux host and packages SML, not another mod; the Windows-host form for the owner's mod is stated by no source
+  [NEEDS VERIFICATION], so the harness's `buildCommand` goes back to the owner as a design question, not a composed command.
+- **Server ports (G0 addendum, #452; `dedicated-server-ports-2026-10-19.md`, a community source, the Satisfactory wiki;
+  no official Coffee Stain source found):** the standard port, default 7777, carries the HTTPS API (TCP) and game traffic
+  and the Lightweight Query API (UDP); the Reliable Messaging port, default 8888, TCP (E1). `-Port=<n>` moves the
+  standard port and steps up to the next free one if it is taken; `-ReliablePort=<n>` moves the reliable port and the
+  server fails to start if it is taken; `-ExternalReliablePort=<n>` is for external remapping (E1, E2). `Engine.ini`
+  `[URL]` `Port=` is the INI form of `-Port` (E3); an INI form of the reliable-port options is NOT FOUND.
 
 ## The claims
 
@@ -39,8 +53,8 @@ no G3 without the owner's explicit go.
 | C1 | load on the owner's dedicated server and write a log line | `sml-dedicated-servers`: SML 3.7 added dedicated-server support and a mod must be built for the Windows Server / Linux Server targets ("Upgrading from SML 3.6.x to 3.7.x"); `sml-cpp-modding`: a game-instance Mod Module is "called once while the game is launching" ("Mod Modules"); `sml-dedicated-servers`: a dedicated server's `FactoryGame.log` "could" be under `<install dir>/FactoryGame/Saved/Logs` (FAQ, "Log Files") | S0 | | unverified |
 | C2 | send one HTTP POST to a loopback echo server at startup | `ue-http-timer-json`: `FHttpModule::CreateRequest`, `IHttpRequest::SetURL`, `SetVerb`, `SetContentAsString`, `ProcessRequest` (documented for UE 5.6); `FHttpModule::bEnableHttp` and `AllowedDomains` ("If Empty then no filtering is applied"). Nothing in the sources says these work inside a Satisfactory mod on a dedicated server [NEEDS VERIFICATION] | S1 | | unverified |
 | C3 | send one HTTPS request with certificate verification on | **no source**: the captured UE HTTP pages do not mention TLS or certificate verification (`ue-http-timer-json`, NOT FOUND) [NEEDS VERIFICATION]. S1b tests it empirically (a wrong hostname must fail); its result is evidence, not a design basis, until recorded here | S1b | | unverified |
-| C4 | run a 30 s timer for 30 min without a tick-rate drop | `ue-http-timer-json`: `FTimerManager::SetTimer` and `FTSTicker` ("Thread-safe ticker class. Fires delegates after a delay"). The tick-rate effect is documented nowhere in the sources [NEEDS VERIFICATION]; measured with the tick-rate card before and after | S2 | | unverified |
-| C5 | read one power value that matches FRM `getPower` at the same moment | **no source captured**: G0 did not cover the game's power API from C++; the SML docs have a page on it (`modules/ROOT/pages/Development/Satisfactory/PowerNetwork.adoc` at the pinned Documentation commit) that has not been captured or read [NEEDS VERIFICATION: capture it as a G0 addendum first] | S3 | | unverified |
+| C4 | run a 30 s timer for 20 min without a tick-rate drop, compared with 20 min without the mod (owner, 2026-10-19) | `ue-http-timer-json`: `FTimerManager::SetTimer` and `FTSTicker` ("Thread-safe ticker class. Fires delegates after a delay"). The tick-rate effect is documented nowhere in the sources [NEEDS VERIFICATION]; measured with the tick-rate card before and after | S2 | | unverified |
+| C5 | read one power value that matches FRM `getPower` at the same moment | `sml-power-network-2026-10-19.md` (SML docs `PowerNetwork.adoc` at Documentation d35cc911): the page names the classes `UFGPowerCircuit` (it "gathers data about the current production and consumption of the network"), `UFGPowerConnectionComponent` ("M Circuit ID") and `UFGPowerInfoComponent` ("Actual Consumption", "The consumption used in the last tick of the power grid") (E2-E4), but no function, header or circuit-total accessor (NOT FOUND); whether these names exist in the game's headers is S3's job [NEEDS VERIFICATION] | S3 | | unverified |
 | C6 | store a credential in its config, not visible to game clients | `sml-config`: config files live in `<game install directory>/FactoryGame/Configs`, one `<ModID>.cfg` per mod, JSON. The pages describe a client install and say nothing about a dedicated server or about who can read the folder [NEEDS VERIFICATION] | S4 | | unverified |
 | C7 | enrol with a code and push a minimal valid snapshot to a local backend | this repository's own contract, not a mod API: `packages/shared/src/agent.ts` (`SnapshotRequestSchema`, `agentVersion`) and ADR-0031; depends on C2 (and on C3 for anything but loopback) | S5 | | unverified |
 
@@ -55,7 +69,7 @@ only (a dev or `satis_load` database, never production), and nothing talks to pr
 | S0 | C1 | an empty mod that logs `satis-mod loaded` on server start | the line appears in the dedicated server's log |
 | S1 | C2 | at startup, POST a fixed small JSON to `http://127.0.0.1:<port>` (a local echo script) | the echo capture shows the body and the headers |
 | S1b | C3 | GET `https://api.satis-manager.com/api/health` with verification on, and log the status | a 200 is logged; a deliberately wrong hostname fails verification (proving the check is on) |
-| S2 | C4 | every 30 s, POST a counter to the echo server for 30 min | 60 posts arrive; the tick-rate card shows no drop compared with 30 min without the mod |
+| S2 | C4 | 20 min without the mod, then every 30 s, POST a counter to the echo server for 20 min (owner, 2026-10-19) | 40 posts arrive; the tick-rate card shows no drop compared with the 20 min without the mod |
 | S3 | C5 | read the total power consumption of one circuit through the documented API, and post it | the value matches FRM `getPower` read at the same moment, within rounding |
 | S4 | C6 | read a token from the mod's config file | the token is used; the file's location and permissions are recorded; a game client cannot read it (how that is checked is decided from the G0 sources) |
 | S5 | C7 | against a local backend: enrol with a code, then POST a snapshot with `status` only, as `agentVersion: "mod/0.0"` | the backend accepts it and the dashboard shows the server online |
