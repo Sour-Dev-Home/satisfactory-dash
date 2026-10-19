@@ -402,6 +402,30 @@ What it asks you to do:
 - Run `gh secret set PII_PATTERNS -R <owner/repo>` (one fixed string per line) and type `done`.
 - Press the two GitHub buttons of the App setup (create the App, install it).
 - Commit CODEOWNERS and add the code-owner ruleset from the settings links it prints.
+- Commit the lanes files it wrote on a branch and open the **adoption PR**, merge it, then enable the lanes ruleset:
+  `init` creates `main (lanes)` **disabled** while the default branch has no `.github/workflows/lanes-gate.yml`,
+  because `lanes/gate` runs only from the default branch's copy of the workflow and so can never be posted on the
+  adoption PR itself. Once that PR has merged, open the link `init` prints (`settings/rules/<id>`) and set Enforcement
+  to Active. `init` reports the ruleset as missing, and exits non-zero, until you do; re-running `setup-repo.mjs`
+  never changes an existing ruleset's enforcement.
+
+### Your own PRs with `gate.nonLanePrs` (ADR 0034)
+
+With `gate.nonLanePrs` true in `lanes.config.json`, `setup-repo.mjs` creates two rulesets instead of one:
+`main (lanes)` (required checks, merge queue and code scanning, no bypass actor and no code-owner rule) and
+`main (lanes owner review)` (only the pull-request rule with **Require review from Code Owners**, 0 approvals, and the
+repository **Admin** role as a bypass actor in **For pull requests only** mode). Both start disabled until
+`lanes-gate.yml` is on the default branch. A repository that already has `main (lanes)` is never changed: `setup-repo`
+prints two steps with their settings links, which you do in GitHub: remove the code-owner rule from `main (lanes)`, then
+create `main (lanes owner review)` with the settings above. `identity-check` accepts either shape, and never counts a
+ruleset whose bypass actor is in `always` mode.
+
+To merge your own non-lane PR, tick GitHub's **bypass** box for the owner-review ruleset only. `lanes/gate`, the required
+checks and the merge queue still apply. Never give a bypass actor `always` mode.
+
+Verify it once on an adopter before relying on it (ADR 0034 part 2): open a PR as the owner, tick the bypass box for
+`main (lanes owner review)` only, and confirm GitHub still holds the merge until `main (lanes)`'s checks pass and
+the merge queue takes it. If the bypass lifts the other ruleset's checks, remove the bypass actor and report it.
 
 ### What init runs
 
@@ -439,6 +463,17 @@ The queue runs from the adopter's own repository: `install.mjs` copies `queue.mj
 (`start.mjs`, `reap.mjs`, `app-token.mjs` and the rest of its import and spawn closure), so in that folder
 `node scripts/lanes/queue.mjs` launches lanes for that repository. It finds its repository from the folder it runs in;
 run it from your project's terminal, not from the lanes clone.
+
+### Non-lane PRs (`gate.nonLanePrs`, ADR 0034)
+
+A **non-lane PR** is one that is not a lane's: its body has no `Closes #N`, its author is not the lane bot, and its head
+branch is not `issue-<N>-*`. With `gate.nonLanePrs` set to `true` in `lanes.config.json` (absent or `false` is the old
+behaviour, where such a PR fails `lanes/gate` for the missing `Closes #N`), `lanes/gate` decides it without an issue,
+template section, tier or reviewer status. It passes on exactly one of: an approval on the PR head by a code owner who
+is not the author ("approved by code owner"), or an author who is a user listed in `.github/CODEOWNERS` ("authored by
+code owner"). Otherwise it waits: "waiting for a code-owner review in GitHub (non-lane PR)". The merge queue re-decides
+it the same way. A PR by the lane bot, or on an `issue-<N>-*` branch, without `Closes #N` still fails as before, and the
+Dependabot action-bump path (ADR 0032) is unchanged. The lanes repository keeps this setting off.
 
 ### The dashboard workflow and private repositories
 

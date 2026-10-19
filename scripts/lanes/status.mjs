@@ -5,7 +5,7 @@ import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { GATE_CONTEXT, identityRefusal, laneIssueOf, loadConfig, nativeCodeOwnerApproval, parseCodeOwnerUsers, parseIssueForm, parsePrBody, reviewContext, reviewerNames, sessionPhase, trustedStatuses } from "./lib.mjs";
+import { GATE_CONTEXT, identityRefusal, isLaneBot, laneIssueOf, loadConfig, nativeCodeOwnerApproval, parseCodeOwnerUsers, parseIssueForm, parsePrBody, reviewContext, reviewerNames, sessionPhase, trustedStatuses } from "./lib.mjs";
 import { issuePaths, pathsOverlap } from "./paths.mjs";
 import { BUDGET_DEFAULTS, budgetConfig, loadBudget, projectFolder } from "./lane-cost.mjs";
 import { claimedPaths } from "./pick.mjs";
@@ -381,11 +381,45 @@ const withSession = (item, session) => {
   return { ...item, note, session: { id: session.id, state: session.state, ...(stalled && { stalledMin: session.stalledMin }) } };
 };
 
+// #775: why an idle `needs-owner` issue waits, from its newest comment. `comments` is oldest first, each
+// `{ author: { login, type }, body }`; missing, empty or not an array means unreadable. Only the lane bot's
+// `Already met:` / `Lane stopped:` comments count; anything else (another author, no comment, no prefix) is the
+// generic stage, never "already met".
+export function ownerWait(comments, identity) {
+  const generic = { stage: "needs owner", note: "see the issue" };
+  const last = Array.isArray(comments) ? comments[comments.length - 1] : undefined;
+  if (typeof last?.body !== "string" || !isLaneBot(identity, last.author)) return generic;
+  const body = last.body.trimStart();
+  if (body.startsWith("Already met:")) return { stage: "already met", note: "close it or rewrite it" };
+  if (body.startsWith("Lane stopped:")) {
+    // A comment is the bot's text, printed to a terminal: first line only, control characters dropped.
+    const reason = body.slice("Lane stopped:".length).split(/\r?\n/)[0].replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim();
+    return { stage: "lane stopped", note: reason.slice(0, 200) };
+  }
+  return generic;
+}
+
+// The newest comments of each open `needs-owner` issue: Map issue number → comments, or null when unreadable (a
+// nicety, never an error). `run` is the injected gh returning raw text; one JSON object per line.
+export function loadOwnerComments(issues, run = ghText) {
+  const found = new Map();
+  for (const issue of issues) {
+    if (!(issue.labels ?? []).some((l) => l.name === "needs-owner")) continue;
+    try {
+      const text = run(["api", "--paginate", `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`, "--jq", ".[] | {author: {login: .user.login, type: .user.type}, body: (.body | .[0:400])}"]);
+      found.set(issue.number, text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)));
+    } catch {
+      found.set(issue.number, null);
+    }
+  }
+  return found;
+}
+
 // `issues` is every open issue (with body); only those labelled `ready` are listed, the rest only block.
 // `mergeQueue` is the output of mergeQueueEntries (null or missing: no merge queue); `gateDescriptions` that of
 // gateDescriptions (missing: the rollup's own descriptions only). `sessions` and `sessionsUnavailable` come from
 // loadSessions (missing: no sessions). `laneBranches` is the output of laneBranches (missing: no branches known).
-export function summarize({ prs, issues, merged, mergeQueue, gateDescriptions = new Map(), sessions: loaded = new Map(), stalled = new Map(), idle: idleLanesFound = new Map(), sessionsUnavailable, laneBranches = new Map(), branchesUnavailable, team, removals = new Map(), queueFailures = new Map() }) {
+export function summarize({ prs, issues, merged, mergeQueue, gateDescriptions = new Map(), sessions: loaded = new Map(), stalled = new Map(), idle: idleLanesFound = new Map(), sessionsUnavailable, laneBranches = new Map(), branchesUnavailable, team, removals = new Map(), queueFailures = new Map(), ownerComments = new Map() }) {
   // `team` is teamContext's output (missing: no owner approval is read). `stalled` is the output of stalledLanes (issue N → minutes silent).
   const sessions = new Map([...loaded].map(([n, s]) => [n, stalled.has(n) ? { ...s, stalledMin: stalled.get(n) } : s]));
   const out = { waitingOnOwner: [], inFlight: [], ready: [], blocked: [], merged: [] };
@@ -431,7 +465,7 @@ export function summarize({ prs, issues, merged, mergeQueue, gateDescriptions = 
     // A lane found every criterion already met on main and took the issue out of the ready pool (#136). An open PR
     // or a busy session on the issue still shows as such.
     if (labels.includes("needs-owner") && !taken.has(issue.number) && idle) {
-      out.waitingOnOwner.push({ number: issue.number, title: issue.title, stage: "already met", note: "close it or rewrite it" });
+      out.waitingOnOwner.push({ number: issue.number, title: issue.title, ...ownerWait(ownerComments.get(issue.number), team?.identity) });
       continue;
     }
     if (!taken.has(issue.number) && labels.includes("ready") && branches.length && idle) {
@@ -473,6 +507,7 @@ export function render(summary, sinceLabel) {
     block("READY TO START", summary.ready, true, "(parallel is a heuristic read from each issue's Scope and Interface contract, not a guarantee)"),
     block("BLOCKED", summary.blocked ?? []),
     block(`MERGED, last ${sinceLabel}`, summary.merged, false),
+    ...(summary.watchdog ? [summary.watchdog] : []),
     ...(summary.sessionsUnavailable ? [`(background sessions unavailable: ${summary.sessionsUnavailable})`] : []),
     ...(summary.branchesUnavailable ? [`(stopped lanes may be missing: ${summary.branchesUnavailable})`] : []),
     // Merged lanes, closed-issue lanes and empty orphan folders all count, so the line names none of them alone.
@@ -549,7 +584,31 @@ export function startsReport(text, days, now = Date.now()) {
   ];
 }
 
-const gh = (args) => JSON.parse(execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true }));
+const ghText = (args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+const gh = (args) => JSON.parse(ghText(args));
+
+// #774: the health watchdog (the dashboard workflow) reports nowhere when it fails, so /status does. One line when the
+// newest completed run failed, naming the first failure of that unbroken streak and the newest run; "" when it
+// succeeded or the runs cannot be read (a nicety, never an error). `run` is the injected gh.
+export function watchdogLine(run = gh) {
+  try {
+    const runs = run(["run", "list", "--workflow", "dashboard.yml", "--limit", "30", "--json", "status,conclusion,createdAt,url"]);
+    const done = (Array.isArray(runs) ? runs : []).filter((r) => r?.status === "completed");
+    if (done[0]?.conclusion !== "failure") return "";
+    const streak = [];
+    for (const r of done) {
+      if (r?.conclusion !== "failure") break;
+      streak.push(r);
+    }
+    const since = Date.parse(streak[streak.length - 1].createdAt);
+    // The url is printed to a terminal: only a plain github.com link, no control character, backslash or dot segment.
+    const url = done[0].url;
+    if (!Number.isFinite(since) || typeof url !== "string" || !/^https:\/\/github\.com\/[A-Za-z0-9._\/-]{1,200}$/.test(url) || /(^|\/)\.\.?(\/|$)/.test(url)) return "";
+    return `health watchdog: failing since ${new Date(since).toISOString().slice(0, 16)} (${done[0].url})`;
+  } catch {
+    return "";
+  }
+}
 
 // `gh pr --json` has no merge queue field and drops status descriptions, so one GraphQL call fetches both.
 // `mergeQueue` without `branch` is the default branch's queue; null when it has none. `pullRequests` matches the
@@ -557,7 +616,7 @@ const gh = (args) => JSON.parse(execFileSync("gh", args, { encoding: "utf8", std
 export const STATUS_QUERY =
   "query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ " +
   "mergeQueue { entries(first:100){ nodes { state position pullRequest { number } } } } " +
-  `pullRequests(states:OPEN,first:100){ nodes { number ${QUEUE_EVENTS} commits(last:1){ nodes { commit { status { context(name:"${GATE_CONTEXT}"){ description createdAt } contexts { context state creator { login __typename } } } } } } } } } }`;
+  `pullRequests(states:OPEN,first:100){ nodes { number ${QUEUE_EVENTS} commits(last:1){ nodes { commit { committedDate status { context(name:"${GATE_CONTEXT}"){ description createdAt } contexts { context state creator { login __typename } } } } } } } } } }`;
 
 // #390: the token budget for `--json`. A bad or unreadable lanes.config.json gives the defaults and says so in `note`;
 // unreadable agents or costs count as 0 (loadBudget notes the latter). Never throws.
@@ -646,6 +705,7 @@ async function main(argv = process.argv.slice(2)) {
   const budget = readBudget(repoRoot, rawAgents);
   // A blocker missing from a truncated list would read as closed, so refuse rather than list a blocked issue as ready.
   if (data.issues.length >= ISSUE_LIMIT) throw new Error(`${ISSUE_LIMIT}+ open issues: too many to tell open blockers from closed ones`);
+  data.ownerComments = loadOwnerComments(data.issues);
   const summary = summarize(data);
   if (argv.includes("--waiting")) {
     console.log(renderWaiting(waitingApprovals(data.prs, summary, gateSince(reply)), stalledItems(summary)));
@@ -656,6 +716,8 @@ async function main(argv = process.argv.slice(2)) {
     const { cleanableCount, loadCleanupInputs, planCleanup } = await import("./cleanup.mjs");
     summary.toCleanUp = cleanableCount(planCleanup(loadCleanupInputs()));
   } catch {}
+  const watchdog = watchdogLine();
+  if (watchdog) summary.watchdog = watchdog;
   console.log(argv.includes("--json") ? JSON.stringify({ version: 0, generatedAt: new Date().toISOString(), since: sinceLabel, ...summary, budget }, null, 2) : render(summary, sinceLabel));
 }
 

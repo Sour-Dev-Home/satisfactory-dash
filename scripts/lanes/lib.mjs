@@ -112,6 +112,22 @@ export function parseOwnerPatterns(text) {
   return out;
 }
 
+export const DEFAULT_ADR_DIR = "docs/adr";
+
+/**
+ * ADR 0034 part 3: the ADR folder (`adr.dir`), a repository-relative directory with no trailing slash. Absent is the
+ * default; a non-string, an empty, absolute, backslash, drive-letter or `.`/`..`/empty-segment path is a typo and throws.
+ */
+function adrDirOf(value) {
+  if (value === undefined) return DEFAULT_ADR_DIR;
+  const fail = () => new Error(`lanes.config.json: adr.dir must be a repository-relative directory such as ${DEFAULT_ADR_DIR}`);
+  if (typeof value !== "string") throw fail();
+  const dir = value.endsWith("/") ? value.slice(0, -1) : value;
+  if (dir === "" || /^([/]|[A-Za-z]:)/.test(dir) || dir.includes("\\")) throw fail();
+  if (dir.split("/").some((s) => s === "" || s === "." || s === "..")) throw fail();
+  return dir;
+}
+
 export function compileConfig(raw, codeownersText = undefined) {
   const paths = {};
   for (const key of PATH_KEYS) {
@@ -154,7 +170,10 @@ export function compileConfig(raw, codeownersText = undefined) {
   // ADR 0032 part 1: the opt-in switch for the Dependabot action-bump path. Absent is false; any non-boolean is a typo.
   const actionBumps = raw.dependabot?.actionBumps === undefined ? false : raw.dependabot.actionBumps;
   if (typeof actionBumps !== "boolean") throw new Error("lanes.config.json: dependabot.actionBumps must be a boolean");
-  const withDependabot = { ...config, dependabot: { actionBumps } };
+  // ADR 0034 part 1: the opt-in switch for non-lane PRs. Absent is false; any non-boolean is a typo.
+  const nonLanePrs = raw.gate?.nonLanePrs === undefined ? false : raw.gate.nonLanePrs;
+  if (typeof nonLanePrs !== "boolean") throw new Error("lanes.config.json: gate.nonLanePrs must be a boolean");
+  const withDependabot = { ...config, dependabot: { actionBumps }, gate: { nonLanePrs }, adr: { dir: adrDirOf(raw.adr?.dir) } };
   return identity === undefined ? withDependabot : { ...withDependabot, identity };
 }
 
@@ -264,7 +283,7 @@ const matchesAny = (patterns, file) => patterns.some((re) => re.test(file));
  * (which governs nothing); a missing directory is `[]`. Callers read the working tree they run in, so the gate, which
  * runs from the default branch, never sees a PR's own ADR edits.
  */
-export function loadAdrs(dir = "docs/adr") {
+export function loadAdrs(dir = DEFAULT_ADR_DIR) {
   let names;
   try {
     names = readdirSync(dir);
@@ -280,7 +299,7 @@ export function loadAdrs(dir = "docs/adr") {
 
 const normPath = (f) => posix.normalize(String(f).replace(/\\/g, "/"));
 // #241: the ADRs themselves and the module map (the `modules` key of lanes.config.json) are architecture changes.
-const isArchitectureFile = (f) => f.startsWith("docs/adr/") || f === "lanes.config.json";
+const isArchitectureFile = (f, adrDir = DEFAULT_ADR_DIR) => f.startsWith(`${adrDir}/`) || f === "lanes.config.json";
 
 /**
  * The repo-relative paths a task issue's Interface contract names (#241): backticked or bare tokens with a `/` or a
@@ -323,7 +342,7 @@ export function classifyFiles(files, config, adrs = [], interfaceContract = "") 
     ui: files.some((f) => matchesAny(paths.ui, f)),
     owner: files.some((f) => matchesAny(paths.owner, f) || matchesAny(paths.codeowners ?? [], f)),
     adr: [...new Set(files.flatMap((f) => adrGoverns(adrs, f)))].sort((a, b) => a - b),
-    architecture: files.map(normPath).some((f) => isArchitectureFile(f) || inContract(f)),
+    architecture: files.map(normPath).some((f) => isArchitectureFile(f, config.adr?.dir) || inContract(f)),
   };
 }
 
@@ -413,6 +432,12 @@ function scanFences(text) {
 const CODE_OPEN = "";
 const CODE_CLOSE = "";
 
+// CommonMark HTML blocks of the kind that end at a closing tag, not at a blank line.
+const RAW_BLOCK_OPEN = /^ {0,3}<(?:pre|script|style|textarea)(?:[ \t>]|$)/i;
+const RAW_BLOCK_CLOSE = /<\/(?:pre|script|style|textarea)>/i;
+// CommonMark's open tag: a name, attributes (unquoted, single- or double-quoted values), then `>` or `/>`.
+const INLINE_OPEN_TAG = /<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*\/?>/y;
+
 /**
  * One left-to-right pass over `src`: fenced blocks and inline code spans are swapped for placeholders (GitHub renders
  * their `<!--` and `-->` as text), a comment is dropped at the first `<!--` outside code, and an unclosed comment drops
@@ -431,15 +456,24 @@ function maskCodeAndStripFirstPass(src) {
   // only hide more, never expose a comment GitHub hides. So a fence is masked only when it is a top-level fence that
   // closes, and nothing is masked inside what may be an HTML block (a line starting with `<`, until a blank line).
   let htmlBlock = false;
+  let rawBlock = false;
   let prevBlank = true;
   let afterFence = false;
   while (i < src.length) {
     if (i === 0 || src[i - 1] === "\n") {
       const lineEnd = src.indexOf("\n", i) === -1 ? src.length : src.indexOf("\n", i);
       const line = src.slice(i, lineEnd);
-      if (line.trim() === "") htmlBlock = false;
       // A leading comment does not start an HTML block (its markup, if any, follows it on the line).
-      else if (/^ {0,3}<(?!!--)[A-Za-z/!?]/.test(line.replace(/^( {0,3})(?:<!--.*?-->[ \t]*)+/, "$1"))) htmlBlock = true;
+      const lead = line.replace(/^( {0,3})(?:<!--.*?-->[ \t]*)+/, "$1");
+      if (rawBlock) {
+        // pre, script, style and textarea blocks end at their closing tag, never at a blank line.
+        htmlBlock = true;
+        if (RAW_BLOCK_CLOSE.test(line)) rawBlock = false;
+      } else if (line.trim() === "") htmlBlock = false;
+      else if (/^ {0,3}<(?!!--)[A-Za-z/!?]/.test(lead)) {
+        htmlBlock = true;
+        rawBlock = RAW_BLOCK_OPEN.test(lead) && !RAW_BLOCK_CLOSE.test(lead);
+      }
       const opener = line.match(/^(`{3,}|~{3,})/);
       // CommonMark: a backtick fence's info string holds no backtick, so such a line is text with a code span in it.
       if (opener && !htmlBlock && (prevBlank || afterFence) && !(opener[1][0] === "`" && line.slice(opener[0].length).includes("`"))) {
@@ -477,6 +511,23 @@ function maskCodeAndStripFirstPass(src) {
       out += src.slice(i, i + 2);
       i += 2;
       continue;
+    }
+    if (src[i] === "\\" && src[i + 1] === "<" && /[A-Za-z]/.test(src[i + 2] ?? "")) {
+      // An escaped `<` starts no tag, so a backtick later in it is still a span opener.
+      out += src.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (src[i] === "<") {
+      // CommonMark binds an inline tag and a code span equally tightly and the one that starts first wins, so a backtick
+      // inside a complete tag (an attribute value) is part of the tag, not a span opener.
+      INLINE_OPEN_TAG.lastIndex = i;
+      const tag = INLINE_OPEN_TAG.exec(src);
+      if (tag && tag[0].includes("`")) {
+        out += tag[0];
+        i += tag[0].length;
+        continue;
+      }
     }
     if (src[i] === "`" && !htmlBlock) {
       let k = 1;
@@ -1354,7 +1405,7 @@ export function gateDecision(inputs) {
 }
 
 // `outsideScope` (#635) is the PR's changed files its issue's Scope "In" and Interface contract do not cover.
-function decideGate({ prBody, issueLabels, issueState, issueAuthorCanWrite, issueIsPr, headRef, headSha, files, statuses, verdicts, config, adrs = [], interfaceContract = "", reused = null, blockers = NO_BLOCKERS, nativeApproval = null, pendingHeadHashes = undefined, dependabotFiles = null }) {
+function decideGate({ prBody, issueLabels, issueState, issueAuthorCanWrite, issueIsPr, headRef, headSha, files, statuses, verdicts, config, adrs = [], interfaceContract = "", reused = null, blockers = NO_BLOCKERS, nativeApproval = null, pendingHeadHashes = undefined, dependabotFiles = null, prAuthor = undefined, codeOwners = undefined }) {
   const fail = (description, stage = "contract") => ({ state: "failure", description, stage });
   // ADR 0032 part 3: a Dependabot action re-pin skips the issue, template and reviewer checks but never the owner.
   // After the module-map check and before "Closes #N"; the map check is repeated here so every other order is today's.
@@ -1366,6 +1417,17 @@ function decideGate({ prBody, issueLabels, issueState, issueAuthorCanWrite, issu
   }
   const labels = Array.isArray(issueLabels) ? issueLabels : [];
   const pr = parsePrBody(prBody);
+  // ADR 0034 part 1: a non-lane PR (no "Closes #N", not the lane bot's, not on an issue-N- branch) skips the issue,
+  // template, tier and reviewer checks and passes on a code owner's review or a code owner's authorship.
+  if (config.gate?.nonLanePrs === true && pr.closes === null && !isLaneBot(config.identity, { login: prAuthor }) && !/^issue-\d+-/.test(headRef ?? "")) {
+    if (nativeApproval?.approved === true) {
+      return { state: "success", description: `approved by code owner${typeof nativeApproval.by === "string" ? ` @${nativeApproval.by}` : ""} (non-lane PR)`, stage: "ready" };
+    }
+    if (typeof prAuthor === "string" && prAuthor !== "" && Array.isArray(codeOwners) && codeOwners.includes(prAuthor)) {
+      return { state: "success", description: `authored by code owner @${prAuthor} (non-lane PR)`, stage: "ready" };
+    }
+    return { state: "pending", description: "waiting for a code-owner review in GitHub (non-lane PR)", stage: "owner" };
+  }
   if (pr.closes === null) return fail("PR body must say 'Closes #N' for its task issue");
   if (pr.duplicates.length > 0) return fail(`PR template sections repeated: ${pr.duplicates.join(", ")}`);
   const mapProblem = moduleMapProblem(config);
