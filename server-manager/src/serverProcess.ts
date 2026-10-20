@@ -13,11 +13,19 @@ export const RUN_WITH_NODE_ENV = "SATISFACTORY_SERVER_MANAGER_TEST_RUN_WITH_NODE
 
 export type NodeSpawn = (file: string, args: string[], opts: SpawnOptions) => ChildProcess;
 
-export function serverSpawn(opts: { env: NodeJS.ProcessEnv; execPath: string; spawn?: NodeSpawn }): SpawnFn {
+export function serverSpawn(opts: {
+  env: NodeJS.ProcessEnv;
+  execPath: string;
+  spawn?: NodeSpawn;
+  /** Pipe stdout and stderr to onOutput (SteamCMD); exit is then reported once the output has all been read. */
+  output?: boolean;
+}): SpawnFn {
   const spawn = opts.spawn ?? nodeSpawn;
   const viaNode = opts.env[RUN_WITH_NODE_ENV] === "1";
+  const output = opts.output === true;
   return (exe, args) => {
-    const common = { cwd: dirname(exe), shell: false, windowsHide: true, stdio: "ignore" as const };
+    const stdio = output ? (["ignore", "pipe", "pipe"] as const) : ("ignore" as const);
+    const common = { cwd: dirname(exe), shell: false, windowsHide: true, stdio: stdio as SpawnOptions["stdio"] };
     const child = viaNode
       ? spawn(opts.execPath, [exe, ...args], { ...common, env: { ...opts.env, ELECTRON_RUN_AS_NODE: "1" } })
       : spawn(exe, [...args], { ...common, env: { ...opts.env } });
@@ -32,10 +40,16 @@ export function serverSpawn(opts: { env: NodeJS.ProcessEnv; execPath: string; sp
         child.on("spawn", cb);
       },
       onExit: (cb) => {
-        child.on("exit", (code, signal) => cb(code, signal));
+        child.on(output ? "close" : "exit", (code: number | null, signal: NodeJS.Signals | null) => cb(code, signal));
       },
       onError: (cb) => {
         child.on("error", cb);
+      },
+      onOutput: (cb) => {
+        for (const stream of [child.stdout, child.stderr]) {
+          stream?.setEncoding("utf8");
+          stream?.on("data", (chunk: string) => cb(chunk));
+        }
       },
     };
   };

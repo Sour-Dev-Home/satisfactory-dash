@@ -1,6 +1,48 @@
 /** Pure helpers for the window: which buttons apply in which state, and how numbers read. */
-import type { ChooseResult } from "../ipc";
+import type { AnywayAction, ChooseResult, Status } from "../ipc";
 import type { ServerState } from "../supervisor";
+
+/** Update applies with a SteamCMD folder set, nothing else in progress, and no server of an earlier session running. */
+export function updateAllowed(s: Status): boolean {
+  return (
+    s.configured &&
+    s.steamcmdDir !== undefined &&
+    !s.updating &&
+    s.leftoverPid === undefined &&
+    (s.state === "stopped" || s.state === "crashed" || s.state === "running")
+  );
+}
+
+/** A running server is stopped first, so Update asks before it does that. */
+export function updateNeedsConfirm(state: ServerState): boolean {
+  return state === "running";
+}
+
+export function anywayLabel(action: AnywayAction): string {
+  if (action === "restart") return "Restart anyway";
+  if (action === "update") return "Stop anyway and update";
+  return "Stop anyway";
+}
+
+export function updateNote(s: Status): string {
+  if (s.updating) return s.state === "running" || s.state === "stopping" ? "Saving and stopping the server…" : "Updating with SteamCMD…";
+  if (s.updateResult) return s.updateResult.ok ? "Update finished." : `The update failed: SteamCMD exited with code ${s.updateResult.code}.`;
+  if (s.steamcmdDir === undefined) return "Choose the SteamCMD folder below to update the server.";
+  return "";
+}
+
+/** After an update, offer to start the server it stopped. */
+export function offerStartAfterUpdate(s: Status): boolean {
+  return s.updateResult !== undefined && !s.updating && (s.state === "stopped" || s.state === "crashed") && s.leftoverPid === undefined;
+}
+
+export const LOG_LINES = 500;
+
+/** The log keeps the last LOG_LINES lines. */
+export function appendLine(lines: readonly string[], line: string): string[] {
+  const next = [...lines, line];
+  return next.length > LOG_LINES ? next.slice(next.length - LOG_LINES) : next;
+}
 
 export function actionsFor(state: ServerState, configured: boolean): { start: boolean; stop: boolean; restart: boolean } {
   if (!configured) return { start: false, stop: false, restart: false };
@@ -41,7 +83,9 @@ export function formatCpu(percent: number | undefined): string {
 
 export function chooseMessage(result: ChooseResult, which: "server" | "steamcmd"): string {
   if (result.ok || result.reason === "cancelled") return "";
-  if (result.reason === "busy") return "Stop the server before changing its folder.";
+  if (result.reason === "busy") {
+    return which === "server" ? "Stop the server before changing its folder." : "Wait for the update to finish before changing the SteamCMD folder.";
+  }
   return which === "server"
     ? "That folder has no FactoryServer.exe. Choose the dedicated server's install folder."
     : "That folder has no steamcmd.exe. Choose the folder SteamCMD is installed in.";

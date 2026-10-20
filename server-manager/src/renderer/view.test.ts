@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
+import type { Status } from "../ipc";
 import type { ServerState } from "../supervisor";
-import { actionsFor, chooseMessage, formatBytes, formatCpu, formatUptime } from "./view";
+import {
+  actionsFor,
+  anywayLabel,
+  appendLine,
+  chooseMessage,
+  formatBytes,
+  formatCpu,
+  formatUptime,
+  LOG_LINES,
+  offerStartAfterUpdate,
+  updateAllowed,
+  updateNeedsConfirm,
+  updateNote,
+} from "./view";
 
 describe("actionsFor", () => {
   const cases: [ServerState, { start: boolean; stop: boolean; restart: boolean }][] = [
@@ -59,5 +73,75 @@ describe("chooseMessage", () => {
     expect(chooseMessage({ ok: false, reason: "busy" }, "server")).toMatch(/stop the server/i);
     expect(chooseMessage({ ok: false, reason: "cancelled" }, "server")).toBe("");
     expect(chooseMessage({ ok: true }, "server")).toBe("");
+    expect(chooseMessage({ ok: false, reason: "busy" }, "steamcmd")).toMatch(/update to finish/);
+  });
+});
+
+const base: Status = {
+  state: "stopped",
+  lastError: undefined,
+  leftoverPid: undefined,
+  configured: true,
+  serverDir: "D:\\server",
+  steamcmdDir: "D:\\steamcmd",
+  uptimeMs: undefined,
+  cpuPercent: undefined,
+  memoryBytes: undefined,
+  anyway: undefined,
+  updating: false,
+  updateResult: undefined,
+};
+
+describe("updateAllowed", () => {
+  it("applies stopped, crashed or running with a SteamCMD folder", () => {
+    for (const state of ["stopped", "crashed", "running"] as const) expect(updateAllowed({ ...base, state })).toBe(true);
+  });
+  it("is off while starting or stopping, while an update runs, or with no SteamCMD folder", () => {
+    expect(updateAllowed({ ...base, state: "starting" })).toBe(false);
+    expect(updateAllowed({ ...base, state: "stopping" })).toBe(false);
+    expect(updateAllowed({ ...base, updating: true })).toBe(false);
+    expect(updateAllowed({ ...base, steamcmdDir: undefined })).toBe(false);
+  });
+  it("edge: is off with no server folder or a leftover server running", () => {
+    expect(updateAllowed({ ...base, configured: false })).toBe(false);
+    expect(updateAllowed({ ...base, leftoverPid: 77 })).toBe(false);
+  });
+});
+
+describe("the update's words", () => {
+  it("asks first only when the server runs", () => {
+    expect(updateNeedsConfirm("running")).toBe(true);
+    expect(updateNeedsConfirm("stopped")).toBe(false);
+    expect(updateNeedsConfirm("crashed")).toBe(false);
+  });
+  it("says what's happening and how it ended", () => {
+    expect(updateNote({ ...base, updating: true, state: "stopping" })).toMatch(/stopping the server/);
+    expect(updateNote({ ...base, updating: true })).toMatch(/Updating with SteamCMD/);
+    expect(updateNote({ ...base, updateResult: { ok: true, code: 0 } })).toBe("Update finished.");
+    expect(updateNote({ ...base, updateResult: { ok: false, code: 8 } })).toMatch(/exited with code 8/);
+    expect(updateNote({ ...base, steamcmdDir: undefined })).toMatch(/Choose the SteamCMD folder/);
+    expect(updateNote(base)).toBe("");
+  });
+  it("offers Start after an update, once the server is stopped", () => {
+    expect(offerStartAfterUpdate({ ...base, updateResult: { ok: true, code: 0 } })).toBe(true);
+    expect(offerStartAfterUpdate({ ...base, updateResult: { ok: false, code: 8 } })).toBe(true);
+    expect(offerStartAfterUpdate(base)).toBe(false);
+    expect(offerStartAfterUpdate({ ...base, updateResult: { ok: true, code: 0 }, state: "running" })).toBe(false);
+    expect(offerStartAfterUpdate({ ...base, updateResult: { ok: true, code: 0 }, leftoverPid: 5 })).toBe(false);
+  });
+  it("labels the without-saving offer by what it does", () => {
+    expect(anywayLabel("stop")).toBe("Stop anyway");
+    expect(anywayLabel("restart")).toBe("Restart anyway");
+    expect(anywayLabel("update")).toBe("Stop anyway and update");
+  });
+});
+
+describe("appendLine", () => {
+  it("keeps the last LOG_LINES lines", () => {
+    let lines: string[] = [];
+    for (let i = 0; i < LOG_LINES + 3; i++) lines = appendLine(lines, `l${i}`);
+    expect(lines).toHaveLength(LOG_LINES);
+    expect(lines[0]).toBe("l3");
+    expect(lines[LOG_LINES - 1]).toBe(`l${LOG_LINES + 2}`);
   });
 });

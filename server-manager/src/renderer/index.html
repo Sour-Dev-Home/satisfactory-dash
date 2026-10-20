@@ -42,6 +42,27 @@
           <button id="start" type="button" class="primary" aria-disabled="true" aria-describedby="last-error">Start</button>
           <button id="stop" type="button" aria-disabled="true" aria-describedby="last-error">Stop</button>
           <button id="restart" type="button" aria-disabled="true" aria-describedby="last-error">Restart</button>
+          <button id="anyway" type="button" class="danger" aria-describedby="last-error" hidden>Stop anyway</button>
+        </div>
+      </section>
+
+      <section id="update" class="card" aria-labelledby="update-title" hidden>
+        <h2 id="update-title">Update</h2>
+        <p>Updates the dedicated server with SteamCMD, checking every file.</p>
+        <div class="actions">
+          <button id="update-server" type="button" aria-disabled="true" aria-describedby="update-note">Update server</button>
+        </div>
+        <div id="update-confirm" class="confirm" role="group" aria-labelledby="update-confirm-text" hidden>
+          <p id="update-confirm-text">Update saves and stops the server first. Go on?</p>
+          <div class="actions">
+            <button id="update-confirm-yes" type="button" class="primary">Stop and update</button>
+            <button id="update-confirm-no" type="button">Cancel</button>
+          </div>
+        </div>
+        <p id="update-note" class="notice" data-testid="update-note" aria-live="polite"></p>
+        <pre id="update-log" class="log" data-testid="update-log" role="log" aria-label="SteamCMD output" tabindex="0" hidden></pre>
+        <div id="update-after" class="actions" hidden>
+          <button id="start-after-update" type="button" class="primary">Start the server</button>
         </div>
       </section>
 

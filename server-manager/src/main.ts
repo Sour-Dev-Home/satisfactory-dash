@@ -1,16 +1,20 @@
 /**
  * The server manager's main process (ADR-0040). It owns the supervisor and the settings and answers the window's
- * few IPC calls. It opens no port and needs no elevation: the window is a local file, and the only process it
- * starts is the configured FactoryServer.exe (plus PowerShell or ps to read that process's CPU and memory).
+ * few IPC calls. It opens no port and needs no elevation: the window is a local file, and the processes it starts are
+ * the configured FactoryServer.exe and, for an update, the configured steamcmd.exe (plus PowerShell or ps to read the
+ * server's CPU and memory). The clean stop talks to the game's own API with the agent's token, read here and never sent
+ * to the window.
  */
 import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from "electron";
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CHANNELS, type ChooseResult, type Status } from "./ipc";
+import { gameApiAccess, openAgentStore } from "./gameAccess";
+import { anywayRequested, CHANNELS, type AnywayAction, type ChooseResult, type Status } from "./ipc";
 import { cpuPercent, sampleProcess } from "./processStats";
 import { clearPid, leftoverPid, processAlive, recordPid } from "./leftoverServer";
 import { serverSpawn } from "./serverProcess";
+import { runUpdate } from "./updater";
 import {
   hasServerExe,
   hasSteamcmdExe,
@@ -36,6 +40,9 @@ let usage: { cpuPercent: number | undefined; memoryBytes: number | undefined } =
   memoryBytes: undefined,
 };
 let win: BrowserWindow | undefined;
+let anyway: AnywayAction | undefined;
+let updating = false;
+let updateResult: { ok: boolean; code: number } | undefined;
 
 function configured(): boolean {
   return settings !== undefined && hasServerExe(settings.serverDir);
@@ -64,8 +71,11 @@ function makeSupervisor(serverDir: string): Supervisor {
     },
     now: Date.now,
     serverExe: join(serverDir, SERVER_EXE),
+    gameApi: () => gameApiAccess({ openStore: openAgentStore }),
   });
   sup.onChange((state) => {
+    // An offer to stop without saving is about the process that was running; any other state ends it.
+    if (state !== "running") anyway = undefined;
     if (state === "stopped" || state === "crashed") bestEffort(() => clearPid(settingsDir()));
     if (state === "running") runningSince = Date.now();
     else {
@@ -102,7 +112,61 @@ function status(): Status {
     uptimeMs: running && runningSince !== undefined ? Date.now() - runningSince : undefined,
     cpuPercent: running ? usage.cpuPercent : undefined,
     memoryBytes: running ? usage.memoryBytes : undefined,
+    anyway,
+    updating,
+    updateResult,
   };
+}
+
+function idle(): boolean {
+  const state = supervisor?.state() ?? "stopped";
+  return !updating && (state === "stopped" || state === "crashed");
+}
+
+/** Stop or restart: clean unless `anyway`; when the clean stop can't save, the window offers the same without saving. */
+async function stopOrRestart(action: "stop" | "restart", arg: unknown): Promise<void> {
+  if (!supervisor || updating) return;
+  if (action === "restart" && leftover() !== undefined) return pushStatus();
+  anyway = undefined;
+  const opts = { anyway: anywayRequested(arg) };
+  const outcome = action === "stop" ? await supervisor.stop(opts) : await supervisor.restart(opts);
+  anyway = outcome === "stopped" ? undefined : action;
+  pushStatus();
+}
+
+function sendUpdateLine(line: string): void {
+  if (win && !win.isDestroyed()) win.webContents.send(CHANNELS.updateLine, line);
+}
+
+/** Stops the server (cleanly unless `anyway`; the window has confirmed), runs SteamCMD, and reports how it went. */
+async function update(arg: unknown): Promise<void> {
+  const steamcmdDir = settings?.steamcmdDir;
+  if (updating || !settings || steamcmdDir === undefined || !hasSteamcmdExe(steamcmdDir)) return;
+  const state = supervisor?.state() ?? "stopped";
+  if (state === "starting" || state === "stopping" || leftover() !== undefined) return;
+  const serverDir = settings.serverDir;
+  updating = true;
+  updateResult = undefined;
+  anyway = undefined;
+  pushStatus();
+  try {
+    if (supervisor && state === "running") {
+      const outcome = await supervisor.stop({ anyway: anywayRequested(arg) });
+      if (outcome !== "stopped") {
+        anyway = "update";
+        return;
+      }
+    }
+    updateResult = await runUpdate({
+      steamcmdDir,
+      serverDir,
+      spawn: serverSpawn({ env: process.env, execPath: process.execPath, output: true }),
+      onLine: sendUpdateLine,
+    });
+  } finally {
+    updating = false;
+    pushStatus();
+  }
 }
 
 function pushStatus(): void {
@@ -126,10 +190,11 @@ function trusted(event: IpcMainInvokeEvent): boolean {
   return event.senderFrame?.url === indexUrl;
 }
 
-function handle<T>(channel: string, fn: () => T | Promise<T>): void {
-  ipcMain.handle(channel, async (event) => {
+/** `arg` is whatever the page sent: untrusted, so each handler reads it only through anywayRequested. */
+function handle<T>(channel: string, fn: (arg: unknown) => T | Promise<T>): void {
+  ipcMain.handle(channel, async (event, arg: unknown) => {
     if (!trusted(event)) throw new Error("untrusted sender");
-    return fn();
+    return fn(arg);
   });
 }
 
@@ -140,14 +205,12 @@ async function pickFolder(title: string): Promise<string | undefined> {
 }
 
 async function chooseServerDir(): Promise<ChooseResult> {
-  const state = supervisor?.state() ?? "stopped";
-  if (state !== "stopped" && state !== "crashed") return { ok: false, reason: "busy" };
+  if (!idle()) return { ok: false, reason: "busy" };
   const dir = await pickFolder("Choose the dedicated server folder (the one with FactoryServer.exe)");
   if (dir === undefined) return { ok: false, reason: "cancelled" };
   if (!hasServerExe(dir)) return { ok: false, reason: "missing-exe" };
   // The picker is modal but async: re-check that nothing started meanwhile.
-  const after = supervisor?.state() ?? "stopped";
-  if (after !== "stopped" && after !== "crashed") return { ok: false, reason: "busy" };
+  if (!idle()) return { ok: false, reason: "busy" };
   settings = { ...settings, serverDir: dir };
   saveSettings(settings);
   supervisor = makeSupervisor(dir);
@@ -157,9 +220,11 @@ async function chooseServerDir(): Promise<ChooseResult> {
 
 async function chooseSteamcmdDir(): Promise<ChooseResult> {
   if (!settings) return { ok: false, reason: "cancelled" };
+  if (updating) return { ok: false, reason: "busy" };
   const dir = await pickFolder("Choose the SteamCMD folder (the one with steamcmd.exe)");
   if (dir === undefined) return { ok: false, reason: "cancelled" };
   if (!hasSteamcmdExe(dir)) return { ok: false, reason: "missing-exe" };
+  if (updating) return { ok: false, reason: "busy" };
   settings = { ...settings, steamcmdDir: dir };
   saveSettings(settings);
   pushStatus();
@@ -201,14 +266,12 @@ app.whenReady().then(() => {
 
   handle(CHANNELS.getStatus, status);
   handle(CHANNELS.start, () => {
-    if (leftover() === undefined) supervisor?.start();
+    if (!updating && leftover() === undefined) supervisor?.start();
     else pushStatus();
   });
-  handle(CHANNELS.stop, () => supervisor?.stop());
-  handle(CHANNELS.restart, () => {
-    if (leftover() === undefined) return supervisor?.restart();
-    pushStatus();
-  });
+  handle(CHANNELS.stop, (arg) => stopOrRestart("stop", arg));
+  handle(CHANNELS.restart, (arg) => stopOrRestart("restart", arg));
+  handle(CHANNELS.update, update);
   handle(CHANNELS.chooseServerDir, chooseServerDir);
   handle(CHANNELS.chooseSteamcmdDir, chooseSteamcmdDir);
 
