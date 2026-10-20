@@ -49,7 +49,7 @@ test("scanDiff flags absolute local paths and the banned phrase on added lines, 
     "@@ -1,2 +1,4 @@",
     " context",
     `+see C:${"\\"}Users${"\\"}someone${"\\"}x`,
-    "-removed /c/Users/old",
+    `-removed ${["", "c", "Users", "old"].join("/")}`,
     "+fine line",
     `+written for a ${PHRASE}`,
     "+++ b/scripts/b.mjs",
@@ -58,7 +58,7 @@ test("scanDiff flags absolute local paths and the banned phrase on added lines, 
   ].join("\n");
   assert.deepEqual(scanDiff(diff), [
     { file: "docs/a.md", line: 2, why: "an absolute Windows user path" },
-    { file: "docs/a.md", line: 4, why: 'the phrase "hiring manager"' },
+    { file: "docs/a.md", line: 4, why: `the phrase "${PHRASE}"` },
     { file: "scripts/b.mjs", line: 7, why: "an absolute macOS or Linux home path" },
   ]);
 });

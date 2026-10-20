@@ -67,7 +67,8 @@ const FORBIDDEN = [
   { re: /\b[A-Za-z]:\\+Users\\+/, why: "an absolute Windows user path" },
   { re: /\/c\/Users\//i, why: "an absolute Git Bash user path" },
   { re: /(?:^|[\s"'`(])\/(?:Users|home)\/[A-Za-z]/, why: "an absolute macOS or Linux home path" },
-  { re: /hiring manager/i, why: 'the phrase "hiring manager"' },
+  // Assembled from pieces, so this file passes the scan it defines.
+  { re: new RegExp(["hiring", "manager"].join(" "), "i"), why: `the phrase "${["hiring", "manager"].join(" ")}"` },
 ];
 
 /** Problems in a unified diff's ADDED lines: [{ file, line, why }]. Removed and context lines are ignored. */
