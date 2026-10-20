@@ -169,6 +169,9 @@ export function createSupervisor(opts: {
   function forceStop(note: string | undefined): void {
     if (!stopRequested) beginStopping();
     forced = true;
+    // The 60 s wait is over: a late timer would overwrite this note with a different reason.
+    cancelShutdownTimer?.();
+    cancelShutdownTimer = undefined;
     error = note;
     child?.kill();
   }

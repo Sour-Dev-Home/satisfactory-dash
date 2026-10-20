@@ -640,6 +640,19 @@ describe("the clean stop", () => {
     expect(sup.state()).toBe("running");
   });
 
+  it("edge: Stop anyway during the 60 s wait ends the process at once and cancels the timer", async () => {
+    const { sup, last, timer } = await running();
+    const stopped = sup.stop();
+    await settle();
+    expect(timer.live()).toHaveLength(1);
+    const again = sup.stop({ anyway: true });
+    expect(last().killed).toBe(true);
+    expect(timer.live()).toEqual([]);
+    last().exit(null, "SIGTERM");
+    await expect(Promise.all([stopped, again])).resolves.toEqual(["stopped", "stopped"]);
+    expect(sup.lastError()).toContain(UNCLEAN_STOP);
+  });
+
   it("edge: start after an unclean stop clears the message", async () => {
     const { sup, last } = await running();
     const stopped = sup.stop({ anyway: true });

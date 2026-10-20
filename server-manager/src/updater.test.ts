@@ -114,6 +114,19 @@ describe("runUpdate", () => {
     expect(lines).toEqual(["Could not start SteamCMD: EACCES"]);
   });
 
+  it("edge: a line split across chunks is joined, and carriage-return progress updates are separate lines", async () => {
+    const { tool, lines, result } = run();
+    tool.write("Update state (0x61) down");
+    tool.write("loading, progress: 1.00\rUpdate state (0x61) downloading, progress: 2.00\r\nSuccess!\n");
+    tool.exit(0);
+    await result;
+    expect(lines).toEqual([
+      "Update state (0x61) downloading, progress: 1.00",
+      "Update state (0x61) downloading, progress: 2.00",
+      "Success!",
+    ]);
+  });
+
   it("edge: an exit by signal (no code) is a failure", async () => {
     const { tool, result } = run();
     tool.exit(null, "SIGTERM");
