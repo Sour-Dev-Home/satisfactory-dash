@@ -28,7 +28,9 @@ async function withClient<T>(url: string, fn: (client: pg.Client) => Promise<T>)
   }
 }
 
-describe.skipIf(!available)("against a real Postgres", () => {
+// Tests here clone and drop databases (CREATE DATABASE ... TEMPLATE, DROP DATABASE ... WITH (FORCE)); each
+// forces a checkpoint on the shared container, so under a loaded full run one test can exceed the 5 s default (#423).
+describe.skipIf(!available)("against a real Postgres", { timeout: 30_000 }, () => {
   let db: TestDatabase;
   const pools: pg.Pool[] = [];
 
