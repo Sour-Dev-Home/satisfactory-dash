@@ -9,7 +9,11 @@ token, for the clean stop.
 Source: `server-manager/` (npm workspace `@satisfactory-dash/server-manager`). Rules for changing it:
 `server-manager/CLAUDE.md`.
 
-![The window with the server running](../assets/server-manager/window-running.png)
+![The window with the server running and the Agent panel](../assets/server-manager/window-running.png)
+
+The **Agent** panel shows the agent's Scheduled Task ("Satisfactory Dash Agent") and its log's newest 20 lines, starts
+and stops the task, and runs the agent's `check`, `status` and (when the agent has halted) `resume`. Setting the agent
+up stays in a console: [`agent-app.md`](./agent-app.md).
 
 ## Building and launching from the checkout
 
@@ -67,6 +71,8 @@ Its tooltip names the state. Click it to open the window; right-click for the me
 - **Stop server and quit**: the clean stop first, then quit. If the clean stop can't save, the app stays open and the
   window offers **Stop anyway**; quit again afterwards.
 
+Tray menu screenshot: pending (it is a native menu, which the screenshot script can't capture).
+
 **Closing the window** hides it to the tray (the first time, a note says so). Only one copy of the app runs: launching
 it again shows the open one's window.
 
@@ -92,7 +98,8 @@ working across updates, since it points at the checkout.
 - **Run as administrator**, or ask for elevation. Start with Windows is a per-user login item, not a Scheduled Task.
 - **Run anything but the configured `FactoryServer.exe` and `steamcmd.exe`**, each with fixed arguments and no shell
   (plus PowerShell, with a fixed script, to read the server's CPU, memory and command line).
-- **Touch the agent's Scheduled Task**, or the agent itself.
+- **Change the agent's Scheduled Task.** The Agent panel only reads, starts and stops it, and runs the agent's `check`,
+  `status` and `resume`; `set-tokens` and `enroll` stay in a console ([`agent-app.md`](./agent-app.md)).
 
 ## Troubleshooting
 

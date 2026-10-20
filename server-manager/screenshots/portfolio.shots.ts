@@ -4,7 +4,18 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appDir, launch, makeFixture, removeFixture, starts, tell, writeSettings, type Fixture } from "../e2e/harness";
+import {
+  agentLogs,
+  agentTaskIs,
+  appDir,
+  launch,
+  makeFixture,
+  removeFixture,
+  starts,
+  tell,
+  writeSettings,
+  type Fixture,
+} from "../e2e/harness";
 
 // An output folder, not an input: built from segments so it reads as where the PNGs go.
 const OUT = join(appDir, "..", "docs-vault", "wiki", "assets", "server-manager");
@@ -48,9 +59,19 @@ async function shoot(name: string): Promise<void> {
   writeFileSync(join(OUT, name), png);
 }
 
-test("server running", async () => {
+test("server running, with the agent panel", async () => {
   writeSettings(f, { steamcmd: true });
+  agentTaskIs(f, "Running");
+  agentLogs(
+    f,
+    "2026-10-20",
+    ["agent_started", "game_reachable", "push_ok", "command_ran", "push_ok"].map((event, i) =>
+      JSON.stringify({ t: `2026-10-20T10:00:${String(i * 5).padStart(2, "0")}.000Z`, level: "info", event }),
+    ),
+  );
   await open();
+  await expect(page.getByTestId("agent-state")).toContainText("Running", { ignoreCase: true });
+  await expect(page.getByTestId("agent-log").locator("li")).toHaveCount(5);
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("state")).toHaveText("running");
   await expect.poll(() => starts(f).length).toBe(1);
