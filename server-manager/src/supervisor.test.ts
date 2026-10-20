@@ -1,13 +1,60 @@
 import { describe, expect, it } from "vitest";
+import type { GameApi } from "./gameApi";
 import {
   createSupervisor,
   MAX_RESTARTS,
   RESTART_WINDOW_MS,
   SERVER_ARGS,
+  SHUTDOWN_TIMEOUT_MS,
+  UNCLEAN_STOP,
   type ChildHandle,
+  type GameApiAccess,
   type ServerState,
   type SpawnFn,
 } from "./supervisor";
+
+/** A fake game API: records each call, and each call can be made to fail or to wait for the test. */
+class FakeGame implements GameApi {
+  calls: string[] = [];
+  fail: Partial<Record<"sessionName" | "saveGame" | "shutdown", Error>> = {};
+  /** Set by a test to make the next call wait until it resolves `release`. */
+  hold: "sessionName" | "saveGame" | "shutdown" | undefined;
+  release: (() => void) | undefined;
+  private async step(name: "sessionName" | "saveGame" | "shutdown", detail = ""): Promise<void> {
+    this.calls.push(detail === "" ? name : `${name}(${detail})`);
+    if (this.hold === name) await new Promise<void>((resolve) => (this.release = resolve));
+    const err = this.fail[name];
+    if (err) throw err;
+  }
+  async sessionName(): Promise<string> {
+    await this.step("sessionName");
+    return "my-world";
+  }
+  async saveGame(name: string): Promise<void> {
+    await this.step("saveGame", name);
+  }
+  async shutdown(): Promise<void> {
+    await this.step("shutdown");
+  }
+}
+
+/** A manual timer: the test fires it, so the 60 s wait takes no time. */
+class FakeTimer {
+  pending: { cb: () => void; ms: number; cancelled: boolean }[] = [];
+  fn = (cb: () => void, ms: number) => {
+    const entry = { cb, ms, cancelled: false };
+    this.pending.push(entry);
+    return () => {
+      entry.cancelled = true;
+    };
+  };
+  fireAll(): void {
+    for (const t of this.pending.splice(0)) if (!t.cancelled) t.cb();
+  }
+  live(): { ms: number }[] {
+    return this.pending.filter((t) => !t.cancelled);
+  }
+}
 
 /** A fake child process the test drives by hand: it never starts or exits on its own. */
 class FakeChild implements ChildHandle {
@@ -42,8 +89,11 @@ class FakeChild implements ChildHandle {
   }
 }
 
-function setup(opts: { autoSpawn?: boolean } = {}) {
+function setup(opts: { autoSpawn?: boolean; access?: () => Promise<GameApiAccess> } = {}) {
   const autoSpawn = opts.autoSpawn ?? true;
+  const game = new FakeGame();
+  const timer = new FakeTimer();
+  const access = opts.access ?? (async (): Promise<GameApiAccess> => ({ ok: true, api: game }));
   let clock = 1_000_000;
   const children: FakeChild[] = [];
   const calls: { exe: string; args: readonly string[] }[] = [];
@@ -54,11 +104,19 @@ function setup(opts: { autoSpawn?: boolean } = {}) {
     if (autoSpawn) queueMicrotask(() => child.spawned());
     return child;
   };
-  const sup = createSupervisor({ spawn, now: () => clock, serverExe: "X:\\server\\FactoryServer.exe" });
+  const sup = createSupervisor({
+    spawn,
+    now: () => clock,
+    serverExe: "X:\\server\\FactoryServer.exe",
+    gameApi: access,
+    timer: timer.fn,
+  });
   const states: ServerState[] = [];
   sup.onChange((s) => states.push(s));
   return {
     sup,
+    game,
+    timer,
     children,
     calls,
     states,
@@ -98,25 +156,26 @@ describe("supervisor", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("stop kills the process, goes through stopping and resolves when it exits", async () => {
-    const { sup, last, states } = setup();
+  it("stop anyway kills the process, goes through stopping and resolves when it exits", async () => {
+    const { sup, last, states, game } = setup();
     sup.start();
     await tick();
-    const stopped = sup.stop();
+    const stopped = sup.stop({ anyway: true });
     expect(sup.state()).toBe("stopping");
     expect(last().killed).toBe(true);
     last().exit(1);
     await stopped;
     expect(sup.state()).toBe("stopped");
     expect(states).toEqual(["starting", "running", "stopping", "stopped"]);
-    expect(sup.lastError()).toBeUndefined();
+    expect(sup.lastError()).toContain(UNCLEAN_STOP);
+    expect(game.calls).toEqual([]);
   });
 
   it("an exit the app asked for never restarts", async () => {
     const { sup, last, calls } = setup();
     sup.start();
     await tick();
-    const stopped = sup.stop();
+    const stopped = sup.stop({ anyway: true });
     last().exit(null, "SIGTERM");
     await stopped;
     await tick();
@@ -130,12 +189,12 @@ describe("supervisor", () => {
     expect(states).toEqual([]);
   });
 
-  it("two stops share one kill and both resolve", async () => {
+  it("two stops anyway share one kill and both resolve", async () => {
     const { sup, last } = setup();
     sup.start();
     await tick();
-    const a = sup.stop();
-    const b = sup.stop();
+    const a = sup.stop({ anyway: true });
+    const b = sup.stop({ anyway: true });
     last().exit(0);
     await Promise.all([a, b]);
     expect(sup.state()).toBe("stopped");
@@ -152,11 +211,11 @@ describe("supervisor", () => {
     expect(sup.state()).toBe("stopped");
   });
 
-  it("restart stops then starts a new process", async () => {
+  it("restart anyway stops then starts a new process", async () => {
     const { sup, children } = setup();
     sup.start();
     await tick();
-    const restarted = sup.restart();
+    const restarted = sup.restart({ anyway: true });
     children[0]!.exit(0);
     await restarted;
     await tick();
@@ -168,8 +227,8 @@ describe("supervisor", () => {
     const { sup, children } = setup();
     sup.start();
     await tick();
-    const a = sup.restart();
-    const b = sup.restart();
+    const a = sup.restart({ anyway: true });
+    const b = sup.restart({ anyway: true });
     children[0]!.exit(0);
     await Promise.all([a, b]);
     await tick();
@@ -300,6 +359,7 @@ describe("supervisor", () => {
       },
       now: () => 0,
       serverExe: "x",
+      gameApi: async () => ({ ok: false, reason: "unused" }),
     });
     sup.start();
     expect(n).toBe(1 + MAX_RESTARTS);
@@ -345,5 +405,261 @@ describe("supervisor", () => {
     await tick();
     expect(sup.state()).toBe("running");
     expect(states).toEqual(["starting", "running"]);
+  });
+});
+
+/** Lets every queued promise step of the clean stop run. */
+const settle = async () => {
+  for (let i = 0; i < 10; i++) await tick();
+};
+
+async function running(opts: Parameters<typeof setup>[0] = {}) {
+  const t = setup(opts);
+  t.sup.start();
+  await tick();
+  expect(t.sup.state()).toBe("running");
+  return t;
+}
+
+describe("the clean stop", () => {
+  it("saves the current session, shuts down, and resolves stopped when the process exits", async () => {
+    const { sup, game, last, states, timer } = await running();
+    const stopped = sup.stop();
+    await settle();
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)", "shutdown"]);
+    expect(sup.state()).toBe("stopping");
+    expect(last().killed).toBe(false);
+    expect(timer.live()).toEqual([expect.objectContaining({ ms: SHUTDOWN_TIMEOUT_MS })]);
+    last().exit(0);
+    await expect(stopped).resolves.toBe("stopped");
+    expect(sup.state()).toBe("stopped");
+    expect(states).toEqual(["starting", "running", "stopping", "stopped"]);
+    expect(sup.lastError()).toBeUndefined();
+    expect(timer.live()).toEqual([]);
+    expect(SHUTDOWN_TIMEOUT_MS).toBe(60_000);
+  });
+
+  it("ends the process when it hasn't exited 60 s after Shutdown, and says so", async () => {
+    const { sup, last, timer, calls } = await running();
+    const stopped = sup.stop();
+    await settle();
+    expect(last().killed).toBe(false);
+    timer.fireAll();
+    expect(last().killed).toBe(true);
+    last().exit(null, "SIGTERM");
+    await expect(stopped).resolves.toBe("stopped");
+    expect(sup.state()).toBe("stopped");
+    expect(sup.lastError()).toContain("Stopped without a clean shutdown");
+    expect(sup.lastError()).toContain("60 s");
+    await tick();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("with no token stored, stops nothing and says the agent must be set up", async () => {
+    const { sup, last, states } = await running({
+      access: async () => ({ ok: false, reason: "The clean stop needs the agent set up." }),
+    });
+    await expect(sup.stop()).resolves.toBe("unavailable");
+    expect(last().killed).toBe(false);
+    expect(sup.state()).toBe("running");
+    expect(states).toEqual(["starting", "running"]);
+    expect(sup.lastError()).toContain("needs the agent set up");
+    expect(sup.lastError()).toContain("Stop anyway");
+    // Stop anyway then ends it.
+    const anyway = sup.stop({ anyway: true });
+    expect(last().killed).toBe(true);
+    last().exit(1);
+    await expect(anyway).resolves.toBe("stopped");
+    expect(sup.lastError()).toContain(UNCLEAN_STOP);
+  });
+
+  it("an API error while saving leaves the server running and offers Stop anyway", async () => {
+    const { sup, game, last, states } = await running();
+    game.fail.saveGame = new Error("SaveGame failed: insufficient_scope");
+    await expect(sup.stop()).resolves.toBe("failed");
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)"]);
+    expect(last().killed).toBe(false);
+    expect(sup.state()).toBe("running");
+    expect(states).toEqual(["starting", "running", "stopping", "running"]);
+    expect(sup.lastError()).toContain("insufficient_scope");
+    expect(sup.lastError()).toContain("Stop anyway");
+  });
+
+  it("edge: an error reading the session name is a failed stop too, with nothing saved", async () => {
+    const { sup, game, last } = await running();
+    game.fail.sessionName = new Error("QueryServerState failed: connect ECONNREFUSED");
+    await expect(sup.stop()).resolves.toBe("failed");
+    expect(game.calls).toEqual(["sessionName"]);
+    expect(last().killed).toBe(false);
+    expect(sup.state()).toBe("running");
+  });
+
+  it("edge: a Shutdown error after the save still waits, then ends the process and names the error", async () => {
+    const { sup, game, last, timer } = await running();
+    game.fail.shutdown = new Error("Shutdown failed: socket hang up");
+    const stopped = sup.stop();
+    await settle();
+    expect(sup.state()).toBe("stopping");
+    expect(last().killed).toBe(false);
+    timer.fireAll();
+    expect(last().killed).toBe(true);
+    last().exit(null, "SIGTERM");
+    await expect(stopped).resolves.toBe("stopped");
+    expect(sup.lastError()).toContain("socket hang up");
+  });
+
+  it("edge: a Shutdown error with the process exiting anyway is a clean stop", async () => {
+    const { sup, game, last, timer } = await running();
+    game.fail.shutdown = new Error("Shutdown failed: connection dropped mid-response");
+    const stopped = sup.stop();
+    await settle();
+    last().exit(0);
+    await expect(stopped).resolves.toBe("stopped");
+    expect(sup.lastError()).toBeUndefined();
+    expect(timer.live()).toEqual([]);
+  });
+
+  it("edge: a throwing token read is reported, not thrown", async () => {
+    const { sup, last } = await running({
+      access: async () => {
+        throw new Error("DPAPI unavailable");
+      },
+    });
+    await expect(sup.stop()).resolves.toBe("unavailable");
+    expect(last().killed).toBe(false);
+    expect(sup.lastError()).toContain("DPAPI unavailable");
+  });
+
+  it("edge: Stop anyway while saving ends the process at once and the save's later result changes nothing", async () => {
+    const { sup, game, last, states } = await running();
+    game.hold = "saveGame";
+    game.fail.saveGame = new Error("SaveGame failed: connection dropped");
+    const stopped = sup.stop();
+    await settle();
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)"]);
+    const anyway = sup.stop({ anyway: true });
+    expect(last().killed).toBe(true);
+    last().exit(null, "SIGTERM");
+    game.release?.();
+    await settle();
+    await expect(stopped).resolves.toBe("stopped");
+    await expect(anyway).resolves.toBe("stopped");
+    expect(sup.state()).toBe("stopped");
+    expect(states).toEqual(["starting", "running", "stopping", "stopped"]);
+    expect(game.calls).not.toContain("shutdown");
+    expect(sup.lastError()).toContain(UNCLEAN_STOP);
+  });
+
+  it("edge: Stop anyway while the token is still being read skips the API", async () => {
+    let grant: ((a: GameApiAccess) => void) | undefined;
+    const game = new FakeGame();
+    const { sup, last } = await running({ access: () => new Promise((resolve) => (grant = resolve)) });
+    const stopped = sup.stop();
+    const anyway = sup.stop({ anyway: true });
+    expect(last().killed).toBe(false);
+    grant?.({ ok: true, api: game });
+    await settle();
+    expect(last().killed).toBe(true);
+    expect(game.calls).toEqual([]);
+    last().exit(null, "SIGTERM");
+    await expect(stopped).resolves.toBe("stopped");
+    await expect(anyway).resolves.toBe("stopped");
+  });
+
+  it("edge: a crash while the token is read: the stop goes on with the restarted server", async () => {
+    let grant: ((a: GameApiAccess) => void) | undefined;
+    const game = new FakeGame();
+    const { sup, children } = await running({ access: () => new Promise((resolve) => (grant = resolve)) });
+    const stopped = sup.stop();
+    children[0]!.exit(1); // the supervisor restarts it as usual
+    await tick();
+    grant?.({ ok: true, api: game });
+    await settle();
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)", "shutdown"]);
+    children[1]!.exit(0);
+    await expect(stopped).resolves.toBe("stopped");
+    expect(children).toHaveLength(2);
+    expect(sup.state()).toBe("stopped");
+  });
+
+  it("edge: a crash while the token is read that leaves it still starting is not stopped by the API", async () => {
+    let grant: ((a: GameApiAccess) => void) | undefined;
+    const game = new FakeGame();
+    const t = setup({ autoSpawn: false, access: () => new Promise((resolve) => (grant = resolve)) });
+    t.sup.start();
+    t.children[0]!.spawned();
+    const stopped = t.sup.stop();
+    t.children[0]!.exit(1); // restarted, and the new process hasn't spawned yet
+    grant?.({ ok: true, api: game });
+    await settle();
+    expect(game.calls).toEqual([]);
+    await expect(stopped).resolves.toBe("failed");
+    expect(t.sup.state()).toBe("starting");
+  });
+
+  it("edge: the process exiting during the save settles the stop as stopped, with no Shutdown", async () => {
+    const { sup, game, last } = await running();
+    game.hold = "saveGame";
+    const stopped = sup.stop();
+    await settle();
+    last().exit(0);
+    game.release?.();
+    await settle();
+    await expect(stopped).resolves.toBe("stopped");
+    expect(game.calls).not.toContain("shutdown");
+    expect(sup.state()).toBe("stopped");
+  });
+
+  it("two clean stops at once share one save and one shutdown", async () => {
+    const { sup, game, last } = await running();
+    const a = sup.stop();
+    const b = sup.stop();
+    await settle();
+    last().exit(0);
+    await expect(Promise.all([a, b])).resolves.toEqual(["stopped", "stopped"]);
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)", "shutdown"]);
+  });
+
+  it("a clean restart saves, shuts down, and starts a new process", async () => {
+    const { sup, game, children } = await running();
+    const restarted = sup.restart();
+    await settle();
+    children[0]!.exit(0);
+    await expect(restarted).resolves.toBe("stopped");
+    await tick();
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)", "shutdown"]);
+    expect(children).toHaveLength(2);
+    expect(sup.state()).toBe("running");
+  });
+
+  it("edge: a restart whose stop fails starts nothing", async () => {
+    const { sup, game, children } = await running();
+    game.fail.saveGame = new Error("SaveGame failed");
+    await expect(sup.restart()).resolves.toBe("failed");
+    expect(children).toHaveLength(1);
+    expect(sup.state()).toBe("running");
+  });
+
+  it("edge: Stop anyway during the 60 s wait ends the process at once and cancels the timer", async () => {
+    const { sup, last, timer } = await running();
+    const stopped = sup.stop();
+    await settle();
+    expect(timer.live()).toHaveLength(1);
+    const again = sup.stop({ anyway: true });
+    expect(last().killed).toBe(true);
+    expect(timer.live()).toEqual([]);
+    last().exit(null, "SIGTERM");
+    await expect(Promise.all([stopped, again])).resolves.toEqual(["stopped", "stopped"]);
+    expect(sup.lastError()).toContain(UNCLEAN_STOP);
+  });
+
+  it("edge: start after an unclean stop clears the message", async () => {
+    const { sup, last } = await running();
+    const stopped = sup.stop({ anyway: true });
+    last().exit(1);
+    await stopped;
+    expect(sup.lastError()).toContain(UNCLEAN_STOP);
+    sup.start();
+    expect(sup.lastError()).toBeUndefined();
   });
 });

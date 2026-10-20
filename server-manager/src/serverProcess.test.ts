@@ -63,4 +63,31 @@ describe("serverSpawn", () => {
     handle.kill();
     expect(child.killed).toBe(true);
   });
+
+  it("the server's spawn pipes nothing", () => {
+    const { calls, spawn } = capture();
+    serverSpawn({ env: {}, execPath: "E", spawn })("/s/FactoryServer.exe", ["-log"]);
+    expect(calls[0]!.opts.stdio).toBe("ignore");
+  });
+
+  it("with output on, pipes stdout and stderr, still with no shell, and reports exit on close", () => {
+    const { calls, child, spawn } = capture();
+    const stdout = Object.assign(new EventEmitter(), { setEncoding: () => undefined });
+    const stderr = Object.assign(new EventEmitter(), { setEncoding: () => undefined });
+    Object.assign(child, { stdout, stderr });
+    // Forward slashes: node's dirname reads them the same on Windows and on Linux CI.
+    const handle = serverSpawn({ env: {}, execPath: "E", spawn, output: true })("/opt/steamcmd/steamcmd.exe", ["+quit"]);
+    expect(calls[0]!.file).toBe("/opt/steamcmd/steamcmd.exe");
+    expect(calls[0]!.opts.stdio).toEqual(["ignore", "pipe", "pipe"]);
+    expect(calls[0]!.opts.shell).toBe(false);
+    expect(calls[0]!.opts.cwd).toBe("/opt/steamcmd");
+    const seen: string[] = [];
+    handle.onOutput?.((chunk) => seen.push(chunk));
+    handle.onExit((code) => seen.push(`exit ${code}`));
+    stdout.emit("data", "a\n");
+    stderr.emit("data", "b\n");
+    child.emit("exit", 0, null); // output may still be in flight: not reported yet
+    child.emit("close", 0, null);
+    expect(seen).toEqual(["a\n", "b\n", "exit 0"]);
+  });
 });

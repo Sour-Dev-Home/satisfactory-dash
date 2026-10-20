@@ -8,11 +8,18 @@ supervises the dedicated server, a holdover until the mod.
 
 - **It opens no port and runs as the user.** The window is a local file; nothing listens
   (`e2e/no-listen.spec.ts`).
-- **It only runs the configured `FactoryServer.exe`, with fixed arguments and no shell** (`src/supervisor.ts`
-  `SERVER_ARGS`, `src/serverProcess.ts`). The one other process is PowerShell (Windows) or `ps`, with a fixed script, to
-  read that process's CPU and memory (`src/processStats.ts`); the pid goes in the environment, never into the script.
+- **It only runs the configured `FactoryServer.exe` and the configured `steamcmd.exe`, each with fixed arguments and
+  no shell** (`src/supervisor.ts` `SERVER_ARGS`, `src/updater.ts` `steamcmdArgs`, `src/serverProcess.ts`). The one
+  other process is PowerShell (Windows) or `ps`, with a fixed script, to read the server's CPU and memory
+  (`src/processStats.ts`); the pid goes in the environment, never into the script. The agent's DPAPI store also runs
+  PowerShell to unprotect the token, with the agent's own fixed script (`agent/src/dpapi.ts`).
   `SATISFACTORY_SERVER_MANAGER_TEST_RUN_WITH_NODE=1` is the e2e switch that runs the same configured file as a Node
   script; it never changes which file runs.
+- **Stop is the clean stop** (`src/supervisor.ts`, `src/gameApi.ts`): `QueryServerState` for the session name,
+  `SaveGame`, then `Shutdown` through the game's own API, ended after 60 s if it's still there. The API token is the
+  agent's (`src/gameAccess.ts` opens `AgentStore` from `@satisfactory-dash/agent`; `SD_AGENT_HOME` moves it for tests).
+  It goes only into the API request: never to the window, a log or an error message (`src/preload.test.ts`). With no
+  token, Stop offers "Stop anyway".
 - **Never a second server.** Quitting leaves the server running and the app doesn't adopt it yet, so it records the
   running server's pid in `server.pid` beside the settings; while that process lives, Start is refused
   (`src/leftoverServer.ts`).
