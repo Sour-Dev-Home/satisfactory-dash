@@ -22,6 +22,25 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
 | `schedule.tf` | EventBridge Scheduler runs the backup task nightly |
 | `bootstrap/` | Creates the state bucket (versioned, SSE-S3, block-public-access, TLS only) |
 
+## Credentials for an apply (PowerShell)
+
+Terraform runs as the `satis-terraform` role through the `satis-tf` CLI profile, not the default IAM user,
+which cannot read the state bucket (a 403 on `HeadObject` for the state file). The profile assumes the role
+with MFA, and Terraform cannot prompt for an MFA code ("assume role with MFA enabled, but
+AssumeRoleTokenProvider session option not set"), so the AWS CLI hands it temporary keys for about an hour:
+
+```powershell
+$env:AWS_PROFILE = 'satis-tf'
+aws configure export-credentials --format powershell | Invoke-Expression   # asks for the MFA code
+Remove-Item Env:AWS_PROFILE        # so Terraform uses the exported keys, not the MFA profile
+terraform init "-backend-config=prod.s3.tfbackend"
+```
+
+Quote every `-flag=value` whose value has a dot: unquoted, PowerShell splits
+`-backend-config=prod.s3.tfbackend` at the first dot ("No positional arguments are expected"). Close the
+window afterwards, or remove `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and
+`AWS_CREDENTIAL_EXPIRATION` from `Env:`.
+
 ## First apply (owner, by hand)
 
 1. **State bucket.** In `bootstrap/`: `terraform init`, then
@@ -30,7 +49,7 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
    other bucket settings) restores it.
 2. **Backend and variables.** In `infra/aws/`, copy `prod.s3.tfbackend.example` to `prod.s3.tfbackend`
    and `terraform.tfvars.example` to `terraform.tfvars`, and fill both in. Both copies are git-ignored.
-3. `terraform init -backend-config=prod.s3.tfbackend`, then apply **the base only** first: the ECS
+3. `terraform init "-backend-config=prod.s3.tfbackend"` (with the credentials above), then apply **the base only** first: the ECS
    service can't turn healthy before its SSM values exist and the database is migrated, and the apply
    waits for it (`wait_for_steady_state`). So `terraform plan -target=aws_db_instance.main
    -target=aws_budgets_budget.monthly -out=base.tfplan`, read the plan, then `terraform apply base.tfplan`.
