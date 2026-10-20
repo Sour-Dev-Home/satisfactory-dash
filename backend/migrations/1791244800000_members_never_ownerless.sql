@@ -4,7 +4,7 @@
 -- memberships away, so without it an owner's account deletion would orphan the server.
 --
 -- A constraint trigger, DEFERRABLE INITIALLY DEFERRED, on servers.server_members. It fires per row that
--- is deleted or loses the 'owner' role, but only CHECKS at commit, so a transaction may pass through an
+-- is deleted, loses the 'owner' role or moves to another server (OLD.server_id is the one checked), but only CHECKS at commit, so a transaction may pass through an
 -- ownerless moment: transferOwnership demotes then promotes, and a soft delete marks the server deleted
 -- and then deletes its members. At commit, a server that is live (deleted_at IS NULL) and still exists
 -- but has no owner row raises `ownerless_server`. A server that was hard-deleted (the cascade) or
@@ -31,7 +31,7 @@ END;
 $$;
 
 CREATE CONSTRAINT TRIGGER server_members_never_ownerless
-  AFTER DELETE OR UPDATE OF role ON servers.server_members
+  AFTER DELETE OR UPDATE OF role, server_id ON servers.server_members
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION servers.assert_server_has_owner();
 

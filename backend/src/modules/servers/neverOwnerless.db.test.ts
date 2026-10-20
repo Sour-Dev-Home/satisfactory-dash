@@ -212,9 +212,9 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
     expect(await getMemberRole(app, { publicId: "nov-owned", userId: realOwner })).toBe("owner");
   });
 
-  // KNOWN GAP (#311 test hunt): the trigger fires on `UPDATE OF role` only, so re-pointing the owner row at another
-  // server (UPDATE ... SET server_id) leaves the old live server ownerless and passes the check.
-  it.fails("refuses moving the owner row to another server (UPDATE SET server_id)", async () => {
+  // Found by the #311 test hunt: the trigger once fired on `UPDATE OF role` only, so re-pointing the owner row at
+  // another server left the old live server ownerless. It now fires on `server_id` too.
+  it("refuses moving the owner row to another server (UPDATE SET server_id)", async () => {
     const [a, b] = [await user(), await user()];
     const from = await serverWith(a);
     const to = await upsertConfiguredServer(app, { publicId: `nov-to-${++n}`, displayName: "To" });
