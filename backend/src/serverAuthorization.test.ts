@@ -17,6 +17,7 @@ import {
   alertRuleUpdatedPresetDisabled,
   alertSendTestOk,
   alertSetMuteRequest,
+  pushOptInRequest,
   alertStatusQuiet,
   alertUpdateRuleRequest,
   agentEnrollmentCodeResponse,
@@ -37,8 +38,8 @@ import { InMemoryServerDirectory, createServerManagementRouters, createServersRo
 import type { ServerAccess, ServerManagementService } from "./modules/servers/index.js";
 import { createTelemetryRouters } from "./modules/telemetry/index.js";
 import { createSettingsRouters } from "./modules/settings/index.js";
-import { createAlertsRouters } from "./modules/alerts/index.js";
-import type { AlertsService } from "./modules/alerts/index.js";
+import { createAlertsRouters, createPushRouters } from "./modules/alerts/index.js";
+import type { AlertsService, PushService } from "./modules/alerts/index.js";
 import { createAgentUserRouters } from "./modules/agents/index.js";
 import type { AgentsService } from "./modules/agents/index.js";
 import { MapLiveStore, createWorldRoutes } from "./modules/map/index.js";
@@ -164,6 +165,16 @@ const alertsService: AlertsService = {
   clearMute: async () => alertMuteClearedResponse,
 };
 
+/** A stand-in for the push service (ADR-0044): the real router and membership middleware are what the generated tests exercise. */
+const pushService: PushService = {
+  config: () => ({ enabled: true, vapidPublicKey: "B".repeat(87) }),
+  subscribe: async () => ({ created: true, subscription: { id: "5b1f0c2a-7b4d-4c8a-9e51-1a2b3c4d5e11", createdAt: "2026-10-20T10:00:00.000Z" } }),
+  unsubscribe: async () => ({ deleted: true }),
+  test: async () => ({ ok: false, code: "unavailable" }),
+  getOptIn: async () => ({ optedIn: false }),
+  setOptIn: async (_serverId, _userId, optedIn) => ({ optedIn }),
+};
+
 /** A stand-in for the agents service: every method answers with its contract fixture. */
 const agentsService: AgentsService = {
   createEnrollmentCode: async () => agentEnrollmentCodeResponse,
@@ -192,6 +203,7 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
       ...createTelemetryRouters(directory),
       ...createSettingsRouters(directory),
       ...createAlertsRouters(alertsService),
+      ...createPushRouters(pushService),
       ...createAgentUserRouters(agentsService, { getCommand: async () => commandPending.command }),
       management.scoped,
     ],
@@ -205,6 +217,7 @@ const ALERT_BODIES: Record<string, unknown> = {
   "alerts.destinations.putDiscord": alertPutDiscordRequest,
   "alerts.destinations.patchDiscord": alertPatchDiscordRequest,
   "alerts.mute.set": alertSetMuteRequest,
+  "push.optIn.put": pushOptInRequest,
 };
 const bodyFor = (name: string): unknown =>
   Object.hasOwn(ALERT_BODIES, name) ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
@@ -269,6 +282,9 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
   });
 });
 
+// ADR-0044: the one write every MEMBER may make (a member's own push opt-in), taken from the contract's flag.
+const memberSelfService = (name: string): boolean => name === "push.optIn.put" && endpoints.push.optIn.put.memberSelfService;
+
 describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operatorOnly }) => {
   const app = buildApp();
 
@@ -310,6 +326,11 @@ describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operator
     it.each([OWNER, ADMIN, VIEWER])("a member (%s) can read it", async (user) => {
       const res = await call(app, name, method, urlFor(route, "alpha"), user);
       expect(res.status).toBe(200);
+    });
+  } else if (memberSelfService(name)) {
+    it.each([OWNER, ADMIN, VIEWER])("a member (%s), a viewer included, can write it (it is their own notification)", async (user) => {
+      const res = await call(app, name, method, urlFor(route, "alpha"), user);
+      expect(res.status).toBe(successStatus(name));
     });
   } else {
     it("a viewer's write is a 403 forbidden, not a 404", async () => {

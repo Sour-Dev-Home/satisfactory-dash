@@ -182,6 +182,21 @@ export const errorWebhookInvalid = {
   },
 } satisfies ApiErrorResponse;
 
+/** 400: a push subscription's endpoint was refused. `reason` says why (host_not_allowed, not_https, ...); the URL is never echoed. */
+export const errorPushEndpointInvalid = {
+  error: {
+    code: "push_endpoint_invalid",
+    message: "That push subscription endpoint is not accepted",
+    requestId: "00000000-0000-4000-8000-0000000000b1",
+    reason: "host_not_allowed",
+  },
+} satisfies ApiErrorResponse;
+
+/** 409: web push is not enabled (delivery off or VAPID not configured). */
+export const errorPushDisabled = {
+  error: { code: "push_disabled", message: "Push notifications are not enabled on this backend", requestId: "00000000-0000-4000-8000-0000000000b2" },
+} satisfies ApiErrorResponse;
+
 /** 409: the delivery kill switch is off, so nothing can be sent. */
 export const errorDeliveryOff = {
   error: { code: "delivery_off", message: "Alert delivery is switched off, so no message was sent", requestId: "00000000-0000-4000-8000-0000000000a7" },

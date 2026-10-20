@@ -26,6 +26,12 @@ import {
   MuteClearedResponseSchema,
   MuteSetResponseSchema,
   PatchDiscordDestinationRequestSchema,
+  PushConfigResponseSchema,
+  PushOptInRequestSchema,
+  PushOptInResponseSchema,
+  PushSubscribeRequestSchema,
+  PushSubscribeResponseSchema,
+  PushUnsubscribeResponseSchema,
   PutDiscordDestinationRequestSchema,
   SendTestResponseSchema,
   SetMuteRequestSchema,
@@ -90,6 +96,13 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["alertSetMuteRequest", SetMuteRequestSchema],
   ["alertMuteSetResponse", MuteSetResponseSchema],
   ["alertMuteClearedResponse", MuteClearedResponseSchema],
+  // ADR-0044: web push.
+  ["pushConfig", PushConfigResponseSchema],
+  ["pushSubscribeRequest", PushSubscribeRequestSchema],
+  ["pushSubscribeResponse", PushSubscribeResponseSchema],
+  ["pushUnsubscribeResponse", PushUnsubscribeResponseSchema],
+  ["pushOptInRequest", PushOptInRequestSchema],
+  ["pushOptIn", PushOptInResponseSchema],
   // ADR-0031 PR 3: the edge agent's fixtures. "agentEnrollmentCode" and "agentEnroll..." differ at the letter after "Enroll".
   ["agentEnrollRequest", EnrollRequestSchema],
   ["agentEnrollResponse", EnrollResponseSchema],
@@ -457,13 +470,13 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
     // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
-    expect(all.length).toBe(51); // + serverManagement.renameAgent and switchToLocal (ADR-0031)
+    expect(all.length).toBe(57); // + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;
       // The two-parameter builders (a rule, command or layer id) take a placeholder that must land where the parameter is.
       expect(endpoint.path("default", "RULE"), name).toBe(
-        endpoint.route.replace(":serverId", "default").replace(":ruleId", "RULE").replace(":commandId", "RULE").replace(":layer", "RULE"),
+        endpoint.route.replace(":serverId", "default").replace(":id", "default").replace(":ruleId", "RULE").replace(":commandId", "RULE").replace(":layer", "RULE"),
       );
     }
   });

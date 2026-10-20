@@ -72,6 +72,13 @@ describe("the real wiring requires a session", () => {
     const res = await request(app).get("/api/servers").set("Cookie", session);
     expect(res.status).toBe(200);
   });
+
+  // ADR-0044: web push lives in the database (subscriptions, opt-ins), so without DATABASE_URL none of its routes exist:
+  // a signed-in user gets the app's unmatched-route 404, never a half-working endpoint.
+  it.each(["/api/push/config", "/api/servers/default/alerts/push"])("does not mount the push route %s without a database", async (path) => {
+    const res = await request(app).get(path).set("Cookie", session);
+    expect(res.status).toBe(404);
+  });
 });
 
 // These exercise the *real* wiring in server.ts end to end (real adapter -> real
