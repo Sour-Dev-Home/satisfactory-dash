@@ -96,4 +96,24 @@ only (a dev or `satis_load` database, never production), and nothing talks to pr
 - Coffee Stain's terms on mods: not found by script; the owner may read the EULA shown at install.
 - The legal read of GPL-3.0-or-later software beside the AGPL-3.0-only web app: to be recorded in `LEGAL.md`.
 - How often SML breaks mods across game releases (ADR-0039 option C's cost) [NEEDS VERIFICATION].
-- Whether the owner's own server build's engine version matches 5.6.1 (its startup log).
+- Whether the owner's own server build's engine version matches 5.6.1 (its startup log). The test install's startup log
+  shows `Engine Version: 5.6.1-513885` (the S4 bundle's `versionLines`, `raw-sources/mod-spikes/S4-2026-10-20T01-00-53-086Z/result.json`);
+  that covers the test install, not the owner's live server.
+
+## G3 readiness (parked, owner 2026-10-20)
+
+- **G0–G2 are complete:** claims C1–C7 are all verified, on the S0, S1, S1b, S2, S3, S4 and S5 bundles under
+  `raw-sources/mod-spikes/` (see "The claims" above and that folder's README).
+- **G3 is parked until ADR-0039 decision 3's trigger:** a player whose rented game server can't run the agent. The owner
+  chose on 2026-10-20 not to propose a build yet; the agent stays the supported path.
+- **Before a build ADR**, each of these is settled, or carried into that ADR as a named risk:
+  1. the legal reading of GPL-3.0-or-later software beside the AGPL-3.0-only web app, recorded in `LEGAL.md`;
+  2. Coffee Stain's terms on mods;
+  3. how often SML breaks mods across game releases (option C's ongoing cost);
+  4. which game hosts allow installing a custom mod, and whether they allow outbound HTTPS from the game process
+     (ADR-0039 Context) [NEEDS VERIFICATION].
+- **Lessons from the spikes a build must keep:**
+  - The server's saves folder is per Windows account, so S3 runs only as `satis-runner` (mod repo `docs/runner.md`, "Only as `satis-runner`").
+  - FRM groups switch-joined circuits, and a circuit's power stats are its group's (ruling 6, amended; mod PR #18).
+  - A game-host build needs SML's pre-build PowerShell script to be allowed to run (mod PR #17).
+  - The mod logs through its own category, because the game filters `LogTemp` to Warning (mod PR #6).
