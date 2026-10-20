@@ -80,11 +80,22 @@ async function check(host) {
   return result.ok;
 }
 
+/** A Cloudflare API token's shape. Checked before any request: fetch's own error for a bad header value quotes it. */
+export function validToken(token) {
+  return typeof token === "string" && /^[A-Za-z0-9_-]{20,}$/.test(token);
+}
+
 async function cf(path, init = {}) {
-  const res = await fetch(`${CF_API}${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${process.env.CF_API_TOKEN}`, "Content-Type": "application/json" },
-  });
+  let res;
+  try {
+    res = await fetch(`${CF_API}${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${process.env.CF_API_TOKEN}`, "Content-Type": "application/json" },
+    });
+  } catch {
+    // Never pass the cause on: it can quote the Authorization header.
+    throw new Error("Cloudflare API: request failed");
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok || body.success === false) {
     const why = (body.errors ?? []).map((e) => e.message).join("; ") || `HTTP ${res.status}`;
@@ -95,8 +106,12 @@ async function cf(path, init = {}) {
 
 async function setCloudflare() {
   const zone = process.env.CF_ZONE_ID;
-  if (!process.env.CF_API_TOKEN || !zone || !/^[a-f0-9]{32}$/.test(zone)) {
-    throw new Error("set CF_API_TOKEN and CF_ZONE_ID (the zone's 32-character id) in the environment");
+  if (!validToken(process.env.CF_API_TOKEN)) {
+    // Shape only, never the value: a stray \r or space from a copied .env line is the usual cause.
+    throw new Error("CF_API_TOKEN is missing or isn't a Cloudflare API token (letters, digits, - and _ only; check for a trailing space or \\r)");
+  }
+  if (!zone || !/^[a-f0-9]{32}$/.test(zone)) {
+    throw new Error("set CF_ZONE_ID to the zone's 32-character id");
   }
   const setting = `/zones/${zone}/settings/min_tls_version`;
   const before = (await cf(setting)).value;

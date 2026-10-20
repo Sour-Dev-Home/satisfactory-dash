@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planZoneChange, probeOutcome, verdict } from "./tls-floor.mjs";
+import { planZoneChange, probeOutcome, validToken, verdict } from "./tls-floor.mjs";
 
 const all = (old, v12 = "accepted") => ({ TLSv1: old, "TLSv1.1": old, "TLSv1.2": v12 });
 
@@ -58,6 +58,28 @@ test("set-cloudflare raises 1.0 and 1.1 to 1.2", () => {
 test("set-cloudflare leaves 1.2 and 1.3 alone (idempotent, never lowers)", () => {
   assert.deepEqual(planZoneChange("1.2"), { change: false, value: "1.2" });
   assert.deepEqual(planZoneChange("1.3"), { change: false, value: "1.3" });
+});
+
+test("a token with a stray \\r, space or other header-breaking character is refused before any request", () => {
+  const token = "a".repeat(40);
+  assert.equal(validToken(token), true);
+  assert.equal(validToken(`${token}\r`), false);
+  assert.equal(validToken(` ${token}`), false);
+  assert.equal(validToken(`${token}\n`), false);
+  assert.equal(validToken("short"), false);
+  assert.equal(validToken(undefined), false);
+});
+
+test("the refusal names the problem, never the token", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const secret = `${"s".repeat(40)}\r`;
+  const run = spawnSync(process.execPath, ["scripts/tls-floor.mjs", "set-cloudflare"], {
+    env: { ...process.env, CF_API_TOKEN: secret, CF_ZONE_ID: "0".repeat(32) },
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /CF_API_TOKEN/);
+  assert.ok(!run.stderr.includes("s".repeat(40)) && !run.stdout.includes("s".repeat(40)));
 });
 
 test("set-cloudflare refuses a value it doesn't know", () => {

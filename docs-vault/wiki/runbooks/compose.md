@@ -122,7 +122,8 @@ Clients must never reach the backend over TLS 1.0 or 1.1. The game mod's HTTP cl
 1.3 and can't raise its own floor, so the host refuses the old versions. In the `tunnel` profile TLS ends at your
 Cloudflare zone, not in this stack, and a zone's **Minimum TLS Version defaults to 1.0**. Two commands, once per zone:
 
-1. Set the floor. Make an API token with only **Zone > Zone Settings > Edit** on the zone, and copy the zone's id
+1. Set the floor. Make an API token with only **Zone > Zone Settings > Edit** on the zone and a short expiry (a
+   day is plenty), and copy the zone's id
    from its Overview page. Then:
 
    ```sh
