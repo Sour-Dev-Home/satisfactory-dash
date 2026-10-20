@@ -13,6 +13,9 @@ supervises the dedicated server, a holdover until the mod.
   read that process's CPU and memory (`src/processStats.ts`); the pid goes in the environment, never into the script.
   `SATISFACTORY_SERVER_MANAGER_TEST_RUN_WITH_NODE=1` is the e2e switch that runs the same configured file as a Node
   script; it never changes which file runs.
+- **Never a second server.** Quitting leaves the server running and the app doesn't adopt it yet, so it records the
+  running server's pid in `server.pid` beside the settings; while that process lives, Start is refused
+  (`src/leftoverServer.ts`).
 - **The window gets only the bridge** in `src/ipc.ts` (`contextIsolation` on, `nodeIntegration` off, a sandboxed
   preload, a strict CSP in `src/renderer/index.html`). Main answers IPC only from its own page.
 - **Settings** live in `%LOCALAPPDATA%\satisfactory-dash-server-manager\settings.json` (`src/settings.ts`, zod);

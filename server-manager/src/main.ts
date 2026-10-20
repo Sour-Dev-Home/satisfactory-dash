@@ -9,8 +9,17 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CHANNELS, type ChooseResult, type Status } from "./ipc";
 import { cpuPercent, sampleProcess } from "./processStats";
+import { clearPid, leftoverPid, processAlive, recordPid } from "./leftoverServer";
 import { serverSpawn } from "./serverProcess";
-import { hasServerExe, hasSteamcmdExe, loadSettings, saveSettings, SERVER_EXE, type Settings } from "./settings";
+import {
+  hasServerExe,
+  hasSteamcmdExe,
+  loadSettings,
+  saveSettings,
+  SERVER_EXE,
+  settingsDir,
+  type Settings,
+} from "./settings";
 import { createSupervisor, type Supervisor } from "./supervisor";
 
 const STATUS_INTERVAL_MS = 3000;
@@ -40,6 +49,7 @@ function makeSupervisor(serverDir: string): Supervisor {
       currentPid = child.pid;
       child.onSpawn(() => {
         currentPid = child.pid;
+        recordPid(settingsDir(), child.pid);
       });
       return child;
     },
@@ -47,6 +57,7 @@ function makeSupervisor(serverDir: string): Supervisor {
     serverExe: join(serverDir, SERVER_EXE),
   });
   sup.onChange((state) => {
+    if (state === "stopped" || state === "crashed") clearPid(settingsDir());
     if (state === "running") runningSince = Date.now();
     else {
       runningSince = undefined;
@@ -58,12 +69,24 @@ function makeSupervisor(serverDir: string): Supervisor {
   return sup;
 }
 
+/** A server an earlier session of the app started and left running; only checked while ours isn't running. */
+function leftover(): number | undefined {
+  const state = supervisor?.state() ?? "stopped";
+  if (state !== "stopped" && state !== "crashed") return undefined;
+  return leftoverPid(settingsDir(), processAlive);
+}
+
 function status(): Status {
   const state = supervisor?.state() ?? "stopped";
   const running = state === "running";
+  const leftoverServer = leftover();
   return {
     state,
-    lastError: supervisor?.lastError(),
+    lastError:
+      leftoverServer !== undefined
+        ? `A server this app started earlier is still running (process ${leftoverServer}). Stop it before starting another.`
+        : supervisor?.lastError(),
+    leftoverPid: leftoverServer,
     configured: configured(),
     serverDir: settings?.serverDir,
     steamcmdDir: settings?.steamcmdDir,
@@ -168,7 +191,10 @@ app.whenReady().then(() => {
   if (settings && hasServerExe(settings.serverDir)) supervisor = makeSupervisor(settings.serverDir);
 
   handle(CHANNELS.getStatus, status);
-  handle(CHANNELS.start, () => supervisor?.start());
+  handle(CHANNELS.start, () => {
+    if (leftover() === undefined) supervisor?.start();
+    else pushStatus();
+  });
   handle(CHANNELS.stop, () => supervisor?.stop());
   handle(CHANNELS.restart, () => supervisor?.restart());
   handle(CHANNELS.chooseServerDir, chooseServerDir);

@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { alive, launch, makeFixture, removeFixture, starts, tell, writeSettings, type Fixture } from "./harness";
 
@@ -89,6 +89,24 @@ test("a disabled button keeps focus and does nothing", async () => {
   expect(starts(f)).toHaveLength(0);
 });
 
+test("a server left running by an earlier session blocks Start until it is gone", async () => {
+  writeSettings(f);
+  // Stands in for a server the app started before it was closed: any live process will do.
+  writeFileSync(join(f.dataDir, "server.pid"), `${process.pid}\n`);
+  await open();
+  await expect(page.getByTestId("last-error")).toContainText(`still running (process ${process.pid})`);
+  await expectButtons({ Start: false, Stop: false, Restart: false });
+  // Playwright won't click an aria-disabled button on its own; force it to prove the click does nothing.
+  await button("Start").click({ force: true });
+  await page.waitForTimeout(500);
+  expect(starts(f)).toHaveLength(0);
+
+  writeFileSync(join(f.dataDir, "server.pid"), "999999999\n");
+  await expectButtons({ Start: true, Stop: false, Restart: false });
+  await startRunning();
+  expect(readFileSync(join(f.dataDir, "server.pid"), "utf8").trim()).toBe(String(starts(f)[0]!.pid));
+});
+
 test("stop ends the process", async () => {
   writeSettings(f);
   await open();
@@ -99,6 +117,7 @@ test("stop ends the process", async () => {
   await expectButtons({ Start: true, Stop: false, Restart: false });
   await expect.poll(() => alive(pid)).toBe(false);
   await expect(page.getByTestId("uptime")).toHaveText("—");
+  expect(existsSync(join(f.dataDir, "server.pid"))).toBe(false);
 });
 
 test("restart runs a new process", async () => {

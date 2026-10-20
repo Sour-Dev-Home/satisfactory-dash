@@ -42,10 +42,10 @@ function render(status: Status): void {
   const lastError = el("last-error");
   lastError.textContent = status.lastError ?? "";
   lastError.hidden = status.lastError === undefined;
-  lastError.dataset.tone = status.state === "crashed" ? "bad" : "warn";
+  lastError.dataset.tone = status.state === "crashed" && status.leftoverPid === undefined ? "bad" : "warn";
 
   // aria-disabled, not disabled, so a focused button keeps focus when it stops applying.
-  const actions = actionsFor(status.state, status.configured);
+  const actions = actionsFor(status.state, status.configured && status.leftoverPid === undefined);
   for (const [name, button] of Object.entries(buttons) as [keyof typeof buttons, HTMLButtonElement][]) {
     button.setAttribute("aria-disabled", String(!actions[name]));
   }

@@ -17,6 +17,8 @@ export const CHANNELS = {
 export interface Status {
   state: ServerState;
   lastError: string | undefined;
+  /** A server an earlier session started and left running; Start stays off while it lives. */
+  leftoverPid: number | undefined;
   /** False until a folder holding FactoryServer.exe is saved; the window then asks for one. */
   configured: boolean;
   serverDir: string | undefined;
