@@ -17,6 +17,9 @@ export interface LoadDatabaseServersResult {
   unreadable: UnreadableConnection[];
   /** Rows whose stored pinned address is not loopback or private (public ids only): not served, like unreadable ones. */
   refused: { serverId: string; publicId: string }[];
+  /** Public ids of servers the operator was just made owner of because they had none (#310/#311); the caller logs
+   *  one `ownership seeded` line each. Empty on every later start. */
+  ownershipSeeded: string[];
 }
 
 /**
@@ -58,7 +61,7 @@ export async function loadDatabaseServers<TServices>(deps: {
   // too, so the database wins for it as well.
   const agentServers = deps.buildAgent ? await listAgentServers(deps.db) : [];
   if (listed.connections.length === 0 && unreadable.length === 0 && agentServers.length === 0) {
-    return { usingDatabase: false, loaded: [], unreadable: [], refused: [] };
+    return { usingDatabase: false, loaded: [], unreadable: [], refused: [], ownershipSeeded: [] };
   }
   for (const { id } of deps.runtime.list()) {
     await deps.runtime.remove(id);
@@ -72,12 +75,16 @@ export async function loadDatabaseServers<TServices>(deps: {
   // A server reached through an agent is seeded the same way (#267): only when it has NO owner (an ownerless server is
   // unreachable for everyone, the operator included, since routes 404 for a non-member). It never takes ownership from
   // an existing owner: the one-owner index turns that into "owner_exists", a no-op.
-  const seedIds = [...listed.connections.map((c) => c.serverId), ...unreadable.map((u) => u.serverId), ...agentServers.map((s) => s.serverId)];
-  for (const serverId of seedIds) {
-    const outcome = await addMember(deps.db, { serverId, userId: deps.operatorUserId, role: "owner", actorUserId: null });
+  const seeds = [...listed.connections, ...unreadable, ...agentServers].map(({ serverId, publicId }) => ({ serverId, publicId }));
+  const ownershipSeeded: string[] = [];
+  for (const { serverId, publicId } of seeds) {
+    const outcome = await addMember(deps.db, { serverId, userId: deps.operatorUserId, role: "owner", actorUserId: null, source: "startup_seed" });
     if (outcome === "unknown_server_or_user") {
       throw new Error("could not seed an owner for a database server: unknown server or user");
     }
+    if (outcome === "added") {
+      ownershipSeeded.push(publicId);
+    }
   }
-  return { usingDatabase: true, loaded: connections.map((c) => c.publicId), unreadable, refused };
+  return { usingDatabase: true, loaded: connections.map((c) => c.publicId), unreadable, refused, ownershipSeeded };
 }

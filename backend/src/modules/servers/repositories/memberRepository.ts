@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   isForeignKeyViolation,
+  isOwnerlessServerViolation,
   isUniqueViolation,
   uniqueViolationConstraint,
 } from "../../../platform/db/errors.js";
@@ -16,10 +17,12 @@ import type { MemberRole } from "./serverRepository.js";
  * most one owner per server. Every lookup scopes by user AND resolves the server by its public
  * id in the same query, so a caller cannot ask about a server without stating who is asking.
  *
- * KNOWN CONSTRAINT: the one-owner index allows AT MOST one owner, not exactly one, and deleting a
- * user cascades their memberships away. So deleting an account that owns a server would leave it
- * with zero owners. The account-deletion work (before member invites) must transfer or delete
- * owned servers first; nothing in this file prevents the orphaned state.
+ * NEVER OWNERLESS (#311): the one-owner index allows AT MOST one owner; a deferred constraint
+ * trigger (`server_members_never_ownerless`, migration 1791244800000) supplies the other half. At
+ * commit, a live server with no owner row makes the transaction fail with `ownerless_server`, so
+ * deleting an owner's account (which cascades memberships away) is refused until the server is
+ * transferred or deleted. The deferral lets one transaction pass through an ownerless moment, as
+ * transferOwnership and softDeleteServer do.
  */
 const ONE_OWNER_INDEX = "server_members_one_owner";
 const MEMBER_PKEY = "server_members_pkey";
@@ -57,7 +60,9 @@ const INSERT_MEMBER = `
     RETURNING server_id, user_id, role
   )
   INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
-  SELECT $4::uuid, server_id, 'member_added', jsonb_build_object('userId', user_id, 'role', role)
+  SELECT $4::uuid, server_id, 'member_added',
+         jsonb_build_object('userId', user_id, 'role', role)
+           || CASE WHEN $5::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('source', $5::text) END
   FROM added`;
 
 /** Adds a member. The outcome comes from the database's own constraints, not a racy pre-check:
@@ -65,10 +70,10 @@ const INSERT_MEMBER = `
  *  (omit it for the system, e.g. startup registration of the bootstrap owner). */
 export async function addMember(
   db: Queryable,
-  input: { serverId: string; userId: string; role: MemberRole; actorUserId: string | null },
+  input: { serverId: string; userId: string; role: MemberRole; actorUserId: string | null; source?: "startup_seed" },
 ): Promise<AddMemberResult> {
   try {
-    await timedQuery(db, "servers.addMember", INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId]);
+    await timedQuery(db, "servers.addMember", INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId, input.source ?? null]);
     return "added";
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -148,7 +153,7 @@ export async function removeMember(
   return result.rows.length > 0;
 }
 
-export type TransferOwnershipResult = "transferred" | "not_owner" | "target_not_member" | "same_user";
+export type TransferOwnershipResult = "transferred" | "not_owner" | "target_not_member" | "same_user" | "would_orphan";
 
 const DEMOTE_OWNER = `
   UPDATE servers.server_members
@@ -202,6 +207,11 @@ export async function transferOwnership(
   } catch (err) {
     if (err instanceof RollBack) {
       return err.outcome;
+    }
+    // The commit-time check refused the swap (cannot happen while both updates succeed; this maps
+    // the database's own refusal to a typed result should a future change break the swap).
+    if (isOwnerlessServerViolation(err)) {
+      return "would_orphan";
     }
     throw err;
   }

@@ -85,8 +85,8 @@ describe("loadDatabaseServers with agent servers", () => {
     };
     await loadDatabaseServers({ db, ring: null, runtime: new ServerRuntime<string>(), operatorUserId: "op", build, buildAgent });
     expect(seeded).toEqual([
-      ["uuid-1", "op", "owner", null],
-      ["uuid-2", "op", "owner", null],
+      ["uuid-1", "op", "owner", null, "startup_seed"],
+      ["uuid-2", "op", "owner", null, "startup_seed"],
     ]);
   });
 

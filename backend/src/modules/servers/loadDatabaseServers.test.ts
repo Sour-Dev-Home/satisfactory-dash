@@ -60,7 +60,7 @@ describe("loadDatabaseServers", () => {
     const { db, members } = await fakeDb([]);
     const runtime = new ServerRuntime([configEntry("home")]);
     const result = await loadDatabaseServers({ db, ring, runtime, operatorUserId: "op", policy: LAN_OK, build });
-    expect(result).toEqual({ usingDatabase: false, loaded: [], unreadable: [], refused: [] });
+    expect(result).toEqual({ usingDatabase: false, loaded: [], unreadable: [], refused: [], ownershipSeeded: [] });
     expect(runtime.list()).toEqual([{ id: "home", displayName: "From config" }]);
     expect(members).toEqual([]);
   });
@@ -93,7 +93,7 @@ describe("loadDatabaseServers", () => {
   it("makes the operator owner of every database server (idempotent: the outcome of a duplicate is fine)", async () => {
     const { db, members } = await fakeDb([{ uuid: "u1", publicId: "home" }]);
     await loadDatabaseServers({ db, ring, runtime: new ServerRuntime<string>(), operatorUserId: "op", policy: LAN_OK, build });
-    expect(members[0]).toEqual(["u1", "op", "owner", null]);
+    expect(members[0]).toEqual(["u1", "op", "owner", null, "startup_seed"]);
     const dup = await fakeDb([{ uuid: "u1", publicId: "home" }], { code: "23505", constraint: "server_members_one_owner" });
     await expect(loadDatabaseServers({ db: dup.db, ring, runtime: new ServerRuntime<string>(), operatorUserId: "op", policy: LAN_OK, build })).resolves.toMatchObject({ usingDatabase: true });
   });
