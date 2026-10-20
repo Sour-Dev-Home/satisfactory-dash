@@ -1,6 +1,7 @@
 # ADR-0016: Frontend UI architecture: design system, app shell, visual validation
 
 Status: accepted (project owner), 2026-09-24
+Superseded in part by ADR-0041 (2026-10-19): the FICSIT-industrial direction replaces direction B2.
 
 ## Context
 Functionality is solid (4a-4g), but visuals are unplanned:

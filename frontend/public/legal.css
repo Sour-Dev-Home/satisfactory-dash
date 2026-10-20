@@ -1,11 +1,12 @@
 /* The privacy and terms pages (public/privacy.html, public/terms.html): static HTML with no
    JavaScript, so they can't use the app's Tailwind build. The colours copy the app's design
-   tokens (src/index.css @theme, direction B2); change them there first, then here. */
+   tokens (src/index.css @theme, the FICSIT-industrial direction of ADR-0041); change them
+   there first, then here. */
 :root {
   color-scheme: dark;
   font: 15px/1.6 system-ui, "Segoe UI", Roboto, sans-serif;
-  color: #c3ccd6;
-  background: #0e1217;
+  color: #ece7dc;
+  background: #17191c;
   -webkit-font-smoothing: antialiased;
   scrollbar-gutter: stable;
 }
@@ -30,7 +31,7 @@ header a {
   min-height: 44px;
   font-weight: 700;
   font-size: 20px;
-  color: #f2f5f8;
+  color: #fbf8f2;
   text-decoration: none;
 }
 header a::before {
@@ -38,29 +39,29 @@ header a::before {
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background: #5cb8e6;
+  background: #fa9549;
 }
 h1 {
   margin: 24px 0 4px;
   font-size: 28px;
   line-height: 1.25;
-  color: #f2f5f8;
+  color: #fbf8f2;
 }
 h2 {
   margin: 32px 0 8px;
   font-size: 18px;
-  color: #f2f5f8;
+  color: #fbf8f2;
 }
 .updated {
   margin: 0 0 24px;
-  color: #8b97a5;
+  color: #a3a9ae;
 }
 a {
-  color: #5cb8e6;
+  color: #fa9549;
   text-underline-offset: 2px;
 }
 a:focus-visible {
-  outline: 2px solid #5cb8e6;
+  outline: 2px solid #fa9549;
   outline-offset: 2px;
 }
 ul {
@@ -77,12 +78,12 @@ table {
 th,
 td {
   padding: 8px 10px;
-  border-bottom: 1px solid #29333e;
+  border-bottom: 1px solid #353b41;
   text-align: left;
   vertical-align: top;
 }
 th {
-  color: #f2f5f8;
+  color: #fbf8f2;
   font-weight: 600;
 }
 /* Phones: each row stacks, the data over its reason, as the app's own tables do (src/index.css).
@@ -98,7 +99,7 @@ th {
   tr {
     display: block;
     padding: 10px 0;
-    border-bottom: 1px solid #29333e;
+    border-bottom: 1px solid #353b41;
   }
   td {
     display: block;
@@ -106,20 +107,20 @@ th {
     border: 0;
   }
   td:first-child {
-    color: #f2f5f8;
+    color: #fbf8f2;
     font-weight: 600;
   }
   td + td {
     margin-top: 2px;
-    color: #8b97a5;
+    color: #a3a9ae;
   }
 }
 footer {
   margin-top: 48px;
   padding-top: 16px;
   padding-bottom: 32px;
-  border-top: 1px solid #29333e;
-  color: #8b97a5;
+  border-top: 1px solid #353b41;
+  color: #a3a9ae;
   font-size: 14px;
 }
 footer a {
