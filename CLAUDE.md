@@ -159,7 +159,11 @@ Plain CI/CD (ADR-0043): branch, then PR, then `gh pr merge --squash --auto`. The
   should be testable with
   fixture data — no live game server required to run the suite.
 - `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` all run in CI
-  (`.github/workflows/ci.yml`) on every push and PR; treat a red CI run as blocking.
+  (`.github/workflows/ci.yml`) on every push to `main`; treat a red CI run as blocking. A PR runs them only for
+  the workspaces it touches and the ones that depend on them, and the heavy jobs (frontend e2e, images, compose,
+  load smoke) only when their workspace is selected; `scripts/ci-select.mjs` holds the rules. A change to the CI
+  or test setup, or a path no rule covers, runs everything. A new workspace, e2e suite or top-level path fails
+  `scripts/ci-select.test.mjs` until it is mapped there.
 - Run the `test-hunter` subagent on new logic before opening the PR (a fresh subagent,
   never a fork, which would inherit your context). Land its tests and any fixes on the
   same branch. Docs-only and config-only PRs skip it.

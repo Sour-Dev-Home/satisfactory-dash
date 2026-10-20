@@ -6,11 +6,25 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    # What this change has to build and test (scripts/ci-select.mjs). Pushes to main run everything.
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+
   verify:
+    needs: changes
+    # A required check, so it always runs and always reports: the log-fragment check and the script tests apply
+    # to every PR, and the workspace steps run for the selected workspaces only. If `changes` failed, ALL is true.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
+    env:
+      ALL: ${{ needs.changes.result != 'success' || needs.changes.outputs.all == 'true' }}
+      WORKSPACES: ${{ needs.changes.outputs.workspaces }}
+      SERVER_MANAGER: ${{ needs.changes.outputs.server_manager }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -39,16 +53,36 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
+        if: env.ALL == 'true'
 
       - run: npm run typecheck
+        if: env.ALL == 'true'
 
       - run: npm run test
+        if: env.ALL == 'true'
 
       - run: npm run build
+        if: env.ALL == 'true'
+
+      - name: Lint, typecheck, test and build the selected workspaces
+        if: env.ALL != 'true'
+        run: |
+          set -euo pipefail
+          echo "Selected workspaces: ${WORKSPACES:-none}"
+          for ws in $WORKSPACES; do
+            echo "::group::$ws"
+            npm run lint -w "$ws"
+            npm run typecheck -w "$ws"
+            npm run test -w "$ws"
+            npm run build -w "$ws" --if-present
+            echo "::endgroup::"
+          done
+          npm run test:scripts
 
       # The server manager's Playwright suite drives the real Electron app (ADR-0040), so it needs a display.
       # Ubuntu's AppArmor blocks Chromium's user-namespace sandbox unless unprivileged namespaces are allowed.
       - name: Server manager e2e
+        if: env.ALL == 'true' || env.SERVER_MANAGER == 'true'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           xvfb-run -a npm run e2e -w server-manager
@@ -58,6 +92,9 @@ jobs:
     # database on this job's own Postgres. Report-only: k6's exit 99 (a threshold crossed) never fails the job, and the
     # report goes to the job summary and an artifact. A broken kit (database setup, backend boot, seed, k6 script or
     # report) does fail it. Runbook: docs-vault/wiki/runbooks/load-testing.md.
+    # Runs when the backend or the load kit changed (not a required check, so a skip blocks nothing).
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.load == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

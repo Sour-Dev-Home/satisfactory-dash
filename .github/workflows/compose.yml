@@ -19,7 +19,16 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Pull requests boot the stack only when the backend, a workspace it bundles or compose.yaml changed, or the
+    # setup did (scripts/ci-select.mjs). Pushes to main always run. Not a required check.
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+
   up:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.compose == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
