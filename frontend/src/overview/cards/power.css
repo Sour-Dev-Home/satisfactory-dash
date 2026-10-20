@@ -1,0 +1,13 @@
+/* The Power card's circuit strip (ADR-0041 item 6): its dashes flow while power is being drawn. Only the
+   dash offset moves, so layout never shifts, and the duration is a motion token, so reduced motion
+   (index.css) stops it. One period is the dash pattern's length ("8 8" in CircuitStrip), so it loops
+   without a jump. */
+@keyframes circuit-flow {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+.circuit-flow {
+  animation: circuit-flow calc(var(--duration-slow) * 4) linear infinite;
+}

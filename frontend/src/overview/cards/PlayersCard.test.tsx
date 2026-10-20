@@ -10,6 +10,7 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { MAX_FIGURES, MAX_NAMES } from "./players";
+import { initials } from "./players";
 import { PlayersCard } from "./PlayersCard";
 
 const running = (patch: Partial<Status>) => ({ status: { ...statusRunning.data, ...patch } });
@@ -184,5 +185,61 @@ describe("PlayersCard names (ADR-0029)", () => {
     const { container } = render(<PlayersCard state={running({ connectedPlayers: 4, playerLimit: 4 })} roster={roster} />);
     expect(figures(container)).toEqual({ connected: 4, free: 0 });
     expect(within(screen.getByRole("list", { name: "Players online" })).getAllByRole("listitem")).toHaveLength(6);
+  });
+});
+
+describe("PlayersCard tiles (#442)", () => {
+  const tileLabels = (container: HTMLElement) =>
+    [...container.querySelectorAll('svg[data-slot="connected"]')].map((svg) => svg.textContent);
+
+  it("draws connected players as amber-outlined tiles and free slots as plain ones", () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 2, playerLimit: 4 })} />);
+    for (const svg of container.querySelectorAll('svg[data-slot="connected"]')) expect(svg.querySelector("rect")).toHaveClass("stroke-accent");
+    for (const svg of container.querySelectorAll('svg[data-slot="free"]')) {
+      expect(svg.querySelector("rect")).not.toHaveClass("stroke-accent");
+      expect(svg.querySelector("text")).toBeNull();
+    }
+  });
+
+  it("puts each online player's initials on a connected tile, in the roster's order", () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 3, playerLimit: 4 })} roster={playersAvailable} />);
+    expect(tileLabels(container)).toEqual(["PA", "PB", "PC"]);
+  });
+
+  it("leaves connected tiles blank when the server names nobody (no roster, or FRM not installed)", () => {
+    const { container, rerender } = render(<PlayersCard state={running({ connectedPlayers: 2, playerLimit: 4 })} />);
+    expect(tileLabels(container)).toEqual(["", ""]);
+    rerender(<PlayersCard state={running({ connectedPlayers: 2, playerLimit: 4 })} roster={playersUnavailable} />);
+    expect(tileLabels(container)).toEqual(["", ""]);
+  });
+
+  it("labels only as many tiles as there are names when the count runs ahead of the roster", () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 4, playerLimit: 4 })} roster={playersAvailable} />);
+    expect(tileLabels(container)).toEqual(["PA", "PB", "PC", ""]);
+  });
+
+  it("keeps the sentence as the accessible text, in the display face", () => {
+    render(<PlayersCard state={running({ connectedPlayers: 2, playerLimit: 4 })} />);
+    expect(screen.getByText("2 of 4 players connected")).toHaveClass("font-display");
+  });
+
+  it("gives the card its corner rivets", () => {
+    render(<PlayersCard state="pending" />);
+    expect(screen.getByRole("region", { name: "Players" }).querySelectorAll("[data-rivet]")).toHaveLength(4);
+  });
+});
+
+describe("initials", () => {
+  it.each([
+    ["Pioneer-Alpha", "PA"],
+    ["ada lovelace byron", "AL"],
+    ["Solo", "S"],
+    ["  spaced   out  ", "SO"],
+    ["émile_zola", "ÉZ"],
+    ["😀smile", "😀"],
+    ["", ""],
+    ["---", ""],
+  ])("%j gives %j", (name, expected) => {
+    expect(initials(name)).toBe(expected);
   });
 });
