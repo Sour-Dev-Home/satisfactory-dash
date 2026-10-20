@@ -39,3 +39,8 @@ docs-vault/architecture-out/
 *.tfplan
 *.tfbackend
 crash.log
+
+# The load kit (ADR-0037, #448): the seed's credentials (agent secrets, session ids) and raw k6 output.
+# Reports are committed under docs-vault/wiki/perf/ instead.
+load/.data/
+load/results/
