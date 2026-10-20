@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseFirst, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0031 PR 5b: the SQL behind commands to an edge agent. Every statement is scoped by the server (the agent's own
@@ -62,7 +63,7 @@ const INSERT_COMMAND = `
 
 /** How many commands this server has open (pending or sent, not yet expired). */
 export async function countOpenCommands(db: Queryable, serverUuid: string): Promise<number> {
-  const result = await db.query(COUNT_OPEN, [serverUuid]);
+  const result = await timedQuery(db, "agents.countOpenCommands", COUNT_OPEN, [serverUuid]);
   return parseFirst(z.object({ count: z.number().int() }), result.rows, "agents.countOpenCommands")?.count ?? 0;
 }
 
@@ -71,7 +72,7 @@ export async function insertCommand(
   db: Queryable,
   input: { serverUuid: string; type: string; params: Record<string, unknown>; createdBy: string | undefined },
 ): Promise<CommandRow> {
-  const result = await db.query(INSERT_COMMAND, [input.serverUuid, input.type, JSON.stringify(input.params), COMMAND_TTL_MS, input.createdBy ?? null]);
+  const result = await timedQuery(db, "agents.insertCommand", INSERT_COMMAND, [input.serverUuid, input.type, JSON.stringify(input.params), COMMAND_TTL_MS, input.createdBy ?? null]);
   const row = parseFirst(CommandRowSchema, result.rows, "agents.insertCommand");
   if (row === undefined) throw new Error("the command was not stored");
   return toCommand(row);
@@ -90,7 +91,7 @@ const CLAIM_OPEN = `
 
 /** The server's open commands, oldest first, marked `sent`. */
 export async function claimOpenCommands(db: Queryable, serverUuid: string): Promise<CommandRow[]> {
-  const result = await db.query(CLAIM_OPEN, [serverUuid]);
+  const result = await timedQuery(db, "agents.claimOpenCommands", CLAIM_OPEN, [serverUuid]);
   return parseRows(CommandRowSchema, result.rows, "agents.claimOpenCommands")
     .map(toCommand)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
@@ -102,7 +103,7 @@ const HAS_OPEN = `
   ) AS open`;
 
 export async function hasOpenCommands(db: Queryable, serverUuid: string): Promise<boolean> {
-  const result = await db.query(HAS_OPEN, [serverUuid]);
+  const result = await timedQuery(db, "agents.hasOpenCommands", HAS_OPEN, [serverUuid]);
   return parseFirst(z.object({ open: z.boolean() }), result.rows, "agents.hasOpenCommands")?.open ?? false;
 }
 
@@ -136,13 +137,13 @@ export async function completeCommand(
   input: { serverUuid: string; commandId: string; ok: boolean; code: string | undefined },
 ): Promise<CompleteOutcome> {
   if (!isCommandId(input.commandId)) return "not_found"; // the column is a uuid: Postgres would reject other text (a 500)
-  const done = await db.query(COMPLETE, [input.commandId, input.serverUuid, input.ok ? "succeeded" : "failed", input.ok ? null : (input.code ?? null)]);
+  const done = await timedQuery(db, "agents.completeCommand.update", COMPLETE, [input.commandId, input.serverUuid, input.ok ? "succeeded" : "failed", input.ok ? null : (input.code ?? null)]);
   if (done.rows.length > 0) return "accepted";
-  const found = parseFirst(z.object({ status: z.string(), past_expiry: z.boolean() }), (await db.query(LOOK_UP_FOR_REPORT, [input.commandId, input.serverUuid])).rows, "agents.completeCommand");
+  const found = parseFirst(z.object({ status: z.string(), past_expiry: z.boolean() }), (await timedQuery(db, "agents.completeCommand", LOOK_UP_FOR_REPORT, [input.commandId, input.serverUuid])).rows, "agents.completeCommand");
   if (found === undefined) return "not_found";
   if (found.status === "succeeded" || found.status === "failed") return "already_done";
   if (found.status === "expired" || found.past_expiry) {
-    await db.query(MARK_EXPIRED, [input.commandId, input.serverUuid]);
+    await timedQuery(db, "agents.completeCommand.markExpired", MARK_EXPIRED, [input.commandId, input.serverUuid]);
     return "expired";
   }
   return "already_done"; // it was open and unexpired, and lost a race to a concurrent report
@@ -163,7 +164,7 @@ export const isCommandId = (value: string): boolean => UUID.test(value);
 /** One command of this server, or undefined (unknown, another server's, or not an id at all). */
 export async function getCommandForServer(db: Queryable, publicId: string, commandId: string): Promise<CommandRow | undefined> {
   if (!isCommandId(commandId)) return undefined;
-  const result = await db.query(GET_FOR_SERVER, [publicId, commandId]);
+  const result = await timedQuery(db, "agents.getCommandForServer", GET_FOR_SERVER, [publicId, commandId]);
   const row = parseFirst(CommandRowSchema, result.rows, "agents.getCommandForServer");
   return row === undefined ? undefined : toCommand(row);
 }
@@ -180,7 +181,7 @@ const RECENT_FOR_SERVER = `
   LIMIT 20`;
 
 export async function recentCommandsOfType(db: Queryable, publicId: string, type: string): Promise<CommandRow[]> {
-  const result = await db.query(RECENT_FOR_SERVER, [publicId, type]);
+  const result = await timedQuery(db, "agents.recentCommandsOfType", RECENT_FOR_SERVER, [publicId, type]);
   return parseRows(CommandRowSchema, result.rows, "agents.recentCommandsOfType").map(toCommand);
 }
 
@@ -203,7 +204,7 @@ const END_OPEN_OF_SERVER = `
 
 /** Ends every waiting command of one server (`pending` or `sent`) as `expired`. Returns how many. */
 export async function endOpenCommandsOf(db: Queryable, serverUuid: string): Promise<number> {
-  return (await db.query(END_OPEN_OF_SERVER, [serverUuid])).rows.length;
+  return (await timedQuery(db, "agents.endOpenCommandsOf", END_OPEN_OF_SERVER, [serverUuid])).rows.length;
 }
 
 const PURGE_OLD = `
@@ -212,9 +213,9 @@ const PURGE_OLD = `
   RETURNING id`;
 
 export async function expireStaleCommands(db: Queryable): Promise<number> {
-  return (await db.query(EXPIRE_STALE, [])).rows.length;
+  return (await timedQuery(db, "agents.expireStaleCommands", EXPIRE_STALE, [])).rows.length;
 }
 
 export async function purgeOldCommands(db: Queryable): Promise<number> {
-  return (await db.query(PURGE_OLD, [COMMAND_RETENTION_DAYS])).rows.length;
+  return (await timedQuery(db, "agents.purgeOldCommands", PURGE_OLD, [COMMAND_RETENTION_DAYS])).rows.length;
 }

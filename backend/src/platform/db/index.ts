@@ -19,4 +19,6 @@ export { createDbPool } from "./pool.js";
 export { assertSchemaCurrent } from "./schemaVersion.js";
 export type { Queryable } from "./schemaVersion.js";
 export { connectWithBackoff } from "./startup.js";
+export { DB_QUERY_METRIC, timedQuery } from "./timedQuery.js";
+export type { QueryName } from "../metrics/registry.js";
 export { withTransaction } from "./transaction.js";

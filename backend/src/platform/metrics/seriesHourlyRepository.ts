@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseOne } from "../db/rows.js";
+import { timedQuery } from "../db/timedQuery.js";
 import type { Queryable } from "../db/schemaVersion.js";
 import type { SeriesDelta } from "./aggregator.js";
 
@@ -17,7 +18,7 @@ const UPSERT_DELTA = `
  *  than once (this is the DB-side "add", not idempotent by itself) — `seriesFlushWorker.ts` is what
  *  makes a flush idempotent, by draining each delta out of the in-process aggregator exactly once. */
 export async function addSeriesDelta(db: Queryable, delta: SeriesDelta): Promise<void> {
-  await db.query(UPSERT_DELTA, [
+  await timedQuery(db, "metrics.addSeriesDelta", UPSERT_DELTA,[
     delta.hourStartMs,
     delta.metric,
     JSON.stringify(delta.labels),
@@ -41,7 +42,7 @@ const MERGE_BUCKET_COUNTS = `SELECT metrics.merge_bucket_counts($1::integer[], $
  *  against a real Postgres without going through a full upsert (ADR-0037 PR 2 test: "bucket merge
  *  math"). Either side may be null, matching a fresh row's first flush. */
 export async function mergeBucketCountsInDb(db: Queryable, a: number[] | null, b: number[] | null): Promise<number[] | null> {
-  const result = await db.query(MERGE_BUCKET_COUNTS, [a, b]);
+  const result = await timedQuery(db, "metrics.mergeBucketCountsInDb", MERGE_BUCKET_COUNTS,[a, b]);
   return parseOne(z.object({ merged: z.array(z.coerce.number().int()).nullable() }), result.rows, "metrics.mergeBucketCountsInDb").merged;
 }
 
@@ -63,7 +64,7 @@ export async function purgeExpiredSeries(db: Queryable, nowMs: number): Promise<
   const cutoff = new Date(nowMs - RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let total = 0;
   for (;;) {
-    const result = await db.query(PURGE_EXPIRED, [cutoff, PURGE_BATCH_SIZE]);
+    const result = await timedQuery(db, "metrics.purgeExpiredSeries", PURGE_EXPIRED,[cutoff, PURGE_BATCH_SIZE]);
     const deleted = parseOne(z.object({ deleted: z.coerce.number().int().min(0) }), result.rows, "metrics.purgeExpiredSeries").deleted;
     total += deleted;
     if (deleted < PURGE_BATCH_SIZE) break;

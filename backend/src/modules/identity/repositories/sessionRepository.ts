@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 
 /**
@@ -59,7 +60,7 @@ export async function createSession(
   if (!Number.isInteger(ttl) || ttl < 1 || ttl > MAX_TTL_SECONDS) {
     throw new RangeError(`Session ttlSeconds must be between 1 and ${MAX_TTL_SECONDS}.`);
   }
-  await db.query(INSERT_SESSION, [input.idHash, input.userId, ttl]);
+  await timedQuery(db, "identity.insertSession", INSERT_SESSION,[input.idHash, input.userId, ttl]);
 }
 
 const SELECT_ACTIVE_SESSION = `
@@ -75,7 +76,7 @@ const SELECT_ACTIVE_SESSION = `
 /** The signed-in user for this session hash, or undefined when it is unknown, revoked, expired or
  *  its account is disabled. Time is the database's (`now()`), never the app's clock. */
 export async function findActiveSession(db: Queryable, idHash: Buffer): Promise<ActiveSession | undefined> {
-  const result = await db.query(SELECT_ACTIVE_SESSION, [idHash]);
+  const result = await timedQuery(db, "identity.findActiveSession", SELECT_ACTIVE_SESSION,[idHash]);
   const row = parseFirst(ActiveSessionRowSchema, result.rows, "identity.findActiveSession");
   return row === undefined
     ? undefined
@@ -101,7 +102,7 @@ const TOUCH_SESSION = `
 /** Records activity at most once a minute (the WHERE makes it a no-op otherwise, so a busy
  *  session does not write on every request). True when a write happened. */
 export async function touchSession(db: Queryable, idHash: Buffer): Promise<boolean> {
-  const result = await db.query(TOUCH_SESSION, [idHash]);
+  const result = await timedQuery(db, "identity.touchSession", TOUCH_SESSION,[idHash]);
   return result.rows.length > 0;
 }
 
@@ -116,7 +117,7 @@ const RevokedRowSchema = z.object({ user_id: z.string() });
 /** Logout. The user id when this call revoked it (for the audit row), undefined when the
  *  session was unknown or already revoked (both fine). */
 export async function revokeSession(db: Queryable, idHash: Buffer): Promise<string | undefined> {
-  const result = await db.query(REVOKE_SESSION, [idHash]);
+  const result = await timedQuery(db, "identity.revokeSession", REVOKE_SESSION,[idHash]);
   return parseFirst(RevokedRowSchema, result.rows, "identity.revokeSession")?.user_id;
 }
 
@@ -128,7 +129,7 @@ const REVOKE_ALL_FOR_USER = `
 
 /** "Sign out everywhere" for one user. Returns how many sessions were revoked. */
 export async function revokeAllSessionsForUser(db: Queryable, userId: string): Promise<number> {
-  const result = await db.query(REVOKE_ALL_FOR_USER, [userId]);
+  const result = await timedQuery(db, "identity.revokeAllSessionsForUser", REVOKE_ALL_FOR_USER,[userId]);
   return result.rows.length;
 }
 
@@ -140,7 +141,7 @@ const REVOKE_ALL = `
 
 /** The emergency revoke-all (replaces rotating SESSION_SECRET). Returns the count. */
 export async function revokeAllSessions(db: Queryable): Promise<number> {
-  const result = await db.query(REVOKE_ALL);
+  const result = await timedQuery(db, "identity.revokeAllSessions", REVOKE_ALL);
   return result.rows.length;
 }
 
@@ -159,6 +160,6 @@ const DELETE_EXPIRED_BATCH = `
 /** Housekeeping: drops up to `batchSize` sessions that expired more than 30 days ago (a small
  *  batch, so a purge never holds a long lock). Returns the count; call until it is below the batch. */
 export async function deleteExpiredSessions(db: Queryable, batchSize = 1000): Promise<number> {
-  const result = await db.query(DELETE_EXPIRED_BATCH, [SESSION_PURGE_AFTER_DAYS, Math.max(1, Math.trunc(batchSize))]);
+  const result = await timedQuery(db, "identity.deleteExpiredSessions", DELETE_EXPIRED_BATCH,[SESSION_PURGE_AFTER_DAYS, Math.max(1, Math.trunc(batchSize))]);
   return result.rows.length;
 }

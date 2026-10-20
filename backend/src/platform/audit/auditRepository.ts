@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseOne, parseRows } from "../db/rows.js";
+import { timedQuery } from "../db/timedQuery.js";
 import type { Queryable } from "../db/schemaVersion.js";
 
 /**
@@ -53,7 +54,7 @@ const INSERT_EVENT = `
   RETURNING id, at, actor_user_id, server_id, action, detail`;
 
 export async function recordAuditEvent(db: Queryable, event: AuditEventInput): Promise<AuditEvent> {
-  const result = await db.query(INSERT_EVENT, [
+  const result = await timedQuery(db, "audit.recordAuditEvent", INSERT_EVENT,[
     event.actorUserId ?? null,
     event.serverId ?? null,
     event.action,
@@ -77,7 +78,7 @@ export async function listRecentAuditEvents(
   const requested = Math.trunc(options.limit ?? 50);
   // NaN survives Math.min/max and would reach Postgres as 'NaN'; treat it as the default.
   const limit = Math.min(Math.max(Number.isNaN(requested) ? 50 : requested, 1), 500);
-  const result = await db.query(LIST_RECENT, [options.serverId ?? null, limit]);
+  const result = await timedQuery(db, "audit.listRecentAuditEvents", LIST_RECENT,[options.serverId ?? null, limit]);
   return parseRows(AuditEventRowSchema, result.rows, "audit.listRecentAuditEvents").map(toEvent);
 }
 
@@ -87,6 +88,6 @@ export async function listRecentAuditEvents(
 const PURGE_EXPIRED = `SELECT audit.purge_expired_events() AS deleted`;
 
 export async function purgeExpiredAuditEvents(db: Queryable): Promise<number> {
-  const result = await db.query(PURGE_EXPIRED);
+  const result = await timedQuery(db, "audit.purgeExpiredAuditEvents", PURGE_EXPIRED);
   return z.object({ deleted: z.coerce.number().int().min(0) }).parse(result.rows[0]).deleted;
 }

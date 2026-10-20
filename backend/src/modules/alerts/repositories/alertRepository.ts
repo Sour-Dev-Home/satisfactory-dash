@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import type { AlertState } from "../services/alertStateMachine.js";
 import { AGENT_PRESET_RULES, PRESET_RULES } from "../services/rules.js";
@@ -121,13 +122,13 @@ const PURGE_EVENTS = `
   SELECT count(*)::int AS deleted FROM d`;
 
 export async function listRules(db: Queryable): Promise<RuleRow[]> {
-  const result = await db.query(LIST_RULES, []);
+  const result = await timedQuery(db, "alerts.listRules", LIST_RULES, []);
   return parseRows(RuleRowSchema, result.rows, "alerts.listRules");
 }
 
 /** The persisted states of one server's rules, keyed by `stateKey(ruleId, subject)`. */
 export async function loadStates(db: Queryable, serverPublicId: string): Promise<Map<string, AlertState>> {
-  const result = await db.query(LIST_STATES, [serverPublicId]);
+  const result = await timedQuery(db, "alerts.loadStates", LIST_STATES, [serverPublicId]);
   const map = new Map<string, AlertState>();
   for (const row of parseRows(StateRowSchema, result.rows, "alerts.loadStates")) {
     map.set(stateKey(row.rule_id, row.subject), {
@@ -143,7 +144,7 @@ export async function loadStates(db: Queryable, serverPublicId: string): Promise
 
 /** When each server's alerts are muted until (ms); only servers with a mute row. */
 export async function loadMutes(db: Queryable): Promise<Map<string, number>> {
-  const result = await db.query(LIST_MUTES, []);
+  const result = await timedQuery(db, "alerts.loadMutes", LIST_MUTES, []);
   return new Map(parseRows(MuteRowSchema, result.rows, "alerts.loadMutes").map((row) => [row.server_public_id, row.muted_until_ms]));
 }
 
@@ -154,7 +155,7 @@ export async function loadMutes(db: Queryable): Promise<Map<string, number>> {
  */
 export async function seedPresetRules(db: Queryable, serverPublicId: string, options: { agent?: boolean } = {}): Promise<void> {
   const presets = options.agent === true ? [...PRESET_RULES, ...AGENT_PRESET_RULES] : PRESET_RULES;
-  await db.query(SEED_PRESETS, [
+  await timedQuery(db, "alerts.seedPresetRules", SEED_PRESETS, [
     serverPublicId,
     presets.map((preset) => preset.kind),
     presets.map((preset) => JSON.stringify(preset.params)),
@@ -185,7 +186,7 @@ export async function writeEvaluation(
   await withTransaction(pool, async (client) => {
     if (input.writes.length > 0) {
       const w = input.writes;
-      await client.query(UPSERT_STATES, [
+      await timedQuery(client, "alerts.upsertStates", UPSERT_STATES, [
         w.map((write) => write.ruleId),
         w.map((write) => write.subject),
         w.map((write) => write.state.phase),
@@ -197,7 +198,7 @@ export async function writeEvaluation(
     }
     if (input.events.length > 0) {
       const e = input.events;
-      const inserted = await client.query(INSERT_EVENTS, [
+      const inserted = await timedQuery(client, "alerts.insertEvents", INSERT_EVENTS, [
         input.nowMs,
         e.map((event) => event.ruleId),
         e.map((event) => event.kind),
@@ -208,7 +209,7 @@ export async function writeEvaluation(
       ]);
       if (input.deliver === true) {
         const ids = parseRows(InsertedIdSchema, inserted.rows, "alerts.insertEvents").map((row) => row.id);
-        if (ids.length > 0) await client.query(ENQUEUE_DELIVERIES, [ids]);
+        if (ids.length > 0) await timedQuery(client, "alerts.enqueueDeliveries", ENQUEUE_DELIVERIES, [ids]);
       }
     }
   });
@@ -221,7 +222,7 @@ export async function purgeExpiredEvents(db: Queryable, nowMs: number, options: 
   const cutoff = new Date(nowMs - ALERT_EVENT_RETENTION_MS).toISOString();
   let total = 0;
   for (let batch = 0; batch < maxBatches; batch++) {
-    const result = await db.query(PURGE_EVENTS, [cutoff, batchSize]);
+    const result = await timedQuery(db, "alerts.purge", PURGE_EVENTS, [cutoff, batchSize]);
     const deleted = parseRows(DeletedSchema, result.rows, "alerts.purge")[0]?.deleted ?? 0;
     total += deleted;
     if (deleted < batchSize) break;

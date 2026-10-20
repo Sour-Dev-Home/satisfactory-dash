@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseFirst, parseOne, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 
@@ -52,7 +53,7 @@ export async function upsertConfiguredServer(
   db: Queryable,
   input: { publicId: string; displayName: string },
 ): Promise<RegisteredServer> {
-  const result = await db.query(UPSERT_SERVER, [input.publicId, input.displayName]);
+  const result = await timedQuery(db, "servers.upsertConfiguredServer", UPSERT_SERVER, [input.publicId, input.displayName]);
   return toServer(parseOne(ServerRowSchema, result.rows, "servers.upsertConfiguredServer"));
 }
 
@@ -65,7 +66,7 @@ const ENSURE_SERVER = `
 /** Like `upsertConfiguredServer`, but an existing row keeps its display name (an import must not undo
  *  a rename made in the app). A soft-deleted server is revived. Idempotent. */
 export async function ensureServer(db: Queryable, input: { publicId: string; displayName: string }): Promise<RegisteredServer> {
-  const result = await db.query(ENSURE_SERVER, [input.publicId, input.displayName]);
+  const result = await timedQuery(db, "servers.ensureServer", ENSURE_SERVER, [input.publicId, input.displayName]);
   return toServer(parseOne(ServerRowSchema, result.rows, "servers.ensureServer"));
 }
 
@@ -75,7 +76,7 @@ const SELECT_BY_PUBLIC_ID = `
   WHERE public_id = $1 AND deleted_at IS NULL`;
 
 export async function findServerByPublicId(db: Queryable, publicId: string): Promise<RegisteredServer | undefined> {
-  const result = await db.query(SELECT_BY_PUBLIC_ID, [publicId]);
+  const result = await timedQuery(db, "servers.findServerByPublicId", SELECT_BY_PUBLIC_ID, [publicId]);
   const row = parseFirst(ServerRowSchema, result.rows, "servers.findServerByPublicId");
   return row === undefined ? undefined : toServer(row);
 }
@@ -102,7 +103,7 @@ const LIST_FOR_USER = `
 /** The per-user server list (GET /api/servers): only servers this user is a member of, so a
  *  server they can't see is never named. */
 export async function listServersForUser(db: Queryable, userId: string): Promise<UserServer[]> {
-  const result = await db.query(LIST_FOR_USER, [userId]);
+  const result = await timedQuery(db, "servers.listServersForUser", LIST_FOR_USER, [userId]);
   return parseRows(UserServerRowSchema, result.rows, "servers.listServersForUser").map((row) => ({
     publicId: row.public_id,
     displayName: row.display_name,
@@ -125,7 +126,7 @@ export async function renameServer(
   audit: { actorUserId: string | null },
 ): Promise<boolean> {
   return withTransaction(pool, async (client) => {
-    const result = await client.query(RENAME_SERVER, [publicId, displayName]);
+    const result = await timedQuery(client, "servers.renameServer", RENAME_SERVER, [publicId, displayName]);
     const row = parseFirst(IdRowSchema, result.rows, "servers.renameServer");
     if (row === undefined) return false;
     await recordAuditEvent(client, {
@@ -191,7 +192,7 @@ export async function softDeleteServer(
   audit?: { actorUserId: string | null },
 ): Promise<boolean> {
   return withTransaction(pool, async (client) => {
-    const deleted = await client.query(SOFT_DELETE, [publicId]);
+    const deleted = await timedQuery(client, "servers.softDeleteServer", SOFT_DELETE, [publicId]);
     const row = parseFirst(IdRowSchema, deleted.rows, "servers.softDeleteServer");
     if (row === undefined) {
       return false;
@@ -199,11 +200,11 @@ export async function softDeleteServer(
     if (audit !== undefined) {
       await recordAuditEvent(client, { action: "server.deleted", actorUserId: audit.actorUserId ?? undefined, serverId: row.id });
     }
-    await client.query(DELETE_MEMBERS, [row.id]);
+    await timedQuery(client, "servers.softDeleteServer.deleteMembers", DELETE_MEMBERS, [row.id]);
     // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
-    await client.query(DELETE_CONNECTION, [row.id]);
+    await timedQuery(client, "servers.softDeleteServer.deleteConnection", DELETE_CONNECTION, [row.id]);
     for (const statement of DELETE_HISTORY) {
-      await client.query(statement, [row.id]);
+      await timedQuery(client, "servers.softDeleteServer.deleteHistory", statement, [row.id]);
     }
     return true;
   });
@@ -222,10 +223,10 @@ const SWITCH_TO_AGENT = `
  * credential and the audit event commit together.
  */
 export async function switchToAgentConnection(db: Queryable, serverId: string): Promise<string | undefined> {
-  const switched = await db.query(SWITCH_TO_AGENT, [serverId]);
+  const switched = await timedQuery(db, "servers.switchToAgentConnection", SWITCH_TO_AGENT, [serverId]);
   const row = parseFirst(z.object({ public_id: z.string() }), switched.rows, "servers.switchToAgentConnection");
   if (row === undefined) return undefined;
-  await db.query(DELETE_CONNECTION, [serverId]);
+  await timedQuery(db, "servers.switchToAgentConnection.deleteConnection", DELETE_CONNECTION, [serverId]);
   return row.public_id;
 }
 
@@ -238,7 +239,7 @@ const LOCK_SERVER = `
 /** The live server row, LOCKED for this transaction (the same order enrolment and revoke take: the server row first), so a
  *  concurrent enrol, revoke or removal waits and the kind read here is the kind the caller then changes. */
 export async function lockServerByPublicId(db: Queryable, publicId: string): Promise<RegisteredServer | undefined> {
-  const result = await db.query(LOCK_SERVER, [publicId]);
+  const result = await timedQuery(db, "servers.lockServerByPublicId", LOCK_SERVER, [publicId]);
   const row = parseFirst(ServerRowSchema, result.rows, "servers.lockServerByPublicId");
   return row === undefined ? undefined : toServer(row);
 }
@@ -252,7 +253,7 @@ const SWITCH_TO_LOCAL = `
 /** ADR-0031 amendment: an agent server is read by this backend again. Only an agent server changes (false otherwise). The
  *  caller stores the new connection right after, in the same transaction (`createConnection` needs the kind to be 'local'). */
 export async function switchToLocalKind(db: Queryable, serverId: string): Promise<boolean> {
-  return (await db.query(SWITCH_TO_LOCAL, [serverId])).rows.length > 0;
+  return (await timedQuery(db, "servers.switchToLocalKind", SWITCH_TO_LOCAL, [serverId])).rows.length > 0;
 }
 
 const LIST_AGENT_SERVERS = `
@@ -264,7 +265,7 @@ const LIST_AGENT_SERVERS = `
 /** The live servers reached through an agent (they have no connection row), for building their runtime entries at startup
  *  (`serverId` is the internal id, for seeding an owner). */
 export async function listAgentServers(db: Queryable): Promise<{ serverId: string; publicId: string; displayName: string }[]> {
-  const result = await db.query(LIST_AGENT_SERVERS);
+  const result = await timedQuery(db, "servers.listAgentServers", LIST_AGENT_SERVERS);
   return parseRows(z.object({ id: z.string(), public_id: z.string(), display_name: z.string() }), result.rows, "servers.listAgentServers").map((row) => ({
     serverId: row.id,
     publicId: row.public_id,

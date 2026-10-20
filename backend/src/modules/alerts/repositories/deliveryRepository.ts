@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
 import { parseDiscordWebhookUrl, type WebhookRejection } from "../services/discordWebhook.js";
@@ -137,10 +138,10 @@ export async function saveDiscordDestination(
 ): Promise<SaveDestinationResult> {
   const parsed = parseDiscordWebhookUrl(rawUrl);
   if (!parsed.ok) return { ok: false, code: parsed.code };
-  const server = parseRows(ServerIdSchema, (await db.query(SERVER_ID, [serverPublicId])).rows, "alerts.serverId")[0];
+  const server = parseRows(ServerIdSchema, (await timedQuery(db, "alerts.serverId", SERVER_ID,[serverPublicId])).rows, "alerts.serverId")[0];
   if (server === undefined) return { ok: false, code: "server_not_found" };
   const sealed = ring.seal(parsed.url, webhookContext(server.id));
-  const saved = parseRows(ServerIdSchema, (await db.query(SAVE_DESTINATION, [serverPublicId, sealed.data, sealed.keyId, parsed.last4])).rows, "alerts.saveDestination")[0];
+  const saved = parseRows(ServerIdSchema, (await timedQuery(db, "alerts.saveDestination", SAVE_DESTINATION,[serverPublicId, sealed.data, sealed.keyId, parsed.last4])).rows, "alerts.saveDestination")[0];
   if (saved === undefined) return { ok: false, code: "server_not_found" };
   return { ok: true, destinationId: saved.id, last4: parsed.last4 };
 }
@@ -150,7 +151,7 @@ export async function getDestinationSummary(
   db: Queryable,
   serverPublicId: string,
 ): Promise<{ id: string; enabled: boolean; last4: string; disabledReason: string | null; updatedAt: Date } | undefined> {
-  const row = parseRows(SummaryRowSchema, (await db.query(DESTINATION_SUMMARY, [serverPublicId])).rows, "alerts.destinationSummary")[0];
+  const row = parseRows(SummaryRowSchema, (await timedQuery(db, "alerts.destinationSummary", DESTINATION_SUMMARY,[serverPublicId])).rows, "alerts.destinationSummary")[0];
   return row === undefined ? undefined : { id: row.id, enabled: row.enabled, last4: row.last4, disabledReason: row.disabled_reason, updatedAt: row.updated_at };
 }
 
@@ -160,7 +161,7 @@ export async function openServerWebhook(
   ring: SecretsKeyring,
   serverPublicId: string,
 ): Promise<{ destinationId: string; url: string; enabled: boolean } | undefined> {
-  const row = parseRows(SealedRowSchema, (await db.query(DESTINATION_SEALED, [serverPublicId])).rows, "alerts.destinationSealed")[0];
+  const row = parseRows(SealedRowSchema, (await timedQuery(db, "alerts.destinationSealed", DESTINATION_SEALED,[serverPublicId])).rows, "alerts.destinationSealed")[0];
   if (row === undefined) return undefined;
   const url = openWebhook(ring, row.server_uuid, row.key_id, row.webhook_enc);
   return url === undefined ? undefined : { destinationId: row.id, url, enabled: row.enabled };
@@ -177,8 +178,8 @@ export function openWebhook(ring: SecretsKeyring, serverUuid: string, keyId: str
 
 /** Switches a destination off and gives up on its pending deliveries, on a connection that is ALREADY in a transaction. */
 export async function disableDestinationIn(client: Queryable, destinationId: string, reason: DisabledReason): Promise<void> {
-  await client.query(DISABLE_DESTINATION, [destinationId, reason]);
-  await client.query(DEAD_FOR_DESTINATION, [destinationId, reason]);
+  await timedQuery(client, "alerts.disableDestination", DISABLE_DESTINATION,[destinationId, reason]);
+  await timedQuery(client, "alerts.deadForDestination", DEAD_FOR_DESTINATION,[destinationId, reason]);
 }
 
 /** Switches a destination off and gives up on its pending deliveries, in one transaction. */
@@ -192,7 +193,7 @@ export async function disableDestination(
 
 /** Claims up to `limit` due deliveries (leased for `leaseSeconds`); each call counts an attempt for what it returns. */
 export async function claimDueDeliveries(db: Queryable, limit: number, leaseSeconds: number): Promise<DueDelivery[]> {
-  const rows = parseRows(DueRowSchema, (await db.query(CLAIM_DUE, [limit, leaseSeconds])).rows, "alerts.claimDue");
+  const rows = parseRows(DueRowSchema, (await timedQuery(db, "alerts.claimDue", CLAIM_DUE,[limit, leaseSeconds])).rows, "alerts.claimDue");
   return rows.map((row) => ({
     outboxId: row.outbox_id,
     attempts: row.attempts,
@@ -207,7 +208,7 @@ export async function claimDueDeliveries(db: Queryable, limit: number, leaseSeco
   }));
 }
 
-export const markDeliverySent = (db: Queryable, outboxId: string): Promise<unknown> => db.query(MARK_SENT, [outboxId]);
+export const markDeliverySent = (db: Queryable, outboxId: string): Promise<unknown> => timedQuery(db, "alerts.markDeliverySent", MARK_SENT,[outboxId]);
 export const rescheduleDelivery = (db: Queryable, outboxId: string, atMs: number, code: string): Promise<unknown> =>
-  db.query(RESCHEDULE, [outboxId, atMs, code.slice(0, 40)]);
-export const markDeliveryDead = (db: Queryable, outboxId: string, code: string): Promise<unknown> => db.query(MARK_DEAD, [outboxId, code.slice(0, 40)]);
+  timedQuery(db, "alerts.rescheduleDelivery", RESCHEDULE,[outboxId, atMs, code.slice(0, 40)]);
+export const markDeliveryDead = (db: Queryable, outboxId: string, code: string): Promise<unknown> => timedQuery(db, "alerts.markDeliveryDead", MARK_DEAD,[outboxId, code.slice(0, 40)]);

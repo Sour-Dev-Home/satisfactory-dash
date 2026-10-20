@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isUniqueViolation } from "../../../platform/db/errors.js";
 import { parseFirst, parseOne } from "../../../platform/db/rows.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 
 /**
@@ -46,7 +47,7 @@ const INSERT_USER = `
  *  CHECK uses, so the two can never disagree about a unicode edge case. Never a key. */
 export async function createUser(db: Queryable, input: { displayName: string; email?: string | null }): Promise<User> {
   const email = input.email?.trim() || null;
-  const result = await db.query(INSERT_USER, [input.displayName.trim(), email]);
+  const result = await timedQuery(db, "identity.createUser", INSERT_USER,[input.displayName.trim(), email]);
   return toUser(parseOne(UserRowSchema, result.rows, "identity.createUser"));
 }
 
@@ -56,7 +57,7 @@ const SELECT_USER_BY_ID = `
   WHERE id = $1`;
 
 export async function getUserById(db: Queryable, id: string): Promise<User | undefined> {
-  const result = await db.query(SELECT_USER_BY_ID, [id]);
+  const result = await timedQuery(db, "identity.getUserById", SELECT_USER_BY_ID,[id]);
   const row = parseFirst(UserRowSchema, result.rows, "identity.getUserById");
   return row === undefined ? undefined : toUser(row);
 }
@@ -73,7 +74,7 @@ export async function findUserByIdentity(
   provider: IdentityProvider,
   subject: string,
 ): Promise<User | undefined> {
-  const result = await db.query(SELECT_USER_BY_IDENTITY, [provider, subject]);
+  const result = await timedQuery(db, "identity.findUserByIdentity", SELECT_USER_BY_IDENTITY,[provider, subject]);
   const row = parseFirst(UserRowSchema, result.rows, "identity.findUserByIdentity");
   return row === undefined ? undefined : toUser(row);
 }
@@ -91,7 +92,7 @@ export async function addIdentity(
   db: Queryable,
   input: { userId: string; provider: IdentityProvider; subject: string },
 ): Promise<string> {
-  const result = await db.query(INSERT_IDENTITY, [input.userId, input.provider, input.subject]);
+  const result = await timedQuery(db, "identity.addIdentity", INSERT_IDENTITY,[input.userId, input.provider, input.subject]);
   return parseOne(IdentityIdRowSchema, result.rows, "identity.addIdentity").id;
 }
 
@@ -106,7 +107,7 @@ const ProviderRowSchema = z.object({ provider: z.enum(["local", "google"]) });
 /** How the account can sign in, as the contract names it: "password" (the local operator
  *  identity) and/or "google". */
 export async function authMethodsForUser(db: Queryable, userId: string): Promise<string[]> {
-  const result = await db.query(SELECT_PROVIDERS, [userId]);
+  const result = await timedQuery(db, "identity.authMethodsForUser", SELECT_PROVIDERS,[userId]);
   const methods = result.rows.map((row) => ProviderRowSchema.parse(row).provider);
   return methods.map((provider) => (provider === "local" ? "password" : provider));
 }
@@ -130,7 +131,7 @@ export async function ensureLocalUser(
   const existing = await find(pool);
   if (existing !== undefined) {
     if (existing.displayName !== input.displayName.trim()) {
-      await (pool).query(UPDATE_DISPLAY_NAME, [existing.id, input.displayName.trim()]);
+      await timedQuery(pool, "identity.updateDisplayName", UPDATE_DISPLAY_NAME,[existing.id, input.displayName.trim()]);
       return { ...existing, displayName: input.displayName.trim() };
     }
     return existing;
@@ -159,7 +160,7 @@ const UPDATE_EMAIL = `
 
 /** Stores the account's email (lowercased by Postgres, like createUser). Never a key. */
 export async function setUserEmail(db: Queryable, userId: string, email: string): Promise<void> {
-  await db.query(UPDATE_EMAIL, [userId, email.trim()]);
+  await timedQuery(db, "identity.setUserEmail", UPDATE_EMAIL,[userId, email.trim()]);
 }
 
 const UPDATE_STATUS = `
@@ -170,6 +171,6 @@ const UPDATE_STATUS = `
 
 /** Disables or re-enables an account. False when the user does not exist. */
 export async function setUserStatus(db: Queryable, userId: string, status: UserStatus): Promise<boolean> {
-  const result = await db.query(UPDATE_STATUS, [userId, status]);
+  const result = await timedQuery(db, "identity.setUserStatus", UPDATE_STATUS,[userId, status]);
   return result.rows.length > 0;
 }

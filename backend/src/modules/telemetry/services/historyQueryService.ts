@@ -7,6 +7,7 @@ import type {
 } from "@satisfactory-dash/shared";
 import { ownValue } from "@satisfactory-dash/shared";
 import { withTransaction } from "../../../platform/db/transaction.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { RowShapeError } from "../../../platform/db/rows.js";
 import { ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import {
@@ -201,7 +202,7 @@ export class HistoryQueryService {
     try {
       return await withTransaction(this.db, async (client) => {
         // set_config(..., true) is SET LOCAL: it ends with the transaction. Bound, so nothing is interpolated.
-        await client.query("SELECT set_config('statement_timeout', $1, true)", [String(this.statementTimeoutMs)]);
+        await timedQuery(client, "telemetry.history.setStatementTimeout", "SELECT set_config('statement_timeout', $1, true)", [String(this.statementTimeoutMs)]);
         return fn(client);
       });
     } catch (err) {

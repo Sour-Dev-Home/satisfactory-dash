@@ -158,7 +158,16 @@ describe("SeriesFlushWorker", () => {
     backgroundAggregator.recordHistogram("satis.alerts.evaluation.duration", {}, 2);
     await worker.flushOnce();
     expect(upserts(statements).map((s) => s.values[1])).toEqual(["http.server.request.duration", "satis.alerts.evaluation.duration"]);
-    expect(backgroundAggregator.drain()).toEqual([]);
+    // Drained: what's left is only the flush's own queries, which timedQuery (#461) records there.
+    expect(
+      backgroundAggregator
+        .drain()
+        .map((d) => [d.metric, d.labels.query])
+        .sort(),
+    ).toEqual([
+      ["db.client.operation.duration", "metrics.addSeriesDelta"],
+      ["db.client.operation.duration", "metrics.purgeExpiredSeries"],
+    ]);
     // Handed the background aggregator itself, it is drained once, not twice.
     backgroundAggregator.recordHistogram("satis.alerts.evaluation.duration", {}, 2);
     statements.length = 0;
