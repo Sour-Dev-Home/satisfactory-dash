@@ -1,0 +1,1 @@
+- 2026-10-20 — Server manager runbook: the tray-menu screenshot (#440's last item), taken by hand because the menu is native and the Playwright screenshot script can't capture it.
