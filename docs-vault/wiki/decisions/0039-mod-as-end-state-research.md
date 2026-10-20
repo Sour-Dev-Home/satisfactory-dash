@@ -98,3 +98,5 @@ checkable today, or marked [NEEDS VERIFICATION] and becomes a gate.
 - **D2** Our own mod (C). No request to the FRM maintainer first.
 - **D3** Spike code in a separate repository. The owner approves its name, visibility and licence
   before it's created.
+
+G3: proposed in ADR-0042 (owner, 2026-10-20).
