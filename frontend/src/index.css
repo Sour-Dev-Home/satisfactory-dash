@@ -446,6 +446,9 @@
 .map-canvas.leaflet-container {
   background: var(--color-canvas);
   font: inherit;
+  /* Leaflet stacks its panes and controls at z-index 200-1000. Keep them inside the map's own
+     stacking context, so they never paint over the header or its popovers (--z-popover, #434). */
+  isolation: isolate;
 }
 .map-canvas.leaflet-container:focus-visible {
   outline: 2px solid var(--color-accent);
