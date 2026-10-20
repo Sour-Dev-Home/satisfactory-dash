@@ -2,6 +2,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { signOutFromMenu } from "../test/account";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { PREVIEW } from "../landing/preview";
 import { renderWithClient } from "../test/render";
 import { resetDemoState } from "./handlers";
 
@@ -28,6 +29,11 @@ describe("the demo app", () => {
     expect(screen.getByText(/Demo data: nothing here is live/)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Enter demo" }, FIRST_RENDER)).toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    // The landing's hero (#444): the logo, the sentence, Enter demo as the amber action, the Overview still.
+    const hero = screen.getByRole("region", { name: /A live dashboard for a Satisfactory dedicated server/ });
+    expect(hero.querySelector('svg[data-station="factory"]')).not.toBeNull();
+    expect(within(hero).getByRole("button", { name: "Enter demo" })).toHaveClass("bg-accent");
+    expect(screen.getByRole("img", { name: /^The Satis Manager Overview/ })).toHaveAttribute("src", PREVIEW.src);
 
     fireEvent.click(screen.getByRole("button", { name: "Enter demo" }));
     expect(await screen.findByText("Demo factory", {}, FIRST_RENDER)).toBeInTheDocument();

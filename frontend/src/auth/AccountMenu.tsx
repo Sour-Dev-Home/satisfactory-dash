@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { chipButton } from "../ui/chip";
 import { LogoutButton } from "./LogoutButton";
 import { useSignedInUser } from "./SignedInUser";
 
@@ -35,7 +36,9 @@ export function AccountMenu() {
   if (!user) return null;
   return (
     <div ref={root} className="relative">
-      <button ref={toggle} type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}>
+      <button ref={toggle} type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}
+        className={chipButton}
+      >
         Account
       </button>
       {open && (

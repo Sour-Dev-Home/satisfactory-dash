@@ -1,0 +1,22 @@
+{
+  "name": "Satis Manager",
+  "short_name": "Satis Manager",
+  "description": "A live dashboard for a Satisfactory dedicated server's power, production and status.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#17191c",
+  "theme_color": "#17191c",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

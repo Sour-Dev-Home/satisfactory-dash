@@ -1,13 +1,14 @@
 import { Link } from "react-router";
+import { cn } from "../lib/cn";
 import { REPO_URL } from "../source";
+import { chipButton, primaryButton } from "../ui/chip";
+import { Hero } from "./Hero";
 
 /** The live demo (ADR-0026): its own site, so it's a plain link, not a route. */
 export const DEMO_URL = "https://demo.satis-manager.com";
 const DOCS_URL = `${REPO_URL}/blob/main/docs-vault/wiki`;
 /** `npm run demo:video`, encoded by CI's demo-video workflow (ADR-0026 item 5). */
 export const VIDEO_URL = "/demo/walkthrough.mp4";
-
-const linkButton = "inline-flex min-h-touch items-center justify-center rounded-lg border px-button-x font-semibold no-underline";
 
 /** Only what ships today: a feature appears here when it's live, never before. */
 const FEATURES = [
@@ -32,26 +33,24 @@ const FEATURES = [
  */
 export function Landing() {
   return (
-    <div className="grid gap-12 pt-4 sm:pt-8">
-      <section aria-labelledby="landing-heading" className="grid max-w-3xl gap-5">
-        <h2 id="landing-heading" className="text-2xl leading-tight font-bold sm:text-3xl">
-          A live dashboard for your Satisfactory dedicated server: power, production and machine health.
-        </h2>
-        <p className="text-muted">
-          Satis Manager reads your server's live state and shows what needs attention, from a phone or a desktop.
-        </p>
+    <div className="grid gap-12 pt-2 sm:pt-6">
+      <Hero
+        headingId="landing-heading"
+        title="A live dashboard for your Satisfactory dedicated server: power, production and machine health."
+      >
         <div className="flex flex-wrap items-center gap-3">
-          <a href={DEMO_URL} className={`${linkButton} border-accent bg-accent text-on-accent`}>
+          <a href={DEMO_URL} className={primaryButton}>
             Try the live demo
           </a>
-          <Link to="/app" className={`${linkButton} border-line bg-surface-2 text-fg-strong hover:border-muted`}>
+          <Link to="/app" className={cn(chipButton, "justify-center px-button-x font-semibold no-underline")}>
             Sign in
           </Link>
           <span className="text-sm text-muted">Sign-in is invite-only during the beta.</span>
         </div>
-      </section>
+      </Hero>
 
       <figure className="grid gap-2">
+        <h2 className="mb-0">Watch the walkthrough</h2>
         {/* Self-hosted (no video platform: the CSP stays 'self' and no third party sees
             visitors). Click to play, never autoplay; preload="none" keeps the page light
             until someone asks for the video. The poster is the link-preview image too. */}

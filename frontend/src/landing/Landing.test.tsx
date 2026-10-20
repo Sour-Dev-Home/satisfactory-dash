@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { REPO_URL } from "../source";
+import { PREVIEW } from "./preview";
 import { DEMO_URL, Landing, VIDEO_URL } from "./Landing";
 
 function renderLanding() {
@@ -19,6 +20,20 @@ describe("Landing", () => {
     expect(screen.getByRole("link", { name: "Try the live demo" })).toHaveAttribute("href", DEMO_URL);
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/app");
     expect(screen.getByText(/invite-only during the beta/)).toBeInTheDocument();
+  });
+
+  it("opens with a hero: the logo, the sentence, the amber demo button, then the Overview still", () => {
+    renderLanding();
+    const hero = screen.getByRole("region", { name: /A live dashboard for your Satisfactory dedicated server/ });
+    expect(hero.querySelector('svg[data-station="factory"]')).not.toBeNull();
+    expect(within(hero).getByRole("link", { name: "Try the live demo" })).toHaveClass("bg-accent", "text-on-accent");
+    const still = screen.getByRole("img", { name: /^The Satis Manager Overview/ });
+    expect(still).toHaveAttribute("src", PREVIEW.src);
+    expect(PREVIEW.src.startsWith("/")).toBe(true); // our own origin
+    // A fixed box: the page doesn't move when the still arrives, and it isn't held back (LCP).
+    expect(still).toHaveAttribute("width", String(PREVIEW.width));
+    expect(still).toHaveAttribute("height", String(PREVIEW.height));
+    expect(still).not.toHaveAttribute("loading", "lazy");
   });
 
   it("embeds the walkthrough self-hosted, click to play, with its poster", () => {
