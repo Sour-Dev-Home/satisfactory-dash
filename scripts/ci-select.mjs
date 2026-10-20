@@ -75,6 +75,13 @@ function sourceFiles(dir) {
   });
 }
 
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** True when the source imports, re-exports, requires or dynamically imports the package `name` (or a path in it). */
+export function importsPackage(text, name) {
+  return new RegExp(`(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*["'\`]${escapeRe(name)}(?:["'\`]|/)`).test(text);
+}
+
 /**
  * The workspaces each workspace depends on: the ones its package.json lists, and the ones its source imports by
  * package name (npm hoists every workspace to the root node_modules, so an undeclared import still resolves).
@@ -88,7 +95,11 @@ export function readGraph(root = ROOT) {
     const names = new Set(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }));
     for (const file of sourceFiles(path.join(root, dir))) {
       const text = readFileSync(file, "utf8");
-      for (const name of scoped) if (text.includes(`"${name}`) || text.includes(`'${name}`)) names.add(name);
+      for (const name of scoped) if ([`"`, `'`, "`"].some((q) => text.includes(q + name))) names.add(name);
+      // Unscoped names ("backend", "frontend") are common words, so only an import or require of one counts.
+      for (const name of byName.keys()) {
+        if (!name.startsWith("@") && importsPackage(text, name)) names.add(name);
+      }
     }
     names.delete(pkg.name);
     deps.set(dir, [...names].filter((name) => byName.has(name)).map((name) => byName.get(name)));

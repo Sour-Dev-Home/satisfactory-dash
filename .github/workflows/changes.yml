@@ -58,7 +58,8 @@ jobs:
             # --no-renames lists a moved file at both paths, so moving a file out of a workspace still selects it.
             git diff --no-renames --name-only "$PR_BASE" HEAD > "$list"
             echo "Changed files: $(wc -l < "$list")"
-            head -n 50 "$list"
+            # Indented, so a file named like a workflow command (::error::...) is printed, not run.
+            head -n 50 "$list" | sed 's/^/  /'
           else
             list=""
           fi
