@@ -76,7 +76,9 @@ Its tooltip names the state. Click it to open the window; right-click for the me
 - **Stop server and quit**: the clean stop first, then quit. If the clean stop can't save, the app stays open and the
   window offers **Stop anyway**; quit again afterwards.
 
-Tray menu screenshot: pending (it is a native menu, which the screenshot script can't capture).
+![The tray menu with no server folder chosen yet: Start, Stop and Restart are greyed out](../assets/server-manager/tray-menu.png)
+
+The tray menu is a native menu, which the screenshot script can't capture, so this one was taken by hand.
 
 **Closing the window** hides it to the tray (the first time, a note says so). Only one copy of the app runs: launching
 it again shows the open one's window.
