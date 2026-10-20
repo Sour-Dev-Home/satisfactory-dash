@@ -201,6 +201,25 @@ about one month of credits remains (about $35), or 45 days before 2027-03-15, wh
 The budget alert in `budget.tf` is the second signal; confirm its email subscription once.
 [NEEDS VERIFICATION] the command's full output shape: note the field names here after the first run.
 
+## Alarms
+
+`alarms.tf` (#501) emails `alarm_email` (set in the git-ignored `terraform.tfvars`, never committed) through
+an SNS topic. **After the apply, open the "AWS Notification - Subscription Confirmation" mail and click
+Confirm**: until then the subscription is pending and no alarm mail arrives. Check with
+`aws sns list-subscriptions-by-topic --topic-arn <arn>` (it shows `PendingConfirmation` until confirmed).
+Every alarm mails on ALARM and again on OK. Thresholds are the `alarms` variable (`variables.tf`).
+
+| Alarm | Fires when (default) | What to do |
+|---|---|---|
+| `ecs-no-running-task` | no CPU data for 3 minutes in a row: no task is running | Service down or crash-looping: read the `backend` and `cloudflared` log groups and the service events. Scaling to 0 on purpose ("Scale to 0") trips it too. |
+| `rds-free-storage-low` | free storage under 3 GiB | The 20 GB disk does not grow (`max_allocated_storage = 0`). Find what grew; raise `allocated_storage` if it is real data. |
+| `rds-cpu-high` | average CPU over 80% for 3 five-minute periods | Sustained load drains the t4g CPU credits. Look for a stuck query or poller; then size up. |
+| `backend-errors` | 5 or more error-level pino lines (level 50+) in 5 minutes | Read the `backend` log group around the time. Metric `Satis/prod` `BackendErrorLines`. |
+
+The ECS alarm uses the free `AWS/ECS` `CPUUtilization` metric with missing data counted as breaching,
+because Container Insights (which would give `RunningTaskCount`) is off to stay free. [NEEDS VERIFICATION]
+on the first apply: stop the task once and confirm the alarm goes to ALARM and back to OK.
+
 ## Check the backup role
 
 `db-init` grants `pg_read_all_data` to `satis_backup` as the RDS master user, which on RDS is a member

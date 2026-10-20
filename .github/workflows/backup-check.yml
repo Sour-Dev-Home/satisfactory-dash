@@ -1,0 +1,47 @@
+name: Backup check
+
+# #502: once a day, proof that the nightly backups exist, are fresh and look intact. It lists the B2 bucket with a
+# READ-ONLY application key and reads the first bytes of the newest object. It fails when the newest dump is older
+# than 26 h, under a size floor or far off the previous dump's size, or does not start with an age header
+# (scripts/backup-check.mjs). It never decrypts anything and no private key is anywhere in CI; whether a backup
+# really restores is the owner's local `scripts/restore-check.mjs`
+# (docs-vault/wiki/runbooks/backups.md, "Checks").
+#
+# Triggers are schedule and manual only: no pull_request trigger, so no PR can ever reach the secrets. The repo
+# secrets (owner-created; the names are listed in the runbook): BACKUP_CHECK_B2_KEY_ID and BACKUP_CHECK_B2_APP_KEY
+# (the `satis-backup-read` key), BACKUP_CHECK_B2_BUCKET and BACKUP_CHECK_B2_ENDPOINT.
+
+on:
+  schedule:
+    - cron: "17 11 * * *" # the nightly backup runs by 09:00 UTC (infra/aws backup_schedule); this is two hours after
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # Never on a fork: a fork has no secrets, and the check would only fail.
+    if: github.repository == 'Sour-Dev-Home/satisfactory-dash'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - name: Check the newest backup
+        env:
+          # The secrets reach only this step, as environment variables; the script never prints them.
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_CHECK_B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_CHECK_B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.BACKUP_CHECK_B2_BUCKET }}
+          B2_ENDPOINT: ${{ secrets.BACKUP_CHECK_B2_ENDPOINT }}
+          AWS_PAGER: ""
+        run: node scripts/backup-check.mjs

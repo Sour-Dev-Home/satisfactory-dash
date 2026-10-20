@@ -158,3 +158,45 @@ variable "backup_heartbeat_enabled" {
   type        = bool
   default     = false
 }
+
+# --- CloudWatch alarms (#501) ---
+
+variable "alarm_email" {
+  description = "Where the CloudWatch alarms email (an SNS subscription you must confirm). No default: set it in the git-ignored terraform.tfvars, never in a tracked file (the repo is public)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_email))
+    error_message = "alarm_email must be an email address."
+  }
+}
+
+variable "alarms" {
+  description = "Thresholds and windows for the alarms in alarms.tf. Every alarm also mails when it returns to OK. A period is a CloudWatch period (10, 30 or a multiple of 60 seconds); an alarm fires after evaluation_periods in a row breach."
+  type = object({
+    ecs_running_tasks_min    = optional(number, 1)
+    ecs_period_seconds       = optional(number, 60)
+    ecs_evaluation_periods   = optional(number, 3)
+    rds_free_storage_min_gib = optional(number, 3)
+    rds_storage_period       = optional(number, 300)
+    rds_cpu_max_percent      = optional(number, 80)
+    rds_cpu_period_seconds   = optional(number, 300)
+    rds_cpu_evaluation       = optional(number, 3)
+    backend_errors_max       = optional(number, 5)
+    backend_errors_period    = optional(number, 300)
+  })
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for p in [var.alarms.ecs_period_seconds, var.alarms.rds_storage_period, var.alarms.rds_cpu_period_seconds, var.alarms.backend_errors_period] :
+      p == 10 || p == 30 || (p >= 60 && p % 60 == 0)
+    ])
+    error_message = "Alarm periods must be 10, 30, or a multiple of 60 seconds."
+  }
+
+  validation {
+    condition     = var.alarms.rds_cpu_max_percent > 0 && var.alarms.rds_cpu_max_percent <= 100 && var.alarms.ecs_evaluation_periods >= 1 && var.alarms.rds_cpu_evaluation >= 1
+    error_message = "rds_cpu_max_percent must be 1 to 100 and evaluation periods at least 1."
+  }
+}

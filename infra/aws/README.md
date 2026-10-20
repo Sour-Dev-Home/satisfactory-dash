@@ -12,6 +12,7 @@ AWS credentials. **CI never plans or applies.** The owner applies it by hand, in
 | `network.tf` | VPC, two public subnets, internet gateway; no NAT gateway. Task group: no inbound rules. |
 | `rds.tf` | PostgreSQL 18, db.t4g.micro, single-AZ, 20 GB gp3, private, automated backups for `db_backup_retention_days` (default 1, 0 turns them off), password in Secrets Manager |
 | `ssm.tf` | The `/satis/prod/*` names (never values) and their ARNs |
+| `alarms.tf` | An SNS topic with an email subscription (`alarm_email`) and four CloudWatch alarms: ECS, RDS storage, RDS CPU, backend errors (#501) |
 | `budget.tf` | Monthly budget on gross spend (credits excluded) with two email alerts |
 | `ecs.tf` | Cluster (Container Insights off), the 0.5 vCPU / 1 GB ARM64 task (backend + cloudflared), the service (#408) |
 | `iam.tf` | The task execution role: reads the task's `/satis/prod/` parameters and writes its logs; no task role |

@@ -447,6 +447,9 @@ if (process.env.NODE_ENV !== "test") {
         });
         if (stored.usingDatabase) {
           logger.info({ servers: stored.loaded }, "servers loaded from the database");
+          for (const serverPublicId of stored.ownershipSeeded) {
+            logger.info({ serverPublicId, source: "startup_seed" }, "ownership seeded");
+          }
           if (stored.unreadable.length > 0) {
             connectionsReadable = false;
             logger.error(
