@@ -4,10 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # ADR-0033: the merge queue runs these checks on its own commit (main plus the queued PRs). Harmless until a
-  # queue is enabled. The log fragment step below runs on pull_request only.
-  merge_group:
-    types: [checks_requested]
 
 jobs:
   verify:
@@ -19,7 +15,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Log fragment (ADR-0033)
-        # Pull requests only (not push or merge_group): the PR must ADD its own file under
+        # Pull requests only (not push): the PR must ADD its own file under
         # docs-vault/wiki/log.d/ and must not edit log.md or an existing fragment. The label
         # `log-compaction` and the Dependabot author are exempt. Labels are read live so a re-run
         # after adding the label sees it. Values reach the script through env, never a shell line.
@@ -34,23 +30,6 @@ jobs:
           PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '[.[].name]')
           export PR_FILES_JSON PR_LABELS_JSON
           node scripts/log-check.mjs
-
-      - name: UI tier (ADR-0033 amendment 3)
-        # Pull requests only. A PR labelled `tier:ui` skips the architect's review, so this decides whether it really is
-        # one: every changed file must be in the UI-tier paths and no added line under frontend/src may match the
-        # data-flow pattern. Without the label nothing is checked. Labels are read live, so a re-run after adding the
-        # label sees it. The files (with their patches, which can be large) go through a file, not a variable.
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -o pipefail
-          PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels?per_page=100" --jq '[.[].name]')
-          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[] | {filename, status, previous_filename, patch, changes}' | jq -s . > "$RUNNER_TEMP/pr-files.json"
-          export PR_LABELS_JSON PR_FILES_FILE="$RUNNER_TEMP/pr-files.json"
-          node scripts/tier-check.mjs
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -102,7 +81,7 @@ jobs:
           # page, which names the owner as data controller (decided 2026-09-24; the terms
           # page never carries the name and stays scanned). -H is required: with a single
           # file grep omits the filename, and `cut -f1,2` would then keep the matched text
-          # and print it. The vendored OWASP cheat sheets (lanes, third-party text) quote URLs
+          # and print it. The vendored OWASP cheat sheets (third-party text) quote URLs
           # and code such as `/home/` and `/users/`, so they skip the path patterns only; the
           # PII patterns still scan them.
           git ls-files -z | grep -zvE '^(\.github/|.*CLAUDE\.md$|LICENSE$|frontend/public/privacy\.html$)' > "$FILES" || true

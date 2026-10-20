@@ -1,6 +1,6 @@
-# OWASP sheet index for lanes
+# OWASP sheet index
 
-lanes' own text (MIT, like the rest of the repository; not adapted from the sheets, see `VENDORED.md`). The security
+This file is our own text (MIT, like the rest of the repository; not adapted from the sheets, see `VENDORED.md`). The security
 reviewer reads this file first, finds the rows that match the diff, and then reads at most three of the sheets named
 there. Cite findings as sheet and section, for example "OS Command Injection Defense, Defense option 3". Where a sheet
 and `vendor/agent-skills/references/security-checklist.md` differ, the sheet wins (ADR 0009).
@@ -9,52 +9,15 @@ and `vendor/agent-skills/references/security-checklist.md` differ, the sheet win
 
 | Path | Why it is sensitive | Read |
 |---|---|---|
-| Scripts that run a child process (list below) | `gh`, `git` and `claude` run with arguments built from issue, PR and branch text | `sheets/OS_Command_Injection_Defense_Cheat_Sheet.md` (Primary Defenses), `sheets/Nodejs_Security_Cheat_Sheet.md` (Do not use dangerous functions) |
-| `.github/workflows/lanes-gate.yml` | `pull_request_target`: runs with default-branch secrets on a PR event | `sheets/CI_CD_Security_Cheat_Sheet.md` (Pipeline and Execution Environment, Least Privilege), `sheets/Secrets_Management_Cheat_Sheet.md` (3.1 Hardening your CI/CD pipeline) |
+| Scripts that run a child process (list below) | `gh`, `git` and other tools run with arguments built from issue, PR and branch text | `sheets/OS_Command_Injection_Defense_Cheat_Sheet.md` (Primary Defenses), `sheets/Nodejs_Security_Cheat_Sheet.md` (Do not use dangerous functions) |
 | `.github/workflows/` (all), `.githooks/pre-push`, `scripts/preflight.mjs` | CI permissions, the `PII_PATTERNS` secret, checks a push must pass | `sheets/CI_CD_Security_Cheat_Sheet.md` (Secure Configuration, Secrets Management), `sheets/Secrets_Management_Cheat_Sheet.md` (3.2.1 As part of your CI/CD tooling) |
-| `scripts/lanes/gate.mjs`, `scripts/lanes/post-review.mjs`, `scripts/lanes/lib.mjs` | Decide merge eligibility from review verdicts and statuses | `sheets/Authorization_Cheat_Sheet.md` (Deny by Default, Validate the Permissions on Every Request, Exit Safely when Authorization Checks Fail) |
-| `scripts/lanes/notify-hook.mjs` | Sends text off the machine; must not carry secrets, paths or personal data | `sheets/Logging_Cheat_Sheet.md` (Data to exclude), `sheets/Secrets_Management_Cheat_Sheet.md` (8.3 Detection lifecycle) |
-| `.claude/settings.json`, `.claude/agents/`, `.claude/commands/` | Hook wiring and the prompts unattended lanes follow | `sheets/CI_CD_Security_Cheat_Sheet.md` (Pipeline and Execution Environment), `sheets/Authorization_Cheat_Sheet.md` (Enforce Least Privileges) |
+| `.claude/settings.json`, `.claude/agents/`, `.claude/commands/` | Permission rules and the prompts agents follow | `sheets/CI_CD_Security_Cheat_Sheet.md` (Pipeline and Execution Environment), `sheets/Authorization_Cheat_Sheet.md` (Enforce Least Privileges) |
 | `vendor/` | Third-party text that agents read and follow | `sheets/CI_CD_Security_Cheat_Sheet.md` (Dependency Management, Integrity Assurance) |
 | `package.json`, `package-lock.json` | Dependencies and install scripts | `sheets/CI_CD_Security_Cheat_Sheet.md` (Dependency Management), `sheets/Nodejs_Security_Cheat_Sheet.md` (Keep your packages up-to-date) |
 
-Scripts that import `node:child_process` (each call site runs `gh`, `git`, `claude` or a notifier), one per line, sorted by path:
+Scripts that import `node:child_process` (each call site runs `gh`, `git` or another tool), one per line, sorted by path:
 
-- `scripts/lanes/affected-tests.mjs`
-- `scripts/lanes/app-setup.mjs` (`--workflows` runs `gh` through an argument array, never a shell; the App key goes to `gh secret set` on stdin only and is never written to disk, printed or logged; the environment is created only after a printed plan and a `y`)
-- `scripts/lanes/blockers.mjs`
-- `scripts/lanes/cleanup.mjs`
-- `scripts/lanes/consolidate.mjs`
-- `scripts/lanes/delivery-metrics.mjs`
-- `scripts/lanes/diff-coverage.mjs`
-- `scripts/lanes/gate.mjs`
-- `scripts/lanes/handover.mjs` (runs fixed `git` and `gh` commands; the PR number is checked as digits and the branch and file paths as plain names; posts workflow-file text from the final local commit only; prints no secret)
-- `scripts/lanes/health.mjs` (runs `gh api`, `gh issue list` and `gh run list` through an argument array, never a shell; writes only to the one `lanes-health` issue it finds or creates; check names are reduced to a plain alphabet before they are posted)
-- `scripts/lanes/identity-check.mjs` (runs fixed `gh` and `git` commands and a child node process that receives the App key on stdin; reads the key only from `~/.lanes/<slug>.pem` with an allowlisted slug; prints no secret)
-- `scripts/lanes/init.mjs` (runs the fixed setup scripts and read-only `gh` calls through argument arrays, never a shell; the repository name and path are validated first; prints no secret, key or token, and never sees the `PII_PATTERNS` value)
-- `scripts/lanes/install.mjs` (asks `gh repo view` whether the target is public)
-- `scripts/lanes/issue-contract.mjs`
-- `scripts/lanes/lane-metrics.mjs`
-- `scripts/lanes/new-project.mjs`
-- `scripts/lanes/notify-hook.mjs`
-- `scripts/lanes/post-review.mjs`
-- `scripts/lanes/queue.mjs`
-- `scripts/lanes/reap.mjs`
-- `scripts/lanes/release.mjs` (runs `git merge-base` on a validated tag)
-- `scripts/lanes/review-metrics.mjs`
-- `scripts/lanes/reviewers.mjs`
-- `scripts/lanes/scope-tests.mjs` (runs `git ls-files -z` through an argument array, no shell; its arguments are only compared against file names and file text)
-- `scripts/lanes/setup-repo.mjs`
-- `scripts/lanes/setup-state.mjs` (runs only read-only `gh` calls through an argument array, never a shell; prints no secret, key or token)
-- `scripts/lanes/snapshot.mjs`
-- `scripts/lanes/start.mjs`
-- `scripts/lanes/status.mjs`
-- `scripts/lanes/structure-report.mjs` (runs `npx` with `shell: true` on Windows)
-- `scripts/lanes/validate.mjs` (runs a validation-loop criterion's command as an argument array, `shell: false`)
 - `scripts/preflight.mjs`
-
-`scripts/lanes/vendor.test.mjs` fails when a script gains a
-child process without a line here; since `vendor/` is an owner path, adding that line brings the PR to owner review.
 
 ## By change topic
 
@@ -70,9 +33,7 @@ child process without a line here; since `vendor/` is an owner path, adding that
 | fetches a URL built from input, or follows redirects | `sheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md` |
 | adds a Dockerfile or container config | `sheets/Docker_Security_Cheat_Sheet.md` |
 
-## For web applications built with lanes
-
-These sheets cover projects created from this template rather than lanes itself:
+## For the web application
 
 | The diff... | Read |
 |---|---|

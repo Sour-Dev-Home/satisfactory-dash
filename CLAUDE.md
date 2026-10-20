@@ -138,57 +138,12 @@ you know exists, that's not a bug to debug — it means this session predates th
 inherits full context, defeating the point) after a chunk of backend logic is written,
 so it reviews with genuinely no memory of why the code was built a certain way.
 
-## Lanes
+## Workflow
 
-The repo runs lanes (adopted in #378): a lane is a session that owns one task issue end to end via
-`/lane <issue>` (see `.claude/commands/lane.md`). An issue becomes lane work only when it uses the Task
-form (Goal, Acceptance criteria, Interface contract, Scope, Blocked by, Tier); the `issue-contract`
-check then labels it `ready` and one `tier:*`. New task issues come from `/plan-issues`, and the owner
-approves the draft before anything is created. A stopped lane labels its issue `needs-owner`.
-`node scripts/lanes/status.mjs` shows the queue.
-
-**When a lane fits.** Use a lane when the done-criteria can be written as tests and the files can be
-named up front: backend routes, services and storage with tests; frontend components, hooks and
-logic with tests; a bug fix with a failing test that reproduces it; a refactor existing tests cover;
-code changes that follow a dependency bump. Keep it in a normal session when it can't: spikes and
-"how should this work?" questions, visual polish judged by eye (map layers, layout, feel), ADRs and
-docs-vault writing, log compaction, deploys, secrets, infrastructure and rulesets, one-line fixes and
-urgent hotfixes. A good rhythm is to explore in a normal session first, then turn the settled design
-into 2 to 5 issues with `/plan-issues` and let the queue build them.
-
-**Filing issues.**
-- Lane work starts as a Task issue: from `/plan-issues` (preferred) or GitHub's New issue → Task
-  template. A free-text issue never becomes `ready`, so no lane picks it up; `issue-contract` says
-  nothing about it.
-- Every Scope names real repository paths, including the tests the change will touch, and every PR,
-  lane or not, adds its `docs-vault/wiki/log.d/` fragment (see Docs vault).
-- A bug in lanes itself (its scripts, workflows, commands or agents) is filed in the lanes repository
-  as a bug report, not here: what happened, the exact error or evidence, and what was expected. The
-  lanes owner session turns it into a Task issue there; never patch `scripts/lanes/` or the lanes
-  workflows in this repo, since `upgrade --apply` would overwrite the change.
-
-**Task-form rules** (learned in the trial):
-- Tier is only `skip`, `quick` or `full`. There is no UI tier: the ui-reviewer is added when the
-  diff touches `frontend/src/` paths, whatever the tier.
-- Owner-only and sensitive paths (`CLAUDE.md`, `lanes.config.json`, `package*.json`, `.github/`,
-  `.claude/`, `.gitignore`) can't be tier `skip`; an issue whose Scope names one is `quick` or `full`.
-- "Blocked by" is one `#N` per line, or a bare `none`.
-- Criteria cite the contract as it was merged (the real export, route or type in the code), not an
-  ADR's wording of it.
-
-Known gaps in this repo (reported upstream as lanes#770 and lanes#771):
-- Every PR to `main` must pass `lanes/gate`: it says `Closes #N` for a `ready` Task issue, comes
-  from an `issue-N-*` branch, and carries the lanes reviewer statuses. So the route for any change,
-  a Dependabot npm update included, is a Task issue that a lane builds (as #381 and #386 did).
-  Dependabot action SHA re-pins pass with the owner's review alone (`dependabot.actionBumps`).
-  Setting the `main (lanes)` ruleset to Disabled is the owner's last resort only, never a session's.
-- Lanes reads ADRs from `docs/adr/`, but ours live in `docs-vault/wiki/decisions/`, so the lanes gate
-  and reviewer routing see no ADRs here. Until it's configurable, any new ADR a lane drafts goes in
-  `docs-vault/wiki/decisions/`, numbered after the latest one there, and a lane whose change falls
-  under an ADR asks for the architect by name in its PR.
-- `/night` and `/health` check a `verify.yml` workflow; ours is `ci.yml` (its `verify` job). Don't
-  run `/night` until that's fixed. `metrics.mainWorkflow` in `lanes.config.json` already points
-  delivery metrics at `ci.yml`.
+Plain CI/CD (ADR-0043): branch, then PR, then `gh pr merge --squash --auto`. The required checks are `verify`,
+`e2e` and `security`; no review is required, and the PR merges itself once they pass. Every PR adds its
+`docs-vault/wiki/log.d/` fragment (see Docs vault). Before the PR, run the fitting reviewer subagents yourself:
+`test-hunter` for new logic, `ui-reviewer` for UI changes, `security-reviewer` for auth, secrets or infrastructure.
 
 ## Conventions
 
@@ -204,13 +159,9 @@ Known gaps in this repo (reported upstream as lanes#770 and lanes#771):
   fixture data — no live game server required to run the suite.
 - `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` all run in CI
   (`.github/workflows/ci.yml`) on every push and PR; treat a red CI run as blocking.
-- **Fresh-eyes step** (see `../WORKFLOW.md`): any PR that adds or changes real logic is
-  opened as a DRAFT. Before `gh pr ready`, spawn a fresh `test-hunter` subagent (never a
-  fork, which would inherit your context) scoped to the changed files, land its tests
-  and any fixes on the same branch, and repeat until it stops finding real bugs.
-  Docs-only and config-only PRs skip it. (This replaced a CI job of the same purpose,
-  which ran on API credit and was retired.) Log each hunter run in
-  `docs-vault/wiki/hunter-log.d/` (format in its README; `npm run hunter-report`).
+- Run the `test-hunter` subagent on new logic before opening the PR (a fresh subagent,
+  never a fork, which would inherit your context). Land its tests and any fixes on the
+  same branch. Docs-only and config-only PRs skip it.
 
 ## Drafting PR descriptions and log entries with the local model
 

@@ -39,6 +39,3 @@ docs-vault/architecture-out/
 *.tfplan
 *.tfbackend
 crash.log
-
-# lanes' working folder: verdicts, logs and the queue's reap files (#392)
-.lanes/
