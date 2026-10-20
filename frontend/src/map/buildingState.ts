@@ -10,14 +10,21 @@ export const STATE_LABEL: Record<BuildingState, string> = {
   noRecipe: "No recipe",
 };
 
-/** Design tokens (src/index.css) per state: canvas markers read the token's value at draw time. */
+/**
+ * Design tokens (src/index.css) per state, ADR-0041's colours: canvas icons read the token's value at
+ * draw time. Blue (info) is for paused only.
+ */
 export const STATE_TOKEN: Record<BuildingState, string> = {
   producing: "--color-ok",
   idle: "--color-muted",
   paused: "--color-info",
-  noRecipe: "--color-idle-solid",
+  noRecipe: "--color-line",
 };
 export const BACKED_UP_TOKEN = "--color-warn";
+/** The mark on a machine (its window, or the warning triangle): the canvas showing through. */
+export const MARK_TOKEN = "--color-canvas";
+/** How long one backed-up pulse takes; 0s under reduced motion. */
+export const PULSE_TOKEN = "--duration-pulse";
 
 /** A state's label and token, reading own keys only (#368). */
 export const stateLabel = (state: BuildingState) => ownValue(STATE_LABEL, state) ?? state;

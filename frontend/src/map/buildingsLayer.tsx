@@ -1,7 +1,10 @@
 import { ownValue, type Factory, type FactoryBuilding } from "@satisfactory-dash/shared";
+import type * as Leaflet from "leaflet";
 import { formatPercent } from "../format";
 import {
   BACKED_UP_TOKEN,
+  MARK_TOKEN,
+  PULSE_TOKEN,
   stateLabel,
   stateToken,
   buildingState,
@@ -9,13 +12,16 @@ import {
   type BuildingState,
 } from "./buildingState";
 import type { MapLayer } from "./layers";
+import { drawMachine, drawPulse, durationMs, HIT_RADIUS, PULSE_REACH, STILL_PROGRESS } from "./machineIcon";
+import { MachineGlyph } from "./MachineGlyph";
 
 const STATES: BuildingState[] = ["producing", "idle", "paused", "noRecipe"];
-const SWATCH: Record<BuildingState, string> = {
-  producing: "bg-ok",
-  idle: "bg-muted",
-  paused: "bg-info",
-  noRecipe: "bg-idle-solid",
+/** The legend's housing colour per state: the same tokens the canvas reads (buildingState.ts). */
+const FILL: Record<BuildingState, string> = {
+  producing: "fill-ok",
+  idle: "fill-muted",
+  paused: "fill-info",
+  noRecipe: "fill-line",
 };
 
 /** Buildings the backend placed; an older backend (ADR-0007 skew) sends none. */
@@ -42,31 +48,89 @@ function tooltip(building: FactoryBuilding): HTMLElement {
   return box;
 }
 
-/** Layer (a) of ADR-0023: every building at its position, coloured by state. */
+type Paint = (ctx: CanvasRenderingContext2D, at: { x: number; y: number }) => void;
+type DrawnOptions = Leaflet.CircleMarkerOptions & { paint: Paint };
+/** The parts of Leaflet's canvas renderer a custom-drawn marker uses (Leaflet 1.9, pinned). */
+interface CanvasInternals {
+  _renderer: { _drawing: boolean; _ctx: CanvasRenderingContext2D };
+  _point: { x: number; y: number };
+  _empty(): boolean;
+  options: DrawnOptions;
+}
+
+/**
+ * A circle marker that draws its own picture on the shared canvas renderer (ADR-0023/ADR-0038: no
+ * DOM node per building). It stays a CircleMarker, so Leaflet's hit test (the circle), hover and
+ * tooltips work as for any marker; only `_updatePath`, the renderer's per-layer draw hook, changes.
+ */
+function drawnMarker(L: typeof Leaflet) {
+  return L.CircleMarker.extend({
+    _updatePath(this: CanvasInternals) {
+      const renderer = this._renderer;
+      if (!renderer._drawing || this._empty()) return;
+      this.options.paint(renderer._ctx, this._point);
+    },
+  }) as unknown as new (at: Leaflet.LatLngExpression, options: DrawnOptions) => Leaflet.CircleMarker;
+}
+
+/** Layer (a) of ADR-0023: every building at its position, a machine icon coloured by state. */
 export const buildingsLayer: MapLayer<Factory> = {
   id: "buildings",
   label: "Buildings",
   defaultVisible: true,
 
-  draw({ L, map, project, renderer, color }, data) {
+  draw({ L, map, project, renderer, color, token }, data) {
+    const Drawn = drawnMarker(L);
     const group = L.layerGroup();
-    const ring = color(BACKED_UP_TOKEN);
-    for (const building of placed(data.buildings)) {
-      const fill = color(stateToken(buildingState(building)));
-      L.circleMarker(project(building.location.xM, building.location.yM), {
+    const warn = color(BACKED_UP_TOKEN);
+    const mark = color(MARK_TOKEN);
+    const buildings = placed(data.buildings);
+    const backedUp = buildings.filter((b) => b.isBackedUp);
+
+    // The pulse (ADR-0041 item 6): one ring per backed-up machine, under the icons, all on one clock.
+    // The cycle is a motion token, so reduced motion (every duration 0s) shows the ring still, with
+    // no frame loop; so does a factory with nothing backed up, which starts no loop at all.
+    const period = durationMs(token(PULSE_TOKEN));
+    let running = backedUp.length > 0 && period > 0;
+    const clock = { progress: running ? 0 : STILL_PROGRESS };
+    const pulses = backedUp.map((b) =>
+      new Drawn(project(b.location.xM, b.location.yM), {
         renderer,
-        radius: 6,
-        fillColor: fill,
-        fillOpacity: 1,
-        // Backed up is a ring, not a colour: the state still shows inside it.
-        color: building.isBackedUp ? ring : fill,
-        weight: building.isBackedUp ? 3 : 1,
+        radius: PULSE_REACH,
+        stroke: false,
+        interactive: false,
+        paint: (ctx, at) => drawPulse(ctx, at.x, at.y, clock.progress, warn),
+      }).addTo(group),
+    );
+
+    for (const building of buildings) {
+      const body = building.isBackedUp ? warn : color(stateToken(buildingState(building)));
+      new Drawn(project(building.location.xM, building.location.yM), {
+        renderer,
+        radius: HIT_RADIUS,
+        stroke: false,
+        paint: (ctx, at) => drawMachine(ctx, at.x, at.y, { body, mark }, building.isBackedUp),
       })
-        .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -6] })
+        .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -HIT_RADIUS] })
         .addTo(group);
     }
     group.addTo(map);
+
+    let frame = 0;
+    let start: number | null = null;
+    const tick = (now: number) => {
+      if (!running) return;
+      start ??= now;
+      clock.progress = ((now - start) % period) / period;
+      // Each ring asks Leaflet to repaint just its own area.
+      for (const pulse of pulses) pulse.redraw();
+      frame = requestAnimationFrame(tick);
+    };
+    if (running) frame = requestAnimationFrame(tick);
+
     return () => {
+      if (running) cancelAnimationFrame(frame);
+      running = false;
       group.remove();
     };
   },
@@ -75,13 +139,13 @@ export const buildingsLayer: MapLayer<Factory> = {
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       {STATES.map((state) => (
         <li key={state} className="flex items-center gap-1.5">
-          <span aria-hidden="true" className={`size-3 rounded-full ${ownValue(SWATCH, state) ?? ""}`} />
+          <MachineGlyph fill={ownValue(FILL, state) ?? FILL.idle} />
           {stateLabel(state)}
         </li>
       ))}
       <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className="size-3 rounded-full border-2 border-warn" />
-        Backed up (ring)
+        <MachineGlyph fill="fill-warn" backedUp />
+        Backed up (a ring pulses)
       </li>
     </ul>
   ),

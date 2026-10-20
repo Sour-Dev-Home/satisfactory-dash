@@ -103,6 +103,7 @@
   --duration-fast: 120ms; /* hover and colour changes, a page's reveal */
   --duration-base: 180ms; /* a dropdown opening, a detail expanding */
   --duration-slow: 240ms; /* larger surfaces */
+  --duration-pulse: 1.6s; /* one cycle of a backed-up machine's ring on the map (canvas, src/map/) */
   --spacing-motion-rise: 4px; /* how far entering content travels */
   /* Tailwind's `transition-*` utilities use the tokens too. */
   --default-transition-duration: var(--duration-fast);
@@ -350,6 +351,7 @@
       --duration-fast: 0s;
       --duration-base: 0s;
       --duration-slow: 0s;
+      --duration-pulse: 0s;
     }
     /* Anything not built on the tokens too (Leaflet's zoom, third-party CSS). */
     *,
