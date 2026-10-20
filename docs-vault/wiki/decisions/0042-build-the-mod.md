@@ -75,3 +75,7 @@ The sub-projects, in order:
   [NEEDS VERIFICATION] points are what can still reopen it.)
 - C8 or C9 fails: the spec's loopback fallback goes back to the owner.
 - SML or the game changes how dedicated-server mods load.
+
+## Amendment 1 (2026-10-20): See also
+See also [ADR-0045](./0045-threat-model-untrusted-servers.md), the threat model for servers the owner doesn't control
+(#505); its tasks #514, #515 and #516 gate the mod's first public release (sub-project 4).

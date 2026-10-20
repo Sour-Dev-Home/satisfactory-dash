@@ -42,10 +42,17 @@ function renderBar({ serverCount = 1, change = vi.fn() } = {}) {
 }
 
 const pressCtrlK = () => act(() => void fireEvent.keyDown(window, { key: "k", ctrlKey: true }));
-/** Ctrl+K, then the search box once its lazy chunk (#387) has loaded. */
+/**
+ * The search box, once the bar has opened. #504: every first open in a test suspends on the lazy chunk (#387), and
+ * React then holds the fallback for its fixed ~300 ms Suspense throttle before showing the box. That is a real wait
+ * inside findByRole's 1 s default, which left too little room on a fully loaded machine. Same assertion, a budget
+ * that covers the throttle.
+ */
+const searchBox = (scope: Pick<typeof screen, "findByRole"> = screen) => scope.findByRole("combobox", {}, { timeout: 3000 });
+/** Ctrl+K, then the search box. */
 const openWithKeys = async () => {
   pressCtrlK();
-  return screen.findByRole("combobox");
+  return searchBox();
 };
 const input = () => screen.getByRole("combobox");
 
@@ -62,7 +69,7 @@ describe("CommandBar (#351)", () => {
   it("opens from the header's Search button too (touch)", async () => {
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: "Search (Ctrl+K)" }));
-    expect(await screen.findByRole("combobox")).toHaveFocus();
+    expect(await searchBox()).toHaveFocus();
   });
 
   it("filters as you type, and Enter jumps to the match", async () => {
@@ -124,7 +131,7 @@ describe("CommandBar (#351)", () => {
     // Dispatched at the focused input, like a real keypress: it must bubble to the window listener.
     act(() => void fireEvent.keyDown(external, { key: "k", ctrlKey: true }));
     expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
-    await screen.findByRole("combobox");
+    await searchBox();
     document.body.removeChild(external);
   });
 
@@ -231,7 +238,7 @@ describe("CommandBar's lazy chunk (#387)", () => {
     const dialog = screen.getByRole("dialog", { name: "Search" });
     expect(within(dialog).getByText("Loading search…")).toBeInTheDocument();
     finish();
-    expect(await within(dialog).findByRole("combobox")).toHaveFocus();
+    expect(await searchBox(within(dialog))).toHaveFocus();
     expect(within(dialog).queryByText("Loading search…")).not.toBeInTheDocument();
 
     pressCtrlK();
@@ -250,7 +257,7 @@ describe("CommandBar's lazy chunk (#387)", () => {
     const load = vi.fn(realPalette);
     renderWith(load);
     pressCtrlK();
-    expect(await screen.findByRole("combobox")).toHaveFocus();
+    expect(await searchBox()).toHaveFocus();
     pressCtrlK();
 
     // Reopen and close in the same tick: the palette unmounts before its refocus runs.
@@ -282,7 +289,7 @@ describe("CommandBar's lazy chunk (#387)", () => {
     renderWith(load);
     pressCtrlK();
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("combobox")).toHaveFocus();
+    expect(await searchBox()).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
   });
@@ -298,7 +305,7 @@ describe("CommandBar's lazy chunk (#387)", () => {
     expect(screen.queryByText("Loading search…")).not.toBeInTheDocument();
     pressCtrlK();
     finish();
-    expect(await screen.findByRole("combobox")).toHaveFocus();
+    expect(await searchBox()).toHaveFocus();
     expect(load).toHaveBeenCalledOnce();
   });
 
@@ -311,7 +318,7 @@ describe("CommandBar's lazy chunk (#387)", () => {
     pressCtrlK();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     pressCtrlK();
-    expect(await screen.findByRole("combobox")).toBeInTheDocument();
+    expect(await searchBox()).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
   });
 });
