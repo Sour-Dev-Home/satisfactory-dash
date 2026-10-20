@@ -25,7 +25,7 @@
     "delivery-metrics": "node scripts/delivery-metrics.mjs",
     "hunter-report": "node scripts/hunter-report.mjs",
     "hunter-status": "node scripts/hunter-status.mjs",
-    "test:scripts": "node --test scripts/architecture-drift.test.mjs scripts/log.test.mjs scripts/log-check.test.mjs scripts/tier-check.test.mjs scripts/latency-report.test.mjs scripts/fresh-eyes-gate.test.mjs scripts/e2e-report.test.mjs scripts/preflight.test.mjs scripts/delivery-metrics.test.mjs scripts/hunter-report.test.mjs scripts/hunter-status.test.mjs scripts/raw-source-citations.test.mjs scripts/lint/safe-lookup.test.mjs",
+    "test:scripts": "node --test scripts/architecture-drift.test.mjs scripts/log.test.mjs scripts/log-check.test.mjs scripts/tier-check.test.mjs scripts/latency-report.test.mjs scripts/fresh-eyes-gate.test.mjs scripts/e2e-report.test.mjs scripts/preflight.test.mjs scripts/delivery-metrics.test.mjs scripts/hunter-report.test.mjs scripts/hunter-status.test.mjs scripts/raw-source-citations.test.mjs scripts/lint/safe-lookup.test.mjs load/test/guards.test.mjs load/test/plan.test.mjs load/test/seed.test.mjs load/test/report.test.mjs load/test/boundaries.test.mjs",
     "setup": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
