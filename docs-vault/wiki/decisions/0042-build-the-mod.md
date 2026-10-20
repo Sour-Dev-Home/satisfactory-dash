@@ -51,13 +51,18 @@ The sub-projects, in order:
 - **The Node agent stays the supported path** until sub-project 5.
 
 ## Named risks
-- **The GPL/AGPL reading and Coffee Stain's terms** (#471). The reading is in
+- **The GPL/AGPL reading and Coffee Stain's terms**
+  ([#471](https://github.com/Sour-Dev-Home/satisfactory-dash/issues/471)). The reading is in
   [`LEGAL.md` "The game mod (ADR-0039)"](../../../LEGAL.md#the-game-mod-adr-0039); its open points
   (the EULA text, the mod linking the game's proprietary code, player data the mod sends) stay
   [NEEDS VERIFICATION] there.
-- **SML's breakage rate, and hosts allowing custom mods with outbound HTTPS** (#472). Both are in
+- **SML's breakage rate, and hosts allowing custom mods with outbound HTTPS**
+  ([#472](https://github.com/Sour-Dev-Home/satisfactory-dash/issues/472)). Both are in
   [`mod-maintenance.md`](../mod-maintenance.md); no host's docs state outbound network access, so
   that stays [NEEDS VERIFICATION].
+- **FRM as the mod's runtime dependency.** From sub-project 3 until sub-project 6 the mod reads the
+  factory, map and world layers from FRM, so FRM must be installed beside it, and FRM's own licence
+  is still unconfirmed ([`LEGAL.md` "Dependency: FicsitRemoteMonitoring (FRM)"](../../../LEGAL.md#dependency-ficsitremotemonitoring-frm)).
 - A risk that #471 or #472 finds blocking **reopens this ADR before distribution** (sub-project 4).
 
 ## Consequences
