@@ -61,6 +61,11 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                         "code" "modules/agents"
                     }
                 }
+                map = component "map" "World map: live world store, local-server world poller and world ingest, with their routes and repository." "TypeScript" {
+                    properties {
+                        "code" "modules/map"
+                    }
+                }
                 gameserver = component "gameserver" "Thin facade over the game-adapter package, plus the backend-only config (environment and servers file); no Express." "TypeScript" {
                     properties {
                         "code" "modules/gameserver"
@@ -98,6 +103,10 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.agents -> satis.api.servers "Switches a server to the agent connection kind" "In-process call"
         satis.api.agents -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.root -> satis.api.gameserver "Wires" "In-process call" "wiring"
+        satis.api.root -> satis.api.map "Wires" "In-process call" "wiring"
+        satis.api.map -> satis.api.gameserver "Reads the mapped world types" "In-process call"
+        satis.api.map -> satis.api.servers "Resolves the requested server" "In-process call"
+        satis.api.map -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.telemetry -> satis.api.gameserver "Reads through ports" "In-process call"
         satis.api.telemetry -> satis.api.servers "Resolves the requested server" "In-process call"
         satis.api.settings -> satis.api.gameserver "Reads and writes via ServerOptionsPort" "In-process call"

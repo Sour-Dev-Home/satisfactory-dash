@@ -1,0 +1,1 @@
+- 2026-10-20 — Docs only: the C4 model (`docs-vault/workspace.dsl`) now declares the backend's `map` component (`modules/map`) with the edges the code has: wired by the composition root, and using `gameserver`, `servers` and `platform`. This turns `npm run architecture:check` green on main again; the check itself is unchanged (issue #455).
