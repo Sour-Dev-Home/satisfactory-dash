@@ -1,0 +1,1 @@
+- 2026-10-20 — `server-manager/package.json` now declares the workspace packages it imports, `@satisfactory-dash/agent` and `@satisfactory-dash/game-adapter` (follow-up from #440). Its build resolved them only through the root's hoisted links, so a stale install failed with "Could not resolve"; the lockfile records the dependency now.

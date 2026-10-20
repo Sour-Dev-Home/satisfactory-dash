@@ -16,6 +16,8 @@
     "screenshots": "node scripts/build.mjs && playwright test -c playwright.screenshots.config.ts"
   },
   "dependencies": {
+    "@satisfactory-dash/agent": "*",
+    "@satisfactory-dash/game-adapter": "*",
     "zod": "^4.6.6"
   },
   "devDependencies": {
