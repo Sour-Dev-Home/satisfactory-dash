@@ -1,0 +1,46 @@
+{
+  "spike": "S4",
+  "claim": "C6",
+  "pass": true,
+  "reasons": [
+    "the mod read the credential the harness wrote, and the log never shows it"
+  ],
+  "startedAt": "2026-10-20T01:00:53.086Z",
+  "endedAt": "2026-10-20T01:03:19.906Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.20-01.03.17:722][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.20-01.03.17:744][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-01.03.17:771][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-01.03.17:807][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.20-01.03.17:937][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.20-01.03.17:720][  0]LogSatisMod: Display: satis-mod loaded",
+    "[2026.10.20-01.03.18:022][  0]LogSatisMod: Display: satis-mod s4 read length=32 sha1=ec425ea7230d"
+  ],
+  "harnessCommit": "local",
+  "runUrl": null
+}

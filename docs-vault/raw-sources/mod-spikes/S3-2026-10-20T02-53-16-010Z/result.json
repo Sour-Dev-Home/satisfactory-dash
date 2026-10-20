@@ -1,0 +1,69 @@
+{
+  "spike": "S3",
+  "claim": "C5",
+  "pass": true,
+  "reasons": [
+    "24 readings: production and capacity within 1% of FRM, the same circuits on both sides"
+  ],
+  "startedAt": "2026-10-20T02:53:16.010Z",
+  "endedAt": "2026-10-20T02:58:47.636Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.20-02.54.55:947][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.20-02.54.55:971][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-02.54.55:991][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-02.54.56:029][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.20-02.54.56:175][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.20-02.54.55:946][  0]LogSatisMod: Display: satis-mod loaded",
+    "[2026.10.20-02.56.13:704][517]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1265.23 capacity=4083.33",
+    "[2026.10.20-02.56.13:704][518]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1265.23 capacity=4083.33",
+    "[2026.10.20-02.56.23:734][817]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1239.44 capacity=4083.33",
+    "[2026.10.20-02.56.23:734][818]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1239.44 capacity=4083.33",
+    "[2026.10.20-02.56.33:741][116]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1273.39 capacity=4083.33",
+    "[2026.10.20-02.56.33:741][117]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1273.39 capacity=4083.33",
+    "[2026.10.20-02.56.43:759][416]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1256.58 capacity=4083.33",
+    "[2026.10.20-02.56.43:759][417]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1256.58 capacity=4083.33",
+    "[2026.10.20-02.56.53:762][716]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1218.20 capacity=4083.33",
+    "[2026.10.20-02.56.53:762][717]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1218.20 capacity=4083.33",
+    "[2026.10.20-02.57.03:787][ 16]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1248.10 capacity=4083.33",
+    "[2026.10.20-02.57.03:787][ 17]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1248.10 capacity=4083.33",
+    "[2026.10.20-02.57.13:811][316]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1266.49 capacity=4083.33",
+    "[2026.10.20-02.57.13:811][317]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1266.49 capacity=4083.33",
+    "[2026.10.20-02.57.23:837][616]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1203.30 capacity=4083.33",
+    "[2026.10.20-02.57.23:837][617]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1203.30 capacity=4083.33",
+    "[2026.10.20-02.57.33:861][916]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1282.15 capacity=4083.33",
+    "[2026.10.20-02.57.33:861][917]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1282.15 capacity=4083.33",
+    "[2026.10.20-02.57.43:869][215]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1320.54 capacity=4083.33",
+    "[2026.10.20-02.57.43:869][216]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1320.54 capacity=4083.33",
+    "[2026.10.20-02.57.53:871][514]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1243.62 capacity=4083.33",
+    "[2026.10.20-02.57.53:871][515]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1243.62 capacity=4083.33",
+    "[2026.10.20-02.58.03:871][813]LogSatisMod: Display: satis-mod s3 circuit=0 production=3633.33 consumption=1247.59 capacity=4083.33",
+    "[2026.10.20-02.58.03:871][814]LogSatisMod: Display: satis-mod s3 circuit=3 production=3633.33 consumption=1247.59 capacity=4083.33"
+  ],
+  "harnessCommit": "8df1e9d64156144c622d5251c81e634821806d66",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39359039231"
+}
