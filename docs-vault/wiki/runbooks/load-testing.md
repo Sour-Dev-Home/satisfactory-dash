@@ -14,7 +14,8 @@ target and no override (#449 amends the ADR text).
 
 ## The guards (each is enforced in code and unit-tested)
 
-- **The seed** refuses unless `LOAD_TEST=1` is set and the database name ends in `_load`, checked in `DATABASE_URL`
+- **The seed** refuses unless `LOAD_TEST=1` is set, the database host is `127.0.0.1`, `localhost` or the compose
+  service `postgres`, and the database name ends in `_load`, checked in `DATABASE_URL`
   and again with `current_database()` once connected. It reads no `.env` file, so a production `DATABASE_URL` in
   `backend/.env` is never picked up. Before writing anything it checks that `LOAD_TARGET` accepts a session made in
   that database, so a seed pointed at the live backend stops at once.
@@ -52,6 +53,9 @@ Needs Docker Desktop, Node 22+ with `npm ci` done, and k6 2.3.0 (`winget install
 Docker Desktop, and the guard allows no other name, so use the native binary.
 
 Git Bash, from the repository root. The passwords are throwaway; the database is deleted at the end.
+**Never point `DATABASE_ADMIN_URL` at a Postgres that hosts the live `satis` database:** `db:init` has no `_load`
+guard of its own, and it sets the `satis_migrator` and `satis_app` role passwords for the whole cluster. Use the
+separate container below (port 55432) and nothing else.
 
 ```bash
 docker run -d --name satis-load-pg -e POSTGRES_PASSWORD=load-only -p 127.0.0.1:55432:5432 postgres:18

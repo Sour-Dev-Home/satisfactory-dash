@@ -17,6 +17,7 @@ const ON = { LOAD_TEST: "1" };
 test("the seed accepts a database whose name ends in _load, with LOAD_TEST=1", () => {
   assert.equal(assertLoadDatabaseUrl("postgres://satis_app:pw@127.0.0.1:5432/satis_load", ON), "satis_load");
   assert.equal(assertLoadDatabaseUrl("postgresql://u:p@postgres/ci_run_load", ON), "ci_run_load");
+  assert.equal(assertLoadDatabaseUrl("postgres://u:p@LOCALHOST:55432/satis_load", ON), "satis_load");
 });
 
 test("the seed refuses without LOAD_TEST=1, whatever the database", () => {
@@ -45,6 +46,10 @@ test("the seed refuses a database URL it cannot read the name from, or one that 
     "postgres://u:p@127.0.0.1/satis_load?options=-c%20search_path%3Dx",
     "postgres://u:p@127.0.0.1/satis_load/extra",
     "postgres://u:p@127.0.0.1/satis%5Fload%00",
+    "postgres:///satis_load",
+    "postgres://u:p@db.example.com/satis_load",
+    "postgres://u:p@10.0.0.5/satis_load",
+    "postgres://u:p@satis.abc.rds.amazonaws.com/satis_load",
   ];
   for (const url of refused) assert.throws(() => assertLoadDatabaseUrl(url, ON), Error, String(url));
 });

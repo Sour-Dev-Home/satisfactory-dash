@@ -1,7 +1,8 @@
 // ADR-0037 §3: the load kit's guards. Plain JavaScript with no imports, so the same file runs in Node (the seed, the
 // report and their tests) and in k6 (the scenarios). Every guard throws; nothing here has an override.
 //
-//   - The seed writes only to a database whose name ends in `_load`, and only with LOAD_TEST=1 set.
+//   - The seed writes only to a database whose name ends in `_load`, on 127.0.0.1, localhost or the compose service
+//     `postgres`, and only with LOAD_TEST=1 set.
 //   - k6 sends only to 127.0.0.1, localhost or the compose service name. The ADR's TARGET=aws-precutover is not
 //     implemented (owner, 2026-10-19: load runs stay on the local stack), so no environment variable opens it.
 //   - Every snapshot k6 sends is a shared fixture (`packages/shared/fixtures`), sealed by the seed with a checksum,
@@ -10,7 +11,9 @@
 export const ALLOWED_TARGET_HOSTS = Object.freeze(["127.0.0.1", "localhost", "backend"]);
 export const FIXTURE_SOURCE = "@satisfactory-dash/shared/fixtures";
 
-const LOAD_DATABASE_NAME = /^[A-Za-z0-9_]*[A-Za-z0-9]_load$/;
+/** Where a load database may live: this machine, or the compose Postgres service. */
+export const ALLOWED_DATABASE_HOSTS = Object.freeze(["127.0.0.1", "localhost", "postgres"]);
+const LOAD_DATABASE_NAME =/^[A-Za-z0-9_]*[A-Za-z0-9]_load$/;
 /** The only connection-string parameter allowed: one that cannot name another database or change the search path. */
 const ALLOWED_DATABASE_PARAMS = new Set(["sslmode"]);
 
@@ -39,6 +42,10 @@ export function assertLoadDatabaseUrl(databaseUrl, env) {
   }
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
     throw new Error("Refused: DATABASE_URL is not a postgres:// URL.");
+  }
+  // A host-less URL would fall back to PGHOST; a remote host is never the local stack.
+  if (!ALLOWED_DATABASE_HOSTS.includes(url.hostname.toLowerCase())) {
+    throw new Error(`Refused: the load database must be on ${ALLOWED_DATABASE_HOSTS.join(", ")}.`);
   }
   for (const key of url.searchParams.keys()) {
     if (!ALLOWED_DATABASE_PARAMS.has(key)) throw new Error(`Refused: DATABASE_URL may not set "${key}".`);

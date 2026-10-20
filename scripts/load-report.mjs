@@ -494,5 +494,11 @@ async function main() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main();
+  try {
+    await main();
+  } catch (err) {
+    // A missing or malformed input: one line, no stack.
+    console.error(`load-report: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  }
 }
