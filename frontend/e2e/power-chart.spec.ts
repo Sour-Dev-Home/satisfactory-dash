@@ -29,13 +29,14 @@ test("the live power chart renders, hovers, resizes and appends under the strict
   await expect(plot).toBeVisible();
   await expect(chart.locator(".power-chart canvas")).toHaveCount(1);
   // The lines are actually drawn: the canvas holds production-green pixels. (A chart with a
-  // grid and legend but no lines once passed everything else here.)
+  // grid and legend but no lines once passed everything else here.) Production is --color-ok,
+  // #6fd49a (111/212/154), so blue may reach 170.
   await expect
     .poll(() =>
       chart.locator(".power-chart canvas").evaluate((canvas: HTMLCanvasElement) => {
         const d = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
         let green = 0;
-        for (let i = 0; i < d.length; i += 4) if (d[i + 1] > 150 && d[i] < 120 && d[i + 2] < 150) green++;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 1] > 150 && d[i] < 120 && d[i + 2] < 170) green++;
         return green;
       }),
     )

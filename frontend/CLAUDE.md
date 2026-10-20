@@ -29,7 +29,7 @@ contract needs to grow, not that this module should special-case a backend detai
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
-  (direction B2, dark only). Use the token utilities (`bg-surface`, `text-muted`,
+  (direction FICSIT-industrial (ADR-0041), dark only). Use the token utilities (`bg-surface`, `text-muted`,
   `text-ok`, `min-h-touch`...). Every colour, size, radius, z-index, breakpoint and motion
   value (duration, easing, delay) is a named token in that `@theme` block, never a raw value
   in a component: no hex, no `min-h-[44px]`, no `z-10`, no `180ms`. Need a new value? Add
