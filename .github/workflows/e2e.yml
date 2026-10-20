@@ -70,6 +70,8 @@ jobs:
       EVENT: ${{ github.event_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Check the image matches the locked Playwright version
         run: |

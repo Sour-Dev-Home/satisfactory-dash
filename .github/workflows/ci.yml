@@ -27,6 +27,8 @@ jobs:
       SERVER_MANAGER: ${{ needs.changes.outputs.server_manager }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Log fragment (ADR-0033)
         # Pull requests only (not push): the PR must ADD its own file under
@@ -114,6 +116,8 @@ jobs:
           --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -216,8 +220,12 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Check for PII or hardcoded local paths
         # The identifiers to look for live in the PII_PATTERNS repo SECRET (one fixed

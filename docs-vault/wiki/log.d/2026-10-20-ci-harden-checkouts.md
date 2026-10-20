@@ -1,0 +1,1 @@
+- 2026-10-20 — CI hardening: every `actions/checkout` now sets `persist-credentials: false` (ci, architecture, demo-video, e2e and image workflows; changes, compose and terraform already did), since no job runs an authenticated git command afterwards, and the `security` job in `ci.yml` gets an explicit `permissions: contents: read` instead of the token default.
