@@ -4,6 +4,7 @@ import { formatPercent } from "../format";
 import {
   BACKED_UP_TOKEN,
   MARK_TOKEN,
+  NO_RECIPE_OUTLINE_TOKEN,
   PULSE_TOKEN,
   stateLabel,
   stateToken,
@@ -16,6 +17,7 @@ import { drawMachine, drawPulse, durationMs, HIT_RADIUS, PULSE_REACH, STILL_PROG
 import { MachineGlyph } from "./MachineGlyph";
 
 const STATES: BuildingState[] = ["producing", "idle", "paused", "noRecipe"];
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 /** The legend's housing colour per state: the same tokens the canvas reads (buildingState.ts). */
 const FILL: Record<BuildingState, string> = {
   producing: "fill-ok",
@@ -73,6 +75,20 @@ function drawnMarker(L: typeof Leaflet) {
   }) as unknown as new (at: Leaflet.LatLngExpression, options: DrawnOptions) => Leaflet.CircleMarker;
 }
 
+/**
+ * The rings' canvas renderer. Unlike the shared one it's removed with the layer (on every redraw),
+ * and Leaflet can lose track of a queued repaint (a zoom repaints at once and forgets the queued
+ * frame), which would then run on the removed canvas. Off the map, a repaint does nothing.
+ */
+function ringCanvas(L: typeof Leaflet) {
+  const base = L.Canvas.prototype as unknown as { _redraw(this: unknown): void };
+  return L.Canvas.extend({
+    _redraw(this: { _map: unknown }) {
+      if (this._map) base._redraw.call(this);
+    },
+  }) as unknown as new (options: Leaflet.RendererOptions) => Leaflet.Canvas;
+}
+
 /** Layer (a) of ADR-0023: every building at its position, a machine icon coloured by state. */
 export const buildingsLayer: MapLayer<Factory> = {
   id: "buildings",
@@ -87,51 +103,88 @@ export const buildingsLayer: MapLayer<Factory> = {
     const buildings = placed(data.buildings);
     const backedUp = buildings.filter((b) => b.isBackedUp);
 
-    // The pulse (ADR-0041 item 6): one ring per backed-up machine, under the icons, all on one clock.
-    // The cycle is a motion token, so reduced motion (every duration 0s) shows the ring still, with
-    // no frame loop; so does a factory with nothing backed up, which starts no loop at all.
-    const period = durationMs(token(PULSE_TOKEN));
-    let running = backedUp.length > 0 && period > 0;
-    const clock = { progress: running ? 0 : STILL_PROGRESS };
-    const pulses = backedUp.map((b) =>
-      new Drawn(project(b.location.xM, b.location.yM), {
-        renderer,
-        radius: PULSE_REACH,
-        stroke: false,
-        interactive: false,
-        paint: (ctx, at) => drawPulse(ctx, at.x, at.y, clock.progress, warn),
-      }).addTo(group),
-    );
+    // The pulse (ADR-0041 item 6): one ring per backed-up machine, all on one clock, on a canvas of
+    // their own (the one overlay #443 allows; still canvas, no DOM per building). A pulse frame then
+    // repaints only rings: the shared canvas with the icons and the grid is never touched, however
+    // far apart the rings are. That canvas sits in the tile pane (unused: the base map is drawn
+    // lines, not tiles), under the shared canvas, so the rings show beneath the icons and never
+    // take the pointer from them. None of it exists when nothing is backed up.
+    const ringRenderer = backedUp.length > 0 ? new (ringCanvas(L))({ pane: "tilePane", padding: 0.5 }) : null;
+    const clock = { progress: STILL_PROGRESS };
+    const pulses = ringRenderer
+      ? backedUp.map((b) =>
+          new Drawn(project(b.location.xM, b.location.yM), {
+            renderer: ringRenderer,
+            radius: PULSE_REACH,
+            stroke: false,
+            interactive: false,
+            paint: (ctx, at) => drawPulse(ctx, at.x, at.y, clock.progress, warn),
+          }).addTo(group),
+        )
+      : [];
 
+    const outline = color(NO_RECIPE_OUTLINE_TOKEN);
     for (const building of buildings) {
-      const body = building.isBackedUp ? warn : color(stateToken(buildingState(building)));
+      const state = buildingState(building);
+      const colors = {
+        body: building.isBackedUp ? warn : color(stateToken(state)),
+        mark,
+        outline: !building.isBackedUp && state === "noRecipe" ? outline : undefined,
+      };
       new Drawn(project(building.location.xM, building.location.yM), {
         renderer,
         radius: HIT_RADIUS,
         stroke: false,
-        paint: (ctx, at) => drawMachine(ctx, at.x, at.y, { body, mark }, building.isBackedUp),
+        paint: (ctx, at) => drawMachine(ctx, at.x, at.y, colors, building.isBackedUp),
       })
         .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -HIT_RADIUS] })
         .addTo(group);
     }
     group.addTo(map);
 
+    // The loop runs only while a ring exists and motion is allowed. The cycle is a motion token, so
+    // reduced motion (every duration 0s) shows the ring still; the query's change event re-decides
+    // at runtime, so switching the setting stops or starts the loop at once.
+    const motion = pulses.length > 0 && typeof matchMedia === "function" ? matchMedia(REDUCED_MOTION) : null;
     let frame = 0;
-    let start: number | null = null;
-    const tick = (now: number) => {
-      if (!running) return;
-      start ??= now;
-      clock.progress = ((now - start) % period) / period;
-      // Each ring asks Leaflet to repaint just its own area.
-      for (const pulse of pulses) pulse.redraw();
-      frame = requestAnimationFrame(tick);
+    let generation = 0;
+    const stop = () => {
+      generation++;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
     };
-    if (running) frame = requestAnimationFrame(tick);
+    const start = () => {
+      stop();
+      const period = motion?.matches ? 0 : durationMs(token(PULSE_TOKEN));
+      if (pulses.length === 0 || period <= 0) {
+        clock.progress = STILL_PROGRESS;
+        return false;
+      }
+      const mine = generation;
+      let first: number | null = null;
+      const tick = (now: number) => {
+        if (mine !== generation) return; // a frame queued before a stop
+        first ??= now;
+        clock.progress = ((now - first) % period) / period;
+        for (const pulse of pulses) pulse.redraw();
+        frame = requestAnimationFrame(tick);
+      };
+      clock.progress = 0;
+      frame = requestAnimationFrame(tick);
+      return true;
+    };
+    const onMotionChange = () => {
+      // Stopped: repaint the rings once, still.
+      if (!start()) for (const pulse of pulses) pulse.redraw();
+    };
+    start();
+    motion?.addEventListener("change", onMotionChange);
 
     return () => {
-      if (running) cancelAnimationFrame(frame);
-      running = false;
+      motion?.removeEventListener("change", onMotionChange);
+      stop();
       group.remove();
+      ringRenderer?.remove();
     };
   },
 
@@ -139,7 +192,7 @@ export const buildingsLayer: MapLayer<Factory> = {
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       {STATES.map((state) => (
         <li key={state} className="flex items-center gap-1.5">
-          <MachineGlyph fill={ownValue(FILL, state) ?? FILL.idle} />
+          <MachineGlyph fill={ownValue(FILL, state) ?? FILL.idle} outline={state === "noRecipe" ? "stroke-muted" : undefined} />
           {stateLabel(state)}
         </li>
       ))}

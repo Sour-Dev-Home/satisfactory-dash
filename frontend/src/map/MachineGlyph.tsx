@@ -4,10 +4,23 @@ import { MACHINE_HOUSING, MACHINE_WINDOW, STATION_VIEWBOX, svgPoints, WARNING_TR
  * The map legend's machine icon: the same shapes the canvas draws (machineIcon.ts) and StationIcon
  * uses, coloured by a token fill class (`fill-ok`...). Decorative: the label beside it names it.
  */
-export function MachineGlyph({ fill, backedUp = false }: { fill: string; backedUp?: boolean }) {
+export function MachineGlyph({
+  fill,
+  outline,
+  backedUp = false,
+}: {
+  fill: string;
+  /** A stroke class (`stroke-muted`) for a fill too dim on its own, 1 px as on the canvas. */
+  outline?: string;
+  backedUp?: boolean;
+}) {
   return (
     <svg viewBox={`0 0 ${STATION_VIEWBOX} ${STATION_VIEWBOX}`} aria-hidden="true" focusable="false" className="size-5 flex-none">
-      <rect className={fill} {...MACHINE_HOUSING} />
+      <rect
+        className={outline ? `${fill} ${outline}` : fill}
+        {...(outline && { strokeWidth: 1, vectorEffect: "non-scaling-stroke" })}
+        {...MACHINE_HOUSING}
+      />
       {backedUp ? (
         <polygon className="fill-canvas" points={svgPoints(WARNING_TRIANGLE)} />
       ) : (

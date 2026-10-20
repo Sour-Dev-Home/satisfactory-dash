@@ -94,13 +94,43 @@ function context(pulse = "1.6s"): MapContext {
 }
 
 /** Leaflet draws on its next frame; run it now, from a clean record. */
-function paint() {
+type RendererInternals = { _redraw: () => void; _redrawRequest: number | null; _redrawBounds: unknown };
+/** Every canvas renderer on the map: the shared one, and the pulse rings' own when there is one. */
+const renderers = () => {
+  const found: L.Canvas[] = [];
+  map.eachLayer((layer) => {
+    if (layer instanceof L.Canvas) found.push(layer);
+  });
+  return found;
+};
+function paint(only?: L.Canvas) {
   recorder.calls.length = 0;
-  const internals = renderer as unknown as { _redraw: () => void; _redrawRequest: number | null };
-  // Cancel the frame Leaflet queued, or it would run after the map is gone.
-  L.Util.cancelAnimFrame(internals._redrawRequest ?? 0);
-  internals._redraw();
+  for (const r of only ? [only] : renderers()) {
+    const internals = r as unknown as RendererInternals;
+    // Cancel the frame Leaflet queued, or it would run after the map is gone.
+    L.Util.cancelAnimFrame(internals._redrawRequest ?? 0);
+    internals._redraw();
+  }
   return recorder.calls;
+}
+
+/** A controllable prefers-reduced-motion query: `setReduced` fires its change event. */
+function stubReducedMotion(initial: boolean) {
+  const listeners = new Set<() => void>();
+  const query = {
+    matches: initial,
+    media: "(prefers-reduced-motion: reduce)",
+    addEventListener: (_type: string, fn: () => void) => listeners.add(fn),
+    removeEventListener: (_type: string, fn: () => void) => listeners.delete(fn),
+  };
+  vi.stubGlobal("matchMedia", (media: string) => (media === query.media ? query : { ...query, matches: false }));
+  return {
+    listeners,
+    setReduced(reduced: boolean) {
+      query.matches = reduced;
+      for (const fn of [...listeners]) fn();
+    },
+  };
 }
 
 const base = factoryMixed.data.buildings[1];
@@ -147,6 +177,17 @@ describe("buildingsLayer.draw: machine icons on the canvas renderer", () => {
     expect(host.querySelector(".leaflet-marker-icon, .leaflet-overlay-pane svg")).toBeNull();
     expect(host.querySelector(".leaflet-overlay-pane canvas")).not.toBeNull();
     expect(rings(calls)).toEqual([]);
+  });
+
+  it("outlines only the no-recipe machine, in the muted colour, so its dim fill still reads on the canvas", () => {
+    buildingsLayer.draw(context(), factory(ONE_PER_STATE));
+    const calls = paint();
+    const strokes = calls.filter((c) => c.op === "stroke");
+    expect(strokes.map((c) => c.strokeStyle)).toEqual(["MUTED"]);
+    // The stroke follows the no-recipe housing (the 4th icon).
+    const housings = calls.flatMap((c, i) => (isRect(c, MACHINE_HOUSING) ? [i] : []));
+    const strokeAt = calls.indexOf(strokes[0]);
+    expect(strokeAt).toBeGreaterThan(housings[3]);
   });
 
   it("draws a backed-up machine in the warn colour with a warning triangle instead of the window", () => {
@@ -280,6 +321,12 @@ describe("buildingsLayer.legend", () => {
     });
     expect(items[4].querySelector("svg polygon")).not.toBeNull();
     expect(items[4]).toHaveTextContent(/pulses/);
+    // No recipe's dim fill gets the same outline as on the canvas; the others none.
+    items.forEach((item, i) => {
+      const housing = item.querySelector("svg rect")!;
+      if (i === 3) expect(housing).toHaveClass("stroke-muted");
+      else expect(housing.getAttribute("class")).not.toMatch(/stroke-/);
+    });
   });
 });
 
@@ -311,7 +358,7 @@ describe("buildingsLayer: the Leaflet 1.9.4 internals it relies on fail loudly o
 
   it("gives a drawn marker the renderer, its 2D context, its point and the _drawing flag it reads", () => {
     buildingsLayer.draw(context(), factory([BACKED_UP]));
-    const [marker] = markersOf();
+    const marker = markersOf().find((m) => m.options.interactive !== false)!;
     const internals = renderer as unknown as { _drawing: boolean; _ctx: unknown };
     expect(marker._renderer).toBe(renderer);
     expect(internals._ctx).toBe(recorder.ctx);
@@ -401,15 +448,88 @@ describe("buildingsLayer: the pulse loop's lifecycle", () => {
     expect(rings(paint())).toHaveLength(1);
   });
 
-  // KNOWN BUG (reported): the duration token is read once at draw time, so switching reduced
-  // motion on while a machine pulses leaves the loop running until the layer is redrawn.
-  it.fails("stops the loop when reduced motion is switched on while it runs", () => {
+  // Was a known bug (the token was read once at draw time): the layer now follows the
+  // prefers-reduced-motion query's change event.
+  it("stops the loop when reduced motion is switched on while it runs, and shows the ring still", () => {
+    const motion = stubReducedMotion(false);
     let pulse = "1.6s";
     const ctx = { ...context(), token: (name: string) => (name === "--duration-pulse" ? pulse : (COLORS.get(name) ?? "")) };
     buildingsLayer.draw(ctx, factory([BACKED_UP]));
     frames.shift()!(0);
-    pulse = "0s"; // the OS setting changed at runtime
-    frames.shift()!(16);
+    pulse = "0s"; // the OS setting changed at runtime: the motion tokens go to 0s with it
+    motion.setReduced(true);
+    expect(cancelFrame).toHaveBeenCalled();
+    frames.shift()?.(16); // a frame already queued doesn't carry on
     expect(frames).toHaveLength(0);
+    const still = rings(paint());
+    expect(still).toHaveLength(1);
+    expect(still[0].alpha).toBeGreaterThan(0);
+  });
+
+  it("starts the loop when reduced motion is switched off at runtime", () => {
+    const motion = stubReducedMotion(true);
+    let pulse = "0s";
+    const ctx = { ...context(), token: (name: string) => (name === "--duration-pulse" ? pulse : (COLORS.get(name) ?? "")) };
+    buildingsLayer.draw(ctx, factory([BACKED_UP]));
+    expect(requestFrame).not.toHaveBeenCalled();
+    pulse = "1.6s";
+    motion.setReduced(false);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops listening to the motion setting when the layer is removed", () => {
+    const motion = stubReducedMotion(false);
+    const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
+    expect(motion.listeners.size).toBe(1);
+    cleanup();
+    expect(motion.listeners.size).toBe(0);
+  });
+
+  it("listens to nothing when no machine is backed up", () => {
+    const motion = stubReducedMotion(false);
+    buildingsLayer.draw(context(), factory(ONE_PER_STATE));
+    expect(motion.listeners.size).toBe(0);
+  });
+});
+
+describe("buildingsLayer: the work a pulse frame costs", () => {
+  it("repaints only the rings, on their own canvas: never the icons or the grid on the shared one", () => {
+    // Scattered backed-up machines: their redraw areas would union into nearly the whole map.
+    const scattered = [0, 1, 2, 3].map((i) =>
+      building(i, { recipe: "Screw", production: running, isBackedUp: true, location: { xM: i % 2 ? 180 : -180, yM: i < 2 ? -130 : 130, zM: 0, rotationDeg: 0 } }),
+    );
+    buildingsLayer.draw(context(), factory([...ONE_PER_STATE, ...scattered]));
+    paint();
+    const shared = renderer as unknown as RendererInternals;
+    const ringCanvas = renderers().find((r) => r !== renderer)!;
+    expect(ringCanvas).toBeDefined();
+
+    frames.shift()!(400);
+    // The tick asked the shared canvas for nothing.
+    expect(shared._redrawRequest).toBeNull();
+    expect(shared._redrawBounds).toBeNull();
+    // The ring canvas's repaint draws exactly one arc per backed-up machine, and no icon.
+    const calls = paint(ringCanvas);
+    expect(rings(calls)).toHaveLength(scattered.length);
+    expect(calls.filter((c) => c.op === "roundRect" || c.op === "lineTo")).toEqual([]);
+  });
+
+  it("keeps the ring canvas below the icons' canvas, so it never takes the pointer", () => {
+    buildingsLayer.draw(context(), factory([BACKED_UP]));
+    const ringCanvas = renderers().find((r) => r !== renderer)!;
+    expect(ringCanvas.getPane()).toBe(map.getPane("tilePane"));
+    expect(renderer.getPane()).toBe(map.getPane("overlayPane"));
+  });
+
+  it("adds no extra canvas without a backed-up machine, and removes its own with the layer", () => {
+    buildingsLayer.draw(context(), factory(ONE_PER_STATE));
+    expect(renderers()).toEqual([renderer]);
+    const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
+    expect(renderers()).toHaveLength(2);
+    const ringCanvas = renderers().find((r) => r !== renderer)! as unknown as RendererInternals;
+    cleanup();
+    expect(renderers()).toEqual([renderer]);
+    // A repaint Leaflet lost track of, running after the removal, does nothing.
+    expect(() => ringCanvas._redraw()).not.toThrow();
   });
 });

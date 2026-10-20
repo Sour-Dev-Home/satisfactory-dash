@@ -24,27 +24,63 @@ export interface MachineColors {
   body: string;
   /** The window or the triangle: the canvas colour. */
   mark: string;
+  /** An outline round the housing, for a fill too dim to read on the canvas alone (no recipe). */
+  outline?: string;
+}
+
+/**
+ * The colour drawn when a token reads empty (not loaded, or renamed): the canvas element's own
+ * `color`, inherited from the map (the ink token). Assigning "" to fillStyle is ignored, which
+ * would silently paint with whatever colour was drawn last.
+ */
+export const FALLBACK_COLOR = "currentcolor";
+const orFallback = (color: string) => color || FALLBACK_COLOR;
+/** The outline is 1 CSS pixel wide, in viewBox units. */
+const OUTLINE_WIDTH = 1 / ICON_SCALE;
+
+/** A rounded rectangle's path: roundRect where the browser has it, else four arcs by hand. */
+function roundedPath(ctx: CanvasRenderingContext2D, { x, y, width, height, rx }: RectShape) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, width, height, rx);
+    return;
+  }
+  ctx.moveTo(x + rx, y);
+  ctx.arcTo(x + width, y, x + width, y + height, rx);
+  ctx.arcTo(x + width, y + height, x, y + height, rx);
+  ctx.arcTo(x, y + height, x, y, rx);
+  ctx.arcTo(x, y, x + width, y, rx);
+  ctx.closePath();
 }
 
 function rect(ctx: CanvasRenderingContext2D, shape: RectShape, fill: string) {
-  ctx.beginPath();
-  ctx.roundRect(shape.x, shape.y, shape.width, shape.height, shape.rx);
-  ctx.fillStyle = fill;
+  roundedPath(ctx, shape);
+  ctx.fillStyle = orFallback(fill);
   ctx.fill();
 }
 
-/** Draws a machine centred on (x, y), in the canvas's pixel space. */
+/**
+ * Draws a machine centred on (x, y), in the canvas's pixel space. Only the housing and its window
+ * (or the triangle), on purpose: at 20 px StationIcon's port, light and feet would be 1-3 px
+ * specks that blur the state colour, and the issue's icon is the housing with one mark.
+ */
 export function drawMachine(ctx: CanvasRenderingContext2D, x: number, y: number, colors: MachineColors, backedUp: boolean) {
   ctx.save();
   ctx.translate(x - ICON_PX / 2, y - ICON_PX / 2);
   ctx.scale(ICON_SCALE, ICON_SCALE);
   ctx.globalAlpha = 1;
   rect(ctx, MACHINE_HOUSING, colors.body);
+  if (colors.outline !== undefined) {
+    // The housing's path is still current: stroke it.
+    ctx.strokeStyle = orFallback(colors.outline);
+    ctx.lineWidth = OUTLINE_WIDTH;
+    ctx.stroke();
+  }
   if (backedUp) {
     ctx.beginPath();
     WARNING_TRIANGLE.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
     ctx.closePath();
-    ctx.fillStyle = colors.mark;
+    ctx.fillStyle = orFallback(colors.mark);
     ctx.fill();
   } else {
     rect(ctx, MACHINE_WINDOW, colors.mark);
@@ -74,7 +110,7 @@ export function drawPulse(ctx: CanvasRenderingContext2D, x: number, y: number, p
   ctx.beginPath();
   ctx.arc(x, y, RING_FROM + (RING_TO - RING_FROM) * t, 0, Math.PI * 2);
   ctx.globalAlpha = 1 - t;
-  ctx.strokeStyle = color;
+  ctx.strokeStyle = orFallback(color);
   ctx.lineWidth = RING_WIDTH;
   ctx.stroke();
   ctx.restore();
