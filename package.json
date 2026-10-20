@@ -24,7 +24,10 @@
     "e2e:report": "node scripts/e2e-report.mjs",
     "delivery-metrics": "node scripts/delivery-metrics.mjs",
     "tls-floor": "node scripts/tls-floor.mjs",
-    "test:scripts": "node --test scripts/architecture-drift.test.mjs scripts/ci-select.test.mjs scripts/log.test.mjs scripts/log-check.test.mjs scripts/latency-report.test.mjs scripts/e2e-report.test.mjs scripts/preflight.test.mjs scripts/delivery-metrics.test.mjs scripts/tls-floor.test.mjs scripts/backup-check.test.mjs scripts/restore-check.test.mjs scripts/raw-source-citations.test.mjs scripts/lint/safe-lookup.test.mjs load/test/guards.test.mjs load/test/plan.test.mjs load/test/seed.test.mjs load/test/report.test.mjs load/test/boundaries.test.mjs",
+    "baselines": "node scripts/dev/baselines.mjs",
+    "ship-pr": "node scripts/dev/ship-pr.mjs",
+    "cleanup-merged": "node scripts/dev/cleanup-merged.mjs",
+    "test:scripts": "node --test scripts/architecture-drift.test.mjs scripts/ci-select.test.mjs scripts/log.test.mjs scripts/log-check.test.mjs scripts/latency-report.test.mjs scripts/e2e-report.test.mjs scripts/preflight.test.mjs scripts/delivery-metrics.test.mjs scripts/tls-floor.test.mjs scripts/backup-check.test.mjs scripts/restore-check.test.mjs scripts/dev/lib.test.mjs scripts/raw-source-citations.test.mjs scripts/lint/safe-lookup.test.mjs load/test/guards.test.mjs load/test/plan.test.mjs load/test/seed.test.mjs load/test/report.test.mjs load/test/boundaries.test.mjs",
     "setup": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
