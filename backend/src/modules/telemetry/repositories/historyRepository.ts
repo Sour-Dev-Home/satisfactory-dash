@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0027 decision 3: production history in the `telemetry` schema, hand-written SQL (ADR-0025 decision 2).
@@ -87,7 +88,7 @@ export async function insertPowerSamples(db: Queryable, serverPublicId: string, 
       [row.productionMW, row.consumptionMW, row.capacityMW, row.batteryPercent].every(isFiniteNumber),
   );
   for (const chunk of chunks(valid)) {
-    await db.query(INSERT_POWER_SAMPLES, [
+    await timedQuery(db, "telemetry.insertPowerSamples", INSERT_POWER_SAMPLES, [
       serverPublicId,
       chunk.map((row) => row.session),
       chunk.map((row) => row.circuit),
@@ -123,7 +124,7 @@ export async function insertItemSamples(db: Queryable, serverPublicId: string, r
       row.maxPerMinute >= 0,
   );
   for (const chunk of chunks(valid)) {
-    await db.query(INSERT_ITEM_SAMPLES, [
+    await timedQuery(db, "telemetry.insertItemSamples", INSERT_ITEM_SAMPLES, [
       serverPublicId,
       chunk.map((row) => row.item),
       chunk.map((row) => row.atMs),
@@ -162,7 +163,7 @@ export async function insertTransitions(db: Queryable, serverPublicId: string, r
       (row.fromState === null || (row.fromState.length > 0 && row.fromState.length <= 40 && isStorableText(row.fromState))),
   );
   if (valid.length === 0) return;
-  await db.query(INSERT_TRANSITIONS, [
+  await timedQuery(db, "telemetry.insertTransitions", INSERT_TRANSITIONS, [
     serverPublicId,
     valid.map((row) => row.atMs),
     valid.map((row) => row.buildingId),
@@ -254,11 +255,11 @@ export async function rollUp(db: Queryable, window: { fromMs: number; toMs: numb
   const to = floorTo(window.toMs, MINUTE_MS);
   if (!(to > from)) return;
   const bounds = [new Date(from).toISOString(), new Date(to).toISOString()];
-  await db.query(ROLLUP_POWER_MINUTES, bounds);
-  await db.query(ROLLUP_ITEM_MINUTES, bounds);
+  await timedQuery(db, "telemetry.rollupPowerMinutes", ROLLUP_POWER_MINUTES, bounds);
+  await timedQuery(db, "telemetry.rollupItemMinutes", ROLLUP_ITEM_MINUTES, bounds);
   const hourBounds = [new Date(floorTo(from, HOUR_MS)).toISOString(), new Date(to).toISOString()];
-  await db.query(ROLLUP_POWER_HOURS, hourBounds);
-  await db.query(ROLLUP_ITEM_HOURS, hourBounds);
+  await timedQuery(db, "telemetry.rollupPowerHours", ROLLUP_POWER_HOURS, hourBounds);
+  await timedQuery(db, "telemetry.rollupItemHours", ROLLUP_ITEM_HOURS, hourBounds);
 }
 
 // --- retention: batched deletes ----------------------------------------------------------------------------------------
@@ -330,7 +331,7 @@ const DEFAULT_MAX_BATCHES = 200;
 async function deleteInBatches(db: Queryable, sql: string, cutoff: string, options: Required<PurgeOptions>): Promise<number> {
   let total = 0;
   for (let batch = 0; batch < options.maxBatches; batch++) {
-    const result = await db.query(sql, [cutoff, options.batchSize]);
+    const result = await timedQuery(db, "telemetry.purge", sql, [cutoff, options.batchSize]);
     const deleted = parseFirst(z.object({ deleted: z.number().int() }), result.rows, "telemetry.purge")?.deleted;
     total += deleted ?? 0;
     if ((deleted ?? 0) < options.batchSize) break;

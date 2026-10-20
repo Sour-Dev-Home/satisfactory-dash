@@ -6,6 +6,7 @@ import {
 } from "../../../platform/db/errors.js";
 import { parseFirst } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import type { MemberRole } from "./serverRepository.js";
 
@@ -37,7 +38,7 @@ export async function getMemberRole(
   db: Queryable,
   input: { publicId: string; userId: string },
 ): Promise<MemberRole | undefined> {
-  const result = await db.query(SELECT_ROLE, [input.publicId, input.userId]);
+  const result = await timedQuery(db, "servers.getMemberRole", SELECT_ROLE, [input.publicId, input.userId]);
   return parseFirst(RoleRowSchema, result.rows, "servers.getMemberRole")?.role;
 }
 
@@ -67,7 +68,7 @@ export async function addMember(
   input: { serverId: string; userId: string; role: MemberRole; actorUserId: string | null },
 ): Promise<AddMemberResult> {
   try {
-    await db.query(INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId]);
+    await timedQuery(db, "servers.addMember", INSERT_MEMBER, [input.serverId, input.userId, input.role, input.actorUserId]);
     return "added";
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -122,7 +123,7 @@ export async function setMemberRole(
   db: Queryable,
   input: { serverId: string; userId: string; role: Exclude<MemberRole, "owner">; actorUserId: string | null },
 ): Promise<SetMemberRoleResult> {
-  const result = await db.query(SET_ROLE, [input.serverId, input.userId, input.role, input.actorUserId]);
+  const result = await timedQuery(db, "servers.setMemberRole", SET_ROLE, [input.serverId, input.userId, input.role, input.actorUserId]);
   return parseFirst(SetRoleRowSchema, result.rows, "servers.setMemberRole")?.outcome ?? "not_found";
 }
 
@@ -143,7 +144,7 @@ export async function removeMember(
   db: Queryable,
   input: { serverId: string; userId: string; actorUserId: string | null },
 ): Promise<boolean> {
-  const result = await db.query(REMOVE_MEMBER, [input.serverId, input.userId, input.actorUserId]);
+  const result = await timedQuery(db, "servers.removeMember", REMOVE_MEMBER, [input.serverId, input.userId, input.actorUserId]);
   return result.rows.length > 0;
 }
 
@@ -185,17 +186,17 @@ export async function transferOwnership(
   }
   try {
     await withTransaction(pool, async (client) => {
-      const demoted = await client.query(DEMOTE_OWNER, [input.serverId, input.fromUserId]);
+      const demoted = await timedQuery(client, "servers.transferOwnership.demoteOwner", DEMOTE_OWNER, [input.serverId, input.fromUserId]);
       if (demoted.rows.length === 0) {
         throw new RollBack("not_owner");
       }
-      const promoted = await client.query(PROMOTE_TARGET, [input.serverId, input.toUserId]);
+      const promoted = await timedQuery(client, "servers.transferOwnership.promoteTarget", PROMOTE_TARGET, [input.serverId, input.toUserId]);
       if (promoted.rows.length === 0) {
         throw new RollBack("target_not_member");
       }
       // In the same transaction as the swap: the audit row and the ownership change stand or
       // fall together. The server id here is the internal uuid, as in every audit row.
-      await client.query(AUDIT_TRANSFER, [input.fromUserId, input.serverId, input.toUserId]);
+      await timedQuery(client, "servers.transferOwnership.audit", AUDIT_TRANSFER, [input.fromUserId, input.serverId, input.toUserId]);
     });
     return "transferred";
   } catch (err) {

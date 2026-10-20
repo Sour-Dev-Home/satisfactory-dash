@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ownValue } from "@satisfactory-dash/shared";
-import { METRIC_REGISTRY, UnknownMetricError, InvalidLabelError, validateRecording, isBoundedToken, isStatusClass, isOneOf } from "./registry.js";
+import { METRIC_REGISTRY, UnknownMetricError, InvalidLabelError, validateRecording, isBoundedToken, isStatusClass, isOneOf, QUERY_NAMES } from "./registry.js";
 
 describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)", () => {
   it("accepts a correctly-labelled recording of a known metric", () => {
@@ -132,5 +132,21 @@ describe("no label in the registry can carry a URL or a user identifier (ADR-003
     const flag = isOneOf("vanilla", "frm");
     expect(flag("vanilla")).toBe(true);
     expect(flag("mystery-api")).toBe(false);
+  });
+});
+
+describe("db.client.operation.duration's query names (ADR-0037 build step 4)", () => {
+  it("accepts only a registered query name as the `query` label", () => {
+    expect(() => validateRecording("db.client.operation.duration", "histogram", { query: "identity.getUserById" })).not.toThrow();
+    for (const stray of ["identity.getUserByIdX", "SELECT 1", "", "someone@example.com", "toString", "__proto__"]) {
+      expect(() => validateRecording("db.client.operation.duration", "histogram", { query: stray }), stray).toThrow(InvalidLabelError);
+    }
+  });
+
+  it("every registered name is a short, bounded, dotted token", () => {
+    for (const name of QUERY_NAMES) {
+      expect(isBoundedToken(200)(name), name).toBe(true);
+      expect(name, name).toMatch(/^[a-z]+(\.[A-Za-z_]+)+$/);
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { ReturnPathSchema } from "../returnPath.js";
 
@@ -48,7 +49,7 @@ export async function createLoginAttempt(
   if (!ReturnPathSchema.safeParse(input.returnPath).success) {
     throw new RangeError("The login return path must be a relative, ASCII-only /app path.");
   }
-  await db.query(INSERT_ATTEMPT, [
+  await timedQuery(db, "identity.createLoginAttempt", INSERT_ATTEMPT, [
     input.idHash,
     input.state,
     input.nonce,
@@ -66,7 +67,7 @@ const CONSUME_ATTEMPT = `
 /** Single use: returns the attempt and deletes it in one statement, or undefined when it is
  *  unknown, expired or already consumed. */
 export async function consumeLoginAttempt(db: Queryable, idHash: Buffer): Promise<LoginAttempt | undefined> {
-  const result = await db.query(CONSUME_ATTEMPT, [idHash]);
+  const result = await timedQuery(db, "identity.consumeLoginAttempt", CONSUME_ATTEMPT, [idHash]);
   const row = parseFirst(LoginAttemptRowSchema, result.rows, "identity.consumeLoginAttempt");
   return row === undefined
     ? undefined
@@ -85,6 +86,6 @@ const DELETE_EXPIRED_ATTEMPTS = `
 /** Housekeeping for attempts nobody came back for: up to `batchSize` per call (call until it
  *  returns fewer). Returns the count. */
 export async function deleteExpiredLoginAttempts(db: Queryable, batchSize = 1000): Promise<number> {
-  const result = await db.query(DELETE_EXPIRED_ATTEMPTS, [Math.max(1, Math.trunc(batchSize))]);
+  const result = await timedQuery(db, "identity.deleteExpiredLoginAttempts", DELETE_EXPIRED_ATTEMPTS, [Math.max(1, Math.trunc(batchSize))]);
   return result.rows.length;
 }

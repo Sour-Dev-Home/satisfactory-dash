@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseOne, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0027 PR 7b: the SQL behind the alerts API (rules, the alert log, status and mute). EVERY statement is scoped by
@@ -107,30 +108,30 @@ const IdSchema = z.object({ id: z.string() });
 
 /** The server's internal uuid, or undefined for an unknown or deleted server. */
 export async function getServerUuid(db: Queryable, serverPublicId: string): Promise<string | undefined> {
-  return parseRows(IdSchema, (await db.query(SERVER_UUID, [serverPublicId])).rows, "alerts.api.serverUuid")[0]?.id;
+  return parseRows(IdSchema, (await timedQuery(db, "alerts.api.serverUuid", SERVER_UUID,[serverPublicId])).rows, "alerts.api.serverUuid")[0]?.id;
 }
 
 /** Locks the server's row for the rest of the transaction and returns its uuid (undefined when there is none). */
 export async function lockServer(db: Queryable, serverPublicId: string): Promise<string | undefined> {
-  return parseRows(IdSchema, (await db.query(LOCK_SERVER, [serverPublicId])).rows, "alerts.api.lockServer")[0]?.id;
+  return parseRows(IdSchema, (await timedQuery(db, "alerts.api.lockServer", LOCK_SERVER,[serverPublicId])).rows, "alerts.api.lockServer")[0]?.id;
 }
 
 export async function listApiRules(db: Queryable, serverPublicId: string): Promise<ApiRuleRow[]> {
-  return parseRows(RuleRowSchema, (await db.query(LIST_RULES, [serverPublicId])).rows, "alerts.api.listRules").map(toRule);
+  return parseRows(RuleRowSchema, (await timedQuery(db, "alerts.api.listRules", LIST_RULES,[serverPublicId])).rows, "alerts.api.listRules").map(toRule);
 }
 
 /** One rule of THIS server; undefined when it does not exist here (including a rule of another server). */
 export async function getApiRule(db: Queryable, serverPublicId: string, ruleId: string, options: { forUpdate?: boolean } = {}): Promise<ApiRuleRow | undefined> {
-  const rows = parseRows(RuleRowSchema, (await db.query(options.forUpdate ? GET_RULE_FOR_UPDATE : GET_RULE, [serverPublicId, ruleId])).rows, "alerts.api.getRule");
+  const rows = parseRows(RuleRowSchema, (await timedQuery(db, "alerts.api.getRule", options.forUpdate ? GET_RULE_FOR_UPDATE : GET_RULE,[serverPublicId, ruleId])).rows, "alerts.api.getRule");
   return rows[0] === undefined ? undefined : toRule(rows[0]);
 }
 
 export async function countRules(db: Queryable, serverPublicId: string): Promise<number> {
-  return parseOne(CountSchema, (await db.query(COUNT_RULES, [serverPublicId])).rows, "alerts.api.countRules").n;
+  return parseOne(CountSchema, (await timedQuery(db, "alerts.api.countRules", COUNT_RULES,[serverPublicId])).rows, "alerts.api.countRules").n;
 }
 
 export async function itemRuleExists(db: Queryable, serverPublicId: string, item: string): Promise<boolean> {
-  return parseOne(CountSchema, (await db.query(ITEM_RULE_EXISTS, [serverPublicId, item])).rows, "alerts.api.itemRuleExists").n > 0;
+  return parseOne(CountSchema, (await timedQuery(db, "alerts.api.itemRuleExists", ITEM_RULE_EXISTS,[serverPublicId, item])).rows, "alerts.api.itemRuleExists").n > 0;
 }
 
 export interface NewRule {
@@ -145,18 +146,18 @@ export interface NewRule {
 
 /** Inserts a (non-preset) rule for the server with this uuid and returns its id. */
 export async function insertRule(db: Queryable, serverUuid: string, rule: NewRule): Promise<string> {
-  const result = await db.query(INSERT_RULE, [serverUuid, rule.kind, JSON.stringify(rule.params), rule.forSeconds, rule.clearSeconds, rule.repeatSeconds, rule.severity, rule.enabled]);
+  const result = await timedQuery(db, "alerts.api.insertRule", INSERT_RULE,[serverUuid, rule.kind, JSON.stringify(rule.params), rule.forSeconds, rule.clearSeconds, rule.repeatSeconds, rule.severity, rule.enabled]);
   return parseOne(IdSchema, result.rows, "alerts.api.insertRule").id;
 }
 
 /** Writes every mutable field of a rule of THIS server (the caller merged the patch into the current values). */
 export async function updateRule(db: Queryable, serverPublicId: string, ruleId: string, rule: Omit<NewRule, "kind">): Promise<void> {
-  await db.query(UPDATE_RULE, [serverPublicId, ruleId, rule.enabled, rule.severity, rule.forSeconds, rule.clearSeconds, rule.repeatSeconds, JSON.stringify(rule.params)]);
+  await timedQuery(db, "alerts.api.updateRule", UPDATE_RULE,[serverPublicId, ruleId, rule.enabled, rule.severity, rule.forSeconds, rule.clearSeconds, rule.repeatSeconds, JSON.stringify(rule.params)]);
 }
 
 /** Deletes a non-preset rule of THIS server (its persisted states cascade); false when nothing matched. */
 export async function deleteRule(db: Queryable, serverPublicId: string, ruleId: string): Promise<boolean> {
-  return (await db.query(DELETE_RULE, [serverPublicId, ruleId])).rows.length > 0;
+  return (await timedQuery(db, "alerts.api.deleteRule", DELETE_RULE,[serverPublicId, ruleId])).rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -197,7 +198,7 @@ const LIST_EVENTS = `
 
 /** Newest first. Reads one row more than `limit` so the caller knows whether another page exists. */
 export async function listEvents(db: Queryable, serverPublicId: string, options: { limit: number; before?: string }): Promise<{ events: ApiEventRow[]; hasMore: boolean }> {
-  const rows = parseRows(EventRowSchema, (await db.query(LIST_EVENTS, [serverPublicId, options.before ?? null, options.limit + 1])).rows, "alerts.api.listEvents");
+  const rows = parseRows(EventRowSchema, (await timedQuery(db, "alerts.api.listEvents", LIST_EVENTS,[serverPublicId, options.before ?? null, options.limit + 1])).rows, "alerts.api.listEvents");
   return {
     events: rows.slice(0, options.limit).map((row) => ({
       id: row.id,
@@ -237,7 +238,7 @@ const LIST_FIRING = `
   LIMIT 100`;
 
 export async function listFiring(db: Queryable, serverPublicId: string): Promise<ApiFiringRow[]> {
-  return parseRows(FiringRowSchema, (await db.query(LIST_FIRING, [serverPublicId])).rows, "alerts.api.listFiring").map((row) => ({
+  return parseRows(FiringRowSchema, (await timedQuery(db, "alerts.api.listFiring", LIST_FIRING,[serverPublicId])).rows, "alerts.api.listFiring").map((row) => ({
     ruleId: row.rule_id,
     kind: row.kind,
     subject: row.subject,
@@ -262,15 +263,15 @@ const CLEAR_MUTE = `
 
 /** When the server's alerts are muted until, or undefined when there is no mute or it has passed. */
 export async function getMute(db: Queryable, serverPublicId: string): Promise<Date | undefined> {
-  return parseRows(MuteRowSchema, (await db.query(GET_MUTE, [serverPublicId])).rows, "alerts.api.getMute")[0]?.muted_until;
+  return parseRows(MuteRowSchema, (await timedQuery(db, "alerts.api.getMute", GET_MUTE,[serverPublicId])).rows, "alerts.api.getMute")[0]?.muted_until;
 }
 
 export async function setMute(db: Queryable, serverPublicId: string, until: Date): Promise<Date | undefined> {
-  return parseRows(MuteRowSchema, (await db.query(SET_MUTE, [serverPublicId, until])).rows, "alerts.api.setMute")[0]?.muted_until;
+  return parseRows(MuteRowSchema, (await timedQuery(db, "alerts.api.setMute", SET_MUTE,[serverPublicId, until])).rows, "alerts.api.setMute")[0]?.muted_until;
 }
 
 export async function clearMute(db: Queryable, serverPublicId: string): Promise<void> {
-  await db.query(CLEAR_MUTE, [serverPublicId]);
+  await timedQuery(db, "alerts.api.clearMute", CLEAR_MUTE,[serverPublicId]);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -289,10 +290,10 @@ const DELETE_DESTINATION = `
 
 /** Switches the server's Discord destination on again (clearing the reason); false when there is none. */
 export async function enableDestination(db: Queryable, serverPublicId: string): Promise<boolean> {
-  return (await db.query(ENABLE_DESTINATION, [serverPublicId])).rows.length > 0;
+  return (await timedQuery(db, "alerts.api.enableDestination", ENABLE_DESTINATION,[serverPublicId])).rows.length > 0;
 }
 
 /** Removes the server's Discord destination (its outbox rows cascade); false when there was none. */
 export async function deleteDestination(db: Queryable, serverPublicId: string): Promise<boolean> {
-  return (await db.query(DELETE_DESTINATION, [serverPublicId])).rows.length > 0;
+  return (await timedQuery(db, "alerts.api.deleteDestination", DELETE_DESTINATION,[serverPublicId])).rows.length > 0;
 }

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0031 PR 5a: the SQL behind agent enrolment and credentials. A code and an agent's secret are stored only as their
@@ -32,7 +33,7 @@ export interface LockedServer {
  * Undefined for an unknown or removed server.
  */
 export async function lockServer(db: Queryable, publicId: string): Promise<LockedServer | undefined> {
-  const result = await db.query(LOCK_SERVER, [publicId]);
+  const result = await timedQuery(db, "agents.lockServer", LOCK_SERVER, [publicId]);
   const row = parseFirst(z.object({ id: z.string(), connection_kind: z.string() }), result.rows, "agents.lockServer");
   return row === undefined ? undefined : { id: row.id, connectionKind: row.connection_kind };
 }
@@ -43,7 +44,7 @@ const DELETE_OPEN_CODES = `
   WHERE server_id = $1 AND (consumed_at IS NULL OR expires_at < now())`;
 
 export async function deleteOpenCodes(db: Queryable, serverUuid: string): Promise<void> {
-  await db.query(DELETE_OPEN_CODES, [serverUuid]);
+  await timedQuery(db, "agents.deleteOpenCodes", DELETE_OPEN_CODES, [serverUuid]);
 }
 
 // A code that collides with an existing hash inserts nothing (the caller draws another): a unique violation would abort
@@ -59,7 +60,7 @@ export async function insertCode(
   db: Queryable,
   input: { serverUuid: string; codeHash: Buffer; expiresAt: Date; createdBy: string | undefined },
 ): Promise<boolean> {
-  const result = await db.query(INSERT_CODE, [input.serverUuid, input.codeHash, input.expiresAt, input.createdBy ?? null]);
+  const result = await timedQuery(db, "agents.insertCode", INSERT_CODE, [input.serverUuid, input.codeHash, input.expiresAt, input.createdBy ?? null]);
   return result.rows.length > 0;
 }
 
@@ -75,7 +76,7 @@ const CODE_SERVER = `
  * three cannot deadlock on each other.
  */
 export async function findOpenCodeServer(db: Queryable, codeHash: Buffer): Promise<string | undefined> {
-  const result = await db.query(CODE_SERVER, [codeHash]);
+  const result = await timedQuery(db, "agents.findOpenCodeServer", CODE_SERVER, [codeHash]);
   return parseFirst(z.object({ public_id: z.string() }), result.rows, "agents.findOpenCodeServer")?.public_id;
 }
 
@@ -91,7 +92,7 @@ const CONSUME_CODE = `
 
 /** The server's internal id when the code was valid and is now spent; undefined for an unknown, used or expired code alike. */
 export async function consumeCode(db: Queryable, codeHash: Buffer): Promise<string | undefined> {
-  const result = await db.query(CONSUME_CODE, [codeHash]);
+  const result = await timedQuery(db, "agents.consumeCode", CONSUME_CODE, [codeHash]);
   return parseFirst(z.object({ server_id: z.string() }), result.rows, "agents.consumeCode")?.server_id;
 }
 
@@ -104,7 +105,7 @@ const UPSERT_CREDENTIAL = `
         created_at = now(), last_seen_at = NULL, revoked_at = NULL`;
 
 export async function upsertCredential(db: Queryable, input: { serverUuid: string; secretHash: Buffer; agentVersion: string }): Promise<void> {
-  await db.query(UPSERT_CREDENTIAL, [input.serverUuid, input.secretHash, input.agentVersion]);
+  await timedQuery(db, "agents.upsertCredential", UPSERT_CREDENTIAL, [input.serverUuid, input.secretHash, input.agentVersion]);
 }
 
 const FIND_ACTIVE = `
@@ -122,7 +123,7 @@ export interface ActiveAgent {
 
 /** The server an agent's secret belongs to, or undefined for an unknown secret, a revoked one, or a removed server (all alike). */
 export async function findActiveAgent(db: Queryable, secretHash: Buffer): Promise<ActiveAgent | undefined> {
-  const result = await db.query(FIND_ACTIVE, [secretHash]);
+  const result = await timedQuery(db, "agents.findActiveAgent", FIND_ACTIVE, [secretHash]);
   const row = parseFirst(z.object({ server_id: z.string(), public_id: z.string() }), result.rows, "agents.findActiveAgent");
   return row === undefined ? undefined : { serverUuid: row.server_id, publicId: row.public_id };
 }
@@ -133,7 +134,7 @@ const TOUCH = `
   WHERE server_id = $1 AND revoked_at IS NULL`;
 
 export async function touchAgent(db: Queryable, serverUuid: string): Promise<void> {
-  await db.query(TOUCH, [serverUuid]);
+  await timedQuery(db, "agents.touchAgent", TOUCH, [serverUuid]);
 }
 
 const SET_VERSION = `
@@ -142,7 +143,7 @@ const SET_VERSION = `
   WHERE server_id = $1 AND revoked_at IS NULL`;
 
 export async function setAgentVersion(db: Queryable, serverUuid: string, agentVersion: string): Promise<void> {
-  await db.query(SET_VERSION, [serverUuid, agentVersion]);
+  await timedQuery(db, "agents.setAgentVersion", SET_VERSION, [serverUuid, agentVersion]);
 }
 
 const AGENT_STATUS = `
@@ -161,7 +162,7 @@ export interface AgentStatusRow {
 
 /** Undefined for an unknown or removed server. A revoked credential reads as "not enrolled", without a version or time. */
 export async function getAgentStatus(db: Queryable, publicId: string): Promise<AgentStatusRow | undefined> {
-  const result = await db.query(AGENT_STATUS, [publicId]);
+  const result = await timedQuery(db, "agents.getAgentStatus", AGENT_STATUS, [publicId]);
   const row = parseFirst(
     z.object({ connection_kind: z.string(), enrolled: z.boolean(), last_seen_at: z.date().nullable(), agent_version: z.string().nullable() }),
     result.rows,
@@ -184,6 +185,6 @@ const REVOKE = `
 
 /** True when a credential was revoked now, false when there was none or it was already revoked. */
 export async function revokeCredential(db: Queryable, serverUuid: string): Promise<boolean> {
-  const result = await db.query(REVOKE, [serverUuid]);
+  const result = await timedQuery(db, "agents.revokeCredential", REVOKE, [serverUuid]);
   return result.rows.length > 0;
 }

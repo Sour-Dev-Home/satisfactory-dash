@@ -10,6 +10,7 @@ import type {
 import { withTransaction } from "../../platform/db/transaction.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
+import { timedQuery } from "../../platform/db/timedQuery.js";
 import { Mutex } from "../../platform/mutex.js";
 import { SecretsError } from "../../platform/secrets/secrets.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
@@ -317,7 +318,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
         const serverId = await withTransaction(deps.db, async (client) => {
           // Serialises the count and the insert across processes and instances; released at COMMIT.
-          await client.query(TAKE_ADVISORY_LOCK);
+          await timedQuery(client, "servers.create.takeAdvisoryLock", TAKE_ADVISORY_LOCK);
           const stored = await countConnections(client);
           if (envConfigured && stored === 0) throw importRequired();
           if (stored >= MAX_LOCAL_SERVERS) {
@@ -387,7 +388,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       // commit and the swap (a removed server re-added to the runtime, or a duplicate-id error on the add).
       return mutex.run(async () => {
         const server = await withTransaction(deps.db, async (client) => {
-          await client.query(TAKE_ADVISORY_LOCK);
+          await timedQuery(client, "servers.switchToLocal.takeAdvisoryLock", TAKE_ADVISORY_LOCK);
           const locked = await lockServerByPublicId(client, publicId);
           if (locked === undefined) throw new ServerNotFoundError();
           if (locked.connectionKind !== "agent") throw notAnAgentServer(); // changed since the first look (another switch, or a removal and re-add)

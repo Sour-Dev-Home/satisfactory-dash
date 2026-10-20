@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0027 decision 3, the READ side: the rollups (written by historyRepository.ts) re-bucketed at query time to the
@@ -122,7 +123,7 @@ export async function queryPowerBuckets(
   db: Queryable,
   input: { serverPublicId: string; bucketSeconds: number; source: RollupResolution; fromMs: number; toMs: number },
 ): Promise<PowerBucketRow[]> {
-  const result = await db.query(POWER_BUCKETS, [input.serverPublicId, input.bucketSeconds, input.source, iso(input.fromMs), iso(input.toMs)]);
+  const result = await timedQuery(db, "telemetry.history.power", POWER_BUCKETS, [input.serverPublicId, input.bucketSeconds, input.source, iso(input.fromMs), iso(input.toMs)]);
   return parseRows(PowerRowSchema, result.rows, "telemetry.history.power");
 }
 
@@ -132,7 +133,7 @@ export async function queryTopItems(
   db: Queryable,
   input: { serverPublicId: string; source: RollupResolution; fromMs: number; toMs: number; limit: number },
 ): Promise<string[]> {
-  const result = await db.query(TOP_ITEMS, [input.serverPublicId, input.source, iso(input.fromMs), iso(input.toMs), input.limit]);
+  const result = await timedQuery(db, "telemetry.history.topItems", TOP_ITEMS, [input.serverPublicId, input.source, iso(input.fromMs), iso(input.toMs), input.limit]);
   return parseRows(ItemRankSchema, result.rows, "telemetry.history.topItems").map((row) => row.item);
 }
 
@@ -148,7 +149,7 @@ export async function queryItemBuckets(
   },
 ): Promise<ItemBucketRow[]> {
   if (input.items.length === 0) return [];
-  const result = await db.query(ITEM_BUCKETS, [
+  const result = await timedQuery(db, "telemetry.history.items", ITEM_BUCKETS, [
     input.serverPublicId,
     input.bucketSeconds,
     input.source,
@@ -164,6 +165,6 @@ export async function queryTransitions(
   db: Queryable,
   input: { serverPublicId: string; fromMs: number; toMs: number; limit: number },
 ): Promise<TransitionEventRow[]> {
-  const result = await db.query(TRANSITIONS, [input.serverPublicId, iso(input.fromMs), iso(input.toMs), input.limit]);
+  const result = await timedQuery(db, "telemetry.history.transitions", TRANSITIONS, [input.serverPublicId, iso(input.fromMs), iso(input.toMs), input.limit]);
   return parseRows(TransitionRowSchema, result.rows, "telemetry.history.transitions");
 }

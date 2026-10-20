@@ -1,3 +1,4 @@
+import { timedQuery } from "../../platform/db/timedQuery.js";
 import { withTransaction } from "../../platform/db/transaction.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { DEFAULT_ADDRESS_POLICY, LanRequiresPinningError, addressVerdict } from "./addressGuard.js";
@@ -70,7 +71,7 @@ export async function importServers(
 ): Promise<ImportResult> {
   const result: ImportResult = { imported: [], skipped: [], warnings: [] };
   return withTransaction(pool, async (client) => {
-    await client.query(TAKE_SERVER_MANAGEMENT_LOCK);
+    await timedQuery(client, "servers.importServers.takeManagementLock", TAKE_SERVER_MANAGEMENT_LOCK);
     for (const server of servers) {
       const { config } = server;
       if (config.apiToken === undefined || config.apiToken.trim() === "") {

@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 import { z } from "zod";
 import { parseFirst, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { SecretsError } from "../../../platform/secrets/secrets.js";
@@ -158,7 +159,7 @@ function openRow(ring: SecretsKeyring, row: ConnectionRow): ServerConnection {
 /** Every live connection, opened where possible. A row that cannot be opened is reported (never
  *  silently skipped) so readiness can say so; the caller logs only its key id. */
 export async function listConnections(db: Queryable, ring: SecretsKeyring | null): Promise<ConnectionList> {
-  const result = await db.query(LIST_LIVE);
+  const result = await timedQuery(db, "servers.listConnections", LIST_LIVE);
   const rows = parseRows(ConnectionRowSchema, result.rows, "servers.listConnections");
   const list: ConnectionList = { connections: [], unreadable: [] };
   for (const row of rows) {
@@ -203,7 +204,7 @@ export async function getConnectionSummary(
 }
 
 async function selectRow(db: Queryable, serverId: string, lock: boolean): Promise<ConnectionRow | undefined> {
-  const result = await db.query(lock ? SELECT_ONE_FOR_UPDATE : SELECT_ONE, [serverId]);
+  const result = await timedQuery(db, "servers.selectConnection", lock ? SELECT_ONE_FOR_UPDATE : SELECT_ONE, [serverId]);
   return parseFirst(ConnectionRowSchema, result.rows, "servers.selectConnection");
 }
 
@@ -234,7 +235,7 @@ export async function saveConnection(
   // context's kind is that constant here; reads use the row's own kind and would reject a mismatch.
   const api = ring.seal(input.apiToken, tokenContext(serverId, LOCAL_KIND, "api"));
   const frm = input.frmToken === undefined ? undefined : ring.seal(input.frmToken, tokenContext(serverId, LOCAL_KIND, "frm"));
-  const result = await db.query(UPSERT, [
+  const result = await timedQuery(db, "servers.saveConnection", UPSERT, [
     serverId,
     input.host,
     input.pinnedIp,
@@ -255,7 +256,7 @@ export async function saveConnection(
 const DROP_OPEN_CODES = "DELETE FROM agents.enrollment_codes WHERE server_id = $1 AND consumed_at IS NULL";
 
 async function dropOpenEnrollmentCodes(db: Queryable, serverId: string): Promise<void> {
-  await db.query(DROP_OPEN_CODES, [serverId]);
+  await timedQuery(db, "servers.dropOpenEnrollmentCodes", DROP_OPEN_CODES, [serverId]);
 }
 
 const INSERT_IF_ABSENT = `
@@ -284,7 +285,7 @@ export async function createConnection(
 ): Promise<CreateConnectionOutcome> {
   const api = ring.seal(input.apiToken, tokenContext(serverId, LOCAL_KIND, "api"));
   const frm = input.frmToken === undefined ? undefined : ring.seal(input.frmToken, tokenContext(serverId, LOCAL_KIND, "frm"));
-  const inserted = await db.query(INSERT_IF_ABSENT, [
+  const inserted = await timedQuery(db, "servers.createConnection.insert", INSERT_IF_ABSENT, [
     serverId,
     input.host,
     input.pinnedIp,
@@ -298,13 +299,13 @@ export async function createConnection(
     await dropOpenEnrollmentCodes(db, serverId);
     return "created";
   }
-  const existing = await db.query(CONNECTION_EXISTS, [serverId]);
+  const existing = await timedQuery(db, "servers.createConnection.exists", CONNECTION_EXISTS, [serverId]);
   return existing.rows.length > 0 ? "exists" : "not_local_server";
 }
 
 /** How many connections exist (live servers only): the cap of ADR-0030 counts these. */
 export async function countConnections(db: Queryable): Promise<number> {
-  const result = await db.query(COUNT_LIVE);
+  const result = await timedQuery(db, "servers.countConnections", COUNT_LIVE);
   const row = parseFirst(z.object({ count: z.number().int() }), result.rows, "servers.countConnections");
   return row?.count ?? 0;
 }
@@ -354,7 +355,7 @@ export async function updateConnection(
     }
     const api = ring.seal(apiToken, tokenContext(row.server_id, row.connection_kind, "api"));
     const frm = frmToken === undefined ? undefined : ring.seal(frmToken, tokenContext(row.server_id, row.connection_kind, "frm"));
-    await client.query(UPDATE, [
+    await timedQuery(client, "servers.updateConnection.update", UPDATE, [
       serverId,
       patch.host ?? row.host,
       patch.pinnedIp ?? row.pinned_ip,
@@ -365,7 +366,7 @@ export async function updateConnection(
       api.keyId,
     ]);
     if (patch.displayName !== undefined) {
-      await client.query(RENAME, [serverId, patch.displayName]);
+      await timedQuery(client, "servers.updateConnection.rename", RENAME, [serverId, patch.displayName]);
     }
     // A rename alone changes nothing about how the server is reached: its codes stay.
     const reachesDifferently = [patch.host, patch.pinnedIp, patch.apiPort, patch.frmPort, patch.apiToken, patch.frmToken].some((value) => value !== undefined);
@@ -436,7 +437,7 @@ const toMeta = (row: z.output<typeof MetaRowSchema>): ConnectionMeta => ({
 
 /** The connection of the live server with this public id, without its tokens. Undefined when none. */
 export async function getConnectionMetaByPublicId(db: Queryable, publicId: string): Promise<ConnectionMeta | undefined> {
-  const result = await db.query(SELECT_META_BY_PUBLIC_ID, [publicId]);
+  const result = await timedQuery(db, "servers.getConnectionMeta", SELECT_META_BY_PUBLIC_ID, [publicId]);
   const row = parseFirst(MetaRowSchema, result.rows, "servers.getConnectionMeta");
   return row === undefined ? undefined : toMeta(row);
 }
@@ -451,12 +452,12 @@ const LIST_META = `
 
 /** Every live stored connection without its tokens, whether or not this backend can open or serve it. */
 export async function listConnectionMetas(db: Queryable): Promise<ConnectionMeta[]> {
-  const result = await db.query(LIST_META);
+  const result = await timedQuery(db, "servers.listConnectionMetas", LIST_META);
   return parseRows(MetaRowSchema, result.rows, "servers.listConnectionMetas").map(toMeta);
 }
 
 /** Removes the connection row, wiping the encrypted tokens. False when there was none. */
 export async function deleteConnection(db: Queryable, serverId: string): Promise<boolean> {
-  const result = await db.query("DELETE FROM servers.server_connections WHERE server_id = $1 RETURNING server_id", [serverId]);
+  const result = await timedQuery(db, "servers.deleteConnection", "DELETE FROM servers.server_connections WHERE server_id = $1 RETURNING server_id", [serverId]);
   return result.rows.length > 0;
 }

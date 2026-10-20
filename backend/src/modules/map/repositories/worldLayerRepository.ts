@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
+import { timedQuery } from "../../../platform/db/timedQuery.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 
 /**
@@ -39,7 +40,7 @@ const SELECT_LATEST = `
 /** The latest stored reading for one server's layer, or undefined when there is none yet (an
  *  unregistered/removed server matches no row, same as a layer that has never been ingested). */
 export async function getLatestWorldLayer(db: Queryable, serverPublicId: string, layer: string): Promise<WorldLayerRow | undefined> {
-  const result = await db.query(SELECT_LATEST, [serverPublicId, layer]);
+  const result = await timedQuery(db, "map.world_layers", SELECT_LATEST,[serverPublicId, layer]);
   const row = parseFirst(WorldLayerRowSchema, result.rows, "map.world_layers");
   return row === undefined ? undefined : { hash: row.hash, observedAt: toIso(row.observed_at), truncated: row.truncated, count: row.count, data: row.data };
 }
@@ -62,6 +63,6 @@ const UPSERT_IF_CHANGED = `
  * actually written (false for both "unchanged" and "the server doesn't exist/was removed").
  */
 export async function upsertWorldLayerIfChanged(db: Queryable, serverPublicId: string, layer: string, next: WorldLayerRow): Promise<{ written: boolean }> {
-  const result = await db.query(UPSERT_IF_CHANGED, [serverPublicId, layer, next.hash, next.observedAt, next.truncated, next.count, JSON.stringify(next.data)]);
+  const result = await timedQuery(db, "map.upsertWorldLayerIfChanged", UPSERT_IF_CHANGED,[serverPublicId, layer, next.hash, next.observedAt, next.truncated, next.count, JSON.stringify(next.data)]);
   return { written: result.rows.length > 0 };
 }
