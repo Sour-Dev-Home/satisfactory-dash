@@ -42,6 +42,22 @@ describe("serverSpawn", () => {
     expect(calls[0]!.opts.shell).toBe(false);
   });
 
+  it("detached, starts the process in its own group and lets go of it, so it outlives the app", () => {
+    const { calls, child, spawn } = capture();
+    let unrefs = 0;
+    (child as unknown as { unref: () => void }).unref = () => void unrefs++;
+    serverSpawn({ env: {}, execPath: "E", spawn, detached: true })("X:\\srv\\FactoryServer.exe", ["-log"]);
+    expect(calls[0]!.opts.detached).toBe(true);
+    expect(calls[0]!.opts.stdio).toBe("ignore");
+    expect(unrefs).toBe(1);
+  });
+
+  it("is not detached unless asked (SteamCMD stays the app's child)", () => {
+    const { calls, spawn } = capture();
+    serverSpawn({ env: {}, execPath: "E", spawn, output: true })("X:\\s\\steamcmd.exe", []);
+    expect(calls[0]!.opts.detached).toBe(false);
+  });
+
   it("ignores any other value of the test switch", () => {
     const { calls, spawn } = capture();
     serverSpawn({ env: { [RUN_WITH_NODE_ENV]: "true" }, execPath: "E", spawn })("/s/FactoryServer.exe", ["-log"]);

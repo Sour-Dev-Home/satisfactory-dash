@@ -100,19 +100,13 @@ test("a disabled button keeps focus and does nothing", async () => {
   expect(starts(f)).toHaveLength(0);
 });
 
-test("a server left running by an earlier session blocks Start until it is gone", async () => {
+test("a recorded pid that now belongs to another program is forgotten, never adopted", async () => {
   writeSettings(f);
-  // Stands in for a server the app started before it was closed: any live process will do.
+  // A live process that isn't the configured FactoryServer.exe: the test runner itself (a reused pid).
   writeFileSync(join(f.dataDir, "server.pid"), `${process.pid}\n`);
   await open();
-  await expect(page.getByTestId("last-error")).toContainText(`still running (process ${process.pid})`);
-  await expectButtons({ Start: false, Stop: false, Restart: false });
-  // Playwright won't click an aria-disabled button on its own; force it to prove the click does nothing.
-  await button("Start").click({ force: true });
-  await page.waitForTimeout(500);
-  expect(starts(f)).toHaveLength(0);
-
-  writeFileSync(join(f.dataDir, "server.pid"), "999999999\n");
+  await expect.poll(() => existsSync(join(f.dataDir, "server.pid"))).toBe(false);
+  await expect(state()).toHaveText("stopped");
   await expectButtons({ Start: true, Stop: false, Restart: false });
   await startRunning();
   expect(readFileSync(join(f.dataDir, "server.pid"), "utf8").trim()).toBe(String(starts(f)[0]!.pid));
@@ -252,6 +246,7 @@ test("the window's bridge has no way to get a token", async () => {
       "stopAgent",
       "runAgentCommand",
       "openAgentRunbook",
+      "setStartWithWindows",
     ].sort(),
   );
   const status = await page.evaluate(() => (window as unknown as { serverManager: { getStatus(): Promise<object> } }).serverManager.getStatus());

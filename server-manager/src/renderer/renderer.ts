@@ -43,6 +43,8 @@ const setup = el("setup");
 const server = el("server");
 const folders = el("folders");
 const updatePanel = el("update");
+const startup = el("startup");
+const startWithWindows = el<HTMLInputElement>("start-with-windows");
 const buttons = {
   start: el<HTMLButtonElement>("start"),
   stop: el<HTMLButtonElement>("stop"),
@@ -62,6 +64,8 @@ function render(status: Status): void {
   server.hidden = !status.configured;
   folders.hidden = !status.configured;
   updatePanel.hidden = !status.configured;
+  startup.hidden = !status.configured;
+  startWithWindows.checked = status.startWithWindows;
 
   el("state").textContent = status.state;
   el("state-dot").dataset.state = status.state;
@@ -160,6 +164,21 @@ async function choose(which: "server" | "steamcmd", target: HTMLElement): Promis
 el("choose-server").addEventListener("click", () => void choose("server", el("setup-error")));
 onPress(el("change-server"), () => choose("server", el("folders-error")));
 onPress(el("choose-steamcmd"), () => choose("steamcmd", el("folders-error")));
+
+startWithWindows.addEventListener("change", () => {
+  const note = el("startup-error");
+  note.textContent = "";
+  void bridge
+    .setStartWithWindows(startWithWindows.checked)
+    .then((result) => {
+      if (!result.ok) note.textContent = result.message;
+    })
+    .catch(() => {
+      note.textContent = "Start with Windows couldn't be changed.";
+    })
+    // The box shows what main kept, whether or not the change went through.
+    .finally(() => void bridge.getStatus().then(render));
+});
 
 bridge.onStatus(render);
 void bridge.getStatus().then((status) => {

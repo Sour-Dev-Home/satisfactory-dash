@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { cpuPercent, parsePowerShell, parsePs, powershellPath, sampleProcess, type ExecFn } from "./processStats";
+import {
+  cpuPercent,
+  parsePowerShell,
+  parsePs,
+  powershellPath,
+  processCommandLine,
+  sampleProcess,
+  type ExecFn,
+} from "./processStats";
 
 describe("powershellPath", () => {
   it("is Windows PowerShell under SystemRoot", () => {
@@ -113,5 +121,45 @@ describe("sampleProcess", () => {
       throw new Error("no such process");
     };
     expect(await sampleProcess(5, { platform: "linux", exec, env: {} })).toBeUndefined();
+  });
+});
+
+describe("processCommandLine", () => {
+  it("on Windows asks CIM with the pid in the environment, never in the script", async () => {
+    const calls: { file: string; args: readonly string[]; env?: NodeJS.ProcessEnv }[] = [];
+    const exec: ExecFn = async (file, args, env) => {
+      calls.push({ file, args, env });
+      return '"D:\\S\\FactoryServer.exe" -log\r\n';
+    };
+    const cmd = await processCommandLine(4321, { platform: "win32", exec, env: { SystemRoot: "W:\\Win" } });
+    expect(cmd).toBe('"D:\\S\\FactoryServer.exe" -log');
+    expect(calls[0]!.file).toBe("W:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(calls[0]!.args.join(" ")).not.toContain("4321");
+    expect(calls[0]!.env?.SM_STATS_PID).toBe("4321");
+  });
+
+  it("elsewhere runs ps with the pid as its own argument", async () => {
+    const calls: { file: string; args: readonly string[] }[] = [];
+    const exec: ExecFn = async (file, args) => {
+      calls.push({ file, args });
+      return "/x/electron /t/FactoryServer.exe -log\n";
+    };
+    expect(await processCommandLine(77, { platform: "linux", exec, env: {} })).toBe("/x/electron /t/FactoryServer.exe -log");
+    expect(calls[0]).toEqual({ file: "ps", args: ["-o", "args=", "-p", "77"] });
+  });
+
+  it("is undefined for a bad pid (running nothing), a failed tool or empty output", async () => {
+    let ran = false;
+    const none: ExecFn = async () => {
+      ran = true;
+      return "  \n";
+    };
+    for (const pid of [0, -1, 1.5]) expect(await processCommandLine(pid, { platform: "linux", exec: none, env: {} })).toBeUndefined();
+    expect(ran).toBe(false);
+    expect(await processCommandLine(5, { platform: "linux", exec: none, env: {} })).toBeUndefined();
+    const fails: ExecFn = async () => {
+      throw new Error("gone");
+    };
+    expect(await processCommandLine(5, { platform: "win32", exec: fails, env: {} })).toBeUndefined();
   });
 });

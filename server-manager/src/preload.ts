@@ -39,6 +39,8 @@ const bridge: ServerManagerBridge = {
   runAgentCommand: (command) =>
     ipcRenderer.invoke(CHANNELS.runAgentCommand, agentCommandRequested(command)) as Promise<AgentCommandResult>,
   openAgentRunbook: () => ipcRenderer.invoke(CHANNELS.openAgentRunbook) as Promise<void>,
+  setStartWithWindows: (on) =>
+    ipcRenderer.invoke(CHANNELS.setStartWithWindows, on === true) as ReturnType<ServerManagerBridge["setStartWithWindows"]>,
 };
 
 contextBridge.exposeInMainWorld("serverManager", bridge);

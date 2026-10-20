@@ -104,12 +104,18 @@ function setup(opts: { autoSpawn?: boolean; access?: () => Promise<GameApiAccess
     if (autoSpawn) queueMicrotask(() => child.spawned());
     return child;
   };
+  const attached: FakeChild[] = [];
   const sup = createSupervisor({
     spawn,
     now: () => clock,
     serverExe: "X:\\server\\FactoryServer.exe",
     gameApi: access,
     timer: timer.fn,
+    attach: (pid) => {
+      const child = new FakeChild(pid);
+      attached.push(child);
+      return child;
+    },
   });
   const states: ServerState[] = [];
   sup.onChange((s) => states.push(s));
@@ -118,6 +124,7 @@ function setup(opts: { autoSpawn?: boolean; access?: () => Promise<GameApiAccess
     game,
     timer,
     children,
+    attached,
     calls,
     states,
     last: () => children[children.length - 1]!,
@@ -661,5 +668,63 @@ describe("the clean stop", () => {
     expect(sup.lastError()).toContain(UNCLEAN_STOP);
     sup.start();
     expect(sup.lastError()).toBeUndefined();
+  });
+});
+
+describe("supervisor.adopt", () => {
+  it("supervises a server already running: running at once, nothing spawned", () => {
+    const { sup, calls, attached, states } = setup();
+    sup.adopt(4242);
+    expect(sup.state()).toBe("running");
+    expect(attached.map((c) => c.pid)).toEqual([4242]);
+    expect(calls).toEqual([]);
+    expect(states).toEqual(["running"]);
+  });
+
+  it("restarts an adopted server that stops on its own, as with one it started", async () => {
+    const { sup, calls, attached } = setup();
+    sup.adopt(4242);
+    attached[0]!.exit(null);
+    expect(sup.lastError()).toContain("stopped on its own");
+    expect(calls).toHaveLength(1);
+    await tick();
+    expect(sup.state()).toBe("running");
+  });
+
+  it("stops an adopted server cleanly through the game's API, then sees it gone", async () => {
+    const { sup, game, attached } = setup();
+    sup.adopt(4242);
+    const done = sup.stop();
+    await tick();
+    expect(game.calls).toEqual(["sessionName", "saveGame(my-world)", "shutdown"]);
+    attached[0]!.exit(0);
+    expect(await done).toBe("stopped");
+    expect(sup.state()).toBe("stopped");
+    expect(attached[0]!.killed).toBe(false);
+  });
+
+  it("Stop anyway ends the adopted process", async () => {
+    const { sup, attached } = setup();
+    sup.adopt(4242);
+    const done = sup.stop({ anyway: true });
+    expect(attached[0]!.killed).toBe(true);
+    attached[0]!.exit(null, "SIGTERM");
+    expect(await done).toBe("stopped");
+  });
+
+  it("does nothing while a server of its own is starting or running", async () => {
+    const { sup, attached } = setup();
+    sup.start();
+    sup.adopt(4242);
+    await tick();
+    sup.adopt(4243);
+    expect(attached).toEqual([]);
+  });
+
+  it("ignores a pid that isn't a positive integer", () => {
+    const { sup, attached } = setup();
+    for (const pid of [0, -1, 1.5, Number.NaN]) sup.adopt(pid);
+    expect(attached).toEqual([]);
+    expect(sup.state()).toBe("stopped");
   });
 });

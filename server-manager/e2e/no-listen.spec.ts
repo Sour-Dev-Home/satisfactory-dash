@@ -59,7 +59,12 @@ test("the main process creates no listening socket", async () => {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     expect(listeners(pid)).toEqual([]);
   } finally {
-    app?.kill();
+    // Wait for it to be gone: Electron's profile sits in the fixture's data folder and stays locked until then.
+    if (app && app.exitCode === null && app.signalCode === null) {
+      const exited = new Promise((resolve) => app!.once("exit", resolve));
+      app.kill();
+      await exited;
+    }
     removeFixture(f);
   }
 });

@@ -42,6 +42,11 @@ export type SpawnFn = (exe: string, args: readonly string[]) => ChildHandle;
 
 export interface Supervisor {
   start(): void;
+  /**
+   * Supervises a server already running (one an earlier session of the app left behind): `running` at once, then
+   * stopped, restarted and crash-counted as if this supervisor had started it. Ignored unless stopped or crashed.
+   */
+  adopt(pid: number): void;
   stop(opts?: StopOptions): Promise<StopOutcome>;
   /** Stops (as stop() does), then starts only if the stop ended the process. */
   restart(opts?: StopOptions): Promise<StopOutcome>;
@@ -69,6 +74,8 @@ export function createSupervisor(opts: {
   /** Opened at each clean stop, so a token set up meanwhile is picked up. */
   gameApi: () => Promise<GameApiAccess>;
   timer?: TimerFn;
+  /** A handle on a server already running (adopt()): it reports that process's end and kill() ends it. */
+  attach?: (pid: number) => ChildHandle;
 }): Supervisor {
   const timer = opts.timer ?? defaultTimer;
   let current: ServerState = "stopped";
@@ -97,15 +104,22 @@ export function createSupervisor(opts: {
     }
   }
 
-  function launch(): void {
-    set("starting");
+  /** Makes `proc` the supervised process and routes its end (however it comes) to onEnded, once. */
+  function watch(proc: ChildHandle): void {
     let handled = false;
-    let proc: ChildHandle;
     const ended = (reason: string) => {
       if (handled || child !== proc) return;
       handled = true;
       onEnded(reason);
     };
+    child = proc;
+    proc.onExit((code, signal) => ended(signal !== null ? `stopped by signal ${signal}` : `exit code ${code ?? "unknown"}`));
+    proc.onError((err) => ended(`could not start: ${message(err)}`));
+  }
+
+  function launch(): void {
+    set("starting");
+    let proc: ChildHandle;
     try {
       proc = opts.spawn(opts.serverExe, SERVER_ARGS);
     } catch (err) {
@@ -113,12 +127,19 @@ export function createSupervisor(opts: {
       onEnded(`could not start: ${message(err)}`);
       return;
     }
-    child = proc;
     proc.onSpawn(() => {
       if (child === proc && current === "starting" && !stopRequested) set("running");
     });
-    proc.onExit((code, signal) => ended(signal !== null ? `stopped by signal ${signal}` : `exit code ${code ?? "unknown"}`));
-    proc.onError((err) => ended(`could not start: ${message(err)}`));
+    watch(proc);
+  }
+
+  function adopt(pid: number): void {
+    if (current !== "stopped" && current !== "crashed") return;
+    if (!Number.isSafeInteger(pid) || pid <= 0 || !opts.attach) return;
+    error = undefined;
+    restarts = [];
+    watch(opts.attach(pid));
+    set("running");
   }
 
   function onEnded(reason: string): void {
@@ -246,6 +267,7 @@ export function createSupervisor(opts: {
 
   return {
     start,
+    adopt,
     stop,
     async restart(restartOpts) {
       const outcome = await stop(restartOpts);

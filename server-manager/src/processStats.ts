@@ -55,6 +55,36 @@ export async function sampleProcess(
   }
 }
 
+const PS_COMMAND_LINE_SCRIPT =
+  "$p = Get-CimInstance Win32_Process -Filter \"ProcessId = $([int]$env:SM_STATS_PID)\" -ErrorAction Stop; [Console]::Out.Write($p.CommandLine)";
+
+/**
+ * The full command line of `pid`, so a pid recorded by an earlier session is adopted only while it still runs the
+ * configured server (a pid can be reused). Undefined when it can't be read.
+ */
+export async function processCommandLine(
+  pid: number,
+  opts: { platform?: NodeJS.Platform; exec?: ExecFn; env?: NodeJS.ProcessEnv } = {},
+): Promise<string | undefined> {
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  const platform = opts.platform ?? process.platform;
+  const exec = opts.exec ?? execText;
+  const env = opts.env ?? process.env;
+  try {
+    const out =
+      platform === "win32"
+        ? await exec(powershellPath(env), ["-NoProfile", "-NonInteractive", "-Command", PS_COMMAND_LINE_SCRIPT], {
+            ...env,
+            SM_STATS_PID: String(pid),
+          })
+        : await exec("ps", ["-o", "args=", "-p", String(pid)], env);
+    const line = out.trim();
+    return line === "" ? undefined : line;
+  } catch {
+    return undefined;
+  }
+}
+
 /** `ps -o time=,rss=`: CPU time as [[dd-]hh:]mm:ss[.ff] and resident memory in KiB. */
 export function parsePs(text: string): Usage | undefined {
   const m = /^\s*(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)\s+(\d+)\s*$/.exec(text);

@@ -40,6 +40,7 @@ describe("the renderer's IPC surface", () => {
         "onStatus",
         "onUpdateLine",
         "restart",
+        "setStartWithWindows",
         "start",
         "stop",
         "update",
@@ -70,6 +71,7 @@ describe("the renderer's IPC surface", () => {
     await bridge.stopAgent();
     await bridge.runAgentCommand("status");
     await bridge.openAgentRunbook();
+    await bridge.setStartWithWindows(true);
     expect(exposed.invokes.map((i) => i.channel).every((c) => known.has(c))).toBe(true);
   });
 
@@ -103,6 +105,20 @@ describe("the renderer's IPC surface", () => {
     );
   });
 
+  it("Start with Windows passes on only a literal true or false", async () => {
+    exposed.invokes = [];
+    await bridge.setStartWithWindows(true);
+    await bridge.setStartWithWindows(false);
+    await bridge.setStartWithWindows("yes" as never);
+    await bridge.setStartWithWindows({ on: true } as never);
+    expect(exposed.invokes.map((i) => [i.channel, i.args])).toEqual([
+      [CHANNELS.setStartWithWindows, [true]],
+      [CHANNELS.setStartWithWindows, [false]],
+      [CHANNELS.setStartWithWindows, [false]],
+      [CHANNELS.setStartWithWindows, [false]],
+    ]);
+  });
+
   it("passes on only the anyway flag, never what the page put beside it", async () => {
     exposed.invokes = [];
     await bridge.stop({ anyway: true, extra: "x" } as never);
@@ -126,6 +142,7 @@ describe("the renderer's IPC surface", () => {
       "anyway",
       "updating",
       "updateResult",
+      "startWithWindows",
     ];
     for (const key of keys) expect(key).not.toMatch(TOKEN_WORDS);
     const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
