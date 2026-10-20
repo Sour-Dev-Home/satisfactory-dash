@@ -89,6 +89,8 @@ describe("deriveFactory", () => {
     building("producing"),
     building("underfed", { production: [rate("Desc_IronPlate_C", 24.7)], consumption: [rate("Desc_IronIngot_C", 80), rate("Desc_Coal_C", 10)] }),
     building("backedUp", { isProducing: false, outputInventory: [{ name: "Iron Plate", className: "Desc_IronPlate_C", amount: 100, maxAmount: 100 }] }),
+    // Issue 201: full input buffers with a low percent is output-throttled, so backedUp (not counted in backedUpCount).
+    building("throttled", { production: [rate("Desc_IronPlate_C", 9.4)], consumption: [rate("Desc_IronIngot_C", 9.4)], inputInventory: [{ name: "Iron Ingot", className: "Desc_IronIngot_C", amount: 200, maxAmount: 200 }] }),
     building("paused", { isPaused: true }),
     building("idle", { recipe: null, production: [], consumption: [] }),
     building("unconnected", { circuitGroupId: -1 }),
@@ -114,6 +116,7 @@ describe("deriveFactory", () => {
       producing: "producing",
       underfed: "underfed",
       backedUp: "backedUp",
+      throttled: "backedUp",
       paused: "paused",
       idle: "idle",
       unconnected: "unpowered",
@@ -121,7 +124,7 @@ describe("deriveFactory", () => {
       unknownFuse: undefined,
       unknownItem: "producing",
     });
-    expect(local.backedUpCount).toBe(1);
+    expect(local.backedUpCount).toBe(2); // by state: the full output and the throttled machine
     expect(local.buildings.find((row) => row.id === "unknownItem")?.production[0]?.unit).toBeNull();
   });
 

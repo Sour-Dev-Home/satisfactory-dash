@@ -1,4 +1,4 @@
-import { ownValue, type Factory, type FactoryBuilding } from "@satisfactory-dash/shared";
+import { isBackedUpState, ownValue, type Factory, type FactoryBuilding } from "@satisfactory-dash/shared";
 import type * as Leaflet from "leaflet";
 import { formatPercent } from "../format";
 import {
@@ -46,7 +46,7 @@ function tooltip(building: FactoryBuilding): HTMLElement {
   const percent = outputPercent(building);
   const state = stateLabel(buildingState(building));
   line(percent === null ? state : `${state} · ${formatPercent(percent)}`);
-  if (building.isBackedUp) line("Backed up");
+  if (isBackedUpState(building)) line("Backed up");
   return box;
 }
 
@@ -118,7 +118,7 @@ export const buildingsLayer: MapLayer<Factory> = {
     const warn = color(BACKED_UP_TOKEN);
     const mark = color(MARK_TOKEN);
     const buildings = placed(data.buildings);
-    const backedUp = buildings.filter((b) => b.isBackedUp);
+    const backedUp = buildings.filter(isBackedUpState);
 
     // The pulse (ADR-0041 item 6): one ring per backed-up machine, all on one clock, on a canvas of
     // their own (the one overlay #443 allows; still canvas, no DOM per building). A pulse frame then
@@ -144,9 +144,10 @@ export const buildingsLayer: MapLayer<Factory> = {
     for (const building of buildings) {
       const state = buildingState(building);
       // Backed up wins (warn, filled, the triangle); no recipe is hollow (an outline, no fill).
-      const hollow = !building.isBackedUp && isHollow(state);
+      const backedUpNow = isBackedUpState(building);
+      const hollow = !backedUpNow && isHollow(state);
       const stateColor = color(stateToken(state));
-      const colors = building.isBackedUp
+      const colors = backedUpNow
         ? { body: warn, mark }
         : hollow
           ? { mark, outline: stateColor }
@@ -156,7 +157,7 @@ export const buildingsLayer: MapLayer<Factory> = {
         radius: hitRadius(iconPx(map.getZoom())),
         radiusAt: hitRadius,
         stroke: false,
-        paint: (ctx, at, size) => drawMachine(ctx, at.x, at.y, size, colors, building.isBackedUp),
+        paint: (ctx, at, size) => drawMachine(ctx, at.x, at.y, size, colors, isBackedUpState(building)),
       })
         // Leaflet opens a path's tooltip where the pointer is: lift it clear of the smallest icon.
         .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -hitRadius(ICON_MIN_PX)] })
@@ -232,7 +233,7 @@ export const buildingsLayer: MapLayer<Factory> = {
     return (
       <>
         {shown.length} buildings on the map: {count("producing")} producing, {count("idle")} not producing,{" "}
-        {count("paused")} paused, {count("noRecipe")} without a recipe; {shown.filter((b) => b.isBackedUp).length}{" "}
+        {count("paused")} paused, {count("noRecipe")} without a recipe; {shown.filter(isBackedUpState).length}{" "}
         backed up.
         {missing > 0 && ` ${missing} more have no position yet (the backend doesn't send one).`}
       </>

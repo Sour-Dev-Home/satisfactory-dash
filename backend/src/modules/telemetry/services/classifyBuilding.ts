@@ -31,7 +31,10 @@ export interface Classification {
 export type ClassifiableBuilding = Pick<
   FactoryBuilding,
   "recipe" | "isPaused" | "production" | "consumption" | "circuitGroupId" | "fuseTriggered"
->;
+> & {
+  /** Every input buffer is full (the adapter's `areInputsFull`). Absent = unknown, treated as not full. */
+  inputsFull?: boolean;
+};
 
 /**
  * ADR-0027 decision 2, per snapshot and pure: nothing here is time-based. FRM's own `percent` is
@@ -66,6 +69,10 @@ export function classifyBuilding(building: ClassifiableBuilding, backedUp: boole
     return undefined;
   }
   if (outputPercent < UNDERFED_BELOW_PERCENT) {
+    // Issue 201: a low percent with every input buffer full is throttled by its output, not short of input.
+    if (building.inputsFull === true) {
+      return { state: "backedUp" };
+    }
     const missingInput = lowestIngredient(building);
     return { state: "underfed", ...(missingInput !== undefined ? { missingInput } : {}) };
   }

@@ -48,7 +48,7 @@ describe("the demo app", () => {
     expect(await screen.findByRole("article", { name: "Circuit 1 history" })).toBeInTheDocument();
 
     fireEvent.click(within(nav).getByRole("link", { name: "Factory" }));
-    expect(await screen.findByText("9 machines · 1 backed up · 0 paused · 0 without a recipe")).toBeInTheDocument();
+    expect(await screen.findByText("10 machines · 2 backed up · 0 paused · 0 without a recipe")).toBeInTheDocument();
 
     fireEvent.click(within(nav).getByRole("link", { name: "Settings" }));
     const toggle = await screen.findByRole("checkbox", { name: "Auto-pause when no players are connected" });

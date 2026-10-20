@@ -42,12 +42,17 @@ Known limits, so nobody over-trusts it:
 - The capture script writes the file once at the end (Ctrl+C saves nothing, up to 2 hours of samples lost)
   and refuses to overwrite a file that appeared meanwhile.
 
-- **A known false "underfed"**: the machine at 9.4 percent (Assembler ...2147397136 in the 2026-09-22 capture)
-  has full input buffers and an output buffer 98 of 100 full: it is throttled by its output, not short of input.
-  Under the old 5 percent rule it read "producing"; under the 95 percent rule it reads "underfed", so the golden
-  file changed for exactly this machine. A percent-only rule cannot tell an output-throttled machine from an
-  input-starved one; the week of production history (amendment 2) is where to see how often this happens. Input-buffer data (FRM's
-  `InputInventory`) could sharpen the rule; it is not read today.
+- **Output-throttled machines (issue 201)**: the machine at 9.4 percent (Assembler ...2147397136 in the 2026-09-22
+  capture) has full input buffers and an output buffer 98 of 100 full: it is held back by its output, not short of
+  input. The rule: when the best output percent is below `UNDERFED_BELOW_PERCENT` (95, unchanged) and `inputsFull`
+  is true, the state is `backedUp`, not `underfed`. `inputsFull` is a raw fact from FRM's `InputInventory`: every
+  ingredient has a slot at capacity (an ingredient with no slot is not full; unknown inventory is not full). Partial,
+  zero or unknown input stays `underfed`; paused, unpowered and idle still win.
+  "Backed up" now means exactly `state === "backedUp"` everywhere: the Factory filter and header count, the map ring,
+  tooltip and count, the Overview health share and `backedUpCount` (the backend counts it from `state`). The raw
+  `isBackedUp` (an output slot at capacity) is still sent but decides nothing downstream.
+  Limitation: fluid ingredients have no inventory slot, so a machine with a fluid input (a refinery) is never
+  "inputs full" and an output-throttled refinery still reads `underfed`.
 - Nothing here is time-based. "Held for N minutes" and hysteresis belong to the alert engine (ADR-0027 PR 5).
 - The golden file `telemetry/services/__golden__/machineStates.golden.json` pins the outcome for the 10
   captured buildings; a rule or threshold change shows up there as a reviewed diff.

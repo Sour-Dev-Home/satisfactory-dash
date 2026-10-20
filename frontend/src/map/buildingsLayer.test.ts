@@ -153,7 +153,7 @@ const ONE_PER_STATE: FactoryBuilding[] = [
   building(3, { recipe: null, production: [] }),
 ];
 const factory = (buildings: FactoryBuilding[]): Factory => ({ buildings, backedUpCount: buildings.filter((b) => b.isBackedUp).length });
-const BACKED_UP = building(4, { recipe: "Screw", production: running, isBackedUp: true });
+const BACKED_UP = building(4, { recipe: "Screw", production: running, isBackedUp: true, state: "backedUp" });
 
 const isRect = (call: Call, shape: { x: number; y: number; width: number; height: number }) =>
   call.op === "roundRect" && call.args[0] === shape.x && call.args[1] === shape.y && call.args[2] === shape.width && call.args[3] === shape.height;
@@ -441,7 +441,7 @@ describe("buildingsLayer: hit-testing after the shape change", () => {
 
 describe("buildingsLayer: the pulse loop's lifecycle", () => {
   it("asks for one frame at a time however many machines are backed up", () => {
-    const many = Array.from({ length: 300 }, (_, i) => building(i, { recipe: "Screw", production: running, isBackedUp: true, location: { xM: (i % 20) * 8, yM: Math.floor(i / 20) * 8, zM: 0, rotationDeg: 0 } }));
+    const many = Array.from({ length: 300 }, (_, i) => building(i, { recipe: "Screw", production: running, isBackedUp: true, state: "backedUp", location: { xM: (i % 20) * 8, yM: Math.floor(i / 20) * 8, zM: 0, rotationDeg: 0 } }));
     buildingsLayer.draw(context(), factory(many));
     expect(requestFrame).toHaveBeenCalledTimes(1);
     frames.shift()!(0);
@@ -457,7 +457,7 @@ describe("buildingsLayer: the pulse loop's lifecycle", () => {
     expect(cancelFrame).toHaveBeenCalledTimes(1);
     frames.length = 0; // the mock does not drop the cancelled frame
     requestFrame.mockClear();
-    buildingsLayer.draw(context(), factory([{ ...BACKED_UP, isBackedUp: false }]));
+    buildingsLayer.draw(context(), factory([{ ...BACKED_UP, isBackedUp: false, state: "producing" }]));
     expect(requestFrame).not.toHaveBeenCalled();
     expect(frames).toHaveLength(0);
     expect(rings(paint())).toEqual([]);
@@ -551,7 +551,7 @@ describe("buildingsLayer: the work a pulse frame costs", () => {
   it("repaints only the rings, on their own canvas: never the icons or the grid on the shared one", () => {
     // Scattered backed-up machines: their redraw areas would union into nearly the whole map.
     const scattered = [0, 1, 2, 3].map((i) =>
-      building(i, { recipe: "Screw", production: running, isBackedUp: true, location: { xM: i % 2 ? 180 : -180, yM: i < 2 ? -130 : 130, zM: 0, rotationDeg: 0 } }),
+      building(i, { recipe: "Screw", production: running, isBackedUp: true, state: "backedUp", location: { xM: i % 2 ? 180 : -180, yM: i < 2 ? -130 : 130, zM: 0, rotationDeg: 0 } }),
     );
     buildingsLayer.draw(context(), factory([...ONE_PER_STATE, ...scattered]));
     paint();

@@ -15,6 +15,7 @@ describe("gameserver facade exports", () => {
       "SatisfactoryServerAdapter",
       "VanillaApiClient",
       "VanillaApiRequestError",
+      "areInputsFull",
       "configuredServerEnvNamesInUse",
       "createGameServerConnection",
       "createSatisfactoryServerConfig",

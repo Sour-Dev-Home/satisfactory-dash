@@ -37,7 +37,7 @@ function oldFactory(buildings: FactoryBuilding[], resolveUnit: UnitResolver): Fa
   });
   const stateCounts: Record<string, number> = {};
   for (const b of mapped) if (b.state !== undefined) stateCounts[b.state] = (stateCounts[b.state] ?? 0) + 1;
-  return { buildings: mapped, backedUpCount: mapped.filter((b) => b.isBackedUp).length, stateCounts };
+  return { buildings: mapped, backedUpCount: stateCounts.backedUp ?? 0, stateCounts };
 }
 
 function oldClassifyPower(c: PowerCircuit): OutCircuit["status"] {

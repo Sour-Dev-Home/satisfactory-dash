@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { ownValue } from "@satisfactory-dash/shared";
+import { isBackedUpState, ownValue } from "@satisfactory-dash/shared";
 import type {
   AgentStatusResponse,
   EnrollmentCodeResponseSchema,
@@ -298,6 +298,8 @@ function building(
   place: { x: number; y: number; rot: number; circuit: 0 | 1 },
   state: "producing" | "underfed" | "backedUp" = "producing",
   clockSpeedPercent = 100,
+  /** Backed up by state only (issue 201): full input buffers and a slow output, but no output slot at capacity. */
+  stateOnly = false,
 ): FactoryBuilding {
   return {
     id: `demo-${n}`,
@@ -306,7 +308,7 @@ function building(
     recipe,
     isProducing: recipe !== null && state !== "backedUp",
     isPaused: false,
-    isBackedUp: state === "backedUp",
+    isBackedUp: state === "backedUp" && !stateOnly,
     production: rates(outputs),
     ingredients: rates(inputs),
     state,
@@ -415,6 +417,24 @@ const buildings: FactoryBuilding[] = [
     ],
     { x: -1540, y: -870, rot: 0, circuit: 1 },
   ),
+  // Output-throttled: input buffers full but running at 10% of its rate, so backedUp by state alone (issue 201).
+  building(
+    10,
+    "Assembler",
+    "Build_AssemblerMk1_C",
+    "Reinforced Iron Plate",
+    [
+      [
+        ["Iron Plate", "Desc_IronPlate_C", 3, 30],
+        ["Screw", "Desc_IronScrew_C", 6, 60],
+      ],
+      [["Reinforced Iron Plate", "Desc_IronPlateReinforced_C", 0.5, 5]],
+    ],
+    { x: -1675, y: -975, rot: 180, circuit: 0 },
+    "backedUp",
+    100,
+    true,
+  ),
 ];
 
 /** What the backend counts (ADR-0027): machines per state; ones without a state aren't counted. */
@@ -429,7 +449,7 @@ export function factory(now: number): FactoryResponse {
     ...envelope(now),
     data: {
       buildings,
-      backedUpCount: buildings.filter((b) => b.isBackedUp).length,
+      backedUpCount: buildings.filter(isBackedUpState).length,
       stateCounts: stateCounts(buildings),
     },
   };

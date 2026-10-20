@@ -86,7 +86,7 @@ export function deriveFactory(agent: AgentFactory, fuseOf: FuseLookup, resolveUn
           ? { state: "paused" as const }
           : undefined
         : classifyBuilding(
-            { recipe: building.recipe, isPaused: building.isPaused, production, consumption: building.ingredients ?? [], circuitGroupId: circuit, ...(fuse !== undefined ? { fuseTriggered: fuse } : {}) },
+            { recipe: building.recipe, isPaused: building.isPaused, production, consumption: building.ingredients ?? [], circuitGroupId: circuit, ...(fuse !== undefined ? { fuseTriggered: fuse } : {}), ...(building.inputsFull !== undefined ? { inputsFull: building.inputsFull } : {}) },
             building.isBackedUp,
           );
     // Explicit field mapping, never `...building`: a derived field that reached here by any route (a caller that skipped the
@@ -99,6 +99,7 @@ export function deriveFactory(agent: AgentFactory, fuseOf: FuseLookup, resolveUn
       isProducing: building.isProducing,
       isPaused: building.isPaused,
       isBackedUp: building.isBackedUp,
+      ...(building.inputsFull !== undefined ? { inputsFull: building.inputsFull } : {}),
       ...(building.circuitGroupId !== undefined ? { circuitGroupId: building.circuitGroupId } : {}),
       ...(building.location !== undefined ? { location: building.location } : {}),
       ...(building.clockSpeedPercent !== undefined ? { clockSpeedPercent: building.clockSpeedPercent } : {}),
@@ -111,5 +112,5 @@ export function deriveFactory(agent: AgentFactory, fuseOf: FuseLookup, resolveUn
   for (const building of buildings) {
     if (building.state !== undefined) stateCounts[building.state] = (stateCounts[building.state] ?? 0) + 1;
   }
-  return { buildings, backedUpCount: buildings.filter((building) => building.isBackedUp).length, stateCounts };
+  return { buildings, backedUpCount: stateCounts.backedUp ?? 0, stateCounts };
 }

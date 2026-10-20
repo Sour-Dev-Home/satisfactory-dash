@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import type { Factory, FactoryResponse } from "@satisfactory-dash/shared";
+import { isBackedUpState, type Factory, type FactoryResponse } from "@satisfactory-dash/shared";
 import { formatPercent } from "../format";
 import { buildingsLayer, placed } from "./buildingsLayer";
 import { buildingState, outputPercent, stateLabel } from "./buildingState";
@@ -111,7 +111,7 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
                         <td>
                           {stateLabel(buildingState(b))}
                           {percent !== null && ` · ${formatPercent(percent)}`}
-                          {b.isBackedUp && " · Backed up"}
+                          {isBackedUpState(b) &&" · Backed up"}
                         </td>
                       </tr>
                     );

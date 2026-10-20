@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AgentFactorySchema, AgentPowerSchema, ServerPlayersResponseSchema, StatusSchema } from "@satisfactory-dash/shared";
 import type { FactoryBuilding, PowerCircuit } from "../domain.js";
 import { UpstreamError } from "../errors.js";
-import { isBackedUp, isFrmAbsent, mapFactoryBuilding, mapPlayers, mapPowerCircuit, mapStatus, readPlayers } from "./index.js";
+import { areInputsFull, isBackedUp, isFrmAbsent, mapFactoryBuilding, mapPlayers, mapPowerCircuit, mapStatus, readPlayers } from "./index.js";
 
 /** ADR-0031: the shape mapping the backend's services and the edge agent share. */
 
@@ -100,6 +100,32 @@ describe("mapPowerCircuit", () => {
     expect(Object.keys(mapPowerCircuit({ ...circuit(), extra: 1 } as never)).sort()).toEqual(
       ["batteryCapacityMWh", "batteryDifferentialMW", "batteryPercent", "capacityMW", "circuitGroupId", "consumptionMW", "fuseTriggered", "maxConsumptionMW", "productionMW"],
     );
+  });
+});
+
+describe("areInputsFull (issue 201: every ingredient's input slot at capacity)", () => {
+  const rate = (className: string) => ({ name: className, className, currentPerMinute: 1, maxPerMinute: 10, percent: 10 });
+  const slot = (className: string, amount: number, maxAmount = 200) => ({ name: className, className, amount, maxAmount });
+  const two = [rate("Desc_IronPlate_C"), rate("Desc_CopperSheet_C")];
+  const fullTwo = [slot("Desc_IronPlate_C", 200), slot("Desc_CopperSheet_C", 200)];
+  it("is true when every ingredient has a full slot, and is carried onto the mapped building", () => {
+    const b = building({ consumption: two, inputInventory: fullTwo });
+    expect(areInputsFull(b)).toBe(true);
+    expect(mapFactoryBuilding(b).inputsFull).toBe(true);
+  });
+  it("is false for partial input, a missing slot, zero input, no capacity, paused or no recipe", () => {
+    expect(areInputsFull(building({ consumption: two, inputInventory: [fullTwo[0]!, slot("Desc_CopperSheet_C", 199)] }))).toBe(false);
+    expect(areInputsFull(building({ consumption: two, inputInventory: [fullTwo[0]!] }))).toBe(false);
+    expect(areInputsFull(building({ consumption: two, inputInventory: [] }))).toBe(false);
+    expect(areInputsFull(building({ consumption: [rate("A")], inputInventory: [slot("A", 0, 0)] }))).toBe(false);
+    expect(areInputsFull(building({ consumption: two, inputInventory: fullTwo, isPaused: true }))).toBe(false);
+    expect(areInputsFull(building({ consumption: two, inputInventory: fullTwo, recipe: null }))).toBe(false);
+  });
+  it("is false with no ingredients, and the field is absent when the input inventory is unknown", () => {
+    expect(areInputsFull(building({ consumption: [], inputInventory: fullTwo }))).toBe(false);
+    const unknown = building({ consumption: two });
+    expect(areInputsFull(unknown)).toBe(false);
+    expect(mapFactoryBuilding(unknown)).not.toHaveProperty("inputsFull");
   });
 });
 

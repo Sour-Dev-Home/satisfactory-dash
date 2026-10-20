@@ -13,7 +13,7 @@ function factoryWith(total: number, backedUp: number): FactoryResponse {
     stale: false,
     data: {
       ...factoryMixed.data,
-      buildings: Array.from({ length: total }, (_, i) => ({ ...building, isBackedUp: i < backedUp })),
+      buildings: Array.from({ length: total }, (_, i) => ({ ...building, isBackedUp: i < backedUp, state: i < backedUp ? ("backedUp" as const) : ("producing" as const) })),
       backedUpCount: backedUp,
     },
   };

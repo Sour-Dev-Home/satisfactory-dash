@@ -191,6 +191,7 @@ export class SatisfactoryServerAdapter {
         production: configured ? mapProduction(building.production) : [],
         consumption: configured ? mapConsumption(building.ingredients) : [],
         outputInventory: mapInventory(building.OutputInventory),
+        ...(building.InputInventory !== undefined ? { inputInventory: mapInventory(building.InputInventory) } : {}),
         // B3: the group id, which is what getPower is keyed by. See domain.ts.
         circuitGroupId: building.PowerInfo?.CircuitGroupID ?? -1,
         powerConsumed: building.PowerInfo?.PowerConsumed ?? 0,

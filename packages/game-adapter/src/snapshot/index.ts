@@ -8,5 +8,5 @@ export { mapStatus } from "./statusMapper.js";
 export { mapPlayers, readPlayers, isFrmAbsent } from "./playersMapper.js";
 export { mapPowerCircuit } from "./powerMapper.js";
 export type { MappedPowerCircuit } from "./powerMapper.js";
-export { mapFactoryBuilding, isBackedUp } from "./factoryMapper.js";
+export { mapFactoryBuilding, isBackedUp, areInputsFull } from "./factoryMapper.js";
 export type { MappedFactoryBuilding } from "./factoryMapper.js";

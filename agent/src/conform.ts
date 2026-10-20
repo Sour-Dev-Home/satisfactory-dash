@@ -107,6 +107,7 @@ export function conformFactory(factory: AgentFactory): Conformed<AgentFactory> {
     isProducing: building.isProducing,
     isPaused: building.isPaused,
     isBackedUp: building.isBackedUp,
+    ...(building.inputsFull !== undefined ? { inputsFull: building.inputsFull } : {}),
     ...(building.circuitGroupId !== undefined && Number.isInteger(building.circuitGroupId) ? { circuitGroupId: building.circuitGroupId } : {}),
     ...(building.location !== undefined && [building.location.xM, building.location.yM, building.location.zM, building.location.rotationDeg].every(finite) ? { location: { ...building.location, rotationDeg: normalizeYaw(building.location.rotationDeg) } } : {}),
     ...(building.clockSpeedPercent !== undefined && finite(building.clockSpeedPercent) ? { clockSpeedPercent: atLeastZero(building.clockSpeedPercent) } : {}),
