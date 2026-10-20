@@ -36,13 +36,8 @@ export function offerStartAfterUpdate(s: Status): boolean {
   return s.updateResult !== undefined && !s.updating && (s.state === "stopped" || s.state === "crashed") && s.leftoverPid === undefined;
 }
 
+/** The update log keeps the last LOG_LINES lines. */
 export const LOG_LINES = 500;
-
-/** The log keeps the last LOG_LINES lines. */
-export function appendLine(lines: readonly string[], line: string): string[] {
-  const next = [...lines, line];
-  return next.length > LOG_LINES ? next.slice(next.length - LOG_LINES) : next;
-}
 
 export function actionsFor(state: ServerState, configured: boolean): { start: boolean; stop: boolean; restart: boolean } {
   if (!configured) return { start: false, stop: false, restart: false };

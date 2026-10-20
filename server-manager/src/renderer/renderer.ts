@@ -3,11 +3,11 @@ import type { ServerManagerBridge, Status } from "../ipc";
 import {
   actionsFor,
   anywayLabel,
-  appendLine,
   chooseMessage,
   formatBytes,
   formatCpu,
   formatUptime,
+  LOG_LINES,
   offerStartAfterUpdate,
   updateAllowed,
   updateNeedsConfirm,
@@ -43,7 +43,7 @@ const confirmBox = el("update-confirm");
 const log = el("update-log");
 
 let latest: Status | undefined;
-let logLines: string[] = [];
+let logCount = 0;
 
 function render(status: Status): void {
   latest = status;
@@ -97,16 +97,21 @@ onPress(buttons.restart, () => bridge.restart());
 onPress(anywayButton, () => {
   const action = latest?.anyway;
   anywayButton.hidden = true;
+  // The focused button just hid itself: keep focus in the server card.
+  (action === "update" ? updateButton : buttons.stop).focus();
   if (action === "update") return startUpdate({ anyway: true });
   if (action === "restart") return bridge.restart({ anyway: true });
   return bridge.stop({ anyway: true });
 });
 
 function startUpdate(opts?: { anyway: true }): Promise<void> {
+  const hadFocus = confirmBox.contains(document.activeElement);
   confirmBox.hidden = true;
-  logLines = [];
-  log.textContent = "";
+  logCount = 0;
+  log.replaceChildren();
   log.hidden = false;
+  // "Stop and update" just hid with the confirm box: move focus to the log it now fills.
+  if (hadFocus) log.focus();
   return bridge.update(opts);
 }
 
@@ -125,9 +130,14 @@ onPress(el("update-confirm-no"), () => {
 });
 onPress(el("start-after-update"), () => bridge.start());
 
+// One node per line, appended, so the role=log region announces only what's new.
 bridge.onUpdateLine((line) => {
-  logLines = appendLine(logLines, line);
-  log.textContent = logLines.join("\n");
+  log.append(`${line}\n`);
+  logCount++;
+  if (logCount > LOG_LINES) {
+    log.firstChild?.remove();
+    logCount--;
+  }
   log.scrollTop = log.scrollHeight;
 });
 

@@ -4,12 +4,10 @@ import type { ServerState } from "../supervisor";
 import {
   actionsFor,
   anywayLabel,
-  appendLine,
   chooseMessage,
   formatBytes,
   formatCpu,
   formatUptime,
-  LOG_LINES,
   offerStartAfterUpdate,
   updateAllowed,
   updateNeedsConfirm,
@@ -133,15 +131,5 @@ describe("the update's words", () => {
     expect(anywayLabel("stop")).toBe("Stop anyway");
     expect(anywayLabel("restart")).toBe("Restart anyway");
     expect(anywayLabel("update")).toBe("Stop anyway and update");
-  });
-});
-
-describe("appendLine", () => {
-  it("keeps the last LOG_LINES lines", () => {
-    let lines: string[] = [];
-    for (let i = 0; i < LOG_LINES + 3; i++) lines = appendLine(lines, `l${i}`);
-    expect(lines).toHaveLength(LOG_LINES);
-    expect(lines[0]).toBe("l3");
-    expect(lines[LOG_LINES - 1]).toBe(`l${LOG_LINES + 2}`);
   });
 });
