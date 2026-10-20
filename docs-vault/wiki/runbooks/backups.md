@@ -382,6 +382,58 @@ role either: a dump as `satis_app` fails with `permission denied for sequence pg
 (the migrations bookkeeping table's sequence, which the app role may not read), which is why the backup uses
 `satis_backup` through `BACKUP_DATABASE_URL`.
 
+## Checks: freshness in CI, restore on your PC (#502)
+
+Two checks split by what each may hold. CI proves the backups **exist and look intact**; only your PC, which
+holds the age private key, proves they **restore**. The key never goes to CI.
+
+### Daily freshness check (GitHub Actions)
+
+`.github/workflows/backup-check.yml` runs daily (11:17 UTC, two hours after the nightly task) and on demand
+(Actions, "Backup check", Run workflow). It has no `pull_request` trigger, so no PR can reach its secrets. It runs
+`scripts/backup-check.mjs`, which lists the bucket with a **read-only** key and reads only the first bytes of the
+newest object. It never decrypts. It fails the run (GitHub emails you about a failed scheduled run) when:
+
+- the newest `satis-*.dump.age` is older than **26 h** (or dated in the future);
+- it is under **2048 bytes**, or is under half or over double the previous dump's size;
+- it does not start with the age header `age-encryption.org/v1`.
+
+Repo secrets to create (Settings, Secrets and variables, Actions). You create them; no session does:
+
+| Secret | Value |
+|---|---|
+| `BACKUP_CHECK_B2_KEY_ID` | key id of the `satis-backup-read` key (B2 section; **Read Only**, this bucket only) |
+| `BACKUP_CHECK_B2_APP_KEY` | that key's application key |
+| `BACKUP_CHECK_B2_BUCKET` | the bucket name |
+| `BACKUP_CHECK_B2_ENDPOINT` | `https://s3.<region>.backblazeb2.com` |
+
+Better than reusing the offline `satis-backup-read` key: create a second Read Only key for CI (for example
+`satis-backup-ci-read`), so it can be revoked on its own. Rotate it with the others.
+
+### Local restore check (your PC)
+
+`scripts/restore-check.mjs` downloads the newest dump, decrypts it with your age key, restores it into a throwaway
+`postgres:18` container (no published port, random name and password) after creating the roles first
+(`satis_migrator`, `satis_app`, `satis_backup`, as in the rehearsal above), runs sanity queries (latest migration in
+`pgmigrations`; row counts of `identity.users`, `servers.servers`, `audit.audit_events`; at least one user) and
+prints `PASS` or `FAIL` with the reasons. It then removes the container and the temp folder holding the plaintext,
+on success, on failure and on Ctrl-C; if it cannot delete that folder it fails and names it. Needs `aws` v2, `age`
+and Docker on `PATH`. Run it only here, never on a shared or CI machine:
+
+```powershell
+$env:BACKUP_S3_BUCKET = '<bucket>'
+$env:BACKUP_S3_ENDPOINT = 'https://s3.<region>.backblazeb2.com'
+$env:BACKUP_READ_AWS_PROFILE = 'satis-backup-read'      # an AWS CLI profile holding the read-only B2 key
+$env:AGE_IDENTITY_FILE = '<path to the age private key file>'   # only read, never copied or deleted
+node scripts\restore-check.mjs
+```
+
+Exit code 0 is a pass. `AGE_IDENTITY_FILE` is a file you put the key in only while the check runs (see the
+rehearsal above): take it from the password manager, run, delete it. To **schedule** it (monthly is plenty), use a
+Scheduled Task that fetches the key file from wherever you keep it, runs the script and deletes the key file in a
+`finally`; or simply run it by hand after each month's first backup. A red result means: run the rehearsal above by
+hand, read the problems it printed, and check the nightly task's log.
+
 ## Privacy
 
 The Backblaze wording (ADR-0035) is **"Backblaze stores encrypted backups for up to 37 days"** (the owner approved
