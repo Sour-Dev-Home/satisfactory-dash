@@ -14,6 +14,10 @@ For every page audited:
 4. Capture violations array.
 5. Map severity → audit severity (table below) and log findings.
 
+> **Local rule (this repo):** don't inject axe-core from a CDN. Use the repo's own `@axe-core/playwright`
+> (the e2e suite's `expectNoAxeViolations`), or run axe from the local `node_modules` copy. The snippet
+> below is upstream's reference only.
+
 ```js
 // In the browser eval / playwright-cli / chrome MCP
 await page.evaluate(async () => {

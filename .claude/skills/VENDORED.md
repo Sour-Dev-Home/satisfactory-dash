@@ -20,9 +20,8 @@ All edits are additive notes that neutralise risky guidance; no upstream text wa
 - `ux-audit/references/browser-tools.md`, `auth-expired-handling.md`, `project-adaptation.md`: test-auth cookie minting and auth-bypass sections marked disabled.
 - `ux-audit/references/data-seasoning.md`: seed/reset scripts only against an approved local or disposable database.
 - `responsiveness-check/SKILL.md`: short "Local rules" note (no local dev server, nothing off-machine, no paths or personal data).
+- `ux-audit/references/a11y-automation.md`: note to use the repo's own `@axe-core/playwright` instead of injecting axe-core from cdnjs (upstream snippet kept for reference).
 - `LICENSE` files added per skill (copied unchanged from upstream).
 
 ## Known upstream behaviours left as-is
-
-- `ux-audit/references/a11y-automation.md:24` injects axe-core 4.10.0 from cdnjs into the audited page (pinned, runs in the page only). May fail under a strict CSP; do not loosen CSP to make it work.
 - Skills reference Playwright MCP, Chrome MCP and `playwright-cli`; they install nothing themselves.
