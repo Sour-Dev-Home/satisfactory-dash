@@ -35,6 +35,21 @@ export default defineConfig({
     timezoneId: "UTC",
     locale: "en-US",
     trace: "retain-on-failure",
+    // Byte-identical screenshots across CI runs (#503). Regenerating baselines on unrelated branches
+    // changed a handful of antialiased pixels (1 to 6 levels, at rounded corners) in a different
+    // screenshot every time; the runners differ in CPU, and Skia picks SIMD paths per CPU, spreads
+    // raster work across threads, and Chromium may use a GPU or per-machine colour profile. Pin all of
+    // that so the same page always rasterises to the same bytes.
+    launchOptions: {
+      args: [
+        "--disable-skia-runtime-opts",
+        "--disable-gpu",
+        "--num-raster-threads=1",
+        "--force-color-profile=srgb",
+        "--disable-lcd-text",
+        "--font-render-hinting=none",
+      ],
+    },
   },
   projects: [
     {
