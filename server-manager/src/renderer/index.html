@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Satisfactory server manager</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="app-header">
+        <h1>Server manager</h1>
+      </header>
+
+      <section id="setup" class="card" aria-labelledby="setup-title" hidden>
+        <h2 id="setup-title">Choose the server folder</h2>
+        <p>Pick the dedicated server's install folder: the one that holds <code>FactoryServer.exe</code>.</p>
+        <div class="actions">
+          <button id="choose-server" type="button" class="primary">Choose folder…</button>
+        </div>
+        <p id="setup-error" class="notice" role="alert"></p>
+      </section>
+
+      <section id="server" class="card" aria-labelledby="server-title" hidden>
+        <h2 id="server-title">Dedicated server</h2>
+        <p class="state-line">
+          <span id="state-dot" class="dot" aria-hidden="true"></span>
+          <span id="state" data-testid="state" role="status">stopped</span>
+        </p>
+        <dl class="stats">
+          <div><dt>Uptime</dt><dd id="uptime" data-testid="uptime">—</dd></div>
+          <div><dt>CPU</dt><dd id="cpu" data-testid="cpu">—</dd></div>
+          <div><dt>Memory</dt><dd id="memory" data-testid="memory">—</dd></div>
+        </dl>
+        <p id="last-error" class="notice" data-testid="last-error" aria-live="polite" hidden></p>
+        <div class="actions">
+          <button id="start" type="button" class="primary" aria-disabled="true">Start</button>
+          <button id="stop" type="button" aria-disabled="true">Stop</button>
+          <button id="restart" type="button" aria-disabled="true">Restart</button>
+        </div>
+      </section>
+
+      <section id="folders" class="card" aria-labelledby="folders-title" hidden>
+        <h2 id="folders-title">Folders</h2>
+        <dl class="folders">
+          <div>
+            <dt>Server</dt>
+            <dd><code id="server-dir" data-testid="server-dir"></code></dd>
+            <dd><button id="change-server" type="button">Change…</button></dd>
+          </div>
+          <div>
+            <dt>SteamCMD</dt>
+            <dd><code id="steamcmd-dir" data-testid="steamcmd-dir">not set</code></dd>
+            <dd><button id="choose-steamcmd" type="button">Choose…</button></dd>
+          </div>
+        </dl>
+        <p id="folders-error" class="notice" role="alert"></p>
+      </section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

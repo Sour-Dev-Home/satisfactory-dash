@@ -1,0 +1,29 @@
+{
+  "name": "@satisfactory-dash/server-manager",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "The server manager (ADR-0040): an Electron window that starts and supervises the owner's dedicated server, a holdover until the mod.",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "e2e": "node scripts/build.mjs && playwright test"
+  },
+  "dependencies": {
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.5",
+    "electron": "44.5.1",
+    "esbuild": "^0.28.2",
+    "oxlint": "^1.87.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
