@@ -3,8 +3,8 @@ import type * as Leaflet from "leaflet";
 import { formatPercent } from "../format";
 import {
   BACKED_UP_TOKEN,
+  isHollow,
   MARK_TOKEN,
-  NO_RECIPE_OUTLINE_TOKEN,
   PULSE_TOKEN,
   stateLabel,
   stateToken,
@@ -13,7 +13,7 @@ import {
   type BuildingState,
 } from "./buildingState";
 import type { MapLayer } from "./layers";
-import { drawMachine, drawPulse, durationMs, HIT_RADIUS, PULSE_REACH, STILL_PROGRESS } from "./machineIcon";
+import { drawMachine, drawPulse, durationMs, hitRadius, ICON_MIN_PX, iconPx, pulseReach, STILL_PROGRESS } from "./machineIcon";
 import { MachineGlyph } from "./MachineGlyph";
 
 const STATES: BuildingState[] = ["producing", "idle", "paused", "noRecipe"];
@@ -23,7 +23,7 @@ const FILL: Record<BuildingState, string> = {
   producing: "fill-ok",
   idle: "fill-muted",
   paused: "fill-info",
-  noRecipe: "fill-line",
+  noRecipe: "fill-none",
 };
 
 /** Buildings the backend placed; an older backend (ADR-0007 skew) sends none. */
@@ -50,12 +50,20 @@ function tooltip(building: FactoryBuilding): HTMLElement {
   return box;
 }
 
-type Paint = (ctx: CanvasRenderingContext2D, at: { x: number; y: number }) => void;
-type DrawnOptions = Leaflet.CircleMarkerOptions & { paint: Paint };
+/** Paints a marker at its point; `size` is the icon's size at the current zoom (iconPx). */
+type Paint = (ctx: CanvasRenderingContext2D, at: { x: number; y: number }, size: number) => void;
+type DrawnOptions = Leaflet.CircleMarkerOptions & {
+  paint: Paint;
+  /** The marker's radius (its hit circle and redraw area) for an icon size. */
+  radiusAt: (size: number) => number;
+};
 /** The parts of Leaflet's canvas renderer a custom-drawn marker uses (Leaflet 1.9, pinned). */
 interface CanvasInternals {
   _renderer: { _drawing: boolean; _ctx: CanvasRenderingContext2D };
+  _map: Leaflet.Map;
   _point: { x: number; y: number };
+  _radius: number;
+  _size: number;
   _empty(): boolean;
   options: DrawnOptions;
 }
@@ -63,14 +71,23 @@ interface CanvasInternals {
 /**
  * A circle marker that draws its own picture on the shared canvas renderer (ADR-0023/ADR-0038: no
  * DOM node per building). It stays a CircleMarker, so Leaflet's hit test (the circle), hover and
- * tooltips work as for any marker; only `_updatePath`, the renderer's per-layer draw hook, changes.
+ * tooltips work as for any marker. Two hooks change: `_updatePath`, the renderer's per-layer draw
+ * hook, and `_project`, which Leaflet already runs for every layer when the zoom changes: there the
+ * marker takes the zoom's icon size and sets its radius to match, so the hit circle is always the
+ * drawn size, at no cost beyond the reprojection Leaflet does anyway.
  */
 function drawnMarker(L: typeof Leaflet) {
+  const base = L.CircleMarker.prototype as unknown as { _project(this: unknown): void };
   return L.CircleMarker.extend({
+    _project(this: CanvasInternals) {
+      this._size = iconPx(this._map.getZoom());
+      this._radius = this.options.radiusAt(this._size);
+      base._project.call(this);
+    },
     _updatePath(this: CanvasInternals) {
       const renderer = this._renderer;
       if (!renderer._drawing || this._empty()) return;
-      this.options.paint(renderer._ctx, this._point);
+      this.options.paint(renderer._ctx, this._point, this._size);
     },
   }) as unknown as new (at: Leaflet.LatLngExpression, options: DrawnOptions) => Leaflet.CircleMarker;
 }
@@ -115,29 +132,34 @@ export const buildingsLayer: MapLayer<Factory> = {
       ? backedUp.map((b) =>
           new Drawn(project(b.location.xM, b.location.yM), {
             renderer: ringRenderer,
-            radius: PULSE_REACH,
+            radius: pulseReach(iconPx(map.getZoom())),
+            radiusAt: pulseReach,
             stroke: false,
             interactive: false,
-            paint: (ctx, at) => drawPulse(ctx, at.x, at.y, clock.progress, warn),
+            paint: (ctx, at, size) => drawPulse(ctx, at.x, at.y, size, clock.progress, warn),
           }).addTo(group),
         )
       : [];
 
-    const outline = color(NO_RECIPE_OUTLINE_TOKEN);
     for (const building of buildings) {
       const state = buildingState(building);
-      const colors = {
-        body: building.isBackedUp ? warn : color(stateToken(state)),
-        mark,
-        outline: !building.isBackedUp && state === "noRecipe" ? outline : undefined,
-      };
+      // Backed up wins (warn, filled, the triangle); no recipe is hollow (an outline, no fill).
+      const hollow = !building.isBackedUp && isHollow(state);
+      const stateColor = color(stateToken(state));
+      const colors = building.isBackedUp
+        ? { body: warn, mark }
+        : hollow
+          ? { mark, outline: stateColor }
+          : { body: stateColor, mark };
       new Drawn(project(building.location.xM, building.location.yM), {
         renderer,
-        radius: HIT_RADIUS,
+        radius: hitRadius(iconPx(map.getZoom())),
+        radiusAt: hitRadius,
         stroke: false,
-        paint: (ctx, at) => drawMachine(ctx, at.x, at.y, colors, building.isBackedUp),
+        paint: (ctx, at, size) => drawMachine(ctx, at.x, at.y, size, colors, building.isBackedUp),
       })
-        .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -HIT_RADIUS] })
+        // Leaflet opens a path's tooltip where the pointer is: lift it clear of the smallest icon.
+        .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -hitRadius(ICON_MIN_PX)] })
         .addTo(group);
     }
     group.addTo(map);
@@ -192,13 +214,13 @@ export const buildingsLayer: MapLayer<Factory> = {
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       {STATES.map((state) => (
         <li key={state} className="flex items-center gap-1.5">
-          <MachineGlyph fill={ownValue(FILL, state) ?? FILL.idle} outline={state === "noRecipe" ? "stroke-muted" : undefined} />
+          <MachineGlyph fill={ownValue(FILL, state) ?? FILL.idle} outline={isHollow(state) ? "stroke-muted" : undefined} />
           {stateLabel(state)}
         </li>
       ))}
       <li className="flex items-center gap-1.5">
         <MachineGlyph fill="fill-warn" backedUp />
-        Backed up (a ring pulses)
+        Backed up (a ring marks it)
       </li>
     </ul>
   ),

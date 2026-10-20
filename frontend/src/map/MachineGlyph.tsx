@@ -10,7 +10,7 @@ export function MachineGlyph({
   backedUp = false,
 }: {
   fill: string;
-  /** A stroke class (`stroke-muted`) for a fill too dim on its own, 1 px as on the canvas. */
+  /** A stroke class (`stroke-muted`): the hollow form (with `fill-none`), 1 px as on the canvas, no window. */
   outline?: string;
   backedUp?: boolean;
 }) {
@@ -24,7 +24,7 @@ export function MachineGlyph({
       {backedUp ? (
         <polygon className="fill-canvas" points={svgPoints(WARNING_TRIANGLE)} />
       ) : (
-        <rect className="fill-canvas" {...MACHINE_WINDOW} />
+        !outline && <rect className="fill-canvas" {...MACHINE_WINDOW} />
       )}
     </svg>
   );

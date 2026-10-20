@@ -4,10 +4,10 @@ import { render, screen, within } from "@testing-library/react";
 import * as L from "leaflet";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MACHINE_HOUSING, MACHINE_WINDOW } from "../ui/stationShapes";
+import { MACHINE_HOUSING, MACHINE_WINDOW, STATION_VIEWBOX } from "../ui/stationShapes";
 import { buildingsLayer } from "./buildingsLayer";
 import type { MapContext } from "./layers";
-import { ICON_SCALE } from "./machineIcon";
+import { hitRadius, ICON_MAX_PX, ICON_MIN_PX, iconPx, pulseReach } from "./machineIcon";
 
 /** One canvas call, with the drawing state it ran under. */
 interface Call {
@@ -74,7 +74,8 @@ beforeEach(() => {
   Object.defineProperty(host, "clientHeight", { value: 300 });
   document.body.append(host);
   renderer = L.canvas({ padding: 0 });
-  map = L.map(host, { crs: L.CRS.Simple, renderer }).setView([0, 0], 0);
+  // MapCanvas's zoom range, so a test can zoom far out and in.
+  map = L.map(host, { crs: L.CRS.Simple, renderer, minZoom: -5, maxZoom: 5 }).setView([0, 0], 0);
 });
 
 afterEach(() => {
@@ -156,9 +157,16 @@ const BACKED_UP = building(4, { recipe: "Screw", production: running, isBackedUp
 
 const isRect = (call: Call, shape: { x: number; y: number; width: number; height: number }) =>
   call.op === "roundRect" && call.args[0] === shape.x && call.args[1] === shape.y && call.args[2] === shape.width && call.args[3] === shape.height;
-/** The colour each housing (or window) was filled with, in draw order. */
+/** How each housing (or window) was painted, in draw order: "fill:<colour>" or "stroke:<colour>". */
+const paintsOf = (calls: Call[], shape: typeof MACHINE_HOUSING) =>
+  calls.flatMap((call, i) => {
+    if (!isRect(call, shape)) return [];
+    const next = calls.slice(i + 1).find((c) => c.op === "fill" || c.op === "stroke")!;
+    return [`${next.op}:${String(next.op === "fill" ? next.fillStyle : next.strokeStyle)}`];
+  });
+/** The colour each filled housing (or window) got, in draw order. */
 const fillsOf = (calls: Call[], shape: typeof MACHINE_HOUSING) =>
-  calls.flatMap((call, i) => (isRect(call, shape) ? [calls.slice(i).find((c) => c.op === "fill")!.fillStyle] : []));
+  paintsOf(calls, shape).flatMap((p) => (p.startsWith("fill:") ? [p.slice(5)] : []));
 const rings = (calls: Call[]) =>
   calls.flatMap((call, i) => {
     if (call.op !== "arc") return [];
@@ -170,24 +178,29 @@ describe("buildingsLayer.draw: machine icons on the canvas renderer", () => {
   it("draws one machine icon per building, its housing in the state's colour (ADR-0041)", () => {
     buildingsLayer.draw(context(), factory(ONE_PER_STATE));
     const calls = paint();
-    expect(fillsOf(calls, MACHINE_HOUSING)).toEqual(["OK", "MUTED", "INFO", "LINE"]);
-    // The centre mark: the machine's window, in the canvas colour.
-    expect(fillsOf(calls, MACHINE_WINDOW)).toEqual(["CANVAS", "CANVAS", "CANVAS", "CANVAS"]);
+    // No recipe is the hollow housing: an outline in muted, no fill.
+    expect(paintsOf(calls, MACHINE_HOUSING)).toEqual(["fill:OK", "fill:MUTED", "fill:INFO", "stroke:MUTED"]);
+    // The centre mark: the machine's window, in the canvas colour, on each filled housing.
+    expect(fillsOf(calls, MACHINE_WINDOW)).toEqual(["CANVAS", "CANVAS", "CANVAS"]);
     // Drawn on the canvas, not DOM: no marker elements, no SVG renderer. No ring without a backed-up machine.
     expect(host.querySelector(".leaflet-marker-icon, .leaflet-overlay-pane svg")).toBeNull();
     expect(host.querySelector(".leaflet-overlay-pane canvas")).not.toBeNull();
     expect(rings(calls)).toEqual([]);
   });
 
-  it("outlines only the no-recipe machine, in the muted colour, so its dim fill still reads on the canvas", () => {
+  it("draws no recipe hollow: the only stroke, and no fill of its own, so it differs from not producing by shape", () => {
     buildingsLayer.draw(context(), factory(ONE_PER_STATE));
     const calls = paint();
     const strokes = calls.filter((c) => c.op === "stroke");
     expect(strokes.map((c) => c.strokeStyle)).toEqual(["MUTED"]);
-    // The stroke follows the no-recipe housing (the 4th icon).
+    // Nothing is filled after the no-recipe housing (the last icon drawn).
     const housings = calls.flatMap((c, i) => (isRect(c, MACHINE_HOUSING) ? [i] : []));
-    const strokeAt = calls.indexOf(strokes[0]);
-    expect(strokeAt).toBeGreaterThan(housings[3]);
+    expect(calls.slice(housings[3]).some((c) => c.op === "fill")).toBe(false);
+  });
+
+  it("keeps a backed-up machine without a recipe filled in warn, with its triangle", () => {
+    buildingsLayer.draw(context(), factory([{ ...BACKED_UP, recipe: null, production: [] }]));
+    expect(paintsOf(paint(), MACHINE_HOUSING)).toEqual(["fill:WARN"]);
   });
 
   it("draws a backed-up machine in the warn colour with a warning triangle instead of the window", () => {
@@ -210,8 +223,8 @@ describe("buildingsLayer.draw: machine icons on the canvas renderer", () => {
     for (const marker of markers) {
       expect(marker.options.interactive).not.toBe(false);
       expect(marker.options.renderer).toBe(renderer);
-      // The hit area covers the icon's housing (Leaflet tests the circle).
-      expect(marker.getRadius() * 2).toBeGreaterThanOrEqual(MACHINE_HOUSING.width * ICON_SCALE);
+      // The hit area covers the icon's housing at this zoom (Leaflet tests the circle).
+      expect(marker.getRadius() * 2).toBeGreaterThanOrEqual((MACHINE_HOUSING.width * iconPx(map.getZoom())) / STATION_VIEWBOX);
     }
   });
 
@@ -306,7 +319,7 @@ describe("buildingsLayer.legend", () => {
       [/^Producing$/, "fill-ok"],
       [/^Not producing$/, "fill-muted"],
       [/^Paused$/, "fill-info"],
-      [/^No recipe$/, "fill-line"],
+      [/^No recipe$/, "fill-none"],
       [/^Backed up/, "fill-warn"],
     ];
     const items = screen.getAllByRole("listitem");
@@ -320,18 +333,22 @@ describe("buildingsLayer.legend", () => {
       expect(housing).toHaveAttribute("width", String(MACHINE_HOUSING.width));
     });
     expect(items[4].querySelector("svg polygon")).not.toBeNull();
-    expect(items[4]).toHaveTextContent(/pulses/);
-    // No recipe's dim fill gets the same outline as on the canvas; the others none.
+    // True with and without motion: under reduced motion the ring holds still.
+    expect(items[4]).toHaveTextContent("Backed up (a ring marks it)");
+    // No recipe is hollow as on the canvas: an outline in muted, no window; the others no outline.
     items.forEach((item, i) => {
       const housing = item.querySelector("svg rect")!;
-      if (i === 3) expect(housing).toHaveClass("stroke-muted");
-      else expect(housing.getAttribute("class")).not.toMatch(/stroke-/);
+      if (i === 3) {
+        expect(housing).toHaveClass("stroke-muted");
+        expect(item.querySelectorAll("svg rect, svg polygon")).toHaveLength(1);
+      } else expect(housing.getAttribute("class")).not.toMatch(/stroke-/);
     });
   });
 });
 
 /** The Leaflet 1.9 private members buildingsLayer.tsx relies on (CanvasInternals, drawnMarker). */
 interface Private {
+  _radius: number;
   _renderer: unknown;
   _point: L.Point;
   _empty(): boolean;
@@ -377,14 +394,30 @@ describe("buildingsLayer: hit-testing after the shape change", () => {
   for (const zoom of [-5, 0, 5]) {
     it(`hits an icon near its centre and not 40 px away, at zoom ${zoom}`, async () => {
       const cleanup = buildingsLayer.draw(context(), factory([...ONE_PER_STATE, BACKED_UP]));
-      map.setZoom(zoom, { animate: false });
+      // Centred on the first icon, so it is in view (and painted) at every zoom.
+      map.setView([-20, 0], zoom, { animate: false });
       const hits = hitMarkers();
       expect(hits).toHaveLength(ONE_PER_STATE.length + 1);
+      // The icon is drawn at the zoom's size, and the hit circle matches it.
+      const size = iconPx(zoom);
+      const radius = hitRadius(size);
+      expect(size).toBe(zoom < 0 ? ICON_MIN_PX : zoom > 0 ? ICON_MAX_PX : iconPx(0));
       for (const marker of hits) {
+        expect(marker._radius).toBe(radius);
         expect(marker._containsPoint(marker._point)).toBe(true);
-        expect(marker._containsPoint(marker._point.add([9, 0]))).toBe(true);
+        expect(marker._containsPoint(marker._point.add([radius - 1, 0]))).toBe(true);
+        // Just past the edge: Leaflet adds its click tolerance (stroke off: the renderer's, 0 for a mouse).
+        expect(marker._containsPoint(marker._point.add([radius + 2, 0]))).toBe(false);
         expect(marker._containsPoint(marker._point.add([40, 0]))).toBe(false);
       }
+      // The paint pass scales the 48-unit housing to that size.
+      const scales = paint()
+        .filter((c) => c.op === "scale")
+        .map((c) => c.args[0]);
+      expect(scales).toContain(size / STATION_VIEWBOX);
+      // The rings reach round the icon at that size, and never catch the pointer.
+      const ring = markersOf().find((m) => m.options.interactive === false)!;
+      expect(ring._radius).toBe(pulseReach(size));
       cleanup();
       await new Promise((resolve) => setTimeout(resolve, 50)); // let the repaints the zoom and removal queued run on the stub
     });
@@ -489,6 +522,28 @@ describe("buildingsLayer: the pulse loop's lifecycle", () => {
     const motion = stubReducedMotion(false);
     buildingsLayer.draw(context(), factory(ONE_PER_STATE));
     expect(motion.listeners.size).toBe(0);
+  });
+});
+
+describe("buildingsLayer: icons scale with the zoom", () => {
+  it("grows the icons, hit circles and rings when zooming in, at no cost beyond Leaflet's own reprojection", async () => {
+    map.setZoom(-5, { animate: false });
+    buildingsLayer.draw(context(), factory([...ONE_PER_STATE, BACKED_UP]));
+    const radii = () => markersOf().map((m) => m._radius);
+    const small = radii();
+    map.setZoom(-1.5, { animate: false });
+    const middle = radii();
+    map.setZoom(3, { animate: false });
+    const large = radii();
+    small.forEach((r, i) => {
+      expect(middle[i]).toBeGreaterThan(r);
+      expect(large[i]).toBeGreaterThan(middle[i]);
+    });
+    expect(iconPx(-1.5)).toBeGreaterThan(ICON_MIN_PX);
+    expect(iconPx(-1.5)).toBeLessThan(ICON_MAX_PX);
+    // The size starts no frame loop of its own: only the backed-up pulse asked for one.
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let the repaints the zooms queued run on the stub
   });
 });
 

@@ -38,7 +38,8 @@ function markerOnCanvas(page: Page) {
           // of the zoom buttons in the top-left corner.
           const p = toPage(x, y);
           if (p.x < map.left + 70 || p.x > map.right - 10 || p.y < map.top + 10 || p.y > map.bottom - 10) continue;
-          // The centroid of this marker's matching pixels (markers are 12 px across).
+          // The centroid of the matching pixels near this one: inside the housing (icons are 20-40 px
+          // across, by zoom), so inside its hit circle.
           let sx = 0, sy = 0, n = 0;
           for (let dy = 0; dy <= 16; dy++) {
             for (let dx = -8; dx <= 8; dx++) {
