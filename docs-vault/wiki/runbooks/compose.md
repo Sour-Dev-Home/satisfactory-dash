@@ -115,3 +115,33 @@ One public hostname (`api.satis-manager.com`) points at one tunnel. Moving it be
 
 Going back is the same steps in the other direction. The database does not move with the route: switch
 only after the stack holds the data you want served (restore first).
+
+## The TLS 1.2 floor (#493)
+
+Clients must never reach the backend over TLS 1.0 or 1.1. The game mod's HTTP client (UE's libcurl) offers 1.0 to
+1.3 and can't raise its own floor, so the host refuses the old versions. In the `tunnel` profile TLS ends at your
+Cloudflare zone, not in this stack, and a zone's **Minimum TLS Version defaults to 1.0**. Two commands, once per zone:
+
+1. Set the floor. Make an API token with only **Zone > Zone Settings > Edit** on the zone and a short expiry (a
+   day is plenty), and copy the zone's id
+   from its Overview page. Then:
+
+   ```sh
+   CF_API_TOKEN=... CF_ZONE_ID=... npm run tls-floor -- set-cloudflare
+   ```
+
+   It prints the value before and after, never lowers it, and does nothing when it's already 1.2 or 1.3. Delete the
+   token afterwards if you made it only for this.
+2. Check it, after any route or zone change:
+
+   ```sh
+   npm run tls-floor -- check <your-api-hostname>
+   ```
+
+   It passes only when 1.0 and 1.1 are refused by the server and 1.2 is accepted, and exits non-zero otherwise. It
+   lowers its own TLS library's floor for the probes, so a machine that can't offer the old versions reports
+   "inconclusive" instead of a false pass.
+
+The official `api.satis-manager.com` passed this check on 2026-10-20 (1.0 and 1.1 refused, 1.2 accepted). The
+backend itself never terminates TLS today. A future direct-TLS mode (e.g. LAN, #197) must set `minVersion: "TLSv1.2"`
+explicitly and test it.
