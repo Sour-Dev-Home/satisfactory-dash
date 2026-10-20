@@ -132,8 +132,10 @@ function realDeps({ bucket, endpoint, profile, identity }, state) {
     },
     async startDb() {
       const name = `satis-restore-check-${randomBytes(4).toString("hex")}`;
-      await run("docker", ["run", "-d", "--rm", "--name", name, "-e", `POSTGRES_PASSWORD=${randomBytes(18).toString("hex")}`, "postgres:18"]);
+      // Recorded before `docker run` returns, so a Ctrl-C during startup still removes it. The data directory is a
+      // tmpfs: the restored plaintext database never lands in a volume that could outlive the container.
       state.container = name;
+      await run("docker", ["run", "-d", "--rm", "--name", name, "--tmpfs", "/var/lib/postgresql", "-e", `POSTGRES_PASSWORD=${randomBytes(18).toString("hex")}`, "postgres:18"]);
       for (let i = 0; i < 60; i++) {
         try {
           await dockerExec(name, ["pg_isready", "-U", "postgres"]);
@@ -174,7 +176,7 @@ function realDeps({ bucket, endpoint, profile, identity }, state) {
       return lines.join("\n");
     },
     async stopDb(id) {
-      await run("docker", ["rm", "-f", id]);
+      await run("docker", ["rm", "-f", "-v", id]);
       state.container = null;
     },
     async removeDir(dir) {
@@ -202,11 +204,13 @@ async function main() {
   // Ctrl-C or a terminated task must not leave the plaintext or the container behind.
   const bail = (code) => () => {
     try {
-      if (state.container) execFileSync("docker", ["rm", "-f", state.container], { stdio: "ignore" });
+      if (state.container) execFileSync("docker", ["rm", "-f", "-v", state.container], { stdio: "ignore" });
     } catch {}
     try {
       if (state.dir) rmSync(state.dir, { recursive: true, force: true });
     } catch {}
+    // A locked file on Windows can make the removal fail: say where the plaintext is rather than leave it silently.
+    if (state.dir && existsSync(state.dir)) console.error(`WARNING: delete this folder by hand, it may hold a decrypted dump: ${state.dir}`);
     process.exit(code);
   };
   process.on("SIGINT", bail(130));
