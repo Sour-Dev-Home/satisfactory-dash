@@ -119,7 +119,9 @@ describe.skipIf(!available)("against a real Postgres", () => {
     } finally {
       await behind.drop();
     }
-  });
+    // CREATE DATABASE ... TEMPLATE and DROP DATABASE ... WITH (FORCE) each force a checkpoint on the
+    // shared container; under a loaded full run that alone can exceed the 5 s default (#423).
+  }, 30_000);
 
   it("refuses to start with no schema at all (nothing migrated)", async () => {
     const empty = await createTestDatabase();
