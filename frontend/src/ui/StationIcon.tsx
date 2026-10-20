@@ -1,4 +1,5 @@
 import { cn } from "../lib/cn";
+import { MACHINE_FEET, MACHINE_HOUSING, MACHINE_LIGHT, MACHINE_PORT, MACHINE_WINDOW, STATION_VIEWBOX } from "./stationShapes";
 
 export type StationKind = "server" | "power" | "factory" | "machine";
 
@@ -23,7 +24,7 @@ export function StationIcon({
 }) {
   return (
     <svg
-      viewBox="0 0 48 48"
+      viewBox={`0 0 ${STATION_VIEWBOX} ${STATION_VIEWBOX}`}
       width={size}
       height={size}
       data-station={kind}
@@ -81,14 +82,14 @@ function Body({ kind }: { kind: StationKind }) {
         </>
       );
     case "machine":
-      // A machine: a housing, its window and an output port.
+      // A machine: a housing, its window and an output port. The map draws the same shapes (stationShapes.ts).
       return (
         <>
-          <rect className={BODY} x="6" y="12" width="36" height="26" rx="3" />
-          <rect className={DARK} x="11" y="17" width="16" height="11" rx="1.5" />
-          <rect className={BODY} x="30" y="17" width="7" height="16" rx="1.5" />
-          <circle className={LIT} cx="33.5" cy="21" r="1.6" />
-          <path className={BODY} d="M12 38v4h6v-4M30 38v4h6v-4" />
+          <rect className={BODY} {...MACHINE_HOUSING} />
+          <rect className={DARK} {...MACHINE_WINDOW} />
+          <rect className={BODY} {...MACHINE_PORT} />
+          <circle className={LIT} {...MACHINE_LIGHT} />
+          <path className={BODY} d={MACHINE_FEET} />
         </>
       );
   }

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { StationIcon, type StationKind } from "./StationIcon";
+import { MACHINE_HOUSING, MACHINE_WINDOW } from "./stationShapes";
 
 const KINDS: StationKind[] = ["server", "power", "factory", "machine"];
 
@@ -12,6 +13,23 @@ describe("StationIcon", () => {
     expect(svg).toHaveAttribute("aria-hidden", "true");
     expect(svg).not.toHaveAttribute("role");
     expect(svg.childElementCount).toBeGreaterThan(0);
+  });
+
+  it("draws the machine from the shapes the map's canvas uses (stationShapes.ts)", () => {
+    const { container } = render(<StationIcon kind="machine" />);
+    const rects = [...container.querySelectorAll("rect")];
+    for (const shape of [MACHINE_HOUSING, MACHINE_WINDOW]) {
+      expect(
+        rects.some(
+          (r) =>
+            r.getAttribute("x") === String(shape.x) &&
+            r.getAttribute("y") === String(shape.y) &&
+            r.getAttribute("width") === String(shape.width) &&
+            r.getAttribute("height") === String(shape.height) &&
+            r.getAttribute("rx") === String(shape.rx),
+        ),
+      ).toBe(true);
+    }
   });
 
   it("is a named image when given a title", () => {
