@@ -164,6 +164,30 @@ describe("supervisor", () => {
     expect(sup.state()).toBe("running");
   });
 
+  it("two restarts at once start one new process, not two", async () => {
+    const { sup, children } = setup();
+    sup.start();
+    await tick();
+    const a = sup.restart();
+    const b = sup.restart();
+    children[0]!.exit(0);
+    await Promise.all([a, b]);
+    await tick();
+    expect(children).toHaveLength(2);
+    expect(children[0]!.killed).toBe(true);
+    expect(sup.state()).toBe("running");
+  });
+
+  it("a restart exactly at the window edge no longer counts (boundary)", async () => {
+    const { sup, children, advance } = setup();
+    sup.start();
+    await tick();
+    for (let i = 0; i < MAX_RESTARTS; i++) children[children.length - 1]!.exit(1);
+    advance(RESTART_WINDOW_MS);
+    children[children.length - 1]!.exit(1);
+    expect(sup.state()).not.toBe("crashed");
+  });
+
   it("an exit it didn't ask for restarts the server and records why", async () => {
     const { sup, children, states } = setup();
     sup.start();
