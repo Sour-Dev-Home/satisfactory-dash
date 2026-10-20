@@ -12,8 +12,9 @@ This is a **public-facing** project per `../DEPLOYMENT.md` — public repo, Clou
 Workers static assets hosting for `frontend/` (ADR-0013 amendment; connected, deploys on
 every merge to `main`). See that file before changing repo visibility or hosting.
 
-See `../WORKFLOW.md` for session roles, the branch/PR loop, and this repo's status
-against the workspace's security/CI baseline.
+See `../WORKFLOW.md` for session roles and this repo's status against the workspace's security/CI
+baseline. For how changes get merged here, this file's `## Workflow` section (ADR-0043) wins over
+anything `WORKFLOW.md` says about drafts, the merge queue, fresh-eyes checks or who merges.
 
 ## Ground rules
 

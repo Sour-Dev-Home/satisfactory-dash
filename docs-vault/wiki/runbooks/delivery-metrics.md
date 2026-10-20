@@ -21,7 +21,7 @@ Needs `gh` signed in. The markdown is rendered from the JSON alone.
 | `throughput` | `mergedPrs`, `perDay`, `perWeek: [{ weekStart, merged }]` (weeks start Monday, UTC) |
 | `leadTimeHours` | `median`, `p90`, `mean` of PR opened to merged; `null` when nothing merged |
 | `size` | `medianLinesChanged` (additions plus deletions per merged PR) |
-| `mergeQueue` | kept so the shape stays stable (`schemaVersion` 1); empty now that the repo has no merge queue (ADR-0043) and not shown in the markdown |
+| `mergeQueue` | kept so the shape stays stable (`schemaVersion` 1) and not shown in the markdown; it fills only from merged PRs that went through the old merge queue (removed by ADR-0043), so it empties once those leave the window |
 | `changeFailure` | `mainRuns`, `failedMainRuns`, `failureRate` (CI on push to main), `revertPrs`, `revertRate` |
 | `logFragments` | `inWindow`: `log.d` fragments dated inside the window |
 
