@@ -52,6 +52,9 @@ added or removed.
   each claim in `raw-sources/`, the spike that would test it, and its status (all `unverified`); the facts found by gate G0
   (Unreal Engine 5.6.1, licences, no reachable Coffee Stain terms), the owner's licence choice for the mod repository
   (GPL-3.0-or-later) and the open questions.
+- [`mod-maintenance.md`](./mod-maintenance.md) — ADR-0039 G3 prep (#472): each game patch from 1.0 to 1.2.4.0 against
+  SML's releases (which needed a new SML, and the gap in days), and five rented hosts' mod docs (custom mods allowed,
+  outbound network stated).
 - [`machine-states.md`](./machine-states.md) — how a machine's state (producing, idle, backed up,
   underfed, paused, unpowered) is derived per snapshot (ADR-0027), the provisional threshold and its
   evidence, and how to tune it with a capture session.

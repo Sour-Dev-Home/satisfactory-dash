@@ -80,14 +80,14 @@ because the SML line the window opens on (3.8.0) is 1.0's.
 
 In the window's 39 patches, an SML release named 6 of them as newly supported, all at the opening of a major update or
 its Experimental patches (1.1.0.0, 1.1.0.4, 1.1.0.5, 1.2.0.0 and both 1.2.2.2 rows), and updated its headers to 5 more
-(1.0.1.0, 1.0.1.2, 1.1.0.1, 1.1.0.6, 1.1.1.0); the other 28, all hotfixes, had no SML release naming them. Each
+(1.0.1.0, 1.0.1.2, 1.1.0.1, 1.1.0.6, 1.1.1.0); the other 28, hotfixes and mid-cycle Experimental patches, had no SML release naming them. Each
 "Yes, stated" release came with a guide for mod developers to update their mods (sml E2, E6), and 3.11.0 and 3.11.1 say
 1.0 no longer works with them (rows 1.1.0.0, 1.1.0.5), so the mod should expect one rebuild against new SML per major
 update: so far one a year (1.0 in September 2024, 1.1 in June 2025, 1.2 in June 2026 on stable). Stable-branch players
 waited 30 days for SML on 1.0, had a release out 5 days before 1.1 reached stable (3.11.1, though only 3.11.2 52 days
 later updated to that exact build) and waited 4 days on 1.2; Experimental players waited 58 days (1.1.0.0) and 81 days
 (1.2.0.0). A mod released for stable can plan on a rebuild within days to a month of each major update, and no
-support on Experimental for up to about three months. Whether any of the 28 "No" hotfixes broke mods anyway is
+support on Experimental for up to about three months. Whether any of the 28 "No" patches broke mods anyway is
 [NEEDS VERIFICATION].
 
 ## Rented hosts and custom mods

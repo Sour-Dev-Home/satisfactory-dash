@@ -11,7 +11,7 @@ Why it is here: issue #472, which hosts allow a custom mod and whether they stat
 
 ## Findings
 
-- All five install mods with Satisfactory Mod Manager (SMM) over SFTP, from ficsit.app (E1, E3, E6, E8, E9); LOW.MS also has a panel mod manager that installs from ficsit.app (E5).
+- All five install mods with Satisfactory Mod Manager (SMM) over SFTP, from ficsit.app (E1, E2, E6, E8, E9); LOW.MS also has a panel mod manager that installs from ficsit.app (E5).
 - LOW.MS says its SFTP path works for "a mod that is not yet on ficsit.app" (E6). GameServerKings (E4) and XGamingServer (E10) document uploading mod files over SFTP by hand, of mods taken from ficsit.app; none of the other pages says whether a mod not on ficsit.app may be uploaded.
 - GameServerKings' servers run the Linux server build: a mod needs a Linux server target on ficsit.app to run there (E3, E4).
 - None of the five pages says anything about outbound network access from the game server process.
