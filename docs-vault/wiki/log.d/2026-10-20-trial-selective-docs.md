@@ -1,0 +1,1 @@
+- 2026-10-20 — Docs-only trial PR for selective CI (closed unmerged).
