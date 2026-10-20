@@ -1,0 +1,67 @@
+name: Changes
+
+# Called by ci.yml, e2e.yml, image.yml and compose.yml: decides what a pull request has to build and test
+# (scripts/ci-select.mjs, which explains the rules). Pushes to main and manual runs get "everything". The
+# callers fail safe: if this job fails, they run everything rather than read its outputs.
+
+on:
+  workflow_call:
+    outputs:
+      all:
+        description: "true when everything runs"
+        value: ${{ jobs.select.outputs.all }}
+      workspaces:
+        description: "space-separated workspace directories to lint, typecheck, test and build"
+        value: ${{ jobs.select.outputs.workspaces }}
+      frontend:
+        value: ${{ jobs.select.outputs.frontend }}
+      server_manager:
+        value: ${{ jobs.select.outputs.server_manager }}
+      backend:
+        value: ${{ jobs.select.outputs.backend }}
+      load:
+        value: ${{ jobs.select.outputs.load }}
+      compose:
+        value: ${{ jobs.select.outputs.compose }}
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    outputs:
+      all: ${{ steps.select.outputs.all }}
+      workspaces: ${{ steps.select.outputs.workspaces }}
+      frontend: ${{ steps.select.outputs.frontend }}
+      server_manager: ${{ steps.select.outputs.server_manager }}
+      backend: ${{ steps.select.outputs.backend }}
+      load: ${{ steps.select.outputs.load }}
+      compose: ${{ steps.select.outputs.compose }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          list="$RUNNER_TEMP/changed.txt"
+          # Pull requests only. Anything else (a push to main, a manual run) or a base this clone can't see
+          # passes no list, which selects everything.
+          if [ "$EVENT" = "pull_request" ] && [ -n "$PR_BASE" ] && git cat-file -e "$PR_BASE^{commit}"; then
+            # --no-renames lists a moved file at both paths, so moving a file out of a workspace still selects it.
+            git diff --no-renames --name-only "$PR_BASE" HEAD > "$list"
+            echo "Changed files: $(wc -l < "$list")"
+            head -n 50 "$list"
+          else
+            list=""
+          fi
+          node scripts/ci-select.mjs ${list:+"$list"} > "$RUNNER_TEMP/selection.txt"
+          cat "$RUNNER_TEMP/selection.txt"
+          cat "$RUNNER_TEMP/selection.txt" >> "$GITHUB_OUTPUT"

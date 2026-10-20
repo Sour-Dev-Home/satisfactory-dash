@@ -19,8 +19,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Pull requests build the images only when the backend or a workspace it bundles changed, or the setup did
+    # (scripts/ci-select.mjs). Pushes to main always build, smoke-test and publish. Not a required check.
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+
   build:
     name: build (${{ matrix.target }})
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

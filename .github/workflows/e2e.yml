@@ -43,45 +43,17 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      relevant: ${{ steps.diff.outputs.relevant }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Did anything the e2e suite covers change?
-        id: diff
-        env:
-          EVENT: ${{ github.event_name }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-        run: |
-          case "$EVENT" in
-            pull_request) base="$PR_BASE" ;;
-            push) base="$PUSH_BEFORE" ;;
-            *) base="" ;;
-          esac
-          # Manual runs, new branches (all-zero "before") or an unknown base: run everything.
-          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          changed=$(git diff --name-only "$base" HEAD)
-          echo "$changed"
-          if echo "$changed" | grep -qE '^(frontend/|packages/shared/|package-lock\.json$|\.github/workflows/e2e\.yml$)'; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No frontend, shared, lockfile or e2e-workflow changes; e2e skipped (reports success)."
-          fi
+    # Selects the frontend for a change to it, to a workspace it depends on (packages/shared), or to the
+    # test or CI setup; pushes to main and manual runs select everything (scripts/ci-select.mjs).
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
 
   e2e:
     needs: changes
     # Fail safe: if `changes` itself fails, run e2e anyway. Otherwise the skip would
     # report success and a broken detector would silently wave PRs through.
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.relevant == 'true') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Pinned by tag AND digest (the multi-arch index digest), so a re-pushed tag can't
