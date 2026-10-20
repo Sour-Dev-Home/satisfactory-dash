@@ -1,0 +1,444 @@
+{
+  "pairs": [
+    {
+      "at": "2026-10-20T02:56:14.615Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1265.23,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1279.0308837890625,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:14.615Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1265.23,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1279.0308837890625,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:24.304Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1239.44,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1238.5655517578125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:24.304Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1239.44,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1238.5655517578125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:33.938Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1273.39,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1272.876953125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:33.938Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1273.39,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1272.876953125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:44.091Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1256.58,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1255.8553466796875,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:44.091Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1256.58,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1255.8553466796875,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:54.294Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1218.2,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1218.204345703125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:56:54.294Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1218.2,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1218.204345703125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:03.953Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1248.1,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1248.1043701171875,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:03.953Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1248.1,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1248.1043701171875,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:14.077Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1266.49,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1266.563720703125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:14.077Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1266.49,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1266.563720703125,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:24.236Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1203.3,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1203.304443359375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:24.236Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1203.3,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1203.304443359375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:34.362Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1282.15,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1305.003662109375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:34.362Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1282.15,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1305.003662109375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:44.503Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1320.54,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1319.9661865234375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:44.503Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1320.54,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1319.9661865234375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:54.169Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1243.62,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1242.803466796875,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:57:54.169Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1243.62,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1242.803466796875,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:58:04.368Z",
+      "circuitId": 0,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1247.59,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1248.958984375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    },
+    {
+      "at": "2026-10-20T02:58:04.368Z",
+      "circuitId": 3,
+      "mod": {
+        "production": 3633.33,
+        "consumption": 1247.59,
+        "capacity": 4083.33
+      },
+      "frm": {
+        "production": 3633.33349609375,
+        "consumption": 1248.958984375,
+        "capacity": 4083.33349609375
+      },
+      "group": [
+        0,
+        3
+      ]
+    }
+  ],
+  "frmCircuits": [
+    0,
+    3
+  ],
+  "modCircuits": [
+    0,
+    3
+  ]
+}

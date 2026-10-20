@@ -1,0 +1,46 @@
+{
+  "spike": "S5",
+  "claim": "C7",
+  "pass": true,
+  "reasons": [
+    "the mod enrolled (201), its snapshot was accepted (200), and the database agrees"
+  ],
+  "startedAt": "2026-10-20T01:23:37.975Z",
+  "endedAt": "2026-10-20T01:24:59.709Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.20-01.24.56:596][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.20-01.24.56:623][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-01.24.56:644][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-01.24.56:683][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.20-01.24.56:807][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.20-01.24.56:594][  0]LogSatisMod: Display: satis-mod loaded",
+    "[2026.10.20-01.24.56:984][  1]LogSatisMod: Display: satis-mod s5 enroll=201 snapshot=200"
+  ],
+  "harnessCommit": "local",
+  "runUrl": null
+}
