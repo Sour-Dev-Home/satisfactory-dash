@@ -32,9 +32,9 @@ export default defineConfig({
   // Byte-identical regenerations (#503): unrelated baselines differed by 1 to 6 colour levels in a
   // few antialiased pixels at rounded corners, a different screenshot each run. A CSS transition
   // (border and background colour) caught a hair before its end state rounds differently there;
-  // `animations: "disabled"` does not stop transitions started after it runs. screenshot.css sets
-  // `transition: none` while a screenshot is taken, so every state is its final one.
-  expect: { toHaveScreenshot: { maxDiffPixels: 50, animations: "disabled", stylePath: "./e2e/screenshot.css" } },
+  // `animations: "disabled"` does not stop transitions started after it runs. `expectScreenshot`
+  // (e2e/fixtures.ts) sets `transition: none` first, so every state is its final one.
+  expect: { toHaveScreenshot: { maxDiffPixels: 50, animations: "disabled" } },
   use: {
     baseURL: `http://${HOST}:${PORT}`,
     // Fixed so rendered timestamps and number formats are identical on every machine.

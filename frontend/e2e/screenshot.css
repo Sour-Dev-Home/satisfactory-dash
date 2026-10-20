@@ -1,6 +1,0 @@
-/* Applied by Playwright only while a screenshot is taken (playwright.config.ts, #503). */
-*,
-*::before,
-*::after {
-  transition: none !important;
-}

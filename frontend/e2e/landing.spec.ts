@@ -1,4 +1,4 @@
-import { expect, expectNoAxeViolations, test } from "./fixtures";
+import { expect, expectNoAxeViolations, expectScreenshot, test } from "./fixtures";
 
 // The public landing page at / (main site): static, so it must work with the backend off.
 // The guards fixture fails the test on any /api request or CSP violation; this also fails on
@@ -26,7 +26,7 @@ test("renders with no API or third-party request, and the demo button above the 
   expect(videoRequests, "video fetched before anyone pressed play").toEqual([]);
 
   await expectNoAxeViolations(page, testInfo);
-  await expect(page).toHaveScreenshot("landing.png", { fullPage: true });
+  await expectScreenshot(page, "landing.png");
   expect(offOrigin, "requests off the site's origin").toEqual([]);
 });
 

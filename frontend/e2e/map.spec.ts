@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, expectNoAxeViolations, test } from "./fixtures";
+import { expect, expectNoAxeViolations, expectScreenshot, test } from "./fixtures";
 
 // ADR-0023's gate for adopting Leaflet: pan, zoom, marker hover and a layer toggle, all with
 // zero CSP violations (the guards fixture fails the test on any) under the production CSP.
@@ -107,7 +107,7 @@ test.describe("the map's first view", () => {
     await page.goto("/app/map");
     await expect(page.getByRole("table", { name: /Buildings in view/ })).toBeVisible();
     await findMarker(page);
-    await expect(page).toHaveScreenshot("map.png", { fullPage: true });
+    await expectScreenshot(page, "map.png");
   });
 });
 
