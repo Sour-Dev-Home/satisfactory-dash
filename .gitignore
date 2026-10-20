@@ -40,9 +40,6 @@ docs-vault/architecture-out/
 *.tfbackend
 crash.log
 
-# lanes' working folder: verdicts, logs and the queue's reap files (#392)
-.lanes/
-
 # The load kit (ADR-0037, #448): the seed's credentials (agent secrets, session ids) and raw k6 output.
 # Reports are committed under docs-vault/wiki/perf/ instead.
 load/.data/

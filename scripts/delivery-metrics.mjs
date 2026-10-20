@@ -137,8 +137,7 @@ const percent = (value) => (value === null ? "n/a" : `${round(value * 100)}%`);
 
 /** The markdown summary, derived from the JSON report alone. */
 export function renderMarkdown(report) {
-  const { window: w, throughput: t, leadTimeHours: l, size, mergeQueue: q, changeFailure: c, logFragments: f } = report;
-  const reasons = Object.entries(q.removals).sort(([a], [b]) => a.localeCompare(b)).map(([reason, count]) => `${reason} ${count}`).join(", ");
+  const { window: w, throughput: t, leadTimeHours: l, size, changeFailure: c, logFragments: f } = report;
   return [
     `# Delivery metrics (${w.days} days to ${w.to.slice(0, 10)})`,
     "",
@@ -147,8 +146,6 @@ export function renderMarkdown(report) {
     `| Merged PRs | ${t.mergedPrs} (${t.perDay} per day) |`,
     `| Lead time, PR opened to merged | median ${show(l.median, " h")}, p90 ${show(l.p90, " h")}, mean ${show(l.mean, " h")} |`,
     `| Median change size | ${show(size.medianLinesChanged, " lines")} |`,
-    `| Merge queue bounce rate | ${percent(q.bounceRate)} (${q.prsBounced} of ${q.prsThroughQueue} PRs through the queue) |`,
-    `| Queue removals by reason | ${reasons === "" ? "none" : reasons} |`,
     `| Failed CI runs on main | ${percent(c.failureRate)} (${c.failedMainRuns} of ${c.mainRuns}) |`,
     `| Revert PRs | ${c.revertPrs} (${percent(c.revertRate)} of merged) |`,
     `| Log fragments | ${f.inWindow} |`,
@@ -157,7 +154,7 @@ export function renderMarkdown(report) {
     "",
     ...(t.perWeek.length === 0 ? ["none"] : t.perWeek.map((week) => `- ${week.weekStart.slice(0, 10)}: ${week.merged}`)),
     "",
-    "Aggregates only. Lead time is PR opened to merged; a PR bounced when the merge queue removed it for a reason other than merged or manual; failed runs and revert PRs are proxies for change failure.",
+    "Aggregates only. Lead time is PR opened to merged; failed runs and revert PRs are proxies for change failure.",
     "",
   ].join("\n");
 }

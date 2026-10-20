@@ -6,10 +6,10 @@
   planning-and-task-breakdown, debugging-and-error-recovery, frontend-ui-engineering, security-and-hardening,
   code-review-and-quality
 - References (here): definition-of-done, testing-patterns, security-checklist, accessibility-checklist
-- Not vendored on purpose: the upstream commands (they clash with /lane and /plan-issues), and every other skill.
+- Not vendored on purpose: the upstream commands (they clash with this repository's own commands), and every other skill.
 
 To update: pick a new commit, repeat the security read on the diff between the two commits, and change the commit
-above in the same PR (tier full, owner review: unattended lanes follow these prompts).
+above in the same PR (agents follow these prompts).
 
 ## Link rewrites
 

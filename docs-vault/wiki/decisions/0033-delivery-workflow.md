@@ -1,6 +1,6 @@
 # ADR-0033: Delivery workflow: log fragments, a merge queue, and one task board
 
-Status: accepted (owner, 2026-09-25: all of it, with the merge queue after the log fragments)
+Status: accepted (owner, 2026-09-25: all of it, with the merge queue after the log fragments). Superseded by ADR-0043 for the merge queue, the fresh-eyes gate and the task board; the log fragments stay.
 
 ## Context
 - Several sessions open PRs against `main` in parallel. Nearly every PR appends a line to

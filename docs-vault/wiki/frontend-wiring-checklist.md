@@ -17,7 +17,7 @@ behind each step; this page is the order and the files. The worked example is th
       edit. A missing piece (e.g. a schema exported without its `z.infer` type) goes to its owner; meanwhile
       infer it locally with `import type { z } from "zod"`.
 
-## 1. Reads and writes (`src/api/`, not tier:ui)
+## 1. Reads and writes (`src/api/`)
 
 - [ ] **Read:** an entry in `queries.ts`, keyed `["servers", serverId, ...]`. A polled read gets a
       `POLL_MS.<name>` constant, and `queries.test.tsx`'s `POLL_MS` equality test gains it.
@@ -83,8 +83,8 @@ behind each step; this page is the order and the files. The worked example is th
       with `set -o pipefail`).
 - [ ] A `docs-vault/wiki/log.d/` fragment. No real name or local path anywhere: files, commit messages, PR
       title and body.
-- [ ] **Tier:** a change under `api/`, `auth/`, `demo/handlers.ts` or `test/browser.ts` is not tier:ui (the
-      architect reviews), and neither is any added line under `frontend/src` with data flow: `useQuery`,
-      `useMutation`, `apiSend`, `endpoints.`, browser storage or network APIs, or an import from an `api/`
-      or `auth/` path (the full list is `DATA_FLOW` in `scripts/tier-check.mjs`). A QUICK test-hunter on new `.ts` logic, and a ui-review for
-      anything users see (the mock server needs the owner's OK via `reactapps-dc`).
+- [ ] **Reviews:** a change under `api/`, `auth/`, `demo/handlers.ts` or `test/browser.ts`, or any added line
+      under `frontend/src` with data flow (`useQuery`, `useMutation`, `apiSend`, `endpoints.`, browser storage or
+      network APIs, an import from an `api/` or `auth/` path), gets the architecture-advisor. Run the test-hunter on
+      new `.ts` logic, and the ui-reviewer for anything users see (the mock server needs the owner's OK via
+      `reactapps-dc`).

@@ -12,17 +12,16 @@
 - Not vendored on purpose: every other sheet, and upstream's `assets/` folder. Some sheets link or embed images from
   `../assets/` and link other sheets by relative path; those links do not resolve here and were left unchanged,
   because the sheets must stay byte-identical.
-- `INDEX.md` is not a sheet: it is lanes' own mapping text under lanes' MIT licence (ADR 0009, decision 2), not CC BY-SA.
+- `INDEX.md` is not a sheet: it is our own mapping text under this repository's licence (ADR 0009, decision 2), not CC BY-SA.
 
 To update: pick a new commit, repeat the security read on the diff between the two commits, and change the commit,
-the file list and the blob ids below in the same PR (tier full, owner review: the security reviewer cites these
-sheets). Check the licence at the new commit first; if it is no longer CC BY-SA 4.0, stop and ask the owner.
+the file list and the blob ids below in the same PR (the security reviewer cites these sheets). Check the licence at the new commit first; if it is no longer CC BY-SA 4.0, stop and ask the owner.
 
 ## Files
 
 `LICENSE` is upstream `LICENSE.md` renamed; every other file keeps its upstream name. The blob id is the git object
-id of the file at the pinned commit, so `scripts/lanes/vendor.test.mjs` can prove the bytes are unchanged without a
-network call (`git hash-object <file>` prints the same value).
+id of the file at the pinned commit, so the bytes can be proven unchanged without a network call
+(`git hash-object <file>` prints the same value).
 
 | Blob id | File |
 |---|---|
@@ -68,12 +67,12 @@ the reader's own system. Worth knowing when a reviewer cites them:
 - Example commands appear as illustrations, not as steps to run here: `pip install ipaddress dnspython` in a sample
   monitoring script (Server Side Request Forgery Prevention), `npm audit` and `npm audit fix` (Nodejs Security),
   `sudo ufw-docker install` and `docker run` variants (Docker Security), `curl`/`wget` injection payloads
-  (OS Command Injection Defense). None should be run by a lane on the strength of the sheet.
+  (OS Command Injection Defense). None should be run by an agent on the strength of the sheet.
 - Secrets Management (section 9.2) describes rewriting git history to remove a leaked secret, and warns about the
   consequences. It is incident-response guidance; it does not override this repository's rule against force-pushing.
-- CI CD Security ("Secure SCM Configuration") advises avoiding auto-merge rules. lanes merges with `gh pr merge
-  --auto` behind required checks and the `lanes/gate` status; that is a deliberate design choice, and a finding that
-  cites this line against the workflow is a design question for the owner, not a defect in a lane's diff.
+- CI CD Security ("Secure SCM Configuration") advises avoiding auto-merge rules. We merge with `gh pr merge
+  --squash --auto` behind the required checks (ADR-0043); that is a deliberate design choice, and a finding that
+  cites this line against the workflow is a design question for the owner, not a defect in a diff.
 - Logging embeds one remote image (`raw.githubusercontent.com/OWASP/CheatSheetSeries/master/assets/...`); other
   sheets reference `../assets/` images and PDFs that are not vendored. A Markdown viewer may fetch the remote image;
   nothing here asks an agent to.
