@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs, pickDispatchedRun, REPOS, repoOf, run, selectFiles } from "./lib.mjs";
+import { configFor, parseArgs, pickDispatchedRun, repoOf, run, selectFiles } from "./lib.mjs";
 
 function filesUnder(dir) {
   const out = [];
@@ -47,7 +47,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const worktree = resolve(args._[0] ?? ".");
   const repo = repoOf(worktree);
-  const cfg = REPOS[repo];
+  const cfg = configFor(repo);
   const branch = run("git", ["-C", worktree, "branch", "--show-current"]);
   if (!branch || branch === "main") throw new Error("run this on a feature branch's worktree, never main");
   if (run("git", ["-C", worktree, "rev-parse", "HEAD"]) !== run("git", ["-C", worktree, "rev-parse", `origin/${branch}`], { ok: true })) {

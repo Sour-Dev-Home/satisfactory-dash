@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { blockingStatus, parseArgs, REPOS, repoOf, run, scanDiff } from "./lib.mjs";
+import { blockingStatus, configFor, parseArgs, repoOf, run, scanDiff } from "./lib.mjs";
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -17,7 +17,7 @@ function main() {
   if (!args.title || !args["body-file"]) throw new Error('usage: ship-pr.mjs <worktree> --title "<title>" --body-file <path> [--no-auto]');
   if (!existsSync(args["body-file"])) throw new Error(`no body file at ${args["body-file"]}`);
   const repo = repoOf(worktree);
-  const cfg = REPOS[repo];
+  const cfg = configFor(repo);
   const branch = run("git", ["-C", worktree, "branch", "--show-current"]);
   if (!branch || branch === "main") throw new Error("ship a feature branch, never main");
 

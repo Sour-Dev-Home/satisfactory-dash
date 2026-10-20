@@ -1,16 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockingStatus, globToRegExp, parseArgs, parseWorktrees, pickDispatchedRun, REPOS, repoFromRemote, scanDiff, selectFiles } from "./lib.mjs";
+import { blockingStatus, configFor, globToRegExp, parseArgs, parseWorktrees, pickDispatchedRun, REPOS, repoFromRemote, scanDiff, selectFiles } from "./lib.mjs";
+
+// A stand-in portfolio name: the real one is the owner's name, which this repo never carries.
+const PORTFOLIO = "Sour-Dev-Home/someone-portfolio";
 
 test("repoFromRemote reads https and ssh remotes", () => {
   assert.equal(repoFromRemote("https://github.com/Sour-Dev-Home/satisfactory-dash.git"), "Sour-Dev-Home/satisfactory-dash");
-  assert.equal(repoFromRemote("git@github.com:Sour-Dev-Home/leonardo-nunez-portfolio.git\n"), "Sour-Dev-Home/leonardo-nunez-portfolio");
+  assert.equal(repoFromRemote(`git@github.com:${PORTFOLIO}.git\n`), PORTFOLIO);
   assert.equal(repoFromRemote("https://example.com/x/y"), null);
 });
 
+test("configFor knows the dash and the owner's portfolio, and nothing else", () => {
+  assert.equal(configFor("Sour-Dev-Home/satisfactory-dash"), REPOS.dash);
+  assert.equal(configFor(PORTFOLIO), REPOS.portfolio);
+  assert.equal(configFor("someone-else/x-portfolio"), null);
+  assert.equal(configFor("Sour-Dev-Home/satisfactory-dash-mod"), null);
+  assert.equal(configFor(null), null);
+});
+
 test("only the dash auto-merges; the portfolio's live main is the owner's to merge", () => {
-  assert.equal(REPOS["Sour-Dev-Home/satisfactory-dash"].autoMerge, true);
-  assert.equal(REPOS["Sour-Dev-Home/leonardo-nunez-portfolio"].autoMerge, false);
+  assert.equal(REPOS.dash.autoMerge, true);
+  assert.equal(REPOS.portfolio.autoMerge, false);
 });
 
 test("globs: * stays in a segment, ** crosses them, a plain string is a substring", () => {

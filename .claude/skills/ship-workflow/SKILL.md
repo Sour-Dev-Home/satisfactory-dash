@@ -1,6 +1,6 @@
 ---
 name: ship-workflow
-description: Use when shipping a finished branch as a PR, regenerating visual baselines, or cleaning up merged worktrees, in satisfactory-dash or leonardo-nunez-portfolio. Runs the repo's scripts instead of improvising git/gh sequences.
+description: Use when shipping a finished branch as a PR, regenerating visual baselines, or cleaning up merged worktrees, in satisfactory-dash or the portfolio. Runs the repo's scripts instead of improvising git/gh sequences.
 ---
 
 # Ship workflow: use the scripts, don't improvise

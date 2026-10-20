@@ -4,8 +4,10 @@
 // visual baselines and whether its PRs auto-merge.
 import { spawnSync } from "node:child_process";
 
+// Keyed by role, not by full name: the portfolio's repository name is the owner's name, which (outside LICENSE and
+// the privacy page) never appears in this repo, so configFor recognises it by shape.
 export const REPOS = {
-  "Sour-Dev-Home/satisfactory-dash": {
+  dash: {
     workflow: "e2e.yml",
     fields: { update_snapshots: "true" },
     artifact: "playwright-baselines",
@@ -13,7 +15,7 @@ export const REPOS = {
     autoMerge: true, // ADR-0043: PRs squash auto-merge on the required checks
     needsNodeModules: true, // the pre-push preflight hook runs node scripts
   },
-  "Sour-Dev-Home/leonardo-nunez-portfolio": {
+  portfolio: {
     workflow: "update-screenshots.yml",
     fields: {},
     artifact: "screenshots",
@@ -27,6 +29,13 @@ export const REPOS = {
 export function repoFromRemote(url) {
   const m = /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\s*$/.exec(String(url).trim());
   return m ? m[1] : null;
+}
+
+/** The REPOS entry for an "owner/name" slug, or null for any other repo. */
+export function configFor(slug) {
+  if (slug === "Sour-Dev-Home/satisfactory-dash") return REPOS.dash;
+  if (/^Sour-Dev-Home\/[\w.-]+-portfolio$/.test(String(slug))) return REPOS.portfolio;
+  return null;
 }
 
 /** A simple glob ("*" within a path segment, "**" across segments) or a plain substring, as a RegExp. */
@@ -127,7 +136,7 @@ export function run(cmd, args, opts = {}) {
 
 export function repoOf(dir) {
   const repo = repoFromRemote(run("git", ["-C", dir, "remote", "get-url", "origin"]));
-  if (!repo || !REPOS[repo]) throw new Error(`not a known repo (${repo ?? "no origin"}); known: ${Object.keys(REPOS).join(", ")}`);
+  if (!configFor(repo)) throw new Error(`not a known repo (${repo ?? "no origin"}); known: satisfactory-dash and the portfolio`);
   return repo;
 }
 
