@@ -38,7 +38,8 @@ function markerOnCanvas(page: Page) {
           // of the zoom buttons in the top-left corner.
           const p = toPage(x, y);
           if (p.x < map.left + 70 || p.x > map.right - 10 || p.y < map.top + 10 || p.y > map.bottom - 10) continue;
-          // The centroid of this marker's matching pixels (markers are 12 px across).
+          // The centroid of the matching pixels near this one: inside the housing (icons are 20-40 px
+          // across, by zoom), so inside its hit circle.
           let sx = 0, sy = 0, n = 0;
           for (let dy = 0; dy <= 16; dy++) {
             for (let dx = -8; dx <= 8; dx++) {
@@ -96,13 +97,45 @@ test("pan, zoom, hover and layer toggle work under the strict CSP", async ({ pag
   await expectNoAxeViolations(page, testInfo);
 });
 
-test("the map's first view", async ({ page, mockApi }) => {
-  await mockApi("default");
-  await page.goto("/app/map");
-  await expect(page.getByRole("table", { name: /Buildings in view/ })).toBeVisible();
-  await findMarker(page);
-  await expect(page).toHaveScreenshot("map.png", { fullPage: true });
+test.describe("the map's first view", () => {
+  // The backed-up pulse is drawn on the canvas, which Playwright's `animations: "disabled"` can't
+  // stop: under reduced motion the ring holds still, so the screenshot is stable.
+  test.use({ reducedMotion: "reduce" });
+
+  test("the map's first view", async ({ page, mockApi }) => {
+    await mockApi("default");
+    await page.goto("/app/map");
+    await expect(page.getByRole("table", { name: /Buildings in view/ })).toBeVisible();
+    await findMarker(page);
+    await expect(page).toHaveScreenshot("map.png", { fullPage: true });
+  });
 });
+
+/** Everything the map's canvas shows right now, as one string to compare. */
+const canvasPixels = (page: Page) =>
+  page.evaluate(() => [...document.querySelectorAll<HTMLCanvasElement>(".map-canvas canvas")].map((c) => c.toDataURL()).join());
+
+// ADR-0041 item 6: a backed-up machine pulses (the default scenario has two), and holds still under
+// reduced motion.
+for (const motion of ["no-preference", "reduce"] as const) {
+  test.describe(`motion ${motion}`, () => {
+    test.use({ reducedMotion: motion });
+
+    test(`a backed-up machine's ring ${motion === "reduce" ? "holds still" : "pulses"}`, async ({ page, mockApi }) => {
+      await mockApi("default");
+      await page.goto("/app/map");
+      await findMarker(page);
+      const first = await canvasPixels(page);
+      if (motion === "reduce") {
+        // Long enough for several frames of a 1.6 s cycle, had one been running.
+        await page.waitForTimeout(400);
+        expect(await canvasPixels(page)).toBe(first);
+      } else {
+        await expect.poll(() => canvasPixels(page), { message: "the canvas changes as the ring pulses" }).not.toBe(first);
+      }
+    });
+  });
+}
 
 // #434: Leaflet's panes (z-index 200-800) must stay inside the map's own stacking context, or
 // they paint over the header's popovers (--z-popover) and the grid shows through the alerts panel.

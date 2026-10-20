@@ -3,6 +3,7 @@ import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Factory } from "@satisfactory-dash/shared";
 import type { MapContext, MapLayer } from "./layers";
+import { drawGrid } from "./grid";
 import { mapBounds, project, unproject, type BaseMapConfig } from "./projection";
 
 /** The world rectangle in view, in metres. */
@@ -18,20 +19,8 @@ export interface DrawnLayer<T = Factory> {
   data: T;
 }
 
-const color = (token: string) => getComputedStyle(document.documentElement).getPropertyValue(token).trim();
-
-/** The neutral grid base map (ADR-0023 decision 4): lines every gridStepM, plus the border. */
-function drawGrid(map: L.Map, renderer: L.Canvas, config: BaseMapConfig) {
-  const { minX, maxX, minY, maxY } = config.worldBoundsM;
-  const step = config.gridStepM;
-  // The muted token at 65 % over the canvas is about 3.3:1: visible as a scale (WCAG 1.4.11's
-  // 3:1), yet quieter than the full-strength world border and the markers.
-  const line = { renderer, color: color("--color-muted"), opacity: 0.65, weight: 1, interactive: false };
-  const at = (x: number, y: number) => project(config, x, y);
-  for (let x = Math.ceil(minX / step) * step; x <= maxX; x += step) L.polyline([at(x, minY), at(x, maxY)], line).addTo(map);
-  for (let y = Math.ceil(minY / step) * step; y <= maxY; y += step) L.polyline([at(minX, y), at(maxX, y)], line).addTo(map);
-  L.rectangle(mapBounds(config), { ...line, opacity: 1, fill: false }).addTo(map);
-}
+/** A design token's current value (a colour, or a motion token such as --duration-pulse). */
+const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 /**
  * The map core (ADR-0023): Leaflet with CRS.Simple, a canvas renderer, the grid base map, and
@@ -80,7 +69,7 @@ export default function MapCanvas({
       maxBounds: L.latLngBounds(world.getSouthWest(), world.getNorthEast()).extend(target).pad(0.1),
       maxBoundsViscosity: 1,
     });
-    drawGrid(map, renderer, config);
+    drawGrid(L, map, renderer, config, token);
     map.fitBounds(target, { maxZoom: 1 });
 
     const report = () => {
@@ -99,7 +88,7 @@ export default function MapCanvas({
 
     const resize = new ResizeObserver(() => map.invalidateSize());
     resize.observe(el);
-    setCtx({ L, map, renderer, color, project: (x, y) => project(config, x, y) });
+    setCtx({ L, map, renderer, color: token, token, project: (x, y) => project(config, x, y) });
     return () => {
       resize.disconnect();
       map.remove();
