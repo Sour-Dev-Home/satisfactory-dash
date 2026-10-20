@@ -162,4 +162,65 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
     // A second start changes nothing and reports nothing.
     expect((await load()).ownershipSeeded).toEqual([]);
   });
+
+  // Fresh-eyes additions (test hunt).
+  it("a second owner is refused by the one-owner index, and a non-owner leaving a live server is fine", async () => {
+    const [owner, other, leaver] = [await user(), await user(), await user()];
+    const server = await serverWith(owner, [{ userId: leaver, role: "admin" }]);
+    await expect(addMember(app, { serverId: server.id, userId: other, role: "owner", actorUserId: null })).resolves.toBe("owner_exists");
+    await admin.query("DELETE FROM identity.users WHERE id = $1", [leaver]);
+    expect(await getMemberRole(app, { publicId: server.publicId, userId: owner })).toBe("owner");
+  });
+
+  it("concurrent transfers from the same owner: exactly one wins, the server keeps exactly one owner", async () => {
+    const [owner, x, y] = [await user(), await user(), await user()];
+    const server = await serverWith(owner, [{ userId: x, role: "admin" }, { userId: y, role: "admin" }]);
+    const results = await Promise.all([
+      transferOwnership(app, { serverId: server.id, fromUserId: owner, toUserId: x }),
+      transferOwnership(app, { serverId: server.id, fromUserId: owner, toUserId: y }),
+    ]);
+    expect([...results].sort()).toEqual(["not_owner", "transferred"]);
+    const owners = (await admin.query("SELECT user_id FROM servers.server_members WHERE server_id = $1 AND role = 'owner'", [server.id])).rows;
+    expect(owners).toHaveLength(1);
+  });
+
+  it("concurrent: removing the owner's account while a transfer runs never leaves a live server ownerless", async () => {
+    const [owner, heir] = [await user(), await user()];
+    const server = await serverWith(owner, [{ userId: heir, role: "admin" }]);
+    const settled = await Promise.allSettled([
+      transferOwnership(app, { serverId: server.id, fromUserId: owner, toUserId: heir }),
+      admin.query("DELETE FROM identity.users WHERE id = $1", [owner]),
+    ]);
+    expect(settled).toHaveLength(2);
+    const owners = (await admin.query("SELECT 1 FROM servers.server_members WHERE server_id = $1 AND role = 'owner'", [server.id])).rows;
+    expect(owners).toHaveLength(1);
+  });
+
+  it("the startup seed does not take over a server that already has another owner, and reports nothing", async () => {
+    const [operator, realOwner] = [await user(), await user()];
+    const server = await upsertConfiguredServer(app, { publicId: "nov-owned", displayName: "Owned" });
+    await addMember(app, { serverId: server.id, userId: realOwner, role: "owner", actorUserId: null });
+    await saveConnection(app, ring, server.id, {
+      host: "192.168.1.21", pinnedIp: "192.168.1.21", apiPort: 7777, frmPort: 8080,
+      apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678",
+    });
+    const res = await loadDatabaseServers({
+      db: app, ring, runtime: new ServerRuntime<string>(), operatorUserId: operator, policy: { allowLan: true },
+      build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }),
+    });
+    expect(res.ownershipSeeded).not.toContain("nov-owned");
+    expect(await getMemberRole(app, { publicId: "nov-owned", userId: realOwner })).toBe("owner");
+  });
+
+  // KNOWN GAP (#311 test hunt): the trigger fires on `UPDATE OF role` only, so re-pointing the owner row at another
+  // server (UPDATE ... SET server_id) leaves the old live server ownerless and passes the check.
+  it.fails("refuses moving the owner row to another server (UPDATE SET server_id)", async () => {
+    const [a, b] = [await user(), await user()];
+    const from = await serverWith(a);
+    const to = await upsertConfiguredServer(app, { publicId: `nov-to-${++n}`, displayName: "To" });
+    await addMember(app, { serverId: to.id, userId: b, role: "viewer", actorUserId: null });
+    await expect(
+      app.query("UPDATE servers.server_members SET server_id = $1 WHERE server_id = $2 AND user_id = $3", [to.id, from.id, a]),
+    ).rejects.toMatchObject(OWNERLESS);
+  });
 });
