@@ -6,6 +6,9 @@ mock_provider "aws" {
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/satis-prod-ecs-execution" }
   }
+  mock_resource "aws_sns_topic" {
+    defaults = { arn = "arn:aws:sns:us-east-1:123456789012:satis-prod-alarms" }
+  }
   mock_resource "aws_ecs_cluster" {
     defaults = { arn = "arn:aws:ecs:us-east-1:123456789012:cluster/satis-prod" }
   }
@@ -23,6 +26,7 @@ mock_provider "aws" {
 
 variables {
   budget_alert_email = "alerts@example.com"
+  alarm_email        = "alarms@example.com"
   backend_image      = "ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   ops_image          = "ghcr.io/sour-dev-home/satisfactory-dash-ops@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
   backup_b2          = { bucket = "example-bucket", endpoint = "https://s3.example-region.backblazeb2.com", region = "example-region" }
