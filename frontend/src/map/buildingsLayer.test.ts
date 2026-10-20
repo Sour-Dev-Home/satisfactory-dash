@@ -282,3 +282,134 @@ describe("buildingsLayer.legend", () => {
     expect(items[4]).toHaveTextContent(/pulses/);
   });
 });
+
+/** The Leaflet 1.9 private members buildingsLayer.tsx relies on (CanvasInternals, drawnMarker). */
+interface Private {
+  _renderer: unknown;
+  _point: L.Point;
+  _empty(): boolean;
+  _containsPoint(p: L.Point): boolean;
+}
+const markersOf = () => {
+  const found: (L.CircleMarker & Private)[] = [];
+  map.eachLayer((layer) => {
+    if (layer instanceof L.CircleMarker) found.push(layer as L.CircleMarker & Private);
+  });
+  return found;
+};
+
+describe("buildingsLayer: the Leaflet 1.9.4 internals it relies on fail loudly on an upgrade", () => {
+  it("is built against the pinned Leaflet and its private canvas hooks", () => {
+    expect(L.version).toBe("1.9.4");
+    const marker = L.CircleMarker.prototype as unknown as Record<string, unknown>;
+    // The override point and what the paint hook reads.
+    for (const name of ["_updatePath", "_empty", "_containsPoint", "_project"]) expect(typeof marker[name]).toBe("function");
+    const canvas = L.Canvas.prototype as unknown as Record<string, unknown>;
+    // The renderer's draw loop calls layer._updatePath() under _drawing; redraw() goes through _updatePath(layer).
+    for (const name of ["_draw", "_redraw", "_updatePath", "_updateCircle"]) expect(typeof canvas[name]).toBe("function");
+  });
+
+  it("gives a drawn marker the renderer, its 2D context, its point and the _drawing flag it reads", () => {
+    buildingsLayer.draw(context(), factory([BACKED_UP]));
+    const [marker] = markersOf();
+    const internals = renderer as unknown as { _drawing: boolean; _ctx: unknown };
+    expect(marker._renderer).toBe(renderer);
+    expect(internals._ctx).toBe(recorder.ctx);
+    expect(internals._drawing).toBe(false);
+    expect(marker._point).toBeInstanceOf(L.Point);
+    expect(marker._empty()).toBe(false);
+    // The paint hook only runs inside the renderer's draw pass: drawing is on then, and off after.
+    paint();
+    expect(internals._drawing).toBe(false);
+  });
+});
+
+describe("buildingsLayer: hit-testing after the shape change", () => {
+  const hitMarkers = () => markersOf().filter((m) => m.options.interactive !== false);
+
+  for (const zoom of [-5, 0, 5]) {
+    it(`hits an icon near its centre and not 40 px away, at zoom ${zoom}`, async () => {
+      const cleanup = buildingsLayer.draw(context(), factory([...ONE_PER_STATE, BACKED_UP]));
+      map.setZoom(zoom, { animate: false });
+      const hits = hitMarkers();
+      expect(hits).toHaveLength(ONE_PER_STATE.length + 1);
+      for (const marker of hits) {
+        expect(marker._containsPoint(marker._point)).toBe(true);
+        expect(marker._containsPoint(marker._point.add([9, 0]))).toBe(true);
+        expect(marker._containsPoint(marker._point.add([40, 0]))).toBe(false);
+      }
+      cleanup();
+      await new Promise((resolve) => setTimeout(resolve, 50)); // let the repaints the zoom and removal queued run on the stub
+    });
+  }
+
+  it("never lets the pulse rings catch the pointer: they are not interactive", () => {
+    buildingsLayer.draw(context(), factory([BACKED_UP]));
+    const rings = markersOf().filter((m) => m.options.interactive === false);
+    expect(rings).toHaveLength(1);
+    expect(rings[0].getTooltip()).toBeUndefined();
+    expect(hitMarkers()).toHaveLength(1);
+  });
+
+  it("shows the tooltip content for a backed-up machine", () => {
+    buildingsLayer.draw(context(), factory([BACKED_UP]));
+    const marker = hitMarkers()[0];
+    marker.openTooltip();
+    expect(marker.getTooltip()!.getElement()!.textContent).toContain("Backed up");
+  });
+});
+
+describe("buildingsLayer: the pulse loop's lifecycle", () => {
+  it("asks for one frame at a time however many machines are backed up", () => {
+    const many = Array.from({ length: 300 }, (_, i) => building(i, { recipe: "Screw", production: running, isBackedUp: true, location: { xM: (i % 20) * 8, yM: Math.floor(i / 20) * 8, zM: 0, rotationDeg: 0 } }));
+    buildingsLayer.draw(context(), factory(many));
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    frames.shift()!(0);
+    expect(requestFrame).toHaveBeenCalledTimes(2);
+    expect(frames).toHaveLength(1);
+    expect(rings(paint())).toHaveLength(300);
+  });
+
+  it("starts no loop again when the next draw has no backed-up machine, after the last one cleared", () => {
+    const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
+    frames.shift()!(0);
+    cleanup();
+    expect(cancelFrame).toHaveBeenCalledTimes(1);
+    frames.length = 0; // the mock does not drop the cancelled frame
+    requestFrame.mockClear();
+    buildingsLayer.draw(context(), factory([{ ...BACKED_UP, isBackedUp: false }]));
+    expect(requestFrame).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(0);
+    expect(rings(paint())).toEqual([]);
+  });
+
+  it("is safe to clean up twice", () => {
+    const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
+    cleanup();
+    expect(() => cleanup()).not.toThrow();
+  });
+
+  it("is a no-op for an empty factory", () => {
+    const cleanup = buildingsLayer.draw(context(), factory([]));
+    expect(requestFrame).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("treats an unreadable pulse token as no animation (ring shown still)", () => {
+    buildingsLayer.draw(context(""), factory([BACKED_UP]));
+    expect(requestFrame).not.toHaveBeenCalled();
+    expect(rings(paint())).toHaveLength(1);
+  });
+
+  // KNOWN BUG (reported): the duration token is read once at draw time, so switching reduced
+  // motion on while a machine pulses leaves the loop running until the layer is redrawn.
+  it.fails("stops the loop when reduced motion is switched on while it runs", () => {
+    let pulse = "1.6s";
+    const ctx = { ...context(), token: (name: string) => (name === "--duration-pulse" ? pulse : (COLORS.get(name) ?? "")) };
+    buildingsLayer.draw(ctx, factory([BACKED_UP]));
+    frames.shift()!(0);
+    pulse = "0s"; // the OS setting changed at runtime
+    frames.shift()!(16);
+    expect(frames).toHaveLength(0);
+  });
+});
