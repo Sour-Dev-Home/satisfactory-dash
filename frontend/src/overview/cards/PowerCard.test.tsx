@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { capacityShare } from "./power";
+import { capacityShare, powerTotals } from "./power";
 import { PowerCard } from "./PowerCard";
 
 const grid = (consumptionMW: number, capacityMW: number, circuits = 1) => ({ consumptionMW, capacityMW, circuits });
@@ -94,5 +94,15 @@ describe("capacityShare", () => {
     [grid(100, Number.NaN), 0],
   ])("is between 0 and 1: %o gives %d", (totals, share) => {
     expect(capacityShare(totals)).toBeCloseTo(share);
+  });
+});
+
+describe("powerTotals", () => {
+  it("sums consumption and capacity across circuits and counts them", () => {
+    expect(powerTotals([grid(100, 400), grid(250, 600)])).toEqual({ consumptionMW: 350, capacityMW: 1000, circuits: 2 });
+  });
+
+  it("is all zero for no circuits", () => {
+    expect(powerTotals([])).toEqual({ consumptionMW: 0, capacityMW: 0, circuits: 0 });
   });
 });
