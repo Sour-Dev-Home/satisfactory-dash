@@ -161,7 +161,7 @@ test("walkthrough", async ({ browser, baseURL }) => {
   // The live map (ADR-0023): the demo world's buildings on the grid, and one zoom step.
   await clickSlowly(page, nav.getByRole("link", { name: "Map" }));
   await expect(page.getByRole("application", { name: /Factory map/ })).toBeVisible();
-  await expect(page.getByText(/^9 buildings on the map:/)).toBeVisible();
+  await expect(page.getByText(/^10 buildings on the map:/)).toBeVisible();
   await hold(page, 5);
   await clickSlowly(page, page.getByRole("button", { name: "Zoom in" }));
   await hold(page, 4);
