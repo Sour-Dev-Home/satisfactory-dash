@@ -104,6 +104,11 @@ test("shows the newest 20 log lines as written, follows the file and a new day's
   agentLogs(f, "2026-10-21", [line(1, "new_day")]);
   await expect(logLines()).toHaveCount(1);
   await expect(logLines().first()).toContainText("new_day");
+
+  // A warning names its level in text, not only in colour.
+  agentLogs(f, "2026-10-21", [JSON.stringify({ t: "2026-10-21T10:00:02.000Z", level: "warn", event: "push_failed" })]);
+  await expect(logLines().last().locator(".log-level")).toHaveText("WARN");
+  await expect(logLines().first().locator(".log-level")).toHaveCount(0);
 });
 
 test("Check and Status run the agent's commands and show their output; nothing asks for secrets", async () => {
@@ -114,15 +119,23 @@ test("Check and Status run the agent's commands and show their output; nothing a
   await button("Status").click();
   await expect(page.getByTestId("agent-command-heading")).toHaveText("agent status: finished");
   await expect(page.getByTestId("agent-output")).toContainText("fake status");
+  await expect(page.getByTestId("agent-output")).not.toContainText("fake check");
+  await expect(page.getByRole("region", { name: "Agent command output" })).toBeVisible();
   expect(agentCalls(f)).toEqual(["agent check", "agent status"]);
   await expect(panel().getByRole("button", { name: /set-tokens|enroll|tokens|enrol/i })).toHaveCount(0);
 });
 
 test("a halted agent shows the reason and the fix, and Resume runs resume", async () => {
   agentHalted(f, "store_unreadable");
+  agentTaskIs(f, "Running");
   await open();
   const halted = page.getByTestId("agent-halted");
   await expect(halted).toBeVisible();
+  // Halted wins over the task's running: the line and dot say so, and Resume is the one primary button.
+  await expect(agentState()).toHaveText("halted (task running)");
+  await expect(page.locator("#agent-dot")).toHaveAttribute("data-state", "halted");
+  await expect(button("Resume")).toHaveClass(/primary/);
+  await expect(button("Start agent")).not.toHaveClass(/primary/);
   await expect(halted).toContainText("could not unprotect its store");
   await expect(halted).toContainText("Windows user");
   await button("Resume").click();

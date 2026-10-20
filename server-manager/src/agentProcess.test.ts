@@ -159,8 +159,15 @@ describe("createRun", () => {
     const { spawn } = capture((child) => {
       setImmediate(() => child.emit("error", new Error("spawn ENOENT")));
     });
-    const run = createRun({ env: {}, execPath: "E", mainDir: MAIN_DIR, spawn, exists });
+    const run = createRun({ env: { SystemRoot: "C:\\Windows" }, execPath: "E", mainDir: MAIN_DIR, spawn, exists });
     await expect(run("powershell", [])).rejects.toThrow("ENOENT");
+  });
+
+  it("refuses PowerShell when SystemRoot is unset, and spawns nothing", async () => {
+    const { calls, spawn } = capture();
+    const run = createRun({ env: {}, execPath: "E", mainDir: MAIN_DIR, spawn, exists });
+    await expect(run("powershell", ["-Command", "x"])).rejects.toThrow(/SystemRoot/);
+    expect(calls).toHaveLength(0);
   });
 });
 

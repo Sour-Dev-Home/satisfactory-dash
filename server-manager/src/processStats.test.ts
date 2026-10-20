@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { cpuPercent, parsePowerShell, parsePs, sampleProcess, type ExecFn } from "./processStats";
+import { cpuPercent, parsePowerShell, parsePs, powershellPath, sampleProcess, type ExecFn } from "./processStats";
+
+describe("powershellPath", () => {
+  it("is Windows PowerShell under SystemRoot", () => {
+    expect(powershellPath({ SystemRoot: "C:\\Windows" })).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  });
+
+  it("throws without SystemRoot instead of falling back to a bare powershell.exe", () => {
+    expect(() => powershellPath({})).toThrow(/SystemRoot/);
+    expect(() => powershellPath({ SystemRoot: "" })).toThrow(/SystemRoot/);
+  });
+});
 
 describe("parsePs", () => {
   it("reads mm:ss, hh:mm:ss and dd-hh:mm:ss CPU time and rss in KiB", () => {
@@ -61,6 +72,17 @@ describe("sampleProcess", () => {
     expect(calls[0]!.file).toBe("W:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
     expect(calls[0]!.args.join(" ")).not.toContain("4321");
     expect(calls[0]!.env?.SM_STATS_PID).toBe("4321");
+  });
+
+  it("without SystemRoot runs nothing rather than whatever powershell.exe the PATH finds", async () => {
+    const calls: string[] = [];
+    const exec: ExecFn = async (file) => {
+      calls.push(file);
+      return "3 4096";
+    };
+    await expect(sampleProcess(4321, { platform: "win32", exec, env: {} })).resolves.toBeUndefined();
+    await expect(sampleProcess(4321, { platform: "win32", exec, env: { SystemRoot: "" } })).resolves.toBeUndefined();
+    expect(calls).toEqual([]);
   });
 
   it("elsewhere runs ps with the pid as its own argument", async () => {

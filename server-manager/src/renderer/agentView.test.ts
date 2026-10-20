@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../ipc";
-import { agentActions, agentNote, agentStateLabel, commandHeading, haltedText, logDelta, logLineParts } from "./agentView";
+import {
+  agentActions,
+  agentNote,
+  agentStateLabel,
+  agentStateLine,
+  atBottom,
+  commandHeading,
+  haltedText,
+  levelTag,
+  logDelta,
+  logLineParts,
+} from "./agentView";
 
 const status = (over: Partial<AgentStatus> = {}): AgentStatus => ({ task: "ready", log: [], halted: undefined, busy: false, ...over });
 
@@ -91,6 +102,43 @@ describe("logDelta", () => {
     expect(logDelta(["a", "b"], ["x", "y"])).toEqual({ drop: 2, add: ["x", "y"] });
     expect(logDelta([], ["x"])).toEqual({ drop: 0, add: ["x"] });
     expect(logDelta(["a"], [])).toEqual({ drop: 1, add: [] });
+  });
+});
+
+describe("agentStateLine", () => {
+  it("follows the task's state while the agent isn't halted", () => {
+    expect(agentStateLine(status({ task: "running" }))).toEqual({ dot: "running", label: "running" });
+    expect(agentStateLine(status({ task: "ready" }))).toEqual({ dot: "ready", label: "ready" });
+    expect(agentStateLine(status({ task: "missing" }))).toEqual({ dot: "missing", label: "not set up" });
+    expect(agentStateLine(status({ task: undefined }))).toEqual({ dot: "unknown", label: "unknown" });
+  });
+
+  it("shows halted over a running task, never the task's green", () => {
+    const halted = { reason: "store_unreadable", at: "2026-10-20T10:00:00.000Z" } as const;
+    expect(agentStateLine(status({ task: "running", halted }))).toEqual({ dot: "halted", label: "halted (task running)" });
+    expect(agentStateLine(status({ task: undefined, halted }))).toEqual({ dot: "halted", label: "halted" });
+  });
+});
+
+describe("levelTag", () => {
+  it("names warnings and errors in text, so colour isn't the only signal", () => {
+    expect(levelTag("warn")).toBe("WARN");
+    expect(levelTag("error")).toBe("ERROR");
+    expect(levelTag("info")).toBe("");
+    expect(levelTag("")).toBe("");
+    expect(levelTag("other")).toBe("");
+  });
+});
+
+describe("atBottom", () => {
+  it("is true when the log is scrolled to its end (within a couple of pixels) or doesn't scroll", () => {
+    expect(atBottom({ scrollTop: 300, scrollHeight: 500, clientHeight: 200 })).toBe(true);
+    expect(atBottom({ scrollTop: 298, scrollHeight: 500, clientHeight: 200 })).toBe(true);
+    expect(atBottom({ scrollTop: 0, scrollHeight: 100, clientHeight: 200 })).toBe(true);
+  });
+
+  it("is false when the owner scrolled up to read", () => {
+    expect(atBottom({ scrollTop: 100, scrollHeight: 500, clientHeight: 200 })).toBe(false);
   });
 });
 

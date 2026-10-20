@@ -84,9 +84,15 @@ code {
 .dot[data-state="crashed"] {
   background: var(--color-bad);
 }
+.dot[data-state="ready"] {
+  background: var(--color-info);
+}
 .dot[data-state="disabled"],
 .dot[data-state="missing"] {
   background: var(--color-warn);
+}
+.dot[data-state="halted"] {
+  background: var(--color-bad);
 }
 
 .stats,
@@ -269,10 +275,15 @@ button.link:hover {
 .log-event {
   color: var(--color-fg-strong);
 }
-.agent-log li[data-level="warn"] .log-event {
+.log-level {
+  font-weight: 600;
+}
+.agent-log li[data-level="warn"] .log-event,
+.agent-log li[data-level="warn"] .log-level {
   color: var(--color-warn);
 }
-.agent-log li[data-level="error"] .log-event {
+.agent-log li[data-level="error"] .log-event,
+.agent-log li[data-level="error"] .log-level {
   color: var(--color-bad);
 }
 

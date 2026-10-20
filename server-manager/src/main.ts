@@ -26,6 +26,7 @@ import {
   type Status,
 } from "./ipc";
 import { cpuPercent, sampleProcess } from "./processStats";
+import { createRefresher } from "./refresher";
 import { clearPid, leftoverPid, processAlive, recordPid } from "./leftoverServer";
 import { serverSpawn } from "./serverProcess";
 import { runUpdate } from "./updater";
@@ -65,7 +66,6 @@ const agentRun = createRun({ env: process.env, execPath: process.execPath, mainD
 let agentTask: AgentTaskState | undefined;
 let agentLog: string[] = [];
 let agentBusy = false;
-let agentRefreshing = false;
 
 function configured(): boolean {
   return settings !== undefined && hasServerExe(settings.serverDir);
@@ -209,21 +209,18 @@ function pushAgentStatus(): void {
   if (win && !win.isDestroyed()) win.webContents.send(CHANNELS.agentStatus, agentStatus());
 }
 
-/** Reads the task's state and the log's tail; a slow PowerShell never stacks a second read on the first. */
-async function refreshAgent(): Promise<void> {
-  if (agentRefreshing) return;
-  agentRefreshing = true;
-  try {
-    const [task, log] = await Promise.all([
-      readAgentTask(agentRun).catch(() => undefined),
-      tailAgentLog(resolveDataDir(), AGENT_LOG_LINES).catch(() => agentLog),
-    ]);
-    agentTask = task;
-    agentLog = log;
-  } finally {
-    agentRefreshing = false;
-  }
-}
+/**
+ * Reads the task's state and the log's tail, one read at a time (refresher.ts). `refreshAgent(true)` after an action
+ * waits for a read that started after it, so the panel never shows the state from before Start, Stop or Resume.
+ */
+const refreshAgent = createRefresher(async () => {
+  const [task, log] = await Promise.all([
+    readAgentTask(agentRun).catch(() => undefined),
+    tailAgentLog(resolveDataDir(), AGENT_LOG_LINES).catch(() => agentLog),
+  ]);
+  agentTask = task;
+  agentLog = log;
+});
 
 /** One agent action at a time (Start, Stop or a command); the panel's buttons wait while it runs. */
 async function agentAction<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -236,7 +233,7 @@ async function agentAction<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     return fallback;
   } finally {
     agentBusy = false;
-    await refreshAgent();
+    await refreshAgent(true).catch(() => undefined);
     pushAgentStatus();
   }
 }

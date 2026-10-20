@@ -15,6 +15,26 @@ export function agentStateLabel(task: AgentTaskState | undefined): string {
   return task;
 }
 
+/** The dot and words of the state line: a halted agent shows halted (bad), whatever the task says. */
+export function agentStateLine(s: AgentStatus): { dot: string; label: string } {
+  if (s.halted !== undefined) {
+    return { dot: "halted", label: s.task === undefined ? "halted" : `halted (task ${agentStateLabel(s.task)})` };
+  }
+  return { dot: s.task ?? "unknown", label: agentStateLabel(s.task) };
+}
+
+/** A warning or error's level as text beside the line, so colour isn't the only signal. */
+export function levelTag(level: string): string {
+  if (level === "warn") return "WARN";
+  if (level === "error") return "ERROR";
+  return "";
+}
+
+/** Whether the log is scrolled to its end, so new lines may scroll it on; reading higher up is left alone. */
+export function atBottom(box: { scrollTop: number; scrollHeight: number; clientHeight: number }): boolean {
+  return box.scrollHeight - box.scrollTop - box.clientHeight <= 2;
+}
+
 export function agentNote(s: AgentStatus): string {
   if (s.task === undefined) return "Couldn't read the agent's Scheduled Task. This tries again in a few seconds.";
   if (s.task === "missing") return "The agent's Scheduled Task isn't set up on this PC yet.";

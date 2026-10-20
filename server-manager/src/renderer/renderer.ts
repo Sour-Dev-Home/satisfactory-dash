@@ -1,6 +1,16 @@
 /** The window: renders the status main pushes and forwards button presses over the bridge. No Node here. */
 import type { AgentCommand, AgentStatus, ServerManagerBridge, Status } from "../ipc";
-import { agentActions, agentNote, agentStateLabel, commandHeading, haltedText, logDelta, logLineParts } from "./agentView";
+import {
+  agentActions,
+  agentNote,
+  agentStateLine,
+  atBottom,
+  commandHeading,
+  haltedText,
+  levelTag,
+  logDelta,
+  logLineParts,
+} from "./agentView";
 import {
   actionsFor,
   anywayLabel,
@@ -175,6 +185,7 @@ function logItem(line: string): HTMLLIElement {
   const item = document.createElement("li");
   if (parts.level !== "") item.dataset.level = parts.level;
   for (const [cls, text] of [
+    ["log-level", levelTag(parts.level)],
     ["log-time", parts.time],
     ["log-event", parts.event],
     ["log-detail", parts.detail],
@@ -190,19 +201,24 @@ function logItem(line: string): HTMLLIElement {
 
 function renderAgentLog(next: string[]): void {
   const { drop, add } = logDelta(shownLog, next);
+  // Follow new lines only when the owner is already at the end, not while they read further up.
+  const follow = atBottom(agentLogList);
   for (let i = 0; i < drop; i++) agentLogList.firstElementChild?.remove();
   for (const line of add) agentLogList.append(logItem(line));
   shownLog = [...next];
-  if (add.length > 0) agentLogList.scrollTop = agentLogList.scrollHeight;
+  if (add.length > 0 && follow) agentLogList.scrollTop = agentLogList.scrollHeight;
   agentLogList.hidden = next.length === 0;
   el("agent-log-empty").hidden = next.length > 0;
 }
 
 function renderAgent(s: AgentStatus): void {
   agentLatest = s;
-  el("agent-state").textContent = agentStateLabel(s.task);
-  el("agent-dot").dataset.state = s.task ?? "unknown";
+  const line = agentStateLine(s);
+  el("agent-state").textContent = line.label;
+  el("agent-dot").dataset.state = line.dot;
   el("agent-note").textContent = agentNote(s);
+  // While halted, Resume is the one primary action.
+  agentButtons.start.classList.toggle("primary", s.halted === undefined);
 
   const actions = agentActions(s);
   el("agent-task-actions").hidden = s.task === "missing";
@@ -227,6 +243,9 @@ function renderAgent(s: AgentStatus): void {
 
 async function runCommand(command: AgentCommand): Promise<void> {
   agentCommandHeading.textContent = `Running agent ${command}…`;
+  // The last command's output would read as this one's.
+  agentOutput.textContent = "";
+  agentOutput.hidden = true;
   const result = await bridge.runAgentCommand(command);
   if (!result) {
     agentCommandHeading.textContent = "";
