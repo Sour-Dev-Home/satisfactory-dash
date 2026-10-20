@@ -28,28 +28,19 @@ export default defineConfig({
   // pixels absorbs that and nothing real: one short line of text is hundreds of pixels. A
   // ratio tolerance (it was 1%, about 13k pixels at 1440x900) let a whole missing line of text
   // pass, and made `--update-snapshots` skip real changes, so keep this an absolute count.
-  expect: { toHaveScreenshot: { maxDiffPixels: 50, animations: "disabled" } },
+  //
+  // Byte-identical regenerations (#503): unrelated baselines differed by 1 to 6 colour levels in a
+  // few antialiased pixels at rounded corners, a different screenshot each run. A CSS transition
+  // (border and background colour) caught a hair before its end state rounds differently there;
+  // `animations: "disabled"` does not stop transitions started after it runs. screenshot.css sets
+  // `transition: none` while a screenshot is taken, so every state is its final one.
+  expect: { toHaveScreenshot: { maxDiffPixels: 50, animations: "disabled", stylePath: "./e2e/screenshot.css" } },
   use: {
     baseURL: `http://${HOST}:${PORT}`,
     // Fixed so rendered timestamps and number formats are identical on every machine.
     timezoneId: "UTC",
     locale: "en-US",
     trace: "retain-on-failure",
-    // Byte-identical screenshots across CI runs (#503). Regenerating baselines on unrelated branches
-    // changed a handful of antialiased pixels (1 to 6 levels, at rounded corners) in a different
-    // screenshot every time; the runners differ in CPU, and Skia picks SIMD paths per CPU, spreads
-    // raster work across threads, and Chromium may use a GPU or per-machine colour profile. Pin all of
-    // that so the same page always rasterises to the same bytes.
-    launchOptions: {
-      args: [
-        "--disable-skia-runtime-opts",
-        "--disable-gpu",
-        "--num-raster-threads=1",
-        "--force-color-profile=srgb",
-        "--disable-lcd-text",
-        "--font-render-hinting=none",
-      ],
-    },
   },
   projects: [
     {
