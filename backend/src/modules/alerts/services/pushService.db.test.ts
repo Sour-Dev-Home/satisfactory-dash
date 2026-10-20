@@ -367,4 +367,47 @@ describe.skipIf(!available)("web push against a real Postgres (ADR-0044)", () =>
       expect(await rows("SELECT 1 FROM alerts.outbox WHERE push_subscription_id = $1", [subId])).toEqual([]);
     });
   });
+
+  // Test hunt additions (#348-1).
+  describe("hunt: shared endpoints, limits and opt-out", () => {
+    it("the same endpoint for two users is two independent subscriptions; one user's delete and limit do not touch the other's", async () => {
+      const shared = subscription(7001);
+      const a = await as(alice).post(endpoints.push.subscribe.path(), shared);
+      const b = await as(bob).post(endpoints.push.subscribe.path(), shared);
+      expect([a.status, b.status]).toEqual([201, 201]);
+      expect(a.body.id).not.toBe(b.body.id);
+      // Bob cannot delete Alice's by id, and Alice deleting hers leaves Bob's.
+      expect((await as(bob).delete(endpoints.push.unsubscribe.path(a.body.id))).status).toBe(404);
+      expect((await as(alice).delete(endpoints.push.unsubscribe.path(a.body.id))).status).toBe(200);
+      expect(await rows("SELECT 1 FROM alerts.push_subscriptions WHERE id = $1", [b.body.id])).toHaveLength(1);
+      await as(bob).delete(endpoints.push.unsubscribe.path(b.body.id));
+    });
+
+    it("the 10th subscription is accepted and the 11th refused, per user, with nothing stored for the 11th", async () => {
+      const carol = (await createUser(pool, { displayName: "carol-limit" })).id;
+      for (let i = 0; i < 10; i += 1) {
+        expect((await as(carol).post(endpoints.push.subscribe.path(), subscription(7100 + i))).status).toBe(201);
+      }
+      const eleventh = await as(carol).post(endpoints.push.subscribe.path(), subscription(7110));
+      expect(eleventh.status).toBe(400);
+      expect(await rows("SELECT 1 FROM alerts.push_subscriptions WHERE user_id = $1", [carol])).toHaveLength(10);
+      // Another user is unaffected by carol's limit.
+      expect((await as(bob).post(endpoints.push.subscribe.path(), subscription(7110))).status).toBe(201);
+    });
+
+    it("an admin can set the opt-in too", async () => {
+      const adm = (await createUser(pool, { displayName: "admin-optin" })).id;
+      await addMember(pool, { serverId, userId: adm, role: "admin", actorUserId: null });
+      expect((await as(adm).put(endpoints.push.optIn.put.path("alpha"), { optedIn: true })).body).toEqual({ optedIn: true });
+    });
+
+    // KNOWN GAP: setOptIn calls requireEnabled() even for optedIn=false, so once push is switched off (VAPID unset or
+    // ALERT_DELIVERY off) a user who had opted in cannot withdraw. Unsubscribing a device still works while disabled, so
+    // opting out probably should too. Not fixed here: a contract decision for the author.
+    it.fails("opting OUT still works while push is disabled (withdrawing is never blocked)", async () => {
+      const disabled = buildApp("off");
+      const res = await request(disabled).put(endpoints.push.optIn.put.path("alpha")).set("x-test-user", alice).set("Content-Type", "application/json").send('{"optedIn":false}');
+      expect(res.status).toBe(200);
+    });
+  });
 });
