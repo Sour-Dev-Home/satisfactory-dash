@@ -23,6 +23,7 @@ export const CHANNELS = {
   stopAgent: "sm:stop-agent",
   runAgentCommand: "sm:run-agent-command",
   openAgentRunbook: "sm:open-agent-runbook",
+  setStartWithWindows: "sm:set-start-with-windows",
 } as const;
 
 /**
@@ -82,6 +83,8 @@ export interface Status {
   updating: boolean;
   /** How the last update ended, until the next one starts. */
   updateResult: { ok: boolean; code: number } | undefined;
+  /** The Start with Windows setting (off by default). */
+  startWithWindows: boolean;
 }
 
 export type ChooseResult = { ok: true } | { ok: false; reason: "cancelled" | "missing-exe" | "busy" };
@@ -106,6 +109,8 @@ export interface ServerManagerBridge {
   runAgentCommand(command: AgentCommand): Promise<AgentCommandResult>;
   /** Opens the runbook's "Keeping it running" in the browser; main holds the one address, the window sends none. */
   openAgentRunbook(): Promise<void>;
+  /** Adds or removes the per-user login item. */
+  setStartWithWindows(on: boolean): Promise<void>;
 }
 
 /** The renderer is untrusted: only a literal `{ anyway: true }` asks for an unclean stop. */

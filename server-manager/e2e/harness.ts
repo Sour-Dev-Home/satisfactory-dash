@@ -95,7 +95,7 @@ export function starts(f: Fixture): Start[] {
 }
 
 /** Drops a control file the fake server reacts to (see fake-server.cjs). */
-export function tell(f: Fixture, what: "crash-now" | "exit-now" | "crash-always"): void {
+export function tell(f: Fixture, what: "crash-now" | "exit-now" | "crash-always" | "keep-running"): void {
   writeFileSync(join(f.serverDir, what), "");
 }
 
@@ -122,6 +122,43 @@ export function agentLogs(f: Fixture, day: string, lines: string[], partial = ""
 
 export function agentHalted(f: Fixture, reason: "credential_rejected" | "store_unreadable"): void {
   writeFileSync(join(f.agentDir, "halted.json"), `${JSON.stringify({ reason, at: "2026-10-20T10:00:00.000Z" })}\n`);
+}
+
+export type TrayItemId = "open" | "start" | "stop" | "restart" | "quit" | "stop-and-quit";
+
+export interface TraySnapshot {
+  colour: "green" | "amber" | "red";
+  tooltip: string;
+  items: ({ id: TrayItemId; label: string; enabled: boolean } | { type: "separator" })[];
+}
+
+/** The tray as main built it (src/main.ts installTestHook, under the e2e switch only): the OS tray can't be driven. */
+export function trayOf(app: ElectronApplication): Promise<TraySnapshot> {
+  return app.evaluate(() => (globalThis as unknown as { __serverManagerE2E: { tray: () => TraySnapshot } }).__serverManagerE2E.tray());
+}
+
+/** Presses a tray menu item: the real Electron MenuItem's click. */
+export async function clickTray(app: ElectronApplication, id: TrayItemId): Promise<void> {
+  await app.evaluate((_electron, item) => {
+    (globalThis as unknown as { __serverManagerE2E: { clickTray: (id: string) => void } }).__serverManagerE2E.clickTray(item);
+  }, id);
+}
+
+export function closeNotes(app: ElectronApplication): Promise<number> {
+  return app.evaluate(() => (globalThis as unknown as { __serverManagerE2E: { closeNotes: () => number } }).__serverManagerE2E.closeNotes());
+}
+
+export function windowVisible(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()));
+}
+
+/** Ends a process a test left running on purpose (the fake server after Quit). */
+export function end(pid: number): void {
+  try {
+    process.kill(pid);
+  } catch {
+    // Already gone.
+  }
 }
 
 export function alive(pid: number): boolean {

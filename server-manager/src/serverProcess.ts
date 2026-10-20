@@ -19,16 +19,20 @@ export function serverSpawn(opts: {
   spawn?: NodeSpawn;
   /** Pipe stdout and stderr to onOutput (SteamCMD); exit is then reported once the output has all been read. */
   output?: boolean;
+  /** Its own process group, not held by the app: the game server outlives Quit (ADR-0040 decision 4). */
+  detached?: boolean;
 }): SpawnFn {
   const spawn = opts.spawn ?? nodeSpawn;
   const viaNode = opts.env[RUN_WITH_NODE_ENV] === "1";
   const output = opts.output === true;
+  const detached = opts.detached === true && !output;
   return (exe, args) => {
     const stdio = output ? (["ignore", "pipe", "pipe"] as const) : ("ignore" as const);
-    const common = { cwd: dirname(exe), shell: false, windowsHide: true, stdio: stdio as SpawnOptions["stdio"] };
+    const common = { cwd: dirname(exe), shell: false, windowsHide: true, detached, stdio: stdio as SpawnOptions["stdio"] };
     const child = viaNode
       ? spawn(opts.execPath, [exe, ...args], { ...common, env: { ...opts.env, ELECTRON_RUN_AS_NODE: "1" } })
       : spawn(exe, [...args], { ...common, env: { ...opts.env } });
+    if (detached) child.unref();
     return {
       get pid() {
         return child.pid;

@@ -88,6 +88,7 @@ const base: Status = {
   anyway: undefined,
   updating: false,
   updateResult: undefined,
+  startWithWindows: false,
 };
 
 describe("updateAllowed", () => {

@@ -21,8 +21,13 @@ const lines = [
   " Update state (0x61) downloading, progress: 100.00 (800 / 800)",
   code === 0 ? "Success! App '1690800' fully installed." : "Error! App '1690800' state is 0x202 after update job.",
 ];
+// With a `steamcmd-hold` file beside it, it stops before the last line until that file is removed (the screenshot
+// script uses it to catch an update in progress), for at most 60 s.
+const held = () => fs.existsSync(path.join(dir, "steamcmd-hold"));
+const started = Date.now();
 let i = 0;
 const timer = setInterval(() => {
+  if (i === lines.length - 1 && held() && Date.now() - started < 60_000) return;
   if (i < lines.length) {
     process.stdout.write(`${lines[i++]}\r\n`);
     return;

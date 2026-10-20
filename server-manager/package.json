@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
-    "e2e": "node scripts/build.mjs && playwright test"
+    "e2e": "node scripts/build.mjs && playwright test",
+    "screenshots": "node scripts/build.mjs && playwright test -c playwright.screenshots.config.ts"
   },
   "dependencies": {
     "zod": "^4.6.6"

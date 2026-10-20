@@ -1,0 +1,82 @@
+// The portfolio screenshots of the server manager's window (issue #440), retaken with `npm run screenshots`. Each one
+// runs the built app against the e2e fakes in a temp folder. The folder paths the window shows are those temp folders,
+// so they are replaced with placeholders before each shot, and the shot is refused if a real one shows.
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { appDir, launch, makeFixture, removeFixture, starts, tell, writeSettings, type Fixture } from "../e2e/harness";
+
+// An output folder, not an input: built from segments so it reads as where the PNGs go.
+const OUT = join(appDir, "..", "docs-vault", "wiki", "assets", "server-manager");
+
+const PLACEHOLDER = { server: "D:\\SatisfactoryServer", steamcmd: "D:\\SteamCMD" };
+
+let f: Fixture;
+let app: ElectronApplication | undefined;
+let page: Page;
+
+test.beforeAll(() => {
+  mkdirSync(OUT, { recursive: true });
+});
+
+test.beforeEach(() => {
+  f = makeFixture();
+});
+
+test.afterEach(async () => {
+  rmSync(join(f.steamcmdDir, "steamcmd-hold"), { force: true });
+  await app?.close();
+  app = undefined;
+  removeFixture(f);
+});
+
+async function open(): Promise<void> {
+  ({ app, page } = await launch(f));
+}
+
+/** Swaps the temp folders for placeholders, shoots the whole page, then checks nothing re-rendered a real path meanwhile. */
+async function shoot(name: string): Promise<void> {
+  await page.evaluate((p) => {
+    document.getElementById("server-dir")!.textContent = p.server;
+    const steam = document.getElementById("steamcmd-dir")!;
+    if (steam.textContent !== "not set") steam.textContent = p.steamcmd;
+  }, PLACEHOLDER);
+  const png = await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
+  const text = await page.evaluate(() => document.body.innerText);
+  expect(text).not.toContain(f.root);
+  expect(text).toContain(PLACEHOLDER.server);
+  writeFileSync(join(OUT, name), png);
+}
+
+test("server running", async () => {
+  writeSettings(f, { steamcmd: true });
+  await open();
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("state")).toHaveText("running");
+  await expect.poll(() => starts(f).length).toBe(1);
+  // CPU needs two samples, a few seconds apart.
+  await expect(page.getByTestId("cpu")).not.toHaveText("—", { timeout: 20_000 });
+  await expect(page.getByTestId("memory")).not.toHaveText("—");
+  await shoot("window-running.png");
+});
+
+test("an update in progress", async () => {
+  writeSettings(f, { steamcmd: true });
+  writeFileSync(join(f.steamcmdDir, "steamcmd-hold"), "");
+  await open();
+  await expect(page.getByTestId("state")).toHaveText("stopped");
+  await page.getByRole("button", { name: "Update server" }).click();
+  await expect(page.getByTestId("update-log")).toContainText("progress: 100.00");
+  await expect(page.getByTestId("update-note")).toHaveText("Updating with SteamCMD…");
+  await shoot("window-updating.png");
+});
+
+test("crashed after the back-off", async () => {
+  writeSettings(f, { steamcmd: true });
+  tell(f, "crash-always");
+  await open();
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("state")).toHaveText("crashed", { timeout: 20_000 });
+  await expect(page.getByTestId("last-error")).toContainText("not restarting");
+  await shoot("window-crashed.png");
+});

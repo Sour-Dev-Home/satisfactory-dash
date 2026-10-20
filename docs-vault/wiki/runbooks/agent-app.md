@@ -57,6 +57,9 @@ Under `%LOCALAPPDATA%\satisfactory-dash-agent` (or the folder in `SD_AGENT_HOME`
 
 ## Keeping it running: a Scheduled Task
 
+To start and supervise the game server itself, see the server manager (ADR-0040), a separate app with its own runbook:
+[`server-manager.md`](./server-manager.md).
+
 **The logon type is the trap.** A DPAPI key for the current user exists only in a process that runs as that user with the
 user's profile loaded. A task registered as **"Run whether user is logged on or not" with "Do not store password" (S4U)**
 does **not** have it [NEEDS VERIFICATION on the owner's Windows build], and the agent then fails at start with exit code 3
