@@ -107,8 +107,13 @@ only (a dev or `satis_load` database, never production), and nothing talks to pr
 - **G3 is parked until ADR-0039 decision 3's trigger:** a player whose rented game server can't run the agent. The owner
   chose on 2026-10-20 not to propose a build yet; the agent stays the supported path.
 - **Before a build ADR**, each of these is settled, or carried into that ADR as a named risk:
-  1. the legal reading of GPL-3.0-or-later software beside the AGPL-3.0-only web app, recorded in `LEGAL.md`;
-  2. Coffee Stain's terms on mods;
+  1. the legal reading of GPL-3.0-or-later software beside the AGPL-3.0-only web app, recorded in `LEGAL.md`:
+     now in [`LEGAL.md` "The game mod (ADR-0039)"](../../LEGAL.md#the-game-mod-adr-0039) (#471), on the GPL text
+     (`raw-sources/sml-license-2026-09-27.txt`) and the FSF's FAQ (`raw-sources/gpl-faq-2026-10-20.md`); its open
+     points stay [NEEDS VERIFICATION] there;
+  2. Coffee Stain's terms on mods: still not found by script on 2026-10-20
+     (`raw-sources/coffee-stain-mod-terms-2026-10-20.md`); ficsit.app's own rules are in
+     `raw-sources/ficsit-app-mod-rules-2026-10-20.md`, and both are read in the same `LEGAL.md` section;
   3. how often SML breaks mods across game releases (option C's ongoing cost);
   4. which game hosts allow installing a custom mod, and whether they allow outbound HTTPS from the game process
      (ADR-0039 Context) [NEEDS VERIFICATION].
