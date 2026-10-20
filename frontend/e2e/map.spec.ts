@@ -104,6 +104,43 @@ test("the map's first view", async ({ page, mockApi }) => {
   await expect(page).toHaveScreenshot("map.png", { fullPage: true });
 });
 
+// #434: Leaflet's panes (z-index 200-800) must stay inside the map's own stacking context, or
+// they paint over the header's popovers (--z-popover) and the grid shows through the alerts panel.
+test("the alerts popover paints above every map layer", async ({ page, mockApi }) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  const map = page.getByRole("application", { name: /Factory map/ });
+  await expect(map).toBeVisible();
+  await findMarker(page);
+
+  const bell = page.getByRole("button", { name: /^Alerts/ });
+  await bell.click();
+  const panelId = await bell.getAttribute("aria-controls");
+  const panel = page.locator(`[id="${panelId}"]`);
+  await expect(panel).toBeVisible();
+
+  const result = await page.evaluate((id) => {
+    const popover = document.getElementById(id)!.getBoundingClientRect();
+    const mapRect = document.querySelector(".map-canvas")!.getBoundingClientRect();
+    const misses: string[] = [];
+    let overMap = 0;
+    // A 5x5 grid of points inside the popover, clear of its border.
+    for (let i = 1; i <= 5; i++) {
+      for (let j = 1; j <= 5; j++) {
+        const x = popover.left + (popover.width * i) / 6;
+        const y = popover.top + (popover.height * j) / 6;
+        if (x >= mapRect.left && x <= mapRect.right && y >= mapRect.top && y <= mapRect.bottom) overMap++;
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || !hit.closest(`[id="${id}"]`)) misses.push(`${Math.round(x)},${Math.round(y)}: ${hit?.className || hit?.tagName}`);
+      }
+    }
+    return { overMap, misses };
+  }, panelId!);
+
+  expect(result.overMap, "points of the popover over the map").toBeGreaterThan(0);
+  expect(result.misses, "points inside the popover hit something else").toEqual([]);
+});
+
 test("Leaflet loads only with the Map page, not with the app", async ({ page, mockApi }) => {
   const mapChunks: string[] = [];
   page.on("request", (request) => {
