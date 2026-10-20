@@ -2,7 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearPid, leftoverPid, PID_FILE, recordPid } from "./leftoverServer";
+import { spawnSync } from "node:child_process";
+import { clearPid, leftoverPid, PID_FILE, processAlive, recordPid } from "./leftoverServer";
 
 let dir: string;
 beforeEach(() => {
@@ -13,6 +14,15 @@ afterEach(() => {
 });
 
 const alive = (pids: number[]) => (pid: number) => pids.includes(pid);
+
+describe("processAlive", () => {
+  it("is true for this process and false for an exited one", () => {
+    expect(processAlive(process.pid)).toBe(true);
+    const done = spawnSync(process.execPath, ["-e", "0"]);
+    expect(done.pid).toBeGreaterThan(0);
+    expect(processAlive(done.pid)).toBe(false);
+  });
+});
 
 describe("leftoverServer", () => {
   it("is undefined with no pid file", () => {

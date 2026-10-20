@@ -37,11 +37,11 @@
           <div><dt>CPU</dt><dd id="cpu" data-testid="cpu">—</dd></div>
           <div><dt>Memory</dt><dd id="memory" data-testid="memory">—</dd></div>
         </dl>
-        <p id="last-error" class="notice" data-testid="last-error" aria-live="polite" hidden></p>
+        <p id="last-error" class="notice" data-testid="last-error" aria-live="polite"></p>
         <div class="actions">
-          <button id="start" type="button" class="primary" aria-disabled="true">Start</button>
-          <button id="stop" type="button" aria-disabled="true">Stop</button>
-          <button id="restart" type="button" aria-disabled="true">Restart</button>
+          <button id="start" type="button" class="primary" aria-disabled="true" aria-describedby="last-error">Start</button>
+          <button id="stop" type="button" aria-disabled="true" aria-describedby="last-error">Stop</button>
+          <button id="restart" type="button" aria-disabled="true" aria-describedby="last-error">Restart</button>
         </div>
       </section>
 

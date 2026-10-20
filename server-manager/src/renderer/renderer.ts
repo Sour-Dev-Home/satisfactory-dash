@@ -40,8 +40,8 @@ function render(status: Status): void {
   el("memory").textContent = formatBytes(status.memoryBytes);
 
   const lastError = el("last-error");
+  // Stays in the page (empty hides it through CSS) so the live region announces a message present at launch.
   lastError.textContent = status.lastError ?? "";
-  lastError.hidden = status.lastError === undefined;
   lastError.dataset.tone = status.state === "crashed" && status.leftoverPid === undefined ? "bad" : "warn";
 
   // aria-disabled, not disabled, so a focused button keeps focus when it stops applying.
@@ -52,7 +52,8 @@ function render(status: Status): void {
 
   el("server-dir").textContent = status.serverDir ?? "";
   el("steamcmd-dir").textContent = status.steamcmdDir ?? "not set";
-  el("change-server").setAttribute("aria-disabled", String(!actionsFor(status.state, true).start));
+  const canChangeFolder = actionsFor(status.state, true).start && status.leftoverPid === undefined;
+  el("change-server").setAttribute("aria-disabled", String(!canChangeFolder));
 }
 
 function act(name: keyof typeof buttons, run: () => Promise<void>): void {

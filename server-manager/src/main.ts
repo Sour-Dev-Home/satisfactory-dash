@@ -41,6 +41,15 @@ function configured(): boolean {
   return settings !== undefined && hasServerExe(settings.serverDir);
 }
 
+/** The pid file is a guard, not the supervisor's state: a disk error writing it must not break a running server. */
+function bestEffort(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    // Without the file the next launch just can't spot a leftover server.
+  }
+}
+
 function makeSupervisor(serverDir: string): Supervisor {
   const spawn = serverSpawn({ env: process.env, execPath: process.execPath });
   const sup = createSupervisor({
@@ -49,7 +58,7 @@ function makeSupervisor(serverDir: string): Supervisor {
       currentPid = child.pid;
       child.onSpawn(() => {
         currentPid = child.pid;
-        recordPid(settingsDir(), child.pid);
+        bestEffort(() => recordPid(settingsDir(), child.pid));
       });
       return child;
     },
@@ -57,7 +66,7 @@ function makeSupervisor(serverDir: string): Supervisor {
     serverExe: join(serverDir, SERVER_EXE),
   });
   sup.onChange((state) => {
-    if (state === "stopped" || state === "crashed") clearPid(settingsDir());
+    if (state === "stopped" || state === "crashed") bestEffort(() => clearPid(settingsDir()));
     if (state === "running") runningSince = Date.now();
     else {
       runningSince = undefined;
@@ -84,7 +93,7 @@ function status(): Status {
     state,
     lastError:
       leftoverServer !== undefined
-        ? `A server this app started earlier is still running (process ${leftoverServer}). Stop it before starting another.`
+        ? `A server this app started earlier is still running (process ${leftoverServer}). This version can't control it: end it in Task Manager (or wait for it to stop), and Start comes back.`
         : supervisor?.lastError(),
     leftoverPid: leftoverServer,
     configured: configured(),
@@ -196,7 +205,10 @@ app.whenReady().then(() => {
     else pushStatus();
   });
   handle(CHANNELS.stop, () => supervisor?.stop());
-  handle(CHANNELS.restart, () => supervisor?.restart());
+  handle(CHANNELS.restart, () => {
+    if (leftover() === undefined) return supervisor?.restart();
+    pushStatus();
+  });
   handle(CHANNELS.chooseServerDir, chooseServerDir);
   handle(CHANNELS.chooseSteamcmdDir, chooseSteamcmdDir);
 
