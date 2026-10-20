@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { PREVIEW } from "../src/landing/preview";
 import { expect, test } from "./fixtures";
 
 // The production build the other specs run against: check it ships none of the mock tooling
@@ -61,6 +62,24 @@ test.describe("production build", () => {
     expect(meta("og:image:width")).toBe("1200");
     expect(meta("og:image:height")).toBe("630");
     expect(allFiles(DIST)).toContain(join(DIST, image.pathname));
+  });
+
+  // The logo's icons (#444, `npm run assets:icons`) and the landing's Overview still (`npm run assets:preview`).
+  test("links the favicon, touch icon and manifest, and ships every file they name", () => {
+    const html = readFileSync(join(DIST, "index.html"), "utf8");
+    const link = (rel: string) => new RegExp(`<link\\s+rel="${rel}"[^>]*\\shref="([^"]+)"`).exec(html)?.[1];
+    const files = allFiles(DIST);
+    for (const rel of ["icon", "apple-touch-icon", "manifest"]) {
+      const href = link(rel);
+      expect(href, `<link rel="${rel}">`).toMatch(/^\//);
+      expect(files).toContain(join(DIST, href!));
+    }
+    const manifest = JSON.parse(readFileSync(join(DIST, link("manifest")!), "utf8")) as { icons: { src: string }[] };
+    expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
+    for (const { src } of manifest.icons) expect(files).toContain(join(DIST, src));
+    expect(files).toContain(join(DIST, PREVIEW.src));
+    // The landing's largest paint: keep it light (the asset script checks the same budget).
+    expect(statSync(join(DIST, PREVIEW.src)).size).toBeLessThan(200 * 1024);
   });
 });
 

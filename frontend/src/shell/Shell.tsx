@@ -30,6 +30,8 @@ import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { AlertSettings } from "../alerts/settings/AlertSettings";
 import { StatusView } from "../status/StatusView";
+import { cn } from "../lib/cn";
+import { chipButton } from "../ui/chip";
 import { ToAlertSettings, ToApp } from "./ToApp";
 
 type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
@@ -98,7 +100,7 @@ export function CommandBar({ load = loadPalette }: { load?: () => Promise<Palett
         aria-label="Search (Ctrl+K)"
         title="Search (Ctrl+K)"
         aria-haspopup="dialog"
-        className="inline-grid min-w-touch place-items-center px-0"
+        className={cn(chipButton, "min-w-touch justify-center px-0")}
       >
         <SearchIcon />
       </button>
@@ -256,7 +258,9 @@ export function Shell() {
     // would widen the whole app past a phone's width instead of scrolling on its own.
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       {/* relative: the bell's dropdown is positioned against this row, so it lines up with the page edge. */}
-      <div className="relative flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
+      {/* items-end and no bottom padding: the active tab's amber underline sits on the row's line,
+          and the controls keep their own gap above it. */}
+      <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-line">
         {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
         {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;
@@ -268,18 +272,20 @@ export function Shell() {
               to={tab.to}
               end={tab.end}
               className={({ isActive }) =>
-                [
+                cn(
                   // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
-                  "inline-flex min-h-touch flex-none items-center rounded-md px-2.5 font-medium sm:px-3 no-underline transition-colors focus-visible:-outline-offset-2",
-                  isActive ? "bg-surface-2 text-fg-strong" : "text-muted hover:text-fg-strong",
-                ].join(" ")
+                  // The display face and capitals come from index.css (nav[aria-label="Main"] a); the
+                  // active tab carries an amber underline (#444), eased in and out by the motion tokens.
+                  "inline-flex min-h-touch flex-none items-center border-b-2 px-2.5 font-semibold sm:px-3 no-underline transition-colors focus-visible:-outline-offset-2",
+                  isActive ? "border-accent text-fg-strong" : "border-transparent text-muted hover:border-line hover:text-fg-strong",
+                )
               }
             >
               {tab.label}
             </NavLink>
           ))}
         </nav>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3 pb-2">
           <ServerSwitcher />
           {/* The bell sits with the account: both are about you, not the game. */}
           <div className="flex items-center gap-2">

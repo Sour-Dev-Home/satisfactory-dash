@@ -1,5 +1,15 @@
 import { cn } from "../lib/cn";
-import { MACHINE_FEET, MACHINE_HOUSING, MACHINE_LIGHT, MACHINE_PORT, MACHINE_WINDOW, STATION_VIEWBOX } from "./stationShapes";
+import {
+  FACTORY_BODY,
+  FACTORY_DOOR,
+  FACTORY_WINDOWS,
+  MACHINE_FEET,
+  MACHINE_HOUSING,
+  MACHINE_LIGHT,
+  MACHINE_PORT,
+  MACHINE_WINDOW,
+  STATION_VIEWBOX,
+} from "./stationShapes";
 
 export type StationKind = "server" | "power" | "factory" | "machine";
 
@@ -75,10 +85,11 @@ function Body({ kind }: { kind: StationKind }) {
       // A saw-tooth roof, a stack and a lit door.
       return (
         <>
-          <path className={BODY} d="M5 42V22l9 6v-6l9 6v-6l9 6V8h6v34z" />
-          <rect className={DARK} x="10" y="32" width="5" height="4" rx="1" />
-          <rect className={DARK} x="19" y="32" width="5" height="4" rx="1" />
-          <rect className={LIT} x="28" y="32" width="6" height="10" rx="1" />
+          <path className={BODY} d={FACTORY_BODY} />
+          {FACTORY_WINDOWS.map((pane) => (
+            <rect key={pane.x} className={DARK} {...pane} />
+          ))}
+          <rect className={LIT} {...FACTORY_DOOR} />
         </>
       );
     case "machine":

@@ -42,7 +42,9 @@ test("the live power chart renders, hovers, resizes and appends under the strict
     )
     .toBeGreaterThan(100);
 
-  // Hover: uPlot shows its crosshair and puts the values under the cursor in the legend.
+  // Hover: uPlot shows its crosshair and puts the values under the cursor in the legend. Scroll the plot into view
+  // first: page.mouse moves in viewport coordinates, and on a phone the plot can start below the fold.
+  await plot.scrollIntoViewIfNeeded();
   const box = (await plot.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await expect(chart.locator(".u-cursor-x")).toBeVisible();

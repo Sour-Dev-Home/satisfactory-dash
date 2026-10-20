@@ -10,16 +10,18 @@ import { Landing } from "./landing/Landing";
 import { ServerGate } from "./servers/ServerGate";
 import { Shell } from "./shell/Shell";
 import { ToApp } from "./shell/ToApp";
+import { HazardStripe } from "./ui/HazardStripe";
+import { Logo } from "./ui/Logo";
 
 function App() {
   return (
     <BrowserRouter>
       <div className="mx-auto flex min-h-svh max-w-6xl flex-col px-4 sm:px-6">
-        <header className="grid gap-3 py-4">
-          <h1 className="flex items-center gap-2.5 text-xl font-bold text-fg-strong">
-            <span aria-hidden="true" className="size-6 rounded-md bg-accent" />
-            Satis Manager
+        <header className="grid gap-3 pt-4 pb-5">
+          <h1 className="m-0 flex">
+            <Logo />
           </h1>
+          <HazardStripe />
           {/* Outside every boundary and gate: the demo says so on every screen, even a crash. */}
           {IS_DEMO && <DemoBanner />}
         </header>

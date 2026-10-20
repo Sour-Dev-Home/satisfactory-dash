@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { cn } from "../lib/cn";
 import { useSelectedServer } from "../servers/ServerContext";
+import { chipButton } from "../ui/chip";
 import { AlertsMenu } from "./AlertsMenu";
 
 /**
@@ -52,10 +53,8 @@ export function AlertsBell() {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "relative inline-flex size-11 flex-none items-center justify-center rounded-md border-0 p-0 focus-visible:-outline-offset-2",
-          open ? "bg-surface-2 text-fg-strong" : "bg-transparent text-muted hover:text-fg-strong",
-        )}
+        // A steel chip like the header's other controls (#444); open, its edge stays lit.
+        className={cn(chipButton, "relative size-11 flex-none justify-center p-0", open && "border-muted")}
       >
         <BellIcon />
         <BadgeBoundary fallback={<span className="sr-only">Alerts</span>}>
