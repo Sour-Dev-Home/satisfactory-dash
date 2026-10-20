@@ -7,6 +7,7 @@ import { bestOutputPercent, classifyBuilding } from "./classifyBuilding.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
 import type { ObservationSink } from "./observationBoard.js";
 import type { BackgroundWorker } from "./powerHistoryPoller.js";
+import { areInputsFull } from "../../gameserver/index.js";
 import { isBackedUp } from "./productionService.js";
 
 export interface FactoryHistoryPorts {
@@ -67,7 +68,7 @@ export function diffStates(
 ): TransitionRow[] {
   const current = new Map<string, { state: string; className: string }>();
   for (const building of buildings) {
-    const state = classifyBuilding(building, isBackedUp(building))?.state;
+    const state = classifyBuilding({ ...building, inputsFull: areInputsFull(building) }, isBackedUp(building))?.state;
     if (state !== undefined) {
       current.set(building.id, { state, className: building.className });
     }
@@ -241,7 +242,7 @@ export class FactoryHistoryPoller implements BackgroundWorker {
       afterResume: this.wasPaused,
       itemRates: new Map(itemRows.map((row) => [row.item, row.currentPerMinute])),
       machines: buildings.map((building) => {
-        const classification = classifyBuilding(building, isBackedUp(building));
+        const classification = classifyBuilding({ ...building, inputsFull: areInputsFull(building) }, isBackedUp(building));
         return {
           id: building.id,
           className: building.className,

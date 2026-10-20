@@ -109,6 +109,8 @@ export const RawFrmFactoryBuildingSchema = z.object({
   ingredients: z.array(RawFrmIngredientItemSchema).optional(),
   /** Non-empty slots only: FRM omits empty ones (2026-09-22 captures). */
   OutputInventory: z.array(RawFrmInventorySlotSchema).optional(),
+  /** Non-empty slots only, like OutputInventory (2026-09-22 captures). */
+  InputInventory: z.array(RawFrmInventorySlotSchema).optional(),
   IsProducing: z.boolean(),
   IsPaused: z.boolean(),
   PowerInfo: RawFrmPowerInfoSchema.optional(),

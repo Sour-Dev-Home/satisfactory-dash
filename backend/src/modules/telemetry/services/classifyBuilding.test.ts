@@ -43,6 +43,41 @@ describe("classifyBuilding (ADR-0027 decision 2, per snapshot)", () => {
     expect(classifyBuilding(input, backedUp)?.state).toBe(expected);
   });
 
+  describe("output-throttled machines (issue 201): full inputs with a low percent are backedUp, not underfed", () => {
+    const at = (percent: number, inputsFull: boolean | undefined) =>
+      classifyBuilding(
+        building({ production: [rate("Desc_Cement_C", percent)], ...(inputsFull !== undefined ? { inputsFull } : {}) }),
+        false,
+      );
+
+    it("the 9.4 percent assembler with full input buffers reads backedUp", () => {
+      expect(at(9.4, true)).toEqual({ state: "backedUp" });
+    });
+    it("zero percent with full inputs is backedUp", () => {
+      expect(at(0, true)?.state).toBe("backedUp");
+    });
+    it("splits at the underfed threshold: just below is backedUp, at it is producing", () => {
+      expect(at(UNDERFED_BELOW_PERCENT - 0.001, true)?.state).toBe("backedUp");
+      expect(at(UNDERFED_BELOW_PERCENT, true)?.state).toBe("producing");
+      expect(at(100, true)?.state).toBe("producing");
+    });
+    it("partial input (inputsFull false) stays underfed, with the missing input named", () => {
+      expect(at(9.4, false)).toEqual({ state: "underfed", missingInput: "Desc_Stone_C" });
+    });
+    it("unknown input fullness (field absent) stays underfed", () => {
+      expect(at(9.4, undefined)?.state).toBe("underfed");
+    });
+    it("no usable percent still gives no state, whatever the inputs", () => {
+      const b = building({ production: [rate("O", Number.NaN)], inputsFull: true });
+      expect(classifyBuilding(b, false)).toBeUndefined();
+    });
+    it("does not outrank paused, unpowered or idle", () => {
+      expect(classifyBuilding(building({ inputsFull: true, isPaused: true }), false)?.state).toBe("paused");
+      expect(classifyBuilding(building({ inputsFull: true, circuitGroupId: -1 }), false)?.state).toBe("unpowered");
+      expect(classifyBuilding(building({ inputsFull: true, recipe: null }), false)?.state).toBe("idle");
+    });
+  });
+
   describe("the underfed threshold (ADR-0027 amendment 2)", () => {
     const at = (percent: number) => classifyBuilding(building({ production: [rate("Desc_Cement_C", percent)] }), false)?.state;
 

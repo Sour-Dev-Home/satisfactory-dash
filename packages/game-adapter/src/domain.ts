@@ -51,6 +51,9 @@ export interface FactoryBuilding {
    *  overflow signal (see services/productionService.ts isBackedUp and
    *  docs-vault/wiki/frm-api.md); no direct "belt full" field exists in either API. */
   outputInventory: InventorySlot[];
+  /** Non-empty input slots (FRM's InputInventory; empty slots are omitted). Absent when FRM sent none:
+   *  unknown, so the machine is never judged input-full (issue 201). */
+  inputInventory?: InventorySlot[];
   /** The circuit GROUP this building belongs to: the id getPower reports circuits by.
    *  Not FRM's per-building CircuitID, which differs whenever a power switch joins
    *  circuits into a group (B3, 2026-09-22 captures). -1 = not connected. */

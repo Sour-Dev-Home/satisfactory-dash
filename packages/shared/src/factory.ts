@@ -57,6 +57,13 @@ export const FactoryBuildingSchema = z.object({
         "so this does not require isProducing. Fluid-output machines are covered; a blocked " +
         "refinery [NEEDS VERIFICATION].",
     ),
+  inputsFull: z
+    .boolean()
+    .optional()
+    .describe(
+      "Raw fact: every ingredient's input slot is at capacity. Absent when the input inventory is unknown. With a " +
+        "low output percent it means the machine is held back by its output (state backedUp), not short of input.",
+    ),
   production: z.array(ProductionRateSchema).describe("Empty when no recipe is configured"),
   ingredients: z
     .array(ProductionRateSchema)

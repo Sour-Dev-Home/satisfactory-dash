@@ -26,6 +26,25 @@ export function isBackedUp(building: FactoryBuilding): boolean {
 }
 
 /**
+ * Every ingredient the recipe consumes has its input slot at capacity (issue 201: such a machine is held back by its
+ * output, so a low output percent means backed up, not underfed). FRM omits empty slots, so an ingredient with no slot
+ * is not full. False when the inventory or the ingredient list is unknown or empty, and for paused/unconfigured
+ * machines: never a guess.
+ */
+export function areInputsFull(building: FactoryBuilding): boolean {
+  if (building.isPaused || building.recipe === null || building.inputInventory === undefined) {
+    return false;
+  }
+  const slots = building.inputInventory;
+  if (building.consumption.length === 0) {
+    return false;
+  }
+  return building.consumption.every((rate) =>
+    slots.some((slot) => slot.className === rate.className && slot.maxAmount > 0 && slot.amount >= slot.maxAmount),
+  );
+}
+
+/**
  * The pure shape mapping of one building to the contract (packages/shared/src/factory.ts), including `isBackedUp`,
  * without `state` and without `unit` on the rates. Explicit field mapping, so a future domain field can never leak in.
  */
@@ -38,6 +57,7 @@ export function mapFactoryBuilding(building: FactoryBuilding): MappedFactoryBuil
     isProducing: building.isProducing,
     isPaused: building.isPaused,
     isBackedUp: isBackedUp(building),
+    ...(building.inputInventory !== undefined ? { inputsFull: areInputsFull(building) } : {}),
     circuitGroupId: building.circuitGroupId,
     ...(building.location ? { location: building.location } : {}),
     ...(building.clockSpeedPercent !== undefined ? { clockSpeedPercent: building.clockSpeedPercent } : {}),
