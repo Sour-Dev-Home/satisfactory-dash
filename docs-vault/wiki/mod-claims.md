@@ -16,7 +16,7 @@ no G3 without the owner's explicit go.
   exact game and SML versions); then the row's "Verified on the real server" cell is filled.
 - If a spike fails, stop and report; the design is reconsidered before the next spike.
 
-## Known facts from G0 (sources: `raw-sources/*-2026-09-27.*` and the 2026-10-19 addendum's `raw-sources/*-2026-10-19.md`, pinned URLs inside)
+## Known facts from G0 (sources: `raw-sources/*-2026-09-27.*`, the 2026-10-19 addendum's `raw-sources/*-2026-10-19.md` and the second addendum's `raw-sources/*-2026-10-20.md`, pinned URLs inside)
 
 - **Engine and versions:** Unreal Engine 5.6.1 with Coffee Stain's custom changes (`ue-version`); SML 3.12.0 on the SML
   commit the docs pin, the same SML version last recorded on the owner's server (2026-09-22, game 1.2.4.0, CL 502094). The
@@ -45,6 +45,23 @@ no G3 without the owner's explicit go.
   standard port and steps up to the next free one if it is taken; `-ReliablePort=<n>` moves the reliable port and the
   server fails to start if it is taken; `-ExternalReliablePort=<n>` is for external remapping (E1, E2). `Engine.ini`
   `[URL]` `Port=` is the INI form of `-Port` (E3); an INI form of the reliable-port options is NOT FOUND.
+- **Saves on a Windows dedicated server (G0 addendum 2, #462):** the official API document names no save or settings
+  path (`dedicated-server-api-saves-2026-10-20.md`, NOT FOUND). The community wiki
+  (`dedicated-server-save-files-2026-10-20.md`) gives the saves folder as `%LocalAppData%\FactoryGame\Saved\SaveGames\server`
+  for a server run as a user, and other folders for NSSM and a Windows Server service, so it **depends on the account**
+  running the server (E4); the server settings file `ServerSettings.PORT.sav` sits one level up, `PORT` being the server's
+  port (E3), and holds the server name, player password, auto-load session name and certificate (E6). Loading one save
+  (official, `dedicated-server-api-saves-2026-10-20.md`): `UploadSaveGame` uploads a file under a `SaveName` and can load
+  it at once (E4); `EnumerateSessions` lists the saves by `SaveName` (E2); `LoadGame` loads one by `SaveName` (E3);
+  `SetAutoLoadSessionName` picks the session loaded on startup (E1), whose most recent save loads (wiki E2); all need
+  Admin. A launch argument or ini setting that loads a save is **NOT FOUND** (wiki E5 lists none), and so is a rule for a
+  `.sav` copied into the folder by hand.
+- **FRM's port (G0 addendum 2, #462; `frm-config-port-1.5.4-2026-10-20.md`, FRM's docs at tag `1.5.4-515`, commit
+  b4a712b6, identical at `1.5.4-510`):** the key `<prefix>.uWS.Port`, "TCP Port for Web Server, Default: 8080" (E3), with
+  the prefix `FicsitRemoteMonitoring.Server` on a dedicated server, stored in
+  `<Server Install Location>/FactoryGame/Saved/Config/WindowsServer/GameUserSettings.ini` (E2); the page says the new system
+  allows "easier configuration in-game" and shows a "Dedicated Server Config Location" image (E1); the legacy `WebServer.cfg` is no longer read (E1). The ini section and line syntax for the key are
+  **NOT FOUND**.
 
 ## The claims
 
