@@ -1,0 +1,77 @@
+{
+  "spike": "S6",
+  "claim": "C8",
+  "pass": false,
+  "reasons": [
+    "2026-10-20T13:32:13.109Z: tick rate 24.18 vs API 28.4"
+  ],
+  "startedAt": "2026-10-20T13:26:42.134Z",
+  "endedAt": "2026-10-20T13:34:34.957Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.20-13.29.24:127][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.20-13.29.24:145][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-13.29.24:164][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-13.29.24:197][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.20-13.29.24:302][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.20-13.29.24:127][  0]LogSatisMod: Display: satis-mod loaded",
+    "[2026.10.20-13.29.34:458][298]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.47 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.29.44:459][596]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.54 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.29.54:465][894]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.65 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.30.04:476][192]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.53 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.30.14:483][490]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.72 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.30.24:496][788]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.75 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.30.34:508][ 86]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.46 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.30.44:523][384]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.79 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.30.54:536][682]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.50 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.04:550][980]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.64 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.14:563][278]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.59 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.24:580][576]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.60 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.34:595][874]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.63 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.44:601][172]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.68 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.54:617][469]LogSatisMod: Display: satis-mod s6 running=0 paused=0 players=0 limit=4 duration=0 tick=29.75 health=healthy session=1302d2e3dac5",
+    "[2026.10.20-13.31.54:617][470]LogSatisMod: Display: satis-mod s6 world-done",
+    "[2026.10.20-13.32.12:537][636]LogSatisMod: Display: satis-mod s6 running=1 paused=0 players=0 limit=4 duration=580683 tick=24.18 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.32.21:990][919]LogSatisMod: Display: satis-mod s6 running=1 paused=0 players=0 limit=4 duration=580693 tick=30.01 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.32.32:006][218]LogSatisMod: Display: satis-mod s6 running=1 paused=0 players=0 limit=4 duration=580703 tick=30.01 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.32.42:034][518]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.15 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.32.52:056][819]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.26 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.33.02:075][120]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.20 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.33.12:102][421]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.09 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.33.22:110][722]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.08 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.33.32:119][ 23]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.31 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.33.42:129][324]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.20 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.33.52:143][625]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.33 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.34.02:152][926]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.20 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.34.12:159][226]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=29.86 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.34.22:175][527]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.15 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.34.32:194][827]LogSatisMod: Display: satis-mod s6 running=1 paused=1 players=0 limit=4 duration=580713 tick=30.10 health=healthy session=e938bb1fad08",
+    "[2026.10.20-13.34.32:194][828]LogSatisMod: Display: satis-mod s6 world-done"
+  ],
+  "harnessCommit": "0620f5a5f3cf6d57d6159fae515c36328029594a",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39428218556"
+}

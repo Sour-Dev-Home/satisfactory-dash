@@ -89,3 +89,51 @@ copied save's autosaves stay out of the owner's saves folder.
     1282.15, FRM 1305.003662109375).
   - FRM groups the world's circuits 0 and 3 together (`group: [0, 3]`), and the mod read the group's figures for both.
   - Ruling 6 was amended by the owner after run #11, which failed only because joined groups weren't judged (mod #18).
+
+## S6 and S7 (2026-10-20)
+
+The spikes before the core mod's build (ADR-0042). Source: the same harness, pinned to merge commits:
+- PR #21 (S6 and S7 added), https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/e818f253e065ed23ffddae688d66e1579b200d1b
+- PR #22 (S6 clears the auto-load save first), https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/0620f5a5f3cf6d57d6159fae515c36328029594a
+- PR #23 (S6's first post-load reading not judged on tick rate),
+  https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/f6d3ef0d5a66c62561cca640f38fb0044a282816
+
+S6's `harnessCommit` is PR #22's merge commit; its `rejudge.json` carries `ruleCommit` PR #23's. S7's `harnessCommit` is
+PR #23's. Both `runUrl`s are the Actions runs.
+
+Captured: the runs' own `startedAt`/`endedAt` (UTC, in each `result.json`): S6 2026-10-20T13:26:42.134Z to
+13:34:34.957Z, rejudged at 13:38:49.652Z (`rejudgedAt`); S7 2026-10-20T14:24:42.870Z to 14:29:00.067Z. The bundles
+were posted on this repository's issue #478 at 2026-10-20T14:30:42Z and 14:30:44Z and copied from there.
+
+Method: the harness's `run <spike>` (`run S6`, `run S7`), plus `rejudge` for S6. Files are copied as posted, with LF
+line endings; nothing is removed, and all five files parse as strict JSON.
+
+### Where they ran
+
+The same separate test install as S0–S5 (Net CL 513885, SML 3.12.0), not the owner's live server. Both ran on the
+self-hosted runner as `satis-runner`, with the S3 save loaded by the harness.
+
+### What "native" means here
+
+In-process, with no HTTP. Status came from `UFGServerSubsystem::GetServerGameState()`, and tick health and auto-pause
+from the game's own `Handler_HealthCheck`, `Handler_GetServerOptions` and `Handler_ApplyServerOptions`, called on
+controllers the mod created under the server's API manager.
+
+### Notes per spike
+
+- **S6 (C8).**
+  - Run 39428218556 took 30 readings (`status.json`): 15 with no game loaded (the harness first cleared the server's
+    auto-load save, mod #22) and 15 with the save loaded.
+  - Each reading was paired with `QueryServerState` and `HealthCheck`, read right after it. Every field matched except
+    the tick rate of the first reading after the load (2026-10-20T13:32:13.109Z): mod 24.18 against API 28.4, while the
+    averaged rate recovered from the load.
+  - The owner ruled on 2026-10-20 that this one reading isn't judged on tick rate. Its other fields still are (mod #23).
+  - `result.json` is the run's own verdict (FAIL). `rejudge.json` is the harness re-applying the amended rule at
+    `f6d3ef0` (PASS). Both are kept.
+  - The run before it (39371117374) failed only because the test server auto-loads its save, so no reading had "no
+    game". It matched all 29 readings it took.
+  - The session name is logged only as a 12-character SHA-1 prefix (`session=1302d2e3dac5`, then `e938bb1fad08`).
+- **S7 (C9).**
+  - Run 39432236818 (`autopause.json`). The mod read `FG.DSAutoPause` (True), set it False, read it again, restored
+    True and read once more.
+  - `GetServerOptions`, read after each step, agreed all five times, and no change was left pending.

@@ -1,0 +1,51 @@
+{
+  "spike": "S7",
+  "claim": "C9",
+  "pass": true,
+  "reasons": [
+    "auto-pause read True, changed to False and back natively; GetServerOptions agreed at all five steps"
+  ],
+  "startedAt": "2026-10-20T14:24:42.870Z",
+  "endedAt": "2026-10-20T14:29:00.067Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.20-14.26.38:819][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.20-14.26.38:840][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-14.26.38:860][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.20-14.26.38:899][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.20-14.26.39:050][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.20-14.26.38:818][  0]LogSatisMod: Display: satis-mod loaded",
+    "[2026.10.20-14.27.56:908][525]LogSatisMod: Display: satis-mod s7 step=read value=True pending=0",
+    "[2026.10.20-14.28.11:948][977]LogSatisMod: Display: satis-mod s7 step=set value=False",
+    "[2026.10.20-14.28.26:944][423]LogSatisMod: Display: satis-mod s7 step=check value=False pending=0",
+    "[2026.10.20-14.28.41:952][871]LogSatisMod: Display: satis-mod s7 step=restore value=True",
+    "[2026.10.20-14.28.56:974][321]LogSatisMod: Display: satis-mod s7 step=final value=True pending=0",
+    "[2026.10.20-14.28.56:974][322]LogSatisMod: Display: satis-mod s7 done"
+  ],
+  "harnessCommit": "f6d3ef0d5a66c62561cca640f38fb0044a282816",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39432236818"
+}

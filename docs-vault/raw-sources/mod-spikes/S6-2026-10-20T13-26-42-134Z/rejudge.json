@@ -1,0 +1,18 @@
+{
+  "spike": "S6",
+  "claim": "C8",
+  "rejudgedAt": "2026-10-20T13:38:49.652Z",
+  "ruleCommit": "f6d3ef0d5a66c62561cca640f38fb0044a282816",
+  "original": {
+    "pass": false,
+    "reasons": [
+      "2026-10-20T13:32:13.109Z: tick rate 24.18 vs API 28.4"
+    ]
+  },
+  "verdict": {
+    "pass": true,
+    "reasons": [
+      "15 readings without a world and 15 with one: every field matches QueryServerState and HealthCheck"
+    ]
+  }
+}
