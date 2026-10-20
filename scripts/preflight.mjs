@@ -106,14 +106,16 @@ export function scanMessages(message, patterns) {
 
 /**
  * @param {{ state: string; mergeable: string } | undefined} pr `gh pr view --json state,mergeable`, undefined when the branch has no PR
+ * @param {boolean} [headHasMain] HEAD already contains origin/main: GitHub's CONFLICTING describes the pushed branch,
+ *   so a local merge that resolved it is exactly what this push delivers, and must not be blocked
  * @returns {string[]} problems
  */
-export function checkPr(pr) {
+export function checkPr(pr, headHasMain = false) {
   if (pr === undefined) return [];
   const problems = [];
   if (pr.state !== "OPEN") {
     problems.push(`The PR for this branch is ${pr.state}, not OPEN: do not push to it. Branch fresh from origin/main.`);
-  } else if (pr.mergeable === "CONFLICTING") {
+  } else if (pr.mergeable === "CONFLICTING" && !headHasMain) {
     problems.push("The PR is CONFLICTING with main: rebase or merge origin/main and resolve it before pushing.");
   }
   return problems;
@@ -141,6 +143,15 @@ function readPatternsFile(file) {
     .filter((entry) => entry !== "");
 }
 
+function headContainsMain() {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", "origin/main", "HEAD"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false; // not an ancestor (exit 1), or no origin/main: keep the CONFLICTING check
+  }
+}
+
 /** @returns {{ pr?: { state: string; mergeable: string }; problem?: string }} only "no pull requests found" means "no PR"; any other gh failure is a problem */
 function prForBranch() {
   try {
@@ -161,7 +172,7 @@ function main() {
 
   const { pr, problem } = prForBranch();
   if (problem) problems.push(problem);
-  problems.push(...checkPr(pr));
+  problems.push(...checkPr(pr, headContainsMain()));
 
   const patterns = [...PATH_PATTERNS, ...readPatternsFile(process.env.PREFLIGHT_PATTERNS_FILE)];
   const untracked = git(["ls-files", "-z", "--others", "--exclude-standard"]) // -z: no quoting of spaces or non-ASCII names

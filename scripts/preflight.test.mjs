@@ -139,6 +139,11 @@ test("a PR that is not OPEN blocks the push; a CONFLICTING one too; a clean one 
   assert.deepEqual(checkPr(undefined), []);
 });
 
+test("a CONFLICTING PR does not block the push that delivers a merge of origin/main; a merged PR still does", () => {
+  assert.deepEqual(checkPr({ state: "OPEN", mergeable: "CONFLICTING" }, true), []);
+  assert.equal(checkPr({ state: "MERGED", mergeable: "UNKNOWN" }, true).length, 1);
+});
+
 test("an empty or missing node_modules is a problem", () => {
   assert.equal(checkNodeModules([]).length, 1);
   assert.match(checkNodeModules([])[0], /npm ci/);
