@@ -86,7 +86,7 @@ describe("the demo world", () => {
 
   it("counts its backed-up machines honestly, and puts every machine on a circuit that exists", () => {
     const { buildings, backedUpCount } = world.factory(world.DEMO_EPOCH).data;
-    expect(backedUpCount).toBe(buildings.filter((b) => b.isBackedUp).length);
+    expect(backedUpCount).toBe(buildings.filter((b) => b.state === "backedUp").length);
     const circuits = new Set(world.power(world.DEMO_EPOCH).data.circuits.map((c) => c.circuitGroupId));
     for (const b of buildings) expect(circuits.has(b.circuitGroupId!)).toBe(true);
   });
@@ -97,11 +97,12 @@ describe("the demo world", () => {
     for (const b of buildings) {
       expect(b.ingredients?.length).toBeGreaterThan(0);
       expect(known).toContain(b.state);
-      // One signal, two fields: the flag and the state never disagree.
-      expect(b.isBackedUp).toBe(b.state === "backedUp");
+      // A full output slot always reads backedUp; the reverse is not true (issue 201: a throttled machine).
+      if (b.isBackedUp) expect(b.state).toBe("backedUp");
     }
+    expect(buildings.filter((b) => b.state === "backedUp" && !b.isBackedUp)).toHaveLength(1);
     expect(Object.values(stateCounts ?? {}).reduce((a, n) => a + n, 0)).toBe(buildings.length);
-    expect(stateCounts).toMatchObject({ underfed: 1, backedUp: 1 });
+    expect(stateCounts).toMatchObject({ underfed: 1, backedUp: 2 });
     // One overclocked machine, so the Factory page shows its clock; the rest run at the default.
     expect(buildings.filter((b) => b.clockSpeedPercent !== 100).map((b) => b.clockSpeedPercent)).toEqual([150]);
   });

@@ -1,4 +1,4 @@
-import { ownValue, type Factory, type FactoryBuilding } from "@satisfactory-dash/shared";
+import { isBackedUpState, ownValue, type Factory, type FactoryBuilding } from "@satisfactory-dash/shared";
 import { formatPercent } from "../format";
 import {
   BACKED_UP_TOKEN,
@@ -38,7 +38,7 @@ function tooltip(building: FactoryBuilding): HTMLElement {
   const percent = outputPercent(building);
   const state = stateLabel(buildingState(building));
   line(percent === null ? state : `${state} · ${formatPercent(percent)}`);
-  if (building.isBackedUp) line("Backed up");
+  if (isBackedUpState(building)) line("Backed up");
   return box;
 }
 
@@ -59,8 +59,8 @@ export const buildingsLayer: MapLayer<Factory> = {
         fillColor: fill,
         fillOpacity: 1,
         // Backed up is a ring, not a colour: the state still shows inside it.
-        color: building.isBackedUp ? ring : fill,
-        weight: building.isBackedUp ? 3 : 1,
+        color: isBackedUpState(building) ? ring : fill,
+        weight: isBackedUpState(building) ? 3 : 1,
       })
         .bindTooltip(() => tooltip(building), { direction: "top", offset: [0, -6] })
         .addTo(group);
@@ -93,7 +93,7 @@ export const buildingsLayer: MapLayer<Factory> = {
     return (
       <>
         {shown.length} buildings on the map: {count("producing")} producing, {count("idle")} not producing,{" "}
-        {count("paused")} paused, {count("noRecipe")} without a recipe; {shown.filter((b) => b.isBackedUp).length}{" "}
+        {count("paused")} paused, {count("noRecipe")} without a recipe; {shown.filter(isBackedUpState).length}{" "}
         backed up.
         {missing > 0 && ` ${missing} more have no position yet (the backend doesn't send one).`}
       </>

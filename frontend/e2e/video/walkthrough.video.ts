@@ -153,7 +153,7 @@ test("walkthrough", async ({ browser, baseURL }) => {
   await hold(page, 4);
 
   await clickSlowly(page, nav.getByRole("link", { name: "Factory" }));
-  await expect(page.getByText("9 machines · 1 backed up · 0 paused · 0 without a recipe")).toBeVisible();
+  await expect(page.getByText("10 machines · 2 backed up · 0 paused · 0 without a recipe")).toBeVisible();
   await hold(page, 6);
   await scrollThrough(page, 900);
   await hold(page, 4);

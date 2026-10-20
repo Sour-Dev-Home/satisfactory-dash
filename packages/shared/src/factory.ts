@@ -109,7 +109,7 @@ export const FactoryBuildingSchema = z.object({
 
 export const FactorySchema = z.object({
   buildings: z.array(FactoryBuildingSchema),
-  backedUpCount: z.number().int().min(0).describe("Number of buildings with isBackedUp true"),
+  backedUpCount: z.number().int().min(0).describe("Number of buildings whose state is backedUp"),
   stateCounts: z
     .record(z.string(), z.number().int().min(0))
     .optional()
@@ -123,5 +123,12 @@ export const FactoryResponseSchema = snapshotEnvelope(FactorySchema);
 
 export type ProductionRate = z.infer<typeof ProductionRateSchema>;
 export type FactoryBuilding = z.infer<typeof FactoryBuildingSchema>;
+
+/** The one definition of "backed up" for every view and count (issue 201): the backend's classification said so.
+ *  Not `isBackedUp`, which is only the raw output-slot fact; a paused or unpowered machine with a full output is
+ *  not counted, and a full-input machine throttled by its output is. */
+export function isBackedUpState(building: Pick<FactoryBuilding, "state">): boolean {
+  return building.state === "backedUp";
+}
 export type Factory = z.infer<typeof FactorySchema>;
 export type FactoryResponse = z.infer<typeof FactoryResponseSchema>;

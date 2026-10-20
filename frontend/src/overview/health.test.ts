@@ -18,7 +18,7 @@ import { canDismiss, factoryHealth, overallHealth, powerHealth, serverHealth, ti
 
 function factoryWith(total: number, backedUp: number): FactoryResponse {
   const building = factoryMixed.data.buildings[0];
-  const buildings = Array.from({ length: total }, (_, i) => ({ ...building, id: `b${i}`, isBackedUp: i < backedUp }));
+  const buildings = Array.from({ length: total }, (_, i) => ({ ...building, id: `b${i}`, isBackedUp: i < backedUp, state: i < backedUp ? ("backedUp" as const) : ("producing" as const) }));
   return { ...factoryMixed, data: { buildings, backedUpCount: backedUp } };
 }
 

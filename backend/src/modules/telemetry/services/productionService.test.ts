@@ -22,6 +22,7 @@ function building(overrides: Partial<FactoryBuilding> = {}): FactoryBuilding {
     consumption: [],
     outputInventory: [],
     circuitGroupId: 1,
+    fuseTriggered: false,
     powerConsumed: 4,
     maxPowerConsumed: 4,
     ...overrides,

@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import type { FactoryBuilding, FactoryResponse, ProductionRate } from "@satisfactory-dash/shared";
+import { isBackedUpState, type FactoryBuilding, type FactoryResponse, type ProductionRate } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
 import { DataAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
@@ -9,7 +9,7 @@ type Filter = "all" | "backedUp" | "paused" | "noRecipe";
 
 const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boolean }[] = [
   { id: "all", label: "All", match: () => true },
-  { id: "backedUp", label: "Backed up", match: (b) => b.isBackedUp },
+  { id: "backedUp", label: "Backed up", match: isBackedUpState },
   { id: "paused", label: "Paused", match: (b) => b.isPaused },
   { id: "noRecipe", label: "No recipe", match: (b) => b.recipe === null },
 ];
@@ -32,7 +32,8 @@ export function FactoryPanel({
   search?: string;
   onSearch?: (search: string) => void;
 }) {
-  const { buildings, backedUpCount } = snapshot.data;
+  const { buildings } = snapshot.data;
+  const backedUpCount = buildings.filter(isBackedUpState).length;
   const [filter, setFilter] = useState<Filter>("all");
   const [localSearch, setLocalSearch] = useState("");
   const search = searchProp ?? localSearch;

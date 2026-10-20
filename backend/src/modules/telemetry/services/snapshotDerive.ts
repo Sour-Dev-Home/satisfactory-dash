@@ -112,5 +112,5 @@ export function deriveFactory(agent: AgentFactory, fuseOf: FuseLookup, resolveUn
   for (const building of buildings) {
     if (building.state !== undefined) stateCounts[building.state] = (stateCounts[building.state] ?? 0) + 1;
   }
-  return { buildings, backedUpCount: buildings.filter((building) => building.isBackedUp).length, stateCounts };
+  return { buildings, backedUpCount: stateCounts.backedUp ?? 0, stateCounts };
 }

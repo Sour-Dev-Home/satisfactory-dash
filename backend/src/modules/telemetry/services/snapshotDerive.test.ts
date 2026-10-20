@@ -124,7 +124,7 @@ describe("deriveFactory", () => {
       unknownFuse: undefined,
       unknownItem: "producing",
     });
-    expect(local.backedUpCount).toBe(1);
+    expect(local.backedUpCount).toBe(2); // by state: the full output and the throttled machine
     expect(local.buildings.find((row) => row.id === "unknownItem")?.production[0]?.unit).toBeNull();
   });
 

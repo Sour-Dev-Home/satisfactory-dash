@@ -1,4 +1,4 @@
-import { ownValue, type FactoryResponse, type PowerResponse, type StatusResponse } from "@satisfactory-dash/shared";
+import { isBackedUpState, ownValue, type FactoryResponse, type PowerResponse, type StatusResponse } from "@satisfactory-dash/shared";
 import { formatMW } from "../format";
 
 /**
@@ -78,7 +78,7 @@ export function powerHealth({ data, stale }: PowerResponse): SectionHealth {
 
 export function factoryHealth({ data, stale }: FactoryResponse): SectionHealth {
   const total = data.buildings.length;
-  const backedUp = data.backedUpCount;
+  const backedUp = data.buildings.filter(isBackedUpState).length;
   if (total > 0 && backedUp / total > BACKED_UP_DEGRADED_SHARE) {
     return {
       health: "degraded",
