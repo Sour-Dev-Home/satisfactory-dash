@@ -3,15 +3,30 @@
  * few IPC calls. It opens no port and needs no elevation: the window is a local file, and the processes it starts are
  * the configured FactoryServer.exe and, for an update, the configured steamcmd.exe (plus PowerShell or ps to read the
  * server's CPU and memory). The clean stop talks to the game's own API with the agent's token, read here and never sent
- * to the window.
+ * to the window. The Agent panel shows the agent's Scheduled Task, its log's tail and its halted marker, and runs only
+ * PowerShell's fixed ScheduledTask scripts and the built agent's check, status and resume (agentProcess.ts).
  */
-import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell, type IpcMainInvokeEvent } from "electron";
+import { resolveDataDir } from "@satisfactory-dash/agent";
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readAgentHalted } from "./agentHalted";
+import { AGENT_LOG_LINES, tailAgentLog } from "./agentLog";
+import { createRun, runAgentCommand } from "./agentProcess";
+import { readAgentTask, startAgentTask, stopAgentTask, type AgentTaskState } from "./agentTask";
 import { gameApiAccess, openAgentStore } from "./gameAccess";
-import { anywayRequested, CHANNELS, type AnywayAction, type ChooseResult, type Status } from "./ipc";
+import {
+  anywayRequested,
+  CHANNELS,
+  type AgentCommandResult,
+  type AgentStatus,
+  type AnywayAction,
+  type ChooseResult,
+  type Status,
+} from "./ipc";
 import { cpuPercent, sampleProcess } from "./processStats";
+import { createRefresher } from "./refresher";
 import { clearPid, leftoverPid, processAlive, recordPid } from "./leftoverServer";
 import { serverSpawn } from "./serverProcess";
 import { runUpdate } from "./updater";
@@ -43,6 +58,14 @@ let win: BrowserWindow | undefined;
 let anyway: AnywayAction | undefined;
 let updating = false;
 let updateResult: { ok: boolean; code: number } | undefined;
+
+/** The one address the window can open: the runbook's "Keeping it running", for a missing task. */
+const AGENT_RUNBOOK_URL =
+  "https://github.com/Sour-Dev-Home/satisfactory-dash/blob/main/docs-vault/wiki/runbooks/agent-app.md#keeping-it-running-a-scheduled-task";
+const agentRun = createRun({ env: process.env, execPath: process.execPath, mainDir: __dirname });
+let agentTask: AgentTaskState | undefined;
+let agentLog: string[] = [];
+let agentBusy = false;
 
 function configured(): boolean {
   return settings !== undefined && hasServerExe(settings.serverDir);
@@ -173,6 +196,52 @@ function pushStatus(): void {
   if (win && !win.isDestroyed()) win.webContents.send(CHANNELS.status, status());
 }
 
+function agentStatus(): AgentStatus {
+  return {
+    task: agentTask,
+    log: agentLog,
+    halted: readAgentHalted(resolveDataDir()),
+    busy: agentBusy,
+  };
+}
+
+function pushAgentStatus(): void {
+  if (win && !win.isDestroyed()) win.webContents.send(CHANNELS.agentStatus, agentStatus());
+}
+
+/**
+ * Reads the task's state and the log's tail, one read at a time (refresher.ts). `refreshAgent(true)` after an action
+ * waits for a read that started after it, so the panel never shows the state from before Start, Stop or Resume.
+ */
+const refreshAgent = createRefresher(async () => {
+  const [task, log] = await Promise.all([
+    readAgentTask(agentRun).catch(() => undefined),
+    tailAgentLog(resolveDataDir(), AGENT_LOG_LINES).catch(() => agentLog),
+  ]);
+  agentTask = task;
+  agentLog = log;
+});
+
+/** One agent action at a time (Start, Stop or a command); the panel's buttons wait while it runs. */
+async function agentAction<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  if (agentBusy) return fallback;
+  agentBusy = true;
+  pushAgentStatus();
+  try {
+    return await fn();
+  } catch {
+    return fallback;
+  } finally {
+    agentBusy = false;
+    await refreshAgent(true).catch(() => undefined);
+    pushAgentStatus();
+  }
+}
+
+function agentCommand(arg: unknown): Promise<AgentCommandResult | undefined> {
+  return agentAction<AgentCommandResult | undefined>(() => runAgentCommand(agentRun, arg), undefined);
+}
+
 async function refreshUsage(): Promise<void> {
   const pid = currentPid;
   if (supervisor?.state() !== "running" || pid === undefined) return;
@@ -274,10 +343,17 @@ app.whenReady().then(() => {
   handle(CHANNELS.update, update);
   handle(CHANNELS.chooseServerDir, chooseServerDir);
   handle(CHANNELS.chooseSteamcmdDir, chooseSteamcmdDir);
+  handle(CHANNELS.getAgentStatus, agentStatus);
+  handle(CHANNELS.startAgent, () => agentAction(() => startAgentTask(agentRun), undefined));
+  handle(CHANNELS.stopAgent, () => agentAction(() => stopAgentTask(agentRun), undefined));
+  handle(CHANNELS.runAgentCommand, agentCommand);
+  handle(CHANNELS.openAgentRunbook, () => shell.openExternal(AGENT_RUNBOOK_URL));
 
   setInterval(() => {
     void refreshUsage().finally(pushStatus);
+    void refreshAgent().finally(pushAgentStatus);
   }, STATUS_INTERVAL_MS);
+  void refreshAgent().finally(pushAgentStatus);
 
   createWindow();
 });

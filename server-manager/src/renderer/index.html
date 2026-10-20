@@ -66,6 +66,39 @@
         </div>
       </section>
 
+      <section id="agent" class="card" aria-labelledby="agent-title">
+        <h2 id="agent-title">Agent</h2>
+        <p class="state-line">
+          <span id="agent-dot" class="dot" aria-hidden="true"></span>
+          <span>Scheduled Task:</span>
+          <span id="agent-state" data-testid="agent-state" role="status">unknown</span>
+        </p>
+        <p id="agent-note" class="notice" data-testid="agent-note" aria-live="polite"></p>
+        <div id="agent-halted" class="halted" data-testid="agent-halted" role="group" aria-labelledby="agent-halted-reason" hidden>
+          <p id="agent-halted-reason"></p>
+          <p id="agent-halted-fix"></p>
+          <div class="actions">
+            <button id="agent-resume" type="button" class="primary">Resume</button>
+          </div>
+        </div>
+        <div id="agent-task-actions" class="actions">
+          <button id="agent-start" type="button" class="primary" aria-disabled="true" aria-describedby="agent-note">Start agent</button>
+          <button id="agent-stop" type="button" aria-disabled="true" aria-describedby="agent-note">Stop agent</button>
+        </div>
+        <p id="agent-setup" class="setup-link" hidden>
+          <button id="agent-runbook" type="button" class="link">How to set up the agent's Scheduled Task (runbook)</button>
+        </p>
+        <div class="actions agent-commands">
+          <button id="agent-check" type="button" aria-disabled="true">Check</button>
+          <button id="agent-status" type="button" aria-disabled="true">Status</button>
+        </div>
+        <p id="agent-command-heading" class="command-heading" data-testid="agent-command-heading" aria-live="polite"></p>
+        <pre id="agent-output" class="log" data-testid="agent-output" role="region" aria-label="Agent command output" tabindex="0" hidden></pre>
+        <h3 id="agent-log-title">Agent log (newest 20 lines)</h3>
+        <ol id="agent-log" class="log agent-log" data-testid="agent-log" role="log" aria-labelledby="agent-log-title" tabindex="0"></ol>
+        <p id="agent-log-empty" class="muted" data-testid="agent-log-empty">No agent log yet.</p>
+      </section>
+
       <section id="folders" class="card" aria-labelledby="folders-title" hidden>
         <h2 id="folders-title">Folders</h2>
         <dl class="folders">

@@ -1,6 +1,15 @@
 /** The window's only way out: exactly the ServerManagerBridge, as `window.serverManager` (sandboxed preload). */
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import { CHANNELS, type ActionOptions, type ChooseResult, type ServerManagerBridge, type Status } from "./ipc";
+import {
+  agentCommandRequested,
+  CHANNELS,
+  type ActionOptions,
+  type AgentCommandResult,
+  type AgentStatus,
+  type ChooseResult,
+  type ServerManagerBridge,
+  type Status,
+} from "./ipc";
 
 /** Passes on only the one flag main reads, never whatever object the page handed in. */
 const action = (opts?: ActionOptions) => (opts?.anyway === true ? { anyway: true } : undefined);
@@ -23,6 +32,13 @@ const bridge: ServerManagerBridge = {
   onUpdateLine: (cb) => subscribe<string>(CHANNELS.updateLine, cb),
   chooseServerDir: () => ipcRenderer.invoke(CHANNELS.chooseServerDir) as Promise<ChooseResult>,
   chooseSteamcmdDir: () => ipcRenderer.invoke(CHANNELS.chooseSteamcmdDir) as Promise<ChooseResult>,
+  getAgentStatus: () => ipcRenderer.invoke(CHANNELS.getAgentStatus) as Promise<AgentStatus>,
+  onAgentStatus: (cb) => subscribe<AgentStatus>(CHANNELS.agentStatus, cb),
+  startAgent: () => ipcRenderer.invoke(CHANNELS.startAgent) as Promise<void>,
+  stopAgent: () => ipcRenderer.invoke(CHANNELS.stopAgent) as Promise<void>,
+  runAgentCommand: (command) =>
+    ipcRenderer.invoke(CHANNELS.runAgentCommand, agentCommandRequested(command)) as Promise<AgentCommandResult>,
+  openAgentRunbook: () => ipcRenderer.invoke(CHANNELS.openAgentRunbook) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld("serverManager", bridge);

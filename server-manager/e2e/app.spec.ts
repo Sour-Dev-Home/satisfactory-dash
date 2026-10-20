@@ -236,10 +236,28 @@ test("the window's bridge has no way to get a token", async () => {
   await open();
   const keys = await page.evaluate(() => Object.keys((window as unknown as { serverManager: object }).serverManager).sort());
   expect(keys).toEqual(
-    ["chooseServerDir", "chooseSteamcmdDir", "getStatus", "onStatus", "onUpdateLine", "restart", "start", "stop", "update"].sort(),
+    [
+      "chooseServerDir",
+      "chooseSteamcmdDir",
+      "getStatus",
+      "onStatus",
+      "onUpdateLine",
+      "restart",
+      "start",
+      "stop",
+      "update",
+      "getAgentStatus",
+      "onAgentStatus",
+      "startAgent",
+      "stopAgent",
+      "runAgentCommand",
+      "openAgentRunbook",
+    ].sort(),
   );
   const status = await page.evaluate(() => (window as unknown as { serverManager: { getStatus(): Promise<object> } }).serverManager.getStatus());
   expect(JSON.stringify(status)).not.toMatch(/token|secret/i);
+  const agent = await page.evaluate(() => (window as unknown as { serverManager: { getAgentStatus(): Promise<object> } }).serverManager.getAgentStatus());
+  expect(JSON.stringify(agent)).not.toMatch(/token|secret/i);
 });
 
 test("a crash restarts the server and says why", async () => {

@@ -15,6 +15,14 @@ supervises the dedicated server, a holdover until the mod.
   PowerShell to unprotect the token, with the agent's own fixed script (`agent/src/dpapi.ts`).
   `SATISFACTORY_SERVER_MANAGER_TEST_RUN_WITH_NODE=1` is the e2e switch that runs the same configured file as a Node
   script; it never changes which file runs.
+- **The Agent panel drives the agent's Scheduled Task, never its definition** (`src/agentTask.ts`,
+  `src/agentProcess.ts`). It runs only System32 PowerShell with fixed `Get-`/`Start-`/`Stop-ScheduledTask` scripts for
+  the constant task "Satisfactory Dash Agent", and the built agent's `check`, `status` and `resume`
+  (`<checkout>\agent\dist\agent.cjs`, derived from the app's own place, run with Electron's Node). `set-tokens` and
+  `enroll` stay in a console: they prompt for secrets. It reads the log's tail (`src/agentLog.ts`) and `halted.json`
+  (`src/agentHalted.ts`) under the agent's `resolveDataDir`. The missing-task link is one fixed runbook URL main opens;
+  the window sends no URL. Under the e2e switch both programs are `e2e/fake-agent.cjs` (a fixed path), so tests never
+  reach the real Task Scheduler or agent; a live agent may run on the owner's PC.
 - **Stop is the clean stop** (`src/supervisor.ts`, `src/gameApi.ts`): `QueryServerState` for the session name,
   `SaveGame`, then `Shutdown` through the game's own API, ended after 60 s if it's still there. The API token is the
   agent's (`src/gameAccess.ts` opens `AgentStore` from `@satisfactory-dash/agent`; `SD_AGENT_HOME` moves it for tests).
