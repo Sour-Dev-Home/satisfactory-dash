@@ -1,6 +1,10 @@
 import type { Ref } from "react";
 import { formatTickRate } from "../../format";
+import { DataAge } from "../../components/DataAge";
 import { cn } from "../../lib/cn";
+import { Rivets } from "./Rivets";
+import { StationTiles, type OverviewSection } from "./StationTiles";
+import { tickTone, toneClass } from "./tick";
 import { TickGauge } from "./TickGauge";
 import { wordColor, wordFor, type Shown } from "./words";
 
@@ -32,31 +36,41 @@ function Heart({ health, quiet }: { health: Shown; quiet: boolean }) {
   );
 }
 
-function TickRow({ tick }: { tick: Tick }) {
+/** How fresh the status is: its snapshot's time, and whether the backend says it's late. */
+export type Age = { observedAt: string; late: boolean };
+
+function TickRow({ tick, age }: { tick: Tick; age?: Age }) {
   // flex-none: beside the status from lg, the gauge keeps its size and the status text wraps instead.
   if (tick === null) return <p className="mb-0 flex-none text-sm text-muted">Server tick: no game running.</p>;
   const slow = tick.health === "slow";
   return (
     <div className="flex flex-none items-end gap-3">
-      <TickGauge rate={tick.rate} />
+      <TickGauge rate={tick.rate} health={tick.health} />
       <p className="mb-0 grid text-sm">
         <span className="text-muted">Server tick</span>
         <span className="text-base font-semibold text-fg-strong">{formatTickRate(tick.rate)}</span>
-        <span className={slow ? "font-semibold text-bad" : "text-muted"}>{slow ? "Slow" : "Healthy"}</span>
+        <span className={slow ? cn("font-semibold", toneClass(tickTone(tick))) : "text-muted"}>{slow ? "Slow" : "Healthy"}</span>
+        {age && (
+          <span className="text-muted">
+            <DataAge observedAt={age.observedAt} late={age.late} />
+          </span>
+        )}
       </p>
     </div>
   );
 }
 
 /**
- * The Health card: the overall answer to "is everything OK?" (health.ts) and the server tick,
- * a small square beside Players (the owner's calls). Only shows what health.ts derived and what
- * the backend classified (tickHealth). A dismissed warning stays in the card, quietly, until
- * something changes.
+ * The Health card: the one place the overall state is said (#442), with the server tick beside it
+ * and Server, Power and Factory as station tiles below (the owner's calls). Only shows what health.ts
+ * derived and what the backend classified (tickHealth). A dismissed warning stays in the card,
+ * quietly, until something changes.
  */
 export function HealthCard({
   overall,
   tick,
+  age,
+  sections = [],
   hidden = false,
   onDismiss,
   headingRef,
@@ -64,6 +78,10 @@ export function HealthCard({
   overall: { health: Shown; headline: string };
   /** Left out while the status loads or fails: the card then shows no tick. */
   tick?: Tick;
+  /** The status snapshot's age, shown with the tick ("Updated 8 s ago"). */
+  age?: Age;
+  /** Server, Power and Factory, as station tiles. */
+  sections?: OverviewSection[];
   /** The operator hid this warning (see canDismiss): shown neutral, without the headline. */
   hidden?: boolean;
   /** Shows the Hide button: "hide until something changes" (a warning only; see canDismiss). */
@@ -76,8 +94,9 @@ export function HealthCard({
       // Square between md and lg (its grid column is the narrow rail). On a phone, and from lg up where
       // it takes half the row (#329, option A), just as tall as its content: a half-width square would
       // make the whole row about 500 px tall.
-      className="grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:aspect-square lg:aspect-auto"
+      className="relative grid content-start gap-3 rounded-card border border-line bg-surface p-5 md:aspect-square lg:aspect-auto"
     >
+      <Rivets />
       {/* 44 px whether or not Hide shows, like Players' header: the two cards' bodies line up. */}
       <div className="flex min-h-touch items-center gap-3">
         {/* tabIndex -1: focus lands here after the warning is hidden (OverviewPanel). */}
@@ -105,7 +124,13 @@ export function HealthCard({
         <div className="flex min-w-0 items-center gap-3 lg:flex-1">
           <Heart health={overall.health} quiet={hidden} />
           <p role="status" className="mb-0 grid">
-            <span className={cn("text-xl font-semibold", hidden ? "text-muted" : wordColor(overall.health))}>
+            <span
+              data-statement=""
+              className={cn(
+                "font-display text-4xl leading-none font-bold tracking-wide uppercase",
+                hidden ? "text-muted" : wordColor(overall.health),
+              )}
+            >
               {wordFor(overall.health)}
             </span>
             <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
@@ -113,8 +138,9 @@ export function HealthCard({
             </span>
           </p>
         </div>
-        {tick !== undefined && <TickRow tick={tick} />}
+        {tick !== undefined && <TickRow tick={tick} age={age} />}
       </div>
+      <StationTiles sections={sections} />
     </section>
   );
 }

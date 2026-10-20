@@ -79,10 +79,18 @@ export { expect };
 /**
  * Waits for running CSS animations (a page's reveal, a dropdown's pop) to end. Clicking inside
  * something still moving fails Playwright's hit check, and its retry scrolls the element into
- * view, which scrolls the dropdown; axe counts opacity in contrast.
+ * view, which scrolls the dropdown; axe counts opacity in contrast. Infinite animations (the
+ * power card's flowing circuit strip) never finish, so they're skipped rather than awaited.
  */
 export async function settleAnimations(page: Page): Promise<void> {
-  await page.evaluate(() => Promise.allSettled(document.getAnimations().map((a) => a.finished)));
+  await page.evaluate(() =>
+    Promise.allSettled(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished),
+    ),
+  );
 }
 
 /**
