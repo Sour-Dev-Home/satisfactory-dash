@@ -1,3 +1,4 @@
+// Trial for selective CI (draft, to be closed).
 /**
  * `UpstreamError` (the base class of every "the game server failed" error) and `RequestFailureKind` are defined in
  * the game-adapter package, because the adapter throws them (ADR-0031 PR 2). They are re-exported here, the same
