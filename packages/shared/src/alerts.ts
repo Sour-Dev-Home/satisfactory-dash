@@ -250,3 +250,60 @@ export type AlertDestinationsResponse = z.infer<typeof AlertDestinationsResponse
 export type AlertEvent = z.infer<typeof AlertEventSchema>;
 export type AlertEventsResponse = z.infer<typeof AlertEventsResponseSchema>;
 export type AlertStatusResponse = z.infer<typeof AlertStatusResponseSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Web push (ADR-0044, #348). Per USER and per device, not per server: the routes are under `/api/push/...`, plus one
+// per-server opt-in under `/api/servers/:serverId/alerts/push` that ANY member (viewers included) may set, because it is
+// their own notification and no server setting.
+//
+// A subscription's endpoint, p256dh and auth are SECRETS (the endpoint is a capability URL on a third-party push
+// service): they exist only in the POST request body, never in a response, a log or an audit row.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** GET /api/push/config. `enabled` is `ALERT_DELIVERY=on` and VAPID configured; `vapidPublicKey` (not secret) only while enabled. */
+export const PushConfigResponseSchema = z.object({
+  enabled: z.boolean(),
+  vapidPublicKey: z.string().optional().describe("The VAPID application server key, base64url. Present only when enabled"),
+});
+
+// A browser's PushSubscription.toJSON() carries base64url values without padding: a P-256 point is 65 bytes (87 characters)
+// and the auth secret is 16 bytes (22 characters).
+const P256DH_PATTERN = /^[A-Za-z0-9_-]{87}$/;
+const AUTH_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+
+/**
+ * POST /api/push/subscriptions: the browser's `PushSubscription.toJSON()` (`expirationTime` is ignored if sent, so it is
+ * not part of the strict shape: send only these). The endpoint's host must be on the backend's allowlist
+ * (push_endpoint_invalid, 400, with a `reason` and never the URL). Subscribing again with the same endpoint is idempotent.
+ */
+export const PushSubscribeRequestSchema = z.strictObject({
+  endpoint: z.string().min(1).max(2048),
+  keys: z.strictObject({
+    p256dh: z.string().regex(P256DH_PATTERN),
+    auth: z.string().regex(AUTH_PATTERN),
+  }),
+});
+export const PushSubscribeResponseSchema = z.object({ id: z.uuid(), createdAt: IsoTimeSchema });
+
+/** At most this many subscriptions (devices) per user; an 11th is a `bad_request`. */
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 10;
+
+/** DELETE /api/push/subscriptions/:id (own subscriptions only; anyone else's is a 404). */
+export const PushUnsubscribeResponseSchema = z.object({ deleted: z.literal(true) });
+
+/** GET and PUT /api/servers/:serverId/alerts/push. PUT answers push_disabled (409) while push is not enabled. */
+export const PushOptInResponseSchema = z.object({ optedIn: z.boolean() });
+export const PushOptInRequestSchema = z.strictObject({ optedIn: z.boolean() });
+
+/**
+ * POST /api/push/subscriptions/:id/test (no body): one test notification to that subscription, at most 5 per minute per
+ * user. Same answer shape as the Discord test: `{ ok: true }` or `{ ok: false, code }`. push_disabled (409) while push is
+ * not enabled, not_found (404) for a subscription that is not the caller's, rate_limited (429).
+ * Until the sender exists (ADR-0044 task 348-2) the answer is `{ ok: false, code: "unavailable" }`.
+ */
+export const PushTestResponseSchema = SendTestResponseSchema;
+
+export type PushConfigResponse = z.infer<typeof PushConfigResponseSchema>;
+export type PushSubscribeRequest = z.input<typeof PushSubscribeRequestSchema>;
+export type PushSubscribeResponse = z.infer<typeof PushSubscribeResponseSchema>;
+export type PushOptInResponse = z.infer<typeof PushOptInResponseSchema>;

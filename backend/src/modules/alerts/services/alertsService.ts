@@ -175,7 +175,7 @@ export interface AlertsServiceDeps {
 }
 
 /** A database outage is a 503, never a 500 or a "not found". */
-async function orUnavailable<T>(work: () => Promise<T>): Promise<T> {
+export async function orUnavailable<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (err) {

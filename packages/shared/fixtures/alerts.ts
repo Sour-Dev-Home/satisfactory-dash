@@ -5,6 +5,10 @@ import type {
   AlertRulesResponse,
   AlertStatusResponse,
   CreateAlertRuleRequest,
+  PushConfigResponse,
+  PushOptInResponse,
+  PushSubscribeRequest,
+  PushSubscribeResponse,
   UpdateAlertRuleRequest,
 } from "../src/index";
 
@@ -255,3 +259,24 @@ export const alertSetMuteRequest = { until: "2026-09-26T18:00:00.000Z" };
 export const alertMuteSetResponse = { mutedUntil: "2026-09-26T18:00:00.000Z" };
 /** DELETE /alerts/mute */
 export const alertMuteClearedResponse = { mutedUntil: null };
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Web push (ADR-0044). Invented values: the endpoint is not a real push service URL, and the keys are made-up base64url.
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const pushConfigEnabled = { enabled: true, vapidPublicKey: "B".repeat(87) } satisfies PushConfigResponse;
+export const pushConfigDisabled = { enabled: false } satisfies PushConfigResponse;
+
+/** A browser's PushSubscription.toJSON() (p256dh is 87 base64url characters, auth is 22). */
+export const pushSubscribeRequest = {
+  endpoint: "https://push.example.test/send/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  keys: { p256dh: "B".repeat(87), auth: "C".repeat(22) },
+} satisfies PushSubscribeRequest;
+export const pushSubscribeResponse = {
+  id: "5b1f0c2a-7b4d-4c8a-9e51-1a2b3c4d5e11",
+  createdAt: "2026-10-20T10:00:00.000Z",
+} satisfies PushSubscribeResponse;
+export const pushUnsubscribeResponse = { deleted: true };
+export const pushOptInOn = { optedIn: true } satisfies PushOptInResponse;
+export const pushOptInOff = { optedIn: false } satisfies PushOptInResponse;
+export const pushOptInRequest = { optedIn: true };

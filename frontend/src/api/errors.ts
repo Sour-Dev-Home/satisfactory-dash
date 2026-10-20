@@ -122,6 +122,9 @@ const kindByCode = {
   webhook_invalid: "unknown",
   delivery_off: "unknown",
   mute_invalid: "unknown",
+  // ADR-0044: web push. The opt-in UI (task 348-3) words these itself; anywhere else they are handled generically.
+  push_endpoint_invalid: "unknown",
+  push_disabled: "unknown",
   // ADR-0031 PR 3: the edge agent. The agent screens (PR 4) word these themselves.
   enrollment_code_invalid: "unknown",
   agent_outdated: "unknown",

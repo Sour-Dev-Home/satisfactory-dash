@@ -62,6 +62,10 @@ export const KnownErrorCode = z.enum([
   "agent_outdated",
   "command_not_found",
   "command_expired",
+  // ADR-0044 (additive): web push. The subscription's endpoint was refused (400, with a `reason`, never the URL); push is
+  // not enabled (ALERT_DELIVERY off or VAPID not configured), so nothing can be subscribed or sent (409).
+  "push_endpoint_invalid",
+  "push_disabled",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;

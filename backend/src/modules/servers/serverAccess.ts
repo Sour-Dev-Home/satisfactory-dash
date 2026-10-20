@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { ServerIdSchema } from "@satisfactory-dash/shared";
+import { ServerIdSchema, endpoints } from "@satisfactory-dash/shared";
 import {
   ForbiddenError,
   InvalidServerIdError,
@@ -49,6 +49,18 @@ export async function orUnavailable<T>(work: () => Promise<T>): Promise<T> {
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const WRITE_ROLES = new Set<MemberRole>(["owner", "admin"]);
 
+/**
+ * The one write any MEMBER may make, viewers included: a member's own push opt-in for this server (ADR-0044). It changes
+ * nothing about the server, only whether that member is notified, and the handler scopes it to the signed-in user. Matched
+ * exactly (method and path below the mount), taken from the contract's `memberSelfService` endpoint, so a new write route
+ * is never exempt by accident.
+ */
+const SELF_SERVICE = endpoints.push.optIn.put;
+const SELF_SERVICE_PATH = SELF_SERVICE.route.slice(SELF_SERVICE.route.indexOf(":serverId") + ":serverId".length);
+function isMemberSelfService(method: string, path: string): boolean {
+  return method === SELF_SERVICE.method && path === SELF_SERVICE_PATH;
+}
+
 export interface AuthorizeServerOptions {
   /** False until the configured servers are registered at startup: answered with a 503 rather
    *  than a 404 that would tell a real member the server does not exist. */
@@ -78,7 +90,7 @@ export function createAuthorizeServer(access: ServerAccess, options: AuthorizeSe
     if (role === undefined) {
       throw new ServerNotFoundError();
     }
-    if (!READ_METHODS.has(req.method) && !WRITE_ROLES.has(role)) {
+    if (!READ_METHODS.has(req.method) && !WRITE_ROLES.has(role) && !isMemberSelfService(req.method, req.path)) {
       throw new ForbiddenError();
     }
     res.locals.serverRole = role;

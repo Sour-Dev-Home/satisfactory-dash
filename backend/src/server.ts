@@ -45,7 +45,10 @@ import {
   createAlertEvaluator,
   createAlertsRouters,
   createAlertsService,
+  createPushRouters,
+  createPushService,
   loadAlertDeliveryMode,
+  loadPushConfig,
 } from "./modules/alerts/index.js";
 import {
   createAgentTelemetryServices,
@@ -237,6 +240,11 @@ const alertDelivery = orExit(() => {
   return mode;
 });
 logger.info({ alertDelivery }, alertDelivery === "on" ? "alert delivery is ON: new alert events are sent to Discord" : "alert delivery is OFF: alert events are recorded but nothing is sent");
+// ADR-0044: web push. VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT are all set or all unset (anything else stops
+// the backend here, naming the variable). Push is enabled only with ALERT_DELIVERY=on, VAPID configured and a database
+// (the routes are mounted only with one). Only the on/off state is logged, never a key.
+const pushConfig = orExit(() => loadPushConfig());
+logger.info({ pushConfigured: pushConfig.vapid !== null }, "web push VAPID keys " + (pushConfig.vapid !== null ? "configured" : "not configured"));
 // The identity module's workers need the database: they are started only AFTER the database startup
 // check has succeeded (plus their own delay), not at boot, so their first run does not race the slow first
 // connections of a new process (issue #153). They are stopped with the others.
@@ -364,6 +372,10 @@ export const app = createApp({
             serverName: (id) => directory.list().find((server) => server.id === id)?.displayName,
           }),
         )
+      : []),
+    // ADR-0044: web push (config, subscriptions, the per-server opt-in), after the servers router; database only.
+    ...(database
+      ? createPushRouters(createPushService({ db: database.pool, ring: secretsKeyring, mode: alertDelivery, config: pushConfig }))
       : []),
     // ADR-0031 PR 5a: the owner's side of the edge agent (enrolment code, agent status, revoke), after the servers router.
     ...(database && agentCommands

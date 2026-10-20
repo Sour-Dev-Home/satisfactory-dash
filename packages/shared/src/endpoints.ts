@@ -43,6 +43,13 @@ import {
   MuteSetResponseSchema,
   PatchDiscordDestinationRequestSchema,
   PutDiscordDestinationRequestSchema,
+  PushConfigResponseSchema,
+  PushOptInRequestSchema,
+  PushOptInResponseSchema,
+  PushSubscribeRequestSchema,
+  PushSubscribeResponseSchema,
+  PushTestResponseSchema,
+  PushUnsubscribeResponseSchema,
   SendTestResponseSchema,
   SetMuteRequestSchema,
   UpdateAlertRuleRequestSchema,
@@ -358,6 +365,53 @@ export const endpoints = {
         route: "/api/servers/:serverId/alerts/mute",
         path: scoped("alerts/mute"),
         response: MuteClearedResponseSchema,
+      },
+    },
+  },
+  // ADR-0044 (#348): web push, per USER. The first three are not server-scoped (any signed-in user, own subscriptions only).
+  // `optIn` is server-scoped: any MEMBER of the server may read AND write it (`memberSelfService`, viewers included),
+  // because it is the member's own notification and no server setting.
+  push: {
+    config: {
+      method: "GET",
+      route: "/api/push/config",
+      path: () => "/api/push/config",
+      response: PushConfigResponseSchema,
+    },
+    subscribe: {
+      method: "POST",
+      route: "/api/push/subscriptions",
+      path: () => "/api/push/subscriptions",
+      request: PushSubscribeRequestSchema,
+      response: PushSubscribeResponseSchema, // 201 on a new subscription, 200 on an idempotent repeat
+    },
+    unsubscribe: {
+      method: "DELETE",
+      route: "/api/push/subscriptions/:id",
+      path: (id: string) => `/api/push/subscriptions/${encodeURIComponent(id)}`,
+      response: PushUnsubscribeResponseSchema,
+    },
+    // No body. 5 per minute per user.
+    test: {
+      method: "POST",
+      route: "/api/push/subscriptions/:id/test",
+      path: (id: string) => `/api/push/subscriptions/${encodeURIComponent(id)}/test`,
+      response: PushTestResponseSchema,
+    },
+    optIn: {
+      get: {
+        method: "GET",
+        route: "/api/servers/:serverId/alerts/push",
+        path: scoped("alerts/push"),
+        response: PushOptInResponseSchema,
+      },
+      put: {
+        method: "PUT",
+        route: "/api/servers/:serverId/alerts/push",
+        path: scoped("alerts/push"),
+        request: PushOptInRequestSchema,
+        response: PushOptInResponseSchema,
+        memberSelfService: true,
       },
     },
   },

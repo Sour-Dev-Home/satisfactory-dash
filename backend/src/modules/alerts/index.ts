@@ -13,7 +13,9 @@ import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { AlertDeliveryWorker, type DeliveryDb } from "./services/alertDeliveryWorker.js";
 import { AlertEvaluatorWorker, type AlertsDb } from "./services/alertEvaluatorWorker.js";
 import { createAlertsRouter } from "./routes/alerts.js";
+import { createPushRouter } from "./routes/push.js";
 import type { AlertsService } from "./services/alertsService.js";
+import type { PushService } from "./services/pushService.js";
 
 export { createAlertsService, MAX_RULES_PER_SERVER } from "./services/alertsService.js";
 export type { AlertsService, AlertsServiceDeps } from "./services/alertsService.js";
@@ -23,6 +25,15 @@ export type { AlertsService, AlertsServiceDeps } from "./services/alertsService.
 export function createAlertsRouters(service: AlertsService): Router[] {
   return [createAlertsRouter(service)];
 }
+
+/** The web push API (ADR-0044, task 348-1): config, the caller's subscriptions and the per-server opt-in. Mount it behind
+ *  the session guard AFTER the servers router, and only with a database. */
+export function createPushRouters(service: PushService): Router[] {
+  return [createPushRouter(service)];
+}
+export { createPushService } from "./services/pushService.js";
+export type { PushService, PushServiceDeps } from "./services/pushService.js";
+export { loadPushConfig, type PushConfig } from "./pushConfig.js";
 
 export type { AlertsDb } from "./services/alertEvaluatorWorker.js";
 export type { DeliveryDb } from "./services/alertDeliveryWorker.js";
