@@ -94,22 +94,6 @@ export async function settleAnimations(page: Page): Promise<void> {
 }
 
 /**
- * Full-page screenshot comparison with CSS transitions switched off first (#503). Regenerated
- * baselines differed by a few antialiased corner pixels, one colour level apart, in a different
- * screenshot every run: a transition a hair short of its end state. `animations: "disabled"` in the
- * config doesn't stop transitions. The sheet is adopted through the CSSOM, because Playwright's
- * `stylePath` injects an inline <style> and the strict CSP (checked by the guards fixture) blocks it.
- */
-export async function expectScreenshot(page: Page, name: string): Promise<void> {
-  await page.evaluate(() => {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync("*, *::before, *::after { transition: none !important; }");
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-  });
-  await expect(page).toHaveScreenshot(name, { fullPage: true });
-}
-
-/**
  * Runs axe (WCAG 2.1 A/AA, contrast included) and fails the test on any violation (ADR-0016
  * item 5; failing since step 4). The full result is attached to the report either way.
  */
