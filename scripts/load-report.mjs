@@ -463,7 +463,10 @@ async function main() {
     args = parseReportArgs(process.argv.slice(2));
     rows = await readServerRows(args);
   } catch (err) {
-    console.error(err instanceof Error ? err.message : USAGE);
+    const message = err instanceof Error ? err.message : USAGE;
+    // Only a usage or guard error is exit 2; a missing or malformed rows file or a failed connection is exit 1.
+    if (message !== USAGE && !message.startsWith("Refused")) throw err;
+    console.error(message);
     process.exit(2);
   }
   const raw = readFileSync(args.summary);

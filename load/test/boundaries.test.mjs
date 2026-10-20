@@ -1,7 +1,9 @@
 // Boundary cases for the load kit: each pins a limit that an off-by-one would move without any other test noticing.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertLocalTarget } from "../lib/guards.mjs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { assertLoadDatabaseUrl, assertLocalTarget } from "../lib/guards.mjs";
 import { createHttp } from "../lib/seed.mjs";
 import { findKnee, readK6Points } from "../../scripts/load-report.mjs";
 
@@ -48,4 +50,40 @@ test("k6's nanosecond timestamps with an offset are read", () => {
   const line = JSON.stringify({ type: "Point", metric: "http_req_failed", data: { time: "2026-10-20T12:00:30.123456789+02:00", value: 1, tags: { name: "GET /a" } } });
   const { points } = readK6Points([line], Date.parse("2026-10-20T10:00:00Z"), Date.parse("2026-10-20T10:01:00Z"));
   assert.equal(points.length, 1);
+});
+
+test("the database host: 127.0.0.1, localhost (any case), postgres and userinfo pass; IPv6, trailing dot, host-less, @-tricks and host= are refused", () => {
+  const env = { LOAD_TEST: "1" };
+  for (const ok of [
+    "postgres://u:p@127.0.0.1:5432/satis_load",
+    "postgres://u:p@LOCALHOST/satis_load",
+    "postgres://u@postgres:5432/satis_load?sslmode=disable",
+    "postgres://u:p%40x@127.0.0.1/satis_load",
+  ]) {
+    assert.equal(assertLoadDatabaseUrl(ok, env), "satis_load");
+  }
+  for (const bad of [
+    "postgres://u@[::1]:5432/satis_load",
+    "postgres:///satis_load",
+    "postgres://u:p@/satis_load",
+    "postgres://localhost./satis_load",
+    "postgres://127.0.0.1@evil.example/satis_load",
+    "postgres://127.0.0.1,evil.example/satis_load",
+    "postgres://u@127.0.0.1:5432/satis_load?host=evil.example",
+  ]) {
+    assert.throws(() => assertLoadDatabaseUrl(bad, env), /Refused/, bad);
+  }
+});
+
+test("load-report exits 2 for a usage or guard error and 1 for a missing input file, one line each", () => {
+  const script = fileURLToPath(new URL("../../scripts/load-report.mjs", import.meta.url));
+  const run = (args, env = {}) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8", env: { PATH: process.env.PATH, ...env } });
+  assert.equal(run([]).status, 2);
+  const window = ["--since", "2026-10-20T10:00:00Z", "--until", "2026-10-20T10:01:00Z"];
+  const guard = run(["--scenario", "a", "--summary", "x.json", ...window], { DATABASE_URL: "postgres://u@db.example/satis_load", LOAD_TEST: "1" });
+  assert.equal(guard.status, 2);
+  assert.match(guard.stderr, /Refused/);
+  const missing = run(["--scenario", "a", "--summary", "nope.json", "--rows", "nope-rows.json", ...window]);
+  assert.equal(missing.status, 1);
+  assert.equal(missing.stderr.trim().split("\n").length, 1);
 });
