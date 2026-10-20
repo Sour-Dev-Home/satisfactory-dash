@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { anywayRequested, CHANNELS, type ServerManagerBridge, type Status } from "./ipc";
+import { anywayRequested, CHANNELS, type AgentStatus, type ServerManagerBridge, type Status } from "./ipc";
 
 /**
  * The window's whole reach is the bridge the preload exposes. These tests pin that surface, so a way to get the game's
@@ -43,6 +43,12 @@ describe("the renderer's IPC surface", () => {
         "start",
         "stop",
         "update",
+        "getAgentStatus",
+        "onAgentStatus",
+        "startAgent",
+        "stopAgent",
+        "runAgentCommand",
+        "openAgentRunbook",
       ].sort(),
     );
     for (const name of Object.keys(bridge)) expect(name).not.toMatch(TOKEN_WORDS);
@@ -59,7 +65,42 @@ describe("the renderer's IPC surface", () => {
     await bridge.update();
     await bridge.chooseServerDir();
     await bridge.chooseSteamcmdDir();
+    await bridge.getAgentStatus();
+    await bridge.startAgent();
+    await bridge.stopAgent();
+    await bridge.runAgentCommand("status");
+    await bridge.openAgentRunbook();
     expect(exposed.invokes.map((i) => i.channel).every((c) => known.has(c))).toBe(true);
+  });
+
+  it("passes on only an allowed agent command, and the runbook link as an intent with no URL", async () => {
+    exposed.invokes = [];
+    await bridge.runAgentCommand("check");
+    await bridge.runAgentCommand("set-tokens" as never);
+    await bridge.runAgentCommand({ toString: () => "check" } as never);
+    await bridge.openAgentRunbook();
+    await bridge.startAgent();
+    await bridge.stopAgent();
+    expect(exposed.invokes.map((i) => i.args)).toEqual([["check"], [undefined], [undefined], [], [], []]);
+  });
+
+  it("no AgentStatus field can hold a token", () => {
+    const keys: (keyof AgentStatus)[] = ["task", "log", "halted", "busy"];
+    for (const key of keys) expect(key).not.toMatch(TOKEN_WORDS);
+    const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const body = /function agentStatus\(\): AgentStatus \{([\s\S]*?)\n\}/.exec(main)?.[1] ?? "";
+    expect(body).not.toBe("");
+    const filled = [...body.matchAll(/^\s{4}(\w+)[:,]/gm)].map((m) => m[1]);
+    expect(filled.sort()).toEqual([...keys].sort());
+  });
+
+  it("main opens only the one fixed runbook address", () => {
+    const main = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const opens = [...main.matchAll(/openExternal\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(opens).toEqual(["AGENT_RUNBOOK_URL"]);
+    expect(main).toMatch(
+      /const AGENT_RUNBOOK_URL =\s*"https:\/\/github\.com\/Sour-Dev-Home\/satisfactory-dash\/blob\/main\/docs-vault\/wiki\/runbooks\/agent-app\.md#keeping-it-running-a-scheduled-task";/,
+    );
   });
 
   it("passes on only the anyway flag, never what the page put beside it", async () => {

@@ -1,5 +1,6 @@
 /** The window: renders the status main pushes and forwards button presses over the bridge. No Node here. */
-import type { ServerManagerBridge, Status } from "../ipc";
+import type { AgentCommand, AgentStatus, ServerManagerBridge, Status } from "../ipc";
+import { agentActions, agentNote, agentStateLabel, commandHeading, haltedText, logDelta, logLineParts } from "./agentView";
 import {
   actionsFor,
   anywayLabel,
@@ -153,4 +154,97 @@ onPress(el("choose-steamcmd"), () => choose("steamcmd", el("folders-error")));
 bridge.onStatus(render);
 void bridge.getStatus().then((status) => {
   if (!latest) render(status);
+});
+
+// The Agent panel: the agent's Scheduled Task, its log's tail, its halted marker, and its check/status/resume.
+const agentButtons = {
+  start: el<HTMLButtonElement>("agent-start"),
+  stop: el<HTMLButtonElement>("agent-stop"),
+  check: el<HTMLButtonElement>("agent-check"),
+  status: el<HTMLButtonElement>("agent-status"),
+  resume: el<HTMLButtonElement>("agent-resume"),
+};
+const agentLogList = el("agent-log");
+const agentOutput = el("agent-output");
+const agentCommandHeading = el("agent-command-heading");
+let agentLatest: AgentStatus | undefined;
+let shownLog: string[] = [];
+
+function logItem(line: string): HTMLLIElement {
+  const parts = logLineParts(line);
+  const item = document.createElement("li");
+  if (parts.level !== "") item.dataset.level = parts.level;
+  for (const [cls, text] of [
+    ["log-time", parts.time],
+    ["log-event", parts.event],
+    ["log-detail", parts.detail],
+  ] as const) {
+    if (text === "") continue;
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = text;
+    item.append(span);
+  }
+  return item;
+}
+
+function renderAgentLog(next: string[]): void {
+  const { drop, add } = logDelta(shownLog, next);
+  for (let i = 0; i < drop; i++) agentLogList.firstElementChild?.remove();
+  for (const line of add) agentLogList.append(logItem(line));
+  shownLog = [...next];
+  if (add.length > 0) agentLogList.scrollTop = agentLogList.scrollHeight;
+  agentLogList.hidden = next.length === 0;
+  el("agent-log-empty").hidden = next.length > 0;
+}
+
+function renderAgent(s: AgentStatus): void {
+  agentLatest = s;
+  el("agent-state").textContent = agentStateLabel(s.task);
+  el("agent-dot").dataset.state = s.task ?? "unknown";
+  el("agent-note").textContent = agentNote(s);
+
+  const actions = agentActions(s);
+  el("agent-task-actions").hidden = s.task === "missing";
+  el("agent-setup").hidden = s.task !== "missing";
+  el("agent-runbook").setAttribute("aria-disabled", String(!actions.setup));
+  agentButtons.start.setAttribute("aria-disabled", String(!actions.start));
+  agentButtons.stop.setAttribute("aria-disabled", String(!actions.stop));
+  for (const button of [agentButtons.check, agentButtons.status, agentButtons.resume]) {
+    button.setAttribute("aria-disabled", String(s.busy));
+  }
+
+  const halted = el("agent-halted");
+  halted.hidden = s.halted === undefined;
+  if (s.halted !== undefined) {
+    const text = haltedText(s.halted);
+    el("agent-halted-reason").textContent = text.reason;
+    el("agent-halted-fix").textContent = text.fix;
+  }
+
+  renderAgentLog(s.log);
+}
+
+async function runCommand(command: AgentCommand): Promise<void> {
+  agentCommandHeading.textContent = `Running agent ${command}…`;
+  const result = await bridge.runAgentCommand(command);
+  if (!result) {
+    agentCommandHeading.textContent = "";
+    return;
+  }
+  agentCommandHeading.textContent = commandHeading(result);
+  agentOutput.textContent = result.output;
+  agentOutput.hidden = result.output === "";
+}
+
+onPress(agentButtons.start, () => bridge.startAgent());
+onPress(agentButtons.stop, () => bridge.stopAgent());
+onPress(agentButtons.check, () => runCommand("check"));
+onPress(agentButtons.status, () => runCommand("status"));
+onPress(agentButtons.resume, () => runCommand("resume"));
+onPress(el("agent-runbook"), () => bridge.openAgentRunbook());
+
+bridge.onAgentStatus(renderAgent);
+void bridge.getAgentStatus().then((status) => {
+  if (!agentLatest) renderAgent(status);
 });

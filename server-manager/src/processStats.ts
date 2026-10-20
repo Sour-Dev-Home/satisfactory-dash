@@ -24,7 +24,8 @@ const execText: ExecFn = (file, args, env) =>
     });
   });
 
-function powershellPath(env: NodeJS.ProcessEnv): string {
+/** Windows PowerShell from System32, not whatever `powershell.exe` the PATH finds first. */
+export function powershellPath(env: NodeJS.ProcessEnv): string {
   const root = env.SystemRoot;
   return root ? `${root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : "powershell.exe";
 }

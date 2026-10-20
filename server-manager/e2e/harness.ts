@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,6 +97,31 @@ export function starts(f: Fixture): Start[] {
 /** Drops a control file the fake server reacts to (see fake-server.cjs). */
 export function tell(f: Fixture, what: "crash-now" | "exit-now" | "crash-always"): void {
   writeFileSync(join(f.serverDir, what), "");
+}
+
+/** Sets the agent's Scheduled Task's state as the fake Get-ScheduledTask reports it (e2e/fake-agent.cjs). */
+export function agentTaskIs(f: Fixture, state: "Running" | "Ready" | "Disabled" | "Missing"): void {
+  writeFileSync(join(f.agentDir, "fake-task"), state);
+}
+
+/** What the app asked the fake PowerShell and agent to do, in order, without the repeated state reads. */
+export function agentCalls(f: Fixture): string[] {
+  const file = join(f.agentDir, "fake-calls.log");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line !== "" && line !== "powershell Get-ScheduledTask");
+}
+
+/** Appends lines to the agent's log for `day`, as the agent writes them. */
+export function agentLogs(f: Fixture, day: string, lines: string[], partial = ""): void {
+  const dir = join(f.agentDir, "logs");
+  mkdirSync(dir, { recursive: true });
+  appendFileSync(join(dir, `agent-${day}.log`), lines.map((l) => `${l}\n`).join("") + partial);
+}
+
+export function agentHalted(f: Fixture, reason: "credential_rejected" | "store_unreadable"): void {
+  writeFileSync(join(f.agentDir, "halted.json"), `${JSON.stringify({ reason, at: "2026-10-20T10:00:00.000Z" })}\n`);
 }
 
 export function alive(pid: number): boolean {
