@@ -1,5 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { tickTone } from "./tick";
 import { GAUGE_MAX, SLOW_BELOW, TickGauge } from "./TickGauge";
 
 // Pure geometry: no query, no fixture. Renders the gauge at the scale's boundaries and at
@@ -29,6 +30,28 @@ describe("TickGauge", () => {
     const line = svgOf(rate).querySelector("line")!;
     expect(Number.isFinite(Number(line.getAttribute("x2")))).toBe(true);
     expect(Number.isFinite(Number(line.getAttribute("y2")))).toBe(true);
+  });
+
+  it("draws nothing red while the tick is healthy, at any rate", () => {
+    for (const rate of [0, 5, SLOW_BELOW, 29.6, GAUGE_MAX]) {
+      const svg = svgOf(rate);
+      expect(svg.querySelector(".text-bad")).toBeNull();
+      svg.parentElement!.remove();
+    }
+  });
+
+  it.each([
+    [29.6, "healthy", "ok"],
+    [4, "healthy", "ok"],
+    [12, "slow", "warn"],
+    [SLOW_BELOW, "slow", "warn"],
+    [8.2, "slow", "bad"],
+  ] as const)("colours its arc at %d ticks/s (%s) as %s, by the same verdict as its word", (rate, health, tone) => {
+    const { container } = render(<TickGauge rate={rate} health={health} />);
+    const svg = container.querySelector("svg")!;
+    expect(svg).toHaveAttribute("data-tone", tone);
+    expect(svg.querySelector('[data-zone="value"]')).toHaveClass(`text-${tone}`);
+    expect(tickTone({ rate, health })).toBe(tone);
   });
 
   it("draws no needle and marks itself NaN for a non-finite rate (data validation's job, not this component's)", () => {

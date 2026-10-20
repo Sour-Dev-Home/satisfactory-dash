@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -7,9 +7,11 @@ import {
   errorServiceUnavailable,
   factoryEmpty,
   factoryMixed,
+  powerEmpty,
   powerOk,
   serversSingle,
   statusNoGame,
+  statusRunning,
   statusSlow,
 } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
@@ -58,7 +60,9 @@ describe("OverviewView: the Health card's tick", () => {
     expect(await within(healthCard()).findByText("Degraded")).toBeInTheDocument();
     const rows = screen.getByRole("list", { name: "Sections" });
     expect(rows).not.toHaveTextContent(/tick/i);
-    expect(within(rows).getAllByText("Operational")).toHaveLength(3);
+    // #442: healthy rows say no status word at all; the Health card says it once.
+    expect(rows).not.toHaveTextContent("Operational");
+    expect(rows.querySelectorAll("[data-word]")).toHaveLength(0);
   });
 
   it("counts a slow tick as a warning as soon as the status query has data, even while Power and Factory are still loading", async () => {
@@ -100,6 +104,12 @@ describe("OverviewView: the Health card's tick", () => {
     expect(screen.queryByText(/Server tick/)).not.toBeInTheDocument();
   });
 
+  it("shows how old the status is beside the tick", async () => {
+    renderOverview();
+    expect(await screen.findByText("21.4 ticks/s")).toBeInTheDocument();
+    expect(healthCard().querySelector("[data-age] time")).toHaveAttribute("dateTime", statusRunning.observedAt);
+  });
+
   it("keeps showing the last tick when a background refetch fails (data wins over error)", async () => {
     const { client } = renderOverview();
     expect(await screen.findByText("21.4 ticks/s")).toBeInTheDocument();
@@ -110,5 +120,62 @@ describe("OverviewView: the Health card's tick", () => {
     // The stale data (and its tick) stays on screen; the failed refetch doesn't blank it.
     expect(screen.getByText("21.4 ticks/s")).toBeInTheDocument();
     expect(healthCard()).toHaveTextContent("Healthy");
+  });
+});
+
+const sectionTiles = () => within(screen.getByRole("list", { name: "Sections" })).getAllByRole("listitem");
+const powerCard = () => screen.getByRole("region", { name: "Power" });
+
+describe("OverviewView: station tiles and the Power card (#442)", () => {
+  it("shows Server, Power and Factory as tiles inside the Health card", async () => {
+    renderOverview();
+    await screen.findByText("21.4 ticks/s");
+    expect(within(healthCard()).getByRole("list", { name: "Sections" })).toBeInTheDocument();
+    expect(sectionTiles().map((t) => t.querySelector("svg[data-station]")?.getAttribute("data-station"))).toEqual(["server", "power", "factory"]);
+  });
+
+  it("links the Server tile to the Servers page only for an operator who can manage servers", async () => {
+    renderOverview();
+    await screen.findByText("21.4 ticks/s");
+    expect(within(sectionTiles()[0]).queryByRole("link")).toBeNull();
+    expect(within(sectionTiles()[1]).getByRole("link")).toHaveAttribute("href", "/app/power");
+  });
+
+  it("links the Server tile once the server list says the operator can manage servers", async () => {
+    server.use(http.get(endpoints.servers.route, () => HttpResponse.json({ ...serversSingle, canManageServers: true })));
+    renderOverview();
+    await waitFor(() => expect(within(sectionTiles()[0]).getByRole("link")).toHaveAttribute("href", "/app/servers"));
+  });
+
+  it("sums every circuit into the Power card: consumption of capacity, and a flowing strip", async () => {
+    const totals = { consumptionMW: 4396, capacityMW: 6150 };
+    server.use(
+      http.get(endpoints.power.route, () =>
+        HttpResponse.json({
+          ...powerOk,
+          data: {
+            ...powerOk.data,
+            circuits: [
+              { ...powerOk.data.circuits[0], consumptionMW: 4000, capacityMW: 6000 },
+              { ...powerOk.data.circuits[0], circuitGroupId: 1, consumptionMW: 396, capacityMW: 150 },
+            ],
+          },
+        }),
+      ),
+    );
+    renderOverview();
+    await waitFor(() => expect(powerCard()).toHaveTextContent("4,396 MW of 6,150 MW"));
+    expect(powerCard().querySelector("svg[data-flowing]")).toHaveAttribute("data-flowing", "true");
+    expect(Number(powerCard().querySelector("svg[data-share]")!.getAttribute("data-share"))).toBeCloseTo(totals.consumptionMW / totals.capacityMW);
+  });
+
+  it("says when the grid has no circuits, and when the power query fails", async () => {
+    server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerEmpty)));
+    const { unmount } = renderOverview();
+    expect(await within(powerCard()).findByText("No power circuits yet.")).toBeInTheDocument();
+    unmount();
+    server.use(http.get(endpoints.power.route, () => HttpResponse.json(errorServiceUnavailable, { status: 503 })));
+    renderOverview();
+    expect(await within(powerCard()).findByText("Couldn't load the power grid.")).toBeInTheDocument();
   });
 });

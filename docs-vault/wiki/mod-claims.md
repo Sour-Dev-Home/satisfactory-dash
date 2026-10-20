@@ -74,6 +74,8 @@ no G3 without the owner's explicit go.
 | C5 | read a power circuit's production and capacity that match FRM `getPower` at the same moment (consumption is not judged) | `sml-power-network-2026-10-19.md` (SML docs `PowerNetwork.adoc` at Documentation d35cc911): the page names the classes `UFGPowerCircuit` (it "gathers data about the current production and consumption of the network"), `UFGPowerConnectionComponent` ("M Circuit ID") and `UFGPowerInfoComponent` ("Actual Consumption", "The consumption used in the last tick of the power grid") (E2-E4), but no function, header or circuit-total accessor (NOT FOUND); whether these names exist in the game's headers is S3's job [NEEDS VERIFICATION] | S3 | [2026-10-20, test install, CL 513885, SML 3.12.0](../raw-sources/mod-spikes/S3-2026-10-20T02-53-16-010Z/): on a copy of the owner's save, `power.json` holds 24 pairs (12 rounds, circuits 0 and 3, which FRM groups together), all within 1% of FRM 1.5.4 on production and capacity; consumption moves between the reads and is not judged. The pass depends on the owner's amended ruling 6 and mod PR #18 (see the bundle's README) | verified |
 | C6 | store a credential in its config (server-side; no client connected) | `sml-config`: config files live in `<game install directory>/FactoryGame/Configs`, one `<ModID>.cfg` per mod, JSON. The pages describe a client install and say nothing about a dedicated server or about who can read the folder [NEEDS VERIFICATION] | S4 | [2026-10-20, test install, CL 513885, SML 3.12.0](../raw-sources/mod-spikes/S4-2026-10-20T01-00-53-086Z/result.json): the mod read the 32-character credential the harness wrote and logged only `length=32 sha1=ec425ea7230d`; the value never appears in the log. Server-side only: whether a game client can read it was not tested | verified |
 | C7 | enrol with a code and push a minimal valid snapshot to a local backend | this repository's own contract, not a mod API: `packages/shared/src/agent.ts` (`SnapshotRequestSchema`, `agentVersion`) and ADR-0031; depends on C2 (and on C3 for anything but loopback) | S5 | [2026-10-20, test install, CL 513885, SML 3.12.0](../raw-sources/mod-spikes/S5-2026-10-20T01-23-37-975Z/result.json): against a throwaway local stack from `compose.yaml` at `b11c23b`, the mod logged `s5 enroll=201 snapshot=200`; the database showed the code spent, `agent_version = spike-s5` and `last_seen_at` set (see the bundle's README) | verified |
+| C8 | read every status field natively (session name, game running, paused, players and limit, tick rate, total game duration, tick health), matching `QueryServerState` at the same moment | header only: `FGServerSubsystem.h` (`UFGServerSubsystem::GetServerGameState`, line 140) and `FGServerStateController.h` (`Handler_HealthCheck`, line 49), as cited in the mod repository's `api-sources.md` at `f6d3ef0`; no file under `raw-sources/` documents them | S6 | [2026-10-20, test install, CL 513885, SML 3.12.0](../raw-sources/mod-spikes/S6-2026-10-20T13-26-42-134Z/): run 39428218556's 30 readings (15 with no game, 15 with the S3 save loaded) each matched `QueryServerState` and `HealthCheck` read right after, except the tick rate of the first reading after the load (24.18 against 28.4). The owner ruled on 2026-10-20 that this one reading isn't judged on tick rate (mod PR #23); `result.json` is the run's FAIL and `rejudge.json` the amended rule's PASS (see the bundle's README) | verified |
+| C9 | read and change auto-pause natively, matching `GetServerOptions` | header only: `FGServerStateController.h` (`Handler_GetServerOptions`, line 40) and `FGServerManagementController.h` (`Handler_ApplyServerOptions`, line 60), as cited in the mod repository's `api-sources.md` at `f6d3ef0`; no file under `raw-sources/` documents them | S7 | [2026-10-20, test install, CL 513885, SML 3.12.0](../raw-sources/mod-spikes/S7-2026-10-20T14-24-42-870Z/): in run 39432236818 the mod read `FG.DSAutoPause` (True), set it False, read it, restored True and read again; `GetServerOptions` agreed at all five steps and no change was left pending (`autopause.json`) | verified |
 
 ## Spikes (from the ADR-0039 exploration cards)
 
@@ -102,16 +104,29 @@ only (a dev or `satis_load` database, never production), and nothing talks to pr
 
 ## G3 readiness (parked, owner 2026-10-20)
 
+- **The owner un-parked G3 on 2026-10-20:** see [ADR-0042](./decisions/0042-build-the-mod.md). The rest of this section
+  stays as history.
 - **G0–G2 are complete:** claims C1–C7 are all verified, on the S0, S1, S1b, S2, S3, S4 and S5 bundles under
   `raw-sources/mod-spikes/` (see "The claims" above and that folder's README).
 - **G3 is parked until ADR-0039 decision 3's trigger:** a player whose rented game server can't run the agent. The owner
   chose on 2026-10-20 not to propose a build yet; the agent stays the supported path.
 - **Before a build ADR**, each of these is settled, or carried into that ADR as a named risk:
-  1. the legal reading of GPL-3.0-or-later software beside the AGPL-3.0-only web app, recorded in `LEGAL.md`;
-  2. Coffee Stain's terms on mods;
-  3. how often SML breaks mods across game releases (option C's ongoing cost);
+  1. the legal reading of GPL-3.0-or-later software beside the AGPL-3.0-only web app, recorded in `LEGAL.md`:
+     now in [`LEGAL.md` "The game mod (ADR-0039)"](../../LEGAL.md#the-game-mod-adr-0039) (#471), on the GPL text
+     (`raw-sources/sml-license-2026-09-27.txt`) and the FSF's FAQ (`raw-sources/gpl-faq-2026-10-20.md`); its open
+     points stay [NEEDS VERIFICATION] there;
+  2. Coffee Stain's terms on mods: still not found by script on 2026-10-20
+     (`raw-sources/coffee-stain-mod-terms-2026-10-20.md`); ficsit.app's own rules are in
+     `raw-sources/ficsit-app-mod-rules-2026-10-20.md`, and both are read in the same `LEGAL.md` section;
+  3. how often SML breaks mods across game releases (option C's ongoing cost): now tabulated in
+     [`mod-maintenance.md` "SML across game updates"](./mod-maintenance.md#sml-across-game-updates) (#472), on
+     `raw-sources/sml-releases-2026-10-20.md` and `raw-sources/satisfactory-patch-history-2026-10-20.md`; whether
+     hotfixes with no SML release broke mods stays [NEEDS VERIFICATION] there;
   4. which game hosts allow installing a custom mod, and whether they allow outbound HTTPS from the game process
-     (ADR-0039 Context) [NEEDS VERIFICATION].
+     (ADR-0039 Context): five hosts' docs are in
+     [`mod-maintenance.md` "Rented hosts and custom mods"](./mod-maintenance.md#rented-hosts-and-custom-mods) (#472),
+     on `raw-sources/game-hosts-mods-2026-10-20.md`; all five install ficsit.app mods, none states outbound network
+     access, so that part stays [NEEDS VERIFICATION].
 - **Lessons from the spikes a build must keep:**
   - The server's saves folder is per Windows account, so S3 runs only as `satis-runner` (mod repo `docs/runner.md`, "Only as `satis-runner`").
   - FRM groups switch-joined circuits, and a circuit's power stats are its group's (ruling 6, amended; mod PR #18).

@@ -1,0 +1,219 @@
+/* The window's styles. Every colour, radius, size and motion value is a dashboard token (tokens.css, generated). */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+
+main {
+  display: grid;
+  gap: 1rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+h1,
+h2,
+dt {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--color-fg-strong);
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: var(--color-fg-strong);
+}
+
+code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  padding: 1rem;
+}
+
+.state-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  font-size: 1.125rem;
+  color: var(--color-fg-strong);
+}
+
+.dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--color-idle-solid);
+}
+.dot[data-state="running"] {
+  background: var(--color-ok);
+}
+.dot[data-state="starting"],
+.dot[data-state="stopping"] {
+  background: var(--color-warn);
+}
+.dot[data-state="crashed"] {
+  background: var(--color-bad);
+}
+
+.stats,
+.folders {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+.stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.stats div,
+.folders div {
+  display: grid;
+  gap: 0.25rem;
+}
+.folders div {
+  grid-template-columns: 6rem minmax(0, 1fr) auto;
+  align-items: center;
+}
+dt {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.notice {
+  margin: 0 0 1rem;
+  color: var(--color-warn-on-soft);
+}
+.notice:empty {
+  display: none;
+}
+#last-error {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-warn-edge);
+  border-radius: var(--radius-control);
+  background: var(--color-warn-soft);
+}
+#last-error[data-tone="bad"] {
+  border-color: var(--color-bad-edge);
+  background: var(--color-bad-soft);
+  color: var(--color-bad-on-soft);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button {
+  min-height: var(--spacing-touch);
+  padding: 0 var(--spacing-button-x);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-2);
+  color: var(--color-fg);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+button:hover {
+  background: var(--color-line);
+}
+button.primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button[aria-disabled="true"]:hover {
+  background: var(--color-surface-2);
+}
+button.primary[aria-disabled="true"]:hover {
+  background: var(--color-accent);
+}
+button.danger {
+  border-color: var(--color-bad-edge);
+  background: var(--color-bad-soft);
+  color: var(--color-bad-on-soft);
+}
+
+.confirm {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-warn-edge);
+  border-radius: var(--radius-control);
+  background: var(--color-warn-soft);
+  color: var(--color-warn-on-soft);
+}
+.confirm p {
+  margin: 0;
+}
+
+.log {
+  margin: 0.75rem 0 0;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-canvas);
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.log:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+}

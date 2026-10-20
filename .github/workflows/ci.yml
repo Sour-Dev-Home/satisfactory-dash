@@ -67,6 +67,13 @@ jobs:
 
       - run: npm run build
 
+      # The server manager's Playwright suite drives the real Electron app (ADR-0040), so it needs a display.
+      # Ubuntu's AppArmor blocks Chromium's user-namespace sandbox unless unprivileged namespaces are allowed.
+      - name: Server manager e2e
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          xvfb-run -a npm run e2e -w server-manager
+
   load-smoke:
     # ADR-0037 build step 5 (#448): scenario (a) of the k6 load kit, shortened to about a minute, against a `satis_load`
     # database on this job's own Postgres. Report-only: k6's exit 99 (a threshold crossed) never fails the job, and the

@@ -1,0 +1,692 @@
+[
+  {
+    "at": "2026-10-20T13:29:34.682Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.47,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.69,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:29:44.933Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.54,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.36,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:29:55.105Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.65,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.66,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:30:04.811Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.53,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.61,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:30:15.092Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.72,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.54,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:30:24.800Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.75,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.67,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:30:35.049Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.46,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.53,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:30:44.762Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.79,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.57,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:30:54.975Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.5,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.57,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:31:05.261Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.64,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.57,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:31:15.003Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.59,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.54,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:31:24.784Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.6,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.48,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:31:35.033Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.63,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.69,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:31:44.771Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.68,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.65,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:31:55.026Z",
+    "mod": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.75,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    },
+    "api": {
+      "running": false,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 0,
+      "tickRate": 29.53,
+      "health": "healthy",
+      "session": "1302d2e3dac5"
+    }
+  },
+  {
+    "at": "2026-10-20T13:32:13.109Z",
+    "mod": {
+      "running": true,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 580683,
+      "tickRate": 24.18,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 580684,
+      "tickRate": 28.4,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:32:22.357Z",
+    "mod": {
+      "running": true,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 580693,
+      "tickRate": 30.01,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 580693,
+      "tickRate": 30.06,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:32:32.572Z",
+    "mod": {
+      "running": true,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 580703,
+      "tickRate": 30.01,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": false,
+      "players": 0,
+      "limit": 4,
+      "duration": 580704,
+      "tickRate": 30.15,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:32:42.300Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.15,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.1,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:32:52.555Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.26,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.18,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:33:02.307Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.2,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.24,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:33:12.571Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.09,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 29.91,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:33:22.804Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.08,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.25,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:33:32.549Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.31,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.26,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:33:42.794Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.2,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.25,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:33:52.538Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.33,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.42,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:34:02.318Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.2,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.24,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:34:12.560Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 29.86,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 29.92,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:34:22.805Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.15,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.15,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  },
+  {
+    "at": "2026-10-20T13:34:32.525Z",
+    "mod": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.1,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    },
+    "api": {
+      "running": true,
+      "paused": true,
+      "players": 0,
+      "limit": 4,
+      "duration": 580713,
+      "tickRate": 30.29,
+      "health": "healthy",
+      "session": "e938bb1fad08"
+    }
+  }
+]

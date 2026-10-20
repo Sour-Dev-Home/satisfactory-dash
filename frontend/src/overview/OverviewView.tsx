@@ -15,7 +15,8 @@ import {
 } from "./health";
 import type { Tick } from "./cards/HealthCard";
 import type { PlayersState } from "./cards/PlayersCard";
-import { OverviewPanel } from "./OverviewPanel";
+import { powerTotals, type PowerState } from "./cards/power";
+import { OverviewPanel, type OverviewSection } from "./OverviewPanel";
 
 /** Data wins over an error: a failed background refetch keeps showing the last snapshot. */
 function stateOf<T>(query: UseQueryResult<T>, health: (snapshot: T) => SectionHealth): SectionState {
@@ -39,13 +40,19 @@ export function OverviewView() {
       ? { rate: snapshot.tickRate, health: snapshot.tickHealth }
       : null
     : undefined;
+  const age = status.data ? { observedAt: status.data.observedAt, late: status.data.stale } : undefined;
   // Names are extra: loading, failing, or a backend without the endpoint all leave the counts.
   const roster = useQuery(queries.players(server.id)).data;
-  const sections = [
-    { name: "Server", state: stateOf(status, serverHealth) },
-    { name: "Power", to: "/app/power", state: stateOf(useQuery(queries.power(server.id)), powerHealth) },
-    { name: "Factory", to: "/app/factory", state: stateOf(useQuery(queries.factory(server.id)), factoryHealth) },
+  // The Server tile links to the Servers page only for whom the shell shows it (ADR-0030); same cache.
+  const canManageServers = useQuery(queries.servers()).data?.canManageServers === true;
+  const power = useQuery(queries.power(server.id));
+  const sections: OverviewSection[] = [
+    { name: "Server", station: "server", to: canManageServers ? "/app/servers" : undefined, state: stateOf(status, serverHealth) },
+    { name: "Power", station: "power", to: "/app/power", state: stateOf(power, powerHealth) },
+    { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(useQuery(queries.factory(server.id)), factoryHealth) },
   ];
+  // Same rule as the rows: data wins over an error.
+  const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : power.isError ? "error" : "pending";
   // The tick has no row (it's in the Health card), but a slow one still makes the overall
   // health a warning, and a dismissed warning comes back when it starts. Loading and errors are
   // already counted by the Server row, so the tick only joins once there's a snapshot.
@@ -59,6 +66,8 @@ export function OverviewView() {
       sections={sections}
       players={players}
       tick={tick}
+      age={age}
+      power={powerState}
       roster={roster}
       bannerHidden={dismissible && dismissal.hidden}
       onDismiss={dismissible ? dismissal.dismiss : undefined}

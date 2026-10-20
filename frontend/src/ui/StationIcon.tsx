@@ -1,0 +1,95 @@
+import { cn } from "../lib/cn";
+
+export type StationKind = "server" | "power" | "factory" | "machine";
+
+/**
+ * A station (ADR-0041 item 5): drawn like the case-study figures in the owner's portfolio, a steel body
+ * with dark panels and an amber detail. Ours, inline, colours from tokens only. Amber is the accent,
+ * never a status, so an icon never says whether its area is healthy: the text beside it does.
+ * Decorative (`aria-hidden`) unless `title` names it.
+ */
+export function StationIcon({
+  kind,
+  size = 32,
+  title,
+  className,
+}: {
+  kind: StationKind;
+  /** Width and height in CSS pixels. */
+  size?: number;
+  /** Gives the icon an accessible name; without it the icon is hidden from screen readers. */
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      width={size}
+      height={size}
+      data-station={kind}
+      role={title ? "img" : undefined}
+      aria-label={title}
+      aria-hidden={title ? undefined : "true"}
+      focusable="false"
+      className={cn("flex-none", className)}
+      strokeWidth={1.5}
+      strokeLinejoin="round"
+    >
+      {title && <title>{title}</title>}
+      <Body kind={kind} />
+    </svg>
+  );
+}
+
+/** The parts each station is made of: body (steel), dark (panels and windows), lit (the amber detail). */
+const BODY = "fill-surface-2 stroke-muted";
+const DARK = "fill-canvas";
+const LIT = "fill-accent";
+
+function Body({ kind }: { kind: StationKind }) {
+  switch (kind) {
+    case "server":
+      // A rack: three units, a light on each.
+      return (
+        <>
+          <rect className={BODY} x="8" y="5" width="32" height="38" rx="3" />
+          {[10, 21, 32].map((y) => (
+            <g key={y}>
+              <rect className={DARK} x="12" y={y} width="24" height="7" rx="1.5" />
+              <circle className={LIT} cx="31" cy={y + 3.5} r="1.6" />
+            </g>
+          ))}
+        </>
+      );
+    case "power":
+      // A power pole's box with a bolt on it.
+      return (
+        <>
+          <rect className={BODY} x="7" y="7" width="34" height="34" rx="4" />
+          <circle className={DARK} cx="24" cy="24" r="13" />
+          <path className={LIT} d="M26.5 13 17.5 26h6l-2 9 9-13h-6z" />
+        </>
+      );
+    case "factory":
+      // A saw-tooth roof, a stack and a lit door.
+      return (
+        <>
+          <path className={BODY} d="M5 42V22l9 6v-6l9 6v-6l9 6V8h6v34z" />
+          <rect className={DARK} x="10" y="32" width="5" height="4" rx="1" />
+          <rect className={DARK} x="19" y="32" width="5" height="4" rx="1" />
+          <rect className={LIT} x="28" y="32" width="6" height="10" rx="1" />
+        </>
+      );
+    case "machine":
+      // A machine: a housing, its window and an output port.
+      return (
+        <>
+          <rect className={BODY} x="6" y="12" width="36" height="26" rx="3" />
+          <rect className={DARK} x="11" y="17" width="16" height="11" rx="1.5" />
+          <rect className={BODY} x="30" y="17" width="7" height="16" rx="1.5" />
+          <circle className={LIT} cx="33.5" cy="21" r="1.6" />
+          <path className={BODY} d="M12 38v4h6v-4M30 38v4h6v-4" />
+        </>
+      );
+  }
+}

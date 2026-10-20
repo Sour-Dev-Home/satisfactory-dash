@@ -1,32 +1,26 @@
 import { useEffect, useRef } from "react";
 import type { ServerPlayersResponse } from "@satisfactory-dash/shared";
-import { Link } from "react-router";
-import { cn } from "../lib/cn";
 import { CardGrid } from "./cards/CardGrid";
-import { HealthCard, type Tick } from "./cards/HealthCard";
-import { wordColor, wordFor, type Shown } from "./cards/words";
+import { HealthCard, type Age, type Tick } from "./cards/HealthCard";
 import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
-import type { SectionState } from "./health";
+import type { PowerState } from "./cards/power";
+import { PowerCard } from "./cards/PowerCard";
+import type { OverviewSection } from "./cards/StationTiles";
+import type { Shown } from "./cards/words";
 
-export interface OverviewSection {
-  name: string;
-  /** The section's own page, when it has one. */
-  to?: string;
-  state: SectionState;
-}
+export type { OverviewSection };
 
-function shown(state: SectionState): { health: Shown; summary: string } {
-  if (state === "pending") return { health: "pending", summary: "Loading…" };
-  if (state === "error") return { health: "unavailable", summary: "Couldn't load this section" };
-  return state;
-}
-
-/** Direction B2: the cards (Health first: "is everything OK?"), then one row per section. */
+/**
+ * The Overview (ADR-0041, #442): the Health card says the overall state once and holds Server, Power
+ * and Factory as station tiles; Players beside it; then the grid's power as a flowing circuit.
+ */
 export function OverviewPanel({
   overall,
   sections,
   players,
   tick,
+  age,
+  power,
   roster,
   bannerHidden = false,
   onDismiss,
@@ -36,6 +30,10 @@ export function OverviewPanel({
   players: PlayersState;
   /** The server tick for the Health card; left out while the status loads or fails. */
   tick?: Tick;
+  /** The status snapshot's age, beside the tick. */
+  age?: Age;
+  /** The grid's totals for the Power card; left out, the card isn't shown. */
+  power?: PowerState;
   /** Who is online, when the server can say (ADR-0029). */
   roster?: ServerPlayersResponse;
   /** The operator hid this warning (a warning only; see canDismiss). */
@@ -67,38 +65,18 @@ export function OverviewPanel({
         Overview
       </h2>
       <CardGrid>
-        <HealthCard overall={overall} tick={tick} hidden={bannerHidden} onDismiss={dismiss} headingRef={healthHeading} />
+        <HealthCard
+          overall={overall}
+          tick={tick}
+          age={age}
+          sections={sections}
+          hidden={bannerHidden}
+          onDismiss={dismiss}
+          headingRef={healthHeading}
+        />
         <PlayersCard state={players} roster={roster} />
       </CardGrid>
-      <ul aria-label="Sections" className="divide-y divide-line rounded-card border border-line bg-surface">
-        {sections.map((section) => {
-          const { health, summary } = shown(section.state);
-          const body = (
-            <>
-              <span className="grid min-w-0 gap-0.5">
-                <span className="font-semibold text-fg-strong">{section.name}</span>
-                <span className="text-sm text-muted">{summary}</span>
-              </span>
-              <span className={cn("ml-auto flex flex-none items-center gap-2 text-sm font-medium", wordColor(health))}>
-                <span aria-hidden="true" className="size-2 rounded-full bg-current" />
-                {wordFor(health)}
-              </span>
-            </>
-          );
-          const row = "flex min-h-touch items-center gap-4 px-5 py-4";
-          return (
-            <li key={section.name}>
-              {section.to ? (
-                <Link to={section.to} className={cn(row, "text-inherit no-underline hover:bg-surface-2")}>
-                  {body}
-                </Link>
-              ) : (
-                <div className={row}>{body}</div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      {power !== undefined && <PowerCard state={power} />}
     </section>
   );
 }

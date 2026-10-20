@@ -1,18 +1,21 @@
 import type { ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
-import { MAX_FIGURES, MAX_NAMES, playersText } from "./players";
-import { StickFigure } from "./StickFigure";
+import { initials, MAX_FIGURES, MAX_NAMES, playersText } from "./players";
+import { PlayerTile } from "./PlayerTile";
+import { Rivets } from "./Rivets";
 
 export type PlayersState = { status: Status } | "pending" | "error";
 
 /**
- * The Players card (the cards brief, item 1): a figure per player slot, filled when someone
- * is connected, and the count as text. No game running is a neutral state, never an alarm.
+ * The Players card (the cards brief, item 1; restyled in #442): a square tile per player slot,
+ * amber-outlined with initials when someone is connected, and the count as text. No game running is
+ * a neutral state, never an alarm.
  * With FicsitRemoteMonitoring, also who is online (ADR-0029: names only, live, never stored);
  * without it (`available: false`), or while that list loads or fails, just the counts.
  */
 export function PlayersCard({ state, roster }: { state: PlayersState; roster?: ServerPlayersResponse }) {
   return (
-    <section aria-labelledby="players-heading" className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
+    <section aria-labelledby="players-heading" className="relative flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
+      <Rivets />
       {/* The same 44 px header row as Health's (which holds the Hide button). */}
       <h3 id="players-heading" className="mb-0 flex min-h-touch items-center">
         Players
@@ -52,16 +55,18 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
   const slots = Math.min(status.playerLimit, MAX_FIGURES);
   const filled = Math.min(status.connectedPlayers, slots);
   const more = status.playerLimit - slots;
+  // Initials on the connected tiles, in the roster's order, when the server names who is online.
+  const names = roster?.available ? roster.players.filter((p) => p.online).map((p) => p.name) : [];
   return (
     <>
-      {/* From lg up the card is half the row, as tall as Health beside it: the figures stay their
+      {/* From lg up the card is half the row, as tall as Health beside it: the tiles stay their
           normal size (twelve fit one row there) and sit centred in the height the text leaves. */}
       <div className="flex items-end gap-1.5 lg:flex-1 lg:items-center">
-        {/* Twelve figures don't fit one row on a phone, or in the narrow column beside Health
+        {/* Twelve tiles don't fit one row on a phone, or in the narrow column beside Health
             between md and lg: two even rows of six there, not 10 + 2. */}
         <div className="grid grid-cols-6 gap-1.5 sm:flex sm:flex-wrap sm:items-end md:grid lg:flex">
           {Array.from({ length: slots }, (_, i) => (
-            <StickFigure key={i} filled={i < filled} className={i < filled ? "text-fg-strong" : "text-muted"} />
+            <PlayerTile key={i} connected={i < filled} label={i < filled && names[i] !== undefined ? initials(names[i]) : ""} />
           ))}
         </div>
         {more > 0 && (
@@ -70,7 +75,7 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
           </span>
         )}
       </div>
-      <p className="font-semibold text-fg-strong">{playersText(status)}</p>
+      <p className="font-display text-lg font-semibold tracking-wide text-fg-strong uppercase">{playersText(status)}</p>
       {roster?.available && <OnlineNames roster={roster} />}
       {/* Paused is the server's auto-pause (or a player's), not a fault: say it plainly. */}
       {status.gamePaused && <p className="text-sm text-muted">The game is paused.</p>}
