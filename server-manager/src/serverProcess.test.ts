@@ -75,10 +75,12 @@ describe("serverSpawn", () => {
     const stdout = Object.assign(new EventEmitter(), { setEncoding: () => undefined });
     const stderr = Object.assign(new EventEmitter(), { setEncoding: () => undefined });
     Object.assign(child, { stdout, stderr });
-    const handle = serverSpawn({ env: {}, execPath: "E", spawn, output: true })("D:\\steamcmd\\steamcmd.exe", ["+quit"]);
+    // Forward slashes: node's dirname reads them the same on Windows and on Linux CI.
+    const handle = serverSpawn({ env: {}, execPath: "E", spawn, output: true })("/opt/steamcmd/steamcmd.exe", ["+quit"]);
+    expect(calls[0]!.file).toBe("/opt/steamcmd/steamcmd.exe");
     expect(calls[0]!.opts.stdio).toEqual(["ignore", "pipe", "pipe"]);
     expect(calls[0]!.opts.shell).toBe(false);
-    expect(calls[0]!.opts.cwd).toBe(calls[0]!.file.replace(/[\\/]steamcmd\.exe$/, ""));
+    expect(calls[0]!.opts.cwd).toBe("/opt/steamcmd");
     const seen: string[] = [];
     handle.onOutput?.((chunk) => seen.push(chunk));
     handle.onExit((code) => seen.push(`exit ${code}`));
