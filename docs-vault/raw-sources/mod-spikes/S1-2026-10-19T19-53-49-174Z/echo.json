@@ -1,0 +1,17 @@
+[
+  {
+    "at": "2026-10-19T19:55:25.684Z",
+    "method": "POST",
+    "path": "/s1",
+    "headers": {
+      "host": "127.0.0.1:18080",
+      "accept": "*/*",
+      "accept-encoding": "deflate, gzip",
+      "content-type": "application/json",
+      "user-agent": "FactoryGame/++FactoryGame+rel-main-anniversary-2026-CL-513885 (http-eventloop) Windows/10.0.26200.1.256.64bit",
+      "content-length": "30"
+    },
+    "body": "{\"spike\":\"S1\",\"hello\":\"satis\"}",
+    "tooLarge": false
+  }
+]

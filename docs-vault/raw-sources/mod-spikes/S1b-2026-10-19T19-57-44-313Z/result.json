@@ -1,0 +1,47 @@
+{
+  "spike": "S1b",
+  "claim": "C3",
+  "pass": true,
+  "reasons": [
+    "verified HTTPS succeeded and the wrong hostname was refused"
+  ],
+  "startedAt": "2026-10-19T19:57:44.313Z",
+  "endedAt": "2026-10-19T19:59:29.678Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.19-19.59.09:468][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.19-19.59.09:491][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.19-19.59.09:515][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.19-19.59.09:558][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.19-19.59.09:693][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use.",
+  ],
+  "modLines": [
+    "[2026.10.19-19.59.09:465][  0]LogSatisMod: Display: satis-mod loaded",
+    "[2026.10.19-19.59.22:092][  0]LogSatisMod: Display: satis-mod s1b good status=200",
+    "[2026.10.19-19.59.25:506][  1]LogSatisMod: Display: satis-mod s1b bad error=Other"
+  ],
+  "harnessCommit": "local",
+  "runUrl": null
+}
