@@ -38,6 +38,9 @@ added or removed.
   to the edge agent (ADR-0031 PR 8): the checklist, the order (agent from the checkout, `set-tokens`, `check`, a code in
   Settings, `enroll`, the Scheduled Task), the parity week (history and alerts against the week before), retiring the local
   connection, and the way back (revoke, re-enrol, or switch back to local).
+- [`runbooks/aws.md`](./runbooks/aws.md) — the backend on AWS (ADR-0034, #405, #408, #409): running an ops task, apply,
+  deploy and its health checks, migrate, restore, scale to 0, the monthly credit check, the backup-role check, the tunnel,
+  the cutover and the exit.
 - [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power

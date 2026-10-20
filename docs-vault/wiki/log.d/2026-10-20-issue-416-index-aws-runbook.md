@@ -1,0 +1,1 @@
+- 2026-10-20 — Wiki index lists `runbooks/aws.md` (the backend on AWS: ops tasks, apply, deploy, migrate, restore, scale to 0, the monthly credit check, the backup-role check, the tunnel, cutover and exit) next to the other runbooks (#416).
