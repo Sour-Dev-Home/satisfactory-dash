@@ -1,5 +1,8 @@
 # Copy to terraform.tfvars (git-ignored) and fill in. Everything else has a default in variables.tf.
 budget_alert_email = "you@example.com"
+# Where the CloudWatch alarms email (#501); confirm the SNS subscription mail after the apply. Optional
+# thresholds: see `alarms` in variables.tf, e.g. alarms = { rds_cpu_max_percent = 90 }
+alarm_email = "you@example.com"
 # The backend image by digest, from the image workflow's GHCR push (never :main):
 #   docker buildx imagetools inspect ghcr.io/sour-dev-home/satisfactory-dash-backend:main --format '{{json .Manifest.Digest}}'
 backend_image = "ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:<64 hex digits>"

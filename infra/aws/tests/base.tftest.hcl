@@ -6,6 +6,9 @@ mock_provider "aws" {
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/satis-prod-ecs-execution" }
   }
+  mock_resource "aws_sns_topic" {
+    defaults = { arn = "arn:aws:sns:us-east-1:123456789012:satis-prod-alarms" }
+  }
   mock_resource "aws_ecs_cluster" {
     defaults = { arn = "arn:aws:ecs:us-east-1:123456789012:cluster/satis-prod" }
   }
@@ -20,6 +23,7 @@ mock_provider "aws" {
 
 variables {
   budget_alert_email = "alerts@example.com"
+  alarm_email        = "alarms@example.com"
   backend_image      = "ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   ops_image          = "ghcr.io/sour-dev-home/satisfactory-dash-ops@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
   backup_b2          = { bucket = "example-bucket", endpoint = "https://s3.example-region.backblazeb2.com", region = "example-region" }
@@ -288,4 +292,41 @@ run "edge_fractional_budget_is_formatted_for_aws" {
     condition     = aws_budgets_budget.monthly.limit_amount == "33.50"
     error_message = "the limit goes to AWS as a two-decimal string"
   }
+}
+
+run "alarms_mail_on_alarm_and_ok" {
+  command = apply
+
+  assert {
+    condition     = aws_sns_topic_subscription.alarms_email.endpoint == var.alarm_email && aws_sns_topic_subscription.alarms_email.protocol == "email"
+    error_message = "the topic has one email subscription, to alarm_email"
+  }
+
+  assert {
+    condition = alltrue([for a in [
+      aws_cloudwatch_metric_alarm.ecs_no_running_task, aws_cloudwatch_metric_alarm.rds_free_storage,
+      aws_cloudwatch_metric_alarm.rds_cpu_high, aws_cloudwatch_metric_alarm.backend_errors,
+    ] : length(a.alarm_actions) == 1 && length(a.ok_actions) == 1])
+    error_message = "every alarm notifies the topic on ALARM and on OK"
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.rds_free_storage.threshold == 3 * 1073741824 && aws_cloudwatch_metric_alarm.rds_cpu_high.threshold == 80 && aws_cloudwatch_metric_alarm.backend_errors.threshold == 5
+    error_message = "the default thresholds are 3 GiB free, 80% CPU and 5 error lines"
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_metric_filter.backend_errors.pattern == "{ $.level >= 50 }"
+    error_message = "the error filter matches pino level 50 and above"
+  }
+}
+
+run "alarm_email_is_validated" {
+  command = plan
+
+  variables {
+    alarm_email = "not-an-email"
+  }
+
+  expect_failures = [var.alarm_email]
 }
