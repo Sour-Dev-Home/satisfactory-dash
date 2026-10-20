@@ -114,9 +114,15 @@ only (a dev or `satis_load` database, never production), and nothing talks to pr
   2. Coffee Stain's terms on mods: still not found by script on 2026-10-20
      (`raw-sources/coffee-stain-mod-terms-2026-10-20.md`); ficsit.app's own rules are in
      `raw-sources/ficsit-app-mod-rules-2026-10-20.md`, and both are read in the same `LEGAL.md` section;
-  3. how often SML breaks mods across game releases (option C's ongoing cost);
+  3. how often SML breaks mods across game releases (option C's ongoing cost): now tabulated in
+     [`mod-maintenance.md` "SML across game updates"](./mod-maintenance.md#sml-across-game-updates) (#472), on
+     `raw-sources/sml-releases-2026-10-20.md` and `raw-sources/satisfactory-patch-history-2026-10-20.md`; whether
+     hotfixes with no SML release broke mods stays [NEEDS VERIFICATION] there;
   4. which game hosts allow installing a custom mod, and whether they allow outbound HTTPS from the game process
-     (ADR-0039 Context) [NEEDS VERIFICATION].
+     (ADR-0039 Context): five hosts' docs are in
+     [`mod-maintenance.md` "Rented hosts and custom mods"](./mod-maintenance.md#rented-hosts-and-custom-mods) (#472),
+     on `raw-sources/game-hosts-mods-2026-10-20.md`; all five install ficsit.app mods, none states outbound network
+     access, so that part stays [NEEDS VERIFICATION].
 - **Lessons from the spikes a build must keep:**
   - The server's saves folder is per Windows account, so S3 runs only as `satis-runner` (mod repo `docs/runner.md`, "Only as `satis-runner`").
   - FRM groups switch-joined circuits, and a circuit's power stats are its group's (ruling 6, amended; mod PR #18).
