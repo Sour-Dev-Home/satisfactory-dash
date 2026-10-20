@@ -67,6 +67,130 @@ jobs:
 
       - run: npm run build
 
+  load-smoke:
+    # ADR-0037 build step 5 (#448): scenario (a) of the k6 load kit, shortened to about a minute, against a `satis_load`
+    # database on this job's own Postgres. Report-only: k6's exit 99 (a threshold crossed) never fails the job, and the
+    # report goes to the job summary and an artifact. A broken kit (database setup, backend boot, seed, k6 script or
+    # report) does fail it. Runbook: docs-vault/wiki/runbooks/load-testing.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          # A throwaway superuser for this job's own container; nothing else can reach it.
+          POSTGRES_PASSWORD: load-smoke-only-not-a-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        with:
+          k6-version: "2.3.0"
+
+      - name: Generate throwaway credentials
+        run: |
+          set -euo pipefail
+          migrator="$(openssl rand -hex 24)"
+          app="$(openssl rand -hex 24)"
+          session="$(openssl rand -base64 48)"
+          openssl rand -hex 24 > "$RUNNER_TEMP/pw"
+          hash="$(npm run --silent hash-password -w backend < "$RUNNER_TEMP/pw")"
+          rm -f "$RUNNER_TEMP/pw"
+          for secret in "$migrator" "$app" "$session" "$hash"; do echo "::add-mask::$secret"; done
+          {
+            echo "DB_MIGRATOR_PASSWORD=$migrator"
+            echo "DB_APP_PASSWORD=$app"
+            echo "SESSION_SECRET=$session"
+            echo "DASHBOARD_ADMIN_PASSWORD_HASH=$hash"
+            echo "DATABASE_URL=postgres://satis_app:$app@127.0.0.1:5432/satis_load"
+          } >> "$GITHUB_ENV"
+
+      - name: Create and migrate the satis_load database
+        env:
+          DATABASE_ADMIN_URL: postgres://postgres:load-smoke-only-not-a-secret@127.0.0.1:5432/postgres
+          DB_NAME: satis_load
+        run: |
+          set -euo pipefail
+          npm run db:init -w backend
+          MIGRATOR_DATABASE_URL="postgres://satis_migrator:${DB_MIGRATOR_PASSWORD}@127.0.0.1:5432/satis_load" npm run db:migrate -w backend
+
+      - name: Start the backend on the load database
+        env:
+          HOST: 127.0.0.1
+          DASHBOARD_ADMIN_USER: load-smoke
+        run: |
+          set -euo pipefail
+          npm run build -w backend
+          nohup node backend/dist/server.cjs > "$RUNNER_TEMP/backend.log" 2>&1 &
+          deadline=$((SECONDS + 60))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/health/ready || true)"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 2
+          done
+          echo "::error::/api/health/ready did not answer 200 within 60 s (last: $code)"
+          exit 1
+
+      - name: Seed
+        env:
+          LOAD_TEST: "1"
+        run: npx tsx backend/scripts/load-seed.ts --servers 1 --users 3
+
+      - name: Scenario (a), smoke length
+        run: |
+          set -uo pipefail
+          echo "LOAD_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          mkdir -p load/results
+          k6 run --quiet --env SMOKE=1 --out json=load/results/a.json load/a-baseline.js
+          status=$?
+          echo "LOAD_UNTIL=$(date -u -d '+1 second' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          if [ "$status" -eq 99 ]; then
+            echo "::notice::k6 crossed a threshold (report-only, ADR-0037)."
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+
+      - name: Report
+        env:
+          LOAD_TEST: "1"
+        run: |
+          set -euo pipefail
+          # The backend adds its metrics to metrics.series_hourly every 60 s; wait for the flush after the run.
+          sleep 70
+          node scripts/load-report.mjs --summary load/results/a.json --since "$LOAD_SINCE" --until "$LOAD_UNTIL" \
+            --scenario a --target http://127.0.0.1:3001 --out-dir "$RUNNER_TEMP/perf"
+          cat "$RUNNER_TEMP"/perf/*.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: load-smoke-report
+          path: ${{ runner.temp }}/perf/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Backend log on failure
+        if: failure()
+        run: tail -n 100 "$RUNNER_TEMP/backend.log" || true
+
   security:
     runs-on: ubuntu-latest
     steps:
