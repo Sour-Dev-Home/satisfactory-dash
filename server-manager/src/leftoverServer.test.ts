@@ -252,18 +252,28 @@ describe("watchPid", () => {
     expect(every.live).toEqual([]);
   });
 
-  it("a failing re-check counts as not ours: nothing is killed", async () => {
+  it("a failing re-check kills nothing and keeps watching the pid (never frees Start for a second server)", async () => {
     const killed: number[] = [];
+    let alive = true;
+    const every = manualInterval();
     const handle = watchPid(7, {
-      isAlive: () => true,
+      isAlive: () => alive,
       kill: (p) => void killed.push(p),
       stillOurs: async () => {
         throw new Error("powershell failed");
       },
-      every: manualInterval().fn,
+      every: every.fn,
     });
+    const exits: (number | null)[] = [];
+    handle.onExit((code) => exits.push(code));
     handle.kill();
     await new Promise((r) => setTimeout(r, 0));
     expect(killed).toEqual([]);
+    expect(exits).toEqual([]);
+    expect(every.live).toHaveLength(1);
+    // It still notices the process really ending.
+    alive = false;
+    every.tick();
+    expect(exits).toEqual([null]);
   });
 });

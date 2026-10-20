@@ -32,7 +32,8 @@ supervises the dedicated server, a holdover until the mod.
   `server.pid` beside the settings. The next launch adopts it (`supervisor.adopt`) only while that pid's executable
   (argv[0] of its command line, normalised) is exactly the configured `FactoryServer.exe`; one it can't check, or a
   FactoryServer.exe at a path that only might match, refuses Start; anything else is a stale file. Before ending an
-  adopted process it checks again and, if the pid is no longer the server, lets go instead (`src/leftoverServer.ts`).
+  adopted process it checks again and, if the pid is no longer the server, lets go instead; if it can't check, it
+  kills nothing and keeps watching, so Start stays refused (`src/leftoverServer.ts`).
   The e2e switch counts only when not packaged (`src/main.ts`).
 - **The tray and the window's lifecycle** (`src/tray.ts`, `src/lifecycle.ts`): closing hides to the tray, one
   instance only, "Stop server and quit" does the clean stop first. The e2e switch also installs a main-process hook

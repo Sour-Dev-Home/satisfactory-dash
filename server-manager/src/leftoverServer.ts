@@ -130,8 +130,9 @@ const defaultInterval: IntervalFn = (cb, ms) => {
  * A kill that fails because it already ended is ignored; the next poll reports the end.
  *
  * With `stillOurs`, kill() first re-checks that the pid still runs the adopted server (a pid can be reused once it
- * ends). When it doesn't, or the check fails, nothing is killed and the handle reports the process gone, so the
- * supervisor lets go of it.
+ * ends). When it doesn't, nothing is killed and the handle reports the process gone, so the supervisor lets go of it.
+ * When the check itself fails, nothing is killed either, but the handle keeps watching: letting go would free Start
+ * while the server may still run, and a second server is the one thing this app must never cause.
  */
 export function watchPid(
   pid: number,
@@ -171,7 +172,7 @@ export function watchPid(
       if (!opts.stillOurs) return killNow();
       void opts.stillOurs(pid).then(
         (ours) => (ours ? killNow() : end()),
-        () => end(),
+        () => undefined, // Couldn't check: kill nothing, keep watching.
       );
     },
     onSpawn: () => undefined,
