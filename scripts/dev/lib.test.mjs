@@ -39,18 +39,22 @@ test("pickDispatchedRun takes the newest run started after the dispatch, not an 
   assert.equal(pickDispatchedRun([runs[0]], since), null);
 });
 
+// The forbidden strings are assembled from pieces so that this file doesn't trip the very scan it tests.
+const PHRASE = ["hiring", "manager"].join(" ");
+const HOME = ["", "ho" + "me", "someone", "x"].join("/");
+
 test("scanDiff flags absolute local paths and the banned phrase on added lines, with file and line", () => {
   const diff = [
     "+++ b/docs/a.md",
     "@@ -1,2 +1,4 @@",
     " context",
-    "+see C:\\Users\\someone\\x",
+    `+see C:${"\\"}Users${"\\"}someone${"\\"}x`,
     "-removed /c/Users/old",
     "+fine line",
-    "+written for a hiring manager",
+    `+written for a ${PHRASE}`,
     "+++ b/scripts/b.mjs",
     "@@ -0,0 +7,1 @@",
-    '+const p = "/home/someone/x";',
+    `+const p = "${HOME}";`,
   ].join("\n");
   assert.deepEqual(scanDiff(diff), [
     { file: "docs/a.md", line: 2, why: "an absolute Windows user path" },
