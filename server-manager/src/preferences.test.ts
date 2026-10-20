@@ -24,10 +24,15 @@ describe("preferences", () => {
   });
 
   it("fall back to the defaults for an invalid or unreadable file", () => {
-    for (const text of ["{", "[]", '{"startWithWindows":"yes"}', '{"startWithWindows":true,"extra":1}']) {
+    for (const text of ["{", "[]", "null", "7", '{"startWithWindows":"yes"}']) {
       writeFileSync(join(dir, PREFERENCES_FILE), text);
       expect(loadPreferences(dir)).toEqual(DEFAULT_PREFERENCES);
     }
+  });
+
+  it("keep each valid known field, ignoring unknown keys and an invalid neighbour", () => {
+    writeFileSync(join(dir, PREFERENCES_FILE), '{"startWithWindows":true,"closeNoteShown":"x","future":1}');
+    expect(loadPreferences(dir)).toEqual({ startWithWindows: true, closeNoteShown: false });
   });
 
   it("fill a missing field with its default", () => {

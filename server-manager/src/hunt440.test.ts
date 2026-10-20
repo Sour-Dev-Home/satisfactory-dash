@@ -11,14 +11,14 @@ import { loadPreferences, savePreferences } from "./preferences";
 import { trayMenu } from "./tray";
 import type { ServerState } from "./supervisor";
 
-const EXE = "C:\Games\Sat\FactoryServer.exe";
+const EXE = "C:\\Games\\Sat\\FactoryServer.exe";
 
 describe("isServerCommand edge cases", () => {
   // BUG: includes() matches a longer path that merely starts with / contains the configured exe path.
-  it.fails("rejects a different exe whose path only starts with the configured one (FactoryServer.exe.old)", () => {
-    expect(isServerCommand("C:\Games\Sat\FactoryServer.exe.old --x", EXE, "win32")).toBe(false);
+  it("rejects a different exe whose path only starts with the configured one (FactoryServer.exe.old)", () => {
+    expect(isServerCommand("C:\\Games\\Sat\\FactoryServer.exe.old --x", EXE, "win32")).toBe(false);
   });
-  it.fails("rejects the exe path embedded as an argument of another program", () => {
+  it("rejects the exe path embedded as an argument of another program", () => {
     expect(isServerCommand(`notepad.exe "${EXE}"`, EXE, "win32")).toBe(false);
   });
   it("rejects empty inputs", () => {
@@ -66,7 +66,7 @@ describe("closeAction / startsHidden", () => {
 
 describe("login item seam", () => {
   it("remove uses the same path and args as add", () => {
-    const l = { execPath: "C:\e\electron.exe", appPath: "C:\app" };
+    const l = { execPath: "C:\\e\\electron.exe", appPath: "C:\\app" };
     const on = loginItemSettings(true, l);
     const off = loginItemSettings(false, l);
     expect({ ...on, openAtLogin: false }).toEqual(off);
@@ -100,7 +100,7 @@ describe("preferences persistence", () => {
     }
   });
   // A newer build adding a key then an older one reading loses both prefs: strictObject discards a whole file.
-  it.fails("keeps known preferences when the file has an unknown extra key", () => {
+  it("keeps known preferences when the file has an unknown extra key", () => {
     const dir = mkdtempSync(join(tmpdir(), "hunt440-"));
     try {
       writeFileSync(join(dir, "preferences.json"), JSON.stringify({ startWithWindows: true, closeNoteShown: true, future: 1 }));
@@ -142,7 +142,7 @@ describe("findLeftover with reused pid", () => {
 
 describe("watchPid", () => {
   // Latent: only reachable with an injected interval that fires synchronously (real setInterval never does).
-  it.fails("does not throw if the interval fires synchronously (cancel before assignment)", () => {
+  it("does not throw if the interval fires synchronously (cancel before assignment)", () => {
     const every = (cb: () => void) => { cb(); return () => undefined; };
     expect(() => watchPid(9, { isAlive: () => false, kill: () => undefined, every })).not.toThrow();
   });

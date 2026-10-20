@@ -17,15 +17,27 @@ export type Preferences = z.output<typeof schema>;
 
 export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({ startWithWindows: false, closeNoteShown: false });
 
-/** The saved preferences, or the defaults when the file is missing, unreadable or invalid. */
+/**
+ * The saved preferences, field by field: each known field that is a boolean is kept, anything else (a missing or
+ * unreadable file, a wrong type, a key a newer build added) falls back to the default for that field only.
+ */
 export function loadPreferences(dir: string): Preferences {
+  const prefs = { ...DEFAULT_PREFERENCES };
+  let raw: unknown;
   try {
-    const parsed = schema.safeParse(JSON.parse(readFileSync(join(dir, PREFERENCES_FILE), "utf8")));
-    if (parsed.success) return parsed.data;
+    raw = JSON.parse(readFileSync(join(dir, PREFERENCES_FILE), "utf8"));
   } catch {
-    // Missing or not JSON: the defaults.
+    return prefs;
   }
-  return { ...DEFAULT_PREFERENCES };
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return prefs;
+  const record = raw as Record<string, unknown>;
+  if (Object.hasOwn(record, "startWithWindows") && typeof record.startWithWindows === "boolean") {
+    prefs.startWithWindows = record.startWithWindows;
+  }
+  if (Object.hasOwn(record, "closeNoteShown") && typeof record.closeNoteShown === "boolean") {
+    prefs.closeNoteShown = record.closeNoteShown;
+  }
+  return prefs;
 }
 
 /** Validates, then writes through a temp file and a rename. */

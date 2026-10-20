@@ -2,7 +2,7 @@
 // can't be driven, so the tests read and press the tray's real menu items through main's e2e hook (harness trayOf).
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import {
@@ -212,4 +212,30 @@ test("Start with Windows is off by default and flips the login item (Electron's 
   app = undefined;
   await open();
   await expect(page.getByRole("checkbox", { name: "Start with Windows" })).not.toBeChecked();
+});
+
+test("Start with Windows stays on across launches while its login item is this checkout's", async () => {
+  writeSettings(f);
+  await open();
+  await page.getByRole("checkbox", { name: "Start with Windows" }).check();
+  await expect.poll(() => existsSync(join(f.dataDir, "login-item.test.json"))).toBe(true);
+  await app!.close();
+  app = undefined;
+  await open();
+  await expect(page.getByRole("checkbox", { name: "Start with Windows" })).toBeChecked();
+});
+
+test("a Start with Windows left on for a checkout that moved shows as off", async () => {
+  writeSettings(f);
+  writeFileSync(join(f.dataDir, "preferences.json"), JSON.stringify({ startWithWindows: true, closeNoteShown: false }));
+  // The login item still points at the checkout's old place.
+  writeFileSync(
+    join(f.dataDir, "login-item.test.json"),
+    JSON.stringify({ openAtLogin: true, path: "E:\\old\\electron.exe", args: ["E:\\old\\server-manager", "--hidden"] }),
+  );
+  await open();
+  await expect(state()).toHaveText("stopped");
+  await expect(page.getByRole("checkbox", { name: "Start with Windows" })).not.toBeChecked();
+  // Read only: the stale entry is left alone.
+  expect(JSON.parse(readFileSync(join(f.dataDir, "login-item.test.json"), "utf8")).path).toBe("E:\\old\\electron.exe");
 });

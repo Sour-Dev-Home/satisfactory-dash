@@ -56,7 +56,12 @@ ends the server without saving.
 | **Update server** | Stops the server cleanly if it runs (it asks first), then runs SteamCMD with `+force_install_dir <server folder> +login anonymous +app_update 1690800 validate +quit`, shows its output, reports the exit code, and offers **Start the server**. |
 | **Start with Windows** | Off by default. On, it adds a per-user login item (Electron's `app.setLoginItemSettings`, the current user's Run entry) that opens the app in the tray at sign-in; off removes it. It never starts the server by itself. |
 
+During an update the server card reads **stopped**: the server was stopped for SteamCMD, and the Update card's note
+("Updating with SteamCMD…") and log show the progress.
+
 ![An update in progress](../assets/server-manager/window-updating.png)
+
+![Start with Windows turned on](../assets/server-manager/window-start-with-windows.png)
 
 ## The tray
 
@@ -90,6 +95,10 @@ In the checkout: `git pull`, `npm ci`, `npm run build -w server-manager`, then *
 keeps running) and `npm start -w server-manager` again; the new app adopts the running server. A login item keeps
 working across updates, since it points at the checkout.
 
+**Before moving the checkout, turn Start with Windows off** (the login item names the checkout's Electron and folder,
+and removing it needs the same ones). If it was left on, the app at its new place shows the setting as off; turn it on
+there, and disable the old entry in Task Manager's Startup apps.
+
 ## What it never does
 
 - **Show or log a token.** The agent's API token goes only into the request to the game's API, never to the window, a
@@ -113,4 +122,5 @@ working across updates, since it points at the checkout.
 | The update failed with an exit code | SteamCMD's own code; its output is in the window. Run it again; check disk space and that the SteamCMD folder is right. |
 | Launching does nothing | The app is already running: look in the tray (overflow arrow). A second launch shows its window. |
 | The window shows "Choose the server folder" again | `settings.json` is missing or invalid; choose the folder again. |
-| Start with Windows doesn't open it at sign-in | The login item points at the checkout's Electron and folder: after moving the checkout, turn it off and on again. |
+| Start with Windows doesn't open it at sign-in | The login item points at the checkout's Electron and folder: after moving the checkout the app shows it off; turn it on again (see "Updating"). |
+| "Windows didn't take the change" or "The setting couldn't be saved" under Start with Windows | Nothing changed: the login item and the setting are as they were. Try again; check the data folder is writable. |

@@ -1,4 +1,7 @@
-/* The window's styles. Every colour, radius, size and motion value is a dashboard token (tokens.css, generated). */
+/*
+ * The window's styles. Colours, radii, motion and the main sizes come from the dashboard's tokens (tokens.css,
+ * generated); a few spacing and size values are still plain rem values.
+ */
 * {
   box-sizing: border-box;
 }

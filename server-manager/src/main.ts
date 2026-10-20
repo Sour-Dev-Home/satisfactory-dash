@@ -43,10 +43,18 @@ import {
   type Status,
 } from "./ipc";
 import { CLOSE_NOTE_BODY, CLOSE_NOTE_TITLE, closeAction, startsHidden, stopServerAndQuit } from "./lifecycle";
-import { loginItemApi, loginItemSettings } from "./loginItem";
+import { applyStartWithWindows, loginItemApi, loginItemRegistered, type ApplyResult } from "./loginItem";
 import { cpuPercent, processCommandLine, sampleProcess } from "./processStats";
 import { createRefresher } from "./refresher";
-import { clearPid, findLeftover, leftoverPid, processAlive, recordPid, watchPid } from "./leftoverServer";
+import {
+  clearPid,
+  findLeftover,
+  isServerCommand,
+  leftoverPid,
+  processAlive,
+  recordPid,
+  watchPid,
+} from "./leftoverServer";
 import { loadPreferences, savePreferences, type Preferences } from "./preferences";
 import { RUN_WITH_NODE_ENV, serverSpawn } from "./serverProcess";
 import { runUpdate } from "./updater";
@@ -96,8 +104,21 @@ let trayContextMenu: Menu | undefined;
 let trayKey = "";
 let closeNotes = 0;
 
+// The e2e switch exists only for a run from the checkout; a packaged build never honours it (nor passes it on to the
+// server, SteamCMD or agent processes, which read the same environment).
+if (app.isPackaged) delete process.env[RUN_WITH_NODE_ENV];
 const testMode = process.env[RUN_WITH_NODE_ENV] === "1";
-const loginItems = loginItemApi(process.env, app, settingsDir());
+const loginItems = loginItemApi(process.env, app, settingsDir(), { packaged: app.isPackaged });
+const launchSelf = () => ({ execPath: process.execPath, appPath: app.isPackaged ? undefined : app.getAppPath() });
+/** Under the e2e switch the fake server runs through this Electron, so adoption accepts it as argv[0]. */
+const viaNode = testMode ? process.execPath : undefined;
+
+/** Whether `pid` still runs the configured server (re-checked before an adopted process is ended). */
+async function stillServer(pid: number): Promise<boolean> {
+  if (!settings) return false;
+  const cmd = await processCommandLine(pid);
+  return cmd !== undefined && isServerCommand(cmd, join(settings.serverDir, SERVER_EXE), process.platform, viaNode);
+}
 
 /** The one address the window can open: the runbook's "Keeping it running", for a missing task. */
 const AGENT_RUNBOOK_URL =
@@ -137,7 +158,7 @@ function makeSupervisor(serverDir: string): Supervisor {
     gameApi: () => gameApiAccess({ openStore: openAgentStore }),
     attach: (pid) => {
       currentPid = pid;
-      return watchPid(pid, { isAlive: processAlive, kill: (p) => process.kill(p) });
+      return watchPid(pid, { isAlive: processAlive, kill: (p) => process.kill(p), stillOurs: stillServer });
     },
   });
   sup.onChange((state) => {
@@ -174,6 +195,7 @@ async function adoptLeftover(): Promise<void> {
     commandLine: (pid) => processCommandLine(pid),
     serverExe: join(settings.serverDir, SERVER_EXE),
     platform: process.platform,
+    viaNode,
   });
   if (found.kind === "ours" && supervisor === sup && idle()) sup.adopt(found.pid);
   pushStatus();
@@ -363,14 +385,23 @@ function showWindow(): void {
 }
 
 /** Adds or removes the login item (only ever here, when the owner flips the setting), then remembers the choice. */
-function setStartWithWindows(arg: unknown): void {
+function setStartWithWindows(arg: unknown): ApplyResult {
   const on = arg === true;
-  loginItems.setLoginItemSettings(
-    loginItemSettings(on, { execPath: process.execPath, appPath: app.isPackaged ? undefined : app.getAppPath() }),
-  );
-  prefs = { ...prefs, startWithWindows: on };
-  savePreferences(settingsDir(), prefs);
+  const result = applyStartWithWindows(on, {
+    api: loginItems,
+    launch: launchSelf(),
+    save: (value) => savePreferences(settingsDir(), { ...prefs, startWithWindows: value }),
+  });
+  if (result.ok) prefs = { ...prefs, startWithWindows: on };
   pushStatus();
+  return result;
+}
+
+/** At launch: a preference left on whose login item isn't this checkout's (it moved) shows as off. Read-only. */
+function reconcileStartWithWindows(): void {
+  if (!prefs.startWithWindows || loginItemRegistered(loginItems, launchSelf()) !== false) return;
+  prefs = { ...prefs, startWithWindows: false };
+  bestEffort(() => savePreferences(settingsDir(), prefs));
 }
 
 function agentStatus(): AgentStatus {
@@ -534,7 +565,12 @@ if (!app.requestSingleInstanceLock()) {
   // Another instance runs: it shows its window (second-instance below), and this one ends.
   app.quit();
 } else {
-  app.on("second-instance", () => showWindow());
+  // A second launch before this one is ready only asks for the window; it is shown once it exists.
+  let showWhenReady = false;
+  app.on("second-instance", () => {
+    if (app.isReady() && win) showWindow();
+    else showWhenReady = true;
+  });
   app.on("before-quit", () => {
     quitting = true;
   });
@@ -567,8 +603,9 @@ if (!app.requestSingleInstanceLock()) {
     void refreshAgent().finally(pushAgentStatus);
 
     if (testMode) installTestHook();
+    reconcileStartWithWindows();
     createTray();
-    createWindow(!startsHidden(process.argv));
+    createWindow(showWhenReady || !startsHidden(process.argv));
     void adoptLeftover();
   });
 }

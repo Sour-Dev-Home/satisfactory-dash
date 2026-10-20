@@ -2,7 +2,7 @@
 // runs the built app against the e2e fakes in a temp folder. The folder paths the window shows are those temp folders,
 // so they are replaced with placeholders before each shot, and the shot is refused if a real one shows.
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   agentLogs,
@@ -79,6 +79,15 @@ test("server running, with the agent panel", async () => {
   await expect(page.getByTestId("cpu")).not.toHaveText("—", { timeout: 20_000 });
   await expect(page.getByTestId("memory")).not.toHaveText("—");
   await shoot("window-running.png");
+});
+
+test("Start with Windows on (the login item is the e2e file fake)", async () => {
+  writeSettings(f, { steamcmd: true });
+  await open();
+  await page.getByRole("checkbox", { name: "Start with Windows" }).check();
+  await expect(page.getByRole("checkbox", { name: "Start with Windows" })).toBeChecked();
+  await expect.poll(() => existsSync(join(f.dataDir, "login-item.test.json"))).toBe(true);
+  await shoot("window-start-with-windows.png");
 });
 
 test("an update in progress", async () => {

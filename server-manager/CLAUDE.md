@@ -29,9 +29,11 @@ supervises the dedicated server, a holdover until the mod.
   It goes only into the API request: never to the window, a log or an error message (`src/preload.test.ts`). With no
   token, Stop offers "Stop anyway".
 - **Never a second server.** Quit leaves the server running (spawned detached) and the app records its pid in
-  `server.pid` beside the settings. The next launch adopts it (`supervisor.adopt`) only while that pid still runs the
-  configured `FactoryServer.exe` (its command line); one it can't check refuses Start; anything else is a stale file
-  (`src/leftoverServer.ts`).
+  `server.pid` beside the settings. The next launch adopts it (`supervisor.adopt`) only while that pid's executable
+  (argv[0] of its command line, normalised) is exactly the configured `FactoryServer.exe`; one it can't check, or a
+  FactoryServer.exe at a path that only might match, refuses Start; anything else is a stale file. Before ending an
+  adopted process it checks again and, if the pid is no longer the server, lets go instead (`src/leftoverServer.ts`).
+  The e2e switch counts only when not packaged (`src/main.ts`).
 - **The tray and the window's lifecycle** (`src/tray.ts`, `src/lifecycle.ts`): closing hides to the tray, one
   instance only, "Stop server and quit" does the clean stop first. The e2e switch also installs a main-process hook
   (`installTestHook` in `src/main.ts`) that the tests use to read and press the tray's menu.

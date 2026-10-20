@@ -119,12 +119,11 @@
       <section id="startup" class="card" aria-labelledby="startup-title" hidden>
         <h2 id="startup-title">Startup</h2>
         <label class="toggle">
-          <input id="start-with-windows" type="checkbox" aria-describedby="startup-hint" />
+          <input id="start-with-windows" type="checkbox" aria-describedby="startup-hint startup-error" />
           Start with Windows
         </label>
-        <p id="startup-hint" class="hint">
-          Opens the server manager in the tray when you sign in to Windows. It doesn't start the server.
-        </p>
+        <p id="startup-hint" class="hint">Opens in the tray at sign-in. Doesn't start the server.</p>
+        <p id="startup-error" class="notice" data-testid="startup-error" role="alert"></p>
       </section>
     </main>
     <script src="renderer.js"></script>

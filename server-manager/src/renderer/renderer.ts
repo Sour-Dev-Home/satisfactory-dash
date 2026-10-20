@@ -166,7 +166,18 @@ onPress(el("change-server"), () => choose("server", el("folders-error")));
 onPress(el("choose-steamcmd"), () => choose("steamcmd", el("folders-error")));
 
 startWithWindows.addEventListener("change", () => {
-  void bridge.setStartWithWindows(startWithWindows.checked).catch(() => undefined);
+  const note = el("startup-error");
+  note.textContent = "";
+  void bridge
+    .setStartWithWindows(startWithWindows.checked)
+    .then((result) => {
+      if (!result.ok) note.textContent = result.message;
+    })
+    .catch(() => {
+      note.textContent = "Start with Windows couldn't be changed.";
+    })
+    // The box shows what main kept, whether or not the change went through.
+    .finally(() => void bridge.getStatus().then(render));
 });
 
 bridge.onStatus(render);

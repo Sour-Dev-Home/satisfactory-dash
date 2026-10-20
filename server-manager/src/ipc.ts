@@ -109,8 +109,8 @@ export interface ServerManagerBridge {
   runAgentCommand(command: AgentCommand): Promise<AgentCommandResult>;
   /** Opens the runbook's "Keeping it running" in the browser; main holds the one address, the window sends none. */
   openAgentRunbook(): Promise<void>;
-  /** Adds or removes the per-user login item. */
-  setStartWithWindows(on: boolean): Promise<void>;
+  /** Adds or removes the per-user login item; on failure, nothing changed and `message` says why. */
+  setStartWithWindows(on: boolean): Promise<{ ok: true } | { ok: false; message: string }>;
 }
 
 /** The renderer is untrusted: only a literal `{ anyway: true }` asks for an unclean stop. */
