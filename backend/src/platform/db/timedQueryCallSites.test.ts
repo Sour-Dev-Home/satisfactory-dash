@@ -37,7 +37,8 @@ const DIRECT_QUERY_ALLOWLIST = new Map([
   ["platform/db/admin.ts", 22], // the admin bootstrap (migrations, roles, grants)
 ]);
 
-const DIRECT_QUERY = /\.query\(/g;
+/** Also a generic (`.query<Row>(`) or spaced (`.query (`) call, so those can't slip past. */
+const DIRECT_QUERY = /\.query\s*(?:<[^()]*>)?\s*\(/g;
 const TIMED_CALL = /\btimedQuery\(/g;
 const TIMED_CALL_NAME = /\btimedQuery\(\s*[\w.]+\s*,\s*"([^"]+)"/g;
 
@@ -54,6 +55,15 @@ describe("timedQuery call sites (#461)", () => {
   it("scans a real tree", () => {
     expect(FILES.has("platform/db/transaction.ts")).toBe(true);
     expect(FILES.has("modules/identity/repositories/userRepository.ts")).toBe(true);
+  });
+
+  it("the direct-call pattern sees generic and spaced forms too", () => {
+    const hits = (s: string) => s.match(DIRECT_QUERY)?.length ?? 0;
+    expect(hits("db.query(sql)")).toBe(1);
+    expect(hits("db.query<Row>(sql)")).toBe(1);
+    expect(hits("db.query (sql)")).toBe(1);
+    expect(hits("db.query\n(sql)")).toBe(1);
+    expect(hits("timedQuery(db, \"a.b\", sql)")).toBe(0);
   });
 
   it("leaves no direct .query( call outside the allowlist", () => {
