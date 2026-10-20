@@ -7,7 +7,7 @@ Item: ADR-0039 G0 addendum 2 (#462): FRM 1.5.4's documented setting for its web 
 FINDINGS (as the page states them):
   - The setting is the key `<prefix>.uWS.Port`, type `mStringValue`, "Web Server Port", "TCP Port for Web Server, Default: 8080" (E3).
   - The prefix on a dedicated server is `FicsitRemoteMonitoring.Server`, so the key there is `FicsitRemoteMonitoring.Server.uWS.Port`; single player and host sessions use `FicsitRemoteMonitoring` (E2, applying E2's own JSON Debug example to E3's key).
-  - The value lives in `GameUserSettings.ini`, on a Windows dedicated server at `<Server Install Location>/FactoryGame/Saved/Config/WindowsServer/GameUserSettings.ini` (E2), and can be set in game through the Server Manager (E1).
+  - The value lives in `GameUserSettings.ini`, on a Windows dedicated server at `<Server Install Location>/FactoryGame/Saved/Config/WindowsServer/GameUserSettings.ini` (E2). The page says the system "allows for easier configuration in-game" and shows a "Dedicated Server Config Location" image (E1); the steps in game are not described in text.
   - FRM uses the game's `FGUserSettings` system since Satisfactory 1.2; the old `FactoryGame/Configs/FicsitRemoteMonitoring/WebServer.cfg` is no longer read (E1).
   - An invalid key is removed when the game saves the configuration (E2).
 NOT FOUND (recorded, not guessed):
