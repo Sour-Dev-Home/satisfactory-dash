@@ -46,6 +46,8 @@ describe("parsePushEndpoint (ADR-0044 decision 3: the SSRF rule)", () => {
     ["/relative/path", "not_a_url"],
     ["", "not_a_url"],
     [`https://push.example.test/${"a".repeat(2048)}`, "too_long"],
+    // Under the limit as typed, over it once percent-encoded (each "é" becomes "%C3%A9").
+    [`https://push.example.test/${"é".repeat(1000)}`, "too_long"],
   ])("refuses %j as %s", (raw, expected) => {
     expect(reason(raw)).toBe(expected);
   });

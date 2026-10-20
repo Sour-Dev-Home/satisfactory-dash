@@ -49,5 +49,7 @@ export function parsePushEndpoint(raw: unknown, allowedHosts: readonly string[])
   if (url.hash !== "" || raw.includes("#")) return { ok: false, reason: "fragment_not_allowed" };
   if (!hostAllowed(url.hostname, allowedHosts)) return { ok: false, reason: "host_not_allowed" };
   const canonical = url.href;
+  // Percent-encoding can make the canonical form longer than the input (one non-ASCII character is up to 12 bytes).
+  if (canonical.length > MAX_LENGTH) return { ok: false, reason: "too_long" };
   return { ok: true, url: canonical, host: url.hostname, hash: createHash("sha256").update(canonical).digest() };
 }

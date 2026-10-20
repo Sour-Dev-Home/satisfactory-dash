@@ -401,10 +401,9 @@ describe.skipIf(!available)("web push against a real Postgres (ADR-0044)", () =>
       expect((await as(adm).put(endpoints.push.optIn.put.path("alpha"), { optedIn: true })).body).toEqual({ optedIn: true });
     });
 
-    // KNOWN GAP: setOptIn calls requireEnabled() even for optedIn=false, so once push is switched off (VAPID unset or
-    // ALERT_DELIVERY off) a user who had opted in cannot withdraw. Unsubscribing a device still works while disabled, so
-    // opting out probably should too. Not fixed here: a contract decision for the author.
-    it.fails("opting OUT still works while push is disabled (withdrawing is never blocked)", async () => {
+    // Found by the #348 test hunt: once push is switched off (VAPID unset or ALERT_DELIVERY off), a user who had opted
+    // in could not withdraw. Like unsubscribing a device, opting out now works while disabled; opting in still doesn't.
+    it("opting OUT still works while push is disabled (withdrawing is never blocked)", async () => {
       const disabled = buildApp("off");
       const res = await request(disabled).put(endpoints.push.optIn.put.path("alpha")).set("x-test-user", alice).set("Content-Type", "application/json").send('{"optedIn":false}');
       expect(res.status).toBe(200);

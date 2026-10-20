@@ -143,7 +143,8 @@ export function createPushService(deps: PushServiceDeps): PushService {
       }),
 
     setOptIn: async (serverId, userId, optedIn) => {
-      requireEnabled();
+      // Withdrawing is never blocked, like unsubscribing a device: only opting IN needs push switched on.
+      if (optedIn) requireEnabled();
       return orUnavailable(() =>
         withTransaction(db, async (client) => {
           const serverUuid = await getServerUuid(client, serverId);
