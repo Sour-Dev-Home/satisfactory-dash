@@ -36,6 +36,16 @@ export function isForeignKeyViolation(err: unknown): boolean {
   return errorCode(err) === "23503";
 }
 
+/** The deferred trigger of #311 refused a commit that would leave a live server without an owner
+ *  (a 23514 check_violation raised by `server_members_never_ownerless`). Callers that can hit it map it
+ *  to a typed result; the error carries the server's internal id only. */
+export function isOwnerlessServerViolation(err: unknown): boolean {
+  return (
+    errorCode(err) === "23514" &&
+    (err as { constraint?: unknown }).constraint === "server_members_never_ownerless"
+  );
+}
+
 /** Node codes for "could not reach or lost the server", worth retrying at startup. */
 const TRANSIENT_NODE_CODES = new Set([
   "ECONNREFUSED",

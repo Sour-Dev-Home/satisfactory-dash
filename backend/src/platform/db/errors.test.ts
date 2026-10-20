@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { ConfigError } from "../errors.js";
-import { classifyStartupError, DatabaseSetupError, errorCode, isTransientConnectionError, isUniqueViolation } from "./errors.js";
+import {
+  classifyStartupError, DatabaseSetupError, errorCode, isOwnerlessServerViolation, isTransientConnectionError, isUniqueViolation,
+} from "./errors.js";
+
+describe("isOwnerlessServerViolation (#311)", () => {
+  it("matches only the never-ownerless trigger's check violation", () => {
+    expect(isOwnerlessServerViolation(Object.assign(new Error("ownerless_server"), { code: "23514", constraint: "server_members_never_ownerless" }))).toBe(true);
+    expect(isOwnerlessServerViolation(Object.assign(new Error("x"), { code: "23514", constraint: "some_other_check" }))).toBe(false);
+    expect(isOwnerlessServerViolation(Object.assign(new Error("x"), { code: "23505", constraint: "server_members_never_ownerless" }))).toBe(false);
+    expect(isOwnerlessServerViolation(undefined)).toBe(false);
+  });
+});
 
 const withCode = (code: string, message = "boom") => Object.assign(new Error(message), { code });
 

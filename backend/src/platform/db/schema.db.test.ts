@@ -188,9 +188,16 @@ describe.skipIf(!available)("core schema constraints", () => {
     it("cascades when the server or the user is deleted", async () => {
       const s = await server("cascade-1");
       const u = await user();
-      await admin.query("INSERT INTO servers.server_members (server_id, user_id, role) VALUES ($1, $2, 'owner')", [s, u]);
+      await admin.query("INSERT INTO servers.server_members (server_id, user_id, role) VALUES ($1, $2, 'viewer')", [s, u]);
       await admin.query("DELETE FROM identity.users WHERE id = $1", [u]);
       expect((await admin.query("SELECT 1 FROM servers.server_members WHERE server_id = $1", [s])).rows).toEqual([]);
+      // An owner's membership cascades with a deleted SERVER; deleting the owner's USER is refused (#311).
+      const s2 = await server("cascade-2");
+      const owner = await user();
+      await admin.query("INSERT INTO servers.server_members (server_id, user_id, role) VALUES ($1, $2, 'owner')", [s2, owner]);
+      await rejects(admin.query("DELETE FROM identity.users WHERE id = $1", [owner]), "23514");
+      await admin.query("DELETE FROM servers.servers WHERE id = $1", [s2]);
+      expect((await admin.query("SELECT 1 FROM servers.server_members WHERE server_id = $1", [s2])).rows).toEqual([]);
     });
   });
 
