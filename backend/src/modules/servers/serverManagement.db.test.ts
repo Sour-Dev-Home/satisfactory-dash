@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
+import request from "supertest";
+import type { RequestHandler } from "express";
+import { createApp } from "../../app.js";
+import { createLogger } from "../../platform/logger.js";
+import { createServerManagementRouters } from "./serverManagementRouter.js";
 import { createTestDatabase, dbTestsAvailable } from "../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../test-support/testDb.js";
 import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
@@ -111,6 +116,42 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     const again = await newInstance().service.create(operatorId, input("db-b"));
     expect(again.id).toBe("db-b");
     expect(await getMemberRole(pool, { publicId: "db-b", userId: operatorId })).toBe("owner");
+  });
+
+  it("DELETE through the Express app, then POST the same id: nothing is inherited, in any per-server table (#516)", async () => {
+    const { service } = newInstance();
+    const guard: RequestHandler = (_req, res, next) => {
+      res.locals.user = { id: operatorId, name: "operator" };
+      next();
+    };
+    const management = createServerManagementRouters(service, {});
+    const app = createApp({
+      logger: createLogger({ level: "silent" }, { write: () => {} }),
+      routers: [],
+      sessionGuard: guard,
+      protectedRouters: [management.collection, management.scoped],
+    });
+    const body = { id: "db-wipe", displayName: "Wipe", host: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: API, frmToken: FRM };
+    expect((await request(app).post("/api/servers").set("Content-Type", "application/json").send(JSON.stringify(body))).status).toBe(201);
+    const sid = (await pool.query("SELECT id FROM servers.servers WHERE public_id = 'db-wipe'")).rows[0].id as string;
+    await pool.query("INSERT INTO map.world_layers (server_id, layer, hash, observed_at, truncated, count, data) VALUES ($1, 'rails', 'h', now(), false, 1, '[]'::jsonb)", [sid]);
+    await pool.query("INSERT INTO alerts.push_optins (server_id, user_id) VALUES ($1, $2)", [sid, operatorId]);
+    await pool.query("INSERT INTO alerts.server_mutes (server_id, muted_until) VALUES ($1, now() + interval '1 hour')", [sid]);
+    await pool.query(
+      "INSERT INTO alerts.rules (server_id, kind, for_seconds, clear_seconds, repeat_seconds, severity) VALUES ($1, 'power_outage', 0, 60, 3600, 'critical')",
+      [sid],
+    );
+
+    expect((await request(app).delete("/api/servers/db-wipe")).body).toEqual({ deleted: true });
+    expect((await request(app).post("/api/servers").set("Content-Type", "application/json").send(JSON.stringify(body))).status).toBe(201);
+
+    // The id is revived with the same internal id, and every per-server table is empty for it.
+    expect((await pool.query("SELECT id FROM servers.servers WHERE public_id = 'db-wipe'")).rows[0].id).toBe(sid);
+    for (const table of ["map.world_layers", "alerts.push_optins", "alerts.server_mutes", "alerts.rules", "alerts.alert_events", "alerts.destinations", "agents.commands", "telemetry.power_samples"]) {
+      expect((await pool.query(`SELECT 1 FROM ${table} WHERE server_id = $1`, [sid])).rowCount, table).toBe(0);
+    }
+    expect(await getMemberRole(pool, { publicId: "db-wipe", userId: operatorId })).toBe("owner");
+    await request(app).delete("/api/servers/db-wipe"); // the tests share one database and the cap test counts live servers
   });
 
   it("lists every stored connection with its state, including unreadable and refused ones, and removes them without a keyring", async () => {

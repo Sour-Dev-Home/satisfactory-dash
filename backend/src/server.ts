@@ -214,6 +214,8 @@ const directory = new ServerRuntime(entries, {
     logger.error({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to start"),
   onWorkerStopError: (serverId, err) =>
     logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to stop"),
+  // #516: a removed server's live map reading must not be served to a server re-created under the same id.
+  onRemoved: (serverId) => mapLiveStore.forget(serverId),
 });
 // Process-wide workers. Started once the server is listening, and stopped on shutdown.
 const workers: { start(): void; stop(): Promise<void> }[] = [];

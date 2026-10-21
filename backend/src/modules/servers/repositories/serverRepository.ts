@@ -40,12 +40,22 @@ const toServer = (row: z.output<typeof ServerRowSchema>): RegisteredServer => ({
   connectionKind: row.connection_kind,
 });
 
+// #516: a revive (a removed row coming back) purges the per-server data again, whatever raced the removal. `was_removed`
+// reads the row as it was before this statement, so a live server's refresh is not a revive.
 const UPSERT_SERVER = `
+  WITH was_removed AS (SELECT id FROM servers.servers WHERE public_id = $1 AND deleted_at IS NOT NULL)
   INSERT INTO servers.servers (public_id, display_name)
   VALUES ($1, $2)
   ON CONFLICT (public_id) DO UPDATE
     SET display_name = EXCLUDED.display_name, deleted_at = NULL
-  RETURNING id, public_id, display_name, hosting_mode, connection_kind`;
+  RETURNING id, public_id, display_name, hosting_mode, connection_kind, EXISTS (SELECT 1 FROM was_removed) AS revived`;
+
+const RevivedRowSchema = ServerRowSchema.extend({ revived: z.boolean() });
+
+async function toServerPurgingRevived(db: Queryable, row: z.output<typeof RevivedRowSchema>): Promise<RegisteredServer> {
+  if (row.revived) await purgeServerData(db, row.id);
+  return toServer(row);
+}
 
 /** Startup registration of a server named in local config: created, or its display name and
  *  live state refreshed (a configured server is by definition not deleted). Idempotent. */
@@ -54,20 +64,21 @@ export async function upsertConfiguredServer(
   input: { publicId: string; displayName: string },
 ): Promise<RegisteredServer> {
   const result = await timedQuery(db, "servers.upsertConfiguredServer", UPSERT_SERVER, [input.publicId, input.displayName]);
-  return toServer(parseOne(ServerRowSchema, result.rows, "servers.upsertConfiguredServer"));
+  return toServerPurgingRevived(db, parseOne(RevivedRowSchema, result.rows, "servers.upsertConfiguredServer"));
 }
 
 const ENSURE_SERVER = `
+  WITH was_removed AS (SELECT id FROM servers.servers WHERE public_id = $1 AND deleted_at IS NOT NULL)
   INSERT INTO servers.servers (public_id, display_name)
   VALUES ($1, $2)
   ON CONFLICT (public_id) DO UPDATE SET deleted_at = NULL
-  RETURNING id, public_id, display_name, hosting_mode, connection_kind`;
+  RETURNING id, public_id, display_name, hosting_mode, connection_kind, EXISTS (SELECT 1 FROM was_removed) AS revived`;
 
 /** Like `upsertConfiguredServer`, but an existing row keeps its display name (an import must not undo
  *  a rename made in the app). A soft-deleted server is revived. Idempotent. */
 export async function ensureServer(db: Queryable, input: { publicId: string; displayName: string }): Promise<RegisteredServer> {
   const result = await timedQuery(db, "servers.ensureServer", ENSURE_SERVER, [input.publicId, input.displayName]);
-  return toServer(parseOne(ServerRowSchema, result.rows, "servers.ensureServer"));
+  return toServerPurgingRevived(db, parseOne(RevivedRowSchema, result.rows, "servers.ensureServer"));
 }
 
 const SELECT_BY_PUBLIC_ID = `
@@ -174,6 +185,13 @@ const DELETE_HISTORY = [
   "DELETE FROM agents.enrollment_codes WHERE server_id = $1",
   "DELETE FROM agents.agent_credentials WHERE server_id = $1",
   "DELETE FROM agents.commands WHERE server_id = $1",
+  // #516 (ADR-0045 "Retention"): the saved world layers and the push opt-ins also belong to the server, so a revived
+  // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
+  // server_members and server_connections above; telemetry (5 tables), alerts (rules and alert_state, alert_events,
+  // server_mutes, destinations and outbox, push_optins), agents (3 tables) and map.world_layers here. The audit trail
+  // keeps its server_id on purpose, and metrics.series_hourly has no server column.
+  "DELETE FROM map.world_layers WHERE server_id = $1",
+  "DELETE FROM alerts.push_optins WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });
@@ -203,12 +221,21 @@ export async function softDeleteServer(
     await timedQuery(client, "servers.softDeleteServer.deleteMembers", DELETE_MEMBERS, [row.id]);
     // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
     await timedQuery(client, "servers.softDeleteServer.deleteConnection", DELETE_CONNECTION, [row.id]);
-    for (const statement of DELETE_HISTORY) {
-      await timedQuery(client, "servers.softDeleteServer.deleteHistory", statement, [row.id]);
-    }
+    await purgeServerData(client, row.id);
     return true;
   });
 }
+
+/** Deletes everything recorded for one server except its membership and connection (those have their own statements):
+ *  the same list the soft delete runs, and the revive paths run again so a revived id always starts empty. */
+export async function purgeServerData(db: Queryable, serverId: string): Promise<void> {
+  for (const statement of DELETE_HISTORY) {
+    await timedQuery(db, "servers.softDeleteServer.deleteHistory", statement, [serverId]);
+  }
+}
+
+/** The tables `purgeServerData` clears, parsed from its statements (the guard test compares them with the catalogue). */
+export const PURGED_TABLES: readonly string[] = DELETE_HISTORY.map((s) => /^DELETE FROM (\S+)/.exec(s)![1]!);
 
 const SWITCH_TO_AGENT = `
   UPDATE servers.servers
