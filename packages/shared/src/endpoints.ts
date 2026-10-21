@@ -275,9 +275,9 @@ export const endpoints = {
     },
   },
   // ADR-0046 (self-serve agent servers): any signed-in user (not `operatorOnly`) creates an agent server and becomes its owner.
-  // 201 `{ server }`. The backend does not serve it yet (ADR-0046 build task 4).
+  // 201 `{ server }`. Answers 403 `forbidden` while SELF_SERVE_ENABLED is off (the list says so in `selfServeEnabled`).
   // `selfServeOwner` (on `serverManagement.renameAgent` and `.remove` above): the owner of a server created through self-serve
-  // may also call that operator-only route. The flag only declares the intent; until the backend implements it, owners get 403.
+  // (`createdVia: "self_serve"` in the server list) may also call that operator-only route; everyone else still gets 403.
   selfServe: {
     createAgentServer: {
       method: "POST",

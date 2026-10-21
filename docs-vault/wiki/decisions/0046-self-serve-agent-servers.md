@@ -75,6 +75,12 @@ All `self_serve` only; the operator's account is exempt (`canManage`). Numbers a
 | C9 | Members per server | n/a | No members API exists yet (ADR-0025 1b). When it lands: 20 members, 10 pending invites | That build |
 | C10 | Alert destinations | today's | 1 Discord per server, 50 rules per server, 10 push devices per user (table above) | Unchanged |
 
+- Amendment (2026-10-21, #526, from #525's security review): C1 and C3 count by **creator**
+  (`servers.servers.created_by_user_id`), not current owner, so handing a server over frees no slot. C5 is no longer
+  in memory: it counts the creator's self-serve rows created in the last 24 h, removed ones included, inside the create
+  transaction under the server-management lock. So it survives a restart and counts create/remove churn. C7 and C8
+  are unchanged; C7 stays in memory, and the multi-instance note under Consequences applies to it only.
+
 **How they compose with #514 and #515.** An account's worst case is C1 x #514's per-credential budget (requests, bytes,
 one long-poll) and C1 x #515's per-server quotas (history rows, alert subjects and events, fair outbox claim). The
 service's worst case is (C2 + 8 local) x the same. So #514 and #515 must land first: C2 is computed from #515's number,

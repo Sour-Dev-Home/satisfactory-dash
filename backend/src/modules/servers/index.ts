@@ -17,7 +17,12 @@ export { createServerManagementRouters } from "./serverManagementRouter.js";
 export type { ServerManagementRouterOptions } from "./serverManagementRouter.js";
 // ADR-0046: self-serve agent servers (shipped dark behind SELF_SERVE_ENABLED).
 export { createSelfServeService } from "./selfServe.js";
-export type { SelfServeDeps, SelfServeService } from "./selfServe.js";
+export type { SelfServeDeps, SelfServeRuntime, SelfServeService } from "./selfServe.js";
+// #526 (ADR-0046 C4): removes self-serve servers that never enrolled.
+export { createPendingServerSweeper } from "./pendingServerSweeper.js";
+export type { PendingServerSweeper, PendingServerSweeperDeps } from "./pendingServerSweeper.js";
+// #526 (L2): every post-commit runtime add re-checks that the server was not removed meanwhile.
+export { addUnlessRemoved } from "./runtimeGuard.js";
 export { createSelfServeRouter } from "./selfServeRouter.js";
 export type { SelfServeRouterOptions } from "./selfServeRouter.js";
 export { loadSelfServeConfigFromEnv } from "./selfServeConfig.js";

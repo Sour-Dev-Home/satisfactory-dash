@@ -55,12 +55,13 @@ describe.skipIf(!available)("self-serve agent servers (database)", () => {
   const service = (caps: Partial<SelfServeDeps["config"]> = {}, extra: Partial<SelfServeDeps> = {}) =>
     createSelfServeService({
       db: pool,
-      config: { maxServersPerAccount: 2, maxServersTotal: 1000, maxPendingPerAccount: 1, ...caps },
+      config: { maxServersPerAccount: 2, maxServersTotal: 1000, maxPendingPerAccount: 1, createsPerDay: 100, ...caps },
       isOperator: (id) => id === operator,
       enrolledServerIds,
       attachRuntime: async (publicId) => {
         attached.push(publicId);
       },
+      runtime: { rename: () => true, remove: async () => true },
       ...extra,
     });
   const create = (svc: ReturnType<typeof service>, actor: string, displayName = `World ${++n}`) => svc.create(actor, { displayName });

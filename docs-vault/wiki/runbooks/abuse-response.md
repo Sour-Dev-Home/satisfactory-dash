@@ -40,7 +40,9 @@ npm run admin -- remove-server <public-id>
 ```
 
 This works for any server, including a self-serve one the operator is not a member of. (The HTTP route
-`DELETE /api/servers/<server-id>` is the same delete, but it answers 404 to a non-member.) **Restart the backend
+`DELETE /api/servers/<server-id>` is the same delete, but it answers 404 to a non-member. A self-serve server's owner may
+use it on their own server, and the C4 sweep uses the same delete for self-serve servers that never enrolled within
+`SELF_SERVE_PENDING_TTL_HOURS`, #526; see [`agents.md`](./agents.md).) **Restart the backend
 afterwards**: the CLI cannot stop the pollers of a running backend, and a local server's pollers would keep recording
 until it restarts. The command writes `server.deleted` (no actor, the server's internal id).
 
