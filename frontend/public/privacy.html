@@ -262,8 +262,12 @@
         the request comes from the account's owner before acting on it, and we'll answer within 30
         days.
       </p>
-      <!-- ADR-0047 (#556): the deletion itself. The in-app button (#564) isn't live yet, so the page
-           describes deletion on request only; add the button and its fresh sign-in when it ships. -->
+      <!-- ADR-0047 (#556, #564): the deletion itself, in the app's Settings (frontend/src/account/). -->
+      <p>
+        You can delete your account yourself, in Settings, under "Delete my account". It asks for a
+        sign-in from the last 10 minutes first, so nobody can do it from a computer you left signed in.
+        In Settings you can also leave a server you belong to but don't own. Or email us, as above.
+      </p>
       <p>
         Deleting your account removes your user record, your sign-in identity, your sessions, your
         memberships and your push-notification subscriptions, at once. Servers you own are removed from
