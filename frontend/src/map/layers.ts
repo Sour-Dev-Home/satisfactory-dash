@@ -24,8 +24,9 @@ export interface MapContext {
 }
 
 /**
- * A map layer plug-in. v1's layers all draw the factory data; a layer with its own data
- * adds a query to this contract when it arrives (ADR-0023: power circuits, then belts, trains).
+ * A map layer plug-in. The buildings layer draws the factory data; a world layer (ADR-0038: rails,
+ * resource nodes) draws its own stored list, which MapPanel reads through the query layer only while
+ * the layer is on. `T` is that data; the contract itself doesn't change.
  */
 export interface MapLayer<T = Factory> {
   id: string;

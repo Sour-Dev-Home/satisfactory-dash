@@ -1,12 +1,18 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { isBackedUpState, type Factory, type FactoryResponse } from "@satisfactory-dash/shared";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { isBackedUpState, type FactoryResponse } from "@satisfactory-dash/shared";
+import { queries, type WorldLayerRead } from "../api/queries";
+import { ErrorNotice } from "../components/ErrorNotice";
 import { formatPercent } from "../format";
-import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
+import { Loadable, Skeleton, SkeletonLine, SkeletonStatus } from "../ui/Skeleton";
 import { buildingsLayer, placed } from "./buildingsLayer";
 import { buildingState, outputPercent, stateLabel } from "./buildingState";
 import type { MapLayer } from "./layers";
-import type { ViewM } from "./MapCanvas";
+import type { DrawnLayer, ViewM } from "./MapCanvas";
 import { GRID_BASE_MAP } from "./projection";
+import { railsLayer } from "./railsLayer";
+import { resourceNodesLayer } from "./resourceNodesLayer";
+import { RailsTable, ResourceNodesTable } from "./WorldTables";
 
 // Leaflet (about 40 kB gzip) is only needed here: a separate chunk, loaded with this page.
 // React.lazy caches a failed import for good, so on failure swap in a fresh lazy component
@@ -18,8 +24,44 @@ const loadCanvas = () =>
   });
 let MapCanvas = lazy(loadCanvas);
 
-/** v1's layers (ADR-0023 decision 5); the power-circuit layer joins next. */
-const LAYERS: MapLayer<Factory>[] = [buildingsLayer];
+/**
+ * The layers in draw order, bottom first (ADR-0023 decision 5; ADR-0038 M5): the rails and the resource
+ * nodes are the data-derived base map, the buildings sit on top. The trains layer (M6) joins next.
+ */
+const LAYERS = [railsLayer, resourceNodesLayer, buildingsLayer] as const;
+
+/** Binds a layer to its data, which is all the canvas needs to draw it. */
+const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, draw: (ctx) => layer.draw(ctx, data) });
+
+/**
+ * A world layer's text beside the map (#494: no "Loading…" line above content): a skeleton line the
+ * height of the summary while it loads, the error with Retry, or the summary itself (plus a note when
+ * the backend cut the layer to its item cap, so what's drawn is part of it).
+ */
+function WorldLayerText<T>({ query, layer }: { query: UseQueryResult<WorldLayerRead<T>>; layer: MapLayer<T> }) {
+  if (query.isError) {
+    return (
+      <ErrorNotice
+        error={query.error}
+        action={
+          <button type="button" onClick={() => void query.refetch()} className="min-h-touch">
+            Retry {layer.label.toLowerCase()}
+          </button>
+        }
+      />
+    );
+  }
+  return (
+    <Loadable pending={query.isPending} skeleton={<SkeletonLine label={`Loading ${layer.label.toLowerCase()}…`} />}>
+      {query.data && (
+        <p>
+          {layer.describe(query.data.data)}
+          {query.data.truncated && " The server cut this layer to its size limit, so part of it isn't drawn."}
+        </p>
+      )}
+    </Loadable>
+  );
+}
 
 /**
  * The canvas's box while its chunk (or the factory) loads: the same `h-map` the map takes, so the
@@ -42,16 +84,25 @@ const inView = (view: ViewM | null) => (b: { location: { xM: number; yM: number 
  * screen readers and keyboard users (decision 7): a summary per layer and a table of the
  * buildings in view, which follows panning and zooming.
  */
-export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
-  const [visible, setVisible] = useState(() => new Set(LAYERS.filter((l) => l.defaultVisible).map((l) => l.id)));
+export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; serverId: string }) {
+  const [visible, setVisible] = useState(() => new Set<string>(LAYERS.filter((l) => l.defaultVisible).map((l) => l.id)));
   const [view, setView] = useState<ViewM | null>(null);
   const shown = placed(snapshot.data.buildings);
 
-  // Stable while the data and toggles are: a new array would make the canvas redraw.
-  const drawn = useMemo(
-    () => LAYERS.filter((l) => visible.has(l.id)).map((layer) => ({ layer, data: snapshot.data })),
-    [visible, snapshot],
-  );
+  // A world layer is fetched only while its toggle is on (ADR-0038 §2).
+  const rails = useQuery({ ...queries.mapRails(serverId), enabled: visible.has(railsLayer.id) });
+  const nodes = useQuery({ ...queries.mapResourceNodes(serverId), enabled: visible.has(resourceNodesLayer.id) });
+  const railsData = visible.has(railsLayer.id) ? rails.data : undefined;
+  const nodesData = visible.has(resourceNodesLayer.id) ? nodes.data : undefined;
+
+  // Stable while the data and toggles are: a new array would make the canvas redraw. In LAYERS order.
+  const drawn = useMemo(() => {
+    const list: DrawnLayer[] = [];
+    if (railsData) list.push(bind(railsLayer, railsData.data));
+    if (nodesData) list.push(bind(resourceNodesLayer, nodesData.data));
+    if (visible.has(buildingsLayer.id)) list.push(bind(buildingsLayer, snapshot.data));
+    return list;
+  }, [visible, snapshot, railsData, nodesData]);
   // First view: the factory itself, not the whole 7.5 km world. Computed once: later polls
   // never move the view.
   const [fitTo] = useState<ViewM | undefined>(() => {
@@ -92,13 +143,13 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
         <MapCanvas config={GRID_BASE_MAP} layers={drawn} fitTo={fitTo} onView={setView} />
       </Suspense>
       <p className="text-sm text-muted">
-        A plain grid, 500 m per square: no map art yet. Positions are approximate until they're checked in game.
+        A plain grid, 500 m per square, with the rails and resource nodes the server reported: no game map art.
+        Positions are approximate until they're checked in game.
       </p>
 
-      {LAYERS.filter((l) => visible.has(l.id)).map((layer) => (
-        <p key={layer.id}>{layer.describe(snapshot.data)}</p>
-      ))}
-
+      {visible.has(railsLayer.id) && <WorldLayerText query={rails} layer={railsLayer} />}
+      {visible.has(resourceNodesLayer.id) && <WorldLayerText query={nodes} layer={resourceNodesLayer} />}
+      {visible.has(buildingsLayer.id) && <p>{buildingsLayer.describe(snapshot.data)}</p>}
       {visible.has(buildingsLayer.id) && (
         <div className="grid gap-2">
           <h4 id="map-list-heading">Buildings in view ({listed.length})</h4>
@@ -136,6 +187,10 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
           )}
         </div>
       )}
+
+      {/* After the buildings' list, so a world layer arriving never pushes it down. */}
+      {railsData && <RailsTable segments={railsData.data} view={view} />}
+      {nodesData && <ResourceNodesTable nodes={nodesData.data} view={view} />}
     </section>
   );
 }

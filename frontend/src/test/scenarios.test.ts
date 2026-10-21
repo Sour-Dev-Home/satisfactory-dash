@@ -1,15 +1,33 @@
-import { ApiErrorResponseSchema, endpoints } from "@satisfactory-dash/shared";
+import { ApiErrorResponseSchema, endpoints, ownValue } from "@satisfactory-dash/shared";
 import { describe, expect, it } from "vitest";
-import { isScenario, matchRoute, responsesFor, routeFor, ROUTES, SCENARIOS, type RouteKey, type ScenarioName } from "./scenarios";
+import {
+  isScenario,
+  matchRoute,
+  responsesFor,
+  routeFor,
+  ROUTES,
+  SCENARIOS,
+  WORLD_LAYER_ROUTES,
+  type RouteKey,
+  type ScenarioName,
+} from "./scenarios";
 
 describe("matchRoute", () => {
   it("maps every endpoint's own client path and method to its key", () => {
     for (const key of Object.keys(ROUTES) as RouteKey[]) {
       const route = routeFor(key);
       // A second argument for the paths that take one (a rule's or a command's id); the others ignore it.
-      const path = (route.path as (...args: string[]) => string)("default", "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e01");
+      // A world layer's second argument is its layer name, which is what tells its key from the other's.
+      const second = ownValue(WORLD_LAYER_ROUTES, key) ?? "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e01";
+      const path = (route.path as (...args: string[]) => string)("default", second);
       expect(matchRoute(route.method, path), key).toBe(key);
     }
+  });
+
+  it("tells the two world layers apart by the path's layer, and refuses an unknown layer", () => {
+    expect(matchRoute("GET", "/api/servers/default/map/world/rails")).toBe("mapRails");
+    expect(matchRoute("GET", "/api/servers/default/map/world/resourceNodes")).toBe("mapResourceNodes");
+    expect(matchRoute("GET", "/api/servers/default/map/world/belts")).toBeUndefined();
   });
 
   it("accepts a lowercase method", () => {

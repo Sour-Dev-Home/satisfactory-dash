@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { renderWithClient } from "../test/render";
 import type { FactoryResponse } from "@satisfactory-dash/shared";
 import { factoryMixed } from "@satisfactory-dash/shared/fixtures";
 import { describe, expect, it, vi } from "vitest";
@@ -38,7 +39,7 @@ describe("state backedUp vs isBackedUp (issue 201)", () => {
   });
 
   it("the map layer's text counts state-backedUp machines as backed up", async () => {
-    render(<MapPanel snapshot={snap(2, 1)} />);
+    renderWithClient(<MapPanel snapshot={snap(2, 1)} serverId="default" />);
     await screen.findByTestId("map-canvas");
     expect(screen.getByText(/buildings on the map:/)).toHaveTextContent(/1 backed up\./);
   });

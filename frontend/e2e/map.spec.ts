@@ -97,6 +97,40 @@ test("pan, zoom, hover and layer toggle work under the strict CSP", async ({ pag
   await expectNoAxeViolations(page, testInfo);
 });
 
+/** Whether any pixel on the map's canvases is this design token's colour. */
+const tokenOnCanvas = (page: Page, tokenName: string) =>
+  page.evaluate((name) => {
+    const hex = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    for (const canvas of document.querySelectorAll<HTMLCanvasElement>(".map-canvas canvas")) {
+      const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] > 0 && want.every((c, k) => Math.abs(data[i + k] - c) < 8)) return true;
+      }
+    }
+    return false;
+  }, tokenName);
+
+// ADR-0038 M5: the rails and resource nodes are the data-derived base map. Drawn on the canvas, and
+// also text, and each layer's toggle removes what it drew (the CSP gate above covers pan and zoom).
+test("the world layers draw, read as text, and toggle", async ({ page, mockApi }, testInfo) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText(/^1 rail segments on the map/)).toBeVisible();
+  await expect(page.getByText(/^7 resource nodes on the map \(2 in use\)/)).toBeVisible();
+  await expect(page.getByRole("table", { name: /Rail segments in view/ })).toBeVisible();
+  await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
+  await expect.poll(() => tokenOnCanvas(page, "--color-accent"), { message: "resource nodes on the canvas" }).toBe(true);
+
+  await page.getByRole("checkbox", { name: "Resource nodes" }).uncheck();
+  await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toHaveCount(0);
+  await expect.poll(() => tokenOnCanvas(page, "--color-accent"), { message: "no nodes after the toggle" }).toBe(false);
+  await page.getByRole("checkbox", { name: "Resource nodes" }).check();
+  await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
+
+  await expectNoAxeViolations(page, testInfo);
+});
+
 test.describe("the map's first view", () => {
   // The backed-up pulse is drawn on the canvas, which Playwright's `animations: "disabled"` can't
   // stop: under reduced motion the ring holds still, so the screenshot is stable.

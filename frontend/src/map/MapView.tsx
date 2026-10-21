@@ -14,7 +14,7 @@ function MapSkeleton() {
   );
 }
 
-/** Container: the map reuses the factory query (ADR-0023 decision 1: no new endpoint). */
+/** Container: the buildings reuse the factory query (ADR-0023 decision 1); MapPanel reads the world layers (ADR-0038) while they're on. */
 export function MapView() {
   const server = useSelectedServer();
   const factory = useQuery(queries.factory(server.id));
@@ -22,7 +22,7 @@ export function MapView() {
   return (
     <Loadable pending={factory.isPending} skeleton={<MapSkeleton />} className="grid gap-3">
       {factory.isError && <ErrorNotice error={factory.error} />}
-      {factory.data && <MapPanel snapshot={factory.data} />}
+      {factory.data && <MapPanel snapshot={factory.data} serverId={server.id} />}
     </Loadable>
   );
 }

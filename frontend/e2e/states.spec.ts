@@ -58,6 +58,10 @@ const CASES: StateCase[] = [
   { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/ },
   { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
+  // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
+  { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
+  { scenario: "map-world-truncated", path: "/app/map", shows: /The server cut this layer to its size limit/ },
+  { scenario: "map-world-error", path: "/app/map", shows: "Retry rails" },
   { scenario: "login", shows: "Sign in" },
   { scenario: "login-google", shows: "Sign in with Google" },
   {
