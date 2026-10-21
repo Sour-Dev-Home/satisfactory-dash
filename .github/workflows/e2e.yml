@@ -100,9 +100,14 @@ jobs:
 
       - name: Run e2e (regenerate baselines)
         if: steps.mode.outputs.update == 'true'
-        # `=all` rewrites every image; the default ("changed") skips diffs that fall
-        # under the toHaveScreenshot tolerance, which silently kept stale baselines (#60).
-        run: npm run e2e -w frontend -- --update-snapshots=all
+        # `=changed` rewrites only the images that fail the toHaveScreenshot tolerance (50 pixels,
+        # an absolute count since #82, so a real change can't hide in it as it could in the old 1%
+        # ratio that made `changed` keep stale baselines, #60), plus any that are missing. `=all`
+        # rewrote every image, and Chromium's antialiasing of rounded corners differs by one colour
+        # level in a handful of pixels from run to run (not the clock, fonts, transitions or
+        # Chromium flags: all tried), so a regeneration changed a different set of unrelated
+        # files each time (#503). A new, missing or really changed screenshot is still written.
+        run: npm run e2e -w frontend -- --update-snapshots=changed
 
       - name: Upload regenerated baselines
         if: steps.mode.outputs.update == 'true'
