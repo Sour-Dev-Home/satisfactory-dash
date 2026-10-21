@@ -60,20 +60,51 @@ a member of a self-serve one.
 | Setting (`backend/.env`, on AWS the task definition) | Cap | Default | Bounds | Refusal |
 |---|---|---|---|---|
 | `SELF_SERVE_ENABLED` | the kill switch | `false` | `true` or `false` | 403 `forbidden` |
-| `SELF_SERVE_MAX_SERVERS_PER_ACCOUNT` | C1, live self-serve servers one account owns | 2 | 1 to 20 | 409 `server_limit_reached` |
+| `SELF_SERVE_MAX_SERVERS_PER_ACCOUNT` | C1, live self-serve servers one account created | 2 | 1 to 20 | 409 `server_limit_reached` |
 | `SELF_SERVE_MAX_PENDING_PER_ACCOUNT` | C3, of those, never enrolled (no credential row, ever) | 1 | 1 to C1 | 409 `server_limit_reached`, naming the pending server |
 | `SELF_SERVE_MAX_SERVERS_TOTAL` | C2, live self-serve servers in total | 25 | 1 to 1000, at least C1 | 409 `server_limit_reached`, "the service is full" |
-| `SELF_SERVE_CREATES_PER_DAY` | C5, creations per account per 24 h (in memory; a refused create is not counted) | 5 | 1 to 100 | 429 `rate_limited` |
+| `SELF_SERVE_CREATES_PER_DAY` | C5, creations per account in any 24 h, removed servers included | 5 | 1 to 100 | 429 `rate_limited` with `Retry-After` |
+| `SELF_SERVE_PENDING_TTL_HOURS` | C4, hours a self-serve server may stay never-enrolled before the sweep removes it | 24 | 1 to 168 | (none: the server is removed) |
 
-The caps count self-serve servers only, and the operator's account is exempt from all of them. C1 to C3 are checked
-under the server-management advisory lock in the create transaction, so concurrent creates cannot pass one together. C5
-is in memory: a restart resets it, and a second backend instance would double it. Only the operator changes a setting,
-by editing it and restarting the backend; there is no API. A bad value stops the backend at startup, naming the
-variable. Lowering a cap never deletes a server; it only refuses new creates. Pending servers are not swept yet (C4,
-#526).
+The caps count self-serve servers only, and the operator's account is exempt from all of them. All are checked under
+the server-management advisory lock in the create transaction, so concurrent creates cannot pass one together. **C1, C3
+and C5 count by creator** (`servers.servers.created_by_user_id`, #526), not by current owner, so handing a server to
+another account never frees a slot. C5 counts the rows the account created in the last 24 hours, live or removed, so a
+restart does not reset it and create-and-remove churn is counted; a refused create writes no row and is not counted. Only
+the operator changes a setting, by editing it and restarting the backend; there is no API. A bad value stops the backend
+at startup, naming the variable. Lowering a cap never deletes a server; it only refuses new creates.
+
+**The owner may rename and remove their self-serve server** (#526, ADR-0046 section 1.8): `PATCH
+/api/servers/:serverId/name` and `DELETE /api/servers/:serverId`, the routes the operator uses for agent servers. Who gets
+what:
+
+| Caller | Self-serve server | Operator-created server |
+|---|---|---|
+| its owner | 200 | 403 `forbidden` (operator only, as before) |
+| an admin or viewer of it | 403 `forbidden` | 403 `forbidden` |
+| not a member (the operator included) | 404, as for an unknown server | 404 |
+| the operator, as a member | as above for their role | unchanged (the operator-only routes as before) |
+
+Ownership and `created_via` are re-checked under the server's row lock in the same transaction as the change. A remove is
+the same purge as `remove-server` (`abuse-response.md`, step 2): the agent's credential and any unspent code go (the agent
+gets 401), and so do the members, history, alerts and map; the runtime entry is dropped at once, so no restart is needed.
+It writes `server.deleted` with the owner's user id and `detail: { reason: "owner_removed" }`; a rename writes
+`server.updated` with `detail: { fields: ["displayName"] }`. A removed self-serve id is never handed out again: the create
+is a plain INSERT, so the same id is a unique violation.
+
+**The pending sweep (C4).** Every 10 minutes, the backend removes up to 50 self-serve servers (oldest first) that are
+older than `SELF_SERVE_PENDING_TTL_HOURS` and have no `agents.agent_credentials` row. A server that ever enrolled, even
+with a revoked credential, is never swept, and operator-created servers are never candidates. Each removal locks the
+server row and checks enrolment again in its own transaction (an enrolment in flight wins), then runs the same purge,
+writing `server.deleted` with no actor and `detail: { reason: "never_enrolled" }`. It runs whether or not
+`SELF_SERVE_ENABLED` is on, so turning creation off does not strand pending servers. The log line `removed self-serve
+servers that never enrolled` carries `{ swept, skipped }`, and the counter `satis.servers.pending_swept` (no labels) adds
+the number swept; counts only, never an id or a name. A steady rate of sweeps means accounts create servers they never
+connect (ADR-0045 M3's residual): look at `list-servers`.
 
 **To turn it on** (only once every ADR-0046 release gate in section 7 is closed and the owner says go):
-1. `npm run db:migrate` (the `created_via` column and the trigger, `1791590400000_self_serve_servers`).
+1. `npm run db:migrate` (the `created_via` column and the trigger, `1791590400000_self_serve_servers`; the creator
+   column and its index, `1791676800000_self_serve_creator`).
 2. Set `SELF_SERVE_ENABLED=true` in `backend/.env` (it needs `DATABASE_URL`) and, if needed, the caps above.
 3. Restart the backend. The startup log says `self-serve server creation is ON`.
 

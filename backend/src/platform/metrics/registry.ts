@@ -175,6 +175,7 @@ export const QUERY_NAMES = [
   // servers
   "servers.addMember",
   "servers.countConnections",
+  "servers.countRecentSelfServeCreations",
   "servers.countSelfServeServers",
   "servers.create.takeAdvisoryLock",
   "servers.createConnection.exists",
@@ -190,9 +191,12 @@ export const QUERY_NAMES = [
   "servers.listAgentServers",
   "servers.listConnectionMetas",
   "servers.listConnections",
+  "servers.listCreatedSelfServeServers",
   "servers.listOperatorAgentServers",
-  "servers.listOwnedSelfServeServers",
+  "servers.listPendingSelfServeServers",
   "servers.listServersForUser",
+  "servers.lockExpiredSelfServeServer",
+  "servers.lockServerForSelfServeOwner",
   "servers.lockServerByPublicId",
   "servers.removeMember",
   "servers.renameServer",
@@ -280,6 +284,12 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   "satis.signup.refused": {
     kind: "counter",
     labels: { reason: isOneOf("signup_busy", "network_limit") },
+  },
+  // #526 (ADR-0046 C4): self-serve servers the pending sweep removed because they never enrolled within the TTL. A sustained
+  // rate is accounts creating servers they never connect (M3's residual); `list-servers` names them.
+  "satis.servers.pending_swept": {
+    kind: "counter",
+    labels: {},
   },
   "satis.history.rows_written": {
     kind: "counter",

@@ -36,6 +36,7 @@ import {
   createServerManagementService,
   createSelfServeRouter,
   createSelfServeService,
+  createPendingServerSweeper,
   createServersRouter,
   addressVerdict,
   loadSelfServeConfigFromEnv,
@@ -313,9 +314,6 @@ const serverManagement = database
       releaseAgent: releaseAgentServer,
     })
   : undefined;
-const managementRouters = serverManagement
-  ? createServerManagementRouters(serverManagement, { isReady: () => serversRegistered })
-  : undefined;
 // ADR-0046: self-serve agent servers, shipped dark. SELF_SERVE_ENABLED (default false) and the caps are validated here; a bad
 // value stops the backend, and turning it on needs a database (the servers and their owners live in it).
 const selfServeConfig = orExit(() => {
@@ -324,21 +322,40 @@ const selfServeConfig = orExit(() => {
   return config;
 });
 logger.info({ selfServe: selfServeConfig.enabled }, selfServeConfig.enabled ? "self-serve server creation is ON" : "self-serve server creation is OFF");
-const selfServeRouter = database
-  ? createSelfServeRouter(
-      createSelfServeService({
-        db: database.pool,
-        config: selfServeConfig,
-        isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
-        enrolledServerIds,
-        // The same builder enrolment uses: the new server gets its agent-backed runtime entry.
-        attachRuntime: (publicId) => attachAgentRuntime(publicId),
-        onAttachError: (serverId, err) =>
-          logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a new self-serve server's runtime entry could not be built; its first snapshot attaches it"),
-      }),
-      { config: selfServeConfig, isReady: () => serversRegistered },
-    )
+const selfServeService = database
+  ? createSelfServeService({
+      db: database.pool,
+      config: selfServeConfig,
+      isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
+      enrolledServerIds,
+      // The same builder enrolment uses: the new server gets its agent-backed runtime entry.
+      attachRuntime: (publicId) => attachAgentRuntime(publicId),
+      onAttachError: (serverId, err) =>
+        logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a new self-serve server's runtime entry could not be built; its first snapshot attaches it"),
+      // #526: an owner's rename and remove update the running servers after their commit.
+      runtime: directory,
+    })
   : undefined;
+const selfServeRouter = selfServeService
+  ? createSelfServeRouter(selfServeService, { config: selfServeConfig, isReady: () => serversRegistered })
+  : undefined;
+// #526 (ADR-0046 section 1.8): the self-serve owner may also rename and remove their server (the contract's `selfServeOwner`).
+const managementRouters = serverManagement
+  ? createServerManagementRouters(serverManagement, { isReady: () => serversRegistered, selfServeOwner: selfServeService })
+  : undefined;
+// #526 (ADR-0046 C4): self-serve servers that never enrolled within SELF_SERVE_PENDING_TTL_HOURS are removed. Runs whatever
+// SELF_SERVE_ENABLED says (turning creation off must not strand pending servers), started with the other database workers.
+if (database) {
+  databaseWorkers.push(
+    createPendingServerSweeper({
+      db: database.pool,
+      logger: logger.child({ worker: "pending-servers" }),
+      ttlHours: selfServeConfig.pendingTtlHours,
+      enrolledServerIds,
+      removeRuntime: (publicId) => directory.remove(publicId),
+    }),
+  );
+}
 // ADR-0030: false when a stored connection cannot be opened (no key, an unknown key id, a modified
 // value). The backend stays up and serves the readable servers, but reports not-ready.
 let connectionsReadable = true;
