@@ -101,7 +101,7 @@ added or removed.
   image, a throwaway staging task with its own PostgreSQL and tunnel, an automatic promotion of the same digests once staging passes,
   alarm rollback, expand/contract migrations, cost and build tasks.
 - [`decisions/0050-production-planner.md`](./decisions/0050-production-planner.md) — production planner (#588,
-  proposed): the backend coarsens the finder's connection graph into machine groups with inferred items and measured or
+  accepted 2026-10-21): the backend coarsens the finder's connection graph into machine groups with inferred items and measured or
   estimated rates, dagre lays out one site at a time in a lazy chunk, sites are computed from connected components
   merged by distance, which graph algorithms are worth building, train links gated on a capture, build tasks.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed

@@ -1,0 +1,1 @@
+- 2026-10-21 — ADR-0050 accepted by the owner: a Planner tab, hidden until the graph view lands, player-named sites in phase 2, and a read-only train capture approved for the phase 3 gate.

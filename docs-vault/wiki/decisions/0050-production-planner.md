@@ -1,6 +1,6 @@
 # ADR-0050: Production planner, the whole factory as a graph of machine groups
 
-Status: **proposed** (architect, 2026-10-21, for the owner's review; answers go at the end). Issue #588. Builds on
+Status: **accepted** (owner, 2026-10-21; answers at the end; proposed by the architect the same day). Issue #588. Builds on
 ADR-0048 and its accepted amendment (the `conveyors` world layer and the finder's connection graph) and ADR-0038 (the
 10-minute world tier). Paths are under `backend/src/modules/` unless they start with a top-level directory.
 
@@ -290,3 +290,14 @@ it, all on data present today.
    only the computed names until you have used them?
 4. **Train links:** may the mod or adapter session take a fresh read-only `getTrainStation` and `getTrains` capture on
    your live save (FRM 1.5.4), to open phase 3?
+
+## Owner answers (2026-10-21)
+
+1. **Placement:** a new **Planner** tab, lazy-loaded (as proposed).
+2. **Release:** **hidden until the graph view lands.** PR 5's site overview and tables merge hidden (no tab link,
+   like the bottleneck PRs 1-4), and PR 6 makes the whole Planner visible at once.
+3. **Player-named sites:** **yes, phase 2**, as proposed: the `map.site_names` table, anchored by position and never by
+   id, written by owners and admins, on the server-removal purge list, with security-reviewer.
+4. **Train data:** **yes**. A session may take one read-only `getTrainStation` + `getTrains` capture from the owner's live
+   save (FRM 1.5.4), trimmed before it goes into `docs-vault/raw-sources/` (a handful of records, no full payloads). It
+   checks the phase 3 gate: platform ids equal belt end ids, and station names resolve uniquely.
