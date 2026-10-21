@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useSelectedServer } from "../servers/ServerContext";
-import { Loadable, PanelSkeleton } from "../ui/Skeleton";
+import { Loadable, PanelSkeleton, Skeleton } from "../ui/Skeleton";
 import { MapCanvasSkeleton, MapPanel } from "./MapPanel";
 
 /** The map panel while the factory loads: its heading, its layer row and the canvas's own box. */
@@ -10,6 +10,8 @@ function MapSkeleton() {
   return (
     <PanelSkeleton label="Loading the map…" rows={1} rowClass="h-touch">
       <MapCanvasSkeleton announce={false} />
+      {/* The legends, notes and tables under the map: about this tall once they arrive. */}
+      <Skeleton className="h-48" />
     </PanelSkeleton>
   );
 }

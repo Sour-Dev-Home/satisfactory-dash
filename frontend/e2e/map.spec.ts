@@ -120,11 +120,11 @@ test("the world layers draw, read as text, and toggle", async ({ page, mockApi }
   await expect(page.getByText(/^7 resource nodes on the map \(2 in use\)/)).toBeVisible();
   await expect(page.getByRole("table", { name: /Rail segments in view/ })).toBeVisible();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
-  await expect.poll(() => tokenOnCanvas(page, "--color-accent"), { message: "resource nodes on the canvas" }).toBe(true);
+  await expect.poll(() => tokenOnCanvas(page, "--color-node"), { message: "resource nodes on the canvas" }).toBe(true);
 
   await page.getByRole("checkbox", { name: "Resource nodes" }).uncheck();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toHaveCount(0);
-  await expect.poll(() => tokenOnCanvas(page, "--color-accent"), { message: "no nodes after the toggle" }).toBe(false);
+  await expect.poll(() => tokenOnCanvas(page, "--color-node"), { message: "no nodes after the toggle" }).toBe(false);
   await page.getByRole("checkbox", { name: "Resource nodes" }).check();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
 
