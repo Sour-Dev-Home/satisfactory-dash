@@ -58,6 +58,21 @@ describe("apiGet", () => {
     }
   });
 
+  it("reads a whole-second Retry-After onto the ApiError, and ignores a date or junk", async () => {
+    const retryAfterFor = async (header: string | undefined) => {
+      server.use(
+        http.get(endpoints.status.route, () =>
+          HttpResponse.json(errorUpstreamUnreachable, { status: 429, headers: header ? { "Retry-After": header } : undefined }),
+        ),
+      );
+      return ((await caught(apiGet(endpoints.status, "default"))) as ApiError).retryAfterSeconds;
+    };
+    expect(await retryAfterFor("120")).toBe(120);
+    expect(await retryAfterFor(undefined)).toBeUndefined();
+    expect(await retryAfterFor("Wed, 21 Oct 2026 07:28:00 GMT")).toBeUndefined();
+    expect(await retryAfterFor("-5")).toBeUndefined();
+  });
+
   it("throws ApiError with status, code, message and requestId for an error envelope", async () => {
     server.use(http.get(endpoints.status.route, () => HttpResponse.json(errorUpstreamUnreachable, { status: 502 })));
     const error = await caught(apiGet(endpoints.status, "default"));

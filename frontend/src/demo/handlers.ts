@@ -103,6 +103,9 @@ export const demoHandlers = [
     return guarded(params, () => (body.host === undefined || onThisMachine(body.host) ? NOT_SAVED() : LAN_REFUSED()));
   }),
   del(endpoints.serverManagement.remove.route, ({ params }) => guarded(params, NOT_SAVED)),
+  // ADR-0046: the demo's list never says `selfServeEnabled`, so no screen offers "Add your server"; the route is
+  // refused like every other server change, should something call it.
+  post(endpoints.selfServe.createAgentServer.route, ({ params }) => guarded(params, NOT_SAVED)),
   // ADR-0031: an agent server's rename and switch back to local are server changes too, refused alike.
   patch(endpoints.serverManagement.renameAgent.route, ({ params }) => guarded(params, NOT_SAVED)),
   post(endpoints.serverManagement.switchToLocal.route, ({ params }) => guarded(params, NOT_SAVED)),
