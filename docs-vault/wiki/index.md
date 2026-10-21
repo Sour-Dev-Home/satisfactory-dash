@@ -88,6 +88,9 @@ added or removed.
 - [`decisions/0046-self-serve-agent-servers.md`](./decisions/0046-self-serve-agent-servers.md) — self-serve agent
   servers with per-account caps (#517, proposed): how a signed-in player creates a server without the operator, the
   caps and who raises them, abuse response, the privacy-page changes, and build tasks #523 to #530.
+- [`decisions/0047-account-deletion-and-leaving.md`](./decisions/0047-account-deletion-and-leaving.md) — account
+  deletion and leaving a server (#311, proposed): delete rather than anonymise, audit rows kept for their year, what
+  happens to owned servers, recent sign-in to delete, and the two new error codes.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions, and the
   [overview cards brief](./architecture/overview-cards.md) (Players, Tick rate, Health).
