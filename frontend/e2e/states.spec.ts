@@ -291,7 +291,7 @@ const CASES: StateCase[] = [
     path: "/app/settings",
     shows: /can.t be undone/,
     clock: AGENT_NOW,
-    act: (page) => page.getByRole("button", { name: "Delete My first world" }).click(),
+    act: (page) => page.getByRole("button", { name: "Remove My first world from Satisfactory Dash" }).click(),
   },
   // ADR-0047 (#311 task 3): Settings → Delete my account, its confirm, its two refusals, and leaving a server.
   { scenario: "account-delete", path: "/app/settings", shows: "Deleting your account removes:", clock: AGENT_NOW },

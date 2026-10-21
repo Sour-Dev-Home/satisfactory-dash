@@ -13,8 +13,9 @@ import { LEAVE_EFFECT, OWNER_CANNOT_LEAVE, OWNER_REMOVE_INSTEAD, canLeave, isLas
  */
 export function LeaveServerPanel() {
   const server = useSelectedServer();
-  const { change } = useServerSwitch();
-  const leave = useLeaveServer(server.id, change);
+  const { left } = useServerSwitch();
+  // ServerGate drops the selection and says "You left {name}." wherever it lands, with focus there.
+  const leave = useLeaveServer(server.id, () => left(server.displayName));
   const [confirming, setConfirming] = useState(false);
   const [returnFocus, setReturnFocus] = useState(false);
   const sending = useRef(false);

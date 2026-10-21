@@ -1,7 +1,7 @@
 import { CreateAgentServerRequestSchema, type ServerSummary } from "@satisfactory-dash/shared";
 import { ApiError } from "../api/errors";
 
-/** ADR-0046: the owner of a server created through self-serve may rename and delete it. Nobody else is offered the controls. */
+/** ADR-0046: the owner of a server created through self-serve may rename it and remove it from Satisfactory Dash. Nobody else is offered the controls. */
 export function isSelfServeOwner(server: Pick<ServerSummary, "role" | "createdVia">): boolean {
   return server.role === "owner" && server.createdVia === "self_serve";
 }
@@ -29,9 +29,12 @@ export function pendingServerName(
   )?.displayName;
 }
 
-export const DELETE_LEAD = "Deleting removes this server from the dashboard for good. What goes:";
-export const DELETE_GOES = ["Its history and alerts", "Its push settings and members", "Its agent or mod connection, which stops working"];
-export const DELETE_CLOSING = "This can't be undone. Your game server and save are not touched.";
+// ADR-0047 amendment (owner, 2026-10-21): a server is "removed from Satisfactory Dash", never "deleted"; the player's game
+// and its saves are never touched.
+export const REMOVE_LEAD = "Removing takes this server off Satisfactory Dash for good. What goes:";
+export const REMOVE_GOES = ["Its history and alerts", "Its push settings and members", "Its agent or mod connection, which stops working"];
+export const REMOVE_CLOSING = "This can't be undone.";
+export const REMOVE_GAME_UNTOUCHED = "Your game and its saves are never touched: nothing on your game PC changes.";
 
 export const CODE_LIFETIME = "10 minutes";
 
@@ -73,7 +76,7 @@ export function addServerErrorText(error: unknown): string | undefined {
   return undefined;
 }
 
-/** The text for a failed rename or delete, or undefined for ErrorNotice. */
+/** The text for a failed rename or removal, or undefined for ErrorNotice. */
 export function ownerActionErrorText(error: unknown): string | undefined {
   if (!(error instanceof ApiError)) return undefined;
   if (error.code === "forbidden") return "Only the owner of a server you added can do that.";
