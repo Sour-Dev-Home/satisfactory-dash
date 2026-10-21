@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MappedRailSegments, MappedResourceNodes } from "@satisfactory-dash/game-adapter";
+import type { MappedConveyors, MappedRailSegments, MappedResourceNodes } from "@satisfactory-dash/game-adapter";
 import { MAP_WORLD_LAYER_MAX_BYTES } from "@satisfactory-dash/shared";
 import type { MapWorldLayer, WorldIngestResponse } from "@satisfactory-dash/shared";
 import { backoffDelayMs } from "./backoff.js";
@@ -12,6 +12,8 @@ import { failureCode } from "./sampler.js";
 
 /** Rails: every 10 min (ADR-0038 §1), the same cadence as the backend's local poller (localWorldPoller.ts). */
 export const RAILS_INTERVAL_MS = 600_000;
+/** Conveyors (ADR-0048 amendment): every 10 min, the same world tier as rails; the graph changes only when the player builds. */
+export const CONVEYORS_INTERVAL_MS = 600_000;
 /** Resource nodes: every 30 min. `getResourceNode` runs on the game thread, so it is read least often. */
 export const RESOURCE_NODES_INTERVAL_MS = 1_800_000;
 /** ±10%, as the local poller: agents that started together do not read their games in the same tick. */
@@ -21,6 +23,7 @@ export const WORLD_JITTER_FRACTION = 0.1;
 export interface WorldPorts {
   getRails(): Promise<MappedRailSegments>;
   getResourceNodes(): Promise<MappedResourceNodes>;
+  getConveyors(): Promise<MappedConveyors>;
 }
 
 export interface WorldClient {
@@ -46,11 +49,20 @@ export function jitteredIntervalMs(baseMs: number, random: () => number = Math.r
   return Math.round(baseMs * (1 - WORLD_JITTER_FRACTION + r * 2 * WORLD_JITTER_FRACTION));
 }
 
+/** What a layer read returns: the projected items, the count the mapper dropped and, for a layer that has none to send this
+ *  cycle (conveyors: an FRM without connection fields, or over the edge cap), why. */
+interface WorldRead {
+  data: unknown[];
+  dropped: number;
+  skip?: string;
+}
+
 /** The streak state of one layer: what was last accepted, and which warnings this streak has already logged. */
 interface LayerState {
   sentHash: string | undefined;
   readFailing: boolean;
   overCap: boolean;
+  skipped: boolean;
   refused: boolean;
 }
 
@@ -76,15 +88,19 @@ export class WorldReader {
     if (signal.aborted) return;
     signal.addEventListener("abort", stopFromOutside, { once: true });
     try {
-      await Promise.all([this.loop("rails", RAILS_INTERVAL_MS, () => ports.getRails()), this.loop("resourceNodes", RESOURCE_NODES_INTERVAL_MS, () => ports.getResourceNodes())]);
+      await Promise.all([
+        this.loop("rails", RAILS_INTERVAL_MS, () => ports.getRails()),
+        this.loop("resourceNodes", RESOURCE_NODES_INTERVAL_MS, () => ports.getResourceNodes()),
+        this.loop("conveyors", CONVEYORS_INTERVAL_MS, () => ports.getConveyors()),
+      ]);
     } finally {
       signal.removeEventListener("abort", stopFromOutside);
     }
   }
 
-  private async loop(layer: MapWorldLayer, intervalMs: number, read: () => Promise<{ data: unknown[]; dropped: number }>): Promise<void> {
+  private async loop(layer: MapWorldLayer, intervalMs: number, read: () => Promise<WorldRead>): Promise<void> {
     const sleep = this.options.sleep ?? abortableSleep;
-    const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, refused: false };
+    const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, skipped: false, refused: false };
     const { signal } = this.stop;
     while (!signal.aborted) {
       await this.cycle(layer, state, read);
@@ -93,9 +109,9 @@ export class WorldReader {
     }
   }
 
-  private async cycle(layer: MapWorldLayer, state: LayerState, read: () => Promise<{ data: unknown[]; dropped: number }>): Promise<void> {
+  private async cycle(layer: MapWorldLayer, state: LayerState, read: () => Promise<WorldRead>): Promise<void> {
     const { logger } = this.options;
-    let mapped: { data: unknown[]; dropped: number };
+    let mapped: WorldRead;
     try {
       mapped = await read();
     } catch (err) {
@@ -105,6 +121,14 @@ export class WorldReader {
     }
     state.readFailing = false;
     if (mapped.dropped > 0) logger.warn("world_layer_items_dropped", { layer, dropped: mapped.dropped });
+
+    // No layer this cycle: send nothing (the backend keeps its last good copy), one warning per streak.
+    if (mapped.skip !== undefined) {
+      if (!state.skipped) logger.warn("world_layer_skipped", { layer, reason: mapped.skip });
+      state.skipped = true;
+      return;
+    }
+    state.skipped = false;
 
     const hash = createHash("sha256").update(JSON.stringify(mapped.data)).digest("hex");
     if (hash === state.sentHash) return;

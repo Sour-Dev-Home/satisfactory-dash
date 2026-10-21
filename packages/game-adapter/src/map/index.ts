@@ -1,6 +1,8 @@
 export { mapRailSegment, mapRailSegments } from "./railsMapper.js";
 export type { MappedRailSegments } from "./railsMapper.js";
-export { mapResourceNode, mapResourceNodes } from "./resourceNodesMapper.js";
+export { mapConveyors, mapConveyor, classifyConveyorEnd } from "./conveyorsMapper.js";
+export type { MappedConveyors, RawConveyorResponses } from "./conveyorsMapper.js";
+export { mapResourceNode,mapResourceNodes } from "./resourceNodesMapper.js";
 export type { MappedResourceNodes } from "./resourceNodesMapper.js";
 export { mapTrain, mapTrains } from "./trainsMapper.js";
 export type { MappedTrains } from "./trainsMapper.js";

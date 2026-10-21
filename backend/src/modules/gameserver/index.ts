@@ -19,6 +19,7 @@ export type {
   BuildingPowerUsage,
   Player,
   SessionInfo,
+  MappedConveyors,
   MappedRailSegments,
   MappedResourceNodes,
   MappedTrains,

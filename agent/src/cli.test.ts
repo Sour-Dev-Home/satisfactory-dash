@@ -307,7 +307,7 @@ describe("run", () => {
     expect(t.all()).not.toContain(API_TOKEN);
   });
 
-  const worldPorts = (): WorldPorts => ({ getRails: vi.fn(async () => ({ data: [], dropped: 0 })), getResourceNodes: vi.fn(async () => ({ data: [], dropped: 0 })) });
+  const worldPorts = (): WorldPorts => ({ getRails: vi.fn(async () => ({ data: [], dropped: 0 })), getResourceNodes: vi.fn(async () => ({ data: [], dropped: 0 })), getConveyors: vi.fn(async () => ({ data: [], dropped: 0 })) });
 
   it("passes the game connection's world ports to runAgent as `world`, beside the reader and a client that can send world layers (ADR-0038 M4)", async () => {
     const dpapi = await enrolled();
