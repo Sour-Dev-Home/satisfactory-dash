@@ -17,7 +17,7 @@ import { createQueryClient, queries } from "../api/queries";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
-import { FactoryView, REVEAL_GRACE_MS } from "./FactoryView";
+import { FactoryView } from "./FactoryView";
 
 // Testing Library's cleanup unmounts the view, which aborts every query still in flight. MSW 3's
 // interceptor throws an unhandled InterceptorError when that abort lands in the few microtasks
@@ -74,8 +74,8 @@ function holdSinceYesterday(serverId?: string): () => void {
   return release;
 }
 
-/** Generous slack over the grace for a loaded CI machine; still far below a slow history read. */
-const WITHIN_GRACE = { timeout: REVEAL_GRACE_MS + 700 };
+/** Generous slack for a loaded CI machine; still far below a slow history read. */
+const WITHIN_GRACE = { timeout: 1_500 };
 
 describe("FactoryView", () => {
   it("polls factory every 30 s (ADR-0005)", () => {
@@ -90,14 +90,15 @@ describe("FactoryView", () => {
       }),
     );
     renderView();
-    expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
-    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(screen.getByText("Loading factory…")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Factory" }, WITHIN_GRACE)).toBeInTheDocument();
   });
 
-  // ADR-0032: one reveal when "Since yesterday" is quick, and the table never waits on it for long.
-  it("reveals the table and 'Since yesterday' together when both land within the grace", async () => {
+  // ADR-0032, #494: the shell holds the page for its queries; the view itself never waits on history.
+  it("shows the table and, once it lands, 'Since yesterday' with no loading step left", async () => {
     renderView();
-    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Factory" }, WITHIN_GRACE)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /Since yesterday/ }, WITHIN_GRACE)).toBeInTheDocument();
     // Both were in by the reveal: no loading step left inside the reserved box.
     expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
     expect(screen.queryByText(/Loading what changed since yesterday/)).not.toBeInTheDocument();
@@ -188,7 +189,7 @@ describe("FactoryView", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
-  it("gives a newly-selected server its own grace, without leaking the old server's reveal", async () => {
+  it("gives a newly-selected server its own load, without leaking the old server's page", async () => {
     server.use(
       http.get(endpoints.factory.route, ({ params }) =>
         HttpResponse.json(params.serverId === "creative-test" ? factoryEmpty : factoryMixed),
@@ -203,10 +204,10 @@ describe("FactoryView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Switch server" }));
     // The previous server's page must not stay up while the new one loads.
-    expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
+    expect(screen.getByText("Loading factory…")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Factory" })).not.toBeInTheDocument();
 
-    // The new server's 7d read is still held: its table shows after the grace anyway.
+    // The new server's 7d read is still held: its table shows without it.
     expect(await screen.findByText("No machines yet.", {}, WITHIN_GRACE)).toBeInTheDocument();
     expect(screen.getByText(/Loading what changed since yesterday/)).toBeInTheDocument();
 
@@ -235,22 +236,19 @@ describe("FactoryView", () => {
     release();
   });
 
-  it("waits on the factory itself past the grace, then reveals with 'Since yesterday' already in place", async () => {
+  it("waits on the factory itself, with no table until it lands", async () => {
     server.use(
       http.get(endpoints.factory.route, async () => {
-        await delay(REVEAL_GRACE_MS + 200);
+        await delay(500);
         return HttpResponse.json(factoryMixed);
       }),
     );
     renderView();
-    // Still loading well past the grace: the factory's own read is what's pacing this, not history.
-    await act(() => delay(REVEAL_GRACE_MS + 50));
-    expect(screen.getByRole("status")).toHaveTextContent("Loading factory");
+    await act(() => delay(100));
+    expect(screen.getByText("Loading factory…")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Factory" })).not.toBeInTheDocument();
 
     expect(await screen.findByRole("region", { name: "Factory" }, WITHIN_GRACE)).toBeInTheDocument();
-    // "Since yesterday" was ready well before the factory landed, so it shows immediately too.
-    expect(screen.queryByText(/Loading what changed since yesterday/)).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
   });
 
   it("shows an already-revealed server's content again immediately when switching back to it", async () => {
@@ -292,16 +290,16 @@ describe("FactoryView", () => {
     expect(screen.queryByText("No machines yet.")).not.toBeInTheDocument();
   });
 
-  it("clears its grace timer on unmount, so it never fires a late state update", async () => {
+  it("clears its skeleton timers on unmount, so it never fires a late state update", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { unmount } = renderView();
     unmount();
-    await delay(REVEAL_GRACE_MS + 100);
+    await delay(500);
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
-  it("still reveals correctly once under StrictMode's double-invoked effects", async () => {
+  it("still shows correctly once under StrictMode's double-invoked effects", async () => {
     const client = createQueryClient();
     render(
       <StrictMode>
@@ -312,8 +310,8 @@ describe("FactoryView", () => {
         </QueryClientProvider>
       </StrictMode>,
     );
-    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /Since yesterday/ })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Factory" }, WITHIN_GRACE)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /Since yesterday/ }, WITHIN_GRACE)).toBeInTheDocument();
   });
 
   // StrictMode double-invokes render (a render-phase setState like seenLocation's must be idempotent

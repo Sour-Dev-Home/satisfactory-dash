@@ -1,3 +1,4 @@
+import { Loadable, Skeleton, SkeletonStatus } from "../../ui/Skeleton";
 import { useMemo, type ReactNode } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { AlertDestinationsResponse, AlertRule, AlertStatusResponse } from "@satisfactory-dash/shared";
@@ -104,11 +105,8 @@ function Part<T>({
       <h4 id={id} className="mb-0">
         {heading}
       </h4>
-      {query.isPending ? (
-        <p role="status" className="mb-0">
-          {loading}
-        </p>
-      ) : !query.data ? (
+      <Loadable pending={query.isPending} skeleton={<PartSkeleton label={loading} />}>
+      {!query.data ? (
         <ErrorNotice
           error={query.error}
           action={
@@ -120,6 +118,18 @@ function Part<T>({
       ) : (
         children(query.data)
       )}
+      </Loadable>
+    </div>
+  );
+}
+
+/** One part of the alert settings while it loads: a couple of lines where its content will be. */
+function PartSkeleton({ label }: { label: string }) {
+  return (
+    <div className="grid gap-2">
+      <SkeletonStatus>{label}</SkeletonStatus>
+      <Skeleton className="h-lh w-64" />
+      <Skeleton className="h-touch w-40" />
     </div>
   );
 }

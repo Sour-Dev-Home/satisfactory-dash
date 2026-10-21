@@ -53,8 +53,11 @@ behind each step; this page is the order and the files. The worked example is th
       `serverManagement/ServerRow.tsx`).
 - [ ] **Focus:** a control that swaps itself for a confirm moves focus into it, and back on cancel. Use a
       stable `useCallback` ref: a view that re-renders every second re-focuses with an inline one.
-- [ ] **Layout-stable loading:** a placeholder above other content reserves its final height (a token), or the
-      page reveals once. `e2e/tab-switch.spec.ts` fails a shift above CLS 0.02.
+- [ ] **Layout-stable loading (#494):** the loading branch is `<Loadable pending skeleton>` with a skeleton
+      shaped like the panel (`ui/Skeleton.tsx`: `Skeleton`, `PanelSkeleton`, `SkeletonLine`; no "Loading…"
+      text line). Its page's primary queries go in `shell/pageQueries.ts` (the page reveals once they answer or
+      the budget passes, and the nav link prefetches them). `e2e/tab-switch.spec.ts` and
+      `e2e/page-reveal.spec.ts` fail a shift above CLS 0.02; add the page to the latter's `PAGES`.
 
 ## 3. Mocks, three of them
 

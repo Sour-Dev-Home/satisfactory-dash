@@ -1,3 +1,4 @@
+import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentStatusResponse } from "@satisfactory-dash/shared";
@@ -54,11 +55,8 @@ export function AgentSettings() {
   return (
     <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4">
       <h3 id="agent-settings-heading">Game PC agent</h3>
-      {status.isPending ? (
-        <p role="status" className="mb-0">
-          Loading the agent's status…
-        </p>
-      ) : !status.data ? (
+      <Loadable pending={status.isPending} skeleton={<AgentSkeleton />}>
+      {!status.data ? (
         <ErrorNotice
           error={status.error}
           action={
@@ -81,7 +79,19 @@ export function AgentSettings() {
           onRevoke={() => revoke.mutate(undefined, { onSuccess: () => setCode(null) })}
         />
       )}
+      </Loadable>
     </section>
+  );
+}
+
+/** The agent's status while it loads: the status line and the buttons under it. */
+function AgentSkeleton() {
+  return (
+    <div className="grid gap-3">
+      <SkeletonStatus>Loading the agent's status…</SkeletonStatus>
+      <Skeleton className="h-lh w-64" />
+      <Skeleton className="h-touch w-40" />
+    </div>
   );
 }
 

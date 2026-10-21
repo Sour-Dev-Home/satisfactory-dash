@@ -241,9 +241,41 @@ const players12 = (online: number): Partial<Record<RouteKey, MockResponse>> => (
   }),
 });
 
+/** A page's data reads, each answering after this long: past the 400 ms page budget (#494), so the pages show skeletons. */
+const SLOW_MS = 800;
+const slow = (response: MockResponse): MockResponse => ({ ...response, delay: SLOW_MS });
+
 /** Every state the visual checks cover (ADR-0016 item 5). Keys are URL-safe. */
 export const SCENARIOS = {
   default: {},
+  // Every page's primary reads answer slowly (#494): the page waits its budget, reveals with skeletons
+  // where the data isn't in, then fills each panel without moving the layout.
+  // Some reads never answer, so each page holds its skeletons for a screenshot (#494): the factory
+  // (Factory and Map), the stored history, the live power history, the agent's status and the alert rules.
+  "loading-panels": {
+    factory: { ...BASE.factory, delay: "never" },
+    historyItems: { ...BASE.historyItems, delay: "never" },
+    historyTransitions: { ...BASE.historyTransitions, delay: "never" },
+    powerHistory: { ...BASE.powerHistory, delay: "never" },
+    agentStatus: { ...BASE.agentStatus, delay: "never" },
+    alertRules: { ...BASE.alertRules, delay: "never" },
+  },
+  "slow-queries": {
+    status: slow(BASE.status),
+    players: slow(BASE.players),
+    power: slow(BASE.power),
+    powerHistory: slow(BASE.powerHistory),
+    factory: slow(BASE.factory),
+    settings: slow(BASE.settings),
+    managedServers: slow(BASE.managedServers),
+    historyPower: slow(BASE.historyPower),
+    historyItems: slow(BASE.historyItems),
+    historyTransitions: slow(BASE.historyTransitions),
+    agentStatus: slow(BASE.agentStatus),
+    alertStatus: slow(BASE.alertStatus),
+    alertRules: slow(BASE.alertRules),
+    alertDestinations: slow(BASE.alertDestinations),
+  },
   "loading": { session: { status: 200, delay: "never" } },
   "login": { session: ok(sessionAnonymous) },
   // A backend with Google sign-in on (ADR-0025): the button shows above the password form.

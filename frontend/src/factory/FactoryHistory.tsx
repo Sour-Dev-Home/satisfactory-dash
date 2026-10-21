@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { HistoryRange } from "@satisfactory-dash/shared";
-import { queries } from "../api/queries";
+import { keepForServer, queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { cn } from "../lib/cn";
+import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { HISTORY_ANCHOR } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
 import { useSelectedServer } from "../servers/ServerContext";
@@ -26,7 +27,7 @@ export function sinceYesterdayQueries(serverId: string) {
 const isHistoryAnchor = (id: string) => id === HISTORY_ANCHOR;
 
 /** The box "Since yesterday" reserves in every state, so nothing it shows moves the table below. */
-const SINCE_YESTERDAY_BOX = "h-since-yesterday-phone sm:h-since-yesterday-mid lg:h-since-yesterday-wide";
+export const SINCE_YESTERDAY_BOX = "h-since-yesterday-phone sm:h-since-yesterday-mid lg:h-since-yesterday-wide";
 
 /**
  * Container for "Since yesterday" (ADR-0027 item 6): the 7d range's hourly buckets, and the last
@@ -38,34 +39,39 @@ export function SinceYesterdayView({ labels }: { labels: Map<string, ItemLabel> 
   const since = sinceYesterdayQueries(server.id);
   const history = useQuery(since.history);
   const transitions = useQuery(since.transitions);
-  if (history.isPending) {
-    return (
-      <p role="status" className={cn("panel place-content-center text-muted", SINCE_YESTERDAY_BOX)}>
-        Loading what changed since yesterday…
-      </p>
-    );
-  }
-  if (!history.data) {
-    return (
-      <div className={cn("grid content-start overflow-y-auto", SINCE_YESTERDAY_BOX)}>
-        <ErrorNotice
-          error={history.error}
-          action={
-            <button type="button" onClick={() => void history.refetch()}>
-              Retry
-            </button>
-          }
-        />
-      </div>
-    );
-  }
   return (
-    <SinceYesterdayPanel
-      history={history.data.data}
-      transitions={transitions.data?.data}
-      labels={labels}
-      className={SINCE_YESTERDAY_BOX}
-    />
+    <Loadable pending={history.isPending} skeleton={<SinceYesterdaySkeleton />} className={SINCE_YESTERDAY_BOX}>
+      {history.data ? (
+        <SinceYesterdayPanel
+          history={history.data.data}
+          transitions={transitions.data?.data}
+          labels={labels}
+          className={SINCE_YESTERDAY_BOX}
+        />
+      ) : (
+        <div className={cn("grid content-start overflow-y-auto", SINCE_YESTERDAY_BOX)}>
+          <ErrorNotice
+            error={history.error}
+            action={
+              <button type="button" onClick={() => void history.refetch()}>
+                Retry
+              </button>
+            }
+          />
+        </div>
+      )}
+    </Loadable>
+  );
+}
+
+/** "Since yesterday" while it loads: a panel in the reserved box, a heading bar over one big block. */
+export function SinceYesterdaySkeleton() {
+  return (
+    <section aria-busy="true" className={cn("panel", SINCE_YESTERDAY_BOX)}>
+      <SkeletonStatus>Loading what changed since yesterday…</SkeletonStatus>
+      <Skeleton className="h-lh w-40 text-xl" />
+      <Skeleton className="size-full" />
+    </section>
   );
 }
 
@@ -78,11 +84,10 @@ export function SinceYesterdayView({ labels }: { labels: Map<string, ItemLabel> 
 function ItemHistorySkeleton() {
   return (
     <div className="grid gap-3">
-      <p role="status" className="flex min-h-touch items-center text-sm text-muted">
-        Loading production history…
-      </p>
+      <SkeletonStatus>Loading production history…</SkeletonStatus>
+      <Skeleton className="h-touch" />
       <p className="invisible">Loading</p>
-      <div aria-hidden="true" className="h-chart-slot-phone rounded-md bg-surface-2 motion-safe:animate-pulse sm:h-chart-slot" />
+      <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
       <p className="invisible text-sm">
         A break in the line means nothing was recorded then (the game was paused or the server couldn't be reached).
       </p>
@@ -104,9 +109,8 @@ function ItemHistoryRange({
   onItem: (item: string) => void;
 }) {
   const server = useSelectedServer();
-  const history = useQuery(queries.historyItems(server.id, range));
-  if (history.isPending) return <ItemHistorySkeleton />;
-  if (!history.data) {
+  const history = useQuery({ ...queries.historyItems(server.id, range), placeholderData: keepForServer(server.id) });
+  if (!history.data && !history.isPending) {
     return (
       <ErrorNotice
         error={history.error}
@@ -119,10 +123,15 @@ function ItemHistoryRange({
     );
   }
   return (
-    <>
+    <Loadable pending={history.isPending} skeleton={<ItemHistorySkeleton />}>
       {history.isError && <ErrorNotice error={history.error} />}
-      <ItemHistoryPanel history={history.data.data} labels={labels} item={item} onItem={onItem} />
-    </>
+      {history.data && (
+        // Keyed by the range the data is for: the last range stays up, dimmed, until the new one lands.
+        <div key={history.data.data.range} aria-busy={history.isPlaceholderData} className={cn(history.isPlaceholderData && "placeholder-dim")}>
+          <ItemHistoryPanel history={history.data.data} labels={labels} item={item} onItem={onItem} />
+        </div>
+      )}
+    </Loadable>
   );
 }
 
@@ -164,7 +173,7 @@ export function ItemHistorySection({
           </button>
         ))}
       </div>
-      <ItemHistoryRange key={range} range={range} labels={labels} item={item} onItem={setItem} />
+      <ItemHistoryRange range={range} labels={labels} item={item} onItem={setItem} />
     </section>
   );
 }

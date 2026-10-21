@@ -1,6 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { isBackedUpState, type Factory, type FactoryResponse } from "@satisfactory-dash/shared";
 import { formatPercent } from "../format";
+import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { buildingsLayer, placed } from "./buildingsLayer";
 import { buildingState, outputPercent, stateLabel } from "./buildingState";
 import type { MapLayer } from "./layers";
@@ -19,6 +20,19 @@ let MapCanvas = lazy(loadCanvas);
 
 /** v1's layers (ADR-0023 decision 5); the power-circuit layer joins next. */
 const LAYERS: MapLayer<Factory>[] = [buildingsLayer];
+
+/**
+ * The canvas's box while its chunk (or the factory) loads: the same `h-map` the map takes, so the
+ * panel doesn't grow when Leaflet arrives. `announce` is off inside a panel skeleton that says so.
+ */
+export function MapCanvasSkeleton({ announce = true }: { announce?: boolean }) {
+  return (
+    <>
+      {announce && <SkeletonStatus>Loading the map…</SkeletonStatus>}
+      <Skeleton className="h-map min-h-map-min rounded-card" />
+    </>
+  );
+}
 
 const inView = (view: ViewM | null) => (b: { location: { xM: number; yM: number } }) =>
   !view || (b.location.xM >= view.minX && b.location.xM <= view.maxX && b.location.yM >= view.minY && b.location.yM <= view.maxY);
@@ -74,7 +88,7 @@ export function MapPanel({ snapshot }: { snapshot: FactoryResponse }) {
         <div key={layer.id}>{layer.legend()}</div>
       ))}
 
-      <Suspense fallback={<div className="grid h-map min-h-map-min place-items-center rounded-card border border-line text-muted">Loading the map…</div>}>
+      <Suspense fallback={<MapCanvasSkeleton />}>
         <MapCanvas config={GRID_BASE_MAP} layers={drawn} fitTo={fitTo} onView={setView} />
       </Suspense>
       <p className="text-sm text-muted">
