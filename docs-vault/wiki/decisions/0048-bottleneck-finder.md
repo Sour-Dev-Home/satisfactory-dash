@@ -2,6 +2,9 @@
 
 Status: accepted with a change (owner, 2026-10-21): the feature waits for belt data. The item-level slice is not built
 on its own; it ships together with the belt level once the mod claim below is verified. Issue #349.
+Amendment (2026-10-21, **proposed**, for the owner's review): the first revisit trigger fired, FRM 1.5.4 names what both
+ends of every belt, lift and pipe connect to, so the belt level is a go on FRM data and the mod claim is not needed. See
+"Amendment (2026-10-21)" at the end; where it and the text above disagree, the amendment wins once accepted.
 
 ## Context
 
@@ -198,3 +201,194 @@ this save at ~60 bytes each, about 240 KB, sent only when its hash changes (ADR-
 2. **The Factory page, top 10:** a "Bottlenecks" section on the Factory page listing the 10 worst root causes.
 3. **After feedback:** follow-ups 5 (extractors) and 6 (buffer fill) wait until the finder has been used.
 4. **Now:** open the belt-connection mod claim and start its G0 source search in the mod session.
+
+## Amendment (2026-10-21)
+
+Status: **proposed** (the ADR itself stays accepted). Written because the first "Revisit when" trigger fired: FRM now
+names the building at each end of a belt, lift and pipe. Captures, all read-only from the owner's live server on
+2026-10-21 with FRM 1.5.4 (getModList), are under `raw-sources/captured-responses/`: the **belts capture**
+`frm-getBelts-2026-10-21-connections-trimmed.json`, the **lifts capture** `frm-getLifts-2026-10-21-trimmed.json` and the
+**pipes capture** `frm-getPipes-2026-10-21-connections-trimmed.json`. Each keeps a handful of records with geometry
+removed, plus counts and sizes measured over the full response.
+
+### New evidence
+
+| Fact | Evidence |
+| --- | --- |
+| Every belt, lift and pipe carries `ConnectedTo0` and `ConnectedTo1`: the id of the building or conveyor at that end, `""` when the end is open | All three captures: 1,987 belts, 257 lifts, 156 pipes. `ConnectedTo<n>` is non-empty exactly when `Connected<n>` is true in every record. Open ends: 43 belts have one or both ends open (20 at end 0 only, 14 at end 1 only, 9 at both), no lift, 2 pipes |
+| The ids are the same ids `getFactory` returns | Belts capture: 332 of the 340 `getFactory` buildings read the same minute appear as an end; the contract already carries that id (`packages/shared/src/factory.ts:41-43`) |
+| Splitters, mergers, smart splitters, storage, train stations, miners, generators, the sink, pipe junctions and pumps are known as nodes | Their ids appear only as conveyor ends (belts and pipes captures, endpoint classes); none is in `getFactory` |
+| Belts and lifts are oriented: items enter at end 0 and leave at end 1 | Miners only ever at end 0; generators, the sink, central storage and the space elevator only at end 1; splitters at end 0 of 811 belts and end 1 of 436, mergers the reverse (belts capture). Lifts agree (lifts capture). Belt-to-belt joins are consistent: all 398 name each other end 1 to end 0 |
+| Pipes are **not** oriented | Coal generators are end 0 of 19 pipes and end 1 of 5 (pipes capture) |
+| `ItemsPerMinute` is the tier's speed, not the flow on the belt | One constant per tier over all 1,987 belts and 257 lifts: Mk.1 60, Mk.2 120, Mk.3 270, Mk.4 480 (belts and lifts captures); `frm-getBelts.md` E2 calls it the belt's speed. Whether it equals the game's real throughput cap at every tier is not in raw-sources [NEEDS VERIFICATION]; the values are the ones the earlier capture recorded |
+| Pipe `Speed` is 5 on every Mk.1 pipe | Pipes capture. Its unit is not documented (5 a second would be 300 a minute) [NEEDS VERIFICATION]; the save has no Mk.2 pipe to compare |
+| What is still missing | No port name or index on either end (belts capture); no connection fields on splitters, mergers or machines themselves, so an edge is seen only from the conveyor's side; no flow or fill on any conveyor; smart-splitter filter rules; splitter and merger throughput caps (none in raw-sources [NEEDS VERIFICATION]) |
+| When FRM added the fields | The mod session's G0 research names FRM commits `136a3e4b` and `95d8bfb0` (2026-10-07, releases 1.5.4-510 and later); that research is not in raw-sources yet [NEEDS VERIFICATION]. What is verified is that 1.5.4 on the owner's server returns them |
+| Read cost | Full responses: `getBelts` 3,658,143 bytes in 0.22 s, `getLifts` 204,799 bytes in 0.02 s, `getPipes` 274,176 bytes in 0.03 s, over loopback (captures). 73 % of the belt bytes are geometry and paint the finder never uses. `getBelts` and `getPipes` are not game-thread endpoints (`frm-read-api.md` E2); `getLifts` is not in that index at all, so its game-thread status is undocumented [NEEDS VERIFICATION] |
+
+### Decision 1: belt-level root cause is a go on FRM data
+
+The graph the original decision could not build is now read directly: conveyor identities, both ends, orientation for
+belts and lifts, tier caps, and splitters, mergers and storage as nodes. That removes every reason for the no-go except
+"no flow", and a tier cap on a min cut is a cap whether or not the belt is full today. **The belt-connection mod claim is
+not needed and stays unfiled** in `wiki/mod-claims.md`; see "What the mod might still add".
+
+### Decision 2: read cost, cadence and where the data is cut down
+
+- **Endpoints:** `getBelts`, `getLifts`, `getPipes`, read back to back in one cycle (about 0.3 s on this save, so the
+  three agree with each other).
+- **Cadence:** ADR-0038's world tier, every 10 min jittered and once after start (`agent/src/worldReader.ts:14`, `:18`),
+  never at the 5 s or 30 s snapshot cadence. The graph changes only when the player builds. At 0.3 s of FRM web-server
+  work per 10 min, the FRM side is under 0.1 % duty. Parsing 3.7 MB of JSON in the agent every 10 min is small
+  [estimate, not measured]. Because `getLifts`' game-thread status is undocumented, the tick-rate check ADR-0038 already
+  runs on the first real-server read covers this cycle too.
+- **A cheaper change signal (an early read when the factory snapshot's set of building ids changes): not yet.** The
+  10 min graph plus a staleness rule (Decision 3) is honest. Trigger: the owner reports stale findings after building.
+- **Stripping happens in `packages/game-adapter/`**, in a new mapper beside the rails one: raw FRM shapes stop there
+  (ground rule 5). It keeps per conveyor `{ id, kind, from, fromKind, to, toKind, capacityPerMinute, tier, at }` (below)
+  and drops `SplineData`, `BoundingBox`, `ColorSlot`, `features` and `location`. Edges sorted by `id`, `at` rounded to
+  whole metres, so the hash is stable.
+- **Transport:** a new world layer `conveyors` on the existing pipeline: the agent hashes the projection and POSTs
+  `/agent/v1/world/conveyors` **only when the hash changed** (`worldReader.ts:109-110`, ADR-0038). The backend stores it
+  as one `map.world_layers` row (`backend/migrations/1791158400000_map_world_layers.sql:27-36`, keyed by a free-text
+  `layer`), so no migration. Local servers use `map/services/localWorldPoller.ts` on the same schedule.
+- **Size:** the projection measured over today's full responses is 2,400 edges, 647 KB uncompressed (about 270 bytes an
+  edge), 49 KB gzip. It goes through the world-ingest route's 2 MB cap (`packages/shared/src/map.ts:44`,
+  `backend/src/modules/map/routes/agentWorldRoutes.ts:56`), not the snapshot, so #514's snapshot budgets
+  (`agents/config.ts:31`, `:48-54`) are unchanged. The shared item cap `MAP_WORLD_MAX_ITEMS` (5,000, `map.ts:51`) is too
+  small for a bigger factory: the conveyors layer gets its own cap of 50,000 edges. **Trigger:** a projection over
+  1.5 MB (about 2.3 times this save) switches to an interned form (a node table plus index pairs) or folds unbranched
+  belt and lift chains into one edge that keeps the id of its slowest segment. Over 2 MB the layer is skipped as
+  ADR-0038 says, and the finder falls back to item level with a note.
+- **Version gate:** the adapter checks that `ConnectedTo0` and `ConnectedTo1` are present. An older FRM without them
+  sends no conveyors layer, and that server's finder runs item level only, saying "belt data needs FRM 1.5.4 or newer".
+
+### Decision 3: the model
+
+Two graphs, joined by building id: ADR-0048's item graph from the factory snapshot (unchanged), and a **connection
+graph** from the conveyors layer.
+
+- **Nodes:** every id that appears as a conveyor end, typed by the adapter from its class (`machine`, `splitter`,
+  `merger`, `storage`, `station`, `extractor`, `consumer` for generators, the sink and the space elevator, `junction`
+  for pipe junctions and pumps, `conveyor` for a belt or lift joining another directly).
+- **Arcs:** each belt or lift is one arc end 0 to end 1 with capacity `ItemsPerMinute`. Each pipe is two arcs, one each
+  way, with the same capacity, because pipe ends are not oriented. Splitters, mergers, junctions and storage are
+  uncapped pass-through nodes (no cap is cited). An open end adds no arc; the conveyor stays as a dead end.
+- **Which item flows where** is not on the conveyor, so it is derived per (consumer M, ingredient X): walk the arcs
+  backwards from M to get M's upstream region R(M). Producers of X in R(M) are X's real suppliers for M. This also
+  fixes the original "aggregation hides geography" consequence: supply for M is what can reach M, not the factory total.
+- **Max-flow per (M, X):** Dinic over R(M), from a super-source to M. Arcs from the super-source go to each producer of X
+  in R(M), with capacity that producer's `maxPerMinute` for X, and to each extractor, storage or station in R(M),
+  uncapped and flagged, because its item and rate are unread until follow-up 5. The arc to the super-sink is M's demand
+  `maxPerMinute` for X. If the flow is below that demand, the **min cut** names the conveyors that cap it: the
+  residual-reachable cut, lowest capacity first, then `id`. On this save R(M) is at most about 2,550 arcs, so each run
+  takes well under a millisecond to a few milliseconds; per-item results are memoised. The existing "over ~50 ms,
+  cache per snapshot and graph hash" trigger stands.
+- **Shared manifolds:** a second Dinic per item X over the whole graph, from all X producers to all X consumers, finds a
+  cut that starves several consumers at once ("this Mk.2 belt caps the 12 Wire consumers behind it at 120/min").
+- **Verdicts,** ranked as before, with two additions:
+  1. `noProducer`: nothing in the factory makes X.
+  2. `notConnected` (new): nothing upstream of M's inputs makes X, and no extractor, storage or station is upstream
+     either. The belt-level form of "missing input".
+  3. `deficit`: now **local**: the producers of X that can reach M make less than the consumers they feed want.
+  4. `upstream`: as before, with `unpowered`, `paused` and `idle` as terminals.
+  5. `logistics` with `cappedBy` (new field): a min cut below demand. "A Mk.1 belt (60/min) from the splitter to this
+     constructor caps Iron Plate at 60/min; it wants 90." Through pipes the same, once their capacity unit is verified.
+  6. `logistics` without `cappedBy`: supply and belts are both enough, and it still starves. That leaves splitter
+     balancing, smart-splitter filters, mixed belts or overflow to storage, which the data cannot tell apart. Said plainly.
+  Backed up mirrors this downstream (`noConsumer`, `surplus`, `downstream`, `logistics` with a capping output belt).
+- **Known optimism:** max-flow assumes ideal routing, and real splitters split evenly, so a reported cap is real but some
+  starvation shows only as case 6. Per-item flows ignore other items sharing a belt: a cut on a conveyor that is
+  upstream of producers of two items says "shared with Y". Fluid head and pump power are not modelled.
+- **Staleness:** the graph can be up to 10 min older than the factory snapshot. A machine in the snapshot whose id no
+  conveyor names falls back to its item-level verdict with "connections refresh within 10 minutes". (8 of 340 buildings
+  have no conveyor today, belts capture; they are idle or attached directly, see Risks.)
+- **Top 10** (the owner's answer 2): ADR-0048's ranking, where a shared root cause now includes a shared capping
+  conveyor: one cut that starves twelve assemblers outranks one unlocated `logistics` case.
+- **Deterministic:** arcs sorted by `id`, ties by item `className` then building id; no time, no randomness.
+
+### Decision 4: contract, components and build split
+
+Contract sketch (additive per ADR-0007; its own PR):
+
+```ts
+// packages/shared/src/map.ts: a new world layer
+KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes", "conveyors"];
+ConveyorEdgeSchema = z.object({
+  id: z.string().max(128),
+  kind: z.enum(["belt", "lift", "pipe"]),
+  from: z.string().max(128).nullable(),                 // end 0; null = open end
+  fromKind: ConveyorNodeKindSchema.nullable(),          // machine | splitter | merger | storage | station | extractor | consumer | junction | conveyor | other
+  to: z.string().max(128).nullable(),                   // end 1
+  toKind: ConveyorNodeKindSchema.nullable(),
+  capacityPerMinute: z.number().min(0).nullable(),      // null for pipes until their unit is verified
+  tier: z.string().max(64),                             // display name, e.g. "Conveyor Belt Mk.1"
+  at: z.object({ x: z.number(), y: z.number() }),       // end 0, whole metres, for "near (x, y)"
+});
+ConveyorsLayerDataSchema = z.array(ConveyorEdgeSchema).max(CONVEYORS_MAX_EDGES /* 50_000 */);
+
+// packages/shared/src/bottlenecks.ts: ADR-0048's sketch plus
+BottleneckStepSchema.kind += "notConnected";
+BottleneckStepSchema.cappedBy = z.object({
+  conveyorId: z.string(), kind: z.enum(["belt", "lift", "pipe"]), tier: z.string(),
+  capacityPerMinute: z.number().min(0), fromId: z.string().nullable(), toId: z.string().nullable(),
+  at: z.object({ x: z.number(), y: z.number() }),
+}).optional();
+BottlenecksSchema.beltData = z.enum(["present", "stale", "unsupported", "tooLarge"]);  // says which mode ran
+```
+
+Build split: five PRs, each from `main` (no stacked PRs). Nothing is visible until PR 5, so the owner gets one complete
+feature.
+
+1. **Contract** (`packages/shared/`, backend session): the conveyors layer, its cap, `bottlenecks.ts`, the endpoint
+   entry, fixtures built from the three new captures. Verified by schema tests and typecheck.
+2. **Read and send** (`packages/game-adapter/` data-adapter, then `agent/src/worldReader.ts` and
+   `backend/src/modules/map/services/localWorldPoller.ts`): lenient raw schemas for the three endpoints, the projection
+   with the version gate, a `conveyors` loop at 10 min. Tests from the captures (orientation, open ends, pipe arcs both
+   ways, sorted output, stable hash, missing fields leading to no layer). The rebuild G-check below runs during this PR.
+3. **Finder** (`backend/src/modules/telemetry/services/bottleneckFinder.ts`, backend): item graph, connection graph,
+   Dinic, verdicts, ranking, as a pure function of (buildings, edges). Tests: each verdict, a Mk.1 cap behind a
+   splitter, a shared manifold cut, a pipe loop, an open end, a stale graph, a generated 10x factory within a time bound.
+   Then `test-hunter`.
+4. **Route** (`backend/src/modules/telemetry/routes/bottlenecks.ts`, backend): `GET /api/servers/:serverId/bottlenecks?limit=10`,
+   session-guarded, reading the latest factory snapshot and the `conveyors` row through the map module's `index.ts`.
+   Supertest route test.
+5. **Frontend** (frontend session, `ui-reviewer`): the "Bottlenecks" section on the Factory page, top 10, each with its
+   sentence and, when present, the capping conveyor's tier, rate and "near (x, y)"; built on design tokens; unknown
+   `kind` shows the `text` only. This PR makes the feature visible.
+
+Follow-ups 5 (extractors) and 6 (buffer fill) still wait for feedback (owner answer 3). Extractors matter more now: they
+turn the uncapped, flagged sources into real rates.
+
+### What the mod might still add
+
+Port names or indices on both ends, and connection fields on splitters, mergers and machines themselves. Neither is
+needed now: which input belt carries which ingredient falls out of the upstream walk, and every splitter and merger link
+seen so far is seen from a conveyor. The mod-claims row stays unfiled. **Trigger:** the rebuild G-check or real use
+shows machines fed by a direct port-to-port attachment (a splitter snapped to a machine with no belt), which no conveyor
+would name [NEEDS VERIFICATION whether the game allows that and whether FRM reports it], or two inputs of one machine
+carrying the same item where the port matters.
+
+### Risks and G-checks
+
+- **G-B1 (rebuild staleness), on the test server, never on the owner's game:** build a belt A to B, read `getBelts`,
+  dismantle and rebuild it (and once to a different machine), read again. Pass: the old id is gone and the new
+  `ConnectedTo` is right on the next read. Not verifiable from captures. Runs in PR 2; PR 3 does not merge without it.
+- **G-B2 (pipe unit):** on the test server, a Mk.2 pipe's `Speed` beside a Mk.1's settles the unit. Until it passes,
+  pipe arcs are topology only (`capacityPerMinute` null): the finder can say "no pipe path" but not "pipe cap".
+- **Id stability across restarts** is unverified (`factory.ts:42-43`). The graph is re-read within 10 min of a restart
+  and every join is by id within one pair of reads, so a change shows up as staleness, not wrong answers.
+- **FRM version drift:** gate on the fields, not on a version number (Decision 2). The adapter's lenient schemas log a
+  count of dropped records, as the rails mapper does.
+- **Licensing of captures:** FRM carries no licence (`frm-license-status-2026-09-27.md`), and the mod session notes that
+  docs.ficsit.app's footer says GPLv3 "except where otherwise noted". Either way, captures stay trimmed excerpts: a
+  handful of records with geometry removed, counts and sizes, never full payloads.
+- **Mixed belts and smart splitters** can make case 6 common on some saves. If owner feedback says it dominates, that is
+  the evidence for per-item filter data (a later FRM field or the mod).
+
+### Revisit when (amendment)
+
+- G-B1 fails: connections are stale after a rebuild. Read on a change signal or on demand, or go back to the mod claim.
+- The conveyors projection passes 1.5 MB on a real save: intern or fold chains (Decision 2).
+- A finder request passes ~50 ms: cache per (snapshot, graph hash).
+- Case 6 dominates on real saves: look for filter and port data.
