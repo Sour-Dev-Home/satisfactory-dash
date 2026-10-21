@@ -119,7 +119,7 @@ export function Landing() {
         </ul>
       </section>
 
-      <p className="text-sm text-muted">Not affiliated with Coffee Stain Studios. Satisfactory is their trademark.</p>
+      <p className="text-sm text-muted">Satisfactory and its icons © Coffee Stain Studios. Not affiliated.</p>
     </div>
   );
 }

@@ -77,12 +77,12 @@ contract needs to grow, not that this module should special-case a backend detai
 - Map (ADR-0023, `src/map/`): Leaflet with CRS.Simple, in a lazy chunk (`MapCanvas.tsx`) that
   only the Map page loads. `projection.ts` is the one world-to-map mapping (`[lat, lng] =
   [-yM, xM]`; bounds cited from docs-vault/raw-sources/world-coordinates.md); base maps are
-  configs (a neutral grid, no game art: the owner decided on #330 that the base stays data-derived).
+  configs (a neutral grid; the base stays data-derived, but #571 reversed #330's "no game art" for resource nodes: `resourceIcons.ts` maps FRM's `Name` to the game's icon in `public/game-assets/` (NOTICE.md: not AGPL), and an unknown type keeps the circle).
   World layers (ADR-0038 M5: `railsLayer`, `resourceNodesLayer`) are `MapLayer<T>` over their own stored
   list: `MapPanel` reads them through `queries.mapRails`/`mapResourceNodes`, only while the toggle is on,
   and hands the canvas a bound `DrawnLayer`. A layer is a `MapLayer` (`layers.ts`): it gets
   Leaflet through its `MapContext` (never imports it at runtime), draws on the shared canvas
-  renderer, returns its cleanup, and supplies a legend and a text `describe`. Tooltip content
+  renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here), returns its cleanup, and supplies a legend and a text `describe`. Tooltip content
   is built from text nodes, never an HTML string (names come from the game server). Every
   layer's data is also shown as text (the buildings-in-view table). `e2e/map.spec.ts` is the
   CSP gate (pan, zoom, hover, toggle); Leaflet overrides in `index.css` are unlayered.

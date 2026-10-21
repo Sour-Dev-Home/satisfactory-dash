@@ -54,6 +54,13 @@ enforcement action — which is evidence of practical tolerance, not a legal gua
 Epic store page or Coffee Stain's own site) before committing to any monetization
 plan.**
 
+**Game icons (#571, 2026-10-21):** the map draws resource nodes with the game's own icons, exported by the
+owner from their game install and kept in `frontend/public/game-assets/`. They are © Coffee Stain Studios,
+used as fan content in a free, non-commercial tool, **not** covered by this repo's AGPL-3.0-only licence, and
+removed on request. `frontend/public/game-assets/NOTICE.md` states the boundary. This amends the "never
+bundle Satisfactory assets" working rule below for those icons only; it does not settle the EULA question
+above, and any monetization decision must revisit it.
+
 ## The game mod (ADR-0039)
 
 **This is a reading of the licence texts for planning, not legal advice.** It records what the texts say so the
@@ -149,7 +156,7 @@ file in this repository. Issue #471.
 
 ## Working rules until this is resolved
 
-- Never bundle or redistribute Satisfactory or FRM assets/code in anything shipped.
+- Never bundle or redistribute Satisfactory or FRM assets/code in anything shipped. (Amended by #571: the map's resource icons are the one exception, see "Game icons" above.)
 - Never use Coffee Stain's trademarks/branding in this project's name, logo, or
   marketing.
 - Treat "can I charge for this" as an open question, not a blocker for building it —

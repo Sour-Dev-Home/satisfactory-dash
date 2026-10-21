@@ -133,6 +133,14 @@ test.describe("demo build", () => {
     }
   });
 
+  test("serves the map's resource icons (#571) and their NOTICE in both builds", () => {
+    for (const dir of [DIST, DIST_DEMO]) {
+      const files = allFiles(dir);
+      expect(files).toContain(join(dir, "game-assets", "NOTICE.md"));
+      expect(files).toContain(join(dir, "game-assets", "resources", "iron-ore.webp"));
+    }
+  });
+
   test("has no service worker and no push UI (ADR-0044)", () => {
     expect(allFiles(DIST)).toContain(join(DIST, "push-sw.js"));
     expect(allFiles(DIST_DEMO)).not.toContain(join(DIST_DEMO, "push-sw.js"));
