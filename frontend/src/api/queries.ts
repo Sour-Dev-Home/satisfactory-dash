@@ -36,7 +36,17 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   return failureCount < 1 && error instanceof BackendUnreachableError;
 }
 
-export const SESSION_KEY = ["auth", "session"] as const;
+/**
+ * `placeholderData` for a read whose key changes by something other than the server (a history range,
+ * #494): keeps the last answer on screen while the new one loads, but only for the same server, so
+ * another server's data is never shown as this one's. Servers are the second key part.
+ */
+export function keepForServer(serverId: string) {
+  return <T>(previous: T | undefined, previousQuery: { queryKey: QueryKey } | undefined): T | undefined =>
+    previousQuery?.queryKey[1] === serverId ? previous : undefined;
+}
+
+export const SESSION_KEY =["auth", "session"] as const;
 /** The login form's own 401 is a form error, not an expired session. */
 export const LOGIN_MUTATION_KEY = ["auth", "login"] as const;
 

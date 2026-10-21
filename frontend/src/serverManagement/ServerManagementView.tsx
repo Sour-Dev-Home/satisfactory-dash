@@ -1,3 +1,4 @@
+import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
@@ -5,6 +6,17 @@ import { ErrorNotice } from "../components/ErrorNotice";
 import { AgentServerRow } from "./AgentServerRow";
 import { ServerForm, type FormMode } from "./ServerForm";
 import { ServerRow } from "./ServerRow";
+
+/** The server list while it loads: a couple of rows in the list's own box. */
+function ServersSkeleton() {
+  return (
+    <div className="grid gap-3">
+      <SkeletonStatus>Loading servers…</SkeletonStatus>
+      <Skeleton className="h-20" />
+      <Skeleton className="h-20" />
+    </div>
+  );
+}
 
 /**
  * ADR-0030: the operator adds, edits and removes game servers. Shown only when the server list
@@ -73,7 +85,9 @@ export function ServerManagementView() {
             }
           />
         ) : (
-          <p role="status">Loading servers…</p>
+          <Loadable pending skeleton={<ServersSkeleton />}>
+            {null}
+          </Loadable>
         )
       ) : servers.length === 0 && agentServers.length === 0 ? (
         <p className="rounded-card border border-line bg-surface p-5 text-muted">

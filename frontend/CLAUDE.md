@@ -40,6 +40,12 @@ contract needs to grow, not that this module should special-case a backend detai
   classes. shadcn/ui components get copied into `src/components/ui/` only when a view needs
   one; prefer non-modal variants (ADR-0016 item 8). The old `.panel`/`.banner`/`.circuit`
   classes in `index.css` are there until each view is restyled (step 5), then deleted.
+- Loading (#494): a page is revealed once (`ui/PageReveal.tsx`; the shell's `Page` wraps each tab), not panel
+  by panel: its panels mount at once but stay `invisible` until `shell/pageQueries.ts`' primary queries
+  answer or `--duration-reveal-budget` passes. A panel's loading branch is `<Loadable>` with a skeleton
+  shaped like it (`ui/Skeleton.tsx`), shown only after `--duration-skeleton-delay` and kept for
+  `--duration-skeleton-min`. Never a "Loading…" text line above other content. Nav links prefetch the
+  page's queries (hover, focus, touch). Reduced motion: no shimmer, no rise.
 - The Overview's status-page summary (`src/overview/health.ts`) only aggregates what the
   backend classified. Its one rule of its own: Factory is degraded above
   `BACKED_UP_DEGRADED_SHARE` (25%, the owner's pick).

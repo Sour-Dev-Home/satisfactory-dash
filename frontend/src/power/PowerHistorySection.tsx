@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { HistoryRange } from "@satisfactory-dash/shared";
-import { queries } from "../api/queries";
+import { keepForServer, queries } from "../api/queries";
+import { cn } from "../lib/cn";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useSelectedServer } from "../servers/ServerContext";
+import { Loadable } from "../ui/Skeleton";
+import { PowerHistorySkeleton } from "./PowerHistorySkeleton";
 import { PowerHistoryView } from "./PowerHistoryView";
 import { RANGE_LABEL, rangeLabel, rangeWords, type PowerRange } from "./storedHistory";
 import { StoredPowerHistoryPanel } from "./StoredPowerHistoryPanel";
@@ -13,9 +16,8 @@ const RANGES = Object.keys(RANGE_LABEL) as PowerRange[];
 /** Container for one stored range (ADR-0027): its own load and error states. */
 function StoredPowerHistoryView({ range }: { range: HistoryRange }) {
   const server = useSelectedServer();
-  const history = useQuery(queries.historyPower(server.id, range));
-  if (history.isPending) return <p role="status">Loading power history…</p>;
-  if (!history.data) {
+  const history = useQuery({ ...queries.historyPower(server.id, range), placeholderData: keepForServer(server.id) });
+  if (!history.data && !history.isPending) {
     return (
       <ErrorNotice
         error={history.error}
@@ -28,10 +30,15 @@ function StoredPowerHistoryView({ range }: { range: HistoryRange }) {
     );
   }
   return (
-    <>
+    <Loadable pending={history.isPending} skeleton={<PowerHistorySkeleton />} className="grid gap-3">
       {history.isError && <ErrorNotice error={history.error} />}
-      <StoredPowerHistoryPanel history={history.data.data} />
-    </>
+      {history.data && (
+        // Keyed by the range the data is for: the last range stays up, dimmed, until the new one lands.
+        <div key={history.data.data.range} aria-busy={history.isPlaceholderData} className={cn(history.isPlaceholderData && "placeholder-dim")}>
+          <StoredPowerHistoryPanel history={history.data.data} />
+        </div>
+      )}
+    </Loadable>
   );
 }
 
@@ -58,7 +65,7 @@ export function PowerHistorySection() {
           </button>
         ))}
       </div>
-      {range === "live" ? <PowerHistoryView /> : <StoredPowerHistoryView key={range} range={range} />}
+      {range === "live" ? <PowerHistoryView /> : <StoredPowerHistoryView range={range} />}
     </div>
   );
 }

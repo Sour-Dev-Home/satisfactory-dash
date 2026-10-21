@@ -11,6 +11,12 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
+/** Waits until the page has revealed and its slow panels are showing their skeletons. */
+async function skeletonsShown(page: Page) {
+  await expect(page.locator('[data-page-reveal="revealed"]')).toBeVisible();
+  await expect(page.locator('[data-loading="shown"]').first()).toBeVisible();
+}
+
 interface StateCase {
   scenario: ScenarioName;
   /** Visible text that proves the state has rendered. */
@@ -41,6 +47,17 @@ const CASES: StateCase[] = [
   { scenario: "default", name: "default-factory", path: "/app/factory", shows: /machines · .* backed up/ },
   { scenario: "default", name: "default-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   { scenario: "loading", shows: "Checking session…" },
+  // The panels' skeletons (#494), held on screen by reads that never answer: shaped like their
+  // panels, with no loading text to read. The page has revealed by then, so the clocks have run.
+  { scenario: "loading-panels", name: "loading-factory", path: "/app/factory", shows: "Factory", act: skeletonsShown },
+  { scenario: "loading-panels", name: "loading-map", path: "/app/map", shows: "Map", act: skeletonsShown },
+  { scenario: "loading-panels", name: "loading-power", path: "/app/power", shows: /Circuit 0/, act: skeletonsShown },
+  { scenario: "loading-panels", name: "loading-settings", path: "/app/settings", shows: /Auto-pause when no players/, act: skeletonsShown },
+  // Every read answers after 800 ms, past the page budget: the settled page is the same as the default's.
+  { scenario: "slow-queries", name: "slow-overview", shows: "Total play time on this save" },
+  { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/ },
+  { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
+  { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   { scenario: "login", shows: "Sign in" },
   { scenario: "login-google", shows: "Sign in with Google" },
   {
