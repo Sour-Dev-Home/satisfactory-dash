@@ -1,0 +1,1 @@
+- 2026-10-20 — The demo walkthrough video and its poster (`frontend/public/demo/walkthrough.mp4`, and `og-image.png`, also the og:image) are re-recorded with the Demo video workflow (run 39532863088) after the restyle (#443, #444) and the loading work (#494). The old ones showed the pre-restyle look. The video is 6.2 MB, under the 25 MiB static-asset limit.
