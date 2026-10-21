@@ -150,7 +150,7 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
   it("says when the server cut a layer to its limit", async () => {
     server.use(http.get(railsRoute, () => HttpResponse.json(railsWorldResponseTruncated)));
     mount();
-    expect(await screen.findByText(/The server cut this layer to its size limit/)).toBeInTheDocument();
+    expect(await screen.findByText(/Showing part of the rails: the server cut this layer to its size limit/)).toBeInTheDocument();
   });
 
   it("shows a failed layer as an error with Retry, and keeps the rest of the map", async () => {
@@ -161,7 +161,7 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
       ),
     );
     mount();
-    const retry = await screen.findByRole("button", { name: "Retry rails" });
+    const retry = await screen.findByRole("button", { name: "Retry" });
     expect(await screen.findByText(/^7 resource nodes on the map/)).toBeInTheDocument();
     failing = false;
     fireEvent.click(retry);
@@ -171,11 +171,78 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
   it("refuses a response for the wrong layer as a contract error", async () => {
     server.use(http.get(railsRoute, () => HttpResponse.json(resourceNodesWorldResponse)));
     mount();
-    expect(await screen.findByRole("button", { name: "Retry rails" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
 
 describe("MapPanel world tables (hunt)", () => {
+  it("captions each legend row with its layer", async () => {
+    mount();
+    await screen.findByText("Rail segment");
+    for (const label of ["Rails", "Resource nodes", "Buildings"]) {
+      // The toggle and the caption both carry the name; the caption is a paragraph.
+      expect(screen.getAllByText(label, { selector: "p" }), label).toHaveLength(1);
+    }
+  });
+
+  it("shows no legend row for a layer that is off, empty or failed", async () => {
+    server.use(
+      http.get(railsRoute, () => HttpResponse.json(railsWorldResponseEmpty)),
+      http.get(nodesRoute, () => HttpResponse.json(errorUpstreamUnreachable, { status: 502 })),
+    );
+    mount();
+    await screen.findByRole("button", { name: "Retry" });
+    expect(screen.queryByText("Rail segment")).not.toBeInTheDocument();
+    expect(screen.queryByText("In use (filled)")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Buildings", { selector: "p" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Buildings" }));
+    expect(screen.queryAllByText("Buildings", { selector: "p" })).toHaveLength(0);
+  });
+
+  it("explains a failure of both layers in one box, with one Retry and a small request ID", async () => {
+    const body = { error: { ...errorUpstreamUnreachable.error, requestId: "req-42" } };
+    server.use(
+      http.get(railsRoute, () => HttpResponse.json(body, { status: 502 })),
+      http.get(nodesRoute, () => HttpResponse.json(body, { status: 502 })),
+    );
+    mount();
+    const box = await screen.findByRole("alert");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(box).toHaveTextContent("Rails and resource nodes couldn't load: game server unreachable.");
+    expect(within(box).getAllByRole("button")).toHaveLength(1);
+    expect(box).toHaveTextContent("Request ID: req-42");
+  });
+
+  it("names each layer's own reason when they differ", async () => {
+    server.use(
+      http.get(railsRoute, () => HttpResponse.json(errorUpstreamUnreachable, { status: 502 })),
+      http.get(nodesRoute, () => HttpResponse.json(resourceNodesWorldResponse)),
+    );
+    mount();
+    expect(await screen.findByText("Rails couldn't load: game server unreachable.")).toBeInTheDocument();
+    expect(await screen.findByText(/^7 resource nodes on the map/)).toBeInTheDocument();
+  });
+
+  it("says 'None on the map.' for an empty layer's table, and says 'shown' when cut", async () => {
+    server.use(http.get(nodesRoute, () => HttpResponse.json({ ...resourceNodesWorldResponse, count: 0, data: [] })));
+    mount();
+    expect(await screen.findByText("No resource nodes reported by the server.")).toBeInTheDocument();
+    expect(await screen.findByText("None on the map.")).toBeInTheDocument();
+  });
+
+  it("labels each table cell with its column, for the stacked phone layout", async () => {
+    mount();
+    const table = await screen.findByRole("table", { name: /Resource nodes in view/ });
+    const cells = within(table).getAllByRole("cell").slice(0, 5);
+    expect(cells.map((c) => c.getAttribute("data-label"))).toEqual(["Resource", "Purity", "Kind", "State", "Position (m)"]);
+    const buildingsTable = await screen.findByRole("table", { name: /Buildings in view/ });
+    expect(within(buildingsTable).getAllByRole("cell").slice(0, 3).map((c) => c.getAttribute("data-label"))).toEqual([
+      "Building",
+      "Recipe",
+      "State",
+    ]);
+  });
+
   it("does not warn about duplicate keys when two rail segments share an id", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const seg = railsWorldResponse.data[0];

@@ -38,7 +38,7 @@ export const purityLabel = (purity: string) => ownValue(PURITY_LABEL, purity) ??
 export const nodeKindLabel = (nodeType: string) => ownValue(KIND_LABEL, nodeType) ?? nodeType;
 
 /** Node radius in pixels by purity, so the size says what the colour doesn't. Unknown purity reads as normal. */
-const PURITY_RADIUS_PX = { impure: 3, normal: 4.5, pure: 6 } as const;
+export const PURITY_RADIUS_PX = { impure: 3, normal: 6, pure: 9 } as const;
 export const nodeRadiusPx = (purity: string) => ownValue(PURITY_RADIUS_PX, purity) ?? PURITY_RADIUS_PX.normal;
 
 /** "1,234 m": whole metres with a thousands separator; the map's own unit, never converted. */

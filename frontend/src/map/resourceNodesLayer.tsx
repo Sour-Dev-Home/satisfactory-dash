@@ -1,9 +1,9 @@
 import type { ResourceNode } from "@satisfactory-dash/shared";
 import type { MapLayer } from "./layers";
-import { countByType, countOf, formatPoint, nodeKindLabel, nodeRadiusPx, purityLabel } from "./worldGeometry";
+import { countByType, countOf, formatPoint, nodeKindLabel, nodeRadiusPx, PURITY_RADIUS_PX, purityLabel } from "./worldGeometry";
 
-/** Nodes are landmarks: FICSIT amber, small (ADR-0041). In use is filled, free is an outline. */
-export const NODE_TOKEN = "--color-accent";
+/** Nodes have their own token (index.css), apart from the brand accent and the state colours. In use is filled, free is an outline. */
+export const NODE_TOKEN = "--color-node";
 const NODE_WEIGHT_PX = 1.5;
 /** An outline's fill opacity is 0; a filled marker's is solid. */
 const FILLED_OPACITY = 1;
@@ -23,10 +23,26 @@ function tooltip(node: ResourceNode): HTMLElement {
   return box;
 }
 
+/** A legend sample: a circle at the drawn radius (viewBox units are pixels), filled or an outline. */
+function Dot({ r, filled }: { r: number; filled: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="size-6 flex-none">
+      <circle
+        cx="12"
+        cy="12"
+        r={r}
+        strokeWidth={NODE_WEIGHT_PX}
+        className={filled ? "fill-node stroke-node" : "fill-none stroke-node"}
+      />
+    </svg>
+  );
+}
+
 /**
  * ADR-0038 M5, the base map's resource nodes (nodes, fracking satellites and geysers, one `resourceNodes`
  * world layer): a circle per node. Size is the purity (impure small, pure large) and the fill is whether
- * a miner uses it, so neither relies on colour alone; the resource's name is in the tooltip and the text.
+ * a miner uses it, so neither relies on colour alone; every resource is one colour, and the resource's
+ * name is in the tooltip and the text.
  */
 export const resourceNodesLayer: MapLayer<ResourceNode[]> = {
   id: "resourceNodes",
@@ -55,25 +71,37 @@ export const resourceNodesLayer: MapLayer<ResourceNode[]> = {
   },
 
   legend: () => (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
-      <li className="flex items-center gap-1.5">
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="size-4 flex-none">
-          <circle cx="8" cy="8" r="5" className="fill-accent stroke-accent" strokeWidth="1.5" />
-        </svg>
-        In use (filled)
-      </li>
-      <li className="flex items-center gap-1.5">
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="size-4 flex-none">
-          <circle cx="8" cy="8" r="5" className="fill-none stroke-accent" strokeWidth="1.5" />
-        </svg>
-        Free (outline)
-      </li>
-      <li>Size: impure, normal, pure (small to large)</li>
-    </ul>
+    <div className="grid gap-1 text-sm text-muted">
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <li className="flex items-center gap-1">
+          <Dot r={PURITY_RADIUS_PX.normal} filled />
+          In use (filled)
+        </li>
+        <li className="flex items-center gap-1">
+          <Dot r={PURITY_RADIUS_PX.normal} filled={false} />
+          Free (outline)
+        </li>
+      </ul>
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <li className="flex items-center gap-1">
+          <Dot r={PURITY_RADIUS_PX.impure} filled={false} />
+          Impure
+        </li>
+        <li className="flex items-center gap-1">
+          <Dot r={PURITY_RADIUS_PX.normal} filled={false} />
+          Normal
+        </li>
+        <li className="flex items-center gap-1">
+          <Dot r={PURITY_RADIUS_PX.pure} filled={false} />
+          Pure
+        </li>
+      </ul>
+      <p>One colour for every resource: the type is in the tooltip and the table below.</p>
+    </div>
   ),
 
   describe(nodes) {
-    if (nodes.length === 0) return "No resource nodes read yet.";
+    if (nodes.length === 0) return "No resource nodes reported by the server.";
     const used = nodes.filter((n) => n.exploited).length;
     const byType = countByType(nodes)
       .map(([type, n]) => `${n} ${type}`)

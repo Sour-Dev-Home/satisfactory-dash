@@ -2,9 +2,15 @@ import type { RailSegment } from "@satisfactory-dash/shared";
 import type { MapLayer } from "./layers";
 import { countOf, formatMetres, polylineLengthM } from "./worldGeometry";
 
-/** Rails are landmarks, not the subject (ADR-0041): the muted token, thin. */
-export const RAIL_TOKEN = "--color-muted";
-const RAIL_WEIGHT_PX = 2;
+/** Rails get their own light token, clear of the grid lines and the node colour (index.css). */
+export const RAIL_TOKEN = "--color-rail";
+/**
+ * On-screen stroke width in pixels, the same at every zoom (Leaflet's weight is in pixels): wide enough
+ * that a 12 m segment is still a visible dash at the default zoom. Round caps give every segment a
+ * minimum length of one stroke width, and an end-point cap marks where each one stops.
+ */
+export const RAIL_WEIGHT_PX = 4;
+export const RAIL_CAP_RADIUS_PX = 3;
 
 /** The tooltip as DOM text nodes: a rail's id comes from the game server, so it never goes through HTML. */
 function tooltip(segment: RailSegment): HTMLElement {
@@ -30,12 +36,21 @@ export const railsLayer: MapLayer<RailSegment[]> = {
     const group = L.layerGroup();
     const stroke = color(RAIL_TOKEN);
     for (const segment of segments) {
-      L.polyline(
-        segment.points.map(([x, y]) => project(x, y)),
-        { renderer, color: stroke, weight: RAIL_WEIGHT_PX, opacity: 1, lineCap: "butt" },
-      )
+      const points = segment.points.map(([x, y]) => project(x, y));
+      L.polyline(points, { renderer, color: stroke, weight: RAIL_WEIGHT_PX, opacity: 1, lineCap: "round", lineJoin: "round" })
         .bindTooltip(() => tooltip(segment), { sticky: true })
         .addTo(group);
+      // End caps: a segment's two ends, so a short one still reads as a rail piece and joins show.
+      for (const end of [points[0], points[points.length - 1]]) {
+        L.circleMarker(end, {
+          renderer,
+          radius: RAIL_CAP_RADIUS_PX,
+          stroke: false,
+          fillColor: stroke,
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(group);
+      }
     }
     group.addTo(map);
     return () => {
@@ -46,17 +61,18 @@ export const railsLayer: MapLayer<RailSegment[]> = {
   legend: () => (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       <li className="flex items-center gap-1.5">
-        <svg viewBox="0 0 24 4" aria-hidden="true" focusable="false" className="h-1 w-6 flex-none">
-          <line x1="0" y1="2" x2="24" y2="2" className="stroke-muted" strokeWidth="2" />
+        {/* The same stroke as drawn: RAIL_WEIGHT_PX wide, round caps (viewBox units are pixels). */}
+        <svg viewBox="0 0 24 8" aria-hidden="true" focusable="false" className="h-2 w-6 flex-none">
+          <line x1="4" y1="4" x2="20" y2="4" className="stroke-rail" strokeWidth={RAIL_WEIGHT_PX} strokeLinecap="round" />
         </svg>
         Rail segment
       </li>
     </ul>
   ),
 
-  describe(segments) {
+  describe(segments, options) {
     if (segments.length === 0) return "No rails built yet.";
     const total = segments.reduce((sum, s) => sum + polylineLengthM(s.points), 0);
-    return `${countOf(segments.length, "rail segment", "rail segments")} on the map, ${formatMetres(total)} of track in all.`;
+    return `${countOf(segments.length, "rail segment", "rail segments")} on the map, ${formatMetres(total)} of track ${options?.truncated ? "shown" : "in all"}.`;
   },
 };

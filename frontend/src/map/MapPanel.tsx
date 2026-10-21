@@ -1,8 +1,9 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { isBackedUpState, type FactoryResponse } from "@satisfactory-dash/shared";
 import { queries, type WorldLayerRead } from "../api/queries";
-import { ErrorNotice } from "../components/ErrorNotice";
+import { ApiError } from "../api/errors";
+import { describeError } from "../components/ErrorNotice";
 import { formatPercent } from "../format";
 import { Loadable, Skeleton, SkeletonLine, SkeletonStatus } from "../ui/Skeleton";
 import { buildingsLayer, placed } from "./buildingsLayer";
@@ -39,27 +40,61 @@ const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, d
  * the backend cut the layer to its item cap, so what's drawn is part of it).
  */
 function WorldLayerText<T>({ query, layer }: { query: UseQueryResult<WorldLayerRead<T>>; layer: MapLayer<T> }) {
-  if (query.isError) {
-    return (
-      <ErrorNotice
-        error={query.error}
-        action={
-          <button type="button" onClick={() => void query.refetch()} className="min-h-touch">
-            Retry {layer.label.toLowerCase()}
-          </button>
-        }
-      />
-    );
-  }
+  // A failed layer says so in the shared error box (WorldErrors), not here.
+  if (query.isError) return null;
+  const truncated = query.data?.truncated ?? false;
   return (
-    <Loadable pending={query.isPending} skeleton={<SkeletonLine label={`Loading ${layer.label.toLowerCase()}…`} />}>
-      {query.data && (
-        <p>
-          {layer.describe(query.data.data)}
-          {query.data.truncated && " The server cut this layer to its size limit, so part of it isn't drawn."}
+    <Loadable pending={query.isPending} skeleton={<SkeletonLine label={`Loading ${layer.label.toLowerCase()}…`} />} className="grid gap-1">
+      {query.data && <p>{layer.describe(query.data.data, { truncated })}</p>}
+      {truncated && (
+        <p className="text-sm text-muted">
+          Showing part of the {layer.label.toLowerCase()}: the server cut this layer to its size limit.
         </p>
       )}
     </Loadable>
+  );
+}
+
+/** "Game server unreachable." as a clause after a colon: "game server unreachable". */
+const clause = (message: string) => (message.charAt(0).toLowerCase() + message.slice(1)).replace(/\.$/, "");
+const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * The failed world layers in one box, with one Retry (the same cause usually fails both): what failed and
+ * why, the request ID small. It sits under the map and its legends, so a failure pushes nothing above it.
+ */
+function WorldErrors({ failed }: { failed: { label: string; error: unknown; retry: () => void }[] }) {
+  if (failed.length === 0) return null;
+  const reasons = new Map<string, string[]>();
+  for (const { label, error } of failed) {
+    const reason = clause(describeError(error));
+    reasons.set(reason, [...(reasons.get(reason) ?? []), label.toLowerCase()]);
+  }
+  const requestId = failed.map((f) => (f.error instanceof ApiError ? f.error.requestId : undefined)).find(Boolean);
+  return (
+    <div role="alert" className="grid gap-2 text-sm">
+      {[...reasons].map(([reason, labels]) => (
+        <p key={reason}>
+          {sentenceCase(labels.join(" and "))} couldn't load: {reason}.
+        </p>
+      ))}
+      {requestId && <p className="text-xs text-muted">Request ID: {requestId}</p>}
+      <div>
+        <button type="button" onClick={() => failed.forEach((f) => f.retry())} className="min-h-touch">
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A legend row is captioned with its layer (the toggles are above the map, the legends below it). */
+function LegendRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1">
+      <p className="text-sm font-medium text-fg">{label}</p>
+      {children}
+    </div>
   );
 }
 
@@ -94,6 +129,12 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   const nodes = useQuery({ ...queries.mapResourceNodes(serverId), enabled: visible.has(resourceNodesLayer.id) });
   const railsData = visible.has(railsLayer.id) ? rails.data : undefined;
   const nodesData = visible.has(resourceNodesLayer.id) ? nodes.data : undefined;
+  const failed = [
+    { on: visible.has(railsLayer.id), label: railsLayer.label, query: rails },
+    { on: visible.has(resourceNodesLayer.id), label: resourceNodesLayer.label, query: nodes },
+  ]
+    .filter((f) => f.on && f.query.isError)
+    .map((f) => ({ label: f.label, error: f.query.error, retry: () => void f.query.refetch() }));
 
   // Stable while the data and toggles are: a new array would make the canvas redraw. In LAYERS order.
   const drawn = useMemo(() => {
@@ -126,7 +167,8 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       <h3 id="map-heading" className="mb-0">
         Factory map
       </h3>
-      <fieldset className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      {/* Three columns on a phone, so no label wraps on its own; a row from the small breakpoint up. */}
+      <fieldset className="grid grid-cols-3 gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6">
         <legend className="sr-only">Layers</legend>
         {LAYERS.map((layer) => (
           <label key={layer.id} className="flex min-h-touch items-center gap-2">
@@ -140,9 +182,15 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
         <MapCanvas config={GRID_BASE_MAP} layers={drawn} fitTo={fitTo} onView={setView} />
       </Suspense>
       {/* Under the map, not above it: three layers' legends above would push the map off a phone's first screen. */}
-      {LAYERS.filter((l) => visible.has(l.id)).map((layer) => (
-        <div key={layer.id}>{layer.legend()}</div>
-      ))}
+      {/* One captioned row per layer that has something drawn: off, empty, loading or failed layers have none. */}
+      {railsData && railsData.data.length > 0 && <LegendRow label={railsLayer.label}>{railsLayer.legend()}</LegendRow>}
+      {nodesData && nodesData.data.length > 0 && (
+        <LegendRow label={resourceNodesLayer.label}>{resourceNodesLayer.legend()}</LegendRow>
+      )}
+      {visible.has(buildingsLayer.id) && shown.length > 0 && (
+        <LegendRow label={buildingsLayer.label}>{buildingsLayer.legend()}</LegendRow>
+      )}
+      <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
         A plain grid, 500 m per square, with the rails and resource nodes the server reported: no game map art.
         Positions are approximate until they're checked in game.
@@ -172,9 +220,9 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
                     const percent = outputPercent(b);
                     return (
                       <tr key={b.id}>
-                        <td>{b.name}</td>
-                        <td>{b.recipe ?? "No recipe"}</td>
-                        <td>
+                        <td data-label="Building">{b.name}</td>
+                        <td data-label="Recipe">{b.recipe ?? "No recipe"}</td>
+                        <td data-label="State">
                           {stateLabel(buildingState(b))}
                           {percent !== null && ` · ${formatPercent(percent)}`}
                           {isBackedUpState(b) &&" · Backed up"}

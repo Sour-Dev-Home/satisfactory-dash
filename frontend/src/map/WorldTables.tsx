@@ -16,6 +16,10 @@ import {
  * rows in the current view, following pan and zoom. A focusable region, so keyboard users can scroll
  * it (axe scrollable-region-focusable).
  */
+/** Nothing in the layer at all, and nothing in the current view. */
+export const EMPTY_LAYER = "None on the map.";
+export const EMPTY_VIEW = "None in view. Zoom out or pan to see more.";
+
 function ViewTable({ id, title, count, empty, children }: { id: string; title: string; count: number; empty: string; children: ReactNode }) {
   return (
     <div className="grid gap-2">
@@ -36,7 +40,7 @@ function ViewTable({ id, title, count, empty, children }: { id: string; title: s
 export function ResourceNodesTable({ nodes, view }: { nodes: readonly ResourceNode[]; view: ViewM | null }) {
   const listed = nodes.filter((n) => nodeInView(view, n));
   return (
-    <ViewTable id="map-nodes-heading" title="Resource nodes in view" count={listed.length} empty="None in view. Zoom out or pan to see more.">
+    <ViewTable id="map-nodes-heading" title="Resource nodes in view" count={listed.length} empty={nodes.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
       <table aria-labelledby="map-nodes-heading" className="w-full text-sm">
         <thead>
           <tr>
@@ -51,11 +55,11 @@ export function ResourceNodesTable({ nodes, view }: { nodes: readonly ResourceNo
           {listed.map((n, i) => (
             // Nodes have no id of their own; position and type are unique in the game, the index covers a repeat.
             <tr key={`${n.type}:${n.x}:${n.y}:${i}`}>
-              <td>{n.type}</td>
-              <td>{purityLabel(n.purity)}</td>
-              <td>{nodeKindLabel(n.nodeType)}</td>
-              <td>{n.exploited ? "In use" : "Free"}</td>
-              <td>{formatPoint([n.x, n.y])}</td>
+              <td data-label="Resource">{n.type}</td>
+              <td data-label="Purity">{purityLabel(n.purity)}</td>
+              <td data-label="Kind">{nodeKindLabel(n.nodeType)}</td>
+              <td data-label="State">{n.exploited ? "In use" : "Free"}</td>
+              <td data-label="Position (m)">{formatPoint([n.x, n.y])}</td>
             </tr>
           ))}
         </tbody>
@@ -67,7 +71,7 @@ export function ResourceNodesTable({ nodes, view }: { nodes: readonly ResourceNo
 export function RailsTable({ segments, view }: { segments: readonly RailSegment[]; view: ViewM | null }) {
   const listed = segments.filter((s) => railInView(view, s));
   return (
-    <ViewTable id="map-rails-heading" title="Rail segments in view" count={listed.length} empty="None in view. Zoom out or pan to see more.">
+    <ViewTable id="map-rails-heading" title="Rail segments in view" count={listed.length} empty={segments.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
       <table aria-labelledby="map-rails-heading" className="w-full text-sm">
         <thead>
           <tr>
@@ -80,10 +84,10 @@ export function RailsTable({ segments, view }: { segments: readonly RailSegment[
         <tbody>
           {listed.map((s, i) => (
             <tr key={`${s.id}:${i}`}>
-              <td>{s.id}</td>
-              <td>{formatMetres(polylineLengthM(s.points))}</td>
-              <td>{formatPoint(s.points[0])}</td>
-              <td>{formatPoint(s.points[s.points.length - 1])}</td>
+              <td data-label="Segment">{s.id}</td>
+              <td data-label="Length">{formatMetres(polylineLengthM(s.points))}</td>
+              <td data-label="From (m)">{formatPoint(s.points[0])}</td>
+              <td data-label="To (m)">{formatPoint(s.points[s.points.length - 1])}</td>
             </tr>
           ))}
         </tbody>

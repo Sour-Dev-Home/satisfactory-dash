@@ -53,6 +53,11 @@ describe("labels", () => {
     expect(nodeRadiusPx("toString")).toBe(nodeRadiusPx("normal"));
   });
 
+  it("spreads node sizes widely enough to tell purities apart at a glance (at least 3 px per step)", () => {
+    expect(nodeRadiusPx("normal") - nodeRadiusPx("impure")).toBeGreaterThanOrEqual(3);
+    expect(nodeRadiusPx("pure") - nodeRadiusPx("normal")).toBeGreaterThanOrEqual(3);
+  });
+
   it("sizes nodes by purity: impure < normal < pure", () => {
     expect(nodeRadiusPx("impure")).toBeLessThan(nodeRadiusPx("normal"));
     expect(nodeRadiusPx("normal")).toBeLessThan(nodeRadiusPx("pure"));
