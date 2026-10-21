@@ -77,8 +77,16 @@ describe("StatusBanners", () => {
     expect(screen.getByText(/Showing last known data/)).toBeInTheDocument();
   });
 
+  it("shows game server unreachable without the request ID, keeping it for the dev tools", async () => {
+    statusReturns(errorUpstreamUnreachable, 502);
+    renderBanners();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Game server unreachable.");
+    expect(alert).not.toHaveTextContent("Request ID");
+    expect(alert).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
+  });
+
   it.each([
-    ["game server unreachable", errorUpstreamUnreachable, 502, "Game server unreachable."],
     [
       "rejected game-server credentials",
       errorUpstreamAuthRejected,
