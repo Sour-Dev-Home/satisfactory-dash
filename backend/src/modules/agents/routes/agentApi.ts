@@ -1,5 +1,6 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import express, { Router } from "express";
-import type { RequestHandler, Response } from "express";
+import type { ErrorRequestHandler, Request, RequestHandler, Response } from "express";
 import {
   AgentCommandsQuerySchema,
   AgentCommandsResponseSchema,
@@ -16,17 +17,22 @@ import type { Cadence } from "@satisfactory-dash/shared";
 import type { Logger } from "pino";
 import { BadRequestError, RateLimitedError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import { createLogger } from "../../../platform/logger.js";
-import { createBackgroundRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
+import { AGENT_REFUSED_STATUSES, createBackgroundRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
+import { TokenBucketLimiter } from "../../../platform/tokenBucket.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import type { ServerDirectory } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
-import { SNAPSHOT_MAX_BYTES } from "../config.js";
+import { COMMANDS_RATE, SNAPSHOT_BYTE_BUDGET, SNAPSHOT_MAX_BYTES, SNAPSHOT_RATE } from "../config.js";
 import type { AgentIdentity } from "../services/agentAuth.js";
 import { rateLimitKey } from "../services/clientKey.js";
 import type { AgentCommandsService } from "../services/commandsService.js";
 import type { EnrollmentService } from "../services/enrollmentService.js";
+
+/** The statuses `satis.agent.refused` counts (#514): a malformed request, a bad credential, an oversized or wrongly typed
+ *  body, a rate limit. */
+const REFUSED_STATUSES: ReadonlySet<string> = new Set(AGENT_REFUSED_STATUSES);
 
 /** The agent API is mounted at /agent/v1 (not under /api): a shared route pattern is registered without that prefix. */
 export const agentRoutePath = (route: string): string => route.replace(/^\/agent\/v1(?=\/)/, "");
@@ -51,8 +57,12 @@ export interface AgentApiDeps {
   enrollLimiter?: UserRateLimiter;
   /** Across every caller; default 120 enrolment attempts a minute for the whole process. */
   globalEnrollLimiter?: UserRateLimiter;
-  /** Per server (credential); default 50 snapshots per 10 seconds: about 5 a second, bursts allowed. */
-  snapshotLimiter?: UserRateLimiter;
+  /** Snapshots per credential (#514); default `SNAPSHOT_RATE` (config.ts). */
+  snapshotLimiter?: TokenBucketLimiter;
+  /** Decompressed snapshot bytes per credential (#514); default `SNAPSHOT_BYTE_BUDGET`. */
+  snapshotByteBudget?: TokenBucketLimiter;
+  /** Command polls and results per credential (#514); default `COMMANDS_RATE`. */
+  commandsLimiter?: TokenBucketLimiter;
   now?: () => number;
   /** Where a metrics failure is logged (once); default a logger of its own. */
   logger?: Logger;
@@ -74,9 +84,26 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   const now = deps.now ?? Date.now;
   const enrollLimiter = deps.enrollLimiter ?? new UserRateLimiter({ max: 10, windowMs: 60_000 });
   const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: 120, windowMs: 60_000 });
-  const snapshotLimiter = deps.snapshotLimiter ?? new UserRateLimiter({ max: 50, windowMs: 10_000 });
+  const snapshotLimiter = deps.snapshotLimiter ?? new TokenBucketLimiter({ ...SNAPSHOT_RATE, now });
+  const snapshotByteBudget = deps.snapshotByteBudget ?? new TokenBucketLimiter({ ...SNAPSHOT_BYTE_BUDGET, now });
+  const commandsLimiter = deps.commandsLimiter ?? new TokenBucketLimiter({ ...COMMANDS_RATE, now });
   const versions = new Map<string, string>();
+  /** The open long-poll of each credential (#514): a new one ends the old one, so a credential holds at most one. */
+  const openPolls = new Map<string, AbortController>();
   const metrics = createBackgroundRecorder(deps.logger ?? createLogger(), deps.metrics);
+
+  // #514 (ADR-0045 O4): every refused agent request is counted by server public id ("unknown" before authentication), so
+  // the operator can see which server misbehaves. Registered first, it also sees the routers mounted after this one at
+  // /agent/v1 (map's world-layer route). It reads only the final status and the identity auth set: never a body or header.
+  router.use((_req, res, next) => {
+    res.on("finish", () => {
+      const status = String(res.statusCode);
+      if (!REFUSED_STATUSES.has(status)) return;
+      const agent = res.locals.agent as AgentIdentity | undefined;
+      metrics.counter("satis.agent.refused", { server: agent?.publicId ?? "unknown", status });
+    });
+    next();
+  });
 
   router.post(
     agentRoutePath(endpoints.agentApi.enroll.route),
@@ -95,10 +122,32 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     },
   );
 
+  // Both checked before the body is read: a refused snapshot is never inflated or parsed. The rate is spent here; the
+  // bytes are charged once the body is inflated (express.json's `verify` runs before JSON.parse), and a credential whose
+  // byte budget is in debt is refused here until it is repaid.
   const snapshotRateLimit: RequestHandler = (_req, res, next) => {
     const agent = res.locals.agent as AgentIdentity;
-    const wait = snapshotLimiter.hit(agent.serverUuid);
+    const bytesWait = snapshotByteBudget.admit(agent.serverUuid);
+    if (bytesWait > 0) throw new RateLimitedError(bytesWait, "Too many snapshot bytes. Slow down.");
+    const wait = snapshotLimiter.take(agent.serverUuid);
     if (wait > 0) throw new RateLimitedError(wait, "Too many snapshots. Slow down.");
+    next();
+  };
+  const snapshotMaxBytes = deps.snapshotMaxBytes ?? SNAPSHOT_MAX_BYTES;
+  const chargeSnapshotBytes = (_req: IncomingMessage, res: ServerResponse, body: Buffer): void => {
+    snapshotByteBudget.charge(((res as Response).locals.agent as AgentIdentity).serverUuid, body.length);
+  };
+  // A body over the cap was inflated up to the cap before it was refused (413): that work is charged too, so gzip bombs
+  // spend the same budget as real snapshots.
+  const chargeOversizedSnapshot: ErrorRequestHandler = (err: unknown, _req, res, next) => {
+    if ((err as { type?: unknown } | null)?.type === "entity.too.large") {
+      snapshotByteBudget.charge((res.locals.agent as AgentIdentity).serverUuid, snapshotMaxBytes);
+    }
+    next(err);
+  };
+  const commandsRateLimit: RequestHandler = (_req, res, next) => {
+    const wait = commandsLimiter.take((res.locals.agent as AgentIdentity).serverUuid);
+    if (wait > 0) throw new RateLimitedError(wait, "Too many command requests. Slow down.");
     next();
   };
 
@@ -107,8 +156,9 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     deps.auth,
     snapshotRateLimit,
     requireJsonBody,
-    express.json({ limit: deps.snapshotMaxBytes ?? SNAPSHOT_MAX_BYTES, inflate: true }),
-    async (req, res: Response) => {
+    express.json({ limit: snapshotMaxBytes, inflate: true, verify: chargeSnapshotBytes }),
+    chargeOversizedSnapshot,
+    async (req: Request, res: Response) => {
       const agent = res.locals.agent as AgentIdentity;
       const snapshot = SnapshotRequestSchema.safeParse(req.body);
       if (!snapshot.success) throw new BadRequestError("The snapshot is not valid");
@@ -136,15 +186,29 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   );
 
   // GET /commands?waitSeconds=0..25: the agent's long-poll. Answered as soon as a command exists for its server, or empty
-  // when the wait is up (the agent asks again). The wait ends early if the agent hangs up.
-  router.get(agentRoutePath(endpoints.agentApi.commands.route), deps.auth, snapshotRateLimit, async (req, res) => {
+  // when the wait is up (the agent asks again). The wait ends early if the agent hangs up. One open poll per credential
+  // (#514): a new one ends the old one, which is answered with an empty list (an agent whose old connection is half-open
+  // after a network change is never refused, and a credential can't hold dozens of connections open).
+  router.get(agentRoutePath(endpoints.agentApi.commands.route), deps.auth, commandsRateLimit, async (req, res) => {
     const agent = res.locals.agent as AgentIdentity;
     const query = AgentCommandsQuerySchema.safeParse(req.query);
     if (!query.success) throw new BadRequestError("The query is not valid");
-    const hangUp = new AbortController();
-    res.on("close", () => hangUp.abort());
-    const commands = await deps.commands.poll(agent, query.data.waitSeconds, hangUp.signal);
-    if (hangUp.signal.aborted) return; // nobody is listening
+    const stop = new AbortController();
+    let hungUp = false;
+    res.on("close", () => {
+      hungUp = true;
+      stop.abort();
+    });
+    openPolls.get(agent.serverUuid)?.abort();
+    openPolls.set(agent.serverUuid, stop);
+    let commands;
+    try {
+      commands = await deps.commands.poll(agent, query.data.waitSeconds, stop.signal);
+    } finally {
+      if (openPolls.get(agent.serverUuid) === stop) openPolls.delete(agent.serverUuid);
+    }
+    if (hungUp) return; // nobody is listening
+    // Ended by a newer poll: whatever the claim returned is still this poll's to deliver (an empty list otherwise).
     sendValidated(res, AgentCommandsResponseSchema, { commands });
   });
 
@@ -153,7 +217,7 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   router.post(
     agentRoutePath(endpoints.agentApi.result.route),
     deps.auth,
-    snapshotRateLimit,
+    commandsRateLimit,
     requireJsonBody,
     express.json({ limit: "4kb" }),
     async (req, res) => {

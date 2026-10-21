@@ -85,6 +85,33 @@ Still the agent's word, by design (it is the only source of these readings): `is
 `backedUp` or `unpowered` state and the alerts that follow, but only for its own server. Body size is capped (5 MB) and
 each credential is rate limited, which bounds what one agent can make the backend hold.
 
+## Limits on the agent API (#514, ADR-0045)
+
+All in process, per backend instance (`backend/src/modules/agents/config.ts`; token buckets in
+`platform/tokenBucket.ts`). Every refusal is the usual 429 `rate_limited` with `Retry-After` (or 413 for an oversized
+body), which the agent honours and retries.
+
+| Limit | Key | Size | Why |
+|---|---|---|---|
+| Snapshots | credential | 150 at once, then 0.6 a second (3 per 5 s tick) | one snapshot per 5 s tick; the agent queues up to 120 during an outage and sends them back to back |
+| Snapshot bytes (decompressed) | credential | 32 MB at once, then 4 MB a minute | a real agent sends about 250 KB a minute (the factory read, about 100 KB, every 30 s); a credential in debt is refused before its next body is read, and a body over the cap is charged the cap |
+| One snapshot | request | 5 MB decompressed (413) | about 440 bytes a building, so about 11,000 buildings |
+| Command polls and results | credential | 30 at once, then 1 every 2 s | the agent long-polls for up to 25 s |
+| Open long-polls | credential | 1 | a new `GET /commands` ends the open one, which answers an empty list |
+| Failed authentications | client network (IPv6 /64) | 60 a minute | a missing, malformed, unknown or revoked credential |
+| Failed authentications | whole process | 6,000 a minute | a flood from many addresses costs at most this many lookups |
+| World layers | credential | 20 per 10 minutes, 2 MB each | `map/routes/agentWorldRoutes.ts` |
+| Enrolment | client network / process | 10 / 120 a minute | `agents/routes/agentApi.ts` |
+
+Successful authentications never count against the failure budgets, and a credential that authenticated in the last
+15 minutes skips them entirely (it is still looked up every time, so a revocation is immediate). A flood of junk
+therefore never refuses a working agent. One that hasn't authenticated for 15 minutes (or since a backend restart) can
+be refused while a flood is using up the global budget, and gets in once the minute's window ends.
+
+`satis.agent.refused` (a counter, labels `server` = public id or `unknown` before authentication, and `status` =
+400, 401, 413, 415 or 429) shows which server is refused, and how. Sustained 401s or 429s under `unknown` from many
+addresses is ADR-0045 E4's trigger to revisit edge rate limiting.
+
 ## Agent offline (alert)
 
 `agent_offline` is a preset **only for agent servers** (seeded on the alert engine's next tick after a server becomes
