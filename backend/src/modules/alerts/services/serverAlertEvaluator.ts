@@ -41,6 +41,8 @@ export interface AlertEventOut {
 export interface Evaluation {
   /** The persisted states that changed. */
   writes: StateWrite[];
+  /** #515: persisted states to delete: a power rule's circuit that is gone and back to ok (same as never tracked). */
+  deletes: { ruleId: string; subject: string }[];
   events: AlertEventOut[];
   /** Applies the in-memory side (machine timers, who was told about) once the writes are safely stored. */
   commit(): void;
@@ -65,6 +67,14 @@ const STALE_AFTER_INTERVALS = 2;
 const UPDATE_MIN_INTERVAL_MS = 10 * 60_000;
 const UNREACHABLE_DEFAULTS: ServerUnreachableParams = { failedPolls: 3, minSeconds: 120 };
 const SUMMARY_TOP_RECIPES = 5;
+/**
+ * #515 (ADR-0045 M12): the circuits one power rule (`power_outage`, `fuse_trip`) tracks as subjects, each its own alert.
+ * The measured tier-6 save has 1 circuit (docs-vault/raw-sources/captured-responses/frm-getPower-2026-09-22-*); 64 matches
+ * the circuits history records per sample (telemetry's MAX_POWER_SAMPLE_CIRCUITS), so any circuit with a history can
+ * alert. With 50 rules a server (MAX_RULES_PER_SERVER) that bounds a server's circuit states at 3,200, where 1,000 forged
+ * circuits made 50,000.
+ */
+export const MAX_CIRCUIT_SUBJECTS_PER_RULE = 64;
 
 /** One factory-wide reading of an item's rate, kept per rule in memory (never in the database). */
 interface RateSample {
@@ -162,6 +172,7 @@ export class ServerAlertEvaluator {
   evaluate(input: EvaluationInput): Evaluation {
     const { now, observations: obs, rules } = input;
     const writes = new Map<string, StateWrite>();
+    const deletes = new Map<string, { ruleId: string; subject: string }>();
     const events: AlertEventOut[] = [];
     const commits: (() => void)[] = [];
 
@@ -241,10 +252,18 @@ export class ServerAlertEvaluator {
           if (suppressed) break;
           const fresh = isFresh(obs.power, now);
           const circuits = new Map((fresh ? (obs.power?.circuits ?? []) : []).map((circuit) => [circuit.circuit, circuit]));
-          const subjects = new Set<string>([...circuits.keys()].map((id) => `circuit:${id}`));
+          // #515: the subjects this rule already tracks are always evaluated (so they can clear); a circuit it does not
+          // track yet joins only while the rule tracks fewer than MAX_CIRCUIT_SUBJECTS_PER_RULE, lowest ids first.
+          const subjects = new Set<string>();
           const prefix = `${rule.id}\u0000circuit:`;
           for (const key of effective.keys()) {
             if (key.startsWith(prefix)) subjects.add(key.slice(rule.id.length + 1));
+          }
+          for (const id of [...circuits.keys()].sort((a, b) => a - b)) {
+            const subject = `circuit:${id}`;
+            if (subjects.has(subject)) continue;
+            if (subjects.size >= MAX_CIRCUIT_SUBJECTS_PER_RULE) break;
+            subjects.add(subject);
           }
           for (const subject of subjects) {
             const id = Number(subject.slice("circuit:".length));
@@ -257,7 +276,14 @@ export class ServerAlertEvaluator {
                 : rule.kind === "power_outage"
                   ? circuit.status === "outage"
                   : circuit.fuseTripped;
-            stepSubject(rule, subject, condition, () => ({ circuit: id }));
+            const result = stepSubject(rule, subject, condition, () => ({ circuit: id }));
+            // #515: a gone circuit that is back to ok is forgotten, so states never pile up (a new session's circuits, or
+            // forged ids that come and go) and the subject cap above counts only circuits that still matter.
+            const key = stateKey(rule.id, subject);
+            // Its ok write (if any) stays: the delete runs after the writes and removes only an ok state.
+            if (fresh && circuit === undefined && result.state.phase === "ok" && effective.has(key)) {
+              deletes.set(key, { ruleId: rule.id, subject });
+            }
           }
           break;
         }
@@ -283,7 +309,7 @@ export class ServerAlertEvaluator {
       for (const id of this.rateWindows.keys()) if (suppressed || !liveIds.has(id)) this.rateWindows.delete(id);
       this.wasSuppressed = suppressed;
     });
-    return { writes: [...writes.values()], events, commit: () => commits.forEach((apply) => apply()) };
+    return { writes: [...writes.values()], deletes: [...deletes.values()], events, commit: () => commits.forEach((apply) => apply()) };
   }
 
   /**

@@ -112,7 +112,9 @@ export const QUERY_NAMES = [
   "alerts.api.setMute",
   "alerts.api.updateRule",
   "alerts.claimDue",
+  "alerts.countRecentEvents",
   "alerts.deadForDestination",
+  "alerts.deleteStates",
   "alerts.destinationSealed",
   "alerts.destinationSummary",
   "alerts.disableDestination",
@@ -256,6 +258,11 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
     kind: "counter",
     labels: { table: isOneOf(...HISTORY_TABLES) },
   },
+  // #515 (ADR-0045 M11): rows a per-server history cap kept out of the database; `server` is the public id.
+  "satis.history.rows_dropped": {
+    kind: "counter",
+    labels: { server: isBoundedToken(64), table: isOneOf(...HISTORY_TABLES) },
+  },
   "satis.alerts.evaluation.duration": {
     kind: "histogram",
     labels: {},
@@ -263,6 +270,11 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   "satis.alerts.fire.lag": {
     kind: "histogram",
     labels: { kind: isOneOf(...ALERT_KINDS) },
+  },
+  // #515 (ADR-0045 M12): alert events over a server's hourly cap, not stored or sent; `server` is the public id.
+  "satis.alerts.events_dropped": {
+    kind: "counter",
+    labels: { server: isBoundedToken(64) },
   },
 });
 

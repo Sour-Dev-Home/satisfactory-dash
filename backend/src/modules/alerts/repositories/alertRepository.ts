@@ -92,13 +92,29 @@ const UPSERT_STATES = `
     phase = EXCLUDED.phase, since = EXCLUDED.since, clear_since = EXCLUDED.clear_since,
     last_notified_at = EXCLUDED.last_notified_at, last_condition = EXCLUDED.last_condition, updated_at = now()`;
 
+// #515: $1 rule ids, $2 subjects. Only an `ok` state is ever deleted (a forgotten circuit): one that is pending or
+// firing again by now stays.
+const DELETE_STATES = `
+  DELETE FROM alerts.alert_state st
+  USING unnest($1::uuid[], $2::text[]) AS x(rule_id, subject)
+  WHERE st.rule_id = x.rule_id AND st.subject = x.subject AND st.phase = 'ok'`;
+
+// #515: $1 server public id, $2 since (ms). How many alert events the server logged since then (alert_events_server_at_idx).
+const COUNT_RECENT_EVENTS = `
+  SELECT count(*)::int AS count
+  FROM alerts.alert_events e
+  JOIN servers.servers s ON s.id = e.server_id
+  WHERE s.public_id = $1 AND e.at >= to_timestamp($2::float8 / 1000.0)`;
+
 // $1 at (ms) and then arrays: rule ids, kinds, severities, subjects, transitions, summaries (json text).
 const INSERT_EVENTS = `
   INSERT INTO alerts.alert_events (server_id, rule_id, kind, severity, subject, transition, at, summary)
   SELECT r.server_id, r.id, x.kind, x.severity, x.subject, x.transition, to_timestamp($1::float8 / 1000.0), x.summary::jsonb
-  FROM unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
-         AS x(rule_id, kind, severity, subject, transition, summary)
+  FROM unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) WITH ORDINALITY
+         AS x(rule_id, kind, severity, subject, transition, summary, ord)
   JOIN alerts.rules r ON r.id = x.rule_id
+  -- #515: ids in the evaluator's order, which the outbox claim delivers a server's events by.
+  ORDER BY x.ord
   RETURNING id::text AS id`;
 
 // ADR-0027 decision 5, the transactional outbox: one row per (new event, ENABLED destination of its server), written in
@@ -175,6 +191,8 @@ export async function writeEvaluation(
   pool: Parameters<typeof withTransaction>[0],
   input: {
     writes: readonly StateWrite[];
+    /** #515: states to forget (only `ok` ones are deleted). */
+    deletes?: readonly { ruleId: string; subject: string }[];
     events: readonly AlertEventOut[];
     nowMs: number;
     /** ALERT_DELIVERY is on: also queue each new event for every enabled destination, in the same transaction. While
@@ -182,7 +200,8 @@ export async function writeEvaluation(
     deliver?: boolean;
   },
 ): Promise<void> {
-  if (input.writes.length === 0 && input.events.length === 0) return;
+  const deletes = input.deletes ?? [];
+  if (input.writes.length === 0 && input.events.length === 0 && deletes.length === 0) return;
   await withTransaction(pool, async (client) => {
     if (input.writes.length > 0) {
       const w = input.writes;
@@ -195,6 +214,10 @@ export async function writeEvaluation(
         w.map((write) => write.state.lastNotifiedAt),
         w.map((write) => write.state.lastCondition),
       ]);
+    }
+    // After the writes, so a state written ok in this evaluation is deleted too.
+    if (deletes.length > 0) {
+      await timedQuery(client, "alerts.deleteStates", DELETE_STATES, [deletes.map((d) => d.ruleId), deletes.map((d) => d.subject)]);
     }
     if (input.events.length > 0) {
       const e = input.events;
@@ -213,6 +236,14 @@ export async function writeEvaluation(
       }
     }
   });
+}
+
+const CountSchema = z.object({ count: z.number().int() });
+
+/** #515: how many alert events a server has logged since `sinceMs` (0 for an unknown or removed server). */
+export async function countRecentEvents(db: Queryable, serverPublicId: string, sinceMs: number): Promise<number> {
+  const rows = parseRows(CountSchema, (await timedQuery(db, "alerts.countRecentEvents", COUNT_RECENT_EVENTS, [serverPublicId, sinceMs])).rows, "alerts.countRecentEvents");
+  return rows[0]?.count ?? 0;
 }
 
 /** Deletes alert events older than the retention, in batches; returns how many went. */

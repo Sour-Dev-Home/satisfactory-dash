@@ -7,6 +7,7 @@ import { PRESET_RULES } from "../services/rules.js";
 import { stateKey } from "../services/serverAlertEvaluator.js";
 import {
   ALERT_EVENT_RETENTION_MS,
+  countRecentEvents,
   listRules,
   loadMutes,
   loadStates,
@@ -115,6 +116,54 @@ describe.skipIf(!available)("alert repository against a real Postgres", () => {
     const states = await loadStates(pool, server.publicId);
     expect(states.size).toBe(1);
     expect(states.get(stateKey(outage.id, "circuit:1"))).toEqual(clearing);
+  });
+
+  it("#515: deletes only the listed states that are ok, in the same transaction as the writes", async () => {
+    const server = await newServer();
+    await seedPresetRules(pool, server.publicId);
+    const outage = (await rulesOf(server.publicId)).find((rule) => rule.kind === "power_outage")!;
+    const ok = { phase: "ok" as const, since: null, clearSince: null, lastNotifiedAt: NOW, lastCondition: false };
+    await writeEvaluation(pool, {
+      nowMs: NOW,
+      events: [],
+      writes: [
+        { ruleId: outage.id, subject: "circuit:1", state: ok },
+        { ruleId: outage.id, subject: "circuit:2", state: firing },
+        { ruleId: outage.id, subject: "circuit:3", state: ok },
+      ],
+    });
+    // circuit:2 is firing: listing it is not enough to delete it. circuit:3 is not listed. circuit:4 is written ok in the
+    // same evaluation (a circuit resolving as it goes): the delete runs after the write and removes it.
+    await writeEvaluation(pool, {
+      nowMs: NOW + 30_000,
+      events: [],
+      writes: [{ ruleId: outage.id, subject: "circuit:4", state: ok }],
+      deletes: [
+        { ruleId: outage.id, subject: "circuit:1" },
+        { ruleId: outage.id, subject: "circuit:2" },
+        { ruleId: outage.id, subject: "circuit:4" },
+        { ruleId: outage.id, subject: "circuit:404" },
+      ],
+    });
+    const states = await loadStates(pool, server.publicId);
+    expect([...states.keys()].sort()).toEqual([stateKey(outage.id, "circuit:2"), stateKey(outage.id, "circuit:3")].sort());
+  });
+
+  it("#515: counts a server's alert events since a time, and none of another server's", async () => {
+    const server = await newServer();
+    const other = await newServer();
+    await seedPresetRules(pool, server.publicId);
+    await seedPresetRules(pool, other.publicId);
+    const outage = (await rulesOf(server.publicId)).find((rule) => rule.kind === "power_outage")!;
+    const otherOutage = (await rulesOf(other.publicId)).find((rule) => rule.kind === "power_outage")!;
+    const event = (ruleId: string, subject: string) => ({ ruleId, kind: "power_outage" as const, severity: "critical" as const, subject, transition: "fired" as const, summary: {} });
+    await writeEvaluation(pool, { nowMs: NOW - 2 * 3_600_000, writes: [], events: [event(outage.id, "circuit:1")] });
+    await writeEvaluation(pool, { nowMs: NOW - 60_000, writes: [], events: [event(outage.id, "circuit:2"), event(outage.id, "circuit:3")] });
+    await writeEvaluation(pool, { nowMs: NOW, writes: [], events: [event(otherOutage.id, "circuit:1")] });
+    expect(await countRecentEvents(pool, server.publicId, NOW - 3_600_000)).toBe(2);
+    expect(await countRecentEvents(pool, server.publicId, NOW - 3 * 3_600_000)).toBe(3);
+    expect(await countRecentEvents(pool, other.publicId, NOW - 3_600_000)).toBe(1);
+    expect(await countRecentEvents(pool, "no-such-server", 0)).toBe(0);
   });
 
   it("is ATOMIC: an event that the database refuses rolls the state changes back too", async () => {

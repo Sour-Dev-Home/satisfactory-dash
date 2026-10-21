@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { InMemoryServerDirectory, ServerRuntime } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
 import { ObservationBoard } from "../../telemetry/services/observationBoard.js";
-import { AlertEvaluatorWorker, type AlertsDb } from "./alertEvaluatorWorker.js";
+import { AlertEvaluatorWorker, EVENT_QUOTA_WINDOW_MS, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR, type AlertsDb } from "./alertEvaluatorWorker.js";
 import { RULE_KINDS } from "./rules.js";
 import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 
@@ -65,6 +65,21 @@ function fakeDb(initialRules: RuleFixture[] = []) {
       calls.push("listRules");
       if (failWhen.list) throw new Error("db down");
       return { rows: rules };
+    }
+    if (sql.includes("DELETE FROM alerts.alert_state st")) {
+      calls.push("deleteStates");
+      const [ruleIds, subjects] = params as string[][];
+      ruleIds!.forEach((ruleId, i) => {
+        const key = `${ruleId}|${subjects![i]}`;
+        if (states.get(key)?.phase === "ok") states.delete(key);
+      });
+      return { rows: [] };
+    }
+    if (sql.includes("SELECT count(*)::int AS count") && sql.includes("FROM alerts.alert_events e")) {
+      // #515's hourly cap: not in `calls`, so the existing call-order assertions stay as they were.
+      const [serverId, sinceMs] = params as [string, number];
+      const own = new Set(rules.filter((rule) => rule.server_public_id === serverId).map((rule) => rule.id));
+      return { rows: [{ count: events.filter((event) => own.has(event.ruleId as string) && (event.at as number) >= sinceMs).length }] };
     }
     if (sql.includes("FROM alerts.alert_state st")) {
       calls.push("loadStates");
@@ -731,5 +746,67 @@ describe("AlertEvaluatorWorker metrics (ADR-0037 build step 3, fake clock)", () 
       "satis.alerts.evaluation.duration",
       "satis.alerts.fire.lag",
     ]);
+  });
+});
+
+describe("#515: alert events per server per hour are capped (ADR-0045 M12)", () => {
+  /** Every circuit in `ids` in outage (or not), for one server's board. */
+  const publishCircuits = (board: ObservationBoard, at: number, outage: boolean, ids: number[]) => {
+    board.recordPollSuccess(at);
+    board.publishStatus({ observedAt: at, intervalMs: 5 * SEC, paused: false, session: "S" });
+    board.publishPower({ observedAt: at, intervalMs: 5 * SEC, circuits: ids.map((circuit) => ({ circuit, status: outage ? "outage" : "ok", fuseTripped: false })) });
+  };
+  const circuits = Array.from({ length: 64 }, (_, i) => i + 1);
+
+  it("a flooding server stops at the cap; another server's alert in the same tick is still logged and queued", async () => {
+    let now = T0;
+    const fake = fakeDb();
+    const w = world(["alpha", "bravo"]);
+    const l = logger();
+    const metrics = createMetricsAggregator(() => 0);
+    const worker = new AlertEvaluatorWorker(fake.db, w.directory, { logger: l.logger, now: () => now, deliver: true, metrics });
+    const alpha = w.boards.get("alpha")!;
+    const bravo = w.boards.get("bravo")!;
+    // alpha flaps 64 circuits: 3 ticks in outage (fires), 3 ticks ok (resolves after the 60 s clear), and again.
+    for (let tick = 0; tick < 12; tick++) {
+      publishCircuits(alpha, now, Math.floor(tick / 3) % 2 === 0, circuits);
+      publishOutage(bravo, now, tick === 10);
+      await worker.tick();
+      now += 30 * SEC;
+    }
+    const of = (server: string) => fake.events.filter((event) => (event.ruleId as string).startsWith(`${server}-`));
+    expect(of("alpha")).toHaveLength(MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR);
+    expect(of("bravo").map((event) => event.transition)).toEqual(["fired"]);
+    // bravo's event was queued for delivery like any other (the outbox got every stored event).
+    expect(fake.outbox).toHaveLength(MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR + 1);
+    const dropped = metrics.drain().filter((delta) => delta.metric === "satis.alerts.events_dropped");
+    expect(dropped.map((delta) => delta.labels)).toEqual([{ server: "alpha" }]);
+    expect(dropped[0]!.sum).toBeGreaterThan(0);
+    // One warning for alpha in the hour, with ids and counts only.
+    const warnings = l.lines.filter((line) => line.obj.code === "ALERT_EVENT_QUOTA_EXCEEDED");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.obj).toMatchObject({ serverId: "alpha" });
+  });
+
+  it("the cap is a sliding hour counted from the alert log: room comes back as old events age out", async () => {
+    let now = T0;
+    const fake = fakeDb();
+    const w = world(["alpha"]);
+    const worker = new AlertEvaluatorWorker(fake.db, w.directory, { logger: logger().logger, now: () => now });
+    const alpha = w.boards.get("alpha")!;
+    const flap = async (ticks: number) => {
+      for (let tick = 0; tick < ticks; tick++) {
+        publishCircuits(alpha, now, Math.floor(tick / 3) % 2 === 0, circuits);
+        await worker.tick();
+        now += 30 * SEC;
+      }
+    };
+    await flap(12);
+    expect(fake.events).toHaveLength(MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR);
+    await flap(6); // still within the hour of the first events: nothing more
+    expect(fake.events).toHaveLength(MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR);
+    now += EVENT_QUOTA_WINDOW_MS;
+    await flap(6);
+    expect(fake.events.length).toBeGreaterThan(MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR);
   });
 });

@@ -6,6 +6,7 @@ import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import type { withTransaction } from "../../../platform/db/transaction.js";
 import {
+  countRecentEvents,
   listRules,
   loadMutes,
   loadStates,
@@ -15,7 +16,7 @@ import {
   type RuleRow,
 } from "../repositories/alertRepository.js";
 import { parseRuleParams, SEVERITIES, type Rule, type RuleKind, type Severity } from "./rules.js";
-import { ServerAlertEvaluator } from "./serverAlertEvaluator.js";
+import { ServerAlertEvaluator, type AlertEventOut } from "./serverAlertEvaluator.js";
 
 /** What the worker needs from the database: queries and transactions (a pool). */
 export type AlertsDb = Queryable & Parameters<typeof withTransaction>[0];
@@ -52,6 +53,17 @@ function triggeringSampleAt(kind: RuleKind, observations: ObservationSnapshot): 
 const DEFAULT_TICK_MS = 30_000;
 const DEFAULT_PURGE_INTERVAL_MS = 10 * 60_000;
 
+/** #515: the window the per-server event cap counts over, and how often its warning is logged per server. */
+export const EVENT_QUOTA_WINDOW_MS = 60 * 60_000;
+/**
+ * #515 (ADR-0045 M12): alert events one server may log (and so queue for delivery) in any hour. The evaluator ticks
+ * every 30 s, 120 ticks an hour, and one subject changes at most once a tick: 120 is one subject flapping fire/resolve
+ * on every tick for the whole hour (`for` and `clear` 0), the fastest an honest alert can go, while a real factory
+ * logs a handful an hour. Past it the excess is dropped, so a forged server's flood stays its own and the outbox
+ * gets at most 120 rows an hour per destination from it.
+ */
+export const MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR = 120;
+
 function toRule(row: RuleRow): Rule | undefined {
   const parsed = parseRuleParams(row.kind, row.params);
   if (parsed === undefined || !(SEVERITIES as readonly string[]).includes(row.severity)) return undefined;
@@ -79,6 +91,8 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   private readonly evaluators = new Map<string, ServerAlertEvaluator>();
   private readonly seeded = new Set<string>();
   private readonly badRules = new Set<string>();
+  /** #515: when each server's event-cap warning was last logged (keyed by public id). */
+  private readonly quotaWarnedAt = new Map<string, number>();
   private readonly tickMs: number;
   private readonly purgeIntervalMs: number;
   private readonly now: () => number;
@@ -163,6 +177,9 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
     for (const id of this.evaluators.keys()) {
       if (!live.has(id)) this.evaluators.delete(id); // the server was removed
     }
+    for (const id of this.quotaWarnedAt.keys()) {
+      if (!live.has(id)) this.quotaWarnedAt.delete(id);
+    }
 
     for (const server of servers) {
       // A server reached through an edge agent also gets the "agent offline" preset (ADR-0031). One that becomes an agent
@@ -212,9 +229,10 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           states,
           muted: (mutes.get(server.id) ?? 0) > now,
         });
-        await writeEvaluation(this.db, { writes: evaluation.writes, events: evaluation.events, nowMs: now, deliver: this.options.deliver === true });
+        const events = await this.withinEventQuota(server.id, evaluation.events, now);
+        await writeEvaluation(this.db, { writes: evaluation.writes, deletes: evaluation.deletes, events, nowMs: now, deliver: this.options.deliver === true });
         evaluation.commit();
-        for (const event of evaluation.events) {
+        for (const event of events) {
           // The alert log's own line: ids and counts only, never a name or a secret.
           this.options.logger.info({ serverId: server.id, alert: event.kind, subject: event.subject, transition: event.transition }, "alert event recorded");
           // ADR-0037: a stored fire's lag, the event time (this tick) minus the reading that triggered it.
@@ -235,5 +253,25 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
       if (purged > 0) this.options.logger.info({ purged }, "expired alert events purged");
     }
     if (failed) throw firstError;
+  }
+
+  /**
+   * #515: at most MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR events per server in any hour. The events over it are neither
+   * logged nor sent; their states still advance (so nothing fires twice later). In the evaluator's order, so the
+   * earlier rules of a tick win. Counted from the alert log itself, so a restart does not reset it.
+   */
+  private async withinEventQuota(serverId: string, events: AlertEventOut[], now: number): Promise<AlertEventOut[]> {
+    if (events.length === 0) return events;
+    const recent = await countRecentEvents(this.db, serverId, now - EVENT_QUOTA_WINDOW_MS);
+    const room = Math.max(0, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR - recent);
+    if (events.length <= room) return events;
+    const dropped = events.length - room;
+    this.metrics.counter("satis.alerts.events_dropped", { server: serverId }, dropped);
+    const lastWarned = this.quotaWarnedAt.get(serverId);
+    if (lastWarned === undefined || now - lastWarned >= EVENT_QUOTA_WINDOW_MS) {
+      this.quotaWarnedAt.set(serverId, now);
+      this.options.logger.warn({ serverId, dropped, code: "ALERT_EVENT_QUOTA_EXCEEDED" }, "a server is over its hourly alert-event cap; the excess events are not logged or sent");
+    }
+    return events.slice(0, room);
   }
 }

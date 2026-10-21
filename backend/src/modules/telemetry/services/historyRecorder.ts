@@ -11,6 +11,8 @@ import {
   type TransitionRow,
 } from "../repositories/historyRepository.js";
 import type { BackgroundWorker } from "./powerHistoryPoller.js";
+import { isCatalogedItem } from "../itemForms.js";
+import { capItemSample, capPowerSample, type Capped } from "./historyQuota.js";
 
 /** What the pollers write to: fire-and-forget, so a slow or absent database never slows a poll. */
 export interface HistoryRecorder {
@@ -33,10 +35,15 @@ export interface BufferedHistoryRecorderOptions {
   maxBuffered?: number;
   /** Tests only: where the metrics go (default the process-wide background aggregator). */
   metrics?: MetricsSink;
+  /** #515: whether an item class name is in the item catalog (default the committed catalog). */
+  isCatalogedItem?: (className: string) => boolean;
+  now?: () => number;
 }
 
 const DEFAULT_FLUSH_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_BUFFERED = 20_000;
+/** #515: rows over a per-sample cap are logged at most this often per server (the counter counts every one). */
+export const QUOTA_WARNING_INTERVAL_MS = 60 * 60_000;
 
 /** 32-bit hash of a game session's name (FNV-1a): a power series never spans a session change. */
 export function sessionKey(sessionName: string): number {
@@ -65,6 +72,9 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
   private readonly maxBuffered: number;
   private readonly logger: Logger;
   private readonly metrics: MetricsRecorder;
+  private readonly isCataloged: (className: string) => boolean;
+  private readonly now: () => number;
+  private lastQuotaWarningAt: number | undefined;
 
   constructor(
     private readonly db: Queryable,
@@ -75,14 +85,32 @@ export class BufferedHistoryRecorder implements HistoryRecorder, BackgroundWorke
     this.maxBuffered = options.maxBuffered ?? DEFAULT_MAX_BUFFERED;
     this.logger = options.logger;
     this.metrics = createBackgroundRecorder(options.logger, options.metrics);
+    this.isCataloged = options.isCatalogedItem ?? ((className) => isCatalogedItem(className));
+    this.now = options.now ?? Date.now;
   }
 
+  /** One power sample. #515: at most MAX_POWER_SAMPLE_CIRCUITS circuits of it are recorded. */
   recordPower(rows: PowerSampleRow[]): void {
-    this.power = this.bounded(this.power, rows);
+    this.power = this.bounded(this.power, this.withinQuota("power_samples", capPowerSample(rows)));
   }
 
+  /** One item sample. #515: every catalog item, and at most MAX_UNCATALOGED_ITEMS_PER_SAMPLE others, are recorded. */
   recordItems(rows: ItemSampleRow[]): void {
-    this.items = this.bounded(this.items, rows);
+    this.items = this.bounded(this.items, this.withinQuota("item_samples", capItemSample(rows, this.isCataloged)));
+  }
+
+  /** Counts what a cap dropped, and says so in the log at most once an hour for this server. */
+  private withinQuota<T>(table: "power_samples" | "item_samples", capped: Capped<T>): T[] {
+    if (capped.dropped > 0 && !this.stopped) {
+      this.metrics.counter("satis.history.rows_dropped", { server: this.serverPublicId, table }, capped.dropped);
+      const now = this.now();
+      if (this.lastQuotaWarningAt === undefined || now - this.lastQuotaWarningAt >= QUOTA_WARNING_INTERVAL_MS) {
+        this.lastQuotaWarningAt = now;
+        // Counts only: never a class name, which comes from the agent.
+        this.logger.warn({ table, dropped: capped.dropped, kept: capped.kept.length, code: "HISTORY_QUOTA_EXCEEDED" }, "a history sample is over its per-server cap; the excess is not recorded");
+      }
+    }
+    return capped.kept;
   }
 
   recordTransitions(rows: TransitionRow[]): void {

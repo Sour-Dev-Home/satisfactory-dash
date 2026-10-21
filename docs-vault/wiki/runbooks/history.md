@@ -28,6 +28,17 @@ Nothing else needs configuring. History starts filling as soon as the database i
 
 No personal data: it describes the game world. The privacy page says so (`frontend/public/privacy.html`).
 
+Per-sample caps (#515, ADR-0045 M11), set from the measured tier-6 save (1 circuit, 49 items, all in the item catalog),
+so a forged snapshot cannot fill the database. Only history is capped: the live views and the alert board see everything.
+
+| Cap | Value | Where |
+|---|---|---|
+| Circuits per power sample | 64, the lowest ids | `MAX_POWER_SAMPLE_CIRCUITS`, `telemetry/services/historyQuota.ts` |
+| Items per item sample that are NOT in the item catalog (`itemForms.generated.json`) | 64, the first by class name; catalog items are always kept | `MAX_UNCATALOGED_ITEMS_PER_SAMPLE`, same file |
+
+Rows over a cap are dropped and counted (`satis.history.rows_dropped{server,table}`), with one log line per server per
+hour: `HISTORY_QUOTA_EXCEEDED` (counts only, never a class name).
+
 ## Reading it: the history API (ADR-0027 PR 4)
 
 Server-scoped, members only, `GET /api/servers/:serverId/history/{power,items,transitions}`; `503 service_unavailable`
@@ -77,3 +88,30 @@ show honest gaps; shading pause periods would need a separate table of pause eve
   retries. Rollups are rebuilt from raw rows, so a gap heals itself within 48 hours.
 - A short start-up gap is normal: recorders begin before the database is ready, so their first
   flushes can fail and are retried.
+- Log line `HISTORY_QUOTA_EXCEEDED`: a server's sample was over a per-sample cap (above). A real
+  factory never hits it; a server that keeps hitting it is sending made-up circuits or items.
+- Alarm `rds-free-storage-low` ([`aws.md`](./aws.md)): find which servers hold the rows. Run as the
+  migrator or backup role in a `psql` session ([`database.md`](./database.md)); the first query reads
+  sizes and the planner's estimates per table, the second exact counts for the raw tables:
+
+  ```sql
+  -- Which tables are big.
+  SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) AS size, reltuples::bigint AS rows_estimate
+  FROM pg_class WHERE relnamespace = 'telemetry'::regnamespace AND relkind = 'r'
+  ORDER BY pg_total_relation_size(oid) DESC;
+
+  -- Which servers own the rows, largest first (raw tables; the rollups follow them).
+  SELECT public_id, power_rows, item_rows, transition_rows, power_rows + item_rows + transition_rows AS total_rows
+  FROM (
+    SELECT s.public_id,
+           (SELECT count(*) FROM telemetry.power_samples p WHERE p.server_id = s.id) AS power_rows,
+           (SELECT count(*) FROM telemetry.item_samples i WHERE i.server_id = s.id) AS item_rows,
+           (SELECT count(*) FROM telemetry.building_transitions b WHERE b.server_id = s.id) AS transition_rows
+    FROM servers.servers s
+  ) per_server
+  ORDER BY total_rows DESC
+  LIMIT 20;
+  ```
+
+  A server far ahead of the rest is the one to look at (its agent, or `HISTORY_QUOTA_EXCEEDED` in
+  the log). Removing a server deletes its history with it (ADR-0045 O3).
