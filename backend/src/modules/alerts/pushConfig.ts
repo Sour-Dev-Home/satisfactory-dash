@@ -1,3 +1,4 @@
+import { createECDH } from "node:crypto";
 import { ConfigError } from "../../platform/errors.js";
 
 /**
@@ -65,6 +66,19 @@ function parseVapid(env: NodeJS.ProcessEnv): VapidConfig | null {
   }
   if (decodedLength(privateKey) !== 32) {
     throw new ConfigError("VAPID_PRIVATE_KEY must be a P-256 private key (32 bytes) encoded as base64url without padding.");
+  }
+  // The two halves must be ONE key pair: a mismatch would sign tokens the push services reject (every send would fail
+  // as vapid_rejected), so it stops the backend here, naming the variable and never a value.
+  let derived: Buffer;
+  try {
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(Buffer.from(privateKey, "base64url"));
+    derived = ecdh.getPublicKey();
+  } catch {
+    throw new ConfigError("VAPID_PRIVATE_KEY is not a valid P-256 private key.");
+  }
+  if (!derived.equals(Buffer.from(publicKey, "base64url"))) {
+    throw new ConfigError("VAPID_PUBLIC_KEY does not belong to VAPID_PRIVATE_KEY: set both from the same key pair.");
   }
   if (!/^mailto:[^\s@]+@[^\s@]+$/.test(subject) && !/^https:\/\/[^\s/]+/.test(subject)) {
     throw new ConfigError("VAPID_SUBJECT must be a mailto: address or an https URL.");
