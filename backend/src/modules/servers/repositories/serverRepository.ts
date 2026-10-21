@@ -455,19 +455,32 @@ export async function lockServerForSelfServeOwner(
 // ADR-0047: by CURRENT ownership (the owner membership), not by creator. Locks the server rows (the order enrolment, revoke
 // and the owner's remove take: the server row first), so a concurrent enrolment or remove waits for the deletion.
 const LOCK_OWNED_SERVERS = `
+  SELECT s.id
+  FROM servers.servers s
+  WHERE s.deleted_at IS NULL
+    AND s.id IN (SELECT m.server_id FROM servers.server_members m WHERE m.user_id = $1 AND m.role = 'owner')
+  ORDER BY s.public_id
+  FOR NO KEY UPDATE OF s`;
+
+// A SECOND statement, so it reads ownership as committed once the locks above are held. Under READ COMMITTED a locking
+// statement that waited re-checks only the locked row, not the membership it was matched through: a transfer away from
+// this account that committed while it waited would otherwise still read as "owned", and the server would be removed
+// from under its new owner.
+const SELECT_OWNED_SERVERS = `
   SELECT s.public_id, s.display_name, s.created_via
   FROM servers.servers s
   JOIN servers.server_members m ON m.server_id = s.id AND m.role = 'owner'
   WHERE m.user_id = $1 AND s.deleted_at IS NULL
-  ORDER BY s.public_id
-  FOR NO KEY UPDATE OF s`;
+  ORDER BY s.public_id`;
 
-/** ADR-0047: the live servers this account OWNS now, LOCKED for this transaction, with who created each. */
+/** ADR-0047: the live servers this account OWNS now, LOCKED for this transaction, with who created each. The caller holds
+ *  the account row (a transfer TO it waits), so the set can only shrink between the two statements, never grow. */
 export async function lockOwnedServers(
   db: Queryable,
   userId: string,
 ): Promise<{ publicId: string; displayName: string; createdVia: "operator" | "self_serve" }[]> {
-  const result = await timedQuery(db, "servers.lockOwnedServers", LOCK_OWNED_SERVERS, [userId]);
+  await timedQuery(db, "servers.lockOwnedServers", LOCK_OWNED_SERVERS, [userId]);
+  const result = await timedQuery(db, "servers.lockOwnedServers.select", SELECT_OWNED_SERVERS, [userId]);
   return parseRows(
     z.object({ public_id: z.string(), display_name: z.string(), created_via: z.enum(["operator", "self_serve"]) }),
     result.rows,

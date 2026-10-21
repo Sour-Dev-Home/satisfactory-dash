@@ -69,6 +69,15 @@ describe("DELETE /api/account", () => {
     expect([error.code, error.reason, error.servers]).toEqual(["would_orphan", "operator_servers", servers]);
   });
 
+  it("an ownerless refusal after the retry is 409 would_orphan, reason last_owner, with no servers list; the cookie stays", async () => {
+    const res = await del(build({ outcome: "last_owner" }).app);
+    expect(res.status).toBe(409);
+    const { error } = ApiErrorResponseSchema.parse(res.body);
+    expect([error.code, error.reason, error.servers]).toEqual(["would_orphan", "last_owner", undefined]);
+    expect(error.message).not.toMatch(/delete a server/i);
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
   it("an account already gone (another tab) is a 401 and the cookie is cleared", async () => {
     const res = await del(build({ outcome: "not_found" }).app);
     expect([res.status, res.body.error.code]).toEqual([401, "unauthorized"]);

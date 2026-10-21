@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
+import { isOwnerlessServerViolation } from "../../platform/db/errors.js";
 import { parseFirst, parseOne } from "../../platform/db/rows.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../platform/db/timedQuery.js";
@@ -27,6 +28,8 @@ import type { Db } from "./dbSessionStore.js";
  */
 export interface AccountServersPort {
   exclusive<T>(work: () => Promise<T>): Promise<T>;
+  /** Takes the server-management lock; called before the account row is locked (the self-serve create's order). */
+  lockForDeletion(client: Queryable): Promise<void>;
   removeOwnedServers(
     client: Queryable,
     userId: string,
@@ -49,6 +52,9 @@ export type DeleteAccountResult =
   | { outcome: "operator_account" }
   /** The request's session is too old (or gone): sign in again first. */
   | { outcome: "reauth_required" }
+  /** The database refused the commit twice because it would leave a server ownerless (ownership moved to this account while
+   *  it was being deleted, and again on the retry). Nothing changed. */
+  | { outcome: "last_owner" }
   | { outcome: "operator_servers"; servers: { id: string; displayName: string }[] };
 
 export interface DeleteAccountInput {
@@ -80,6 +86,15 @@ const COUNT_LEFTOVERS = `
 
 const DELETE_USER = `DELETE FROM identity.users WHERE id = $1 RETURNING id`;
 
+// Held until the commit, AFTER the server-management lock and BEFORE reading what the account owns: a transfer of ownership
+// to this account (which takes the row FOR KEY SHARE) either committed before, so it is seen, or waits and then finds no
+// target. Not the first statement, so the self-serve create (management lock, then the account row through its foreign
+// key) never waits on it in the opposite order.
+const LOCK_USER = `SELECT id FROM identity.users WHERE id = $1 FOR UPDATE`;
+
+/** How many times the whole transaction runs when the commit is refused as ownerless (the first try plus one retry). */
+const ATTEMPTS = 2;
+
 class RollBack extends Error {
   constructor(readonly result: DeleteAccountResult) {
     super(result.outcome);
@@ -98,6 +113,10 @@ export function createAccountDeletion(deps: AccountDeletionDeps): AccountDeletio
         "identity.deleteAccount.sessionFresh",
       );
       if (session?.fresh !== true) throw new RollBack({ outcome: "reauth_required" });
+    }
+    await deps.servers.lockForDeletion(client);
+    if ((await timedQuery(client, "identity.deleteAccount.lockUser", LOCK_USER, [input.userId])).rows.length === 0) {
+      throw new RollBack({ outcome: "not_found" });
     }
     const servers = await deps.servers.removeOwnedServers(client, input.userId);
     if (servers.outcome === "operator_servers") throw new RollBack(servers);
@@ -125,15 +144,23 @@ export function createAccountDeletion(deps: AccountDeletionDeps): AccountDeletio
   return {
     deleteAccount: (input) =>
       deps.servers.exclusive(async () => {
-        let committed: { result: DeleteAccountResult; removed: string[] };
-        try {
-          committed = await withTransaction(deps.db, (client) => inTransaction(client, input));
-        } catch (err) {
-          if (err instanceof RollBack) return err.result;
-          throw err;
+        for (let attempt = 1; ; attempt += 1) {
+          let committed: { result: DeleteAccountResult; removed: string[] };
+          try {
+            committed = await withTransaction(deps.db, (client) => inTransaction(client, input));
+          } catch (err) {
+            if (err instanceof RollBack) return err.result;
+            // The deferred never-ownerless trigger refused the commit (nothing was written): the account came to own a
+            // server after it was read. Run it all again once, which sees the new ownership; then a typed refusal.
+            if (isOwnerlessServerViolation(err)) {
+              if (attempt < ATTEMPTS) continue;
+              return { outcome: "last_owner" };
+            }
+            throw err;
+          }
+          await deps.servers.afterCommit(committed.removed);
+          return committed.result;
         }
-        await deps.servers.afterCommit(committed.removed);
-        return committed.result;
       }),
   };
 }

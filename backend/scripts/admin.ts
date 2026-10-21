@@ -247,6 +247,13 @@ async function runDeleteUser(pool: pg.Pool, userId: string): Promise<void> {
         console.error(`Not deleted: the account owns operator-created server(s): ${result.servers.map((s) => s.id).join(", ")}. Remove them (remove-server) first.`);
         process.exitCode = 1;
         break;
+      case "last_owner":
+        console.error(
+          "Not deleted: the account became the owner of a server while it was being deleted (twice). Nothing changed. " +
+            "Run delete-user again, or list-servers to see what it owns now.",
+        );
+        process.exitCode = 1;
+        break;
       case "reauth_required":
         // Unreachable: the CLI passes no session. Kept so the switch is exhaustive.
         console.error("Not deleted.");

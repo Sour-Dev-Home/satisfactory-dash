@@ -24,6 +24,10 @@ export interface AccountServers {
   /** Runs the whole deletion (its transaction and the runtime changes after it) under the shared server-write mutex, so it
    *  never interleaves with the operator's, the owner's or the sweep's runtime changes. */
   exclusive<T>(work: () => Promise<T>): Promise<T>;
+  /** First, in the deletion transaction: the server-management advisory lock (the self-serve create's lock, taken before
+   *  the account row is locked, so the two never wait on each other in opposite orders). */
+  lockForDeletion(client: Queryable): Promise<void>;
+  /** Then, once the caller holds the account row: lock and remove what it owns now. */
   removeOwnedServers(client: Queryable, userId: string): Promise<OwnedServersOutcome>;
   /** After the commit: the removed servers' runtime entries go. */
   afterCommit(removedPublicIds: readonly string[]): Promise<void>;
@@ -41,8 +45,11 @@ export function createAccountServers(deps: AccountServersDeps = {}): AccountServ
   return {
     exclusive: (work) => mutex.run(work),
 
-    async removeOwnedServers(client, userId) {
+    async lockForDeletion(client) {
       await timedQuery(client, "servers.accountDeletion.takeManagementLock", TAKE_SERVER_MANAGEMENT_LOCK);
+    },
+
+    async removeOwnedServers(client, userId) {
       const owned = await lockOwnedServers(client, userId);
       const blocking = owned.filter((server) => server.createdVia === "operator");
       if (blocking.length > 0) {

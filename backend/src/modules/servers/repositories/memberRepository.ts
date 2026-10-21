@@ -192,6 +192,16 @@ export async function leaveServer(db: Queryable, input: { publicId: string; user
 
 export type TransferOwnershipResult = "transferred" | "not_owner" | "target_not_member" | "same_user" | "would_orphan";
 
+// ADR-0047 (security review, Low): the server row first, the order enrolment, revoke, the owner's remove and account
+// deletion take, so a transfer away from an account being deleted waits for that deletion. Then the TARGET account's row
+// (KEY SHARE): account deletion holds it FOR UPDATE before it reads what the account owns, so a transfer to an account
+// being deleted waits and then finds no target, and a deletion that starts after the transfer sees the new ownership.
+const LOCK_TRANSFER_SERVER = `
+  SELECT id FROM servers.servers WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE`;
+
+const LOCK_TRANSFER_TARGET = `
+  SELECT id FROM identity.users WHERE id = $1 FOR KEY SHARE`;
+
 const DEMOTE_OWNER = `
   UPDATE servers.server_members
   SET role = 'admin'
@@ -228,6 +238,11 @@ export async function transferOwnership(
   }
   try {
     await withTransaction(pool, async (client) => {
+      if ((await timedQuery(client, "servers.transferOwnership.lockServer", LOCK_TRANSFER_SERVER, [input.serverId])).rows.length === 0) {
+        throw new RollBack("not_owner");
+      }
+      // An unknown target locks nothing; the promotion below then finds no member (target_not_member), as before.
+      await timedQuery(client, "servers.transferOwnership.lockTarget", LOCK_TRANSFER_TARGET, [input.toUserId]);
       const demoted = await timedQuery(client, "servers.transferOwnership.demoteOwner", DEMOTE_OWNER, [input.serverId, input.fromUserId]);
       if (demoted.rows.length === 0) {
         throw new RollBack("not_owner");

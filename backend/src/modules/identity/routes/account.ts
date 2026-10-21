@@ -18,6 +18,8 @@ const DELETE_LIMIT = { max: 10, windowMs: 15 * 60 * 1000 };
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again later.";
 export const REAUTH_MESSAGE = "Sign in again to delete your account.";
 export const OPERATOR_ACCOUNT_MESSAGE = "The operator's account can't be deleted.";
+export const LAST_OWNER_MESSAGE =
+  "You just became the owner of a server, so your account was not deleted. Try again, or remove that server from Satisfactory Dash first.";
 export const OPERATOR_SERVERS_MESSAGE =
   "You own servers the operator set up. They need a new owner before your account can be deleted: contact the operator.";
 
@@ -52,6 +54,9 @@ export function createAccountRouter(deletion: AccountDeletion, options: AccountR
         throw new ApiFailure("reauth_required", REAUTH_MESSAGE);
       case "operator_servers":
         throw new ApiFailure("would_orphan", OPERATOR_SERVERS_MESSAGE, "operator_servers", result.servers);
+      case "last_owner":
+        // A server came to be owned by this account while it was being deleted (and again on the retry): nothing changed.
+        throw new ApiFailure("would_orphan", LAST_OWNER_MESSAGE, "last_owner");
       case "not_found":
         // Deleted a moment ago (another tab): the session went with it.
         clearSessionCookie(res);

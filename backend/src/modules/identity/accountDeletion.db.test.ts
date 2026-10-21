@@ -187,16 +187,137 @@ describe.skipIf(!available)("account deletion (database)", () => {
     await expect(deletion().service.deleteAccount({ userId: "00000000-0000-4000-8000-000000000000" })).resolves.toEqual({ outcome: "not_found" });
   });
 
-  it("the ownerless trigger still guards the user-row delete: a stray owned server makes the commit fail and keeps everything", async () => {
+  // The security review's race (an ownership transfer TO the account committing after its servers were read) cannot be
+  // timed deterministically, so a port that "misses" an owned server stands in for it: the deferred trigger refuses the
+  // commit exactly as it would in the race.
+  const missingPort = (real = createAccountServers(), missFirst = Infinity) => {
+    let calls = 0;
+    return {
+      calls: () => calls,
+      port: {
+        exclusive: real.exclusive,
+        lockForDeletion: real.lockForDeletion,
+        afterCommit: real.afterCommit,
+        removeOwnedServers: async (client: Parameters<typeof real.removeOwnedServers>[0], userId: string) => {
+          calls += 1;
+          return calls <= missFirst ? { outcome: "removed" as const, removed: [] } : real.removeOwnedServers(client, userId);
+        },
+      },
+    };
+  };
+
+  it("an ownerless refusal at commit is retried once, then a typed last_owner, and nothing changes (the trigger still guards)", async () => {
     const me = await user();
     const op = await operatorServer(me);
-    // A port that skips the servers' part, to show the database itself refuses an ownerless live server.
-    const service = createAccountDeletion({
-      db: pool,
-      servers: { exclusive: (work) => work(), removeOwnedServers: async () => ({ outcome: "removed", removed: [] }), afterCommit: async () => {} },
-    });
-    await expect(service.deleteAccount({ userId: me })).rejects.toMatchObject({ constraint: "server_members_never_ownerless" });
+    const { port, calls } = missingPort();
+    await expect(createAccountDeletion({ db: pool, servers: port }).deleteAccount({ userId: me })).resolves.toEqual({ outcome: "last_owner" });
+    expect(calls()).toBe(2);
     expect(await exists("identity.users", "id", me)).toBe(true);
     expect(await rows("SELECT role FROM servers.server_members WHERE server_id = $1 AND user_id = $2", [op.id, me])).toEqual([{ role: "owner" }]);
+    expect(await rows("SELECT 1 FROM audit.audit_events WHERE action = 'account.deleted' AND actor_user_id = $1", [me])).toEqual([]);
+  });
+
+  it("the retry sees the ownership the first attempt missed: a self-serve server is then removed and the account deleted", async () => {
+    const me = await user();
+    const mine = await selfServe(me);
+    const { port, calls } = missingPort(createAccountServers(), 1);
+    await expect(createAccountDeletion({ db: pool, servers: port }).deleteAccount({ userId: me })).resolves.toMatchObject({ outcome: "deleted", serversDeleted: 1 });
+    expect(calls()).toBe(2);
+    expect(await exists("identity.users", "id", me)).toBe(false);
+    expect(await rows("SELECT display_name, deleted_at IS NOT NULL AS removed FROM servers.servers WHERE id = $1", [mine.id])).toEqual([{ display_name: null, removed: true }]);
+  });
+
+  /** Polls until some backend waits on a lock (pg_locks.granted = false), or gives up. */
+  const someoneWaitsOnALock = async () => {
+    for (let i = 0; i < 50; i += 1) {
+      if ((await rows("SELECT 1 FROM pg_locks WHERE NOT granted")).length > 0) return true;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return false;
+  };
+
+  it("a transfer TO an account being deleted waits on the account row, then finds no target; nothing is orphaned", async () => {
+    const [owner, me] = [await user(), await user()];
+    const server = await selfServe(owner);
+    await addMember(pool, { serverId: server.id, userId: me, role: "admin", actorUserId: owner });
+    // Hold the deletion's account lock, as deleteAccount does before it reads what the account owns.
+    const deleting = await pool.connect();
+    try {
+      await deleting.query("BEGIN");
+      await deleting.query("SELECT id FROM identity.users WHERE id = $1 FOR UPDATE", [me]);
+      const transfer = transferOwnership(pool, { serverId: server.id, fromUserId: owner, toUserId: me });
+      expect(await someoneWaitsOnALock()).toBe(true);
+      await deleting.query("DELETE FROM identity.users WHERE id = $1", [me]);
+      await deleting.query("COMMIT");
+      await expect(transfer).resolves.toBe("target_not_member");
+    } finally {
+      deleting.release();
+    }
+    expect(await rows("SELECT user_id::text, role FROM servers.server_members WHERE server_id = $1", [server.id])).toEqual([{ user_id: owner, role: "owner" }]);
+  });
+
+  it("a transfer takes the server row lock first, so one AWAY from an account being deleted waits for that deletion", async () => {
+    const [me, other] = [await user(), await user()];
+    const server = await selfServe(me);
+    await addMember(pool, { serverId: server.id, userId: other, role: "admin", actorUserId: me });
+    const locker = await pool.connect();
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM servers.servers WHERE id = $1 FOR NO KEY UPDATE", [server.id]);
+      const transfer = transferOwnership(pool, { serverId: server.id, fromUserId: me, toUserId: other });
+      expect(await someoneWaitsOnALock()).toBe(true);
+      await locker.query("ROLLBACK");
+      await expect(transfer).resolves.toBe("transferred");
+    } finally {
+      locker.release();
+    }
+  });
+
+  it("a deletion that waited on a transfer AWAY from the account re-reads ownership: the server stays with its new owner", async () => {
+    const [me, other] = [await user(), await user()];
+    const server = await selfServe(me);
+    await addMember(pool, { serverId: server.id, userId: other, role: "admin", actorUserId: me });
+    // A transfer in flight, holding the server row (its first statement) with the swap done but not committed.
+    const transfer = await pool.connect();
+    try {
+      await transfer.query("BEGIN");
+      await transfer.query("SELECT id FROM servers.servers WHERE id = $1 FOR NO KEY UPDATE", [server.id]);
+      await transfer.query("UPDATE servers.server_members SET role = 'admin' WHERE server_id = $1 AND user_id = $2", [server.id, me]);
+      await transfer.query("UPDATE servers.server_members SET role = 'owner' WHERE server_id = $1 AND user_id = $2", [server.id, other]);
+      const deleting = deletion().service.deleteAccount({ userId: me });
+      expect(await someoneWaitsOnALock()).toBe(true);
+      await transfer.query("COMMIT");
+      await expect(deleting).resolves.toMatchObject({ outcome: "deleted", serversDeleted: 0, membershipsLeft: 1 });
+    } finally {
+      transfer.release();
+    }
+    expect(await rows("SELECT display_name, deleted_at FROM servers.servers WHERE id = $1", [server.id])).toEqual([{ display_name: server.displayName, deleted_at: null }]);
+    expect(await rows("SELECT user_id::text, role FROM servers.server_members WHERE server_id = $1", [server.id])).toEqual([{ user_id: other, role: "owner" }]);
+  });
+
+  it("a transfer that waited on a deletion of the account it moves away from finds the server removed (not_owner)", async () => {
+    const [me, other] = [await user(), await user()];
+    const server = await selfServe(me);
+    await addMember(pool, { serverId: server.id, userId: other, role: "admin", actorUserId: me });
+    const servers = createAccountServers();
+    // Pause the deletion right after it locked the servers, so the transfer provably waits on that lock.
+    let release!: () => void;
+    const paused = new Promise<void>((resolve) => (release = resolve));
+    const port = {
+      ...servers,
+      removeOwnedServers: async (client: Parameters<typeof servers.removeOwnedServers>[0], userId: string) => {
+        await client.query("SELECT id FROM servers.servers WHERE id = $1 FOR NO KEY UPDATE", [server.id]);
+        await paused;
+        return servers.removeOwnedServers(client, userId);
+      },
+    };
+    const deleting = createAccountDeletion({ db: pool, servers: port }).deleteAccount({ userId: me });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const transfer = transferOwnership(pool, { serverId: server.id, fromUserId: me, toUserId: other });
+    expect(await someoneWaitsOnALock()).toBe(true);
+    release();
+    await expect(deleting).resolves.toMatchObject({ outcome: "deleted", serversDeleted: 1 });
+    await expect(transfer).resolves.toBe("not_owner");
+    expect(await rows("SELECT 1 FROM servers.server_members WHERE server_id = $1", [server.id])).toEqual([]);
   });
 });
