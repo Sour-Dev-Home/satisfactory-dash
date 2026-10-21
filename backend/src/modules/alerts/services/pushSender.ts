@@ -39,7 +39,8 @@ export interface PushSenderOptions {
   now?: () => number;
 }
 
-const DEFAULT_TIMEOUT_MS = 10_000;
+/** 348-2 review: short enough that a full batch of 10 stays well inside the claim lease (see the tick budget). */
+const DEFAULT_TIMEOUT_MS = 5_000;
 /** RFC 8030 section 5.2: how long the push service keeps an undelivered message (an alert hours old is noise). */
 export const PUSH_TTL_SECONDS = 4 * 60 * 60;
 const MIN_RETRY_AFTER_MS = 1000;

@@ -137,19 +137,28 @@ worker and the opt-in UI are task 348-3; until it ships, subscriptions come only
   `recipient_opted_out`) and nothing is sent, so a removed member or an account disabled with
   `npm run admin -- disable-user` (#516) gets no alert content. The endpoint is checked against `PUSH_ENDPOINT_HOSTS`
   again too; one that no longer passes is dropped as `endpoint_refused` and never fetched.
+- **What may go in `PUSH_ENDPOINT_HOSTS`.** Only hosts and zones that the push vendor fully controls (the defaults are
+  Google's, Mozilla's and Microsoft's). **Never a shared zone** where anyone can claim a subdomain, such as
+  `*.github.io`, `*.herokuapp.com` or a dynamic-DNS suffix: a stranger could subscribe with a host there that points at a
+  private address, and the backend would POST to it. The allowlist is the SSRF guard; there is no address check behind it.
 - **What is sent.** JSON of at most 3 KB: `{ v, title, body, serverId, kind, transition, severity, at }`, with the same
   words as the Discord message (title, server name, detail lines), game text cleaned as plain text (no control, bidi or
   invisible characters, length cut). It is encrypted per RFC 8291 (`aes128gcm`) and signed with VAPID (RFC 8292, ES256,
   token valid 12 h), both on `node:crypto`. Headers: `TTL: 14400` (4 h), `Urgency: high` for a critical alert firing,
-  `normal` otherwise. 10 s timeout; redirects are never followed.
+  `normal` otherwise. 5 s timeout; redirects are never followed. The VAPID public key must be the private key's own
+  (checked at startup: a mismatch stops the backend naming `VAPID_PUBLIC_KEY`, never a value).
 - **Responses.** 2xx sent (and the subscription's `last_success_at` is set). **404 or 410 deletes the subscription**
   (its queued rows go with it) and writes an `alerts.push.subscription_gone` audit row (ids and the status only). 429
   (honouring `Retry-After`), 5xx, a timeout or a network error retry with the same backoff as Discord (30 s doubling to
-  30 min, given up after 24 h). Any other answer drops that row: `redirect_refused`, `vapid_rejected` (401/403: the
+  30 min, given up after 24 h); after a 429, a timeout or a network error that push service's HOST is skipped for the
+  rest of the tick (its other rows are handed back, due now, without counting an attempt). Any other answer drops that row: `redirect_refused`, `vapid_rejected` (401/403: the
   VAPID keys changed, or the subscription was made for other keys), `bad_request`, `too_large`, `unexpected_status`.
   Keys a browser could not have made (not a P-256 point) are `bad_keys`, without a request.
 - **Fairness and volume (#515).** Push rows share the claim's per-server turns with Discord rows (a row's server is its
   event's server), so a server with many subscribers gets no more of each batch of 10 than a server with one webhook.
+  Within a server, its due Discord rows go before its push rows (each channel keeps event order), so a large fan-out
+  never delays that server's next Discord message. A tick stops starting sends after 60 s (half the 2-minute lease) and
+  hands the rest back, so a second backend process never re-claims a row this one may still be sending.
   The hourly event cap bounds what one server can queue: at most 120 events an hour, each times the number of opted-in
   devices (10 a user at most). If push lag grows, measure outbox lag first (ADR-0044 "Revisit when").
 - **The test button.** `POST /api/push/subscriptions/:id/test` sends one fixed notification (no game text) and answers

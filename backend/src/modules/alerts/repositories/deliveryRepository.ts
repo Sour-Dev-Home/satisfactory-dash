@@ -127,12 +127,17 @@ const DEAD_FOR_DESTINATION = `
 // whose outbox ids need not follow them).
 // ADR-0044 (348-2): push rows share this queue and this fairness. A row's server is its EVENT's server (a Discord row's
 // destination always belongs to that same server), so a server's push rows and Discord rows take turns in one partition:
-// a server with many subscribers gets no more of a batch than one with a single Discord webhook. A Discord row needs an
+// a server with many subscribers gets no more of a batch than one with a single Discord webhook. Within a server, its
+// due Discord rows come before its push rows (348-2 review): one event fans out to up to 10 rows per opted-in member, and
+// the server's next Discord message must not wait behind earlier events' push rows. Event order is kept within each
+// channel (due time, then event, then id); push rows can only wait behind Discord rows, which are one per event at most,
+// and the hourly event cap bounds them. A Discord row needs an
 // enabled destination; a push row needs only its subscription (deleting the subscription deletes its rows).
 const CLAIM_DUE = `
   WITH ranked AS (
     SELECT o.id, o.next_attempt_at,
-           row_number() OVER (PARTITION BY e.server_id ORDER BY o.next_attempt_at, o.event_id, o.id) AS turn
+           row_number() OVER (PARTITION BY e.server_id
+                              ORDER BY (o.destination_id IS NULL), o.next_attempt_at, o.event_id, o.id) AS turn
     FROM alerts.outbox o
     JOIN alerts.alert_events e ON e.id = o.event_id
     JOIN servers.servers sv ON sv.id = e.server_id AND sv.deleted_at IS NULL
@@ -169,6 +174,11 @@ const CLAIM_DUE = `
 const MARK_SENT = `UPDATE alerts.outbox SET status = 'sent', sent_at = now(), last_error = NULL WHERE id = $1::bigint AND status = 'pending'`;
 const RESCHEDULE = `
   UPDATE alerts.outbox SET next_attempt_at = to_timestamp($2::float8 / 1000.0), last_error = $3
+  WHERE id = $1::bigint AND status = 'pending'`;
+// A claimed row this tick did not try (out of time, or its push host paused): due again now, and the claim's attempt
+// is given back, so skipping never counts towards the backoff.
+const RELEASE = `
+  UPDATE alerts.outbox SET next_attempt_at = now(), attempts = greatest(attempts - 1, 0)
   WHERE id = $1::bigint AND status = 'pending'`;
 const MARK_DEAD = `UPDATE alerts.outbox SET status = 'dead', last_error = $2 WHERE id = $1::bigint AND status = 'pending'`;
 
@@ -275,4 +285,5 @@ export async function claimDueDeliveries(db: Queryable, limit: number, leaseSeco
 export const markDeliverySent = (db: Queryable, outboxId: string): Promise<unknown> => timedQuery(db, "alerts.markDeliverySent", MARK_SENT,[outboxId]);
 export const rescheduleDelivery = (db: Queryable, outboxId: string, atMs: number, code: string): Promise<unknown> =>
   timedQuery(db, "alerts.rescheduleDelivery", RESCHEDULE,[outboxId, atMs, code.slice(0, 40)]);
-export const markDeliveryDead = (db: Queryable, outboxId: string, code: string): Promise<unknown> => timedQuery(db, "alerts.markDeliveryDead", MARK_DEAD,[outboxId, code.slice(0, 40)]);
+export const releaseDelivery = (db: Queryable, outboxId: string): Promise<unknown> => timedQuery(db, "alerts.releaseDelivery", RELEASE, [outboxId]);
+export const markDeliveryDead =(db: Queryable, outboxId: string, code: string): Promise<unknown> => timedQuery(db, "alerts.markDeliveryDead", MARK_DEAD,[outboxId, code.slice(0, 40)]);

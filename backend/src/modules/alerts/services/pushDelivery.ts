@@ -4,7 +4,8 @@ import type { MetricsRecorder, PUSH_DROP_REASONS } from "../../../platform/metri
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
-import { markDeliveryDead, markDeliverySent, rescheduleDelivery, type DuePushDelivery } from "../repositories/deliveryRepository.js";
+import { markDeliveryDead, markDeliverySent, releaseDelivery, rescheduleDelivery, type DuePushDelivery } from "../repositories/deliveryRepository.js";
+import { parsePushEndpoint } from "./pushEndpoint.js";
 import { checkPushRecipient, deleteGoneSubscription, markSubscriptionSuccess } from "../repositories/pushRepository.js";
 import { formatPushMessage, type MessageTransition } from "./alertMessage.js";
 import { openPushSubscription, sendWebPush } from "./pushSender.js";
@@ -42,7 +43,8 @@ export class PushDelivery {
     private readonly options: { logger: Logger; push?: PushSendConfig; fetch?: typeof fetch; now: () => number; metrics: MetricsRecorder },
   ) {}
 
-  async deliver(delivery: DuePushDelivery): Promise<"done" | "paused"> {
+  /** `pausedHosts`: push hosts that rate limited, timed out or failed at the network earlier in this tick (filled here). */
+  async deliver(delivery: DuePushDelivery, pausedHosts: Set<string> = new Set()): Promise<"done" | "paused"> {
     const now = this.options.now();
     const log = (code: string) =>
       this.options.logger.info(
@@ -69,6 +71,15 @@ export class PushDelivery {
       if (isDead(delivery.createdAtMs, now + retryDelayMs(delivery.attempts))) return drop("unreadable", "secret_unreadable");
       await rescheduleDelivery(this.db, delivery.outboxId, now + retryDelayMs(delivery.attempts), "secret_unreadable");
       this.options.logger.warn({ serverId: delivery.serverPublicId, code: "ALERT_PUSH_SUBSCRIPTION_UNREADABLE" }, "a stored push subscription cannot be opened");
+      return "done";
+    }
+
+    // The host, from the parsed endpoint in memory, to pause a failing push service for the rest of the tick. It is never
+    // logged. An endpoint that fails the allowlist is dropped here (sendWebPush would refuse it too).
+    const endpoint = parsePushEndpoint(opened.endpoint, push.allowedHosts);
+    if (!endpoint.ok) return drop("endpoint_refused");
+    if (pausedHosts.has(endpoint.host)) {
+      await releaseDelivery(this.db, delivery.outboxId); // untried: due again next tick, the attempt given back
       return "done";
     }
 
@@ -99,6 +110,9 @@ export class PushDelivery {
         log("sent");
         return "done";
       case "retry": {
+        // A rate limit, a hang or a network failure is the push service's, not this subscription's: skip its host for
+        // the rest of the tick so one bad service cannot eat the whole batch. A 5xx is per request: no pause.
+        if (outcome.code !== "server_error") pausedHosts.add(endpoint.host);
         const at = now + retryDelayMs(delivery.attempts, outcome.retryAfterMs);
         if (isDead(delivery.createdAtMs, at)) return drop("expired");
         await rescheduleDelivery(this.db, delivery.outboxId, at, outcome.code);

@@ -74,18 +74,22 @@ describe.skipIf(!available)("web push delivery against a real Postgres (ADR-0044
   const counters: { metric: string; labels: Record<string, string> }[] = [];
   const sent: { url: string; init: RequestInit }[] = [];
   let status = 201;
+  /** When set, the fake push service fails the request with an error of this name instead of answering. */
+  let failWith: string | undefined;
   const fakeFetch = (async (url: string, init: RequestInit) => {
     sent.push({ url, init });
+    if (failWith !== undefined) throw Object.assign(new Error("fake failure"), { name: failWith });
     return new Response(null, { status, headers: status === 429 ? { "retry-after": "120" } : {} });
   }) as unknown as typeof fetch;
 
   const service = () => createPushService({ db: pool, ring, mode: "on", config, fetch: fakeFetch });
-  const worker = (allowedHosts: readonly string[] = config.allowedHosts) =>
+  const worker = (allowedHosts: readonly string[] = config.allowedHosts, extra: { tickBudgetMs?: number } = {}) =>
     new AlertDeliveryWorker(pool, ring, {
       logger: createLogger({ level: "debug" }, { write: (line: string) => void logLines.push(line) }),
       fetch: fakeFetch,
       push: { vapid: config.vapid!, allowedHosts },
       metrics: { recordCounter: (metric, labels) => void counters.push({ metric, labels: { ...labels } }), recordHistogram: () => {} },
+      ...extra,
     });
 
   beforeAll(async () => {
@@ -106,6 +110,7 @@ describe.skipIf(!available)("web push delivery against a real Postgres (ADR-0044
     sent.length = 0;
     counters.length = 0;
     status = 201;
+    failWith = undefined;
   });
 
   const rows = async (sql: string, params: unknown[] = []) => (await admin.query(sql, params)).rows;
@@ -281,6 +286,62 @@ describe.skipIf(!available)("web push delivery against a real Postgres (ADR-0044
       await worker().tick();
       expect((await pushRows(server.id))[0]).toMatchObject({ status: "dead", last_error: "bad_request" });
       expect(sent).toHaveLength(3);
+    });
+  });
+
+  describe("review fixes: a failing push service, the tick budget, Discord ahead of push", () => {
+    const states = async (serverId: string) =>
+      (await pushRows(serverId)).map((r) => `${r.status}:${r.attempts}:${r.last_error ?? ""}`).sort();
+
+    it.each([
+      ["a 429", () => void (status = 429), "rate_limited"],
+      ["a timeout", () => void (failWith = "TimeoutError"), "timeout"],
+      ["a network error", () => void (failWith = "TypeError"), "network"],
+    ])("after %s, the same push host is skipped for the rest of the tick (rows handed back, attempt not counted)", async (_name, fail, code) => {
+      const { fire, server } = await setup({ members: 2 }); // three subscriptions, all on one host
+      await fire();
+      fail();
+      await worker().tick();
+      expect(sent).toHaveLength(1); // only the first request reached the failing service
+      expect(await states(server.id)).toEqual([`pending:0:`, `pending:0:`, `pending:1:${code}`].sort());
+    });
+
+    it("a 5xx does not pause the host: each row is tried", async () => {
+      const { fire } = await setup({ members: 2 });
+      await fire();
+      status = 503;
+      await worker().tick();
+      expect(sent).toHaveLength(3);
+    });
+
+    it("a tick out of time sends nothing more and hands its rows back, due now, with the attempt given back", async () => {
+      const { fire, server } = await setup({ members: 1 });
+      await fire();
+      await worker(config.allowedHosts, { tickBudgetMs: 0 }).tick();
+      expect(sent).toEqual([]);
+      expect(await states(server.id)).toEqual(["pending:0:", "pending:0:"]);
+      const due = await rows("SELECT count(*)::int AS n FROM alerts.outbox WHERE status = 'pending' AND next_attempt_at <= now()");
+      expect(due[0]!.n).toBe(2);
+      await worker().tick(); // and the next tick sends them
+      expect(sent).toHaveLength(2);
+    });
+
+    it("a server with many push rows queued still gets its Discord row in the next claim", async () => {
+      const busy = await setup({ members: 5 }); // six push rows per event
+      await busy.fire(); // event 1: push only (no destination yet)
+      await saveDiscordDestination(pool, ring, busy.server.publicId, `https://discord.com/api/webhooks/1234567890123456789/${"Zz9_-".repeat(14)}`);
+      await busy.fire(); // event 2: one Discord row and six more push rows, all due after event 1's push rows
+      const claimed = await claimDueDeliveries(pool, 1, 120);
+      expect(claimed.map((c) => c.channel)).toEqual(["discord"]);
+      // Push rows keep their event order behind it.
+      const next = await claimDueDeliveries(pool, 6, 120);
+      expect(next.every((c) => c.channel === "push")).toBe(true);
+      const eventOrder = (await rows(
+        "SELECT o.id::text AS id, o.event_id::text AS event FROM alerts.outbox o WHERE o.id = ANY($1::bigint[])",
+        [next.map((c) => c.outboxId)],
+      )) as { id: string; event: string }[];
+      expect(new Set(eventOrder.map((r) => r.event)).size).toBe(1); // all six from event 1, before any of event 2's
+      for (const c of [...claimed, ...next]) await rescheduleDelivery(pool, c.outboxId, Date.now(), "test");
     });
   });
 

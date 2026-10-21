@@ -37,8 +37,6 @@ export interface EncryptInput {
   p256dh: string;
   /** The browser's auth secret, base64url (16 bytes). */
   auth: string;
-  /** Test vectors only: a fixed salt and a fixed sender private key. Production always generates both. */
-  fixed?: { salt: Buffer; senderPrivateKey: Buffer };
 }
 
 function decodeExact(value: string, length: number): Buffer | undefined {
@@ -47,8 +45,21 @@ function decodeExact(value: string, length: number): Buffer | undefined {
   return bytes.length === length ? bytes : undefined;
 }
 
-/** RFC 8291 section 3 and 4: the full `aes128gcm` body (header followed by the one encrypted record). */
+/** RFC 8291 section 3 and 4: the full `aes128gcm` body (header followed by the one encrypted record). A fresh salt and
+ *  a fresh sender key pair every call: there is no way to pass either in. */
 export function encryptPushPayload(input: EncryptInput): Buffer {
+  return encrypt(input, undefined);
+}
+
+/**
+ * @internal TESTS ONLY (the RFC 8291 worked example). A fixed salt and sender key reused for two messages to one browser
+ * reuse the AES-GCM key and nonce, which breaks the encryption; production code must call `encryptPushPayload`.
+ */
+export function encryptPushPayloadForTestVector(input: EncryptInput, fixed: { salt: Buffer; senderPrivateKey: Buffer }): Buffer {
+  return encrypt(input, fixed);
+}
+
+function encrypt(input: EncryptInput, fixed: { salt: Buffer; senderPrivateKey: Buffer } | undefined): Buffer {
   const uaPublic = decodeExact(input.p256dh, 65);
   if (uaPublic === undefined || uaPublic[0] !== 0x04) throw new PushCryptoError("bad_p256dh");
   const authSecret = decodeExact(input.auth, 16);
@@ -56,7 +67,7 @@ export function encryptPushPayload(input: EncryptInput): Buffer {
   if (input.plaintext.length + RECORD_OVERHEAD > RECORD_SIZE - HEADER_LENGTH) throw new PushCryptoError("too_large");
 
   const sender = createECDH("prime256v1");
-  if (input.fixed !== undefined) sender.setPrivateKey(input.fixed.senderPrivateKey);
+  if (fixed !== undefined) sender.setPrivateKey(fixed.senderPrivateKey);
   else sender.generateKeys();
   const asPublic = sender.getPublicKey();
   let ecdhSecret: Buffer;
@@ -72,7 +83,7 @@ export function encryptPushPayload(input: EncryptInput): Buffer {
   const ikm = expand(prkKey, keyInfo, 32);
 
   // RFC 8188 section 2.2 and 2.3: the content-encryption key and the nonce, from a random salt.
-  const salt = input.fixed?.salt ?? randomBytes(16);
+  const salt = fixed?.salt ?? randomBytes(16);
   const prk = hmac(salt, ikm);
   const cek = expand(prk, Buffer.from("Content-Encoding: aes128gcm\0", "latin1"), 16);
   const nonce = expand(prk, Buffer.from("Content-Encoding: nonce\0", "latin1"), 12);

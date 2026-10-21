@@ -145,6 +145,7 @@ export const QUERY_NAMES = [
   "alerts.push.removeOptIn",
   "alerts.push.setKeys",
   "alerts.push.setOptIn",
+  "alerts.releaseDelivery",
   "alerts.rescheduleDelivery",
   "alerts.saveDestination",
   "alerts.seedPresetRules",

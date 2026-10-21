@@ -1,6 +1,6 @@
 import { createDecipheriv, createECDH, createHmac, createPublicKey, generateKeyPairSync, randomBytes, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { encryptPushPayload, PushCryptoError, RECORD_SIZE, vapidAuthorization, VAPID_TOKEN_SECONDS } from "./webPushCrypto.js";
+import { encryptPushPayload, encryptPushPayloadForTestVector, PushCryptoError, RECORD_SIZE, vapidAuthorization, VAPID_TOKEN_SECONDS } from "./webPushCrypto.js";
 
 // RFC 8291 section 5 and appendix A: the worked example, byte for byte.
 const RFC = {
@@ -41,12 +41,10 @@ function decrypt(body: Buffer, receiverPrivate: Buffer, auth: Buffer): Buffer {
 
 describe("RFC 8291 encryption", () => {
   it("reproduces the RFC 8291 section 5 example exactly", () => {
-    const body = encryptPushPayload({
-      plaintext: Buffer.from(RFC.plaintext),
-      p256dh: RFC.receiverPublic,
-      auth: RFC.auth,
-      fixed: { salt: b64(RFC.salt), senderPrivateKey: b64(RFC.senderPrivate) },
-    });
+    const body = encryptPushPayloadForTestVector(
+      { plaintext: Buffer.from(RFC.plaintext), p256dh: RFC.receiverPublic, auth: RFC.auth },
+      { salt: b64(RFC.salt), senderPrivateKey: b64(RFC.senderPrivate) },
+    );
     expect(body.toString("base64url")).toBe(RFC.body);
     expect(body.readUInt32BE(16)).toBe(RECORD_SIZE);
   });
