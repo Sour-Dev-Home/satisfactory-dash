@@ -88,6 +88,10 @@ added or removed.
 - [`decisions/0046-self-serve-agent-servers.md`](./decisions/0046-self-serve-agent-servers.md) — self-serve agent
   servers with per-account caps (#517, proposed): how a signed-in player creates a server without the operator, the
   caps and who raises them, abuse response, the privacy-page changes, and build tasks #523 to #530.
+- [`decisions/0047-bottleneck-finder.md`](./decisions/0047-bottleneck-finder.md) — bottleneck finder (#349,
+  proposed): why belt-level root cause is a no-go on FRM data, the item-level graph walk that is a go, its contract
+  sketch and build tasks, and what the mod would need for belt level.
+- [`proposals/349-issue-body.md`](./proposals/349-issue-body.md) — the proposed body for issue #349 from ADR-0047.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions, and the
   [overview cards brief](./architecture/overview-cards.md) (Players, Tick rate, Health).
