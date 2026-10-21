@@ -7,6 +7,7 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import {
+  BOTTLENECKS_DEFAULT_LIMIT,
   endpoints,
   RailsLayerDataSchema,
   ResourceNodesLayerDataSchema,
@@ -229,6 +230,13 @@ export const queries = {
     queryOptions({
       queryKey: ["servers", serverId, "factory"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.factory, serverId),
+      refetchInterval: POLL_MS.factory,
+    }),
+  /** ADR-0048 (#349): the top root causes of underfed and backed-up machines, computed on demand; polled with the factory. */
+  bottlenecks: (serverId: string, limit: number = BOTTLENECKS_DEFAULT_LIMIT) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "bottlenecks", limit],
+      queryFn: ({ signal }) => apiGetQuery(signal, endpoints.bottlenecks, { limit }, serverId),
       refetchInterval: POLL_MS.factory,
     }),
   /**

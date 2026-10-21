@@ -134,6 +134,12 @@ const CASES: StateCase[] = [
   // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
   { scenario: "unknown-units", path: "/app/factory", shows: /Modded Widget: .* per min/ },
   { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
+  // ADR-0048 (#349), the Factory page's Bottlenecks section (the default scenario shows findings with a belt cap).
+  { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
+  { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
+  { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
+  { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
+  { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },
   // ADR-0031 PR 4: auto-pause on a server reached through the game PC's agent, after the toggle.

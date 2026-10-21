@@ -1,0 +1,1 @@
+- 2026-10-21 — Factory page "Bottlenecks" section (ADR-0048 PR 5, #349): the top 10 ranked root causes with the capping conveyor's tier, rate and position, item-level and too-large notes, the three mocks (unit, scenarios, demo) and e2e states.

@@ -1,4 +1,5 @@
 import { PanelSkeleton, Skeleton } from "../ui/Skeleton";
+import { BottlenecksSkeleton } from "./BottlenecksPanel";
 import { SinceYesterdaySkeleton } from "./FactoryHistory";
 
 /**
@@ -26,6 +27,7 @@ export function FactorySkeleton() {
         <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
         <Skeleton className="h-5 w-32" />
       </PanelSkeleton>
+      <BottlenecksSkeleton />
     </>
   );
 }

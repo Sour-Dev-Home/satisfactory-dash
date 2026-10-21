@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { isBackedUpState, ownValue } from "@satisfactory-dash/shared";
 import type {
   AgentStatusResponse,
+  BottlenecksResponse,
   EnrollmentCodeResponseSchema,
   FactoryBuilding,
   FactoryResponse,
@@ -459,6 +460,62 @@ export function factory(now: number): FactoryResponse {
   };
 }
 
+/**
+ * The demo's bottleneck finder answer (ADR-0048, #349): made-up findings for the demo factory's two stressed
+ * machines, one capped by a belt and one with nothing downstream to take its output. The conveyor ids and positions are the demo's own.
+ */
+export function bottlenecks(now: number): BottlenecksResponse {
+  return {
+    ...envelope(now),
+    data: {
+      findings: [
+        {
+          buildingId: "demo-5",
+          buildingName: "Constructor",
+          state: "underfed",
+          rootCause: {
+            kind: "logistics",
+            itemClassName: "Desc_IronRod_C",
+            itemName: "Iron Rod",
+            supplyMaxPerMinute: 15,
+            demandMaxPerMinute: 25,
+            unit: "items/min",
+            cappedBy: {
+              conveyorId: "demo-belt-1",
+              kind: "belt",
+              tier: "Conveyor Belt Mk.1",
+              capacityPerMinute: 60,
+              fromId: "demo-4",
+              toId: "demo-5",
+              at: { x: -1698, y: -990 },
+            },
+          },
+          chain: [],
+          text: "A Conveyor Belt Mk.1 (60/min) from the Iron Rod Constructor near (-1698, -990) caps Iron Rod at 60/min; this Constructor wants 25.",
+        },
+        {
+          buildingId: "demo-7",
+          buildingName: "Assembler",
+          state: "backedUp",
+          rootCause: {
+            kind: "surplus",
+            itemClassName: "Desc_Rotor_C",
+            itemName: "Rotor",
+            supplyMaxPerMinute: 4,
+            demandMaxPerMinute: 0,
+            unit: "items/min",
+          },
+          chain: [],
+          text: "Rotor is made up to 4/min and nothing downstream takes it.",
+        },
+      ],
+      truncated: false,
+      beltData: "present",
+      connectionsRefreshMinutes: 10,
+      notes: [{ code: "connectionsRefresh", text: "Connections refresh every 10 minutes." }],
+    },
+  };
+}
 /**
  * The demo's map world layers (ADR-0038 M5): made-up rails and resource nodes around the demo factory
  * (whole metres, +x east, +y south: docs-vault/raw-sources/world-coordinates.md). A world layer changes

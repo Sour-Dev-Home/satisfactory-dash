@@ -9,6 +9,7 @@ import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable } from "../ui/Skeleton";
 import { FactorySkeleton } from "./FactorySkeleton";
 import { ItemHistorySection, SinceYesterdayView } from "./FactoryHistory";
+import { BottlenecksView } from "./BottlenecksView";
 import { FactoryPanel } from "./FactoryPanel";
 import { itemLabels } from "./itemLabels";
 
@@ -76,6 +77,10 @@ export function FactoryView() {
       )}
       <ErrorBoundary label="Production history">
         <ItemHistorySection labels={labels} item={item} onItem={(value) => setParam(FACTORY_ITEM_PARAM, value)} />
+      </ErrorBoundary>
+      {/* Last, so its loading and its varying height move nothing above it (ADR-0032's shift budget). */}
+      <ErrorBoundary label="Bottlenecks">
+        <BottlenecksView />
       </ErrorBoundary>
     </Loadable>
   );
