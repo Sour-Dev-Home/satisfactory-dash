@@ -1,3 +1,4 @@
+import { PlayerNotice } from "./PlayerNotice";
 import { CODE_LIFETIME } from "./selfServeText";
 
 /**
@@ -20,6 +21,7 @@ export function EnrolmentGuide({ enrolled }: { enrolled: boolean }) {
         <li>With the agent app instead: run the command shown with the code.</li>
         <li>This page shows the agent as enrolled once it has connected. If the code expires first, create a new one.</li>
       </ol>
+      <PlayerNotice />
     </details>
   );
 }
