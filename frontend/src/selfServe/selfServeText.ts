@@ -11,11 +11,27 @@ export function isPending(server: Pick<ServerSummary, "enrolled">, agentEnrolled
   return server.enrolled === false && agentEnrolled !== true;
 }
 
-export const PENDING_NOTICE =
-  "This server has not connected yet. Finish setting it up with an enrolment code, or it is removed automatically 24 hours after you added it.";
+/** The pending notice, in two parts so the first can be the link to the agent panel: what to do, then when it is removed. */
+export const PENDING_ACTION = "Create an enrolment code above";
+export const PENDING_ACTION_REST = " to connect it. A server that has not connected within 24 hours of adding it is removed automatically.";
 
-export const DELETE_EXPLANATION =
-  "Deleting removes this server from the dashboard for good: its history, alerts, push settings and members go, and its agent or mod stops working. This cannot be undone. The game server itself and your save are not touched.";
+/** What the owner's first server list says about adding another: C3 refuses while one waits for its first connection. */
+export function pendingServerName(
+  servers: readonly Pick<ServerSummary, "id" | "role" | "createdVia" | "enrolled" | "displayName">[],
+  enrolledNow: { serverId: string; enrolled: boolean | undefined },
+): string | undefined {
+  return servers.find(
+    (s) =>
+      s.role === "owner" &&
+      s.createdVia === "self_serve" &&
+      s.enrolled === false &&
+      !(s.id === enrolledNow.serverId && enrolledNow.enrolled === true),
+  )?.displayName;
+}
+
+export const DELETE_LEAD = "Deleting removes this server from the dashboard for good. What goes:";
+export const DELETE_GOES = ["Its history and alerts", "Its push settings and members", "Its agent or mod connection, which stops working"];
+export const DELETE_CLOSING = "This can't be undone. Your game server and save are not touched.";
 
 export const CODE_LIFETIME = "10 minutes";
 
@@ -34,6 +50,11 @@ export function retryText(seconds: number | undefined): string {
   if (minutes < 90) return `in about ${minutes} minutes`;
   const hours = Math.ceil(minutes / 60);
   return `in about ${hours} hours`;
+}
+
+/** A cap or rate limit: an expected refusal, shown as a note rather than as a failure. */
+export function isLimitRefusal(error: unknown): boolean {
+  return error instanceof ApiError && (error.code === "server_limit_reached" || error.status === 429 || error.code === "rate_limited");
 }
 
 /**

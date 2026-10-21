@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
 import { endpoints, type ServerListResponse, type ServerSummary } from "@satisfactory-dash/shared";
 import { agentStatusEnrolled, serversSelfServe } from "@satisfactory-dash/shared/fixtures";
+import { SignedInUser } from "../auth/SignedInUser";
 import { AgentSettings } from "../agent/AgentSettings";
 import { ServerGate } from "../servers/ServerGate";
 import { useSelectedServer } from "../servers/ServerContext";
@@ -41,10 +42,12 @@ function Where() {
 function renderSettings(children = <YourServersSection />) {
   return renderWithClient(
     <MemoryRouter initialEntries={["/app/settings"]}>
-      <ServerGate>
-        <Selected />
-        {children}
-      </ServerGate>
+      <SignedInUser value={{ name: "Player" }}>
+        <ServerGate>
+          <Selected />
+          {children}
+        </ServerGate>
+      </SignedInUser>
       <Where />
     </MemoryRouter>,
   );
@@ -73,7 +76,9 @@ describe("Add your server", () => {
     let posts = 0;
     server.use(http.post(endpoints.selfServe.createAgentServer.route, () => ((posts += 1), HttpResponse.json(createdAgentServer, { status: 201 }))));
     renderSettings();
-    await screen.findByRole("heading", { name: "Add your server", level: 4 });
+    // One heading only: the section's h3 already says it (no repeated h4 inside).
+    expect(await screen.findByRole("heading", { name: "Add your server", level: 3 })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Add your server" })).toHaveLength(1);
     submitAdd();
     expect(await screen.findByText("Enter a name for your server.")).toBeInTheDocument();
     expect(screen.getByLabelText("Server name")).toHaveAttribute("aria-invalid", "true");
@@ -173,7 +178,11 @@ describe("Add your server", () => {
       }),
     );
     renderSettings();
-    expect(await screen.findByRole("heading", { name: "Add your server", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Add your first server", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText(/Name it, get a code, paste it on the game PC/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Server name")).toHaveAttribute("placeholder", "e.g. Our factory");
+    // No shell here, so the account menu is: a signed-in player can always sign out.
+    expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
     typeName("My new world");
     submitAdd();
     expect(await screen.findByText("selected: My new world")).toBeInTheDocument();
@@ -210,7 +219,12 @@ describe("the owner's controls", () => {
   it("tells the owner of a never-enrolled server it is removed after 24 hours", async () => {
     serveList({ servers: [pendingServer], selfServeEnabled: false });
     renderSettings();
-    expect(await screen.findByRole("note")).toHaveTextContent(/removed automatically 24 hours after you added it/);
+    const note = await screen.findByRole("note");
+    expect(note).toHaveTextContent(/Create an enrolment code above to connect it/);
+    expect(note).toHaveTextContent(/within 24 hours of adding it is removed automatically/);
+    expect(screen.getByRole("link", { name: "Create an enrolment code above" })).toHaveAttribute("href", "/app/settings#agent");
+    // Name and status, like the agent panel.
+    expect(screen.getByText("Waiting for first connection")).toBeInTheDocument();
   });
 
   it("has no such notice once enrolled", async () => {
@@ -280,9 +294,12 @@ describe("the owner's controls", () => {
     );
     renderSettings();
     fireEvent.click(await screen.findByRole("button", { name: "Delete My first world" }));
-    const group = screen.getByRole("group", { name: "Confirm deleting My first world" });
-    expect(group).toHaveTextContent(/history, alerts, push settings and members go/);
-    expect(group).toHaveTextContent(/cannot be undone/);
+    const group = screen.getByRole("form", { name: "Confirm deleting My first world" });
+    expect(group).toHaveTextContent(/Its history and alerts/);
+    expect(group).toHaveTextContent(/Its push settings and members/);
+    expect(group).toHaveTextContent(/This can't be undone. Your game server and save are not touched./);
+    expect(group).toHaveTextContent(/must match exactly, capital letters included/);
+    expect(screen.getByLabelText(/Type My first world to confirm/)).toHaveAccessibleDescription(expect.stringContaining("must match exactly"));
     const confirm = screen.getByRole("button", { name: "Delete this server" });
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/Type My first world to confirm/), { target: { value: "My first" } });
@@ -302,7 +319,7 @@ describe("the owner's controls", () => {
     server.use(http.delete(endpoints.serverManagement.remove.route, () => ((deletes += 1), HttpResponse.json({ deleted: true }))));
     renderSettings();
     fireEvent.click(await screen.findByRole("button", { name: "Delete My first world" }));
-    expect(screen.getByText(/cannot be undone/)).toHaveFocus();
+    expect(screen.getByText(/Deleting removes this server/).parentElement).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Delete My first world" })).toHaveFocus());
     expect(deletes).toBe(0);
@@ -342,7 +359,8 @@ describe("the enrolment instructions", () => {
       ),
     );
     renderAgent();
-    expect(await screen.findByRole("group", { name: "Connect your game server" })).toBeInTheDocument();
+    const guide = (await screen.findByText("Connect your game server")).closest("details")!;
+    expect(guide).toHaveAttribute("open"); // prominent while pending
     expect(screen.getByText("FactoryGame/Configs/SatisDashAgent.cfg")).toBeInTheDocument();
     expect(screen.getByText("enrollmentCode")).toBeInTheDocument();
     expect(screen.getByText(/12 characters, works once and lasts 10 minutes/)).toBeInTheDocument();
@@ -354,6 +372,6 @@ describe("the enrolment instructions", () => {
     renderAgent();
     await screen.findByText("Game PC agent");
     await screen.findByText(/Reached/);
-    expect(screen.queryByRole("group", { name: "Connect your game server" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Connect your game server")).not.toBeInTheDocument();
   });
 });

@@ -20,6 +20,9 @@ export function ServerNameForm({
   onSubmit,
   onCancel,
   autoFocus,
+  placeholder,
+  primary,
+  limitRefusal,
 }: {
   label: string;
   initialName?: string;
@@ -33,6 +36,11 @@ export function ServerNameForm({
   onSubmit: (displayName: string) => Promise<unknown>;
   onCancel?: () => void;
   autoFocus?: boolean;
+  placeholder?: string;
+  /** The submit button is the screen's main action. */
+  primary?: boolean;
+  /** `errorText` is a cap or rate limit (an expected refusal, not a failure): warn style, not red. */
+  limitRefusal?: boolean;
 }) {
   const id = useId();
   const [name, setName] = useState(initialName);
@@ -63,7 +71,9 @@ export function ServerNameForm({
 
   const hintId = `${id}-hint`;
   const problemId = `${id}-problem`;
-  const describedBy = [hint && hintId, problem && problemId].filter(Boolean).join(" ") || undefined;
+  const refusalId = `${id}-refusal`;
+  const describedBy =
+    [hint && hintId, problem && problemId, error != null && refusalId].filter(Boolean).join(" ") || undefined;
   return (
     <form onSubmit={submit} noValidate className="grid gap-2 text-sm">
       <label htmlFor={`${id}-name`}>{label}</label>
@@ -78,6 +88,7 @@ export function ServerNameForm({
         }}
         autoComplete="off"
         spellCheck={false}
+        placeholder={placeholder}
         autoFocus={autoFocus}
         aria-invalid={problem ? true : undefined}
         aria-describedby={describedBy}
@@ -93,7 +104,7 @@ export function ServerNameForm({
         </span>
       )}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy} className={primary ? "border-accent bg-accent text-on-accent hover:not-disabled:border-accent" : undefined}>
           {busy ? busyLabel : submitLabel}
         </button>
         {onCancel && (
@@ -102,7 +113,24 @@ export function ServerNameForm({
           </button>
         )}
       </div>
-      {error != null && (errorText ? <p role="alert" className="mb-0 font-medium text-bad-on-soft">{errorText}</p> : <ErrorNotice error={error} />)}
+      {error != null && (
+        <div id={refusalId}>
+          {errorText ? (
+            <p
+              role="alert"
+              className={
+                limitRefusal
+                  ? "mb-0 rounded-card border border-warn bg-warn-soft p-3 text-fg-strong"
+                  : "mb-0 font-medium text-bad-on-soft"
+              }
+            >
+              {errorText}
+            </p>
+          ) : (
+            <ErrorNotice error={error} />
+          )}
+        </div>
+      )}
     </form>
   );
 }

@@ -70,7 +70,7 @@ export function AgentSettings() {
         <>
         {/* ADR-0046: the player's own server needs to be told where the code goes (the mod's config file). */}
         {server.createdVia === "self_serve" && canCreateCode(status.data.connectionKind, server.role, isOperator) && (
-          <EnrolmentGuide />
+          <EnrolmentGuide enrolled={status.data.enrolled} />
         )}
         <AgentPanel
           agent={status.data}

@@ -212,7 +212,7 @@ const CASES: StateCase[] = [
   // screen for a player with no server, each refusal, and the owner of an enrolled and of a pending server.
   { scenario: "self-serve-add", path: "/app/settings", shows: "Add your server", clock: AGENT_NOW },
   { scenario: "self-serve-off", path: "/app/settings", shows: /Auto-pause when no players/, clock: AGENT_NOW },
-  { scenario: "self-serve-empty", path: "/app", shows: "Add your server", clock: AGENT_NOW },
+  { scenario: "self-serve-empty", path: "/app", shows: "Add your first server", clock: AGENT_NOW },
   {
     scenario: "self-serve-limit-account",
     path: "/app/settings",
@@ -242,7 +242,7 @@ const CASES: StateCase[] = [
     act: addYourServer("Second world"),
   },
   { scenario: "self-serve-owner", path: "/app/settings", shows: "Your server", clock: AGENT_NOW },
-  { scenario: "self-serve-owner-pending", path: "/app/settings", shows: /removed automatically 24 hours after you added it/, clock: AGENT_NOW },
+  { scenario: "self-serve-owner-pending", path: "/app/settings", shows: /Create an enrolment code above to connect it/, clock: AGENT_NOW },
   {
     scenario: "self-serve-owner",
     name: "self-serve-rename",
@@ -255,7 +255,7 @@ const CASES: StateCase[] = [
     scenario: "self-serve-owner",
     name: "self-serve-delete-confirm",
     path: "/app/settings",
-    shows: /cannot be undone/,
+    shows: /can.t be undone/,
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Delete My first world" }).click(),
   },

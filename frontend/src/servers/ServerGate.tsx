@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyError } from "../api/errors";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { AccountMenu } from "../auth/AccountMenu";
 import { AddServer } from "../selfServe/AddServer";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerContext, ServerSwitchContext } from "./ServerContext";
@@ -91,12 +92,25 @@ export function ServerGate({ children }: { children: ReactNode }) {
     // ADR-0046: a player with no server yet can add their own while self-serve is on.
     if (servers.data.selfServeEnabled) {
       return (
-        <section className="mx-auto mt-6 grid w-full max-w-md gap-4 rounded-card border border-line bg-surface p-6">
-          <AddServer headingLevel="h2" onCreated={pick} />
-        </section>
+        <div className="mx-auto mt-6 grid w-full max-w-md gap-4">
+          {/* No shell (and so no top bar) here: a signed-in player can always sign out. */}
+          <div className="flex justify-end">
+            <AccountMenu />
+          </div>
+          <section className="grid gap-4 rounded-card border border-line bg-surface p-6">
+            <AddServer first onCreated={pick} />
+          </section>
+        </div>
       );
     }
-    return <p>No game servers are configured.</p>;
+    return (
+      <div className="mx-auto mt-6 grid w-full max-w-md gap-4">
+        <div className="flex justify-end">
+          <AccountMenu />
+        </div>
+        <p>No game servers are configured.</p>
+      </div>
+    );
   }
 
   if (!current) {

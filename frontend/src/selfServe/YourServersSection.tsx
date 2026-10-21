@@ -11,13 +11,14 @@ import { useYourServer } from "./useYourServer";
 export function YourServersSection() {
   const server = useSelectedServer();
   const { select } = useServerSwitch();
-  const { canAdd, isOwner } = useYourServer();
-  if (!canAdd && !isOwner) return null;
+  const { canAdd, isOwner, pendingName, visible } = useYourServer();
+  if (!visible) return null;
   return (
     <section aria-labelledby="your-servers-heading" className="panel grid gap-4">
       <h3 id="your-servers-heading">{isOwner ? "Your server" : "Add your server"}</h3>
       {isOwner && <OwnedServerPanel key={server.id} server={server} />}
-      {canAdd && <AddServer onCreated={select} />}
+      {canAdd && <AddServer onCreated={select} heading={isOwner} />}
+      {pendingName !== undefined && <p className="mb-0 text-sm text-muted">Finish connecting {pendingName} to add another.</p>}
     </section>
   );
 }
