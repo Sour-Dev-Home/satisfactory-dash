@@ -1,0 +1,94 @@
+[
+  {
+    "ID": "Build_TrainStation_C_2147412474",
+    "Name": "Silica/Crstal Out ",
+    "ClassName": "Build_TrainStation_C",
+    "TransferRate": 2.0561840534210205,
+    "InflowRate": 0,
+    "OutflowRate": 0,
+    "CargoInventory": [
+      {
+        "ID": "Build_TrainDockingStation_C_2147408936",
+        "ClassName": "Build_TrainDockingStation_C",
+        "TransferRate": 1.6708513498306274,
+        "InflowRate": 0,
+        "OutflowRate": 0,
+        "LoadingMode": "Loading",
+        "LoadingStatus": "Idle",
+        "DockingStatus": "None",
+        "Inventory": [
+          {
+            "Name": "Quartz Crystal",
+            "ClassName": "Desc_QuartzCrystal_C",
+            "Amount": 9600,
+            "MaxAmount": 200
+          }
+        ]
+      },
+      {
+        "ID": "Build_TrainDockingStation_C_2147407665",
+        "ClassName": "Build_TrainDockingStation_C",
+        "TransferRate": 0.38533270359039307,
+        "InflowRate": 0,
+        "OutflowRate": 0,
+        "LoadingMode": "Loading",
+        "LoadingStatus": "Idle",
+        "DockingStatus": "None",
+        "Inventory": [
+          {
+            "Name": "Silica",
+            "ClassName": "Desc_Silica_C",
+            "Amount": 9600,
+            "MaxAmount": 200
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "Build_TrainStation_C_2146503764",
+    "Name": "Computer-Dropoff",
+    "ClassName": "Build_TrainStation_C",
+    "TransferRate": 2.629652261734009,
+    "InflowRate": 0,
+    "OutflowRate": 0,
+    "CargoInventory": [
+      {
+        "ID": "Build_TrainDockingStation_C_2146498514",
+        "ClassName": "Build_TrainDockingStation_C",
+        "TransferRate": 2.24446439743042,
+        "InflowRate": 0,
+        "OutflowRate": 0,
+        "LoadingMode": "Unloading",
+        "LoadingStatus": "Idle",
+        "DockingStatus": "None",
+        "Inventory": [
+          {
+            "Name": "Quartz Crystal",
+            "ClassName": "Desc_QuartzCrystal_C",
+            "Amount": 9531,
+            "MaxAmount": 200
+          }
+        ]
+      },
+      {
+        "ID": "Build_TrainDockingStation_C_2146497249",
+        "ClassName": "Build_TrainDockingStation_C",
+        "TransferRate": 0.3851878345012665,
+        "InflowRate": 0,
+        "OutflowRate": 0,
+        "LoadingMode": "Unloading",
+        "LoadingStatus": "Idle",
+        "DockingStatus": "None",
+        "Inventory": [
+          {
+            "Name": "Silica",
+            "ClassName": "Desc_Silica_C",
+            "Amount": 9517,
+            "MaxAmount": 200
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,61 @@
+[
+  {
+    "ID": "BP_Train_C_2146471703",
+    "Name": "Silica/Crystal - Computer Dropoff",
+    "ClassName": "BP_Train_C",
+    "TotalMass": 499300,
+    "PayloadMass": 139300,
+    "MaxPayloadMass": 140000,
+    "ForwardSpeed": 24.8319052734375,
+    "TrainStation": "Silica/Crstal Out ",
+    "Status": "Self-Driving",
+    "TimeTable": [
+      {
+        "StationName": "Silica/Crstal Out "
+      },
+      {
+        "StationName": "Computer-Dropoff"
+      }
+    ],
+    "TimeTableIndex": 0,
+    "SelfDriving": "SDLE_NoError",
+    "Docking": "TDS_None",
+    "Vehicles": [
+      {
+        "Name": "Electric Locomotive",
+        "ClassName": "BP_Locomotive_C",
+        "PayloadMass": 0,
+        "MaxPayloadMass": 0,
+        "Inventory": []
+      },
+      {
+        "Name": "Freight Car",
+        "ClassName": "BP_FreightWagon_C",
+        "PayloadMass": 69300,
+        "MaxPayloadMass": 70000,
+        "Inventory": [
+          {
+            "Name": "Quartz Crystal",
+            "ClassName": "Desc_QuartzCrystal_C",
+            "Amount": 6320,
+            "MaxAmount": 200
+          }
+        ]
+      },
+      {
+        "Name": "Freight Car",
+        "ClassName": "BP_FreightWagon_C",
+        "PayloadMass": 70000,
+        "MaxPayloadMass": 70000,
+        "Inventory": [
+          {
+            "Name": "Silica",
+            "ClassName": "Desc_Silica_C",
+            "Amount": 6400,
+            "MaxAmount": 200
+          }
+        ]
+      }
+    ]
+  }
+]
