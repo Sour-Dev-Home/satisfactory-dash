@@ -100,16 +100,21 @@ export interface UserServer {
   publicId: string;
   displayName: string;
   role: MemberRole;
+  /** The internal id, for the injected "has it enrolled" lookup. Never sent to the client. */
+  id: string;
+  createdVia: "operator" | "self_serve";
 }
 
 const UserServerRowSchema = z.object({
+  id: z.string(),
   public_id: z.string(),
   display_name: z.string(),
   role: z.enum(["owner", "admin", "viewer"]),
+  created_via: z.enum(["operator", "self_serve"]),
 });
 
 const LIST_FOR_USER = `
-  SELECT s.public_id, s.display_name, m.role
+  SELECT s.id::text AS id, s.public_id, s.display_name, m.role, s.created_via
   FROM servers.server_members m
   JOIN servers.servers s ON s.id = m.server_id
   WHERE m.user_id = $1 AND s.deleted_at IS NULL
@@ -123,6 +128,8 @@ export async function listServersForUser(db: Queryable, userId: string): Promise
     publicId: row.public_id,
     displayName: row.display_name,
     role: row.role,
+    id: row.id,
+    createdVia: row.created_via,
   }));
 }
 
@@ -140,18 +147,27 @@ export async function renameServer(
   displayName: string,
   audit: { actorUserId: string | null },
 ): Promise<boolean> {
-  return withTransaction(pool, async (client) => {
-    const result = await timedQuery(client, "servers.renameServer", RENAME_SERVER, [publicId, displayName]);
-    const row = parseFirst(IdRowSchema, result.rows, "servers.renameServer");
-    if (row === undefined) return false;
-    await recordAuditEvent(client, {
-      action: "server.updated",
-      actorUserId: audit.actorUserId ?? undefined,
-      serverId: row.id,
-      detail: { fields: ["displayName"] },
-    });
-    return true;
+  return withTransaction(pool, (client) => renameServerInTransaction(client, publicId, displayName, audit));
+}
+
+/** `renameServer`'s statements inside the caller's transaction (#526: the self-serve owner's rename checks ownership first,
+ *  under the same row lock). */
+export async function renameServerInTransaction(
+  client: Queryable,
+  publicId: string,
+  displayName: string,
+  audit: { actorUserId: string | null },
+): Promise<boolean> {
+  const result = await timedQuery(client, "servers.renameServer", RENAME_SERVER, [publicId, displayName]);
+  const row = parseFirst(IdRowSchema, result.rows, "servers.renameServer");
+  if (row === undefined) return false;
+  await recordAuditEvent(client, {
+    action: "server.updated",
+    actorUserId: audit.actorUserId ?? undefined,
+    serverId: row.id,
+    detail: { fields: ["displayName"] },
   });
+  return true;
 }
 
 const SOFT_DELETE = `
@@ -211,23 +227,33 @@ export async function softDeleteServer(
   pool: Parameters<typeof withTransaction>[0],
   publicId: string,
   /** When given, an audit event `server.deleted` (ids only) is written in the same transaction. */
-  audit?: { actorUserId: string | null },
+  audit?: SoftDeleteAudit,
 ): Promise<boolean> {
-  return withTransaction(pool, async (client) => {
-    const deleted = await timedQuery(client, "servers.softDeleteServer", SOFT_DELETE, [publicId]);
-    const row = parseFirst(IdRowSchema, deleted.rows, "servers.softDeleteServer");
-    if (row === undefined) {
-      return false;
-    }
-    if (audit !== undefined) {
-      await recordAuditEvent(client, { action: "server.deleted", actorUserId: audit.actorUserId ?? undefined, serverId: row.id });
-    }
-    await timedQuery(client, "servers.softDeleteServer.deleteMembers", DELETE_MEMBERS, [row.id]);
-    // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
-    await timedQuery(client, "servers.softDeleteServer.deleteConnection", DELETE_CONNECTION, [row.id]);
-    await purgeServerData(client, row.id);
-    return true;
-  });
+  return withTransaction(pool, (client) => softDeleteServerInTransaction(client, publicId, audit));
+}
+
+/** The audit event a soft delete writes. `detail` holds ids and codes only (#526: `{ reason }`). */
+export interface SoftDeleteAudit {
+  actorUserId: string | null;
+  detail?: Record<string, string>;
+}
+
+/** `softDeleteServer`'s statements inside the caller's transaction (#526: the self-serve owner's remove and the pending-server
+ *  sweep check their condition under the server's row lock first, then remove in the same transaction). */
+export async function softDeleteServerInTransaction(client: Queryable, publicId: string, audit?: SoftDeleteAudit): Promise<boolean> {
+  const deleted = await timedQuery(client, "servers.softDeleteServer", SOFT_DELETE, [publicId]);
+  const row = parseFirst(IdRowSchema, deleted.rows, "servers.softDeleteServer");
+  if (row === undefined) {
+    return false;
+  }
+  if (audit !== undefined) {
+    await recordAuditEvent(client, { action: "server.deleted", actorUserId: audit.actorUserId ?? undefined, serverId: row.id, detail: audit.detail });
+  }
+  await timedQuery(client, "servers.softDeleteServer.deleteMembers", DELETE_MEMBERS, [row.id]);
+  // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
+  await timedQuery(client, "servers.softDeleteServer.deleteConnection", DELETE_CONNECTION, [row.id]);
+  await purgeServerData(client, row.id);
+  return true;
 }
 
 /** Deletes everything recorded for one server except its membership and connection (those have their own statements):
@@ -323,14 +349,17 @@ export async function listOperatorAgentServers(db: Queryable): Promise<{ publicI
 // ADR-0046 section 1.3: a plain INSERT, never the upserts above. A public id that already exists, live or soft-deleted, is
 // a unique violation (the transaction fails), so a self-serve create can never revive a removed server's id.
 const INSERT_SELF_SERVE_SERVER = `
-  INSERT INTO servers.servers (public_id, display_name, connection_kind, created_via)
-  VALUES ($1, $2, 'agent', 'self_serve')
+  INSERT INTO servers.servers (public_id, display_name, connection_kind, created_via, created_by_user_id)
+  VALUES ($1, $2, 'agent', 'self_serve', $3)
   RETURNING id, public_id, display_name, hosting_mode, connection_kind`;
 
-/** Inserts a new self-serve agent server. The caller adds its owner in the same transaction (the database refuses the
- *  commit otherwise, `servers_self_serve_has_owner`). */
-export async function insertSelfServeServer(db: Queryable, input: { publicId: string; displayName: string }): Promise<RegisteredServer> {
-  const result = await timedQuery(db, "servers.insertSelfServeServer", INSERT_SELF_SERVE_SERVER, [input.publicId, input.displayName]);
+/** Inserts a new self-serve agent server, recording its creator (#526: the caps count by creator). The caller adds its owner
+ *  in the same transaction (the database refuses the commit otherwise, `servers_self_serve_has_owner`). */
+export async function insertSelfServeServer(
+  db: Queryable,
+  input: { publicId: string; displayName: string; createdByUserId: string },
+): Promise<RegisteredServer> {
+  const result = await timedQuery(db, "servers.insertSelfServeServer", INSERT_SELF_SERVE_SERVER, [input.publicId, input.displayName, input.createdByUserId]);
   return toServer(parseOne(ServerRowSchema, result.rows, "servers.insertSelfServeServer"));
 }
 
@@ -345,18 +374,107 @@ export async function countSelfServeServers(db: Queryable): Promise<number> {
   return parseOne(z.object({ n: z.coerce.number() }), result.rows, "servers.countSelfServeServers").n;
 }
 
-const LIST_OWNED_SELF_SERVE = `
-  SELECT s.id, s.display_name
-  FROM servers.servers s
-  JOIN servers.server_members m ON m.server_id = s.id AND m.role = 'owner'
-  WHERE m.user_id = $1 AND s.created_via = 'self_serve' AND s.deleted_at IS NULL
-  ORDER BY s.created_at, s.id`;
+// #526 (#525's security review): by CREATOR, not by current owner, so handing a server to another account never frees a slot.
+const LIST_CREATED_SELF_SERVE = `
+  SELECT id, display_name
+  FROM servers.servers
+  WHERE created_by_user_id = $1 AND created_via = 'self_serve' AND deleted_at IS NULL
+  ORDER BY created_at, id`;
 
-/** C1 and C3: the live self-serve servers this account owns (internal id and name), oldest first. */
-export async function listOwnedSelfServeServers(db: Queryable, userId: string): Promise<{ serverId: string; displayName: string }[]> {
-  const result = await timedQuery(db, "servers.listOwnedSelfServeServers", LIST_OWNED_SELF_SERVE, [userId]);
-  return parseRows(z.object({ id: z.string(), display_name: z.string() }), result.rows, "servers.listOwnedSelfServeServers").map((row) => ({
+/** C1 and C3: the live self-serve servers this account created (internal id and name), oldest first, whoever owns them now. */
+export async function listCreatedSelfServeServers(db: Queryable, userId: string): Promise<{ serverId: string; displayName: string }[]> {
+  const result = await timedQuery(db, "servers.listCreatedSelfServeServers", LIST_CREATED_SELF_SERVE, [userId]);
+  return parseRows(z.object({ id: z.string(), display_name: z.string() }), result.rows, "servers.listCreatedSelfServeServers").map((row) => ({
     serverId: row.id,
     displayName: row.display_name,
   }));
+}
+
+// #526: C5 from the rows themselves, so it survives a restart. A removed server keeps its row (and created_at), so create and
+// remove churn is counted; a self-serve id is never revived (plain INSERT), so created_at is when it was created. Served by
+// servers_self_serve_creator_idx.
+const COUNT_RECENT_SELF_SERVE_CREATIONS = `
+  WITH recent AS (
+    SELECT created_at
+    FROM servers.servers
+    WHERE created_by_user_id = $1 AND created_via = 'self_serve' AND created_at > now() - make_interval(hours => $2::int)
+  )
+  SELECT (SELECT count(*) FROM recent) AS n,
+         (SELECT ceil(extract(epoch FROM (created_at + make_interval(hours => $2::int) - now())))
+            FROM recent ORDER BY created_at DESC OFFSET greatest($3::int, 1) - 1 LIMIT 1) AS retry_after`;
+
+/** C5: the self-serve servers this account created in the last `windowHours`, live or removed, and the seconds until a slot
+ *  frees under `limit`: until the `limit`-th newest of them leaves the window (the oldest when exactly `limit` are in it; null
+ *  when fewer are). */
+export async function countRecentSelfServeCreations(
+  db: Queryable,
+  userId: string,
+  windowHours: number,
+  limit: number,
+): Promise<{ count: number; retryAfterSeconds: number | null }> {
+  const result = await timedQuery(db, "servers.countRecentSelfServeCreations", COUNT_RECENT_SELF_SERVE_CREATIONS, [userId, windowHours, limit]);
+  const row = parseOne(z.object({ n: z.coerce.number(), retry_after: z.coerce.number().nullable() }), result.rows, "servers.countRecentSelfServeCreations");
+  return { count: row.n, retryAfterSeconds: row.retry_after };
+}
+
+const IS_SELF_SERVE = `
+  SELECT 1 FROM servers.servers WHERE id = $1 AND created_via = 'self_serve'`;
+
+/** #526 (L1): whether this server (internal id) was created through self-serve, which makes it agent-only (ADR-0046). */
+export async function isSelfServeServer(db: Queryable, serverId: string): Promise<boolean> {
+  return (await timedQuery(db, "servers.isSelfServeServer", IS_SELF_SERVE, [serverId])).rows.length > 0;
+}
+
+const LOCK_SELF_SERVE_FOR_OWNER = `
+  SELECT s.id, s.created_via, (m.user_id IS NOT NULL) AS is_owner
+  FROM servers.servers s
+  LEFT JOIN servers.server_members m ON m.server_id = s.id AND m.role = 'owner' AND m.user_id = $2
+  WHERE s.public_id = $1 AND s.deleted_at IS NULL
+  FOR NO KEY UPDATE OF s`;
+
+/** #526: the live server row, LOCKED for this transaction (the order enrolment and revoke take: the server row first), with
+ *  whether it is self-serve and whether this account owns it. Undefined for an unknown or removed server. */
+export async function lockServerForSelfServeOwner(
+  db: Queryable,
+  publicId: string,
+  userId: string,
+): Promise<{ serverId: string; selfServe: boolean; isOwner: boolean } | undefined> {
+  const result = await timedQuery(db, "servers.lockServerForSelfServeOwner", LOCK_SELF_SERVE_FOR_OWNER, [publicId, userId]);
+  const row = parseFirst(
+    z.object({ id: z.string(), created_via: z.enum(["operator", "self_serve"]), is_owner: z.boolean() }),
+    result.rows,
+    "servers.lockServerForSelfServeOwner",
+  );
+  return row === undefined ? undefined : { serverId: row.id, selfServe: row.created_via === "self_serve", isOwner: row.is_owner };
+}
+
+// C4's candidates. The NOT EXISTS is a pre-filter only (so enrolled servers never crowd the batch); the sweep re-checks each
+// candidate under its row lock before removing it. Oldest first, at most $2 a run.
+const LIST_PENDING_SELF_SERVE = `
+  SELECT s.public_id
+  FROM servers.servers s
+  WHERE s.created_via = 'self_serve' AND s.deleted_at IS NULL
+    AND s.created_at < now() - make_interval(hours => $1::int)
+    AND NOT EXISTS (SELECT 1 FROM agents.agent_credentials c WHERE c.server_id = s.id)
+  ORDER BY s.created_at, s.id
+  LIMIT $2`;
+
+/** C4: up to `limit` public ids of live self-serve servers older than `ttlHours` that have never enrolled, oldest first. */
+export async function listPendingSelfServeServers(db: Queryable, ttlHours: number, limit: number): Promise<string[]> {
+  const result = await timedQuery(db, "servers.listPendingSelfServeServers", LIST_PENDING_SELF_SERVE, [ttlHours, limit]);
+  return parseRows(z.object({ public_id: z.string() }), result.rows, "servers.listPendingSelfServeServers").map((row) => row.public_id);
+}
+
+const LOCK_EXPIRED_SELF_SERVE = `
+  SELECT id
+  FROM servers.servers
+  WHERE public_id = $1 AND created_via = 'self_serve' AND deleted_at IS NULL
+    AND created_at < now() - make_interval(hours => $2::int)
+  FOR NO KEY UPDATE`;
+
+/** C4: the internal id of this live self-serve server older than `ttlHours`, LOCKED for this transaction (so an enrolment of it
+ *  waits, and the credential check that follows sees a committed one). Undefined when it no longer qualifies. */
+export async function lockExpiredSelfServeServer(db: Queryable, publicId: string, ttlHours: number): Promise<string | undefined> {
+  const result = await timedQuery(db, "servers.lockExpiredSelfServeServer", LOCK_EXPIRED_SELF_SERVE, [publicId, ttlHours]);
+  return parseFirst(IdRowSchema, result.rows, "servers.lockExpiredSelfServeServer")?.id;
 }

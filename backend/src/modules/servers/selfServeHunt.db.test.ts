@@ -34,10 +34,11 @@ describe.skipIf(!available)("self-serve hunt (database)", () => {
   const svc = (caps: { c1?: number; c2?: number; c3?: number } = {}) =>
     createSelfServeService({
       db: pool,
-      config: { maxServersPerAccount: caps.c1 ?? 2, maxServersTotal: caps.c2 ?? 1000, maxPendingPerAccount: caps.c3 ?? 1 },
+      config: { maxServersPerAccount: caps.c1 ?? 2, maxServersTotal: caps.c2 ?? 1000, maxPendingPerAccount: caps.c3 ?? 1, createsPerDay: 100 },
       isOperator: () => false,
       enrolledServerIds,
       attachRuntime: async () => {},
+      runtime: { rename: () => true, remove: async () => true },
     });
   const codeOf = (err: unknown) => (err instanceof ApiFailure ? err.code : String(err));
 

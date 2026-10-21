@@ -21,6 +21,16 @@ export const serversRolesMixed = {
   ],
 } satisfies ServerListResponse;
 
+/** ADR-0046: self-serve is on; the user owns one enrolled and one pending self-serve server, and sees an operator server. */
+export const serversSelfServe = {
+  servers: [
+    { id: "default", displayName: "Satisfactory server", role: "viewer", createdVia: "operator", enrolled: true },
+    { id: "my-first-world", displayName: "My first world", role: "owner", createdVia: "self_serve", enrolled: true },
+    { id: "my-new-world", displayName: "My new world", role: "owner", createdVia: "self_serve", enrolled: false },
+  ],
+  selfServeEnabled: true,
+} satisfies ServerListResponse;
+
 /** More than one registered server (ADR-0001): the frontend must offer a choice
  *  instead of auto-selecting. Ids are opaque; display names never contain a host. */
 export const serversMultiple = {
