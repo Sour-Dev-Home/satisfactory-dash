@@ -31,7 +31,7 @@ function ChartPlaceholder() {
   return (
     <>
       <SkeletonStatus>Loading chart…</SkeletonStatus>
-      // Measured chart heights: 250 px, 279 px at phone width where the legend wraps.
+      {/* Measured chart heights: 250 px, 279 px at phone width where the legend wraps. */}
       <div data-chart-loading="">
         <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
       </div>

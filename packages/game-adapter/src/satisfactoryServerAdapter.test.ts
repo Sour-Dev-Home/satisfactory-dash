@@ -181,6 +181,7 @@ describe("SatisfactoryServerAdapter", () => {
     ["getPlayer", (a: SatisfactoryServerAdapter) => a.getPlayers()],
     ["getTrainRails", (a: SatisfactoryServerAdapter) => a.getRails()],
     ["getResourceNode", (a: SatisfactoryServerAdapter) => a.getResourceNodes()],
+    ["getBelts", (a: SatisfactoryServerAdapter) => a.getConveyors()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -285,6 +286,26 @@ describe("SatisfactoryServerAdapter", () => {
     const huge = { ID: "x", SplineData: [{ x: 0, y: 0 }, { x: 3_000_000_00, y: 0 }] }; // 3,000,000 m > 1,000,000 m cap
     const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([huge]) } });
     await expect(adapter.getRails()).resolves.toEqual({ data: [], dropped: 1 });
+  });
+
+  // ADR-0048 amendment (PR 2): the three conveyor reads go back to back, belts then lifts then pipes, into one projection.
+  it("reads getBelts, getLifts and getPipes in one go and maps them to the sorted conveyors layer", async () => {
+    const belt = { ID: "b1", Name: "Conveyor Belt Mk.1", location0: { x: 100, y: 200, z: 0 }, ConnectedTo0: "Build_MinerMk1_C_1", ConnectedTo1: "", ItemsPerMinute: 60 };
+    const lift = { ...belt, ID: "a1", Name: "Conveyor Lift Mk.1" };
+    const pipe = { ID: "c1", Name: "Pipeline Mk.1", location0: { x: 0, y: 0, z: 0 }, ConnectedTo0: "", ConnectedTo1: "Build_PipelineJunction_Cross_C_1", Speed: 5 };
+    const responses: Record<string, unknown[]> = { getBelts: [belt], getLifts: [lift], getPipes: [pipe] };
+    const get = vi.fn(async (endpoint: string) => responses[endpoint] as never);
+    const { adapter } = buildAdapter({ frm: { get } });
+    const result = await adapter.getConveyors();
+    expect(get.mock.calls.map((call) => call[0])).toEqual(["getBelts", "getLifts", "getPipes"]);
+    expect(result.dropped).toBe(0);
+    expect(result.data.map((e) => [e.id, e.kind, e.capacityPerMinute])).toEqual([["a1", "lift", 60], ["b1", "belt", 60], ["c1", "pipe", 300]]);
+  });
+
+  it("getConveyors from an FRM without the connection fields resolves to skip unsupportedFrm, not an error", async () => {
+    const old = { ID: "b1", Name: "Conveyor Belt Mk.1", location0: { x: 0, y: 0, z: 0 }, ItemsPerMinute: 60 };
+    const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([old]) } });
+    await expect(adapter.getConveyors()).resolves.toMatchObject({ data: [], skip: "unsupportedFrm" });
   });
 
   it("maps getResourceNode items, including nodeType (#352, #367 follow-ups)", async () => {

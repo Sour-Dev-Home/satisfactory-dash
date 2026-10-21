@@ -37,6 +37,11 @@ interface StateCase {
    * Always stubbed for these states: headless Chromium reports its own permission ("denied" in CI).
    */
   browser?: "off" | "subscribed" | "denied";
+  /**
+   * A locator that must be visible before the screenshot, for a state whose reads all answer late: the "no chart
+   * placeholder" wait below passes before a slow history read has even mounted the placeholder.
+   */
+  ready?: string;
 }
 
 /** Stands in for the browser's push state before the page loads. */
@@ -84,7 +89,7 @@ const CASES: StateCase[] = [
   { scenario: "loading-panels", name: "loading-settings", path: "/app/settings", shows: /Auto-pause when no players/, act: skeletonsShown },
   // Every read answers after 800 ms, past the page budget: the settled page is the same as the default's.
   { scenario: "slow-queries", name: "slow-overview", shows: "Total play time on this save" },
-  { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/ },
+  { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/, ready: ".power-chart .uplot" },
   { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
@@ -353,7 +358,7 @@ async function addServer(page: Page, host: string) {
   await page.getByRole("button", { name: "Add server" }).click();
 }
 
-for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser } of CASES) {
+for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser, ready } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
     await mockApi(scenario);
     if (browser) await stubPushBrowser(page, browser);
@@ -370,6 +375,7 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
       await act(page);
     }
     await expect(page.getByText(shows).first()).toBeVisible();
+    if (ready) await expect(page.locator(ready).first()).toBeVisible({ timeout: 15_000 });
     // The power chart is a lazy chunk: screenshot it drawn, not its placeholder. A longer
     // wait than usual: that chunk is one more request, and a loaded machine can stall it.
     await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });

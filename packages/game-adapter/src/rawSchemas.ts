@@ -203,6 +203,26 @@ export const RawFrmTrainRailSchema = z.object({
 });
 
 /**
+ * ADR-0048 amendment (PR 2): one record of GET /getBelts, /getLifts or /getPipes
+ * (docs-vault/raw-sources/captured-responses/frm-get{Belts,Lifts,Pipes}-2026-10-21-*.json). Only what the connection graph
+ * needs is declared; `SplineData`, `BoundingBox`, `ColorSlot`, `features`, `Length` and the second end's position
+ * are stripped. `ConnectedTo0`/`ConnectedTo1` are optional here ON PURPOSE: an FRM older than 1.5.4 omits them, and the
+ * conveyors mapper treats "no record carries them" as the version gate (no layer), not as a failed read. `ItemsPerMinute`
+ * is the belt/lift tier's speed; pipes carry `Speed` instead, the tier's rated capacity in m³/s (Mk.1 5, Mk.2 10; G-B2,
+ * docs-vault/raw-sources/frm-conveyor-gchecks-2026-10-21.md), not live flow. Parsed record by record (the response is read as
+ * an array of unknowns), so one bad record is counted as dropped, never failing the whole layer.
+ */
+export const RawFrmConveyorSchema = z.object({
+  ID: z.string().min(1),
+  Name: z.string().min(1),
+  location0: z.object({ x: z.number(), y: z.number() }),
+  ConnectedTo0: z.string().optional(),
+  ConnectedTo1: z.string().optional(),
+  ItemsPerMinute: z.number().optional(),
+  Speed: z.number().optional(),
+});
+
+/**
  * ADR-0038 M2: GET /getResourceNode (docs-vault/raw-sources/captured-responses/
  * frm-getResourceNode-2026-09-27-trimmed.json). One endpoint returns both `NodeType: "Node"` and
  * `NodeType: "Fracking Satellite"` (architect, #352 follow-up). `Purity` ("Normal"/"Impure"/"Pure")
