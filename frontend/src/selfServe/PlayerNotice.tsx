@@ -16,7 +16,7 @@ export function PlayerNotice() {
         Tell your players
       </h4>
       <p className="mb-0">
-        If you connect with the edge agent, your server&apos;s members can see who is online. Paste this into your
+        If you connect with the edge agent, the members of this server can see who is online. Paste this into the
         server&apos;s Discord so your players know. The mod sends player counts only, so with the mod alone the message is
         optional.
       </p>

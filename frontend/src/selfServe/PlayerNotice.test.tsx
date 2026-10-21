@@ -16,7 +16,7 @@ describe("PlayerNotice", () => {
   it("shows the lead, the message, and says the mod sends counts only", () => {
     render(<PlayerNotice />);
     expect(screen.getByRole("heading", { name: "Tell your players" })).toBeInTheDocument();
-    expect(screen.getByText(/your server's members can see who is online/)).toBeInTheDocument();
+    expect(screen.getByText(/the members of this server can see who is online/)).toBeInTheDocument();
     expect(screen.getByText(/The mod sends player counts only/)).toBeInTheDocument();
     expect(screen.getByText(PLAYER_NOTICE)).toBeInTheDocument();
   });
