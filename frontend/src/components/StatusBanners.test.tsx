@@ -111,4 +111,30 @@ describe("StatusBanners", () => {
       "Couldn't reach the dashboard backend.",
     );
   });
+
+  // The owner's report (2026-10-21): a status read that never answered went back to pending on each
+  // poll, and the banner returned null until the poll failed again, so the row collapsed and came back.
+  it("keeps the same unreachable notice up while a never-answered status read refetches", async () => {
+    let calls = 0;
+    server.use(
+      http.get(endpoints.status.route, async () => {
+        calls += 1;
+        if (calls > 1) await delay(100);
+        return HttpResponse.json(errorUpstreamUnreachable, { status: 503 });
+      }),
+    );
+    const { client } = renderBanners();
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent("Game server unreachable.");
+
+    const refetch = client.refetchQueries({ queryKey: queries.status("default").queryKey });
+    await waitFor(() => expect(client.isFetching()).toBe(1));
+    // Mid-refetch the query is pending again, with its error cleared; the banner still says it.
+    expect(client.getQueryState(queries.status("default").queryKey)?.status).toBe("pending");
+    expect(screen.getByRole("alert")).toBe(notice);
+    await refetch;
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(screen.getByRole("alert")).toBe(notice);
+    expect(calls).toBe(2);
+  });
 });

@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
-import { ErrorNotice } from "../components/ErrorNotice";
+import { useSettledQuery } from "../api/settled";
+import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable, PanelSkeleton, Skeleton } from "../ui/Skeleton";
 import { PowerPanel } from "./PowerPanel";
@@ -17,11 +17,11 @@ function PowerSkeleton() {
 /** Container: polls power through the query layer (ADR-0005) and shows its own load/error. */
 export function PowerView() {
   const server = useSelectedServer();
-  const power = useQuery(queries.power(server.id));
+  const { query: power, firstLoad, error } = useSettledQuery(queries.power(server.id));
 
   return (
-    <Loadable pending={power.isPending} skeleton={<PowerSkeleton />} className="grid gap-3">
-      {power.isError && <ErrorNotice error={power.error} />}
+    <Loadable pending={firstLoad} skeleton={<PowerSkeleton />} className="grid gap-3">
+      {error != null && <PanelError error={error} title="Power" hasData={power.data !== undefined} />}
       {power.data && <PowerPanel snapshot={power.data} refetchFailed={power.isRefetchError} />}
     </Loadable>
   );

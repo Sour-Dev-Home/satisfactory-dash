@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PowerResponse } from "@satisfactory-dash/shared";
 import { POLL_MS, queries } from "../api/queries";
-import { ErrorNotice } from "../components/ErrorNotice";
+import { isFirstLoad, useSettledQuery } from "../api/settled";
+import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { appendReading } from "./history";
 import { Loadable } from "../ui/Skeleton";
@@ -17,12 +18,14 @@ const MAX_READINGS = 120;
  * backend's history, and a new key refetches it, so a series never spans a reload here
  * either. So it waits for status (almost always cached already: the shell's banners poll
  * it), rather than loading once without a session and again with one. A status error
- * doesn't block the chart; it just loads unkeyed.
+ * doesn't block the chart; it just loads unkeyed. Only a first status load waits: a poll of a
+ * status read that keeps failing goes back to pending, and that must not unmount the chart (and
+ * refetch its history) every interval.
  */
 export function PowerHistoryView() {
   const server = useSelectedServer();
   const status = useQuery(queries.status(server.id));
-  if (!status.data && !status.isError) return <Loadable pending skeleton={<PowerHistorySkeleton />}>{null}</Loadable>;
+  if (isFirstLoad(status)) return <Loadable pending skeleton={<PowerHistorySkeleton />}>{null}</Loadable>;
   return <PowerHistoryLoaded serverId={server.id} session={status.data?.data.sessionName} />;
 }
 
@@ -33,7 +36,7 @@ export function PowerHistoryView() {
  * skipped (appendReading only adds newer points).
  */
 function PowerHistoryLoaded({ serverId, session }: { serverId: string; session: string | undefined }) {
-  const history = useQuery(queries.powerHistory(serverId, session));
+  const { query: history, firstLoad, error } = useSettledQuery(queries.powerHistory(serverId, session));
   const power = useQuery(queries.power(serverId));
 
   // Every power snapshot seen while mounted. Updated during render (React's pattern for
@@ -59,8 +62,8 @@ function PowerHistoryLoaded({ serverId, session }: { serverId: string; session: 
   }, [history.data, readings, serverId]);
 
   return (
-    <Loadable pending={history.isPending} skeleton={<PowerHistorySkeleton />} className="grid gap-3">
-      {history.isError && <ErrorNotice error={history.error} />}
+    <Loadable pending={firstLoad} skeleton={<PowerHistorySkeleton />} className="grid gap-3">
+      {error != null && <PanelError error={error} title="Power history" hasData={history.data !== undefined} />}
       {history.data?.stale && <p>Power history is behind: showing the last readings the server kept.</p>}
       {merged && <PowerHistoryPanel history={merged.history} live={merged.live} />}
     </Loadable>
