@@ -32,7 +32,7 @@ describe("parseItemForms odd shapes", () => {
 
   it("does not let __proto__ ClassName pollute the result object", () => {
     const out = parseItemForms(docs({ ClassName: "__proto__", mForm: "RF_SOLID" }));
-    expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(out)).toBeNull();
     expect(({} as Record<string, unknown>).solid).toBeUndefined();
   });
 

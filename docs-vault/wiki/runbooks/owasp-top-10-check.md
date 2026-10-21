@@ -28,7 +28,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | Check | Where | Status |
 |---|---|---|
 | The frontend CSP is strict (`script-src 'self'`, no unsafe-inline/eval, `frame-ancestors 'none'`), with XFO, nosniff, Referrer, Permissions and COOP set. The demo uses `connect-src 'self'` | `frontend/public/_headers`, `frontend/demo/_headers` | PASS |
-| **HSTS is long-lived on both hosts** | `frontend/public/_headers:7` is `max-age=86400`, and the API host has none | **GAP Low, #562** |
+| **HSTS is long-lived on both hosts** | one year with `includeSubDomains` (no preload) in `frontend/public/_headers:7`, `frontend/demo/_headers:7` and `securityHeaders` in `backend/src/platform/httpPolicy.ts` (branch `chore/561-562-hardening`) | PASS |
 | API responses: nosniff, `no-store`, `no-referrer`, `default-src 'none'`, no `x-powered-by` | `platform/httpPolicy.ts`, `app.ts` | PASS |
 | The error envelope shows `detail` only for allowlisted NODE_ENVs, and the images set `NODE_ENV=production` | `platform/errorResponse.ts`, `backend/Dockerfile` | PASS |
 | Loopback-only: HOST defaults to 127.0.0.1, compose publishes no ports, and CF-Connecting-IP is trusted only from a loopback peer | `server.ts`, `compose.yaml`, `platform/clientIp.ts` | PASS |
@@ -44,9 +44,9 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | `npm audit` is clean | run it | PASS (0, 2026-10-21) |
 | Every action is pinned to a full SHA, and Dependabot covers npm and actions | `.github/workflows/*`, `.github/dependabot.yml` | PASS |
 | Tokens are least-privilege: top-level `contents: read`, `packages: write` only on main's image push, `persist-credentials: false` | workflows | PASS |
-| **Base images are pinned by digest** | `backend/Dockerfile` uses `node:22-slim` by tag, and Dependabot has no docker ecosystem | **GAP Medium, #561** |
+| **Base images are pinned by digest** | `backend/Dockerfile` pins `node:22-slim@sha256:...` on all three FROM lines, and `.github/dependabot.yml` has a docker entry for `/backend` (branch `chore/561-562-hardening`) | PASS |
 | The deployed images are pinned by digest (Terraform enforces it) | `infra/aws/variables.tf`, `ecs.tf` | PASS |
-| **Static analysis (CodeQL)** | no workflow | **GAP Low, #561** |
+| **Static analysis (CodeQL)** | CodeQL default setup in the repository's code-security settings (JavaScript/TypeScript and Actions, on push and pull request; not a required check). Don't add a `codeql.yml` workflow: GitHub rejects an advanced configuration's results while default setup is on | PASS |
 | No CDN scripts. Vendored skills and MCP config never ship | `frontend/index.html`, `backend/Dockerfile.dockerignore` | PASS |
 
 ## A04 Cryptographic Failures
@@ -70,7 +70,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | No `dangerouslySetInnerHTML`, innerHTML or eval. Map tooltips are built from text nodes | `frontend/src/map/*Layer.tsx` | PASS |
 | Discord and push payloads are cleaned (`plainAlertText`), with `allowed_mentions.parse = []` | `alerts/services/alertMessage.ts` | PASS |
 | zod checks every boundary: request bodies, agent snapshots, game and FRM responses, backend replies to the agent | `agents/routes/agentApi.ts`, `game-adapter/src/rawSchemas.ts`, `agent/src/backendClient.ts` | PASS |
-| **Lookups keyed by external strings use a Map or `Object.create(null)`** | `telemetry/parseGameDocs.ts:47,57` uses a plain `{}` (offline script) | GAP Low, #562 |
+| **Lookups keyed by external strings use a Map or `Object.create(null)`** | `telemetry/parseGameDocs.ts` uses `Object.create(null)` (branch `chore/561-562-hardening`) | PASS |
 | Logs are structured, with redaction; the agent's log keys are allowlisted | `platform/logger.ts`, `agent/src/logger.ts` | PASS |
 
 ## A06 Insecure Design
@@ -82,7 +82,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | SSRF: webhooks go to exactly discord.com or discordapp.com, push to allowlisted hosts (checked again at send), no redirects followed, server addresses DNS-pinned | `discordWebhook.ts`, `pushSender.ts`, `servers/addressGuard.ts` | PASS |
 | Races: the ownerless trigger, lock order for enrolment, deletion and transfer, guarded code consumption | migrations `…members_never_ownerless`, `accountDeletion.ts`, `memberRepository.ts` | PASS (#556; transfer-API follow-up in #311) |
 | **One agent-auth failure budget** | the world-layer `createAgentAuth` (`server.ts:476`) doubles it | GAP Low, #562 |
-| **The threat model matches the code** | ADR-0045 M1 still says 40-bit codes and 120/min | GAP Low (docs), #562 |
+| **The threat model matches the code** | ADR-0045 Amendment 3 recomputes M1 for 60-bit codes and 1,200/min (branch `chore/561-562-hardening`) | PASS |
 
 ## A07 Authentication Failures
 

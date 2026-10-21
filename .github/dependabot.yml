@@ -22,3 +22,9 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # The backend image's base (backend/Dockerfile) is pinned by digest (#561); Dependabot bumps the digest with the tag.
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
