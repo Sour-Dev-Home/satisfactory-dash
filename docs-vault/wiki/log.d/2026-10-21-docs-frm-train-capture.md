@@ -1,0 +1,1 @@
+- 2026-10-21 — Raw sources: a trimmed read-only FRM 1.5.4 train and station capture from the owner's save. The ADR-0050 phase 3 gate passes: all 4 freight platform ids are belt end ids, and station names are unique (the trailing space is kept). Train rates remain unverified.
