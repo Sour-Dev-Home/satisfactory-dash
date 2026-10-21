@@ -3,6 +3,8 @@
 // (lib.test.mjs). The scripts work in this repo and in the portfolio repo: REPOS says how each one keeps its
 // visual baselines and whether its PRs auto-merge.
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 // Keyed by role, not by full name: the portfolio's repository name is the owner's name, which (outside LICENSE and
 // the privacy page) never appears in this repo, so configFor recognises it by shape.
@@ -154,4 +156,20 @@ export function parseArgs(argv) {
     }
   }
   return out;
+}
+
+/**
+ * The program and leading args that run npm WITHOUT a shell. npm is a .cmd shim on Windows, which Node only spawns
+ * through a shell (and Node then warns DEP0190); running npm's own CLI script with the node binary needs none, and
+ * works the same on Linux. `npm_execpath` is set when this script itself runs under npm; otherwise npm-cli.js is
+ * looked for next to the node binary (Windows layout, then the Unix lib/node_modules layout). Injectable for tests.
+ */
+export function npmInvocation({ env = process.env, execPath = process.execPath, exists = existsSync } = {}) {
+  const fromEnv = env.npm_execpath;
+  if (fromEnv && /(^|[\/])npm-cli\.c?js$/.test(fromEnv) && exists(fromEnv)) return { cmd: execPath, args: [fromEnv] };
+  const dir = dirname(execPath);
+  for (const candidate of [join(dir, "node_modules", "npm", "bin", "npm-cli.js"), join(dir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js")]) {
+    if (exists(candidate)) return { cmd: execPath, args: [candidate] };
+  }
+  throw new Error("cannot find npm-cli.js next to the node binary; run this script through npm or set npm_execpath");
 }
