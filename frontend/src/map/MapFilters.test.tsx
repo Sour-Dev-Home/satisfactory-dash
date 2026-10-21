@@ -1,0 +1,223 @@
+import { fireEvent, screen, within } from "@testing-library/react";
+import { factoryMixed, railsWorldResponseEmpty, resourceNodesWorldResponse } from "@satisfactory-dash/shared/fixtures";
+import { endpoints, type ResourceNode } from "@satisfactory-dash/shared";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "../test/server";
+import { renderWithClient } from "../test/render";
+import { buildingFilterKey, MAP_FILTERS_KEY, parseFilters } from "./mapFilters";
+import type { DrawnLayer, ViewM } from "./MapCanvas";
+import type { MapContext } from "./layers";
+import { buildingsLayer } from "./buildingsLayer";
+import { MapPanel } from "./MapPanel";
+import { resourceNodesLayer } from "./resourceNodesLayer";
+
+// The same stand-in for the lazy map chunk as MapPanel.test.tsx: jsdom has no canvas.
+const canvas = vi.hoisted(() => ({ layers: [] as DrawnLayer[] }));
+vi.mock("./MapCanvas", () => ({
+  default: ({ layers }: { layers: DrawnLayer[]; fitTo?: ViewM; onView: (v: ViewM) => void }) => {
+    canvas.layers = layers;
+    return <div data-testid="map-canvas" />;
+  },
+}));
+
+const nodesRoute = endpoints.map.worldLayer.route.replace(":layer", "resourceNodes");
+const railsRoute = endpoints.map.worldLayer.route.replace(":layer", "rails");
+const allNodes = resourceNodesWorldResponse.data as ResourceNode[];
+
+/** What the map was handed to draw for a layer: the layer's draw is swapped for a recorder. */
+function drawnData<T>(layer: { draw: (ctx: MapContext, data: T) => () => void; id: string }): T | undefined {
+  let seen: T | undefined;
+  const spy = vi.spyOn(layer, "draw").mockImplementation((_ctx, data) => {
+    seen = data;
+    return () => {};
+  });
+  canvas.layers.find((l) => l.id === layer.id)?.draw({} as MapContext);
+  spy.mockRestore();
+  return seen;
+}
+const drawnNodes = () => drawnData(resourceNodesLayer as never) as ResourceNode[] | undefined;
+const drawnBuildings = () => (drawnData(buildingsLayer as never) as typeof factoryMixed.data | undefined)?.buildings;
+
+async function mount() {
+  server.use(
+    http.get(nodesRoute, () => HttpResponse.json(resourceNodesWorldResponse)),
+    http.get(railsRoute, () => HttpResponse.json(railsWorldResponseEmpty)),
+  );
+  const result = renderWithClient(<MapPanel snapshot={factoryMixed} serverId="default" />);
+  await screen.findByRole("table", { name: /Resource nodes in view/ });
+  return result;
+}
+// jsdom opens a <details> on a summary click but never fires its `toggle` event, as a browser does.
+const openFilters = () => {
+  const summary = screen.getByText("Filters");
+  fireEvent.click(summary);
+  fireEvent(summary.closest("details")!, new Event("toggle"));
+};
+const box = (name: RegExp | string) => screen.getByRole("checkbox", { name });
+const stored = () => JSON.parse(window.localStorage.getItem(MAP_FILTERS_KEY) ?? "null");
+const nodeRows = () => within(screen.getByRole("table", { name: /Resource nodes in view/ })).getAllByRole("row").length - 1;
+
+beforeEach(() => window.localStorage.clear());
+afterEach(() => vi.restoreAllMocks());
+
+describe("map filters", () => {
+  it("lists the resource types in the data with counts, and a hidden type is not drawn", async () => {
+    await mount();
+    openFilters();
+    expect(box(/^SAM\s*\(2\)/)).toBeChecked();
+    expect(box(/^Coal\s*\(1\)/)).toBeChecked();
+    expect(drawnNodes()).toHaveLength(allNodes.length);
+    fireEvent.click(box(/^SAM/));
+    expect(drawnNodes()!.map((n) => n.type)).not.toContain("SAM");
+    expect(drawnNodes()).toHaveLength(allNodes.length - 2);
+    expect(nodeRows()).toBe(allNodes.length - 2);
+  });
+
+  it("says N of M shown in the summary when a filter hides some, and nothing extra when none do", async () => {
+    await mount();
+    expect(screen.queryByText(/resource nodes shown/)).not.toBeInTheDocument();
+    openFilters();
+    fireEvent.click(box(/^SAM/));
+    expect(screen.getByText(/^5 of 7 resource nodes shown/)).toBeInTheDocument();
+    expect(screen.getByText(/^5 resource nodes on the map/)).toBeInTheDocument();
+  });
+
+  it("None hides every type and All brings them back", async () => {
+    await mount();
+    openFilters();
+    fireEvent.click(screen.getByRole("button", { name: "Hide all resource types" }));
+    expect(drawnNodes()).toEqual([]);
+    expect(screen.getByText("0 of 7 resource nodes shown (the rest are hidden by the filters).")).toBeInTheDocument();
+    expect(screen.getByText("All hidden by the filters.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all resource types" }));
+    expect(drawnNodes()).toHaveLength(allNodes.length);
+  });
+
+  it("filters in use vs free", async () => {
+    await mount();
+    openFilters();
+    fireEvent.click(screen.getByRole("radio", { name: "In use only" }));
+    expect(drawnNodes()!.every((n) => n.exploited)).toBe(true);
+    expect(drawnNodes()).toHaveLength(allNodes.filter((n) => n.exploited).length);
+    fireEvent.click(screen.getByRole("radio", { name: "Free only" }));
+    expect(drawnNodes()!.every((n) => !n.exploited)).toBe(true);
+    expect(drawnNodes()).toHaveLength(allNodes.filter((n) => !n.exploited).length);
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(drawnNodes()).toHaveLength(allNodes.length);
+  });
+
+  it("hides buildings by state, with N of M in the text and the table", async () => {
+    await mount();
+    openFilters();
+    const all = factoryMixed.data.buildings;
+    const backedUp = all.filter((b) => buildingFilterKey(b) === "backedUp").length;
+    expect(backedUp).toBeGreaterThan(0);
+    fireEvent.click(box(/^Backed up/));
+    expect(drawnBuildings()).toHaveLength(all.length - backedUp);
+    expect(drawnBuildings()!.some((b) => buildingFilterKey(b) === "backedUp")).toBe(false);
+    expect(screen.getByText(`${all.length - backedUp} of ${all.length} buildings shown (the rest are hidden by the filters).`)).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: /Buildings in view/ })).getAllByRole("row")).toHaveLength(all.length - backedUp + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Hide all building states" }));
+    expect(drawnBuildings()).toEqual([]);
+    expect(screen.getByText("All hidden by the filters.", { selector: "p" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all building states" }));
+    expect(drawnBuildings()).toHaveLength(all.length);
+  });
+
+  it("shows a group only while its layer is on", async () => {
+    await mount();
+    openFilters();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Resource nodes" }));
+    expect(screen.queryByRole("group", { name: "Resource types" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Building states" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Buildings" }));
+    expect(screen.queryByText("Filters")).not.toBeInTheDocument();
+  });
+
+  it("summarises what is hidden while collapsed", async () => {
+    await mount();
+    expect(screen.getByText("(nothing hidden)")).toBeInTheDocument();
+    openFilters();
+    fireEvent.click(box(/^SAM/));
+    fireEvent.click(screen.getByRole("radio", { name: "Free only" }));
+    fireEvent.click(box(/^Paused/));
+    expect(screen.getByText("(1 resource type hidden, free nodes only, 1 building state hidden)")).toBeInTheDocument();
+  });
+});
+
+describe("remembering the choices", () => {
+  it("restores layer toggles, filters and the open state after a reload", async () => {
+    const first = await mount();
+    openFilters();
+    fireEvent.click(box(/^SAM/));
+    fireEvent.click(screen.getByRole("radio", { name: "In use only" }));
+    fireEvent.click(box(/^Producing/));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rails" }));
+    expect(stored()).toMatchObject({ v: 1, layers: { rails: false }, open: true, hiddenTypes: ["SAM"], use: "used", hiddenStates: ["producing"] });
+    first.unmount();
+
+    await mount();
+    expect(screen.getByRole("checkbox", { name: "Rails" })).not.toBeChecked();
+    expect(box(/^SAM/)).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: "In use only" })).toBeChecked();
+    expect(box(/^Producing/)).not.toBeChecked();
+    expect(drawnNodes()!.every((n) => n.exploited && n.type !== "SAM")).toBe(true);
+  });
+
+  it.each([
+    ["not JSON", "{oops"],
+    ["an old version", JSON.stringify({ v: 0, hiddenTypes: ["Coal"] })],
+    ["a future version", JSON.stringify({ v: 2, layers: {}, open: false, hiddenTypes: ["Coal"], use: "all", hiddenStates: [] })],
+    ["wrong shapes", JSON.stringify({ v: 1, layers: [], open: "yes", hiddenTypes: "Coal", use: "some", hiddenStates: [1] })],
+    ["an unknown use choice", JSON.stringify({ v: 1, layers: {}, open: false, hiddenTypes: [], use: "some", hiddenStates: [] })],
+    ["null", "null"],
+  ])("falls back to everything shown for %s", async (_name, value) => {
+    window.localStorage.setItem(MAP_FILTERS_KEY, value);
+    expect(parseFilters(value)).toBeNull();
+    await mount();
+    expect(drawnNodes()).toHaveLength(allNodes.length);
+    expect(drawnBuildings()).toHaveLength(factoryMixed.data.buildings.length);
+    expect(screen.getByText("(nothing hidden)")).toBeInTheDocument();
+  });
+
+  it("keeps working when storage throws", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    await mount();
+    openFilters();
+    fireEvent.click(box(/^SAM/));
+    expect(drawnNodes()).toHaveLength(allNodes.length - 2);
+  });
+
+  it("shows a type the saved state has never seen, and ignores saved types that are gone", async () => {
+    window.localStorage.setItem(
+      MAP_FILTERS_KEY,
+      JSON.stringify({ v: 1, layers: {}, open: true, hiddenTypes: ["Coal", "Unobtainium"], use: "all", hiddenStates: [] }),
+    );
+    await mount();
+    expect(box(/^Coal/)).not.toBeChecked();
+    expect(box(/^SAM/)).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: /Unobtainium/ })).not.toBeInTheDocument();
+    expect(drawnNodes()!.map((n) => n.type)).not.toContain("Coal");
+  });
+});
+
+describe("parseFilters", () => {
+  it("drops unknown building states and keeps the known ones", () => {
+    const parsed = parseFilters(
+      JSON.stringify({ v: 1, layers: { rails: false }, open: false, hiddenTypes: [], use: "free", hiddenStates: ["paused", "bogus"] }),
+    );
+    expect([...parsed!.hiddenStates]).toEqual(["paused"]);
+    expect(parsed!.layers.get("rails")).toBe(false);
+    expect(parsed!.use).toBe("free");
+  });
+  it("refuses an oversized list", () => {
+    const big = Array.from({ length: 500 }, (_, i) => `t${i}`);
+    expect(parseFilters(JSON.stringify({ v: 1, layers: {}, open: false, hiddenTypes: big, use: "all", hiddenStates: [] }))).toBeNull();
+  });
+});

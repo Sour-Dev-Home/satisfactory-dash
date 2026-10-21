@@ -96,6 +96,8 @@ const CASES: StateCase[] = [
   { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
   { scenario: "map-world-truncated", path: "/app/map", shows: /Showing part of the rails/ },
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
+  // The map's Filters (2026-10-21): open, with one resource type and one building state hidden and free nodes only.
+  { scenario: "default", name: "map-filtered", path: "/app/map", shows: /^\d+ of \d+ resource nodes shown/, act: filterTheMap },
   { scenario: "login", shows: "Sign in" },
   { scenario: "login-google", shows: "Sign in with Google" },
   {
@@ -338,6 +340,13 @@ const CASES: StateCase[] = [
     },
   },
 ];
+
+async function filterTheMap(page: Page) {
+  await page.getByText("Filters", { exact: true }).click();
+  await page.getByRole("checkbox", { name: /^SAM/ }).uncheck();
+  await page.getByRole("radio", { name: "Free only" }).check();
+  await page.getByRole("checkbox", { name: /^Paused/ }).uncheck();
+}
 
 async function openAddForm(page: Page) {
   await page.getByRole("button", { name: "Add a server" }).click();

@@ -400,6 +400,11 @@
   transition: opacity var(--duration-base) var(--ease-in-out);
 }
 
+/* A disclosure's chevron turns smoothly (the map's Filters); reduced motion zeroes the token. */
+@utility disclosure-chevron {
+  transition: transform var(--duration-base) var(--ease-in-out);
+}
+
 /* The existing views' classes, in B2's style until each view is restyled. */
 @layer components {
   .panel {

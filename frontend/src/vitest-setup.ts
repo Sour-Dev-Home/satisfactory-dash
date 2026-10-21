@@ -42,3 +42,7 @@ afterAll(() => server.close());
 // every test at /app like a fresh load of the app (/ is the landing page). A test that needs
 // another page navigates first.
 beforeEach(() => window.history.replaceState(null, "", "/app"));
+
+// Remembered UI choices (the map's filters) live in localStorage, which jsdom keeps for the whole file:
+// every test starts like a first visit.
+beforeEach(() => window.localStorage.clear());

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { isBackedUpState, type FactoryResponse } from "@satisfactory-dash/shared";
+import { isBackedUpState, type Factory, type FactoryResponse } from "@satisfactory-dash/shared";
 import { queries, type WorldLayerRead } from "../api/queries";
 import { ApiError } from "../api/errors";
 import { describeError } from "../components/ErrorNotice";
@@ -13,7 +13,16 @@ import type { DrawnLayer, ViewM } from "./MapCanvas";
 import { GRID_BASE_MAP } from "./projection";
 import { railsLayer } from "./railsLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
-import { RailsTable, ResourceNodesTable } from "./WorldTables";
+import { MapFilterPanel } from "./MapFilterPanel";
+import {
+  buildingFilterKey,
+  filterBuildings,
+  filterNodes,
+  typeEntries,
+  useMapFilters,
+  type BuildingFilterKey,
+} from "./mapFilters";
+import { EMPTY_FILTERED, EMPTY_VIEW, RailsTable, ResourceNodesTable } from "./WorldTables";
 
 // Leaflet (about 40 kB gzip) is only needed here: a separate chunk, loaded with this page.
 // React.lazy caches a failed import for good, so on failure swap in a fresh lazy component
@@ -39,13 +48,28 @@ const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, d
  * height of the summary while it loads, the error with Retry, or the summary itself (plus a note when
  * the backend cut the layer to its item cap, so what's drawn is part of it).
  */
-function WorldLayerText<T>({ query, layer }: { query: UseQueryResult<WorldLayerRead<T>>; layer: MapLayer<T> }) {
+function WorldLayerText<T>({
+  query,
+  layer,
+  filtered,
+}: {
+  query: UseQueryResult<WorldLayerRead<T>>;
+  layer: MapLayer<T>;
+  /** What the filters let through, when the layer has filters: the text then speaks of that ("N of M shown"). */
+  filtered?: { data: T; shown: number; total: number };
+}) {
   // A failed layer says so in the shared error box (WorldErrors), not here.
   if (query.isError) return null;
   const truncated = query.data?.truncated ?? false;
+  const hides = filtered !== undefined && filtered.shown < filtered.total;
   return (
     <Loadable pending={query.isPending} skeleton={<SkeletonLine label={`Loading ${layer.label.toLowerCase()}…`} />} className="grid gap-1">
-      {query.data && <p>{layer.describe(query.data.data, { truncated })}</p>}
+      {query.data && hides && (
+        <p>
+          {filtered.shown} of {filtered.total} {layer.label.toLowerCase()} shown (the rest are hidden by the filters).
+        </p>
+      )}
+      {query.data && (!hides || filtered.shown > 0) && <p>{layer.describe(filtered?.data ?? query.data.data, { truncated })}</p>}
       {truncated && (
         <p className="text-sm text-muted">
           Showing part of the {layer.label.toLowerCase()}: the server cut this layer to its size limit.
@@ -120,9 +144,24 @@ const inView = (view: ViewM | null) => (b: { location: { xM: number; yM: number 
  * buildings in view, which follows panning and zooming.
  */
 export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; serverId: string }) {
-  const [visible, setVisible] = useState(() => new Set<string>(LAYERS.filter((l) => l.defaultVisible).map((l) => l.id)));
+  const [filters, setFilters] = useMapFilters();
+  const visible = useMemo(
+    () => new Set<string>(LAYERS.filter((l) => filters.layers.get(l.id) ?? l.defaultVisible).map((l) => l.id)),
+    [filters.layers],
+  );
   const [view, setView] = useState<ViewM | null>(null);
-  const shown = placed(snapshot.data.buildings);
+  // Filters apply before drawing: the layers get only what is shown, and the text speaks of that too.
+  const filteredFactory = useMemo<Factory>(
+    () => ({ ...snapshot.data, buildings: filterBuildings(snapshot.data.buildings, filters.hiddenStates) }),
+    [snapshot, filters.hiddenStates],
+  );
+  const allPlaced = placed(snapshot.data.buildings);
+  const shown = placed(filteredFactory.buildings);
+  const buildingCounts = useMemo(() => {
+    const counts = new Map<BuildingFilterKey, number>();
+    for (const b of placed(snapshot.data.buildings)) counts.set(buildingFilterKey(b), (counts.get(buildingFilterKey(b)) ?? 0) + 1);
+    return counts;
+  }, [snapshot]);
 
   // A world layer is fetched only while its toggle is on (ADR-0038 §2).
   const rails = useQuery({ ...queries.mapRails(serverId), enabled: visible.has(railsLayer.id) });
@@ -136,28 +175,36 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
     .filter((f) => f.on && f.query.isError)
     .map((f) => ({ label: f.label, error: f.query.error, retry: () => void f.query.refetch() }));
 
+  const allNodes = nodesData?.data;
+  const shownNodes = useMemo(
+    () => (allNodes ? filterNodes(allNodes, filters.hiddenTypes, filters.use) : undefined),
+    [allNodes, filters.hiddenTypes, filters.use],
+  );
+  const nodeTypes = useMemo(() => (allNodes ? typeEntries(allNodes) : []), [allNodes]);
+
   // Stable while the data and toggles are: a new array would make the canvas redraw. In LAYERS order.
   const drawn = useMemo(() => {
     const list: DrawnLayer[] = [];
     if (railsData) list.push(bind(railsLayer, railsData.data));
-    if (nodesData) list.push(bind(resourceNodesLayer, nodesData.data));
-    if (visible.has(buildingsLayer.id)) list.push(bind(buildingsLayer, snapshot.data));
+    if (shownNodes) list.push(bind(resourceNodesLayer, shownNodes));
+    if (visible.has(buildingsLayer.id)) list.push(bind(buildingsLayer, filteredFactory));
     return list;
-  }, [visible, snapshot, railsData, nodesData]);
+  }, [visible, filteredFactory, railsData, shownNodes]);
   // First view: the factory itself, not the whole 7.5 km world. Computed once: later polls
   // never move the view.
   const [fitTo] = useState<ViewM | undefined>(() => {
-    if (shown.length === 0) return undefined;
-    const xs = shown.map((b) => b.location.xM);
-    const ys = shown.map((b) => b.location.yM);
+    if (allPlaced.length === 0) return undefined;
+    const xs = allPlaced.map((b) => b.location.xM);
+    const ys = allPlaced.map((b) => b.location.yM);
     return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
   });
 
   const toggle = (id: string) =>
-    setVisible((current) => {
-      const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
-      return next;
+    setFilters((current) => {
+      const layers = new Map(current.layers);
+      const on = layers.get(id) ?? LAYERS.find((l) => l.id === id)?.defaultVisible ?? false;
+      layers.set(id, !on);
+      return { ...current, layers };
     });
 
   const listed = visible.has(buildingsLayer.id) ? shown.filter(inView(view)) : [];
@@ -177,6 +224,13 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           </label>
         ))}
       </fieldset>
+      {/* Only the groups of layers that are on; the types are the ones in the data (none until it arrives). */}
+      <MapFilterPanel
+        filters={filters}
+        onChange={setFilters}
+        types={nodesData ? nodeTypes : visible.has(resourceNodesLayer.id) ? [] : null}
+        buildingCounts={visible.has(buildingsLayer.id) ? buildingCounts : null}
+      />
 
       <Suspense fallback={<MapCanvasSkeleton />}>
         <MapCanvas config={GRID_BASE_MAP} layers={drawn} fitTo={fitTo} onView={setView} />
@@ -198,13 +252,22 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       <p className="text-sm text-muted">Satisfactory and its icons © Coffee Stain Studios. Not affiliated.</p>
 
       {visible.has(railsLayer.id) && <WorldLayerText query={rails} layer={railsLayer} />}
-      {visible.has(resourceNodesLayer.id) && <WorldLayerText query={nodes} layer={resourceNodesLayer} />}
-      {visible.has(buildingsLayer.id) && <p>{buildingsLayer.describe(snapshot.data)}</p>}
+      {visible.has(resourceNodesLayer.id) && (
+        <WorldLayerText
+          query={nodes}
+          layer={resourceNodesLayer}
+          filtered={allNodes && shownNodes ? { data: shownNodes, shown: shownNodes.length, total: allNodes.length } : undefined}
+        />
+      )}
+      {visible.has(buildingsLayer.id) && shown.length < allPlaced.length && (
+        <p>{shown.length} of {allPlaced.length} buildings shown (the rest are hidden by the filters).</p>
+      )}
+      {visible.has(buildingsLayer.id) && <p>{buildingsLayer.describe(filteredFactory)}</p>}
       {visible.has(buildingsLayer.id) && (
         <div className="grid gap-2">
           <h4 id="map-list-heading">Buildings in view ({listed.length})</h4>
           {listed.length === 0 ? (
-            <p className="text-sm text-muted">None in view. Zoom out or pan to see more.</p>
+            <p className="text-sm text-muted">{shown.length === 0 && allPlaced.length > 0 ? EMPTY_FILTERED : EMPTY_VIEW}</p>
           ) : (
             // Focusable, so keyboard users can scroll it (axe scrollable-region-focusable).
             <div tabIndex={0} role="region" aria-labelledby="map-list-heading" className="max-h-80 overflow-auto">
@@ -240,7 +303,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
 
       {/* After the buildings' list, so a world layer arriving never pushes it down. */}
       {railsData && <RailsTable segments={railsData.data} view={view} />}
-      {nodesData && <ResourceNodesTable nodes={nodesData.data} view={view} />}
+      {allNodes && shownNodes && <ResourceNodesTable nodes={shownNodes} view={view} hidden={allNodes.length - shownNodes.length} />}
     </section>
   );
 }

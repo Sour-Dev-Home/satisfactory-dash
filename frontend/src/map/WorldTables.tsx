@@ -37,10 +37,14 @@ function ViewTable({ id, title, count, empty, children }: { id: string; title: s
   );
 }
 
-export function ResourceNodesTable({ nodes, view }: { nodes: readonly ResourceNode[]; view: ViewM | null }) {
+export const EMPTY_FILTERED = "All hidden by the filters.";
+
+/** `nodes` are the ones the filters let through; `hidden` is how many they hid. */
+export function ResourceNodesTable({ nodes, view, hidden = 0 }: { nodes: readonly ResourceNode[]; view: ViewM | null; hidden?: number }) {
   const listed = nodes.filter((n) => nodeInView(view, n));
+  const empty = nodes.length > 0 ? EMPTY_VIEW : hidden > 0 ? EMPTY_FILTERED : EMPTY_LAYER;
   return (
-    <ViewTable id="map-nodes-heading" title="Resource nodes in view" count={listed.length} empty={nodes.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+    <ViewTable id="map-nodes-heading" title="Resource nodes in view" count={listed.length} empty={empty}>
       <table aria-labelledby="map-nodes-heading" className="w-full text-sm">
         <thead>
           <tr>
