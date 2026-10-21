@@ -184,12 +184,18 @@ variable "alarms" {
     rds_cpu_evaluation       = optional(number, 3)
     backend_errors_max       = optional(number, 5)
     backend_errors_period    = optional(number, 300)
+    # #560: one fatal line or one escalated worker failure pages on its own.
+    backend_critical_max    = optional(number, 1)
+    backend_critical_period = optional(number, 300)
+    # #560: failed and refused sign-ins (password and Google) across all clients.
+    auth_failures_max    = optional(number, 20)
+    auth_failures_period = optional(number, 300)
   })
   default = {}
 
   validation {
     condition = alltrue([
-      for p in [var.alarms.ecs_period_seconds, var.alarms.rds_storage_period, var.alarms.rds_cpu_period_seconds, var.alarms.backend_errors_period] :
+      for p in [var.alarms.ecs_period_seconds, var.alarms.rds_storage_period, var.alarms.rds_cpu_period_seconds, var.alarms.backend_errors_period, var.alarms.backend_critical_period, var.alarms.auth_failures_period] :
       p == 10 || p == 30 || (p >= 60 && p % 60 == 0)
     ])
     error_message = "Alarm periods must be 10, 30, or a multiple of 60 seconds."
@@ -198,5 +204,10 @@ variable "alarms" {
   validation {
     condition     = var.alarms.rds_cpu_max_percent > 0 && var.alarms.rds_cpu_max_percent <= 100 && var.alarms.ecs_evaluation_periods >= 1 && var.alarms.rds_cpu_evaluation >= 1
     error_message = "rds_cpu_max_percent must be 1 to 100 and evaluation periods at least 1."
+  }
+
+  validation {
+    condition     = var.alarms.backend_errors_max >= 1 && var.alarms.backend_critical_max >= 1 && var.alarms.auth_failures_max >= 1
+    error_message = "backend_errors_max, backend_critical_max and auth_failures_max must be at least 1."
   }
 }
