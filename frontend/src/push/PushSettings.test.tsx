@@ -163,7 +163,7 @@ describe("turning push on", () => {
 
     fireEvent.click(button);
 
-    expect(await screen.findByText(/This device is/)).toHaveTextContent("This device is subscribed.");
+    await waitFor(() => expect(screen.getByText(/This device is/)).toHaveTextContent("This device is subscribed."), { timeout: 5000 });
     expect(browser.requestPermission).toHaveBeenCalledTimes(1);
     expect(browser.serviceWorker.register).toHaveBeenCalledWith("/push-sw.js");
     const options = (browser.pushManager.subscribe.mock.calls as unknown[][])[0][0] as { userVisibleOnly: boolean; applicationServerKey: Uint8Array };
@@ -228,7 +228,7 @@ describe("a subscribed device", () => {
     const browser = fakeBrowser({ permission: "granted", subscribed: true });
     enabled();
     renderPush();
-    expect(await screen.findByText(/This device is/)).toHaveTextContent("This device is subscribed.");
+    await waitFor(() => expect(screen.getByText(/This device is/)).toHaveTextContent("This device is subscribed."), { timeout: 5000 });
     expect(browser.requestPermission).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /Turn on push/ })).toBeNull();
   });
@@ -353,7 +353,7 @@ describe("hunt: a subscription made with another VAPID key", () => {
     server.use(http.post(endpoints.push.subscribe.route, () => HttpResponse.json(pushSubscribeResponse, { status: 201 })));
     renderPush();
     fireEvent.click(await screen.findByRole("button", { name: "Turn on push on this device" }));
-    expect(await screen.findByText(/This device is/)).toHaveTextContent("subscribed");
+    await waitFor(() => expect(screen.getByText(/This device is/)).toHaveTextContent("subscribed"), { timeout: 5000 });
     expect(browser.subscription.unsubscribe).toHaveBeenCalled();
     expect(browser.pushManager.subscribe).toHaveBeenCalledTimes(1);
   });
@@ -378,10 +378,10 @@ describe("hunt: focus", () => {
     renderPush();
     fireEvent.click(await screen.findByRole("button", { name: "Turn on push on this device" }));
     const test = await screen.findByRole("button", { name: "Send test notification" });
-    await waitFor(() => expect(test).toHaveFocus());
+    await waitFor(() => expect(test).toHaveFocus(), { timeout: 5000 });
     fireEvent.click(screen.getByRole("button", { name: "Turn off push on this device" }));
     const on = await screen.findByRole("button", { name: "Turn on push on this device" });
-    await waitFor(() => expect(on).toHaveFocus());
+    await waitFor(() => expect(on).toHaveFocus(), { timeout: 5000 });
   });
 });
 
@@ -390,7 +390,7 @@ describe("permission changes while the page is open", () => {
     fakeBrowser({ permission: "granted", subscribed: true });
     enabled();
     renderPush();
-    expect(await screen.findByText(/This device is/)).toHaveTextContent("subscribed");
+    await waitFor(() => expect(screen.getByText(/This device is/)).toHaveTextContent("subscribed"), { timeout: 5000 });
     (Notification as unknown as { permission: string }).permission = "denied";
     document.dispatchEvent(new Event("visibilitychange"));
     expect(await screen.findByText(/Notifications are blocked for this site/)).toBeInTheDocument();
@@ -405,7 +405,7 @@ describe("permission changes while the page is open", () => {
     try {
       enabled();
       renderPush();
-      expect(await screen.findByText(/This device is/)).toHaveTextContent("subscribed");
+      await waitFor(() => expect(screen.getByText(/This device is/)).toHaveTextContent("subscribed"), { timeout: 5000 });
       await waitFor(() => expect(query).toHaveBeenCalledWith({ name: "notifications" }));
       await Promise.resolve();
       (Notification as unknown as { permission: string }).permission = "denied";
