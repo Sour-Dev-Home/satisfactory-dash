@@ -22,7 +22,7 @@ Nothing else needs configuring. History starts filling as soon as the database i
 | --- | --- | --- |
 | Power per circuit (`power_samples`) | every 5 s | 48 hours |
 | Item totals across the factory (`item_samples`) | every 30 s | 48 hours |
-| 1-minute rollups (`power_rollups`, `item_rollups`, resolution 60) | every minute | 30 days |
+| 1-minute rollups (`power_rollups`, `item_rollups`, resolution 60) | every minute | 7 days |
 | 1-hour rollups (resolution 3600) | every minute (recomputed while the hour is open) | 1 year |
 | Machine-state changes (`building_transitions`) | on change | 30 days |
 
@@ -57,7 +57,7 @@ without a database. `range` is `1h|6h|24h|7d|30d|1y` (transitions: no `1y`; defa
 **The range picks the resolution**: the smallest of 1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and 1 day that
 keeps a series at 600 points or fewer: `1h`/`6h` 1 minute, `24h` 5 minutes, `7d` 1 hour, `30d` 6 hours, `1y` 1 day
 (UTC-aligned buckets). A bucket under 1 hour is read from the 1-minute rollups, 1 hour or more from the hourly
-rollups (re-bucketing 30 days of minute rows per request would touch millions of rows). Consequences:
+rollups (re-bucketing days of minute rows per request would touch millions of rows). Consequences:
 
 - **The newest bucket can lag**: up to an hour on `7d`/`30d`/`1y` (the hourly rollup is recomputed while the hour is
   open), about a minute on the shorter ranges.
@@ -102,7 +102,7 @@ show honest gaps; shading pause periods would need a separate table of pause eve
 - Alarm `rds-free-storage-low` ([`aws.md`](./aws.md)): find which servers hold the rows. Run as the
   migrator or backup role in a `psql` session ([`database.md`](./database.md)); the first query reads
   sizes and the planner's estimates per table, the second exact counts for the raw tables (kept 48 h),
-  the third the rollups (kept 30 days and 1 year, so they hold most of a long-lived server's rows, and
+  the third the rollups (kept 7 days and 1 year, so they hold most of a long-lived server's rows, and
   they grow with the number of distinct series, not with the raw rows):
 
   ```sql
@@ -139,3 +139,25 @@ show honest gaps; shading pause periods would need a separate table of pause eve
 
   A server far ahead of the rest is the one to look at (its agent, or `HISTORY_QUOTA_EXCEEDED` in
   the log). Removing a server deletes its history with it (ADR-0045 O3).
+
+## How big is the database
+
+Largest tables (data plus indexes) with row estimates; run as the migrator or any role that can connect:
+
+```sql
+SELECT n.nspname || '.' || c.relname AS table_name,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+       round(pg_total_relation_size(c.oid) / 1048576.0, 1) AS mb,
+       c.reltuples::bigint AS row_estimate
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+ORDER BY pg_total_relation_size(c.oid) DESC
+LIMIT 20;
+```
+
+The backend also logs the top 5 sizes in MB once a day (`top table sizes (MB)`, from the purge worker). The size
+functions need no table privileges, so the app role can run them.
+
+Housekeeping sweeps (hourly, with the session purge, `platform/retention.ts`): expired `agents.enrollment_codes`,
+passed `alerts.server_mutes`, and `sent`/`dead` `alerts.outbox` rows older than 7 days. Pending outbox rows are never
+touched. `alerts.push_subscriptions` has no sweep: `last_success_at` stays empty for a subscription that never fired.

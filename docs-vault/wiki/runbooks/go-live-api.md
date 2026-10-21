@@ -399,22 +399,23 @@ curl.exe -s -H "CF-Connecting-IP: 203.0.113.9" "$api/api/health"
 (curl.exe -s https://www.cloudflare.com/cdn-cgi/trace | Select-String "^ip=").Line
 ```
 
-Then, on the game-server PC, read the latest `/api/health` request's log line and look at
-its `clientIp` (the raw header itself is also in the log line, so don't search for the fake
+Then, on the game-server PC, read the log line of a sign-in event (since 2026-10-21 normal request lines carry no
+IP: send one wrong-password login to `/api/auth/login` from the same machine and read the `login failed` line's `ip`
+field). Older builds put it in `clientIp` on every request line. Do not search for the fake
 address; read the field):
 
 ```powershell
 Get-Content "$env:LOCALAPPDATA\satisfactory-dash\logs\backend.log" -Tail 100 |
   ForEach-Object { try { $_ | ConvertFrom-Json } catch {} } |
-  Where-Object { $_.req.url -eq "/api/health" } | Select-Object -Last 1 |
-  Select-Object clientIp, @{ n = "socket"; e = { $_.req.remoteAddress } }
+  Where-Object { $_.msg -eq "login failed" } | Select-Object -Last 1 |
+  Select-Object ip
 ```
 
-- **Pass:** `clientIp` is the real public address printed by the trace, and `socket` is
-  `127.0.0.1` (the tunnel). On a machine with both IPv4 and IPv6, the trace and the request
+- **Pass:** `ip` is the real public address printed by the trace (the tunnel itself is
+  `127.0.0.1`, no longer logged). On a machine with both IPv4 and IPv6, the trace and the request
   may have gone out over different ones; if they differ, repeat with `curl.exe -4` and `-6`
   on both.
-- **Fail:** `clientIp` is `203.0.113.9`. The spoof survived, so anyone can dodge the login
+- **Fail:** `ip` is `203.0.113.9`. The spoof survived, so anyone can dodge the login
   lockout. **Stop the tunnel (step 7) and report.** The fallback is a Cloudflare
   rate-limiting rule on `/api/auth/login`.
 

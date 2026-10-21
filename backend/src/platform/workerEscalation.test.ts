@@ -54,7 +54,7 @@ describe("session and audit purge escalation", () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] }));
   afterEach(() => vi.useRealTimers());
 
-  it("escalates on the 2nd consecutive hourly failure, once each for the session and the audit purge, with no error detail", async () => {
+  it("escalates on the 2nd consecutive hourly failure, once each for the session purge, the retention sweep and the audit purge, with no error detail", async () => {
     const l = log();
     const worker = createSessionPurgeWorker(failingDb, l);
     worker.start();
@@ -62,9 +62,9 @@ describe("session and audit purge escalation", () => {
     expect(l.error).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60 * 60_000);
     const jobs = errorCalls(l).map(([obj]) => (obj as { job: string }).job).sort();
-    expect(jobs).toEqual(["audit-purge", "session-purge"]);
+    expect(jobs).toEqual(["audit-purge", "retention-sweep", "session-purge"]);
     await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
-    expect(errorCalls(l)).toHaveLength(2);
+    expect(errorCalls(l)).toHaveLength(3);
     expect(JSON.stringify([...l.warn.mock.calls, ...l.error.mock.calls])).not.toContain("secret-host");
     await worker.stop();
   });

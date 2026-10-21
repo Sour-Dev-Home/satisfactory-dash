@@ -3,6 +3,7 @@ import { ConfigError } from "../../platform/errors.js";
 import { deleteExpiredLoginAttempts } from "./repositories/loginAttemptRepository.js";
 import { deleteExpiredSessions } from "./repositories/sessionRepository.js";
 import { purgeExpiredAuditEvents } from "../../platform/audit/auditRepository.js";
+import { sweepRetention, topTableSizes } from "../../platform/retention.js";
 import { FailureStreak, failuresForWindow, type StreakLogger } from "../../platform/failureStreak.js";
 
 /**
@@ -87,6 +88,14 @@ export function createSessionPurgeWorker(
     failedMsg: "audit purge failed; will retry at the next interval",
     recoveredMsg: "audit purge recovered",
   });
+  const retentionStreak = new FailureStreak({
+    logger,
+    job: "retention-sweep",
+    escalateAfter: failuresForWindow(PURGE_INTERVAL_MS),
+    failedMsg: "retention sweep failed; will retry at the next interval",
+    recoveredMsg: "retention sweep recovered",
+  });
+  let lastSizeReport: number | undefined;
   const run = async () => {
     try {
       const result = await purgeExpired(db);
@@ -96,6 +105,29 @@ export function createSessionPurgeWorker(
       }
     } catch {
       sessionStreak.failure();
+    }
+    // Tables with no cleanup of their own (expired enrollment codes, passed mutes, finished outbox rows), then once a
+    // day the five largest tables. Counts only, never per row; a failure is logged and retried next tick.
+    try {
+      const swept = await sweepRetention(db);
+      retentionStreak.success();
+      if (swept.enrollmentCodes > 0 || swept.serverMutes > 0 || swept.outbox > 0) {
+        logger.info(swept, "swept expired enrollment codes, passed mutes and finished alert deliveries");
+      }
+    } catch {
+      retentionStreak.failure();
+    }
+    // Once a day, the five largest tables, for a glance at growth. Informational: a failure here is ignored.
+    if (lastSizeReport === undefined || now() - lastSizeReport >= AUDIT_PURGE_INTERVAL_MS) {
+      try {
+        const top = await topTableSizes(db);
+        lastSizeReport = now();
+        if (top.length > 0) {
+          logger.info({ tablesMb: Object.fromEntries(top.map((t) => [t.table, t.mb])) }, "top table sizes (MB)");
+        }
+      } catch {
+        // retried at the next tick
+      }
     }
     // Audit events are kept one year (privacy policy). The runtime role cannot delete them, so this goes
     // through the narrow SECURITY DEFINER function; once a day is plenty, and a failure never affects

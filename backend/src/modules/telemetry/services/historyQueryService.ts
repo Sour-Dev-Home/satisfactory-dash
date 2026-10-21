@@ -60,7 +60,7 @@ export interface Resolution {
 
 /**
  * The range picks the resolution: the smallest bucket that keeps the range at or under MAX_POINTS points, read
- * from the 1-minute rollups only while the bucket is under an hour (re-bucketing 30 days of minute rows at query
+ * from the 1-minute rollups only while the bucket is under an hour (re-bucketing days of minute rows at query
  * time would touch millions of rows per request; the hourly rollups have 720 a series).
  */
 export function chooseResolution(range: HistoryRange): Resolution {

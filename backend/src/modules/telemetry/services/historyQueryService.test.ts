@@ -74,6 +74,13 @@ describe("chooseResolution: the range picks the resolution", () => {
     expect(chooseResolution(range)).toEqual({ bucketSeconds, source });
   });
 
+  it("every range past 24h reads the hourly rollups, so the 7-day minute retention leaves no gaps", () => {
+    expect(chooseResolution("24h").source).toBe(60);
+    for (const range of ["7d", "30d", "1y"] as const) {
+      expect(chooseResolution(range).source).toBe(3600);
+    }
+  });
+
   it("never asks for more than MAX_POINTS per series, and reads minute rollups only below an hour", () => {
     const seconds = { "1h": 3600, "6h": 21_600, "24h": 86_400, "7d": 604_800, "30d": 2_592_000, "1y": 31_536_000 } as const;
     for (const range of Object.keys(seconds) as (keyof typeof seconds)[]) {

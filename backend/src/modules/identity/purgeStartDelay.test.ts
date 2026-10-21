@@ -108,7 +108,7 @@ describe("purge worker start delay", () => {
       const worker = createSessionPurgeWorker({ query } as unknown as Queryable, logger, Date.now, { initialDelayMs: 5000 });
       worker.start();
       await vi.advanceTimersByTimeAsync(5000);
-      expect(logger.warn).toHaveBeenCalledTimes(2); // the session purge and the audit purge, as today
+      expect(logger.warn).toHaveBeenCalledTimes(3); // the session purge, the retention sweep and the audit purge
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("SECRETDETAIL");
       await worker.stop();
     } finally {

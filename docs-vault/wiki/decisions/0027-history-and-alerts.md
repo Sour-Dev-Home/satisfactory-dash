@@ -50,6 +50,7 @@ Status: accepted (project owner), 2026-09-24. All seven owner decisions were tak
    | power per circuit (production/consumption/capacity MW, battery %, fuse) | 5 s | 48 h | 1 min for 30 d, 1 h for 1 y |
    | production per item (sum of current/max per minute across the factory) | 30 s | 48 h | 1 min for 30 d, 1 h for 1 y |
    | building state **transitions** (events, not samples) | on change | 30 d | none |
+   > Amendment 2026-10-21: the "1 min for 30 d" rollup retention above is now **7 d** (see the retention question below).
    - Rollups (min/avg/max) are written by an idempotent job each minute:
      `INSERT ... SELECT date_trunc(...) ... ON CONFLICT DO UPDATE`. Retention runs as batched deletes.
    - Volume for one server: ~86k power rows and ~150-300k item rows per day, raw data kept 48 h.
@@ -152,6 +153,7 @@ Status: accepted (project owner), 2026-09-24. All seven owner decisions were tak
 ## Decisions as proposed
 1. Build this after ADR-0025 gate A (it needs the database)? **Recommend yes.**
 2. Retention: **A: raw 48 h, 1-minute rollups 30 days, hourly rollups 1 year (recommended)** / B: longer (costs only disk on the PC).
+   > Amendment 2026-10-21 (owner): 1-minute rollups are kept **7 days**, not 30 (disk). Raw 48 h and hourly 1 y are unchanged; every range past 24 h already reads the hourly rollups, so no chart range loses data.
 3. Discord destination: **A: one webhook per server, set by owner/admin (recommended)** / B: per user.
 4. Defaults for a new server: **outage and fuse trip ON; stalled machines and production targets opt-in (recommended)**, since stall rules need tuning per factory.
 5. While an alert keeps firing, repeat it: **A: every hour (recommended)** / B: never (only fire and resolve).

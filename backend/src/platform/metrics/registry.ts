@@ -260,6 +260,10 @@ export const QUERY_NAMES = [
   "metrics.addSeriesDelta",
   "metrics.mergeBucketCountsInDb",
   "metrics.purgeExpiredSeries",
+  "retention.expiredEnrollmentCodes",
+  "retention.finishedOutbox",
+  "retention.passedMutes",
+  "retention.topTableSizes",
 ] as const;
 
 export type QueryName = (typeof QUERY_NAMES)[number];

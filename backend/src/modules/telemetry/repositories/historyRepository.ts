@@ -6,7 +6,7 @@ import { timedQuery } from "../../../platform/db/timedQuery.js";
 /**
  * ADR-0027 decision 3: production history in the `telemetry` schema, hand-written SQL (ADR-0025 decision 2).
  * Downsampling is by AGGREGATION: raw samples (5 s power, 30 s items) are kept 48 hours, rolled up into 1-minute
- * buckets (kept 30 days) and 1-hour buckets (kept 1 year) by an idempotent job. Transitions are events kept 30 days.
+ * buckets (kept 7 days) and 1-hour buckets (kept 1 year) by an idempotent job. Transitions are events kept 30 days.
  *
  * Servers are addressed by their PUBLIC id (what the pollers know); a server that is not registered (or was removed)
  * simply matches no row, so a write for it inserts nothing. Every SQL text is a constant: values only travel as
@@ -14,7 +14,7 @@ import { timedQuery } from "../../../platform/db/timedQuery.js";
  */
 
 export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
-export const MINUTE_ROLLUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const MINUTE_ROLLUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const HOUR_ROLLUP_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
 export const TRANSITION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -340,7 +340,7 @@ async function deleteInBatches(db: Queryable, sql: string, cutoff: string, optio
 }
 
 /**
- * Deletes what is past its retention, in batches (ADR-0027 decision 3): raw samples 48 h, 1-minute rollups 30 d, hourly
+ * Deletes what is past its retention, in batches (ADR-0027 decision 3): raw samples 48 h, 1-minute rollups 7 d, hourly
  * rollups 1 y, transitions 30 d. Returns how many rows went from each table.
  */
 export async function purgeExpired(db: Queryable, nowMs: number, options: PurgeOptions = {}): Promise<PurgeCounts> {
