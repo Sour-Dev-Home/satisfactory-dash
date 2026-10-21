@@ -1,4 +1,13 @@
-import { Loadable, PanelSkeleton } from "../ui/Skeleton";
+import { Loadable, PanelSkeleton, Skeleton } from "../ui/Skeleton";
+
+/** The setting while it loads; a phone wraps its note onto a second line, so it gets one more bar. */
+function AutoPauseSkeleton() {
+  return (
+    <PanelSkeleton label="Loading settings…" rows={1} rowClass="h-touch">
+      <Skeleton className="h-lh sm:hidden" />
+    </PanelSkeleton>
+  );
+}
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints, type Command } from "@satisfactory-dash/shared";
@@ -121,7 +130,7 @@ export function AutoPauseView() {
   };
 
   return (
-    <Loadable pending={settings.isPending} skeleton={<PanelSkeleton label="Loading settings…" rows={1} rowClass="h-touch" />} className="grid gap-3">
+    <Loadable pending={settings.isPending} skeleton={<AutoPauseSkeleton />} className="grid gap-3">
       {settings.isError && <ErrorNotice error={settings.error} />}
       {settings.data && (
         <AutoPausePanel snapshot={settings.data} saving={save.isPending || phase === "waiting"} onChange={onChange} />

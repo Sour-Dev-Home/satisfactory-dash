@@ -91,6 +91,8 @@ function AgentSkeleton() {
       <SkeletonStatus>Loading the agent's status…</SkeletonStatus>
       <Skeleton className="h-lh w-64" />
       <Skeleton className="h-touch w-40" />
+      {/* A phone wraps the agent's lines: about one more. */}
+      <Skeleton className="h-lh w-48 sm:hidden" />
     </div>
   );
 }
