@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import { formatErrorDetail } from "../formatErrorDetail.js";
+import { FailureStreak, failuresForWindow } from "../failureStreak.js";
 import type { Queryable } from "../db/schemaVersion.js";
 import type { MetricsAggregator } from "./aggregator.js";
 import { addSeriesDeltas, purgeExpiredSeries } from "./seriesHourlyRepository.js";
@@ -30,8 +31,8 @@ export class SeriesFlushWorker {
   private inFlight: Promise<void> | undefined;
   private started = false;
   private stopped = false;
-  private failing = false;
   private flushes = 0;
+  private readonly streak: FailureStreak;
 
   constructor(
     private readonly db: Queryable,
@@ -40,6 +41,15 @@ export class SeriesFlushWorker {
   ) {
     this.now = options.now ?? Date.now;
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
+    // #560: 5 failed flushes at the default 60 s is five minutes.
+    this.streak = new FailureStreak({
+      logger: options.logger,
+      job: "metrics-flush",
+      escalateAfter: failuresForWindow(this.flushIntervalMs),
+      failedMsg: "metrics flush failed; the drained interval's data is lost, trying again next run",
+      recoveredMsg: "metrics flush recovered",
+      countField: "failedFlushes",
+    });
   }
 
   start(): void {
@@ -75,15 +85,9 @@ export class SeriesFlushWorker {
         const purged = await purgeExpiredSeries(this.db, this.now());
         if (purged > 0) this.options.logger.info({ purged }, "expired metrics series purged");
       }
-      if (this.failing) {
-        this.options.logger.info("metrics flush recovered");
-        this.failing = false;
-      }
+      this.streak.success();
     } catch (err) {
-      if (!this.failing) {
-        this.failing = true;
-        this.options.logger.warn({ err: formatErrorDetail(err) }, "metrics flush failed; the drained interval's data is lost, trying again next run");
-      }
+      this.streak.failure({ err: formatErrorDetail(err) });
     }
   }
 

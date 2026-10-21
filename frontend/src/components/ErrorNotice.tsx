@@ -4,13 +4,16 @@ import { ApiError, ContractDriftError, classifyError } from "../api/errors";
 /**
  * One message per error kind, plus the request ID when there is one, so a report can be
  * matched to the backend's logs. Used by every screen, so the wording stays consistent.
+ * "Game server unreachable" is a state, not a fault to report, and its ID changes on every
+ * poll (owner, 2026-10-21): it stays readable as `data-request-id` in the dev tools only.
  */
 export function ErrorNotice({ error, action }: { error: unknown; action?: ReactNode }) {
   const requestId = error instanceof ApiError ? error.requestId : undefined;
+  const showRequestId = requestId !== undefined && classifyError(error) !== "upstream_unreachable";
   return (
-    <div role="alert">
+    <div role="alert" data-request-id={requestId}>
       <p>{describeError(error)}</p>
-      {requestId && <p>Request ID: {requestId}</p>}
+      {showRequestId && <p>Request ID: {requestId}</p>}
       {action}
     </div>
   );

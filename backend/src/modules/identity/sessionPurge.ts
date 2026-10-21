@@ -3,6 +3,7 @@ import { ConfigError } from "../../platform/errors.js";
 import { deleteExpiredLoginAttempts } from "./repositories/loginAttemptRepository.js";
 import { deleteExpiredSessions } from "./repositories/sessionRepository.js";
 import { purgeExpiredAuditEvents } from "../../platform/audit/auditRepository.js";
+import { FailureStreak, failuresForWindow, type StreakLogger } from "../../platform/failureStreak.js";
 
 /**
  * Retention housekeeping (privacy policy): sessions expired more than 30 days ago and stale
@@ -31,10 +32,7 @@ const BATCH_SIZE = 1000;
 /** A safety bound per run, so a huge backlog is worked off over several ticks. */
 const MAX_BATCHES_PER_RUN = 100;
 
-export interface PurgeLogger {
-  info(obj: object, msg: string): void;
-  warn(obj: object, msg: string): void;
-}
+export type PurgeLogger = StreakLogger;
 
 export interface PurgeResult {
   sessions: number;
@@ -73,14 +71,31 @@ export function createSessionPurgeWorker(
   let started = false;
   const initialDelayMs = options.initialDelayMs ?? 0;
   let lastAuditPurge: number | undefined;
+  // #560: both purges retry hourly, so the floor of 2 consecutive failures (about an hour) escalates to error. The
+  // lines carry no error detail, as before (a connection error can name the database host).
+  const sessionStreak = new FailureStreak({
+    logger,
+    job: "session-purge",
+    escalateAfter: failuresForWindow(PURGE_INTERVAL_MS),
+    failedMsg: "session purge failed; will retry at the next interval",
+    recoveredMsg: "session purge recovered",
+  });
+  const auditStreak = new FailureStreak({
+    logger,
+    job: "audit-purge",
+    escalateAfter: failuresForWindow(PURGE_INTERVAL_MS),
+    failedMsg: "audit purge failed; will retry at the next interval",
+    recoveredMsg: "audit purge recovered",
+  });
   const run = async () => {
     try {
       const result = await purgeExpired(db);
+      sessionStreak.success();
       if (result.sessions > 0 || result.loginAttempts > 0) {
         logger.info(result, "purged expired sessions and login attempts");
       }
     } catch {
-      logger.warn({}, "session purge failed; will retry at the next interval");
+      sessionStreak.failure();
     }
     // Audit events are kept one year (privacy policy). The runtime role cannot delete them, so this goes
     // through the narrow SECURITY DEFINER function; once a day is plenty, and a failure never affects
@@ -89,11 +104,12 @@ export function createSessionPurgeWorker(
       try {
         const deleted = await purgeExpiredAuditEvents(db);
         lastAuditPurge = now();
+        auditStreak.success();
         if (deleted > 0) {
           logger.info({ auditEvents: deleted }, "purged audit events older than one year");
         }
       } catch {
-        logger.warn({}, "audit purge failed; will retry at the next interval");
+        auditStreak.failure();
       }
     }
   };

@@ -1,0 +1,1 @@
+- 2026-10-21 — The "Game server unreachable." notice no longer shows its request ID (owner request): the ID changes on every poll and the notice is a state, not a fault to report. `ErrorNotice` keeps the ID on the alert as `data-request-id`, readable in the browser dev tools; every other error kind still shows "Request ID: …" so a report can be matched to the backend logs.

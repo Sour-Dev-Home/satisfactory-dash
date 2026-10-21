@@ -616,6 +616,73 @@ describe("AlertEvaluatorWorker loop", () => {
   });
 });
 
+describe("AlertEvaluatorWorker escalation and heartbeat (#560)", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }));
+  afterEach(() => vi.useRealTimers());
+
+  it("a failing database warns once, logs ONE error after 10 failed ticks (5 min at 30 s), and recovers with the count", async () => {
+    const fake = fakeDb();
+    const l = logger();
+    const worker = new AlertEvaluatorWorker(fake.db, world().directory, { logger: l.logger, tickMs: 30_000 });
+    fake.failWhen.list = true;
+    worker.start();
+    await vi.advanceTimersByTimeAsync(0); // failed tick 1
+    await vi.advanceTimersByTimeAsync(30_000 * 8); // failed ticks 2..9
+    expect(l.lines.filter((line) => line.level === "warn")).toHaveLength(1);
+    expect(l.lines.filter((line) => line.level === "error")).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(30_000); // failed tick 10
+    const errors = l.lines.filter((line) => line.level === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].msg).toBe("background worker keeps failing");
+    expect(errors[0].obj).toMatchObject({ code: "WORKER_FAILING", job: "alert-evaluator", failures: 10 });
+    await vi.advanceTimersByTimeAsync(30_000 * 20);
+    expect(l.lines.filter((line) => line.level === "error")).toHaveLength(1); // once per streak
+    fake.failWhen.list = false;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(l.lines.find((line) => line.msg === "alert evaluation recovered")?.obj).toEqual({ failedTicks: 30 });
+    await worker.stop();
+  });
+
+  it("logs an hourly heartbeat of counts only: ticks, servers, rules, muted servers and events since the last one", async () => {
+    const fake = fakeDb();
+    const w = world(["alpha", "bravo"]);
+    const l = logger();
+    const worker = new AlertEvaluatorWorker(fake.db, w.directory, { logger: l.logger, tickMs: 30_000 });
+    fake.mutes.set("bravo", Date.now() + 3 * 60 * MIN);
+    worker.start();
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(30_000 - 1);
+      publishOutage(w.boards.get("alpha")!, Date.now(), true); // a fresh reading just before the tick, so the outage fires
+      await vi.advanceTimersByTimeAsync(1);
+    }
+    await vi.advanceTimersByTimeAsync(60 * MIN - 5 * 30_000); // the tick at 59:30 is the last one inside the hour
+    expect(l.lines.filter((line) => line.msg === "alert evaluator heartbeat")).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(30_000); // the tick at 60:00
+    const beats = l.lines.filter((line) => line.msg === "alert evaluator heartbeat");
+    expect(beats).toHaveLength(1);
+    expect(beats[0].level).toBe("info");
+    expect(fake.events.length).toBeGreaterThan(0);
+    expect(beats[0].obj).toEqual({
+      ticks: 121, // the first tick at 0:00 and one every 30 s through 60:00
+      failedTicks: 0,
+      servers: 2,
+      rules: fake.rules.length,
+      mutedServers: 1,
+      events: fake.events.length,
+    });
+    expect(JSON.stringify(beats[0].obj)).not.toMatch(/alpha|bravo/); // no server ids or names
+    // The next one an hour later counts only that hour.
+    const eventsSoFar = fake.events.length;
+    fake.failWhen.list = true;
+    await vi.advanceTimersByTimeAsync(60 * MIN);
+    const second = l.lines.filter((line) => line.msg === "alert evaluator heartbeat");
+    expect(second).toHaveLength(2);
+    expect(second[1].obj).toMatchObject({ ticks: 0, failedTicks: 120, events: fake.events.length - eventsSoFar });
+    await worker.stop();
+  });
+});
+
 describe("AlertEvaluatorWorker metrics (ADR-0037 build step 3, fake clock)", () => {
   let now = T0;
   beforeEach(() => {

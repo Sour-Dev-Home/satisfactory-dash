@@ -1,0 +1,1 @@
+- 2026-10-21 — `App.unreachable.test.tsx` gets more headroom. Each wait now allows 10 s instead of 3 s, and each test 60 s instead of the 5 s default: a loaded CI runner took 3.5 s for one poll (#559's verify run) and failed "expected 3 to be greater than 3". Test-only change.
