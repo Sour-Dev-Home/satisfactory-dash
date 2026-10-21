@@ -215,6 +215,21 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
       await restarted.create(owner, { displayName: "Next day" });
     });
 
+    it("Retry-After is when a slot frees, not when the oldest creation leaves (more rows than the limit, e.g. after the limit was lowered)", async () => {
+      const owner = await user();
+      const wide = service({ createsPerDay: 5, maxServersPerAccount: 10, maxPendingPerAccount: 10 });
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i++) ids.push((await wide.create(owner, { displayName: `S${i}` })).id);
+      await ageBy(ids[0]!, "23 hours");
+      await ageBy(ids[1]!, "12 hours");
+      // Limit now 2: three rows in the window. A slot frees when only ONE row remains, i.e. when the middle one (12 h old) leaves.
+      const narrow = service({ createsPerDay: 2, maxServersPerAccount: 10, maxPendingPerAccount: 10 });
+      const refused = (await failureOf(narrow.create(owner, { displayName: "More" }))) as RateLimitedError;
+      expect(refused).toBeInstanceOf(RateLimitedError);
+      expect(refused.retryAfterSeconds).toBeGreaterThan(11.9 * 3600);
+      expect(refused.retryAfterSeconds).toBeLessThanOrEqual(12 * 3600);
+    });
+
     it("a refused create (a cap) is not counted: no row is written", async () => {
       const owner = await user();
       const svc = service({ createsPerDay: 2, maxServersPerAccount: 1, maxPendingPerAccount: 1 });

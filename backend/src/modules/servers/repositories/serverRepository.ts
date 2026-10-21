@@ -387,19 +387,25 @@ export async function listCreatedSelfServeServers(db: Queryable, userId: string)
 // remove churn is counted; a self-serve id is never revived (plain INSERT), so created_at is when it was created. Served by
 // servers_self_serve_creator_idx.
 const COUNT_RECENT_SELF_SERVE_CREATIONS = `
-  SELECT count(*) AS n,
-         ceil(extract(epoch FROM (min(created_at) + make_interval(hours => $2::int) - now()))) AS retry_after
-  FROM servers.servers
-  WHERE created_by_user_id = $1 AND created_via = 'self_serve' AND created_at > now() - make_interval(hours => $2::int)`;
+  WITH recent AS (
+    SELECT created_at
+    FROM servers.servers
+    WHERE created_by_user_id = $1 AND created_via = 'self_serve' AND created_at > now() - make_interval(hours => $2::int)
+  )
+  SELECT (SELECT count(*) FROM recent) AS n,
+         (SELECT ceil(extract(epoch FROM (created_at + make_interval(hours => $2::int) - now())))
+            FROM recent ORDER BY created_at DESC OFFSET greatest($3::int, 1) - 1 LIMIT 1) AS retry_after`;
 
-/** C5: the self-serve servers this account created in the last `windowHours`, live or removed, and the seconds until the
- *  oldest of them leaves the window (null when there are none). */
+/** C5: the self-serve servers this account created in the last `windowHours`, live or removed, and the seconds until a slot
+ *  frees under `limit`: until the `limit`-th newest of them leaves the window (the oldest when exactly `limit` are in it; null
+ *  when fewer are). */
 export async function countRecentSelfServeCreations(
   db: Queryable,
   userId: string,
   windowHours: number,
+  limit: number,
 ): Promise<{ count: number; retryAfterSeconds: number | null }> {
-  const result = await timedQuery(db, "servers.countRecentSelfServeCreations", COUNT_RECENT_SELF_SERVE_CREATIONS, [userId, windowHours]);
+  const result = await timedQuery(db, "servers.countRecentSelfServeCreations", COUNT_RECENT_SELF_SERVE_CREATIONS, [userId, windowHours, limit]);
   const row = parseOne(z.object({ n: z.coerce.number(), retry_after: z.coerce.number().nullable() }), result.rows, "servers.countRecentSelfServeCreations");
   return { count: row.n, retryAfterSeconds: row.retry_after };
 }

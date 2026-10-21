@@ -97,7 +97,7 @@ export function createSelfServeService(deps: SelfServeDeps): SelfServeService {
   /** C5, C1, C3, C2, in that order (the most specific answer first). Runs under the management lock. */
   const assertWithinCaps = async (client: Queryable, actorUserId: string): Promise<void> => {
     const { maxServersPerAccount, maxPendingPerAccount, maxServersTotal, createsPerDay } = deps.config;
-    const recent = await countRecentSelfServeCreations(client, actorUserId, CREATION_WINDOW_HOURS);
+    const recent = await countRecentSelfServeCreations(client, actorUserId, CREATION_WINDOW_HOURS, createsPerDay);
     if (recent.count >= createsPerDay) {
       throw new RateLimitedError(Math.max(1, recent.retryAfterSeconds ?? 1), DAILY_LIMITED_MESSAGE);
     }

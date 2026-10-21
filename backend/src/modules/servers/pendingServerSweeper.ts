@@ -89,7 +89,15 @@ export class PendingServerSweeper {
       if ((await enrolledServerIds(client, [serverId])).has(serverId)) return false;
       return softDeleteServerInTransaction(client, publicId, { actorUserId: null, detail: { reason: "never_enrolled" } });
     });
-    if (removed) await this.deps.removeRuntime(publicId);
+    if (removed) {
+      // The row is already gone (the database is the truth), so a runtime that fails to stop is reported and the batch goes on:
+      // throwing here would drop this server from the count and leave the rest of the batch to the next run.
+      try {
+        await this.deps.removeRuntime(publicId);
+      } catch (err) {
+        this.deps.logger.warn({ err: formatErrorDetail(err) }, "a swept self-serve server's runtime entry could not be removed");
+      }
+    }
     return removed;
   }
 

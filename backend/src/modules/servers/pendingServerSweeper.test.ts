@@ -75,6 +75,19 @@ describe("PendingServerSweeper", () => {
     expect(lines).toEqual([]);
   });
 
+  it("a runtime cleanup that fails after the commit does not stop the batch or lose the count (the row is already gone)", async () => {
+    const attempts: string[] = [];
+    const { sweep, counters } = sweeper(fakeDb(["aaa", "bbb", "ccc"]), {
+      removeRuntime: async (id) => {
+        attempts.push(id);
+        if (id === "aaa") throw new Error("runtime stop failed");
+      },
+    });
+    await expect(sweep.sweep()).resolves.toEqual({ swept: 3, skipped: 0 });
+    expect(attempts).toEqual(["aaa", "bbb", "ccc"]);
+    expect(counters).toEqual([["satis.servers.pending_swept", {}, 3]]);
+  });
+
   it("never throws: a failing run is logged once per run of failures, and the recovery once", async () => {
     let failing = true;
     const { sweep, lines } = sweeper(fakeDb([], { failList: () => failing }));
