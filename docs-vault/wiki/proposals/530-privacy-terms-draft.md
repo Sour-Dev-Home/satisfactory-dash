@@ -291,5 +291,16 @@ investigating abuse".
 - **Coffee Stain (10):** nothing to do while the mod sends counts only; re-check if a later mod sends names.
 - **Address (5):** leave it out. The page keeps the named data controller and the contact alias, with no postal
   address. Ask the lawyer (item 4) whether any law the service falls under requires one.
-- **Still open:** jurisdiction (1), which privacy law applies (2), lawyer review (4), the terms version and
-  re-acceptance (9), and the "free" promise (11).
+- **Jurisdiction (1):** the terms name the country and state: "These terms are governed by the laws of the State
+  of Georgia, United States." No city or address.
+- **Privacy law (2):** light GDPR-style. Keep "the same rights for everyone" and add, for each kind of data, one short
+  line on why it is used (to run the service the user asked for, or to keep it safe). No EU representative and no
+  transfer clauses.
+- **Lawyer review (4):** not planned. The owner sees this as a small hobby service with no plans to grow large. The
+  pages stay plain and minimal instead.
+- **Terms version and re-acceptance (9):** a small edit updates the "last updated" date only. A material change (what
+  is collected, who it is shared with, what users agree to) bumps the terms version, and users re-tick the box at
+  their next sign-in (the acceptance record from #528 stores the version).
+- **Price (11):** "The service is free. If that ever changes, we'll tell you first, and nothing you already use will be
+  charged without your agreement." No promise that it stays free forever.
+- **Nothing is left open** in Part 4.
