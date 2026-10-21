@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
+import { installFatalHandlers } from "./platform/fatalHandlers.js";
 import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
@@ -101,6 +102,11 @@ try {
   throw err;
 }
 const logger = createLogger({ logDir });
+// #560: a crash is one JSON fatal line (the CloudWatch filters match it), then exit 1. Not under Vitest, which owns
+// those events in its workers (the handlers have their own tests).
+if (process.env.NODE_ENV !== "test") {
+  installFatalHandlers({ logger, exit: (code) => process.exit(code), target: process });
+}
 
 /** A ConfigError means the backend must not start (e.g. a public game-server host, or
  *  missing login settings, ADR-0011): log it and exit instead of crashing. */

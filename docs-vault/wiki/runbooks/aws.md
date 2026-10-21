@@ -215,6 +215,28 @@ Every alarm mails on ALARM and again on OK. Thresholds are the `alarms` variable
 | `rds-free-storage-low` | free storage under 3 GiB | The 20 GB disk does not grow (`max_allocated_storage = 0`). Find what grew; raise `allocated_storage` if it is real data. |
 | `rds-cpu-high` | average CPU over 80% for 3 five-minute periods | Sustained load drains the t4g CPU credits. Look for a stuck query or poller; then size up. |
 | `backend-errors` | 5 or more error-level pino lines (level 50+) in 5 minutes | Read the `backend` log group around the time. Metric `Satis/prod` `BackendErrorLines`. |
+| `backend-critical` (#560) | 1 line in 5 minutes that is `fatal` (level 60: an uncaught exception or unhandled rejection, then exit 1) or `code: WORKER_FAILING` (a background worker has failed for about 5 minutes) | A fatal line: read its `err.stack`; ECS restarts the task, and `ecs-no-running-task` follows if it keeps crashing. `WORKER_FAILING`: its `job` field names the worker (table below); the first failure's `warn` line just before it has the cause, usually the database. The worker's recovery `info` line ends it. Metric `BackendCriticalLines`. |
+| `auth-failures` (#560) | 20 or more failed or refused sign-ins in 5 minutes, all clients together: `login failed`, `login rate-limited`, `google sign-in failed`, `google sign-in refused` (not `code: terms_required`) | Password guessing or a sign-up flood. Group the lines by `ip`; `usernameMatched` says whether a real username is being guessed. The per-IP login limiter already slows one source; block a persistent one at Cloudflare. Metric `AuthFailureLines`. |
+
+**Worker escalation (#560).** Each background worker warns once when it starts failing, logs ONE `error`
+(`msg: "background worker keeps failing"`, `code: WORKER_FAILING`, `job`, `failures`) once the streak spans about five
+minutes at its interval (never fewer than 2 failures), and logs its recovery `info` when it next succeeds. A new streak
+escalates again. Game-server pollers are not escalated (a game server that is off is normal), nor the per-server history
+recorders (the workers below already page on a database outage).
+
+| `job` | Interval | Errors after |
+|---|---|---|
+| `alert-evaluator` | 30 s | 10 failed ticks |
+| `alert-delivery` | 10 s | 30 failed ticks |
+| `command-sweeper` | 15 s | 20 failed sweeps |
+| `history-maintenance` | 60 s | 5 failed runs |
+| `metrics-flush` | 60 s | 5 failed flushes |
+| `pending-server-sweeper` | 10 min | 2 failed sweeps |
+| `session-purge`, `audit-purge` | 1 h | 2 failed runs |
+
+The alert evaluator also logs `alert evaluator heartbeat` (info) about hourly: `ticks`, `failedTicks`, `servers`, `rules`,
+`mutedServers` (at the last tick) and `events` (since the last heartbeat). Counts only, never a server id. No heartbeat
+for over an hour while the backend runs means the evaluator is stuck.
 
 The ECS alarm uses the free `AWS/ECS` `CPUUtilization` metric with missing data counted as breaching,
 because Container Insights (which would give `RunningTaskCount`) is off to stay free. [NEEDS VERIFICATION]

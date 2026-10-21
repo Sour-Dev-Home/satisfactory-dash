@@ -114,8 +114,8 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | Structured pino logs that redact authorization, cookies, FRM auth, Location and player names; 14-day retention | `platform/logger.ts`, `infra/aws/logs.tf` | PASS |
 | The audit log covers sign-in, sign-up, sessions, user disable, server lifecycle, membership, agents, push and account deletion | identity, servers, agents and alerts repositories | PASS |
 | Alarms for no running task, RDS storage and CPU, and backend errors (`level >= 50`), sent to SNS email | `infra/aws/alarms.tf` | PASS |
-| **Repeated worker failures page someone** | workers log `warn` once per streak, so the alarm never fires | **GAP Medium, #560** |
-| **Auth anomalies alarm** (failed logins, signup refusals) | warn logs and a counter only | GAP Low, #560 |
+| Repeated worker failures page someone: one `error` (`WORKER_FAILING`) after about 5 minutes of failing, the `backend-critical` alarm on one such line, an hourly alert-evaluator heartbeat | `platform/failureStreak.ts`, `infra/aws/alarms.tf` | PASS (#560) |
+| Auth anomalies alarm: failed and refused sign-ins, 20 in 5 minutes (`auth-failures`) | `infra/aws/alarms.tf` | PASS (#560) |
 | The `/api/health/ready` uptime monitor | external, documented in `ecs.tf` | Check by hand |
 
 ## A10 Mishandling of Exceptional Conditions
@@ -129,7 +129,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | Retries are bounded (exponential, capped at 30 min, dead after 24 h), and a dead webhook is disabled | `alerts/services/retryPolicy.ts`, `alertDeliveryWorker.ts` | PASS |
 | Missing readings hold the last state, so they never cause flapping | `serverAlertEvaluator.ts` | PASS |
 | Body and snapshot size limits (100 kB, 4 kB, 5 MiB after decompression) | `app.ts`, `agents/routes/agentApi.ts`, `agents/config.ts` | PASS |
-| **A fatal handler for unhandled rejections and exceptions** | `server.ts` handles signals only | GAP Low, #560 |
+| A fatal handler for unhandled rejections and exceptions: one JSON `fatal` line, a flush, exit 1 (the agent: a no-detail line, exit 1) | `platform/fatalHandlers.ts`, `server.ts`, `agent/src/fatal.ts` | PASS (#560) |
 
 ## Runs
 

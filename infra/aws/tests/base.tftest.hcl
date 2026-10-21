@@ -306,8 +306,31 @@ run "alarms_mail_on_alarm_and_ok" {
     condition = alltrue([for a in [
       aws_cloudwatch_metric_alarm.ecs_no_running_task, aws_cloudwatch_metric_alarm.rds_free_storage,
       aws_cloudwatch_metric_alarm.rds_cpu_high, aws_cloudwatch_metric_alarm.backend_errors,
+      aws_cloudwatch_metric_alarm.backend_critical, aws_cloudwatch_metric_alarm.auth_failures,
     ] : length(a.alarm_actions) == 1 && length(a.ok_actions) == 1])
     error_message = "every alarm notifies the topic on ALARM and on OK"
+  }
+
+  # #560: a single fatal or escalated worker line pages; 20 failed sign-ins in 5 minutes page; quiet means OK.
+  assert {
+    condition = (
+      aws_cloudwatch_metric_alarm.backend_critical.threshold == 1 && aws_cloudwatch_metric_alarm.backend_critical.period == 300 &&
+      aws_cloudwatch_metric_alarm.auth_failures.threshold == 20 && aws_cloudwatch_metric_alarm.auth_failures.period == 300 &&
+      aws_cloudwatch_metric_alarm.backend_critical.treat_missing_data == "notBreaching" &&
+      aws_cloudwatch_metric_alarm.auth_failures.treat_missing_data == "notBreaching"
+    )
+    error_message = "the #560 alarms default to 1 critical line and 20 sign-in failures per 5 minutes, missing data not breaching"
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_metric_filter.backend_critical.pattern == "{ ($.level >= 60) || ($.code = \"WORKER_FAILING\") }"
+    error_message = "the critical filter matches fatal lines and escalated worker failures (platform/failureStreak.ts)"
+  }
+
+  assert {
+    condition = alltrue([for msg in ["login failed", "login rate-limited", "google sign-in failed", "google sign-in refused"] :
+    strcontains(aws_cloudwatch_log_metric_filter.auth_failures.pattern, "$.msg = \"${msg}\"")])
+    error_message = "the sign-in filter matches the backend's exact msg strings (identity/routes/auth.ts, googleAuth.ts)"
   }
 
   assert {

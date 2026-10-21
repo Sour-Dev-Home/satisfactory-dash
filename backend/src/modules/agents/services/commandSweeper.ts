@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import { FailureStreak, failuresForWindow } from "../../../platform/failureStreak.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { expireStaleCommands, purgeOldCommands } from "../repositories/commandRepository.js";
 
@@ -17,13 +18,23 @@ export class CommandSweeper {
   private inFlight: Promise<void> | undefined;
   private started = false;
   private stopped = false;
-  private failing = false;
   private sweeps = 0;
+  private readonly streak: FailureStreak;
 
   constructor(
     private readonly db: Queryable,
     private readonly options: { logger: Logger; intervalMs?: number },
-  ) {}
+  ) {
+    // #560: 20 failed sweeps at the default 15 s is five minutes.
+    this.streak = new FailureStreak({
+      logger: options.logger,
+      job: "command-sweeper",
+      escalateAfter: failuresForWindow(options.intervalMs ?? SWEEP_INTERVAL_MS),
+      failedMsg: "sweeping agent commands failed; trying again",
+      recoveredMsg: "command sweeping recovered",
+      countField: "failedSweeps",
+    });
+  }
 
   start(): void {
     if (this.started || this.stopped) return;
@@ -52,16 +63,10 @@ export class CommandSweeper {
     try {
       const expired = await expireStaleCommands(this.db);
       if (this.sweeps++ % PURGE_EVERY_SWEEPS === 0) await purgeOldCommands(this.db);
-      if (this.failing) {
-        this.options.logger.info("command sweeping recovered");
-        this.failing = false;
-      }
+      this.streak.success();
       if (expired > 0) this.options.logger.info({ expired }, "agent commands expired without a result");
     } catch (err) {
-      if (!this.failing) {
-        this.failing = true;
-        this.options.logger.warn({ err: formatErrorDetail(err) }, "sweeping agent commands failed; trying again");
-      }
+      this.streak.failure({ err: formatErrorDetail(err) });
     }
   }
 

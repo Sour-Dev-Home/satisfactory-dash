@@ -94,9 +94,11 @@ describe("PendingServerSweeper", () => {
     await expect(sweep.sweep()).resolves.toEqual({ swept: 0, skipped: 0 });
     await sweep.sweep();
     expect(lines.filter((l) => l.level === "warn")).toHaveLength(1);
+    // #560: at a 10-minute interval the second failure in a row is past five minutes: one error line.
+    expect(lines.filter((l) => l.level === "error").map((l) => l.obj)).toMatchObject([{ code: "WORKER_FAILING", job: "pending-server-sweeper", failures: 2 }]);
     failing = false;
     await sweep.sweep();
-    expect(lines.filter((l) => l.level === "info").map((l) => l.obj)).toEqual(["pending self-serve server sweep recovered"]);
+    expect(lines.filter((l) => l.level === "info").map((l) => l.obj)).toEqual([{ failedSweeps: 2 }]);
   });
 
   it("runs on its interval once started, one run at a time, and stops", async () => {
