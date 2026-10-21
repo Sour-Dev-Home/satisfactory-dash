@@ -1,6 +1,6 @@
 # ADR-0047: Account deletion and leaving a server
 
-Status: proposed. Needs the owner's approval (decisions and the questions at the end). Issue #311 tasks 2 and 3.
+Status: accepted (owner, 2026-10-21: yes to all five questions, as recommended). Issue #311 tasks 2 and 3.
 
 ## Context
 - #311 is a gate on the mod's first public release (ADR-0046 section 7; ADR-0025: "Account deletion ships with 1b at
@@ -122,3 +122,12 @@ that `identity/` defines and `servers/` implements, wired in the composition roo
 4. Add an operator CLI `delete-user <user-id>` running the same deletion, for email requests and disabled accounts
    (recommended, in task 2)?
 5. Immediate deletion with no grace period (recommended)?
+
+**Owner answers (2026-10-21):** yes to all five: delete the user row; keep the audit rows for their normal year; a
+sign-in within the last 10 minutes; the operator CLI `delete-user` in task 2; deletion is immediate.
+
+**Amendment (owner, 2026-10-21, from #530 Part 4 item 7):** removing a server also clears its name. The soft-deleted
+server row keeps only its id, so the record that stays holds nothing a person typed. This applies to every removal
+path: the operator's `remove-server`, the owner's delete, the 24-hour sweep and this ADR's account deletion. User-facing
+copy says "remove a server from Satisfactory Dash", never "delete a server"; the player's world and saves are never
+touched.
