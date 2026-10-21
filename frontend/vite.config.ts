@@ -55,9 +55,10 @@ function mockServiceWorker(): Plugin {
  *   network), so the network transport never reaches the demo bundle;
  * - demo/_headers replaces public/_headers in the output, after Vite copies public/;
  * - public/demo/ (the landing page's walkthrough video) is dropped: the demo has no landing;
- * - so are the privacy and terms pages: the demo links to the main site's (SourceFooter).
+ * - so are the privacy and terms pages: the demo links to the main site's (SourceFooter);
+ * - and the web push service worker (public/push-sw.js): the demo registers no service worker (ADR-0044).
  */
-const MAIN_SITE_ONLY = ['demo', 'privacy.html', 'terms.html', 'legal.css']
+const MAIN_SITE_ONLY = ['demo', 'privacy.html', 'terms.html', 'legal.css', 'push-sw.js']
 function demoBuild(): Plugin {
   const demoTransport = fileURLToPath(new URL('./src/demo/transport.ts', import.meta.url))
   let outDir = ''

@@ -283,6 +283,18 @@ export const queries = {
       queryKey: ["servers", serverId, "alerts", "rules"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.alerts.rules.list, serverId),
     }),
+  // ADR-0044 (#348): web push. The config is the backend's (not a server's): whether push is on and
+  // the VAPID key. The opt-in is the signed-in member's own, per server (viewers included).
+  pushConfig: () =>
+    queryOptions({
+      queryKey: ["push", "config"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.push.config),
+    }),
+  pushOptIn: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "alerts", "push"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.push.optIn.get, serverId),
+    }),
   alertDestinations: (serverId: string) =>
     queryOptions({
       queryKey: ["servers", serverId, "alerts", "destinations"],

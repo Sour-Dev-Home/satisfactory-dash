@@ -16,6 +16,7 @@ import type { EditorItem } from "../rules/ruleDraft";
 import { DiscordControls } from "./DiscordControls";
 import { MuteControl } from "./MuteControl";
 import { useHashTarget } from "../../lib/useHashTarget";
+import { PushSettings } from "../../push/PushSettings";
 
 const isAlertsAnchor = (id: string) => id === "alerts";
 
@@ -70,6 +71,9 @@ export function AlertSettings() {
           </>
         )}
       </Part>
+
+      {/* Web push (ADR-0044): not in the demo, which has no service worker and no push backend. */}
+      {!IS_DEMO && <PushSettings />}
 
       <Part heading="Rules" query={rules} loading="Loading the alert rules…" blocks={4}>
         {(data) => (

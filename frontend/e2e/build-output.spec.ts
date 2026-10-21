@@ -132,6 +132,15 @@ test.describe("demo build", () => {
     }
   });
 
+  test("has no service worker and no push UI (ADR-0044)", () => {
+    expect(allFiles(DIST)).toContain(join(DIST, "push-sw.js"));
+    expect(allFiles(DIST_DEMO)).not.toContain(join(DIST_DEMO, "push-sw.js"));
+    const text = bundleText(DIST_DEMO);
+    for (const marker of ["push-sw.js", "serviceWorker", "Push notifications on this device"]) {
+      expect(text, `demo bundle contains ${marker}`).not.toContain(marker);
+    }
+  });
+
   test("ships no mock tooling or test fixtures", () => {
     const files = allFiles(DIST_DEMO);
     expect(files.some((f) => f.endsWith("mockServiceWorker.js"))).toBe(false);
