@@ -403,3 +403,14 @@ carrying the same item where the port matters.
    belt detail. Don't hide the section.
 4. **Freshness:** a 10-minute connection refresh, with a note on the section that connections refresh every
    10 minutes. Add an early re-read on building changes only if stale results become a problem.
+
+### G-check results (2026-10-21)
+
+Both passed on the test server; evidence in `docs-vault/raw-sources/frm-conveyor-gchecks-2026-10-21.md`.
+
+- **G-B1: pass.** Every build, dismantle and rebuild showed on the first read after it, and no link pointed at a missing
+  id. A rebuilt belt gets a **new id**, so the finder joins by id only within one read and never stores a conveyor id
+  as a durable key. PR 3 is no longer blocked.
+- **G-B2: pass.** A pipe's `Speed` is the tier's rated capacity in m³/s (Mk.1 5, Mk.2 10), not live flow, so the
+  mapper sends `capacityPerMinute = Speed × 60` (m³/min) for pipes. Belt and lift `ItemsPerMinute` is likewise the
+  tier's maximum. PR 5 (the visible section) now waits only for PRs 3 and 4.

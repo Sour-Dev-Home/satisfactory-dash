@@ -126,12 +126,22 @@ describe("mapConveyors", () => {
     expect(data.find((e) => e.id === openEnd0Belt.ID)).toMatchObject({ from: null, fromKind: null, to: "Build_SmelterMk1_C_9", toKind: "machine" });
   });
 
-  it("pipes keep both ends as read (the finder adds the arc each way) and get a null capacity, G-B2", () => {
+  it("pipes keep both ends as read (the finder adds the arc each way) and get Speed (m³/s) as m³/min, G-B2", () => {
     const { data } = mapConveyors({ belts: [], lifts: [], pipes: [waterPipe, openEnd1Pipe] });
     expect(data).toEqual([
-      expect.objectContaining({ id: openEnd1Pipe.ID, kind: "pipe", from: "Build_PipelineJunction_Cross_C_2146766657", fromKind: "junction", to: null, toKind: null, capacityPerMinute: null, tier: "Pipeline Mk.1" }),
-      expect.objectContaining({ id: waterPipe.ID, kind: "pipe", from: "Build_WaterPump_C_2147439854", fromKind: "extractor", to: "Build_PipelineJunction_Cross_C_2147377123", toKind: "junction", capacityPerMinute: null, at: { x: 100, y: 30 } }),
+      expect.objectContaining({ id: openEnd1Pipe.ID, kind: "pipe", from: "Build_PipelineJunction_Cross_C_2146766657", fromKind: "junction", to: null, toKind: null, capacityPerMinute: 300, tier: "Pipeline Mk.1" }),
+      expect.objectContaining({ id: waterPipe.ID, kind: "pipe", from: "Build_WaterPump_C_2147439854", fromKind: "extractor", to: "Build_PipelineJunction_Cross_C_2147377123", toKind: "junction", capacityPerMinute: 300, at: { x: 100, y: 30 } }),
     ]);
+  });
+
+  it("a Mk.2 pipe is 600 m³/min; a pipe without a usable Speed keeps its edge with a null capacity", () => {
+    const mk2 = { ...waterPipe, ID: "Build_PipelineMK2_C_1", Name: "Pipeline Mk.2", Speed: 10 };
+    const { Speed: _speed, ...noSpeed } = openEnd1Pipe;
+    const { data, dropped } = mapConveyors({ belts: [], lifts: [], pipes: [mk2, noSpeed, { ...waterPipe, Speed: -5 }] });
+    expect(dropped).toBe(0);
+    expect(data.find((e) => e.id === mk2.ID)).toMatchObject({ capacityPerMinute: 600, fromKind: "extractor" });
+    expect(data.find((e) => e.id === openEnd1Pipe.ID)?.capacityPerMinute).toBeNull();
+    expect(data.find((e) => e.id === waterPipe.ID)?.capacityPerMinute).toBeNull();
   });
 
   it("output is sorted by id and passes the shared contract; geometry and extra fields are gone", () => {

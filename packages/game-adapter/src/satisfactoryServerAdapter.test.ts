@@ -299,7 +299,7 @@ describe("SatisfactoryServerAdapter", () => {
     const result = await adapter.getConveyors();
     expect(get.mock.calls.map((call) => call[0])).toEqual(["getBelts", "getLifts", "getPipes"]);
     expect(result.dropped).toBe(0);
-    expect(result.data.map((e) => [e.id, e.kind, e.capacityPerMinute])).toEqual([["a1", "lift", 60], ["b1", "belt", 60], ["c1", "pipe", null]]);
+    expect(result.data.map((e) => [e.id, e.kind, e.capacityPerMinute])).toEqual([["a1", "lift", 60], ["b1", "belt", 60], ["c1", "pipe", 300]]);
   });
 
   it("getConveyors from an FRM without the connection fields resolves to skip unsupportedFrm, not an error", async () => {

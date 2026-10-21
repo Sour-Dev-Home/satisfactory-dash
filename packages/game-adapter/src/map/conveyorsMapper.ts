@@ -58,7 +58,8 @@ function endOf(connectedTo: string): { id: string | null; kind: ConveyorNodeKind
  * Projects one raw belt, lift or pipe into the contract's `ConveyorEdge`, or `undefined` if it cannot be (a missing
  * connection field, an over-long id, an out-of-bounds position). End 0 is `from`, end 1 is `to` (belts and lifts are
  * oriented that way, pipes are not: the finder reads a pipe as an arc each way). `at` is end 0's position in whole
- * metres. `capacityPerMinute` is the tier's speed; pipes get `null` until G-B2 settles the unit of their `Speed`.
+ * metres. `capacityPerMinute` is the tier's rated speed, never live flow: items/min for belts and lifts, m³/min for pipes
+ * (`Speed` is m³/s, G-B2). Ids are only good within one read: a rebuilt conveyor gets a new one (G-B1).
  */
 export function mapConveyor(raw: RawConveyor, kind: ConveyorKind): ConveyorEdge | undefined {
   if (raw.ConnectedTo0 === undefined || raw.ConnectedTo1 === undefined) return undefined;
@@ -66,7 +67,7 @@ export function mapConveyor(raw: RawConveyor, kind: ConveyorKind): ConveyorEdge 
   const x = toWholeMetres(raw.location0.x);
   const y = toWholeMetres(raw.location0.y);
   if (!inWholeMetreBounds(x) || !inWholeMetreBounds(y)) return undefined;
-  const speed = raw.ItemsPerMinute;
+  const speed = kind === "pipe" ? (raw.Speed === undefined ? undefined : raw.Speed * 60) : raw.ItemsPerMinute;
   const from = endOf(raw.ConnectedTo0);
   const to = endOf(raw.ConnectedTo1);
   return {
@@ -76,7 +77,7 @@ export function mapConveyor(raw: RawConveyor, kind: ConveyorKind): ConveyorEdge 
     fromKind: from.kind,
     to: to.id,
     toKind: to.kind,
-    capacityPerMinute: kind === "pipe" || speed === undefined || !Number.isFinite(speed) || speed < 0 ? null : speed,
+    capacityPerMinute: speed === undefined || !Number.isFinite(speed) || speed < 0 ? null : speed,
     tier: raw.Name.slice(0, MAX_TIER_LENGTH),
     at: { x, y },
   };
