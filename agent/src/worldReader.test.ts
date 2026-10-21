@@ -19,10 +19,10 @@ function setup(options: { random?: () => number } = {}) {
     getResourceNodes: vi.fn<WorldPorts["getResourceNodes"]>(async () => ({ data: world.resourceNodes, dropped: 0 })),
     getConveyors: vi.fn<WorldPorts["getConveyors"]>(async () => ({ data: world.conveyors, dropped: 0 })),
   };
-  const sent: { layer: MapWorldLayer; body: { observedAt: string; data: unknown[] } }[] = [];
+  const sent: { layer: MapWorldLayer; body: { observedAt: string; data?: unknown[]; skipped?: string } }[] = [];
   const client = {
     postWorldLayer: vi.fn<WorldClient["postWorldLayer"]>(async (layer, body) => {
-      sent.push({ layer, body: body as { observedAt: string; data: unknown[] } });
+      sent.push({ layer, body: body as { observedAt: string; data?: unknown[]; skipped?: string } });
       return { accepted: true, unchanged: false };
     }),
   };
@@ -196,17 +196,46 @@ describe("the conveyors layer", () => {
     await h.stop();
   });
 
-  it("a read with `skip` sends nothing, warns once per streak with the reason as a code, and sends again once it clears", async () => {
+  it("a read with `skip` posts the reason once per streak (no data), warns once with the reason as a code, and sends again once it clears", async () => {
     const h = setup();
     h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "unsupportedFrm" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
     await h.start();
     await vi.advanceTimersByTimeAsync(660_000);
-    expect(h.sentFor("conveyors")).toHaveLength(0);
+    expect(h.sentFor("conveyors")).toEqual([{ layer: "conveyors", body: { observedAt: expect.any(String), skipped: "unsupportedFrm" } }]);
     expect(h.warnings("world_layer_skipped")).toEqual([{ level: "warn", event: "world_layer_skipped", fields: { layer: "conveyors", reason: "unsupportedFrm" } }]);
     expect(h.sentFor("rails")).toHaveLength(1); // the other layers are unaffected
     h.ports.getConveyors.mockResolvedValue({ data: h.world.conveyors, dropped: 0 });
     await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("conveyors")).toHaveLength(2);
+    await h.stop();
+  });
+
+  it("after a skip the same graph is sent again (the backend holds the skip now); a skip re-posts when the reason changes", async () => {
+    const h = setup();
+    await h.start();
     expect(h.sentFor("conveyors")).toHaveLength(1);
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await vi.advanceTimersByTimeAsync(660_000);
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "unsupportedFrm" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await vi.advanceTimersByTimeAsync(660_000);
+    h.ports.getConveyors.mockResolvedValue({ data: h.world.conveyors, dropped: 0 });
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("conveyors").map((s) => s.body.skipped ?? "data")).toEqual(["data", "tooManyEdges", "unsupportedFrm", "data"]);
+    await h.stop();
+  });
+
+  it("an older backend refusing the skip body (400) leaves the other layers alone, warns once, and retries next cycle", async () => {
+    const h = setup();
+    h.client.postWorldLayer.mockImplementation(async (layer, body) => {
+      if (layer === "conveyors" && "skipped" in body) throw new BackendError("fatal", "refused", { status: 400, code: "bad_request" });
+      return { accepted: true, unchanged: false };
+    });
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await h.start();
+    await vi.advanceTimersByTimeAsync(1_320_000);
+    expect(h.client.postWorldLayer.mock.calls.filter(([l]) => l === "conveyors").length).toBeGreaterThanOrEqual(2);
+    expect(h.warnings("world_layer_refused")).toHaveLength(1);
+    for (const layer of ["rails", "resourceNodes"]) expect(h.client.postWorldLayer.mock.calls.filter(([l]) => l === layer)).toHaveLength(1);
     await h.stop();
   });
 

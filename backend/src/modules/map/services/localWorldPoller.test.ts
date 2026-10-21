@@ -94,7 +94,7 @@ describe("LocalWorldPoller", () => {
     await poller.stop();
   });
 
-  it("a conveyors read with `skip` ingests nothing and warns once per streak, other layers unaffected", async () => {
+  it("a conveyors read with `skip` ingests the skip with its reason and warns once per streak, other layers unaffected", async () => {
     vi.useFakeTimers();
     try {
       const getConveyors = vi.fn().mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" });
@@ -106,7 +106,9 @@ describe("LocalWorldPoller", () => {
       await vi.advanceTimersByTimeAsync(3500);
       expect(getConveyors.mock.calls.length).toBeGreaterThanOrEqual(3);
       await poller.stop();
-      expect(ingest.ingest.mock.calls.map((call) => call[1])).not.toContain("conveyors");
+      const conveyorBodies = ingest.ingest.mock.calls.filter((call) => call[1] === "conveyors").map((call) => call[2]);
+      expect(conveyorBodies.length).toBeGreaterThanOrEqual(3);
+      for (const body of conveyorBodies) expect(body).toEqual({ observedAt: expect.any(String), skipped: "tooManyEdges" });
       expect(ingest.ingest.mock.calls.map((call) => call[1])).toContain("rails");
       const skips = vi.mocked(logger.warn).mock.calls.filter((call) => call[0] && (call[0] as { reason?: string }).reason === "tooManyEdges");
       expect(skips).toHaveLength(1);

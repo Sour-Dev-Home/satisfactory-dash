@@ -1,0 +1,1 @@
+- 2026-10-21 — Conveyors skip is reported (#577): the agent and the local poller post/ingest `{ observedAt, skipped: unsupportedFrm|tooManyEdges }` (additive contract, no migration; stored as an empty row with hash `skipped:<reason>`), so the bottlenecks route answers `tooLarge` for a too-large factory instead of the wrong "update FRM" note.

@@ -14,5 +14,5 @@ export { MapLiveStore } from "./services/mapLiveStore.js";
 export type { MapLiveSink, MapLiveReading } from "./services/mapLiveStore.js";
 export { LocalWorldPoller } from "./services/localWorldPoller.js";
 export type { LocalWorldPollerPorts, LocalWorldPollerOptions } from "./services/localWorldPoller.js";
-export { getLatestWorldLayer, upsertWorldLayerIfChanged } from "./repositories/worldLayerRepository.js";
+export { getLatestWorldLayer, upsertWorldLayerIfChanged, skipReasonOf } from "./repositories/worldLayerRepository.js";
 export type { WorldLayerRow } from "./repositories/worldLayerRepository.js";

@@ -61,6 +61,23 @@ describe("WorldIngestService", () => {
     expect(over[5]).toBe(50_000);
   });
 
+  it("stores a conveyors skip as an empty, untruncated row whose hash carries the reason, distinct per reason and from a real reading (#577)", async () => {
+    const { db, calls } = fakeDb();
+    const service = new WorldIngestService(db, fakeLogger());
+    await service.ingest("srv-1", "conveyors", { observedAt: "2026-10-21T00:00:00.000Z", skipped: "tooManyEdges" });
+    await service.ingest("srv-1", "conveyors", { observedAt: "2026-10-21T00:00:00.000Z", skipped: "unsupportedFrm" });
+    await service.ingest("srv-1", "conveyors", { observedAt: "2026-10-21T00:10:00.000Z", data: [] });
+    const [tooMany, unsupported, good] = calls;
+    expect(tooMany?.slice(1, 7)).toEqual(["conveyors", "skipped:tooManyEdges", "2026-10-21T00:00:00.000Z", false, 0, "[]"]);
+    expect(unsupported?.[2]).toBe("skipped:unsupportedFrm");
+    expect(good?.[2]).not.toMatch(/^skipped:/);
+  });
+
+  it("refuses a skip for any layer but conveyors", async () => {
+    const { db } = fakeDb();
+    await expect(new WorldIngestService(db, fakeLogger()).ingest("srv-1", "rails", { observedAt: "2026-10-21T00:00:00.000Z", skipped: "tooManyEdges" })).rejects.toThrow(/conveyors/);
+  });
+
   it("drops (and logs at warn) an item that fails its per-item schema, rather than rejecting the whole ingest", async () => {
     const { db, calls } = fakeDb();
     const logger = fakeLogger();

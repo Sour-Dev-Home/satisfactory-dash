@@ -1,14 +1,12 @@
 import type { Logger } from "pino";
 import { MAP_WORLD_LAYER_ITEM_SCHEMAS, MAP_WORLD_LAYER_MAX_ITEMS, MAP_WORLD_MAX_ITEMS, ownValue } from "@satisfactory-dash/shared";
-import type { MapWorldLayer } from "@satisfactory-dash/shared";
+import type { ConveyorsSkipReason, MapWorldLayer } from "@satisfactory-dash/shared";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
-import { upsertWorldLayerIfChanged } from "../repositories/worldLayerRepository.js";
+import { skippedHash, upsertWorldLayerIfChanged } from "../repositories/worldLayerRepository.js";
 import { contentHash } from "./hash.js";
 
-export interface WorldIngestBody {
-  observedAt: string;
-  data: unknown[];
-}
+/** A reading (`data`), or, for the conveyors layer only, why this cycle has none (`skipped`, #577). */
+export type WorldIngestBody = { observedAt: string; data: unknown[] } | { observedAt: string; skipped: ConveyorsSkipReason };
 
 export interface WorldIngestResult {
   accepted: true;
@@ -40,6 +38,19 @@ export class WorldIngestService implements WorldIngestPort {
   ) {}
 
   async ingest(serverPublicId: string, layer: MapWorldLayer, body: WorldIngestBody): Promise<WorldIngestResult> {
+    if ("skipped" in body) {
+      // #577: no reading this cycle. A row with no edges and the reason in its hash replaces whatever was stored (an older
+      // graph is stale anyway); a later good reading has a different hash and replaces this.
+      if (layer !== "conveyors") throw new Error(`a skip is only valid for the conveyors layer, not ${String(layer)}`);
+      const { written } = await upsertWorldLayerIfChanged(this.db, serverPublicId, layer, {
+        hash: skippedHash(body.skipped),
+        observedAt: body.observedAt,
+        truncated: false,
+        count: 0,
+        data: [],
+      });
+      return { accepted: true, unchanged: !written };
+    }
     // Each layer's own cap (ADR-0048 amendment: conveyors 50,000, the rest MAP_WORLD_MAX_ITEMS).
     const maxItems = ownValue(MAP_WORLD_LAYER_MAX_ITEMS, layer) ?? MAP_WORLD_MAX_ITEMS;
     const truncated = body.data.length > maxItems;

@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import type { MapWorldLayer } from "@satisfactory-dash/shared";
+import type { ConveyorsSkipReason, MapWorldLayer } from "@satisfactory-dash/shared";
 import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { MapLiveSink } from "./mapLiveStore.js";
@@ -133,15 +133,17 @@ export class LocalWorldPoller {
     const { logger, serverPublicId, ingest, mapLive } = options;
 
     /** The skip reason last warned about per layer, so a streak of skipped cycles warns once, not every 10 minutes. */
-    const skipped = new Map<MapWorldLayer, string>();
-    const ingestLayer = async (layer: MapWorldLayer, mapped: { data: unknown[]; dropped: number; skip?: string }) => {
+    const skipped = new Map<MapWorldLayer, ConveyorsSkipReason>();
+    const ingestLayer = async (layer: MapWorldLayer, mapped: { data: unknown[]; dropped: number; skip?: ConveyorsSkipReason }) => {
       if (mapped.dropped > 0) {
         logger.warn({ layer, serverId: serverPublicId, dropped: mapped.dropped }, "map world layer: game-adapter mapper dropped items");
       }
-      // No layer this cycle (conveyors: an FRM without connection fields, or over the edge cap): ingest nothing, the last good copy stays.
+      // No layer this cycle (conveyors: an FRM without connection fields, or over the edge cap): record the skip and its
+      // reason (#577), replacing the older layer; one warning per streak, but the ingest is idempotent so it runs every cycle.
       if (mapped.skip !== undefined) {
-        if (skipped.get(layer) !== mapped.skip) logger.warn({ layer, serverId: serverPublicId, reason: mapped.skip }, "map world layer: skipped, nothing ingested");
+        if (skipped.get(layer) !== mapped.skip) logger.warn({ layer, serverId: serverPublicId, reason: mapped.skip }, "map world layer: skipped, recording the skip");
         skipped.set(layer, mapped.skip);
+        await ingest.ingest(serverPublicId, layer, { observedAt: new Date(now()).toISOString(), skipped: mapped.skip });
         return;
       }
       skipped.delete(layer);

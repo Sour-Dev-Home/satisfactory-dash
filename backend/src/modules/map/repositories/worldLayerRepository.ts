@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ConveyorsSkipReasonSchema } from "@satisfactory-dash/shared";
+import type { ConveyorsSkipReason } from "@satisfactory-dash/shared";
 import { parseFirst } from "../../../platform/db/rows.js";
 import { timedQuery } from "../../../platform/db/timedQuery.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
@@ -10,6 +12,11 @@ import type { Queryable } from "../../../platform/db/schemaVersion.js";
  * historyRepository.ts. Every SQL text is a constant; values only travel as parameters.
  */
 
+/** #577: a skipped conveyors reading is stored as a row with no data whose hash is `skipped:<reason>` (no migration; the
+ *  hash column is free text and a distinct hash makes a new skip replace a layer and a good layer replace the skip). */
+const SKIPPED_HASH_PREFIX = "skipped:";
+export const skippedHash = (reason: ConveyorsSkipReason): string => `${SKIPPED_HASH_PREFIX}${reason}`;
+
 export interface WorldLayerRow {
   hash: string;
   /** ISO. */
@@ -17,6 +24,13 @@ export interface WorldLayerRow {
   truncated: boolean;
   count: number;
   data: unknown[];
+}
+
+/** The skip reason a stored row records, or undefined for a real reading (the row's hash says which, see `skippedHash`). */
+export function skipReasonOf(row: Pick<WorldLayerRow, "hash">): ConveyorsSkipReason | undefined {
+  if (!row.hash.startsWith(SKIPPED_HASH_PREFIX)) return undefined;
+  const parsed = ConveyorsSkipReasonSchema.safeParse(row.hash.slice(SKIPPED_HASH_PREFIX.length));
+  return parsed.success ? parsed.data : undefined;
 }
 
 const WorldLayerRowSchema = z.object({

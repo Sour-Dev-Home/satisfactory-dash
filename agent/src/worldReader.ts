@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { MappedConveyors, MappedRailSegments, MappedResourceNodes } from "@satisfactory-dash/game-adapter";
 import { MAP_WORLD_LAYER_MAX_BYTES } from "@satisfactory-dash/shared";
-import type { MapWorldLayer, WorldIngestResponse } from "@satisfactory-dash/shared";
+import type { ConveyorsSkipReason, MapWorldLayer, WorldIngestResponse } from "@satisfactory-dash/shared";
 import { backoffDelayMs } from "./backoff.js";
 import { BackendError } from "./backendClient.js";
 import type { WorldIngestBodies } from "./backendClient.js";
@@ -54,7 +54,7 @@ export function jitteredIntervalMs(baseMs: number, random: () => number = Math.r
 interface WorldRead {
   data: unknown[];
   dropped: number;
-  skip?: string;
+  skip?: ConveyorsSkipReason;
 }
 
 /** The streak state of one layer: what was last accepted, and which warnings this streak has already logged. */
@@ -62,7 +62,9 @@ interface LayerState {
   sentHash: string | undefined;
   readFailing: boolean;
   overCap: boolean;
-  skipped: string | undefined;
+  skipped: ConveyorsSkipReason | undefined;
+  /** The skip reason the backend last accepted, so a streak of skipped cycles posts it once (a refusal retries next cycle). */
+  skipSent: ConveyorsSkipReason | undefined;
   refused: boolean;
 }
 
@@ -71,7 +73,8 @@ interface LayerState {
  * POSTed to `/agent/v1/world/:layer` only when the hash of its projected data changed since the last ACCEPTED send; the
  * first read after start always sends (the hash lives in memory only). Its rules:
  *  - the body is the contract's `{ observedAt, data }`, measured serialized against `MAP_WORLD_LAYER_MAX_BYTES` before it is
- *    sent; an over-cap layer is skipped (the backend keeps its last good copy) with one warning per streak;
+ *    sent; an over-cap layer is skipped (the backend keeps its last good copy) with one warning per streak; a conveyors
+ *    skip is posted as `{ observedAt, skipped }` (#577), once per streak;
  *  - a transient failure (network, timeout, 5xx, 429) retries the SAME body with the snapshot push's backoff, honouring
  *    `Retry-After`, without re-reading the game; a 4xx is not retried, and since its hash is not recorded the layer is tried
  *    again at its next read (an older backend may not know the route yet); a 401 stops the reader;
@@ -100,7 +103,7 @@ export class WorldReader {
 
   private async loop(layer: MapWorldLayer, intervalMs: number, read: () => Promise<WorldRead>): Promise<void> {
     const sleep = this.options.sleep ?? abortableSleep;
-    const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, skipped: undefined, refused: false };
+    const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, skipped: undefined, skipSent: undefined, refused: false };
     const { signal } = this.stop;
     while (!signal.aborted) {
       await this.cycle(layer, state, read);
@@ -122,13 +125,23 @@ export class WorldReader {
     state.readFailing = false;
     if (mapped.dropped > 0) logger.warn("world_layer_items_dropped", { layer, dropped: mapped.dropped });
 
-    // No layer this cycle: send nothing (the backend keeps its last good copy), one warning per streak.
+    // No layer this cycle: report the skip and its reason (#577), once per streak, replacing the backend's older copy. An
+    // older backend refuses the body (400, no `data`), which leaves the other layers alone and is retried next cycle.
     if (mapped.skip !== undefined) {
       if (state.skipped !== mapped.skip) logger.warn("world_layer_skipped", { layer, reason: mapped.skip });
       state.skipped = mapped.skip;
+      if (state.skipSent !== mapped.skip) {
+        const body = { observedAt: new Date((this.options.now ?? Date.now)()).toISOString(), skipped: mapped.skip };
+        if (await this.send(layer, body, state)) {
+          state.skipSent = mapped.skip;
+          // The backend now holds the skip, not the last graph: the next good read must send even if it equals that graph.
+          state.sentHash = undefined;
+        }
+      }
       return;
     }
     state.skipped = undefined;
+    state.skipSent = undefined;
 
     const hash = createHash("sha256").update(JSON.stringify(mapped.data)).digest("hex");
     if (hash === state.sentHash) return;
@@ -146,7 +159,7 @@ export class WorldReader {
   }
 
   /** Sends one body until it lands (true), is refused (false) or the reader stops (false). */
-  private async send(layer: MapWorldLayer, body: { observedAt: string; data: unknown[] }, state: LayerState): Promise<boolean> {
+  private async send(layer: MapWorldLayer, body: { observedAt: string } & ({ data: unknown[] } | { skipped: ConveyorsSkipReason }), state: LayerState): Promise<boolean> {
     const { client, logger } = this.options;
     const sleep = this.options.sleep ?? abortableSleep;
     const { signal } = this.stop;
