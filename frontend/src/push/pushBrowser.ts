@@ -26,10 +26,23 @@ export function notificationPermission(): NotificationPermission {
   return Notification.permission;
 }
 
-/** This device's push subscription, or null. Never registers the worker: no registration means no subscription. */
-export async function currentSubscription(): Promise<PushSubscription | null> {
+/** Whether a subscription was made with this key. A browser that doesn't expose its key gets the benefit of the doubt. */
+function madeWithKey(subscription: PushSubscription, key: Uint8Array): boolean {
+  const own = subscription.options?.applicationServerKey;
+  if (!own) return true;
+  const bytes = new Uint8Array(own);
+  return bytes.length === key.length && bytes.every((b, i) => b === key[i]);
+}
+
+/**
+ * This device's push subscription, or null. Never registers the worker: no registration means no subscription.
+ * With `vapidPublicKey`, a subscription made with another key (the backend's key changed) counts as none.
+ */
+export async function currentSubscription(vapidPublicKey?: string): Promise<PushSubscription | null> {
   const registration = await navigator.serviceWorker.getRegistration("/");
-  return registration ? registration.pushManager.getSubscription() : null;
+  const subscription = registration ? await registration.pushManager.getSubscription() : null;
+  if (subscription && vapidPublicKey !== undefined && !madeWithKey(subscription, keyBytes(vapidPublicKey))) return null;
+  return subscription;
 }
 
 /** A base64url VAPID public key as the bytes `subscribe` wants. */
@@ -53,9 +66,14 @@ export async function enableDevice(vapidPublicKey: string): Promise<EnableResult
   if (permission !== "granted") return { status: "dismissed" };
   await navigator.serviceWorker.register(PUSH_SW_URL);
   const registration = await navigator.serviceWorker.ready;
-  const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidPublicKey) }));
+  const key = keyBytes(vapidPublicKey);
+  let subscription = await registration.pushManager.getSubscription();
+  // One made with another VAPID key can never receive our pushes (and subscribe() would throw): replace it.
+  if (subscription && !madeWithKey(subscription, key)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   return { status: "subscribed", subscription };
 }
 

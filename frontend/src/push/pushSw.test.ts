@@ -109,3 +109,36 @@ describe("push-sw.js", () => {
     expect(openWindow).toHaveBeenCalledWith("/app");
   });
 });
+
+describe("push-sw.js (hunt)", () => {
+  it("treats a blank title or body as missing, not as an empty notification", async () => {
+    const { listeners, showNotification } = load();
+    const { event, done } = pushEvent(dataOf({ title: "   ", body: "\n" }));
+    listeners.get("push")!(event);
+    await done();
+    const [title, options] = showNotification.mock.calls[0] as unknown as [string, { body: string }];
+    expect(title).toBe("Satis Manager");
+    expect(options.body.trim()).not.toBe("");
+    expect(options.body).not.toBe("\n");
+  });
+
+  it("opens /app when the window refuses focus", async () => {
+    const app: FakeClient = { url: "https://example.test/app", focus: vi.fn(() => Promise.reject(new Error("gone"))) };
+    const { listeners, openWindow } = load([app]);
+    const waits: Promise<unknown>[] = [];
+    listeners.get("notificationclick")!({ notification: { close: vi.fn() }, waitUntil: (p: Promise<unknown>) => waits.push(p) });
+    await Promise.all(waits);
+    expect(openWindow).toHaveBeenCalledWith("/app");
+  });
+
+  it("never opens a URL from the payload (no open redirect)", async () => {
+    const { listeners, openWindow } = load([]);
+    const waits: Promise<unknown>[] = [];
+    listeners.get("notificationclick")!({
+      notification: { close: vi.fn(), data: { url: "https://evil.example/", serverId: "x" } },
+      waitUntil: (p: Promise<unknown>) => waits.push(p),
+    });
+    await Promise.all(waits);
+    expect(openWindow).toHaveBeenCalledWith("/app");
+  });
+});

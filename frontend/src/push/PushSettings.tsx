@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePushWrites } from "../api/pushWrites";
 import { ApiError } from "../api/errors";
@@ -89,6 +89,14 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
   // The result of the last action, read out by the live region.
   const [note, setNote] = useState<string | null>(null);
   const work = useWrite();
+  // Turning on or off swaps the buttons, which drops the focus the click had: put it on the new first button.
+  const actions = useRef<HTMLDivElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!refocus.current || work.busy) return;
+    refocus.current = false;
+    actions.current?.querySelector("button")?.focus();
+  }, [device.kind, work.busy]);
 
   useEffect(() => {
     let live = true;
@@ -97,7 +105,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
       if (support !== "supported") return live && setDevice({ kind: support });
       if (notificationPermission() === "denied") return live && setDevice({ kind: "denied" });
       try {
-        const sub = await currentSubscription();
+        const sub = await currentSubscription(vapidPublicKey);
         if (live) setDevice(sub ? { kind: "on" } : { kind: "off" });
       } catch {
         if (live) setDevice({ kind: "off" });
@@ -106,7 +114,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
     return () => {
       live = false;
     };
-  }, []);
+  }, [vapidPublicKey]);
 
   /** The backend's id for this device's subscription: known after turning on, else asked for (the same endpoint answers the same id). */
   async function resolveId(): Promise<string> {
@@ -120,6 +128,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
 
   async function turnOn() {
     setNote(null);
+    refocus.current = true;
     await work.run(async () => {
       let result;
       try {
@@ -152,6 +161,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
 
   async function turnOff() {
     setNote(null);
+    refocus.current = true;
     await work.run(async () => {
       try {
         await writes.unsubscribe.mutateAsync(await resolveId());
@@ -170,6 +180,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
     <div className="grid gap-4">
       <Loadable pending={device.kind === "checking"} skeleton={<PushSkeleton label="Checking this device…" />} className="grid gap-3">
         <DeviceState device={device} />
+        <div ref={actions} className="grid gap-3">
         {device.kind === "off" && (
           <div>
             <button type="button" disabled={work.busy} onClick={() => void turnOn()}>
@@ -187,6 +198,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
             </button>
           </div>
         )}
+        </div>
         <p role="status" className="mb-0 text-sm">
           {note}
         </p>

@@ -18,7 +18,8 @@ var FALLBACK_TITLE = "Satis Manager";
 var FALLBACK_BODY = "Something needs a look on one of your servers.";
 
 function clip(value, max) {
-  return typeof value === "string" ? value.slice(0, max) : "";
+  // Blank text counts as missing, or the notification would be an empty box.
+  return typeof value === "string" && value.trim() ? value.slice(0, max) : "";
 }
 
 /** The payload object from a push event's data, or null for no data or anything that is not a JSON object. */
@@ -71,7 +72,12 @@ self.addEventListener("notificationclick", function (event) {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clients) {
       var target = pickClient(clients);
-      if (target && typeof target.focus === "function") return target.focus();
+      if (target && typeof target.focus === "function") {
+        // A window that refuses focus (closed meanwhile) must not leave the click doing nothing.
+        return Promise.resolve(target.focus()).catch(function () {
+          return self.clients.openWindow(APP_PATH);
+        });
+      }
       return self.clients.openWindow(APP_PATH);
     }),
   );

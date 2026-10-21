@@ -341,3 +341,45 @@ describe("the per-server opt-in", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/not enabled/);
   });
 });
+
+describe("hunt: a subscription made with another VAPID key", () => {
+  const otherKey = () => new Uint8Array(65).fill(7).buffer;
+
+  it("is replaced on Turn on instead of being reused", async () => {
+    const browser = fakeBrowser({ subscribed: true });
+    Object.assign(browser.subscription, { options: { applicationServerKey: otherKey() } });
+    enabled();
+    server.use(http.post(endpoints.push.subscribe.route, () => HttpResponse.json(pushSubscribeResponse, { status: 201 })));
+    renderPush();
+    fireEvent.click(await screen.findByRole("button", { name: "Turn on push on this device" }));
+    expect(await screen.findByText(/This device is/)).toHaveTextContent("subscribed");
+    expect(browser.subscription.unsubscribe).toHaveBeenCalled();
+    expect(browser.pushManager.subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows as off on load (it cannot receive our pushes)", async () => {
+    const browser = fakeBrowser({ subscribed: true });
+    Object.assign(browser.subscription, { options: { applicationServerKey: otherKey() } });
+    enabled();
+    renderPush();
+    expect(await screen.findByRole("button", { name: "Turn on push on this device" })).toBeInTheDocument();
+  });
+});
+
+describe("hunt: focus", () => {
+  it("lands on the new first button after Turn on and after Turn off", async () => {
+    fakeBrowser();
+    enabled();
+    server.use(
+      http.post(endpoints.push.subscribe.route, () => HttpResponse.json(pushSubscribeResponse, { status: 201 })),
+      http.delete(endpoints.push.unsubscribe.route, () => HttpResponse.json(pushUnsubscribeResponse)),
+    );
+    renderPush();
+    fireEvent.click(await screen.findByRole("button", { name: "Turn on push on this device" }));
+    const test = await screen.findByRole("button", { name: "Send test notification" });
+    await waitFor(() => expect(test).toHaveFocus());
+    fireEvent.click(screen.getByRole("button", { name: "Turn off push on this device" }));
+    const on = await screen.findByRole("button", { name: "Turn on push on this device" });
+    await waitFor(() => expect(on).toHaveFocus());
+  });
+});
