@@ -1,6 +1,7 @@
 # ADR-0048: Bottleneck finder over the item graph, not the belt graph
 
-Status: proposed. Needs the owner's approval (the decision and the questions at the end). Issue #349.
+Status: accepted with a change (owner, 2026-10-21): the feature waits for belt data. The item-level slice is not built
+on its own; it ships together with the belt level once the mod claim below is verified. Issue #349.
 
 ## Context
 
@@ -189,3 +190,11 @@ this save at ~60 bytes each, about 240 KB, sent only when its hash changes (ADR-
 2. Default N for the top list (10 proposed) and where it lives (Overview card, or its own page)?
 3. Follow-ups 5 (extractors) and 6 (buffer fill): queue them now, or wait for feedback on slice 1?
 4. Open the belt-connection mod claim (G0 source search) now, or only after slice 1 has been used?
+
+**Owner answers (2026-10-21):**
+1. **No: wait for belt data.** Don't ship item-level root cause alone. Build the finder once the belt-connection
+   claim is verified, so its first version can name belt and pipe caps too. The item-level model above stays the
+   design for the item part.
+2. **The Factory page, top 10:** a "Bottlenecks" section on the Factory page listing the 10 worst root causes.
+3. **After feedback:** follow-ups 5 (extractors) and 6 (buffer fill) wait until the finder has been used.
+4. **Now:** open the belt-connection mod claim and start its G0 source search in the mod session.
