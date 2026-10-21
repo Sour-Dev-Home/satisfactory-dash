@@ -106,6 +106,16 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
   // still be disabled (busy) or not yet mounted on the render that changes the state, and focus() on a
   // disabled button does nothing. It stops once focus has actually landed, or after a few tries.
   const refocus = useRef(0);
+  const [, setTick] = useState(0);
+  /**
+   * Asked only once the action has FINISHED (its state is set and it is no longer busy), never at the click: a
+   * render between the click and the result can show the old button enabled, and focusing that one is lost
+   * when the buttons swap. The tick makes sure there is a render after the request.
+   */
+  const askRefocus = () => {
+    refocus.current = 10;
+    setTick((t) => t + 1);
+  };
   useEffect(() => {
     if (refocus.current === 0 || work.busy) return;
     const button = actions.current?.querySelector("button");
@@ -167,7 +177,6 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
 
   async function turnOn() {
     setNote(null);
-    refocus.current = 10;
     await work.run(async () => {
       let result;
       try {
@@ -188,6 +197,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
         throw e;
       }
     });
+    askRefocus();
   }
 
   async function sendTest() {
@@ -200,7 +210,6 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
 
   async function turnOff() {
     setNote(null);
-    refocus.current = 10;
     await work.run(async () => {
       try {
         await writes.unsubscribe.mutateAsync(await resolveId());
@@ -213,6 +222,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
       setDevice({ kind: "off" });
       setNote("Push is off for this device.");
     });
+    askRefocus();
   }
 
   return (
