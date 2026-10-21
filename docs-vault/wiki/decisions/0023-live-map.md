@@ -66,6 +66,7 @@ positions, with switchable layers (factory status, power, later belts and trains
    - (b) power circuits: colour by circuitGroupId, outage highlighted
    Later: belts, trains, and power lines (FRM getBelts/getTrains, new contract, own ADR).
 6. **Icons:** our own simple SVG glyphs per building category. No game art, per the LEGAL.md open item.
+   *Amended 2026-10-21 (#571): resource nodes now use the game's own icons (`frontend/public/game-assets/`, see its NOTICE.md), reversing #330's "no game art"; buildings keep the SVG glyphs and unknown resource types keep the circle.*
    The icon set is swappable.
 7. **Accessibility:** the map canvas is paired with a list/table of visible buildings (filterable,
    same data) and per-layer text summaries (`describe`). Keyboard panning and zooming are on.

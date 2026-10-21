@@ -68,6 +68,6 @@ describe("Landing", () => {
     expect(built.getByRole("link", { name: "Source on GitHub" })).toHaveAttribute("href", REPO_URL);
     expect(built.getByRole("link", { name: "Architecture decisions" }).getAttribute("href")).toMatch(/^https:\/\/github\.com\//);
     expect(built.getByRole("link", { name: "Architecture diagrams" }).getAttribute("href")).toMatch(/^https:\/\/github\.com\//);
-    expect(screen.getByText(/Not affiliated with Coffee Stain Studios/)).toBeInTheDocument();
+    expect(screen.getByText(/Satisfactory and its icons © Coffee Stain Studios. Not affiliated./)).toBeInTheDocument();
   });
 });

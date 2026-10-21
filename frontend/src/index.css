@@ -76,6 +76,12 @@
   /* History chart placeholders, the measured chart heights: phone width wraps the legend. */
   --spacing-chart-slot: 250px;
   --spacing-chart-slot-phone: 279px;
+  /* Resource-node icons by purity, the ring round an in-use one, and how faded a free one is (#571). */
+  --spacing-node-icon-impure: 16px;
+  --spacing-node-icon-normal: 22px;
+  --spacing-node-icon-pure: 28px;
+  --spacing-node-ring: 2px;
+  --opacity-node-free: 0.55;
   --spacing-map: 60svh;
   --spacing-map-min: 320px;
   --spacing-overview-rail: 17rem;
@@ -610,4 +616,37 @@
 }
 .map-canvas .leaflet-tooltip-top::before {
   border-top-color: var(--color-line);
+}
+
+/* Resource-node icons (#571): the marker's size and centring are CSS, from the sizing tokens. In use is a
+   ring round the icon, free a faded icon, so the two differ by more than colour. */
+.map-canvas .node-icon {
+  display: grid;
+  place-items: center;
+}
+.map-canvas .node-icon img {
+  width: 100%;
+  height: 100%;
+}
+.map-canvas .node-icon-impure {
+  width: var(--spacing-node-icon-impure);
+  height: var(--spacing-node-icon-impure);
+  margin: calc(var(--spacing-node-icon-impure) / -2) 0 0 calc(var(--spacing-node-icon-impure) / -2);
+}
+.map-canvas .node-icon-normal {
+  width: var(--spacing-node-icon-normal);
+  height: var(--spacing-node-icon-normal);
+  margin: calc(var(--spacing-node-icon-normal) / -2) 0 0 calc(var(--spacing-node-icon-normal) / -2);
+}
+.map-canvas .node-icon-pure {
+  width: var(--spacing-node-icon-pure);
+  height: var(--spacing-node-icon-pure);
+  margin: calc(var(--spacing-node-icon-pure) / -2) 0 0 calc(var(--spacing-node-icon-pure) / -2);
+}
+.node-icon-used {
+  border-radius: 50%;
+  box-shadow: 0 0 0 var(--spacing-node-ring) var(--color-node);
+}
+.node-icon-free {
+  opacity: var(--opacity-node-free);
 }

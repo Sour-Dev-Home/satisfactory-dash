@@ -192,9 +192,10 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       )}
       <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
-        A plain grid, 500 m per square, with the rails and resource nodes the server reported: no game map art.
-        Positions are approximate until they're checked in game.
+        A plain grid, 500 m per square, with the rails and resource nodes the server reported, nodes drawn
+        with the game's icons. Positions are approximate until they're checked in game.
       </p>
+      <p className="text-sm text-muted">Satisfactory and its icons © Coffee Stain Studios. Not affiliated.</p>
 
       {visible.has(railsLayer.id) && <WorldLayerText query={rails} layer={railsLayer} />}
       {visible.has(resourceNodesLayer.id) && <WorldLayerText query={nodes} layer={resourceNodesLayer} />}

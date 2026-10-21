@@ -52,6 +52,13 @@ const paths = <T extends L.Path>() => {
   });
   return found;
 };
+const markersOnMap = () => {
+  const found: L.Marker[] = [];
+  map.eachLayer((l) => {
+    if (l instanceof L.Marker) found.push(l);
+  });
+  return found;
+};
 const tooltipText = (layer: L.Layer) => ((layer.getTooltip()!.getContent() as () => HTMLElement)() as HTMLElement).textContent;
 
 describe("railsLayer", () => {
@@ -108,11 +115,33 @@ describe("railsLayer", () => {
 });
 
 describe("resourceNodesLayer", () => {
-  it("draws a circle per node at its projected point, sized by purity, filled only when in use", () => {
+  it("draws an icon marker per known resource at its projected point, ringed when in use, faded when free", () => {
     const nodes = resourceNodesWorldResponse.data;
     const cleanup = resourceNodesLayer.draw(ctx, nodes);
+    const markers = markersOnMap();
+    expect(markers).toHaveLength(nodes.length);
+    expect(paths()).toHaveLength(0);
+    nodes.forEach((n, i) => {
+      const [lat, lng] = project(GRID_BASE_MAP, n.x, n.y);
+      expect(markers[i].getLatLng()).toMatchObject({ lat, lng });
+      const icon = markers[i].getIcon() as L.DivIcon;
+      expect(icon.options.className).toContain(`node-icon-${n.purity}`);
+      expect(icon.options.className).toContain(n.exploited ? "node-icon-used" : "node-icon-free");
+      expect((icon.options.html as HTMLImageElement).getAttribute("src")).toMatch(/^\/game-assets\/resources\/.+\.webp$/);
+    });
+    cleanup();
+    expect(markersOnMap()).toHaveLength(0);
+  });
+
+  it("falls back to the circle (sized by purity, filled only when in use) for a type with no icon", () => {
+    const nodes = [
+      { type: "Unobtainium", purity: "pure", nodeType: "node", x: 5, y: 7, exploited: true },
+      { type: "Unobtainium", purity: "impure", nodeType: "node", x: 6, y: 8, exploited: false },
+    ];
+    const cleanup = resourceNodesLayer.draw(ctx, nodes);
     const circles = paths<L.CircleMarker>();
-    expect(circles).toHaveLength(nodes.length);
+    expect(circles).toHaveLength(2);
+    expect(markersOnMap()).toHaveLength(0);
     nodes.forEach((n, i) => {
       const [lat, lng] = project(GRID_BASE_MAP, n.x, n.y);
       expect(circles[i].getLatLng()).toMatchObject({ lat, lng });
@@ -122,6 +151,13 @@ describe("resourceNodesLayer", () => {
     });
     cleanup();
     expect(paths()).toHaveLength(0);
+  });
+
+  it("builds an icon marker's tooltip from text nodes too", () => {
+    resourceNodesLayer.draw(ctx, [{ type: "Iron Ore", purity: "pure", nodeType: "node", x: 1, y: 2, exploited: false }]);
+    const content = (markersOnMap()[0].getTooltip()!.getContent() as () => HTMLElement)();
+    expect(content.textContent).toContain("Iron Ore");
+    expect(content.textContent).toContain("Free");
   });
 
   it("builds the tooltip from text nodes", () => {
@@ -143,13 +179,13 @@ describe("resourceNodesLayer", () => {
     );
   });
 
-  it("has a legend for fill (in use or free) and size (purity)", () => {
+  it("has a legend for ring or fade (in use or free) and size (purity)", () => {
     render(<>{resourceNodesLayer.legend()}</>);
     const legend = screen.getAllByRole("list")[0];
-    expect(within(legend).getByText("In use (filled)")).toBeInTheDocument();
-    expect(within(legend).getByText("Free (outline)")).toBeInTheDocument();
+    expect(within(legend).getByText("In use (ringed)")).toBeInTheDocument();
+    expect(within(legend).getByText("Free (faded)")).toBeInTheDocument();
     expect(within(screen.getByText("Impure").closest("ul")!).getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.getByText(/One colour for every resource: the type is in the tooltip and the table/)).toBeInTheDocument();
+    expect(screen.getByText(/Each resource has its own game icon; the type is also in the tooltip and the table/)).toBeInTheDocument();
   });
 });
 
