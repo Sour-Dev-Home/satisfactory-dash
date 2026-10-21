@@ -72,6 +72,11 @@ async function poll(
   counts: Record<Down, number>,
   check: () => void,
 ) {
+  // The interval's refetch is deduplicated into any status fetch already in flight (TanStack returns the
+  // running promise), and then no new request is sent. After the first answers a page keeps refetching
+  // errored queries as panels mount (the Power page's did, ~170 ms apart), so "settled" can be a gap
+  // between two of them. Take the count and advance in the same tick as the check that nothing is in flight.
+  await vi.waitFor(() => expect(client.isFetching()).toBe(0), { timeout: WAIT_MS, interval: 5 });
   const before = counts.status;
   act(() => void vi.advanceTimersByTime(ms));
   // vi.waitFor, not RTL's: RTL's re-checks on a setInterval, which is faked here, so it only re-checks
