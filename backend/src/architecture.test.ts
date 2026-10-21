@@ -29,7 +29,9 @@ const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   gameserver: [],
   servers: [],
   identity: [],
-  telemetry: ["gameserver", "servers"],
+  // ADR-0048 amendment (#349) PR 4: the bottlenecks route reads the conveyors world layer through the map module's index.
+  // map never imports telemetry, so this adds no cycle.
+  telemetry: ["gameserver", "servers", "map"],
   settings: ["gameserver", "servers"],
   // ADR-0027 PR 5: the alert engine reads the pollers' readings (telemetry) and the server list (servers), through
   // their index.ts, and owns the `alerts` schema.

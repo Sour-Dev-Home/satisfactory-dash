@@ -39,6 +39,8 @@ import { HistoryQueryService } from "./services/historyQueryService.js";
 import { ObservationBoard } from "./services/observationBoard.js";
 import type { HistoryDb } from "./services/historyQueryService.js";
 import { createHistoryRouter } from "./routes/history.js";
+import { createBottlenecksRouter } from "./routes/bottlenecks.js";
+import type { BottlenecksRouteDeps } from "./routes/bottlenecks.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { Cadence } from "@satisfactory-dash/shared";
 import { AgentIngest } from "./services/agentIngest.js";
@@ -176,10 +178,11 @@ export function createHistoryMaintenance(db: Queryable, logger: Logger): Backgro
 }
 
 /** The data routes, scoped to :serverId through the directory. */
-export function createTelemetryRouters(directory: ServerDirectory<TelemetryScope>): Router[] {
+export function createTelemetryRouters(directory: ServerDirectory<TelemetryScope>, bottlenecks?: BottlenecksRouteDeps): Router[] {
   return [
     createStatusRouter(directory),
     createFactoryRouter(directory),
+    createBottlenecksRouter(directory, bottlenecks),
     createPowerRouter(directory),
     createPowerHistoryRouter(directory),
     createHistoryRouter(directory),

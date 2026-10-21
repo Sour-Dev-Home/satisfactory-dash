@@ -1,0 +1,1 @@
+- 2026-10-21 — feat(telemetry): GET /api/servers/:serverId/bottlenecks, the bottleneck finder route (ADR-0048 amendment PR 4, #349); reads the latest factory snapshot and the stored conveyors layer, hidden until the Factory page section (PR 5).
