@@ -8,6 +8,7 @@ import {
   alertEventsLastPage,
   alertRulesList,
   alertStatusQuiet,
+  bottlenecksBeltLevel,
   deleteServerDone,
   factoryMixed,
   railsWorldResponse,
@@ -58,6 +59,8 @@ export const handlers = [
   http.get(endpoints.history.items.route, () => HttpResponse.json(historyItems7d)),
   http.get(endpoints.history.transitions.route, () => HttpResponse.json(historyTransitions24h)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
+  // ADR-0048 (#349): the Factory page's Bottlenecks section.
+  http.get(endpoints.bottlenecks.route, () => HttpResponse.json(bottlenecksBeltLevel)),
   // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
   http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
   http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),

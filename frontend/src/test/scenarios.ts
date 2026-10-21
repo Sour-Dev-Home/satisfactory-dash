@@ -41,6 +41,10 @@ import {
   errorUpstreamAuthRejected,
   errorUpstreamUnreachable,
   errorWithDetail,
+  bottlenecksBeltLevel,
+  bottlenecksEmpty,
+  bottlenecksItemLevelOldFrm,
+  bottlenecksUnknownKind,
   factoryEmpty,
   factoryMixed,
   factoryStatesAndIngredients,
@@ -133,6 +137,7 @@ export const ROUTES = {
   power: endpoints.power,
   powerHistory: endpoints.powerHistory,
   factory: endpoints.factory,
+  bottlenecks: endpoints.bottlenecks,
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
@@ -235,6 +240,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   power: ok(powerOk),
   powerHistory: ok(powerHistoryNormal),
   factory: ok(factoryMixed),
+  bottlenecks: ok(bottlenecksBeltLevel),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   settings: ok(settingsEditable),
@@ -283,6 +289,21 @@ const BASE: Record<RouteKey, MockResponse> = {
   leaveServer: ok(serverLeft),
 };
 
+/** The finder skipped the conveyors layer (over the 2 MB world-layer cap): item level with its own note, not the FRM one. */
+const bottlenecksTooLarge = {
+  ...bottlenecksItemLevelOldFrm,
+  data: {
+    ...bottlenecksItemLevelOldFrm.data,
+    beltData: "tooLarge" as const,
+    notes: [
+      {
+        code: "beltDataTooLarge",
+        text: "Item-level results only: this factory's connection data is too large to read.",
+      },
+    ],
+  },
+};
+
 /**
  * ADR-0047: an account stored in the database (it names its sign-in methods, so it can be deleted) that signed in with
  * Google, on a backend that offers Google: the recent-sign-in refusal then offers "Sign in again with Google".
@@ -326,6 +347,7 @@ export const SCENARIOS = {
   // (Factory and Map), the stored history, the live power history, the agent's status and the alert rules.
   "loading-panels": {
     factory: { ...BASE.factory, delay: "never" },
+    bottlenecks: { ...BASE.bottlenecks, delay: "never" },
     historyItems: { ...BASE.historyItems, delay: "never" },
     historyTransitions: { ...BASE.historyTransitions, delay: "never" },
     powerHistory: { ...BASE.powerHistory, delay: "never" },
@@ -338,6 +360,7 @@ export const SCENARIOS = {
     power: slow(BASE.power),
     powerHistory: slow(BASE.powerHistory),
     factory: slow(BASE.factory),
+    bottlenecks: slow(BASE.bottlenecks),
     mapRails: slow(BASE.mapRails),
     mapResourceNodes: slow(BASE.mapResourceNodes),
     settings: slow(BASE.settings),
@@ -392,6 +415,12 @@ export const SCENARIOS = {
   "map-world-error": { mapRails: fail(502, errorUpstreamUnreachable), mapResourceNodes: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
+  // ADR-0048 (#349), the Bottlenecks section: an older FRM (item level, update note), connection data over the cap,
+  // nothing to report, and a newer backend's unknown step kind and note.
+  "bottlenecks-old-frm": { bottlenecks: ok(bottlenecksItemLevelOldFrm) },
+  "bottlenecks-too-large": { bottlenecks: ok(bottlenecksTooLarge) },
+  "bottlenecks-empty": { bottlenecks: ok(bottlenecksEmpty) },
+  "bottlenecks-unknown-kind": { bottlenecks: ok(bottlenecksUnknownKind) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },
   // ADR-0031 PR 4: after the toggle, the change is on its way to the game PC, or it failed there.

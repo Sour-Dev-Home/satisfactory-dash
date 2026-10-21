@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BottlenecksResponseSchema,
   FactoryResponseSchema,
   HistoryPowerResponseSchema,
   HistoryRangeSchema,
@@ -25,6 +26,7 @@ describe("the demo world", () => {
     expect(() => PowerResponseSchema.parse(world.power(now))).not.toThrow();
     expect(() => PowerHistoryResponseSchema.parse(world.powerHistory(now))).not.toThrow();
     expect(() => FactoryResponseSchema.parse(world.factory(now))).not.toThrow();
+    expect(() => BottlenecksResponseSchema.parse(world.bottlenecks(now))).not.toThrow();
     expect(() => SettingsResponseSchema.parse(world.settings(now, { autoPause: true, pending: true }))).not.toThrow();
   });
 
