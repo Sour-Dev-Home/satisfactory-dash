@@ -1,6 +1,6 @@
 # Proposed body for issue #349
 
-Drafted by the architect from ADR-0047 (proposed). Replaces the issue's body once the owner approves the ADR.
+Drafted by the architect from ADR-0048 (proposed). Replaces the issue's body once the owner approves the ADR.
 
 ---
 
@@ -9,7 +9,7 @@ Drafted by the architect from ADR-0047 (proposed). Replaces the issue's body onc
 When a machine is underfed or backed up, tell the owner why, from data the dashboard already has: nothing makes the
 input, not enough of it is made, the machine making it is unpowered, paused or short itself, or enough is made but it
 isn't arriving (a transport problem the data can't locate yet). Deterministic, no LLM (ground rule 3). Design:
-`docs-vault/wiki/decisions/0047-bottleneck-finder.md`.
+`docs-vault/wiki/decisions/0048-bottleneck-finder.md`.
 
 ## Acceptance criteria
 
@@ -18,7 +18,7 @@ isn't arriving (a transport problem the data can't locate yet). Deterministic, n
 - [ ] Verdicts: `noProducer`, `deficit`, `upstream` (ending in `unpowered`, `paused`, `idle` or another verdict),
       `logistics`, `loop`; downstream: `noConsumer`, `surplus`, `downstream`, `logistics`.
 - [ ] Every ingredient of an underfed machine is checked, not only the classifier's `missingInput` (FRM reports one
-      `ConsPercent` for all ingredients, ADR-0047 Context).
+      `ConsPercent` for all ingredients, ADR-0048 Context).
 - [ ] Same snapshot in, same findings out: ties broken by item `className`, then building `id`.
 - [ ] Cycles terminate (a `loop` step), proven by a test.
 - [ ] A generated 3,380-building factory (10x the owner's save) is analysed inside a fixed time bound in a test.
@@ -30,7 +30,7 @@ isn't arriving (a transport problem the data can't locate yet). Deterministic, n
 ## Interface contract
 
 New, additive, in its own PR first: `packages/shared/src/bottlenecks.ts` (`BottleneckStepSchema`, `BottleneckSchema`,
-`BottlenecksSchema`) and `endpoints.bottlenecks`, response wrapped in `snapshotEnvelope`. Sketch in ADR-0047.
+`BottlenecksSchema`) and `endpoints.bottlenecks`, response wrapped in `snapshotEnvelope`. Sketch in ADR-0048.
 
 ## Scope
 
@@ -43,7 +43,7 @@ identities, port positions, splitters or mergers).
 
 ## Blocked by
 
-The owner's approval of ADR-0047. Nothing else: the data is already in the snapshot.
+The owner's approval of ADR-0048. Nothing else: the data is already in the snapshot.
 
 ## Tier
 

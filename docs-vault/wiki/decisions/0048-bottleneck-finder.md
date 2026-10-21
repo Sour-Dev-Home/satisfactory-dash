@@ -1,4 +1,4 @@
-# ADR-0047: Bottleneck finder over the item graph, not the belt graph
+# ADR-0048: Bottleneck finder over the item graph, not the belt graph
 
 Status: proposed. Needs the owner's approval (the decision and the questions at the end). Issue #349.
 
