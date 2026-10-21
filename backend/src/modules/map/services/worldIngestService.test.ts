@@ -43,6 +43,24 @@ describe("WorldIngestService", () => {
     expect(JSON.parse(calls[0]?.[6] as string)).toHaveLength(5_000);
   });
 
+  it("caps the conveyors layer at its own 50,000 edges, not the shared 5,000 (ADR-0048 amendment)", async () => {
+    const edge = (i: number) => ({
+      id: `belt-${i}`, kind: "belt", from: "a", fromKind: "machine", to: "b", toKind: "splitter",
+      capacityPerMinute: 60, tier: "Conveyor Belt Mk.1", at: { x: 0, y: 0 },
+    });
+    const ingest = async (n: number) => {
+      const { db, calls } = fakeDb();
+      await new WorldIngestService(db, fakeLogger()).ingest("srv-1", "conveyors", { observedAt: "2026-10-21T00:00:00.000Z", data: Array.from({ length: n }, (_, i) => edge(i)) });
+      return calls[0] ?? [];
+    };
+    const under = await ingest(5_001);
+    expect(under[4]).toBe(false);
+    expect(under[5]).toBe(5_001);
+    const over = await ingest(50_001);
+    expect(over[4]).toBe(true);
+    expect(over[5]).toBe(50_000);
+  });
+
   it("drops (and logs at warn) an item that fails its per-item schema, rather than rejecting the whole ingest", async () => {
     const { db, calls } = fakeDb();
     const logger = fakeLogger();

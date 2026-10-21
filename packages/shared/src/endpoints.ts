@@ -16,6 +16,7 @@ import {
 } from "./serverManagement";
 import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
+import { BottlenecksQuerySchema, BottlenecksResponseSchema } from "./bottlenecks";
 import { PowerResponseSchema } from "./power";
 import { PowerHistoryResponseSchema } from "./powerHistory";
 import {
@@ -105,6 +106,15 @@ export const endpoints = {
     route: "/api/servers/:serverId/factory",
     path: scoped("factory"),
     response: FactoryResponseSchema,
+  },
+  // ADR-0048 amendment (#349): the top-N root causes of underfed and backed-up machines, computed on demand from the
+  // latest factory snapshot and the conveyors world layer. In the contract before its route (amendment PR 4).
+  bottlenecks: {
+    method: "GET",
+    route: "/api/servers/:serverId/bottlenecks",
+    path: scoped("bottlenecks"),
+    query: BottlenecksQuerySchema,
+    response: BottlenecksResponseSchema,
   },
   power: {
     method: "GET",
