@@ -1,0 +1,1 @@
+- 2026-10-21 — ADR-0049 accepted by the owner: production deploys run automatically once staging passes (no approval gate; the accepted risk is recorded), staging as proposed, a CLAUDE.md rule that sessions never approve or change production deployments, and deploys only when the backend images changed. The Discord webhook is still open.

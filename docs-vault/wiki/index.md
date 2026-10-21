@@ -97,8 +97,8 @@ added or removed.
   accepted; waits for belt data): why belt-level root cause is a no-go on FRM data, the item-level graph walk that is
   a go, its contract sketch and build tasks, and what the mod would need for belt level.
 - [`decisions/0049-automated-staged-deploys.md`](./decisions/0049-automated-staged-deploys.md) — automated, staged
-  backend deploys (proposed): GitHub OIDC deploy roles with exact IAM actions, Terraform owns config and CI owns the
-  image, a throwaway staging task with its own PostgreSQL and tunnel, an approval-gated promotion of the same digests,
+  backend deploys (accepted 2026-10-21; prod automatic after staging): GitHub OIDC deploy roles with exact IAM actions, Terraform owns config and CI owns the
+  image, a throwaway staging task with its own PostgreSQL and tunnel, an automatic promotion of the same digests once staging passes,
   alarm rollback, expand/contract migrations, cost and build tasks.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions, and the

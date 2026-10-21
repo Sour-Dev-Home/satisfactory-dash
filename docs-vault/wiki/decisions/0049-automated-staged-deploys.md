@@ -1,6 +1,6 @@
 # ADR-0049: Automated, staged backend deploys (GitHub OIDC, a throwaway staging task, an approval gate)
 
-Status: **proposed** (architect, 2026-10-21), for the owner's review. Written at the owner's request (2026-10-21): "How
+Status: **accepted** (owner, 2026-10-21; answers at the end; proposed by the architect the same day). Written at the owner's request (2026-10-21): "How
 do we automate these deployments like real production (and have a test environment for deployment, test suite, then
 rollout). I'm tired of doing this every time." Amends ADR-0034 §2 (one environment) and the runbook's "the owner applies,
 by hand" for image rollouts only. Changes two points of the direction the owner agreed to explore, on code evidence:
@@ -389,3 +389,24 @@ Run `security-reviewer` on PRs 2 to 5 (IAM, secrets, CI credentials), as the rep
 6. **A rule for `CLAUDE.md`:** sessions never approve or reject a pending deployment, even though they use your GitHub
    token. Agree?
 7. **Skip when nothing in the backend changed** (D4 step 1): agree, or deploy every image build?
+
+## Owner answers (2026-10-21)
+
+1. **Production release: fully automatic.** Production deploys as soon as staging passes, with no approval click. The
+   `production` GitHub environment keeps its "main only" branch rule but has **no required reviewer**. D5's pre-flight
+   alarm check, migrate-first step, 10-minute alarm watch with automatic rollback, the ECS alarm rollback and one-click
+   rollback all stay.
+   - **Accepted risk:** PRs merge themselves once the required checks pass, with no human review (ADR-0043). So any
+     merged change reaches production, which holds production's secrets, within minutes. This replaces the approval
+     gate that D7 named as the real control. The remaining controls are the required checks, the staging gate,
+     security-reviewer on risky PRs, the alarm-driven rollback, and the release record in SSM.
+   - **Revisit:** turning approval back on is one environment setting (a required reviewer on `production`).
+   - Merges by sessions may start staging and production runs.
+2. **Staging: accepted as proposed.** That's the throwaway in-task PostgreSQL, its own cluster and tunnel, and
+   `api-staging.satis-manager.com` behind Cloudflare Access.
+3. **The `CLAUDE.md` rule: yes.** Sessions never approve, reject or re-run a pending or failed production deployment,
+   and never edit the `production` environment's protection rules. With no reviewer configured, this mostly guards
+   against a session adding or removing gates on the owner's behalf.
+4. **Trigger:** deploy only when something that goes into the backend images changed (D4's skip).
+5. **Still open:** the Discord webhook for deploy notices (question 4). PR 3 ships with the notice step inert until the
+   owner adds the secret.
