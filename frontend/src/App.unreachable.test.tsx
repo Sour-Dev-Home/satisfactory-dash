@@ -13,6 +13,10 @@ import { server } from "./test/server";
 // re-mounted, and each panel added its own "Game server unreachable." notice.
 
 const UNREACHABLE = "Game server unreachable.";
+/** Each wait's ceiling. Generous: a loaded CI runner took 3.5 s for one poll's request (#559's run). */
+const WAIT_MS = 10_000;
+/** A test runs several polls of up to WAIT_MS each, so it gets more than Vitest's 5 s default. */
+const TEST_MS = 60_000;
 /** Long enough that the mid-poll check below runs while the requests are still out. */
 const ROUND_TRIP_MS = 150;
 type Down = "status" | "power" | "powerHistory" | "factory" | "settings";
@@ -54,10 +58,10 @@ async function openAt(path: string) {
   const counts = gameDown();
   window.history.pushState(null, "", path);
   const { client } = renderWithClient(<App />);
-  const first = await screen.findByText(UNREACHABLE, {}, { timeout: 3_000 });
-  await vi.waitFor(() => expect(client.isFetching()).toBe(0), { timeout: 3_000 });
+  const first = await screen.findByText(UNREACHABLE, {}, { timeout: WAIT_MS });
+  await vi.waitFor(() => expect(client.isFetching()).toBe(0), { timeout: WAIT_MS });
   // Settled: no skeleton anywhere from here on.
-  await vi.waitFor(() => expect(document.querySelector("[data-skeleton]")).toBeNull(), { timeout: 3_000 });
+  await vi.waitFor(() => expect(document.querySelector("[data-skeleton]")).toBeNull(), { timeout: WAIT_MS });
   return { counts, client, first };
 }
 
@@ -72,12 +76,12 @@ async function poll(
   act(() => void vi.advanceTimersByTime(ms));
   // vi.waitFor, not RTL's: RTL's re-checks on a setInterval, which is faked here, so it only re-checks
   // on a DOM change, and a request count isn't one.
-  await vi.waitFor(() => expect(counts.status).toBeGreaterThan(before), { timeout: 3_000, interval: 5 });
+  await vi.waitFor(() => expect(counts.status).toBeGreaterThan(before), { timeout: WAIT_MS, interval: 5 });
   // Mid-flight: the queries are fetching again, and React has rendered that (setTimeout is real here).
   await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
   expect(client.isFetching()).toBeGreaterThan(0);
   check();
-  await vi.waitFor(() => expect(client.isFetching()).toBe(0), { timeout: 3_000 });
+  await vi.waitFor(() => expect(client.isFetching()).toBe(0), { timeout: WAIT_MS });
   // Let React commit what the answers changed.
   await act(async () => {});
   check();
@@ -92,7 +96,7 @@ function expectSteady(first: HTMLElement) {
   expect(document.querySelector("[data-skeleton]")).toBeNull();
 }
 
-describe("the game server unreachable from the first request", () => {
+describe("the game server unreachable from the first request", { timeout: TEST_MS }, () => {
   it("holds the Overview steady over several status polls, with one notice", async () => {
     const { counts, client, first } = await openAt("/app");
     const overview = screen.getByRole("heading", { level: 2 });
@@ -137,7 +141,7 @@ describe("the game server unreachable from the first request", () => {
   });
 });
 
-describe("errors other than the server-wide unreachable one stay per panel", () => {
+describe("errors other than the server-wide unreachable one stay per panel", { timeout: TEST_MS }, () => {
   it("shows power's contract drift next to the banner's unreachable notice", async () => {
     server.use(
       http.get(endpoints.status.route, () => HttpResponse.json(errorUpstreamUnreachable, { status: 503 })),
@@ -146,8 +150,8 @@ describe("errors other than the server-wide unreachable one stay per panel", () 
     );
     window.history.pushState(null, "", "/app/power");
     renderWithClient(<App />);
-    await screen.findByText(UNREACHABLE, {}, { timeout: 3_000 });
-    expect(await screen.findByText(/The dashboard got a response it doesn't understand/, {}, { timeout: 3_000 })).toBeInTheDocument();
+    await screen.findByText(UNREACHABLE, {}, { timeout: WAIT_MS });
+    expect(await screen.findByText(/The dashboard got a response it doesn't understand/, {}, { timeout: WAIT_MS })).toBeInTheDocument();
     expect(screen.getAllByText(UNREACHABLE)).toHaveLength(1);
   });
 
@@ -159,7 +163,7 @@ describe("errors other than the server-wide unreachable one stay per panel", () 
     );
     window.history.pushState(null, "", "/app/factory");
     renderWithClient(<App />);
-    const notice = await screen.findByText(UNREACHABLE, {}, { timeout: 3_000 });
+    const notice = await screen.findByText(UNREACHABLE, {}, { timeout: WAIT_MS });
     expect(notice.closest('[class*="has(p,[role])"]')).toBeNull();
     expect(screen.getAllByText(UNREACHABLE)).toHaveLength(1);
   });
