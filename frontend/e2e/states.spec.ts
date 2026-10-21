@@ -64,6 +64,12 @@ const addYourServer = (name: string) => async (page: Page) => {
   await page.getByRole("button", { name: "Add server" }).click();
 };
 
+/** Settings → Delete my account (ADR-0047): opens the confirm and confirms it. */
+const deleteMyAccount = async (page: Page) => {
+  await page.getByRole("button", { name: "Delete my account…" }).click();
+  await page.getByRole("button", { name: "Delete my account", exact: true }).click();
+};
+
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
   { scenario: "default", name: "default-power", path: "/app/power", shows: /Circuit 0/ },
@@ -286,6 +292,31 @@ const CASES: StateCase[] = [
     shows: /can.t be undone/,
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Delete My first world" }).click(),
+  },
+  // ADR-0047 (#311 task 3): Settings → Delete my account, its confirm, its two refusals, and leaving a server.
+  { scenario: "account-delete", path: "/app/settings", shows: "Deleting your account removes:", clock: AGENT_NOW },
+  {
+    scenario: "account-delete",
+    name: "account-delete-confirm",
+    path: "/app/settings",
+    shows: /Delete your account now\? This can.t be undone\./,
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Delete my account…" }).click(),
+  },
+  { scenario: "account-reauth", path: "/app/settings", shows: "Sign in again with Google", clock: AGENT_NOW, act: deleteMyAccount },
+  {
+    scenario: "account-operator-servers",
+    path: "/app/settings",
+    shows: "They need a new owner first. Contact the operator.",
+    clock: AGENT_NOW,
+    act: deleteMyAccount,
+  },
+  {
+    scenario: "account-leave",
+    path: "/app/settings",
+    shows: "Leave Satisfactory server?",
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Leave this server…" }).click(),
   },
   { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the agent.", clock: AGENT_NOW },
   // The command bar (#351), open over the Overview: a native modal dialog, so the CSP guard here

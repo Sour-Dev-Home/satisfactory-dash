@@ -79,6 +79,7 @@ import {
   serversSingle,
   sessionAnonymous,
   sessionAuthenticated,
+  sessionAuthenticatedWithAccount,
   settingsEditable,
   settingsPending,
   settingsReadOnly,
@@ -90,6 +91,7 @@ import {
   testConnectionApiUnauthorized,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
   createdAgentServer,
   errorDailyLimit,
@@ -181,6 +183,9 @@ export const ROUTES = {
   pushSubscribe: endpoints.push.subscribe,
   pushUnsubscribe: endpoints.push.unsubscribe,
   pushTest: endpoints.push.test,
+  // ADR-0047: deleting your own account, and leaving a server.
+  deleteAccount: endpoints.account.remove,
+  leaveServer: endpoints.members.leave,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -274,7 +279,15 @@ const BASE: Record<RouteKey, MockResponse> = {
   pushSubscribe: { status: 201, body: pushSubscribeResponse },
   pushUnsubscribe: ok(pushUnsubscribeResponse),
   pushTest: ok(alertSendTestOk),
+  deleteAccount: ok(accountDeleted),
+  leaveServer: ok(serverLeft),
 };
+
+/**
+ * ADR-0047: an account stored in the database (it names its sign-in methods, so it can be deleted) that signed in with
+ * Google, on a backend that offers Google: the recent-sign-in refusal then offers "Sign in again with Google".
+ */
+const googleAccount = ok({ ...sessionAuthenticatedWithAccount, signInMethods: ["google"] });
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
 const operatorSingle = ok({ ...serversSingle, canManageServers: true });
@@ -459,6 +472,23 @@ export const SCENARIOS = {
     agentStatus: ok({ ...agentStatusNotEnrolled, connectionKind: "agent" }),
     agentEnrollmentCode: { status: 201, body: agentEnrollmentCodeResponse },
   },
+  // ADR-0047 (#311 task 3), Settings → Your membership and Delete my account. The owner of a self-serve server (its
+  // removal is named in the confirm); the deletion refused for an old sign-in, and for owning the operator's servers;
+  // and a viewer, who can leave the server.
+  "account-delete": { session: googleAccount, servers: ok(listOwnsEnrolled), agentStatus: ok(agentStatusEnrolled) },
+  "account-reauth": {
+    session: googleAccount,
+    servers: ok(listOwnsEnrolled),
+    agentStatus: ok(agentStatusEnrolled),
+    deleteAccount: fail(403, errorReauthRequired),
+  },
+  "account-operator-servers": {
+    session: googleAccount,
+    servers: ok(listOwnsEnrolled),
+    agentStatus: ok(agentStatusEnrolled),
+    deleteAccount: fail(409, errorOperatorServers),
+  },
+  "account-leave": { session: googleAccount, servers: ok(serversRoleViewer) },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 

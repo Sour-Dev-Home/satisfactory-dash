@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyError } from "../api/errors";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { DeleteAccountPanel } from "../account/DeleteAccountPanel";
 import { AccountMenu } from "../auth/AccountMenu";
 import { AddServer } from "../selfServe/AddServer";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
@@ -100,6 +101,8 @@ export function ServerGate({ children }: { children: ReactNode }) {
           <section className="grid gap-4 rounded-card border border-line bg-surface p-6">
             <AddServer first onCreated={pick} />
           </section>
+          {/* ADR-0047: Settings needs a server, so someone who has left (or never had) one deletes their account here. */}
+          <DeleteAccountPanel />
         </div>
       );
     }
@@ -109,6 +112,7 @@ export function ServerGate({ children }: { children: ReactNode }) {
           <AccountMenu />
         </div>
         <p>No game servers are configured.</p>
+        <DeleteAccountPanel />
       </div>
     );
   }

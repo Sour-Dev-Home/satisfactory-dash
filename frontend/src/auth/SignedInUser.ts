@@ -9,6 +9,9 @@ import { createContext, useContext } from "react";
 export interface Account {
   name: string;
   email?: string;
+  /** The sign-in methods the account has linked. Only an account stored in the database has the list (ADR-0047 reads
+   *  it: only such an account can be deleted). */
+  authMethods?: string[];
 }
 
 export const SignedInUser = createContext<Account | null>(null);

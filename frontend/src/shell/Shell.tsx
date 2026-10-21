@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
+import { AccountSettings } from "../account/AccountSettings";
 import { AgentSettings } from "../agent/AgentSettings";
 import { YourServersSection } from "../selfServe/YourServersSection";
 import { useYourServer } from "../selfServe/useYourServer";
@@ -434,6 +435,10 @@ export function Shell() {
               )}
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />
+              </Section>
+              <Section label="Your account" probe="account">
+                {/* Keyed by server: a half-open "Leave" confirm must not follow the user to another server. */}
+                <AccountSettings key={server.id} />
               </Section>
             </Page>
           }
