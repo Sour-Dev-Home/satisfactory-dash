@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Logger } from "pino";
 import { createPendingServerSweeper } from "./pendingServerSweeper.js";
 import type { PendingServerSweeperDeps } from "./pendingServerSweeper.js";
+
+type Logger = PendingServerSweeperDeps["logger"];
 
 /** #526 (ADR-0046 C4): the sweeper's own behaviour with a fake database. The SQL and the removal run against Postgres in
  *  selfServeOwner.db.test.ts. */

@@ -1,5 +1,5 @@
-import type { Logger } from "pino";
 import { formatErrorDetail } from "../../platform/formatErrorDetail.js";
+import type { createLogger } from "../../platform/logger.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../platform/db/transaction.js";
 import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../platform/metrics/index.js";
@@ -21,6 +21,9 @@ import type { ManagementDb } from "./serverManagement.js";
 export const PENDING_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 export const PENDING_SWEEP_BATCH = 50;
 const SWEPT_METRIC = "satis.servers.pending_swept";
+
+/** The platform logger's type (rule 4: `servers` imports platform/, never pino itself). */
+type Logger = ReturnType<typeof createLogger>;
 
 export interface PendingServerSweeperDeps {
   db: ManagementDb;
