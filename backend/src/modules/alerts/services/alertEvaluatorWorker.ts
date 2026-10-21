@@ -30,6 +30,8 @@ export interface AlertEvaluatorOptions {
   now?: () => number;
   /** ALERT_DELIVERY is on: new events are also queued for delivery (in the same transaction). Default off: nothing queued. */
   deliver?: boolean;
+  /** ADR-0044: web push is enabled too: new events are also queued for opted-in members' subscriptions. */
+  deliverPush?: boolean;
   /** Tests only: where the metrics go (default the process-wide background aggregator). */
   metrics?: MetricsSink;
 }
@@ -230,7 +232,7 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           muted: (mutes.get(server.id) ?? 0) > now,
         });
         const { events, writes } = await this.withinEventQuota(server.id, evaluation.events, evaluation.writes, now);
-        await writeEvaluation(this.db, { writes, deletes: evaluation.deletes, events, nowMs: now, deliver: this.options.deliver === true });
+        await writeEvaluation(this.db, { writes, deletes: evaluation.deletes, events, nowMs: now, deliver: this.options.deliver === true, deliverPush: this.options.deliverPush === true });
         evaluation.commit();
         for (const event of events) {
           // The alert log's own line: ids and counts only, never a name or a secret.

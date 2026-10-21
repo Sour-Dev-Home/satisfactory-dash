@@ -19,13 +19,21 @@ export type DisabledReason = "webhook_gone" | "invalid_url" | "manual";
 /** The context bound into the ciphertext: the server's internal id and the destination kind. */
 export const webhookContext = (serverId: string): string => `alerts:${serverId}:discord`;
 
+// A due row has EITHER the Discord columns (destination_id, webhook_enc, key_id) OR the push ones (ADR-0044: the
+// subscription, its owner and its three sealed fields); the outbox's CHECK makes it exactly one.
 const DueRowSchema = z.object({
   outbox_id: z.string(),
   attempts: z.number().int(),
   created_ms: z.number(),
-  destination_id: z.string(),
-  webhook_enc: z.instanceof(Buffer),
-  key_id: z.string(),
+  destination_id: z.string().nullish(),
+  webhook_enc: z.instanceof(Buffer).nullish(),
+  key_id: z.string().nullish(),
+  push_subscription_id: z.string().nullish(),
+  push_user_id: z.string().nullish(),
+  push_key_id: z.string().nullish(),
+  endpoint_enc: z.instanceof(Buffer).nullish(),
+  p256dh_enc: z.instanceof(Buffer).nullish(),
+  auth_enc: z.instanceof(Buffer).nullish(),
   server_uuid: z.string(),
   server_public_id: z.string(),
   server_name: z.string(),
@@ -47,20 +55,37 @@ const SummaryRowSchema = z.object({
 const ServerIdSchema = z.object({ id: z.string() });
 const SealedRowSchema = z.object({ id: z.string(), server_uuid: z.string(), webhook_enc: z.instanceof(Buffer), key_id: z.string(), enabled: z.boolean() });
 
-export interface DueDelivery {
+interface DueDeliveryBase {
   outboxId: string;
   /** Attempts made including this one. */
   attempts: number;
   createdAtMs: number;
-  destinationId: string;
   /** The server's internal id: part of the encryption context of its webhook. */
   serverId: string;
   serverPublicId: string;
   serverName: string;
-  keyId: string;
-  webhookEnc: Buffer;
   event: { kind: string; severity: string; subject: string; transition: string; atMs: number; summary: Record<string, unknown> };
 }
+
+export interface DueDiscordDelivery extends DueDeliveryBase {
+  channel: "discord";
+  destinationId: string;
+  keyId: string;
+  webhookEnc: Buffer;
+}
+
+/** ADR-0044: a push row. The three fields are sealed bound to `userId` (`push:<userId>:<field>`). */
+export interface DuePushDelivery extends DueDeliveryBase {
+  channel: "push";
+  subscriptionId: string;
+  userId: string;
+  keyId: string;
+  endpointEnc: Buffer;
+  p256dhEnc: Buffer;
+  authEnc: Buffer;
+}
+
+export type DueDelivery = DueDiscordDelivery | DuePushDelivery;
 
 const SERVER_ID = `
   SELECT s.id::text AS id FROM servers.servers s WHERE s.public_id = $1 AND s.deleted_at IS NULL`;
@@ -100,14 +125,25 @@ const DEAD_FOR_DESTINATION = `
 // fewer servers due than the batch, every server's oldest row goes out in this tick. A server alone still gets the whole
 // batch. Within a server: due time, then the event's order (one evaluation's events are queued in one statement,
 // whose outbox ids need not follow them).
+// ADR-0044 (348-2): push rows share this queue and this fairness. A row's server is its EVENT's server (a Discord row's
+// destination always belongs to that same server), so a server's push rows and Discord rows take turns in one partition:
+// a server with many subscribers gets no more of a batch than one with a single Discord webhook. Within a server, its
+// due Discord rows come before its push rows (348-2 review): one event fans out to up to 10 rows per opted-in member, and
+// the server's next Discord message must not wait behind earlier events' push rows. Event order is kept within each
+// channel (due time, then event, then id); push rows can only wait behind Discord rows, which are one per event at most,
+// and the hourly event cap bounds them. A Discord row needs an
+// enabled destination; a push row needs only its subscription (deleting the subscription deletes its rows).
 const CLAIM_DUE = `
   WITH ranked AS (
     SELECT o.id, o.next_attempt_at,
-           row_number() OVER (PARTITION BY d.server_id ORDER BY o.next_attempt_at, o.event_id, o.id) AS turn
+           row_number() OVER (PARTITION BY e.server_id
+                              ORDER BY (o.destination_id IS NULL), o.next_attempt_at, o.event_id, o.id) AS turn
     FROM alerts.outbox o
-    JOIN alerts.destinations d ON d.id = o.destination_id AND d.enabled
-    JOIN servers.servers sv ON sv.id = d.server_id AND sv.deleted_at IS NULL
-    WHERE o.status = 'pending' AND o.next_attempt_at <= now()),
+    JOIN alerts.alert_events e ON e.id = o.event_id
+    JOIN servers.servers sv ON sv.id = e.server_id AND sv.deleted_at IS NULL
+    LEFT JOIN alerts.destinations d ON d.id = o.destination_id
+    WHERE o.status = 'pending' AND o.next_attempt_at <= now()
+      AND (d.enabled OR o.push_subscription_id IS NOT NULL)),
   due AS (
     SELECT o.id, r.turn
     FROM alerts.outbox o
@@ -120,14 +156,17 @@ const CLAIM_DUE = `
     UPDATE alerts.outbox o
     SET attempts = o.attempts + 1, next_attempt_at = now() + make_interval(secs => $2::double precision)
     FROM due WHERE o.id = due.id
-    RETURNING o.id, o.event_id, o.destination_id, o.attempts, o.created_at, due.turn)
+    RETURNING o.id, o.event_id, o.destination_id, o.push_subscription_id, o.attempts, o.created_at, due.turn)
   SELECT c.id::text AS outbox_id, c.attempts AS attempts, floor(extract(epoch FROM c.created_at) * 1000)::float8 AS created_ms,
          d.id::text AS destination_id, d.webhook_enc AS webhook_enc, d.key_id AS key_id,
+         ps.id::text AS push_subscription_id, ps.user_id::text AS push_user_id, ps.key_id AS push_key_id,
+         ps.endpoint_enc AS endpoint_enc, ps.p256dh_enc AS p256dh_enc, ps.auth_enc AS auth_enc,
          s.id::text AS server_uuid, s.public_id AS server_public_id, s.display_name AS server_name,
          e.kind AS kind, e.severity AS severity, e.subject AS subject, e.transition AS transition,
          floor(extract(epoch FROM e.at) * 1000)::float8 AS at_ms, e.summary AS summary
   FROM claimed c
-  JOIN alerts.destinations d ON d.id = c.destination_id
+  LEFT JOIN alerts.destinations d ON d.id = c.destination_id
+  LEFT JOIN alerts.push_subscriptions ps ON ps.id = c.push_subscription_id
   JOIN alerts.alert_events e ON e.id = c.event_id
   JOIN servers.servers s ON s.id = e.server_id
   ORDER BY c.turn, c.id`;
@@ -135,6 +174,11 @@ const CLAIM_DUE = `
 const MARK_SENT = `UPDATE alerts.outbox SET status = 'sent', sent_at = now(), last_error = NULL WHERE id = $1::bigint AND status = 'pending'`;
 const RESCHEDULE = `
   UPDATE alerts.outbox SET next_attempt_at = to_timestamp($2::float8 / 1000.0), last_error = $3
+  WHERE id = $1::bigint AND status = 'pending'`;
+// A claimed row this tick did not try (out of time, or its push host paused): due again now, and the claim's attempt
+// is given back, so skipping never counts towards the backoff.
+const RELEASE = `
+  UPDATE alerts.outbox SET next_attempt_at = now(), attempts = greatest(attempts - 1, 0)
   WHERE id = $1::bigint AND status = 'pending'`;
 const MARK_DEAD = `UPDATE alerts.outbox SET status = 'dead', last_error = $2 WHERE id = $1::bigint AND status = 'pending'`;
 
@@ -205,21 +249,41 @@ export async function disableDestination(
 /** Claims up to `limit` due deliveries (leased for `leaseSeconds`); each call counts an attempt for what it returns. */
 export async function claimDueDeliveries(db: Queryable, limit: number, leaseSeconds: number): Promise<DueDelivery[]> {
   const rows = parseRows(DueRowSchema, (await timedQuery(db, "alerts.claimDue", CLAIM_DUE,[limit, leaseSeconds])).rows, "alerts.claimDue");
-  return rows.map((row) => ({
-    outboxId: row.outbox_id,
-    attempts: row.attempts,
-    createdAtMs: row.created_ms,
-    destinationId: row.destination_id,
-    serverId: row.server_uuid,
-    serverPublicId: row.server_public_id,
-    serverName: row.server_name,
-    keyId: row.key_id,
-    webhookEnc: row.webhook_enc,
-    event: { kind: row.kind, severity: row.severity, subject: row.subject, transition: row.transition, atMs: row.at_ms, summary: row.summary },
-  }));
+  return rows.flatMap((row): DueDelivery[] => {
+    const base: DueDeliveryBase = {
+      outboxId: row.outbox_id,
+      attempts: row.attempts,
+      createdAtMs: row.created_ms,
+      serverId: row.server_uuid,
+      serverPublicId: row.server_public_id,
+      serverName: row.server_name,
+      event: { kind: row.kind, severity: row.severity, subject: row.subject, transition: row.transition, atMs: row.at_ms, summary: row.summary },
+    };
+    if (row.destination_id && row.webhook_enc && row.key_id) {
+      return [{ ...base, channel: "discord", destinationId: row.destination_id, keyId: row.key_id, webhookEnc: row.webhook_enc }];
+    }
+    if (row.push_subscription_id && row.push_user_id && row.push_key_id && row.endpoint_enc && row.p256dh_enc && row.auth_enc) {
+      return [
+        {
+          ...base,
+          channel: "push",
+          subscriptionId: row.push_subscription_id,
+          userId: row.push_user_id,
+          keyId: row.push_key_id,
+          endpointEnc: row.endpoint_enc,
+          p256dhEnc: row.p256dh_enc,
+          authEnc: row.auth_enc,
+        },
+      ];
+    }
+    // Its target vanished between the claim and the read (a concurrent delete): nothing to send; the lease runs out and
+    // the next claim no longer sees it (a deleted subscription's rows are deleted with it).
+    return [];
+  });
 }
 
 export const markDeliverySent = (db: Queryable, outboxId: string): Promise<unknown> => timedQuery(db, "alerts.markDeliverySent", MARK_SENT,[outboxId]);
 export const rescheduleDelivery = (db: Queryable, outboxId: string, atMs: number, code: string): Promise<unknown> =>
   timedQuery(db, "alerts.rescheduleDelivery", RESCHEDULE,[outboxId, atMs, code.slice(0, 40)]);
-export const markDeliveryDead = (db: Queryable, outboxId: string, code: string): Promise<unknown> => timedQuery(db, "alerts.markDeliveryDead", MARK_DEAD,[outboxId, code.slice(0, 40)]);
+export const releaseDelivery = (db: Queryable, outboxId: string): Promise<unknown> => timedQuery(db, "alerts.releaseDelivery", RELEASE, [outboxId]);
+export const markDeliveryDead =(db: Queryable, outboxId: string, code: string): Promise<unknown> => timedQuery(db, "alerts.markDeliveryDead", MARK_DEAD,[outboxId, code.slice(0, 40)]);

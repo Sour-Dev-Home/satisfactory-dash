@@ -9,9 +9,12 @@ import {
   markDeliveryDead,
   markDeliverySent,
   openWebhook,
+  releaseDelivery,
   rescheduleDelivery,
-  type DueDelivery,
+  type DueDiscordDelivery,
 } from "../repositories/deliveryRepository.js";
+import { createBackgroundRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
+import { PushDelivery, type PushSendConfig } from "./pushDelivery.js";
 import { formatAlertMessage, type MessageTransition } from "./alertMessage.js";
 import { sendDiscordMessage, type SendOutcome } from "./discordSender.js";
 import { isDead, retryDelayMs } from "./retryPolicy.js";
@@ -28,6 +31,13 @@ export interface AlertDeliveryOptions {
   leaseSeconds?: number;
   fetch?: typeof fetch;
   now?: () => number;
+  /** ADR-0044: web push is enabled (VAPID configured). Without it a push row is dropped as `push_disabled`. */
+  push?: PushSendConfig;
+  metrics?: MetricsSink;
+  /** A monotonic clock in ms for the tick's time budget (default performance.now). */
+  clock?: () => number;
+  /** A tick stops starting sends after this long and hands the rest back (default half the lease: 60 s). */
+  tickBudgetMs?: number;
 }
 
 const DEFAULT_TICK_MS = 10_000;
@@ -45,12 +55,19 @@ const GONE_RECHECK_MS = 60_000;
  * destination (and gives up on its pending rows). Delivery is at-least-once: if the process dies between Discord's
  * answer and our write, the lease expires and the message is sent again. Nothing here logs a URL, a body or an error
  * message, only stable codes.
+ *
+ * ADR-0044 (348-2): the same queue also holds web push rows (one per opted-in member's subscription); they are claimed
+ * with the same per-server fairness and handed to `PushDelivery` (pushDelivery.ts), which rechecks the recipient and the
+ * endpoint just before sending. A rate-limited target (a webhook or a subscription) is paused for the rest of the tick.
  */
 export class AlertDeliveryWorker implements BackgroundWorker {
   private readonly tickMs: number;
   private readonly batchSize: number;
   private readonly leaseSeconds: number;
   private readonly now: () => number;
+  private readonly push: PushDelivery;
+  private readonly clock: () => number;
+  private readonly tickBudgetMs: number;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
@@ -66,6 +83,15 @@ export class AlertDeliveryWorker implements BackgroundWorker {
     this.batchSize = options.batchSize ?? DEFAULT_BATCH;
     this.leaseSeconds = options.leaseSeconds ?? DEFAULT_LEASE_SECONDS;
     this.now = options.now ?? Date.now;
+    this.clock = options.clock ?? (() => performance.now());
+    this.tickBudgetMs = options.tickBudgetMs ?? (this.leaseSeconds * 1000) / 2;
+    this.push =new PushDelivery(db, ring, {
+      logger: options.logger,
+      push: options.push,
+      fetch: options.fetch,
+      now: this.now,
+      metrics: createBackgroundRecorder(options.logger, options.metrics),
+    });
   }
 
   start(): void {
@@ -112,17 +138,29 @@ export class AlertDeliveryWorker implements BackgroundWorker {
 
   /** One pass over the due deliveries; exposed for tests. Throws when the database fails (the loop catches it). */
   async tick(): Promise<void> {
+    const started = this.clock();
     const due = await claimDueDeliveries(this.db, this.batchSize, this.leaseSeconds);
-    const pausedDestinations = new Set<string>();
-    for (const delivery of due) {
+    const pausedTargets = new Set<string>();
+    // Push hosts that answered 429, timed out or failed at the network this tick (348-2 review): the rest of their rows
+    // wait for the next tick. In memory only; a host is never logged.
+    const pausedPushHosts = new Set<string>();
+    for (const [index, delivery] of due.entries()) {
       if (this.stopped) return; // shutting down: the rest keep their lease and are retried by the next process
-      if (pausedDestinations.has(delivery.destinationId)) continue; // rate limited this tick: its lease runs out, then it is retried
-      const outcome = await this.deliver(delivery);
-      if (outcome === "paused") pausedDestinations.add(delivery.destinationId);
+      if (this.clock() - started >= this.tickBudgetMs) {
+        // Out of time well inside the lease (348-2 review): another process must never re-claim a row while this one
+        // may still send it. The untried rows are handed back, due now, for the next tick.
+        for (const rest of due.slice(index)) await releaseDelivery(this.db, rest.outboxId);
+        this.options.logger.info({ released: due.length - index, code: "ALERT_DELIVERY_TICK_BUDGET" }, "alert delivery tick out of time; the rest go next tick");
+        return;
+      }
+      const target = delivery.channel === "discord" ? `discord:${delivery.destinationId}` : `push:${delivery.subscriptionId}`;
+      if (pausedTargets.has(target)) continue; // rate limited this tick: its lease runs out, then it is retried
+      const outcome = delivery.channel === "discord" ? await this.deliver(delivery) : await this.push.deliver(delivery, pausedPushHosts);
+      if (outcome === "paused") pausedTargets.add(target);
     }
   }
 
-  private async deliver(delivery: DueDelivery): Promise<"done" | "paused"> {
+  private async deliver(delivery: DueDiscordDelivery): Promise<"done" | "paused"> {
     const now = this.now();
     const log = (code: string, extra: Record<string, unknown> = {}) =>
       this.options.logger.info(

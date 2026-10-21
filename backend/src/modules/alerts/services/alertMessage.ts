@@ -55,13 +55,31 @@ function isInvisible(code: number): boolean {
   );
 }
 
-/** Untrusted text made inert for Discord: no control characters, no markdown, no mention, cut to `max` characters. */
-export function escapeDiscordText(value: unknown, max = MAX_FIELD): string {
+/** A string or finite number as text, with controls, bidi overrides and invisible characters as spaces (by code point,
+ *  so this file holds no invisible characters) and whitespace runs collapsed. Anything else is "". */
+function visibleText(value: unknown): string {
   const text = typeof value === "string" ? value : typeof value === "number" && Number.isFinite(value) ? String(value) : "";
-  // Controls, bidi overrides and invisible characters become spaces (by code point, so this file holds no invisible characters).
   let plain = "";
   for (const char of text) plain += isInvisible(char.codePointAt(0) ?? 0) ? " " : char;
-  const cleaned = plain.replace(/\s+/g, " ").trim();
+  return plain.replace(/\s+/g, " ").trim();
+}
+
+/** A text sanitiser: untrusted value in, safe text of at most `max` characters out. */
+type Sanitise = (value: unknown, max: number) => string;
+
+/**
+ * ADR-0044 (#348, 348-2): untrusted text made inert for a push notification, which a browser shows as PLAIN text (no
+ * markdown, no mentions, no links rendered): the same cleaning as Discord's (controls, bidi and invisible characters
+ * removed, whitespace collapsed, cut to `max`), without the markdown backslashes that would show up literally.
+ */
+export function plainAlertText(value: unknown, max = MAX_FIELD): string {
+  const cleaned = visibleText(value);
+  return cleaned.length <= max ? cleaned : `${cutAt(cleaned, Math.max(0, max - 1))}…`;
+}
+
+/** Untrusted text made inert for Discord: no control characters, no markdown, no mention, cut to `max` characters. */
+export function escapeDiscordText(value: unknown, max = MAX_FIELD): string {
+  const cleaned = visibleText(value);
   // Markdown, links and <@id> / <#id> / <:emoji:> references get a backslash; every @ gets a zero-width space, so
   // @everyone and @here are not mentions.
   let escaped = "";
@@ -88,13 +106,13 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
 const rate = (value: unknown): string | undefined =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? String(Math.round(value * 10) / 10) : undefined;
 
-function listOf(value: unknown, keyField: string, max = 5): { label: string; count: number }[] {
+function listOf(value: unknown, keyField: string, clean: Sanitise, max = 5): { label: string; count: number }[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, max).flatMap((entry) => {
     if (typeof entry !== "object" || entry === null) return [];
     const record = entry as Record<string, unknown>;
     const raw = record[keyField];
-    const label = raw === null ? "no recipe" : escapeDiscordText(raw, 80);
+    const label = raw === null ? "no recipe" : clean(raw, 80);
     return [{ label: label.length > 0 ? label : "unknown", count: count(record.count) }];
   });
 }
@@ -113,8 +131,8 @@ function machineTitle(transition: MessageTransition, machines: number): string {
   }
 }
 
-/** The title and the detail lines of one alert, by kind. */
-function words(input: AlertMessageInput): { title: string; lines: string[] } {
+/** The title and the detail lines of one alert, by kind. Every game string goes through `clean` (Discord or plain). */
+function words(input: AlertMessageInput, clean: Sanitise): { title: string; lines: string[] } {
   const circuit = count(input.summary.circuit);
   switch (input.kind) {
     case "power_outage":
@@ -158,7 +176,7 @@ function words(input: AlertMessageInput): { title: string; lines: string[] } {
     }
     case "production_below_target": {
       // `item` is a game class name: escaped like any game text. The rates are rounded to one decimal.
-      const item = escapeDiscordText(input.summary.item, 80) || "an item";
+      const item = clean(input.summary.item, 80) || "an item";
       const lines: string[] = [];
       if (input.transition !== "resolved") {
         const target = rate(input.summary.targetPerMinute);
@@ -182,9 +200,9 @@ function words(input: AlertMessageInput): { title: string; lines: string[] } {
       const machines = count(input.summary.machines);
       const lines: string[] = [];
       if (input.transition !== "resolved") {
-        const reasons = listOf(input.summary.byReason, "reason");
+        const reasons = listOf(input.summary.byReason, "reason", clean);
         if (reasons.length > 0) lines.push(reasons.map((r) => `${r.count} × ${r.label}`).join(" · "));
-        const recipes = listOf(input.summary.byRecipe, "recipe");
+        const recipes = listOf(input.summary.byRecipe, "recipe", clean);
         if (recipes.length > 0) lines.push(`Making: ${recipes.map((r) => `${r.label} ×${r.count}`).join(", ")}`);
         const added = count(input.summary.newMachines);
         if (input.transition === "updated" && added > 0) lines.push(`${added} new since the last message.`);
@@ -202,8 +220,64 @@ function cutAt(text: string, max: number): string {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
 }
 
+/** ADR-0044 decision 7: the push plaintext stays at or under 3 KB until each push service's cap is verified. */
+export const MAX_PUSH_PAYLOAD_BYTES = 3072;
+const MAX_PUSH_BODY = 1000;
+
+/**
+ * The JSON a push notification carries (the service worker in 348-3 shows `title` and `body`). Built from the SAME words
+ * and the SAME fields as the Discord message (#348, the ADR-0045 B10 comment): the title, the server's display name and
+ * the detail lines, each game string cleaned by `plainAlertText`. Nothing else from the game: the rest are our own
+ * codes (kind, transition, severity), the server's public id and the time. At most MAX_PUSH_PAYLOAD_BYTES of UTF-8.
+ */
+export interface PushPayload {
+  v: 1;
+  title: string;
+  body: string;
+  serverId: string;
+  kind: string;
+  transition: string;
+  severity: string;
+  at: string;
+}
+
+export function formatPushMessage(input: AlertMessageInput & { serverPublicId: string }): Buffer {
+  const { title, lines } = words(input, plainAlertText);
+  const server = plainAlertText(input.serverName, 60) || "server";
+  const at = Number.isFinite(input.at) ? new Date(input.at) : new Date(0);
+  let body = cutAt([server, ...lines].join("\n"), MAX_PUSH_BODY);
+  const encode = (): Buffer => {
+    const payload: PushPayload = {
+      v: 1,
+      title: cutAt(title, MAX_TITLE),
+      body,
+      serverId: input.serverPublicId,
+      kind: input.kind,
+      transition: input.transition,
+      severity: input.severity,
+      at: at.toISOString(),
+    };
+    return Buffer.from(JSON.stringify(payload), "utf8");
+  };
+  let bytes = encode();
+  // Multi-byte text (or JSON escapes) can push it over: shorten the body until it fits.
+  while (bytes.length > MAX_PUSH_PAYLOAD_BYTES && body.length > 0) {
+    body = cutAt(body, Math.max(0, body.length - 100));
+    bytes = encode();
+  }
+  return bytes;
+}
+
+/** The test notification (POST /api/push/subscriptions/:id/test): fixed words, no game text at all. */
+export function formatPushTestMessage(nowMs: number): Buffer {
+  return Buffer.from(
+    JSON.stringify({ v: 1, title: "Test notification", body: "Push notifications are set up on this device.", kind: "test", at: new Date(nowMs).toISOString() }),
+    "utf8",
+  );
+}
+
 export function formatAlertMessage(input: AlertMessageInput): DiscordPayload {
-  const { title, lines } = words(input);
+  const { title, lines } = words(input, escapeDiscordText);
   const server = escapeDiscordText(input.serverName, 60) || "server";
   const description = cutAt([`**${server}**`, ...lines].join("\n"), MAX_DESCRIPTION);
   const at = Number.isFinite(input.at) ? new Date(input.at) : new Date(0);

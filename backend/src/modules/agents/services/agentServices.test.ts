@@ -168,6 +168,78 @@ describe("the user-facing agents service", () => {
     expect(await service.createEnrollmentCode("alpha", "u").catch((err: unknown) => err)).toBeInstanceOf(RateLimitedError);
   });
 
+  describe("the hourly limit (ADR-0046 C7)", () => {
+    const make = (clock: { t: number }, canManage: (id: string) => boolean = () => false, codesPerHour = 20) =>
+      createAgentsService({ db: fakePool(lockRow("agent")).pool, canManage, codesPerHour, now: () => clock.t });
+    const MINUTE = 60_000;
+
+    it("allows 20 codes an hour and refuses the 21st with the wait until the window ends", async () => {
+      const clock = { t: 1_000_000 };
+      const service = make(clock);
+      for (let i = 0; i < 20; i++) {
+        await service.createEnrollmentCode("alpha", "u");
+        clock.t += 7_000; // 7 s apart: well inside the 10 a minute limit
+      }
+      const err = await service.createEnrollmentCode("alpha", "u").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).message).toMatch(/this hour/);
+      expect((err as RateLimitedError).retryAfterSeconds).toBeGreaterThan(60);
+      // Another account is unaffected.
+      await expect(service.createEnrollmentCode("alpha", "other")).resolves.toHaveProperty("code");
+    });
+
+    it("still applies the minute limit: the 11th code in a minute is refused with a short wait", async () => {
+      const service = make({ t: 1_000_000 });
+      for (let i = 0; i < 10; i++) await service.createEnrollmentCode("alpha", "u");
+      const err = await service.createEnrollmentCode("alpha", "u").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).message).not.toMatch(/hour/);
+      expect((err as RateLimitedError).retryAfterSeconds).toBeLessThanOrEqual(60);
+    });
+
+    it("a minute refusal does not use an hourly slot", async () => {
+      const clock = { t: 1_000_000 };
+      const service = make(clock, () => false, 11);
+      for (let i = 0; i < 10; i++) await service.createEnrollmentCode("alpha", "u");
+      for (let i = 0; i < 5; i++) await service.createEnrollmentCode("alpha", "u").catch(() => undefined);
+      clock.t += MINUTE + 1;
+      await expect(service.createEnrollmentCode("alpha", "u")).resolves.toHaveProperty("code"); // the 11th hourly slot
+      clock.t += MINUTE + 1;
+      expect(await service.createEnrollmentCode("alpha", "u").catch((e: unknown) => e)).toBeInstanceOf(RateLimitedError);
+    });
+
+    it("an hourly refusal gives its minute slot back", async () => {
+      const clock = { t: 1_000_000 };
+      const service = make(clock, () => false, 1);
+      await service.createEnrollmentCode("alpha", "u");
+      for (let i = 0; i < 15; i++) await service.createEnrollmentCode("alpha", "u").catch(() => undefined);
+      // 15 refused attempts did not run the minute counter up past its 10, so the refusal is still the hourly one.
+      const err = await service.createEnrollmentCode("alpha", "u").catch((e: unknown) => e);
+      expect((err as RateLimitedError).message).toMatch(/this hour/);
+    });
+
+    it("the window ends: after an hour the account can create codes again", async () => {
+      const clock = { t: 1_000_000 };
+      const service = make(clock, () => false, 2);
+      await service.createEnrollmentCode("alpha", "u");
+      await service.createEnrollmentCode("alpha", "u");
+      expect(await service.createEnrollmentCode("alpha", "u").catch((e: unknown) => e)).toBeInstanceOf(RateLimitedError);
+      clock.t += 3_600_000 + 1;
+      await expect(service.createEnrollmentCode("alpha", "u")).resolves.toHaveProperty("code");
+    });
+
+    it("the operator is exempt from the hourly limit but not the minute limit", async () => {
+      const clock = { t: 1_000_000 };
+      const service = make(clock, (id) => id === "operator", 2);
+      for (let i = 0; i < 10; i++) await service.createEnrollmentCode("alpha", "operator");
+      expect(await service.createEnrollmentCode("alpha", "operator").catch((e: unknown) => e)).toBeInstanceOf(RateLimitedError);
+      for (let minute = 0; minute < 5; minute++) {
+        clock.t += MINUTE + 1;
+        for (let i = 0; i < 10; i++) await service.createEnrollmentCode("alpha", "operator");
+      }
+    });
+  });
+
   it("revokes: drops any open code first, then marks the credential revoked and audits it; idempotent when nothing was enrolled", async () => {
     const enrolled = fakePool(lockRow("agent"));
     const service = createAgentsService({ db: enrolled.pool, canManage: () => false });

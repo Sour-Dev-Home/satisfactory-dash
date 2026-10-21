@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createECDH, randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import request from "supertest";
@@ -30,10 +30,22 @@ const AUTH = "C".repeat(22);
 const subscription = (n: number, keys = { p256dh: P256DH, auth: AUTH }) => ({ endpoint: endpointOf(n), keys });
 
 const VAPID_ENV = (() => {
-  // A syntactically valid P-256 key pair is not needed beyond shape here: the config only validates length and encoding.
-  const point = Buffer.concat([Buffer.from([4]), randomBytes(64)]).toString("base64url");
-  return { VAPID_PUBLIC_KEY: point, VAPID_PRIVATE_KEY: randomBytes(32).toString("base64url"), VAPID_SUBJECT: "mailto:ops@example.test", PUSH_ENDPOINT_HOSTS: HOST };
+  // A real P-256 pair: 348-2 signs a VAPID token with it on every test send.
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  return {
+    VAPID_PUBLIC_KEY: ecdh.getPublicKey().toString("base64url"),
+    VAPID_PRIVATE_KEY: ecdh.getPrivateKey().toString("base64url"),
+    VAPID_SUBJECT: "mailto:ops@example.test",
+    PUSH_ENDPOINT_HOSTS: HOST,
+  };
 })();
+/** A browser's real subscription keys (the fake ones above cannot be encrypted to). */
+const realKeys = () => {
+  const ua = createECDH("prime256v1");
+  ua.generateKeys();
+  return { p256dh: ua.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") };
+};
 
 describe.skipIf(!available)("web push against a real Postgres (ADR-0044)", () => {
   let db: TestDatabase;
@@ -57,8 +69,16 @@ describe.skipIf(!available)("web push against a real Postgres (ADR-0044)", () =>
     next();
   };
 
+  // 348-2: the test send really POSTs; every request goes to this fake push service, never the network.
+  const pushed: { url: string; init: RequestInit }[] = [];
+  let pushStatus = 201;
+  const fakeFetch = (async (url: string, init: RequestInit) => {
+    pushed.push({ url, init });
+    return new Response(null, { status: pushStatus });
+  }) as unknown as typeof fetch;
+
   const buildApp = (mode: "on" | "off" = "on", env: NodeJS.ProcessEnv = VAPID_ENV) => {
-    const service = createPushService({ db: pool, ring, mode, config: loadPushConfig(env) });
+    const service = createPushService({ db: pool, ring, mode, config: loadPushConfig(env), fetch: fakeFetch });
     return createApp({
       logger: createLogger({ level: "debug" }, { write: (line: string) => void logLines.push(line) }),
       routers: [],
@@ -247,19 +267,60 @@ describe.skipIf(!available)("web push against a real Postgres (ADR-0044)", () =>
   });
 
   describe("test notification", () => {
-    it("answers unavailable until the sender exists (348-2), audits it, and is limited to 5 per minute per user", async () => {
+    it("really sends (348-2): an encrypted, VAPID-signed POST to the stored endpoint, audited, at most 5 per minute per user", async () => {
       const erin = (await createUser(pool, { displayName: "erin" })).id;
-      const created = await as(erin).post(endpoints.push.subscribe.path(), subscription(500));
+      const created = await as(erin).post(endpoints.push.subscribe.path(), subscription(500, realKeys()));
       const url = endpoints.push.test.path(created.body.id);
+      pushed.length = 0;
+      pushStatus = 201;
       for (let i = 0; i < 5; i += 1) {
         const res = await as(erin).post(url);
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ ok: false, code: "unavailable" });
+        expect(res.body).toEqual({ ok: true });
       }
+      expect(pushed).toHaveLength(5);
+      const headers = pushed[0]!.init.headers as Record<string, string>;
+      expect(pushed[0]!.url).toBe(endpointOf(500));
+      expect(pushed[0]!.init.redirect).toBe("manual");
+      expect(headers["content-encoding"]).toBe("aes128gcm");
+      expect(headers.authorization).toMatch(new RegExp(`^vapid t=[\\w-]+\\.[\\w-]+\\.[\\w-]+, k=${VAPID_ENV.VAPID_PUBLIC_KEY}$`));
+      expect(Buffer.from(pushed[0]!.init.body as Uint8Array).toString()).not.toContain("Test notification"); // encrypted
       const limited = await as(erin).post(url);
       expect(limited.status).toBe(429);
       expect(limited.headers["retry-after"]).toBeDefined();
-      expect(await rows("SELECT 1 FROM audit.audit_events WHERE actor_user_id = $1 AND action = 'alerts.push.tested'", [erin])).toHaveLength(5);
+      expect(await rows("SELECT detail->>'outcome' AS outcome FROM audit.audit_events WHERE actor_user_id = $1 AND action = 'alerts.push.tested'", [erin])).toEqual(
+        Array.from({ length: 5 }, () => ({ outcome: "sent" })),
+      );
+      expect((await rows("SELECT last_success_at FROM alerts.push_subscriptions WHERE id = $1", [created.body.id]))[0]!.last_success_at).not.toBeNull();
+    });
+
+    it("a 410 deletes the subscription (audited); a 5xx is unavailable; keys that cannot be encrypted to are rejected without a request", async () => {
+      const gina = (await createUser(pool, { displayName: "gina" })).id;
+      const good = await as(gina).post(endpoints.push.subscribe.path(), subscription(510, realKeys()));
+      pushStatus = 503;
+      expect((await as(gina).post(endpoints.push.test.path(good.body.id))).body).toEqual({ ok: false, code: "unavailable" });
+      pushStatus = 410;
+      expect((await as(gina).post(endpoints.push.test.path(good.body.id))).body).toEqual({ ok: false, code: "subscription_gone" });
+      expect(await rows("SELECT 1 FROM alerts.push_subscriptions WHERE id = $1", [good.body.id])).toEqual([]);
+      expect(await rows("SELECT detail FROM audit.audit_events WHERE actor_user_id = $1 AND action = 'alerts.push.subscription_gone'", [gina])).toEqual([
+        { detail: { subscriptionId: good.body.id, via: "test" } },
+      ]);
+      expect((await as(gina).post(endpoints.push.test.path(good.body.id))).status).toBe(404);
+      pushStatus = 201;
+      const fake = await as(gina).post(endpoints.push.subscribe.path(), subscription(511)); // "B"*87 is not a curve point
+      const before = pushed.length;
+      expect((await as(gina).post(endpoints.push.test.path(fake.body.id))).body).toEqual({ ok: false, code: "rejected" });
+      expect(pushed.length).toBe(before);
+    });
+
+    it("re-checks the endpoint against the allowlist at send time: a host removed from PUSH_ENDPOINT_HOSTS is never fetched", async () => {
+      const hana = (await createUser(pool, { displayName: "hana" })).id;
+      const created = await as(hana).post(endpoints.push.subscribe.path(), subscription(520, realKeys()));
+      const narrowed = buildApp("on", { ...VAPID_ENV, PUSH_ENDPOINT_HOSTS: "other.example.test" });
+      const before = pushed.length;
+      const res = await request(narrowed).post(endpoints.push.test.path(created.body.id)).set("x-test-user", hana);
+      expect(res.body).toEqual({ ok: false, code: "rejected" });
+      expect(pushed.length).toBe(before);
     });
   });
 
