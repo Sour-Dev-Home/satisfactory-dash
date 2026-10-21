@@ -114,6 +114,8 @@ npm run admin -- revoke-sessions --all                # sign everyone out
 npm run admin -- revoke-sessions --user <user-id>     # one account, everywhere
 npm run admin -- disable-user <user-id>               # abuse response: refuse sign-in + revoke sessions (#516)
 npm run admin -- enable-user <user-id>                # undo it
+npm run admin -- remove-server <public-id>            # the full delete of any server (restart the backend after)
+npm run admin -- list-servers                         # every live server: ids, owner id, enrolled, last seen, row counts
 ```
 
 The full abuse response is in [`abuse-response.md`](./abuse-response.md).

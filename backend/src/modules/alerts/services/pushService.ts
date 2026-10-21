@@ -9,7 +9,7 @@ import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { orUnavailable } from "./alertsService.js";
 import type { AlertDeliveryMode } from "../config.js";
 import type { PushConfig } from "../pushConfig.js";
-import { getServerUuid } from "../repositories/apiRepository.js";
+import { getServerUuid, lockServer } from "../repositories/apiRepository.js";
 import {
   addPushOptIn,
   countSubscriptions,
@@ -147,7 +147,7 @@ export function createPushService(deps: PushServiceDeps): PushService {
       if (optedIn) requireEnabled();
       return orUnavailable(() =>
         withTransaction(db, async (client) => {
-          const serverUuid = await getServerUuid(client, serverId);
+          const serverUuid = await lockServer(client, serverId);
           if (serverUuid === undefined) throw new ServerNotFoundError();
           // Audited only when something changed, so repeating the request leaves one row.
           const changed = optedIn ? await addPushOptIn(client, serverUuid, userId) : await removePushOptIn(client, serverUuid, userId);

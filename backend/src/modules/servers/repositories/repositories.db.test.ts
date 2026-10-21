@@ -6,6 +6,8 @@ import { createTestDatabase, dbTestsAvailable } from "../../../../test-support/t
 import type { TestDatabase } from "../../../../test-support/testDb.js";
 import { createUser } from "../../identity/repositories/userRepository.js";
 import {
+  ensureServer,
+  PURGED_TABLES,
   findServerByPublicId,
   listServersForUser,
   softDeleteServer,
@@ -203,26 +205,30 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
          WHERE k.contype = 'f' AND k.confrelid = 'servers.servers'::regclass
          ORDER BY 1`,
       );
-      // Cleared by the soft delete (repository constants), or cascaded from a cleared parent in the same list.
-      const cleared = [
-        "agents.agent_credentials",
-        "agents.commands",
-        "agents.enrollment_codes",
-        "alerts.alert_events",
-        "alerts.destinations",
-        "alerts.push_optins",
-        "alerts.rules",
-        "alerts.server_mutes",
-        "map.world_layers",
-        "servers.server_connections",
-        "servers.server_members",
-        "telemetry.building_transitions",
-        "telemetry.item_rollups",
-        "telemetry.item_samples",
-        "telemetry.power_rollups",
-        "telemetry.power_samples",
-      ];
-      expect(referencing.rows.map((r) => r.tbl as string)).toEqual(cleared);
+      // The real delete list (parsed from the repository's own statements) plus the two statements that have their own
+      // constants. Tables further down (alert_state, outbox) cascade from a table on that list and have no direct reference.
+      const cleared = [...PURGED_TABLES, "servers.server_members", "servers.server_connections"].sort();
+      expect(referencing.rows.map((r) => r.tbl as string).sort()).toEqual(cleared);
+    });
+
+    it("reviving a removed id purges what a racing write left behind, but a refresh of a live server does not (#516)", async () => {
+      const server = await upsertConfiguredServer(pool, { publicId: "race-revive", displayName: "Race" });
+      const [user] = await users(1);
+      const seed = async () => {
+        await admin.query("INSERT INTO alerts.push_optins (server_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [server.id, user!.id]);
+      };
+      await seed();
+      await upsertConfiguredServer(pool, { publicId: "race-revive", displayName: "Race 2" }); // live refresh
+      expect((await admin.query("SELECT 1 FROM alerts.push_optins WHERE server_id = $1", [server.id])).rowCount).toBe(1);
+      expect(await softDeleteServer(pool, "race-revive")).toBe(true);
+      await seed(); // the write that survived the delete
+      await upsertConfiguredServer(pool, { publicId: "race-revive", displayName: "Race 3" });
+      expect((await admin.query("SELECT 1 FROM alerts.push_optins WHERE server_id = $1", [server.id])).rowCount).toBe(0);
+      await seed();
+      expect(await softDeleteServer(pool, "race-revive")).toBe(true);
+      await seed();
+      await ensureServer(pool, { publicId: "race-revive", displayName: "Race" });
+      expect((await admin.query("SELECT 1 FROM alerts.push_optins WHERE server_id = $1", [server.id])).rowCount).toBe(0);
     });
 
     it("an unknown or soft-deleted server is not found, and re-registering brings it back", async () => {
