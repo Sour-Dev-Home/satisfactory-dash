@@ -11,8 +11,8 @@ function respond(response: MockResponse) {
   return async () => {
     if (response.delay === "never") await new Promise(() => {});
     if (typeof response.delay === "number") await delay(response.delay);
-    if (response.text !== undefined) return new HttpResponse(response.text, { status: response.status });
-    return HttpResponse.json(response.body as object, { status: response.status });
+    if (response.text !== undefined) return new HttpResponse(response.text, { status: response.status, headers: response.headers });
+    return HttpResponse.json(response.body as object, { status: response.status, headers: response.headers });
   };
 }
 

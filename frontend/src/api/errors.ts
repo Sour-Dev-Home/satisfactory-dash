@@ -8,13 +8,17 @@ export class ApiError extends Error {
   /** Internal detail; the backend only sends it in development/test. */
   readonly detail: string | undefined;
 
-  constructor(status: number, body: ApiErrorResponse["error"]) {
+  /** Seconds from a `Retry-After` header (a 429), when the answer carried a whole number of them. */
+  readonly retryAfterSeconds: number | undefined;
+
+  constructor(status: number, body: ApiErrorResponse["error"], retryAfterSeconds?: number) {
     super(body.message);
     this.name = "ApiError";
     this.status = status;
     this.code = body.code;
     this.requestId = body.requestId;
     this.detail = body.detail;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 

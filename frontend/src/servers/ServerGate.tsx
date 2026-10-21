@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyError } from "../api/errors";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { AddServer } from "../selfServe/AddServer";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerContext, ServerSwitchContext } from "./ServerContext";
 
@@ -64,20 +65,6 @@ export function ServerGate({ children }: { children: ReactNode }) {
     return <p role="status">Finding game servers…</p>;
   }
 
-  if (list.length === 0) {
-    // The operator can add the first one here (ADR-0030). Stored servers the backend can't serve
-    // (unreadable, refused) aren't in this list, so the management list is where they show.
-    if (servers.data.canManageServers) {
-      return (
-        <div className="mx-auto mt-6 grid w-full max-w-3xl gap-4">
-          <h2 className="mb-0">Set up a game server</h2>
-          <ServerManagementView />
-        </div>
-      );
-    }
-    return <p>No game servers are configured.</p>;
-  }
-
   // An explicit pick clears the id's lost mark: the operator is retrying it on purpose, and if
   // it's back, the "no longer available" note shouldn't linger for the rest of the page.
   const pick = (id: string) => {
@@ -89,6 +76,28 @@ export function ServerGate({ children }: { children: ReactNode }) {
       return next;
     });
   };
+
+  if (list.length === 0) {
+    // The operator can add the first one here (ADR-0030). Stored servers the backend can't serve
+    // (unreadable, refused) aren't in this list, so the management list is where they show.
+    if (servers.data.canManageServers) {
+      return (
+        <div className="mx-auto mt-6 grid w-full max-w-3xl gap-4">
+          <h2 className="mb-0">Set up a game server</h2>
+          <ServerManagementView />
+        </div>
+      );
+    }
+    // ADR-0046: a player with no server yet can add their own while self-serve is on.
+    if (servers.data.selfServeEnabled) {
+      return (
+        <section className="mx-auto mt-6 grid w-full max-w-md gap-4 rounded-card border border-line bg-surface p-6">
+          <AddServer headingLevel="h2" onCreated={pick} />
+        </section>
+      );
+    }
+    return <p>No game servers are configured.</p>;
+  }
 
   if (!current) {
     return (
@@ -119,6 +128,7 @@ export function ServerGate({ children }: { children: ReactNode }) {
       <ServerSwitchContext
         value={{
           serverCount: list.length,
+          select: pick,
           change: () => {
             changeRequested.current = true;
             setSelectedId(null);

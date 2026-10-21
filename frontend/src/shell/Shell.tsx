@@ -13,6 +13,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AgentSettings } from "../agent/AgentSettings";
+import { YourServersSection } from "../selfServe/YourServersSection";
 import { AlertsBell } from "../alerts/AlertsBell";
 import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
@@ -422,6 +423,10 @@ export function Shell() {
               <Section label="Game PC agent" probe="agent">
                 {/* Keyed by server: an enrolment code is for one server and must never follow the user. */}
                 <AgentSettings key={server.id} />
+              </Section>
+              <Section label="Your server" probe="your-server">
+                {/* Keyed by server: a half-typed delete confirmation must not follow the user to another server. */}
+                <YourServersSection key={server.id} />
               </Section>
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />

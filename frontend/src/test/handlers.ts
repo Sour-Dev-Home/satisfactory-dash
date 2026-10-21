@@ -27,6 +27,7 @@ import {
   statusRunning,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import { createdAgentServer } from "./selfServeMocks";
 
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
 // from the shared fixtures. Tests override individual routes with server.use(...).
@@ -58,6 +59,8 @@ export const handlers = [
   http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
   http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(serverConnectionOk)),
   http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
+  // ADR-0046: any signed-in user adds a server of their own.
+  http.post(endpoints.selfServe.createAgentServer.route, () => HttpResponse.json(createdAgentServer, { status: 201 })),
   // ADR-0031: an agent server's two edits.
   http.patch(endpoints.serverManagement.renameAgent.route, () => HttpResponse.json(renameAgentServerResponse)),
   http.post(endpoints.serverManagement.switchToLocal.route, () => HttpResponse.json(serverConnectionOk)),
