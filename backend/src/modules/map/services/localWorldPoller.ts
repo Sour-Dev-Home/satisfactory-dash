@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { MapWorldLayer } from "@satisfactory-dash/shared";
-import type { MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
+import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { MapLiveSink } from "./mapLiveStore.js";
 import type { WorldIngestPort } from "./worldIngestService.js";
@@ -8,6 +8,7 @@ import type { WorldIngestPort } from "./worldIngestService.js";
 export interface LocalWorldPollerPorts {
   getRails(): Promise<MappedRailSegments>;
   getResourceNodes(): Promise<MappedResourceNodes>;
+  getConveyors(): Promise<MappedConveyors>;
   getTrains(): Promise<MappedTrains>;
   getTrainStations(): Promise<MappedTrainStations>;
 }
@@ -21,6 +22,8 @@ export interface LocalWorldPollerOptions {
   railsIntervalSeconds?: number;
   /** Resource nodes: every 30 min — this endpoint runs on the game thread. */
   resourceNodesIntervalSeconds?: number;
+  /** Conveyors (ADR-0048 amendment): every 10 min, jittered, the same schedule as rails. */
+  conveyorsIntervalSeconds?: number;
   /** mapLive (trains, stations): at the factory cadence (30 s, matching FACTORY_HISTORY_INTERVAL_SECONDS). */
   mapLiveIntervalSeconds?: number;
   /** A read that takes longer than this is abandoned and counted as failed, per cadence. */
@@ -31,6 +34,7 @@ export interface LocalWorldPollerOptions {
 }
 
 const DEFAULT_RAILS_INTERVAL_SECONDS = 600;
+const DEFAULT_CONVEYORS_INTERVAL_SECONDS = 600;
 const DEFAULT_RESOURCE_NODES_INTERVAL_SECONDS = 1800;
 const DEFAULT_MAP_LIVE_INTERVAL_SECONDS = 30;
 const DEFAULT_POLL_TIMEOUT_MS = 30_000;
@@ -128,10 +132,19 @@ export class LocalWorldPoller {
     const shared = { logger: options.logger, pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS, jitter };
     const { logger, serverPublicId, ingest, mapLive } = options;
 
-    const ingestLayer = async (layer: MapWorldLayer, mapped: { data: unknown[]; dropped: number }) => {
+    /** The skip reason last warned about per layer, so a streak of skipped cycles warns once, not every 10 minutes. */
+    const skipped = new Map<MapWorldLayer, string>();
+    const ingestLayer = async (layer: MapWorldLayer, mapped: { data: unknown[]; dropped: number; skip?: string }) => {
       if (mapped.dropped > 0) {
         logger.warn({ layer, serverId: serverPublicId, dropped: mapped.dropped }, "map world layer: game-adapter mapper dropped items");
       }
+      // No layer this cycle (conveyors: an FRM without connection fields, or over the edge cap): ingest nothing, the last good copy stays.
+      if (mapped.skip !== undefined) {
+        if (skipped.get(layer) !== mapped.skip) logger.warn({ layer, serverId: serverPublicId, reason: mapped.skip }, "map world layer: skipped, nothing ingested");
+        skipped.set(layer, mapped.skip);
+        return;
+      }
+      skipped.delete(layer);
       await ingest.ingest(serverPublicId, layer, { observedAt: new Date(now()).toISOString(), data: mapped.data });
     };
 
@@ -143,6 +156,7 @@ export class LocalWorldPoller {
         async () => ingestLayer("resourceNodes", await ports.getResourceNodes()),
         shared,
       ),
+      new Loop("conveyors", (options.conveyorsIntervalSeconds ?? DEFAULT_CONVEYORS_INTERVAL_SECONDS) * 1000, async () => ingestLayer("conveyors", await ports.getConveyors()), shared),
       new Loop(
         "mapLive",
         (options.mapLiveIntervalSeconds ?? DEFAULT_MAP_LIVE_INTERVAL_SECONDS) * 1000,

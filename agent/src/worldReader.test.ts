@@ -1,21 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAP_WORLD_LAYER_MAX_BYTES, RailsWorldIngestRequestSchema, ResourceNodesWorldIngestRequestSchema } from "@satisfactory-dash/shared";
-import type { MapWorldLayer, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { ConveyorEdge, MapWorldLayer, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
 import { BackendError } from "./backendClient.js";
 import type { AgentLogger, LogFields } from "./logger.js";
-import { RAILS_INTERVAL_MS, RESOURCE_NODES_INTERVAL_MS, WORLD_JITTER_FRACTION, WorldReader, jitteredIntervalMs } from "./worldReader.js";
+import { CONVEYORS_INTERVAL_MS, RAILS_INTERVAL_MS, RESOURCE_NODES_INTERVAL_MS, WORLD_JITTER_FRACTION, WorldReader, jitteredIntervalMs } from "./worldReader.js";
 import type { WorldClient, WorldPorts } from "./worldReader.js";
 
 /** Fake timers drive the reader's sleeps; a fake adapter stands in for the game and a fake client for the backend. */
 
 const rail = (x: number): RailSegment => ({ points: [[x, 0], [x + 10, 0]] }) as unknown as RailSegment;
+const edge = (id: string): ConveyorEdge => ({ id, kind: "belt", from: "a", fromKind: "machine", to: null, toKind: null, capacityPerMinute: 60, tier: "Conveyor Belt Mk.1", at: { x: 0, y: 0 } });
 const node = (x: number): ResourceNode => ({ id: `n${x}`, type: "Desc_OreIron_C", purity: "normal", position: [x, 0] }) as unknown as ResourceNode;
 
 function setup(options: { random?: () => number } = {}) {
-  const world = { rails: [rail(1)], resourceNodes: [node(1)] };
+  const world = { rails: [rail(1)], resourceNodes: [node(1)], conveyors: [edge("b1")] };
   const ports = {
     getRails: vi.fn<WorldPorts["getRails"]>(async () => ({ data: world.rails, dropped: 0 })),
     getResourceNodes: vi.fn<WorldPorts["getResourceNodes"]>(async () => ({ data: world.resourceNodes, dropped: 0 })),
+    getConveyors: vi.fn<WorldPorts["getConveyors"]>(async () => ({ data: world.conveyors, dropped: 0 })),
   };
   const sent: { layer: MapWorldLayer; body: { observedAt: string; data: unknown[] } }[] = [];
   const client = {
@@ -62,6 +64,7 @@ describe("the world reader's schedule", () => {
   it("rails every 10 minutes and resource nodes (a game-thread endpoint) every 30 minutes, jittered by at most ±10%", () => {
     expect(RAILS_INTERVAL_MS).toBe(600_000);
     expect(RESOURCE_NODES_INTERVAL_MS).toBe(1_800_000);
+    expect(CONVEYORS_INTERVAL_MS).toBe(600_000);
     expect(WORLD_JITTER_FRACTION).toBe(0.1);
     for (const r of [0, 0.25, 0.5, 0.75, 0.999999]) {
       const delay = jitteredIntervalMs(RAILS_INTERVAL_MS, () => r);
@@ -161,6 +164,60 @@ describe("sending only on change", () => {
     await h.start();
     expect(h.warnings("world_layer_items_dropped")).toEqual([{ level: "warn", event: "world_layer_items_dropped", fields: { layer: "rails", dropped: 3 } }]);
     expect(h.sentFor("rails")).toHaveLength(1);
+    await h.stop();
+  });
+});
+
+// ADR-0048 amendment (PR 2): the conveyors layer rides the same pipeline, on rails' 10 min schedule.
+describe("the conveyors layer", () => {
+  it("is read on start and every 10 minutes, jittered like rails", async () => {
+    const h = setup({ random: () => 0 });
+    await h.start();
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(540_000 - 1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    await h.stop();
+  });
+
+  it("the first read sends as the contract's body, an unchanged hash sends nothing, a change sends again", async () => {
+    const h = setup();
+    await h.start();
+    expect(h.sentFor("conveyors")).toHaveLength(1);
+    expect(h.sentFor("conveyors")[0]!.body).toEqual({ observedAt: "2026-10-14T12:00:00.000Z", data: [edge("b1")] });
+    h.world.conveyors = h.world.conveyors.map((e) => ({ ...e })); // equal content, new objects
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("conveyors")).toHaveLength(1);
+    h.world.conveyors = [edge("b1"), edge("b2")];
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("conveyors")).toHaveLength(2);
+    expect(h.sentFor("rails")).toHaveLength(1);
+    await h.stop();
+  });
+
+  it("a read with `skip` sends nothing, warns once per streak with the reason as a code, and sends again once it clears", async () => {
+    const h = setup();
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "unsupportedFrm" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await h.start();
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("conveyors")).toHaveLength(0);
+    expect(h.warnings("world_layer_skipped")).toEqual([{ level: "warn", event: "world_layer_skipped", fields: { layer: "conveyors", reason: "unsupportedFrm" } }]);
+    expect(h.sentFor("rails")).toHaveLength(1); // the other layers are unaffected
+    h.ports.getConveyors.mockResolvedValue({ data: h.world.conveyors, dropped: 0 });
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("conveyors")).toHaveLength(1);
+    await h.stop();
+  });
+
+  it("a change of skip reason inside a streak warns again, with the new reason", async () => {
+    const h = setup();
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "unsupportedFrm" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await h.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.warnings("world_layer_skipped").map((w) => w.fields?.reason)).toEqual(["unsupportedFrm", "tooManyEdges"]);
     await h.stop();
   });
 });

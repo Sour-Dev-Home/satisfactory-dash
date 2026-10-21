@@ -27,8 +27,8 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
-import { mapRailSegments, mapResourceNodes, mapTrains, mapTrainStations } from "./map/index.js";
-import type { MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "./map/index.js";
+import { mapConveyors, mapRailSegments, mapResourceNodes, mapTrains, mapTrainStations } from "./map/index.js";
+import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
 
 const MAX_REPORTED_ISSUES = 5;
@@ -261,6 +261,18 @@ export class SatisfactoryServerAdapter {
   async getRails(): Promise<MappedRailSegments> {
     const raw = parseUpstream("getTrainRails", z.array(RawFrmTrainRailSchema), await this.frmApi.get<unknown>("getTrainRails"));
     return mapRailSegments(raw);
+  }
+
+  /** ADR-0048 amendment (PR 2): every belt, lift and pipe as a connection edge (map/conveyorsMapper.ts). The three reads
+   *  go back to back so they agree with each other (about 0.3 s on the owner's save). A bad record is dropped (`dropped`),
+   *  and `skip` says there is no layer to send (an FRM without `ConnectedTo0`/`ConnectedTo1`, or over the edge cap). Read
+   *  every 10 min, never at the snapshot cadence. */
+  async getConveyors(): Promise<MappedConveyors> {
+    const array = z.array(z.unknown());
+    const belts = parseUpstream("getBelts", array, await this.frmApi.get<unknown>("getBelts"));
+    const lifts = parseUpstream("getLifts", array, await this.frmApi.get<unknown>("getLifts"));
+    const pipes = parseUpstream("getPipes", array, await this.frmApi.get<unknown>("getPipes"));
+    return mapConveyors({ belts, lifts, pipes });
   }
 
   /** ADR-0038 M2: every resource node, fracking satellite and geyser (map/resourceNodesMapper.ts;
