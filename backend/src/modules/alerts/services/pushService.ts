@@ -14,20 +14,24 @@ import {
   addPushOptIn,
   countSubscriptions,
   deleteOwnSubscription,
+  deleteGoneSubscription,
   findSubscriptionByHash,
-  getOwnSubscription,
   getPushOptIn,
+  getSealedOwnSubscription,
   insertSubscription,
   lockUserPush,
+  markSubscriptionSuccess,
   removePushOptIn,
   replaceSubscriptionKeys,
   type SealedPushFields,
 } from "../repositories/pushRepository.js";
+import { formatPushTestMessage } from "./alertMessage.js";
 import { parsePushEndpoint } from "./pushEndpoint.js";
+import { openPushSubscription, pushFieldContext, sendWebPush, type PushSendOutcome } from "./pushSender.js";
 
 /**
- * ADR-0044 (#348), task 348-1: web push subscriptions and the per-server opt-in. SENDING is task 348-2: until it exists,
- * `test` answers `{ ok: false, code: "unavailable" }`.
+ * ADR-0044 (#348), task 348-1: web push subscriptions and the per-server opt-in. Task 348-2: `test` really sends one
+ * fixed notification (no game text) and answers a stable code; a 404/410 from the push service deletes the subscription.
  *
  * The endpoint, p256dh and auth are secrets. They are sealed here (platform/secrets, bound to the user and the field),
  * stored sealed, and appear in no response, no log line and no audit row: an audit event carries ids and codes only. A
@@ -51,16 +55,36 @@ export interface PushServiceDeps {
   mode: AlertDeliveryMode;
   config: PushConfig;
   testLimiter?: UserRateLimiter;
+  /** Injectable for tests; defaults to the global fetch. */
+  fetch?: typeof fetch;
+  now?: () => number;
 }
 
 const subscriptionNotFound = (): ApiFailure => new ApiFailure("not_found", "That push subscription was not found");
 const pushDisabled = (): ApiFailure => new ApiFailure("push_disabled", "Push notifications are not enabled on this backend");
+
+/** The test send's answer codes (the contract's code is an open string: clients handle unknown ones generically). */
+type TestCode = "sent" | "subscription_gone" | "rate_limited" | "unavailable" | "rejected" | "secret_unreadable";
+
+function testCodeOf(outcome: PushSendOutcome): TestCode {
+  switch (outcome.kind) {
+    case "sent":
+      return "sent";
+    case "gone":
+      return "subscription_gone";
+    case "retry":
+      return outcome.code === "rate_limited" ? "rate_limited" : "unavailable";
+    case "rejected":
+      return "rejected";
+  }
+}
 
 const isUuid = (value: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 export function createPushService(deps: PushServiceDeps): PushService {
   const { db, ring, config } = deps;
   const testLimiter = deps.testLimiter ?? new UserRateLimiter({ max: 5, windowMs: 60_000 });
+  const now = deps.now ?? Date.now;
   /** `ALERT_DELIVERY=on` and VAPID configured (and a keyring to seal with). */
   const enabled = deps.mode === "on" && config.vapid !== null && ring !== null;
 
@@ -70,9 +94,9 @@ export function createPushService(deps: PushServiceDeps): PushService {
   };
 
   const seal = (keyring: SecretsKeyring, userId: string, endpoint: string, keys: PushSubscribeRequest["keys"]): SealedPushFields => {
-    const endpointSealed = keyring.seal(endpoint, `push:${userId}:endpoint`);
-    const p256dhSealed = keyring.seal(keys.p256dh, `push:${userId}:p256dh`);
-    const authSealed = keyring.seal(keys.auth, `push:${userId}:auth`);
+    const endpointSealed = keyring.seal(endpoint, pushFieldContext(userId, "endpoint"));
+    const p256dhSealed = keyring.seal(keys.p256dh, pushFieldContext(userId, "p256dh"));
+    const authSealed = keyring.seal(keys.auth, pushFieldContext(userId, "auth"));
     return { keyId: endpointSealed.keyId, endpointEnc: endpointSealed.data, p256dhEnc: p256dhSealed.data, authEnc: authSealed.data };
   };
 
@@ -121,16 +145,34 @@ export function createPushService(deps: PushServiceDeps): PushService {
       ),
 
     test: async (userId, subscriptionId) => {
-      requireEnabled();
+      const keyring = requireEnabled();
+      const vapid = config.vapid;
+      if (vapid === null) throw pushDisabled();
       const wait = testLimiter.hit(userId);
       if (wait > 0) throw new RateLimitedError(wait, "Too many test notifications. Try again shortly.");
+      // Not a uuid is the same 404 as someone else's.
+      const sealed = isUuid(subscriptionId) ? await orUnavailable(() => getSealedOwnSubscription(db, userId, subscriptionId)) : undefined;
+      if (sealed === undefined) throw subscriptionNotFound();
+      // 348-2: a real send, outside any transaction (a slow push service must not hold a connection), then the outcome
+      // and the audit row in one. The answer is a stable code only, like the Discord test.
+      const opened = openPushSubscription(keyring, sealed);
+      const code: TestCode =
+        opened === undefined
+          ? "secret_unreadable"
+          : testCodeOf(
+              await sendWebPush(
+                { ...opened, payload: formatPushTestMessage(now()), urgency: "normal" },
+                { vapid, allowedHosts: config.allowedHosts, fetch: deps.fetch, now },
+              ),
+            );
       return orUnavailable(() =>
         withTransaction(db, async (client) => {
-          if (!isUuid(subscriptionId) || (await getOwnSubscription(client, userId, subscriptionId)) === undefined) throw subscriptionNotFound();
-          // 348-2 sends here. Until then nothing is sent, and the audit row says so.
-          const code = "unavailable";
+          if (code === "sent") await markSubscriptionSuccess(client, subscriptionId);
+          if (code === "subscription_gone" && (await deleteGoneSubscription(client, subscriptionId))) {
+            await audit(client, userId, "alerts.push.subscription_gone", { subscriptionId, via: "test" });
+          }
           await audit(client, userId, "alerts.push.tested", { subscriptionId, outcome: code });
-          return { ok: false as const, code };
+          return code === "sent" ? { ok: true as const } : { ok: false as const, code };
         }),
       );
     },

@@ -54,6 +54,21 @@ describe("loadPushConfig: VAPID (all three or none)", () => {
     }
   });
 
+  it("refuses a public key that does not belong to the private key, naming the variables and no value", () => {
+    const other = createECDH("prime256v1");
+    other.generateKeys();
+    const mismatched = { ...GOOD, VAPID_PUBLIC_KEY: other.getPublicKey().toString("base64url") };
+    const error = (() => { try { loadPushConfig(mismatched); } catch (e) { return e; } })();
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as Error).message).toMatch(/VAPID_PUBLIC_KEY.*VAPID_PRIVATE_KEY/);
+    for (const value of [PRIVATE, PUBLIC, mismatched.VAPID_PUBLIC_KEY]) expect((error as Error).message).not.toContain(value);
+  });
+
+  it("refuses a private key that is not a valid P-256 scalar (all zero) as VAPID_PRIVATE_KEY", () => {
+    const zero = { ...GOOD, VAPID_PRIVATE_KEY: Buffer.alloc(32).toString("base64url") };
+    expect(() => loadPushConfig(zero)).toThrow(/VAPID_PRIVATE_KEY/);
+  });
+
   it("never shows the private key when the config is serialised or logged", () => {
     const config = loadPushConfig(GOOD);
     expect(JSON.stringify(config)).not.toContain(PRIVATE);
