@@ -23,9 +23,16 @@ export interface MapContext {
   token: (name: string) => string;
 }
 
+/** What a layer's text may need beyond its data. */
+export interface DescribeOptions {
+  /** The backend cut the layer to its item cap: the text speaks of what is shown, not of a total. */
+  truncated?: boolean;
+}
+
 /**
- * A map layer plug-in. v1's layers all draw the factory data; a layer with its own data
- * adds a query to this contract when it arrives (ADR-0023: power circuits, then belts, trains).
+ * A map layer plug-in. The buildings layer draws the factory data; a world layer (ADR-0038: rails,
+ * resource nodes) draws its own stored list, which MapPanel reads through the query layer only while
+ * the layer is on. `T` is that data; the contract itself doesn't change.
  */
 export interface MapLayer<T = Factory> {
   id: string;
@@ -35,5 +42,5 @@ export interface MapLayer<T = Factory> {
   draw: (ctx: MapContext, data: T) => () => void;
   legend: () => ReactNode;
   /** The text alternative to what the layer draws (ADR-0023 decision 7). */
-  describe: (data: T) => ReactNode;
+  describe: (data: T, options?: DescribeOptions) => ReactNode;
 }

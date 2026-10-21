@@ -9,14 +9,14 @@ export function ErrorNotice({ error, action }: { error: unknown; action?: ReactN
   const requestId = error instanceof ApiError ? error.requestId : undefined;
   return (
     <div role="alert">
-      <p>{describe(error)}</p>
+      <p>{describeError(error)}</p>
       {requestId && <p>Request ID: {requestId}</p>}
       {action}
     </div>
   );
 }
 
-function describe(error: unknown): string {
+export function describeError(error: unknown): string {
   switch (classifyError(error)) {
     case "backend_unreachable":
       return "Couldn't reach the dashboard backend.";

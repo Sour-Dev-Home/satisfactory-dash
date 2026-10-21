@@ -75,6 +75,10 @@ const CASES: StateCase[] = [
   { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/ },
   { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
+  // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
+  { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
+  { scenario: "map-world-truncated", path: "/app/map", shows: /Showing part of the rails/ },
+  { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
   { scenario: "login", shows: "Sign in" },
   { scenario: "login-google", shows: "Sign in with Google" },
   {
@@ -267,6 +271,9 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     if (browser) await stubPushBrowser(page, browser);
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
+    // The backed-up ring pulses on the canvas, which "animations: disabled" cannot stop: reduced motion
+    // holds it still, so every map screenshot shows the same frame.
+    if (path === "/app/map") await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(path);
     if (act) {
       // Sign-in states act on the login form once it's there; the rest act on their page, and
