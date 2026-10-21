@@ -147,6 +147,20 @@ describe("POST /agent/v1/enroll", () => {
     expect(enroll).toHaveBeenCalledTimes(2);
   });
 
+  it("a network over its own limit never spends the global budget, so another network still enrols (#524 review)", async () => {
+    const { app, enroll } = build({
+      enrollLimiter: new UserRateLimiter({ max: 2, windowMs: 60_000 }),
+      globalEnrollLimiter: new UserRateLimiter({ max: 5, windowMs: 60_000 }),
+    });
+    const send = (ip: string) => request(app).post("/agent/v1/enroll").set("CF-Connecting-IP", ip).send(agentEnrollRequest);
+    for (let i = 0; i < 2; i++) expect((await send("198.51.100.1")).status).toBe(201);
+    // Twenty more from the same network: all refused by its own limit, and none may count against the global 5.
+    for (let i = 0; i < 20; i++) expect((await send("198.51.100.1")).status).toBe(429);
+    expect((await send("203.0.113.7")).status).toBe(201);
+    expect((await send("203.0.113.7")).status).toBe(201);
+    expect(enroll).toHaveBeenCalledTimes(4);
+  });
+
   it("enrols a 12-character code", async () => {
     const { app, enroll } = build();
     const res = await request(app).post("/agent/v1/enroll").send({ code: "AB3D-7XQ2-K5MN", agentVersion: "0.1.0" });

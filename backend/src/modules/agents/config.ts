@@ -16,6 +16,8 @@ export const ENROLL_PER_NETWORK_PER_MINUTE = 10;
  * Guess arithmetic: a code is 60 bits (12 base32 characters). One open code per server, so at most C2 + 8 = 33 open codes.
  * A year of guessing at the cap is 1,200 x 60 x 24 x 365 = 6.3e8 attempts, and the chance that one hits an open code is
  * 6.3e8 x 33 / 2^60 = about 1.8e-8. With the old 40-bit codes the same cap gave 6.3e8 x 33 / 2^40 = about 0.019.
+ * Both figures assume one backend instance (ADR-0010): with N instances the cap, and the chance, multiply by N.
+ * Requests refused by the per-network limit never count here (agentApi.ts), so a lockout really needs about 120 networks.
  */
 export const ENROLL_GLOBAL_PER_MINUTE = 1200;
 

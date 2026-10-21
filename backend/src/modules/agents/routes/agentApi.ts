@@ -123,9 +123,17 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     express.json({ limit: "4kb" }),
     async (req, res) => {
       // Per network (an IPv6 /64 counts as one) AND process-wide: the per-network table is bounded, so a flood of distinct
-      // addresses could push counters out, and every open code on every server is a target for a guess.
-      const wait = Math.max(enrollLimiter.hit(rateLimitKey(req)), globalEnrollLimiter.hit("all"));
-      if (wait > 0) throw new RateLimitedError(wait, "Too many enrollment attempts. Try again in a minute.");
+      // addresses could push counters out, and every open code on every server is a target for a guess. The network is
+      // checked first and the global budget is charged only for requests that pass it (#524 security review): otherwise
+      // one network's refused requests would use up the global budget and lock out every honest enrolment.
+      const network = rateLimitKey(req);
+      const networkWait = enrollLimiter.hit(network);
+      if (networkWait > 0) throw new RateLimitedError(networkWait, "Too many enrollment attempts. Try again in a minute.");
+      const globalWait = globalEnrollLimiter.hit("all");
+      if (globalWait > 0) {
+        enrollLimiter.refund(network);
+        throw new RateLimitedError(globalWait, "Too many enrollment attempts. Try again in a minute.");
+      }
       const body = EnrollRequestSchema.safeParse(req.body);
       if (!body.success) throw new BadRequestError("The request body is not valid");
       const enrolled = await deps.enrollment.enroll(body.data.code, body.data.agentVersion);
