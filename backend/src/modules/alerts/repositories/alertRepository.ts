@@ -128,6 +128,21 @@ const ENQUEUE_DELIVERIES = `
   WHERE e.id = ANY($1::bigint[])
   ON CONFLICT (event_id, destination_id) DO NOTHING`;
 
+// ADR-0044 decision 5 (348-2), the push fan-out: one row per (new event, subscription of a CURRENT member who opted in
+// for that server and whose account is active), in the same transaction. (event_id, push_subscription_id) is the
+// idempotency key (the partial unique index outbox_event_push_uq). The sender checks the recipient again before sending.
+const ENQUEUE_PUSH = `
+  INSERT INTO alerts.outbox (event_id, push_subscription_id)
+  SELECT e.id, ps.id
+  FROM alerts.alert_events e
+  JOIN servers.servers sv ON sv.id = e.server_id AND sv.deleted_at IS NULL
+  JOIN alerts.push_optins po ON po.server_id = e.server_id
+  JOIN servers.server_members m ON m.server_id = po.server_id AND m.user_id = po.user_id
+  JOIN identity.users u ON u.id = po.user_id AND u.status = 'active'
+  JOIN alerts.push_subscriptions ps ON ps.user_id = po.user_id
+  WHERE e.id = ANY($1::bigint[])
+  ON CONFLICT (event_id, push_subscription_id) WHERE push_subscription_id IS NOT NULL DO NOTHING`;
+
 const InsertedIdSchema = z.object({ id: z.string() });
 
 const PURGE_EVENTS = `
@@ -198,6 +213,9 @@ export async function writeEvaluation(
     /** ALERT_DELIVERY is on: also queue each new event for every enabled destination, in the same transaction. While
      *  it is off nothing is queued, so switching it on later sends only transitions that happen after that. */
     deliver?: boolean;
+    /** ADR-0044: web push is enabled too (ALERT_DELIVERY on, VAPID configured, a keyring): also queue each new event for
+     *  every opted-in, active member's subscriptions. Only takes effect with `deliver`. */
+    deliverPush?: boolean;
   },
 ): Promise<void> {
   const deletes = input.deletes ?? [];
@@ -233,6 +251,7 @@ export async function writeEvaluation(
       if (input.deliver === true) {
         const ids = parseRows(InsertedIdSchema, inserted.rows, "alerts.insertEvents").map((row) => row.id);
         if (ids.length > 0) await timedQuery(client, "alerts.enqueueDeliveries", ENQUEUE_DELIVERIES, [ids]);
+        if (ids.length > 0 && input.deliverPush === true) await timedQuery(client, "alerts.enqueuePush", ENQUEUE_PUSH, [ids]);
       }
     }
   });

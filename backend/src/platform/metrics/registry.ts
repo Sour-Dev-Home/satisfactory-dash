@@ -64,7 +64,9 @@ export const isOneOf =
 const POLLER_GROUPS = ["power", "factory"];
 const HISTORY_TABLES = ["power_samples", "item_samples", "building_transitions"];
 /** The statuses an agent request is refused with (#514): agents/routes/agentApi.ts counts exactly these. */
-export const AGENT_REFUSED_STATUSES = ["400", "401", "413", "415", "429"];
+/** ADR-0044 (348-2): why the push sender dropped a row without delivering it. */
+export const PUSH_DROP_REASONS = ["not_member", "user_inactive", "opted_out", "endpoint_refused", "gone", "rejected", "expired", "unreadable", "push_disabled"] as const;
+export const AGENT_REFUSED_STATUSES =["400", "401", "413", "415", "429"];
 const ALERT_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target", "agent_offline"];
 
 /** ADR-0037 build step 4's closed set: the static name of every query `timedQuery` (platform/db)
@@ -121,6 +123,7 @@ export const QUERY_NAMES = [
   "alerts.destinationSummary",
   "alerts.disableDestination",
   "alerts.enqueueDeliveries",
+  "alerts.enqueuePush",
   "alerts.insertEvents",
   "alerts.listRules",
   "alerts.loadMutes",
@@ -130,11 +133,15 @@ export const QUERY_NAMES = [
   "alerts.purge",
   "alerts.push.count",
   "alerts.push.delete",
+  "alerts.push.deleteGone",
   "alerts.push.findByHash",
   "alerts.push.getOptIn",
   "alerts.push.getOwned",
+  "alerts.push.getSealedOwned",
   "alerts.push.insert",
   "alerts.push.lockUser",
+  "alerts.push.markSuccess",
+  "alerts.push.recipientCheck",
   "alerts.push.removeOptIn",
   "alerts.push.setKeys",
   "alerts.push.setOptIn",
@@ -286,6 +293,12 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   "satis.alerts.events_dropped": {
     kind: "counter",
     labels: { server: isBoundedToken(64) },
+  },
+  // ADR-0044 (348-2): push rows the sender gave up on without a delivery, by reason (the send-time recipient recheck,
+  // the endpoint allowlist recheck, a gone subscription, a refusal, expiry); `server` is the public id.
+  "satis.alerts.push.dropped": {
+    kind: "counter",
+    labels: { server: isBoundedToken(64), reason: isOneOf(...PUSH_DROP_REASONS) },
   },
 });
 

@@ -122,6 +122,50 @@ echoed by the terminal (clear the screen afterwards, or pipe it in), and do not 
 To stop sending at once: set `ALERT_DELIVERY=off` and restart (rows already queued wait in the outbox and are sent if
 you turn it back on within 24 hours, then given up).
 
+## Web push (ADR-0044, #348 task 348-2)
+
+Push is a second channel through the **same outbox and the same sender**. It is on only when all of these hold:
+`ALERT_DELIVERY=on` (the same kill switch: off stops push too), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and
+`VAPID_SUBJECT` set, and `SERVER_SECRETS_KEY` present. `GET /api/push/config` says `enabled: true` only then. The service
+worker and the opt-in UI are task 348-3; until it ships, subscriptions come only from a hand-made client.
+
+- **Who gets a message (fan-out).** When an alert event is written, the same transaction adds one outbox row per
+  subscription of every user who is **a current member of the server, active (`identity.users.status = 'active'`) and
+  opted in** for it (`alerts.push_optins`). `(event, subscription)` is unique.
+- **Send-time recheck.** Just before each push the sender checks again: still a member, still active, still opted in. If
+  not, the row is dropped (`dead`, `last_error` = `recipient_not_member`, `recipient_user_inactive` or
+  `recipient_opted_out`) and nothing is sent, so a removed member or an account disabled with
+  `npm run admin -- disable-user` (#516) gets no alert content. The endpoint is checked against `PUSH_ENDPOINT_HOSTS`
+  again too; one that no longer passes is dropped as `endpoint_refused` and never fetched.
+- **What is sent.** JSON of at most 3 KB: `{ v, title, body, serverId, kind, transition, severity, at }`, with the same
+  words as the Discord message (title, server name, detail lines), game text cleaned as plain text (no control, bidi or
+  invisible characters, length cut). It is encrypted per RFC 8291 (`aes128gcm`) and signed with VAPID (RFC 8292, ES256,
+  token valid 12 h), both on `node:crypto`. Headers: `TTL: 14400` (4 h), `Urgency: high` for a critical alert firing,
+  `normal` otherwise. 10 s timeout; redirects are never followed.
+- **Responses.** 2xx sent (and the subscription's `last_success_at` is set). **404 or 410 deletes the subscription**
+  (its queued rows go with it) and writes an `alerts.push.subscription_gone` audit row (ids and the status only). 429
+  (honouring `Retry-After`), 5xx, a timeout or a network error retry with the same backoff as Discord (30 s doubling to
+  30 min, given up after 24 h). Any other answer drops that row: `redirect_refused`, `vapid_rejected` (401/403: the
+  VAPID keys changed, or the subscription was made for other keys), `bad_request`, `too_large`, `unexpected_status`.
+  Keys a browser could not have made (not a P-256 point) are `bad_keys`, without a request.
+- **Fairness and volume (#515).** Push rows share the claim's per-server turns with Discord rows (a row's server is its
+  event's server), so a server with many subscribers gets no more of each batch of 10 than a server with one webhook.
+  The hourly event cap bounds what one server can queue: at most 120 events an hour, each times the number of opted-in
+  devices (10 a user at most). If push lag grows, measure outbox lag first (ADR-0044 "Revisit when").
+- **The test button.** `POST /api/push/subscriptions/:id/test` sends one fixed notification (no game text) and answers
+  `{ ok: true }` or `{ ok: false, code }`: `subscription_gone` (it was deleted), `rate_limited`, `unavailable` (5xx,
+  timeout, network), `rejected`, `secret_unreadable`. Still 5 a minute per user, audited as `alerts.push.tested`.
+
+Counting drops: the metric `satis.alerts.push.dropped{server, reason}` (reasons `not_member`, `user_inactive`,
+`opted_out`, `endpoint_refused`, `gone`, `rejected`, `expired`, `unreadable`, `push_disabled`), or in SQL:
+`SELECT last_error, count(*) FROM alerts.outbox WHERE push_subscription_id IS NOT NULL AND status = 'dead' GROUP BY 1`.
+Logs carry the server's public id, the alert kind, `channel: "push"` and a code; **never the endpoint, its host, a key,
+the payload or the user**. `ALERT_PUSH_SUBSCRIPTION_UNREADABLE` means a subscription's sealed fields cannot be opened
+(the key changed); the row is retried like a Discord webhook that cannot be opened.
+
+Rotating the VAPID keys invalidates every subscription: the push services then answer 401/403 (`vapid_rejected`) or
+404/410, and users must subscribe again. Rotate only on compromise (ADR-0044 decision 4).
+
 ## The alerts API (ADR-0027 PR 7b)
 
 Thirteen routes under `/api/servers/:serverId/alerts/...` (the contract is `packages/shared/src/alerts.ts`; the sessions

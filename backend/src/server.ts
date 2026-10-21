@@ -49,6 +49,7 @@ import {
   createPushService,
   loadAlertDeliveryMode,
   loadPushConfig,
+  pushEnabled,
 } from "./modules/alerts/index.js";
 import {
   createAgentTelemetryServices,
@@ -265,9 +266,18 @@ const databaseWorkers = [
   // transitions in the alert log. It needs the database up, so it starts with the others. PR 6: with ALERT_DELIVERY
   // on it also queues each new event for the server's destinations, and the sender delivers them; off (the default)
   // it queues nothing and sends nothing.
-  ...(database ? [createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), { deliver: alertDelivery === "on" })] : []),
+  // ADR-0044 (348-2): with push enabled too (VAPID configured), each new event is also queued for the subscriptions of
+  // the server's opted-in, active members, and the same sender delivers them.
+  ...(database
+    ? [
+        createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), {
+          deliver: alertDelivery === "on",
+          deliverPush: pushEnabled(alertDelivery, pushConfig, secretsKeyring),
+        }),
+      ]
+    : []),
   ...(database && alertDelivery === "on" && secretsKeyring
-    ? [createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }))]
+    ? [createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }), { push: pushConfig })]
     : []),
 ];
 

@@ -64,6 +64,7 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
       group: "power",
       table: "power_samples",
       kind: "power_outage",
+      reason: "not_member",
     };
     for (const [metric, definition] of Object.entries(METRIC_REGISTRY)) {
       const labels: Record<string, string> = {};
