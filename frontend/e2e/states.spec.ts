@@ -205,7 +205,7 @@ const CASES: StateCase[] = [
   { scenario: "push-enabled", path: "/app/settings", shows: /This device is not subscribed/, clock: FIXTURE_NOW, browser: "off" },
   { scenario: "push-opted-in", name: "push-subscribed", path: "/app/settings", shows: /This device is subscribed/, clock: FIXTURE_NOW, browser: "subscribed" },
   { scenario: "push-enabled", name: "push-denied", path: "/app/settings", shows: /Notifications are blocked for this site/, clock: FIXTURE_NOW, browser: "denied" },
-  { scenario: "push-viewer", path: "/app/settings", shows: /Owners, admins and viewers can each set it/, clock: FIXTURE_NOW, browser: "off" },
+  { scenario: "push-viewer", path: "/app/settings", shows: /It applies to every device where push is on/, clock: FIXTURE_NOW, browser: "off" },
   // Settings → Game PC agent (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
   { scenario: "agent-local-operator", path: "/app/settings", shows: /forgets its stored game-server tokens/, clock: AGENT_NOW },
   {

@@ -18,6 +18,7 @@ import {
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
+import { READY_TIMEOUT_MS } from "./pushBrowser";
 import { PushSettings } from "./PushSettings";
 
 // Settings → Alerts → push (ADR-0044, #348). The browser's side (Notification, PushManager, the service worker
@@ -381,5 +382,75 @@ describe("hunt: focus", () => {
     fireEvent.click(screen.getByRole("button", { name: "Turn off push on this device" }));
     const on = await screen.findByRole("button", { name: "Turn on push on this device" });
     await waitFor(() => expect(on).toHaveFocus());
+  });
+});
+
+describe("permission changes while the page is open", () => {
+  it("stops saying subscribed when the tab becomes visible again and notifications are blocked", async () => {
+    fakeBrowser({ permission: "granted", subscribed: true });
+    enabled();
+    renderPush();
+    expect(await screen.findByText(/This device is/)).toHaveTextContent("subscribed");
+    (Notification as unknown as { permission: string }).permission = "denied";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(await screen.findByText(/Notifications are blocked for this site/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send test notification" })).toBeNull();
+  });
+
+  it("follows the Permissions API's change event where it exists", async () => {
+    fakeBrowser({ permission: "granted", subscribed: true });
+    const status = new EventTarget();
+    const query = vi.fn(() => Promise.resolve(status));
+    Object.defineProperty(navigator, "permissions", { value: { query }, configurable: true });
+    try {
+      enabled();
+      renderPush();
+      expect(await screen.findByText(/This device is/)).toHaveTextContent("subscribed");
+      await waitFor(() => expect(query).toHaveBeenCalledWith({ name: "notifications" }));
+      await Promise.resolve();
+      (Notification as unknown as { permission: string }).permission = "denied";
+      status.dispatchEvent(new Event("change"));
+      expect(await screen.findByText(/Notifications are blocked for this site/)).toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(navigator, "permissions");
+    }
+  });
+});
+
+describe("a service worker that never becomes ready", () => {
+  it("gives up after a while with a plain message, and the button works again", async () => {
+    const browser = fakeBrowser();
+    Object.defineProperty(browser.serviceWorker, "ready", { get: () => new Promise(() => undefined) });
+    enabled();
+    renderPush();
+    const button = await screen.findByRole("button", { name: "Turn on push on this device" });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fireEvent.click(button);
+      await vi.advanceTimersByTimeAsync(READY_TIMEOUT_MS + 100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await screen.findByText(/took too long to start push/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Turn on push on this device" })).toBeEnabled();
+  });
+});
+
+describe("when this device can't use push", () => {
+  it("disables the opt-in and says why", async () => {
+    fakeBrowser({ permission: "denied" });
+    enabled();
+    renderPush();
+    const box = await screen.findByRole("checkbox", { name: /Notify me about/ });
+    await waitFor(() => expect(box).toBeDisabled());
+    expect(screen.getByText(/this choice can't be changed here/)).toBeInTheDocument();
+    expect(box).toHaveAccessibleDescription(/can't be changed here/);
+  });
+
+  it("explains the choice's scope otherwise", async () => {
+    fakeBrowser();
+    enabled();
+    renderPush();
+    expect(await screen.findByText("Your own choice for this server. It applies to every device where push is on.")).toBeInTheDocument();
   });
 });

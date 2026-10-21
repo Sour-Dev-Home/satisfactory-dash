@@ -26,4 +26,6 @@ export const DENIED_TEXT =
   "Notifications are blocked for this site. Allow them in your browser's site settings, then reload this page.";
 export const DISMISSED_TEXT = "Permission wasn't given, so push is still off. You can try again.";
 export const DISABLED_TEXT = "Push notifications are turned off on this backend, so there is nothing to set up yet.";
+export const TIMEOUT_TEXT = "Your browser took too long to start push. Reload the page and try again.";
+export const OPT_IN_BLOCKED_TEXT = "Push can't be used on this device, so this choice can't be changed here.";
 export const SUBSCRIBE_FAILED_TEXT = "Your browser couldn't register for push. Try again in a moment.";

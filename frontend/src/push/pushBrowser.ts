@@ -54,6 +54,24 @@ export function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/** `serviceWorker.ready` never settles when the worker fails to install; Turn on gives up after this long. */
+export const READY_TIMEOUT_MS = 10_000;
+
+export class PushTimeoutError extends Error {
+  constructor() {
+    super("the service worker did not become ready in time");
+    this.name = "PushTimeoutError";
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new PushTimeoutError()), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export type EnableResult = { status: "subscribed"; subscription: PushSubscription } | { status: "denied" } | { status: "dismissed" };
 
 /**
@@ -65,7 +83,7 @@ export async function enableDevice(vapidPublicKey: string): Promise<EnableResult
   if (permission === "denied") return { status: "denied" };
   if (permission !== "granted") return { status: "dismissed" };
   await navigator.serviceWorker.register(PUSH_SW_URL);
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await withTimeout(navigator.serviceWorker.ready, READY_TIMEOUT_MS);
   const key = keyBytes(vapidPublicKey);
   let subscription = await registration.pushManager.getSubscription();
   // One made with another VAPID key can never receive our pushes (and subscribe() would throw): replace it.

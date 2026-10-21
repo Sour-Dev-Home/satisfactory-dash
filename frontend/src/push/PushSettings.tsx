@@ -12,8 +12,19 @@ import {
   notificationPermission,
   pushSupport,
   subscriptionBody,
+  PushTimeoutError,
 } from "./pushBrowser";
-import { DENIED_TEXT, DISABLED_TEXT, DISMISSED_TEXT, IOS_TEXT, SUBSCRIBE_FAILED_TEXT, UNSUPPORTED_TEXT, pushTestText } from "./pushText";
+import {
+  DENIED_TEXT,
+  DISABLED_TEXT,
+  DISMISSED_TEXT,
+  IOS_TEXT,
+  OPT_IN_BLOCKED_TEXT,
+  SUBSCRIBE_FAILED_TEXT,
+  TIMEOUT_TEXT,
+  UNSUPPORTED_TEXT,
+  pushTestText,
+} from "./pushText";
 
 /**
  * Settings → Alerts → "Push notifications on this device" (ADR-0044, #348). Whether push is on at all comes
@@ -98,21 +109,42 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
     actions.current?.querySelector("button")?.focus();
   }, [device.kind, work.busy]);
 
+  // Reads the browser's state. Run on mount and again when the permission may have changed (another tab, the
+  // site settings): a device that was subscribed stops saying so once notifications are blocked.
   useEffect(() => {
     let live = true;
-    void (async () => {
+    const read = async () => {
       const support = pushSupport();
       if (support !== "supported") return live && setDevice({ kind: support });
       if (notificationPermission() === "denied") return live && setDevice({ kind: "denied" });
       try {
         const sub = await currentSubscription(vapidPublicKey);
-        if (live) setDevice(sub ? { kind: "on" } : { kind: "off" });
+        // Keep the backend's id when it is still the same "on".
+        if (live) setDevice((prev) => (sub ? (prev.kind === "on" ? prev : { kind: "on" }) : { kind: "off" }));
       } catch {
         if (live) setDevice({ kind: "off" });
       }
-    })();
+    };
+    void read();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void read();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    let status: PermissionStatus | undefined;
+    const onChange = () => void read();
+    // Where the Permissions API knows "notifications", it tells us as it changes; elsewhere visibilitychange covers it.
+    navigator.permissions
+      ?.query({ name: "notifications" })
+      .then((s) => {
+        if (!live) return;
+        status = s;
+        s.addEventListener("change", onChange);
+      })
+      .catch(() => undefined);
     return () => {
       live = false;
+      document.removeEventListener("visibilitychange", onVisible);
+      status?.removeEventListener("change", onChange);
     };
   }, [vapidPublicKey]);
 
@@ -133,8 +165,8 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
       let result;
       try {
         result = await enableDevice(vapidPublicKey);
-      } catch {
-        setNote(SUBSCRIBE_FAILED_TEXT);
+      } catch (e) {
+        setNote(e instanceof PushTimeoutError ? TIMEOUT_TEXT : SUBSCRIBE_FAILED_TEXT);
         return;
       }
       if (result.status === "denied") return setDevice({ kind: "denied" });
@@ -193,18 +225,29 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
             <button type="button" disabled={work.busy} onClick={() => void sendTest()}>
               Send test notification
             </button>
-            <button type="button" disabled={work.busy} onClick={() => void turnOff()}>
+            <button
+              type="button"
+              disabled={work.busy}
+              onClick={() => void turnOff()}
+              className="border-transparent bg-transparent text-muted hover:not-disabled:text-fg-strong"
+            >
               Turn off push on this device
             </button>
           </div>
         )}
         </div>
-        <p role="status" className="mb-0 text-sm">
+        {/* Always mounted, with one line reserved, so a result doesn't push what is below it down. */}
+        <p role="status" className="mb-0 min-h-lh text-sm">
           {note}
         </p>
         {work.failure !== null && <ErrorNotice error={work.failure} />}
       </Loadable>
-      <OptIn writes={writes} serverId={server.id} serverName={server.displayName} />
+      <OptIn
+        writes={writes}
+        serverId={server.id}
+        serverName={server.displayName}
+        deviceBlocked={device.kind === "denied" || device.kind === "unsupported" || device.kind === "ios"}
+      />
     </div>
   );
 }
@@ -232,7 +275,18 @@ function DeviceState({ device }: { device: Device }) {
 }
 
 /** The member's own opt-in for this server. Any role may set it: it is their notification, no server setting. */
-function OptIn({ writes, serverId, serverName }: { writes: ReturnType<typeof usePushWrites>; serverId: string; serverName: string }) {
+function OptIn({
+  writes,
+  serverId,
+  serverName,
+  deviceBlocked,
+}: {
+  writes: ReturnType<typeof usePushWrites>;
+  serverId: string;
+  serverName: string;
+  /** Notifications are blocked or unsupported on this device: the choice can't be changed from here. */
+  deviceBlocked: boolean;
+}) {
   const optIn = useQuery(queries.pushOptIn(serverId));
   const inputId = useId();
   return (
@@ -248,17 +302,20 @@ function OptIn({ writes, serverId, serverName }: { writes: ReturnType<typeof use
         />
       ) : (
         <>
-          <label htmlFor={inputId} className="flex items-center gap-2 text-sm">
+          <label htmlFor={inputId} className="flex min-h-touch items-center gap-3">
             <input
               id={inputId}
               type="checkbox"
               checked={optIn.data.optedIn}
-              disabled={writes.setOptIn.isPending}
+              disabled={deviceBlocked || writes.setOptIn.isPending}
+              aria-describedby={`${inputId}-hint`}
               onChange={(e) => writes.setOptIn.mutate(e.target.checked)}
             />
             Notify me about {serverName} on my devices
           </label>
-          <p className="mb-0 text-sm text-muted">Your own choice for this server. Owners, admins and viewers can each set it.</p>
+          <p id={`${inputId}-hint`} className="mb-0 text-sm text-muted">
+            {deviceBlocked ? OPT_IN_BLOCKED_TEXT : "Your own choice for this server. It applies to every device where push is on."}
+          </p>
           {writes.setOptIn.error && <ErrorNotice error={writes.setOptIn.error} />}
         </>
       )}

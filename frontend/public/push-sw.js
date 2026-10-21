@@ -19,7 +19,12 @@ var FALLBACK_BODY = "Something needs a look on one of your servers.";
 
 function clip(value, max) {
   // Blank text counts as missing, or the notification would be an empty box.
-  return typeof value === "string" && value.trim() ? value.slice(0, max) : "";
+  if (typeof value !== "string" || !value.trim()) return "";
+  var out = value.slice(0, max);
+  // Never end on half of a surrogate pair (an emoji cut in two shows as a broken character).
+  var last = out.charCodeAt(out.length - 1);
+  if (out.length < value.length && last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+  return out;
 }
 
 /** The payload object from a push event's data, or null for no data or anything that is not a JSON object. */

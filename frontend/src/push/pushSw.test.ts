@@ -45,6 +45,29 @@ const PAYLOAD = {
   at: "2026-10-21T10:00:00.000Z",
 };
 
+describe("push-sw.js text clipping", () => {
+  it("never cuts a surrogate pair in half", async () => {
+    const { listeners, showNotification } = load();
+    // 119 letters then an emoji (two UTF-16 units): a plain slice(0, 120) would keep only its first half.
+    const title = "a".repeat(119) + "\u{1F600}" + "tail";
+    const { event, done } = pushEvent(dataOf({ title, body: "\u{1F600}".repeat(300) }));
+    listeners.get("push")!(event);
+    await done();
+    const [shownTitle, options] = showNotification.mock.calls[0] as unknown as [string, { body: string }];
+    expect(shownTitle).toBe("a".repeat(119));
+    for (const text of [shownTitle, options.body]) expect(text).not.toMatch(/[\ud800-\udbff]$/);
+    expect(options.body).toBe("\u{1F600}".repeat(200));
+  });
+
+  it("keeps a whole pair that fits exactly", async () => {
+    const { listeners, showNotification } = load();
+    const { event, done } = pushEvent(dataOf({ title: "a".repeat(118) + "\u{1F600}" }));
+    listeners.get("push")!(event);
+    await done();
+    expect((showNotification.mock.calls[0] as unknown as [string])[0]).toBe("a".repeat(118) + "\u{1F600}");
+  });
+});
+
 describe("push-sw.js", () => {
   it("has a push and a notificationclick handler, and no fetch handler or cache", () => {
     const { listeners } = load();
