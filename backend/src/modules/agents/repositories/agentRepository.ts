@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { parseFirst } from "../../../platform/db/rows.js";
+import { parseFirst, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../../platform/db/timedQuery.js";
 
@@ -187,4 +187,17 @@ const REVOKE = `
 export async function revokeCredential(db: Queryable, serverUuid: string): Promise<boolean> {
   const result = await timedQuery(db, "agents.revokeCredential", REVOKE, [serverUuid]);
   return result.rows.length > 0;
+}
+
+const EVER_ENROLLED = `
+  SELECT server_id::text AS server_id
+  FROM agents.agent_credentials
+  WHERE server_id = ANY($1::uuid[])`;
+
+/** ADR-0046 C3 (the servers module's self-serve create, injected by the composition root): which of these servers
+ *  (internal ids) have ever enrolled, meaning a credential row exists, revoked or not. */
+export async function enrolledServerIds(db: Queryable, serverUuids: readonly string[]): Promise<ReadonlySet<string>> {
+  if (serverUuids.length === 0) return new Set();
+  const result = await timedQuery(db, "agents.enrolledServerIds", EVER_ENROLLED, [serverUuids]);
+  return new Set(parseRows(z.object({ server_id: z.string() }), result.rows, "agents.enrolledServerIds").map((row) => row.server_id));
 }

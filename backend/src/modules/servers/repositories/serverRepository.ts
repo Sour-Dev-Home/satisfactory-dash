@@ -42,12 +42,15 @@ const toServer = (row: z.output<typeof ServerRowSchema>): RegisteredServer => ({
 
 // #516: a revive (a removed row coming back) purges the per-server data again, whatever raced the removal. `was_removed`
 // reads the row as it was before this statement, so a live server's refresh is not a revive.
+// #525: these upserts are operator paths (the management create, the import, the startup registration), so a revived row
+// becomes `created_via = 'operator'` even if it was a removed self-serve server; a live row keeps what it was.
 const UPSERT_SERVER = `
   WITH was_removed AS (SELECT id FROM servers.servers WHERE public_id = $1 AND deleted_at IS NOT NULL)
-  INSERT INTO servers.servers (public_id, display_name)
+  INSERT INTO servers.servers AS s (public_id, display_name)
   VALUES ($1, $2)
   ON CONFLICT (public_id) DO UPDATE
-    SET display_name = EXCLUDED.display_name, deleted_at = NULL
+    SET display_name = EXCLUDED.display_name, deleted_at = NULL,
+        created_via = CASE WHEN s.deleted_at IS NULL THEN s.created_via ELSE 'operator' END
   RETURNING id, public_id, display_name, hosting_mode, connection_kind, EXISTS (SELECT 1 FROM was_removed) AS revived`;
 
 const RevivedRowSchema = ServerRowSchema.extend({ revived: z.boolean() });
@@ -69,9 +72,10 @@ export async function upsertConfiguredServer(
 
 const ENSURE_SERVER = `
   WITH was_removed AS (SELECT id FROM servers.servers WHERE public_id = $1 AND deleted_at IS NOT NULL)
-  INSERT INTO servers.servers (public_id, display_name)
+  INSERT INTO servers.servers AS s (public_id, display_name)
   VALUES ($1, $2)
-  ON CONFLICT (public_id) DO UPDATE SET deleted_at = NULL
+  ON CONFLICT (public_id) DO UPDATE
+    SET deleted_at = NULL, created_via = CASE WHEN s.deleted_at IS NULL THEN s.created_via ELSE 'operator' END
   RETURNING id, public_id, display_name, hosting_mode, connection_kind, EXISTS (SELECT 1 FROM was_removed) AS revived`;
 
 /** Like `upsertConfiguredServer`, but an existing row keeps its display name (an import must not undo
@@ -296,6 +300,63 @@ export async function listAgentServers(db: Queryable): Promise<{ serverId: strin
   return parseRows(z.object({ id: z.string(), public_id: z.string(), display_name: z.string() }), result.rows, "servers.listAgentServers").map((row) => ({
     serverId: row.id,
     publicId: row.public_id,
+    displayName: row.display_name,
+  }));
+}
+
+const LIST_OPERATOR_AGENT_SERVERS = `
+  SELECT public_id, display_name
+  FROM servers.servers
+  WHERE connection_kind = 'agent' AND created_via = 'operator' AND deleted_at IS NULL
+  ORDER BY public_id`;
+
+/** ADR-0046 section 6: the operator's managed list shows only the agent servers the operator created. A self-serve server's
+ *  scoped routes 404 for the operator (not a member), so the list never offers rename or remove on one. */
+export async function listOperatorAgentServers(db: Queryable): Promise<{ publicId: string; displayName: string }[]> {
+  const result = await timedQuery(db, "servers.listOperatorAgentServers", LIST_OPERATOR_AGENT_SERVERS);
+  return parseRows(z.object({ public_id: z.string(), display_name: z.string() }), result.rows, "servers.listOperatorAgentServers").map((row) => ({
+    publicId: row.public_id,
+    displayName: row.display_name,
+  }));
+}
+
+// ADR-0046 section 1.3: a plain INSERT, never the upserts above. A public id that already exists, live or soft-deleted, is
+// a unique violation (the transaction fails), so a self-serve create can never revive a removed server's id.
+const INSERT_SELF_SERVE_SERVER = `
+  INSERT INTO servers.servers (public_id, display_name, connection_kind, created_via)
+  VALUES ($1, $2, 'agent', 'self_serve')
+  RETURNING id, public_id, display_name, hosting_mode, connection_kind`;
+
+/** Inserts a new self-serve agent server. The caller adds its owner in the same transaction (the database refuses the
+ *  commit otherwise, `servers_self_serve_has_owner`). */
+export async function insertSelfServeServer(db: Queryable, input: { publicId: string; displayName: string }): Promise<RegisteredServer> {
+  const result = await timedQuery(db, "servers.insertSelfServeServer", INSERT_SELF_SERVE_SERVER, [input.publicId, input.displayName]);
+  return toServer(parseOne(ServerRowSchema, result.rows, "servers.insertSelfServeServer"));
+}
+
+const COUNT_SELF_SERVE_SERVERS = `
+  SELECT count(*) AS n
+  FROM servers.servers
+  WHERE created_via = 'self_serve' AND deleted_at IS NULL`;
+
+/** C2: the live self-serve servers in total. */
+export async function countSelfServeServers(db: Queryable): Promise<number> {
+  const result = await timedQuery(db, "servers.countSelfServeServers", COUNT_SELF_SERVE_SERVERS);
+  return parseOne(z.object({ n: z.coerce.number() }), result.rows, "servers.countSelfServeServers").n;
+}
+
+const LIST_OWNED_SELF_SERVE = `
+  SELECT s.id, s.display_name
+  FROM servers.servers s
+  JOIN servers.server_members m ON m.server_id = s.id AND m.role = 'owner'
+  WHERE m.user_id = $1 AND s.created_via = 'self_serve' AND s.deleted_at IS NULL
+  ORDER BY s.created_at, s.id`;
+
+/** C1 and C3: the live self-serve servers this account owns (internal id and name), oldest first. */
+export async function listOwnedSelfServeServers(db: Queryable, userId: string): Promise<{ serverId: string; displayName: string }[]> {
+  const result = await timedQuery(db, "servers.listOwnedSelfServeServers", LIST_OWNED_SELF_SERVE, [userId]);
+  return parseRows(z.object({ id: z.string(), display_name: z.string() }), result.rows, "servers.listOwnedSelfServeServers").map((row) => ({
+    serverId: row.id,
     displayName: row.display_name,
   }));
 }

@@ -15,6 +15,13 @@ export { createServerManagementService } from "./serverManagement.js";
 export type { ConnectionCandidate, ManagementDb, ServerManagementDeps, ServerManagementService } from "./serverManagement.js";
 export { createServerManagementRouters } from "./serverManagementRouter.js";
 export type { ServerManagementRouterOptions } from "./serverManagementRouter.js";
+// ADR-0046: self-serve agent servers (shipped dark behind SELF_SERVE_ENABLED).
+export { createSelfServeService } from "./selfServe.js";
+export type { SelfServeDeps, SelfServeService } from "./selfServe.js";
+export { createSelfServeRouter } from "./selfServeRouter.js";
+export type { SelfServeRouterOptions } from "./selfServeRouter.js";
+export { loadSelfServeConfigFromEnv } from "./selfServeConfig.js";
+export type { SelfServeConfig } from "./selfServeConfig.js";
 export {
   AddressRefusedError,
   DEFAULT_ADDRESS_POLICY,

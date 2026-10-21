@@ -44,6 +44,42 @@ answer `upstream_unreachable` once the last snapshot is stale, its auto-pause ca
 and it stays that way until you either create a new enrollment code and enrol an agent, or switch the server back to
 `local` with `POST /api/servers/:serverId/local-connection` ([`servers.md`](./servers.md), ADR-0031 amendment 2).
 
+## Self-serve servers (ADR-0046, #525): shipped dark
+
+`POST /api/servers/agent` with `{ "displayName": "..." }` lets any signed-in, active account create an agent server of
+its own, without the operator. The backend picks the id (20 random base32 characters); the server is born `agent`, with
+no host, no tokens and no connection test, and the caller is its owner. The owner then makes a code with the usual
+`POST /api/servers/:serverId/agent/enrollment-codes` and puts it in the agent or the mod. In the database the server is
+`servers.servers.created_via = 'self_serve'` (everything else is `operator`), and a trigger refuses to commit a
+self-serve server that has no owner. `npm run admin -- list-servers` shows `via=operator` or `via=self_serve`. The
+operator's managed list (`GET /api/servers/managed`) shows operator-created agent servers only, since the operator is not
+a member of a self-serve one.
+
+**It is off until you turn it on.** Off, the route answers 403 `forbidden` for everyone and nothing else changes.
+
+| Setting (`backend/.env`, on AWS the task definition) | Cap | Default | Bounds | Refusal |
+|---|---|---|---|---|
+| `SELF_SERVE_ENABLED` | the kill switch | `false` | `true` or `false` | 403 `forbidden` |
+| `SELF_SERVE_MAX_SERVERS_PER_ACCOUNT` | C1, live self-serve servers one account owns | 2 | 1 to 20 | 409 `server_limit_reached` |
+| `SELF_SERVE_MAX_PENDING_PER_ACCOUNT` | C3, of those, never enrolled (no credential row, ever) | 1 | 1 to C1 | 409 `server_limit_reached`, naming the pending server |
+| `SELF_SERVE_MAX_SERVERS_TOTAL` | C2, live self-serve servers in total | 25 | 1 to 1000, at least C1 | 409 `server_limit_reached`, "the service is full" |
+| `SELF_SERVE_CREATES_PER_DAY` | C5, creations per account per 24 h (in memory; a refused create is not counted) | 5 | 1 to 100 | 429 `rate_limited` |
+
+The caps count self-serve servers only, and the operator's account is exempt from all of them. C1 to C3 are checked
+under the server-management advisory lock in the create transaction, so concurrent creates cannot pass one together. C5
+is in memory: a restart resets it, and a second backend instance would double it. Only the operator changes a setting,
+by editing it and restarting the backend; there is no API. A bad value stops the backend at startup, naming the
+variable. Lowering a cap never deletes a server; it only refuses new creates. Pending servers are not swept yet (C4,
+#526).
+
+**To turn it on** (only once every ADR-0046 release gate in section 7 is closed and the owner says go):
+1. `npm run db:migrate` (the `created_via` column and the trigger, `1791590400000_self_serve_servers`).
+2. Set `SELF_SERVE_ENABLED=true` in `backend/.env` (it needs `DATABASE_URL`) and, if needed, the caps above.
+3. Restart the backend. The startup log says `self-serve server creation is ON`.
+
+**To turn it off:** set `SELF_SERVE_ENABLED=false` (or remove it) and restart. Existing self-serve servers keep working;
+abuse is handled with `npm run admin -- list-servers`, `disable-user` and `remove-server` (`abuse-response.md`).
+
 ## Commands
 
 The dashboard cannot reach into a player's network, so the auto-pause change of an agent server is a **command**:

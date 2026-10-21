@@ -57,7 +57,7 @@ const TEST_LIMIT = { max: 10, windowMs: 60 * 1000 };
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again later.";
 
 /** A body that fails its schema is a 400 naming the fields, never the values (a token may be among them). */
-function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
+export function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     const problems = parsed.error.issues.slice(0, 5).map((issue) => `${issue.path.join(".") || "(body)"}: ${issue.message}`);
@@ -66,7 +66,7 @@ function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
   return parsed.data;
 }
 
-function userId(res: { locals: { user?: { id?: unknown } } }): string {
+export function userId(res: { locals: { user?: { id?: unknown } } }): string {
   const id = res.locals.user?.id;
   if (typeof id !== "string") throw new UnauthorizedError("Sign in to continue");
   return id;
