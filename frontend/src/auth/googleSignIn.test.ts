@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TERMS_VERSION, googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText } from "./googleSignIn";
 
@@ -105,5 +107,19 @@ describe("googleStartHref", () => {
       expect(back === "/app" || back?.startsWith("/app/")).toBe(true);
       expect(back?.startsWith("//")).toBe(false);
     }
+  });
+});
+
+describe("the terms version stays in step with the backend and the terms page", () => {
+  it("matches the backend's TERMS_VERSION (a drift would silently refuse every new account)", () => {
+    const backend = readFileSync(resolve(__dirname, "../../../backend/src/modules/identity/signupConfig.ts"), "utf8");
+    expect(/export const TERMS_VERSION = "([^"]+)"/.exec(backend)?.[1]).toBe(TERMS_VERSION);
+  });
+
+  it("is the 'Last updated' date of public/terms.html", () => {
+    const html = readFileSync(resolve(__dirname, "../../public/terms.html"), "utf8");
+    const m = /Last updated: (\d+) (\w+) (\d{4})/.exec(html)!;
+    const month = String(new Date(`${m[2]} 1, 2000`).getMonth() + 1).padStart(2, "0");
+    expect(`${m[3]}-${month}-${m[1]!.padStart(2, "0")}`).toBe(TERMS_VERSION);
   });
 });

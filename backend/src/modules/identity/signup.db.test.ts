@@ -244,4 +244,87 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
     expect(names).toHaveLength(30);
     expect(new Set(names).size).toBe(30);
   }, 60_000);
+
+  describe("terms forgery and replay, and the boundaries (fresh-eyes pass)", () => {
+    const attemptTerms = async () => (await admin.query("SELECT terms_version FROM identity.login_attempts")).rows.map((r) => r.terms_version);
+
+    it("a terms value on the callback's query string never counts", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const start = await request(app).get("/api/auth/google/start");
+      const attemptCookie = ([start.headers["set-cookie"] ?? []].flat() as string[]).find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))!.split(";")[0]!;
+      const authUrl = new URL(start.headers.location!);
+      const code = issuer.issueCode({
+        claims: stranger(1),
+        nonce: authUrl.searchParams.get("nonce")!,
+        codeChallenge: authUrl.searchParams.get("code_challenge")!,
+      });
+      const res = await request(app)
+        .get(`/api/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(authUrl.searchParams.get("state")!)}&terms=${TERMS_VERSION}&acceptedTermsVersion=${TERMS_VERSION}`)
+        .set("Cookie", attemptCookie);
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required`);
+      expect(await users()).toBe(1);
+    });
+
+    it("/start keeps only the exact current version, and nothing at all while sign-up is closed", async () => {
+      const open = await buildApp({ SIGNUP_MODE: "open" });
+      await request(open).get("/api/auth/google/start?terms=1999-01-01");
+      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}&terms=${TERMS_VERSION}`);
+      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}%20`);
+      expect(await attemptTerms()).toEqual([null, null, null]);
+      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}`);
+      expect((await attemptTerms()).filter((t) => t !== null)).toEqual([TERMS_VERSION]);
+      await admin.query("TRUNCATE identity.login_attempts");
+      const closed = await buildApp({});
+      await request(closed).get(`/api/auth/google/start?terms=${TERMS_VERSION}`);
+      expect(await attemptTerms()).toEqual([null]);
+    });
+
+    it("an expired attempt with the terms ticked creates nothing and cannot be replayed", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const start = await request(app).get(`/api/auth/google/start?terms=${TERMS_VERSION}`);
+      const attemptCookie = ([start.headers["set-cookie"] ?? []].flat() as string[]).find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))!.split(";")[0]!;
+      const authUrl = new URL(start.headers.location!);
+      await admin.query("UPDATE identity.login_attempts SET created_at = now() - interval '1 hour', expires_at = now() - interval '1 minute'");
+      const code = issuer.issueCode({
+        claims: stranger(1),
+        nonce: authUrl.searchParams.get("nonce")!,
+        codeChallenge: authUrl.searchParams.get("code_challenge")!,
+      });
+      const url = `/api/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(authUrl.searchParams.get("state")!)}`;
+      const first = await request(app).get(url).set("Cookie", attemptCookie);
+      expect(first.headers.location).toBe(`${FRONTEND}/app/login?error=expired`);
+      const replay = await request(app).get(url).set("Cookie", attemptCookie);
+      expect(replay.headers.location).toBe(`${FRONTEND}/app/login?error=expired`);
+      expect(await users()).toBe(1);
+    });
+
+    it("the CHECK constraints hold: terms pair, version length", async () => {
+      await buildApp({ SIGNUP_MODE: "open" });
+      const bad = (sql: string, params: unknown[] = []) => admin.query(sql, params).then(() => "ok", (e: Error) => e.message);
+      expect(await bad("INSERT INTO identity.users (display_name, terms_version) VALUES ('x', '2026-09-24')")).toMatch(/users_terms_pair/);
+      expect(await bad("INSERT INTO identity.users (display_name, terms_accepted_at) VALUES ('x', now())")).toMatch(/users_terms_pair/);
+      expect(await bad("INSERT INTO identity.users (display_name, terms_version, terms_accepted_at) VALUES ('x', $1, now())", ["v".repeat(33)])).toMatch(/check/i);
+      expect(await bad("INSERT INTO identity.users (display_name, terms_version, terms_accepted_at) VALUES ('x', '', now())")).toMatch(/check/i);
+    });
+
+    it("C8 window: an account 59 minutes old still counts, one 61 minutes old does not", async () => {
+      await buildApp({ SIGNUP_MODE: "open" });
+      const signup = service(1);
+      await signup.complete(claimsOf(1), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      await admin.query("UPDATE identity.users SET created_at = now() - interval '59 minutes' WHERE terms_version IS NOT NULL");
+      expect(reasonOf(await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signup_busy");
+      await admin.query("UPDATE identity.users SET created_at = now() - interval '61 minutes' WHERE terms_version IS NOT NULL");
+      expect(reasonOf(await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signed_in");
+    });
+
+    it("a refused busy sign-up leaves no user, identity or session behind", async () => {
+      await buildApp({ SIGNUP_MODE: "open" });
+      const signup = service(1);
+      await signup.complete(claimsOf(1), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      const sessions = await count("SELECT count(*) AS n FROM identity.sessions");
+      await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(await count("SELECT count(*) AS n FROM identity.sessions")).toBe(sessions);
+      expect(await count("SELECT count(*) AS n FROM identity.auth_identities WHERE provider_subject = 'google-sub-2'")).toBe(0);
+    });
+  });
 });
