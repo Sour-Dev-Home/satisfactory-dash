@@ -499,3 +499,69 @@ describe("a generated 10x factory", () => {
     expect(r.beltData).toBe("present");
   });
 });
+
+describe("fresh-eyes findings", () => {
+  const stuck = (id: string, extra: MachineOptions = {}) => machine(id, { state: "underfed", ing: [[PLATE, 60]], ...extra });
+
+  it("a NaN limit falls back to the default instead of returning nothing", () => {
+    const r = run([stuck("M")], "unsupported", Number.NaN);
+    expect(r.findings).toHaveLength(1);
+  });
+
+  it("text truncation never leaves half of a surrogate pair", () => {
+    const r = run([stuck("M", { name: `${"x".repeat(498)}😀` })], "unsupported");
+    expect(r.findings[0].text.length).toBeLessThanOrEqual(500);
+    expect(r.findings[0].text).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
+  });
+
+  it("ranking does not depend on the order of a machine's rates when the main products tie", () => {
+    const twoOut = (order: 0 | 1) => {
+      const m = machine("A", { state: "underfed", ing: [[PLATE, 10]] });
+      const a = rate("OutA_C", 100, 0);
+      const b = rate("OutB_C", 100, 90);
+      m.production = order === 0 ? [a, b] : [b, a];
+      return m;
+    };
+    const other = machine("B", { state: "underfed", ing: [[PLATE, 10]], out: [["OutC_C", 100]], current: 50 });
+    const first = run([twoOut(0), other], "unsupported");
+    const second = run([twoOut(1), other], "unsupported");
+    expect(second.findings.map((f) => f.buildingId)).toEqual(first.findings.map((f) => f.buildingId));
+  });
+
+  it("a very long chain of directly joined belts does not overflow the stack", () => {
+    const n = 30000;
+    const edges: ConveyorEdge[] = [];
+    for (let i = 0; i < n; i++) {
+      const from = i === 0 ? "P" : `b${String(i - 1).padStart(6, "0")}`;
+      const to = i === n - 1 ? "M" : `b${String(i + 1).padStart(6, "0")}`;
+      edges.push(
+        edge(`b${String(i).padStart(6, "0")}`, from, to, {
+          cap: i === 10 ? 30 : 780,
+          fromKind: i === 0 ? "machine" : "conveyor",
+          toKind: i === n - 1 ? "machine" : "conveyor",
+        }),
+      );
+    }
+    const r = run([producer(120), stuck("M", { state: "underfed" })], edges);
+    expect(r.findings[0].rootCause.cappedBy?.conveyorId).toBe("b000010");
+  });
+
+  it("one big manifold (200 producers, 1 belt, 1500 starved consumers) stays fast", () => {
+    const buildings: FactoryBuilding[] = [];
+    const edges: ConveyorEdge[] = [];
+    for (let p = 0; p < 200; p++) {
+      buildings.push(machine(`P${p}`, { out: [[PLATE, 60]], current: 60 }));
+      edges.push(edge(`pe${p}`, `P${p}`, "Smerge", { cap: 60 }));
+    }
+    edges.push(edge("trunk", "Smerge", "Sroot", { cap: 780 }));
+    for (let c = 0; c < 1500; c++) {
+      const id = `C${String(c).padStart(4, "0")}`;
+      buildings.push(stuck(id, { ing: [[PLATE, 30]] }));
+      edges.push(edge(`ce${id}`, "Sroot", id, { cap: 780 }));
+    }
+    const start = performance.now();
+    const r = run(buildings, edges);
+    expect(performance.now() - start).toBeLessThan(5000);
+    expect(r.findings).toHaveLength(10);
+  });
+});

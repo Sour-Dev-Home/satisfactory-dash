@@ -144,7 +144,7 @@ class Network {
     let total = 0;
     while (this.buildLevels(s, t)) {
       this.cursor = [...this.head];
-      for (let pushed = this.push(s, t, Infinity); pushed > EPS; pushed = this.push(s, t, Infinity)) total += pushed;
+      total += this.blockingFlow(s, t);
     }
     return total;
   }
@@ -166,21 +166,41 @@ class Network {
     return this.level[t] >= 0;
   }
 
-  private push(u: number, t: number, limit: number): number {
-    if (u === t) return limit;
-    for (; this.cursor[u] !== -1; this.cursor[u] = this.next[this.cursor[u]]) {
-      const e = this.cursor[u];
-      const v = this.to[e];
-      if (this.cap[e] > EPS && this.level[v] === this.level[u] + 1) {
-        const d = this.push(v, t, Math.min(limit, this.cap[e]));
-        if (d > EPS) {
+  /** A blocking flow on the level graph, found with an explicit path stack: a belt line of tens of thousands of joined
+   *  segments is a path that deep, and recursion there overflows the call stack. */
+  private blockingFlow(s: number, t: number): number {
+    let total = 0;
+    const path: number[] = [];
+    let u = s;
+    for (;;) {
+      if (u === t) {
+        let d = Infinity;
+        for (const e of path) d = Math.min(d, this.cap[e]);
+        if (!(d > EPS) || d === Infinity) return total;
+        let retreat = -1;
+        path.forEach((e, i) => {
           this.cap[e] -= d;
           this.cap[e ^ 1] += d;
-          return d;
-        }
+          if (retreat < 0 && this.cap[e] <= EPS) retreat = i;
+        });
+        total += d;
+        path.length = retreat < 0 ? 0 : retreat;
+        u = path.length === 0 ? s : this.to[path[path.length - 1]];
+        continue;
+      }
+      let e = this.cursor[u];
+      while (e !== -1 && !(this.cap[e] > EPS && this.level[this.to[e]] === this.level[u] + 1)) e = this.next[e];
+      this.cursor[u] = e;
+      if (e !== -1) {
+        path.push(e);
+        u = this.to[e];
+      } else {
+        if (u === s) return total;
+        const back = path.pop() as number;
+        u = this.to[back ^ 1];
+        this.cursor[u] = this.next[this.cursor[u]];
       }
     }
-    return 0;
   }
 
   /** Nodes still reachable from `s` through arcs with residual capacity. */
@@ -338,6 +358,7 @@ class Finder {
   private readonly regions = new Map<string, Region>();
   private readonly verdicts = new Map<string, Verdict | null>();
   private readonly sharedCuts = new Map<string, SharedCut[]>();
+  private readonly feeds = new Map<string, { fed: Set<number>; total: number }>();
 
   constructor(readonly buildings: readonly FactoryBuilding[], edges: readonly ConveyorEdge[] | null) {
     this.graph = edges === null ? null : buildGraph(edges);
@@ -469,14 +490,22 @@ class Finder {
     if (!hasSource) {
       // Local deficit: what the reachable producers make against what every consumer they can feed wants.
       const supply = inRegion.reduce((s, p) => s + sumRate(p.production, x), 0);
-      const fed = new Set<number>();
-      for (const p of inRegion) {
-        const fwd = this.region(this.nodeOf(p) as number, filter, "fwd");
-        for (const t of fwd.terminals) fed.add(t);
+      // Every machine on one manifold sees the same producers, so the fed set is built once per producer set.
+      const feedKey = `${x}\0${filter}\0${inRegion.map((p) => this.nodeOf(p)).join(",")}`;
+      let feed = this.feeds.get(feedKey);
+      if (!feed) {
+        const fed = new Set<number>();
+        for (const p of inRegion) {
+          const fwd = this.region(this.nodeOf(p) as number, filter, "fwd");
+          for (const t of fwd.terminals) fed.add(t);
+        }
+        const total = (this.consumersOf.get(x) ?? [])
+          .filter((c) => fed.has(this.nodeOf(c) ?? -1))
+          .reduce((s, c) => s + sumRate(c.ingredients, x), 0);
+        feed = { fed, total };
+        this.feeds.set(feedKey, feed);
       }
-      const wanted = (this.consumersOf.get(x) ?? [])
-        .filter((c) => c === m || fed.has(this.nodeOf(c) ?? -1))
-        .reduce((s, c) => s + sumRate(c.ingredients, x), 0);
+      const wanted = feed.total + (feed.fed.has(node as number) ? 0 : demand);
       if (wanted > supply + EPS) return this.mk("deficit", rate, true, { supply, demand: wanted });
     }
     const bad = this.bestBad(inRegion, "up");
@@ -790,7 +819,8 @@ export function findBottlenecks(
   edges: BottleneckEdges,
   options: BottleneckOptions = {},
 ): Bottlenecks {
-  const limit = Math.min(BOTTLENECKS_MAX_LIMIT, Math.max(1, Math.trunc(options.limit ?? BOTTLENECKS_DEFAULT_LIMIT)));
+  const asked = Math.trunc(options.limit ?? BOTTLENECKS_DEFAULT_LIMIT);
+  const limit = Number.isNaN(asked) ? BOTTLENECKS_DEFAULT_LIMIT : Math.min(BOTTLENECKS_MAX_LIMIT, Math.max(1, asked));
   const sorted = [...buildings].sort((a, b) => byString(a.id, b.id));
   const finder = new Finder(sorted, typeof edges === "string" ? null : edges);
 
@@ -805,7 +835,11 @@ export function findBottlenecks(
     const verdicts: Verdict[] = [];
     walk(finder, m, dir, null, new Set(), steps, verdicts);
     if (steps.length === 0 || verdicts.length === 0) continue;
-    const main = m.production.reduce<ProductionRate | null>((best, r) => (!best || r.maxPerMinute > best.maxPerMinute ? r : best), null);
+    const main = m.production.reduce<ProductionRate | null>((best, r) => {
+      if (!best || r.maxPerMinute > best.maxPerMinute) return r;
+      // Equal maxima: the lower className, so the pick does not depend on the order of the rates.
+      return r.maxPerMinute === best.maxPerMinute && r.className < best.className ? r : best;
+    }, null);
     raws.push({
       m,
       state: dir === "up" ? "underfed" : "backedUp",
@@ -835,7 +869,12 @@ export function findBottlenecks(
     const sharedText = count > 1 ? ` The same cause affects ${count} machines.` : "";
     const stale = r.itemLevelFallback ? STALE_SENTENCE : "";
     let text = `${r.m.name} is ${r.state === "underfed" ? "underfed" : "backed up"}: ${first}${cause}.${sharedText}${stale}`;
-    if (text.length > 500) text = `${text.slice(0, 499)}…`;
+    if (text.length > 500) {
+      let cut = 499;
+      // Do not end on the first half of a surrogate pair.
+      if (text.charCodeAt(cut - 1) >= 0xd800 && text.charCodeAt(cut - 1) <= 0xdbff) cut--;
+      text = `${text.slice(0, cut)}…`;
+    }
     return {
       buildingId: r.m.id,
       buildingName: r.m.name.slice(0, 200),
