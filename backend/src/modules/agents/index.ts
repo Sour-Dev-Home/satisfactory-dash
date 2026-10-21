@@ -20,7 +20,7 @@ import type { AgentCommandsService, CommandsService } from "./services/commandsS
 import { createEnrollmentService } from "./services/enrollmentService.js";
 import type { AgentsService } from "./services/agentsService.js";
 
-export { AGENT_CADENCE } from "./config.js";
+export { AGENT_CADENCE, loadEnrollmentCodesPerHour } from "./config.js";
 export { createAgentsService } from "./services/agentsService.js";
 export type { AgentsService, AgentsServiceDeps } from "./services/agentsService.js";
 export { createCommandsService } from "./services/commandsService.js";
