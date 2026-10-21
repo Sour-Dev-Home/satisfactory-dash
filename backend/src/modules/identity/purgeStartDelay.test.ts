@@ -8,7 +8,7 @@ import { DEFAULT_PURGE_START_DELAY_MS, PURGE_INTERVAL_MS, createSessionPurgeWork
 // after the database startup check has succeeded (server.ts) and then waits before its first run.
 function build(delayMs: number) {
   const query = vi.fn(async () => ({ rows: [{ deleted: "0" }] }));
-  const logger = { info: vi.fn(), warn: vi.fn() };
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const worker = createSessionPurgeWorker({ query } as unknown as Queryable, logger, Date.now, { initialDelayMs: delayMs });
   return { worker, query, logger };
 }
@@ -104,7 +104,7 @@ describe("purge worker start delay", () => {
       const query = vi.fn(async () => {
         throw new Error("connect ECONNREFUSED SECRETDETAIL");
       });
-      const logger = { info: vi.fn(), warn: vi.fn() };
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       const worker = createSessionPurgeWorker({ query } as unknown as Queryable, logger, Date.now, { initialDelayMs: 5000 });
       worker.start();
       await vi.advanceTimersByTimeAsync(5000);

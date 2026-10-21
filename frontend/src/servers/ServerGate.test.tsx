@@ -105,7 +105,7 @@ describe("ServerGate", () => {
       ),
     );
     renderGate();
-    expect(await screen.findByRole("alert")).toHaveTextContent(errorUpstreamUnreachable.error.requestId);
+    expect(await screen.findByRole("alert")).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("status for default")).toBeInTheDocument();

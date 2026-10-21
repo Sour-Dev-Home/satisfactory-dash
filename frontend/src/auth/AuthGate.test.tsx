@@ -124,7 +124,7 @@ describe("AuthGate", () => {
     renderGate();
     await screen.findByRole("heading", { name: "Sign in" });
     submitLogin();
-    expect(await screen.findByRole("alert")).toHaveTextContent(errorUpstreamUnreachable.error.requestId);
+    expect(await screen.findByRole("alert")).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
   });
 
   it("goes to the login screen when a protected route answers 401", async () => {
