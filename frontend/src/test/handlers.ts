@@ -10,6 +10,8 @@ import {
   alertStatusQuiet,
   deleteServerDone,
   factoryMixed,
+  railsWorldResponse,
+  resourceNodesWorldResponse,
   healthOk,
   historyItems7d,
   historyPower24h,
@@ -50,6 +52,9 @@ export const handlers = [
   http.get(endpoints.history.items.route, () => HttpResponse.json(historyItems7d)),
   http.get(endpoints.history.transitions.route, () => HttpResponse.json(historyTransitions24h)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
+  // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
+  http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
+  http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).

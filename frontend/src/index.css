@@ -44,6 +44,10 @@
   --color-info-soft: rgb(156 192 226 / 0.13);
   --color-info-solid: #3a6690;
   --color-idle-solid: #5a6168;
+  /* The map's base-map landmarks (ADR-0038 M5), apart from the brand accent and the state colours:
+     rails a light steel that stands clear of the grid lines, resource nodes a violet. */
+  --color-rail: #c4ccd6;
+  --color-node: #b79df5;
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
   --color-bad-edge: rgb(239 83 80 / 0.35);
   --color-bad-on-soft: #ff8a80;
@@ -541,6 +545,11 @@
     .panel table:not(.readings, .u-legend) :is(tbody th, tbody td) {
       padding: 2px 0;
       border: 0;
+    }
+    /* A stacked cell names its column (the header row is hidden): the map's tables set data-label. */
+    .panel table td[data-label]::before {
+      content: attr(data-label) ": ";
+      color: var(--color-muted);
     }
   }
 
