@@ -14,7 +14,9 @@ import { endpoints, type Command } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { classifyError } from "../api/errors";
 import { isSignedOut, queries } from "../api/queries";
+import { useSettledQuery } from "../api/settled";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { AutoPausePanel } from "./AutoPausePanel";
 import { commandPhase, EXPIRED_TEXT, failureText, msUntilGiveUp, type CommandPhase } from "./command";
@@ -33,7 +35,7 @@ export function AutoPauseView() {
   const server = useSelectedServer();
   const client = useQueryClient();
   const settingsQuery = queries.settings(server.id);
-  const settings = useQuery(settingsQuery);
+  const { query: settings, firstLoad, error: settingsError } = useSettledQuery(settingsQuery);
   const saveKey = [...settingsQuery.queryKey, "auto-pause"];
 
   // ADR-0031 PR 4: a change relayed through the game PC's agent (the PUT answered 202 with a command),
@@ -130,8 +132,10 @@ export function AutoPauseView() {
   };
 
   return (
-    <Loadable pending={settings.isPending} skeleton={<AutoPauseSkeleton />} className="grid gap-3">
-      {settings.isError && <ErrorNotice error={settings.error} />}
+    <Loadable pending={firstLoad} skeleton={<AutoPauseSkeleton />} className="grid gap-3">
+      {settingsError != null && (
+        <PanelError error={settingsError} title="Server settings" hasData={settings.data !== undefined} />
+      )}
       {settings.data && (
         <AutoPausePanel snapshot={settings.data} saving={save.isPending || phase === "waiting"} onChange={onChange} />
       )}

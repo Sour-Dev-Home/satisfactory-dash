@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
-import { ErrorNotice } from "../components/ErrorNotice";
+import { useSettledQuery } from "../api/settled";
+import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable, PanelSkeleton, Skeleton } from "../ui/Skeleton";
 import { MapCanvasSkeleton, MapPanel } from "./MapPanel";
@@ -19,11 +19,11 @@ function MapSkeleton() {
 /** Container: the buildings reuse the factory query (ADR-0023 decision 1); MapPanel reads the world layers (ADR-0038) while they're on. */
 export function MapView() {
   const server = useSelectedServer();
-  const factory = useQuery(queries.factory(server.id));
+  const { query: factory, firstLoad, error } = useSettledQuery(queries.factory(server.id));
 
   return (
-    <Loadable pending={factory.isPending} skeleton={<MapSkeleton />} className="grid gap-3">
-      {factory.isError && <ErrorNotice error={factory.error} />}
+    <Loadable pending={firstLoad} skeleton={<MapSkeleton />} className="grid gap-3">
+      {error != null && <PanelError error={error} title="Factory map" hasData={factory.data !== undefined} />}
       {factory.data && <MapPanel snapshot={factory.data} serverId={server.id} />}
     </Loadable>
   );

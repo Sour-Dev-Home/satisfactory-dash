@@ -44,7 +44,10 @@ contract needs to grow, not that this module should special-case a backend detai
   by panel: its panels mount at once but stay `invisible` until `shell/pageQueries.ts`' primary queries
   answer or `--duration-reveal-budget` passes. A panel's loading branch is `<Loadable>` with a skeleton
   shaped like it (`ui/Skeleton.tsx`), shown only after `--duration-skeleton-delay` and kept for
-  `--duration-skeleton-min`. Never a "Loading…" text line above other content. Nav links prefetch the
+  `--duration-skeleton-min`. Never a "Loading…" text line above other content. For a polled read, `pending` is
+  `isFirstLoad(query)` or `useSettledQuery` (`src/api/settled.ts`), not `isPending`: a read that never answered goes
+  back to pending on every refetch, which re-showed skeletons and blanked errors each poll. "Game server unreachable"
+  is said once, by `StatusBanners`; a panel shows its error through `components/PanelError.tsx`. Nav links prefetch the
   page's queries (hover, focus, touch). Reduced motion: no shimmer, no rise.
 - The Overview's status-page summary (`src/overview/health.ts`) only aggregates what the
   backend classified. Its one rule of its own: Factory is degraded above
