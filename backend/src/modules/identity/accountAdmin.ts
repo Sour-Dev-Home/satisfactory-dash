@@ -25,7 +25,11 @@ export async function disableUserAdmin(db: Db, userId: string): Promise<AccountA
 export async function enableUserAdmin(db: Db, userId: string): Promise<AccountAdminResult> {
   return withTransaction(db, async (client) => {
     if (!(await setUserStatus(client, userId, "active"))) return { found: false };
+    // A sign-in that raced the disable (it read the account as active, then inserted its session after the disable
+    // committed) leaves a live row that the status check only hides; re-enabling would revive it. Enabling therefore
+    // revokes whatever is still unrevoked, so "not the old sessions" holds without a race.
+    const sessionsRevoked = await revokeAllSessionsForUser(client, userId);
     await recordAuditEvent(client, { action: "user.enabled", detail: { userId } });
-    return { found: true, sessionsRevoked: 0 };
+    return { found: true, sessionsRevoked };
   });
 }

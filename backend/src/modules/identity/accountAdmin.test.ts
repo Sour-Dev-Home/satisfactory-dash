@@ -51,8 +51,9 @@ describe("account admin (#516)", () => {
 
   it("enable sets the status back to active and audits the id only", async () => {
     const { pool } = fakePool();
-    expect(await enableUserAdmin(pool, USER)).toEqual({ found: true, sessionsRevoked: 0 });
-    expect(calls).toEqual(["status:active", "audit"]);
+    expect(await enableUserAdmin(pool, USER)).toEqual({ found: true, sessionsRevoked: 3 });
+    // It also revokes stragglers: a sign-in that raced the disable must not come alive on enable.
+    expect(calls).toEqual(["status:active", "revoke", "audit"]);
     expect(audit).toHaveBeenCalledWith({ action: "user.enabled", detail: { userId: USER } });
   });
 

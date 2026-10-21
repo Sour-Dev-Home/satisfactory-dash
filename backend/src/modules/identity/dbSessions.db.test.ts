@@ -13,6 +13,7 @@ import { SESSION_COOKIE } from "./session.js";
 import { createSessionToken } from "./sessionToken.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "./sessionAdmin.js";
 import { disableUserAdmin, enableUserAdmin } from "./accountAdmin.js";
+import { startSession } from "./dbSessionStore.js";
 import { purgeExpired } from "./sessionPurge.js";
 import { setUserStatus } from "./repositories/userRepository.js";
 
@@ -325,6 +326,21 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     expect(rows.every((r) => r.actor_user_id === null)).toBe(true);
     expect(rows[0].detail).toMatchObject({ userId });
     expect(JSON.stringify(rows)).not.toMatch(/@|operator/);
+  });
+
+  it("a sign-in that raced the disable (its session row lands after the revoke) does not come alive when the account is re-enabled (#516)", async () => {
+    const { app } = build();
+    await loginRequest(app);
+    const userId = (await admin.query("SELECT user_id FROM identity.auth_identities WHERE provider_subject = 'operator'")).rows[0].user_id;
+    await disableUserAdmin(pool, userId);
+    // The racing login read the account as active before the disable committed, and inserts its session after it.
+    const straggler = await startSession(pool, userId, undefined);
+    expect((await request(app).get("/api/servers").set("Cookie", `${SESSION_COOKIE}=${straggler}`)).status).toBe(401);
+    const unrevoked = async () => (await admin.query("SELECT count(*)::int AS n FROM identity.sessions WHERE user_id = $1 AND revoked_at IS NULL", [userId])).rows[0].n;
+    expect(await unrevoked()).toBe(1);
+    expect(await enableUserAdmin(pool, userId)).toMatchObject({ found: true, sessionsRevoked: 1 });
+    expect(await unrevoked()).toBe(0);
+    expect((await request(app).get("/api/servers").set("Cookie", `${SESSION_COOKIE}=${straggler}`)).status).toBe(401);
   });
 
   it("the purge removes sessions expired over 30 days ago and stale login attempts, and keeps the rest", async () => {
