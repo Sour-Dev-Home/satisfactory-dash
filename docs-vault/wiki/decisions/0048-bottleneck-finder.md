@@ -204,7 +204,7 @@ this save at ~60 bytes each, about 240 KB, sent only when its hash changes (ADR-
 
 ## Amendment (2026-10-21)
 
-Status: **proposed** (the ADR itself stays accepted). Written because the first "Revisit when" trigger fired: FRM now
+Status: **accepted** (owner, 2026-10-21; answers at the end of this amendment). Written because the first "Revisit when" trigger fired: FRM now
 names the building at each end of a belt, lift and pipe. Captures, all read-only from the owner's live server on
 2026-10-21 with FRM 1.5.4 (getModList), are under `raw-sources/captured-responses/`: the **belts capture**
 `frm-getBelts-2026-10-21-connections-trimmed.json`, the **lifts capture** `frm-getLifts-2026-10-21-trimmed.json` and the
@@ -392,3 +392,14 @@ carrying the same item where the port matters.
 - The conveyors projection passes 1.5 MB on a real save: intern or fold chains (Decision 2).
 - A finder request passes ~50 ms: cache per (snapshot, graph hash).
 - Case 6 dominates on real saves: look for filter and port data.
+
+### Owner answers (2026-10-21)
+
+1. **Accepted.** Build the belt-level finder on FRM's connection data. The belt-connection mod claim stays unfiled.
+2. **Pipes: hold the feature.** Nothing ships to users until G-B2 (the pipe `Speed` unit) passes, so the first version
+   can name pipe caps as well as belt caps. PRs 1–4 may still be built and merged hidden. PR 5, the Factory page
+   section that makes the feature visible, waits for G-B2 and G-B1.
+3. **An older FRM without the connection fields:** show the item-level results with a note to update FRM to 1.5.4 for
+   belt detail. Don't hide the section.
+4. **Freshness:** a 10-minute connection refresh, with a note on the section that connections refresh every
+   10 minutes. Add an early re-read on building changes only if stale results become a problem.
