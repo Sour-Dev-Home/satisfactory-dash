@@ -1,6 +1,7 @@
 # ADR-0045: Threat model for game servers the owner doesn't control
 
-Status: proposed (the owner accepts it, including every ACCEPT below, by approving this PR). Issue #505.
+Status: accepted (the owner merged #519 on 2026-10-20, which accepts every ACCEPT below; their answers to the open
+questions are Amendment 1). Issue #505.
 
 ## Context
 - ADR-0042 ships the mod to other players through ficsit.app. Its credential and its snapshots then come from hosts
@@ -118,3 +119,23 @@ first public release; #517 before any stranger can get a server.
 - A second backend instance: the in-memory limiters become per instance, so the limits above multiply.
 - A host is found that lets other tenants read `Saved/` (M5), or the mod's spec differs from what this cites (M4, M13).
 - #514's counters show real abuse (E4).
+
+## Amendment 1 (2026-10-20): the owner's answers
+
+1. **Self-serve before the first public release** (question 1, the owner's choice of option B). A player on a rented
+   host must be able to get a server without the operator. So #517 (the self-serve design, then its build) and
+   gate B (#186, open sign-up) join #514, #515 and #516 as gates on the mod's first public release, and #517 is no
+   longer parked. The "Revisit when" line on opening sign-up now applies: M2, M3 and B5 are revisited in #517.
+2. **The listing names what is sent** (question 2: "yes, mention player names"). The question's premise was wrong,
+   as the owner and the mod session both confirmed: the mod takes player counts only, never names. Mod core v1 sends
+   `connectedPlayers` and `playerLimit` (mod repo `Snapshot.cpp:65-66`), and its spec forbids user names or account
+   ids beyond the contract (S13). So v1's listing
+   has no names to disclose; if a later contract and mod add them, the listing says so (R5, the mod's distribution
+   step). The edge agent's snapshots do carry names, which R1 and M14 already cover.
+3. **The ACCEPTs** (question 3): accepted by merging #519.
+4. **Mod-side behaviour, verified** against the mod repo's `docs/specs/2026-10-20-core-mod-v1-design.md`, so the two
+   [NEEDS VERIFICATION] marks above are resolved:
+   - The enrolment code is blanked after enrolling (lines 24 and 60). A crash between writing the credential and
+     blanking it blanks the code on the next boot, so the code never enrols twice (line 115).
+   - An unknown command answers `{ok:false, code:"unsupported"}` (lines 118 and 165, S6, unit-tested). Only
+     `set_auto_pause` with a boolean `enabled` runs.
