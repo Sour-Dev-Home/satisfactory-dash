@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MachineObservation, ObservationSnapshot, PowerCircuitObservation } from "../../telemetry/index.js";
 import type { AlertState } from "./alertStateMachine.js";
-import { ServerAlertEvaluator, stateKey, type AlertEventOut } from "./serverAlertEvaluator.js";
+import { MAX_CIRCUIT_SUBJECTS_PER_RULE, ServerAlertEvaluator, stateKey, type AlertEventOut } from "./serverAlertEvaluator.js";
 import type { Rule } from "./rules.js";
 
 const SEC = 1000;
@@ -96,6 +96,11 @@ class Sim {
     });
     if (options.commit !== false) {
       for (const write of evaluation.writes) this.states.set(stateKey(write.ruleId, write.subject), write.state);
+      // #515: like the repository, only an ok state is deleted.
+      for (const gone of evaluation.deletes) {
+        const key = stateKey(gone.ruleId, gone.subject);
+        if (this.states.get(key)?.phase === "ok") this.states.delete(key);
+      }
       evaluation.commit();
     }
     return evaluation.events;
@@ -838,5 +843,51 @@ describe("production_below_target (ADR-0027 amendment 3)", () => {
     run(sim, 8.5, 20, { ...at(50), paused: true });
     const events = run(sim, 20.5, 45, at(50));
     expect(events[0]!.minute).toBeGreaterThanOrEqual(20.5 + 19 - 0.5);
+  });
+});
+
+describe("#515: the circuits a power rule tracks are capped (ADR-0045 M12)", () => {
+  const many = (n: number, status: PowerCircuitObservation["status"] = "outage", from = 1) => Array.from({ length: n }, (_, i) => circuit(from + i, status));
+  const tracked = (sim: Sim, rule: Rule) => [...sim.states.keys()].filter((key) => key.startsWith(`${rule.id}\u0000`)).length;
+
+  it("1,000 forged circuits in outage fire at most MAX_CIRCUIT_SUBJECTS_PER_RULE alerts, the lowest ids", () => {
+    const sim = new Sim([powerOutage]);
+    const events = sim.at(0, { circuits: many(1000).reverse() });
+    expect(events).toHaveLength(MAX_CIRCUIT_SUBJECTS_PER_RULE);
+    expect(events.map((event) => event.summary.circuit).sort((a, b) => Number(a) - Number(b))).toEqual(Array.from({ length: MAX_CIRCUIT_SUBJECTS_PER_RULE }, (_, i) => i + 1));
+    expect(tracked(sim, powerOutage)).toBe(MAX_CIRCUIT_SUBJECTS_PER_RULE);
+    // Next tick: the tracked ones hold, no new circuit joins.
+    expect(sim.at(0.5, { circuits: many(1000) })).toEqual([]);
+    expect(tracked(sim, powerOutage)).toBe(MAX_CIRCUIT_SUBJECTS_PER_RULE);
+  });
+
+  it("an honest factory under the cap is unaffected: every circuit alerts", () => {
+    const sim = new Sim([powerOutage, fuseTrip]);
+    expect(sim.at(0, { circuits: many(3) })).toHaveLength(6);
+  });
+
+  it("a gone circuit is forgotten once it is ok again, so new circuits can be tracked (no lock-out, no pile-up)", () => {
+    const sim = new Sim([powerOutage]);
+    sim.at(0, { circuits: many(MAX_CIRCUIT_SUBJECTS_PER_RULE) });
+    expect(tracked(sim, powerOutage)).toBe(MAX_CIRCUIT_SUBJECTS_PER_RULE);
+    // A new session: all those circuits are gone and new ids are in outage. The gone ones clear (60 s), resolve, and go.
+    const fresh = many(MAX_CIRCUIT_SUBJECTS_PER_RULE, "outage", 5000);
+    expect(sim.at(0.5, { circuits: fresh })).toEqual([]); // still full: the new ones wait
+    const resolved = sim.at(1.5, { circuits: fresh });
+    expect(resolved.filter((event) => event.transition === "resolved")).toHaveLength(MAX_CIRCUIT_SUBJECTS_PER_RULE);
+    expect(tracked(sim, powerOutage)).toBe(0);
+    expect(sim.at(2, { circuits: fresh }).filter((event) => event.transition === "fired")).toHaveLength(MAX_CIRCUIT_SUBJECTS_PER_RULE);
+  });
+
+  it("a gone circuit that was never firing is deleted at once, and a stale reading deletes nothing", () => {
+    const pendingRule = rule("power_outage", { forSeconds: 300 });
+    const sim = new Sim([pendingRule]);
+    sim.at(0, { circuits: [circuit(1, "outage"), circuit(2, "outage")] });
+    expect(sim.phase(pendingRule, "circuit:1")).toBe("pending");
+    sim.at(0.5, { circuits: [circuit(2, "outage")], powerAge: 60 * SEC });
+    expect(tracked(sim, pendingRule)).toBe(2); // stale: unknown, nothing forgotten
+    sim.at(1, { circuits: [circuit(2, "outage")] });
+    expect(tracked(sim, pendingRule)).toBe(1);
+    expect(sim.phase(pendingRule, "circuit:2")).toBe("pending");
   });
 });

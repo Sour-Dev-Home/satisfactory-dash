@@ -95,21 +95,32 @@ const DEAD_FOR_DESTINATION = `
 
 // $1 how many, $2 lease seconds. One statement: pick due rows of ENABLED destinations, lock them (SKIP LOCKED, so two
 // senders never take the same row), push their due time out by the lease and count the attempt; then read the details.
+// #515 (ADR-0045 M12), fair across servers: each server's due rows are numbered oldest first (`turn`), and the claim takes
+// turn 1 of every server before turn 2 of any, so one server's backlog cannot hold back another server's alert: with
+// fewer servers due than the batch, every server's oldest row goes out in this tick. A server alone still gets the whole
+// batch. Within a server: due time, then the event's order (one evaluation's events are queued in one statement,
+// whose outbox ids need not follow them).
 const CLAIM_DUE = `
-  WITH due AS (
-    SELECT o.id
+  WITH ranked AS (
+    SELECT o.id, o.next_attempt_at,
+           row_number() OVER (PARTITION BY d.server_id ORDER BY o.next_attempt_at, o.event_id, o.id) AS turn
     FROM alerts.outbox o
     JOIN alerts.destinations d ON d.id = o.destination_id AND d.enabled
     JOIN servers.servers sv ON sv.id = d.server_id AND sv.deleted_at IS NULL
+    WHERE o.status = 'pending' AND o.next_attempt_at <= now()),
+  due AS (
+    SELECT o.id, r.turn
+    FROM alerts.outbox o
+    JOIN ranked r ON r.id = o.id
     WHERE o.status = 'pending' AND o.next_attempt_at <= now()
-    ORDER BY o.next_attempt_at, o.id
+    ORDER BY r.turn, r.next_attempt_at, o.id
     LIMIT $1::int
     FOR UPDATE OF o SKIP LOCKED),
   claimed AS (
     UPDATE alerts.outbox o
     SET attempts = o.attempts + 1, next_attempt_at = now() + make_interval(secs => $2::double precision)
     FROM due WHERE o.id = due.id
-    RETURNING o.id, o.event_id, o.destination_id, o.attempts, o.created_at)
+    RETURNING o.id, o.event_id, o.destination_id, o.attempts, o.created_at, due.turn)
   SELECT c.id::text AS outbox_id, c.attempts AS attempts, floor(extract(epoch FROM c.created_at) * 1000)::float8 AS created_ms,
          d.id::text AS destination_id, d.webhook_enc AS webhook_enc, d.key_id AS key_id,
          s.id::text AS server_uuid, s.public_id AS server_public_id, s.display_name AS server_name,
@@ -119,7 +130,7 @@ const CLAIM_DUE = `
   JOIN alerts.destinations d ON d.id = c.destination_id
   JOIN alerts.alert_events e ON e.id = c.event_id
   JOIN servers.servers s ON s.id = e.server_id
-  ORDER BY c.id`;
+  ORDER BY c.turn, c.id`;
 
 const MARK_SENT = `UPDATE alerts.outbox SET status = 'sent', sent_at = now(), last_error = NULL WHERE id = $1::bigint AND status = 'pending'`;
 const RESCHEDULE = `

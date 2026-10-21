@@ -65,7 +65,7 @@ function fakeDb(rows: Due[]) {
   const failClaim = { on: false };
   const handle = (sql: string, params: unknown[] = []) => {
     if (/^(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [] };
-    if (sql.includes("WITH due AS")) {
+    if (sql.includes("FOR UPDATE OF o SKIP LOCKED")) {
       calls.push({ kind: "claim", params });
       if (failClaim.on) throw new Error("db down");
       if (handed) return { rows: [] };

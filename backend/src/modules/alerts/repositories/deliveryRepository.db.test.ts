@@ -4,6 +4,8 @@ import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../../test-support/testDb.js";
 import { createSecretsKeyring } from "../../../platform/secrets/secrets.js";
+import { createLogger } from "../../../platform/logger.js";
+import { AlertDeliveryWorker } from "../services/alertDeliveryWorker.js";
 import { softDeleteServer, upsertConfiguredServer } from "../../servers/repositories/serverRepository.js";
 import { listRules, purgeExpiredEvents, seedPresetRules, writeEvaluation, ALERT_EVENT_RETENTION_MS } from "./alertRepository.js";
 import {
@@ -264,6 +266,71 @@ describe.skipIf(!available)("alert delivery repository against a real Postgres",
       expect((await outboxOf(a.id)).map((r) => r.status).sort()).toEqual(["dead", "sent"]);
       expect((await outboxOf(b.id)).map((r) => r.status)).toEqual(["pending"]);
       expect(await getDestinationSummary(pool, a.publicId)).toMatchObject({ enabled: false, disabledReason: "webhook_gone" });
+    });
+  });
+
+  describe("#515: the claim is fair across servers", () => {
+    // One evaluation with n events: n outbox rows for the server's destination, oldest id first.
+    const flood = async (n: number, url = URL_A) => {
+      const server = await newServer();
+      await saveDiscordDestination(pool, ring, server.publicId, url);
+      await writeEvaluation(pool, {
+        nowMs: NOW,
+        deliver: true,
+        writes: [],
+        events: Array.from({ length: n }, (_, i) => ({ ruleId: server.outageRuleId, kind: "power_outage" as const, severity: "critical" as const, subject: `circuit:${i + 1}`, transition: "fired" as const, summary: { circuit: i + 1 } })),
+      });
+      return server;
+    };
+    const leaseLeftovers = () => claimDueDeliveries(pool, 100_000, 3600);
+
+    it("server A floods; server B's alert, queued after the whole flood, is in the very next claim", async () => {
+      await leaseLeftovers();
+      const a = await flood(60);
+      const b = await flood(1, URL_B);
+      const claimed = await claimDueDeliveries(pool, 10, 120);
+      expect(claimed).toHaveLength(10);
+      // B's one row is in this batch, and sent in the first round (each server's oldest row before anyone's second).
+      expect(claimed.slice(0, 2).map((c) => c.serverPublicId).sort()).toEqual([a.publicId, b.publicId].sort());
+      expect(claimed.filter((c) => c.serverPublicId === b.publicId)).toHaveLength(1);
+      // A keeps the rest of the batch, oldest first: its order is unchanged.
+      const mineA = claimed.filter((c) => c.serverPublicId === a.publicId);
+      expect(mineA.map((c) => c.event.subject)).toEqual(Array.from({ length: 9 }, (_, i) => `circuit:${i + 1}`));
+    });
+
+    it("a server alone still gets the whole batch, in its own order", async () => {
+      await leaseLeftovers();
+      const a = await flood(25);
+      const claimed = await claimDueDeliveries(pool, 10, 120);
+      expect(claimed.map((c) => c.serverPublicId)).toEqual(Array(10).fill(a.publicId));
+      expect(claimed.map((c) => c.event.subject)).toEqual(Array.from({ length: 10 }, (_, i) => `circuit:${i + 1}`));
+      // The next claim continues where this one stopped.
+      expect((await claimDueDeliveries(pool, 10, 120)).map((c) => c.event.subject)[0]).toBe("circuit:11");
+    });
+
+    it("three backlogs share the batch round-robin", async () => {
+      await leaseLeftovers();
+      const servers = [await flood(5), await flood(5), await flood(5)];
+      const claimed = await claimDueDeliveries(pool, 6, 120);
+      for (const server of servers) {
+        expect(claimed.filter((c) => c.serverPublicId === server.publicId).map((c) => c.event.subject)).toEqual(["circuit:1", "circuit:2"]);
+      }
+    });
+
+    it("end to end: with A's flood queued first, the delivery worker's first tick sends B's alert", async () => {
+      await leaseLeftovers();
+      const a = await flood(40);
+      const b = await flood(1, URL_B);
+      const sentTo: string[] = [];
+      const fetchStub: typeof fetch = async (input) => {
+        sentTo.push(String(input));
+        return new Response(null, { status: 204 });
+      };
+      const worker = new AlertDeliveryWorker(pool, ring, { logger: createLogger({ level: "silent" }), fetch: fetchStub });
+      await worker.tick();
+      expect((await outboxOf(b.id)).map((row) => row.status)).toEqual(["sent"]);
+      expect(sentTo.filter((url) => url.startsWith("https://discordapp.com/"))).toHaveLength(1);
+      expect((await outboxOf(a.id)).filter((row) => row.status === "sent")).toHaveLength(9);
     });
   });
 

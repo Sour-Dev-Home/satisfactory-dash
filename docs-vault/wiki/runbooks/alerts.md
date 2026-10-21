@@ -101,6 +101,17 @@ and gives up on its pending rows. Deleted servers are never delivered to. A 400 
 followed**. The message text escapes game names so nothing can ping (`allowed_mentions` is empty); the unreachable alert
 says "Game server or FRM not responding".
 
+Per-server limits (#515, ADR-0045 M12), so one server, honest or forged, cannot crowd out the others:
+
+| Limit | Value | Where | Past it |
+|---|---|---|---|
+| Circuits one power rule (`power_outage`, `fuse_trip`) tracks | 64 (lowest ids first) | `MAX_CIRCUIT_SUBJECTS_PER_RULE`, `serverAlertEvaluator.ts` | further circuits get no alert until a tracked one is gone; a gone circuit is forgotten once it is ok again |
+| Alert events per server in any hour | 120 (one per 30 s evaluator tick) | `MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR`, `alertEvaluatorWorker.ts` | `server_unreachable`, `agent_offline` and every `resolved` always go through; the room left goes to `fired`, then `updated`, then `renotify`. A `fired` with no room is not stored and its alert stays pending, so it fires once there is room (no silent firing alert, no orphan resolve); a dropped reminder is just skipped. Log `ALERT_EVENT_QUOTA_EXCEEDED` once an hour per server, metric `satis.alerts.events_dropped{server}` |
+| Outbox claim | fair: every due server's oldest row before any server's second, 10 a tick | `CLAIM_DUE`, `deliveryRepository.ts` | a flooded server's backlog waits behind the others; within a server the order is unchanged |
+
+A real factory is far under all three (the measured tier-6 save has one circuit). If a server keeps hitting the event cap,
+look at its alert log: a forged or broken agent shows as many circuits flapping at once.
+
 Security: the webhook URL is a bearer secret. It is sealed with AES-256-GCM (`platform/secrets`, bound to the server so a
 copied value does not open), re-validated against the allowlist right before every send, and never logged, returned or
 put in an error: logs carry only stable codes (`ALERT_DESTINATION_DISABLED`, `ALERT_DESTINATION_UNREADABLE`). Rotate it by

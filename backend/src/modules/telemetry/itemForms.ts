@@ -34,6 +34,14 @@ export const itemFormCatalog: ItemFormCatalog = z
 const UNIT_BY_FORM: Record<ItemForm, ProductionUnit> = { solid: "items/min", fluid: "m3/min" };
 
 /**
+ * #515: whether a className is one of the game's items in the committed catalog. Own keys only, so "constructor" or
+ * "__proto__" is not an item. History uses it to tell a real item from a made-up one (historyQuota.ts).
+ */
+export function isCatalogedItem(className: string, forms: Record<string, ItemForm> = itemFormCatalog.forms): boolean {
+  return Object.hasOwn(forms, className);
+}
+
+/**
  * className -> the contract's `unit`, or null for an item that isn't in the catalog (a
  * modded item, or one newer than the catalog). Each unknown className is reported through
  * `onUnknown` once per resolver, so create ONE resolver per process (the composition root

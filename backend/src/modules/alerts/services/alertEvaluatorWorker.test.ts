@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { InMemoryServerDirectory, ServerRuntime } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
 import { ObservationBoard } from "../../telemetry/services/observationBoard.js";
-import { AlertEvaluatorWorker, type AlertsDb } from "./alertEvaluatorWorker.js";
+import { AlertEvaluatorWorker, EVENT_QUOTA_WINDOW_MS, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR, type AlertsDb } from "./alertEvaluatorWorker.js";
 import { RULE_KINDS } from "./rules.js";
 import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 
@@ -65,6 +65,21 @@ function fakeDb(initialRules: RuleFixture[] = []) {
       calls.push("listRules");
       if (failWhen.list) throw new Error("db down");
       return { rows: rules };
+    }
+    if (sql.includes("DELETE FROM alerts.alert_state st")) {
+      calls.push("deleteStates");
+      const [ruleIds, subjects] = params as string[][];
+      ruleIds!.forEach((ruleId, i) => {
+        const key = `${ruleId}|${subjects![i]}`;
+        if (states.get(key)?.phase === "ok") states.delete(key);
+      });
+      return { rows: [] };
+    }
+    if (sql.includes("SELECT count(*)::int AS count") && sql.includes("FROM alerts.alert_events e")) {
+      // #515's hourly cap: not in `calls`, so the existing call-order assertions stay as they were.
+      const [serverId, sinceMs] = params as [string, number];
+      const own = new Set(rules.filter((rule) => rule.server_public_id === serverId).map((rule) => rule.id));
+      return { rows: [{ count: events.filter((event) => own.has(event.ruleId as string) && (event.at as number) >= sinceMs).length }] };
     }
     if (sql.includes("FROM alerts.alert_state st")) {
       calls.push("loadStates");
@@ -731,5 +746,150 @@ describe("AlertEvaluatorWorker metrics (ADR-0037 build step 3, fake clock)", () 
       "satis.alerts.evaluation.duration",
       "satis.alerts.fire.lag",
     ]);
+  });
+});
+
+describe("#515: alert events per server per hour are capped (ADR-0045 M12)", () => {
+  /** Every circuit in `ids` in outage (or not), for one server's board. */
+  const publishCircuits = (board: ObservationBoard, at: number, outage: boolean, ids: number[]) => {
+    board.recordPollSuccess(at);
+    board.publishStatus({ observedAt: at, intervalMs: 5 * SEC, paused: false, session: "S" });
+    board.publishPower({ observedAt: at, intervalMs: 5 * SEC, circuits: ids.map((circuit) => ({ circuit, status: outage ? "outage" : "ok", fuseTripped: false })) });
+  };
+  const circuits = Array.from({ length: 64 }, (_, i) => i + 1);
+
+  it("a flooding server stops at the cap; another server's alert in the same tick is still logged and queued", async () => {
+    let now = T0;
+    const fake = fakeDb();
+    const w = world(["alpha", "bravo"]);
+    const l = logger();
+    const metrics = createMetricsAggregator(() => 0);
+    const worker = new AlertEvaluatorWorker(fake.db, w.directory, { logger: l.logger, now: () => now, deliver: true, metrics });
+    const alpha = w.boards.get("alpha")!;
+    const bravo = w.boards.get("bravo")!;
+    // alpha flaps 64 circuits: 3 ticks in outage (fires), 3 ticks ok (resolves after the 60 s clear), and again.
+    for (let tick = 0; tick < 12; tick++) {
+      publishCircuits(alpha, now, Math.floor(tick / 3) % 2 === 0, circuits);
+      publishOutage(bravo, now, tick === 10);
+      await worker.tick();
+      now += 30 * SEC;
+    }
+    const of = (server: string) => fake.events.filter((event) => (event.ruleId as string).startsWith(`${server}-`));
+    // alpha: its first 64 fires and their 64 resolves (a resolve always goes through); the second round of fires found
+    // no room left (128 > 120) and was dropped.
+    expect(of("alpha").filter((event) => event.transition === "fired")).toHaveLength(64);
+    expect(of("alpha").filter((event) => event.transition === "resolved")).toHaveLength(64);
+    expect(of("alpha")).toHaveLength(128);
+    expect(of("bravo").map((event) => event.transition)).toEqual(["fired"]);
+    // bravo's event was queued for delivery like any other (the outbox got every stored event).
+    expect(fake.outbox).toHaveLength(128 + 1);
+    const dropped = metrics.drain().filter((delta) => delta.metric === "satis.alerts.events_dropped");
+    expect(dropped.map((delta) => delta.labels)).toEqual([{ server: "alpha" }]);
+    expect(dropped[0]!.sum).toBeGreaterThan(0);
+    // One warning for alpha in the hour, with ids and counts only.
+    const warnings = l.lines.filter((line) => line.obj.code === "ALERT_EVENT_QUOTA_EXCEEDED");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.obj).toMatchObject({ serverId: "alpha" });
+  });
+
+  it("the cap is a sliding hour counted from the alert log: room comes back as old events age out", async () => {
+    let now = T0;
+    const fake = fakeDb();
+    const w = world(["alpha"]);
+    const worker = new AlertEvaluatorWorker(fake.db, w.directory, { logger: logger().logger, now: () => now });
+    const alpha = w.boards.get("alpha")!;
+    const flap = async (ticks: number) => {
+      for (let tick = 0; tick < ticks; tick++) {
+        publishCircuits(alpha, now, Math.floor(tick / 3) % 2 === 0, circuits);
+        await worker.tick();
+        now += 30 * SEC;
+      }
+    };
+    await flap(12);
+    expect(fake.events).toHaveLength(128); // 64 fired + 64 resolved; the second round of fires had no room
+    await flap(6); // still within the hour of the first events: nothing more
+    expect(fake.events).toHaveLength(128);
+    now += EVENT_QUOTA_WINDOW_MS;
+    await flap(6);
+    expect(fake.events.length).toBeGreaterThan(128);
+  });
+
+  describe("what the cap never drops, and what a dropped fire leaves behind", () => {
+    /** The alert log already holds the hour's whole allowance for alpha. */
+    const fillLog = (fake: ReturnType<typeof fakeDb>, at: number) => {
+      for (let i = 0; i < MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR; i++) {
+        fake.events.push({ at, ruleId: "alpha-power_outage", kind: "power_outage", severity: "critical", subject: "circuit:999", transition: "renotify", summary: {} });
+      }
+    };
+    const setup = () => {
+      const clock = { now: T0 };
+      const fake = fakeDb();
+      const w = world(["alpha"]);
+      const worker = new AlertEvaluatorWorker(fake.db, w.directory, { logger: logger().logger, now: () => clock.now });
+      const tick = async (outage: boolean) => {
+        publishCircuits(w.boards.get("alpha")!, clock.now, outage, [1]);
+        await worker.tick();
+        clock.now += 30 * SEC;
+      };
+      const newEvents = (from: number) => fake.events.slice(from).map((event) => `${event.kind}:${event.subject}:${event.transition}`);
+      return { clock, fake, w, worker, tick, newEvents };
+    };
+
+    it("server_unreachable still fires for a server at its cap", async () => {
+      const t = setup();
+      await t.tick(false); // seeds the presets
+      fillLog(t.fake, t.clock.now);
+      const before = t.fake.events.length;
+      const board = t.w.boards.get("alpha")!;
+      for (let i = 0; i < 4; i++) {
+        board.recordPollFailure(t.clock.now);
+        t.clock.now += 50 * SEC;
+      }
+      await t.worker.tick();
+      expect(t.newEvents(before)).toEqual(["server_unreachable:server:fired"]);
+    });
+
+    it("a resolve always goes through, so a recorded fire is never left open", async () => {
+      const t = setup();
+      await t.tick(true);
+      expect(t.newEvents(0)).toEqual(["power_outage:circuit:1:fired"]);
+      fillLog(t.fake, t.clock.now);
+      const before = t.fake.events.length;
+      await t.tick(false);
+      await t.tick(false);
+      await t.tick(false);
+      expect(t.newEvents(before)).toEqual(["power_outage:circuit:1:resolved"]);
+    });
+
+    it("a fire with no room is not stored and stays pending, then fires once there is room (no orphan resolve)", async () => {
+      const t = setup();
+      await t.tick(false);
+      fillLog(t.fake, t.clock.now);
+      const before = t.fake.events.length;
+      const firstTry = t.clock.now;
+      await t.tick(true);
+      expect(t.newEvents(before)).toEqual([]);
+      expect(t.fake.states.get("alpha-power_outage|circuit:1")).toMatchObject({ phase: "pending", since_ms: firstTry, last_notified_ms: null });
+      // It clears while there is still no room: nothing to resolve, because nothing was said.
+      await t.tick(false);
+      await t.tick(false);
+      await t.tick(false);
+      expect(t.newEvents(before)).toEqual([]);
+      // In outage again, after the hour has passed: it fires.
+      t.clock.now += EVENT_QUOTA_WINDOW_MS;
+      await t.tick(true);
+      expect(t.newEvents(before)).toEqual(["power_outage:circuit:1:fired"]);
+    });
+
+    it("one slot left is enough for a fire", async () => {
+      const t = setup();
+      await t.tick(false);
+      // One slot left.
+      fillLog(t.fake, t.clock.now);
+      t.fake.events.pop();
+      const before = t.fake.events.length;
+      await t.tick(true);
+      expect(t.newEvents(before)).toEqual(["power_outage:circuit:1:fired"]);
+    });
   });
 });

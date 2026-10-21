@@ -81,8 +81,10 @@ describe("the background metrics (ADR-0037 §1, build step 3)", () => {
     ["satis.agent.ingest.lag", "histogram", { server: "abc123" }],
     ["satis.agent.refused", "counter", { server: "unknown", status: "401" }],
     ["satis.history.rows_written", "counter", { table: "item_samples" }],
+    ["satis.history.rows_dropped", "counter", { server: "abc123", table: "power_samples" }],
     ["satis.alerts.evaluation.duration", "histogram", {}],
     ["satis.alerts.fire.lag", "histogram", { kind: "fuse_trip" }],
+    ["satis.alerts.events_dropped", "counter", { server: "abc123" }],
   ];
 
   it.each(table)("%s is registered as a %s with exactly its table's labels", (metric, kind, labels) => {

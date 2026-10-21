@@ -83,7 +83,8 @@ finite; MW, rates and clock speed `>= 0`; battery percent 0 to 100. The agent cl
 Still the agent's word, by design (it is the only source of these readings): `isBackedUp`, `isPaused`, `isProducing`,
 `circuitGroupId`, each circuit's `fuseTriggered` and the numbers. A compromised agent can therefore cause an outage,
 `backedUp` or `unpowered` state and the alerts that follow, but only for its own server. Body size is capped (5 MB) and
-each credential is rate limited, which bounds what one agent can make the backend hold.
+each credential is rate limited, which bounds what one agent can make the backend hold. What a snapshot may add to
+history and alerts is capped per server below the input bounds (#515): see `history.md` and `alerts.md`.
 
 ## Limits on the agent API (#514, ADR-0045)
 
