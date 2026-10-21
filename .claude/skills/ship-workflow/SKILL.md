@@ -26,8 +26,9 @@ npm run baselines -- <worktree> [--only "<glob>"]... [--run <id>] [--commit "<me
 Push the branch first. CI screenshots the pushed commit, and the script refuses to run otherwise. It dispatches
 the repo's screenshot workflow, waits, fails loudly if a test failed (fix the test; the run saved nothing), then
 applies the artifact and lists what changed.
-- In satisfactory-dash, unrelated screenshots can change from run to run (#503). Pass `--only` for the screens
-  your change affects, and check the changed list before committing.
+- In satisfactory-dash the regeneration writes only screenshots that fail the 50-pixel tolerance or are missing
+  (#503), so unrelated screens no longer change; `--only` is no longer needed. Still read the changed list
+  before committing.
 - `--run` reuses a finished or running run instead of dispatching a new one.
 - It commits only with `--commit`, and never pushes.
 

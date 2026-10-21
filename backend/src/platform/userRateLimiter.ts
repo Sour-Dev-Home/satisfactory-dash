@@ -38,4 +38,11 @@ export class UserRateLimiter {
     this.windows.set(key, { count: 1, resetAt: now + this.options.windowMs });
     return 0;
   }
+
+  /** Takes back one `hit` in the key's current window (a request counted up front that turned out not to count, such as
+   *  an attempt that authenticated). Does nothing when the window has ended or nothing is counted. */
+  refund(key: string): void {
+    const current = this.windows.get(key);
+    if (current !== undefined && current.resetAt > this.now() && current.count > 0) current.count -= 1;
+  }
 }

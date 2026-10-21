@@ -41,4 +41,28 @@ describe("UserRateLimiter", () => {
     for (let i = 0; i < 5_000; i++) limiter.hit(`user-${i}`);
     expect(limiter.hit("fresh")).toBe(0);
   });
+
+  it("refund takes one hit back in the live window, so a refunded hit never counts toward max", () => {
+    const limiter = new UserRateLimiter({ max: 2, windowMs: 60_000, now: () => 0 });
+    for (let i = 0; i < 10; i++) {
+      expect(limiter.hit("u")).toBe(0);
+      limiter.refund("u");
+    }
+    expect([limiter.hit("u"), limiter.hit("u")]).toEqual([0, 0]);
+    expect(limiter.hit("u")).toBeGreaterThan(0);
+  });
+
+  it("refund does nothing for an unknown key or an ended window, and never goes below zero", () => {
+    let now = 0;
+    const limiter = new UserRateLimiter({ max: 1, windowMs: 1_000, now: () => now });
+    limiter.refund("nobody");
+    expect(limiter.hit("u")).toBe(0);
+    limiter.refund("u");
+    limiter.refund("u"); // already at zero
+    expect(limiter.hit("u")).toBe(0);
+    expect(limiter.hit("u")).toBeGreaterThan(0);
+    now += 1_000;
+    limiter.refund("u"); // window over: nothing to refund, and the next hit starts a fresh window
+    expect(limiter.hit("u")).toBe(0);
+  });
 });

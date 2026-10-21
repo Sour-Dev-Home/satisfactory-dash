@@ -13,13 +13,17 @@ export function ipv6Prefix64(address: string): string | undefined {
   return groups.slice(0, 4).map((group) => parseInt(group, 16).toString(16)).join(":");
 }
 
+const MAPPED_IPV4 = /^(?:::|(?:0{1,4}:){5})ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i;
+
 /**
  * The key a public agent route rate-limits a caller under: the client address, but an IPv6 address counts as its /64
  * (one subscriber is handed a whole /64, so per-address keys would let one machine mint billions of keys and never be
  * limited). An IPv4 address, and the placeholder for an unknown one, are used as they are.
  */
 export function rateLimitKey(req: IncomingMessage): string {
-  const ip = clientIp(req);
+  const raw = clientIp(req);
+  // An IPv4-mapped IPv6 address (any spelling) is the IPv4 client: one key, whether the socket or the header names it.
+  const ip = MAPPED_IPV4.exec(raw)?.[1] ?? raw;
   const prefix = ipv6Prefix64(ip);
   return prefix === undefined ? ip : `${prefix}::/64`;
 }

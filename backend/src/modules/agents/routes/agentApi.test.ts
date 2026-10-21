@@ -1,3 +1,5 @@
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
@@ -7,6 +9,7 @@ import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
 import { ApiFailure, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { TokenBucketLimiter } from "../../../platform/tokenBucket.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
@@ -305,12 +308,12 @@ describe("POST /agent/v1/snapshots", () => {
   });
 
   it("is rate limited per credential (bursts are fine, a flood is a 429)", async () => {
-    const { app, ingest } = build({ snapshotLimiter: new UserRateLimiter({ max: 2, windowMs: 10_000 }) });
+    const { app, ingest } = build({ snapshotLimiter: new TokenBucketLimiter({ capacity: 2, refillPerSecond: 0.1, now: () => 0 }) });
     expect((await postSnapshot(app)).status).toBe(200);
     expect((await postSnapshot(app)).status).toBe(200);
     const res = await postSnapshot(app);
     expect(res.status).toBe(429);
-    expect(res.headers["retry-after"]).toBeDefined();
+    expect(res.headers["retry-after"]).toBe("10");
     expect(ingest).toHaveBeenCalledTimes(2);
   });
 
@@ -458,10 +461,38 @@ describe("GET /agent/v1/commands (the long-poll)", () => {
     await vi.waitFor(() => expect(seen?.aborted).toBe(true));
   });
 
-  it("is rate limited per credential like the snapshots", async () => {
-    const { app } = build({ snapshotLimiter: new UserRateLimiter({ max: 1, windowMs: 10_000 }) });
+  it("is rate limited per credential, on its own budget (snapshots don't use it up)", async () => {
+    const { app } = build({
+      commandsLimiter: new TokenBucketLimiter({ capacity: 1, refillPerSecond: 0.01, now: () => 0 }),
+      snapshotLimiter: new TokenBucketLimiter({ capacity: 1, refillPerSecond: 0.01, now: () => 0 }),
+    });
+    expect((await postSnapshot(app)).status).toBe(200);
     expect((await getCommands(app)).status).toBe(200);
-    expect((await getCommands(app)).status).toBe(429);
+    const res = await getCommands(app);
+    expect(res.status).toBe(429);
+    expect(res.headers["retry-after"]).toBe("100");
+  });
+
+  it("holds one open poll per credential: a second one ends the first, which answers an empty list", async () => {
+    const { app, commands } = build();
+    const signals: AbortSignal[] = [];
+    commands.poll.mockImplementation(
+      (_agent, _wait, signal) =>
+        new Promise((resolve) => {
+          signals.push(signal!);
+          signal?.addEventListener("abort", () => resolve([]));
+          if (signals.length === 2) setTimeout(() => resolve([COMMAND]), 10);
+        }),
+    );
+    const first = getCommands(app, "?waitSeconds=25").then((res) => res);
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const second = await getCommands(app, "?waitSeconds=25");
+    const ended = await first;
+    expect(signals[0]!.aborted).toBe(true);
+    expect(ended.status).toBe(200);
+    expect(ended.body).toEqual({ commands: [] });
+    expect(second.status).toBe(200);
+    expect(second.body).toEqual({ commands: [COMMAND] });
   });
 
   it("a database outage is a 503 from the service", async () => {
@@ -594,5 +625,290 @@ describe("POST /agent/v1/snapshots records satis.agent.ingest.lag (ADR-0037 buil
     expect((await postSnapshot(app)).status).toBe(200);
     expect(ingest).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+const SNAPSHOT_BYTES = Buffer.byteLength(JSON.stringify(agentSnapshotRequestFull));
+/** A byte budget that never refills within a test. */
+const byteBudget = (capacity: number) => new TokenBucketLimiter({ capacity, refillPerSecond: 1, now: () => 0 });
+
+describe("the per-credential snapshot byte budget (#514)", () => {
+  it("allows snapshots while the budget is positive and refuses the next one with 429 and Retry-After (n allowed, n+1 refused)", async () => {
+    const { app, ingest } = build({ snapshotByteBudget: byteBudget(2 * SNAPSHOT_BYTES) });
+    expect((await postSnapshot(app)).status).toBe(200);
+    expect((await postSnapshot(app)).status).toBe(200);
+    const res = await postSnapshot(app);
+    expect(res.status).toBe(429);
+    expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("rate_limited");
+    expect(res.headers["retry-after"]).toBe("1");
+    expect(ingest).toHaveBeenCalledTimes(2);
+  });
+
+  it("charges the DECOMPRESSED size of a gzip body", async () => {
+    // One byte more than one snapshot: by compressed size (about a third) a third snapshot would still fit.
+    const { app, ingest } = build({ snapshotByteBudget: byteBudget(SNAPSHOT_BYTES + 1) });
+    const gzipped = gzipSync(Buffer.from(JSON.stringify(agentSnapshotRequestFull)));
+    const send = () =>
+      request(app).post("/agent/v1/snapshots").set("Authorization", bearer(SECRET)).set("Content-Type", "application/json").set("Content-Encoding", "gzip").serialize(rawBody).send(gzipped);
+    expect((await send()).status).toBe(200);
+    expect((await send()).status).toBe(200); // 1 byte left: still admitted, and now in debt
+    expect((await send()).status).toBe(429);
+    expect(ingest).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a credential in debt BEFORE its body is read: an oversized body is a 429, not a 413", async () => {
+    const { app } = build({ snapshotByteBudget: byteBudget(100), snapshotMaxBytes: 1024 });
+    expect((await postSnapshot(app)).status).toBe(413); // over the cap: charged the cap, so 100 - 1024 is in debt
+    const res = await request(app).post("/agent/v1/snapshots").set("Authorization", bearer(SECRET)).set("Content-Type", "application/json").send(JSON.stringify({ x: "a".repeat(10_000) }));
+    expect(res.status).toBe(429);
+  });
+
+  it("a gzip bomb is charged the cap it was inflated to", async () => {
+    const { app } = build({ snapshotByteBudget: byteBudget(1024), snapshotMaxBytes: 1024 });
+    const bomb = gzipSync(Buffer.from(JSON.stringify({ x: "a".repeat(100_000) })));
+    const res = await request(app).post("/agent/v1/snapshots").set("Authorization", bearer(SECRET)).set("Content-Type", "application/json").set("Content-Encoding", "gzip").serialize(rawBody).send(bomb);
+    expect(res.status).toBe(413);
+    expect((await postSnapshot(app)).status).toBe(429);
+  });
+
+  it("is per credential: one server's debt never refuses another's", async () => {
+    const budget = byteBudget(SNAPSHOT_BYTES);
+    budget.charge("some-other-server", 10 * SNAPSHOT_BYTES);
+    const { app } = build({ snapshotByteBudget: budget });
+    expect((await postSnapshot(app)).status).toBe(200);
+  });
+});
+
+/** A database whose one live credential can be revoked, and which can go down, mid-test. */
+function switchableDb() {
+  const base = fakeDb();
+  const state = { revoked: false, down: false };
+  const db: Queryable = {
+    async query(text, values) {
+      if (state.down) throw Object.assign(new Error("boom"), { code: "ECONNREFUSED" });
+      if (state.revoked && text.includes("secret_hash = $1")) return { rows: [] };
+      return base.db.query(text, values);
+    },
+  };
+  return { ...base, db, state };
+}
+
+describe("agent authentication's failure budgets can't lock out valid agents (#514, ADR-0045 E3)", () => {
+  const from = (address: string) => ({ "CF-Connecting-IP": address });
+  const junk = (app: ReturnType<typeof build>["app"], address: string) =>
+    request(app).post("/agent/v1/snapshots").set(from(address)).set("Authorization", bearer("U".repeat(43))).set("Content-Type", "application/json").send("{}");
+  const valid = (app: ReturnType<typeof build>["app"], address = "198.51.100.1") =>
+    request(app).post("/agent/v1/snapshots").set(from(address)).set("Authorization", bearer(SECRET)).set("Content-Type", "application/json").send(JSON.stringify(agentSnapshotRequestFull));
+  const buildWithAuth = (auth: { perNetwork?: number; global?: number }, database = fakeDb()) =>
+    build({
+      db: database,
+      auth: createAgentAuth({
+        db: database.db,
+        now: () => 1_000_000,
+        limiter: new UserRateLimiter({ max: auth.perNetwork ?? 1_000, windowMs: 60_000, now: () => 1_000_000 }),
+        globalLimiter: new UserRateLimiter({ max: auth.global ?? 1_000, windowMs: 60_000, now: () => 1_000_000 }),
+      }),
+      snapshotLimiter: new TokenBucketLimiter({ capacity: 1_000, refillPerSecond: 1, now: () => 0 }),
+    });
+
+  it("junk from many addresses uses up the global failure budget, and a valid agent is still served", async () => {
+    const { app, ingest } = buildWithAuth({ global: 5 });
+    expect((await valid(app)).status).toBe(200);
+    const answers = [];
+    for (let i = 0; i < 20; i++) answers.push((await junk(app, `203.0.113.${i + 1}`)).status);
+    expect(answers.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+    expect(new Set(answers.slice(5))).toEqual(new Set([429]));
+    expect((await valid(app)).status).toBe(200);
+    expect((await valid(app, "203.0.113.7")).status).toBe(200); // even from an address that sent junk
+    expect(ingest).toHaveBeenCalledTimes(3);
+  });
+
+  it("successful requests never count: a valid agent may send far more than the failure budgets", async () => {
+    const { app } = buildWithAuth({ perNetwork: 2, global: 2 });
+    for (let i = 0; i < 10; i++) expect((await valid(app)).status).toBe(200);
+    // The budgets are still whole for failures (n allowed, n+1 refused).
+    expect((await junk(app, "198.51.100.1")).status).toBe(401);
+    expect((await junk(app, "198.51.100.1")).status).toBe(401);
+    expect((await junk(app, "198.51.100.1")).status).toBe(429);
+  });
+
+  it("the per-network failure budget refuses at its boundary, and only that network", async () => {
+    const { app } = buildWithAuth({ perNetwork: 3 });
+    for (let i = 0; i < 3; i++) expect((await junk(app, "203.0.113.9")).status).toBe(401);
+    const res = await junk(app, "203.0.113.9");
+    expect(res.status).toBe(429);
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect((await junk(app, "203.0.113.10")).status).toBe(401);
+  });
+
+  it("a missing or malformed credential counts as a failure too", async () => {
+    const { app } = buildWithAuth({ perNetwork: 1 });
+    expect((await request(app).post("/agent/v1/snapshots").set(from("203.0.113.5")).set("Content-Type", "application/json").send("{}")).status).toBe(401);
+    expect((await request(app).post("/agent/v1/snapshots").set(from("203.0.113.5")).set("Authorization", "Bearer short").send("{}")).status).toBe(429);
+  });
+
+  it("a valid credential not seen before is refused while the flood lasts (it is not yet known to be valid), then served", async () => {
+    let nowMs = 1_000_000;
+    const database = fakeDb();
+    const { app } = build({
+      db: database,
+      auth: createAgentAuth({ db: database.db, now: () => nowMs, globalLimiter: new UserRateLimiter({ max: 2, windowMs: 60_000, now: () => nowMs }) }),
+    });
+    await junk(app, "203.0.113.1");
+    await junk(app, "203.0.113.2");
+    expect((await valid(app)).status).toBe(429);
+    nowMs += 60_000;
+    expect((await valid(app)).status).toBe(200);
+  });
+
+  it("a recently valid credential that is then revoked is a 401 at once, and counts as a failure", async () => {
+    const database = switchableDb();
+    const { app } = buildWithAuth({ perNetwork: 1 }, database);
+    expect((await valid(app)).status).toBe(200);
+    database.state.revoked = true;
+    expect((await valid(app)).status).toBe(401);
+    expect((await valid(app)).status).toBe(429); // forgotten, so counted: the budget of 1 is used up
+  });
+
+  it("a database outage gives the attempt back: it never uses up the failure budgets", async () => {
+    const database = switchableDb();
+    const { app } = buildWithAuth({ perNetwork: 1, global: 1 }, database);
+    database.state.down = true;
+    for (let i = 0; i < 3; i++) expect((await valid(app)).status).toBe(503);
+    database.state.down = false;
+    expect((await valid(app)).status).toBe(200);
+  });
+
+  it("forgets a recently valid credential after the TTL, so it is counted again", async () => {
+    let nowMs = 1_000_000;
+    const database = fakeDb();
+    const { app } = build({
+      db: database,
+      auth: createAgentAuth({
+        db: database.db,
+        now: () => nowMs,
+        recentlyValidTtlMs: 1_000,
+        globalLimiter: new UserRateLimiter({ max: 1, windowMs: 60_000, now: () => nowMs }),
+      }),
+    });
+    expect((await valid(app)).status).toBe(200); // counted (not known yet), then refunded
+    await junk(app, "203.0.113.1"); // uses up the global budget of 1
+    expect((await valid(app)).status).toBe(200); // known: not checked
+    nowMs += 1_000;
+    expect((await valid(app)).status).toBe(429); // forgotten
+  });
+});
+
+describe("satis.agent.refused counts refused agent requests by server and status (#514, ADR-0045 O4)", () => {
+  const refusedOf = (metrics: ReturnType<typeof createMetricsAggregator>) =>
+    metrics
+      .drain()
+      .filter((delta) => delta.metric === "satis.agent.refused")
+      .map((delta) => ({ ...delta.labels, count: delta.count }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+  it("labels a refusal before authentication 'unknown', and one after it with the server's public id", async () => {
+    const metrics = createMetricsAggregator(() => 0);
+    const { app } = build({ metrics, snapshotMaxBytes: 1024, snapshotLimiter: new TokenBucketLimiter({ capacity: 3, refillPerSecond: 0.01, now: () => 0 }) });
+    await postSnapshot(app, agentSnapshotRequestFull, "U".repeat(43)); // 401, unknown
+    await postSnapshot(app); // 413 (over 1 kB), alpha
+    await postSnapshot(app, { bad: true }); // 400, alpha
+    await request(app).post("/agent/v1/snapshots").set("Authorization", bearer(SECRET)).set("Content-Type", "text/plain").send("x"); // 415, alpha
+    await postSnapshot(app); // 429, alpha (the bucket of 3 is spent)
+    await waitForFinish();
+    expect(refusedOf(metrics)).toEqual(
+      [
+        { server: "alpha", status: "400", count: 1 },
+        { server: "alpha", status: "413", count: 1 },
+        { server: "alpha", status: "415", count: 1 },
+        { server: "alpha", status: "429", count: 1 },
+        { server: "unknown", status: "401", count: 1 },
+      ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    );
+  });
+
+  it("counts nothing for a served request, and never a body or credential in its labels", async () => {
+    const metrics = createMetricsAggregator(() => 0);
+    const { app } = build({ metrics });
+    expect((await postSnapshot(app)).status).toBe(200);
+    await waitForFinish();
+    expect(refusedOf(metrics)).toEqual([]);
+  });
+});
+
+/** `finish` fires after the response is flushed, which can be just after Supertest resolves. */
+const waitForFinish = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+describe("security review fixes (#514)", () => {
+  it("allows one snapshot upload in flight per credential: concurrent ones are 429 and never read, and the next is served", async () => {
+    const { app, ingest, commands } = build();
+    let release: (value: boolean) => void = () => {};
+    commands.hasPending.mockImplementationOnce(() => new Promise<boolean>((resolve) => (release = resolve)));
+    const first = postSnapshot(app).then((res) => res);
+    await vi.waitFor(() => expect(ingest).toHaveBeenCalledTimes(1));
+    const concurrent = await Promise.all(Array.from({ length: 8 }, () => postSnapshot(app)));
+    expect(concurrent.map((res) => res.status)).toEqual(Array(8).fill(429));
+    expect(concurrent[0]!.headers["retry-after"]).toBe("1");
+    expect(ingest).toHaveBeenCalledTimes(1);
+    release(false);
+    expect((await first).status).toBe(200);
+    expect((await postSnapshot(app)).status).toBe(200);
+  });
+
+  it("frees the slot when the client hangs up mid-request", async () => {
+    const { app, ingest, commands } = build();
+    commands.hasPending.mockImplementationOnce(() => new Promise<boolean>(() => {})); // never answers
+    await expect(postSnapshot(app).timeout({ response: 150 })).rejects.toThrow();
+    await vi.waitFor(async () => expect((await postSnapshot(app)).status).toBe(200));
+    expect(ingest).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives a remembered credential its own lookup budget, checked before the lookup", async () => {
+    const database = fakeDb();
+    let lookups = 0;
+    const counting: Queryable = {
+      async query(text, values) {
+        if (text.includes("secret_hash = $1")) lookups += 1;
+        return database.db.query(text, values);
+      },
+    };
+    const { app } = build({
+      db: { ...database, db: counting },
+      auth: createAgentAuth({ db: counting, now: () => 1_000_000, knownCredentialLookups: new TokenBucketLimiter({ capacity: 3, refillPerSecond: 0.01, now: () => 0 }) }),
+    });
+    expect((await postSnapshot(app)).status).toBe(200); // not yet remembered: the failure budgets apply
+    for (let i = 0; i < 3; i++) expect((await postSnapshot(app)).status).toBe(200);
+    const res = await postSnapshot(app);
+    expect(res.status).toBe(429);
+    expect(lookups).toBe(4); // the refused one made no lookup
+    expect((await getCommands(app)).status).toBe(429); // the budget covers every route
+  });
+
+  it("charges the cap for a body the client abandons midway (request.aborted)", async () => {
+    const { app } = build({ snapshotByteBudget: byteBudget(1024), snapshotMaxBytes: 1024 });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      await new Promise<void>((resolve) => {
+        const req = httpRequest({ port, host: "127.0.0.1", method: "POST", path: "/agent/v1/snapshots", headers: { Authorization: bearer(SECRET), "Content-Type": "application/json", "Content-Length": "900" } });
+        req.on("error", () => resolve());
+        req.write('{"x":"');
+        setTimeout(() => {
+          req.destroy();
+          resolve();
+        }, 50);
+      });
+      await vi.waitFor(async () => expect((await postSnapshot(app)).status).toBe(429));
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  it("charges nothing for a body refused before it is read (a wrong content type)", async () => {
+    const { app } = build({ snapshotByteBudget: byteBudget(SNAPSHOT_BYTES) });
+    const res = await request(app).post("/agent/v1/snapshots").set("Authorization", bearer(SECRET)).set("Content-Type", "text/plain").send("x".repeat(5_000));
+    expect(res.status).toBe(415);
+    expect((await postSnapshot(app)).status).toBe(200);
   });
 });
