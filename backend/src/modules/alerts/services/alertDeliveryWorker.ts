@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 import type { BackgroundWorker } from "../../telemetry/index.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import type { withTransaction } from "../../../platform/db/transaction.js";
+import { FailureStreak, failuresForWindow } from "../../../platform/failureStreak.js";
 import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
 import {
   claimDueDeliveries,
@@ -72,7 +73,7 @@ export class AlertDeliveryWorker implements BackgroundWorker {
   private inFlight: Promise<void> | undefined;
   private started = false;
   private stopped = false;
-  private failing = false;
+  private readonly streak: FailureStreak;
 
   constructor(
     private readonly db: DeliveryDb,
@@ -80,6 +81,15 @@ export class AlertDeliveryWorker implements BackgroundWorker {
     private readonly options: AlertDeliveryOptions,
   ) {
     this.tickMs = options.tickMs ?? DEFAULT_TICK_MS;
+    // #560: 30 failed ticks at the default 10 s is five minutes.
+    this.streak = new FailureStreak({
+      logger: options.logger,
+      job: "alert-delivery",
+      escalateAfter: failuresForWindow(this.tickMs),
+      failedMsg: "alert delivery failed; retrying next tick",
+      recoveredMsg: "alert delivery recovered",
+      countField: "failedTicks",
+    });
     this.batchSize = options.batchSize ?? DEFAULT_BATCH;
     this.leaseSeconds = options.leaseSeconds ?? DEFAULT_LEASE_SECONDS;
     this.now = options.now ?? Date.now;
@@ -121,15 +131,9 @@ export class AlertDeliveryWorker implements BackgroundWorker {
   private async run(): Promise<void> {
     try {
       await this.tick();
-      if (this.failing) {
-        this.options.logger.info("alert delivery recovered");
-        this.failing = false;
-      }
+      this.streak.success();
     } catch {
-      if (!this.failing) {
-        this.failing = true;
-        this.options.logger.warn({ code: "ALERT_DELIVERY_TICK_FAILED" }, "alert delivery failed; retrying next tick");
-      }
+      this.streak.failure({ code: "ALERT_DELIVERY_TICK_FAILED" });
     } finally {
       this.inFlight = undefined;
       this.schedule(this.tickMs);

@@ -1,4 +1,6 @@
 import type {
+  ConveyorsWorldIngestRequest,
+  ConveyorsWorldLayerResponse,
   MapLive,
   RailsWorldIngestRequest,
   RailsWorldLayerResponse,
@@ -111,3 +113,160 @@ export const mapLiveSample = {
 
 /** No trains or stations built yet. */
 export const mapLiveEmpty = { trains: [], stations: [] } satisfies MapLive;
+
+/**
+ * ADR-0048 amendment (Decision 4): the conveyors layer projected from the 2026-10-21 captures
+ * (docs-vault/raw-sources/captured-responses/frm-getBelts-2026-10-21-connections-trimmed.json, all 7 kept belts;
+ * frm-getLifts-2026-10-21-trimmed.json, both lifts; frm-getPipes-2026-10-21-connections-trimmed.json, both pipes), the
+ * way the amendment's PR 2 mapper will: `ConnectedTo0`/`ConnectedTo1` to `from`/`to` (`""` to null), each end's kind
+ * from its class, `ItemsPerMinute` to `capacityPerMinute` (null for every pipe until G-B2), `Name` to `tier`, `location0`
+ * x/y divided by 100 and rounded to whole metres, sorted by `id`. Covers: a miner-fed belt, a splitter to a constructor,
+ * a belt-to-belt join seen from both belts, a Mk.4 merger to merger, a belt into a generator, an open end, a lift between
+ * storages, a lift out of a refinery onto a belt, a pipe from a water extractor and a pipe with an open end.
+ */
+export const conveyorsSample = {
+  observedAt: "2026-10-21T15:03:00.000Z",
+  data: [
+    {
+      id: "Build_ConveyorBeltMk1_C_2146952248",
+      kind: "belt",
+      from: "Build_ConveyorAttachmentSplitter_C_2146955812",
+      fromKind: "splitter",
+      to: "Build_GeneratorBiomass_Automated_C_2146972747",
+      toKind: "consumer",
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: -544, y: -1432 },
+    },
+    {
+      id: "Build_ConveyorBeltMk1_C_2146953393",
+      kind: "belt",
+      from: "Build_ConveyorAttachmentSplitter_C_2146953396",
+      fromKind: "splitter",
+      to: null,
+      toKind: null,
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: -600, y: -1431 },
+    },
+    {
+      id: "Build_ConveyorBeltMk1_C_2146977182",
+      kind: "belt",
+      from: "Build_ConveyorBeltMk1_C_2146979166",
+      fromKind: "conveyor",
+      to: "Build_ConveyorBeltMk1_C_2146976023",
+      toKind: "conveyor",
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: -534, y: -1270 },
+    },
+    {
+      id: "Build_ConveyorBeltMk1_C_2146979166",
+      kind: "belt",
+      from: "Build_ConveyorAttachmentMerger_C_2146982118",
+      fromKind: "merger",
+      to: "Build_ConveyorBeltMk1_C_2146977182",
+      toKind: "conveyor",
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: -553, y: -1260 },
+    },
+    {
+      id: "Build_ConveyorBeltMk1_C_2146994301",
+      kind: "belt",
+      from: "Build_MinerMk1_C_2147011597",
+      fromKind: "extractor",
+      to: "Build_ConveyorAttachmentSplitter_C_2146996403",
+      toKind: "splitter",
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: -556, y: -1286 },
+    },
+    {
+      id: "Build_ConveyorBeltMk1_C_2146995466",
+      kind: "belt",
+      from: "Build_ConveyorAttachmentSplitter_C_2146996403",
+      fromKind: "splitter",
+      to: "Build_ConstructorMk1_C_2147002363",
+      toKind: "machine",
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: -554, y: -1278 },
+    },
+    {
+      id: "Build_ConveyorBeltMk4_C_2147211837",
+      kind: "belt",
+      from: "Build_ConveyorAttachmentMerger_C_2147222312",
+      fromKind: "merger",
+      to: "Build_ConveyorAttachmentMerger_C_2147381846",
+      toKind: "merger",
+      capacityPerMinute: 480,
+      tier: "Conveyor Belt Mk.4",
+      at: { x: 602, y: -630 },
+    },
+    {
+      id: "Build_ConveyorLiftMk1_C_2146826510",
+      kind: "lift",
+      from: "Build_OilRefinery_C_2146845148",
+      fromKind: "machine",
+      to: "Build_ConveyorBeltMk3_C_2146694474",
+      toKind: "conveyor",
+      capacityPerMinute: 60,
+      tier: "Conveyor Lift Mk.1",
+      at: { x: -367, y: -1906 },
+    },
+    {
+      id: "Build_ConveyorLiftMk3_C_2147447582",
+      kind: "lift",
+      from: "Build_StorageContainerMk2_C_2146542989",
+      fromKind: "storage",
+      to: "Build_CentralStorage_C_2147449429",
+      toKind: "storage",
+      capacityPerMinute: 270,
+      tier: "Conveyor Lift Mk.3",
+      at: { x: -402, y: -1448 },
+    },
+    {
+      id: "Build_Pipeline_C_2146766654",
+      kind: "pipe",
+      from: "Build_PipelineJunction_Cross_C_2146766657",
+      fromKind: "junction",
+      to: null,
+      toKind: null,
+      capacityPerMinute: null,
+      tier: "Pipeline Mk.1",
+      at: { x: -371, y: -1879 },
+    },
+    {
+      id: "Build_Pipeline_C_2147376300",
+      kind: "pipe",
+      from: "Build_WaterPump_C_2147439854",
+      fromKind: "extractor",
+      to: "Build_PipelineJunction_Cross_C_2147377123",
+      toKind: "junction",
+      capacityPerMinute: null,
+      tier: "Pipeline Mk.1",
+      at: { x: 100, y: 30 },
+    },
+  ],
+} satisfies ConveyorsWorldIngestRequest;
+
+export const conveyorsWorldResponse = {
+  layer: "conveyors",
+  hash: "sha256-conveyors-sample",
+  observedAt: conveyorsSample.observedAt,
+  truncated: false,
+  count: conveyorsSample.data.length,
+  data: conveyorsSample.data,
+} satisfies ConveyorsWorldLayerResponse;
+
+/** A server whose conveyors layer was read and holds no conveyors (nothing built yet). An older FRM without the
+ *  connection fields sends no conveyors layer at all, so it has no response of this kind. */
+export const conveyorsWorldResponseEmpty = {
+  layer: "conveyors",
+  hash: "sha256-empty",
+  observedAt: "2026-10-21T15:03:00.000Z",
+  truncated: false,
+  count: 0,
+  data: [],
+} satisfies ConveyorsWorldLayerResponse;

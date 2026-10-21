@@ -29,8 +29,8 @@ export function resetDemoState(): void {
   alerts.resetDemoAlerts();
 }
 
-const error = (status: number, code: string, message: string) =>
-  Response.json({ error: { code, message, requestId: "demo" } }, { status });
+const error = (status: number, code: string, message: string, reason?: string) =>
+  Response.json({ error: { code, message, requestId: "demo", ...(reason === undefined ? {} : { reason }) } }, { status });
 
 /** Data routes behave like the real API: signed out is a 401, an unknown server a 404. */
 function guarded(params: Params, respond: () => Response): Response {
@@ -109,6 +109,16 @@ export const demoHandlers = [
   // ADR-0031: an agent server's rename and switch back to local are server changes too, refused alike.
   patch(endpoints.serverManagement.renameAgent.route, ({ params }) => guarded(params, NOT_SAVED)),
   post(endpoints.serverManagement.switchToLocal.route, ({ params }) => guarded(params, NOT_SAVED)),
+  // ADR-0047: the demo visitor has no stored account (the session names no sign-in methods, so Settings offers no
+  // deletion), and owns the demo server, so leaving it is refused as the real backend refuses an owner. Nothing changes.
+  del(endpoints.account.remove.route, ({ params }) =>
+    guarded(params, () => error(403, "forbidden", "The demo doesn't delete accounts.")),
+  ),
+  post(endpoints.members.leave.route, ({ params }) =>
+    guarded(params, () =>
+      error(409, "would_orphan", "You own this server. Remove it from Satisfactory Dash instead of leaving it.", "last_owner"),
+    ),
+  ),
   get(endpoints.status.route, ({ params }) => guarded(params, () => Response.json(world.status(demoNow())))),
   get(endpoints.players.route, ({ params }) => guarded(params, () => Response.json(world.players(demoNow())))),
   get(endpoints.power.route, ({ params }) => guarded(params, () => Response.json(world.power(demoNow())))),

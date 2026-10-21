@@ -74,7 +74,7 @@ export function createIdentityModule(
     ? createDbSessionStore(options.db)
     : createStatelessSessionStore({ authenticator, sessionSecret: auth.sessionSecret, denylist: new SessionDenylist() });
   const sessionDeps = { store };
-  const noopLogger: PurgeLogger = { info: () => {}, warn: () => {} };
+  const noopLogger: PurgeLogger = { info: () => {}, warn: () => {}, error: () => {} };
   // ADR-0025 decisions 3 and 5: all-or-nothing Google settings; unset means /api/auth/google/* is 404.
   const googleConfig = loadGoogleConfigFromEnv(env, auth.allowedOrigins);
   if (googleConfig && !options.db) {

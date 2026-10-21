@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyError } from "../api/errors";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { DeleteAccountPanel } from "../account/DeleteAccountPanel";
 import { AccountMenu } from "../auth/AccountMenu";
 import { AddServer } from "../selfServe/AddServer";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
+import { LeftStatus } from "./LeftStatus";
 import { ServerContext, ServerSwitchContext } from "./ServerContext";
 
 /**
@@ -30,10 +32,14 @@ export function ServerGate({ children }: { children: ReactNode }) {
   const changeRequested = useRef(false);
   const pickerHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    if (!changeRequested.current || currentId) return;
+    if (!changeRequested.current) return;
     changeRequested.current = false;
-    pickerHeading.current?.focus();
+    // Landed on a server anyway (one left after leaving, ADR-0047): LeftStatus in the shell takes focus instead.
+    if (!currentId) pickerHeading.current?.focus();
   }, [currentId]);
+  // The server just left (ADR-0047), for "You left {name}." wherever the gate lands next.
+  const [leftName, setLeftName] = useState<string | null>(null);
+  const clearLeft = useCallback(() => setLeftName(null), []);
 
   // Any query scoped to the current server that answers server_not_found (ADR-0003) drops
   // the selection and re-runs discovery. Views don't handle it themselves.
@@ -70,6 +76,7 @@ export function ServerGate({ children }: { children: ReactNode }) {
   // it's back, the "no longer available" note shouldn't linger for the rest of the page.
   const pick = (id: string) => {
     setSelectedId(id);
+    setLeftName(null);
     setLostIds((prev) => {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
@@ -97,9 +104,12 @@ export function ServerGate({ children }: { children: ReactNode }) {
           <div className="flex justify-end">
             <AccountMenu />
           </div>
+          {leftName !== null && <LeftStatus name={leftName} focus />}
           <section className="grid gap-4 rounded-card border border-line bg-surface p-6">
             <AddServer first onCreated={pick} />
           </section>
+          {/* ADR-0047: Settings needs a server, so someone who has left (or never had) one deletes their account here. */}
+          <DeleteAccountPanel />
         </div>
       );
     }
@@ -108,7 +118,9 @@ export function ServerGate({ children }: { children: ReactNode }) {
         <div className="flex justify-end">
           <AccountMenu />
         </div>
+        {leftName !== null && <LeftStatus name={leftName} focus />}
         <p>No game servers are configured.</p>
+        <DeleteAccountPanel />
       </div>
     );
   }
@@ -123,6 +135,8 @@ export function ServerGate({ children }: { children: ReactNode }) {
           Choose a game server
         </h2>
         {lostIds.size > 0 && <p role="alert">The selected server is no longer available.</p>}
+        {/* The heading takes focus here (the picker replaced the page); the status is still read out. */}
+        {leftName !== null && <LeftStatus name={leftName} />}
         <ul className="grid gap-2 [&_button]:w-full [&_button]:text-left">
           {list.map((server) => (
             <li key={server.id}>
@@ -146,7 +160,15 @@ export function ServerGate({ children }: { children: ReactNode }) {
           change: () => {
             changeRequested.current = true;
             setSelectedId(null);
+            setLeftName(null);
           },
+          left: (serverName) => {
+            changeRequested.current = true;
+            setSelectedId(null);
+            setLeftName(serverName);
+          },
+          leftName,
+          clearLeft,
         }}
       >
         {children}

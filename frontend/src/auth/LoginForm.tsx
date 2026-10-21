@@ -4,6 +4,7 @@ import { endpoints, type LoginRequest } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
 import { ApiError, classifyError } from "../api/errors";
 import { LOGIN_MUTATION_KEY, SESSION_KEY } from "../api/queries";
+import { clearSignedOutNotice, signedOutNotice } from "../api/signedOutNotice";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
 
@@ -19,6 +20,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
   // redirect is a fresh page load, so there's no need to follow client-side navigation here.
   const { pathname, search } = window.location;
   const urlError = signInErrorText(search);
+  const notice = signedOutNotice();
   // The terms step (ADR-0046 question 6) shows only when sign-up is open AND Google just found no account
   // for this sign-in: an existing account never sees it. The box starts unticked, on purpose.
   const termsStep = offersSignup(signInMethods) && needsTermsStep(search);
@@ -42,6 +44,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
       // A session check sent before the cookie existed (e.g. a focus refetch) would land after
       // this and sign the operator straight back out, so drop it first.
       await client.cancelQueries({ queryKey: SESSION_KEY });
+      clearSignedOutNotice();
       client.setQueryData(SESSION_KEY, session);
     },
     onError: () => setPassword(""),
@@ -63,6 +66,12 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
       className="mx-auto mt-6 grid w-full max-w-sm gap-4 rounded-card border border-line bg-surface p-6"
     >
       <h2 id="login-heading">Sign in</h2>
+      {notice && (
+        // ADR-0047: why the app just signed out (the account was deleted). A status, not an alert: nothing failed.
+        <p role="status" className="mb-0 rounded-card border border-ok bg-ok-soft p-3 text-sm">
+          {notice}
+        </p>
+      )}
       {urlError && (
         // The global [role="alert"] style gives it the error look (index.css); red text on
         // that red-tinted background would fail contrast.

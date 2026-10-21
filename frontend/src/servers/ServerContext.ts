@@ -17,6 +17,12 @@ export interface ServerSwitch {
   change: () => void;
   /** Selects a server by id (e.g. the one the player just added). */
   select: (serverId: string) => void;
+  /** After leaving a server (ADR-0047): drops the selection like `change`, and says "You left {name}." where it lands. */
+  left: (serverName: string) => void;
+  /** The server just left, while that confirmation shows; null otherwise. */
+  leftName: string | null;
+  /** Ends that confirmation (the person moved on). */
+  clearLeft: () => void;
 }
 
 export const ServerSwitchContext = createContext<ServerSwitch | null>(null);

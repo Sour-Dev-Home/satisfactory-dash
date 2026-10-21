@@ -1,4 +1,5 @@
 import { formatErrorDetail } from "../../platform/formatErrorDetail.js";
+import { FailureStreak, failuresForWindow } from "../../platform/failureStreak.js";
 import type { createLogger } from "../../platform/logger.js";
 import type { Mutex } from "../../platform/mutex.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
@@ -54,11 +55,20 @@ export class PendingServerSweeper {
   private inFlight: Promise<void> | undefined;
   private started = false;
   private stopped = false;
-  private failing = false;
+  private readonly streak: FailureStreak;
   private readonly metrics: MetricsRecorder;
 
   constructor(private readonly deps: PendingServerSweeperDeps) {
     this.metrics = createBackgroundRecorder(deps.logger, deps.metrics);
+    // #560: the floor of 2 failed sweeps (20 minutes at the default 10 min): one sweep is already past five minutes.
+    this.streak = new FailureStreak({
+      logger: deps.logger,
+      job: "pending-server-sweeper",
+      escalateAfter: failuresForWindow(deps.intervalMs ?? PENDING_SWEEP_INTERVAL_MS),
+      failedMsg: "sweeping pending self-serve servers failed; trying again",
+      recoveredMsg: "pending self-serve server sweep recovered",
+      countField: "failedSweeps",
+    });
   }
 
   start(): void {
@@ -119,15 +129,9 @@ export class PendingServerSweeper {
         if (await this.sweepOne(publicId)) result.swept++;
         else result.skipped++;
       }
-      if (this.failing) {
-        this.deps.logger.info("pending self-serve server sweep recovered");
-        this.failing = false;
-      }
+      this.streak.success();
     } catch (err) {
-      if (!this.failing) {
-        this.failing = true;
-        this.deps.logger.warn({ err: formatErrorDetail(err) }, "sweeping pending self-serve servers failed; trying again");
-      }
+      this.streak.failure({ err: formatErrorDetail(err) });
     }
     if (result.swept > 0) {
       this.metrics.counter(SWEPT_METRIC, {}, result.swept);

@@ -61,7 +61,10 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
 // ADR-0047 (#311 task 2a) added `members.leave` to the contract before its route; task 2b mounted it, so nothing is
 // exempt again. Leave is a member's own write (`memberSelfService`), and the owner is refused with 409 would_orphan.
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0048's amendment (PR 1, the contract) added `bottlenecks` before its route. Until amendment PR 4 mounts it there
+// is nothing to guard, so exactly that one is exempt. PR 4 deletes this line.
+const NOT_YET_MOUNTED = (name: string): boolean => name === "bottlenecks";
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
@@ -270,6 +273,23 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
   it("finds reads and at least one write", () => {
     expect(SCOPED.length).toBeGreaterThanOrEqual(5);
     expect(SCOPED.some((e) => e.method !== "GET")).toBe(true);
+  });
+
+  it("exempts only bottlenecks, in the contract but not mounted yet (ADR-0048 amendment PR 1), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route}`)).toEqual(["GET /api/servers/:serverId/bottlenecks"]);
+  });
+
+  // The exemption expires on its own: the moment PR 4 mounts the route, this fails until NOT_YET_MOUNTED is deleted, so
+  // the route can never ship without the generated authorization tests.
+  it("the exempt endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
+      const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0048 amendment PR 4)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
   });
 
   it("covers all 13 alerts endpoints (ADR-0027 PR 7b), none of them exempt, with a valid body for each write", () => {

@@ -4,6 +4,7 @@ import type {
   AgentCommand,
   Cadence,
   CommandResultRequest,
+  ConveyorsWorldIngestRequest,
   EnrollResponse,
   MapWorldLayer,
   RailsWorldIngestRequest,
@@ -53,6 +54,8 @@ export class BackendError extends Error {
 export interface WorldIngestBodies {
   rails: RailsWorldIngestRequest;
   resourceNodes: ResourceNodesWorldIngestRequest;
+  // ADR-0048 amendment: in the contract now; the agent reads and sends it from amendment PR 2.
+  conveyors: ConveyorsWorldIngestRequest;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;

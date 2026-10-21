@@ -17,7 +17,7 @@ function build(auditResult: () => { rows: unknown[] } | Error) {
     }
     return { rows: [] }; // sessions and login attempts: nothing to purge
   });
-  const logger = { info: vi.fn(), warn: vi.fn() };
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   let clock = 1_000_000;
   const worker = createSessionPurgeWorker({ query } as unknown as Queryable, logger, () => clock);
   return { worker, logger, calls: () => auditCalls, advance: (ms: number) => void (clock += ms) };

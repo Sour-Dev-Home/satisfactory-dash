@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 import type { ServerDirectory } from "../../servers/index.js";
 import type { BackgroundWorker, ObservationSnapshot, TelemetryScope } from "../../telemetry/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import { FailureStreak, failuresForWindow } from "../../../platform/failureStreak.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
 import type { withTransaction } from "../../../platform/db/transaction.js";
@@ -55,6 +56,23 @@ function triggeringSampleAt(kind: RuleKind, observations: ObservationSnapshot): 
 const DEFAULT_TICK_MS = 30_000;
 const DEFAULT_PURGE_INTERVAL_MS = 10 * 60_000;
 
+/** #560: how often the evaluator logs its heartbeat line (counts only, no server ids or names). */
+export const HEARTBEAT_INTERVAL_MS = 60 * 60_000;
+export const HEARTBEAT_MSG = "alert evaluator heartbeat";
+
+interface HeartbeatCounts {
+  /** Ticks that completed, and ticks that failed, since the last heartbeat. */
+  ticks: number;
+  failedTicks: number;
+  /** At the last tick: servers evaluated, rules evaluated across them, and how many of those servers were muted. */
+  servers: number;
+  rules: number;
+  mutedServers: number;
+  /** Alert events recorded since the last heartbeat. */
+  events: number;
+}
+const emptyHeartbeat = (): HeartbeatCounts => ({ ticks: 0, failedTicks: 0, servers: 0, rules: 0, mutedServers: 0, events: 0 });
+
 /** #515: the window the per-server event cap counts over, and how often its warning is logged per server. */
 export const EVENT_QUOTA_WINDOW_MS = 60 * 60_000;
 /**
@@ -103,8 +121,10 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   private started = false;
   private stopped = false;
   private lastPurgeAt: number | undefined;
-  private failing = false;
+  private readonly streak: FailureStreak;
   private readonly metrics: MetricsRecorder;
+  private heartbeat = emptyHeartbeat();
+  private heartbeatFrom = 0;
 
   constructor(
     private readonly db: AlertsDb,
@@ -115,11 +135,21 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
     this.purgeIntervalMs = options.purgeIntervalMs ?? DEFAULT_PURGE_INTERVAL_MS;
     this.now = options.now ?? Date.now;
     this.metrics = createBackgroundRecorder(options.logger, options.metrics);
+    // #560: 10 failed ticks at the default 30 s is five minutes.
+    this.streak = new FailureStreak({
+      logger: options.logger,
+      job: "alert-evaluator",
+      escalateAfter: failuresForWindow(this.tickMs),
+      failedMsg: "alert evaluation failed; skipping the tick with no state change",
+      recoveredMsg: "alert evaluation recovered",
+      countField: "failedTicks",
+    });
   }
 
   start(): void {
     if (this.started || this.stopped) return;
     this.started = true;
+    this.heartbeatFrom = this.now();
     this.schedule(0);
   }
 
@@ -144,19 +174,25 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   private async run(): Promise<void> {
     try {
       await this.tick();
-      if (this.failing) {
-        this.options.logger.info("alert evaluation recovered");
-        this.failing = false;
-      }
+      this.heartbeat.ticks++;
+      this.streak.success();
     } catch (err) {
-      if (!this.failing) {
-        this.failing = true;
-        this.options.logger.warn({ err: formatErrorDetail(err) }, "alert evaluation failed; skipping the tick with no state change");
-      }
+      this.heartbeat.failedTicks++;
+      this.streak.failure({ err: formatErrorDetail(err) });
     } finally {
       this.inFlight = undefined;
+      this.maybeHeartbeat();
       this.schedule(this.tickMs);
     }
+  }
+
+  /** #560: about hourly, one info line of counts, so a silent evaluator is visible in the logs (and its absence is too). */
+  private maybeHeartbeat(): void {
+    const now = this.now();
+    if (now - this.heartbeatFrom < HEARTBEAT_INTERVAL_MS) return;
+    this.options.logger.info({ ...this.heartbeat }, HEARTBEAT_MSG);
+    this.heartbeat = emptyHeartbeat();
+    this.heartbeatFrom = now;
   }
 
   /** One evaluation of every server; exposed for tests. Throws when the database fails (the loop catches it). */
@@ -214,9 +250,14 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
     // is remembered, and the tick still purges, then rethrows so the loop logs it (once per outage) as before.
     let firstError: unknown;
     let failed = false;
+    let ruleCount = 0;
+    let mutedCount = 0;
     for (const server of servers) {
+      const rules = rulesByServer.get(server.id) ?? [];
+      const muted = (mutes.get(server.id) ?? 0) > now;
+      ruleCount += rules.length;
+      if (muted) mutedCount++;
       try {
-        const rules = rulesByServer.get(server.id) ?? [];
         let evaluator = this.evaluators.get(server.id);
         if (evaluator === undefined) {
           evaluator = new ServerAlertEvaluator();
@@ -229,11 +270,12 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           observations,
           rules,
           states,
-          muted: (mutes.get(server.id) ?? 0) > now,
+          muted,
         });
         const { events, writes } = await this.withinEventQuota(server.id, evaluation.events, evaluation.writes, now);
         await writeEvaluation(this.db, { writes, deletes: evaluation.deletes, events, nowMs: now, deliver: this.options.deliver === true, deliverPush: this.options.deliverPush === true });
         evaluation.commit();
+        this.heartbeat.events += events.length;
         for (const event of events) {
           // The alert log's own line: ids and counts only, never a name or a secret.
           this.options.logger.info({ serverId: server.id, alert: event.kind, subject: event.subject, transition: event.transition }, "alert event recorded");
@@ -248,6 +290,9 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
         }
       }
     }
+    this.heartbeat.servers = servers.length;
+    this.heartbeat.rules = ruleCount;
+    this.heartbeat.mutedServers = mutedCount;
 
     if (this.lastPurgeAt === undefined || now - this.lastPurgeAt >= this.purgeIntervalMs) {
       const purged = await purgeExpiredEvents(this.db, now);
