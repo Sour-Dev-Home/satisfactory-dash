@@ -1,6 +1,7 @@
 # ADR-0046: Self-serve agent servers with per-account caps
 
-Status: proposed. Needs the owner's approval (decisions and the questions at the end). Issue #517.
+Status: accepted. The owner approved it, and answered yes to every question at the end, by merging #531 on
+2026-10-20. Issue #517.
 
 ## Context
 - ADR-0045 Amendment 1 (owner, 2026-10-20, option B): a player on a rented host must be able to get a server without
