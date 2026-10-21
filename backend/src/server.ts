@@ -40,6 +40,9 @@ import {
   createPendingServerSweeper,
   addUnlessRemoved,
   createServersRouter,
+  createAccountServers,
+  createDbMemberSelfService,
+  createMembersRouter,
   addressVerdict,
   loadSelfServeConfigFromEnv,
   loadDatabaseServers,
@@ -78,7 +81,7 @@ import {
   createCommandsService,
   loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
-import { createIdentityModule } from "./modules/identity/index.js";
+import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
 import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -423,6 +426,15 @@ export const app = createApp({
   ],
   sessionGuard: identity.sessionGuard,
   protectedRouters: [
+    // ADR-0047: DELETE /api/account, database only. Identity orchestrates; the servers' part is its port, implemented by the
+    // servers module and given the shared server-write mutex and the running servers here (no module edge).
+    ...(database
+      ? [
+          createAccountRouter(
+            createAccountDeletion({ db: database.pool, servers: createAccountServers({ runtime: directory, mutex: serverWriteMutex }) }),
+          ),
+        ]
+      : []),
     // The collection routes must come before the servers router (its /servers/:serverId check would
     // read "test-connection" as a server id); the scoped ones after it (its membership check runs first).
     ...(managementRouters ? [managementRouters.collection] : []),
@@ -434,6 +446,8 @@ export const app = createApp({
       selfServeEnabled: selfServeConfig.enabled,
       ...(database && { enrolledServerIds: (serverUuids: readonly string[]) => enrolledServerIds(database.pool, serverUuids) }),
     }),
+    // ADR-0047: leaving a server, after the servers router (its membership check lets any member make this write).
+    ...(database ? [createMembersRouter(createDbMemberSelfService(database.pool))] : []),
     // ADR-0038 M3 (#353): after the servers router, same as every other /servers/:serverId route.
     createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
     ...createTelemetryRouters(directory),

@@ -7,6 +7,8 @@ import { ConfigError } from "../src/platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "../src/platform/secrets/secrets.js";
 import { listServersAdmin, removeServerAdmin } from "../src/modules/servers/serverAdmin.js";
 import { disableUserAdmin, enableUserAdmin } from "../src/modules/identity/accountAdmin.js";
+import { createAccountDeletion } from "../src/modules/identity/accountDeletion.js";
+import { createAccountServers } from "../src/modules/servers/index.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "../src/modules/identity/sessionAdmin.js";
 import { loadConfiguredServersFromFile, loadSatisfactoryServerConfigFromEnv } from "../src/modules/gameserver/index.js";
 import { ImportError, importServers, listConnections, loadServerRegistryFromEnv, resolveAllowedAddress } from "../src/modules/servers/index.js";
@@ -35,13 +37,18 @@ import { ImportError, importServers, listConnections, loadServerRegistryFromEnv,
 //                                                      Both write an audit event (ids and counts, no personal data).
 //                                                      disable-user also revokes the agent credentials of the servers
 //                                                      the account owns (ADR-0046); the servers and their data stay.
+//   npm run admin -- delete-user <user-id>             ADR-0047: deletes an account (an email request, a disabled account),
+//                                                      the same deletion as DELETE /api/account without the fresh sign-in:
+//                                                      its owned self-serve servers are removed, an owned operator server
+//                                                      refuses it, the operator's own account is refused. Restart the
+//                                                      backend after if servers were removed.
 //   npm run admin -- remove-server <public-id>         The full delete of any server (the same transaction as the HTTP
 //                                                      remove, which answers 404 to a non-member). Restart the backend after.
 //   npm run admin -- list-servers                      Every live server: id, name, kind, created via, owner id, enrolled, last seen,
 //                                                      history row counts. Ids and numbers only.
 
 const USAGE =
-  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | disable-user <user-id> | enable-user <user-id> | remove-server <public-id> | list-servers | import-servers | verify-secrets | set-alert-webhook <server-id>)";
+  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | disable-user <user-id> | enable-user <user-id> | delete-user <user-id> | remove-server <public-id> | list-servers | import-servers | verify-secrets | set-alert-webhook <server-id>)";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const [command, flag, value] = process.argv.slice(2);
@@ -54,7 +61,8 @@ const isAccount = (command === "disable-user" || command === "enable-user") && U
 const PUBLIC_ID = /^[a-z0-9-]{1,32}$/;
 const isRemoveServer = command === "remove-server" && PUBLIC_ID.test(flag ?? "") && value === undefined;
 const isListServers = command === "list-servers" && flag === undefined;
-if (!isRevoke && !isImport && !isVerify && !isSetWebhook && !isAccount && !isRemoveServer && !isListServers) {
+const isDeleteUser = command === "delete-user" && UUID.test(flag ?? "") && value === undefined;
+if (!isRevoke && !isImport && !isVerify && !isSetWebhook && !isAccount && !isRemoveServer && !isListServers && !isDeleteUser) {
   console.error(USAGE);
   process.exit(2);
 }
@@ -215,6 +223,49 @@ async function runRemoveServer(pool: pg.Pool, publicId: string): Promise<void> {
   }
 }
 
+async function runDeleteUser(pool: pg.Pool, userId: string): Promise<void> {
+  try {
+    // No runtime here: this process cannot reach a running backend, so a removed server's entry goes at its restart.
+    const result = await createAccountDeletion({ db: pool, servers: createAccountServers() }).deleteAccount({ userId });
+    switch (result.outcome) {
+      case "deleted":
+        console.log(
+          `Deleted the account: ${result.serversDeleted} owned self-serve server(s) removed, ${result.membershipsLeft} membership(s) and ` +
+            `${result.pushSubscriptions} push subscription(s) gone with it. The audit rows naming its id are kept for their year.` +
+            (result.serversDeleted > 0 ? " Restart the backend so it drops the removed servers." : ""),
+        );
+        break;
+      case "not_found":
+        console.error("No such account.");
+        process.exitCode = 1;
+        break;
+      case "operator_account":
+        console.error("That is the operator's own account: it is never deleted (the backend re-creates it at startup).");
+        process.exitCode = 1;
+        break;
+      case "operator_servers":
+        console.error(`Not deleted: the account owns operator-created server(s): ${result.servers.map((s) => s.id).join(", ")}. Remove them (remove-server) first.`);
+        process.exitCode = 1;
+        break;
+      case "last_owner":
+        console.error(
+          "Not deleted: the account became the owner of a server while it was being deleted (twice). Nothing changed. " +
+            "Run delete-user again, or list-servers to see what it owns now.",
+        );
+        process.exitCode = 1;
+        break;
+      case "reauth_required":
+        // Unreachable: the CLI passes no session. Kept so the switch is exhaustive.
+        console.error("Not deleted.");
+        process.exitCode = 1;
+        break;
+    }
+  } catch {
+    console.error("Could not delete the account: is the database up and migrated?");
+    process.exitCode = 1;
+  }
+}
+
 async function runListServers(pool: pg.Pool): Promise<void> {
   try {
     const rows = await listServersAdmin(pool);
@@ -235,6 +286,8 @@ const pool = new pg.Pool({ connectionString: config.url, max: 2 });
 try {
   if (isRemoveServer) {
     await runRemoveServer(pool, flag as string);
+  } else if (isDeleteUser) {
+    await runDeleteUser(pool, flag as string);
   } else if (isListServers) {
     await runListServers(pool);
   } else if (isAccount) {

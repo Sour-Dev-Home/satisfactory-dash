@@ -29,6 +29,10 @@ import { createSessionPurgeWorker, loadPurgeStartDelayMs } from "./sessionPurge.
 import type { PurgeLogger } from "./sessionPurge.js";
 
 export type { SessionUser } from "./sessionStore.js";
+// ADR-0047: deleting an account (the route and the operator CLI run the same deletion; servers' part is a port).
+export { createAccountDeletion } from "./accountDeletion.js";
+export type { AccountDeletion, AccountServersPort, DeleteAccountResult } from "./accountDeletion.js";
+export { createAccountRouter } from "./routes/account.js";
 
 export interface IdentityWorker {
   start(): void;

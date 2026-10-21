@@ -42,6 +42,14 @@ describe("scopedEndpoints (the selector the generated IDOR tests use)", () => {
     expect(marked.map((e) => [e.name, e.operatorOnly])).toEqual([["a", true], ["b", false]]);
   });
 
+  it("carries the contract's memberSelfService flag (false when absent)", () => {
+    const marked = scopedEndpoints({
+      a: { method: "POST", route: "/api/servers/:serverId/members/me/leave", memberSelfService: true },
+      b: { method: "PUT", route: "/api/servers/:serverId/settings" },
+    });
+    expect(marked.map((e) => [e.name, e.memberSelfService])).toEqual([["a", true], ["b", false]]);
+  });
+
   it("finds the real contract's server-scoped endpoints", () => {
     expect(scopedEndpoints(endpoints).length).toBeGreaterThanOrEqual(5);
   });

@@ -50,15 +50,28 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const WRITE_ROLES = new Set<MemberRole>(["owner", "admin"]);
 
 /**
- * The one write any MEMBER may make, viewers included: a member's own push opt-in for this server (ADR-0044). It changes
- * nothing about the server, only whether that member is notified, and the handler scopes it to the signed-in user. Matched
- * exactly (method and path below the mount), taken from the contract's `memberSelfService` endpoint, so a new write route
- * is never exempt by accident.
+ * The writes any MEMBER may make, viewers included: those the contract flags `memberSelfService` (a member's own push
+ * opt-in, ADR-0044; leaving the server, ADR-0047). Each changes only the caller's own relation to the server, and its
+ * handler scopes it to the signed-in user. Matched exactly (method and the literal path below the mount), collected from
+ * the contract's flag, so a new write route is never exempt by accident and a newly flagged one needs no change here.
  */
-const SELF_SERVICE = endpoints.push.optIn.put;
-const SELF_SERVICE_PATH = SELF_SERVICE.route.slice(SELF_SERVICE.route.indexOf(":serverId") + ":serverId".length);
+const SCOPED_PREFIX = "/api/servers/:serverId";
+function memberSelfServiceRoutes(node: unknown): string[] {
+  if (typeof node !== "object" || node === null) return [];
+  const entry = node as { method?: unknown; route?: unknown; memberSelfService?: unknown };
+  if (typeof entry.route === "string" && typeof entry.method === "string") {
+    if (entry.memberSelfService !== true) return [];
+    // Only literal paths below a server (no other `:param`), so the exact match below is well defined.
+    if (!entry.route.startsWith(`${SCOPED_PREFIX}/`) || entry.route.slice(SCOPED_PREFIX.length).includes(":")) {
+      throw new Error(`memberSelfService endpoint ${entry.method} ${entry.route} must be a literal path below ${SCOPED_PREFIX}`);
+    }
+    return [`${entry.method} ${entry.route.slice(SCOPED_PREFIX.length)}`];
+  }
+  return Object.values(node).flatMap(memberSelfServiceRoutes);
+}
+export const MEMBER_SELF_SERVICE: ReadonlySet<string> = new Set(memberSelfServiceRoutes(endpoints));
 function isMemberSelfService(method: string, path: string): boolean {
-  return method === SELF_SERVICE.method && path === SELF_SERVICE_PATH;
+  return MEMBER_SELF_SERVICE.has(`${method} ${path}`);
 }
 
 export interface AuthorizeServerOptions {

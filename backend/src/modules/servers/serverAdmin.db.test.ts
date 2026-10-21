@@ -52,8 +52,11 @@ describe.skipIf(!available)("operator server commands against a real Postgres", 
 
     const audit = await rows("SELECT actor_user_id, server_id, detail FROM audit.audit_events WHERE action = 'server.deleted' AND server_id = $1", [server.id]);
     expect(audit).toEqual([{ actor_user_id: null, server_id: server.id, detail: {} }]);
+    // ADR-0047 amendment: remove-server clears the name; the row keeps only its ids.
+    expect(await rows("SELECT display_name FROM servers.servers WHERE id = $1", [server.id])).toEqual([{ display_name: null }]);
     const again = await upsertConfiguredServer(pool, { publicId: server.publicId, displayName: "Again" });
     expect(again.id).toBe(server.id);
+    expect(again.displayName).toBe("Again");
     for (const table of ["map.world_layers", "alerts.push_optins", "agents.agent_credentials", "servers.server_members"]) {
       expect(await rows(`SELECT 1 FROM ${table} WHERE server_id = $1`, [server.id]), table).toEqual([]);
     }
