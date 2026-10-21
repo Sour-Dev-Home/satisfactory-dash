@@ -16,7 +16,9 @@ import {
 import type { Tick } from "./cards/HealthCard";
 import type { PlayersState } from "./cards/PlayersCard";
 import { powerTotals, type PowerState } from "./cards/power";
+import { Loadable } from "../ui/Skeleton";
 import { OverviewPanel, type OverviewSection } from "./OverviewPanel";
+import { OverviewSkeleton } from "./OverviewSkeleton";
 
 /** Data wins over an error: a failed background refetch keeps showing the last snapshot. */
 function stateOf<T>(query: UseQueryResult<T>, health: (snapshot: T) => SectionHealth): SectionState {
@@ -46,10 +48,11 @@ export function OverviewView() {
   // The Server tile links to the Servers page only for whom the shell shows it (ADR-0030); same cache.
   const canManageServers = useQuery(queries.servers()).data?.canManageServers === true;
   const power = useQuery(queries.power(server.id));
+  const factory = useQuery(queries.factory(server.id));
   const sections: OverviewSection[] = [
     { name: "Server", station: "server", to: canManageServers ? "/app/servers" : undefined, state: stateOf(status, serverHealth) },
     { name: "Power", station: "power", to: "/app/power", state: stateOf(power, powerHealth) },
-    { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(useQuery(queries.factory(server.id)), factoryHealth) },
+    { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(factory, factoryHealth) },
   ];
   // Same rule as the rows: data wins over an error.
   const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : power.isError ? "error" : "pending";
@@ -61,16 +64,23 @@ export function OverviewView() {
   const dismissible = canDismiss(overall.health);
   const dismissal = useDismissedWarning(server.id, warningKey(inputs), overall.health === "ok");
   return (
-    <OverviewPanel
-      overall={overall}
-      sections={sections}
-      players={players}
-      tick={tick}
-      age={age}
-      power={powerState}
-      roster={roster}
-      bannerHidden={dismissible && dismissal.hidden}
-      onDismiss={dismissible ? dismissal.dismiss : undefined}
-    />
+    // The cards each have a loading state of their own, none of them the size of the loaded card, so
+    // the page holds one skeleton until all three reads are in (#494).
+    <Loadable
+      pending={status.isPending || power.isPending || factory.isPending}
+      skeleton={<OverviewSkeleton />}
+    >
+      <OverviewPanel
+        overall={overall}
+        sections={sections}
+        players={players}
+        tick={tick}
+        age={age}
+        power={powerState}
+        roster={roster}
+        bannerHidden={dismissible && dismissal.hidden}
+        onDismiss={dismissible ? dismissal.dismiss : undefined}
+      />
+    </Loadable>
   );
 }

@@ -20,7 +20,7 @@ describe("redirects", () => {
   it("keeps the query string on a nested unknown path inside the app", async () => {
     window.history.pushState(null, "", "/app/power/extra?scenario=outage");
     renderWithClient(<App />);
-    await screen.findByRole("region", { name: "Overview" });
+    await screen.findByRole("region", { name: "Overview" }, { timeout: 3_000 });
     expect(window.location.pathname).toBe("/app");
     expect(window.location.search).toBe("?scenario=outage");
   });
@@ -28,7 +28,7 @@ describe("redirects", () => {
   it("keeps the query string on a nested unknown path outside the app", async () => {
     window.history.pushState(null, "", "/public/page?scenario=outage");
     renderWithClient(<App />);
-    await screen.findByRole("region", { name: "Overview" });
+    await screen.findByRole("region", { name: "Overview" }, { timeout: 3_000 });
     expect(window.location.pathname).toBe("/app");
     expect(window.location.search).toBe("?scenario=outage");
   });

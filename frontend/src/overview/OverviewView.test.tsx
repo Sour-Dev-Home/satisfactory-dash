@@ -65,23 +65,12 @@ describe("OverviewView: the Health card's tick", () => {
     expect(rows.querySelectorAll("[data-word]")).toHaveLength(0);
   });
 
-  it("counts a slow tick as a warning as soon as the status query has data, even while Power and Factory are still loading", async () => {
-    server.use(
-      http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)),
-      http.get(endpoints.power.route, async () => {
-        await delay("infinite");
-        return HttpResponse.json(powerOk);
-      }),
-      http.get(endpoints.factory.route, async () => {
-        await delay("infinite");
-        return HttpResponse.json(factoryMixed);
-      }),
-    );
+  it("counts a slow tick as a warning once the status query has data", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)));
     renderOverview();
-    expect(await within(healthCard()).findByText("Degraded")).toBeInTheDocument();
+    await screen.findByRole("region", { name: "Health" });
+    expect(healthCard().querySelector("[data-statement]")).toHaveTextContent("Degraded");
     expect(healthCard()).toHaveTextContent("Server tick is slow");
-    const rows = screen.getByRole("list", { name: "Sections" });
-    expect(within(rows).getAllByText("Checking…")).toHaveLength(2);
   });
 
   it("says no game is running instead of a tick when isGameRunning is false", async () => {
@@ -91,7 +80,8 @@ describe("OverviewView: the Health card's tick", () => {
     expect(screen.queryByText(/ticks\/s/)).not.toBeInTheDocument();
   });
 
-  it("shows no tick while the status query is still loading", async () => {
+  // #494: the cards come in together, so no card (and no tick) shows while a read is still loading.
+  it("holds one skeleton, with no card and no tick, while a read is still loading", async () => {
     server.use(
       http.get(endpoints.status.route, async () => {
         await delay("infinite");
@@ -99,9 +89,26 @@ describe("OverviewView: the Health card's tick", () => {
       }),
     );
     renderOverview();
-    await screen.findByRole("region", { name: "Health" });
+    expect(screen.getByText("Loading the overview…")).toBeInTheDocument();
+    await delay(300);
+    expect(screen.queryByRole("region", { name: "Health" })).not.toBeInTheDocument();
     expect(screen.queryByText(/ticks\/s/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Server tick/)).not.toBeInTheDocument();
+  });
+
+  it("holds the skeleton until the slowest of the three reads has answered, then shows every card", async () => {
+    server.use(
+      http.get(endpoints.factory.route, async () => {
+        await delay(400);
+        return HttpResponse.json(factoryMixed);
+      }),
+    );
+    renderOverview();
+    await delay(250);
+    expect(screen.queryByRole("region", { name: "Health" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Power" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Health" }, { timeout: 2_000 })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Power" })).toBeInTheDocument();
   });
 
   it("shows how old the status is beside the tick", async () => {
@@ -172,10 +179,13 @@ describe("OverviewView: station tiles and the Power card (#442)", () => {
   it("says when the grid has no circuits, and when the power query fails", async () => {
     server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerEmpty)));
     const { unmount } = renderOverview();
+    // The cards come in together (#494), so the Power card isn't there until all three reads answer.
+    await screen.findByRole("region", { name: "Power" });
     expect(await within(powerCard()).findByText("No power circuits yet.")).toBeInTheDocument();
     unmount();
     server.use(http.get(endpoints.power.route, () => HttpResponse.json(errorServiceUnavailable, { status: 503 })));
     renderOverview();
+    await screen.findByRole("region", { name: "Power" });
     expect(await within(powerCard()).findByText("Couldn't load the power grid.")).toBeInTheDocument();
   });
 });

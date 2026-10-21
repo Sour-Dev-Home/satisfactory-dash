@@ -21,8 +21,8 @@ describe("a failed poll after a successful one", () => {
     // The Power page: the server banners (status) show above every page.
     window.history.pushState(null, "", "/app/power");
     const { client } = renderWithClient(<App />);
-    await screen.findByText("Paused: no players connected, values are frozen.");
-    await screen.findByRole("heading", { name: "Power", level: 3 });
+    await screen.findByText("Paused: no players connected, values are frozen.", {}, { timeout: 3_000 });
+    await screen.findByRole("heading", { name: "Power", level: 3 }, { timeout: 3_000 });
 
     fail = true;
     await act(() => client.refetchQueries({ type: "active" }));

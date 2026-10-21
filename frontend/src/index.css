@@ -100,10 +100,21 @@
    * animations. Reduced motion sets every duration to 0 in one place (the end of @layer base).
    */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1); /* a loop that eases both ways: the skeleton shimmer */
   --duration-fast: 120ms; /* hover and colour changes, a page's reveal */
   --duration-base: 180ms; /* a dropdown opening, a detail expanding */
   --duration-slow: 240ms; /* larger surfaces */
   --duration-pulse: 1.6s; /* one cycle of a backed-up machine's ring on the map (canvas, src/map/) */
+  --duration-shimmer: 1.8s; /* one slow cycle of a loading skeleton (#494) */
+  /* Loading (#494). A skeleton shows only if its data takes longer than the delay, then stays at
+     least the minimum; a page waits for its primary queries up to the budget, then reveals every
+     panel at once. Time that gates data, not animation, so reduced motion keeps the delay and the
+     budget (the minimum goes to 0 below: with no shimmer a quick swap is no flicker). src/ui/loadTiming.ts
+     reads these and loadTiming.test.ts keeps its fallbacks equal to them. */
+  --duration-skeleton-delay: 150ms;
+  --duration-skeleton-min: 300ms;
+  --duration-reveal-budget: 400ms;
+  --opacity-skeleton-dim: 0.55; /* the low point of the shimmer */
   --spacing-motion-rise: 4px; /* how far entering content travels */
   /* Tailwind's `transition-*` utilities use the tokens too. */
   --default-transition-duration: var(--duration-fast);
@@ -113,11 +124,17 @@
      without one (a held end state keeps it on its own layer, which moves text by subpixels). */
   --animate-reveal: reveal var(--duration-fast) var(--ease-standard);
   --animate-pop: pop var(--duration-base) var(--ease-standard);
+  --animate-shimmer: shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
 
   @keyframes reveal {
     from {
       opacity: 0;
       translate: 0 var(--spacing-motion-rise);
+    }
+  }
+  @keyframes shimmer {
+    50% {
+      opacity: var(--opacity-skeleton-dim);
     }
   }
   @keyframes pop {
@@ -352,6 +369,8 @@
       --duration-base: 0s;
       --duration-slow: 0s;
       --duration-pulse: 0s;
+      --duration-shimmer: 0s;
+      --duration-skeleton-min: 0s;
     }
     /* Anything not built on the tokens too (Leaflet's zoom, third-party CSS). */
     *,
@@ -362,6 +381,13 @@
       transition-duration: var(--duration-fast) !important;
     }
   }
+}
+
+/* Content kept on screen while its replacement loads (placeholderData, #494): the last range's chart
+   dims to the shimmer's low point and eases back when the new one lands. */
+@utility placeholder-dim {
+  opacity: var(--opacity-skeleton-dim);
+  transition: opacity var(--duration-base) var(--ease-in-out);
 }
 
 /* The existing views' classes, in B2's style until each view is restyled. */
@@ -377,21 +403,21 @@
   .panel > h3 {
     margin: 0;
   }
-  .panel > dl {
+  :is(.panel, .panel > [data-loadable]) > dl {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 8px 16px;
   }
-  .panel > dl dt {
+  :is(.panel, .panel > [data-loadable]) > dl dt {
     color: var(--color-muted);
   }
-  .panel > dl dd {
+  :is(.panel, .panel > [data-loadable]) > dl dd {
     text-align: right;
   }
   /* On a phone a long value wrapped raggedly against the right edge. Left-aligned, each value
      reads as one block beside its label (#274). */
   @media (width < theme(--breakpoint-sm)) {
-    .panel > dl dd {
+    :is(.panel, .panel > [data-loadable]) > dl dd {
       text-align: left;
     }
   }

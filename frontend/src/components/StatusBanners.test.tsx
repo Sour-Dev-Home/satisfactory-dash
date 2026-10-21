@@ -32,16 +32,19 @@ function statusReturns(body: unknown, status = 200) {
 }
 
 describe("StatusBanners", () => {
-  it("shows a status while the first snapshot loads", async () => {
+  // #494: no loading line above the page; it would add a row and push the page down when it left.
+  it("shows nothing while the first snapshot loads", async () => {
     server.use(
       http.get(endpoints.status.route, async () => {
         await delay(50);
         return HttpResponse.json(statusRunning);
       }),
     );
-    renderBanners();
-    expect(screen.getByRole("status")).toHaveTextContent("Loading server status");
-    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    const { container } = renderBanners();
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await delay(150);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("shows no banner for a fresh, running server", async () => {

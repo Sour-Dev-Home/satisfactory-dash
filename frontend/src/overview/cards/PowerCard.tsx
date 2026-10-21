@@ -1,3 +1,4 @@
+import { SkeletonLine } from "../../ui/Skeleton";
 import { formatMW } from "../../format";
 import { cn } from "../../lib/cn";
 import { useReducedMotion } from "../reducedMotion";
@@ -56,7 +57,7 @@ export function PowerCard({ state }: { state: PowerState }) {
 }
 
 function PowerBody({ state }: { state: PowerState }) {
-  if (state === "pending") return <p className="mb-0 text-muted">Loading…</p>;
+  if (state === "pending") return <SkeletonLine label="Loading…" />;
   if (state === "error") return <p className="mb-0 text-muted">Couldn't load the power grid.</p>;
   if (state.circuits === 0) return <p className="mb-0 text-muted">No power circuits yet.</p>;
   return (
