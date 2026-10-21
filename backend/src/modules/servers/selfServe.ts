@@ -5,6 +5,7 @@ import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../platform/db/timedQuery.js";
 import { withTransaction } from "../../platform/db/transaction.js";
 import { ApiFailure, ForbiddenError, RateLimitedError, ServerNotFoundError } from "../../platform/errorResponse.js";
+import { Mutex } from "../../platform/mutex.js";
 import { TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
 import { addMember } from "./repositories/memberRepository.js";
 import {
@@ -51,6 +52,8 @@ export interface SelfServeDeps {
   onAttachError?: (publicId: string, err: unknown) => void;
   /** The running servers, for an owner's rename and remove after their commit (the composition root's `ServerRuntime`). */
   runtime: SelfServeRuntime;
+  /** The management service's mutex (one per process; the composition root passes the same instance to both). */
+  mutex?: Mutex;
   /** Injectable for tests. */
   generateId?: () => string;
 }
@@ -93,6 +96,7 @@ function limitReached(message: string): ApiFailure {
 
 export function createSelfServeService(deps: SelfServeDeps): SelfServeService {
   const generateId = deps.generateId ?? generateServerPublicId;
+  const mutex = deps.mutex ?? new Mutex();
 
   /** C5, C1, C3, C2, in that order (the most specific answer first). Runs under the management lock. */
   const assertWithinCaps = async (client: Queryable, actorUserId: string): Promise<void> => {
@@ -153,33 +157,40 @@ export function createSelfServeService(deps: SelfServeDeps): SelfServeService {
       return { id: server.publicId, displayName: server.displayName, kind: "agent" };
     },
 
-    async renameAsOwner(actorUserId, publicId, displayName) {
-      const outcome = await withTransaction(deps.db, async (client) => {
-        const refused = await lockOwned(client, actorUserId, publicId);
-        if (refused !== undefined) return refused;
-        // `server.updated`, the field name only (never the new name), as the operator's rename writes it.
-        if (!(await renameServerInTransaction(client, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
-        return "renamed" as const;
+    // #526 (L1): both run under the management service's mutex (the composition root passes the same one), so the write and
+    // its runtime change never interleave with an operator's create, edit, switch or remove. The mutex is released before the
+    // router falls through to the operator path on NOT_SELF_SERVE, so the two never nest.
+    renameAsOwner(actorUserId, publicId, displayName) {
+      return mutex.run(async () => {
+        const outcome = await withTransaction(deps.db, async (client) => {
+          const refused = await lockOwned(client, actorUserId, publicId);
+          if (refused !== undefined) return refused;
+          // `server.updated`, the field name only (never the new name), as the operator's rename writes it.
+          if (!(await renameServerInTransaction(client, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
+          return "renamed" as const;
+        });
+        if (outcome === NOT_SELF_SERVE) return outcome;
+        deps.runtime.rename(publicId, displayName);
+        return { id: publicId, displayName, kind: "agent" as const };
       });
-      if (outcome === NOT_SELF_SERVE) return outcome;
-      deps.runtime.rename(publicId, displayName);
-      return { id: publicId, displayName, kind: "agent" };
     },
 
-    async removeAsOwner(actorUserId, publicId) {
-      const outcome = await withTransaction(deps.db, async (client) => {
-        const refused = await lockOwned(client, actorUserId, publicId);
-        if (refused !== undefined) return refused;
-        // The same purge as the operator's remove (#516's list): memberships, credential and codes, history, alerts, map.
-        const removed = await softDeleteServerInTransaction(client, publicId, { actorUserId, detail: { reason: "owner_removed" } });
-        if (!removed) throw new ServerNotFoundError();
-        return "removed" as const;
+    removeAsOwner(actorUserId, publicId) {
+      return mutex.run(async () => {
+        const outcome = await withTransaction(deps.db, async (client) => {
+          const refused = await lockOwned(client, actorUserId, publicId);
+          if (refused !== undefined) return refused;
+          // The same purge as the operator's remove (#516's list): memberships, credential and codes, history, alerts, map.
+          const removed = await softDeleteServerInTransaction(client, publicId, { actorUserId, detail: { reason: "owner_removed" } });
+          if (!removed) throw new ServerNotFoundError();
+          return "removed" as const;
+        });
+        if (outcome === NOT_SELF_SERVE) return outcome;
+        // After the commit: the agent-backed entry goes (its live reading with it). The database is the truth; a restart
+        // never rebuilds a removed server.
+        await deps.runtime.remove(publicId);
+        return outcome;
       });
-      if (outcome === NOT_SELF_SERVE) return outcome;
-      // After the commit: the agent-backed entry goes (its live reading with it). The database is the truth; a restart
-      // never rebuilds a removed server.
-      await deps.runtime.remove(publicId);
-      return outcome;
     },
   };
 }

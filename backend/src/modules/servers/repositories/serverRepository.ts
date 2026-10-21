@@ -410,6 +410,14 @@ export async function countRecentSelfServeCreations(
   return { count: row.n, retryAfterSeconds: row.retry_after };
 }
 
+const IS_SELF_SERVE = `
+  SELECT 1 FROM servers.servers WHERE id = $1 AND created_via = 'self_serve'`;
+
+/** #526 (L1): whether this server (internal id) was created through self-serve, which makes it agent-only (ADR-0046). */
+export async function isSelfServeServer(db: Queryable, serverId: string): Promise<boolean> {
+  return (await timedQuery(db, "servers.isSelfServeServer", IS_SELF_SERVE, [serverId])).rows.length > 0;
+}
+
 const LOCK_SELF_SERVE_FOR_OWNER = `
   SELECT s.id, s.created_via, (m.user_id IS NOT NULL) AS is_owner
   FROM servers.servers s

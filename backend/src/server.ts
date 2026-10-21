@@ -5,6 +5,7 @@ import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { bootSequence } from "./platform/bootSequence.js";
+import { Mutex } from "./platform/mutex.js";
 import { environmentServerEntries, warnEnvServersNotServed } from "./platform/envServers.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
@@ -37,6 +38,7 @@ import {
   createSelfServeRouter,
   createSelfServeService,
   createPendingServerSweeper,
+  addUnlessRemoved,
   createServersRouter,
   addressVerdict,
   loadSelfServeConfigFromEnv,
@@ -298,9 +300,13 @@ function buildFromConnection(c: ServerConnection) {
 }
 
 const databasePort = databasePortOf(databaseConfig?.url);
+// #526 (L1): one mutex for every runtime change that follows a server write (the operator's management service, the
+// self-serve owner's rename and remove, the pending sweep), so their post-commit runtime changes run one at a time.
+const serverWriteMutex = new Mutex();
 const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
+      mutex: serverWriteMutex,
       ring: secretsKeyring,
       runtime: directory,
       build: buildFromConnection,
@@ -334,6 +340,7 @@ const selfServeService = database
         logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a new self-serve server's runtime entry could not be built; its first snapshot attaches it"),
       // #526: an owner's rename and remove update the running servers after their commit.
       runtime: directory,
+      mutex: serverWriteMutex,
     })
   : undefined;
 const selfServeRouter = selfServeService
@@ -353,6 +360,7 @@ if (database) {
       ttlHours: selfServeConfig.pendingTtlHours,
       enrolledServerIds,
       removeRuntime: (publicId) => directory.remove(publicId),
+      mutex: serverWriteMutex,
     }),
   );
 }
@@ -379,7 +387,13 @@ function attachAgentRuntime(publicId: string): Promise<void> {
     if (displayName === undefined) {
       return; // the server was removed: nothing to attach
     }
-    await directory.replace(buildAgentServer(publicId, displayName));
+    // #526 (L2): a removal (owner, sweep, operator) may commit while this runs; re-checked after the swap.
+    await addUnlessRemoved({
+      publicId,
+      runtime: directory,
+      add: () => directory.replace(buildAgentServer(publicId, displayName)),
+      isLive: async (id) => (await findServerByPublicId(database.pool, id)) !== undefined,
+    });
   })().finally(() => attaching.delete(publicId));
   attaching.set(publicId, swap);
   return swap;

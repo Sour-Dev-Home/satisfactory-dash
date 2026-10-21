@@ -21,6 +21,8 @@ export type { SelfServeDeps, SelfServeRuntime, SelfServeService } from "./selfSe
 // #526 (ADR-0046 C4): removes self-serve servers that never enrolled.
 export { createPendingServerSweeper } from "./pendingServerSweeper.js";
 export type { PendingServerSweeper, PendingServerSweeperDeps } from "./pendingServerSweeper.js";
+// #526 (L2): every post-commit runtime add re-checks that the server was not removed meanwhile.
+export { addUnlessRemoved } from "./runtimeGuard.js";
 export { createSelfServeRouter } from "./selfServeRouter.js";
 export type { SelfServeRouterOptions } from "./selfServeRouter.js";
 export { loadSelfServeConfigFromEnv } from "./selfServeConfig.js";

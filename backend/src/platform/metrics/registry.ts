@@ -191,6 +191,7 @@ export const QUERY_NAMES = [
   "servers.listAgentServers",
   "servers.listConnectionMetas",
   "servers.listConnections",
+  "servers.isSelfServeServer",
   "servers.listCreatedSelfServeServers",
   "servers.listOperatorAgentServers",
   "servers.listPendingSelfServeServers",

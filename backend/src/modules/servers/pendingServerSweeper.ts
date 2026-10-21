@@ -1,5 +1,6 @@
 import { formatErrorDetail } from "../../platform/formatErrorDetail.js";
 import type { createLogger } from "../../platform/logger.js";
+import type { Mutex } from "../../platform/mutex.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../platform/db/transaction.js";
 import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../platform/metrics/index.js";
@@ -38,6 +39,8 @@ export interface PendingServerSweeperDeps {
   metrics?: MetricsSink;
   intervalMs?: number;
   batchSize?: number;
+  /** The management service's mutex (the composition root's shared instance). */
+  mutex?: Mutex;
 }
 
 export interface PendingSweepResult {
@@ -81,7 +84,12 @@ export class PendingServerSweeper {
   }
 
   /** Removes one candidate if it still qualifies under its row lock. */
-  private async sweepOne(publicId: string): Promise<boolean> {
+  private sweepOne(publicId: string): Promise<boolean> {
+    // #526 (L1): under the management mutex like every other server write followed by a runtime change.
+    return this.deps.mutex ? this.deps.mutex.run(() => this.removeOne(publicId)) : this.removeOne(publicId);
+  }
+
+  private async removeOne(publicId: string): Promise<boolean> {
     const { db, ttlHours, enrolledServerIds } = this.deps;
     const removed = await withTransaction(db, async (client) => {
       const serverId = await lockExpiredSelfServeServer(client, publicId, ttlHours);

@@ -90,7 +90,13 @@ the same purge as `remove-server` (`abuse-response.md`, step 2): the agent's cre
 gets 401), and so do the members, history, alerts and map; the runtime entry is dropped at once, so no restart is needed.
 It writes `server.deleted` with the owner's user id and `detail: { reason: "owner_removed" }`; a rename writes
 `server.updated` with `detail: { fields: ["displayName"] }`. A removed self-serve id is never handed out again: the create
-is a plain INSERT, so the same id is a unique violation.
+is a plain INSERT, so the same id is a unique violation. **Rename and remove keep working while `SELF_SERVE_ENABLED=false`**
+(intended: the switch stops new servers, and an owner can always delete their data).
+
+A self-serve server is agent-only: the operator's `POST /api/servers/:serverId/local-connection` refuses it with 403
+`forbidden`. The owner's rename and remove, the sweep and the operator's management writes take one shared in-process
+lock, so their runtime changes never interleave, and every runtime entry added after a commit (a create, an enrolment,
+a first snapshot) is checked against the database again and dropped if the server was removed meanwhile.
 
 **The pending sweep (C4).** Every 10 minutes, the backend removes up to 50 self-serve servers (oldest first) that are
 older than `SELF_SERVE_PENDING_TTL_HOURS` and have no `agents.agent_credentials` row. A server that ever enrolled, even

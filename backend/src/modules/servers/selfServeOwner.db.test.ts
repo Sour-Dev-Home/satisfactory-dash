@@ -9,7 +9,14 @@ import { createLogger } from "../../platform/logger.js";
 import { createUser } from "../identity/repositories/userRepository.js";
 import { enrolledServerIds } from "../agents/index.js";
 import { addMember, getMemberRole, transferOwnership } from "./repositories/memberRepository.js";
-import { PURGED_TABLES, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { PURGED_TABLES, findServerByPublicId, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { randomBytes } from "node:crypto";
+import { Mutex } from "../../platform/mutex.js";
+import { createSecretsKeyring } from "../../platform/secrets/secrets.js";
+import { releaseAgentServer } from "../agents/services/releaseAgent.js";
+import { createServerManagementService } from "./serverManagement.js";
+import { ServerRuntime } from "./serverRuntime.js";
+import { addUnlessRemoved } from "./runtimeGuard.js";
 import { createPendingServerSweeper } from "./pendingServerSweeper.js";
 import { NOT_SELF_SERVE, createSelfServeService } from "./selfServe.js";
 import type { SelfServeDeps } from "./selfServe.js";
@@ -237,6 +244,92 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
       for (let i = 0; i < 3; i++) expect(await failureOf(svc.create(owner, { displayName: "Refused" }))).toMatchObject({ code: "server_limit_reached" });
       await svc.removeAsOwner(owner, created.id);
       await svc.create(owner, { displayName: "Two" });
+    });
+  });
+
+  describe("runtime races (#526 security review L1, L2)", () => {
+    const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
+    const management = (operatorId: string, mutex: Mutex, runtime: ServerRuntime<string>) =>
+      createServerManagementService({
+        db: pool,
+        ring,
+        runtime,
+        build: (c) => ({ id: c.publicId, displayName: c.displayName, services: "polled", workers: [] }),
+        testConnection: async () => ({ ok: true, api: { ok: true }, frm: { ok: true } }),
+        getOperatorUserId: () => operatorId,
+        lookup: async () => ["127.0.0.1"],
+        mutex,
+        releaseAgent: releaseAgentServer,
+      });
+    const localBody = { host: "localhost", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678" };
+
+    it("L1: the operator cannot switch a self-serve server to local (agent-only), even one they own; nothing changes", async () => {
+      const operatorId = await user();
+      const runtime = new ServerRuntime<string>();
+      const created = await service({}, { isOperator: (id) => id === operatorId }).create(operatorId, { displayName: "Mine" });
+      runtime.add({ id: created.id, displayName: "Mine", services: "agent", workers: [], kind: "agent" });
+      const err = await failureOf(management(operatorId, new Mutex(), runtime).switchToLocal(operatorId, created.id, localBody));
+      expect(err).toBeInstanceOf(ForbiddenError);
+      const uuid = await uuidOf(created.id);
+      expect((await admin.query("SELECT connection_kind FROM servers.servers WHERE id = $1", [uuid])).rows[0]).toEqual({ connection_kind: "agent" });
+      expect((await admin.query("SELECT 1 FROM servers.server_connections WHERE server_id = $1", [uuid])).rowCount).toBe(0);
+      expect(runtime.get(created.id)).toBe("agent");
+    });
+
+    it("L1: the owner's remove waits for the shared management mutex, so it never interleaves with an operator change", async () => {
+      const owner = await user();
+      const mutex = new Mutex();
+      const svc = service({}, { mutex });
+      const created = await svc.create(owner, { displayName: "Waits" });
+      let release!: () => void;
+      const held = mutex.run(() => new Promise<void>((resolve) => (release = resolve)));
+      const removing = svc.removeAsOwner(owner, created.id);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await row(created.id)).deleted_at).toBeNull(); // still queued behind the held mutex
+      release();
+      await held;
+      await expect(removing).resolves.toBe("removed");
+      expect((await row(created.id)).deleted_at).not.toBeNull();
+    });
+
+    it("L2: a server removed while its post-commit attach runs is left with no runtime entry; a live one keeps its entry", async () => {
+      const owner = await user();
+      const runtime = new ServerRuntime<string>();
+      const isLive = async (id: string) => (await findServerByPublicId(pool, id)) !== undefined;
+      const attach = (removeFirst: boolean) => async (publicId: string) => {
+        await addUnlessRemoved({
+          publicId,
+          runtime,
+          add: async () => {
+            // The removal commits (and its own runtime remove finds nothing yet) before the attach adds the entry.
+            if (removeFirst) {
+              await softDeleteServer(pool, publicId);
+              await runtime.remove(publicId);
+            }
+            await runtime.replace({ id: publicId, displayName: "X", services: "agent", workers: [], kind: "agent" });
+          },
+          isLive,
+        });
+      };
+      const errors: unknown[] = [];
+      const onAttachError = (_id: string, err: unknown) => errors.push(err);
+      const removed = await service({}, { attachRuntime: attach(true), onAttachError }).create(owner, { displayName: "Racing" });
+      expect(runtime.get(removed.id)).toBeUndefined();
+      const live = await service({}, { attachRuntime: attach(false), onAttachError }).create(await user(), { displayName: "Live" });
+      expect(runtime.get(live.id)).toBe("agent");
+      expect(errors).toEqual([]); // the entry was added and then removed by the guard, not skipped by a failure
+    });
+
+    it("L2: without the guard the same race leaves the deleted server's entry behind (what the guard fixes)", async () => {
+      const runtime = new ServerRuntime<string>();
+      const created = await service({}, {
+        attachRuntime: async (publicId) => {
+          await softDeleteServer(pool, publicId);
+          await runtime.remove(publicId);
+          await runtime.replace({ id: publicId, displayName: "X", services: "agent", workers: [], kind: "agent" });
+        },
+      }).create(await user(), { displayName: "Unguarded" });
+      expect(runtime.get(created.id)).toBe("agent");
     });
   });
 
