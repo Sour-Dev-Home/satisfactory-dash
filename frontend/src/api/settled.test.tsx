@@ -74,3 +74,37 @@ describe("useSettledQuery", () => {
     await waitFor(() => expect(hook.result.current.error).toBe(second));
   });
 });
+
+describe("useSettledQuery: cache lifecycle", () => {
+  it("does not leak a query's error to another key, or back after the query is reset", async () => {
+    const client = createQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const calls: Array<{ key: string; reject: (e: unknown) => void; resolve: (v: string) => void }> = [];
+    const opts = (key: string) =>
+      queryOptions({
+        queryKey: ["lifecycle", key],
+        queryFn: () => new Promise<string>((resolve, reject) => calls.push({ key, resolve, reject })),
+      });
+    const hook = renderHook(({ key }) => useSettledQuery(opts(key)), { wrapper, initialProps: { key: "a" } });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0].reject(new Error("a down")));
+    await waitFor(() => expect(hook.result.current.error).not.toBeNull());
+
+    // Another server: its own first load, nothing of a's error.
+    hook.rerender({ key: "b" });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(hook.result.current.firstLoad).toBe(true);
+    expect(hook.result.current.error).toBeNull();
+
+    // Back to a (cached, errored): the refetch is not a first load and a's error is still its own.
+    hook.rerender({ key: "a" });
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(hook.result.current.firstLoad).toBe(false);
+    expect((hook.result.current.error as Error).message).toBe("a down");
+
+    // A reset query is a first load again, with no stale error.
+    await act(async () => void client.resetQueries({ queryKey: ["lifecycle", "a"] }));
+    await waitFor(() => expect(hook.result.current.firstLoad).toBe(true));
+    expect(hook.result.current.error).toBeNull();
+  });
+});
