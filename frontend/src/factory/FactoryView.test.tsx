@@ -222,7 +222,7 @@ describe("FactoryView", () => {
     renderView();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Game server unreachable.");
-    expect(alert).toHaveTextContent(errorUpstreamUnreachable.error.requestId);
+    expect(alert).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
   });
 
   it("shows the factory error within the grace even while 'Since yesterday' is still pending", async () => {
