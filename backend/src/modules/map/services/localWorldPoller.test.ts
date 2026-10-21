@@ -95,18 +95,24 @@ describe("LocalWorldPoller", () => {
   });
 
   it("a conveyors read with `skip` ingests nothing and warns once per streak, other layers unaffected", async () => {
-    const getConveyors = vi.fn().mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" });
-    const ports = fakePorts({ getConveyors });
-    const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
-    const logger = fakeLogger();
-    const poller = new LocalWorldPoller(ports, { logger, serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5, conveyorsIntervalSeconds: 0.01 });
-    poller.start();
-    await vi.waitFor(() => expect(getConveyors.mock.calls.length).toBeGreaterThanOrEqual(3));
-    await poller.stop();
-    expect(ingest.ingest.mock.calls.map((call) => call[1])).not.toContain("conveyors");
-    expect(ingest.ingest.mock.calls.map((call) => call[1])).toContain("rails");
-    const skips = vi.mocked(logger.warn).mock.calls.filter((call) => call[0] && (call[0] as { reason?: string }).reason === "tooManyEdges");
-    expect(skips).toHaveLength(1);
+    vi.useFakeTimers();
+    try {
+      const getConveyors = vi.fn().mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" });
+      const ports = fakePorts({ getConveyors });
+      const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
+      const logger = fakeLogger();
+      const poller = new LocalWorldPoller(ports, { logger, serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5, conveyorsIntervalSeconds: 1 });
+      poller.start();
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(getConveyors.mock.calls.length).toBeGreaterThanOrEqual(3);
+      await poller.stop();
+      expect(ingest.ingest.mock.calls.map((call) => call[1])).not.toContain("conveyors");
+      expect(ingest.ingest.mock.calls.map((call) => call[1])).toContain("rails");
+      const skips = vi.mocked(logger.warn).mock.calls.filter((call) => call[0] && (call[0] as { reason?: string }).reason === "tooManyEdges");
+      expect(skips).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a failing conveyors read doesn't stop rails or resourceNodes", async () => {

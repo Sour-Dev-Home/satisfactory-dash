@@ -112,6 +112,9 @@ export function mapConveyors(raw: RawConveyorResponses): MappedConveyors {
   // The version gate looks at the fields, not at a version number: with records present and none carrying both ends.
   const anyConnections = parsed.some(({ record }) => record.ConnectedTo0 !== undefined && record.ConnectedTo1 !== undefined);
   if (parsed.length > 0 && !anyConnections) return { data: [], dropped, skip: "unsupportedFrm" };
+  // Records came back but every one was unreadable (a changed response shape): not an empty factory. Sending `[]` would
+  // overwrite the backend's last good copy, so there is no layer this cycle.
+  if (parsed.length === 0 && dropped > 0) return { data: [], dropped, skip: "unsupportedFrm" };
 
   const data: ConveyorEdge[] = [];
   for (const { record, kind } of parsed) {

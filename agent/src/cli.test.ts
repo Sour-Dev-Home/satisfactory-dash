@@ -360,7 +360,7 @@ describe("run", () => {
       runAgent: (options) => {
         const running = runAgent({ ...options, sleep: fastSleep, random: () => 0 });
         const check = setInterval(() => {
-          if (snapshots() >= 3 && worldPosts() >= 6) controller.abort();
+          if (snapshots() >= 3 && worldPosts() >= 9) controller.abort();
         }, 5);
         return running.finally(() => clearInterval(check));
       },
@@ -370,9 +370,10 @@ describe("run", () => {
     expect(vi.mocked(world.getRails).mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(vi.mocked(world.getResourceNodes).mock.calls.length).toBeGreaterThanOrEqual(2);
     const refused = t.out.filter((line) => line.includes("world_layer_refused"));
-    expect(refused).toHaveLength(2);
+    expect(refused).toHaveLength(3);
     expect(refused.filter((line) => line.includes("rails"))).toHaveLength(1);
     expect(refused.filter((line) => line.includes("resourceNodes"))).toHaveLength(1);
+    expect(refused.filter((line) => line.includes("conveyors"))).toHaveLength(1);
     expect(t.out.join("\n")).toContain("agent_stopped");
   });
 

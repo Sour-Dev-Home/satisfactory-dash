@@ -209,6 +209,17 @@ describe("the conveyors layer", () => {
     expect(h.sentFor("conveyors")).toHaveLength(1);
     await h.stop();
   });
+
+  it("a change of skip reason inside a streak warns again, with the new reason", async () => {
+    const h = setup();
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "unsupportedFrm" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await h.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.warnings("world_layer_skipped").map((w) => w.fields.reason)).toEqual(["unsupportedFrm", "tooManyEdges"]);
+    await h.stop();
+  });
 });
 
 describe("the size cap", () => {

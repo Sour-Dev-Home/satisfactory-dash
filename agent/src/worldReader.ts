@@ -62,7 +62,7 @@ interface LayerState {
   sentHash: string | undefined;
   readFailing: boolean;
   overCap: boolean;
-  skipped: boolean;
+  skipped: string | undefined;
   refused: boolean;
 }
 
@@ -100,7 +100,7 @@ export class WorldReader {
 
   private async loop(layer: MapWorldLayer, intervalMs: number, read: () => Promise<WorldRead>): Promise<void> {
     const sleep = this.options.sleep ?? abortableSleep;
-    const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, skipped: false, refused: false };
+    const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, skipped: undefined, refused: false };
     const { signal } = this.stop;
     while (!signal.aborted) {
       await this.cycle(layer, state, read);
@@ -124,11 +124,11 @@ export class WorldReader {
 
     // No layer this cycle: send nothing (the backend keeps its last good copy), one warning per streak.
     if (mapped.skip !== undefined) {
-      if (!state.skipped) logger.warn("world_layer_skipped", { layer, reason: mapped.skip });
-      state.skipped = true;
+      if (state.skipped !== mapped.skip) logger.warn("world_layer_skipped", { layer, reason: mapped.skip });
+      state.skipped = mapped.skip;
       return;
     }
-    state.skipped = false;
+    state.skipped = undefined;
 
     const hash = createHash("sha256").update(JSON.stringify(mapped.data)).digest("hex");
     if (hash === state.sentHash) return;

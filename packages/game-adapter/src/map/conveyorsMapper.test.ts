@@ -202,6 +202,13 @@ describe("mapConveyors", () => {
     });
   });
 
+  describe("every record unreadable", () => {
+    it("records came back but none parsed (a changed response shape): no layer, not an empty one that wipes the last good copy", () => {
+      const result = mapConveyors({ belts: [null, { nope: 1 }], lifts: [], pipes: [{ ID: "" }] });
+      expect(result).toEqual({ data: [], dropped: 3, skip: "unsupportedFrm" });
+    });
+  });
+
   describe("the edge cap", () => {
     const many = (n: number) => Array.from({ length: n }, (_, i) => ({ ...minerBelt, ID: `Build_ConveyorBeltMk1_C_${i}` }));
 

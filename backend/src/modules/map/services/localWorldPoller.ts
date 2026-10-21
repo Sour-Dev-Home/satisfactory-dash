@@ -134,7 +134,7 @@ export class LocalWorldPoller {
 
     /** The skip reason last warned about per layer, so a streak of skipped cycles warns once, not every 10 minutes. */
     const skipped = new Map<MapWorldLayer, string>();
-    const ingestLayer =async (layer: MapWorldLayer, mapped: { data: unknown[]; dropped: number; skip?: string }) => {
+    const ingestLayer = async (layer: MapWorldLayer, mapped: { data: unknown[]; dropped: number; skip?: string }) => {
       if (mapped.dropped > 0) {
         logger.warn({ layer, serverId: serverPublicId, dropped: mapped.dropped }, "map world layer: game-adapter mapper dropped items");
       }
