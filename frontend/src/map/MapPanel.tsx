@@ -135,13 +135,14 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           </label>
         ))}
       </fieldset>
-      {LAYERS.filter((l) => visible.has(l.id)).map((layer) => (
-        <div key={layer.id}>{layer.legend()}</div>
-      ))}
 
       <Suspense fallback={<MapCanvasSkeleton />}>
         <MapCanvas config={GRID_BASE_MAP} layers={drawn} fitTo={fitTo} onView={setView} />
       </Suspense>
+      {/* Under the map, not above it: three layers' legends above would push the map off a phone's first screen. */}
+      {LAYERS.filter((l) => visible.has(l.id)).map((layer) => (
+        <div key={layer.id}>{layer.legend()}</div>
+      ))}
       <p className="text-sm text-muted">
         A plain grid, 500 m per square, with the rails and resource nodes the server reported: no game map art.
         Positions are approximate until they're checked in game.
