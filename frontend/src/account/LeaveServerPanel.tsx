@@ -42,16 +42,20 @@ export function LeaveServerPanel() {
     }
   };
 
+  // The owner's one line needs no card of its own (ui review): a plain note above the account's danger zone.
+  if (!canLeave(server)) {
+    return (
+      <p className="mb-0 px-1 text-sm text-muted">
+        You own {server.displayName}, so you can't leave it.
+        {server.createdVia === "self_serve" && ` ${OWNER_REMOVE_INSTEAD}`}
+      </p>
+    );
+  }
+
   return (
     <section aria-labelledby={headingId} className="panel grid gap-3">
       <h3 id={headingId}>Your membership</h3>
-      {!canLeave(server) ? (
-        <p className="mb-0 text-sm">
-          You own {server.displayName}, so you can't leave it.
-          {server.createdVia === "self_serve" && ` ${OWNER_REMOVE_INSTEAD}`}
-        </p>
-      ) : (
-        <>
+      <>
           <p className="mb-0 text-sm">
             Your role on {server.displayName}: {roleText(server.role)}.
           </p>
@@ -99,8 +103,7 @@ export function LeaveServerPanel() {
               </button>
             </div>
           )}
-        </>
-      )}
+      </>
     </section>
   );
 }

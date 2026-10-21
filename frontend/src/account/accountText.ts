@@ -12,10 +12,12 @@ export const DELETE_GOES = [
   "Your alert notification sign-ups",
 ] as const;
 
-export const DELETE_SERVERS_GO = "Servers you added yourself are removed from Satisfactory Dash.";
+export const REMOVED_HEADING = "Removed with your account";
+export const KEPT_HEADING = "Kept, or never touched";
+export const DELETE_SERVERS_GO = "Servers you added are removed from Satisfactory Dash.";
 export const GAME_UNTOUCHED = "Your game and its saves are never touched: nothing on your game PC changes.";
 export const DELETE_KEPT =
-  "Kept: the audit records of what was done, for their normal year. They name only a random id, which nothing links back to you once your account is gone.";
+  "The audit records of what was done stay for their normal year. They name only a random id, which nothing links back to you once your account is gone.";
 export const OPERATOR_CANNOT_DELETE = "The operator's account can't be deleted here.";
 
 export const REAUTH_LEAD = "To delete your account, sign in again first: it needs a sign-in from the last 10 minutes.";

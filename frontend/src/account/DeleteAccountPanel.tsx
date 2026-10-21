@@ -13,18 +13,30 @@ import {
   DELETE_KEPT,
   DELETE_SERVERS_GO,
   GAME_UNTOUCHED,
+  KEPT_HEADING,
   OPERATOR_CANNOT_DELETE,
   OPERATOR_SERVERS_LEAD,
   OPERATOR_SERVERS_THEN,
   REAUTH_LEAD,
   REAUTH_PASSWORD,
   REAUTH_THEN,
+  REMOVED_HEADING,
   deleteRefusal,
   serversRemovedWithAccount,
 } from "./accountText";
 
 /** Where the Google round trip comes back to (ADR-0047 decision 5): Settings, where the person can try again. */
 const RETURN_TO = "/app/settings";
+
+/** The panel's danger border (the bad-edge token, as on error notices). */
+const DANGER_ZONE = "border-bad-edge";
+/** The confirm step's inset: bordered and tinted in the danger tokens. */
+const CONFIRM_INSET = "grid gap-2 rounded-card border border-bad-edge bg-bad-soft p-4";
+/** The re-sign-in notice: a warning tone over the global alert's red (a routine step, not an error). */
+const NOTICE_TONE = "border-warn-edge bg-warn-soft text-fg-strong";
+/** A link that looks like a secondary button, with the 44 px touch target. */
+const SECONDARY_LINK_BUTTON =
+  "inline-flex min-h-touch items-center justify-center rounded-control border border-line bg-surface-2 px-button-x font-semibold text-fg-strong no-underline hover:border-muted";
 
 /**
  * Settings → Delete my account (ADR-0047). Says what goes and what stays, then deletes behind an explicit confirm. The
@@ -73,46 +85,61 @@ export function DeleteAccountPanel() {
   };
 
   return (
-    <section aria-labelledby={headingId} className="panel grid gap-3">
+    // The danger zone (ui review): set apart from the cards above by a wider gap and the danger border.
+    <section aria-labelledby={headingId} className={`panel mt-4 grid gap-3 ${DANGER_ZONE}`}>
       <h3 id={headingId}>Delete my account</h3>
-      <div className="grid gap-1 text-sm">
-        <p className="mb-0">Deleting your account removes:</p>
-        <ul className="mb-0 list-disc pl-5">
-          {DELETE_GOES.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-        <p className="mb-0">{DELETE_SERVERS_GO}</p>
-        <p className="mb-0">{GAME_UNTOUCHED}</p>
-        <p className="mb-0 text-muted">
-          {DELETE_KEPT}{" "}
-          <a href="/privacy.html" target="_blank" rel="noopener noreferrer">
-            Privacy policy (opens in a new tab)
-          </a>
-        </p>
-      </div>
+      {/* While confirming, the confirm says it all: the explainer steps aside. */}
+      {!confirming && (
+        <div className="grid gap-3 text-sm">
+          <div role="group" aria-labelledby={`${headingId}-removed`} className="grid gap-1">
+            <h4 id={`${headingId}-removed`} className="m-0 text-sm font-semibold">
+              {REMOVED_HEADING}
+            </h4>
+            <ul className="mb-0 list-disc pl-5">
+              {DELETE_GOES.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <p className="mb-0">{DELETE_SERVERS_GO}</p>
+          </div>
+          <div role="group" aria-labelledby={`${headingId}-kept`} className="grid gap-1">
+            <h4 id={`${headingId}-kept`} className="m-0 text-sm font-semibold">
+              {KEPT_HEADING}
+            </h4>
+            <p className="mb-0">{GAME_UNTOUCHED}</p>
+            <p className="mb-0 text-muted">
+              {DELETE_KEPT}{" "}
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer">
+                Privacy policy <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
 
       {confirming ? (
         <form
           onSubmit={confirm}
           onKeyDown={escapeCancels}
           aria-label="Confirm deleting your account"
-          className="grid animate-reveal gap-2 text-sm"
+          className="grid animate-reveal gap-3 text-sm"
         >
-          {/* The refusal's own notice takes focus when there is one; otherwise the question does. */}
-          <p ref={remove.isError ? undefined : focusIn} tabIndex={-1} className="mb-0 font-semibold">
-            Delete your account now? This can't be undone.
-          </p>
-          {removed.length > 0 && (
-            <div className="grid gap-1">
-              <p className="mb-0">These servers you added are removed from Satisfactory Dash with it:</p>
-              <ul className="mb-0 list-disc pl-5">
-                {removed.map((name, i) => (
-                  <li key={i}>{name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Its own step: a bordered inset in the danger tokens. The refusal's notice takes focus when there is one. */}
+          <div ref={remove.isError ? undefined : focusIn} tabIndex={-1} className={CONFIRM_INSET}>
+            <p className="mb-0 font-semibold">Delete your account now?</p>
+            <p className="mb-0 font-semibold text-bad-on-soft">This can't be undone.</p>
+            {removed.length > 0 && (
+              <div className="grid gap-1">
+                <p className="mb-0">These servers you added are removed from Satisfactory Dash with it:</p>
+                <ul className="mb-0 list-disc pl-5">
+                  {removed.map((name, i) => (
+                    <li key={i}>{name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="mb-0">{GAME_UNTOUCHED}</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={cancel} disabled={remove.isPending}>
               Cancel
@@ -148,8 +175,9 @@ function Refusal({ error, focusRef }: { error: unknown; focusRef: (el: HTMLEleme
   const refusal = deleteRefusal(error);
   if (refusal.kind === "other") return <ErrorNotice error={error} />;
   return (
-    // Styled by the global [role="alert"] rule, like every other error (index.css).
-    <div role="alert" ref={focusRef} tabIndex={-1} className="grid gap-2">
+    // Styled by the global [role="alert"] rule, like every other error (index.css), except the routine re-sign-in, which
+    // is not an error: it takes the warning tone instead.
+    <div role="alert" ref={focusRef} tabIndex={-1} className={refusal.kind === "reauth" ? `grid gap-2 ${NOTICE_TONE}` : "grid gap-2"}>
       {refusal.kind === "reauth" ? (
         <Reauth />
       ) : refusal.kind === "operator_servers" ? (
@@ -181,7 +209,8 @@ function Reauth() {
       <>
         <p className="mb-0">{REAUTH_LEAD}</p>
         <p className="mb-0">
-          <a href={googleStartHref(RETURN_TO)} className="font-semibold underline">
+          {/* A full-page navigation (the backend redirects to Google), styled as a secondary button. */}
+          <a href={googleStartHref(RETURN_TO)} className={SECONDARY_LINK_BUTTON}>
             Sign in again with Google
           </a>
         </p>

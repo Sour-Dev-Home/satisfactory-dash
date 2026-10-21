@@ -93,13 +93,20 @@ describe("Delete my account", () => {
     serveList({ servers: [enrolledServer] });
     renderAccount();
     const section = within((await screen.findByRole("heading", { name: "Delete my account" })).closest("section")!);
+    // Two labelled groups: what goes, and what stays (led by the game being untouched).
+    const removed = within(section.getByRole("group", { name: "Removed with your account" }));
     for (const item of ["Your account and your sign-in", "Every session, on every device", "Your membership of every server", "Your alert notification sign-ups"]) {
-      expect(section.getByText(item)).toBeInTheDocument();
+      expect(removed.getByText(item)).toBeInTheDocument();
     }
-    expect(section.getByText("Servers you added yourself are removed from Satisfactory Dash.")).toBeInTheDocument();
-    expect(section.getByText(/Your game and its saves are never touched/)).toBeInTheDocument();
-    expect(section.getByText(/audit records .* name only a random id/)).toBeInTheDocument();
-    expect(section.getByRole("link", { name: "Privacy policy (opens in a new tab)" })).toHaveAttribute("href", "/privacy.html");
+    expect(removed.getByText("Servers you added are removed from Satisfactory Dash.")).toBeInTheDocument();
+    const kept = section.getByRole("group", { name: "Kept, or never touched" });
+    const keptLines = within(kept).getAllByText(/./, { selector: "p" });
+    expect(keptLines[0]).toHaveTextContent(/^Your game and its saves are never touched/);
+    expect(keptLines[1]).toHaveTextContent(/audit records .* name only a random id/);
+    // Short visible text; the new-tab hint is still in the accessible name.
+    const privacy = within(kept).getByRole("link", { name: "Privacy policy (opens in a new tab)" });
+    expect(privacy).toHaveAttribute("href", "/privacy.html");
+    expect(privacy.querySelector(".sr-only")).toHaveTextContent("(opens in a new tab)");
     expect(section.queryByText(/delete (a|the|this) server/i)).not.toBeInTheDocument();
   });
 
@@ -110,10 +117,15 @@ describe("Delete my account", () => {
     renderAccount();
     await openDelete();
     const form = screen.getByRole("form", { name: "Confirm deleting your account" });
-    expect(within(form).getByText("Delete your account now? This can't be undone.")).toHaveFocus();
+    // The confirm's inset takes focus and says it can't be undone; the explainer steps aside meanwhile.
+    expect(within(form).getByText("Delete your account now?").parentElement).toHaveFocus();
+    expect(within(form).getByText("This can't be undone.")).toBeInTheDocument();
     expect(within(form).getByText("My first world")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Removed with your account" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Servers you added are removed from Satisfactory Dash.")).not.toBeInTheDocument();
     fireEvent.click(within(form).getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Delete my account…" })).toHaveFocus();
+    expect(screen.getByRole("group", { name: "Removed with your account" })).toBeInTheDocument();
     await openDelete();
     fireEvent.keyDown(screen.getByRole("form", { name: "Confirm deleting your account" }), { key: "Escape" });
     expect(screen.queryByRole("form", { name: "Confirm deleting your account" })).not.toBeInTheDocument();
@@ -160,6 +172,10 @@ describe("Delete my account", () => {
     expect(alert).toHaveFocus();
     const link = within(alert).getByRole("link", { name: "Sign in again with Google" });
     expect(new URL(link.getAttribute("href")!, "http://x").searchParams.get("return")).toBe("/app/settings");
+    // A routine step, not an error: the warning tone, and the link is a full-size secondary button.
+    expect(alert).toHaveClass("bg-warn-soft");
+    expect(link).toHaveClass("min-h-touch");
+    expect(link).not.toHaveClass("underline");
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
     // After signing in again, the person can try again from the same confirm.
     expect(screen.getByRole("button", { name: "Delete my account" })).toBeEnabled();
@@ -225,6 +241,8 @@ describe("Leave this server", () => {
       await screen.findByText(/You own My first world, so you can't leave it\. To stop using it, remove it from Satisfactory Dash/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Leave/ })).not.toBeInTheDocument();
+    // One line needs no card of its own.
+    expect(screen.queryByRole("heading", { name: "Your membership" })).not.toBeInTheDocument();
   });
 
   it("gives the owner of an operator server no removal hint", async () => {

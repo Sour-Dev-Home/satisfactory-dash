@@ -294,12 +294,12 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Remove My first world from Satisfactory Dash" }).click(),
   },
   // ADR-0047 (#311 task 3): Settings → Delete my account, its confirm, its two refusals, and leaving a server.
-  { scenario: "account-delete", path: "/app/settings", shows: "Deleting your account removes:", clock: AGENT_NOW },
+  { scenario: "account-delete", path: "/app/settings", shows: "Removed with your account", clock: AGENT_NOW },
   {
     scenario: "account-delete",
     name: "account-delete-confirm",
     path: "/app/settings",
-    shows: /Delete your account now\? This can.t be undone\./,
+    shows: "Delete your account now?",
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Delete my account…" }).click(),
   },
