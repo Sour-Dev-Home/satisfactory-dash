@@ -114,18 +114,22 @@ export const resourceNodesLayer: MapLayer<ResourceNode[]> = {
   legend: () => (
     <div className="grid gap-1 text-sm text-muted">
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <li className="flex items-center gap-1">
+        {/* gap-2, not gap-1: the ring is drawn outside the sample and would touch its label. */}
+        <li className="flex items-center gap-2">
           <Sample used />
           In use (ringed)
         </li>
-        <li className="flex items-center gap-1">
+        <li className="flex items-center gap-2">
           <Sample used={false} />
           Free (faded)
         </li>
         <li className="flex items-center gap-1">
           <Dot r={PURITY_RADIUS_PX.normal} filled />
+          Unknown resource, in use
+        </li>
+        <li className="flex items-center gap-1">
           <Dot r={PURITY_RADIUS_PX.normal} filled={false} />
-          Unknown resource (circle, filled when in use)
+          Unknown resource, free
         </li>
       </ul>
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
