@@ -82,6 +82,9 @@ added or removed.
 - [`decisions/0045-threat-model-untrusted-servers.md`](./decisions/0045-threat-model-untrusted-servers.md) — the threat
   model for game servers the owner doesn't control (#505, proposed): per trust boundary, each risk with an existing
   control, a new task (#514 to #517) or an explicit accept; gates the mod's first public release.
+- [`decisions/0046-self-serve-agent-servers.md`](./decisions/0046-self-serve-agent-servers.md) — self-serve agent
+  servers with per-account caps (#517, proposed): how a signed-in player creates a server without the operator, the
+  caps and who raises them, abuse response, the privacy-page changes, and build tasks #523 to #530.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions, and the
   [overview cards brief](./architecture/overview-cards.md) (Players, Tick rate, Health).
