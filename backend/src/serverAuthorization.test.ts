@@ -59,7 +59,11 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
 // contract before their routes. PR 5a mounted the three agent ones and PR 5b the command's status (`GET
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0047 (#311 task 2a) added `members.leave` to the contract BEFORE its route, the same way. Until task 2b mounts it
+// there is nothing to guard, so exactly that one is exempt. Task 2b deletes this line (and teaches the generated tests
+// that leave is a member's own write and that an owner is refused with would_orphan).
+const NOT_YET_MOUNTED = (name: string): boolean => name === "members.leave";
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
@@ -280,7 +284,24 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     expect(SCOPED.filter((endpoint) => endpoint.name.startsWith("commands.")).map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`)).toEqual([
       "GET /commands/:commandId",
     ]);
-    expect(SCOPED).toEqual(scopedEndpoints(endpoints));
+    expect(SCOPED).toEqual(scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name)));
+  });
+
+  it("exempts only members.leave, in the contract but not mounted yet (ADR-0047 task 2a), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route}`)).toEqual(["POST /api/servers/:serverId/members/me/leave"]);
+  });
+
+  // The exemption expires on its own: the moment task 2b mounts the route, this fails until NOT_YET_MOUNTED is deleted,
+  // so the route can never ship without the generated authorization tests.
+  it("the exempt endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
+      const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0047 task 2b)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
   });
 
   // A route that is in the contract but not mounted answers the app's own 404 to an authorized owner; every scoped

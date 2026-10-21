@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ServerSummarySchema } from "./servers";
 
 /**
  * ADR-0003 (plus ADR-0011's unauthorized/rate_limited, ADR-0012's not_editable and ADR-0025's
@@ -66,6 +67,12 @@ export const KnownErrorCode = z.enum([
   // not enabled (ALERT_DELIVERY off or VAPID not configured), so nothing can be subscribed or sent (409).
   "push_endpoint_invalid",
   "push_disabled",
+  // ADR-0047 (additive): account deletion and leaving a server. The change would leave a server without an owner (409,
+  // with a `reason`: last_owner for leaving, operator_servers for deleting an account that owns an operator-created
+  // server, which also lists them in `servers`); the action needs a sign-in within the last 10 minutes (403, not 401, so
+  // the client does not read it as "signed out").
+  "would_orphan",
+  "reauth_required",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;
@@ -81,6 +88,11 @@ export const ApiErrorResponseSchema = z.object({
     // ADR-0027 PR 7 (additive, optional): a stable machine-readable sub-code for a code that has several causes, today
     // webhook_invalid (not_https, host_not_allowed, ...). Never carries user input such as the URL.
     reason: z.string().optional().describe("A stable sub-code for the error, when the code has several causes"),
+    // ADR-0047 (additive, optional): the servers that block an account deletion (would_orphan, reason operator_servers).
+    servers: z
+      .array(ServerSummarySchema.pick({ id: true, displayName: true }))
+      .optional()
+      .describe("The servers the error is about, today only those blocking an account deletion"),
   }),
 });
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>;
