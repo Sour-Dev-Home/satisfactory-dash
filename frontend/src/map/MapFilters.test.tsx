@@ -1,3 +1,4 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { factoryMixed, railsWorldResponseEmpty, resourceNodesWorldResponse } from "@satisfactory-dash/shared/fixtures";
 import { endpoints, type ResourceNode } from "@satisfactory-dash/shared";
@@ -86,11 +87,11 @@ describe("map filters", () => {
   it("None hides every type and All brings them back", async () => {
     await mount();
     openFilters();
-    fireEvent.click(screen.getByRole("button", { name: "Hide all resource types" }));
+    fireEvent.click(screen.getByRole("button", { name: /^None: hide.*resource types/ }));
     expect(drawnNodes()).toEqual([]);
     expect(screen.getByText("0 of 7 resource nodes shown (the rest are hidden by the filters).")).toBeInTheDocument();
     expect(screen.getByText("All hidden by the filters.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show all resource types" }));
+    fireEvent.click(screen.getByRole("button", { name: /^All: show.*resource types/ }));
     expect(drawnNodes()).toHaveLength(allNodes.length);
   });
 
@@ -118,10 +119,10 @@ describe("map filters", () => {
     expect(drawnBuildings()!.some((b) => buildingFilterKey(b) === "backedUp")).toBe(false);
     expect(screen.getByText(`${all.length - backedUp} of ${all.length} buildings shown (the rest are hidden by the filters).`)).toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: /Buildings in view/ })).getAllByRole("row")).toHaveLength(all.length - backedUp + 1);
-    fireEvent.click(screen.getByRole("button", { name: "Hide all building states" }));
+    fireEvent.click(screen.getByRole("button", { name: /^None: hide.*building states/ }));
     expect(drawnBuildings()).toEqual([]);
     expect(screen.getByText("All hidden by the filters.", { selector: "p" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show all building states" }));
+    fireEvent.click(screen.getByRole("button", { name: /^All: show.*building states/ }));
     expect(drawnBuildings()).toHaveLength(all.length);
   });
 
@@ -219,5 +220,33 @@ describe("parseFilters", () => {
   it("refuses an oversized list", () => {
     const big = Array.from({ length: 500 }, (_, i) => `t${i}`);
     expect(parseFilters(JSON.stringify({ v: 1, layers: {}, open: false, hiddenTypes: big, use: "all", hiddenStates: [] }))).toBeNull();
+  });
+});
+
+describe("hunt findings", () => {
+  it("keeps prototype-looking names as plain data", () => {
+    const parsed = parseFilters(
+      '{"v":1,"layers":{"__proto__":true,"constructor":false},"open":false,"hiddenTypes":["__proto__"],"use":"all","hiddenStates":[]}',
+    );
+    expect(parsed!.layers.get("__proto__")).toBe(true);
+    expect(parsed!.hiddenTypes.has("__proto__")).toBe(true);
+    expect(({} as Record<string, unknown>).constructor).toBe(Object);
+  });
+
+  it("does not hand the canvas new layers when a re-render brings nothing new", async () => {
+    const { rerender, client } = await mount();
+    const before = canvas.layers;
+    rerender(<QueryClientProvider client={client}><MapPanel snapshot={factoryMixed} serverId="default" /></QueryClientProvider>);
+    expect(canvas.layers).toBe(before);
+  });
+
+  it("gives the All and None buttons accessible names that contain their visible text", async () => {
+    await mount();
+    openFilters();
+    for (const visible of ["All", "None"]) {
+      for (const button of screen.getAllByText(visible, { selector: "button" })) {
+        expect(button.getAttribute("aria-label") ?? "").toMatch(new RegExp(visible, "i"));
+      }
+    }
   });
 });

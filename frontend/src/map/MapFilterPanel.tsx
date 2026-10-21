@@ -20,10 +20,10 @@ const USE_OPTIONS: { value: UseFilter; label: string }[] = [
 function AllNone({ onAll, onNone, label }: { onAll: () => void; onNone: () => void; label: string }) {
   return (
     <div className="flex gap-2">
-      <button type="button" onClick={onAll} aria-label={`Show all ${label}`}>
+      <button type="button" onClick={onAll} aria-label={`All: show every one of the ${label}`}>
         All
       </button>
-      <button type="button" onClick={onNone} aria-label={`Hide all ${label}`}>
+      <button type="button" onClick={onNone} aria-label={`None: hide every one of the ${label}`}>
         None
       </button>
     </div>
