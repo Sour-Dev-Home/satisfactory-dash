@@ -6,6 +6,8 @@ added or removed.
 - [`vanilla-dedicated-server-api.md`](./vanilla-dedicated-server-api.md) — summary of
   the official Dedicated Server API (Lightweight UDP Query + HTTPS JSON-RPC): auth,
   relevant functions, and the observation that it has no production/power data model.
+- [`runbooks/owasp-top-10-check.md`](./runbooks/owasp-top-10-check.md) — the repeatable OWASP Top 10:2025 sanity
+  check: per category, what to look at in this repo, the status (PASS/GAP), the follow-up issues, and a log of runs.
 - [`runbooks/go-live-api.md`](./runbooks/go-live-api.md) — ordered steps to turn on the
   API: production `.env`, enforced game tokens, Scheduled Task, Cloudflare Tunnel, go-live
   tests and rollback (issue #19).
