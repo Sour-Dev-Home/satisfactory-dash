@@ -91,14 +91,25 @@ interface Switch {
 
 /** Clicks a main tab, waits for every request to land and the page to settle, returns its shifts. */
 async function switchTo(page: Page, tab: string): Promise<Switch> {
-  const clickedAt = await page.evaluate(() => performance.now());
+  // Tag the page being left: the new one is the first `[data-page-reveal]` without the tag (each tab remounts its page).
+  const clickedAt = await page.evaluate(() => {
+    document.querySelectorAll("[data-page-reveal]").forEach((el) => el.setAttribute("data-leaving", ""));
+    return performance.now();
+  });
   await page.getByRole("navigation").getByRole("link", { name: tab, exact: true }).click();
+  // The swap is when the new page is in the DOM, not a fixed 100 ms after the click: a slow runner
+  // (CI) commits it later, and the footer then moves from where the taller page had it, which is the
+  // page being replaced, not pop-in. Two frames on, that swap has been painted and reported.
+  await page.waitForSelector("[data-page-reveal]:not([data-leaving])", { state: "attached" });
+  const swappedAt = await page.evaluate(
+    () => new Promise<number>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(performance.now())))),
+  );
   // Longer than the longest delay plus rendering; networkidle alone misses a lazy chunk's render.
   await page.waitForLoadState("networkidle");
   await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });
   await page.waitForTimeout(300);
   await settleAnimations(page);
-  const shifts = await shiftsSince(page, clickedAt + 100);
+  const shifts = await shiftsSince(page, Math.max(swappedAt, clickedAt + 100));
   const responses = await page.evaluate(
     (start) =>
       performance

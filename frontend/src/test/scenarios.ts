@@ -289,10 +289,6 @@ const BASE: Record<RouteKey, MockResponse> = {
   leaveServer: ok(serverLeft),
 };
 
-/**
- * ADR-0047: an account stored in the database (it names its sign-in methods, so it can be deleted) that signed in with
- * Google, on a backend that offers Google: the recent-sign-in refusal then offers "Sign in again with Google".
- */
 /** The finder skipped the conveyors layer (over the 2 MB world-layer cap): item level with its own note, not the FRM one. */
 const bottlenecksTooLarge = {
   ...bottlenecksItemLevelOldFrm,
@@ -308,7 +304,11 @@ const bottlenecksTooLarge = {
   },
 };
 
-const googleAccount =ok({ ...sessionAuthenticatedWithAccount, signInMethods: ["google"] });
+/**
+ * ADR-0047: an account stored in the database (it names its sign-in methods, so it can be deleted) that signed in with
+ * Google, on a backend that offers Google: the recent-sign-in refusal then offers "Sign in again with Google".
+ */
+const googleAccount = ok({ ...sessionAuthenticatedWithAccount, signInMethods: ["google"] });
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
 const operatorSingle = ok({ ...serversSingle, canManageServers: true });
