@@ -32,6 +32,7 @@ tests build exactly what production runs.
 
 ## Conventions
 
+- Migrations in `migrations/*.sql` are expand-only (ADR-0049 D6): a drop, rename, retype, `SET NOT NULL`, new `CHECK` on existing rows or `NOT NULL` column without a default needs a `-- contract: <why it is safe now>` line in the file, or `npm run migration-check` (in CI `verify`) fails.
 - Build: `esbuild` bundles `src/server.ts` into a single self-contained
   `dist/server.cjs` (no `node_modules` needed at runtime — verified by running it in
   isolation). This is what the `Dockerfile` ships.
