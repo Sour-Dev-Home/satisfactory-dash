@@ -75,6 +75,8 @@ describe("lazy PowerChart", () => {
     const first = powerHistoryNormal.data;
     const { container, rerender } = render(<PowerHistoryPanel history={first} />);
     expect(container.querySelector("[data-chart-loading]")).not.toBeNull();
+    // A `//` line inside JSX renders as text: the placeholder once showed its own code comment.
+    expect(container.textContent).not.toContain("//");
 
     const next = withOneMore(first);
     rerender(<PowerHistoryPanel history={next} />);
