@@ -20,7 +20,7 @@ const ERROR_TEXT: Record<string, string> = {
  * public/terms.html. The backend holds the same constant (identity/signupConfig.ts) and ignores any
  * other value, so bump both together.
  */
-export const TERMS_VERSION = "2026-09-24";
+export const TERMS_VERSION = "2026-10-21";
 
 const UNKNOWN_ERROR = "Sign-in didn't work. Try again.";
 

@@ -12,30 +12,63 @@
     <header><a href="/">Satis Manager</a></header>
     <main>
       <h1>Terms of Use</h1>
-      <p class="updated">Last updated: 24 September 2026</p>
+      <!-- This date is also the terms version a new account accepts: TERMS_VERSION in
+           backend/src/modules/identity/signupConfig.ts and frontend/src/auth/googleSignIn.ts
+           (a unit test keeps the three in step). A small edit may keep the version; a material
+           change (what is collected, who it is shared with, what users agree to) bumps all three. -->
+      <p class="updated">Last updated: 21 October 2026</p>
 
       <p>
-        These terms cover the hosted Satis Manager service at satis-manager.com, run by the
-        operator named in our <a href="/privacy">Privacy Policy</a>. By using it you agree to them.
+        These terms cover the hosted Satis Manager service at satis-manager.com (the hosted
+        Satisfactory Dash service), run by the operator named in our <a href="/privacy">Privacy Policy</a>.
+        By using it you agree to them. When you create an account, you agree by ticking the box on
+        the sign-in page, and we record which version of these terms you accepted.
       </p>
 
       <h2>The service</h2>
       <p>
-        Satis Manager is a free dashboard for your own Satisfactory dedicated server. It's provided
-        as is, with no guarantee that it's available, accurate or fit for any purpose: what it shows
-        depends on your server and on third-party mods.
+        Satis Manager is a dashboard for your own Satisfactory dedicated server. It's provided as is,
+        with no guarantee that it's available, accurate or fit for any purpose: what it shows depends
+        on your server and on third-party mods. There is no promise that it stays online or keeps your
+        history.
+      </p>
+      <p>
+        The service is free. If that ever changes, we'll tell you first, and nothing you already use
+        will be charged without your agreement.
       </p>
 
       <h2>Your account</h2>
       <p>
-        You sign in with a Google account, one person per account, and you must be at least 13.
+        You sign in with a Google account, one person per account, and you must be at least 18.
         Keep your Google account secure: whoever controls it controls your Satis Manager account.
       </p>
 
       <h2>Your servers</h2>
       <p>
         Only connect servers you have the right to administer. You're responsible for the access
-        tokens you configure, and for who you invite: the people you invite see your server's data.
+        tokens and setup codes you create, and for who you invite: the people you invite see your
+        server's data.
+      </p>
+      <p>
+        <strong>Tell your players.</strong> When you connect a server, data about it is sent to Satis
+        Manager. That can include the in-game names of connected players, shown live to your server's
+        members. You are responsible for telling the people who play on your server, and for having the
+        right to share this data. The setup screen has a short message you can copy for them. See the
+        <a href="/privacy">Privacy Policy</a>.
+      </p>
+
+      <h2>Limits</h2>
+      <!-- ADR-0046 caps, operator settings: SELF_SERVE_MAX_SERVERS_PER_ACCOUNT (2),
+           SELF_SERVE_MAX_PENDING_PER_ACCOUNT (1), SELF_SERVE_PENDING_TTL_HOURS (24),
+           SELF_SERVE_CREATES_PER_DAY (5), ENROLLMENT_CODES_PER_HOUR (20), SELF_SERVE_MAX_SERVERS_TOTAL
+           and SIGNUP_MAX_PER_HOUR. Written as "currently" by the owner's decision (2026-10-21). -->
+      <p>
+        Currently, each account may add up to 2 servers. Only 1 of them may be waiting to connect at a
+        time, and a server that isn't connected within 24 hours is removed. You can add up to 5 servers
+        a day and ask for up to 20 setup codes an hour. The service as a whole has room for a limited
+        number of servers, and new sign-ups are limited per hour, so a request can be refused when it
+        is full. The operator can change these limits at any time. Lowering a limit never removes a
+        connected server you already have.
       </p>
 
       <h2>Acceptable use</h2>
@@ -47,6 +80,11 @@
           testing further.
         </li>
         <li>Don't use alerts to spam other people's channels.</li>
+        <li>
+          Don't use a server to send data that isn't from a real game (forged readings), or to store
+          things that have nothing to do with Satisfactory.
+        </li>
+        <li>Don't create accounts or servers just to get around the limits above.</li>
       </ul>
 
       <h2>The game, mods and code</h2>
@@ -62,28 +100,37 @@
 
       <h2>Alerts</h2>
       <p>
-        Alerts aren't offered yet. When they are, they'll be best effort: they run only while the
-        operator's machine is up, so one can arrive late or not at all. Don't rely on them for
-        anything critical.
+        Alerts are best effort. They depend on our server, on your game server, and on Discord or your
+        browser's push service, so one can arrive late or not at all. Don't rely on them for anything
+        critical.
       </p>
 
       <h2>Ending things</h2>
       <p>
-        You can delete your account at any time. The operator may suspend an account that breaks
-        these terms, and may shut the service down, with notice where practical.
+        You can delete your account, or remove a server you own from Satisfactory Dash, at any time.
+        The operator may disable an account, and may remove a server from Satisfactory Dash, if they
+        are broken or abused or if these terms are broken. Where practical the operator will tell you
+        first, but it can act at once if the service is at risk. Removing a server deletes the data
+        Satisfactory Dash stored for it, as the Privacy Policy describes. It never affects your world
+        or its saves, and your game server keeps running. The operator may also shut the service
+        down, with notice where practical.
       </p>
 
       <h2>Liability</h2>
       <p>
         To the extent the law allows, the operator isn't liable for game-server outages, missed or
-        late alerts, or anything else that comes from using the service.
+        late alerts, lost history (including history lost when a server is removed or a backup is
+        restored), or anything else that comes from using the service.
       </p>
-      <!-- No governing law or venue: left out by the owner's decision, since naming a
-           jurisdiction would publish the operator's location. -->
+
+      <h2>Governing law</h2>
+      <!-- The owner's decision (2026-10-21): the state and country only, no city or address. -->
+      <p>These terms are governed by the laws of the State of Georgia, United States.</p>
 
       <h2>Changes and contact</h2>
       <p>
-        The date at the top changes with every update. For a significant change, we'll also put a
+        The date at the top changes with every update. A material change (to what is collected, who
+        it is shared with, or what you agree to) is a new version of these terms, and we'll also put a
         notice on the site before it takes effect. Questions:
         <a href="mailto:privacy@satis-manager.com">privacy@satis-manager.com</a>.
       </p>

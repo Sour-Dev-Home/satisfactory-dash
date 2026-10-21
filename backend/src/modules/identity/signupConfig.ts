@@ -5,7 +5,7 @@ import { ConfigError } from "../../platform/errors.js";
  * `frontend/public/terms.html`; bump it with that page (and `TERMS_VERSION` in
  * `frontend/src/auth/googleSignIn.ts`) so a changed text is accepted again by new accounts.
  */
-export const TERMS_VERSION = "2026-09-24";
+export const TERMS_VERSION = "2026-10-21";
 
 export type SignupMode = "closed" | "open";
 
