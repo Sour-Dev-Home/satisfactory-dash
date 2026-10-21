@@ -88,7 +88,7 @@ export function ServerNameForm({
         </span>
       )}
       {problem && (
-        <span id={problemId} role="alert" className="font-medium text-bad">
+        <span id={problemId} role="alert" className="font-medium text-bad-on-soft">
           {problem}
         </span>
       )}
@@ -102,7 +102,7 @@ export function ServerNameForm({
           </button>
         )}
       </div>
-      {error != null && (errorText ? <p role="alert" className="mb-0 font-medium text-bad">{errorText}</p> : <ErrorNotice error={error} />)}
+      {error != null && (errorText ? <p role="alert" className="mb-0 font-medium text-bad-on-soft">{errorText}</p> : <ErrorNotice error={error} />)}
     </form>
   );
 }

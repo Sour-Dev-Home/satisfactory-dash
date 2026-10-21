@@ -90,7 +90,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
           </div>
           {remove.error != null &&
             (deleteError ? (
-              <p role="alert" className="mb-0 font-medium text-bad">
+              <p role="alert" className="mb-0 font-medium text-bad-on-soft">
                 {deleteError}
               </p>
             ) : (

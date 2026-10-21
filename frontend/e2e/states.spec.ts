@@ -241,7 +241,7 @@ const CASES: StateCase[] = [
     clock: AGENT_NOW,
     act: addYourServer("Second world"),
   },
-  { scenario: "self-serve-owner", path: "/app/settings", shows: "Rename My first world", clock: AGENT_NOW },
+  { scenario: "self-serve-owner", path: "/app/settings", shows: "Your server", clock: AGENT_NOW },
   { scenario: "self-serve-owner-pending", path: "/app/settings", shows: /removed automatically 24 hours after you added it/, clock: AGENT_NOW },
   {
     scenario: "self-serve-owner",
