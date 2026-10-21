@@ -11,17 +11,17 @@ export function FactorySkeleton() {
     <>
       <SinceYesterdaySkeleton />
       <PanelSkeleton label="Loading factory…" rows={0}>
-        <Skeleton className="h-5 w-64" />
-        <Skeleton className="h-touch w-96" />
-        <Skeleton className="h-touch w-64" />
+        <Skeleton className="h-5 w-full max-w-64" />
+        <Skeleton className="h-touch w-full max-w-96" />
+        <Skeleton className="h-touch w-full max-w-64" />
         {Array.from({ length: 5 }, (_, i) => (
           <Skeleton key={i} className="h-11" />
         ))}
         <Skeleton className="h-5 w-32" />
       </PanelSkeleton>
       <PanelSkeleton label="Loading production history…" rows={0}>
-        <Skeleton className="h-touch w-96" />
-        <Skeleton className="h-touch w-48" />
+        <Skeleton className="h-touch w-full max-w-96" />
+        <Skeleton className="h-touch w-full max-w-48" />
         <Skeleton className="h-lh" />
         <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
         <Skeleton className="h-5 w-32" />

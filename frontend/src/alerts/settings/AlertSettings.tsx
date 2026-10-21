@@ -108,7 +108,7 @@ function Part<T>({
       <h4 id={id} className="mb-0">
         {heading}
       </h4>
-      <Loadable pending={query.isPending} skeleton={<PartSkeleton label={loading} blocks={blocks} />}>
+      <Loadable pending={query.isPending} skeleton={<PartSkeleton label={loading} blocks={blocks} />} className="grid gap-3">
       {!query.data ? (
         <ErrorNotice
           error={query.error}

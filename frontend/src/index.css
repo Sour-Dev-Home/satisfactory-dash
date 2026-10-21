@@ -403,21 +403,21 @@
   .panel > h3 {
     margin: 0;
   }
-  .panel > dl {
+  :is(.panel, .panel > [data-loadable]) > dl {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 8px 16px;
   }
-  .panel > dl dt {
+  :is(.panel, .panel > [data-loadable]) > dl dt {
     color: var(--color-muted);
   }
-  .panel > dl dd {
+  :is(.panel, .panel > [data-loadable]) > dl dd {
     text-align: right;
   }
   /* On a phone a long value wrapped raggedly against the right edge. Left-aligned, each value
      reads as one block beside its label (#274). */
   @media (width < theme(--breakpoint-sm)) {
-    .panel > dl dd {
+    :is(.panel, .panel > [data-loadable]) > dl dd {
       text-align: left;
     }
   }

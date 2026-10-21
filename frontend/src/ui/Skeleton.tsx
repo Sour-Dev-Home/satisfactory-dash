@@ -84,11 +84,11 @@ export function Loadable({
   if (visible && !sawSkeleton) setSawSkeleton(true);
   if (show) {
     return (
-      <div data-loading={visible ? "shown" : "waiting"} className={cn(className, !visible && "invisible")}>
+      <div data-loadable="" data-loading={visible ? "shown" : "waiting"} className={cn(className, !visible && "invisible")}>
         {skeleton}
       </div>
     );
   }
   // Only a swap from a skeleton fades: content that was there from the start comes in with its page.
-  return <div className={cn(className, sawSkeleton && "animate-reveal")}>{children}</div>;
+  return <div data-loadable="" className={cn(className, sawSkeleton && "animate-reveal")}>{children}</div>;
 }

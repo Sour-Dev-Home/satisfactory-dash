@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { factoryMixed, historyItems7d, powerOk } from "@satisfactory-dash/shared/fixtures";
+import { alertRulesList, factoryMixed, historyItems7d, powerOk, settingsEditable } from "@satisfactory-dash/shared/fixtures";
 import App from "../App";
 import { keepForServer, queries } from "../api/queries";
 import { renderWithClient } from "../test/render";
@@ -12,7 +12,7 @@ import { pageQueries } from "./pageQueries";
 // Instant tab changes (#494): hovering or focusing a tab's link starts its page's primary queries.
 
 function countRequests() {
-  const hits = { power: 0, factory: 0 };
+  const hits = { power: 0, factory: 0, settings: 0, rules: 0 };
   server.use(
     http.get(endpoints.power.route, () => {
       hits.power += 1;
@@ -21,6 +21,14 @@ function countRequests() {
     http.get(endpoints.factory.route, () => {
       hits.factory += 1;
       return HttpResponse.json(factoryMixed);
+    }),
+    http.get(endpoints.settings.get.route, () => {
+      hits.settings += 1;
+      return HttpResponse.json(settingsEditable);
+    }),
+    http.get(endpoints.alerts.rules.list.route, () => {
+      hits.rules += 1;
+      return HttpResponse.json(alertRulesList);
     }),
     http.get(endpoints.history.items.route, () => HttpResponse.json(historyItems7d)),
   );
@@ -32,34 +40,31 @@ async function mainNav() {
 }
 
 describe("nav prefetch", () => {
+  // Settings and its rules are read only by the Settings page, so nothing else (a poll, the open page) can
+  // add a request: the count is the prefetch's alone.
   it("starts a tab's queries on hover, before it is clicked", async () => {
     window.history.pushState(null, "", "/app");
     const hits = countRequests();
     const { client } = renderWithClient(<App />);
     const nav = await mainNav();
-    await screen.findByRole("region", { name: "Overview" });
-    await waitFor(() => expect(hits.power).toBeGreaterThan(0));
-    // Drop what the Overview itself fetched, so only the prefetch can fill the Power page's entry.
-    client.removeQueries({ queryKey: queries.power("default").queryKey });
-    const before = hits.power;
+    await screen.findByRole("region", { name: "Overview" }, { timeout: 3_000 });
+    expect(hits.settings).toBe(0);
 
-    fireEvent.mouseEnter(nav.getByRole("link", { name: "Power" }));
-    await waitFor(() => expect(hits.power).toBe(before + 1));
-    await waitFor(() => expect(client.getQueryData(queries.power("default").queryKey)).toBeDefined());
+    fireEvent.mouseEnter(nav.getByRole("link", { name: "Settings" }));
+    await waitFor(() => expect(client.getQueryData(queries.settings("default").queryKey)).toBeDefined());
+    expect(hits.settings).toBe(1);
   });
 
   it("starts them on keyboard focus too", async () => {
     window.history.pushState(null, "", "/app");
     const hits = countRequests();
-    const { client } = renderWithClient(<App />);
+    renderWithClient(<App />);
     const nav = await mainNav();
-    await screen.findByRole("region", { name: "Overview" });
-    await waitFor(() => expect(hits.factory).toBeGreaterThan(0));
-    client.removeQueries({ queryKey: queries.factory("default").queryKey });
-    const before = hits.factory;
+    await screen.findByRole("region", { name: "Overview" }, { timeout: 3_000 });
+    expect(hits.rules).toBe(0);
 
-    fireEvent.focus(nav.getByRole("link", { name: "Map" }));
-    await waitFor(() => expect(hits.factory).toBe(before + 1));
+    fireEvent.focus(nav.getByRole("link", { name: "Settings" }));
+    await waitFor(() => expect(hits.rules).toBe(1));
   });
 
   it("does not refetch on every hover: a fresh answer is reused", async () => {

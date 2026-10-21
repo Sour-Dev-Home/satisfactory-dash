@@ -70,7 +70,8 @@ export function SinceYesterdaySkeleton() {
     <section aria-busy="true" className={cn("panel", SINCE_YESTERDAY_BOX)}>
       <SkeletonStatus>Loading what changed since yesterday…</SkeletonStatus>
       <Skeleton className="h-lh w-40 text-xl" />
-      <Skeleton className="size-full" />
+      <Skeleton className="h-lh w-full max-w-xl" />
+      <Skeleton className="h-lh w-full max-w-64 text-sm" />
     </section>
   );
 }

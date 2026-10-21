@@ -1,4 +1,5 @@
 import { lazy, Suspense, useId } from "react";
+import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import type { HistoryItems } from "@satisfactory-dash/shared";
 import { formatPerMinute, formatTime, unitLabel } from "../format";
 import { labelFor, type ItemLabel } from "./itemLabels";
@@ -19,13 +20,12 @@ let ItemChart = lazy(loadChart);
 /** Holds the chart's place while its chunk loads, so nothing jumps. Hidden like the chart itself. */
 function ChartPlaceholder() {
   return (
-    <div
-      aria-hidden="true"
-      data-chart-loading=""
-      className="grid h-chart-slot-phone place-items-center rounded-md bg-surface-2 text-sm text-muted motion-safe:animate-pulse sm:h-chart-slot"
-    >
-      Loading chart…
-    </div>
+    <>
+      <SkeletonStatus>Loading chart…</SkeletonStatus>
+      <div data-chart-loading="">
+        <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
+      </div>
+    </>
   );
 }
 

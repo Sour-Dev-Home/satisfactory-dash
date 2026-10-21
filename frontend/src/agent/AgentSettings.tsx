@@ -55,7 +55,7 @@ export function AgentSettings() {
   return (
     <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4">
       <h3 id="agent-settings-heading">Game PC agent</h3>
-      <Loadable pending={status.isPending} skeleton={<AgentSkeleton />}>
+      <Loadable pending={status.isPending} skeleton={<AgentSkeleton />} className="grid gap-4">
       {!status.data ? (
         <ErrorNotice
           error={status.error}
