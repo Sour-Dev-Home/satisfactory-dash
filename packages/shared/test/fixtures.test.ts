@@ -369,6 +369,19 @@ describe("schemas accept what the contract allows", () => {
     // A role is a plain string, so a newer backend's new role never breaks an older frontend.
     expect(ServerListResponseSchema.safeParse({ servers: [{ id: "x", displayName: "X", role: "auditor" }] }).success).toBe(true);
   });
+
+  it("ADR-0046: the list can say self-serve is on, how each server was created and whether it enrolled; an older list still parses", () => {
+    const parsed = ServerListResponseSchema.parse(fixtures.serversSelfServe);
+    expect(parsed.selfServeEnabled).toBe(true);
+    expect(parsed.servers.map((s) => [s.createdVia, s.enrolled])).toEqual([
+      ["operator", true],
+      ["self_serve", true],
+      ["self_serve", false],
+    ]);
+    expect(ServerListResponseSchema.safeParse(fixtures.serversSingle).success).toBe(true);
+    expect(ServerListResponseSchema.safeParse({ servers: [{ id: "x", displayName: "X", createdVia: "hacked" }] }).success).toBe(false);
+    expect(ServerListResponseSchema.safeParse({ servers: [{ id: "x", displayName: "X", enrolled: "yes" }] }).success).toBe(false);
+  });
 });
 
 // ADR-0025 PR 4: additive contract pieces. Each one must leave an older peer's messages valid.

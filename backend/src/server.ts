@@ -431,6 +431,8 @@ export const app = createApp({
     createServersRouter(directory, serverAccess, {
       isReady: () => serversRegistered,
       canManage: serverManagement?.canManage,
+      selfServeEnabled: selfServeConfig.enabled,
+      ...(database && { enrolledServerIds: (serverUuids: readonly string[]) => enrolledServerIds(database.pool, serverUuids) }),
     }),
     // ADR-0038 M3 (#353): after the servers router, same as every other /servers/:serverId route.
     createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
