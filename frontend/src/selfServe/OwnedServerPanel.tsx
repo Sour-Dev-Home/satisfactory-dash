@@ -105,6 +105,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
             aria-label={`Rename ${server.displayName}`}
             onClick={() => {
               setMode("renaming");
+              rename.reset(); // a refusal from an earlier attempt must not greet the reopened form
               setReturnTo(null);
             }}
           >
