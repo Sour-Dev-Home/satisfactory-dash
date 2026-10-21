@@ -2,7 +2,7 @@ import { Router } from "express";
 import { BottlenecksQuerySchema, BottlenecksResponseSchema, ConveyorsLayerDataSchema, endpoints } from "@satisfactory-dash/shared";
 import type { ServerDirectory } from "../../servers/index.js";
 import { resolveServer } from "../../servers/index.js";
-import { getLatestWorldLayer } from "../../map/index.js";
+import { getLatestWorldLayer, skipReasonOf } from "../../map/index.js";
 import { BadRequestError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { routePath } from "../../../platform/routePath.js";
@@ -18,13 +18,16 @@ export interface BottlenecksRouteDeps {
 }
 
 /**
- * The conveyors layer as the finder gets it. No row (an FRM without connection fields, or a layer the poller skipped for
- * being over its cap, which stores nothing) is `unsupported`. A row the ingest truncated to its item cap is a partial
+ * The conveyors layer as the finder gets it. No row (never read yet, or an agent or backend that predates skip reports) is
+ * `unsupported`; a stored skip is `tooLarge` (over the edge cap) or `unsupported` (an FRM without connection fields). A row the ingest truncated to its item cap is a partial
  * graph, which would mislead more than item level does, so it is `tooLarge`. An unreadable row is `unsupported` too.
  */
 async function readEdges(db: Queryable, serverId: string): Promise<BottleneckEdges> {
   const row = await getLatestWorldLayer(db, serverId, "conveyors");
   if (row === undefined) return "unsupported";
+  // #577: a stored skip says why there is no graph (too large vs an FRM without connection fields).
+  const skip = skipReasonOf(row);
+  if (skip !== undefined) return skip === "tooManyEdges" ? "tooLarge" : "unsupported";
   if (row.truncated) return "tooLarge";
   const parsed = ConveyorsLayerDataSchema.safeParse(row.data);
   return parsed.success ? parsed.data : "unsupported";

@@ -202,6 +202,16 @@ export const RailsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTim
 export const ResourceNodesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ResourceNodesLayerDataSchema });
 export const ConveyorsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ConveyorsLayerDataSchema });
 
+/** Why the conveyors projection has no layer this cycle (game-adapter's `mapConveyors` `skip`): an FRM without connection
+ *  fields, or a graph over `CONVEYORS_MAX_EDGES`. */
+export const CONVEYORS_SKIP_REASONS = ["unsupportedFrm", "tooManyEdges"] as const;
+export const ConveyorsSkipReasonSchema = z.enum(CONVEYORS_SKIP_REASONS);
+
+/** Additive (ADR-0007, #577): the alternative conveyors ingest body, `skipped` in place of `data`. Deliberately NO `data`
+ *  field, so a backend that predates this answers 400 (its body check needs a `data` array) instead of storing an empty
+ *  graph as if it were a real one. The backend stores it as a row with no edges, replacing any older layer. */
+export const ConveyorsSkippedIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, skipped: ConveyorsSkipReasonSchema });
+
 /** Keyed by `MapWorldLayer`, same reason as `MAP_WORLD_LAYER_DATA_SCHEMAS` above. This is the FULL
  *  ingest schema (its `data` still carries `.max(MAP_WORLD_MAX_ITEMS)`): the route uses it once an
  *  incoming body is already known to be within the item cap (after its own truncate-and-count-
@@ -297,6 +307,8 @@ export type ConveyorNodeKind = z.infer<typeof ConveyorNodeKindSchema>;
 export type ConveyorEdge = z.infer<typeof ConveyorEdgeSchema>;
 export type ConveyorsLayerData = z.infer<typeof ConveyorsLayerDataSchema>;
 export type ConveyorsWorldIngestRequest = z.input<typeof ConveyorsWorldIngestRequestSchema>;
+export type ConveyorsSkipReason = z.infer<typeof ConveyorsSkipReasonSchema>;
+export type ConveyorsSkippedIngestRequest = z.input<typeof ConveyorsSkippedIngestRequestSchema>;
 export type ConveyorsWorldLayerResponse = z.infer<typeof ConveyorsWorldLayerResponseSchema>;
 export type MapTrain = z.infer<typeof MapTrainSchema>;
 export type MapTrainStation = z.infer<typeof MapTrainStationSchema>;

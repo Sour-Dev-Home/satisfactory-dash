@@ -4,6 +4,7 @@ import type {
   AgentCommand,
   Cadence,
   CommandResultRequest,
+  ConveyorsSkippedIngestRequest,
   ConveyorsWorldIngestRequest,
   EnrollResponse,
   MapWorldLayer,
@@ -55,7 +56,7 @@ export interface WorldIngestBodies {
   rails: RailsWorldIngestRequest;
   resourceNodes: ResourceNodesWorldIngestRequest;
   // ADR-0048 amendment: in the contract now; the agent reads and sends it from amendment PR 2.
-  conveyors: ConveyorsWorldIngestRequest;
+  conveyors: ConveyorsWorldIngestRequest | ConveyorsSkippedIngestRequest;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;

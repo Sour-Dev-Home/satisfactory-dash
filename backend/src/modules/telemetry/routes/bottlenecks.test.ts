@@ -91,6 +91,12 @@ describe("GET /api/servers/:serverId/bottlenecks", () => {
     expect(res.body.data.beltData).toBe("tooLarge");
   });
 
+  it("a stored skip maps tooManyEdges to tooLarge and unsupportedFrm to unsupported (#577)", async () => {
+    const skipRow = (reason: string) => layerRow({ hash: `skipped:${reason}`, data: [], count: 0 });
+    expect((await get(build({ rows: [skipRow("tooManyEdges")] }))).body.data.beltData).toBe("tooLarge");
+    expect((await get(build({ rows: [skipRow("unsupportedFrm")] }))).body.data.beltData).toBe("unsupported");
+  });
+
   it("a stored layer that no longer parses falls back to unsupported", async () => {
     const res = await get(build({ rows: [layerRow({ data: [{ id: 1 }] })] }));
     expect(res.status).toBe(200);

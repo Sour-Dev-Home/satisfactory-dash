@@ -1,6 +1,6 @@
 import express, { Router } from "express";
 import type { RequestHandler } from "express";
-import { IsoTimeSchema, KNOWN_MAP_WORLD_LAYERS, MAP_WORLD_LAYER_MAX_BYTES, WorldIngestResponseSchema, endpoints } from "@satisfactory-dash/shared";
+import { ConveyorsSkippedIngestRequestSchema, IsoTimeSchema, KNOWN_MAP_WORLD_LAYERS, MAP_WORLD_LAYER_MAX_BYTES, WorldIngestResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { MapWorldLayer } from "@satisfactory-dash/shared";
 import { BadRequestError, RateLimitedError } from "../../../platform/errorResponse.js";
 import { requireJsonBody } from "../../../platform/httpPolicy.js";
@@ -65,12 +65,20 @@ export function createAgentWorldRouter(deps: AgentWorldRoutesDeps): Router {
         // Format, not just typeof "string" (test-hunter, PR #374): a non-ISO value must not reach
         // the database as an invalid ::timestamptz cast, which would fail the WHOLE ingest instead
         // of a clean 400 — the opposite of this module's own conform-don't-reject rule.
-        !IsoTimeSchema.safeParse((body as { observedAt?: unknown }).observedAt).success ||
-        !Array.isArray((body as { data?: unknown }).data)
+        !IsoTimeSchema.safeParse((body as { observedAt?: unknown }).observedAt).success
       ) {
         throw new BadRequestError("The request body is not valid");
       }
-      const result = await deps.ingest.ingest(agent.publicId, layer, { observedAt: (body as { observedAt: string }).observedAt, data: (body as { data: unknown[] }).data });
+      const observedAt = (body as { observedAt: string }).observedAt;
+      // #577: the conveyors layer alone may say why it has no reading (`skipped`, in place of `data`).
+      if (layer === "conveyors" && !("data" in body) && "skipped" in body) {
+        const skipped = ConveyorsSkippedIngestRequestSchema.safeParse(body);
+        if (!skipped.success) throw new BadRequestError("The request body is not valid");
+        sendValidated(res, WorldIngestResponseSchema, await deps.ingest.ingest(agent.publicId, layer, skipped.data));
+        return;
+      }
+      if (!Array.isArray((body as { data?: unknown }).data)) throw new BadRequestError("The request body is not valid");
+      const result = await deps.ingest.ingest(agent.publicId, layer, { observedAt, data: (body as { data: unknown[] }).data });
       sendValidated(res, WorldIngestResponseSchema, result);
     },
   );

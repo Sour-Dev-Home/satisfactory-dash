@@ -42,6 +42,23 @@ describe("POST /agent/v1/world/:layer", () => {
     expect(ingest.ingest).toHaveBeenCalledWith("srv-9", "rails", railBody);
   });
 
+  it("a conveyors skip body (reason, no data) is forwarded to the ingest service (#577)", async () => {
+    const { app, ingest } = build({ auth: fakeAuth("srv-9") });
+    const body = { observedAt: "2026-10-21T00:00:00.000Z", skipped: "tooManyEdges" };
+    const res = await request(app).post(endpoints.agentApi.world.path("conveyors")).send(body);
+    expect(res.status).toBe(200);
+    expect(ingest.ingest).toHaveBeenCalledWith("srv-9", "conveyors", body);
+  });
+
+  it("a skip on another layer, an unknown reason, or a skip beside data is a 400 and never ingested", async () => {
+    const { app, ingest } = build();
+    const at = "2026-10-21T00:00:00.000Z";
+    expect((await request(app).post(endpoints.agentApi.world.path("rails")).send({ observedAt: at, skipped: "tooManyEdges" })).status).toBe(400);
+    expect((await request(app).post(endpoints.agentApi.world.path("conveyors")).send({ observedAt: at, skipped: "nope" })).status).toBe(400);
+    expect((await request(app).post(endpoints.agentApi.world.path("conveyors")).send({ observedAt: at, skipped: "tooManyEdges", extra: 1 })).status).toBe(400);
+    expect(ingest.ingest).not.toHaveBeenCalled();
+  });
+
   it("an unknown layer is a 400, never reaching the ingest service", async () => {
     const { app, ingest } = build();
     const res = await request(app).post(endpoints.agentApi.world.path("belts")).send(railBody);
