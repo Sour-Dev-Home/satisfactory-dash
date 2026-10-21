@@ -5,6 +5,7 @@ import { saveDiscordDestination } from "../src/modules/alerts/index.js";
 import { loadDatabaseConfig } from "../src/platform/db/config.js";
 import { ConfigError } from "../src/platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "../src/platform/secrets/secrets.js";
+import { disableUserAdmin, enableUserAdmin } from "../src/modules/identity/accountAdmin.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "../src/modules/identity/sessionAdmin.js";
 import { loadConfiguredServersFromFile, loadSatisfactoryServerConfigFromEnv } from "../src/modules/gameserver/index.js";
 import { ImportError, importServers, listConnections, loadServerRegistryFromEnv, resolveAllowedAddress } from "../src/modules/servers/index.js";
@@ -27,8 +28,13 @@ import { ImportError, importServers, listConnections, loadServerRegistryFromEnv,
 //                                                      (no shell history), validated against the Discord allowlist and
 //                                                      stored encrypted. Prints only its last 4 characters.
 
+//   npm run admin -- disable-user <user-id>            #516 abuse response: sets the account's status to disabled (sign-in
+//                                                      refuses it) and ends all its sessions in one transaction.
+//   npm run admin -- enable-user <user-id>             The second command: sets the account back to active.
+//                                                      Both write an audit event (ids and a count, no personal data).
+
 const USAGE =
-  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | import-servers | verify-secrets | set-alert-webhook <server-id>)";
+  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | disable-user <user-id> | enable-user <user-id> | import-servers | verify-secrets | set-alert-webhook <server-id>)";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const [command, flag, value] = process.argv.slice(2);
@@ -37,7 +43,8 @@ const isRevoke =
 const isImport = command === "import-servers" && flag === undefined;
 const isVerify = command === "verify-secrets" && flag === undefined;
 const isSetWebhook = command === "set-alert-webhook" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(flag ?? "") && value === undefined;
-if (!isRevoke && !isImport && !isVerify && !isSetWebhook) {
+const isAccount = (command === "disable-user" || command === "enable-user") && UUID.test(flag ?? "") && value === undefined;
+if (!isRevoke && !isImport && !isVerify && !isSetWebhook && !isAccount) {
   console.error(USAGE);
   process.exit(2);
 }
@@ -164,9 +171,28 @@ async function runSetWebhook(pool: pg.Pool, serverId: string): Promise<void> {
   }
 }
 
+async function runAccount(pool: pg.Pool, disable: boolean, userId: string): Promise<void> {
+  try {
+    const result = disable ? await disableUserAdmin(pool, userId) : await enableUserAdmin(pool, userId);
+    if (!result.found) {
+      console.error("No such account.");
+      process.exitCode = 1;
+    } else if (disable) {
+      console.log(`Disabled the account and revoked ${result.sessionsRevoked} session(s). Re-enable: npm run admin -- enable-user <user-id>.`);
+    } else {
+      console.log("Re-enabled the account. It can sign in again; its old sessions stay revoked.");
+    }
+  } catch {
+    console.error("Could not change the account: is the database up and migrated?");
+    process.exitCode = 1;
+  }
+}
+
 const pool = new pg.Pool({ connectionString: config.url, max: 2 });
 try {
-  if (isSetWebhook) {
+  if (isAccount) {
+    await runAccount(pool, command === "disable-user", flag as string);
+  } else if (isSetWebhook) {
     await runSetWebhook(pool, flag as string);
   } else if (isImport) {
     await runImport(pool);

@@ -12,6 +12,7 @@ import { hashPassword } from "./passwordHash.js";
 import { SESSION_COOKIE } from "./session.js";
 import { createSessionToken } from "./sessionToken.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "./sessionAdmin.js";
+import { disableUserAdmin, enableUserAdmin } from "./accountAdmin.js";
 import { purgeExpired } from "./sessionPurge.js";
 import { setUserStatus } from "./repositories/userRepository.js";
 
@@ -295,6 +296,32 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     expect((await request(app).get("/api/servers").set("Cookie", b)).status).toBe(401);
     const rows = (await admin.query("SELECT action, actor_user_id, detail FROM audit.audit_events WHERE action LIKE 'sessions.%' ORDER BY id")).rows;
     expect(rows.map((r) => r.action)).toEqual(["sessions.revoke_user", "sessions.revoke_all"]);
+    expect(rows.every((r) => r.actor_user_id === null)).toBe(true);
+    expect(rows[0].detail).toMatchObject({ userId });
+    expect(JSON.stringify(rows)).not.toMatch(/@|operator/);
+  });
+
+  it("disable-user ends the existing session, refuses a new sign-in, audits ids only, and enable-user lets the account back (#516)", async () => {
+    const { app } = build();
+    const cookie = cookieOf(await loginRequest(app));
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(200);
+    const userId = (await admin.query("SELECT user_id FROM identity.auth_identities WHERE provider_subject = 'operator'")).rows[0].user_id;
+
+    expect(await disableUserAdmin(pool, userId)).toEqual({ found: true, sessionsRevoked: expect.any(Number) });
+    expect((await admin.query("SELECT status FROM identity.users WHERE id = $1", [userId])).rows[0].status).toBe("disabled");
+    // The sessions are revoked rows, not just filtered out by the status check.
+    expect((await admin.query("SELECT count(*)::int AS n FROM identity.sessions WHERE user_id = $1 AND revoked_at IS NULL", [userId])).rows[0].n).toBe(0);
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
+    expect((await loginRequest(app)).status).toBe(401);
+
+    expect(await enableUserAdmin(pool, userId)).toMatchObject({ found: true });
+    // Re-enabling does not bring the revoked session back.
+    expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(401);
+    expect((await loginRequest(app)).status).toBe(200);
+    expect(await disableUserAdmin(pool, "00000000-0000-4000-8000-000000000000")).toEqual({ found: false });
+
+    const rows = (await admin.query("SELECT action, actor_user_id, detail FROM audit.audit_events WHERE action IN ('user.disabled', 'user.enabled') ORDER BY id")).rows;
+    expect(rows.map((r) => r.action)).toEqual(["user.disabled", "user.enabled"]);
     expect(rows.every((r) => r.actor_user_id === null)).toBe(true);
     expect(rows[0].detail).toMatchObject({ userId });
     expect(JSON.stringify(rows)).not.toMatch(/@|operator/);

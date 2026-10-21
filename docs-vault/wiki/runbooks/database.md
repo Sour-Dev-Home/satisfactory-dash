@@ -112,7 +112,11 @@ answered as signed out and cleared).
 ```powershell
 npm run admin -- revoke-sessions --all                # sign everyone out
 npm run admin -- revoke-sessions --user <user-id>     # one account, everywhere
+npm run admin -- disable-user <user-id>               # abuse response: refuse sign-in + revoke sessions (#516)
+npm run admin -- enable-user <user-id>                # undo it
 ```
+
+The full abuse response is in [`abuse-response.md`](./abuse-response.md).
 
   Each writes an audit row (`sessions.revoke_all` / `sessions.revoke_user`, no actor, counts and ids
   only). Users can sign out everywhere themselves with `POST /api/auth/logout-all`.

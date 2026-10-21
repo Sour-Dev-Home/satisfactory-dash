@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../../test-support/testDb.js";
@@ -144,6 +146,83 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       expect(await count("SELECT count(*) AS n FROM alerts.alert_state st JOIN alerts.rules r ON r.id = st.rule_id WHERE r.server_id = $1", other.id)).toBe(1);
       expect(await count("SELECT count(*) AS n FROM alerts.alert_events WHERE server_id = $1", other.id)).toBe(1);
       expect(await count("SELECT count(*) AS n FROM alerts.server_mutes WHERE server_id = $1", other.id)).toBe(1);
+    });
+
+    it("soft delete removes the world layers and push opt-ins, so a re-created id starts empty and another server keeps its own (#516)", async () => {
+      const server = await upsertConfiguredServer(pool, { publicId: "layers-revive", displayName: "Layers" });
+      const other = await upsertConfiguredServer(pool, { publicId: "layers-keep", displayName: "Keeper" });
+      const [user] = await users(1);
+      for (const id of [server.id, other.id]) {
+        await admin.query(
+          "INSERT INTO map.world_layers (server_id, layer, hash, observed_at, truncated, count, data) VALUES ($1, 'rails', 'h', now(), false, 1, '[]'::jsonb)",
+          [id],
+        );
+        await admin.query("INSERT INTO alerts.push_optins (server_id, user_id) VALUES ($1, $2)", [id, user!.id]);
+      }
+      expect(await softDeleteServer(pool, "layers-revive")).toBe(true);
+      const count = async (sql: string, id: string) => Number((await admin.query(sql, [id])).rows[0].n);
+      expect(await count("SELECT count(*) AS n FROM map.world_layers WHERE server_id = $1", server.id)).toBe(0);
+      expect(await count("SELECT count(*) AS n FROM alerts.push_optins WHERE server_id = $1", server.id)).toBe(0);
+      expect(await count("SELECT count(*) AS n FROM map.world_layers WHERE server_id = $1", other.id)).toBe(1);
+      expect(await count("SELECT count(*) AS n FROM alerts.push_optins WHERE server_id = $1", other.id)).toBe(1);
+      // The same public id again revives the row (same internal id) and must inherit nothing.
+      const revived = await upsertConfiguredServer(pool, { publicId: "layers-revive", displayName: "Layers" });
+      expect(revived.id).toBe(server.id);
+      expect(await count("SELECT count(*) AS n FROM map.world_layers WHERE server_id = $1", revived.id)).toBe(0);
+      expect(await count("SELECT count(*) AS n FROM alerts.push_optins WHERE server_id = $1", revived.id)).toBe(0);
+    });
+
+    it("the clean-up migration deletes leftovers of servers removed before the fix and leaves live servers alone (#516)", async () => {
+      const gone = await upsertConfiguredServer(pool, { publicId: "old-gone", displayName: "Gone" });
+      const live = await upsertConfiguredServer(pool, { publicId: "old-live", displayName: "Live" });
+      const [user] = await users(1);
+      for (const id of [gone.id, live.id]) {
+        await admin.query(
+          "INSERT INTO map.world_layers (server_id, layer, hash, observed_at, truncated, count, data) VALUES ($1, 'rails', 'h', now(), false, 1, '[]'::jsonb)",
+          [id],
+        );
+        await admin.query("INSERT INTO alerts.push_optins (server_id, user_id) VALUES ($1, $2)", [id, user!.id]);
+      }
+      // A removal made by the previous build: the row is soft-deleted, the two tables were not cleared.
+      await admin.query("UPDATE servers.servers SET deleted_at = now() WHERE id = $1", [gone.id]);
+      const file = fileURLToPath(new URL("../../../../migrations/1791417600000_purge_removed_server_leftovers.sql", import.meta.url));
+      const up = readFileSync(file, "utf8").split("-- Down Migration")[0]!;
+      await admin.query(up);
+      const left = async (table: string, id: string) => (await admin.query(`SELECT 1 FROM ${table} WHERE server_id = $1`, [id])).rowCount;
+      expect(await left("map.world_layers", gone.id)).toBe(0);
+      expect(await left("alerts.push_optins", gone.id)).toBe(0);
+      expect(await left("map.world_layers", live.id)).toBe(1);
+      expect(await left("alerts.push_optins", live.id)).toBe(1);
+    });
+
+    it("every table that references servers.servers is one the soft delete clears (a new table fails here until it is added) (#516)", async () => {
+      const referencing = await admin.query(
+        `SELECT DISTINCT cn.nspname || '.' || c.relname AS tbl
+         FROM pg_constraint k
+         JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace cn ON cn.oid = c.relnamespace
+         WHERE k.contype = 'f' AND k.confrelid = 'servers.servers'::regclass
+         ORDER BY 1`,
+      );
+      // Cleared by the soft delete (repository constants), or cascaded from a cleared parent in the same list.
+      const cleared = [
+        "agents.agent_credentials",
+        "agents.commands",
+        "agents.enrollment_codes",
+        "alerts.alert_events",
+        "alerts.destinations",
+        "alerts.push_optins",
+        "alerts.rules",
+        "alerts.server_mutes",
+        "map.world_layers",
+        "servers.server_connections",
+        "servers.server_members",
+        "telemetry.building_transitions",
+        "telemetry.item_rollups",
+        "telemetry.item_samples",
+        "telemetry.power_rollups",
+        "telemetry.power_samples",
+      ];
+      expect(referencing.rows.map((r) => r.tbl as string)).toEqual(cleared);
     });
 
     it("an unknown or soft-deleted server is not found, and re-registering brings it back", async () => {

@@ -174,6 +174,13 @@ const DELETE_HISTORY = [
   "DELETE FROM agents.enrollment_codes WHERE server_id = $1",
   "DELETE FROM agents.agent_credentials WHERE server_id = $1",
   "DELETE FROM agents.commands WHERE server_id = $1",
+  // #516 (ADR-0045 "Retention"): the saved world layers and the push opt-ins also belong to the server, so a revived
+  // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
+  // server_members and server_connections above; telemetry (5 tables), alerts (rules and alert_state, alert_events,
+  // server_mutes, destinations and outbox, push_optins), agents (3 tables) and map.world_layers here. The audit trail
+  // keeps its server_id on purpose, and metrics.series_hourly has no server column.
+  "DELETE FROM map.world_layers WHERE server_id = $1",
+  "DELETE FROM alerts.push_optins WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });
