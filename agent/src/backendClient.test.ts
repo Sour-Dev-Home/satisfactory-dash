@@ -68,12 +68,12 @@ describe("the request the client makes", () => {
       return url.endsWith("/enroll") ? json(agentEnrollResponse, 201) : json(agentSnapshotResponse);
     };
     const api = client(fetchImpl);
-    await api.enroll("AB3D-7XQ2");
+    await api.enroll("AB3D-7XQ2-K5MN");
     await api.postSnapshot({ ...agentSnapshotRequestFull, status: undefined, power: undefined, factory: undefined, players: undefined });
     const [enroll, snapshot] = seen as [(typeof seen)[number], (typeof seen)[number]];
     expect(enroll.url).toBe("https://api.example.test/agent/v1/enroll");
     expect((enroll.init.headers as Record<string, string>).authorization).toBeUndefined();
-    expect(JSON.parse(enroll.init.body as string)).toEqual({ code: "AB3D-7XQ2", agentVersion: "0.1.0" });
+    expect(JSON.parse(enroll.init.body as string)).toEqual({ code: "AB3D-7XQ2-K5MN", agentVersion: "0.1.0" });
     expect(snapshot.url).toBe("https://api.example.test/agent/v1/snapshots");
     expect((snapshot.init.headers as Record<string, string>).authorization).toBe(`Bearer ${SECRET}`);
     for (const call of seen) expect(call.init.redirect).toBe("manual");

@@ -102,6 +102,10 @@ only refuses new creates. A per-account override is "not yet" (below).
 - Why now: the mod pins the format (spec lines 41-42). Before its first release it is a one-line change there; after,
   every installed mod would need an update. It is a contract change of its own (task 2), with a brief to the mod
   session.
+- Amendment (2026-10-20, #524): the mod session confirmed how the mod treats a 429 on enrol, so the open [NEEDS VERIFICATION] on it is
+  closed. It is transient: `FinishEnroll` logs a warning once, then retries with exponential backoff and jitter and keeps the code.
+  The code is cleared only by a 201, or kept with a request for a new one on a fatal `CodeRejected`. Minor gap, harmless at
+  1,200 a minute: the enrol path does not read `Retry-After` (only the snapshot pusher does).
 
 ### 5. Abuse response
 

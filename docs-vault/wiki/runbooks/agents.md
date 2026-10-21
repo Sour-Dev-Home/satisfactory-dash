@@ -23,10 +23,17 @@ The agent's secret and a code are never stored or logged in clear. A removed ser
 
 ## Enrolling, and what enrolling does to a local server
 
-`POST /api/servers/:serverId/agent/enrollment-codes` (owner or admin) makes a code `XXXX-XXXX`, valid for 10 minutes,
-single use. **For a server this backend reaches directly (`local`), only the operator can create one**, because
+`POST /api/servers/:serverId/agent/enrollment-codes` (owner or admin) makes a code `XXXX-XXXX-XXXX` (12 base32
+characters, 60 bits; #524, ADR-0046 section 4), valid for 10 minutes, single use. **For a server this backend reaches directly (`local`), only the operator can create one**, because
 enrolling deletes the server's stored game-server tokens and makes it an `agent` server (its pollers stop). Saving a
 local connection also drops that server's unspent codes.
+
+**Code format change (#524): an already-enrolled agent keeps working, but re-enrolling needs an agent build with this
+change.** Enrolment is the only place a code is used, and an agent's credential is a separate secret, so nothing
+enrolled stops. But the agent checks the code's shape locally before it sends anything, so an older build rejects a
+12-character code ("Usage: agent enroll ...") and never reaches the backend; the backend in turn rejects the old
+8-character form with a 400. Update the agent (and the mod, which pins the same format) before the next enrolment or
+re-enrolment of any server.
 
 ## Revoking, and the way back
 
@@ -103,7 +110,7 @@ body), which the agent honours and retries.
 | Failed authentications | client network (IPv6 /64) | 60 a minute | a missing, malformed, unknown or revoked credential |
 | Failed authentications | whole process | 6,000 a minute | a flood from many addresses costs at most this many lookups |
 | World layers | credential | 20 per 10 minutes, 2 MB each | `map/routes/agentWorldRoutes.ts` |
-| Enrolment | client network / process | 10 / 120 a minute | `agents/routes/agentApi.ts` |
+| Enrolment | client network / process | 10 / 1,200 a minute (was 120 before #524) | `ENROLL_*` in `agents/config.ts`, used by `agents/routes/agentApi.ts`; the guess arithmetic is by the constant |
 
 Successful authentications never count against the failure budgets, and a credential that authenticated in the last
 15 minutes skips them entirely (it is still looked up every time, so a revocation is immediate). A flood of junk

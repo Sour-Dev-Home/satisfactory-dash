@@ -6,6 +6,19 @@ export const AGENT_CADENCE: Cadence = { statusSeconds: 5, powerSeconds: 5, facto
 /** An enrolment code is valid this long and works once. */
 export const ENROLLMENT_CODE_TTL_MS = 10 * 60 * 1000;
 
+/** Enrolment attempts per client network per minute. */
+export const ENROLL_PER_NETWORK_PER_MINUTE = 10;
+
+/**
+ * Enrolment attempts per minute across every caller, for the whole process (ADR-0046 section 4, #524). It is high
+ * because a low cap lets a botnet of about 120 networks (10 a minute each) lock real owners out for as long as it runs;
+ * the code length is what makes the high cap safe.
+ * Guess arithmetic: a code is 60 bits (12 base32 characters). One open code per server, so at most C2 + 8 = 33 open codes.
+ * A year of guessing at the cap is 1,200 x 60 x 24 x 365 = 6.3e8 attempts, and the chance that one hits an open code is
+ * 6.3e8 x 33 / 2^60 = about 1.8e-8. With the old 40-bit codes the same cap gave 6.3e8 x 33 / 2^40 = about 0.019.
+ */
+export const ENROLL_GLOBAL_PER_MINUTE = 1200;
+
 /**
  * The most a snapshot body may be once decompressed (agents send gzip; a compression bomb is refused with 413). Kept at
  * 5 MB (#514): a factory building serializes to about 440 bytes (the contract fixture, measured 2026-10-20) and the go-live

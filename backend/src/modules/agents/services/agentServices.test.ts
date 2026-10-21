@@ -59,17 +59,17 @@ describe("the enrolment transaction", () => {
     const { pool, log } = fakePool(happy);
     const attach = vi.fn(async () => undefined);
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: attach, logger: silent });
-    const result = await service.enroll("AB3D-7XQ2", "0.1.0");
+    const result = await service.enroll("AB3D-7XQ2-K5MN", "0.1.0");
     // The server row is locked BEFORE the code is spent: the order code creation and revoke use, so they cannot deadlock.
     expect(kinds(log)).toEqual(["BEGIN", "find-code", "lock", "consume", "credential", "switch", "delete-connection", "audit", "COMMIT"]);
     expect(result).toMatchObject({ serverId: "alpha", cadence: CADENCE });
     expect(result.agentSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
     // The code is looked up by its hash, and the secret is stored as its hash.
-    expect(log[3]!.values[0]).toEqual(sha256("AB3D-7XQ2"));
+    expect(log[3]!.values[0]).toEqual(sha256("AB3D-7XQ2-K5MN"));
     expect(log[4]!.values).toEqual([SERVER_UUID, sha256(result.agentSecret), "0.1.0"]);
     // Nothing in any statement carries the secret or the code in clear.
     expect(JSON.stringify(log)).not.toContain(result.agentSecret);
-    expect(JSON.stringify(log)).not.toContain("AB3D-7XQ2");
+    expect(JSON.stringify(log)).not.toContain("AB3D-7XQ2-K5MN");
     // The running entry is swapped only after the commit.
     expect(attach).toHaveBeenCalledWith("alpha");
   });
@@ -78,7 +78,7 @@ describe("the enrolment transaction", () => {
     const { pool, log } = fakePool(() => ({ rows: [] }));
     const attach = vi.fn(async () => undefined);
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: attach, logger: silent });
-    const failure = await service.enroll("AB3D-7XQ2", "0.1.0").catch((err: unknown) => err);
+    const failure = await service.enroll("AB3D-7XQ2-K5MN", "0.1.0").catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(ApiFailure);
     expect((failure as ApiFailure).code).toBe("enrollment_code_invalid");
     expect(kinds(log)).toEqual(["BEGIN", "find-code", "ROLLBACK"]);
@@ -92,7 +92,7 @@ describe("the enrolment transaction", () => {
     });
     const attach = vi.fn(async () => undefined);
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: attach, logger: silent });
-    const failure = await service.enroll("AB3D-7XQ2", "0.1.0").catch((err: unknown) => err);
+    const failure = await service.enroll("AB3D-7XQ2-K5MN", "0.1.0").catch((err: unknown) => err);
     expect((failure as ApiFailure).code).toBe("enrollment_code_invalid");
     expect(kinds(log).at(-1)).toBe("ROLLBACK");
     expect(kinds(log)).not.toContain("COMMIT");
@@ -110,7 +110,7 @@ describe("the enrolment transaction", () => {
       },
       logger: createLogger({ level: "info" }, { write: (line: string) => lines.push(line) }),
     });
-    const result = await service.enroll("AB3D-7XQ2", "0.1.0");
+    const result = await service.enroll("AB3D-7XQ2-K5MN", "0.1.0");
     expect(result.agentSecret).toBeTruthy();
     expect(lines.join("")).toContain("alpha");
     expect(lines.join("")).not.toContain("hunter2");
@@ -120,7 +120,7 @@ describe("the enrolment transaction", () => {
   it("a database outage is a 503, not a 400 (the agent keeps its code and retries)", async () => {
     const { pool } = fakePool(() => Object.assign(new Error("boom"), { code: "ECONNREFUSED" }));
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: async () => undefined, logger: silent });
-    expect(await service.enroll("AB3D-7XQ2", "0.1.0").catch((err: unknown) => err)).toBeInstanceOf(ServiceUnavailableError);
+    expect(await service.enroll("AB3D-7XQ2-K5MN", "0.1.0").catch((err: unknown) => err)).toBeInstanceOf(ServiceUnavailableError);
   });
 });
 
@@ -137,7 +137,7 @@ describe("the user-facing agents service", () => {
     const { pool, log } = fakePool(lockRow("agent"));
     const service = createAgentsService({ db: pool, canManage: () => false, now: () => 1_000_000 });
     const { code, expiresAt } = await service.createEnrollmentCode("alpha", "user-1");
-    expect(code).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+    expect(code).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/);
     expect(expiresAt).toBe(new Date(1_000_000 + 600_000).toISOString());
     expect(kinds(log)).toEqual(["BEGIN", "lock", "delete-codes", "insert-code", "audit", "COMMIT"]);
     expect(log[3]!.values[1]).toEqual(sha256(code));

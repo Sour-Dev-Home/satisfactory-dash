@@ -108,8 +108,9 @@ describe("POST /agent/v1/enroll", () => {
   });
 
   it.each([
-    ["a code of the wrong shape", { code: "ab3d-7xq2", agentVersion: "0.1.0" }],
-    ["a missing version", { code: "AB3D-7XQ2" }],
+    ["a code of the wrong shape", { code: "ab3d-7xq2-k5mn", agentVersion: "0.1.0" }],
+    ["an 8-character code (the old 40-bit format)", { code: "AB3D-7XQ2", agentVersion: "0.1.0" }],
+    ["a missing version", { code: "AB3D-7XQ2-K5MN" }],
     ["an unknown field (the request is strict)", { ...agentEnrollRequest, hostname: "my-pc" }],
   ])("refuses %s with a fixed message that echoes nothing", async (_name, body) => {
     const { app, enroll } = build();
@@ -122,7 +123,7 @@ describe("POST /agent/v1/enroll", () => {
   });
 
   it("refuses a body that is not JSON", async () => {
-    const res = await request(build().app).post("/agent/v1/enroll").set("Content-Type", "text/plain").send("code=AB3D-7XQ2");
+    const res = await request(build().app).post("/agent/v1/enroll").set("Content-Type", "text/plain").send("code=AB3D-7XQ2-K5MN");
     expect(res.status).toBe(415);
   });
 
@@ -130,7 +131,7 @@ describe("POST /agent/v1/enroll", () => {
     const { app, enroll } = build();
     enroll.mockRejectedValue(new ApiFailure("enrollment_code_invalid", "That enrollment code is not valid."));
     const first = await request(app).post("/agent/v1/enroll").send(agentEnrollRequest);
-    const second = await request(app).post("/agent/v1/enroll").send({ ...agentEnrollRequest, code: "ZZZZ-2222" });
+    const second = await request(app).post("/agent/v1/enroll").send({ ...agentEnrollRequest, code: "ZZZZ-2222-ZZZZ" });
     for (const res of [first, second]) {
       expect(res.status).toBe(400);
       expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("enrollment_code_invalid");
@@ -144,6 +145,26 @@ describe("POST /agent/v1/enroll", () => {
     expect((await request(app).post("/agent/v1/enroll").send(agentEnrollRequest)).status).toBe(201);
     expect((await request(app).post("/agent/v1/enroll").send(agentEnrollRequest)).status).toBe(429);
     expect(enroll).toHaveBeenCalledTimes(2);
+  });
+
+  it("enrols a 12-character code", async () => {
+    const { app, enroll } = build();
+    const res = await request(app).post("/agent/v1/enroll").send({ code: "AB3D-7XQ2-K5MN", agentVersion: "0.1.0" });
+    expect(res.status).toBe(201);
+    expect(enroll).toHaveBeenCalledWith("AB3D-7XQ2-K5MN", "0.1.0");
+  });
+
+  it("the default global limit allows 1,200 enrolments a minute and refuses the 1,201st (#524)", async () => {
+    // Only the per-network limit is lifted, so the 1,200 comes from the production default (config.ts).
+    const { app, enroll } = build({ enrollLimiter: new UserRateLimiter({ max: 100_000, windowMs: 60_000 }) });
+    for (let i = 0; i < 1200; i++) {
+      const res = await request(app).post("/agent/v1/enroll").send(agentEnrollRequest);
+      if (res.status !== 201) throw new Error(`enrolment ${i + 1} was refused with ${res.status}`);
+    }
+    const refused = await request(app).post("/agent/v1/enroll").send(agentEnrollRequest);
+    expect(refused.status).toBe(429);
+    expect(refused.headers["retry-after"]).toBeDefined();
+    expect(enroll).toHaveBeenCalledTimes(1200);
   });
 
   it("is rate limited per client address (429 with Retry-After)", async () => {

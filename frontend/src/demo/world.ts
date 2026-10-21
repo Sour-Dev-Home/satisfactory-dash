@@ -466,7 +466,7 @@ export function agent(now: number): AgentStatusResponse {
 
 /** A made-up enrolment code: it enrols nothing, since the demo has no backend. */
 export function enrollmentCode(now: number): z.infer<typeof EnrollmentCodeResponseSchema> {
-  return { code: "DEMO-DEMO", expiresAt: new Date(now + 10 * 60_000).toISOString() };
+  return { code: "DEMO-DEMO-DEMO", expiresAt: new Date(now + 10 * 60_000).toISOString() };
 }
 
 // Stored production history (ADR-0027 decision 3), invented like the rest: the demo's own items, a

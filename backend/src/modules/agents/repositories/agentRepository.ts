@@ -6,7 +6,7 @@ import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0031 PR 5a: the SQL behind agent enrolment and credentials. A code and an agent's secret are stored only as their
- * SHA-256 (a code is a 10-minute, single-use secret of 40 bits; the secret is 256 random bits, so a fast hash is enough
+ * SHA-256 (a code is a 10-minute, single-use secret of 60 bits; the secret is 256 random bits, so a fast hash is enough
  * and lets the auth lookup be one indexed equality). Every function takes a `Queryable`, so the enrolment can run
  * several of them in one transaction.
  */

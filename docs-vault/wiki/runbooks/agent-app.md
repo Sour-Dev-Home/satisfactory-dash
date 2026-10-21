@@ -32,7 +32,7 @@ agent's own token must be set and proven to work before that happens.
    (`upstream_unreachable`, `upstream_auth_rejected`, `upstream_invalid_response`), never the error text. Fix every failure
    before going on. FRM being absent is not a failure: the dashboard falls back to player counts.
 3. **Enrol.** In the dashboard, create an enrolment code for the server (valid 10 minutes, one use). Then
-   `node agent.cjs enroll AB3D-7XQ2 --url https://<your backend>`. The address must be `https` (plain `http` only for
+   `node agent.cjs enroll AB3D-7XQ2-K5MN --url https://<your backend>`. The address must be `https` (plain `http` only for
    `localhost` while developing) and an origin only, with no path or credentials. The credential the backend returns is
    stored encrypted and never shown again.
 4. **Run.** `node agent.cjs run` in a console to watch it, then set it up as a Scheduled Task (below).

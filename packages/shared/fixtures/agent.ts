@@ -22,7 +22,7 @@ import { mapLiveSample } from "./map";
 const cadence = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
 
 /** POST /agent/v1/enroll: the code from the owner and the agent's own version, nothing about the machine. */
-export const agentEnrollRequest = { code: "AB3D-7XQ2", agentVersion: "0.1.0" } satisfies EnrollRequest;
+export const agentEnrollRequest = { code: "AB3D-7XQ2-K5MN", agentVersion: "0.1.0" } satisfies EnrollRequest;
 /** 201. The secret is base64url, 43 characters (256 bits), shown once. */
 export const agentEnrollResponse = {
   agentSecret: "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo",
@@ -102,7 +102,7 @@ export const agentResultRequestUnsupported = { ok: false, code: "unsupported" } 
 export const agentResultResponse = { accepted: true } as const;
 
 /** POST /api/servers/:serverId/agent/enrollment-codes (201): valid 10 minutes, single use. */
-export const agentEnrollmentCodeResponse = { code: "AB3D-7XQ2", expiresAt: "2026-09-26T12:10:00.000Z" };
+export const agentEnrollmentCodeResponse = { code: "AB3D-7XQ2-K5MN", expiresAt: "2026-09-26T12:10:00.000Z" };
 
 /** GET /api/servers/:serverId/agent */
 export const agentStatusEnrolled = {

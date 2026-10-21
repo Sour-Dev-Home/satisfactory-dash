@@ -24,7 +24,14 @@ import { TokenBucketLimiter } from "../../../platform/tokenBucket.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import type { ServerDirectory } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
-import { COMMANDS_RATE, SNAPSHOT_BYTE_BUDGET, SNAPSHOT_MAX_BYTES, SNAPSHOT_RATE } from "../config.js";
+import {
+  COMMANDS_RATE,
+  ENROLL_GLOBAL_PER_MINUTE,
+  ENROLL_PER_NETWORK_PER_MINUTE,
+  SNAPSHOT_BYTE_BUDGET,
+  SNAPSHOT_MAX_BYTES,
+  SNAPSHOT_RATE,
+} from "../config.js";
 import type { AgentIdentity } from "../services/agentAuth.js";
 import { rateLimitKey } from "../services/clientKey.js";
 import type { AgentCommandsService } from "../services/commandsService.js";
@@ -58,7 +65,7 @@ export interface AgentApiDeps {
   snapshotMaxBytes?: number;
   /** Per client address; default 10 enrolment attempts a minute. */
   enrollLimiter?: UserRateLimiter;
-  /** Across every caller; default 120 enrolment attempts a minute for the whole process. */
+  /** Across every caller; default `ENROLL_GLOBAL_PER_MINUTE` (1,200, config.ts) for the whole process. */
   globalEnrollLimiter?: UserRateLimiter;
   /** Snapshots per credential (#514); default `SNAPSHOT_RATE` (config.ts). */
   snapshotLimiter?: TokenBucketLimiter;
@@ -85,8 +92,8 @@ export interface AgentApiDeps {
 export function createAgentApiRouter(deps: AgentApiDeps): Router {
   const router = Router();
   const now = deps.now ?? Date.now;
-  const enrollLimiter = deps.enrollLimiter ?? new UserRateLimiter({ max: 10, windowMs: 60_000 });
-  const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: 120, windowMs: 60_000 });
+  const enrollLimiter = deps.enrollLimiter ?? new UserRateLimiter({ max: ENROLL_PER_NETWORK_PER_MINUTE, windowMs: 60_000 });
+  const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: ENROLL_GLOBAL_PER_MINUTE, windowMs: 60_000 });
   const snapshotLimiter = deps.snapshotLimiter ?? new TokenBucketLimiter({ ...SNAPSHOT_RATE, now });
   const snapshotByteBudget = deps.snapshotByteBudget ?? new TokenBucketLimiter({ ...SNAPSHOT_BYTE_BUDGET, now });
   const commandsLimiter = deps.commandsLimiter ?? new TokenBucketLimiter({ ...COMMANDS_RATE, now });
