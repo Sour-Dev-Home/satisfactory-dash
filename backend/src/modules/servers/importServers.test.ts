@@ -27,7 +27,7 @@ function fakePool(existingConnections: string[] = []) {
         const publicId = String(values[0]);
         if (!serverIds.has(publicId)) serverIds.set(publicId, `uuid-${publicId}`);
         return {
-          rows: [{ id: serverIds.get(publicId), public_id: publicId, display_name: values[1], hosting_mode: "self", connection_kind: "local" }],
+          rows: [{ id: serverIds.get(publicId), public_id: publicId, display_name: values[1], hosting_mode: "self", connection_kind: "local", revived: false }],
         };
       }
       if (text.includes("INSERT INTO servers.server_connections")) {

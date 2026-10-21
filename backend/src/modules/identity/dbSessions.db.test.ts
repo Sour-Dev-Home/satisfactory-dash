@@ -308,7 +308,7 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
     expect((await request(app).get("/api/servers").set("Cookie", cookie)).status).toBe(200);
     const userId = (await admin.query("SELECT user_id FROM identity.auth_identities WHERE provider_subject = 'operator'")).rows[0].user_id;
 
-    expect(await disableUserAdmin(pool, userId)).toEqual({ found: true, sessionsRevoked: expect.any(Number) });
+    expect(await disableUserAdmin(pool, userId)).toEqual({ found: true, sessionsRevoked: expect.any(Number), agentsRevoked: 0 });
     expect((await admin.query("SELECT status FROM identity.users WHERE id = $1", [userId])).rows[0].status).toBe("disabled");
     // The sessions are revoked rows, not just filtered out by the status check.
     expect((await admin.query("SELECT count(*)::int AS n FROM identity.sessions WHERE user_id = $1 AND revoked_at IS NULL", [userId])).rows[0].n).toBe(0);
