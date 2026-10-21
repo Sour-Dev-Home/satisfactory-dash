@@ -456,7 +456,7 @@ export const app = createApp({
     ...(database ? [createMembersRouter(createDbMemberSelfService(database.pool))] : []),
     // ADR-0038 M3 (#353): after the servers router, same as every other /servers/:serverId route.
     createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
-    ...createTelemetryRouters(directory),
+    ...createTelemetryRouters(directory, database ? { db: database.pool } : undefined),
     ...createSettingsRouters(directory),
     // ADR-0027 PR 7b: the alerts API. After the servers router (its membership check covers these paths), and only with a
     // database (alerts live in it).
