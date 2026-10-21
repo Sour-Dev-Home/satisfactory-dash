@@ -113,7 +113,7 @@ const tokenOnCanvas = (page: Page, tokenName: string) =>
 
 /** How many resource-node icons (#571) have finished loading a real image. */
 const loadedNodeIcons = (page: Page) =>
-  page.evaluate(() => [...document.querySelectorAll<HTMLImageElement>("img.node-icon")].filter((img) => img.complete && img.naturalWidth > 0).length);
+  page.evaluate(() => [...document.querySelectorAll<HTMLImageElement>(".node-icon img")].filter((img) => img.complete && img.naturalWidth > 0).length);
 
 // ADR-0038 M5: the rails and resource nodes are the data-derived base map. Drawn on the canvas, and
 // also text, and each layer's toggle removes what it drew (the CSP gate above covers pan and zoom).
@@ -130,7 +130,7 @@ test("the world layers draw, read as text, and toggle", async ({ page, mockApi }
 
   await page.getByRole("checkbox", { name: "Resource nodes" }).uncheck();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toHaveCount(0);
-  await expect(page.locator("img.node-icon")).toHaveCount(0);
+  await expect(page.locator(".node-icon img")).toHaveCount(0);
   await expect.poll(() => tokenOnCanvas(page, "--color-node"), { message: "no nodes after the toggle" }).toBe(false);
   await page.getByRole("checkbox", { name: "Resource nodes" }).check();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
