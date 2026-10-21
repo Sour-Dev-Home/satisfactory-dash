@@ -16,7 +16,7 @@ import {
   type RuleRow,
 } from "../repositories/alertRepository.js";
 import { parseRuleParams, SEVERITIES, type Rule, type RuleKind, type Severity } from "./rules.js";
-import { ServerAlertEvaluator, type AlertEventOut } from "./serverAlertEvaluator.js";
+import { ServerAlertEvaluator, stateKey, type AlertEventOut, type StateWrite } from "./serverAlertEvaluator.js";
 
 /** What the worker needs from the database: queries and transactions (a pool). */
 export type AlertsDb = Queryable & Parameters<typeof withTransaction>[0];
@@ -229,8 +229,8 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           states,
           muted: (mutes.get(server.id) ?? 0) > now,
         });
-        const events = await this.withinEventQuota(server.id, evaluation.events, now);
-        await writeEvaluation(this.db, { writes: evaluation.writes, deletes: evaluation.deletes, events, nowMs: now, deliver: this.options.deliver === true });
+        const { events, writes } = await this.withinEventQuota(server.id, evaluation.events, evaluation.writes, now);
+        await writeEvaluation(this.db, { writes, deletes: evaluation.deletes, events, nowMs: now, deliver: this.options.deliver === true });
         evaluation.commit();
         for (const event of events) {
           // The alert log's own line: ids and counts only, never a name or a secret.
@@ -256,22 +256,57 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   }
 
   /**
-   * #515: at most MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR events per server in any hour. The events over it are neither
-   * logged nor sent; their states still advance (so nothing fires twice later). In the evaluator's order, so the
-   * earlier rules of a tick win. Counted from the alert log itself, so a restart does not reset it.
+   * #515: at most MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR events per server in any hour, counted from the alert log itself
+   * (so a restart does not reset it). What always goes through, room or not:
+   * - `server_unreachable` and `agent_offline`: one subject each, already paced by their state machines, and the alerts
+   *   that matter most when something is wrong;
+   * - every `resolved`: its alert is firing, which (see below) means its `fired` was recorded, so Discord never keeps
+   *   showing an alert that is over.
+   * The room left goes to `fired`, then `updated`, then `renotify`, each in the evaluator's order. A `fired` that does not
+   * fit is not stored and its state is written back as pending (same `since`), so it fires as soon as there is room
+   * instead of advancing silently; a dropped `updated` or `renotify` only skips that one reminder.
    */
-  private async withinEventQuota(serverId: string, events: AlertEventOut[], now: number): Promise<AlertEventOut[]> {
-    if (events.length === 0) return events;
+  private async withinEventQuota(
+    serverId: string,
+    events: AlertEventOut[],
+    writes: StateWrite[],
+    now: number,
+  ): Promise<{ events: AlertEventOut[]; writes: StateWrite[] }> {
+    if (events.length === 0) return { events, writes };
     const recent = await countRecentEvents(this.db, serverId, now - EVENT_QUOTA_WINDOW_MS);
-    const room = Math.max(0, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR - recent);
-    if (events.length <= room) return events;
-    const dropped = events.length - room;
+    let room = Math.max(0, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR - recent);
+    const kept = new Set<AlertEventOut>();
+    for (const event of events) {
+      if (event.kind === "server_unreachable" || event.kind === "agent_offline" || event.transition === "resolved") kept.add(event);
+    }
+    for (const transition of ["fired", "updated", "renotify"] as const) {
+      for (const event of events) {
+        if (room === 0) break;
+        if (event.transition === transition && !kept.has(event)) {
+          kept.add(event);
+          room--;
+        }
+      }
+    }
+    if (kept.size === events.length) return { events, writes };
+    const dropped = events.filter((event) => !kept.has(event));
+    // A dropped fire stays pending: its state is the one it fired from, minus the notification.
+    const unfired = new Set(dropped.filter((event) => event.transition === "fired").map((event) => stateKey(event.ruleId, event.subject)));
+    const adjusted = writes.map((write) =>
+      unfired.has(stateKey(write.ruleId, write.subject)) && write.state.phase === "firing"
+        ? { ...write, state: { phase: "pending" as const, since: write.state.since, clearSince: null, lastNotifiedAt: null, lastCondition: true } }
+        : write,
+    );
+    this.reportDropped(serverId, dropped.length, now);
+    return { events: events.filter((event) => kept.has(event)), writes: adjusted };
+  }
+
+  private reportDropped(serverId: string, dropped: number, now: number): void {
     this.metrics.counter("satis.alerts.events_dropped", { server: serverId }, dropped);
     const lastWarned = this.quotaWarnedAt.get(serverId);
     if (lastWarned === undefined || now - lastWarned >= EVENT_QUOTA_WINDOW_MS) {
       this.quotaWarnedAt.set(serverId, now);
       this.options.logger.warn({ serverId, dropped, code: "ALERT_EVENT_QUOTA_EXCEEDED" }, "a server is over its hourly alert-event cap; the excess events are not logged or sent");
     }
-    return events.slice(0, room);
   }
 }

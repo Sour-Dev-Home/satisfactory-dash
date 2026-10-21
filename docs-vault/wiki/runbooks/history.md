@@ -33,11 +33,20 @@ so a forged snapshot cannot fill the database. Only history is capped: the live 
 
 | Cap | Value | Where |
 |---|---|---|
-| Circuits per power sample | 64, the lowest ids | `MAX_POWER_SAMPLE_CIRCUITS`, `telemetry/services/historyQuota.ts` |
-| Items per item sample that are NOT in the item catalog (`itemForms.generated.json`) | 64, the first by class name; catalog items are always kept | `MAX_UNCATALOGED_ITEMS_PER_SAMPLE`, same file |
+| Circuits per power sample | 64, the lowest ids, one row per circuit | `MAX_POWER_SAMPLE_CIRCUITS`, `telemetry/services/historyQuota.ts` |
+| Power series, (session, circuit) pairs, per server per UTC hour | 64 | same constant, `SeriesQuota` |
+| Items per item sample that are NOT in the item catalog (`itemForms.generated.json`) | 64, the first by class name, one row per item; catalog items are always kept | `MAX_UNCATALOGED_ITEMS_PER_SAMPLE`, same file |
+| Such item names per server per UTC hour | 64 | same constant, `SeriesQuota` |
+
+The per-hour series caps exist because the agent picks the identifiers. A per-sample cap alone would let new circuit
+ids, a new session name or new made-up items arrive in every sample, and each new series adds rollup rows that are kept
+30 days and 1 year. With the series caps, a server's rollups grow no faster than those of an honest factory at the cap
+(at most 64 power series per minute and hour bucket). An honest server's series repeat, so it never notices; after a
+session change, the new session's series fit within the hour at the latest. A backend restart empties the sets, which at
+most doubles one hour's series.
 
 Rows over a cap are dropped and counted (`satis.history.rows_dropped{server,table}`), with one log line per server per
-hour: `HISTORY_QUOTA_EXCEEDED` (counts only, never a class name).
+table per hour: `HISTORY_QUOTA_EXCEEDED` (counts only, never a class name).
 
 ## Reading it: the history API (ADR-0027 PR 4)
 
@@ -92,7 +101,9 @@ show honest gaps; shading pause periods would need a separate table of pause eve
   factory never hits it; a server that keeps hitting it is sending made-up circuits or items.
 - Alarm `rds-free-storage-low` ([`aws.md`](./aws.md)): find which servers hold the rows. Run as the
   migrator or backup role in a `psql` session ([`database.md`](./database.md)); the first query reads
-  sizes and the planner's estimates per table, the second exact counts for the raw tables:
+  sizes and the planner's estimates per table, the second exact counts for the raw tables (kept 48 h),
+  the third the rollups (kept 30 days and 1 year, so they hold most of a long-lived server's rows, and
+  they grow with the number of distinct series, not with the raw rows):
 
   ```sql
   -- Which tables are big.
@@ -100,7 +111,7 @@ show honest gaps; shading pause periods would need a separate table of pause eve
   FROM pg_class WHERE relnamespace = 'telemetry'::regnamespace AND relkind = 'r'
   ORDER BY pg_total_relation_size(oid) DESC;
 
-  -- Which servers own the rows, largest first (raw tables; the rollups follow them).
+  -- Which servers own the raw rows, largest first.
   SELECT public_id, power_rows, item_rows, transition_rows, power_rows + item_rows + transition_rows AS total_rows
   FROM (
     SELECT s.public_id,
@@ -111,7 +122,20 @@ show honest gaps; shading pause periods would need a separate table of pause eve
   ) per_server
   ORDER BY total_rows DESC
   LIMIT 20;
+
+  -- Which servers own the rollup rows, and how many distinct series (power: session and circuit; items: item).
+  SELECT s.public_id, r.power_rollup_rows, r.power_series, i.item_rollup_rows, i.item_series
+  FROM servers.servers s
+  LEFT JOIN (SELECT server_id, count(*) AS power_rollup_rows, count(DISTINCT (session, circuit)) AS power_series
+             FROM telemetry.power_rollups GROUP BY server_id) r ON r.server_id = s.id
+  LEFT JOIN (SELECT server_id, count(*) AS item_rollup_rows, count(DISTINCT item) AS item_series
+             FROM telemetry.item_rollups GROUP BY server_id) i ON i.server_id = s.id
+  ORDER BY coalesce(r.power_rollup_rows, 0) + coalesce(i.item_rollup_rows, 0) DESC
+  LIMIT 20;
   ```
+
+  Thousands of series for one server means rotating identifiers. The per-hour series cap (above)
+  stops new ones from growing it further.
 
   A server far ahead of the rest is the one to look at (its agent, or `HISTORY_QUOTA_EXCEEDED` in
   the log). Removing a server deletes its history with it (ADR-0045 O3).
