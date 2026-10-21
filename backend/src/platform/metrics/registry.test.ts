@@ -57,6 +57,7 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
     const sample: Record<string, string> = {
       route: "/servers/:serverId/status",
       status_class: "2xx",
+      status: "429",
       api: "vanilla",
       query: "servers.lockServerByPublicId",
       server: "abc123",
@@ -78,6 +79,7 @@ describe("the background metrics (ADR-0037 §1, build step 3)", () => {
     ["satis.poller.cycle.duration", "histogram", { server: "abc123", group: "power" }],
     ["satis.poller.lag", "histogram", { server: "abc123", group: "factory" }],
     ["satis.agent.ingest.lag", "histogram", { server: "abc123" }],
+    ["satis.agent.refused", "counter", { server: "unknown", status: "401" }],
     ["satis.history.rows_written", "counter", { table: "item_samples" }],
     ["satis.alerts.evaluation.duration", "histogram", {}],
     ["satis.alerts.fire.lag", "histogram", { kind: "fuse_trip" }],
@@ -98,6 +100,7 @@ describe("the background metrics (ADR-0037 §1, build step 3)", () => {
     expect(() => validateRecording("satis.poller.lag", "histogram", { server: "abc123", group: "status" })).toThrow(InvalidLabelError);
     expect(() => validateRecording("satis.history.rows_written", "counter", { table: "power_rollups" })).toThrow(InvalidLabelError);
     expect(() => validateRecording("satis.alerts.fire.lag", "histogram", { kind: "made_up_kind" })).toThrow(InvalidLabelError);
+    expect(() => validateRecording("satis.agent.refused", "counter", { server: "abc123", status: "500" })).toThrow(InvalidLabelError);
   });
 
   it("still refuses an unregistered satis.* name", () => {

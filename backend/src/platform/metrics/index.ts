@@ -7,7 +7,7 @@ import { backgroundAggregator } from "./backgroundMetrics.js";
 export { createMetricsAggregator } from "./aggregator.js";
 export type { MetricsAggregator } from "./aggregator.js";
 export { requestMetrics } from "./requestMetrics.js";
-export { METRIC_REGISTRY, UnknownMetricError, InvalidLabelError } from "./registry.js";
+export { AGENT_REFUSED_STATUSES, METRIC_REGISTRY, UnknownMetricError, InvalidLabelError } from "./registry.js";
 export { createBackgroundRecorder } from "./backgroundMetrics.js";
 export type { MetricsRecorder, MetricsSink } from "./backgroundMetrics.js";
 
