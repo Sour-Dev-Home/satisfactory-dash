@@ -5,7 +5,9 @@ import { POLL_MS, queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useSelectedServer } from "../servers/ServerContext";
 import { appendReading } from "./history";
+import { Loadable } from "../ui/Skeleton";
 import { PowerHistoryPanel } from "./PowerHistoryPanel";
+import { PowerHistorySkeleton } from "./PowerHistorySkeleton";
 
 /** Enough polls to cover any window the backend sends (5 min at 10 s = 30), with room. */
 const MAX_READINGS = 120;
@@ -20,7 +22,7 @@ const MAX_READINGS = 120;
 export function PowerHistoryView() {
   const server = useSelectedServer();
   const status = useQuery(queries.status(server.id));
-  if (!status.data && !status.isError) return <p role="status">Loading power history…</p>;
+  if (!status.data && !status.isError) return <Loadable pending skeleton={<PowerHistorySkeleton />}>{null}</Loadable>;
   return <PowerHistoryLoaded serverId={server.id} session={status.data?.data.sessionName} />;
 }
 
@@ -56,12 +58,11 @@ function PowerHistoryLoaded({ serverId, session }: { serverId: string; session: 
     };
   }, [history.data, readings, serverId]);
 
-  if (history.isPending) return <p role="status">Loading power history…</p>;
   return (
-    <>
+    <Loadable pending={history.isPending} skeleton={<PowerHistorySkeleton />} className="grid gap-3">
       {history.isError && <ErrorNotice error={history.error} />}
       {history.data?.stale && <p>Power history is behind: showing the last readings the server kept.</p>}
       {merged && <PowerHistoryPanel history={merged.history} live={merged.live} />}
-    </>
+    </Loadable>
   );
 }

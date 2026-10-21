@@ -16,7 +16,8 @@ export function StatusBanners({ showPaused = true }: { showPaused?: boolean }) {
   const server = useSelectedServer();
   const status = useQuery(queries.status(server.id));
 
-  if (status.isPending) return <p role="status">Loading server status…</p>;
+  // Nothing while it loads: the page reveals once, and a line here would add a row above it and push it down (#494).
+  if (status.isPending) return null;
 
   const snapshot = status.data;
   return (

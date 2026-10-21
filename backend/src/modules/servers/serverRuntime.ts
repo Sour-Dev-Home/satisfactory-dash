@@ -40,6 +40,9 @@ export interface ServerRuntimeOptions {
   /** Called when one server's worker fails to stop (a stop never blocks a removal or shutdown). Log the
    *  server id and the error's name only. */
   onWorkerStopError?: (serverId: string, err: unknown) => void;
+  /** Called after a server was removed and its workers stopped, so in-memory state keyed by its id can be dropped (#516:
+   *  a re-created id must not inherit it). */
+  onRemoved?: (serverId: string) => void;
 }
 
 export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
@@ -108,6 +111,7 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
     if (entry === undefined) return false;
     this.byId.delete(id);
     await this.stopWorkers(entry);
+    this.options.onRemoved?.(id);
     return true;
   }
 

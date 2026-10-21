@@ -5,6 +5,8 @@ import { saveDiscordDestination } from "../src/modules/alerts/index.js";
 import { loadDatabaseConfig } from "../src/platform/db/config.js";
 import { ConfigError } from "../src/platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "../src/platform/secrets/secrets.js";
+import { listServersAdmin, removeServerAdmin } from "../src/modules/servers/serverAdmin.js";
+import { disableUserAdmin, enableUserAdmin } from "../src/modules/identity/accountAdmin.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "../src/modules/identity/sessionAdmin.js";
 import { loadConfiguredServersFromFile, loadSatisfactoryServerConfigFromEnv } from "../src/modules/gameserver/index.js";
 import { ImportError, importServers, listConnections, loadServerRegistryFromEnv, resolveAllowedAddress } from "../src/modules/servers/index.js";
@@ -27,8 +29,19 @@ import { ImportError, importServers, listConnections, loadServerRegistryFromEnv,
 //                                                      (no shell history), validated against the Discord allowlist and
 //                                                      stored encrypted. Prints only its last 4 characters.
 
+//   npm run admin -- disable-user <user-id>            #516 abuse response: sets the account's status to disabled (sign-in
+//                                                      refuses it) and ends all its sessions in one transaction.
+//   npm run admin -- enable-user <user-id>             The second command: sets the account back to active.
+//                                                      Both write an audit event (ids and counts, no personal data).
+//                                                      disable-user also revokes the agent credentials of the servers
+//                                                      the account owns (ADR-0046); the servers and their data stay.
+//   npm run admin -- remove-server <public-id>         The full delete of any server (the same transaction as the HTTP
+//                                                      remove, which answers 404 to a non-member). Restart the backend after.
+//   npm run admin -- list-servers                      Every live server: id, name, kind, owner id, enrolled, last seen,
+//                                                      history row counts. Ids and numbers only.
+
 const USAGE =
-  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | import-servers | verify-secrets | set-alert-webhook <server-id>)";
+  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | disable-user <user-id> | enable-user <user-id> | remove-server <public-id> | list-servers | import-servers | verify-secrets | set-alert-webhook <server-id>)";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const [command, flag, value] = process.argv.slice(2);
@@ -37,7 +50,11 @@ const isRevoke =
 const isImport = command === "import-servers" && flag === undefined;
 const isVerify = command === "verify-secrets" && flag === undefined;
 const isSetWebhook = command === "set-alert-webhook" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(flag ?? "") && value === undefined;
-if (!isRevoke && !isImport && !isVerify && !isSetWebhook) {
+const isAccount = (command === "disable-user" || command === "enable-user") && UUID.test(flag ?? "") && value === undefined;
+const PUBLIC_ID = /^[a-z0-9-]{1,32}$/;
+const isRemoveServer = command === "remove-server" && PUBLIC_ID.test(flag ?? "") && value === undefined;
+const isListServers = command === "list-servers" && flag === undefined;
+if (!isRevoke && !isImport && !isVerify && !isSetWebhook && !isAccount && !isRemoveServer && !isListServers) {
   console.error(USAGE);
   process.exit(2);
 }
@@ -164,9 +181,65 @@ async function runSetWebhook(pool: pg.Pool, serverId: string): Promise<void> {
   }
 }
 
+async function runAccount(pool: pg.Pool, disable: boolean, userId: string): Promise<void> {
+  try {
+    const result = disable ? await disableUserAdmin(pool, userId) : await enableUserAdmin(pool, userId);
+    if (!result.found) {
+      console.error("No such account.");
+      process.exitCode = 1;
+    } else if (disable) {
+      console.log(
+        `Disabled the account, revoked ${result.sessionsRevoked} session(s) and ${result.agentsRevoked} agent credential(s) of the servers it owns. ` +
+          "Re-enable: npm run admin -- enable-user <user-id> (the owner then enrols an agent again).",
+      );
+    } else {
+      console.log("Re-enabled the account. It can sign in again; its old sessions stay revoked.");
+    }
+  } catch {
+    console.error("Could not change the account: is the database up and migrated?");
+    process.exitCode = 1;
+  }
+}
+
+async function runRemoveServer(pool: pg.Pool, publicId: string): Promise<void> {
+  try {
+    if (await removeServerAdmin(pool, publicId)) {
+      console.log(`Removed server "${publicId}" and everything stored for it. Restart the backend so it stops polling it.`);
+    } else {
+      console.error("No such server (or it is already removed).");
+      process.exitCode = 1;
+    }
+  } catch {
+    console.error("Could not remove the server: is the database up and migrated?");
+    process.exitCode = 1;
+  }
+}
+
+async function runListServers(pool: pg.Pool): Promise<void> {
+  try {
+    const rows = await listServersAdmin(pool);
+    console.log(`${rows.length} server(s):`);
+    for (const r of rows) {
+      console.log(
+        `  ${r.publicId}  "${r.displayName}"  kind=${r.kind}  owner=${r.ownerUserId ?? "none"}  enrolled=${r.enrolled ? "yes" : "no"}  ` +
+          `last_seen=${r.lastSeenAt ?? "never"}  power_rows=${r.powerRows}  item_rows=${r.itemRows}`,
+      );
+    }
+  } catch {
+    console.error("Could not list the servers: is the database up and migrated?");
+    process.exitCode = 1;
+  }
+}
+
 const pool = new pg.Pool({ connectionString: config.url, max: 2 });
 try {
-  if (isSetWebhook) {
+  if (isRemoveServer) {
+    await runRemoveServer(pool, flag as string);
+  } else if (isListServers) {
+    await runListServers(pool);
+  } else if (isAccount) {
+    await runAccount(pool, command === "disable-user", flag as string);
+  } else if (isSetWebhook) {
     await runSetWebhook(pool, flag as string);
   } else if (isImport) {
     await runImport(pool);

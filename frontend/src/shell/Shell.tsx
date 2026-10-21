@@ -1,6 +1,7 @@
 import {
   Component,
   lazy,
+  useCallback,
   Suspense,
   useEffect,
   useRef,
@@ -9,7 +10,7 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AgentSettings } from "../agent/AgentSettings";
 import { AlertsBell } from "../alerts/AlertsBell";
@@ -32,7 +33,9 @@ import { AlertSettings } from "../alerts/settings/AlertSettings";
 import { StatusView } from "../status/StatusView";
 import { cn } from "../lib/cn";
 import { chipButton } from "../ui/chip";
+import { PageReveal } from "../ui/PageReveal";
 import { ToAlertSettings, ToApp } from "./ToApp";
+import { PREFETCH_FRESH_MS, pageQueries } from "./pageQueries";
 
 type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
 
@@ -207,14 +210,35 @@ function Section({ label, probe, children }: { label: string; probe: string; chi
  * A page under a tab. The heading is for screen readers; the active tab shows it visually.
  * Not a landmark itself: its panel already is one, with the same name.
  */
-// Each page fades in once when its tab opens (the key remounts it); the data inside never waits.
-function Page({ title, children }: { title: string; children: ReactNode }) {
+// Each page is revealed once when its tab opens (the key remounts it, #494): its panels load at
+// once but show together, as soon as the page's primary queries have answered or the budget is up
+// (ui/usePageReveal). The heading stays outside the hidden part so focus can land on it at once.
+function Page({
+  title,
+  path,
+  onRevealed,
+  gap = "gap-4",
+  children,
+}: {
+  /** The screen-reader heading; left out when the page's own panel already has the h2 (Overview). */
+  title?: string;
+  /** The tab's path, for its primary queries. */
+  path: string;
+  onRevealed: () => void;
+  gap?: string;
+  children: ReactNode;
+}) {
+  const server = useSelectedServer();
   return (
-    <div className="grid animate-reveal gap-4">
-      <h2 tabIndex={-1} className="sr-only">
-        {title}
-      </h2>
-      {children}
+    <div className="grid gap-4">
+      {title && (
+        <h2 tabIndex={-1} className="sr-only">
+          {title}
+        </h2>
+      )}
+      <PageReveal queries={pageQueries(path, server.id)} scope={server.id} onRevealed={onRevealed} className={cn("grid", gap)}>
+        {children}
+      </PageReveal>
     </div>
   );
 }
@@ -247,11 +271,36 @@ export function Shell() {
   // reader users continue from there. Not on first load (compared by path, so StrictMode's
   // repeated mount effect doesn't count as a navigation), and not when focus is still on
   // something (a tab link survives the navigation).
+  // A page's own heading (Overview's) is hidden until the page is revealed, and a hidden element
+  // can't take focus; so the move is also tried when the page reveals (`onRevealed`), until it lands.
+  const focusPending = useRef(false);
+  const focusHeading = useCallback(() => {
+    if (!focusPending.current) return;
+    if (document.activeElement !== document.body) {
+      focusPending.current = false;
+      return;
+    }
+    const heading = pages.current?.querySelector<HTMLElement>("h2");
+    heading?.focus();
+    if (heading && document.activeElement === heading) focusPending.current = false;
+  }, []);
   useEffect(() => {
     if (shownPath.current === pathname) return;
     shownPath.current = pathname;
-    if (document.activeElement === document.body) pages.current?.querySelector<HTMLElement>("h2")?.focus();
-  }, [pathname]);
+    focusPending.current = true;
+    focusHeading();
+  }, [pathname, focusHeading]);
+
+  // Instant tab changes (#494): hovering or focusing a tab starts its page's primary queries, so
+  // by the click they are usually cached. Same options as the page's own, so same cache entries.
+  const client = useQueryClient();
+  const prefetch = (path: string) => {
+    if (path === pathname) return;
+    for (const query of pageQueries(path, server.id)) {
+      const own = typeof query.staleTime === "number" ? query.staleTime : 0;
+      void client.prefetchQuery({ queryKey: query.queryKey, queryFn: query.queryFn, staleTime: Math.max(own, PREFETCH_FRESH_MS) });
+    }
+  };
 
   return (
     // minmax(0,1fr): an implicit grid column sizes to its content's min-width, so the tab bar
@@ -271,6 +320,9 @@ export function Shell() {
               key={tab.to}
               to={tab.to}
               end={tab.end}
+              onMouseEnter={() => prefetch(tab.to)}
+              onFocus={() => prefetch(tab.to)}
+              onTouchStart={() => prefetch(tab.to)}
               className={({ isActive }) =>
                 cn(
                   // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
@@ -313,20 +365,20 @@ export function Shell() {
         <Route
           index
           element={
-            <div key="overview" className="grid animate-reveal gap-5">
+            <Page key="overview" path="/app" gap="gap-5" onRevealed={focusHeading}>
               <Section label="Overview" probe="overview">
                 <OverviewView />
               </Section>
               <Section label="Server status" probe="status">
                 <StatusView />
               </Section>
-            </div>
+            </Page>
           }
         />
         <Route
           path="power"
           element={
-            <Page key="power" title="Power">
+            <Page key="power" title="Power" path="/app/power" onRevealed={focusHeading}>
               <Section label="Power" probe="power">
                 <PowerView />
               </Section>
@@ -340,7 +392,7 @@ export function Shell() {
         <Route
           path="factory"
           element={
-            <Page key="factory" title="Factory">
+            <Page key="factory" title="Factory" path="/app/factory" onRevealed={focusHeading}>
               <Section label="Factory" probe="factory">
                 <FactoryView />
               </Section>
@@ -350,7 +402,7 @@ export function Shell() {
         <Route
           path="map"
           element={
-            <Page key="map" title="Map">
+            <Page key="map" title="Map" path="/app/map" onRevealed={focusHeading}>
               <Section label="Factory map" probe="map">
                 {/* Keyed by server: the first view fits that server's factory. */}
                 <MapView key={server.id} />
@@ -361,7 +413,7 @@ export function Shell() {
         <Route
           path="settings"
           element={
-            <Page key="settings" title="Settings">
+            <Page key="settings" title="Settings" path="/app/settings" onRevealed={focusHeading}>
               <Section label="Server settings" probe="settings">
                 {/* Keyed by server: a change still on its way to one server's game PC must not follow
                     the user to another server. */}
@@ -383,7 +435,7 @@ export function Shell() {
           <Route
             path="servers"
             element={
-              <Page key="servers" title="Servers">
+              <Page key="servers" title="Servers" path="/app/servers" onRevealed={focusHeading}>
                 <Section label="Server management" probe="servers">
                   <ServerManagementView />
                 </Section>

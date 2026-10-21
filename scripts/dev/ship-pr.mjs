@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { blockingStatus, configFor, parseArgs, repoOf, run, scanDiff } from "./lib.mjs";
+import { blockingStatus, configFor, npmInvocation, parseArgs, repoOf, run, scanDiff } from "./lib.mjs";
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -32,8 +32,9 @@ function main() {
 
   if (cfg.needsNodeModules && !existsSync(join(worktree, "node_modules"))) {
     console.log("installing dependencies for the pre-push check...");
-    // npm is a .cmd on Windows, which Node only spawns through a shell; the arguments are fixed.
-    run("npm", ["ci", "--no-audit", "--no-fund"], { cwd: worktree, shell: true, stdio: ["ignore", "ignore", "pipe"] });
+    // npm's CLI script run by node: no shell (DEP0190), on Windows and Linux; the arguments are fixed.
+    const npm = npmInvocation();
+    run(npm.cmd, [...npm.args, "ci", "--no-audit", "--no-fund"], { cwd: worktree, stdio: ["ignore", "ignore", "pipe"] });
   }
   run("git", ["-C", worktree, "-c", "core.safecrlf=false", "push", "-u", "origin", branch], { stdio: ["ignore", "ignore", "pipe"] });
 

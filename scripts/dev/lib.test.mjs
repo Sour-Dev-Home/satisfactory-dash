@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockingStatus, configFor, globToRegExp, parseArgs, parseWorktrees, pickDispatchedRun, REPOS, repoFromRemote, scanDiff, selectFiles } from "./lib.mjs";
+import { blockingStatus, configFor, globToRegExp, npmInvocation, parseArgs, parseWorktrees, pickDispatchedRun, REPOS, repoFromRemote, scanDiff, selectFiles } from "./lib.mjs";
 
 // A stand-in portfolio name: the real one is the owner's name, which this repo never carries.
 const PORTFOLIO = "Sour-Dev-Home/someone-portfolio";
@@ -101,4 +101,23 @@ test("parseArgs: positionals, values, bare flags and repeatable --only", () => {
     commit: "msg",
     "dry-run": true,
   });
+});
+
+test("npmInvocation runs npm's CLI script with node, never a shell", () => {
+  const node = "/opt/node/bin/node";
+  const norm = (p) => p.replaceAll("\\", "/");
+  const only = (want) => (p) => norm(p) === want;
+  // Under npm: npm_execpath wins.
+  assert.deepEqual(npmInvocation({ env: { npm_execpath: "/x/npm/bin/npm-cli.js" }, execPath: node, exists: () => true }), {
+    cmd: node,
+    args: ["/x/npm/bin/npm-cli.js"],
+  });
+  // npm_execpath pointing at npx is ignored; the Unix layout is found beside node.
+  const unix = npmInvocation({ env: { npm_execpath: "/x/npx-cli.js" }, execPath: node, exists: (p) => norm(p).endsWith("/opt/node/lib/node_modules/npm/bin/npm-cli.js") });
+  assert.equal(unix.cmd, node);
+  assert.equal(norm(unix.args[0]), "/opt/node/lib/node_modules/npm/bin/npm-cli.js");
+  // Windows layout: node_modules beside node.exe.
+  const win = npmInvocation({ env: {}, execPath: node, exists: only("/opt/node/bin/node_modules/npm/bin/npm-cli.js") });
+  assert.equal(norm(win.args[0]), "/opt/node/bin/node_modules/npm/bin/npm-cli.js");
+  assert.throws(() => npmInvocation({ env: {}, execPath: node, exists: () => false }), /npm-cli\.js/);
 });

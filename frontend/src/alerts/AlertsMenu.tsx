@@ -1,3 +1,4 @@
+import { SkeletonLine } from "../ui/Skeleton";
 import { useId, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -36,7 +37,7 @@ export function AlertsMenu({ onNavigate }: { onNavigate: () => void }) {
       <section aria-label="Firing now" className="grid gap-2">
         <h3 className="text-sm text-muted">Firing now</h3>
         {status.isPending ? (
-          <p role="status">Loading…</p>
+          <SkeletonLine label="Loading…" />
         ) : !status.data ? (
           <ErrorNotice error={status.error} />
         ) : status.data.firing.length === 0 ? (
@@ -67,7 +68,7 @@ export function AlertsMenu({ onNavigate }: { onNavigate: () => void }) {
       <section aria-label="Recent" className="grid gap-2">
         <h3 className="text-sm text-muted">Recent</h3>
         {log.isPending ? (
-          <p role="status">Loading…</p>
+          <SkeletonLine label="Loading…" />
         ) : !log.data ? (
           <ErrorNotice
             error={log.error}

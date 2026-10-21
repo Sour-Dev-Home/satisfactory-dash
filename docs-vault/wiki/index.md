@@ -27,6 +27,9 @@ added or removed.
 - [`runbooks/agents.md`](./runbooks/agents.md) — the backend side of the edge agent (ADR-0031 PR 5a and 5b): the deploy
   order (`db:migrate` first), enrolment codes and what enrolling does to a local server, revoking (the only way back is
   re-enrolling), commands (auto-pause answers `202`), and the `agent_offline` alert.
+- [`runbooks/abuse-response.md`](./runbooks/abuse-response.md) — the operator's abuse response (#516, ADR-0045): find a
+  server, remove it so nothing is left (the table-by-table list), `disable-user` / `enable-user`, and what to re-apply
+  after restoring a backup.
 - [`runbooks/backend-cheat-sheet.md`](./runbooks/backend-cheat-sheet.md) — facts that cost CI rounds when guessed: the two
   server ids (public string vs internal UUID), which errors are `ApiFailure` and which are plain classes, the rate-limiter
   defaults that bite in tests, ordering rules in the servers module, running DB tests locally, the CI-wait one-liner, and

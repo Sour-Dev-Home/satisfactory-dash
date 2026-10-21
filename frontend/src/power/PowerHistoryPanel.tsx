@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import type { PausedRange, PowerHistory } from "@satisfactory-dash/shared";
 import type uPlot from "uplot";
 import { formatMW, formatTime } from "../format";
@@ -28,14 +29,13 @@ let PowerChart = lazy(loadChart);
  */
 function ChartPlaceholder() {
   return (
-    <div
-      aria-hidden="true"
-      data-chart-loading=""
+    <>
+      <SkeletonStatus>Loading chart…</SkeletonStatus>
       // Measured chart heights: 250 px, 279 px at phone width where the legend wraps.
-      className="grid h-chart-slot-phone place-items-center rounded-md bg-surface-2 text-sm text-muted motion-safe:animate-pulse sm:h-chart-slot"
-    >
-      Loading chart…
-    </div>
+      <div data-chart-loading="">
+        <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
+      </div>
+    </>
   );
 }
 

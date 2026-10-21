@@ -155,3 +155,15 @@ latency that crosses the agent and the backend.
   afterwards. Never after cut-over.
 - **D3** No Web Vitals from real users for now. The CI lab budgets stay.
 - **D4** Load reports are committed to `docs-vault/wiki/perf/` as portfolio evidence.
+
+## Amendment 1 (2026-10-20): `satis.agent.refused`
+
+#514 (ADR-0045 O4) added one row to the metric table in section 1, in the registry
+(`backend/src/platform/metrics/registry.ts`) and counted in `modules/agents/routes/agentApi.ts`:
+
+| Metric | Kind | Labels | Source |
+|---|---|---|---|
+| `satis.agent.refused` | counter | server (public id, or `unknown` before the credential is checked), status (400, 401, 413, 415, 429) | the agent API's refusals, so the operator sees which server misbehaves (`runbooks/agents.md`, "Limits on the agent API") |
+
+Both labels are bounded (a bounded token and a fixed list), so the "bounded labels" rule of section 1 holds. The table
+above is otherwise unchanged.

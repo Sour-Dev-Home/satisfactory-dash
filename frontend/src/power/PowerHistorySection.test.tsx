@@ -126,4 +126,34 @@ describe("PowerHistorySection", () => {
     choose("Live");
     expect(await screen.findByRole("heading", { name: "Last 5 minutes" })).toBeInTheDocument();
   });
+
+  // #494: changing the range keeps the last range's chart up, dimmed, until the new one is ready.
+  it("keeps the last range on screen, dimmed, while the next one loads", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get(endpoints.history.power.route, async ({ request }) => {
+        const range = new URL(request.url).searchParams.get("range");
+        if (range === "6h") {
+          await held;
+          return HttpResponse.json({ ...historyPower24h, data: { ...historyPower24h.data, range: "6h" } });
+        }
+        return HttpResponse.json(historyPower24h);
+      }),
+    );
+    renderSection();
+    choose("24 h");
+    expect(await screen.findByRole("heading", { name: "Last 24 hours" })).toBeInTheDocument();
+
+    choose("6 h");
+    // Nothing blanked and no loading line: the 24 h chart is still there, marked busy.
+    const heading = screen.getByRole("heading", { name: "Last 24 hours" });
+    expect(heading.closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText("Loading power history…")).not.toBeInTheDocument();
+    expect(within(picker()).getByRole("button", { name: "6 h" })).toHaveAttribute("aria-pressed", "true");
+
+    release();
+    expect(await screen.findByRole("heading", { name: "Last 6 hours" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Last 24 hours" })).not.toBeInTheDocument();
+  });
 });

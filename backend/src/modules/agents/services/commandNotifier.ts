@@ -59,7 +59,8 @@ export class CommandNotifier {
   notify(serverUuid: string): void {
     const set = this.waiters.get(serverUuid);
     if (set === undefined) return;
-    for (const waiter of [...set]) waiter.release();
+    // release() deletes the waiter from the set; deleting the entry being visited is safe while iterating a Set.
+    for (const waiter of set) waiter.release();
   }
 
   /** How many long-polls are waiting for this server (tests, and a leak check). */

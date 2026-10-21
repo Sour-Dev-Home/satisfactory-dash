@@ -132,6 +132,18 @@ describe("an agent server's runtime is never replaced by a polled one (ADR-0031 
 });
 
 describe("remove and replace", () => {
+  it("tells the owner of per-id in-memory state when a server was removed, after its workers stopped (#516)", async () => {
+    const order: string[] = [];
+    const worker = fakeWorker();
+    worker.stop.mockImplementation(async () => {
+      order.push("stop");
+    });
+    const runtime = new ServerRuntime([server("a", [worker])], { onRemoved: (id) => order.push(`removed:${id}`) });
+    expect(await runtime.remove("nope")).toBe(false);
+    expect(await runtime.remove("a")).toBe(true);
+    expect(order).toEqual(["stop", "removed:a"]);
+  });
+
   it("remove stops resolving at once, then stops the workers", async () => {
     const worker = fakeWorker();
     const runtime = new ServerRuntime([server("a", [worker])]);

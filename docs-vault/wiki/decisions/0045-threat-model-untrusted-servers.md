@@ -142,3 +142,42 @@ first public release; #517 before any stranger can get a server.
 
 See also (2026-10-20): ADR-0046 (`0046-self-serve-agent-servers.md`, proposed) is #517's design and gives M2, M3, B5
 and O3 their new dispositions.
+
+## Amendment 2 (2026-10-20): #514's limits
+
+#514 (PR #532) has merged. The original tables above stay as written; this amendment states the dispositions that
+changed. The limits themselves are in `runbooks/agents.md`, "Limits on the agent API", with their reasons; the code is
+`backend/src/modules/agents/config.ts` (sizes), `agents/services/agentAuth.ts` (authentication), `agents/routes/agentApi.ts`
+(routes, the byte charge, the refusal counter) and `platform/tokenBucket.ts` (the buckets).
+
+**Rows whose disposition changes:**
+
+| # | Was | Now | Evidence |
+|---|---|---|---|
+| M10 | NEW: #514 | EXISTING | Per credential: 150 snapshots at once then 0.6 a second; 32 MB of decompressed snapshot bytes at once then 4 MB a minute (a credential in debt is refused before its next body is read, and a body that fails while being read is charged the cap); one snapshot upload in flight; command polls and results 30 then one every 2 s; one open long-poll (a new `GET /commands` ends the open one); 5 MB per snapshot. Sizes and reasons: `agents/config.ts`, runbook table. |
+| E3 | NEW: #514 | EXISTING | The authentication budgets count failures only, and an attempt is counted before its lookup and refunded when it authenticates or the database is down (`agentAuth.ts`). A credential that authenticated in the last 15 minutes skips them (still looked up every time, so revocation is immediate), with its own lookup budget of 50 then 10 a second. A flood of junk from many addresses no longer refuses a working agent. Leftover risks below. |
+| M6 | EXISTING, "600 a minute per network and 6000 for the process" | EXISTING, new numbers | 60 failed authentications a minute per client network (an IPv6 /64) and 6,000 a minute for the process, failures only (`agents/config.ts`, `agentAuth.ts`); successes never count. Still 256 bits, looked up by hash, one 401 for unknown, revoked and removed. The old "600 a minute" and the all-attempts count no longer apply. |
+| O4 | NEW: #514 | EXISTING for the signal; #281 still shows it | The counter `satis.agent.refused` (labels `server`: public id or `unknown` before authentication, `status`: 400, 401, 413, 415, 429) is in the registry (`platform/metrics/registry.ts`) and counted in `agentApi.ts`. Whether the metrics page shows it is #281's. |
+| M9 | EXISTING | EXISTING, plus a rate | The 5 MB per-snapshot cap stands (`agents/config.ts`); the byte budget of M10 now bounds how much of it a credential can have parsed per minute. |
+| E4 | ACCEPT, "reopens when the #514 counters show sustained refusals from many addresses" | ACCEPT, trigger now observable | Sustained 401s or 429s under `server="unknown"` from many addresses on `satis.agent.refused` is the trigger to revisit edge rate limiting (runbook). |
+
+M1 to M5, M7, M8, M11 to M14 are unchanged (M11 and M12 stay with #515).
+
+**"Limits per account and per credential, today"** (the table before Amendment 1) is superseded for two rows. Request
+rate per credential: the buckets above, plus 20 world layers per 10 minutes (`map/routes/agentWorldRoutes.ts`, as
+before); the gap "#514" is closed. Bytes: 5 MB a snapshot, 2 MB a layer and now 32 MB at once then 4 MB a minute per
+credential; the gap "#514" is closed. The storage and alert rows still wait for #515.
+
+**Leftover risks, recorded from the runbook's "Known leftover risks" (the #514 security review):**
+
+1. **A backend restart during a flood refuses every agent until the flood's minute window ends.** The recently valid list
+   is in memory, so after a restart no credential is known and each needs a slot in the global failure budget for its
+   first lookup. ACCEPT now: it needs a flood that is already under way at the moment of a restart, the agent retries
+   after the `Retry-After`, and it ends with the window. Open with E4: the flood would be absorbed at the edge if the
+   edge limits were added. A second backend instance (see "Revisit when") makes the list per instance.
+2. **An IPv6 /48 holder can still fill the global failure budget** (about 65,000 /64 networks; about 100 of them at 60
+   failures a minute use up the 6,000). Known agents are not affected; new or restarted ones are, as in 1. ACCEPT now,
+   and OPEN against E4: `satis.agent.refused` is the evidence, and edge rate limiting is the answer if it shows this.
+
+Both leftovers are bounded to a delay for agents that were not authenticated in the last 15 minutes. Neither lets an
+unauthenticated caller read or write any server's data.
