@@ -77,6 +77,8 @@ interface Verdict {
   /** The producer (upstream) or consumer (downstream) the walk continues into. */
   other?: FactoryBuilding;
   cap?: ConveyorEdge;
+  /** Logistics only: no producer of the item exists anywhere, the machine is fed only from unread sources. */
+  sourceOnly?: boolean;
   /** The belt-level form ran for this verdict; false = item-level (also the stale-graph fallback). */
   beltLevel: boolean;
 }
@@ -513,8 +515,10 @@ class Finder {
 
     const cut = this.upCut(region, node as number, x, demand, inRegion);
     if (cut) return this.mk("logistics", rate, true, { cap: cut, demand });
+    const sourceOnly = producers.length === 0;
     const shared = this.sharedCut(x, filter, node as number);
     if (shared) return this.mk("logistics", rate, true, { cap: shared, demand });
+    if (sourceOnly) return this.mk("logistics", rate, true, { demand, sourceOnly });
     return this.mk("logistics", rate, true, { demand });
   }
 
@@ -661,7 +665,16 @@ function unitSuffix(unit: BottleneckStep["unit"]): string {
   return unit === "m3/min" ? " m3/min" : "/min";
 }
 
+/** Steps whose item has no producer anywhere (only unread sources feed it); the contract has no field for it, so the wording keys off this. */
+const sourceOnlySteps = new WeakSet<BottleneckStep>();
+
 function stepOf(v: Verdict): BottleneckStep {
+  const step = stepFields(v);
+  if (v.sourceOnly) sourceOnlySteps.add(step);
+  return step;
+}
+
+function stepFields(v: Verdict): BottleneckStep {
   const step: BottleneckStep = { kind: v.kind, itemClassName: v.rate.className, itemName: v.rate.name };
   if (v.rate.unit !== undefined) step.unit = v.rate.unit;
   if (v.other) step.buildingId = v.other.id;
@@ -701,7 +714,7 @@ function terminalStep(b: FactoryBuilding, x: ProductionRate): BottleneckStep {
 
 /**
  * Walks the chain from `m`: the best verdict, then into the producer (up) or consumer (down) it points at, to a terminal.
- * ADR-0048: a visited set of item nodes ends a loop ("loop through X"); the chain is at most 8 steps. Of several bad
+ * ADR-0048: a visited set of (building, item) nodes ends a loop ("loop through X"); the chain is at most 8 steps. Of several bad
  * producers the walk follows one (terminal states first, then id), so it is linear and deterministic.
  */
 function walk(
@@ -715,11 +728,12 @@ function walk(
 ): void {
   const v = finder.best(m, dir, skipItem);
   if (!v || steps.length >= BOTTLENECK_CHAIN_MAX_STEPS) return;
-  if (visited.has(v.rate.className)) {
+  const visitKey = `${m.id}  if (visited.has(v.rate.className)) {${v.rate.className}`;
+  if (visited.has(visitKey)) {
     steps.push({ kind: "loop", itemClassName: v.rate.className, itemName: v.rate.name });
     return;
   }
-  visited.add(v.rate.className);
+  visited.add(visitKey);
   steps.push(stepOf(v));
   verdicts.push(v);
   if (!v.other || (v.kind !== "upstream" && v.kind !== "downstream")) return;
@@ -767,6 +781,9 @@ function describe(step: BottleneckStep, dir: "up" | "down", who: string, nameOf:
     case "logistics": {
       const c = step.cappedBy;
       if (!c) {
+        if (dir === "up" && sourceOnlySteps.has(step)) {
+          return `${who} is fed only from storage, a station or an extractor whose contents are not read, so the data cannot say why ${item} is short`;
+        }
         return dir === "up"
           ? `enough ${item} is made, but it is not reaching ${who}; the data cannot say why (splitter balancing, filters, mixed belts or overflow)`
           : `${item} has somewhere to go, but it is not leaving ${who}; the data cannot say why (splitter balancing, filters, mixed belts or overflow)`;

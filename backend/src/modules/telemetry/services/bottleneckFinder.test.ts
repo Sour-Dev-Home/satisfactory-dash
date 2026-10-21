@@ -565,3 +565,31 @@ describe("fresh-eyes findings", () => {
     expect(r.findings).toHaveLength(10);
   });
 });
+
+describe("wrong-answer fixes", () => {
+  it("only an unread source and no producer anywhere: the text does not claim the item is made", () => {
+    const m = machine("M", { state: "underfed", ing: [[PLATE, 60]] });
+    const r = run([m], [edge("e1", "X1", "M", { fromKind: "extractor" })]);
+    expect(r.findings[0].rootCause.kind).toBe("logistics");
+    expect(r.findings[0].text).not.toContain("is made");
+    expect(r.findings[0].text).toContain("fed only from storage, a station or an extractor whose contents are not read");
+  });
+
+  it("an unread source plus a producer elsewhere keeps the 'enough is made' text", () => {
+    const m = machine("M", { state: "underfed", ing: [[PLATE, 60]] });
+    const r = run([m, producer(120)], [edge("e1", "X1", "M", { fromKind: "extractor" })]);
+    const f = r.findings.find((x) => x.buildingId === "M");
+    expect(f?.text).toContain("enough Desc_IronPlate_C is made");
+  });
+
+  it("the same item at two different buildings in a chain is not a loop", () => {
+    // A needs X from B, B needs Y from C, C needs X from D (starved of ore).
+    const A = machine("A", { state: "underfed", ing: [["X_C", 60]] });
+    const B = machine("B", { state: "underfed", ing: [["Y_C", 60]], out: [["X_C", 60]] });
+    const C = machine("C", { state: "underfed", ing: [["X_C", 60]], out: [["Y_C", 60]] });
+    const D = machine("D", { state: "unpowered", out: [["X_C", 60]] });
+    const a = run([A, B, C, D], "unsupported").findings.find((f) => f.buildingId === "A");
+    expect(a?.chain.some((s) => s.kind === "loop")).toBe(false);
+    expect(a?.rootCause.kind).toBe("unpowered");
+  });
+});
