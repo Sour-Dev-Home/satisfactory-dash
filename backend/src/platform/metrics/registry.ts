@@ -63,6 +63,8 @@ export const isOneOf =
  *  that every value it records is a member (the alert kinds against `RULE_KINDS` itself). */
 const POLLER_GROUPS = ["power", "factory"];
 const HISTORY_TABLES = ["power_samples", "item_samples", "building_transitions"];
+/** The statuses an agent request is refused with (#514): agents/routes/agentApi.ts counts exactly these. */
+export const AGENT_REFUSED_STATUSES = ["400", "401", "413", "415", "429"];
 const ALERT_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target", "agent_offline"];
 
 /** ADR-0037 build step 4's closed set: the static name of every query `timedQuery` (platform/db)
@@ -253,6 +255,12 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   "satis.agent.ingest.lag": {
     kind: "histogram",
     labels: { server: isBoundedToken(64) },
+  },
+  // #514 (ADR-0045 O4): refused agent requests, by the server's public id ("unknown" before the
+  // credential is checked) and the HTTP status, so the operator sees which server misbehaves.
+  "satis.agent.refused": {
+    kind: "counter",
+    labels: { server: isBoundedToken(64), status: isOneOf(...AGENT_REFUSED_STATUSES) },
   },
   "satis.history.rows_written": {
     kind: "counter",

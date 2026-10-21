@@ -9,7 +9,7 @@ import { ServerIdSchema } from "./ids";
  */
 
 /** Ids that would collide with a fixed route under /api/servers. */
-export const RESERVED_SERVER_IDS = ["test-connection", "managed"] as const;
+export const RESERVED_SERVER_IDS = ["test-connection", "managed", "agent"] as const;
 
 /** A hostname, an IPv4 address or an IPv6 literal (with or without brackets). No scheme, path, port,
  *  credentials or whitespace: only what is needed to name a machine. */
@@ -158,7 +158,15 @@ export const SwitchToLocalRequestSchema = z.strictObject(ConnectionShape);
  *  /api/servers/:serverId, needs a stored connection). */
 export const RenameServerRequestSchema = z.strictObject({ displayName: DisplayNameSchema });
 export const RenameServerResponseSchema = z.object({ server: AgentServerSchema });
-export const DeleteServerResponseSchema = z.object({ deleted: z.literal(true) });
+
+/**
+ * POST /api/servers/agent (ADR-0046, self-serve): any signed-in user creates an agent server of their own and becomes its
+ * owner. The body is only the name; the answer is 201 with the new agent server. Errors reuse existing codes:
+ * `server_limit_reached` (caps), `rate_limited`, `forbidden` (self-serve switched off).
+ */
+export const CreateAgentServerRequestSchema = z.strictObject({ displayName: DisplayNameSchema });
+export const CreateAgentServerResponseSchema = z.object({ server: AgentServerSchema });
+export const DeleteServerResponseSchema =z.object({ deleted: z.literal(true) });
 
 export type CreateServerRequest = z.infer<typeof CreateServerRequestSchema>;
 export type UpdateServerRequest = z.infer<typeof UpdateServerRequestSchema>;
@@ -170,5 +178,7 @@ export type ManagedServerListResponse = z.infer<typeof ManagedServerListResponse
 export type DeleteServerResponse = z.infer<typeof DeleteServerResponseSchema>;
 export type SwitchToLocalRequest = z.infer<typeof SwitchToLocalRequestSchema>;
 export type AgentServer = z.infer<typeof AgentServerSchema>;
-export type RenameServerRequest = z.infer<typeof RenameServerRequestSchema>;
+export type CreateAgentServerRequest = z.infer<typeof CreateAgentServerRequestSchema>;
+export type CreateAgentServerResponse = z.infer<typeof CreateAgentServerResponseSchema>;
+export type RenameServerRequest =z.infer<typeof RenameServerRequestSchema>;
 export type RenameServerResponse = z.infer<typeof RenameServerResponseSchema>;

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import * as fixtures from "../fixtures/index";
 import {
+  CreateAgentServerRequestSchema,
+  CreateAgentServerResponseSchema,
+  RESERVED_SERVER_IDS,
   CreateServerRequestSchema,
   DisplayNameSchema,
   NON_PRINTABLE_IN_NAME,
@@ -98,6 +101,42 @@ describe("ManagedServerListResponseSchema", () => {
       expect(ManagedServerListResponseSchema.safeParse({ servers: [{ ...row, state }] }).success, state).toBe(true);
     }
     expect(ManagedServerListResponseSchema.safeParse({ servers: [{ ...row, state: "gone" }] }).success).toBe(false);
+  });
+});
+
+// ADR-0046: self-serve agent servers.
+describe("self-serve agent servers", () => {
+  it("reserves `agent` so no server id collides with POST /api/servers/agent", () => {
+    expect(RESERVED_SERVER_IDS).toEqual(["test-connection", "managed", "agent"]);
+    expect(CreateServerRequestSchema.safeParse({ ...create, id: "agent" }).success).toBe(false);
+  });
+
+  it("the create request is the display name only, with the existing bounds", () => {
+    expect(CreateAgentServerRequestSchema.safeParse({ displayName: "My server" }).success).toBe(true);
+    for (const bad of [{}, { displayName: "" }, { displayName: "x".repeat(65) }, { displayName: "A", id: "a" }]) {
+      expect(CreateAgentServerRequestSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("the create response is the existing agent-server view", () => {
+    const server = fixtures.managedServersWithAgent.agentServers[0];
+    expect(CreateAgentServerResponseSchema.safeParse({ server }).success).toBe(true);
+    expect(CreateAgentServerResponseSchema.safeParse({ server: { ...server, kind: "local" } }).success).toBe(false);
+  });
+
+  it("declares POST /api/servers/agent for any signed-in user (not operator only)", () => {
+    const e = endpoints.selfServe.createAgentServer;
+    expect([e.method, e.route, e.path()]).toEqual(["POST", "/api/servers/agent", "/api/servers/agent"]);
+    expect("operatorOnly" in e).toBe(false);
+  });
+
+  it("flags exactly renameAgent and remove as selfServeOwner (adding the flag elsewhere is a visible change)", () => {
+    const flagged = Object.entries(endpoints).flatMap(([group, value]) =>
+      "route" in value
+        ? "selfServeOwner" in value ? [group] : []
+        : Object.entries(value).filter(([, e]) => "selfServeOwner" in e).map(([name]) => `${group}.${name}`),
+    );
+    expect(flagged.sort()).toEqual(["serverManagement.remove", "serverManagement.renameAgent"]);
   });
 });
 
