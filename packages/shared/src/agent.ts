@@ -49,8 +49,8 @@ export const CadenceSchema = z.object({
 // The agent API (/agent/v1)
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** A one-time enrolment code as shown to the owner: two groups of four base32 characters, e.g. `AB3D-7XQ2`. */
-export const EnrollmentCodeSchema = z.string().regex(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+/** A one-time enrolment code as shown to the owner: three groups of four base32 characters (60 bits, ADR-0046 section 4), e.g. `AB3D-7XQ2-K5MN`. */
+export const EnrollmentCodeSchema = z.string().regex(/^[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/);
 
 /** POST /agent/v1/enroll: exchanges the code for the agent's credential. No machine details are sent. */
 export const EnrollRequestSchema = z.strictObject({ code: EnrollmentCodeSchema, agentVersion: AgentVersionSchema });

@@ -95,7 +95,7 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
     it("stores only its hash, expires in 10 minutes, and audits it (ids only, never the code)", async () => {
       const server = await newServer("agent");
       const { code, expiresAt } = await agents.createEnrollmentCode(server.publicId, OWNER);
-      expect(code).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+      expect(code).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/);
       expect(Date.parse(expiresAt)).toBe(nowMs + 10 * 60 * 1000);
       const rows = (await admin.query("SELECT code_hash, expires_at, created_by FROM agents.enrollment_codes WHERE server_id = $1", [server.id])).rows;
       expect(rows).toHaveLength(1);
@@ -162,7 +162,7 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
       const { code } = await agents.createEnrollmentCode(server.publicId, OWNER);
       await enrollment.enroll(code, "0.1.0");
       const replay = await failureOf(enrollment.enroll(code, "0.1.0"));
-      const wrong = await failureOf(enrollment.enroll("ZZZZ-2222", "0.1.0"));
+      const wrong = await failureOf(enrollment.enroll("ZZZZ-2222-ZZZZ", "0.1.0"));
       expect(codeOf(replay)).toBe("enrollment_code_invalid");
       expect(codeOf(wrong)).toBe("enrollment_code_invalid");
       expect((replay as Error).message).toBe((wrong as Error).message);

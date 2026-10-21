@@ -188,7 +188,7 @@ const CASES: StateCase[] = [
     scenario: "agent-local-operator",
     name: "agent-code",
     path: "/app/settings",
-    shows: "AB3D-7XQ2",
+    shows: "AB3D-7XQ2-K5MN",
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Create enrolment code" }).click(),
   },

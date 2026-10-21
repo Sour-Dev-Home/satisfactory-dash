@@ -46,7 +46,7 @@ const enrollFetch: CliDeps["fetch"] = async () => new Response(JSON.stringify(ag
 async function enrolled() {
   const first = cli({ answers: [API_TOKEN, ""] });
   await runCli(["set-tokens"], first.deps);
-  await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], cli({ dpapi: first.dpapi, fetch: enrollFetch }).deps);
+  await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], cli({ dpapi: first.dpapi, fetch: enrollFetch }).deps);
   return first.dpapi;
 }
 
@@ -86,7 +86,7 @@ describe("the halted marker (a Scheduled Task must not restart a permanent failu
     expect(readHalted(dir)).toBeUndefined();
 
     writeHalted(dir, "store_unreadable");
-    await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test", "--replace"], cli({ dpapi, fetch: enrollFetch }).deps);
+    await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test", "--replace"], cli({ dpapi, fetch: enrollFetch }).deps);
     expect(readHalted(dir)).toBeUndefined();
 
     writeHalted(dir, "credential_rejected");
@@ -125,7 +125,7 @@ describe("enrolling never spends the code before DPAPI is proven to work", () =>
     first.dpapi.failProtect = true;
     const fetchSpy = vi.fn(enrollFetch);
     const t = cli({ dpapi: first.dpapi, fetch: fetchSpy as never });
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_STORE);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_STORE);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
