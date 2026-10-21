@@ -15,8 +15,10 @@ export interface SelfServeConfig {
   maxServersTotal: number;
   /** C3: self-serve servers one account owns that have never enrolled. */
   maxPendingPerAccount: number;
-  /** C5: self-serve creations per account per 24 hours (in memory). */
+  /** C5: self-serve creations per account in any 24 hours, counted from the server rows (#526: survives a restart). */
   createsPerDay: number;
+  /** C4: hours a self-serve server may stay never-enrolled before the pending sweep removes it. */
+  pendingTtlHours: number;
 }
 
 interface Bound {
@@ -31,6 +33,8 @@ const BOUNDS = {
   maxServersTotal: { name: "SELF_SERVE_MAX_SERVERS_TOTAL", fallback: 25, min: 1, max: 1000 },
   maxPendingPerAccount: { name: "SELF_SERVE_MAX_PENDING_PER_ACCOUNT", fallback: 1, min: 1, max: 20 },
   createsPerDay: { name: "SELF_SERVE_CREATES_PER_DAY", fallback: 5, min: 1, max: 100 },
+  // A week at most: longer only stockpiles empty servers (C3 bounds them per account, C2 in total).
+  pendingTtlHours: { name: "SELF_SERVE_PENDING_TTL_HOURS", fallback: 24, min: 1, max: 168 },
 } as const satisfies Record<string, Bound>;
 
 export const DEFAULT_SELF_SERVE_CONFIG: SelfServeConfig = {
@@ -39,6 +43,7 @@ export const DEFAULT_SELF_SERVE_CONFIG: SelfServeConfig = {
   maxServersTotal: BOUNDS.maxServersTotal.fallback,
   maxPendingPerAccount: BOUNDS.maxPendingPerAccount.fallback,
   createsPerDay: BOUNDS.createsPerDay.fallback,
+  pendingTtlHours: BOUNDS.pendingTtlHours.fallback,
 };
 
 function wholeNumber(env: NodeJS.ProcessEnv, bound: Bound): number {
@@ -62,6 +67,7 @@ export function loadSelfServeConfigFromEnv(env: NodeJS.ProcessEnv): SelfServeCon
     maxServersTotal: wholeNumber(env, BOUNDS.maxServersTotal),
     maxPendingPerAccount: wholeNumber(env, BOUNDS.maxPendingPerAccount),
     createsPerDay: wholeNumber(env, BOUNDS.createsPerDay),
+    pendingTtlHours: wholeNumber(env, BOUNDS.pendingTtlHours),
   };
   if (config.maxPendingPerAccount > config.maxServersPerAccount) {
     throw new ConfigError("SELF_SERVE_MAX_PENDING_PER_ACCOUNT cannot be more than SELF_SERVE_MAX_SERVERS_PER_ACCOUNT.");

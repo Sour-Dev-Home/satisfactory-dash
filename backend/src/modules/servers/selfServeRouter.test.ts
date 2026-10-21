@@ -4,7 +4,7 @@ import type { RequestHandler } from "express";
 import { ApiErrorResponseSchema, CreateAgentServerResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import { createApp } from "../../app.js";
 import { createLogger } from "../../platform/logger.js";
-import { ApiFailure } from "../../platform/errorResponse.js";
+import { ApiFailure, RateLimitedError } from "../../platform/errorResponse.js";
 import { UserRateLimiter } from "../../platform/userRateLimiter.js";
 import { InMemoryServerDirectory } from "./serverDirectory.js";
 import { createServersRouter } from "./serversRouter.js";
@@ -16,12 +16,14 @@ import type { ServerAccess } from "./serverAccess.js";
 const OPERATOR = "op";
 const PLAYER = "player";
 const URL = endpoints.selfServe.createAgentServer.path();
-const ON = { enabled: true, createsPerDay: 5 };
+const ON = { enabled: true };
 
 function fakeService(overrides: Partial<SelfServeService> = {}) {
   return {
     isOperator: (id: string) => id === OPERATOR,
     create: vi.fn(async (_actor: string, input: { displayName: string }) => ({ id: "abcdefghijklmnopqrst", displayName: input.displayName, kind: "agent" as const })),
+    renameAsOwner: vi.fn(async () => "not_self_serve" as const),
+    removeAsOwner: vi.fn(async () => "not_self_serve" as const),
     ...overrides,
   };
 }
@@ -66,7 +68,7 @@ describe("POST /api/servers/agent (ADR-0046 self-serve create)", () => {
 
   it("is 403 forbidden for everyone, the operator included, while SELF_SERVE_ENABLED is off", async () => {
     const service = fakeService();
-    const app = build(service, { config: { enabled: false, createsPerDay: 5 } });
+    const app = build(service, { config: { enabled: false } });
     for (const user of [PLAYER, OPERATOR]) {
       const res = await post(app, user);
       expect(res.status).toBe(403);
@@ -108,49 +110,20 @@ describe("POST /api/servers/agent (ADR-0046 self-serve create)", () => {
     expect(codeOf(res)).toBe("server_limit_reached");
   });
 
-  describe("C5: creations per account per day", () => {
-    it("allows n creations and refuses the n+1th with 429, per account", async () => {
-      const service = fakeService();
-      const app = build(service, { config: { enabled: true, createsPerDay: 3 } });
-      for (let i = 0; i < 3; i++) expect((await post(app, PLAYER)).status).toBe(201);
-      const refused = await post(app, PLAYER);
-      expect(refused.status).toBe(429);
-      expect(codeOf(refused)).toBe("rate_limited");
-      expect(Number(refused.headers["retry-after"])).toBeGreaterThan(23 * 3600);
-      expect(service.create).toHaveBeenCalledTimes(3);
-      // Another account has its own allowance.
-      expect((await post(app, "someone-else")).status).toBe(201);
-    });
+  // #526: C5 is counted by the service from the server rows (selfServe.db.test.ts); the route passes its answer through.
+  it("passes the service's C5 refusal through as 429 rate_limited with its Retry-After", async () => {
+    const service = fakeService({ create: vi.fn(async () => Promise.reject(new RateLimitedError(7200, "You have added the most servers allowed in one day."))) });
+    const refused = await post(build(service), PLAYER);
+    expect(refused.status).toBe(429);
+    expect(codeOf(refused)).toBe("rate_limited");
+    expect(refused.headers["retry-after"]).toBe("7200");
+  });
 
-    it("counts only servers really created: a refused create (a cap, an error) and a bad body are not counted", async () => {
-      let fail = true;
-      const service = fakeService({
-        create: vi.fn(async (_a: string, input: { displayName: string }) => {
-          if (fail) throw new ApiFailure("server_limit_reached", "full");
-          return { id: "abcdefghijklmnopqrst", displayName: input.displayName, kind: "agent" as const };
-        }),
-      });
-      const app = build(service, { config: { enabled: true, createsPerDay: 2 } });
-      for (let i = 0; i < 4; i++) expect((await post(app, PLAYER)).status).toBe(409);
-      expect((await post(app, PLAYER, {})).status).toBe(400);
-      fail = false;
-      expect((await post(app, PLAYER)).status).toBe(201);
-      expect((await post(app, PLAYER)).status).toBe(201);
-      expect((await post(app, PLAYER)).status).toBe(429);
-    });
-
-    it("concurrent requests cannot all slip under the limit", async () => {
-      const service = fakeService();
-      const app = build(service, { config: { enabled: true, createsPerDay: 2 } });
-      const statuses = (await Promise.all([0, 1, 2, 3].map(() => post(app, PLAYER)))).map((r) => r.status).sort();
-      expect(statuses).toEqual([201, 201, 429, 429]);
-    });
-
-    it("the operator's account is exempt", async () => {
-      const service = fakeService();
-      const app = build(service, { config: { enabled: true, createsPerDay: 1 } });
-      for (let i = 0; i < 3; i++) expect((await post(app, OPERATOR)).status).toBe(201);
-    });
+  it("keeps no in-memory C5 count of its own: many creations in a row all reach the service", async () => {
+    const service = fakeService();
+    const app = build(service);
+    for (let i = 0; i < 8; i++) expect((await post(app, PLAYER)).status).toBe(201);
+    expect(service.create).toHaveBeenCalledTimes(8);
   });
 
   it("is write-rate-limited for everyone (the operator too)", async () => {

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
+import { ApiFailure, ForbiddenError, ServerNotFoundError } from "../../platform/errorResponse.js";
 import { createSecretsKeyring, SecretsError } from "../../platform/secrets/secrets.js";
 
 // The repositories and the transaction helper are replaced, so this file tests the SERVICE's rules
@@ -23,6 +23,8 @@ const repo = vi.hoisted(() => ({
   upsertConfiguredServer: vi.fn(),
   recordAuditEvent: vi.fn(),
   clientQueries: [] as string[],
+  /** #526: what `isSelfServeServer` answers (a plain value, so a mock reset never changes it). */
+  selfServe: false,
 }));
 
 vi.mock("./repositories/connectionRepository.js", () => ({
@@ -36,6 +38,7 @@ vi.mock("./repositories/connectionRepository.js", () => ({
 vi.mock("./repositories/memberRepository.js", () => ({ addMember: repo.addMember }));
 vi.mock("./repositories/serverRepository.js", () => ({
   findServerByPublicId: repo.findServerByPublicId,
+  isSelfServeServer: async () => repo.selfServe,
   listOperatorAgentServers: repo.listOperatorAgentServers,
   lockServerByPublicId: repo.lockServerByPublicId,
   switchToLocalKind: repo.switchToLocalKind,
@@ -503,6 +506,22 @@ describe("switch back to local (ADR-0031 amendment)", () => {
     expect(await ports.service.switchToLocal(OPERATOR, "alex", { ...body, apiPort: 3001 }).catch(code)).toBe("address_not_allowed");
     expect(repo.lockServerByPublicId).not.toHaveBeenCalled();
     expect(repo.createConnection).not.toHaveBeenCalled();
+  });
+
+  it("#526 (L1): a self-serve server is agent-only: refused (403) before any test, lock or write", async () => {
+    const test = vi.fn(async () => passed);
+    const { service, releaseAgent } = arrange({ test });
+    repo.selfServe = true;
+    try {
+      const err = await service.switchToLocal(OPERATOR, "alex", body).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenError);
+    } finally {
+      repo.selfServe = false;
+    }
+    expect(test).not.toHaveBeenCalled();
+    expect(repo.lockServerByPublicId).not.toHaveBeenCalled();
+    expect(repo.createConnection).not.toHaveBeenCalled();
+    expect(releaseAgent).not.toHaveBeenCalled();
   });
 
   it("the server cap counts it (a server that becomes local is a stored connection), and an existing connection row is server_exists", async () => {
