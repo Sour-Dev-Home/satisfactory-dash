@@ -43,5 +43,5 @@ test("the map's zoom buttons and layer toggle have 44 px tap targets", async ({ 
   // Leaflet's own buttons are 30 px; index.css enlarges them.
   await expectAtLeast44(page.getByRole("button", { name: "Zoom in" }), "zoom in");
   await expectAtLeast44(page.getByRole("button", { name: "Zoom out" }), "zoom out");
-  await expectAtLeast44(page.locator("label").filter({ hasText: "Buildings" }), "layer toggle");
+  await expectAtLeast44(page.locator("label").filter({ hasText: /^Buildings$/ }), "layer toggle");
 });

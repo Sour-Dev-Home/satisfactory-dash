@@ -150,12 +150,16 @@ export const resourceNodesLayer: MapLayer<ResourceNode[]> = {
     </div>
   ),
 
-  describe(nodes) {
-    if (nodes.length === 0) return "No resource nodes reported by the server.";
+  describe(nodes, options) {
+    const of = options?.filteredOf;
+    if (nodes.length === 0) {
+      return of ? `0 of ${of} resource nodes shown (the rest are hidden by the filters).` : "No resource nodes reported by the server.";
+    }
     const used = nodes.filter((n) => n.exploited).length;
     const byType = countByType(nodes)
       .map(([type, n]) => `${n} ${type}`)
       .join(", ");
+    if (of) return `${nodes.length} of ${of} resource nodes shown (${used} in use): ${byType}; the rest are hidden by the filters.`;
     return `${countOf(nodes.length, "resource node", "resource nodes")} on the map (${used} in use): ${byType}.`;
   },
 };

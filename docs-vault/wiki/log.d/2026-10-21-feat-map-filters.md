@@ -1,0 +1,1 @@
+- 2026-10-21 — The map gets filters under the layer toggles (frontend/src/map/): resource types (with counts and game icons), free vs in use, and building states, each with All/None, remembered per browser in localStorage (`satis-manager.map-filters.v1`); filtered data is passed to the layers, and the text and tables say "N of M shown".

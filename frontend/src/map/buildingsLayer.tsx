@@ -226,15 +226,16 @@ export const buildingsLayer: MapLayer<Factory> = {
     </ul>
   ),
 
-  describe(data) {
+  describe(data, options) {
     const shown = placed(data.buildings);
     const count = (state: BuildingState) => shown.filter((b) => buildingState(b) === state).length;
     const missing = data.buildings.length - shown.length;
+    const of = options?.filteredOf;
     return (
       <>
-        {shown.length} buildings on the map: {count("producing")} producing, {count("idle")} not producing,{" "}
-        {count("paused")} paused, {count("noRecipe")} without a recipe; {shown.filter(isBackedUpState).length}{" "}
-        backed up.
+        {shown.length} {of ? `of ${of} buildings shown` : "buildings on the map"}: {count("producing")} producing,{" "}
+        {count("idle")} not producing, {count("paused")} paused, {count("noRecipe")} without a recipe;{" "}
+        {shown.filter(isBackedUpState).length} backed up{of ? "; the rest are hidden by the filters." : "."}
         {missing > 0 && ` ${missing} more have no position yet (the backend doesn't send one).`}
       </>
     );

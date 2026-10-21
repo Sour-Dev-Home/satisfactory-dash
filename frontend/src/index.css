@@ -73,6 +73,8 @@
   /* Pulls a one-line link's 44 px target back to its line height, so the row keeps its rhythm. */
   --spacing-touch-bleed: calc((var(--spacing-touch) - 1lh) / 2);
   --spacing-button-x: 14px;
+  /* A disclosure's chevron (the map's Filters): big enough to read as a control. */
+  --spacing-chevron: 20px;
   /* History chart placeholders, the measured chart heights: phone width wraps the legend. */
   --spacing-chart-slot: 250px;
   --spacing-chart-slot-phone: 279px;
@@ -398,6 +400,11 @@
 @utility placeholder-dim {
   opacity: var(--opacity-skeleton-dim);
   transition: opacity var(--duration-base) var(--ease-in-out);
+}
+
+/* A disclosure's chevron turns smoothly (the map's Filters); reduced motion zeroes the token. */
+@utility disclosure-chevron {
+  transition: transform var(--duration-base) var(--ease-in-out);
 }
 
 /* The existing views' classes, in B2's style until each view is restyled. */
