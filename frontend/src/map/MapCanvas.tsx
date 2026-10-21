@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Factory } from "@satisfactory-dash/shared";
-import type { MapContext, MapLayer } from "./layers";
+import type { MapContext } from "./layers";
 import { drawGrid } from "./grid";
 import { mapBounds, project, unproject, type BaseMapConfig } from "./projection";
 
@@ -14,9 +13,10 @@ export interface ViewM {
   maxY: number;
 }
 
-export interface DrawnLayer<T = Factory> {
-  layer: MapLayer<T>;
-  data: T;
+export interface DrawnLayer {
+  id: string;
+  /** Draws the layer with its data bound; returns the cleanup (the MapLayer contract). */
+  draw: (ctx: MapContext) => () => void;
 }
 
 /** A design token's current value (a colour, or a motion token such as --duration-pulse). */
@@ -99,7 +99,7 @@ export default function MapCanvas({
   // Each visible layer draws when its data changes, and cleans up before the next draw.
   useEffect(() => {
     if (!ctx) return;
-    const cleanups = layers.map(({ layer, data }) => layer.draw(ctx, data));
+    const cleanups = layers.map((l) => l.draw(ctx));
     return () => cleanups.forEach((cleanup) => cleanup());
   }, [ctx, layers]);
 

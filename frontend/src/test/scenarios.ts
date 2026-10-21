@@ -60,6 +60,11 @@ import {
   powerOk,
   powerOutage,
   powerStale,
+  railsWorldResponse,
+  railsWorldResponseEmpty,
+  railsWorldResponseTruncated,
+  resourceNodesWorldResponse,
+  resourceNodesWorldResponseEmpty,
   serverConnectionOk,
   serversMultiple,
   serversNone,
@@ -105,6 +110,10 @@ export const ROUTES = {
   power: endpoints.power,
   powerHistory: endpoints.powerHistory,
   factory: endpoints.factory,
+  // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
+  // (WORLD_LAYER_ROUTES below).
+  mapRails: endpoints.map.worldLayer,
+  mapResourceNodes: endpoints.map.worldLayer,
   settings: endpoints.settings.get,
   setAutoPause: endpoints.settings.setAutoPause,
   // ADR-0030, operator only.
@@ -152,6 +161,16 @@ export function routeFor<K extends RouteKey>(key: K): (typeof ROUTES)[K] {
   return route as (typeof ROUTES)[K];
 }
 
+/** The routes that share an endpoint with another and are told apart by the last path segment. */
+export const WORLD_LAYER_ROUTES = { mapRails: "rails", mapResourceNodes: "resourceNodes" } as const;
+
+/** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
+export function routePattern(key: RouteKey): string {
+  const route = routeFor(key).route;
+  const layer = ownValue(WORLD_LAYER_ROUTES, key);
+  return layer === undefined ? route : route.replace(":layer", layer);
+}
+
 const ok = (body: unknown): MockResponse => ({ status: 200, body });
 const fail = (status: number, body: unknown): MockResponse => ({ status, body });
 
@@ -181,6 +200,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   power: ok(powerOk),
   powerHistory: ok(powerHistoryNormal),
   factory: ok(factoryMixed),
+  mapRails: ok(railsWorldResponse),
+  mapResourceNodes: ok(resourceNodesWorldResponse),
   settings: ok(settingsEditable),
   setAutoPause: ok(settingsEditable),
   managedServers: ok(managedServersAllStates),
@@ -266,6 +287,8 @@ export const SCENARIOS = {
     power: slow(BASE.power),
     powerHistory: slow(BASE.powerHistory),
     factory: slow(BASE.factory),
+    mapRails: slow(BASE.mapRails),
+    mapResourceNodes: slow(BASE.mapResourceNodes),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
     historyPower: slow(BASE.historyPower),
@@ -312,6 +335,10 @@ export const SCENARIOS = {
   "battery-charging": { power: ok(powerCharging) },
   "battery-discharging": { power: ok(powerDischarging) },
   "unknown-units": { factory: ok(factoryUnknownItem) },
+  // ADR-0038 M5, the map's world layers: nothing read yet, a layer cut to its cap, or the read failing.
+  "map-world-empty": { mapRails: ok(railsWorldResponseEmpty), mapResourceNodes: ok(resourceNodesWorldResponseEmpty) },
+  "map-world-truncated": { mapRails: ok(railsWorldResponseTruncated) },
+  "map-world-error": { mapRails: fail(502, errorUpstreamUnreachable), mapResourceNodes: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
@@ -385,7 +412,7 @@ export function matchRoute(method: string, pathname: string): RouteKey | undefin
   return (Object.keys(ROUTES) as RouteKey[]).find((key) => {
     const route = routeFor(key);
     if (route.method !== method.toUpperCase()) return false;
-    const pattern = new RegExp(`^${route.route.replace(/:[^/]+/g, "[^/]+")}$`);
+    const pattern = new RegExp(`^${routePattern(key).replace(/:[^/]+/g, "[^/]+")}$`);
     return pattern.test(pathname);
   });
 }
