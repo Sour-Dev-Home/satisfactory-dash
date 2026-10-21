@@ -79,7 +79,7 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
 
   /** A whole Google sign-in; `terms` is what the sign-in page puts on /start once the box is ticked. */
   async function signIn(app: ReturnType<typeof createApp>, claims: FakeClaims, terms?: string) {
-    const start = await request(app).get(`/api/auth/google/start${terms === undefined ? "" : `?terms=${terms}`}`);
+    const start = await request(app).get(`/api/auth/google/start${terms === undefined ? "" : `?terms=${terms}`}`).set("Sec-Fetch-Site", "same-site");
     const attemptCookie = ([start.headers["set-cookie"] ?? []].flat() as string[])
       .find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))!
       .split(";")[0]!;
@@ -120,13 +120,13 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
     const app = await buildApp({ SIGNUP_MODE: "open" });
     const before = await users();
     const res = await signIn(app, stranger(1));
-    expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required`);
+    expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required&return=%2Fapp`);
     expect(hasSession(res)).toBe(false);
     expect(await users()).toBe(before);
     expect(await count("SELECT count(*) AS n FROM identity.auth_identities WHERE provider = 'google'")).toBe(0);
     // A stale or made-up version does not count either.
     const stale = await signIn(app, stranger(1), "1999-01-01");
-    expect(stale.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required`);
+    expect(stale.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required&return=%2Fapp`);
   });
 
   it("open: creates the account, a generated name, no email, the recorded terms, and a working session", async () => {
@@ -222,7 +222,7 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
     // An existing account is unaffected by the cap.
     expect(reasonOf(await signup.complete(claimsOf(5), undefined))).toBe("signed_in");
     // Accounts older than an hour stop counting.
-    await admin.query("UPDATE identity.users SET created_at = now() - interval '61 minutes' WHERE terms_version IS NOT NULL");
+    await admin.query("UPDATE identity.users SET terms_accepted_at = now() - interval '61 minutes' WHERE terms_version IS NOT NULL");
     expect(reasonOf(await signup.complete(claimsOf(21), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signed_in");
   }, 60_000);
 
@@ -261,27 +261,27 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
       const res = await request(app)
         .get(`/api/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(authUrl.searchParams.get("state")!)}&terms=${TERMS_VERSION}&acceptedTermsVersion=${TERMS_VERSION}`)
         .set("Cookie", attemptCookie);
-      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required`);
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=terms_required&return=%2Fapp`);
       expect(await users()).toBe(1);
     });
 
     it("/start keeps only the exact current version, and nothing at all while sign-up is closed", async () => {
       const open = await buildApp({ SIGNUP_MODE: "open" });
-      await request(open).get("/api/auth/google/start?terms=1999-01-01");
-      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}&terms=${TERMS_VERSION}`);
-      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}%20`);
+      await request(open).get("/api/auth/google/start?terms=1999-01-01").set("Sec-Fetch-Site", "same-site");
+      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}&terms=${TERMS_VERSION}`).set("Sec-Fetch-Site", "same-site");
+      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}%20`).set("Sec-Fetch-Site", "same-site");
       expect(await attemptTerms()).toEqual([null, null, null]);
-      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}`);
+      await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}`).set("Sec-Fetch-Site", "same-site");
       expect((await attemptTerms()).filter((t) => t !== null)).toEqual([TERMS_VERSION]);
       await admin.query("TRUNCATE identity.login_attempts");
       const closed = await buildApp({});
-      await request(closed).get(`/api/auth/google/start?terms=${TERMS_VERSION}`);
+      await request(closed).get(`/api/auth/google/start?terms=${TERMS_VERSION}`).set("Sec-Fetch-Site", "same-site");
       expect(await attemptTerms()).toEqual([null]);
     });
 
     it("an expired attempt with the terms ticked creates nothing and cannot be replayed", async () => {
       const app = await buildApp({ SIGNUP_MODE: "open" });
-      const start = await request(app).get(`/api/auth/google/start?terms=${TERMS_VERSION}`);
+      const start = await request(app).get(`/api/auth/google/start?terms=${TERMS_VERSION}`).set("Sec-Fetch-Site", "same-site");
       const attemptCookie = ([start.headers["set-cookie"] ?? []].flat() as string[]).find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))!.split(";")[0]!;
       const authUrl = new URL(start.headers.location!);
       await admin.query("UPDATE identity.login_attempts SET created_at = now() - interval '1 hour', expires_at = now() - interval '1 minute'");
@@ -307,13 +307,70 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
       expect(await bad("INSERT INTO identity.users (display_name, terms_version, terms_accepted_at) VALUES ('x', '', now())")).toMatch(/check/i);
     });
 
+    it("C8 counts sign-ups only: the seeded operator and other non-sign-up accounts never use up the cap", async () => {
+      await buildApp({ SIGNUP_MODE: "open" });
+      // Fresh accounts that did not come through open sign-up (an invite or bulk path would look like this).
+      await admin.query("INSERT INTO identity.users (display_name) SELECT 'Invited ' || g FROM generate_series(1, 5) g");
+      await admin.query("UPDATE identity.users SET created_at = now() WHERE terms_version IS NULL");
+      const signup = service(1);
+      expect(reasonOf(await signup.complete(claimsOf(1), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signed_in");
+      expect(reasonOf(await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signup_busy");
+    });
+
+    it("a network gets 3 new accounts a day; the 4th is refused (shown as signup_busy), others are unaffected", async () => {
+      await buildApp({ SIGNUP_MODE: "open" });
+      const lines: Array<[string, Record<string, string>]> = [];
+      const signup = createGoogleSignIn(pool, "owner@example.com", { mode: "open", maxPerHour: 20 }, {
+        metrics: { counter: (name, labels) => void lines.push([name, { ...labels }]), histogram: () => undefined },
+      });
+      const join = (n: number, network: string) =>
+        signup.complete(claimsOf(n), undefined, { acceptedTermsVersion: TERMS_VERSION, network });
+      for (const n of [1, 2, 3]) expect(reasonOf(await join(n, "203.0.113.9"))).toBe("signed_in");
+      expect(reasonOf(await join(4, "203.0.113.9"))).toBe("signup_network_busy");
+      expect(reasonOf(await join(4, "203.0.113.10"))).toBe("signed_in");
+      // An existing account on the busy network still signs in.
+      expect(reasonOf(await signup.complete(claimsOf(1), undefined, { network: "203.0.113.9" }))).toBe("signed_in");
+      expect(lines).toEqual([["satis.signup.refused", { reason: "network_limit" }]]);
+      const row = (await audits()).filter((a) => a.action === "signin.refused").pop()!;
+      expect(row.detail).toEqual({ provider: "google", reason: "signup_network_busy" });
+      expect(JSON.stringify(await audits())).not.toContain("203.0.113");
+    });
+
+    it("the hourly cap counts its own refusals in the signup_busy counter", async () => {
+      await buildApp({ SIGNUP_MODE: "open" });
+      const lines: Array<[string, Record<string, string>]> = [];
+      const signup = createGoogleSignIn(pool, "owner@example.com", { mode: "open", maxPerHour: 1 }, {
+        metrics: { counter: (name, labels) => void lines.push([name, { ...labels }]), histogram: () => undefined },
+      });
+      await signup.complete(claimsOf(1), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(lines).toEqual([["satis.signup.refused", { reason: "signup_busy" }]]);
+    });
+
+    it("the bootstrap address never gets a new account: refused when the operator is disabled and unlinked, or linked elsewhere", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const owner: FakeClaims = { sub: "google-sub-owner", email: "Owner@Example.com", email_verified: true };
+      await admin.query("UPDATE identity.users SET status = 'disabled'");
+      const before = await users();
+      const res = await signIn(app, owner, TERMS_VERSION);
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=not_invited`);
+      expect(hasSession(res)).toBe(false);
+      expect(await users()).toBe(before);
+      // Operator re-enabled and linked to one Google account: a different account with that address is refused too.
+      await admin.query("UPDATE identity.users SET status = 'active'");
+      expect((await signIn(app, owner, TERMS_VERSION)).headers.location).toBe(`${FRONTEND}/app`);
+      const impostor = await signIn(app, { ...owner, sub: "google-sub-impostor" }, TERMS_VERSION);
+      expect(impostor.headers.location).toBe(`${FRONTEND}/app/login?error=not_invited`);
+      expect(await users()).toBe(before);
+    });
+
     it("C8 window: an account 59 minutes old still counts, one 61 minutes old does not", async () => {
       await buildApp({ SIGNUP_MODE: "open" });
       const signup = service(1);
       await signup.complete(claimsOf(1), undefined, { acceptedTermsVersion: TERMS_VERSION });
-      await admin.query("UPDATE identity.users SET created_at = now() - interval '59 minutes' WHERE terms_version IS NOT NULL");
+      await admin.query("UPDATE identity.users SET terms_accepted_at = now() - interval '59 minutes' WHERE terms_version IS NOT NULL");
       expect(reasonOf(await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signup_busy");
-      await admin.query("UPDATE identity.users SET created_at = now() - interval '61 minutes' WHERE terms_version IS NOT NULL");
+      await admin.query("UPDATE identity.users SET terms_accepted_at = now() - interval '61 minutes' WHERE terms_version IS NOT NULL");
       expect(reasonOf(await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signed_in");
     });
 

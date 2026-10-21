@@ -7,6 +7,35 @@ import { generateDisplayName } from "./generatedName.js";
 import { createIdentityModule } from "./index.js";
 import { hashPassword } from "./passwordHash.js";
 import { DEFAULT_SIGNUP_MAX_PER_HOUR, loadSignupConfigFromEnv } from "./signupConfig.js";
+import { SIGNUP_NETWORK_WINDOW_MS, createSignupNetworkLimit } from "./signupNetworkLimit.js";
+
+describe("createSignupNetworkLimit (per-network share of new accounts)", () => {
+  it("allows 3 per IPv4 address in a day, then refuses; the window slides", () => {
+    let t = 1_000_000;
+    const limit = createSignupNetworkLimit(() => t);
+    for (let i = 0; i < 3; i += 1) {
+      expect(limit.allows("198.51.100.7")).toBe(true);
+      limit.record("198.51.100.7");
+    }
+    expect(limit.allows("198.51.100.7")).toBe(false);
+    expect(limit.allows("198.51.100.8")).toBe(true);
+    t += SIGNUP_NETWORK_WINDOW_MS + 1;
+    expect(limit.allows("198.51.100.7")).toBe(true);
+  });
+
+  it("groups an IPv6 /56 into one network", () => {
+    const limit = createSignupNetworkLimit();
+    for (const host of ["2001:db8:0:1::1", "2001:db8:0:2::9", "2001:db8:0:ff::5"]) limit.record(host);
+    expect(limit.allows("2001:db8:0:3::1")).toBe(false);
+    expect(limit.allows("2001:db8:0:100::1")).toBe(true);
+  });
+
+  it("stays bounded under many distinct networks", () => {
+    const limit = createSignupNetworkLimit(Date.now, 1);
+    for (let i = 0; i < 10_050; i += 1) limit.record(`10.${(i >> 8) & 255}.${i & 255}.${i % 7}`);
+    expect(limit.allows("172.16.0.1")).toBe(true);
+  });
+});
 
 describe("loadSignupConfigFromEnv (ADR-0046 SIGNUP_MODE and C8)", () => {
   it("defaults to closed with 20 an hour", () => {

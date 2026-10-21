@@ -269,6 +269,12 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
     kind: "counter",
     labels: { server: isBoundedToken(64), status: isOneOf(...AGENT_REFUSED_STATUSES) },
   },
+  // #528 (ADR-0046 C8): new-account refusals. `signup_busy` = the process-wide hourly cap; `network_limit` = one
+  // network's own daily share. A sustained rate of either is a sign-up flood the operator should look at.
+  "satis.signup.refused": {
+    kind: "counter",
+    labels: { reason: isOneOf("signup_busy", "network_limit") },
+  },
   "satis.history.rows_written": {
     kind: "counter",
     labels: { table: isOneOf(...HISTORY_TABLES) },

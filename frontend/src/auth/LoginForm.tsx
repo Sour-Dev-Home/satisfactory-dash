@@ -5,7 +5,7 @@ import { apiSend } from "../api/client";
 import { ApiError, classifyError } from "../api/errors";
 import { LOGIN_MUTATION_KEY, SESSION_KEY } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
-import { googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText } from "./googleSignIn";
+import { googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
 
 const GOOGLE_BUTTON =
   "inline-flex min-h-touch items-center justify-center rounded-lg border border-accent bg-accent px-button-x font-semibold text-on-accent no-underline disabled:cursor-not-allowed disabled:opacity-60";
@@ -92,7 +92,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
                 </span>
               </label>
               {acceptedTerms ? (
-                <a href={googleStartHref(pathname, true)} className={GOOGLE_BUTTON}>
+                <a href={googleStartHref(pathname, true, termsReturnPath(search))} className={GOOGLE_BUTTON}>
                   Continue with Google
                 </a>
               ) : (

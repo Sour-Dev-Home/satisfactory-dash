@@ -7,6 +7,10 @@ ALTER TABLE identity.users
   ADD COLUMN terms_accepted_at timestamptz,
   ADD CONSTRAINT users_terms_pair CHECK ((terms_version IS NULL) = (terms_accepted_at IS NULL));
 
+-- C8 counts sign-ups by this column (only open sign-up sets it), so the count stays an index range scan
+-- under the sign-up lock however large the table grows.
+CREATE INDEX users_terms_accepted_at_idx ON identity.users (terms_accepted_at) WHERE terms_accepted_at IS NOT NULL;
+
 -- The terms version the person ticked on the sign-in page, carried through the Google round trip
 -- on the single-use login attempt (never trusted from the callback's query string).
 ALTER TABLE identity.login_attempts

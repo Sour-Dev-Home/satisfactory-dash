@@ -193,6 +193,16 @@ Default is closed: nothing above changes. Open it only when the ADR-0046 section
 - **C8 cap:** `SIGNUP_MAX_PER_HOUR` (default 20, 1 to 1000), counted from `identity.users.created_at` over
   the last hour, process-wide. Over it the person sees "try again later" (`signup_busy`) and a
   `signin.refused` audit row with reason `signup_busy` is written.
+- **Per-network share:** one IPv4 address or IPv6 /56 may create 3 new accounts per 24 h (in memory, forgotten on a
+  restart, never stored), checked before the global count so one address cannot use up C8. It shows the person the
+  same "try again later" message. `satis.signup.refused` (label `reason`: `signup_busy` for the hourly cap,
+  `network_limit` for a network's share) rising fast means a sign-up flood: set `SIGNUP_MODE=closed`.
+- **Cap counting:** C8 counts only accounts made by open sign-up (`terms_accepted_at`), so the operator and any
+  other account never use it up.
+- **Terms and the original page:** the terms tick is honoured only when `/start` arrives with `Sec-Fetch-Site`
+  `same-origin` or `same-site` (the sign-in page and the API share the registrable domain), so a link from another
+  site cannot record an acceptance. A browser that sends no such header simply sees the terms step again. The
+  bootstrap address never self-registers.
 - **Close again:** set `SIGNUP_MODE=closed` (or remove it) and restart. Existing accounts keep working; a
   disabled account is refused in both modes.
 - **Terms change:** bump `TERMS_VERSION` in `backend/src/modules/identity/signupConfig.ts` and in

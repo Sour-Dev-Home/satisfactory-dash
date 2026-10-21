@@ -95,9 +95,11 @@ describe("Google sign-in routes", () => {
 
   describe("terms acceptance (ADR-0046 question 6)", () => {
     const claims = { sub: "google-sub-1", email: "owner@example.com", email_verified: true };
-    const accepted = async (opts: { signupOpen: boolean; startQuery: string; callbackExtra?: string }) => {
+    const accepted = async (opts: { signupOpen: boolean; startQuery: string; callbackExtra?: string; fetchSite?: string }) => {
       const { app, complete } = build({ signupOpen: opts.signupOpen });
-      const begun = await request(app).get(`/api/auth/google/start?${opts.startQuery}`);
+      const begun = await request(app)
+        .get(`/api/auth/google/start?${opts.startQuery}`)
+        .set("Sec-Fetch-Site", opts.fetchSite ?? "same-site");
       const cookie = (begun.headers["set-cookie"] as unknown as string[]).find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))!.split(";")[0]!;
       const authUrl = new URL(begun.headers.location!);
       const code = issuer.issueCode({
@@ -121,6 +123,29 @@ describe("Google sign-in routes", () => {
       ["no terms were sent", true, "return=%2Fapp"],
     ])("passes nothing when %s", async (_label, signupOpen, startQuery) => {
       expect(await accepted({ signupOpen, startQuery })).toBeUndefined();
+    });
+
+    it.each([
+      ["a cross-site link", "cross-site"],
+      ["a direct navigation", "none"],
+      ["a header the browser did not send", ""],
+    ])("ignores the terms on %s (a third party cannot record an acceptance the person never saw)", async (_label, fetchSite) => {
+      expect(await accepted({ signupOpen: true, startQuery: `terms=${TERMS_VERSION}`, fetchSite })).toBeUndefined();
+    });
+
+    it("honours the terms from the same origin (dev proxy) as well as the same site", async () => {
+      expect(await accepted({ signupOpen: true, startQuery: `terms=${TERMS_VERSION}`, fetchSite: "same-origin" })).toBe(TERMS_VERSION);
+    });
+
+    it("sends the terms step back with the attempt's validated return path, and no other refusal", async () => {
+      const refusal = async (reason: "terms_required" | "not_invited") => {
+        const { app } = build({ result: { kind: "refused", reason } });
+        const begun = await beginGoogleSignIn(app, "/app/power?tab=x");
+        const res = await completeGoogleSignIn(app, issuer, begun, { claims: { sub: "s", email: "a@example.com", email_verified: true } });
+        return res.headers.location;
+      };
+      expect(await refusal("terms_required")).toBe(`${FRONTEND}/app/login?error=terms_required&return=%2Fapp%2Fpower%3Ftab%3Dx`);
+      expect(await refusal("not_invited")).toBe(`${FRONTEND}/app/login?error=not_invited`);
     });
 
     it("never takes the terms from the callback's own query string", async () => {
@@ -280,7 +305,7 @@ describe("Google sign-in routes", () => {
       const cookies = setCookies(res);
       expect(cookies.find((c) => c.startsWith(`${SESSION_COOKIE}=${"S".repeat(43)}`))).toMatch(/HttpOnly/i);
       expect(cookies.find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=;`))).toBeDefined();
-      expect(complete).toHaveBeenCalledWith({ sub: "google-sub-1", email: "owner@example.com", emailVerified: true }, old, { acceptedTermsVersion: undefined });
+      expect(complete).toHaveBeenCalledWith({ sub: "google-sub-1", email: "owner@example.com", emailVerified: true }, old, { acceptedTermsVersion: undefined, network: expect.any(String) });
       expect(res.headers["cache-control"]).toBe("no-store");
     });
 
@@ -365,7 +390,7 @@ describe("Google sign-in routes", () => {
       const { app } = build({ result: { kind: "refused", reason } });
       const begun = await beginGoogleSignIn(app);
       const res = await completeGoogleSignIn(app, issuer, begun, { claims });
-      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=${code}`);
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=${code}${code === "terms_required" ? "&return=%2Fapp" : ""}`);
       expect(setCookies(res).some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
     });
 
@@ -373,7 +398,7 @@ describe("Google sign-in routes", () => {
       const { app, complete } = build();
       const begun = await beginGoogleSignIn(app);
       await completeGoogleSignIn(app, issuer, begun, { claims: { ...claims, email_verified: "true" } });
-      expect(complete).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: "true" }), undefined, { acceptedTermsVersion: undefined });
+      expect(complete).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: "true" }), undefined, { acceptedTermsVersion: undefined, network: expect.any(String) });
     });
 
     it("refuses an unusable subject (empty or over 255 characters) without calling the sign-in service", async () => {

@@ -64,8 +64,13 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
   const noStore = (res: Response) => void res.setHeader("Cache-Control", "no-store");
   // Both routes are top-level browser navigations: a failure must never render JSON at the API host, so
   // every failure is a redirect built ONLY from the frontend origin plus a fixed path and code.
-  const failTo = (res: Response, error: GoogleLoginError) =>
-    res.redirect(302, `${config.frontendOrigin}/app/login?error=${error}`);
+  // `returnPath` (only for the terms step) is the attempt's stored, already validated /app path: it lets the
+  // sign-in page send the visitor back where they were. The frontend only hands it back to /start, which validates it.
+  const failTo = (res: Response, error: GoogleLoginError, returnPath?: string) =>
+    res.redirect(
+      302,
+      `${config.frontendOrigin}/app/login?error=${error}${returnPath === undefined ? "" : `&return=${encodeURIComponent(returnPath)}`}`,
+    );
   // Same per-IP cap as password login (IPv6 by /56); one instance covering both routes. Over the cap the
   // browser is sent back to the login screen ("unavailable"), not shown a 429 body.
   const cap = createLoginRequestCap("google sign-in", (_req, res) => {
@@ -87,7 +92,12 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
       const attempt = newLoginAttemptId();
       // Terms acceptance (ADR-0046 question 6): only the current version counts, only while sign-up is open.
       // It rides on the single-use attempt, so the callback's own query string can never claim it.
-      const termsVersion = signupOpen && req.query.terms === TERMS_VERSION ? TERMS_VERSION : undefined;
+      // A link from a third party's page would be cross-site (Sec-Fetch-Site), and could record an acceptance the
+      // person never saw: only a same-origin or same-site navigation (the sign-in page, on the same registrable
+      // domain as the API) counts. Otherwise the person just gets the terms step.
+      const fetchSite = req.get("sec-fetch-site");
+      const fromOurPage = fetchSite === "same-origin" || fetchSite === "same-site";
+      const termsVersion = signupOpen && fromOurPage && req.query.terms === TERMS_VERSION ? TERMS_VERSION : undefined;
       await createLoginAttempt(db, { idHash: attempt.idHash, state, nonce, codeVerifier, returnPath, termsVersion });
       res.cookie(LOGIN_ATTEMPT_COOKIE, attempt.id, { ...ATTEMPT_COOKIE_OPTIONS, maxAge: ATTEMPT_COOKIE_MAX_AGE_SECONDS * 1000 });
       res.redirect(302, url.toString());
@@ -135,7 +145,10 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
       if (claims.sub.length < 1 || claims.sub.length > 255) {
         throw new Error("Unusable subject claim.");
       }
-      const result = await signIn.complete(claims, readSessionCookie(req), { acceptedTermsVersion: attempt.termsVersion });
+      const result = await signIn.complete(claims, readSessionCookie(req), {
+        acceptedTermsVersion: attempt.termsVersion,
+        network: ip,
+      });
       if (result.kind === "refused") {
         // A disabled account or an unverified email looks like a generic failure to the browser
         // (the reason is in the audit row): only the reasons the person can act on are told apart.
@@ -144,10 +157,12 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
           not_invited: "not_invited",
           terms_required: "terms_required",
           signup_busy: "signup_busy",
+          // One network's own share looks the same as the global cap: it says nothing about counts or limits.
+          signup_network_busy: "signup_busy",
         };
         const code: GoogleLoginError = actionable[result.reason] ?? "failed";
         req.log.warn({ ip, code }, "google sign-in refused");
-        failTo(res, code);
+        failTo(res, code, code === "terms_required" ? attempt.returnPath : undefined);
         return;
       }
       setSessionCookie(res, result.session.cookieValue, result.session.maxAgeSeconds);

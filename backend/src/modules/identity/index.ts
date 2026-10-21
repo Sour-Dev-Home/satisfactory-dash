@@ -9,6 +9,9 @@ import { ConfigError } from "../../platform/errors.js";
 import { loadAuthConfigFromEnv } from "./authConfig.js";
 import { loadGoogleConfigFromEnv } from "./googleConfig.js";
 import { loadSignupConfigFromEnv } from "./signupConfig.js";
+import { createLogger } from "../../platform/logger.js";
+import { createBackgroundRecorder } from "../../platform/metrics/index.js";
+import type { MetricsSink } from "../../platform/metrics/index.js";
 import { createGoogleOidc } from "./googleOidc.js";
 import type { GoogleOidcOptions } from "./googleOidc.js";
 import { createGoogleSignIn } from "./googleSignIn.js";
@@ -52,6 +55,8 @@ export interface IdentityOptions {
   logger?: PurgeLogger;
   /** Test-only: point Google sign-in at a local fake issuer. Never read from the environment. */
   googleOidc?: GoogleOidcOptions;
+  /** Tests only: where the sign-up refusal counters go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
 }
 
 /** Throws ConfigError when the login settings are missing or invalid (backend must not start). */
@@ -88,7 +93,9 @@ export function createIdentityModule(
       ? createGoogleAuthRouter({
           config: googleConfig,
           oidc: createGoogleOidc(googleConfig, options.googleOidc),
-          signIn: createGoogleSignIn(options.db, googleConfig.bootstrapOwnerEmail, signup),
+          signIn: createGoogleSignIn(options.db, googleConfig.bootstrapOwnerEmail, signup, {
+            metrics: createBackgroundRecorder(createLogger(), options.metrics),
+          }),
           signupOpen,
           db: options.db,
         })

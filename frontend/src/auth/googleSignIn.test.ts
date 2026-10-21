@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { TERMS_VERSION, googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText } from "./googleSignIn";
+import { TERMS_VERSION, googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
 
 describe("open sign-up helpers (ADR-0046)", () => {
   it("offersSignup needs google_signup in the list", () => {
@@ -19,6 +19,15 @@ describe("open sign-up helpers (ADR-0046)", () => {
   it("googleStartHref adds the terms version only when asked", () => {
     expect(new URL(googleStartHref("/app"), "http://x").searchParams.get("terms")).toBeNull();
     expect(new URL(googleStartHref("/app", true), "http://x").searchParams.get("terms")).toBe(TERMS_VERSION);
+  });
+
+  it("keeps the original page through the terms step, but only a plain /app path", () => {
+    const ret = (search: string, accept = true) => new URL(googleStartHref("/app/login", accept, termsReturnPath(search)), "http://x").searchParams.get("return");
+    expect(ret("?error=terms_required&return=%2Fapp%2Fpower%3Ftab%3Dx")).toBe("/app/power?tab=x");
+    for (const bad of ["https://evil.example/app", "//evil.example", "/app/login", "/apple", "/%2F%2Fevil", "/app\\evil", "javascript:alert(1)", ""]) {
+      expect(ret(`?return=${encodeURIComponent(bad)}`), bad).toBe("/app");
+    }
+    expect(ret("?error=terms_required")).toBe("/app");
   });
 
   it("maps the two new error codes to fixed texts", () => {

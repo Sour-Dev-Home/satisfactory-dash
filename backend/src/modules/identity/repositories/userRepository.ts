@@ -72,9 +72,10 @@ export async function takeSignupLock(db: Queryable): Promise<void> {
 const COUNT_RECENT_USERS = `
   SELECT count(*)::int AS n
   FROM identity.users
-  WHERE created_at > now() - interval '1 hour'`;
+  WHERE terms_accepted_at > now() - interval '1 hour'`;
 
-/** C8: accounts created in the last hour (any provider), counted from `created_at`. */
+/** C8: accounts that SIGNED UP in the last hour. Counted by `terms_accepted_at` (set only by open sign-up, at
+ *  creation), so the seeded operator and any invited or bulk-made account never use up the cap. Uses the partial index. */
 export async function countUsersCreatedLastHour(db: Queryable): Promise<number> {
   const result = await timedQuery(db, "identity.countUsersCreatedLastHour", COUNT_RECENT_USERS, []);
   return parseOne(z.object({ n: z.number() }), result.rows, "identity.countUsersCreatedLastHour").n;
