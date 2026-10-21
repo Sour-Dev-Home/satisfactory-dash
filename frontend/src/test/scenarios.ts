@@ -22,6 +22,12 @@ import {
   alertSendTestOk,
   alertStatusQuiet,
   alertStatusShadowMutedFiring,
+  pushConfigDisabled,
+  pushConfigEnabled,
+  pushOptInOff,
+  pushOptInOn,
+  pushSubscribeResponse,
+  pushUnsubscribeResponse,
   autoPauseResponseAccepted,
   commandFailed,
   commandSent,
@@ -142,6 +148,13 @@ export const ROUTES = {
   alertDiscordTest: endpoints.alerts.destinations.testDiscord,
   alertMuteSet: endpoints.alerts.mute.set,
   alertMuteClear: endpoints.alerts.mute.clear,
+  // ADR-0044 web push (the opt-in's read and write share a path, told apart by method).
+  pushConfig: endpoints.push.config,
+  pushOptIn: endpoints.push.optIn.get,
+  pushOptInSet: endpoints.push.optIn.put,
+  pushSubscribe: endpoints.push.subscribe,
+  pushUnsubscribe: endpoints.push.unsubscribe,
+  pushTest: endpoints.push.test,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -215,6 +228,13 @@ const BASE: Record<RouteKey, MockResponse> = {
   alertDiscordTest: ok(alertSendTestOk),
   alertMuteSet: ok(alertMuteSetResponse),
   alertMuteClear: ok(alertMuteClearedResponse),
+  // Push is off on the backend: the Alerts panel explains it. The e2e browser supplies the device's state.
+  pushConfig: ok(pushConfigDisabled),
+  pushOptIn: ok(pushOptInOff),
+  pushOptInSet: ok(pushOptInOn),
+  pushSubscribe: { status: 201, body: pushSubscribeResponse },
+  pushUnsubscribe: ok(pushUnsubscribeResponse),
+  pushTest: ok(alertSendTestOk),
 };
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
@@ -361,6 +381,11 @@ export const SCENARIOS = {
   // setup and the rules editor show; and as a viewer, who reads the same section without controls.
   "alerts-owner": { servers: ok(serversRoleOwner), alertStatus: ok(alertStatusShadowMutedFiring) },
   "alerts-viewer": { servers: ok(serversRoleViewer), alertStatus: ok(alertStatusShadowMutedFiring) },
+  // ADR-0044, Settings → Alerts → push: enabled on the backend (this device is off, or in the state e2e
+  // gives the browser: subscribed or blocked), and the member's opt-in already on.
+  "push-enabled": { pushConfig: ok(pushConfigEnabled) },
+  "push-opted-in": { pushConfig: ok(pushConfigEnabled), pushOptIn: ok(pushOptInOn) },
+  "push-viewer": { servers: ok(serversRoleViewer), pushConfig: ok(pushConfigEnabled), pushOptIn: ok(pushOptInOn) },
   // ADR-0031 PR 7, Settings → Game PC agent. The operator on a server reached directly (can enrol);
   // an owner of a server with a reporting agent (can revoke or enrol again); one enrolled but never
   // heard from; and a viewer, who reads it with no controls.

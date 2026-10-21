@@ -122,6 +122,30 @@ echoed by the terminal (clear the screen afterwards, or pipe it in), and do not 
 To stop sending at once: set `ALERT_DELIVERY=off` and restart (rows already queued wait in the outbox and are sent if
 you turn it back on within 24 hours, then given up).
 
+## Push notifications: how a user turns them on (ADR-0044, #348)
+
+Web push is per user and per device. Any member of a server (owner, admin or viewer) can use it; it is nobody's
+server setting. It works only while the backend reports it enabled (`ALERT_DELIVERY=on`, the VAPID keys and the
+secrets keyring present); otherwise the panel says push is off on this backend and shows nothing to click.
+
+1. Open **Settings**, then **Alerts**, then **Push notifications on this device**.
+2. Click **Turn on push on this device**. The browser asks for permission now and not before. Allow it.
+3. The panel says "This device is subscribed". **Send test notification** sends one to this device and reports the
+   result in words (for example "Sending push isn't available on the server yet" until the sender, 348-2, is live).
+4. Tick **Notify me about <server> on my devices**. This is the per-server opt-in; without it a subscribed device gets
+   nothing from that server. Do it once per server.
+5. **Turn off push on this device** removes the subscription here and on the backend. The opt-in stays.
+
+What the panel says when it can't help: notifications blocked for the site (allow them in the browser's site
+settings and reload; the page can't ask again), a browser without push, and iPhone/iPad ("not supported yet": Safari
+there delivers push only to a Home Screen web app, and its push host is not on the allowlist, ADR-0044 decisions 3
+and 6). The demo has no push UI and registers no service worker.
+
+How it is built: the worker is `frontend/public/push-sw.js` (served at `/push-sw.js`, root scope). It shows a
+notification from the payload's `title` and `body`, focuses or opens `/app` on a click, caches nothing and has no
+fetch handler. It is registered only when a user turns push on. No CSP change was needed: `worker-src` falls back to
+`script-src 'self'`.
+
 ## The alerts API (ADR-0027 PR 7b)
 
 Thirteen routes under `/api/servers/:serverId/alerts/...` (the contract is `packages/shared/src/alerts.ts`; the sessions

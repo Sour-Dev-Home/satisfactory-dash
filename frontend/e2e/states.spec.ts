@@ -32,6 +32,19 @@ interface StateCase {
    * "Updated 8 s ago" or the mute field's default of an hour ahead, then reads the same every run.
    */
   clock?: string;
+  /** What the browser says about web push: this device already subscribed, or notifications blocked. */
+  browser?: "subscribed" | "denied";
+}
+
+/** Stands in for the browser's push state before the page loads (the real browser starts with none). */
+async function stubPushBrowser(page: Page, state: "subscribed" | "denied") {
+  await page.addInitScript((s) => {
+    if (s === "denied") Object.defineProperty(Notification, "permission", { get: () => "denied" });
+    else {
+      ServiceWorkerContainer.prototype.getRegistration = () =>
+        Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve({}) } } as unknown as ServiceWorkerRegistration);
+    }
+  }, state);
 }
 
 /** The fixtures' own day, for the alert settings (their mute and alert times). */
@@ -182,6 +195,13 @@ const CASES: StateCase[] = [
   { scenario: "alerts-owner", path: "/app/settings", shows: "New production target", clock: FIXTURE_NOW },
   { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules.", clock: FIXTURE_NOW },
   { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/, clock: FIXTURE_NOW },
+  // ADR-0044 web push, Settings → Alerts. "default-settings" is the backend with push off. Here it is on,
+  // and the browser is as it comes (permission not asked yet), already subscribed, or has blocked
+  // notifications; and a viewer, who gets the opt-in like anyone.
+  { scenario: "push-enabled", path: "/app/settings", shows: /This device is not subscribed/, clock: FIXTURE_NOW },
+  { scenario: "push-opted-in", name: "push-subscribed", path: "/app/settings", shows: /This device is subscribed/, clock: FIXTURE_NOW, browser: "subscribed" },
+  { scenario: "push-enabled", name: "push-denied", path: "/app/settings", shows: /Notifications are blocked for this site/, clock: FIXTURE_NOW, browser: "denied" },
+  { scenario: "push-viewer", path: "/app/settings", shows: /Owners, admins and viewers can each set it/, clock: FIXTURE_NOW },
   // Settings → Game PC agent (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
   { scenario: "agent-local-operator", path: "/app/settings", shows: /forgets its stored game-server tokens/, clock: AGENT_NOW },
   {
@@ -237,9 +257,10 @@ async function addServer(page: Page, host: string) {
   await page.getByRole("button", { name: "Add server" }).click();
 }
 
-for (const { scenario, shows, path = "/app", name = scenario, act, clock } of CASES) {
+for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
     await mockApi(scenario);
+    if (browser) await stubPushBrowser(page, browser);
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
     await page.goto(path);
