@@ -52,6 +52,10 @@ export const AUTH_FAILURE_LIMITS = {
 /** A credential that authenticated within this long skips the failure budgets (it is still looked up every time, so a
  *  revocation takes effect at once). An agent away longer than this during a flood waits for the flood to pass. */
 export const RECENTLY_VALID_TTL_MS = 15 * 60_000;
+/** Database lookups per remembered credential, across every agent route: 50 at once, then 10 a second. A real agent
+ *  makes about one request every 5 s (snapshot) plus its long-poll, so this is only a backstop that stops a credential's
+ *  owner from flooding the lookup query and filling the connection pool. */
+export const KNOWN_CREDENTIAL_LOOKUPS = { capacity: 50, refillPerSecond: 10 };
 /** The most credentials remembered as recently valid; the oldest is forgotten first. */
 export const RECENTLY_VALID_MAX = 1_000;
 

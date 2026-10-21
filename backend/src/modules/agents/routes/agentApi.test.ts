@@ -1,3 +1,5 @@
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
@@ -836,3 +838,77 @@ describe("satis.agent.refused counts refused agent requests by server and status
 
 /** `finish` fires after the response is flushed, which can be just after Supertest resolves. */
 const waitForFinish = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+describe("security review fixes (#514)", () => {
+  it("allows one snapshot upload in flight per credential: concurrent ones are 429 and never read, and the next is served", async () => {
+    const { app, ingest, commands } = build();
+    let release: (value: boolean) => void = () => {};
+    commands.hasPending.mockImplementationOnce(() => new Promise<boolean>((resolve) => (release = resolve)));
+    const first = postSnapshot(app).then((res) => res);
+    await vi.waitFor(() => expect(ingest).toHaveBeenCalledTimes(1));
+    const concurrent = await Promise.all(Array.from({ length: 8 }, () => postSnapshot(app)));
+    expect(concurrent.map((res) => res.status)).toEqual(Array(8).fill(429));
+    expect(concurrent[0]!.headers["retry-after"]).toBe("1");
+    expect(ingest).toHaveBeenCalledTimes(1);
+    release(false);
+    expect((await first).status).toBe(200);
+    expect((await postSnapshot(app)).status).toBe(200);
+  });
+
+  it("frees the slot when the client hangs up mid-request", async () => {
+    const { app, ingest, commands } = build();
+    commands.hasPending.mockImplementationOnce(() => new Promise<boolean>(() => {})); // never answers
+    await expect(postSnapshot(app).timeout({ response: 150 })).rejects.toThrow();
+    await vi.waitFor(async () => expect((await postSnapshot(app)).status).toBe(200));
+    expect(ingest).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives a remembered credential its own lookup budget, checked before the lookup", async () => {
+    const database = fakeDb();
+    let lookups = 0;
+    const counting: Queryable = {
+      async query(text, values) {
+        if (text.includes("secret_hash = $1")) lookups += 1;
+        return database.db.query(text, values);
+      },
+    };
+    const { app } = build({
+      db: { ...database, db: counting },
+      auth: createAgentAuth({ db: counting, now: () => 1_000_000, knownCredentialLookups: new TokenBucketLimiter({ capacity: 3, refillPerSecond: 0.01, now: () => 0 }) }),
+    });
+    expect((await postSnapshot(app)).status).toBe(200); // not yet remembered: the failure budgets apply
+    for (let i = 0; i < 3; i++) expect((await postSnapshot(app)).status).toBe(200);
+    const res = await postSnapshot(app);
+    expect(res.status).toBe(429);
+    expect(lookups).toBe(4); // the refused one made no lookup
+    expect((await getCommands(app)).status).toBe(429); // the budget covers every route
+  });
+
+  it("charges the cap for a body the client abandons midway (request.aborted)", async () => {
+    const { app } = build({ snapshotByteBudget: byteBudget(1024), snapshotMaxBytes: 1024 });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      await new Promise<void>((resolve) => {
+        const req = httpRequest({ port, host: "127.0.0.1", method: "POST", path: "/agent/v1/snapshots", headers: { Authorization: bearer(SECRET), "Content-Type": "application/json", "Content-Length": "900" } });
+        req.on("error", () => resolve());
+        req.write('{"x":"');
+        setTimeout(() => {
+          req.destroy();
+          resolve();
+        }, 50);
+      });
+      await vi.waitFor(async () => expect((await postSnapshot(app)).status).toBe(429));
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  it("charges nothing for a body refused before it is read (a wrong content type)", async () => {
+    const { app } = build({ snapshotByteBudget: byteBudget(SNAPSHOT_BYTES) });
+    const res = await request(app).post("/agent/v1/snapshots").set("Authorization", bearer(SECRET)).set("Content-Type", "text/plain").send("x".repeat(5_000));
+    expect(res.status).toBe(415);
+    expect((await postSnapshot(app)).status).toBe(200);
+  });
+});

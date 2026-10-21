@@ -34,6 +34,9 @@ import type { EnrollmentService } from "../services/enrollmentService.js";
  *  body, a rate limit. */
 const REFUSED_STATUSES: ReadonlySet<string> = new Set(AGENT_REFUSED_STATUSES);
 
+/** body-parser's error types for checks it makes before reading any of the body. */
+const BODY_CHECKS_BEFORE_READING: ReadonlySet<string> = new Set(["charset.unsupported", "encoding.unsupported", "stream.encoding.set", "stream.not.readable"]);
+
 /** The agent API is mounted at /agent/v1 (not under /api): a shared route pattern is registered without that prefix. */
 export const agentRoutePath = (route: string): string => route.replace(/^\/agent\/v1(?=\/)/, "");
 
@@ -90,6 +93,8 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   const versions = new Map<string, string>();
   /** The open long-poll of each credential (#514): a new one ends the old one, so a credential holds at most one. */
   const openPolls = new Map<string, AbortController>();
+  /** Credentials with a snapshot upload in flight (#514): at most one each. */
+  const uploading = new Set<string>();
   const metrics = createBackgroundRecorder(deps.logger ?? createLogger(), deps.metrics);
 
   // #514 (ADR-0045 O4): every refused agent request is counted by server public id ("unknown" before authentication), so
@@ -125,12 +130,25 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   // Both checked before the body is read: a refused snapshot is never inflated or parsed. The rate is spent here; the
   // bytes are charged once the body is inflated (express.json's `verify` runs before JSON.parse), and a credential whose
   // byte budget is in debt is refused here until it is repaid.
+  //
+  // One snapshot upload in flight per credential (#514 security review): `admit` checks the balance only at the start, so
+  // without this, many concurrent uploads of a positive-balance credential would all be read and parsed at once. The
+  // agent sends one at a time (agent/src/pusher.ts awaits each post before the next), so it never waits on this.
   const snapshotRateLimit: RequestHandler = (_req, res, next) => {
     const agent = res.locals.agent as AgentIdentity;
+    if (uploading.has(agent.serverUuid)) throw new RateLimitedError(1, "A snapshot upload is already in progress. Slow down.");
     const bytesWait = snapshotByteBudget.admit(agent.serverUuid);
     if (bytesWait > 0) throw new RateLimitedError(bytesWait, "Too many snapshot bytes. Slow down.");
     const wait = snapshotLimiter.take(agent.serverUuid);
     if (wait > 0) throw new RateLimitedError(wait, "Too many snapshots. Slow down.");
+    uploading.add(agent.serverUuid);
+    // `close` fires once the response is sent or the connection drops: the body has been read and handled, or never will be.
+    res.on("close", () => uploading.delete(agent.serverUuid));
+    next();
+  };
+  /** Marks that the body is about to be read, so a body-parser error after this point is charged (below). */
+  const bodyReading: RequestHandler = (_req, res, next) => {
+    res.locals.bodyReading = true;
     next();
   };
   const snapshotMaxBytes = deps.snapshotMaxBytes ?? SNAPSHOT_MAX_BYTES;
@@ -138,14 +156,15 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     (res as Response).locals.bytesCharged = true;
     snapshotByteBudget.charge(((res as Response).locals.agent as AgentIdentity).serverUuid, body.length);
   };
-  // A body over the cap was inflated up to the cap before it was refused (413): that work is charged too, so gzip bombs
-  // spend the same budget as real snapshots. So is a compressed body whose inflation failed (a truncated or corrupt
-  // stream, 400) before `verify` saw it: it may have inflated almost to the cap first.
-  const chargeOversizedSnapshot: ErrorRequestHandler = (err: unknown, req, res, next) => {
-    const failure = err as { type?: unknown; status?: unknown } | null;
-    const encoding = req.headers["content-encoding"];
-    const failedInflating = failure?.status === 400 && res.locals.bytesCharged !== true && typeof encoding === "string" && encoding.toLowerCase() !== "identity";
-    if (failure?.type === "entity.too.large" || failedInflating) {
+  // A body that failed while it was being read was charged nothing by `verify`, yet may have been inflated almost to the
+  // cap: over the cap (413), a truncated or corrupt gzip stream (400), a client that hung up midway (request.aborted).
+  // Each is charged the cap, so failing uploads spend the same budget as real ones. Only body-parser's checks made
+  // before any byte is read (an unsupported charset or encoding) are not, and neither is a failure before `bodyReading`
+  // (a wrong content type) or after `verify` (bad JSON, already charged its real size).
+  const chargeFailedSnapshotBody: ErrorRequestHandler = (err: unknown, _req, res, next) => {
+    const type = (err as { type?: unknown } | null)?.type;
+    const beforeReading = typeof type === "string" && BODY_CHECKS_BEFORE_READING.has(type);
+    if (res.locals.bodyReading === true && res.locals.bytesCharged !== true && !beforeReading) {
       snapshotByteBudget.charge((res.locals.agent as AgentIdentity).serverUuid, snapshotMaxBytes);
     }
     next(err);
@@ -161,8 +180,9 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     deps.auth,
     snapshotRateLimit,
     requireJsonBody,
+    bodyReading,
     express.json({ limit: snapshotMaxBytes, inflate: true, verify: chargeSnapshotBytes }),
-    chargeOversizedSnapshot,
+    chargeFailedSnapshotBody,
     async (req: Request, res: Response) => {
       const agent = res.locals.agent as AgentIdentity;
       const snapshot = SnapshotRequestSchema.safeParse(req.body);

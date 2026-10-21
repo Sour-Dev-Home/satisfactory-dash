@@ -3,7 +3,8 @@ import { RateLimitedError, ServiceUnavailableError, UnauthorizedError } from "..
 import { isDatabaseUnavailable } from "../../../platform/db/errors.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
-import { AUTH_FAILURE_LIMITS, LAST_SEEN_INTERVAL_MS, RECENTLY_VALID_MAX, RECENTLY_VALID_TTL_MS } from "../config.js";
+import { TokenBucketLimiter } from "../../../platform/tokenBucket.js";
+import { AUTH_FAILURE_LIMITS, KNOWN_CREDENTIAL_LOOKUPS, LAST_SEEN_INTERVAL_MS, RECENTLY_VALID_MAX, RECENTLY_VALID_TTL_MS } from "../config.js";
 import { rateLimitKey } from "./clientKey.js";
 import { findActiveAgent, sha256, touchAgent } from "../repositories/agentRepository.js";
 
@@ -38,6 +39,8 @@ export interface AgentAuthOptions {
   recentlyValidTtlMs?: number;
   /** Tests only: how many such credentials are remembered (default 1,000). */
   recentlyValidMax?: number;
+  /** Tests only: lookups per remembered credential (default `KNOWN_CREDENTIAL_LOOKUPS`). */
+  knownCredentialLookups?: TokenBucketLimiter;
   now?: () => number;
 }
 
@@ -54,6 +57,9 @@ export function createAgentAuth(options: AgentAuthOptions): RequestHandler {
   const limiter = options.limiter ?? new UserRateLimiter({ ...AUTH_FAILURE_LIMITS.perNetwork, now });
   const globalLimiter = options.globalLimiter ?? new UserRateLimiter({ ...AUTH_FAILURE_LIMITS.global, now });
   const recentlyValid = new RecentlyValid(options.recentlyValidTtlMs ?? RECENTLY_VALID_TTL_MS, options.recentlyValidMax ?? RECENTLY_VALID_MAX);
+  const knownLookups =
+    options.knownCredentialLookups ??
+    new TokenBucketLimiter({ ...KNOWN_CREDENTIAL_LOOKUPS, maxKeys: options.recentlyValidMax ?? RECENTLY_VALID_MAX, now });
   const lastTouched = new Map<string, number>();
 
   return async (req, res, next) => {
@@ -67,6 +73,12 @@ export function createAgentAuth(options: AgentAuthOptions): RequestHandler {
       globalLimiter.refund("all");
     };
     const counted = hashKey === undefined || !recentlyValid.has(hashKey, now());
+    if (!counted) {
+      // Skipping the failure budgets must not mean unlimited lookups (#514 security review): a remembered credential has
+      // a lookup budget of its own, checked before the lookup, far above what a real agent asks.
+      const lookupWait = knownLookups.take(hashKey);
+      if (lookupWait > 0) throw new RateLimitedError(lookupWait, "Too many requests. Slow down.");
+    }
     if (counted) {
       // A network over its own budget is refused without touching the process-wide one: no lookup is made for it, so one
       // address hammering must not use up the budget that protects everyone else.
