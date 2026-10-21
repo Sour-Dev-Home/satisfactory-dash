@@ -146,6 +146,11 @@ Plain CI/CD (ADR-0043): branch, then PR, then `gh pr merge --squash --auto`. The
 `docs-vault/wiki/log.d/` fragment (see Docs vault). Before the PR, run the fitting reviewer subagents yourself:
 `test-hunter` for new logic, `ui-reviewer` for UI changes, `security-reviewer` for auth, secrets or infrastructure.
 
+Backend deploys (ADR-0049, once built): a merge that changes the backend images deploys to staging and then, if
+staging passes, to production automatically. So a merge here is a production release. Sessions never approve, reject or
+re-run a pending or failed production deployment, never trigger a rollback or redeploy, and never edit the `staging`
+or `production` environments' protection rules or secrets. Those are the owner's, in the GitHub UI.
+
 ## Conventions
 
 - New lookup tables keyed by external or untrusted strings are Maps (or Object.create(null)).
