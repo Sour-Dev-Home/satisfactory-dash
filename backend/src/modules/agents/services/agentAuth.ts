@@ -68,8 +68,15 @@ export function createAgentAuth(options: AgentAuthOptions): RequestHandler {
     };
     const counted = hashKey === undefined || !recentlyValid.has(hashKey, now());
     if (counted) {
-      const wait = Math.max(limiter.hit(network), globalLimiter.hit("all"));
-      if (wait > 0) throw new RateLimitedError(wait, "Too many requests. Slow down.");
+      // A network over its own budget is refused without touching the process-wide one: no lookup is made for it, so one
+      // address hammering must not use up the budget that protects everyone else.
+      const networkWait = limiter.hit(network);
+      if (networkWait > 0) throw new RateLimitedError(networkWait, "Too many requests. Slow down.");
+      const globalWait = globalLimiter.hit("all");
+      if (globalWait > 0) {
+        limiter.refund(network); // refused before any lookup: not a failure of this network's
+        throw new RateLimitedError(globalWait, "Too many requests. Slow down.");
+      }
     }
     if (hash === undefined || hashKey === undefined) throw new UnauthorizedError(UNAUTHORIZED_MESSAGE);
     let agent;

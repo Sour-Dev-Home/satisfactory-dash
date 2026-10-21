@@ -135,12 +135,17 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
   };
   const snapshotMaxBytes = deps.snapshotMaxBytes ?? SNAPSHOT_MAX_BYTES;
   const chargeSnapshotBytes = (_req: IncomingMessage, res: ServerResponse, body: Buffer): void => {
+    (res as Response).locals.bytesCharged = true;
     snapshotByteBudget.charge(((res as Response).locals.agent as AgentIdentity).serverUuid, body.length);
   };
   // A body over the cap was inflated up to the cap before it was refused (413): that work is charged too, so gzip bombs
-  // spend the same budget as real snapshots.
-  const chargeOversizedSnapshot: ErrorRequestHandler = (err: unknown, _req, res, next) => {
-    if ((err as { type?: unknown } | null)?.type === "entity.too.large") {
+  // spend the same budget as real snapshots. So is a compressed body whose inflation failed (a truncated or corrupt
+  // stream, 400) before `verify` saw it: it may have inflated almost to the cap first.
+  const chargeOversizedSnapshot: ErrorRequestHandler = (err: unknown, req, res, next) => {
+    const failure = err as { type?: unknown; status?: unknown } | null;
+    const encoding = req.headers["content-encoding"];
+    const failedInflating = failure?.status === 400 && res.locals.bytesCharged !== true && typeof encoding === "string" && encoding.toLowerCase() !== "identity";
+    if (failure?.type === "entity.too.large" || failedInflating) {
       snapshotByteBudget.charge((res.locals.agent as AgentIdentity).serverUuid, snapshotMaxBytes);
     }
     next(err);

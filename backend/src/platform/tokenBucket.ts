@@ -73,8 +73,10 @@ export class TokenBucketLimiter {
   }
 
   private current(key: string): Bucket {
-    const at = this.now();
     const bucket = this.buckets.get(key);
+    // Never earlier than what is stored: a clock stepped back must not make the next step forward refill for time that
+    // had already been counted.
+    const at = bucket === undefined ? this.now() : Math.max(this.now(), bucket.at);
     if (bucket === undefined) return { tokens: this.options.capacity, at };
     const elapsedSeconds = Math.max(0, at - bucket.at) / 1000;
     return { tokens: Math.min(this.options.capacity, bucket.tokens + elapsedSeconds * this.options.refillPerSecond), at };
