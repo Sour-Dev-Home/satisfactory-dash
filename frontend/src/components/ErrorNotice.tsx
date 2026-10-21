@@ -39,6 +39,12 @@ export function describeError(error: unknown): string {
       return "This game server is no longer configured.";
     case "client_bug":
       return "Something went wrong in the dashboard.";
+    case "reauth_required":
+      // ADR-0047: a 403 that is not "signed out". The account screen offers the sign-in itself.
+      return "Sign in again first: this needs a sign-in from the last 10 minutes.";
+    case "would_orphan":
+      // ADR-0047: the backend's message says which server and what to do instead (safe to show, ADR-0003).
+      return error instanceof ApiError ? error.message : "That would leave a server without an owner.";
     default:
       // The envelope's message is safe to show a user (ADR-0003); unknown codes land here.
       return error instanceof ApiError ? error.message : "Something went wrong.";

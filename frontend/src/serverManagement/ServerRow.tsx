@@ -70,7 +70,8 @@ export function ServerRow({
           <p className="mb-0 text-sm text-fg-strong">
             {/* What the backend does (softDeleteServer, #193): tokens, memberships and the recorded history go. */}
             Remove {server.displayName}? The dashboard stops connecting to it, everyone loses access to it, and its saved
-            tokens and recorded history are deleted. The audit log keeps a record of the removal.
+            tokens and recorded history are erased. The game and its saves are never touched. The audit log keeps a record of
+            the removal.
           </p>
           {remove.error && !remove.isPending && <ManagementError error={remove.error} />}
           {/* The safe choice first, where a quick tap lands. */}

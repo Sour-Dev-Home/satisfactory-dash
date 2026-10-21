@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
+import { AccountSettings } from "../account/AccountSettings";
 import { AgentSettings } from "../agent/AgentSettings";
 import { YourServersSection } from "../selfServe/YourServersSection";
 import { useYourServer } from "../selfServe/useYourServer";
@@ -27,7 +28,8 @@ import { OverviewView } from "../overview/OverviewView";
 import { isPaletteShortcut } from "../palette/paletteCommands";
 import { PowerHistorySection } from "../power/PowerHistorySection";
 import { PowerView } from "../power/PowerView";
-import { useSelectedServer } from "../servers/ServerContext";
+import { LeftStatus } from "../servers/LeftStatus";
+import { useSelectedServer, useServerSwitch } from "../servers/ServerContext";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
@@ -262,6 +264,7 @@ const SERVERS_TAB: (typeof TABS)[number] = { to: "/app/servers", label: "Servers
  */
 export function Shell() {
   const server = useSelectedServer();
+  const { leftName, clearLeft } = useServerSwitch();
   const yourServer = useYourServer();
   // ServerGate already loaded the list; this reads the same cache entry.
   const canManageServers = useQuery(queries.servers()).data?.canManageServers === true;
@@ -355,6 +358,8 @@ export function Shell() {
       {/* Hidden when there's no banner, loading status or error, so it adds no gap. */}
       <div className="grid gap-3 [&:not(:has(p,[role]))]:hidden">
         <Section label="Server banners" probe="banners">
+          {/* ADR-0047: after leaving a server, the gate selected the one left; say so here, where focus lands. */}
+          {leftName !== null && <LeftStatus key={server.id} name={leftName} focus onDone={clearLeft} />}
           {/* The owner's call: on the Overview, its Server row carries "paused". */}
           <StatusBanners showPaused={!onOverview} />
         </Section>
@@ -434,6 +439,10 @@ export function Shell() {
               )}
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />
+              </Section>
+              <Section label="Your account" probe="account">
+                {/* Keyed by server: a half-open "Leave" confirm must not follow the user to another server. */}
+                <AccountSettings key={server.id} />
               </Section>
             </Page>
           }

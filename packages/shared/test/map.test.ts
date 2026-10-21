@@ -27,8 +27,8 @@ import {
 } from "../src/index";
 
 describe("ADR-0038 M1: scope (#352)", () => {
-  it("covers exactly rails and resourceNodes for now", () => {
-    expect(KNOWN_MAP_WORLD_LAYERS).toEqual(["rails", "resourceNodes"]);
+  it("covers exactly rails, resourceNodes and (ADR-0048 amendment) conveyors", () => {
+    expect(KNOWN_MAP_WORLD_LAYERS).toEqual(["rails", "resourceNodes", "conveyors"]);
   });
 
   it("MAP_WORLD_LAYER_DATA_SCHEMAS has exactly one entry per known layer", () => {

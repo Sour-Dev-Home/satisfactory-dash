@@ -1,5 +1,10 @@
 # DRAFT: privacy page and terms copy for self-serve servers (#530)
 
+**Published 2026-10-21** (branch `frontend/530-privacy-terms`): the live `frontend/public/privacy.html` and
+`frontend/public/terms.html` now carry this copy, checked against the code on main; the terms version is `2026-10-21`.
+Claims the code did not back were left off the pages (see that PR's description). The text below is the historical
+draft.
+
 Status: draft for the owner's review (asked 2026-10-20). ADR-0046 task 8. **Nothing here is live.** No page has been
 edited. The owner writes or approves the final copy; this is a starting point, not legal advice.
 

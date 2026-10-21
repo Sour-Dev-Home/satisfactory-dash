@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "../api/queries";
+import { clearSignedOutNotice } from "../api/signedOutNotice";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { DemoEntry } from "../demo/DemoEntry";
 import { IS_DEMO } from "../demo/mode";
@@ -13,6 +14,11 @@ import { SignedInUser } from "./SignedInUser";
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const session = useQuery(queries.session());
+  const signedIn = session.data?.authenticated === true;
+  // The signed-out note is for the next sign-in screen only: once anyone is signed in (another tab, say) it is stale.
+  useEffect(() => {
+    if (signedIn) clearSignedOutNotice();
+  }, [signedIn]);
 
   // Check data before error: a failed background refetch keeps the last known session
   // rather than throwing the operator out of the app.

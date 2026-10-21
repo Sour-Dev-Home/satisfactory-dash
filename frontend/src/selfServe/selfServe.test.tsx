@@ -213,7 +213,7 @@ describe("the owner's controls", () => {
     serveList({ servers: [enrolledServer], selfServeEnabled: false });
     renderSettings();
     expect(await screen.findByRole("button", { name: "Rename My first world" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete My first world" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove My first world from Satisfactory Dash" })).toBeInTheDocument();
   });
 
   it("tells the owner of a never-enrolled server it is removed after 24 hours", async () => {
@@ -293,14 +293,18 @@ describe("the owner's controls", () => {
       }),
     );
     renderSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Delete My first world" }));
-    const group = screen.getByRole("form", { name: "Confirm deleting My first world" });
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
+    const group = screen.getByRole("form", { name: "Confirm removing My first world from Satisfactory Dash" });
+    expect(group).toHaveTextContent(/Removing takes this server off Satisfactory Dash for good/);
     expect(group).toHaveTextContent(/Its history and alerts/);
     expect(group).toHaveTextContent(/Its push settings and members/);
-    expect(group).toHaveTextContent(/This can't be undone. Your game server and save are not touched./);
+    expect(group).toHaveTextContent(/This can't be undone./);
+    expect(group).toHaveTextContent(/Your game and its saves are never touched: nothing on your game PC changes./);
+    // ADR-0047 amendment: a server is removed from Satisfactory Dash, never "deleted".
+    expect(group).not.toHaveTextContent(/delet/i);
     expect(group).toHaveTextContent(/must match exactly, capital letters included/);
     expect(screen.getByLabelText(/Type My first world to confirm/)).toHaveAccessibleDescription(expect.stringContaining("must match exactly"));
-    const confirm = screen.getByRole("button", { name: "Delete this server" });
+    const confirm = screen.getByRole("button", { name: "Remove from Satisfactory Dash" });
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/Type My first world to confirm/), { target: { value: "My first" } });
     expect(confirm).toBeDisabled();
@@ -318,10 +322,10 @@ describe("the owner's controls", () => {
     let deletes = 0;
     server.use(http.delete(endpoints.serverManagement.remove.route, () => ((deletes += 1), HttpResponse.json({ deleted: true }))));
     renderSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Delete My first world" }));
-    expect(screen.getByText(/Deleting removes this server/).parentElement).toHaveFocus();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
+    expect(screen.getByText(/Removing takes this server off/).parentElement).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Delete My first world" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove My first world from Satisfactory Dash" })).toHaveFocus());
     expect(deletes).toBe(0);
   });
 
@@ -333,9 +337,9 @@ describe("the owner's controls", () => {
       ),
     );
     renderSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Delete My first world" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
     fireEvent.change(screen.getByLabelText(/Type My first world to confirm/), { target: { value: "My first world" } });
-    fireEvent.click(screen.getByRole("button", { name: "Delete this server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Satisfactory Dash" }));
     expect(await screen.findByText("Only the owner of a server you added can do that.")).toBeInTheDocument();
     expect(screen.getByText("selected: My first world")).toBeInTheDocument();
   });

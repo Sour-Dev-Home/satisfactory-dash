@@ -12,6 +12,7 @@ import { snapshotEnvelope } from "./envelope";
  * not yet built into a layer. `getResourceGeyser`'s empty `[]` capture is now explained (M2, #353
  * follow-up): geysers arrive through `getResourceNode` too, with `NodeType: "Geyser"` — the
  * `resourceNodes` layer already covers them, so there is no separate geyser layer to build.
+ * ADR-0048's amendment adds `conveyors` (belts, lifts and pipes as connection edges, not geometry), see below.
  *
  * PROJECTION: every coordinate here is a WHOLE METRE (the game's own unit is the centimetre,
  * docs-vault/raw-sources/world-coordinates.md), rounded by whichever mapper produced the data
@@ -37,7 +38,7 @@ import { snapshotEnvelope } from "./envelope";
  * (65 segments, 17-127 points each, in the captured world) or resourceNodes (608 items).
  */
 
-export const KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes"] as const;
+export const KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes", "conveyors"] as const;
 export type MapWorldLayer = (typeof KNOWN_MAP_WORLD_LAYERS)[number];
 
 /** Measured on the serialized projected JSON, uncompressed, by the sender; enforced again at ingest (see above). */
@@ -90,11 +91,90 @@ export const ResourceNodeSchema = z.object({
 });
 export const ResourceNodesLayerDataSchema = z.array(ResourceNodeSchema).max(MAP_WORLD_MAX_ITEMS);
 
+// ---------------------------------------------------------------------------------------------------------------------
+// conveyors (ADR-0048 amendment, Decision 4): every belt, lift and pipe as one edge between the two ids at its ends, for
+// the bottleneck finder's connection graph. From FRM 1.5.4's getBelts/getLifts/getPipes `ConnectedTo0`/`ConnectedTo1`
+// (docs-vault/raw-sources/captured-responses/frm-get{Belts,Lifts,Pipes}-2026-10-21-*.json). The game-adapter projects
+// it (ADR-0048 amendment PR 2, not this contract): geometry and paint dropped, edges sorted by `id`, `at` rounded to whole
+// metres, so the backend's content hash (ADR-0038: an unchanged hash writes nothing) is stable between reads.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** The conveyors layer's own item cap (ADR-0048 amendment, Decision 2): the shared `MAP_WORLD_MAX_ITEMS` (5,000) is too
+ *  small for a bigger factory (the owner's tier-6 save already has about 2,400 edges). The 2 MB byte cap
+ *  (`MAP_WORLD_LAYER_MAX_BYTES`, about 7,400 edges at the measured ~270 bytes an edge) still binds first; this is the
+ *  schema-level sanity cap, sized for the interned or chain-folded form the ADR's 1.5 MB trigger would switch to. */
+export const CONVEYORS_MAX_EDGES = 50_000;
+
+/** What sits at one end of a conveyor, typed by the adapter from the end id's class (ADR-0048 amendment, Decision 3):
+ *  `consumer` is a generator, the sink or the space elevator; `junction` a pipe junction or a pipeline pump; `conveyor`
+ *  another belt, lift or pipe joined directly; `other` any class the adapter does not recognise, so a new game building
+ *  never drops an edge. */
+export const CONVEYOR_NODE_KINDS = [
+  "machine",
+  "splitter",
+  "merger",
+  "storage",
+  "station",
+  "extractor",
+  "consumer",
+  "junction",
+  "conveyor",
+  "other",
+] as const;
+export const ConveyorNodeKindSchema = z.enum(CONVEYOR_NODE_KINDS);
+
+export const CONVEYOR_KINDS = ["belt", "lift", "pipe"] as const;
+export const ConveyorKindSchema = z.enum(CONVEYOR_KINDS);
+
+const conveyorEndId = z.string().min(1).max(128);
+/** `{x, y}` whole metres (the layer's end-0 position, for the UI's "near (x, y)"), the same bounds as every other map
+ *  coordinate in this module. */
+export const ConveyorPointSchema = z.object({ x: WholeMetreSchema, y: WholeMetreSchema });
+
+/**
+ * One belt, lift or pipe. `from` is end 0 and `to` end 1 (FRM's `ConnectedTo0`/`ConnectedTo1`); `null` is an open end
+ * (FRM's `""`), and an end's kind is null exactly when its id is. Belts and lifts are oriented (items enter at end 0);
+ * pipes are not, so the finder reads a pipe as an arc each way (Decision 3), never from this shape.
+ *
+ * `capacityPerMinute` is the tier's speed (FRM's `ItemsPerMinute`: 60/120/270/480), not the flow on the conveyor. It is
+ * null when the capacity is not trusted: every pipe until G-B2 settles the unit of FRM's pipe `Speed` (Risks: "pipe arcs
+ * are topology only"). The contract does not force pipes to null, so G-B2 passing needs no contract change.
+ */
+export const ConveyorEdgeSchema = z
+  .object({
+    id: conveyorEndId,
+    kind: ConveyorKindSchema,
+    from: conveyorEndId.nullable().describe("End 0's building or conveyor id; null = open end"),
+    fromKind: ConveyorNodeKindSchema.nullable(),
+    to: conveyorEndId.nullable().describe("End 1's building or conveyor id; null = open end"),
+    toKind: ConveyorNodeKindSchema.nullable(),
+    capacityPerMinute: z
+      .number()
+      .finite()
+      .min(0)
+      .nullable()
+      .describe("The tier's speed per minute (not the flow); null = not trusted (pipes until G-B2)"),
+    tier: z.string().min(1).max(64).describe('The tier\'s display name, e.g. "Conveyor Belt Mk.1", "Pipeline Mk.1"'),
+    at: ConveyorPointSchema.describe("End 0's position, whole metres"),
+  })
+  .refine((edge) => (edge.from === null) === (edge.fromKind === null) && (edge.to === null) === (edge.toKind === null), {
+    message: "an end's kind is null exactly when its id is (an open end)",
+  });
+export const ConveyorsLayerDataSchema = z.array(ConveyorEdgeSchema).max(CONVEYORS_MAX_EDGES);
+
+/** Each layer's item cap: what the ingest truncates an over-cap `data` array to (conform, don't reject). */
+export const MAP_WORLD_LAYER_MAX_ITEMS = {
+  rails: MAP_WORLD_MAX_ITEMS,
+  resourceNodes: MAP_WORLD_MAX_ITEMS,
+  conveyors: CONVEYORS_MAX_EDGES,
+} satisfies Record<MapWorldLayer, number>;
+
 /** Keyed by `MapWorldLayer`, so M3's route (`:layer` is a runtime string) can look up the right
  *  schema without a growing if/else. */
 export const MAP_WORLD_LAYER_DATA_SCHEMAS = {
   rails: RailsLayerDataSchema,
   resourceNodes: ResourceNodesLayerDataSchema,
+  conveyors: ConveyorsLayerDataSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** The PER-ITEM schema for one layer (a single `RailSegment`/`ResourceNode`, not the capped array).
@@ -105,6 +185,7 @@ export const MAP_WORLD_LAYER_DATA_SCHEMAS = {
 export const MAP_WORLD_LAYER_ITEM_SCHEMAS = {
   rails: RailSegmentSchema,
   resourceNodes: ResourceNodeSchema,
+  conveyors: ConveyorEdgeSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** Exported (test-hunter, PR #374): the ingest route validates a body's `observedAt` FORMAT against
@@ -119,6 +200,7 @@ export const IsoTimeSchema = z.iso.datetime({ offset: true });
  *  `count` are the BACKEND's job to compute at ingest, not the sender's to assert. */
 export const RailsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: RailsLayerDataSchema });
 export const ResourceNodesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ResourceNodesLayerDataSchema });
+export const ConveyorsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ConveyorsLayerDataSchema });
 
 /** Keyed by `MapWorldLayer`, same reason as `MAP_WORLD_LAYER_DATA_SCHEMAS` above. This is the FULL
  *  ingest schema (its `data` still carries `.max(MAP_WORLD_MAX_ITEMS)`): the route uses it once an
@@ -127,6 +209,7 @@ export const ResourceNodesWorldIngestRequestSchema = z.strictObject({ observedAt
 export const MAP_WORLD_LAYER_INGEST_SCHEMAS = {
   rails: RailsWorldIngestRequestSchema,
   resourceNodes: ResourceNodesWorldIngestRequestSchema,
+  conveyors: ConveyorsWorldIngestRequestSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** 200/202. What POST /agent/v1/world/:layer answers: `unchanged` is true when the content hash
@@ -144,7 +227,7 @@ export const WorldIngestResponseSchema = z.object({ accepted: z.boolean(), uncha
  */
 export function worldLayerResponseSchema<T extends z.ZodType>(dataSchema: T) {
   return z.object({
-    layer: z.string().describe("Known: rails, resourceNodes; more are added as their captures land (ADR-0038)"),
+    layer: z.string().describe("Known: rails, resourceNodes, conveyors; more are added as their captures land (ADR-0038)"),
     hash: z.string().min(1),
     observedAt: IsoTimeSchema,
     truncated: z.boolean(),
@@ -154,10 +237,15 @@ export function worldLayerResponseSchema<T extends z.ZodType>(dataSchema: T) {
 }
 export const RailsWorldLayerResponseSchema = worldLayerResponseSchema(RailsLayerDataSchema);
 export const ResourceNodesWorldLayerResponseSchema = worldLayerResponseSchema(ResourceNodesLayerDataSchema);
+export const ConveyorsWorldLayerResponseSchema = worldLayerResponseSchema(ConveyorsLayerDataSchema);
 /** For the endpoint registry (endpoints.ts), which needs one static schema per route: the client
  *  re-validates against the specific layer's schema via `MAP_WORLD_LAYER_DATA_SCHEMAS`, same as the
  *  route itself does at write time. */
-export const MapWorldLayerResponseSchema = z.union([RailsWorldLayerResponseSchema, ResourceNodesWorldLayerResponseSchema]);
+export const MapWorldLayerResponseSchema = z.union([
+  RailsWorldLayerResponseSchema,
+  ResourceNodesWorldLayerResponseSchema,
+  ConveyorsWorldLayerResponseSchema,
+]);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // mapLive: fast-changing positions, part of the AGENT's snapshot (agent.ts's SnapshotRequestSchema), not the world
@@ -204,6 +292,12 @@ export type RailsWorldIngestRequest = z.input<typeof RailsWorldIngestRequestSche
 export type ResourceNodesWorldIngestRequest = z.input<typeof ResourceNodesWorldIngestRequestSchema>;
 export type RailsWorldLayerResponse = z.infer<typeof RailsWorldLayerResponseSchema>;
 export type ResourceNodesWorldLayerResponse = z.infer<typeof ResourceNodesWorldLayerResponseSchema>;
+export type ConveyorKind = z.infer<typeof ConveyorKindSchema>;
+export type ConveyorNodeKind = z.infer<typeof ConveyorNodeKindSchema>;
+export type ConveyorEdge = z.infer<typeof ConveyorEdgeSchema>;
+export type ConveyorsLayerData = z.infer<typeof ConveyorsLayerDataSchema>;
+export type ConveyorsWorldIngestRequest = z.input<typeof ConveyorsWorldIngestRequestSchema>;
+export type ConveyorsWorldLayerResponse = z.infer<typeof ConveyorsWorldLayerResponseSchema>;
 export type MapTrain = z.infer<typeof MapTrainSchema>;
 export type MapTrainStation = z.infer<typeof MapTrainStationSchema>;
 export type MapLive = z.infer<typeof MapLiveSchema>;

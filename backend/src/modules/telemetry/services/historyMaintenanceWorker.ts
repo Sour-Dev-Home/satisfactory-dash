@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
+import { FailureStreak, failuresForWindow } from "../../../platform/failureStreak.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { purgeExpired, rollUp, RAW_RETENTION_MS } from "../repositories/historyRepository.js";
 import type { BackgroundWorker } from "./powerHistoryPoller.js";
@@ -37,7 +38,7 @@ export class HistoryMaintenanceWorker implements BackgroundWorker {
   private lastPurgeAt: number | undefined;
   /** The `toMs` of the last successful rollup; undefined until one succeeds (then the whole raw window is caught up). */
   private rolledTo: number | undefined;
-  private consecutiveFailures = 0;
+  private readonly streak: FailureStreak;
 
   constructor(
     private readonly db: Queryable,
@@ -45,6 +46,15 @@ export class HistoryMaintenanceWorker implements BackgroundWorker {
   ) {
     this.now = options.now ?? Date.now;
     this.rollUpIntervalMs = options.rollUpIntervalMs ?? DEFAULT_ROLLUP_INTERVAL_MS;
+    // #560: 5 failed runs at the default 60 s is five minutes.
+    this.streak = new FailureStreak({
+      logger: options.logger,
+      job: "history-maintenance",
+      escalateAfter: failuresForWindow(this.rollUpIntervalMs),
+      failedMsg: "history maintenance failed; retrying next run",
+      recoveredMsg: "history maintenance recovered",
+      countField: "failedRuns",
+    });
     this.purgeIntervalMs = options.purgeIntervalMs ?? DEFAULT_PURGE_INTERVAL_MS;
     this.overlapMs = options.overlapMs ?? DEFAULT_OVERLAP_MS;
   }
@@ -102,15 +112,9 @@ export class HistoryMaintenanceWorker implements BackgroundWorker {
           this.options.logger.info({ purged }, "expired history purged");
         }
       }
-      if (this.consecutiveFailures > 0) {
-        this.options.logger.info({ failedRuns: this.consecutiveFailures }, "history maintenance recovered");
-        this.consecutiveFailures = 0;
-      }
+      this.streak.success();
     } catch (err) {
-      this.consecutiveFailures++;
-      if (this.consecutiveFailures === 1) {
-        this.options.logger.warn({ err: formatErrorDetail(err) }, "history maintenance failed; retrying next run");
-      }
+      this.streak.failure({ err: formatErrorDetail(err) });
     }
   }
 }

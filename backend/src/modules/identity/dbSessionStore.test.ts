@@ -269,7 +269,7 @@ describe("session purge", () => {
         ["identity", () => connRefused],
         ["audit.purge_expired_events", () => ({ rows: [{ deleted: "0" }] })],
       ]);
-      const logger = { info: vi.fn(), warn: vi.fn() };
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       const worker = createSessionPurgeWorker(db, logger);
       worker.start();
       worker.start();
@@ -277,10 +277,13 @@ describe("session purge", () => {
       expect(logger.warn).toHaveBeenCalledTimes(1);
       const callsAfterStart = query.mock.calls.length;
       await vi.advanceTimersByTimeAsync(PURGE_INTERVAL_MS);
-      expect(logger.warn).toHaveBeenCalledTimes(2);
+      // #560: the second failure in a row (an hour on) escalates to one error line instead of a second warning.
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.error).toHaveBeenCalledTimes(1);
       await worker.stop();
       await vi.advanceTimersByTimeAsync(PURGE_INTERVAL_MS * 3);
-      expect(logger.warn).toHaveBeenCalledTimes(2);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.error).toHaveBeenCalledTimes(1);
       expect(query.mock.calls.length).toBeGreaterThan(callsAfterStart);
     } finally {
       vi.useRealTimers();
