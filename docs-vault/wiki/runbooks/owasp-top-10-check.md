@@ -46,7 +46,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | Tokens are least-privilege: top-level `contents: read`, `packages: write` only on main's image push, `persist-credentials: false` | workflows | PASS |
 | **Base images are pinned by digest** | `backend/Dockerfile` pins `node:22-slim@sha256:...` on all three FROM lines, and `.github/dependabot.yml` has a docker entry for `/backend` (branch `chore/561-562-hardening`) | PASS |
 | The deployed images are pinned by digest (Terraform enforces it) | `infra/aws/variables.tf`, `ecs.tf` | PASS |
-| **Static analysis (CodeQL)** | `.github/workflows/codeql.yml` (push, pull request, weekly; not a required check) (branch `chore/561-562-hardening`) | PASS |
+| **Static analysis (CodeQL)** | CodeQL default setup in the repository's code-security settings (JavaScript/TypeScript and Actions, on push and pull request; not a required check). Don't add a `codeql.yml` workflow: GitHub rejects an advanced configuration's results while default setup is on | PASS |
 | No CDN scripts. Vendored skills and MCP config never ship | `frontend/index.html`, `backend/Dockerfile.dockerignore` | PASS |
 
 ## A04 Cryptographic Failures
