@@ -21,6 +21,7 @@ const ListRowSchema = z.object({
   public_id: z.string(),
   display_name: z.string(),
   connection_kind: z.enum(["local", "agent"]),
+  created_via: z.enum(["operator", "self_serve"]),
   owner_user_id: z.string().nullable(),
   enrolled: z.boolean(),
   last_seen_at: z.date().nullable(),
@@ -32,6 +33,8 @@ export interface AdminServerRow {
   publicId: string;
   displayName: string;
   kind: "local" | "agent";
+  /** ADR-0046: who created it, the operator or a player through self-serve. */
+  createdVia: "operator" | "self_serve";
   ownerUserId: string | null;
   enrolled: boolean;
   lastSeenAt: string | null;
@@ -39,9 +42,8 @@ export interface AdminServerRow {
   itemRows: number;
 }
 
-// `created_via` (ADR-0046, #525) is added to this list when that column exists.
 const LIST_SERVERS = `
-  SELECT s.public_id, s.display_name, s.connection_kind,
+  SELECT s.public_id, s.display_name, s.connection_kind, s.created_via,
          (SELECT m.user_id::text FROM servers.server_members m WHERE m.server_id = s.id AND m.role = 'owner' LIMIT 1) AS owner_user_id,
          COALESCE(c.revoked_at IS NULL, false) AS enrolled,
          CASE WHEN c.revoked_at IS NULL THEN c.last_seen_at END AS last_seen_at,
@@ -59,6 +61,7 @@ export async function listServersAdmin(db: Queryable): Promise<AdminServerRow[]>
     publicId: r.public_id,
     displayName: r.display_name,
     kind: r.connection_kind,
+    createdVia: r.created_via,
     ownerUserId: r.owner_user_id,
     enrolled: r.enrolled,
     lastSeenAt: r.last_seen_at === null ? null : r.last_seen_at.toISOString(),

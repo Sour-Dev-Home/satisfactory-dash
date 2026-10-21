@@ -37,7 +37,7 @@ import { ImportError, importServers, listConnections, loadServerRegistryFromEnv,
 //                                                      the account owns (ADR-0046); the servers and their data stay.
 //   npm run admin -- remove-server <public-id>         The full delete of any server (the same transaction as the HTTP
 //                                                      remove, which answers 404 to a non-member). Restart the backend after.
-//   npm run admin -- list-servers                      Every live server: id, name, kind, owner id, enrolled, last seen,
+//   npm run admin -- list-servers                      Every live server: id, name, kind, created via, owner id, enrolled, last seen,
 //                                                      history row counts. Ids and numbers only.
 
 const USAGE =
@@ -221,7 +221,7 @@ async function runListServers(pool: pg.Pool): Promise<void> {
     console.log(`${rows.length} server(s):`);
     for (const r of rows) {
       console.log(
-        `  ${r.publicId}  "${r.displayName}"  kind=${r.kind}  owner=${r.ownerUserId ?? "none"}  enrolled=${r.enrolled ? "yes" : "no"}  ` +
+        `  ${r.publicId}  "${r.displayName}"  kind=${r.kind}  via=${r.createdVia}  owner=${r.ownerUserId ?? "none"}  enrolled=${r.enrolled ? "yes" : "no"}  ` +
           `last_seen=${r.lastSeenAt ?? "never"}  power_rows=${r.powerRows}  item_rows=${r.itemRows}`,
       );
     }
