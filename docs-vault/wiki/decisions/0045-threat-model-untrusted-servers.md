@@ -181,3 +181,10 @@ credential; the gap "#514" is closed. The storage and alert rows still wait for 
 
 Both leftovers are bounded to a delay for agents that were not authenticated in the last 15 minutes. Neither lets an
 unauthenticated caller read or write any server's data.
+
+## Amendment 3 (2026-10-21): M1 recomputed for 60-bit codes (#562)
+
+M1 above still says 40 random bits and 120 a minute. Enrolment codes are now 60 bits (12 base32 characters,
+`backend/src/modules/agents/services/enrollmentCode.ts`, ADR-0046 section 4) and the global enrol limit is 1,200 a
+minute. At the global cap all year (about 6.3e8 guesses) with about 33 codes open at once, the chance of a hit is about
+6.3e8 x 33 / 2^60, or 2e-8 a year, down from 5e-4. The disposition (EXISTING, no further control) is unchanged.

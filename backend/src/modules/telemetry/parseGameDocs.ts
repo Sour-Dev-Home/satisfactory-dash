@@ -44,7 +44,7 @@ export function parseItemForms(docsJson: unknown): Record<string, ItemForm> {
   if (!parsed.success) {
     throw new Error("The Docs file isn't an array of { NativeClass, Classes[] }; did the game's format change?");
   }
-  const forms: Record<string, ItemForm> = {};
+  const forms: Record<string, ItemForm> = Object.create(null) as Record<string, ItemForm>;
   for (const group of parsed.data) {
     for (const item of group.Classes) {
       const form = item.mForm === undefined ? undefined : ownValue(FORM_BY_RESOURCE_FORM, item.mForm);

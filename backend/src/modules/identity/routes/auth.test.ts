@@ -290,6 +290,7 @@ describe("logout revokes the session", () => {
 // ADR-0019: JSON is never cached, sniffed, framed or leaked through a referrer.
 describe("security headers", () => {
   const expectHeaders = (headers: Record<string, unknown>) => {
+    expect(headers["strict-transport-security"]).toBe("max-age=31536000; includeSubDomains");
     expect(headers["x-content-type-options"]).toBe("nosniff");
     expect(headers["cache-control"]).toBe("no-store");
     expect(headers["referrer-policy"]).toBe("no-referrer");
