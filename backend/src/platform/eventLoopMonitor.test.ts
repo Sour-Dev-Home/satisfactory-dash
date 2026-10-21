@@ -135,24 +135,31 @@ describe("event loop monitor", () => {
     }
   });
 
-  it("works with the real perf_hooks histogram: a blocked loop is measured, an idle one is not flagged", async () => {
+  // The logic (quiet window not flagged, one warn over the threshold, exactly-at-threshold, reset) is pinned above with
+  // the injected histogram. This is the one real-timer smoke test: that perf_hooks' histogram really sees a blocked
+  // loop through our nanosecond conversion. It no longer asserts "an idle loop reads under the threshold": on a loaded
+  // machine an idle loop is itself late by hundreds of ms (it failed once under two parallel suites), so that could
+  // only be flaky; the fake-histogram "under the threshold" test covers it deterministically. Margins are generous:
+  // the loop is blocked for 1 s, the threshold is 300 ms, and the timer that records the delay gets up to 5 s to run.
+  it("works with the real perf_hooks histogram: a blocked loop is measured", async () => {
     const warn = vi.fn();
-    const monitor = createEventLoopMonitor({ logger: { warn }, thresholdMs: 150, windowMs: 60_000 });
+    const monitor = createEventLoopMonitor({ logger: { warn }, thresholdMs: 300, windowMs: 60_000 });
     monitor.start();
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    monitor.check();
-    expect(warn).not.toHaveBeenCalled(); // idle: about the 20 ms resolution
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    const until = Date.now() + 400;
+    await new Promise((resolve) => setTimeout(resolve, 100)); // let the histogram's timer tick once before the stall
+    const until = Date.now() + 1000;
     while (Date.now() < until) {
       // block the loop on purpose
     }
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    monitor.check();
+    // The delayed timer tick records the stall once the loop is free again; check until it shows (windows reset each time).
+    const deadline = Date.now() + 5000;
+    while (warn.mock.calls.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      monitor.check();
+    }
     expect(warn).toHaveBeenCalledTimes(1);
-    expect((warn.mock.calls[0]![0] as { max_ms: number }).max_ms).toBeGreaterThan(150);
+    expect((warn.mock.calls[0]![0] as { max_ms: number }).max_ms).toBeGreaterThan(300);
     await monitor.stop();
-  });
+  }, 15_000); // the 5 s default would cut the 1 s block plus the 5 s allowance short
 });
 
 describe("event loop monitor edge cases (real histogram)", () => {

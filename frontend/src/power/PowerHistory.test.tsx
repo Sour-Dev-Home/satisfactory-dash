@@ -19,6 +19,14 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { PowerHistoryView } from "./PowerHistoryView";
 
+/**
+ * Same cause as #504 (CommandBar): the chart is a lazy chunk, so the first render suspends and React holds the fallback
+ * for its fixed Suspense throttle (about 300 ms) before showing the chart. Measured on an idle machine: the circuit
+ * article after about 155 ms, the chart after about 400 ms in total, against the 1 s default timeout of
+ * findBy and waitFor, which a fully loaded machine overran. Same assertions, a budget that covers the throttle.
+ */
+const LAZY_CHART_MS = 3000;
+
 /** The vitest-setup stub for uPlot (jsdom has no canvas): what each chart was given. */
 const plots = () => (uPlot as unknown as { instances: { data: unknown[][]; destroyed: boolean }[] }).instances;
 
@@ -39,14 +47,14 @@ const history = (body: PowerHistoryResponse) => server.use(http.get(endpoints.po
 describe("PowerHistoryView", () => {
   it("shows each circuit's now/min/max, a chart hidden from screen readers, and a readings table", async () => {
     renderView();
-    const circuit = await screen.findByRole("article", { name: "Circuit 0 history" });
+    const circuit = await screen.findByRole("article", { name: "Circuit 0 history" }, { timeout: LAZY_CHART_MS });
     const points = powerHistoryNormal.data.series[0].points;
     const productions = points.map((p) => p.productionMW);
     expect(summaryValue(circuit, "Production")).toHaveTextContent(
       `min ${Math.min(...productions).toLocaleString("en-US", { minimumFractionDigits: 1 })} MW`,
     );
     // The chart is a lazy chunk: the summary above is already there, the chart follows.
-    await waitFor(() => expect(circuit.querySelector(".power-chart")).toHaveAttribute("aria-hidden", "true"));
+    await waitFor(() => expect(circuit.querySelector(".power-chart")).toHaveAttribute("aria-hidden", "true"), { timeout: LAZY_CHART_MS });
     expect(within(circuit).getAllByRole("row")).toHaveLength(points.length + 1);
     const plot = plots().at(-1)!;
     expect(plot.data[0]).toHaveLength(points.length);
