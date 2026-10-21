@@ -100,16 +100,21 @@ export interface UserServer {
   publicId: string;
   displayName: string;
   role: MemberRole;
+  /** The internal id, for the injected "has it enrolled" lookup. Never sent to the client. */
+  id: string;
+  createdVia: "operator" | "self_serve";
 }
 
 const UserServerRowSchema = z.object({
+  id: z.string(),
   public_id: z.string(),
   display_name: z.string(),
   role: z.enum(["owner", "admin", "viewer"]),
+  created_via: z.enum(["operator", "self_serve"]),
 });
 
 const LIST_FOR_USER = `
-  SELECT s.public_id, s.display_name, m.role
+  SELECT s.id::text AS id, s.public_id, s.display_name, m.role, s.created_via
   FROM servers.server_members m
   JOIN servers.servers s ON s.id = m.server_id
   WHERE m.user_id = $1 AND s.deleted_at IS NULL
@@ -123,6 +128,8 @@ export async function listServersForUser(db: Queryable, userId: string): Promise
     publicId: row.public_id,
     displayName: row.display_name,
     role: row.role,
+    id: row.id,
+    createdVia: row.created_via,
   }));
 }
 

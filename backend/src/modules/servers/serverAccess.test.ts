@@ -25,7 +25,7 @@ const access: ServerAccess = {
     if (failWith) throw failWith;
     return Object.entries(roles)
       .filter(([, m]) => Object.hasOwn(m, userId))
-      .map(([publicId, m]) => ({ publicId, displayName: publicId, role: m[userId]! }));
+      .map(([publicId, m]) => ({ publicId, displayName: publicId, role: m[userId]!, id: `uuid-${publicId}`, createdVia: "operator" as const }));
   },
 };
 
@@ -174,7 +174,7 @@ describe("createAuthorizeServer preconditions and failures", () => {
   it("shows each user their OWN role on every listed server, and a viewer sees viewer", async () => {
     for (const [user, role] of [["own", "owner"], ["adm", "admin"], ["view", "viewer"]] as const) {
       const res = await request(build()).get("/api/servers").set("x-test-user", user);
-      expect(res.body).toEqual({ servers: [{ id: "alpha", displayName: "Alpha", role }] });
+      expect(res.body).toEqual({ servers: [{ id: "alpha", displayName: "Alpha", role, createdVia: "operator" }] });
     }
   });
 
@@ -193,8 +193,8 @@ describe("createAuthorizeServer preconditions and failures", () => {
       });
       const mixed = await request(app).get("/api/servers").set("x-test-user", "adm");
       expect(mixed.body.servers).toEqual([
-        { id: "alpha", displayName: "Alpha", role: "admin" },
-        { id: "beta", displayName: "Beta", role: "owner" },
+        { id: "alpha", displayName: "Alpha", role: "admin", createdVia: "operator" },
+        { id: "beta", displayName: "Beta", role: "owner", createdVia: "operator" },
       ]);
       const none = await request(app).get("/api/servers").set("x-test-user", "stranger");
       expect(none.body).toEqual({ servers: [] });

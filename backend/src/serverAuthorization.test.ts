@@ -127,7 +127,7 @@ const access: ServerAccess = {
   listForUser: async (userId) =>
     Object.entries(members)
       .filter(([, roles]) => Object.hasOwn(roles, userId))
-      .map(([publicId, roles]) => ({ publicId, displayName: publicId, role: roles[userId]! })),
+      .map(([publicId, roles]) => ({ publicId, displayName: publicId, role: roles[userId]!, id: `uuid-${publicId}`, createdVia: "operator" as const })),
 };
 
 /** Stands in for the session guard: the test names the signed-in user in a header. */

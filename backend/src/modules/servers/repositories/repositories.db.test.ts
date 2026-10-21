@@ -276,8 +276,8 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       await addMember(pool, { serverId: gone.id, userId: u.id, role: "owner" });
       await softDeleteServer(pool, "list-g");
       expect(await listServersForUser(pool, u.id)).toEqual([
-        { publicId: "list-a", displayName: "Amy", role: "admin" },
-        { publicId: "list-z", displayName: "Zed", role: "viewer" },
+        { publicId: "list-a", displayName: "Amy", role: "admin", id: amy.id, createdVia: "operator" },
+        { publicId: "list-z", displayName: "Zed", role: "viewer", id: zed.id, createdVia: "operator" },
       ]);
       expect(await listServersForUser(pool, "00000000-0000-4000-8000-000000000000")).toEqual([]);
     });
