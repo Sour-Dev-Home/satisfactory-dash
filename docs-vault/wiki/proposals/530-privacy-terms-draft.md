@@ -277,3 +277,19 @@ investigating abuse".
 12. **Cap numbers on the page.** Print them in the terms, or write "currently" and link to a settings page (Part 2a).
 13. **Release order.** The page must describe what shipped: wait for #311 (deletion), the 24-hour sweep, the
     sign-up acceptance record, and the generated display name before publishing.
+
+### Owner decisions (2026-10-21)
+
+- **Age (3):** adults only. The terms say the service is for people 18 or older. There is no age check and no age
+  tick box; the sign-up acceptance (Part 2b) covers it. Replace the privacy page's "13+" with 18+.
+- **Backups (6):** no promise of deletion from backups on request. State only that backups age out within 37 days.
+- **The record that stays (7):** clear the server's name on removal; keep only the id and the audit events. This is a
+  code change to the removal purge (the operator's `remove-server`, the owner's delete and the 24-hour sweep alike),
+  and it must ship before the page says so.
+- **Notice for players (8):** yes. The setup screen shows a short notice the owner can copy into the server's Discord.
+- **Cap numbers (12):** written as "currently" in the terms.
+- **Coffee Stain (10):** nothing to do while the mod sends counts only; re-check if a later mod sends names.
+- **Address (5):** leave it out. The page keeps the named data controller and the contact alias, with no postal
+  address. Ask the lawyer (item 4) whether any law the service falls under requires one.
+- **Still open:** jurisdiction (1), which privacy law applies (2), lawyer review (4), the terms version and
+  re-acceptance (9), and the "free" promise (11).
