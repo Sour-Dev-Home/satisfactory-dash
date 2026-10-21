@@ -1,6 +1,8 @@
 import { HealthResponseSchema, ReadinessResponseSchema } from "./health";
 import { ServerListResponseSchema } from "./servers";
 import {
+  CreateAgentServerRequestSchema,
+  CreateAgentServerResponseSchema,
   CreateServerRequestSchema,
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
@@ -252,6 +254,7 @@ export const endpoints = {
       request: RenameServerRequestSchema,
       response: RenameServerResponseSchema,
       operatorOnly: true,
+      selfServeOwner: true,
     },
     // Removes the server: its memberships, its encrypted tokens and its pollers go.
     remove: {
@@ -260,6 +263,7 @@ export const endpoints = {
       path: (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`,
       response: DeleteServerResponseSchema,
       operatorOnly: true,
+      selfServeOwner: true,
     },
     // Test the stored connection (the tokens are write-only, so the client cannot resend them).
     testSaved: {
@@ -268,6 +272,19 @@ export const endpoints = {
       path: scoped("test-connection"),
       response: TestConnectionResponseSchema,
       operatorOnly: true,
+    },
+  },
+  // ADR-0046 (self-serve agent servers): any signed-in user (not `operatorOnly`) creates an agent server and becomes its owner.
+  // 201 `{ server }`. The backend does not serve it yet (ADR-0046 build task 4).
+  // `selfServeOwner` (on `serverManagement.renameAgent` and `.remove` above): the owner of a server created through self-serve
+  // may also call that operator-only route. The flag only declares the intent; until the backend implements it, owners get 403.
+  selfServe: {
+    createAgentServer: {
+      method: "POST",
+      route: "/api/servers/agent",
+      path: () => "/api/servers/agent",
+      request: CreateAgentServerRequestSchema,
+      response: CreateAgentServerResponseSchema,
     },
   },
   // ADR-0027 PR 7 (alerts). Every GET is for any member of the server; every other method (POST .../test included) is
