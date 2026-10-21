@@ -15,10 +15,15 @@ import { buildingState, stateLabel, type BuildingState } from "./buildingState";
 export const MAP_FILTERS_KEY = "satis-manager.map-filters.v1";
 
 export type UseFilter = "all" | "free" | "used";
-/** A building's filter class: its state, or "backedUp" (the warn ring wins over the state, as it does when drawn). */
+/**
+ * What can be hidden among buildings: a state, or "backedUp". Backed up is an overlay on top of a state
+ * (as in the layer's text), not a state of its own: hiding "backedUp" hides the backed-up buildings
+ * whatever their state, hiding a state hides all buildings in it, backed up or not.
+ */
 export type BuildingFilterKey = BuildingState | "backedUp";
 
-export const BUILDING_FILTER_KEYS: readonly BuildingFilterKey[] = ["producing", "idle", "paused", "noRecipe", "backedUp"];
+export const BUILDING_STATE_KEYS: readonly BuildingState[] = ["producing", "idle", "paused", "noRecipe"];
+export const BUILDING_FILTER_KEYS: readonly BuildingFilterKey[] = [...BUILDING_STATE_KEYS, "backedUp"];
 export const buildingFilterLabel = (key: BuildingFilterKey) => (key === "backedUp" ? "Backed up" : stateLabel(key));
 
 export interface MapFilters {
@@ -113,12 +118,23 @@ export function filterNodes(nodes: readonly ResourceNode[], hiddenTypes: Readonl
   return nodes.filter((n) => !hiddenTypes.has(nodeKey(n)) && (use === "all" || (use === "used") === n.exploited));
 }
 
-export const buildingFilterKey = (b: FactoryBuilding): BuildingFilterKey => (isBackedUpState(b) ? "backedUp" : buildingState(b));
+/** Placed buildings per state, and how many of them (in any state) are backed up: the numbers in the layer's text. */
+export function buildingCounts(buildings: readonly FactoryBuilding[]): Map<BuildingFilterKey, number> {
+  const counts = new Map<BuildingFilterKey, number>();
+  const add = (key: BuildingFilterKey) => counts.set(key, (counts.get(key) ?? 0) + 1);
+  for (const b of buildings) {
+    if (!b.location) continue;
+    add(buildingState(b));
+    if (isBackedUpState(b)) add("backedUp");
+  }
+  return counts;
+}
 
 /** Buildings without a position are kept: they're never drawn, and the text says how many have none. */
 export function filterBuildings(buildings: readonly FactoryBuilding[], hidden: ReadonlySet<BuildingFilterKey>): FactoryBuilding[] {
   if (hidden.size === 0) return [...buildings];
-  return buildings.filter((b) => !b.location || !hidden.has(buildingFilterKey(b)));
+  const hideBackedUp = hidden.has("backedUp");
+  return buildings.filter((b) => !b.location || !(hidden.has(buildingState(b)) || (hideBackedUp && isBackedUpState(b))));
 }
 
 export interface TypeEntry {
@@ -160,8 +176,9 @@ export function hiddenSummary(
     if (filters.use === "used") parts.push("nodes in use only");
   }
   if (buildingCounts) {
-    const hidden = BUILDING_FILTER_KEYS.filter((k) => filters.hiddenStates.has(k)).length;
+    const hidden = BUILDING_STATE_KEYS.filter((k) => filters.hiddenStates.has(k)).length;
     if (hidden > 0) parts.push(`${hidden} building ${hidden === 1 ? "state" : "states"} hidden`);
+    if (filters.hiddenStates.has("backedUp")) parts.push("backed-up buildings hidden");
   }
   return parts.length === 0 ? "nothing hidden" : parts.join(", ");
 }

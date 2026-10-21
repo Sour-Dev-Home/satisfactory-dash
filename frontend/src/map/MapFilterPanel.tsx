@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import {
-  BUILDING_FILTER_KEYS,
+  BUILDING_STATE_KEYS,
   buildingFilterLabel,
   hiddenSummary,
   toggled,
@@ -30,6 +30,9 @@ function AllNone({ onAll, onNone, label }: { onAll: () => void; onNone: () => vo
   );
 }
 
+/** A checkbox or radio row: full width, at least a touch target tall, input and text centred. */
+const OPTION_ROW = "flex min-h-touch w-full items-center gap-2";
+
 function Group({ legend, actions, children }: { legend: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <fieldset className="grid gap-1">
@@ -58,6 +61,8 @@ export function MapFilterPanel({
   buildingCounts: ReadonlyMap<BuildingFilterKey, number> | null;
 }) {
   if (!types && !buildingCounts) return null;
+  // All and None are for the four states; the backed-up choice below them stays as it is.
+  const overlay: BuildingFilterKey[] = filters.hiddenStates.has("backedUp") ? ["backedUp"] : [];
   const set = (patch: Partial<MapFilters>) => onChange((current) => ({ ...current, ...patch }));
   return (
     <details
@@ -69,8 +74,8 @@ export function MapFilterPanel({
       className="group grid gap-3 text-sm"
     >
       <summary className="flex min-h-touch cursor-pointer items-center gap-2 text-fg">
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="disclosure-chevron size-4 flex-none group-open:rotate-90">
-          <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="disclosure-chevron size-chevron flex-none group-open:rotate-90">
+          <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" />
         </svg>
         <span className="font-medium">Filters</span>
         <span className="text-muted">({hiddenSummary(filters, types, buildingCounts)})</span>
@@ -90,11 +95,11 @@ export function MapFilterPanel({
                   />
                 }
               >
-                <div className="flex flex-wrap gap-x-6">
+                <div className="grid">
                   {types.map(({ key, count, sample }) => {
                     const icon = resourceIconUrl(sample.type, sample.nodeType);
                     return (
-                      <label key={key} className="flex min-h-touch items-center gap-2">
+                      <label key={key} className={OPTION_ROW}>
                         <input
                           type="checkbox"
                           checked={!filters.hiddenTypes.has(key)}
@@ -109,10 +114,11 @@ export function MapFilterPanel({
                 </div>
               </Group>
             )}
-            <Group legend="Resource nodes in use or free">
-              <div className="flex flex-wrap gap-x-6">
+            {/* The other groups have an All/None row under the legend; from two columns up this spacer gives the options the same top line. */}
+            <Group legend="Resource nodes in use or free" actions={<div aria-hidden="true" className="hidden min-h-touch sm:block" />}>
+              <div className="grid">
                 {USE_OPTIONS.map(({ value, label }) => (
-                  <label key={value} className="flex min-h-touch items-center gap-2">
+                  <label key={value} className={OPTION_ROW}>
                     <input type="radio" name="map-node-use" checked={filters.use === value} onChange={() => set({ use: value })} />
                     {label}
                   </label>
@@ -127,14 +133,14 @@ export function MapFilterPanel({
             actions={
               <AllNone
                 label="building states"
-                onAll={() => set({ hiddenStates: new Set() })}
-                onNone={() => set({ hiddenStates: new Set(BUILDING_FILTER_KEYS) })}
+                onAll={() => set({ hiddenStates: new Set<BuildingFilterKey>(overlay) })}
+                onNone={() => set({ hiddenStates: new Set<BuildingFilterKey>([...BUILDING_STATE_KEYS, ...overlay]) })}
               />
             }
           >
-            <div className="flex flex-wrap gap-x-6">
-              {BUILDING_FILTER_KEYS.map((key) => (
-                <label key={key} className="flex min-h-touch items-center gap-2">
+            <div className="grid">
+              {BUILDING_STATE_KEYS.map((key) => (
+                <label key={key} className={OPTION_ROW}>
                   <input
                     type="checkbox"
                     checked={!filters.hiddenStates.has(key)}
@@ -144,6 +150,16 @@ export function MapFilterPanel({
                   <span className="text-muted">({buildingCounts.get(key) ?? 0})</span>
                 </label>
               ))}
+              {/* Backed up is a warning on top of a state, so it isn't one of the states above (the layer's text counts it apart too). */}
+              <label className={`${OPTION_ROW} border-t border-line`}>
+                <input
+                  type="checkbox"
+                  checked={!filters.hiddenStates.has("backedUp")}
+                  onChange={() => set({ hiddenStates: toggled(filters.hiddenStates, "backedUp") })}
+                />
+                Include backed-up buildings
+                <span className="text-muted">({buildingCounts.get("backedUp") ?? 0})</span>
+              </label>
             </div>
           </Group>
         )}

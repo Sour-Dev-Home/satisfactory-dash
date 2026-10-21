@@ -27,6 +27,8 @@ export interface MapContext {
 export interface DescribeOptions {
   /** The backend cut the layer to its item cap: the text speaks of what is shown, not of a total. */
   truncated?: boolean;
+  /** Filters hide some: how many the layer has in all. The text then says "N of M shown" and that the rest are hidden. */
+  filteredOf?: number;
 }
 
 /**

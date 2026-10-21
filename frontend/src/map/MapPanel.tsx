@@ -14,14 +14,7 @@ import { GRID_BASE_MAP } from "./projection";
 import { railsLayer } from "./railsLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
 import { MapFilterPanel } from "./MapFilterPanel";
-import {
-  buildingFilterKey,
-  filterBuildings,
-  filterNodes,
-  typeEntries,
-  useMapFilters,
-  type BuildingFilterKey,
-} from "./mapFilters";
+import { buildingCounts, filterBuildings, filterNodes, typeEntries, useMapFilters } from "./mapFilters";
 import { EMPTY_FILTERED, EMPTY_VIEW, RailsTable, ResourceNodesTable } from "./WorldTables";
 
 // Leaflet (about 40 kB gzip) is only needed here: a separate chunk, loaded with this page.
@@ -64,12 +57,9 @@ function WorldLayerText<T>({
   const hides = filtered !== undefined && filtered.shown < filtered.total;
   return (
     <Loadable pending={query.isPending} skeleton={<SkeletonLine label={`Loading ${layer.label.toLowerCase()}…`} />} className="grid gap-1">
-      {query.data && hides && (
-        <p>
-          {filtered.shown} of {filtered.total} {layer.label.toLowerCase()} shown (the rest are hidden by the filters).
-        </p>
+      {query.data && (
+        <p>{layer.describe(filtered?.data ?? query.data.data, { truncated, filteredOf: hides ? filtered.total : undefined })}</p>
       )}
-      {query.data && (!hides || filtered.shown > 0) && <p>{layer.describe(filtered?.data ?? query.data.data, { truncated })}</p>}
       {truncated && (
         <p className="text-sm text-muted">
           Showing part of the {layer.label.toLowerCase()}: the server cut this layer to its size limit.
@@ -157,11 +147,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   );
   const allPlaced = placed(snapshot.data.buildings);
   const shown = placed(filteredFactory.buildings);
-  const buildingCounts = useMemo(() => {
-    const counts = new Map<BuildingFilterKey, number>();
-    for (const b of placed(snapshot.data.buildings)) counts.set(buildingFilterKey(b), (counts.get(buildingFilterKey(b)) ?? 0) + 1);
-    return counts;
-  }, [snapshot]);
+  const counts = useMemo(() => buildingCounts(snapshot.data.buildings), [snapshot]);
 
   // A world layer is fetched only while its toggle is on (ADR-0038 §2).
   const rails = useQuery({ ...queries.mapRails(serverId), enabled: visible.has(railsLayer.id) });
@@ -229,7 +215,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
         filters={filters}
         onChange={setFilters}
         types={nodesData ? nodeTypes : visible.has(resourceNodesLayer.id) ? [] : null}
-        buildingCounts={visible.has(buildingsLayer.id) ? buildingCounts : null}
+        buildingCounts={visible.has(buildingsLayer.id) ? counts : null}
       />
 
       <Suspense fallback={<MapCanvasSkeleton />}>
@@ -259,10 +245,11 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           filtered={allNodes && shownNodes ? { data: shownNodes, shown: shownNodes.length, total: allNodes.length } : undefined}
         />
       )}
-      {visible.has(buildingsLayer.id) && shown.length < allPlaced.length && (
-        <p>{shown.length} of {allPlaced.length} buildings shown (the rest are hidden by the filters).</p>
+      {visible.has(buildingsLayer.id) && (
+        <p>
+          {buildingsLayer.describe(filteredFactory, shown.length < allPlaced.length ? { filteredOf: allPlaced.length } : undefined)}
+        </p>
       )}
-      {visible.has(buildingsLayer.id) && <p>{buildingsLayer.describe(filteredFactory)}</p>}
       {visible.has(buildingsLayer.id) && (
         <div className="grid gap-2">
           <h4 id="map-list-heading">Buildings in view ({listed.length})</h4>
