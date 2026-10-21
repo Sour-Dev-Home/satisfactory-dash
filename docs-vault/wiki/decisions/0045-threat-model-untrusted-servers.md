@@ -140,6 +140,9 @@ first public release; #517 before any stranger can get a server.
    - An unknown command answers `{ok:false, code:"unsupported"}` (lines 118 and 165, S6, unit-tested). Only
      `set_auto_pause` with a boolean `enabled` runs.
 
+See also (2026-10-20): ADR-0046 (`0046-self-serve-agent-servers.md`, proposed) is #517's design and gives M2, M3, B5
+and O3 their new dispositions.
+
 ## Amendment 2 (2026-10-20): #514's limits
 
 #514 (PR #532) has merged. The original tables above stay as written; this amendment states the dispositions that

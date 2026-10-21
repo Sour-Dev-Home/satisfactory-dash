@@ -1,0 +1,1 @@
+- 2026-10-20: `packages/shared` declares the self-serve agent server contract (ADR-0046 task 1, #523): `agent` is a reserved server id, `endpoints.selfServe.createAgentServer` (`POST /api/servers/agent`, display name in, agent-server view out), and `selfServeOwner` on `serverManagement.renameAgent` and `.remove`; no behaviour change, the backend still answers 403 to owners.
