@@ -102,12 +102,19 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
   const work = useWrite();
   // Turning on or off swaps the buttons, which drops the focus the click had: put it on the new first button.
   const actions = useRef<HTMLDivElement>(null);
-  const refocus = useRef(false);
+  // Renders left to try for it. It runs after EVERY render, not only on a state change: the new button may
+  // still be disabled (busy) or not yet mounted on the render that changes the state, and focus() on a
+  // disabled button does nothing. It stops once focus has actually landed, or after a few tries.
+  const refocus = useRef(0);
   useEffect(() => {
-    if (!refocus.current || work.busy) return;
-    refocus.current = false;
-    actions.current?.querySelector("button")?.focus();
-  }, [device.kind, work.busy]);
+    if (refocus.current === 0 || work.busy) return;
+    const button = actions.current?.querySelector("button");
+    if (button && !button.disabled) {
+      button.focus();
+      if (document.activeElement === button) refocus.current = 0;
+    }
+    if (refocus.current > 0) refocus.current -= 1;
+  });
 
   // Reads the browser's state. Run on mount and again when the permission may have changed (another tab, the
   // site settings): a device that was subscribed stops saying so once notifications are blocked.
@@ -160,7 +167,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
 
   async function turnOn() {
     setNote(null);
-    refocus.current = true;
+    refocus.current = 10;
     await work.run(async () => {
       let result;
       try {
@@ -193,7 +200,7 @@ function PushControls({ vapidPublicKey }: { vapidPublicKey: string }) {
 
   async function turnOff() {
     setNote(null);
-    refocus.current = true;
+    refocus.current = 10;
     await work.run(async () => {
       try {
         await writes.unsubscribe.mutateAsync(await resolveId());

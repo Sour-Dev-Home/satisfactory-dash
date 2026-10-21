@@ -377,12 +377,12 @@ describe("hunt: focus", () => {
     );
     renderPush();
     fireEvent.click(await screen.findByRole("button", { name: "Turn on push on this device" }));
-    const test = await screen.findByRole("button", { name: "Send test notification" });
-    await waitFor(() => expect(test).toHaveFocus(), { timeout: 5000 });
+    // Query again on each try: the assertion is about whichever button is on screen now, not a stale node.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send test notification" })).toHaveFocus(), { timeout: 5000 });
     fireEvent.click(screen.getByRole("button", { name: "Turn off push on this device" }));
-    const on = await screen.findByRole("button", { name: "Turn on push on this device" });
-    await waitFor(() => expect(on).toHaveFocus(), { timeout: 5000 });
-  });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Turn on push on this device" })).toHaveFocus(), { timeout: 5000 });
+    // Two waits of up to 5 s plus the first find: the test's own budget must exceed them (Vitest's default is 5 s in all).
+  }, 20_000);
 });
 
 describe("permission changes while the page is open", () => {
