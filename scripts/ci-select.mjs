@@ -48,6 +48,7 @@ export const INPUTS = [
   [/^frontend\/src\/index\.css$/, ["server-manager"]], // the server manager's build and tests read its tokens
   [/^LICENSE$/, ["frontend"]], // frontend/e2e/legal.spec.ts reads it
   [/^\.env\.example$/, ["backend"]],
+  [/^backend\/src\/modules\/identity\/signupConfig\.ts$/, ["frontend"]], // frontend/src/auth/googleSignIn.test.ts checks TERMS_VERSION against it
   [/^compose\.yaml$/, ["compose"]],
 ];
 

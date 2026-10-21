@@ -51,6 +51,43 @@ export async function createUser(db: Queryable, input: { displayName: string; em
   return toUser(parseOne(UserRowSchema, result.rows, "identity.createUser"));
 }
 
+const INSERT_SIGNUP_USER = `
+  INSERT INTO identity.users (display_name, terms_version, terms_accepted_at)
+  VALUES ($1, $2, now())
+  RETURNING id, display_name, email, status, created_at`;
+
+/** Open sign-up (ADR-0046): a new account with NO email stored, and the terms version it accepted
+ *  (the time is the database's `now()`). */
+export async function createSignupUser(db: Queryable, input: { displayName: string; termsVersion: string }): Promise<User> {
+  const result = await timedQuery(db, "identity.createSignupUser", INSERT_SIGNUP_USER, [input.displayName, input.termsVersion]);
+  return toUser(parseOne(UserRowSchema, result.rows, "identity.createSignupUser"));
+}
+
+/** Serializes sign-up creations within a transaction (released at commit or rollback), so the C8 count
+ *  and the insert can't be raced past the cap, and two first sign-ins of one identity take turns. */
+export async function takeSignupLock(db: Queryable): Promise<void> {
+  await timedQuery(db, "identity.takeSignupLock", "SELECT pg_advisory_xact_lock(hashtext('identity.signup'))", []);
+}
+
+const COUNT_RECENT_USERS = `
+  SELECT count(*)::int AS n
+  FROM identity.users
+  WHERE terms_accepted_at > now() - interval '1 hour'`;
+
+/** C8: accounts that SIGNED UP in the last hour. Counted by `terms_accepted_at` (set only by open sign-up, at
+ *  creation), so the seeded operator and any invited or bulk-made account never use up the cap. Uses the partial index. */
+export async function countUsersCreatedLastHour(db: Queryable): Promise<number> {
+  const result = await timedQuery(db, "identity.countUsersCreatedLastHour", COUNT_RECENT_USERS, []);
+  return parseOne(z.object({ n: z.number() }), result.rows, "identity.countUsersCreatedLastHour").n;
+}
+
+const SELECT_NAME_TAKEN = `SELECT 1 AS taken FROM identity.users WHERE display_name = $1 LIMIT 1`;
+
+export async function displayNameTaken(db: Queryable, displayName: string): Promise<boolean> {
+  const result = await timedQuery(db, "identity.displayNameTaken", SELECT_NAME_TAKEN, [displayName]);
+  return result.rows.length > 0;
+}
+
 const SELECT_USER_BY_ID = `
   SELECT id, display_name, email, status, created_at
   FROM identity.users
