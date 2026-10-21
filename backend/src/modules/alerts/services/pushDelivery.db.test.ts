@@ -301,6 +301,62 @@ describe.skipIf(!available)("web push delivery against a real Postgres (ADR-0044
     });
   });
 
+  describe("hunt: races and edges", () => {
+    it("a user opted in on two servers gets each event's row only for the event's own server", async () => {
+      const a = await setup();
+      const b = await setup();
+      const userId = a.people[0]!.userId;
+      await addMember(pool, { serverId: b.server.id, userId, role: "viewer", actorUserId: null });
+      await service().setOptIn(b.server.publicId, userId, true);
+      await a.fire();
+      expect(await pushRows(a.server.id)).toHaveLength(1);
+      expect(await pushRows(b.server.id)).toEqual([]);
+      await b.fire();
+      // b's owner and the shared user: one row each, no duplicates
+      expect(new Set((await pushRows(b.server.id)).map((r) => r.sub)).size).toBe(2);
+      expect(await pushRows(b.server.id)).toHaveLength(2);
+      expect(await pushRows(a.server.id)).toHaveLength(1);
+    });
+
+    it("a subscription deleted between the enqueue and the claim is never claimed or sent", async () => {
+      const { people, fire, server } = await setup();
+      await fire();
+      await admin.query("DELETE FROM alerts.push_subscriptions WHERE id = $1", [people[0]!.subscriptionId]);
+      expect(await claimDueDeliveries(pool, 10, 120)).toEqual([]);
+      await worker().tick();
+      expect(sent).toHaveLength(0);
+      expect(await pushRows(server.id)).toEqual([]);
+    });
+
+    it("a push row is claimed while the server's Discord destination is disabled, and a disabled destination's row is not", async () => {
+      const { people, fire, server } = await setup();
+      const URL = `https://discord.com/api/webhooks/1234567890123456789/${"Ab0_-".repeat(14)}`;
+      await saveDiscordDestination(pool, ring, server.publicId, URL);
+      await admin.query("UPDATE alerts.destinations SET enabled = false, disabled_reason = 'manual'");
+      await fire();
+      const claimed = await claimDueDeliveries(pool, 10, 120);
+      expect(claimed.map((c) => c.channel)).toEqual(["push"]);
+      expect(claimed[0]).toMatchObject({ channel: "push", subscriptionId: people[0]!.subscriptionId });
+    });
+
+    it("keeps the event order within a server's push rows", async () => {
+      const { fire } = await setup();
+      await fire(true, "fired");
+      await fire(true, "resolved");
+      const claimed = await claimDueDeliveries(pool, 10, 120);
+      expect(claimed.map((c) => c.event.transition)).toEqual(["fired", "resolved"]);
+    });
+
+    it("a 403 (VAPID refused) drops the row and keeps the subscription", async () => {
+      const { fire, server, people } = await setup();
+      await fire();
+      status = 403;
+      await worker().tick();
+      expect((await pushRows(server.id))[0]).toMatchObject({ status: "dead", last_error: "vapid_rejected" });
+      expect(await rows("SELECT 1 FROM alerts.push_subscriptions WHERE id = $1", [people[0]!.subscriptionId])).toHaveLength(1);
+    });
+  });
+
   it("no endpoint, key or payload text appears in any log line", async () => {
     const { people, fire } = await setup({ members: 1 });
     await fire();

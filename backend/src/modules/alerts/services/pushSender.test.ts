@@ -116,3 +116,36 @@ describe("openPushSubscription", () => {
     expect(openPushSubscription(ring, { ...s, p256dhEnc: s.authEnc })).toBeUndefined();
   });
 });
+
+describe("Retry-After forms (RFC 9110 section 10.2.3)", () => {
+  const NOW = Date.parse("2026-10-20T12:00:00Z");
+  const sendAt = (status: number, headers: Record<string, string>) => {
+    const f = fakeFetch(() => new Response("x", { status, headers }));
+    return sendWebPush(message(), { vapid, allowedHosts: [HOST], fetch: f.fn, now: () => NOW });
+  };
+
+  it("honours an HTTP-date Retry-After on a 429, within bounds", async () => {
+    expect(await sendAt(429, { "retry-after": "Tue, 20 Oct 2026 12:05:00 GMT" })).toEqual({ kind: "retry", code: "rate_limited", retryAfterMs: 300_000 });
+    expect(await sendAt(429, { "retry-after": "Wed, 21 Oct 2026 12:00:00 GMT" })).toEqual({ kind: "retry", code: "rate_limited", retryAfterMs: 3_600_000 });
+    // a date in the past is "now": the minimum, never negative
+    expect(await sendAt(429, { "retry-after": "Tue, 20 Oct 2026 11:00:00 GMT" })).toEqual({ kind: "retry", code: "rate_limited", retryAfterMs: 1000 });
+  });
+
+  it("ignores garbage Retry-After values", async () => {
+    for (const bad of ["soon", "-5", "1e9", "Infinity", "NaN", ""]) {
+      expect(await sendAt(429, { "retry-after": bad })).toEqual({ kind: "retry", code: "rate_limited" });
+    }
+  });
+
+  it("honours Retry-After on a 503 too", async () => {
+    expect(await sendAt(503, { "retry-after": "120" })).toEqual({ kind: "retry", code: "server_error", retryAfterMs: 120_000 });
+  });
+});
+
+describe("timeout (hunt)", () => {
+  it("a push service that never answers is abandoned at the deadline as a timeout", async () => {
+    const hang = (async (_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => init.signal!.addEventListener("abort", () => reject(init.signal!.reason)))) as unknown as typeof fetch;
+    expect(await sendWebPush(message(), { vapid, allowedHosts: [HOST], fetch: hang, timeoutMs: 30 })).toEqual({ kind: "retry", code: "timeout" });
+  });
+});

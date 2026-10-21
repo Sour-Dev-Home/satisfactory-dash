@@ -81,3 +81,15 @@ describe("formatPushTestMessage", () => {
     expect(parse(formatPushTestMessage(AT))).toEqual({ v: 1, title: "Test notification", body: "Push notifications are set up on this device.", kind: "test", at: new Date(AT).toISOString() });
   });
 });
+
+describe("plainAlertText (hunt)", () => {
+  it("never leaves half a surrogate pair at any cut length, ellipsis included", async () => {
+    const { plainAlertText } = await import("./alertMessage.js");
+    const text = "a".repeat(3) + "\u{1F600}".repeat(10);
+    for (let max = 0; max <= 20; max += 1) {
+      const out = plainAlertText(text, max);
+      expect(out.isWellFormed(), `max ${max}`).toBe(true);
+      expect(out.length, `max ${max}`).toBeLessThanOrEqual(Math.max(max, 1));
+    }
+  });
+});

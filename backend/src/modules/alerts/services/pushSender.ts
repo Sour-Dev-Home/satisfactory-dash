@@ -45,9 +45,15 @@ export const PUSH_TTL_SECONDS = 4 * 60 * 60;
 const MIN_RETRY_AFTER_MS = 1000;
 const MAX_RETRY_AFTER_MS = 60 * 60 * 1000;
 
-function retryAfterMs(header: string | null): number | undefined {
-  if (header === null || !/^\d+(\.\d+)?$/.test(header.trim())) return undefined;
-  return Math.min(MAX_RETRY_AFTER_MS, Math.max(MIN_RETRY_AFTER_MS, Math.ceil(Number(header) * 1000)));
+/** RFC 9110 section 10.2.3: delay-seconds or an HTTP-date; anything else is ignored. Bounded either way. */
+function retryAfterMs(header: string | null, nowMs: number): number | undefined {
+  if (header === null) return undefined;
+  const value = header.trim();
+  let ms: number;
+  if (/^\d+(\.\d+)?$/.test(value)) ms = Math.ceil(Number(value) * 1000);
+  else if (/^[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value) && Number.isFinite(Date.parse(value))) ms = Date.parse(value) - nowMs;
+  else return undefined;
+  return Math.min(MAX_RETRY_AFTER_MS, Math.max(MIN_RETRY_AFTER_MS, ms));
 }
 
 /** The context a subscription field is sealed under (pushService.ts seals with the same). */
@@ -107,11 +113,10 @@ export async function sendWebPush(message: PushMessage, options: PushSenderOptio
   if (status >= 200 && status < 300) return { kind: "sent" };
   if (status >= 300 && status < 400) return { kind: "rejected", code: "redirect_refused", status };
   if (status === 404 || status === 410) return { kind: "gone", status };
-  if (status === 429) {
-    const after = retryAfterMs(response.headers.get("retry-after"));
-    return { kind: "retry", code: "rate_limited", ...(after !== undefined ? { retryAfterMs: after } : {}) };
+  if (status === 429 || status >= 500) {
+    const after = retryAfterMs(response.headers.get("retry-after"), (options.now ?? Date.now)());
+    return { kind: "retry", code: status === 429 ? "rate_limited" : "server_error", ...(after !== undefined ? { retryAfterMs: after } : {}) };
   }
-  if (status >= 500) return { kind: "retry", code: "server_error" };
   // 401/403: the push service refused our VAPID token (keys rotated, or the subscription belongs to other keys).
   if (status === 401 || status === 403) return { kind: "rejected", code: "vapid_rejected", status };
   if (status === 400 || status === 413) return { kind: "rejected", code: status === 413 ? "too_large" : "bad_request", status };
