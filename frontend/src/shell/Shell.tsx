@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AgentSettings } from "../agent/AgentSettings";
 import { YourServersSection } from "../selfServe/YourServersSection";
+import { useYourServer } from "../selfServe/useYourServer";
 import { AlertsBell } from "../alerts/AlertsBell";
 import { queries } from "../api/queries";
 import { AccountMenu } from "../auth/AccountMenu";
@@ -261,6 +262,7 @@ const SERVERS_TAB: (typeof TABS)[number] = { to: "/app/servers", label: "Servers
  */
 export function Shell() {
   const server = useSelectedServer();
+  const yourServer = useYourServer();
   // ServerGate already loaded the list; this reads the same cache entry.
   const canManageServers = useQuery(queries.servers()).data?.canManageServers === true;
   const pages = useRef<HTMLDivElement>(null);
@@ -424,10 +426,12 @@ export function Shell() {
                 {/* Keyed by server: an enrolment code is for one server and must never follow the user. */}
                 <AgentSettings key={server.id} />
               </Section>
-              <Section label="Your server" probe="your-server">
-                {/* Keyed by server: a half-typed delete confirmation must not follow the user to another server. */}
-                <YourServersSection key={server.id} />
-              </Section>
+              {yourServer.visible && (
+                <Section label="Your server" probe="your-server">
+                  {/* Keyed by server: a half-typed delete confirmation must not follow the user to another server. */}
+                  <YourServersSection key={server.id} />
+                </Section>
+              )}
               <Section label="Alert settings" probe="alert-settings">
                 <AlertSettings />
               </Section>
