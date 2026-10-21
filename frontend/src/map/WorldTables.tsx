@@ -78,8 +78,8 @@ export function RailsTable({ segments, view }: { segments: readonly RailSegment[
           </tr>
         </thead>
         <tbody>
-          {listed.map((s) => (
-            <tr key={s.id}>
+          {listed.map((s, i) => (
+            <tr key={`${s.id}:${i}`}>
               <td>{s.id}</td>
               <td>{formatMetres(polylineLengthM(s.points))}</td>
               <td>{formatPoint(s.points[0])}</td>

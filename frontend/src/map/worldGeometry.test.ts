@@ -77,3 +77,17 @@ describe("countByType", () => {
     expect(countByType([node("__proto__"), node("__proto__")])).toEqual([["__proto__", 2]]);
   });
 });
+
+describe("view edges (hunt)", () => {
+  it("counts a node exactly on the view edge and a rail that only touches it", () => {
+    expect(nodeInView(VIEW, node("a", 100, 100))).toBe(true);
+    expect(nodeInView(VIEW, node("a", 101, 0))).toBe(false);
+    expect(railInView(VIEW, { id: "r", points: [[100, 100], [200, 200]] })).toBe(true);
+    expect(railInView(VIEW, { id: "r", points: [[-50, 50], [150, 50]] })).toBe(true);
+    expect(railInView(VIEW, { id: "r", points: [[101, 0], [200, 0]] })).toBe(false);
+  });
+  it("a zero-length segment has zero length", () => {
+    expect(polylineLengthM([[5, 5], [5, 5]])).toBe(0);
+    expect(formatMetres(0)).toBe("0 m");
+  });
+});

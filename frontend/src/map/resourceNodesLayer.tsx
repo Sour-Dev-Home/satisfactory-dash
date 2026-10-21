@@ -1,6 +1,6 @@
 import type { ResourceNode } from "@satisfactory-dash/shared";
 import type { MapLayer } from "./layers";
-import { countByType, formatPoint, nodeKindLabel, nodeRadiusPx, purityLabel } from "./worldGeometry";
+import { countByType, countOf, formatPoint, nodeKindLabel, nodeRadiusPx, purityLabel } from "./worldGeometry";
 
 /** Nodes are landmarks: FICSIT amber, small (ADR-0041). In use is filled, free is an outline. */
 export const NODE_TOKEN = "--color-accent";
@@ -78,6 +78,6 @@ export const resourceNodesLayer: MapLayer<ResourceNode[]> = {
     const byType = countByType(nodes)
       .map(([type, n]) => `${n} ${type}`)
       .join(", ");
-    return `${nodes.length} resource nodes on the map (${used} in use): ${byType}.`;
+    return `${countOf(nodes.length, "resource node", "resource nodes")} on the map (${used} in use): ${byType}.`;
   },
 };

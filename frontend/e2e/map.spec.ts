@@ -116,7 +116,7 @@ const tokenOnCanvas = (page: Page, tokenName: string) =>
 test("the world layers draw, read as text, and toggle", async ({ page, mockApi }, testInfo) => {
   await mockApi("default");
   await page.goto("/app/map");
-  await expect(page.getByText(/^1 rail segments on the map/)).toBeVisible();
+  await expect(page.getByText(/^1 rail segment on the map/)).toBeVisible();
   await expect(page.getByText(/^7 resource nodes on the map \(2 in use\)/)).toBeVisible();
   await expect(page.getByRole("table", { name: /Rail segments in view/ })).toBeVisible();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();

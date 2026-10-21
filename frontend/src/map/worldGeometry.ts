@@ -51,3 +51,6 @@ export function countByType(nodes: readonly ResourceNode[]): [string, number][] 
   for (const node of nodes) counts.set(node.type, (counts.get(node.type) ?? 0) + 1);
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
+
+/** "1 rail segment", "2 rail segments": the count with the right form of the noun. */
+export const countOf = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

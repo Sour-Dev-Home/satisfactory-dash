@@ -88,3 +88,14 @@ describe("scenarios", () => {
     }
   });
 });
+
+describe("world layer routing (hunt)", () => {
+  it("picks the handler by the layer, and none for an unknown layer", async () => {
+    const { matchRoute } = await import("./scenarios");
+    const p = (layer: string) => `/api/servers/default/map/world/${layer}`;
+    expect(matchRoute("GET", p("rails"))).toBe("mapRails");
+    expect(matchRoute("GET", p("resourceNodes"))).toBe("mapResourceNodes");
+    expect(matchRoute("GET", p("belts"))).toBeUndefined();
+    expect(matchRoute("GET", p("rails") + "/x")).toBeUndefined();
+  });
+});

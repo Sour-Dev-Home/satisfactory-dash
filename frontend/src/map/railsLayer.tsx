@@ -1,6 +1,6 @@
 import type { RailSegment } from "@satisfactory-dash/shared";
 import type { MapLayer } from "./layers";
-import { formatMetres, polylineLengthM } from "./worldGeometry";
+import { countOf, formatMetres, polylineLengthM } from "./worldGeometry";
 
 /** Rails are landmarks, not the subject (ADR-0041): the muted token, thin. */
 export const RAIL_TOKEN = "--color-muted";
@@ -57,6 +57,6 @@ export const railsLayer: MapLayer<RailSegment[]> = {
   describe(segments) {
     if (segments.length === 0) return "No rails built yet.";
     const total = segments.reduce((sum, s) => sum + polylineLengthM(s.points), 0);
-    return `${segments.length} rail segments on the map, ${formatMetres(total)} of track in all.`;
+    return `${countOf(segments.length, "rail segment", "rail segments")} on the map, ${formatMetres(total)} of track in all.`;
   },
 };

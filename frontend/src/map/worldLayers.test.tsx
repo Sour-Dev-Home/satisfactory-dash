@@ -134,3 +134,25 @@ describe("resourceNodesLayer", () => {
     expect(within(legend).getByText(/impure, normal, pure/)).toBeInTheDocument();
   });
 });
+
+describe("count strings (hunt)", () => {
+  it("uses the singular for one rail segment and one resource node", () => {
+    expect(railsLayer.describe([{ id: "a", points: [[0, 0], [3, 4]] }])).toBe("1 rail segment on the map, 5 m of track in all.");
+    const one = [{ type: "Iron Ore", purity: "pure", nodeType: "node", x: 0, y: 0, exploited: true }];
+    expect(resourceNodesLayer.describe(one)).toBe("1 resource node on the map (1 in use): 1 Iron Ore.");
+  });
+
+  it("draws a hostile resource name and unknown purity without markup, and cleans up every shape", () => {
+    const evil = "<img src=x onerror=alert(1)>";
+    const cleanup = resourceNodesLayer.draw(ctx, [
+      { type: evil, purity: "constructor", nodeType: "__proto__", x: 1_000_000, y: -1_000_000, exploited: false },
+      { type: "B", purity: "toString", nodeType: "node", x: 0, y: 0, exploited: true },
+    ]);
+    const el = (paths()[0].getTooltip()!.getContent() as () => HTMLElement)();
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.textContent).toContain(evil);
+    expect(paths<L.CircleMarker>()[0].getRadius()).toBe(nodeRadiusPx("normal"));
+    cleanup();
+    expect(paths()).toHaveLength(0);
+  });
+});

@@ -95,7 +95,7 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
   it("describes both layers in text and lists them in view", async () => {
     canvas.view = null;
     mount();
-    expect(await screen.findByText(/^1 rail segments on the map/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
     expect(await screen.findByText(/^7 resource nodes on the map \(2 in use\)/)).toBeInTheDocument();
     const nodes = await screen.findByRole("table", { name: /Resource nodes in view \(7\)/ });
     expect(within(nodes).getAllByRole("row")).toHaveLength(1 + resourceNodesWorldResponse.data.length);
@@ -165,12 +165,26 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
     expect(await screen.findByText(/^7 resource nodes on the map/)).toBeInTheDocument();
     failing = false;
     fireEvent.click(retry);
-    expect(await screen.findByText(/^1 rail segments on the map/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
   });
 
   it("refuses a response for the wrong layer as a contract error", async () => {
     server.use(http.get(railsRoute, () => HttpResponse.json(resourceNodesWorldResponse)));
     mount();
     expect(await screen.findByRole("button", { name: "Retry rails" })).toBeInTheDocument();
+  });
+});
+
+describe("MapPanel world tables (hunt)", () => {
+  it("does not warn about duplicate keys when two rail segments share an id", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const seg = railsWorldResponse.data[0];
+    server.use(
+      http.get(railsRoute, () => HttpResponse.json({ ...railsWorldResponse, count: 2, data: [seg, seg] })),
+    );
+    mount();
+    await screen.findByRole("table", { name: /Rail segments in view \(2\)/ });
+    expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    spy.mockRestore();
   });
 });
