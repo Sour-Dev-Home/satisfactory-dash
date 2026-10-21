@@ -52,3 +52,31 @@ describe("sectionNotes", () => {
     expect(notes[0]).not.toMatch(/FRM/);
   });
 });
+
+describe("sectionNotes against a backend that disagrees with its own mode", () => {
+  const note = (code: string, text: string) => ({ code, text });
+
+  it("never shows the FRM note for tooLarge, nor the too-large note for an older FRM, even when the backend sent it", () => {
+    const tooLarge = sectionNotes({
+      ...bottlenecksEmpty.data,
+      beltData: "tooLarge",
+      notes: [note("updateFrm", "Update FRM to 1.5.4.")],
+    });
+    expect(tooLarge.join(" ")).not.toMatch(/FRM/);
+    const old = sectionNotes({
+      ...bottlenecksEmpty.data,
+      beltData: "unsupported",
+      notes: [note("beltDataTooLarge", "Too large to read.")],
+    });
+    expect(old.join(" ")).not.toMatch(/too large/i);
+    expect(old.join(" ")).toMatch(/Update FRM/);
+  });
+
+  it("shows a repeated sentence once", () => {
+    const notes = sectionNotes({
+      ...bottlenecksEmpty.data,
+      notes: [note("a", "Same."), note("b", "Same."), note("connectionsRefresh", "Refresh.")],
+    });
+    expect(notes).toEqual(["Same.", "Refresh."]);
+  });
+});

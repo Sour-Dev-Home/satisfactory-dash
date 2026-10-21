@@ -34,7 +34,7 @@ export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: nu
       )}
       {data.truncated && <p className="text-sm text-muted">Showing the top {limit}; more machines have a bottleneck.</p>}
       {notes.length > 0 && (
-        <ul aria-label="Bottleneck notes" className="grid gap-0.5 text-sm text-muted">
+        <ul aria-label="Bottleneck notes" className="grid gap-0.5 break-words text-sm text-muted">
           {notes.map((n) => (
             <li key={n}>{n}</li>
           ))}

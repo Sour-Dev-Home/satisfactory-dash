@@ -29,8 +29,14 @@ export const stateLabel = (state: "underfed" | "backedUp") => (state === "underf
  * and `tooLarge` never gets the FRM one).
  */
 export function sectionNotes(data: Pick<Bottlenecks, "beltData" | "connectionsRefreshMinutes" | "notes">): string[] {
-  const out = data.notes.map((n) => n.text);
-  const has = (code: string) => data.notes.some((n) => n.code === code);
+  // A mode's own note only shows in that mode, so a disagreeing backend never puts the FRM line on `tooLarge`.
+  const notes = data.notes.filter(
+    (n) =>
+      (n.code !== "updateFrm" || data.beltData === "unsupported") &&
+      (n.code !== "beltDataTooLarge" || data.beltData === "tooLarge"),
+  );
+  const out = [...new Set(notes.map((n) => n.text))];
+  const has = (code: string) => notes.some((n) => n.code === code);
   if (data.beltData === "unsupported" && !has("updateFrm")) {
     out.push("Item-level results only. Update FRM to 1.5.4 or newer for belt detail.");
   }
