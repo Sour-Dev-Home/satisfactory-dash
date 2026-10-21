@@ -1,0 +1,1 @@
+- 2026-10-21 — CI `verify` gains the migration contract check (ADR-0049 D6, build task 1): `scripts/migration-contract-check.mjs` fails a migration whose Up section drops, renames, retypes, sets NOT NULL, adds a CHECK to existing rows or adds a NOT NULL column without a default unless it carries a `-- contract: <why>` line; the 19 existing migrations pass.

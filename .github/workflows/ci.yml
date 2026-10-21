@@ -54,6 +54,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Migration contract check (ADR-0049 D6)
+        run: node scripts/migration-contract-check.mjs
+
       - run: npm run lint
         if: env.ALL == 'true'
 
