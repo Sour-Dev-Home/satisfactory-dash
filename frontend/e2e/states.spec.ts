@@ -58,6 +58,12 @@ const LIVE_NOW = "2026-09-22T22:25:12.000Z";
 /** 8 s after the agent fixtures' last-seen time, so "Last seen 8 s ago" holds still. */
 const AGENT_NOW = "2026-09-26T12:00:13.000Z";
 
+/** "Add your server" (ADR-0046): types a name and submits. */
+const addYourServer = (name: string) => async (page: Page) => {
+  await page.getByLabel("Server name").fill(name);
+  await page.getByRole("button", { name: "Add server" }).click();
+};
+
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
   { scenario: "default", name: "default-power", path: "/app/power", shows: /Circuit 0/ },
@@ -230,6 +236,57 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // Self-serve (ADR-0046, #529). Settings → Add your server (on; off shows no section), the add form as the whole
+  // screen for a player with no server, each refusal, and the owner of an enrolled and of a pending server.
+  { scenario: "self-serve-add", path: "/app/settings", shows: "Add your server", clock: AGENT_NOW },
+  { scenario: "self-serve-off", path: "/app/settings", shows: /Auto-pause when no players/, clock: AGENT_NOW },
+  { scenario: "self-serve-empty", path: "/app", shows: "Add your first server", clock: AGENT_NOW },
+  {
+    scenario: "self-serve-limit-account",
+    path: "/app/settings",
+    shows: /one account can have at most 2/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  {
+    scenario: "self-serve-limit-pending",
+    path: "/app/settings",
+    shows: /with its enrolment code before adding another/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  {
+    scenario: "self-serve-limit-service",
+    path: "/app/settings",
+    shows: /The service is full right now/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  {
+    scenario: "self-serve-limit-daily",
+    path: "/app/settings",
+    shows: /Try again in about 5 hours/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  { scenario: "self-serve-owner", path: "/app/settings", shows: "Your server", clock: AGENT_NOW },
+  { scenario: "self-serve-owner-pending", path: "/app/settings", shows: /Create an enrolment code above to connect it/, clock: AGENT_NOW },
+  {
+    scenario: "self-serve-owner",
+    name: "self-serve-rename",
+    path: "/app/settings",
+    shows: "Save name",
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Rename My first world" }).click(),
+  },
+  {
+    scenario: "self-serve-owner",
+    name: "self-serve-delete-confirm",
+    path: "/app/settings",
+    shows: /can.t be undone/,
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Delete My first world" }).click(),
+  },
   { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the agent.", clock: AGENT_NOW },
   // The command bar (#351), open over the Overview: a native modal dialog, so the CSP guard here
   // also proves it injects no <style> (ADR-0016 item 8).

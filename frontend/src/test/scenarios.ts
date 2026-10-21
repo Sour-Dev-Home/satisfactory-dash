@@ -90,6 +90,19 @@ import {
   testConnectionApiUnauthorized,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import {
+  createdAgentServer,
+  errorDailyLimit,
+  errorLimitAccount,
+  errorLimitPending,
+  errorLimitService,
+  errorSelfServeOff,
+  listOwnsEnrolled,
+  listOwnsPending,
+  listSelfServeEmpty,
+  listSelfServeOff,
+  listSelfServeOn,
+} from "./selfServeMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
 // the dev mock mode (src/test/browser.ts, MSW in the browser) and the Playwright tests
@@ -102,6 +115,8 @@ export interface MockResponse {
   text?: string;
   /** "never" leaves the request hanging, to show a loading state. */
   delay?: number | "never";
+  /** Extra response headers (e.g. a 429's Retry-After). */
+  headers?: Record<string, string>;
 }
 
 export const ROUTES = {
@@ -129,6 +144,8 @@ export const ROUTES = {
   createServer: endpoints.serverManagement.create,
   updateServer: endpoints.serverManagement.update,
   removeServer: endpoints.serverManagement.remove,
+  // ADR-0046: any signed-in user adds a server of their own.
+  createAgentServer: endpoints.selfServe.createAgentServer,
   // ADR-0031: an agent server's only edits (#266 rename, #273 switch back to local).
   renameAgent: endpoints.serverManagement.renameAgent,
   switchToLocal: endpoints.serverManagement.switchToLocal,
@@ -223,6 +240,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   createServer: ok(serverConnectionOk),
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
+  createAgentServer: { status: 201, body: createdAgentServer },
   renameAgent: ok(renameAgentServerResponse),
   switchToLocal: ok(serverConnectionOk),
   historyPower: ok(historyPower24h),
@@ -420,6 +438,27 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // ADR-0046 (#529), Settings → Your server. Self-serve on for a player with no server of their own;
+  // off; with no server at all (the add form is the screen); each refusal of "Add your server"; and the
+  // owner of an enrolled and of a pending self-serve server.
+  "self-serve-add": { servers: ok(listSelfServeOn) },
+  "self-serve-off": { servers: ok(listSelfServeOff) },
+  "self-serve-empty": { servers: ok(listSelfServeEmpty) },
+  "self-serve-limit-account": { servers: ok(listSelfServeOn), createAgentServer: fail(409, errorLimitAccount) },
+  "self-serve-limit-pending": { servers: ok(listSelfServeOn), createAgentServer: fail(409, errorLimitPending) },
+  "self-serve-limit-service": { servers: ok(listSelfServeOn), createAgentServer: fail(409, errorLimitService) },
+  "self-serve-limit-daily": {
+    servers: ok(listSelfServeOn),
+    createAgentServer: { status: 429, body: errorDailyLimit, headers: { "Retry-After": "18000" } },
+  },
+  "self-serve-forbidden": { servers: ok(listSelfServeOn), createAgentServer: fail(403, errorSelfServeOff) },
+  "self-serve-owner": { servers: ok(listOwnsEnrolled), agentStatus: ok(agentStatusEnrolled) },
+  "self-serve-owner-pending": {
+    servers: ok(listOwnsPending),
+    // Created through self-serve, so it is an agent server with nothing enrolled yet: the player can make a code.
+    agentStatus: ok({ ...agentStatusNotEnrolled, connectionKind: "agent" }),
+    agentEnrollmentCode: { status: 201, body: agentEnrollmentCodeResponse },
+  },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 
