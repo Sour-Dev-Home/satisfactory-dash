@@ -81,7 +81,7 @@ export function Loadable({
 }) {
   const { show, visible } = useSkeletonClock(pending);
   const [sawSkeleton, setSawSkeleton] = useState(false);
-  if (show && !sawSkeleton) setSawSkeleton(true);
+  if (visible && !sawSkeleton) setSawSkeleton(true);
   if (show) {
     return (
       <div data-loading={visible ? "shown" : "waiting"} className={cn(className, !visible && "invisible")}>

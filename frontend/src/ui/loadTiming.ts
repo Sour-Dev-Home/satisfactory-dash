@@ -16,9 +16,9 @@ type LoadToken = (typeof LOAD_TOKENS)[keyof typeof LOAD_TOKENS];
 
 /** A CSS time ("150ms", "0.3s", "0s") in milliseconds, or undefined if it isn't one. */
 export function parseCssTime(value: string): number | undefined {
-  const match = /^(\d*\.?\d+)(ms|s)$/.exec(value.trim());
+  const match = /^(\d*\.?\d+)(ms|s)$/i.exec(value.trim());
   if (!match) return undefined;
-  return Number(match[1]) * (match[2] === "s" ? 1000 : 1);
+  return Number(match[1]) * (match[2].toLowerCase() === "s" ? 1000 : 1);
 }
 
 /** A token's current value in ms: the stylesheet's (reduced motion included), else the fallback. */

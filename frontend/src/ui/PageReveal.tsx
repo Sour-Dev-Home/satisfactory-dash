@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { PageRevealContext } from "./skeletonClock";
 import { usePageReveal, type PageQuery } from "./usePageReveal";
@@ -25,9 +25,14 @@ export function PageReveal({
   children: ReactNode;
 }) {
   const revealed = usePageReveal(queries, scope);
+  // The latest callback, read when the reveal happens: a new function identity each render must not re-run it.
+  const onRevealedRef = useRef(onRevealed);
   useEffect(() => {
-    if (revealed) onRevealed?.();
-  }, [revealed, onRevealed]);
+    onRevealedRef.current = onRevealed;
+  });
+  useEffect(() => {
+    if (revealed) onRevealedRef.current?.();
+  }, [revealed]);
   return (
     <PageRevealContext.Provider value={revealed}>
       <div
