@@ -153,6 +153,43 @@ export async function removeMember(
   return result.rows.length > 0;
 }
 
+// ADR-0047 decision 4: a member leaves a live server. ONE statement: the caller's non-owner membership, their push opt-in
+// for that server, and `member_left` (actor the user, ids and the role only). Every sub-statement sees the snapshot from
+// before the statement, so the final SELECT tells "the owner" (nothing removed, an owner row) from "not a member".
+const LEAVE_SERVER = `
+  WITH target AS (
+    SELECT id FROM servers.servers WHERE public_id = $1 AND deleted_at IS NULL
+  ), removed AS (
+    DELETE FROM servers.server_members m
+    USING target t
+    WHERE m.server_id = t.id AND m.user_id = $2 AND m.role <> 'owner'
+    RETURNING m.server_id, m.user_id, m.role
+  ), opted_out AS (
+    DELETE FROM alerts.push_optins o
+    USING removed r
+    WHERE o.server_id = r.server_id AND o.user_id = r.user_id
+  ), audited AS (
+    INSERT INTO audit.audit_events (actor_user_id, server_id, action, detail)
+    SELECT user_id, server_id, 'member_left', jsonb_build_object('userId', user_id, 'role', role)
+    FROM removed
+  )
+  SELECT CASE
+    WHEN EXISTS (SELECT 1 FROM removed) THEN 'left'
+    WHEN EXISTS (
+      SELECT 1 FROM servers.server_members m JOIN target t ON t.id = m.server_id WHERE m.user_id = $2 AND m.role = 'owner'
+    ) THEN 'last_owner'
+    ELSE 'not_member'
+  END AS outcome`;
+
+/** `left`: the membership and the push opt-in are gone (audited). `last_owner`: the caller owns the server, nothing changed
+ *  (at most one owner, so every owner is the last one). `not_member`: not a member of a live server with that id. */
+export type LeaveServerResult = "left" | "last_owner" | "not_member";
+
+export async function leaveServer(db: Queryable, input: { publicId: string; userId: string }): Promise<LeaveServerResult> {
+  const result = await timedQuery(db, "servers.leaveServer", LEAVE_SERVER, [input.publicId, input.userId]);
+  return parseFirst(z.object({ outcome: z.enum(["left", "last_owner", "not_member"]) }), result.rows, "servers.leaveServer")?.outcome ?? "not_member";
+}
+
 export type TransferOwnershipResult = "transferred" | "not_owner" | "target_not_member" | "same_user" | "would_orphan";
 
 const DEMOTE_OWNER = `

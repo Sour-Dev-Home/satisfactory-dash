@@ -61,7 +61,7 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
     ((await admin.query("SELECT id FROM servers.servers WHERE public_id = $1", [publicId])).rows[0] as { id: string }).id;
   const row = async (publicId: string) =>
     (await admin.query("SELECT display_name, deleted_at, created_by_user_id::text AS creator FROM servers.servers WHERE public_id = $1", [publicId]))
-      .rows[0] as { display_name: string; deleted_at: Date | null; creator: string | null };
+      .rows[0] as { display_name: string | null; deleted_at: Date | null; creator: string | null };
   const auditOf = async (serverUuid: string) =>
     (await admin.query("SELECT action, actor_user_id::text AS actor, detail FROM audit.audit_events WHERE server_id = $1 ORDER BY id", [serverUuid])).rows as {
       action: string;
@@ -123,6 +123,8 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
 
       await expect(svc.removeAsOwner(owner, created.id)).resolves.toBe("removed");
       expect((await row(created.id)).deleted_at).not.toBeNull();
+      // ADR-0047 amendment: the owner's remove clears the name too.
+      expect((await row(created.id)).display_name).toBeNull();
       for (const table of [...PURGED_TABLES, "servers.server_members", "servers.server_connections"]) {
         expect((await admin.query(`SELECT 1 FROM ${table} WHERE server_id = $1`, [uuid])).rowCount, table).toBe(0);
       }
@@ -362,6 +364,9 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
       await expect(sweep.sweep()).resolves.toEqual({ swept: 1, skipped: 0 });
       expect((await row(inside.id)).deleted_at).toBeNull();
       expect((await row(past.id)).deleted_at).not.toBeNull();
+      // ADR-0047 amendment: the sweep clears the removed server's name; the kept one keeps its own.
+      expect((await row(past.id)).display_name).toBeNull();
+      expect((await row(inside.id)).display_name).toBe("Inside");
       expect(removed).toEqual([past.id]);
       expect(counters).toEqual([{ metric: "satis.servers.pending_swept", amount: 1 }]);
       const uuid = await uuidOf(past.id);

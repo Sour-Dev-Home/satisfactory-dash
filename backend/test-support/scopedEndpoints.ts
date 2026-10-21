@@ -6,6 +6,8 @@ export interface ScopedEndpoint {
   route: string;
   /** ADR-0030: the contract marks the endpoint `operatorOnly`, so an owner or admin who is not the operator is refused (403). */
   operatorOnly: boolean;
+  /** ADR-0044, ADR-0047: the contract marks the write `memberSelfService`, so any member (a viewer included) may make it. */
+  memberSelfService: boolean;
 }
 
 /** A route under a server: `/servers/:serverId` itself or anything below it, but not
@@ -21,10 +23,18 @@ export function scopedEndpoints(node: unknown, path: string[] = []): ScopedEndpo
   if (typeof node !== "object" || node === null) {
     return [];
   }
-  const entry = node as { method?: Method; route?: string; operatorOnly?: boolean };
+  const entry = node as { method?: Method; route?: string; operatorOnly?: boolean; memberSelfService?: boolean };
   if (typeof entry.route === "string" && entry.method) {
     return SERVER_SCOPED.test(entry.route)
-      ? [{ name: path.join("."), method: entry.method, route: entry.route, operatorOnly: entry.operatorOnly === true }]
+      ? [
+          {
+            name: path.join("."),
+            method: entry.method,
+            route: entry.route,
+            operatorOnly: entry.operatorOnly === true,
+            memberSelfService: entry.memberSelfService === true,
+          },
+        ]
       : [];
   }
   return Object.entries(node).flatMap(([key, value]) => scopedEndpoints(value, [...path, key]));

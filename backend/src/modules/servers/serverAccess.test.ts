@@ -5,6 +5,7 @@ import { createApp } from "../../app.js";
 import { createLogger } from "../../platform/logger.js";
 import { InMemoryServerDirectory } from "./serverDirectory.js";
 import { createServersRouter } from "./serversRouter.js";
+import { MEMBER_SELF_SERVICE } from "./serverAccess.js";
 import type { ServerAccess } from "./serverAccess.js";
 
 /** Edge cases of the membership middleware: verbs, id spelling, outages, missing user. */
@@ -58,6 +59,10 @@ function build(mode: "header" | "nouser" | "baduser" = "header", isReady?: () =>
       (() => {
         const r = require_router();
         r.all("/servers/:serverId/thing", scoped);
+        // ADR-0047: shapes around the member's own leave, to show the self-service match is exact.
+        r.all("/servers/:serverId/members/:who/leave", scoped);
+        r.all("/servers/:serverId/members/me/leave/more", scoped);
+        r.all("/servers/:serverId/alerts/push", scoped);
         return r;
       })(),
     ],
@@ -88,6 +93,28 @@ describe("createAuthorizeServer verbs", () => {
     for (const path of ["alpha", "ghost", "nope"]) {
       const res = await request(app).delete(`/api/servers/${path}/thing`).set("x-test-user", "stranger");
       expect([res.status, code(res)]).toEqual([404, "server_not_found"]);
+    }
+  });
+});
+
+describe("member self-service writes (the contract's memberSelfService flag)", () => {
+  const app = build();
+  it("are exactly the flagged endpoints, collected from the contract", () => {
+    expect([...MEMBER_SELF_SERVICE].sort()).toEqual(["POST /members/me/leave", "PUT /alerts/push"]);
+  });
+  it("let a viewer make exactly those writes, and no other verb or path near them", async () => {
+    expect((await request(app).post("/api/servers/alpha/members/me/leave").set("x-test-user", "view")).status).toBe(200);
+    expect((await request(app).put("/api/servers/alpha/alerts/push").set("x-test-user", "view")).status).toBe(200);
+    const refused = [
+      request(app).put("/api/servers/alpha/members/me/leave"),
+      request(app).delete("/api/servers/alpha/members/me/leave"),
+      request(app).post("/api/servers/alpha/members/someone/leave"),
+      request(app).post("/api/servers/alpha/members/me/leave/more"),
+      request(app).post("/api/servers/alpha/alerts/push"),
+    ];
+    for (const pending of refused) {
+      const res = await pending.set("x-test-user", "view");
+      expect([res.status, code(res)]).toEqual([403, "forbidden"]);
     }
   });
 });

@@ -114,7 +114,8 @@ npm run admin -- revoke-sessions --all                # sign everyone out
 npm run admin -- revoke-sessions --user <user-id>     # one account, everywhere
 npm run admin -- disable-user <user-id>               # abuse response: refuse sign-in + revoke sessions (#516)
 npm run admin -- enable-user <user-id>                # undo it
-npm run admin -- remove-server <public-id>            # the full delete of any server (restart the backend after)
+npm run admin -- delete-user <user-id>                # delete an account (ADR-0047): its self-serve servers go too
+npm run admin -- remove-server <public-id>            # the full delete of any server, name included (restart the backend after)
 npm run admin -- list-servers                         # every live server: ids, owner id, enrolled, last seen, row counts
 ```
 

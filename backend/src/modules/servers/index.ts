@@ -24,6 +24,11 @@ export type { PendingServerSweeper, PendingServerSweeperDeps } from "./pendingSe
 // #526 (L2): every post-commit runtime add re-checks that the server was not removed meanwhile.
 export { addUnlessRemoved } from "./runtimeGuard.js";
 export { createSelfServeRouter } from "./selfServeRouter.js";
+// ADR-0047: leaving a server, and the servers' part of deleting an account (identity's port, wired in the composition root).
+export { createDbMemberSelfService, createMembersRouter } from "./membersRouter.js";
+export type { MemberSelfService, MembersRouterOptions } from "./membersRouter.js";
+export { createAccountServers } from "./accountServers.js";
+export type { AccountServers, AccountServersDeps } from "./accountServers.js";
 export type { SelfServeRouterOptions } from "./selfServeRouter.js";
 export { loadSelfServeConfigFromEnv } from "./selfServeConfig.js";
 export type { SelfServeConfig } from "./selfServeConfig.js";

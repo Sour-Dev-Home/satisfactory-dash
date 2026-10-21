@@ -110,6 +110,8 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     expect(gone).toBeUndefined();
     expect((await pool.query("SELECT 1 FROM servers.server_connections c JOIN servers.servers s ON s.id = c.server_id WHERE s.public_id = 'db-b'")).rowCount).toBe(0);
     expect(await getMemberRole(pool, { publicId: "db-b", userId: operatorId })).toBeUndefined();
+    // ADR-0047 amendment: the operator's HTTP remove clears the name; the row keeps only its ids.
+    expect((await pool.query("SELECT display_name FROM servers.servers WHERE public_id = 'db-b'")).rows).toEqual([{ display_name: null }]);
     expect(await failure(service.get("db-b"))).toBeInstanceOf(ServerNotFoundError);
     expect(await failure(service.remove(operatorId, "db-b"))).toBeInstanceOf(ServerNotFoundError);
 

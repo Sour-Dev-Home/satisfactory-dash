@@ -34,8 +34,8 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { createApp } from "./app.js";
 import { createLogger } from "./platform/logger.js";
-import { InMemoryServerDirectory, createServerManagementRouters, createServersRouter } from "./modules/servers/index.js";
-import type { ServerAccess, ServerManagementService } from "./modules/servers/index.js";
+import { InMemoryServerDirectory, createMembersRouter, createServerManagementRouters, createServersRouter } from "./modules/servers/index.js";
+import type { MemberSelfService, ServerAccess, ServerManagementService } from "./modules/servers/index.js";
 import { createTelemetryRouters } from "./modules/telemetry/index.js";
 import { createSettingsRouters } from "./modules/settings/index.js";
 import { createAlertsRouters, createPushRouters } from "./modules/alerts/index.js";
@@ -59,11 +59,9 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
 // contract before their routes. PR 5a mounted the three agent ones and PR 5b the command's status (`GET
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
-// ADR-0047 (#311 task 2a) added `members.leave` to the contract BEFORE its route, the same way. Until task 2b mounts it
-// there is nothing to guard, so exactly that one is exempt. Task 2b deletes this line (and teaches the generated tests
-// that leave is a member's own write and that an owner is refused with would_orphan).
-const NOT_YET_MOUNTED = (name: string): boolean => name === "members.leave";
-const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
+// ADR-0047 (#311 task 2a) added `members.leave` to the contract before its route; task 2b mounted it, so nothing is
+// exempt again. Leave is a member's own write (`memberSelfService`), and the owner is refused with 409 would_orphan.
+const SCOPED = scopedEndpoints(endpoints);
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
@@ -202,6 +200,14 @@ const agentsService: AgentsService = {
   revoke: async () => agentRevokeResponse,
 };
 
+/** A stand-in for leaving (ADR-0047), read from the same membership table: nothing is removed, so the tests stay independent. */
+const memberSelfService: MemberSelfService = {
+  leave: async (publicId, userId) => {
+    const role = members[publicId]?.[userId];
+    return role === undefined ? "not_member" : role === "owner" ? "last_owner" : "left";
+  },
+};
+
 function buildApp(options: { isReady?: () => boolean } = {}) {
   // Both servers exist on this process: what differs is who belongs to them.
   const directory = new InMemoryServerDirectory([
@@ -226,6 +232,8 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
       ...createAlertsRouters(alertsService),
       ...createPushRouters(pushService),
       ...createAgentUserRouters(agentsService, { getCommand: async () => commandPending.command }),
+      // ADR-0047: the real router; the stand-in answers like the database would (the owner is the last owner).
+      createMembersRouter(memberSelfService),
       management.scoped,
     ],
   });
@@ -248,6 +256,7 @@ const hasBody = (name: string, method: Method) =>
   method !== "DELETE" &&
   name !== "serverManagement.testSaved" &&
   name !== "alerts.destinations.testDiscord" &&
+  name !== "members.leave" &&
   name !== "agent.enrollmentCode";
 /** What a successful write answers: 200, except a create (201). */
 const successStatus = (name: string): number => (name === "alerts.rules.create" || name === "agent.enrollmentCode" ? 201 : 200);
@@ -284,24 +293,13 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     expect(SCOPED.filter((endpoint) => endpoint.name.startsWith("commands.")).map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`)).toEqual([
       "GET /commands/:commandId",
     ]);
-    expect(SCOPED).toEqual(scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name)));
   });
 
-  it("exempts only members.leave, in the contract but not mounted yet (ADR-0047 task 2a), and no other", () => {
-    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
-    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route}`)).toEqual(["POST /api/servers/:serverId/members/me/leave"]);
-  });
-
-  // The exemption expires on its own: the moment task 2b mounts the route, this fails until NOT_YET_MOUNTED is deleted,
-  // so the route can never ship without the generated authorization tests.
-  it("the exempt endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
-    const app = buildApp();
-    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
-      const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
-      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0047 task 2b)`;
-      expect(res.status, mounted).toBe(404);
-      expect(res.body?.error?.code, mounted).toBe("not_found");
-    }
+  it("covers members.leave (ADR-0047), the second member's own write, by the contract's flag", () => {
+    expect(SCOPED.filter((e) => e.memberSelfService).map((e) => `${e.method} ${e.route}`).sort()).toEqual([
+      "POST /api/servers/:serverId/members/me/leave",
+      "PUT /api/servers/:serverId/alerts/push",
+    ]);
   });
 
   // A route that is in the contract but not mounted answers the app's own 404 to an authorized owner; every scoped
@@ -320,10 +318,11 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
   });
 });
 
-// ADR-0044: the one write every MEMBER may make (a member's own push opt-in), taken from the contract's flag.
-const memberSelfService = (name: string): boolean => name === "push.optIn.put" && endpoints.push.optIn.put.memberSelfService;
+// ADR-0044, ADR-0047: the writes every MEMBER may make (a member's own push opt-in, leaving the server), taken from the
+// contract's flag. Leaving is refused to the owner (the last owner, with at most one): 409 would_orphan, reason last_owner.
+const ownerRefused = (name: string): boolean => name === "members.leave";
 
-describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operatorOnly }) => {
+describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operatorOnly, memberSelfService }) => {
   const app = buildApp();
 
   it("a signed-in non-member gets the same 404 as an unknown server, so existence is not revealed", async () => {
@@ -365,11 +364,20 @@ describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operator
       const res = await call(app, name, method, urlFor(route, "alpha"), user);
       expect(res.status).toBe(200);
     });
-  } else if (memberSelfService(name)) {
-    it.each([OWNER, ADMIN, VIEWER])("a member (%s), a viewer included, can write it (it is their own notification)", async (user) => {
+  } else if (memberSelfService) {
+    const allowed = ownerRefused(name) ? [ADMIN, VIEWER] : [OWNER, ADMIN, VIEWER];
+    it.each(allowed)("a member (%s), a viewer included, can write it (it is their own relation to the server)", async (user) => {
       const res = await call(app, name, method, urlFor(route, "alpha"), user);
       expect(res.status).toBe(successStatus(name));
     });
+    if (ownerRefused(name)) {
+      it("the owner is refused with 409 would_orphan (reason last_owner), not a 403", async () => {
+        const res = await call(app, name, method, urlFor(route, "alpha"), OWNER);
+        expect(res.status).toBe(409);
+        const { error } = ApiErrorResponseSchema.parse(res.body);
+        expect([error.code, error.reason]).toEqual(["would_orphan", "last_owner"]);
+      });
+    }
   } else {
     it("a viewer's write is a 403 forbidden, not a 404", async () => {
       const res = await call(app, name, method, urlFor(route, "alpha"), VIEWER);
