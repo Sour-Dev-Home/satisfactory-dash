@@ -1,6 +1,7 @@
 # ADR-0045: Threat model for game servers the owner doesn't control
 
-Status: proposed (the owner accepts it, including every ACCEPT below, by approving this PR). Issue #505.
+Status: accepted (the owner merged #519 on 2026-10-20, which accepts every ACCEPT below; their answers to the open
+questions are Amendment 1). Issue #505.
 
 ## Context
 - ADR-0042 ships the mod to other players through ficsit.app. Its credential and its snapshots then come from hosts
@@ -99,7 +100,7 @@ first public release; #517 before any stranger can get a server.
 | R2 | Player-chosen train and station names | L/M | EXISTING: in memory only (`map/services/mapLiveStore.ts:39-40`). |
 | R3 | A deleted server's world layers and push opt-ins outlive it (and a revived id inherits them) | M/M | NEW: #516 (the soft delete's list misses `map.world_layers` and `alerts.push_optins`). |
 | R4 | A modified mod puts personal data in free-text fields (class names, session name) | L/M | ACCEPT: 200-character game-world fields (`packages/shared/src/agent.ts:85`), deleted with the server (R3), backups age out in 37 days (`frontend/public/privacy.html:150-152`); the privacy page makes the server owner responsible for telling their players (`privacy.html:85-87`). |
-| R5 | Players on a third-party server aren't told the mod sends their names | M/M | ACCEPT here: the privacy page covers the backend; the ficsit.app listing's wording belongs to the mod's distribution step (ADR-0042 sub-project 4), and LEGAL.md keeps "player data the mod sends" [NEEDS VERIFICATION] (ADR-0042 Named risks). Owner question below. |
+| R5 | Players on a third-party server aren't told the mod sends their names (superseded: the mod sends player counts only, never names; Amendment 1) | M/M | ACCEPT here: the privacy page covers the backend; the ficsit.app listing's wording belongs to the mod's distribution step (ADR-0042 sub-project 4), and LEGAL.md keeps "player data the mod sends" [NEEDS VERIFICATION] (ADR-0042 Named risks). Owner question below. |
 
 ## Consequences
 - The mod's first public release waits for #514, #515 and #516, in addition to ADR-0042's gates. #517 waits for the
@@ -110,7 +111,7 @@ first public release; #517 before any stranger can get a server.
   1. Does the first public release keep sign-up closed (strangers enrol only with codes the operator hands out on
      servers the operator created), or must a player on a rented host be able to get a server? Today there is no path
      for the second (Context), so it needs #517 before release.
-  2. Does the ficsit.app listing say that the mod sends players' names (shown live, not stored)? (R5)
+  2. (Answered in Amendment 1: the listing says player counts only.) Does the ficsit.app listing say that the mod sends players' names (shown live, not stored)? (R5)
   3. The ACCEPTs: M2, M5, M8, E4, O1, R4, R5, and the admin case in B4.
 
 ## Revisit when
@@ -118,3 +119,23 @@ first public release; #517 before any stranger can get a server.
 - A second backend instance: the in-memory limiters become per instance, so the limits above multiply.
 - A host is found that lets other tenants read `Saved/` (M5), or the mod's spec differs from what this cites (M4, M13).
 - #514's counters show real abuse (E4).
+
+## Amendment 1 (2026-10-20): the owner's answers
+
+1. **Self-serve before the first public release** (question 1, the owner's choice of option B). A player on a rented
+   host must be able to get a server without the operator. So #517 (the self-serve design, then its build) and
+   gate B (#186, open sign-up) join #514, #515 and #516 as gates on the mod's first public release, and #517 is no
+   longer parked. The "Revisit when" line on opening sign-up now applies: M2, M3 and B5 are revisited in #517.
+2. **The listing names what is sent** (question 2: "yes, mention player names"). The question's premise was wrong,
+   as the owner and the mod session both confirmed: the mod takes player counts only, never names. Mod core v1 sends
+   `connectedPlayers` and `playerLimit` (mod repo `Snapshot.cpp:65-66`), and its spec forbids user names or account
+   ids beyond the contract (S13). So v1's listing
+   says it sends player counts only; if a later contract and mod add names, the listing says so (R5, the mod's distribution
+   step). The edge agent's snapshots do carry names, which R1 and M14 already cover.
+3. **The ACCEPTs** (question 3): accepted by merging #519.
+4. **Mod-side behaviour, verified** against the mod repo's `docs/specs/2026-10-20-core-mod-v1-design.md`, so the two
+   [NEEDS VERIFICATION] marks above are resolved:
+   - The enrolment code is blanked after enrolling (lines 24 and 60). A crash between writing the credential and
+     blanking it blanks the code on the next boot, so the code never enrols twice (line 115).
+   - An unknown command answers `{ok:false, code:"unsupported"}` (lines 118 and 165, S6, unit-tested). Only
+     `set_auto_pause` with a boolean `enabled` runs.
