@@ -68,7 +68,12 @@ name, `packages/shared/src/agent.ts:85`) could hold anything a modified mod puts
 [NEEDS VERIFICATION] whether the player count is saved in history or only shown live. If it is saved, add it to the
 "Game data" retention bullet below. If a later mod version sends names, this row must change first (ADR-0045 Amendment 1).
 
-### 4. The operator may disable an account or delete a server; what deleting a server removes
+### 4. The operator may disable an account or remove a server from the service; what removing a server deletes
+
+Wording rule (owner, 2026-10-21): the pages say "remove a server from Satisfactory Dash", never "delete a server", and
+say plainly that the player's world and saves are never touched. Evidence: the only agent command is `set_auto_pause`
+(`packages/shared/src/agent.ts`, `AgentCommandSchema`); nothing in the agent reads, writes or deletes save files. If a
+command that can touch saves is ever added, this promise must be revisited first.
 
 Goes: a new short section "Abuse, and removing servers", placed after "Who else handles data" and before
 "How long it's kept". Also one new bullet under "How long it's kept" (below).
@@ -76,11 +81,15 @@ Goes: a new short section "Abuse, and removing servers", placed after "Who else 
 New section:
 > **Abuse, and removing servers**
 >
-> If someone abuses the service, the operator can disable their account and delete their servers. Disabling signs the
-> person out, stops their agents from connecting, and stops Google sign-in for that account. Their server data is kept
-> unless the server is also deleted.
+> Removing a server only removes it from Satisfactory Dash. It never touches your world or your save files. Those live
+> on your own machine, and the service has no way to change or delete them. Your game server keeps running exactly as
+> before. Its agent is signed out, and the dashboard stops receiving its data.
 >
-> When a server is deleted, by you or by the operator, we remove what is stored for it:
+> If someone abuses the service, the operator can disable their account and remove their servers from Satisfactory
+> Dash. Disabling signs the person out, stops their agents from connecting, and stops Google sign-in for that account.
+> Their server data is kept unless the server is also removed.
+>
+> When a server is removed, by you or by the operator, we delete what we stored for it:
 > - the people who belong to it, and their roles
 > - the encrypted game-server tokens
 > - the history of power, production and machine states
@@ -102,7 +111,7 @@ it by setting). "Name and id stay": runbook, "What stays on purpose". [NEEDS VER
 runbook says the HTTP route "is the same delete".
 
 New bullet in "How long it's kept", after the Backups bullet:
-> - A deleted server's data: removed at once (the list above), except in backups, which age out within 37 days.
+> - Data for a server removed from Satisfactory Dash: deleted at once (the list above), except in backups, which age out within 37 days.
 
 ### 5. Account-deletion paragraph (must match what #311 builds)
 
@@ -172,10 +181,11 @@ Replaces (Ending things):
 > You can delete your account at any time. The operator may suspend an account that breaks these terms, and may shut the service down, with notice where practical.
 
 New (Ending things):
-> You can delete your account, or delete a server you own, at any time. The operator may disable an account, and may
-> delete a server, if they are broken or abused or if these terms are broken. Where practical the operator will tell you
-> first, but it can act at once if the service is at risk. Deleting a server removes its data, as the Privacy Policy
-> describes. The operator may also shut the service down, with notice where practical.
+> You can delete your account, or remove a server you own from Satisfactory Dash, at any time. The operator may disable
+> an account, and may remove a server from Satisfactory Dash, if they are broken or abused or if these terms are broken.
+> Where practical the operator will tell you first, but it can act at once if the service is at risk. Removing a server
+> deletes the data Satisfactory Dash stored for it, as the Privacy Policy describes. It never affects your world or its
+> saves, and your game server keeps running. The operator may also shut the service down, with notice where practical.
 
 Replaces (Liability): keep as written, and add "or lost history, if a server is removed or a backup is restored":
 > To the extent the law allows, the operator isn't liable for game-server outages, missed or late alerts, lost history, or anything else that comes from using the service.
