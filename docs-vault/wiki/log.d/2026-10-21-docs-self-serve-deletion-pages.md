@@ -1,0 +1,1 @@
+- 2026-10-21 — Privacy and terms pages: self-service deletion is live (#564), so the privacy page now says where "Delete my account" is (Settings), its 10-minute fresh sign-in, and leaving a server; the terms list leaving a server too. Not a material change: the terms version stays 2026-10-21.
