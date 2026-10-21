@@ -68,7 +68,7 @@ export const test = base.extend<Fixtures & { unmocked: string[] }>({
         if (response.text !== undefined) {
           return route.fulfill({ status: response.status, body: response.text, contentType: "text/html" });
         }
-        return route.fulfill({ status: response.status, json: response.body });
+        return route.fulfill({ status: response.status, json: response.body, headers: response.headers });
       });
     });
   },

@@ -29,9 +29,9 @@ import {
 } from "../src/index";
 
 describe("agent contract: enrolment", () => {
-  it("a code is two groups of four base32 characters (A-Z and 2-7), upper case, one dash", () => {
-    for (const ok of ["AB3D-7XQ2", "AAAA-2222", "ZZZZ-7777"]) expect(EnrollmentCodeSchema.safeParse(ok).success, ok).toBe(true);
-    for (const bad of ["ab3d-7xq2", "AB3D7XQ2", "AB3D-7XQ", "AB3D-7XQ22", "AB3-D7XQ2", "AB3D-7XQ1", "AB3D-7XQ0", "AB3D-7XQ8", "AB3D-7XQ9", "AB3D_7XQ2", " AB3D-7XQ2", "AB3D-7XQ2\n", "", "ABCD-EFG!"]) {
+  it("a code is three groups of four base32 characters (A-Z and 2-7), upper case, dashes (60 bits, #524)", () => {
+    for (const ok of ["AB3D-7XQ2-K5MN", "AAAA-2222-AAAA", "ZZZZ-7777-ZZZZ"]) expect(EnrollmentCodeSchema.safeParse(ok).success, ok).toBe(true);
+    for (const bad of ["AB3D-7XQ2", "AB3D-7XQ2-K5MN-ABCD", "ab3d-7xq2-k5mn", "AB3D7XQ2K5MN", "AB3D-7XQ2-K5M", "AB3D-7XQ2-K5MN2", "AB3-D7XQ2-K5MN", "AB3D-7XQ2-K5M1", "AB3D-7XQ2-K5M0", "AB3D-7XQ2-K5M8", "AB3D-7XQ2-K5M9", "AB3D_7XQ2_K5MN", " AB3D-7XQ2-K5MN", "AB3D-7XQ2-K5MN\n", "", "ABCD-EFGH-IJK!"]) {
       expect(EnrollmentCodeSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
     }
   });
@@ -41,12 +41,12 @@ describe("agent contract: enrolment", () => {
     for (const extra of [{ hostname: "pc" }, { machine: "x" }, { ip: "10.0.0.1" }, { user: "someone" }, { path: "C:/x" }]) {
       expect(EnrollRequestSchema.safeParse({ ...fixtures.agentEnrollRequest, ...extra }).success, JSON.stringify(extra)).toBe(false);
     }
-    expect(EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2" }).success).toBe(false);
+    expect(EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2-K5MN" }).success).toBe(false);
     expect(EnrollRequestSchema.safeParse({ agentVersion: "0.1.0" }).success).toBe(false);
   });
 
   it("the agent version is 1 to 32 characters", () => {
-    const v = (agentVersion: string) => EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2", agentVersion }).success;
+    const v = (agentVersion: string) => EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2-K5MN", agentVersion }).success;
     expect([v(""), v("1"), v("x".repeat(32)), v("x".repeat(33))]).toEqual([false, true, true, false]);
   });
 
@@ -82,10 +82,10 @@ describe("agent contract: cadence", () => {
   });
 
   it("the enrolment request's version is bounded at 32 and a code with a look-alike character is refused", () => {
-    const req = (over: object) => EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2", agentVersion: "1.0.0", ...over }).success;
+    const req = (over: object) => EnrollRequestSchema.safeParse({ code: "AB3D-7XQ2-K5MN", agentVersion: "1.0.0", ...over }).success;
     expect([req({ agentVersion: "a".repeat(32) }), req({ agentVersion: "a".repeat(33) }), req({ agentVersion: "" })]).toEqual([true, false, false]);
-    for (const code of ["AB3D-7XQ2", "АB3D-7XQ2", "AB3D‐7XQ2", "AB3D-７XQ2"]) {
-      expect(req({ code }), code).toBe(code === "AB3D-7XQ2"); // the first is a plain ASCII 2, the rest are look-alikes
+    for (const code of ["AB3D-7XQ2-K5MN", "АB3D-7XQ2-K5MN", "AB3D‐7XQ2-K5MN", "AB3D-７XQ2-K5MN", "AB3D-7XQ2-K5МN"]) {
+      expect(req({ code }), code).toBe(code === "AB3D-7XQ2-K5MN"); // the first is a plain ASCII 2, the rest are look-alikes
     }
   });
 });

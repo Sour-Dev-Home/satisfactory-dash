@@ -29,6 +29,7 @@ import {
 import { ServerPlayersResponseSchema } from "./players";
 import { MapLiveResponseSchema, MapWorldLayerResponseSchema, WorldIngestResponseSchema } from "./map";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
+import { DeleteAccountResponseSchema, LeaveServerResponseSchema } from "./account";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
 import {
   AlertDestinationsResponseSchema,
@@ -191,6 +192,28 @@ export const endpoints = {
     // response schema. Offer it only when `signInMethods` includes "google" (Google off = 404).
     googleStart: { method: "GET", route: "/api/auth/google/start", path: () => "/api/auth/google/start" },
   },
+  // ADR-0047: the signed-in user deletes their own account. No body; needs a sign-in within the last 10 minutes (403
+  // reauth_required), refuses the operator (403 forbidden, reason operator_account) and an owner of an operator-created
+  // server (409 would_orphan, reason operator_servers, with `servers`). See account.ts.
+  account: {
+    remove: {
+      method: "DELETE",
+      route: "/api/account",
+      path: () => "/api/account",
+      response: DeleteAccountResponseSchema,
+    },
+  },
+  // ADR-0047: a member leaves a server. Server-scoped (ADR-0001) and open to any MEMBER (`memberSelfService`, viewers
+  // included): it removes only the caller's own membership. No body. The owner gets 409 would_orphan, reason last_owner.
+  members: {
+    leave: {
+      method: "POST",
+      route: "/api/servers/:serverId/members/me/leave",
+      path: scoped("members/me/leave"),
+      response: LeaveServerResponseSchema,
+      memberSelfService: true,
+    },
+  },
   // ADR-0030 phase 1: the operator manages the local servers. Every entry is `operatorOnly`: the
   // seeded operator account, not merely an owner or admin (a non-operator answers 403, a non-member
   // of a scoped route 404). Tokens are write-only: requests carry them, responses never do.
@@ -275,9 +298,9 @@ export const endpoints = {
     },
   },
   // ADR-0046 (self-serve agent servers): any signed-in user (not `operatorOnly`) creates an agent server and becomes its owner.
-  // 201 `{ server }`. The backend does not serve it yet (ADR-0046 build task 4).
+  // 201 `{ server }`. Answers 403 `forbidden` while SELF_SERVE_ENABLED is off (the list says so in `selfServeEnabled`).
   // `selfServeOwner` (on `serverManagement.renameAgent` and `.remove` above): the owner of a server created through self-serve
-  // may also call that operator-only route. The flag only declares the intent; until the backend implements it, owners get 403.
+  // (`createdVia: "self_serve"` in the server list) may also call that operator-only route; everyone else still gets 403.
   selfServe: {
     createAgentServer: {
       method: "POST",

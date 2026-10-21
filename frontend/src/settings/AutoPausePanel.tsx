@@ -20,7 +20,7 @@ export function AutoPausePanel({ snapshot, onChange, saving }: Props) {
   return (
     <section aria-labelledby="settings-heading" className="panel">
       <h3 id="settings-heading">Server settings</h3>
-      <label className="flex items-center gap-3">
+      <label className="flex min-h-touch items-center gap-3">
         <input
           type="checkbox"
           checked={autoPause}

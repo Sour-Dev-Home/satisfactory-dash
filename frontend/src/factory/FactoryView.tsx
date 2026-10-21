@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router";
 import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
 import { queries } from "../api/queries";
+import { useSettledQuery } from "../api/settled";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { ErrorNotice } from "../components/ErrorNotice";
+import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable } from "../ui/Skeleton";
 import { FactorySkeleton } from "./FactorySkeleton";
@@ -19,7 +19,7 @@ import { itemLabels } from "./itemLabels";
  */
 export function FactoryView() {
   const server = useSelectedServer();
-  const factory = useQuery(queries.factory(server.id));
+  const { query: factory, firstLoad, error } = useSettledQuery(queries.factory(server.id));
   // Deep links (#351): the machine search (?q=) and the history's item (?item=) live in the URL, so
   // a link or the command bar can open the page with them set. Replaced, not pushed: typing a
   // search mustn't fill the back button. Other parameters (e.g. dev:mock's scenario) are kept.
@@ -58,11 +58,11 @@ export function FactoryView() {
   // time it shows, the table and "Since yesterday" are usually both here; a slow history read shows its
   // reserved box instead, and the table never waits on it past the page budget.
   return (
-    <Loadable pending={factory.isPending} skeleton={<FactorySkeleton />} className="grid gap-4">
+    <Loadable pending={firstLoad} skeleton={<FactorySkeleton />} className="grid gap-4">
       <ErrorBoundary label="Since yesterday">
         <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
-      {factory.isError && <ErrorNotice error={factory.error} />}
+      {error != null && <PanelError error={error} title="Factory" hasData={factory.data !== undefined} />}
       {factory.data && (
         <FactoryPanel
           snapshot={factory.data}

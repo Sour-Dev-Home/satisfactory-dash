@@ -32,6 +32,23 @@ interface StateCase {
    * "Updated 8 s ago" or the mute field's default of an hour ahead, then reads the same every run.
    */
   clock?: string;
+  /**
+   * What the browser says about web push: not asked yet ("off"), already subscribed, or notifications blocked.
+   * Always stubbed for these states: headless Chromium reports its own permission ("denied" in CI).
+   */
+  browser?: "off" | "subscribed" | "denied";
+}
+
+/** Stands in for the browser's push state before the page loads. */
+async function stubPushBrowser(page: Page, state: "off" | "subscribed" | "denied") {
+  await page.addInitScript((s) => {
+    const permission = s === "denied" ? "denied" : s === "subscribed" ? "granted" : "default";
+    Object.defineProperty(Notification, "permission", { get: () => permission });
+    if (s === "subscribed") {
+      ServiceWorkerContainer.prototype.getRegistration = () =>
+        Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve({}) } } as unknown as ServiceWorkerRegistration);
+    }
+  }, state);
 }
 
 /** The fixtures' own day, for the alert settings (their mute and alert times). */
@@ -40,6 +57,12 @@ const FIXTURE_NOW = "2026-09-26T12:00:00.000Z";
 const LIVE_NOW = "2026-09-22T22:25:12.000Z";
 /** 8 s after the agent fixtures' last-seen time, so "Last seen 8 s ago" holds still. */
 const AGENT_NOW = "2026-09-26T12:00:13.000Z";
+
+/** "Add your server" (ADR-0046): types a name and submits. */
+const addYourServer = (name: string) => async (page: Page) => {
+  await page.getByLabel("Server name").fill(name);
+  await page.getByRole("button", { name: "Add server" }).click();
+};
 
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
@@ -58,6 +81,10 @@ const CASES: StateCase[] = [
   { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/ },
   { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
+  // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
+  { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
+  { scenario: "map-world-truncated", path: "/app/map", shows: /Showing part of the rails/ },
+  { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
   { scenario: "login", shows: "Sign in" },
   { scenario: "login-google", shows: "Sign in with Google" },
   {
@@ -182,13 +209,20 @@ const CASES: StateCase[] = [
   { scenario: "alerts-owner", path: "/app/settings", shows: "New production target", clock: FIXTURE_NOW },
   { scenario: "alerts-viewer", path: "/app/settings", shows: "Only a server owner or admin can change alert rules.", clock: FIXTURE_NOW },
   { scenario: "alerts-webhook-gone", path: "/app/settings", shows: /no longer exists/, clock: FIXTURE_NOW },
+  // ADR-0044 web push, Settings → Alerts. "default-settings" is the backend with push off. Here it is on,
+  // and the browser is as it comes (permission not asked yet), already subscribed, or has blocked
+  // notifications; and a viewer, who gets the opt-in like anyone.
+  { scenario: "push-enabled", path: "/app/settings", shows: /This device is not subscribed/, clock: FIXTURE_NOW, browser: "off" },
+  { scenario: "push-opted-in", name: "push-subscribed", path: "/app/settings", shows: /This device is subscribed/, clock: FIXTURE_NOW, browser: "subscribed" },
+  { scenario: "push-enabled", name: "push-denied", path: "/app/settings", shows: /Notifications are blocked for this site/, clock: FIXTURE_NOW, browser: "denied" },
+  { scenario: "push-viewer", path: "/app/settings", shows: /It applies to every device where push is on/, clock: FIXTURE_NOW, browser: "off" },
   // Settings → Game PC agent (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
   { scenario: "agent-local-operator", path: "/app/settings", shows: /forgets its stored game-server tokens/, clock: AGENT_NOW },
   {
     scenario: "agent-local-operator",
     name: "agent-code",
     path: "/app/settings",
-    shows: "AB3D-7XQ2",
+    shows: "AB3D-7XQ2-K5MN",
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Create enrolment code" }).click(),
   },
@@ -202,6 +236,57 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // Self-serve (ADR-0046, #529). Settings → Add your server (on; off shows no section), the add form as the whole
+  // screen for a player with no server, each refusal, and the owner of an enrolled and of a pending server.
+  { scenario: "self-serve-add", path: "/app/settings", shows: "Add your server", clock: AGENT_NOW },
+  { scenario: "self-serve-off", path: "/app/settings", shows: /Auto-pause when no players/, clock: AGENT_NOW },
+  { scenario: "self-serve-empty", path: "/app", shows: "Add your first server", clock: AGENT_NOW },
+  {
+    scenario: "self-serve-limit-account",
+    path: "/app/settings",
+    shows: /one account can have at most 2/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  {
+    scenario: "self-serve-limit-pending",
+    path: "/app/settings",
+    shows: /with its enrolment code before adding another/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  {
+    scenario: "self-serve-limit-service",
+    path: "/app/settings",
+    shows: /The service is full right now/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  {
+    scenario: "self-serve-limit-daily",
+    path: "/app/settings",
+    shows: /Try again in about 5 hours/,
+    clock: AGENT_NOW,
+    act: addYourServer("Second world"),
+  },
+  { scenario: "self-serve-owner", path: "/app/settings", shows: "Your server", clock: AGENT_NOW },
+  { scenario: "self-serve-owner-pending", path: "/app/settings", shows: /Create an enrolment code above to connect it/, clock: AGENT_NOW },
+  {
+    scenario: "self-serve-owner",
+    name: "self-serve-rename",
+    path: "/app/settings",
+    shows: "Save name",
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Rename My first world" }).click(),
+  },
+  {
+    scenario: "self-serve-owner",
+    name: "self-serve-delete-confirm",
+    path: "/app/settings",
+    shows: /can.t be undone/,
+    clock: AGENT_NOW,
+    act: (page) => page.getByRole("button", { name: "Delete My first world" }).click(),
+  },
   { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the agent.", clock: AGENT_NOW },
   // The command bar (#351), open over the Overview: a native modal dialog, so the CSP guard here
   // also proves it injects no <style> (ADR-0016 item 8).
@@ -237,11 +322,15 @@ async function addServer(page: Page, host: string) {
   await page.getByRole("button", { name: "Add server" }).click();
 }
 
-for (const { scenario, shows, path = "/app", name = scenario, act, clock } of CASES) {
+for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
     await mockApi(scenario);
+    if (browser) await stubPushBrowser(page, browser);
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
+    // The backed-up ring pulses on the canvas, which "animations: disabled" cannot stop: reduced motion
+    // holds it still, so every map screenshot shows the same frame.
+    if (path === "/app/map") await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(path);
     if (act) {
       // Sign-in states act on the login form once it's there; the rest act on their page, and

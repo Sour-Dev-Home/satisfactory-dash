@@ -27,8 +27,10 @@ describe("a failed poll after a successful one", () => {
     fail = true;
     await act(() => client.refetchQueries({ type: "active" }));
 
-    // Error shown, previous snapshot (and its paused banner) still visible.
-    await waitFor(() => expect(screen.getAllByText("Game server unreachable.")).toHaveLength(2));
+    // Error shown once, by the server banners (the power panel doesn't repeat it), and the previous
+    // snapshot (and its paused banner) still visible.
+    await waitFor(() => expect(screen.getAllByText("Game server unreachable.")).toHaveLength(1));
+    expect(screen.getByText("Game server unreachable.").closest('[class*="has(p,[role])"]')).not.toBeNull();
     expect(screen.getByText("Paused: no players connected, values are frozen.")).toBeInTheDocument();
     const power = screen.getByRole("region", { name: "Power" });
     expect(within(power).getByRole("article", { name: `Circuit ${powerOk.data.circuits[0].circuitGroupId}` })).toBeInTheDocument();

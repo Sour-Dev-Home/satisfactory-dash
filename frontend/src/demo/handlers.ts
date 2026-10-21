@@ -103,6 +103,9 @@ export const demoHandlers = [
     return guarded(params, () => (body.host === undefined || onThisMachine(body.host) ? NOT_SAVED() : LAN_REFUSED()));
   }),
   del(endpoints.serverManagement.remove.route, ({ params }) => guarded(params, NOT_SAVED)),
+  // ADR-0046: the demo's list never says `selfServeEnabled`, so no screen offers "Add your server"; the route is
+  // refused like every other server change, should something call it.
+  post(endpoints.selfServe.createAgentServer.route, ({ params }) => guarded(params, NOT_SAVED)),
   // ADR-0031: an agent server's rename and switch back to local are server changes too, refused alike.
   patch(endpoints.serverManagement.renameAgent.route, ({ params }) => guarded(params, NOT_SAVED)),
   post(endpoints.serverManagement.switchToLocal.route, ({ params }) => guarded(params, NOT_SAVED)),
@@ -121,6 +124,14 @@ export const demoHandlers = [
     }),
   ),
   get(endpoints.factory.route, ({ params }) => guarded(params, () => Response.json(world.factory(demoNow())))),
+  // ADR-0038 M5: the map's world layers, one made-up reading each. An unknown layer is a 404 like the real route.
+  get(endpoints.map.worldLayer.route, ({ params }) =>
+    guarded(params, () => {
+      if (params.layer === "rails") return Response.json(world.railsWorld(demoNow()));
+      if (params.layer === "resourceNodes") return Response.json(world.resourceNodesWorld(demoNow()));
+      return error(404, "not_found", "Unknown map layer");
+    }),
+  ),
   // Stored history (ADR-0027): the same query rules as the backend's, so a bad range is a 400 here too.
   get(endpoints.history.items.route, ({ params, request }) =>
     guarded(params, () => {

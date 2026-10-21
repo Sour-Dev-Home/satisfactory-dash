@@ -7,7 +7,7 @@ import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
-import { ENROLLMENT_CODE_TTL_MS } from "../config.js";
+import { ENROLLMENT_CODES_PER_HOUR_DEFAULT, ENROLLMENT_CODES_PER_MINUTE, ENROLLMENT_CODE_TTL_MS } from "../config.js";
 import { deleteOpenCodes, getAgentStatus, insertCode, lockServer, revokeCredential, sha256 } from "../repositories/agentRepository.js";
 import { generateEnrollmentCode } from "./enrollmentCode.js";
 
@@ -36,6 +36,10 @@ export interface AgentsServiceDeps {
   canManage: (userId: string) => boolean;
   /** Codes per user per minute; default 10 (each creation drops the server's previous code). */
   limiter?: UserRateLimiter;
+  /** ADR-0046 C7 (#527): codes per user per hour, in addition to the minute limit; the operator (`canManage`) is exempt. */
+  hourlyLimiter?: UserRateLimiter;
+  /** The hourly cap when no `hourlyLimiter` is given; default 20 (`ENROLLMENT_CODES_PER_HOUR`, validated at startup). */
+  codesPerHour?: number;
   now?: () => number;
   /** When the backend last received a snapshot from this server's agent (ms), from memory; undefined before the first one.
    *  The composition root reads it from the server's observations. */
@@ -58,13 +62,24 @@ const MAX_CODE_DRAWS = 5;
 export function createAgentsService(deps: AgentsServiceDeps): AgentsService {
   const { db } = deps;
   const now = deps.now ?? Date.now;
-  const limiter = deps.limiter ?? new UserRateLimiter({ max: 10, windowMs: 60_000 });
+  const limiter = deps.limiter ?? new UserRateLimiter({ max: ENROLLMENT_CODES_PER_MINUTE, windowMs: 60_000, now });
+  const hourlyLimiter =
+    deps.hourlyLimiter ?? new UserRateLimiter({ max: deps.codesPerHour ?? ENROLLMENT_CODES_PER_HOUR_DEFAULT, windowMs: 3_600_000, now });
 
   return {
     createEnrollmentCode: (serverId, actorUserId) =>
       orUnavailable(async () => {
         const wait = limiter.hit(actorUserId);
         if (wait > 0) throw new RateLimitedError(wait, "Too many enrollment codes. Try again in a moment.");
+        // Both limits are checked before the transaction. The operator re-enrols their own servers in bulk after a
+        // restore, so they only have the minute limit. A refused hourly hit gives its minute slot back.
+        if (!deps.canManage(actorUserId)) {
+          const hourlyWait = hourlyLimiter.hit(actorUserId);
+          if (hourlyWait > 0) {
+            limiter.refund(actorUserId);
+            throw new RateLimitedError(hourlyWait, "Too many enrollment codes this hour. Try again later.");
+          }
+        }
         return withTransaction(db, async (client) => {
           const server = await lockServer(client, serverId);
           if (server === undefined) throw new ServerNotFoundError();

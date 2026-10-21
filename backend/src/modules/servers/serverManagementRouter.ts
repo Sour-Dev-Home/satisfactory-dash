@@ -28,6 +28,8 @@ import { sendValidated } from "../../platform/sendValidated.js";
 import { UserRateLimiter } from "../../platform/userRateLimiter.js";
 import { orUnavailable } from "./serverAccess.js";
 import type { ServerManagementService } from "./serverManagement.js";
+import { NOT_SELF_SERVE } from "./selfServe.js";
+import type { SelfServeService } from "./selfServe.js";
 
 /**
  * ADR-0030's routes for managing servers. EVERY one is operator only (the seeded operator account;
@@ -43,10 +45,17 @@ import type { ServerManagementService } from "./serverManagement.js";
  * Tokens are write-only: a request carries them, a response never does, and no body is ever logged.
  * The write routes are rate limited per user, and the test-connection routes more tightly (each one
  * opens outbound connections).
+ *
+ * #526 (ADR-0046 section 1.8): the two routes the contract flags `selfServeOwner` (rename an agent server, remove) also
+ * accept the OWNER of a self-serve server. For a caller whose role on the server is owner the owner path runs first; it
+ * re-checks self-serve and ownership under the server's row lock, and an operator-created server falls through to the
+ * operator-only rule, unchanged. Admins and viewers stay 403, non-members 404 (the membership check runs first).
  */
 export interface ServerManagementRouterOptions {
   /** False until the database is up and the servers are loaded: answered with a 503. */
   isReady?: () => boolean;
+  /** The self-serve owner's rename and remove. Without it, those routes are operator only. */
+  selfServeOwner?: Pick<SelfServeService, "renameAsOwner" | "removeAsOwner">;
   /** Injectable for tests. */
   writeLimiter?: UserRateLimiter;
   testLimiter?: UserRateLimiter;
@@ -57,7 +66,7 @@ const TEST_LIMIT = { max: 10, windowMs: 60 * 1000 };
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again later.";
 
 /** A body that fails its schema is a 400 naming the fields, never the values (a token may be among them). */
-function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
+export function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     const problems = parsed.error.issues.slice(0, 5).map((issue) => `${issue.path.join(".") || "(body)"}: ${issue.message}`);
@@ -66,7 +75,7 @@ function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
   return parsed.data;
 }
 
-function userId(res: { locals: { user?: { id?: unknown } } }): string {
+export function userId(res: { locals: { user?: { id?: unknown } } }): string {
   const id = res.locals.user?.id;
   if (typeof id !== "string") throw new UnauthorizedError("Sign in to continue");
   return id;
@@ -84,6 +93,19 @@ export function createServerManagementRouters(
     if (options.isReady && !options.isReady()) throw new ServiceUnavailableError();
     if (!service.canManage(id)) throw new ForbiddenError("Only the operator can manage servers.");
     next();
+  };
+  // #526: the `selfServeOwner` routes let an owner through to the handler, which tries the owner path first.
+  const selfServeOwner = options.selfServeOwner;
+  const isOwnerCaller = (res: { locals: Record<string, unknown> }): boolean => selfServeOwner !== undefined && res.locals.serverRole === "owner";
+  const operatorOrSelfServeOwner: RequestHandler = (req, res, next) => {
+    if (!isOwnerCaller(res)) return operatorOnly(req, res, next);
+    userId(res);
+    if (options.isReady && !options.isReady()) throw new ServiceUnavailableError();
+    next();
+  };
+  /** After the owner path answered NOT_SELF_SERVE (an operator-created server): the operator-only rule, as before. */
+  const requireOperator = (res: { locals: { user?: { id?: unknown } } }): void => {
+    if (!service.canManage(userId(res))) throw new ForbiddenError("Only the operator can manage servers.");
   };
   const limited =
     (limiter: UserRateLimiter): RequestHandler =>
@@ -138,13 +160,26 @@ export function createServerManagementRouters(
     sendValidated(res, ServerConnectionResponseSchema, { server });
   });
   // ADR-0031: the one edit a server reached through an edge agent has.
-  scoped.patch(routePath(renameAgent.route), operatorOnly, limited(writeLimiter), async (req, res) => {
+  // #526: flagged `selfServeOwner` in the contract, so a self-serve server's owner may rename it too.
+  scoped.patch(routePath(renameAgent.route), renameAgent.selfServeOwner ? operatorOrSelfServeOwner : operatorOnly, limited(writeLimiter), async (req, res) => {
     const id = serverId(req.params.serverId);
     const body = parseBody(RenameServerRequestSchema, req.body);
+    if (isOwnerCaller(res)) {
+      const owned = await orUnavailable(() => selfServeOwner!.renameAsOwner(userId(res), id, body.displayName));
+      if (owned !== NOT_SELF_SERVE) return sendValidated(res, RenameServerResponseSchema, { server: owned });
+      requireOperator(res);
+    }
     sendValidated(res, RenameServerResponseSchema, { server: await orUnavailable(() => service.renameAgentServer(userId(res), id, body.displayName)) });
   });
-  scoped.delete(routePath(remove.route), operatorOnly, limited(writeLimiter), async (req, res) => {
-    await orUnavailable(() => service.remove(userId(res), serverId(req.params.serverId)));
+  // #526: flagged `selfServeOwner` too: the owner removes their self-serve server through the same purge.
+  scoped.delete(routePath(remove.route), remove.selfServeOwner ? operatorOrSelfServeOwner : operatorOnly, limited(writeLimiter), async (req, res) => {
+    const id = serverId(req.params.serverId);
+    if (isOwnerCaller(res)) {
+      const owned = await orUnavailable(() => selfServeOwner!.removeAsOwner(userId(res), id));
+      if (owned !== NOT_SELF_SERVE) return sendValidated(res, DeleteServerResponseSchema, { deleted: true });
+      requireOperator(res);
+    }
+    await orUnavailable(() => service.remove(userId(res), id));
     sendValidated(res, DeleteServerResponseSchema, { deleted: true });
   });
   scoped.post(routePath(testSaved.route), operatorOnly, limited(testLimiter), async (req, res) => {

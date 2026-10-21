@@ -134,7 +134,13 @@ async function request<T>(
   if (json === NOT_JSON) throw new BackendUnreachableError(path, res.status);
   const parsed = ApiErrorResponseSchema.safeParse(json);
   if (!parsed.success) throw new ContractDriftError(path, res.status, formatIssues(parsed.error.issues));
-  throw new ApiError(res.status, parsed.data.error);
+  throw new ApiError(res.status, parsed.data.error, retryAfterSeconds(res));
+}
+
+/** `Retry-After` as whole seconds (the form the backend sends); an HTTP date or junk is ignored. */
+function retryAfterSeconds(res: Response): number | undefined {
+  const raw = res.headers.get("Retry-After")?.trim();
+  return raw !== undefined && /^\d{1,7}$/.test(raw) ? Number(raw) : undefined;
 }
 
 const NOT_JSON = Symbol("not JSON");

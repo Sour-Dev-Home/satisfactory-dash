@@ -20,13 +20,15 @@ import type { AgentCommandsService, CommandsService } from "./services/commandsS
 import { createEnrollmentService } from "./services/enrollmentService.js";
 import type { AgentsService } from "./services/agentsService.js";
 
-export { AGENT_CADENCE } from "./config.js";
+export { AGENT_CADENCE, loadEnrollmentCodesPerHour } from "./config.js";
 export { createAgentsService } from "./services/agentsService.js";
 export type { AgentsService, AgentsServiceDeps } from "./services/agentsService.js";
 export { createCommandsService } from "./services/commandsService.js";
 export type { AgentCommandsService, CommandsService, CommandsServiceDeps } from "./services/commandsService.js";
 export { CommandNotifier } from "./services/commandNotifier.js";
 export { releaseAgentServer } from "./services/releaseAgent.js";
+// ADR-0046 C3: "has this server ever enrolled", injected into the servers module's self-serve create by the composition root.
+export { enrolledServerIds } from "./repositories/agentRepository.js";
 export type { ReleasedAgent } from "./services/releaseAgent.js";
 export { createAgentSettingsServices } from "./services/agentSettings.js";
 export type { AgentSettingsServices } from "./services/agentSettings.js";

@@ -64,7 +64,9 @@ export const isOneOf =
 const POLLER_GROUPS = ["power", "factory"];
 const HISTORY_TABLES = ["power_samples", "item_samples", "building_transitions"];
 /** The statuses an agent request is refused with (#514): agents/routes/agentApi.ts counts exactly these. */
-export const AGENT_REFUSED_STATUSES = ["400", "401", "413", "415", "429"];
+/** ADR-0044 (348-2): why the push sender dropped a row without delivering it. */
+export const PUSH_DROP_REASONS = ["not_member", "user_inactive", "opted_out", "endpoint_refused", "gone", "rejected", "expired", "unreadable", "push_disabled"] as const;
+export const AGENT_REFUSED_STATUSES =["400", "401", "413", "415", "429"];
 const ALERT_KINDS = ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target", "agent_offline"];
 
 /** ADR-0037 build step 4's closed set: the static name of every query `timedQuery` (platform/db)
@@ -81,6 +83,7 @@ export const QUERY_NAMES = [
   "agents.countOpenCommands",
   "agents.deleteOpenCodes",
   "agents.endOpenCommandsOf",
+  "agents.enrolledServerIds",
   "agents.expireStaleCommands",
   "agents.findActiveAgent",
   "agents.findOpenCodeServer",
@@ -121,6 +124,7 @@ export const QUERY_NAMES = [
   "alerts.destinationSummary",
   "alerts.disableDestination",
   "alerts.enqueueDeliveries",
+  "alerts.enqueuePush",
   "alerts.insertEvents",
   "alerts.listRules",
   "alerts.loadMutes",
@@ -130,14 +134,19 @@ export const QUERY_NAMES = [
   "alerts.purge",
   "alerts.push.count",
   "alerts.push.delete",
+  "alerts.push.deleteGone",
   "alerts.push.findByHash",
   "alerts.push.getOptIn",
   "alerts.push.getOwned",
+  "alerts.push.getSealedOwned",
   "alerts.push.insert",
   "alerts.push.lockUser",
+  "alerts.push.markSuccess",
+  "alerts.push.recipientCheck",
   "alerts.push.removeOptIn",
   "alerts.push.setKeys",
   "alerts.push.setOptIn",
+  "alerts.releaseDelivery",
   "alerts.rescheduleDelivery",
   "alerts.saveDestination",
   "alerts.seedPresetRules",
@@ -148,7 +157,11 @@ export const QUERY_NAMES = [
   "identity.authMethodsForUser",
   "identity.consumeLoginAttempt",
   "identity.createLoginAttempt",
+  "identity.countUsersCreatedLastHour",
+  "identity.createSignupUser",
   "identity.createUser",
+  "identity.displayNameTaken",
+  "identity.takeSignupLock",
   "identity.deleteExpiredLoginAttempts",
   "identity.deleteExpiredSessions",
   "identity.findActiveSession",
@@ -170,6 +183,8 @@ export const QUERY_NAMES = [
   // servers
   "servers.addMember",
   "servers.countConnections",
+  "servers.countRecentSelfServeCreations",
+  "servers.countSelfServeServers",
   "servers.create.takeAdvisoryLock",
   "servers.createConnection.exists",
   "servers.createConnection.insert",
@@ -180,15 +195,23 @@ export const QUERY_NAMES = [
   "servers.getConnectionMeta",
   "servers.getMemberRole",
   "servers.importServers.takeManagementLock",
+  "servers.insertSelfServeServer",
   "servers.listAgentServers",
   "servers.listConnectionMetas",
   "servers.listConnections",
+  "servers.isSelfServeServer",
+  "servers.listCreatedSelfServeServers",
+  "servers.listOperatorAgentServers",
+  "servers.listPendingSelfServeServers",
   "servers.listServersForUser",
+  "servers.lockExpiredSelfServeServer",
+  "servers.lockServerForSelfServeOwner",
   "servers.lockServerByPublicId",
   "servers.removeMember",
   "servers.renameServer",
   "servers.saveConnection",
   "servers.selectConnection",
+  "servers.selfServe.takeAdvisoryLock",
   "servers.setMemberRole",
   "servers.admin.listServers",
   "servers.softDeleteServer",
@@ -265,6 +288,18 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
     kind: "counter",
     labels: { server: isBoundedToken(64), status: isOneOf(...AGENT_REFUSED_STATUSES) },
   },
+  // #528 (ADR-0046 C8): new-account refusals. `signup_busy` = the process-wide hourly cap; `network_limit` = one
+  // network's own daily share. A sustained rate of either is a sign-up flood the operator should look at.
+  "satis.signup.refused": {
+    kind: "counter",
+    labels: { reason: isOneOf("signup_busy", "network_limit") },
+  },
+  // #526 (ADR-0046 C4): self-serve servers the pending sweep removed because they never enrolled within the TTL. A sustained
+  // rate is accounts creating servers they never connect (M3's residual); `list-servers` names them.
+  "satis.servers.pending_swept": {
+    kind: "counter",
+    labels: {},
+  },
   "satis.history.rows_written": {
     kind: "counter",
     labels: { table: isOneOf(...HISTORY_TABLES) },
@@ -286,6 +321,12 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   "satis.alerts.events_dropped": {
     kind: "counter",
     labels: { server: isBoundedToken(64) },
+  },
+  // ADR-0044 (348-2): push rows the sender gave up on without a delivery, by reason (the send-time recipient recheck,
+  // the endpoint allowlist recheck, a gone subscription, a refusal, expiry); `server` is the public id.
+  "satis.alerts.push.dropped": {
+    kind: "counter",
+    labels: { server: isBoundedToken(64), reason: isOneOf(...PUSH_DROP_REASONS) },
   },
 });
 

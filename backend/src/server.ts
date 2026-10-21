@@ -5,6 +5,7 @@ import { resolveLogDir } from "./platform/logFiles.js";
 import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { bootSequence } from "./platform/bootSequence.js";
+import { Mutex } from "./platform/mutex.js";
 import { environmentServerEntries, warnEnvServersNotServed } from "./platform/envServers.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
@@ -34,8 +35,13 @@ import {
   createDbServerAccess,
   createServerManagementRouters,
   createServerManagementService,
+  createSelfServeRouter,
+  createSelfServeService,
+  createPendingServerSweeper,
+  addUnlessRemoved,
   createServersRouter,
   addressVerdict,
+  loadSelfServeConfigFromEnv,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
 } from "./modules/servers/index.js";
@@ -49,6 +55,7 @@ import {
   createPushService,
   loadAlertDeliveryMode,
   loadPushConfig,
+  pushEnabled,
 } from "./modules/alerts/index.js";
 import {
   createAgentTelemetryServices,
@@ -64,10 +71,12 @@ import {
   createAgentAuth,
   createAgentSettingsServices,
   releaseAgentServer,
+  enrolledServerIds,
   createAgentUserRouters,
   createAgentsService,
   createCommandSweeper,
   createCommandsService,
+  loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createWorldRoutes } from "./modules/map/index.js";
@@ -106,6 +115,8 @@ function orExit<T>(load: () => T): T {
 
 // A bad PORT used to become NaN (listen(NaN) picks a random port); now the backend refuses to start.
 const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
+// ADR-0046 C7 (#527): a bad value stops the backend at startup, like PORT.
+const enrollmentCodesPerHour = orExit(() => loadEnrollmentCodesPerHour(process.env));
 
 // A servers file replaces the single-server variables; naming any that are still set (names
 // only, never values) keeps a half-migrated .env from being confusing.
@@ -265,9 +276,18 @@ const databaseWorkers = [
   // transitions in the alert log. It needs the database up, so it starts with the others. PR 6: with ALERT_DELIVERY
   // on it also queues each new event for the server's destinations, and the sender delivers them; off (the default)
   // it queues nothing and sends nothing.
-  ...(database ? [createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), { deliver: alertDelivery === "on" })] : []),
+  // ADR-0044 (348-2): with push enabled too (VAPID configured), each new event is also queued for the subscriptions of
+  // the server's opted-in, active members, and the same sender delivers them.
+  ...(database
+    ? [
+        createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), {
+          deliver: alertDelivery === "on",
+          deliverPush: pushEnabled(alertDelivery, pushConfig, secretsKeyring),
+        }),
+      ]
+    : []),
   ...(database && alertDelivery === "on" && secretsKeyring
-    ? [createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }))]
+    ? [createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }), { push: pushConfig })]
     : []),
 ];
 
@@ -293,9 +313,13 @@ function buildFromConnection(c: ServerConnection) {
 }
 
 const databasePort = databasePortOf(databaseConfig?.url);
+// #526 (L1): one mutex for every runtime change that follows a server write (the operator's management service, the
+// self-serve owner's rename and remove, the pending sweep), so their post-commit runtime changes run one at a time.
+const serverWriteMutex = new Mutex();
 const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
+      mutex: serverWriteMutex,
       ring: secretsKeyring,
       runtime: directory,
       build: buildFromConnection,
@@ -309,9 +333,50 @@ const serverManagement = database
       releaseAgent: releaseAgentServer,
     })
   : undefined;
-const managementRouters = serverManagement
-  ? createServerManagementRouters(serverManagement, { isReady: () => serversRegistered })
+// ADR-0046: self-serve agent servers, shipped dark. SELF_SERVE_ENABLED (default false) and the caps are validated here; a bad
+// value stops the backend, and turning it on needs a database (the servers and their owners live in it).
+const selfServeConfig = orExit(() => {
+  const config = loadSelfServeConfigFromEnv(process.env);
+  if (config.enabled && database === undefined) throw new ConfigError("SELF_SERVE_ENABLED=true needs DATABASE_URL.");
+  return config;
+});
+logger.info({ selfServe: selfServeConfig.enabled }, selfServeConfig.enabled ? "self-serve server creation is ON" : "self-serve server creation is OFF");
+const selfServeService = database
+  ? createSelfServeService({
+      db: database.pool,
+      config: selfServeConfig,
+      isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
+      enrolledServerIds,
+      // The same builder enrolment uses: the new server gets its agent-backed runtime entry.
+      attachRuntime: (publicId) => attachAgentRuntime(publicId),
+      onAttachError: (serverId, err) =>
+        logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a new self-serve server's runtime entry could not be built; its first snapshot attaches it"),
+      // #526: an owner's rename and remove update the running servers after their commit.
+      runtime: directory,
+      mutex: serverWriteMutex,
+    })
   : undefined;
+const selfServeRouter = selfServeService
+  ? createSelfServeRouter(selfServeService, { config: selfServeConfig, isReady: () => serversRegistered })
+  : undefined;
+// #526 (ADR-0046 section 1.8): the self-serve owner may also rename and remove their server (the contract's `selfServeOwner`).
+const managementRouters = serverManagement
+  ? createServerManagementRouters(serverManagement, { isReady: () => serversRegistered, selfServeOwner: selfServeService })
+  : undefined;
+// #526 (ADR-0046 C4): self-serve servers that never enrolled within SELF_SERVE_PENDING_TTL_HOURS are removed. Runs whatever
+// SELF_SERVE_ENABLED says (turning creation off must not strand pending servers), started with the other database workers.
+if (database) {
+  databaseWorkers.push(
+    createPendingServerSweeper({
+      db: database.pool,
+      logger: logger.child({ worker: "pending-servers" }),
+      ttlHours: selfServeConfig.pendingTtlHours,
+      enrolledServerIds,
+      removeRuntime: (publicId) => directory.remove(publicId),
+      mutex: serverWriteMutex,
+    }),
+  );
+}
 // ADR-0030: false when a stored connection cannot be opened (no key, an unknown key id, a modified
 // value). The backend stays up and serves the readable servers, but reports not-ready.
 let connectionsReadable = true;
@@ -335,7 +400,13 @@ function attachAgentRuntime(publicId: string): Promise<void> {
     if (displayName === undefined) {
       return; // the server was removed: nothing to attach
     }
-    await directory.replace(buildAgentServer(publicId, displayName));
+    // #526 (L2): a removal (owner, sweep, operator) may commit while this runs; re-checked after the swap.
+    await addUnlessRemoved({
+      publicId,
+      runtime: directory,
+      add: () => directory.replace(buildAgentServer(publicId, displayName)),
+      isLive: async (id) => (await findServerByPublicId(database.pool, id)) !== undefined,
+    });
   })().finally(() => attaching.delete(publicId));
   attaching.set(publicId, swap);
   return swap;
@@ -355,9 +426,13 @@ export const app = createApp({
     // The collection routes must come before the servers router (its /servers/:serverId check would
     // read "test-connection" as a server id); the scoped ones after it (its membership check runs first).
     ...(managementRouters ? [managementRouters.collection] : []),
+    // ADR-0046: POST /api/servers/agent, a collection route too ("agent" is a reserved server id).
+    ...(selfServeRouter ? [selfServeRouter] : []),
     createServersRouter(directory, serverAccess, {
       isReady: () => serversRegistered,
       canManage: serverManagement?.canManage,
+      selfServeEnabled: selfServeConfig.enabled,
+      ...(database && { enrolledServerIds: (serverUuids: readonly string[]) => enrolledServerIds(database.pool, serverUuids) }),
     }),
     // ADR-0038 M3 (#353): after the servers router, same as every other /servers/:serverId route.
     createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
@@ -384,6 +459,7 @@ export const app = createApp({
       ? createAgentUserRouters(createAgentsService({
             db: database.pool,
             canManage: (userId) => serverManagement?.canManage(userId) ?? false,
+            codesPerHour: enrollmentCodesPerHour,
             // In memory, from the last snapshot the ingest recorded: fresher than last_seen_at (written at most every 30 s).
             lastHeardAt: (serverId) => directory.get(serverId)?.telemetry.observations?.snapshot().agent?.lastHeardAt,
           }), agentCommands)

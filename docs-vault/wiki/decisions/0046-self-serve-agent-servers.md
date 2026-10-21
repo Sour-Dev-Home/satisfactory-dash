@@ -1,6 +1,7 @@
 # ADR-0046: Self-serve agent servers with per-account caps
 
-Status: proposed. Needs the owner's approval (decisions and the questions at the end). Issue #517.
+Status: accepted. The owner approved it, and answered yes to every question at the end, by merging #531 on
+2026-10-20. Issue #517.
 
 ## Context
 - ADR-0045 Amendment 1 (owner, 2026-10-20, option B): a player on a rented host must be able to get a server without
@@ -74,6 +75,12 @@ All `self_serve` only; the operator's account is exempt (`canManage`). Numbers a
 | C9 | Members per server | n/a | No members API exists yet (ADR-0025 1b). When it lands: 20 members, 10 pending invites | That build |
 | C10 | Alert destinations | today's | 1 Discord per server, 50 rules per server, 10 push devices per user (table above) | Unchanged |
 
+- Amendment (2026-10-21, #526, from #525's security review): C1 and C3 count by **creator**
+  (`servers.servers.created_by_user_id`), not current owner, so handing a server over frees no slot. C5 is no longer
+  in memory: it counts the creator's self-serve rows created in the last 24 h, removed ones included, inside the create
+  transaction under the server-management lock. So it survives a restart and counts create/remove churn. C7 and C8
+  are unchanged; C7 stays in memory, and the multi-instance note under Consequences applies to it only.
+
 **How they compose with #514 and #515.** An account's worst case is C1 x #514's per-credential budget (requests, bytes,
 one long-poll) and C1 x #515's per-server quotas (history rows, alert subjects and events, fair outbox claim). The
 service's worst case is (C2 + 8 local) x the same. So #514 and #515 must land first: C2 is computed from #515's number,
@@ -102,6 +109,10 @@ only refuses new creates. A per-account override is "not yet" (below).
 - Why now: the mod pins the format (spec lines 41-42). Before its first release it is a one-line change there; after,
   every installed mod would need an update. It is a contract change of its own (task 2), with a brief to the mod
   session.
+- Amendment (2026-10-20, #524): the mod session confirmed how the mod treats a 429 on enrol, so the open [NEEDS VERIFICATION] on it is
+  closed. It is transient: `FinishEnroll` logs a warning once, then retries with exponential backoff and jitter and keeps the code.
+  The code is cleared only by a 201, or kept with a request for a new one on a fatal `CodeRejected`. Minor gap, harmless at
+  1,200 a minute: the enrol path does not read `Retry-After` (only the snapshot pusher does).
 
 ### 5. Abuse response
 

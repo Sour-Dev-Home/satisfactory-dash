@@ -21,6 +21,11 @@ export function createServersRouter(
   options: AuthorizeServerOptions & {
     /** ADR-0030: when given, the list says whether this user may manage servers (the operator only). */
     canManage?: (userId: string) => boolean;
+    /** ADR-0046: whether self-serve server creation is on (`SELF_SERVE_ENABLED`); the list says so, so the UI offers "Add your server" only then. */
+    selfServeEnabled?: boolean;
+    /** ADR-0046: which of these servers (internal ids) have ever enrolled an agent. Injected by the composition root (the agents
+     *  module owns the table), so `servers` never imports `agents`. Without it the list omits `enrolled`. */
+    enrolledServerIds?: (serverUuids: readonly string[]) => Promise<ReadonlySet<string>>;
   } = {},
 ): Router {
   const router = Router();
@@ -40,10 +45,25 @@ export function createServersRouter(
     }
     // The same membership query that filters the list also gives the user's role on each server (a UX hint the frontend
     // uses to show or hide edit controls; the 403 on writes stays the real control), so there is no extra query.
-    const mine = new Map((await orUnavailable(() => access.listForUser(userId))).map((s) => [s.publicId, s.role] as const));
+    const rows = await orUnavailable(() => access.listForUser(userId));
+    const mine = new Map(rows.map((s) => [s.publicId, s] as const));
+    const { enrolledServerIds } = options;
+    const enrolled = enrolledServerIds ? await orUnavailable(() => enrolledServerIds(rows.map((s) => s.id))) : undefined;
     sendValidated(res, ServerListResponseSchema, {
-      servers: directory.list().filter((s) => mine.has(s.id)).map((s) => ({ ...s, role: mine.get(s.id) })),
+      servers: directory
+        .list()
+        .filter((s) => mine.has(s.id))
+        .map((s) => {
+          const row = mine.get(s.id)!;
+          return {
+            ...s,
+            role: row.role,
+            createdVia: row.createdVia,
+            ...(enrolled && { enrolled: enrolled.has(row.id) }),
+          };
+        }),
       ...(options.canManage && { canManageServers: options.canManage(userId) }),
+      ...(options.selfServeEnabled !== undefined && { selfServeEnabled: options.selfServeEnabled }),
     });
   });
   router.use("/servers/:serverId", createAuthorizeServer(access, options));

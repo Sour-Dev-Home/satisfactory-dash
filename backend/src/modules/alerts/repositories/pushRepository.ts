@@ -7,8 +7,8 @@ import { timedQuery } from "../../../platform/db/timedQuery.js";
  * ADR-0044: web push storage (migration 1791331200000). Every SQL text is a constant, every value a parameter, and every
  * statement that reads a subscription scopes it by the OWNING user, so one user cannot reach another's row by guessing an
  * id. The endpoint, p256dh and auth arrive here already SEALED (platform/secrets, by the service); this file never sees a
- * plaintext secret and never returns a sealed one: nothing here reads the secret columns back (the sender, task 348-2,
- * will, through its own query).
+ * plaintext secret. Only the sender (task 348-2) reads the sealed columns back: `getSealedOwnSubscription` for the test
+ * send, and the outbox claim in deliveryRepository.ts; both hand them to the sender, which opens them in memory only.
  */
 
 export interface SealedPushFields {
@@ -54,6 +54,67 @@ const SET_OPT_IN = `
   ON CONFLICT (server_id, user_id) DO NOTHING
   RETURNING 1 AS added`;
 const REMOVE_OPT_IN = `DELETE FROM alerts.push_optins WHERE server_id = $1::uuid AND user_id = $2::uuid RETURNING 1 AS removed`;
+
+// --- 348-2, the sender: the only statements that read the sealed columns back ---------------------------------------
+
+const GET_SEALED_OWNED = `
+  SELECT id::text AS id, user_id::text AS user_id, key_id, endpoint_enc, p256dh_enc, auth_enc
+  FROM alerts.push_subscriptions WHERE id = $1::uuid AND user_id = $2::uuid`;
+
+// ADR-0044 decision 5 and #516's review: who may still receive a server's alert, read just before each send. One row
+// per existing user (none once the user is deleted): still a member, still active, still opted in.
+const RECIPIENT_CHECK = `
+  SELECT (m.user_id IS NOT NULL) AS member, (u.status = 'active') AS active, (o.user_id IS NOT NULL) AS opted_in
+  FROM identity.users u
+  LEFT JOIN servers.server_members m ON m.server_id = $1::uuid AND m.user_id = u.id
+  LEFT JOIN alerts.push_optins o ON o.server_id = $1::uuid AND o.user_id = u.id
+  WHERE u.id = $2::uuid`;
+
+// The push service said the subscription is gone (404/410): it is deleted, and its outbox rows with it (ON DELETE CASCADE).
+const DELETE_GONE = `DELETE FROM alerts.push_subscriptions WHERE id = $1::uuid RETURNING 1 AS deleted`;
+const MARK_SUCCESS = `UPDATE alerts.push_subscriptions SET last_success_at = now() WHERE id = $1::uuid`;
+
+const SealedRowSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  key_id: z.string(),
+  endpoint_enc: z.instanceof(Buffer),
+  p256dh_enc: z.instanceof(Buffer),
+  auth_enc: z.instanceof(Buffer),
+});
+const RecipientRowSchema = z.object({ member: z.boolean(), active: z.boolean(), opted_in: z.boolean() });
+
+export interface SealedSubscription extends SealedPushFields {
+  id: string;
+  userId: string;
+}
+
+/** The user's own subscription WITH its sealed fields, for the test send only. */
+export async function getSealedOwnSubscription(db: Queryable, userId: string, id: string): Promise<SealedSubscription | undefined> {
+  const row = parseFirst(SealedRowSchema, (await timedQuery(db, "alerts.push.getSealedOwned", GET_SEALED_OWNED, [id, userId])).rows, "alerts.push.getSealedOwned");
+  return row === undefined
+    ? undefined
+    : { id: row.id, userId: row.user_id, keyId: row.key_id, endpointEnc: row.endpoint_enc, p256dhEnc: row.p256dh_enc, authEnc: row.auth_enc };
+}
+
+export type RecipientVerdict = "ok" | "not_member" | "user_inactive" | "opted_out";
+
+/** Whether `userId` may receive `serverUuid`'s alerts right now. A deleted user is `not_member`. */
+export async function checkPushRecipient(db: Queryable, serverUuid: string, userId: string): Promise<RecipientVerdict> {
+  const row = parseFirst(RecipientRowSchema, (await timedQuery(db, "alerts.push.recipientCheck", RECIPIENT_CHECK, [serverUuid, userId])).rows, "alerts.push.recipientCheck");
+  if (row === undefined || !row.member) return "not_member";
+  if (!row.active) return "user_inactive";
+  return row.opted_in ? "ok" : "opted_out";
+}
+
+/** Deletes a subscription the push service reported gone; true when there was one to delete. */
+export async function deleteGoneSubscription(db: Queryable, id: string): Promise<boolean> {
+  return (await timedQuery(db, "alerts.push.deleteGone", DELETE_GONE, [id])).rows.length > 0;
+}
+
+export async function markSubscriptionSuccess(db: Queryable, id: string): Promise<void> {
+  await timedQuery(db, "alerts.push.markSuccess", MARK_SUCCESS, [id]);
+}
 
 export async function lockUserPush(db: Queryable, userId: string): Promise<void> {
   await timedQuery(db, "alerts.push.lockUser", LOCK_USER, [`push:${userId}`]);

@@ -1,10 +1,26 @@
 import type { Cadence } from "@satisfactory-dash/shared";
+import { ConfigError } from "../../platform/errors.js";
 
 /** ADR-0031 PR 5a: the cadence the backend asks every agent to sample at, and answers with in every snapshot response. */
 export const AGENT_CADENCE: Cadence = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
 
 /** An enrolment code is valid this long and works once. */
 export const ENROLLMENT_CODE_TTL_MS = 10 * 60 * 1000;
+
+/** Enrolment attempts per client network per minute. */
+export const ENROLL_PER_NETWORK_PER_MINUTE = 10;
+
+/**
+ * Enrolment attempts per minute across every caller, for the whole process (ADR-0046 section 4, #524). It is high
+ * because a low cap lets a botnet of about 120 networks (10 a minute each) lock real owners out for as long as it runs;
+ * the code length is what makes the high cap safe.
+ * Guess arithmetic: a code is 60 bits (12 base32 characters). One open code per server, so at most C2 + 8 = 33 open codes.
+ * A year of guessing at the cap is 1,200 x 60 x 24 x 365 = 6.3e8 attempts, and the chance that one hits an open code is
+ * 6.3e8 x 33 / 2^60 = about 1.8e-8. With the old 40-bit codes the same cap gave 6.3e8 x 33 / 2^40 = about 0.019.
+ * Both figures assume one backend instance (ADR-0010): with N instances the cap, and the chance, multiply by N.
+ * Requests refused by the per-network limit never count here (agentApi.ts), so a lockout really needs about 120 networks.
+ */
+export const ENROLL_GLOBAL_PER_MINUTE = 1200;
 
 /**
  * The most a snapshot body may be once decompressed (agents send gzip; a compression bomb is refused with 413). Kept at
@@ -61,3 +77,23 @@ export const RECENTLY_VALID_MAX = 1_000;
 
 /** An agent's `last_seen_at` is written at most this often per credential. */
 export const LAST_SEEN_INTERVAL_MS = 30_000;
+
+/** Enrolment codes one account may create per minute (each creation drops the server's previous code). */
+export const ENROLLMENT_CODES_PER_MINUTE = 10;
+
+/** ADR-0046 C7 (#527): the default for enrolment codes one account may create per hour. A setup needs 1 to 3 (a typo, the
+ *  10-minute expiry), so 20 bounds enrolment churn and its audit rows. In memory, per backend instance, like the minute
+ *  limit (ADR-0046 section 2 C7 and Consequences accept this). */
+export const ENROLLMENT_CODES_PER_HOUR_DEFAULT = 20;
+
+/** `ENROLLMENT_CODES_PER_HOUR`: a whole number from 1 to 1000, or unset for the default. Anything else is a ConfigError,
+ *  so the backend refuses to start; the message never echoes the value. The operator's account is exempt from the limit. */
+export function loadEnrollmentCodesPerHour(env: Record<string, string | undefined>): number {
+  const text = env.ENROLLMENT_CODES_PER_HOUR?.trim();
+  if (!text) return ENROLLMENT_CODES_PER_HOUR_DEFAULT;
+  const value = /^\d{1,4}$/.test(text) ? Number(text) : Number.NaN;
+  if (!Number.isInteger(value) || value < 1 || value > 1000) {
+    throw new ConfigError(`ENROLLMENT_CODES_PER_HOUR must be a whole number from 1 to 1000 (or unset for ${ENROLLMENT_CODES_PER_HOUR_DEFAULT}).`);
+  }
+  return value;
+}

@@ -10,6 +10,8 @@ import {
   alertStatusQuiet,
   deleteServerDone,
   factoryMixed,
+  railsWorldResponse,
+  resourceNodesWorldResponse,
   healthOk,
   historyItems7d,
   historyPower24h,
@@ -18,6 +20,11 @@ import {
   playersUnavailable,
   powerHistoryNormal,
   powerOk,
+  pushConfigDisabled,
+  pushOptInOff,
+  pushSubscribeResponse,
+  pushUnsubscribeResponse,
+  alertSendTestOk,
   renameAgentServerResponse,
   serverConnectionOk,
   serversSingle,
@@ -27,6 +34,7 @@ import {
   statusRunning,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import { createdAgentServer } from "./selfServeMocks";
 
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
 // from the shared fixtures. Tests override individual routes with server.use(...).
@@ -49,6 +57,9 @@ export const handlers = [
   http.get(endpoints.history.items.route, () => HttpResponse.json(historyItems7d)),
   http.get(endpoints.history.transitions.route, () => HttpResponse.json(historyTransitions24h)),
   http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)),
+  // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
+  http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
+  http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).
@@ -58,6 +69,8 @@ export const handlers = [
   http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
   http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(serverConnectionOk)),
   http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
+  // ADR-0046: any signed-in user adds a server of their own.
+  http.post(endpoints.selfServe.createAgentServer.route, () => HttpResponse.json(createdAgentServer, { status: 201 })),
   // ADR-0031: an agent server's two edits.
   http.patch(endpoints.serverManagement.renameAgent.route, () => HttpResponse.json(renameAgentServerResponse)),
   http.post(endpoints.serverManagement.switchToLocal.route, () => HttpResponse.json(serverConnectionOk)),
@@ -67,6 +80,13 @@ export const handlers = [
   http.get(endpoints.alerts.rules.list.route, () => HttpResponse.json(alertRulesList)),
   http.get(endpoints.alerts.destinations.get.route, () => HttpResponse.json(alertDestinationsConfigured)),
   http.get(endpoints.alerts.events.route, () => HttpResponse.json(alertEventsLastPage)),
+  // Web push (ADR-0044): off on the backend by default, so the Alerts panel only explains it.
+  http.get(endpoints.push.config.route, () => HttpResponse.json(pushConfigDisabled)),
+  http.get(endpoints.push.optIn.get.route, () => HttpResponse.json(pushOptInOff)),
+  http.put(endpoints.push.optIn.put.route, () => HttpResponse.json({ optedIn: true })),
+  http.post(endpoints.push.subscribe.route, () => HttpResponse.json(pushSubscribeResponse, { status: 201 })),
+  http.delete(endpoints.push.unsubscribe.route, () => HttpResponse.json(pushUnsubscribeResponse)),
+  http.post(endpoints.push.test.route, () => HttpResponse.json(alertSendTestOk)),
   // The game PC agent (ADR-0031 PR 7): a directly reached server with none enrolled.
   http.get(endpoints.agent.status.route, () => HttpResponse.json(agentStatusNotEnrolled)),
   http.post(endpoints.agent.enrollmentCode.route, () => HttpResponse.json(agentEnrollmentCodeResponse, { status: 201 })),

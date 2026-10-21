@@ -26,6 +26,7 @@ describe("query options", () => {
       alerts: 60_000,
       command: 1_000,
       agent: 30_000,
+      mapWorld: 300_000,
     });
   });
 

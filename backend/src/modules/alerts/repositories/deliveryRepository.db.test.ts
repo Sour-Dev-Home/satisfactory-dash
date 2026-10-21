@@ -17,6 +17,7 @@ import {
   openServerWebhook,
   rescheduleDelivery,
   saveDiscordDestination,
+  type DueDiscordDelivery,
 } from "./deliveryRepository.js";
 
 const available = dbTestsAvailable();
@@ -197,7 +198,7 @@ describe.skipIf(!available)("alert delivery repository against a real Postgres",
       expect(mine).toHaveLength(3);
       expect(mine[0]).toMatchObject({ attempts: 1, serverName: "Delivery", serverId: server.id, keyId: "k1" });
       expect(mine[0]!.event).toMatchObject({ kind: "power_outage", severity: "critical", transition: "fired", summary: { circuit: 1 } });
-      expect(mine[0]!.webhookEnc).toBeInstanceOf(Buffer);
+      expect(mine[0]!.channel === "discord" && mine[0]!.webhookEnc).toBeInstanceOf(Buffer);
       // Leased: a second claim right away does not return them.
       expect((await claimDueDeliveries(pool, 10, 120)).filter((c) => c.serverPublicId === server.publicId)).toEqual([]);
     });
@@ -262,7 +263,7 @@ describe.skipIf(!available)("alert delivery repository against a real Postgres",
       const a = await queue(2);
       const claimed = (await claimDueDeliveries(pool, 10, 120)).filter((c) => c.serverPublicId === a.publicId);
       await markDeliverySent(pool, claimed[0]!.outboxId);
-      await disableDestination(pool, claimed[0]!.destinationId, "webhook_gone");
+      await disableDestination(pool, (claimed[0] as DueDiscordDelivery).destinationId, "webhook_gone");
       expect((await outboxOf(a.id)).map((r) => r.status).sort()).toEqual(["dead", "sent"]);
       expect((await outboxOf(b.id)).map((r) => r.status)).toEqual(["pending"]);
       expect(await getDestinationSummary(pool, a.publicId)).toMatchObject({ enabled: false, disabledReason: "webhook_gone" });

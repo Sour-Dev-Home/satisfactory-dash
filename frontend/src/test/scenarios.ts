@@ -22,6 +22,12 @@ import {
   alertSendTestOk,
   alertStatusQuiet,
   alertStatusShadowMutedFiring,
+  pushConfigDisabled,
+  pushConfigEnabled,
+  pushOptInOff,
+  pushOptInOn,
+  pushSubscribeResponse,
+  pushUnsubscribeResponse,
   autoPauseResponseAccepted,
   commandFailed,
   commandSent,
@@ -60,6 +66,11 @@ import {
   powerOk,
   powerOutage,
   powerStale,
+  railsWorldResponse,
+  railsWorldResponseEmpty,
+  railsWorldResponseTruncated,
+  resourceNodesWorldResponse,
+  resourceNodesWorldResponseEmpty,
   serverConnectionOk,
   serversMultiple,
   serversNone,
@@ -79,6 +90,19 @@ import {
   testConnectionApiUnauthorized,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import {
+  createdAgentServer,
+  errorDailyLimit,
+  errorLimitAccount,
+  errorLimitPending,
+  errorLimitService,
+  errorSelfServeOff,
+  listOwnsEnrolled,
+  listOwnsPending,
+  listSelfServeEmpty,
+  listSelfServeOff,
+  listSelfServeOn,
+} from "./selfServeMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
 // the dev mock mode (src/test/browser.ts, MSW in the browser) and the Playwright tests
@@ -91,6 +115,8 @@ export interface MockResponse {
   text?: string;
   /** "never" leaves the request hanging, to show a loading state. */
   delay?: number | "never";
+  /** Extra response headers (e.g. a 429's Retry-After). */
+  headers?: Record<string, string>;
 }
 
 export const ROUTES = {
@@ -105,6 +131,10 @@ export const ROUTES = {
   power: endpoints.power,
   powerHistory: endpoints.powerHistory,
   factory: endpoints.factory,
+  // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
+  // (WORLD_LAYER_ROUTES below).
+  mapRails: endpoints.map.worldLayer,
+  mapResourceNodes: endpoints.map.worldLayer,
   settings: endpoints.settings.get,
   setAutoPause: endpoints.settings.setAutoPause,
   // ADR-0030, operator only.
@@ -114,6 +144,8 @@ export const ROUTES = {
   createServer: endpoints.serverManagement.create,
   updateServer: endpoints.serverManagement.update,
   removeServer: endpoints.serverManagement.remove,
+  // ADR-0046: any signed-in user adds a server of their own.
+  createAgentServer: endpoints.selfServe.createAgentServer,
   // ADR-0031: an agent server's only edits (#266 rename, #273 switch back to local).
   renameAgent: endpoints.serverManagement.renameAgent,
   switchToLocal: endpoints.serverManagement.switchToLocal,
@@ -142,6 +174,13 @@ export const ROUTES = {
   alertDiscordTest: endpoints.alerts.destinations.testDiscord,
   alertMuteSet: endpoints.alerts.mute.set,
   alertMuteClear: endpoints.alerts.mute.clear,
+  // ADR-0044 web push (the opt-in's read and write share a path, told apart by method).
+  pushConfig: endpoints.push.config,
+  pushOptIn: endpoints.push.optIn.get,
+  pushOptInSet: endpoints.push.optIn.put,
+  pushSubscribe: endpoints.push.subscribe,
+  pushUnsubscribe: endpoints.push.unsubscribe,
+  pushTest: endpoints.push.test,
 } as const;
 export type RouteKey = keyof typeof ROUTES;
 
@@ -150,6 +189,16 @@ export function routeFor<K extends RouteKey>(key: K): (typeof ROUTES)[K] {
   const route = ownValue(ROUTES, key);
   if (route === undefined) throw new Error(`no mock route ${String(key)}`);
   return route as (typeof ROUTES)[K];
+}
+
+/** The routes that share an endpoint with another and are told apart by the last path segment. */
+export const WORLD_LAYER_ROUTES = { mapRails: "rails", mapResourceNodes: "resourceNodes" } as const;
+
+/** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
+export function routePattern(key: RouteKey): string {
+  const route = routeFor(key).route;
+  const layer = ownValue(WORLD_LAYER_ROUTES, key);
+  return layer === undefined ? route : route.replace(":layer", layer);
 }
 
 const ok = (body: unknown): MockResponse => ({ status: 200, body });
@@ -181,6 +230,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   power: ok(powerOk),
   powerHistory: ok(powerHistoryNormal),
   factory: ok(factoryMixed),
+  mapRails: ok(railsWorldResponse),
+  mapResourceNodes: ok(resourceNodesWorldResponse),
   settings: ok(settingsEditable),
   setAutoPause: ok(settingsEditable),
   managedServers: ok(managedServersAllStates),
@@ -189,6 +240,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   createServer: ok(serverConnectionOk),
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
+  createAgentServer: { status: 201, body: createdAgentServer },
   renameAgent: ok(renameAgentServerResponse),
   switchToLocal: ok(serverConnectionOk),
   historyPower: ok(historyPower24h),
@@ -215,6 +267,13 @@ const BASE: Record<RouteKey, MockResponse> = {
   alertDiscordTest: ok(alertSendTestOk),
   alertMuteSet: ok(alertMuteSetResponse),
   alertMuteClear: ok(alertMuteClearedResponse),
+  // Push is off on the backend: the Alerts panel explains it. The e2e browser supplies the device's state.
+  pushConfig: ok(pushConfigDisabled),
+  pushOptIn: ok(pushOptInOff),
+  pushOptInSet: ok(pushOptInOn),
+  pushSubscribe: { status: 201, body: pushSubscribeResponse },
+  pushUnsubscribe: ok(pushUnsubscribeResponse),
+  pushTest: ok(alertSendTestOk),
 };
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
@@ -266,6 +325,8 @@ export const SCENARIOS = {
     power: slow(BASE.power),
     powerHistory: slow(BASE.powerHistory),
     factory: slow(BASE.factory),
+    mapRails: slow(BASE.mapRails),
+    mapResourceNodes: slow(BASE.mapResourceNodes),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
     historyPower: slow(BASE.historyPower),
@@ -312,6 +373,10 @@ export const SCENARIOS = {
   "battery-charging": { power: ok(powerCharging) },
   "battery-discharging": { power: ok(powerDischarging) },
   "unknown-units": { factory: ok(factoryUnknownItem) },
+  // ADR-0038 M5, the map's world layers: nothing read yet, a layer cut to its cap, or the read failing.
+  "map-world-empty": { mapRails: ok(railsWorldResponseEmpty), mapResourceNodes: ok(resourceNodesWorldResponseEmpty) },
+  "map-world-truncated": { mapRails: ok(railsWorldResponseTruncated) },
+  "map-world-error": { mapRails: fail(502, errorUpstreamUnreachable), mapResourceNodes: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
@@ -361,6 +426,11 @@ export const SCENARIOS = {
   // setup and the rules editor show; and as a viewer, who reads the same section without controls.
   "alerts-owner": { servers: ok(serversRoleOwner), alertStatus: ok(alertStatusShadowMutedFiring) },
   "alerts-viewer": { servers: ok(serversRoleViewer), alertStatus: ok(alertStatusShadowMutedFiring) },
+  // ADR-0044, Settings → Alerts → push: enabled on the backend (this device is off, or in the state e2e
+  // gives the browser: subscribed or blocked), and the member's opt-in already on.
+  "push-enabled": { pushConfig: ok(pushConfigEnabled) },
+  "push-opted-in": { pushConfig: ok(pushConfigEnabled), pushOptIn: ok(pushOptInOn) },
+  "push-viewer": { servers: ok(serversRoleViewer), pushConfig: ok(pushConfigEnabled), pushOptIn: ok(pushOptInOn) },
   // ADR-0031 PR 7, Settings → Game PC agent. The operator on a server reached directly (can enrol);
   // an owner of a server with a reporting agent (can revoke or enrol again); one enrolled but never
   // heard from; and a viewer, who reads it with no controls.
@@ -368,6 +438,27 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // ADR-0046 (#529), Settings → Your server. Self-serve on for a player with no server of their own;
+  // off; with no server at all (the add form is the screen); each refusal of "Add your server"; and the
+  // owner of an enrolled and of a pending self-serve server.
+  "self-serve-add": { servers: ok(listSelfServeOn) },
+  "self-serve-off": { servers: ok(listSelfServeOff) },
+  "self-serve-empty": { servers: ok(listSelfServeEmpty) },
+  "self-serve-limit-account": { servers: ok(listSelfServeOn), createAgentServer: fail(409, errorLimitAccount) },
+  "self-serve-limit-pending": { servers: ok(listSelfServeOn), createAgentServer: fail(409, errorLimitPending) },
+  "self-serve-limit-service": { servers: ok(listSelfServeOn), createAgentServer: fail(409, errorLimitService) },
+  "self-serve-limit-daily": {
+    servers: ok(listSelfServeOn),
+    createAgentServer: { status: 429, body: errorDailyLimit, headers: { "Retry-After": "18000" } },
+  },
+  "self-serve-forbidden": { servers: ok(listSelfServeOn), createAgentServer: fail(403, errorSelfServeOff) },
+  "self-serve-owner": { servers: ok(listOwnsEnrolled), agentStatus: ok(agentStatusEnrolled) },
+  "self-serve-owner-pending": {
+    servers: ok(listOwnsPending),
+    // Created through self-serve, so it is an agent server with nothing enrolled yet: the player can make a code.
+    agentStatus: ok({ ...agentStatusNotEnrolled, connectionKind: "agent" }),
+    agentEnrollmentCode: { status: 201, body: agentEnrollmentCodeResponse },
+  },
 } satisfies Record<string, Partial<Record<RouteKey, MockResponse>>>;
 export type ScenarioName = keyof typeof SCENARIOS;
 
@@ -385,7 +476,7 @@ export function matchRoute(method: string, pathname: string): RouteKey | undefin
   return (Object.keys(ROUTES) as RouteKey[]).find((key) => {
     const route = routeFor(key);
     if (route.method !== method.toUpperCase()) return false;
-    const pattern = new RegExp(`^${route.route.replace(/:[^/]+/g, "[^/]+")}$`);
+    const pattern = new RegExp(`^${routePattern(key).replace(/:[^/]+/g, "[^/]+")}$`);
     return pattern.test(pathname);
   });
 }

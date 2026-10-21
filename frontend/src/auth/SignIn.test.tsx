@@ -10,6 +10,7 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { AccountMenu } from "./AccountMenu";
 import { AuthGate } from "./AuthGate";
+import { TERMS_VERSION } from "./googleSignIn";
 
 function ServerList() {
   const servers = useQuery(queries.servers());
@@ -60,6 +61,48 @@ describe("the sign-in screen", () => {
     );
     expect(container.textContent).not.toContain("owned");
     expect(container.querySelector("b")).toBeNull();
+  });
+});
+
+describe("the terms step of open sign-up (ADR-0046)", () => {
+  const open = { ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] };
+
+  it("shows nothing about terms on a plain sign-in, even when sign-up is open (an existing account never sees it)", async () => {
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(open)));
+    renderGate();
+    await screen.findByRole("link", { name: "Sign in with Google" });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("shows an unticked box after a new account is found; Continue needs the tick and sends the version", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_required");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(open)));
+    renderGate();
+    const box = await screen.findByRole("checkbox", { name: /I accept the/ });
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole("alert")).toHaveTextContent("Accept the Terms below");
+    expect(screen.getByRole("link", { name: /Terms/ })).toHaveAttribute("href", "/terms.html");
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeDisabled();
+    expect(screen.queryByRole("link", { name: "Continue with Google" })).not.toBeInTheDocument();
+    fireEvent.click(box);
+    const go = screen.getByRole("link", { name: "Continue with Google" });
+    expect(new URL(go.getAttribute("href")!, "http://x").searchParams.get("terms")).toBe(TERMS_VERSION);
+  });
+
+  it("shows no terms step when the backend does not offer sign-up, whatever the URL says", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_required");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(withGoogle)));
+    renderGate();
+    await screen.findByRole("link", { name: "Sign in with Google" });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("says new accounts are paused on signup_busy", async () => {
+    window.history.replaceState(null, "", "/app/login?error=signup_busy");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(open)));
+    renderGate();
+    expect(await screen.findByRole("alert")).toHaveTextContent("New accounts are paused for a while. Try again later.");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 });
 

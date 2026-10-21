@@ -59,7 +59,11 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // ADR-0031 PR 3 added the USER-facing agent routes (enrolment codes, agent status, revoke, a command's status) to the
 // contract before their routes. PR 5a mounted the three agent ones and PR 5b the command's status (`GET
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0047 (#311 task 2a) added `members.leave` to the contract BEFORE its route, the same way. Until task 2b mounts it
+// there is nothing to guard, so exactly that one is exempt. Task 2b deletes this line (and teaches the generated tests
+// that leave is a member's own write and that an owner is refused with would_orphan).
+const NOT_YET_MOUNTED = (name: string): boolean => name === "members.leave";
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
@@ -73,9 +77,17 @@ const ELSEWHERE = "user-elsewhere"; // a member of the other server only
 // what makes a user allowed to manage servers is being the operator, not the role (the OWNER above is refused).
 const OPERATOR = "user-operator";
 
+// #526 (ADR-0046 section 1.8): "charlie" was created through self-serve (alpha and bravo by the operator). Its own members, so
+// the generated tests above, which use alpha and bravo, are unchanged.
+const SELF_SERVE_SERVER = "charlie";
+const SS_OWNER = "user-ss-owner";
+const SS_ADMIN = "user-ss-admin";
+const SS_VIEWER = "user-ss-viewer";
+
 const members: Record<string, Record<string, "owner" | "admin" | "viewer">> = {
   alpha: { [OWNER]: "owner", [ADMIN]: "admin", [VIEWER]: "viewer", [OPERATOR]: "admin" },
   bravo: { [ELSEWHERE]: "owner" },
+  [SELF_SERVE_SERVER]: { [SS_OWNER]: "owner", [SS_ADMIN]: "admin", [SS_VIEWER]: "viewer" },
 };
 
 const connectionView = {
@@ -106,12 +118,20 @@ const managementService: ServerManagementService = {
   testSaved: async () => testPassed,
 };
 
+/** The self-serve owner's actions: the real service re-checks self-serve and ownership under a row lock (selfServeOwner.db.test.ts);
+ *  here only charlie is self-serve, and the route has already required the owner role. */
+const selfServeOwner = {
+  renameAsOwner: async (_actor: string, id: string, displayName: string) =>
+    id === SELF_SERVE_SERVER ? { id, displayName, kind: "agent" as const } : ("not_self_serve" as const),
+  removeAsOwner: async (_actor: string, id: string) => (id === SELF_SERVE_SERVER ? ("removed" as const) : ("not_self_serve" as const)),
+};
+
 const access: ServerAccess = {
   getRole: async (publicId, userId) => members[publicId]?.[userId],
   listForUser: async (userId) =>
     Object.entries(members)
       .filter(([, roles]) => Object.hasOwn(roles, userId))
-      .map(([publicId, roles]) => ({ publicId, displayName: publicId, role: roles[userId]! })),
+      .map(([publicId, roles]) => ({ publicId, displayName: publicId, role: roles[userId]!, id: `uuid-${publicId}`, createdVia: "operator" as const })),
 };
 
 /** Stands in for the session guard: the test names the signed-in user in a header. */
@@ -187,8 +207,9 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
   const directory = new InMemoryServerDirectory([
     { id: "alpha", displayName: "Alpha", services },
     { id: "bravo", displayName: "Bravo", services },
+    { id: SELF_SERVE_SERVER, displayName: "Charlie", services },
   ]);
-  const management = createServerManagementRouters(managementService, { isReady: options.isReady });
+  const management = createServerManagementRouters(managementService, { isReady: options.isReady, selfServeOwner });
   return createApp({
     logger: createLogger({ level: "silent" }, { write: () => {} }),
     routers: [],
@@ -263,7 +284,24 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
     expect(SCOPED.filter((endpoint) => endpoint.name.startsWith("commands.")).map((endpoint) => `${endpoint.method} ${endpoint.route.replace("/api/servers/:serverId", "")}`)).toEqual([
       "GET /commands/:commandId",
     ]);
-    expect(SCOPED).toEqual(scopedEndpoints(endpoints));
+    expect(SCOPED).toEqual(scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name)));
+  });
+
+  it("exempts only members.leave, in the contract but not mounted yet (ADR-0047 task 2a), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route}`)).toEqual(["POST /api/servers/:serverId/members/me/leave"]);
+  });
+
+  // The exemption expires on its own: the moment task 2b mounts the route, this fails until NOT_YET_MOUNTED is deleted,
+  // so the route can never ship without the generated authorization tests.
+  it("the exempt endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
+      const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0047 task 2b)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
   });
 
   // A route that is in the contract but not mounted answers the app's own 404 to an authorized owner; every scoped
@@ -349,6 +387,61 @@ describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operator
     // The owner of alpha is not a member of bravo.
     const res = await call(app, name, method, urlFor(route, "bravo"), OWNER);
     expect(res.status).toBe(404);
+  });
+});
+
+// #526 (ADR-0046 section 1.8): the operator-only endpoints the contract flags `selfServeOwner` also accept the owner of a
+// self-serve server. Taken from the flag, so flagging another endpoint is covered (or fails) here.
+const SELF_SERVE_OWNER = SCOPED.filter((e) => {
+  const [group, name] = e.name.split(".");
+  const endpoint = (endpoints as unknown as Record<string, Record<string, object>>)[group!]?.[name!];
+  return endpoint !== undefined && "selfServeOwner" in endpoint;
+});
+
+describe("the selfServeOwner endpoints", () => {
+  it("are exactly renameAgent and remove", () => {
+    expect(SELF_SERVE_OWNER.map((e) => e.name).sort()).toEqual(["serverManagement.remove", "serverManagement.renameAgent"]);
+  });
+
+  describe.each(SELF_SERVE_OWNER)("$method $route ($name)", ({ name, method, route }) => {
+    const app = buildApp();
+
+    it("the owner of a self-serve server can use it (200)", async () => {
+      const res = await call(app, name, method, urlFor(route, SELF_SERVE_SERVER), SS_OWNER);
+      expect(res.status).toBe(200);
+    });
+
+    it("the owner of an operator-created server is refused with 403", async () => {
+      const res = await call(app, name, method, urlFor(route, "alpha"), OWNER);
+      expect(res.status).toBe(403);
+      expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("forbidden");
+    });
+
+    it.each([SS_ADMIN, SS_VIEWER])("an admin or viewer (%s) of a self-serve server is refused with 403", async (user) => {
+      const res = await call(app, name, method, urlFor(route, SELF_SERVE_SERVER), user);
+      expect(res.status).toBe(403);
+      expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("forbidden");
+    });
+
+    it("a non-member of a self-serve server gets the 404 an unknown server gets (the operator included)", async () => {
+      for (const user of [OUTSIDER, OPERATOR, OWNER]) {
+        const res = await call(app, name, method, urlFor(route, SELF_SERVE_SERVER), user);
+        expect(res.status).toBe(404);
+        expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("server_not_found");
+      }
+    });
+
+    it("without the self-serve wiring, the owner of a self-serve server is refused like any member (403)", async () => {
+      const directory = new InMemoryServerDirectory([{ id: SELF_SERVE_SERVER, displayName: "Charlie", services }]);
+      const management = createServerManagementRouters(managementService);
+      const bare = createApp({
+        logger: createLogger({ level: "silent" }, { write: () => {} }),
+        routers: [],
+        sessionGuard: fakeGuard,
+        protectedRouters: [management.collection, createServersRouter(directory, access), management.scoped],
+      });
+      expect((await call(bare, name, method, urlFor(route, SELF_SERVE_SERVER), SS_OWNER)).status).toBe(403);
+    });
   });
 });
 

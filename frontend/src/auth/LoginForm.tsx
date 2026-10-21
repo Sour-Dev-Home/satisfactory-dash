@@ -5,7 +5,10 @@ import { apiSend } from "../api/client";
 import { ApiError, classifyError } from "../api/errors";
 import { LOGIN_MUTATION_KEY, SESSION_KEY } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
-import { googleStartHref, offersGoogle, signInErrorText } from "./googleSignIn";
+import { googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
+
+const GOOGLE_BUTTON =
+  "inline-flex min-h-touch items-center justify-center rounded-lg border border-accent bg-accent px-button-x font-semibold text-on-accent no-underline disabled:cursor-not-allowed disabled:opacity-60";
 
 /**
  * The sign-in screen (ADR-0011, ADR-0025): "Sign in with Google" when the backend offers it,
@@ -16,6 +19,10 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
   // redirect is a fresh page load, so there's no need to follow client-side navigation here.
   const { pathname, search } = window.location;
   const urlError = signInErrorText(search);
+  // The terms step (ADR-0046 question 6) shows only when sign-up is open AND Google just found no account
+  // for this sign-in: an existing account never sees it. The box starts unticked, on purpose.
+  const termsStep = offersSignup(signInMethods) && needsTermsStep(search);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const client = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -66,12 +73,39 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
       {offersGoogle(signInMethods) && (
         <>
           {/* A link, not fetch: the backend answers with a redirect to Google. */}
-          <a
-            href={googleStartHref(pathname)}
-            className="inline-flex min-h-touch items-center justify-center rounded-lg border border-accent bg-accent px-button-x font-semibold text-on-accent no-underline"
-          >
-            Sign in with Google
-          </a>
+          {termsStep ? (
+            <fieldset className="grid gap-3 border-0 p-0">
+              <legend className="mb-2 font-semibold">Create your account</legend>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  I accept the{" "}
+                  <a href="/terms.html" target="_blank" rel="noopener noreferrer">
+                    Terms (opens in a new tab)
+                  </a>
+                  .
+                </span>
+              </label>
+              {acceptedTerms ? (
+                <a href={googleStartHref(pathname, true, termsReturnPath(search))} className={GOOGLE_BUTTON}>
+                  Continue with Google
+                </a>
+              ) : (
+                <button type="button" disabled className={GOOGLE_BUTTON}>
+                  Continue with Google
+                </button>
+              )}
+            </fieldset>
+          ) : (
+            <a href={googleStartHref(pathname)} className={GOOGLE_BUTTON}>
+              Sign in with Google
+            </a>
+          )}
           <p className="flex items-center gap-3 text-sm text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
             or
           </p>

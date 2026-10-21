@@ -239,7 +239,7 @@ async function enroll(argv: string[], deps: CliDeps): Promise<number> {
   const { values, booleans, positionals } = parseArgs(argv, { url: "value", replace: "boolean" });
   const code = positionals[0]?.trim().toUpperCase();
   if (positionals.length !== 1 || code === undefined || !EnrollmentCodeSchema.safeParse(code).success) {
-    throw new UsageError("Usage: agent enroll <CODE> --url <https://backend>. The code looks like AB3D-7XQ2 (from the dashboard, valid 10 minutes, one use).");
+    throw new UsageError("Usage: agent enroll <CODE> --url <https://backend>. The code looks like AB3D-7XQ2-K5MN (three groups of four; from the dashboard, valid 10 minutes, one use).");
   }
   if (values.url === undefined) throw new UsageError("--url <https://backend> is required.");
   const store = openStore(deps);

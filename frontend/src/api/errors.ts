@@ -8,13 +8,17 @@ export class ApiError extends Error {
   /** Internal detail; the backend only sends it in development/test. */
   readonly detail: string | undefined;
 
-  constructor(status: number, body: ApiErrorResponse["error"]) {
+  /** Seconds from a `Retry-After` header (a 429), when the answer carried a whole number of them. */
+  readonly retryAfterSeconds: number | undefined;
+
+  constructor(status: number, body: ApiErrorResponse["error"], retryAfterSeconds?: number) {
     super(body.message);
     this.name = "ApiError";
     this.status = status;
     this.code = body.code;
     this.requestId = body.requestId;
     this.detail = body.detail;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -130,6 +134,9 @@ const kindByCode = {
   agent_outdated: "unknown",
   command_not_found: "unknown",
   command_expired: "unknown",
+  // ADR-0047: account deletion and leaving a server. The Settings screens (task 3) word these themselves.
+  would_orphan: "unknown",
+  reauth_required: "unknown",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",

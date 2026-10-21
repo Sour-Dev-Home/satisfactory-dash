@@ -27,6 +27,8 @@ export interface LoginAttempt {
   nonce: string;
   codeVerifier: string;
   returnPath: string;
+  /** The terms version ticked on the sign-in page (open sign-up), or undefined. */
+  termsVersion?: string | undefined;
 }
 
 const LoginAttemptRowSchema = z.object({
@@ -34,11 +36,12 @@ const LoginAttemptRowSchema = z.object({
   nonce: z.string(),
   code_verifier: z.string(),
   return_path: z.string(),
+  terms_version: z.string().nullable(),
 });
 
 const INSERT_ATTEMPT = `
-  INSERT INTO identity.login_attempts (id_hash, state, nonce, code_verifier, return_path, expires_at)
-  VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6::int))`;
+  INSERT INTO identity.login_attempts (id_hash, state, nonce, code_verifier, return_path, terms_version, expires_at)
+  VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(mins => $7::int))`;
 
 /** The return path is validated here (ReturnPathSchema) and again by the table's CHECK
  *  constraint, which uses the same regex: a relative, ASCII-only /app path or nothing. */
@@ -55,6 +58,7 @@ export async function createLoginAttempt(
     input.nonce,
     input.codeVerifier,
     input.returnPath,
+    input.termsVersion ?? null,
     LOGIN_ATTEMPT_TTL_MINUTES,
   ]);
 }
@@ -62,7 +66,7 @@ export async function createLoginAttempt(
 const CONSUME_ATTEMPT = `
   DELETE FROM identity.login_attempts
   WHERE id_hash = $1 AND expires_at > now()
-  RETURNING state, nonce, code_verifier, return_path`;
+  RETURNING state, nonce, code_verifier, return_path, terms_version`;
 
 /** Single use: returns the attempt and deletes it in one statement, or undefined when it is
  *  unknown, expired or already consumed. */
@@ -71,7 +75,13 @@ export async function consumeLoginAttempt(db: Queryable, idHash: Buffer): Promis
   const row = parseFirst(LoginAttemptRowSchema, result.rows, "identity.consumeLoginAttempt");
   return row === undefined
     ? undefined
-    : { state: row.state, nonce: row.nonce, codeVerifier: row.code_verifier, returnPath: row.return_path };
+    : {
+        state: row.state,
+        nonce: row.nonce,
+        codeVerifier: row.code_verifier,
+        returnPath: row.return_path,
+        ...(row.terms_version === null ? {} : { termsVersion: row.terms_version }),
+      };
 }
 
 const DELETE_EXPIRED_ATTEMPTS = `

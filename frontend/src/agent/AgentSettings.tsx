@@ -12,6 +12,7 @@ import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
 import { useNow } from "../lib/useNow";
+import { EnrolmentGuide } from "../selfServe/EnrolmentGuide";
 import { useSelectedServer } from "../servers/ServerContext";
 import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText } from "./agentText";
 import { useHashTarget } from "../lib/useHashTarget";
@@ -66,6 +67,11 @@ export function AgentSettings() {
           }
         />
       ) : (
+        <>
+        {/* ADR-0046: the player's own server needs to be told where the code goes (the mod's config file). */}
+        {server.createdVia === "self_serve" && canCreateCode(status.data.connectionKind, server.role, isOperator) && (
+          <EnrolmentGuide enrolled={status.data.enrolled} />
+        )}
         <AgentPanel
           agent={status.data}
           code={code}
@@ -78,6 +84,7 @@ export function AgentSettings() {
           revokeError={revoke.error}
           onRevoke={() => revoke.mutate(undefined, { onSuccess: () => setCode(null) })}
         />
+        </>
       )}
       </Loadable>
     </section>

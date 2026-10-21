@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { queries } from "../api/queries";
+import { isFirstLoad } from "../api/settled";
 import { useSelectedServer } from "../servers/ServerContext";
 import { useDismissedWarning } from "./dismissal";
 import {
@@ -20,10 +21,18 @@ import { Loadable } from "../ui/Skeleton";
 import { OverviewPanel, type OverviewSection } from "./OverviewPanel";
 import { OverviewSkeleton } from "./OverviewSkeleton";
 
-/** Data wins over an error: a failed background refetch keeps showing the last snapshot. */
+/**
+ * Data wins over an error: a failed background refetch keeps showing the last snapshot. Without data,
+ * only a first load is pending: a failed read stays an error through its next polls (each goes back to
+ * pending in TanStack Query), so the cards don't flip every interval.
+ */
 function stateOf<T>(query: UseQueryResult<T>, health: (snapshot: T) => SectionHealth): SectionState {
   if (query.data) return health(query.data);
-  return query.isError ? "error" : "pending";
+  return failedOrPending(query);
+}
+
+function failedOrPending(query: UseQueryResult<unknown>): "error" | "pending" {
+  return isFirstLoad(query) ? "pending" : "error";
 }
 
 /**
@@ -34,7 +43,7 @@ export function OverviewView() {
   const server = useSelectedServer();
   const status = useQuery(queries.status(server.id));
   // Same rule as the rows: data wins over an error.
-  const players: PlayersState = status.data ? { status: status.data.data } : status.isError ? "error" : "pending";
+  const players: PlayersState = status.data ? { status: status.data.data } : failedOrPending(status);
   // The Health card's tick (the owner's call): the backend's own tickHealth, nothing re-derived.
   const snapshot = status.data?.data;
   const tick: Tick | undefined = snapshot
@@ -55,7 +64,7 @@ export function OverviewView() {
     { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(factory, factoryHealth) },
   ];
   // Same rule as the rows: data wins over an error.
-  const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : power.isError ? "error" : "pending";
+  const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : failedOrPending(power);
   // The tick has no row (it's in the Health card), but a slow one still makes the overall
   // health a warning, and a dismissed warning comes back when it starts. Loading and errors are
   // already counted by the Server row, so the tick only joins once there's a snapshot.
@@ -67,7 +76,7 @@ export function OverviewView() {
     // The cards each have a loading state of their own, none of them the size of the loaded card, so
     // the page holds one skeleton until all three reads are in (#494).
     <Loadable
-      pending={status.isPending || power.isPending || factory.isPending}
+      pending={isFirstLoad(status) || isFirstLoad(power) || isFirstLoad(factory)}
       skeleton={<OverviewSkeleton />}
     >
       <OverviewPanel

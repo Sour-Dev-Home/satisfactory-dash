@@ -44,7 +44,10 @@ contract needs to grow, not that this module should special-case a backend detai
   by panel: its panels mount at once but stay `invisible` until `shell/pageQueries.ts`' primary queries
   answer or `--duration-reveal-budget` passes. A panel's loading branch is `<Loadable>` with a skeleton
   shaped like it (`ui/Skeleton.tsx`), shown only after `--duration-skeleton-delay` and kept for
-  `--duration-skeleton-min`. Never a "Loading…" text line above other content. Nav links prefetch the
+  `--duration-skeleton-min`. Never a "Loading…" text line above other content. For a polled read, `pending` is
+  `isFirstLoad(query)` or `useSettledQuery` (`src/api/settled.ts`), not `isPending`: a read that never answered goes
+  back to pending on every refetch, which re-showed skeletons and blanked errors each poll. "Game server unreachable"
+  is said once, by `StatusBanners`; a panel shows its error through `components/PanelError.tsx`. Nav links prefetch the
   page's queries (hover, focus, touch). Reduced motion: no shimmer, no rise.
 - The Overview's status-page summary (`src/overview/health.ts`) only aggregates what the
   backend classified. Its one rule of its own: Factory is degraded above
@@ -74,7 +77,10 @@ contract needs to grow, not that this module should special-case a backend detai
 - Map (ADR-0023, `src/map/`): Leaflet with CRS.Simple, in a lazy chunk (`MapCanvas.tsx`) that
   only the Map page loads. `projection.ts` is the one world-to-map mapping (`[lat, lng] =
   [-yM, xM]`; bounds cited from docs-vault/raw-sources/world-coordinates.md); base maps are
-  configs (v1: a neutral grid, no game art). A layer is a `MapLayer` (`layers.ts`): it gets
+  configs (a neutral grid, no game art: the owner decided on #330 that the base stays data-derived).
+  World layers (ADR-0038 M5: `railsLayer`, `resourceNodesLayer`) are `MapLayer<T>` over their own stored
+  list: `MapPanel` reads them through `queries.mapRails`/`mapResourceNodes`, only while the toggle is on,
+  and hands the canvas a bound `DrawnLayer`. A layer is a `MapLayer` (`layers.ts`): it gets
   Leaflet through its `MapContext` (never imports it at runtime), draws on the shared canvas
   renderer, returns its cleanup, and supplies a legend and a text `describe`. Tooltip content
   is built from text nodes, never an HTML string (names come from the game server). Every

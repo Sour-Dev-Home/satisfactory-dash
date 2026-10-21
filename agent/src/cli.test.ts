@@ -210,7 +210,7 @@ describe("enroll", () => {
   it("trades the code for the credential, stores it protected, and never prints it (runbook order: tokens first)", async () => {
     const dpapi = await withTokens();
     const t = setup({ dpapi, fetch: enrollOk });
-    expect(await runCli(["enroll", "ab3d-7xq2", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_OK);
+    expect(await runCli(["enroll", "ab3d-7xq2-k5mn", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_OK);
     const opened = store(dpapi);
     expect(await opened.getSecret("agentSecret")).toBe(agentEnrollResponse.agentSecret);
     expect([opened.backendUrl, opened.serverId]).toEqual(["https://api.example.test", "default"]);
@@ -220,7 +220,7 @@ describe("enroll", () => {
 
   it("refuses to enrol before the game's tokens are set (enrolling deletes the backend's stored tokens row)", async () => {
     const t = setup({ fetch: vi.fn() as never });
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_FAILED);
     expect(t.err.join("\n")).toContain("agent check");
     expect(t.err.join("\n")).toContain("forget any game token");
   });
@@ -230,9 +230,11 @@ describe("enroll", () => {
     const fetchSpy = vi.fn(enrollOk);
     const t = setup({ dpapi, fetch: fetchSpy });
     expect(await runCli(["enroll", "not-a-code", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_FAILED);
-    expect(await runCli(["enroll", "AB3D-7XQ2"], t.deps)).toBe(EXIT_FAILED);
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "http://api.example.test"], t.deps)).toBe(EXIT_FAILED);
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://user:pw@api.example.test"], t.deps)).toBe(EXIT_FAILED);
+    // The old 8-character format (before #524) is refused locally, before anything is sent.
+    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], t.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN"], t.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "http://api.example.test"], t.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://user:pw@api.example.test"], t.deps)).toBe(EXIT_FAILED);
     expect(await runCli(["enroll"], t.deps)).toBe(EXIT_FAILED);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(t.all()).not.toContain("pw@");
@@ -240,20 +242,20 @@ describe("enroll", () => {
 
   it("does not silently replace a credential: --replace is required", async () => {
     const dpapi = await withTokens();
-    await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], setup({ dpapi, fetch: enrollOk }).deps);
+    await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], setup({ dpapi, fetch: enrollOk }).deps);
     const again = setup({ dpapi, fetch: enrollOk });
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], again.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], again.deps)).toBe(EXIT_FAILED);
     expect(again.err.join("\n")).toContain("--replace");
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test", "--replace"], again.deps)).toBe(EXIT_OK);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test", "--replace"], again.deps)).toBe(EXIT_OK);
   });
 
   it("explains an invalid, used or expired code; other failures keep the client's own safe message", async () => {
     const dpapi = await withTokens();
     const invalid = setup({ dpapi, fetch: async () => new Response(JSON.stringify({ error: { code: "enrollment_code_invalid", message: "x", requestId: "r" } }), { status: 400 }) });
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], invalid.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], invalid.deps)).toBe(EXIT_FAILED);
     expect(invalid.err.join("\n")).toContain("wrong, already used or expired");
     const down = setup({ dpapi, fetch: async () => Promise.reject(new TypeError("ECONNREFUSED")) });
-    expect(await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], down.deps)).toBe(EXIT_FAILED);
+    expect(await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], down.deps)).toBe(EXIT_FAILED);
     expect(down.err.join("\n")).toContain("could not be reached");
     expect(down.err.join("\n")).not.toContain("ECONNREFUSED");
     expect(store(dpapi).hasSecret("agentSecret")).toBe(false);
@@ -264,7 +266,7 @@ describe("run", () => {
   async function enrolled() {
     const t = setup({ answers: [API_TOKEN, FRM_TOKEN] });
     await runCli(["set-tokens"], t.deps);
-    await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], setup({ dpapi: t.dpapi, fetch: async () => new Response(JSON.stringify(agentEnrollResponse), { status: 201 }) }).deps);
+    await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], setup({ dpapi: t.dpapi, fetch: async () => new Response(JSON.stringify(agentEnrollResponse), { status: 201 }) }).deps);
     return t.dpapi;
   }
 
@@ -406,7 +408,7 @@ describe("status and forget-credential", () => {
   it("forget-credential removes only the agent's credential", async () => {
     const t = setup({ answers: [API_TOKEN, ""] });
     await runCli(["set-tokens"], t.deps);
-    await runCli(["enroll", "AB3D-7XQ2", "--url", "https://api.example.test"], setup({ dpapi: t.dpapi, fetch: async () => new Response(JSON.stringify(agentEnrollResponse), { status: 201 }) }).deps);
+    await runCli(["enroll", "AB3D-7XQ2-K5MN", "--url", "https://api.example.test"], setup({ dpapi: t.dpapi, fetch: async () => new Response(JSON.stringify(agentEnrollResponse), { status: 201 }) }).deps);
     expect(await runCli(["forget-credential"], setup({ dpapi: t.dpapi }).deps)).toBe(EXIT_OK);
     const opened = store(t.dpapi);
     expect([opened.hasSecret("agentSecret"), opened.hasSecret("apiToken")]).toEqual([false, true]);

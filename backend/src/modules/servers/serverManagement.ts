@@ -9,7 +9,7 @@ import type {
 } from "@satisfactory-dash/shared";
 import { withTransaction } from "../../platform/db/transaction.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
-import { ApiFailure, ServerNotFoundError } from "../../platform/errorResponse.js";
+import { ApiFailure, ForbiddenError, ServerNotFoundError } from "../../platform/errorResponse.js";
 import { timedQuery } from "../../platform/db/timedQuery.js";
 import { Mutex } from "../../platform/mutex.js";
 import { SecretsError } from "../../platform/secrets/secrets.js";
@@ -35,7 +35,7 @@ import {
   updateConnection,
 } from "./repositories/connectionRepository.js";
 import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
-import { findServerByPublicId, listAgentServers, lockServerByPublicId, renameServer, softDeleteServer, switchToLocalKind, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, isSelfServeServer, listOperatorAgentServers, lockServerByPublicId, renameServer, softDeleteServer, switchToLocalKind, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
 
 /**
@@ -128,6 +128,11 @@ function refusedAddress(): ApiFailure {
 
 function notAnAgentServer(): ApiFailure {
   return new ApiFailure("server_not_agent", "That server is not reached through an agent, so there is nothing to switch back from.");
+}
+
+/** #526 (L1): a self-serve server is agent-only by design (ADR-0046 section 1.2); it is never read by this backend. */
+function selfServeIsAgentOnly(): ForbiddenError {
+  return new ForbiddenError("A server its player added is reached only through its agent; it cannot be switched to local.");
 }
 
 function refusedPort(): ApiFailure {
@@ -280,7 +285,8 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
     },
 
     async listAgentServers() {
-      return (await listAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
+      // ADR-0046 section 6: operator-created only (the startup load still loads every agent server).
+      return (await listOperatorAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
     },
 
     /** Renames a server reached through an edge agent. Only for those: a `local` server has a connection and is renamed
@@ -379,6 +385,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       const before = await findServerByPublicId(deps.db, publicId);
       if (before === undefined) throw new ServerNotFoundError();
       if (before.connectionKind !== "agent") throw notAnAgentServer();
+      if (await isSelfServeServer(deps.db, before.id)) throw selfServeIsAgentOnly();
       const pinnedIp = await pin(input.host);
       assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
       const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
@@ -392,6 +399,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
           const locked = await lockServerByPublicId(client, publicId);
           if (locked === undefined) throw new ServerNotFoundError();
           if (locked.connectionKind !== "agent") throw notAnAgentServer(); // changed since the first look (another switch, or a removal and re-add)
+          if (await isSelfServeServer(client, locked.id)) throw selfServeIsAgentOnly(); // re-checked under the row lock (#526)
           if ((await countConnections(client)) >= MAX_LOCAL_SERVERS) {
             throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
           }

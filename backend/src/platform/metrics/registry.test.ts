@@ -64,10 +64,13 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
       group: "power",
       table: "power_samples",
       kind: "power_outage",
+      reason: "signup_busy",
     };
+    // A label name shared by metrics with different closed sets: one valid value per metric.
+    const perMetric: Record<string, Record<string, string>> = { "satis.alerts.push.dropped": { reason: "not_member" } };
     for (const [metric, definition] of Object.entries(METRIC_REGISTRY)) {
       const labels: Record<string, string> = {};
-      for (const key of Object.keys(definition.labels)) labels[key] = sample[key];
+      for (const key of Object.keys(definition.labels)) labels[key] = perMetric[metric]?.[key] ?? sample[key];
       expect(() => validateRecording(metric, definition.kind, labels)).not.toThrow();
     }
   });

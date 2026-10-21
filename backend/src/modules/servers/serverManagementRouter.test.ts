@@ -61,7 +61,7 @@ const guard: RequestHandler = (req, res, next) => {
 // Everyone is a member of "alpha", so this file tests the operator check and the routes, not membership.
 const access: ServerAccess = {
   getRole: async (publicId) => (publicId === "alpha" ? "admin" : undefined),
-  listForUser: async () => [{ publicId: "alpha", displayName: "Home", role: "admin" }],
+  listForUser: async () => [{ publicId: "alpha", displayName: "Home", role: "admin", id: "uuid-alpha", createdVia: "operator" }],
 };
 
 function build(service: ServerManagementService, options: { isReady?: () => boolean; writeLimiter?: UserRateLimiter; testLimiter?: UserRateLimiter } = {}) {

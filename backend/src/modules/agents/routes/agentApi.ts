@@ -24,7 +24,14 @@ import { TokenBucketLimiter } from "../../../platform/tokenBucket.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import type { ServerDirectory } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
-import { COMMANDS_RATE, SNAPSHOT_BYTE_BUDGET, SNAPSHOT_MAX_BYTES, SNAPSHOT_RATE } from "../config.js";
+import {
+  COMMANDS_RATE,
+  ENROLL_GLOBAL_PER_MINUTE,
+  ENROLL_PER_NETWORK_PER_MINUTE,
+  SNAPSHOT_BYTE_BUDGET,
+  SNAPSHOT_MAX_BYTES,
+  SNAPSHOT_RATE,
+} from "../config.js";
 import type { AgentIdentity } from "../services/agentAuth.js";
 import { rateLimitKey } from "../services/clientKey.js";
 import type { AgentCommandsService } from "../services/commandsService.js";
@@ -58,7 +65,7 @@ export interface AgentApiDeps {
   snapshotMaxBytes?: number;
   /** Per client address; default 10 enrolment attempts a minute. */
   enrollLimiter?: UserRateLimiter;
-  /** Across every caller; default 120 enrolment attempts a minute for the whole process. */
+  /** Across every caller; default `ENROLL_GLOBAL_PER_MINUTE` (1,200, config.ts) for the whole process. */
   globalEnrollLimiter?: UserRateLimiter;
   /** Snapshots per credential (#514); default `SNAPSHOT_RATE` (config.ts). */
   snapshotLimiter?: TokenBucketLimiter;
@@ -85,8 +92,8 @@ export interface AgentApiDeps {
 export function createAgentApiRouter(deps: AgentApiDeps): Router {
   const router = Router();
   const now = deps.now ?? Date.now;
-  const enrollLimiter = deps.enrollLimiter ?? new UserRateLimiter({ max: 10, windowMs: 60_000 });
-  const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: 120, windowMs: 60_000 });
+  const enrollLimiter = deps.enrollLimiter ?? new UserRateLimiter({ max: ENROLL_PER_NETWORK_PER_MINUTE, windowMs: 60_000 });
+  const globalEnrollLimiter = deps.globalEnrollLimiter ?? new UserRateLimiter({ max: ENROLL_GLOBAL_PER_MINUTE, windowMs: 60_000 });
   const snapshotLimiter = deps.snapshotLimiter ?? new TokenBucketLimiter({ ...SNAPSHOT_RATE, now });
   const snapshotByteBudget = deps.snapshotByteBudget ?? new TokenBucketLimiter({ ...SNAPSHOT_BYTE_BUDGET, now });
   const commandsLimiter = deps.commandsLimiter ?? new TokenBucketLimiter({ ...COMMANDS_RATE, now });
@@ -116,9 +123,17 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
     express.json({ limit: "4kb" }),
     async (req, res) => {
       // Per network (an IPv6 /64 counts as one) AND process-wide: the per-network table is bounded, so a flood of distinct
-      // addresses could push counters out, and every open code on every server is a target for a guess.
-      const wait = Math.max(enrollLimiter.hit(rateLimitKey(req)), globalEnrollLimiter.hit("all"));
-      if (wait > 0) throw new RateLimitedError(wait, "Too many enrollment attempts. Try again in a minute.");
+      // addresses could push counters out, and every open code on every server is a target for a guess. The network is
+      // checked first and the global budget is charged only for requests that pass it (#524 security review): otherwise
+      // one network's refused requests would use up the global budget and lock out every honest enrolment.
+      const network = rateLimitKey(req);
+      const networkWait = enrollLimiter.hit(network);
+      if (networkWait > 0) throw new RateLimitedError(networkWait, "Too many enrollment attempts. Try again in a minute.");
+      const globalWait = globalEnrollLimiter.hit("all");
+      if (globalWait > 0) {
+        enrollLimiter.refund(network);
+        throw new RateLimitedError(globalWait, "Too many enrollment attempts. Try again in a minute.");
+      }
       const body = EnrollRequestSchema.safeParse(req.body);
       if (!body.success) throw new BadRequestError("The request body is not valid");
       const enrolled = await deps.enrollment.enroll(body.data.code, body.data.agentVersion);

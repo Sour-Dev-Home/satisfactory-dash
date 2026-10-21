@@ -6,9 +6,21 @@ import {
   queryOptions,
   type QueryKey,
 } from "@tanstack/react-query";
-import { endpoints, type HistoryRange, type SessionResponse, type TransitionRange } from "@satisfactory-dash/shared";
+import {
+  endpoints,
+  RailsLayerDataSchema,
+  ResourceNodesLayerDataSchema,
+  type HistoryRange,
+  type MapWorldLayer,
+  type RailsLayerData,
+  type ResourceNodesLayerData,
+  type SessionResponse,
+  type TransitionRange,
+} from "@satisfactory-dash/shared";
+import type { z } from "zod";
 import { apiGetAbortable, apiGetQuery } from "./client";
-import { BackendUnreachableError, classifyError } from "./errors";
+import { BackendUnreachableError, ContractDriftError, classifyError } from "./errors";
+import { rememberError } from "./settled";
 
 /** ADR-0005 poll intervals. Settings poll only while a change is pending. */
 export const POLL_MS = {
@@ -19,7 +31,38 @@ export const POLL_MS = {
   alerts: 60_000,
   command: 1_000,
   agent: 30_000,
+  /** A world layer (rails, resource nodes) changes at most every 10 min (ADR-0038 D3); 5 min is enough. */
+  mapWorld: 300_000,
 } as const;
+
+/** One stored world layer, as the map reads it (ADR-0038): the layer's own data type, narrowed. */
+export interface WorldLayerRead<T> {
+  hash: string;
+  observedAt: string;
+  /** True when the backend cut the layer to its item cap, so what's drawn is part of it. */
+  truncated: boolean;
+  data: T;
+}
+
+/**
+ * Reads one world layer and checks its data against that layer's own schema (the endpoint's schema is
+ * a union over all layers, so on its own it can't tell an empty rails list from an empty node list).
+ */
+async function readWorldLayer<S extends z.ZodType>(
+  signal: AbortSignal,
+  serverId: string,
+  layer: MapWorldLayer,
+  schema: S,
+): Promise<WorldLayerRead<z.infer<S>>> {
+  const path = endpoints.map.worldLayer.path(serverId, layer);
+  const response = await apiGetAbortable(signal, endpoints.map.worldLayer, serverId, layer);
+  const parsed = schema.safeParse(response.data);
+  if (response.layer !== layer) throw new ContractDriftError(path, 200, [`layer: expected ${layer}, got ${response.layer}`]);
+  if (!parsed.success) {
+    throw new ContractDriftError(path, 200, parsed.error.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`));
+  }
+  return { hash: response.hash, observedAt: response.observedAt, truncated: response.truncated, data: parsed.data };
+}
 
 /** Alert log events per page (the backend allows 1 to 100). */
 export const ALERT_PAGE = 50;
@@ -91,7 +134,11 @@ export function createQueryClient(): QueryClient {
   };
   const client = new QueryClient({
     queryCache: new QueryCache({
-      onError: onUnauthorized,
+      onError: (error, query) => {
+        // Kept past the refetch that clears it, so a poll of a failed query doesn't blank its notice.
+        rememberError(error, query);
+        onUnauthorized(error);
+      },
       // A session check can also end the session without any 401 (e.g. a focus refetch after
       // the cookie expired). Drop the old session's data then too. setQueryData doesn't pass
       // through here, so signOutLocally can't recurse.
@@ -183,6 +230,24 @@ export const queries = {
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.factory, serverId),
       refetchInterval: POLL_MS.factory,
     }),
+  /**
+   * ADR-0038 M5: the map's world layers. The caller turns one off by passing `enabled: false`, so a
+   * hidden layer costs no request. The browser revalidates with If-None-Match (the route's ETag), so a
+   * poll with nothing new is a 304 without a body.
+   */
+  mapRails: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "map", "world", "rails"],
+      queryFn: ({ signal }): Promise<WorldLayerRead<RailsLayerData>> => readWorldLayer(signal, serverId, "rails", RailsLayerDataSchema),
+      refetchInterval: POLL_MS.mapWorld,
+    }),
+  mapResourceNodes: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "map", "world", "resourceNodes"],
+      queryFn: ({ signal }): Promise<WorldLayerRead<ResourceNodesLayerData>> =>
+        readWorldLayer(signal, serverId, "resourceNodes", ResourceNodesLayerDataSchema),
+      refetchInterval: POLL_MS.mapWorld,
+    }),
   // ADR-0030, operator only: every stored connection, with what the edit form needs. Not under
   // ["servers", ...], so ServerGate's "the selected server is gone" handling never sees it.
   managedServers: () =>
@@ -222,6 +287,18 @@ export const queries = {
     queryOptions({
       queryKey: ["servers", serverId, "alerts", "rules"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.alerts.rules.list, serverId),
+    }),
+  // ADR-0044 (#348): web push. The config is the backend's (not a server's): whether push is on and
+  // the VAPID key. The opt-in is the signed-in member's own, per server (viewers included).
+  pushConfig: () =>
+    queryOptions({
+      queryKey: ["push", "config"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.push.config),
+    }),
+  pushOptIn: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "alerts", "push"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.push.optIn.get, serverId),
     }),
   alertDestinations: (serverId: string) =>
     queryOptions({

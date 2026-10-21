@@ -23,10 +23,17 @@ The agent's secret and a code are never stored or logged in clear. A removed ser
 
 ## Enrolling, and what enrolling does to a local server
 
-`POST /api/servers/:serverId/agent/enrollment-codes` (owner or admin) makes a code `XXXX-XXXX`, valid for 10 minutes,
-single use. **For a server this backend reaches directly (`local`), only the operator can create one**, because
+`POST /api/servers/:serverId/agent/enrollment-codes` (owner or admin) makes a code `XXXX-XXXX-XXXX` (12 base32
+characters, 60 bits; #524, ADR-0046 section 4), valid for 10 minutes, single use. **For a server this backend reaches directly (`local`), only the operator can create one**, because
 enrolling deletes the server's stored game-server tokens and makes it an `agent` server (its pollers stop). Saving a
 local connection also drops that server's unspent codes.
+
+**Code format change (#524): an already-enrolled agent keeps working, but re-enrolling needs an agent build with this
+change.** Enrolment is the only place a code is used, and an agent's credential is a separate secret, so nothing
+enrolled stops. But the agent checks the code's shape locally before it sends anything, so an older build rejects a
+12-character code ("Usage: agent enroll ...") and never reaches the backend; the backend in turn rejects the old
+8-character form with a 400. Update the agent (and the mod, which pins the same format) before the next enrolment or
+re-enrolment of any server.
 
 ## Revoking, and the way back
 
@@ -36,6 +43,79 @@ local connection also drops that server's unspent codes.
 answer `upstream_unreachable` once the last snapshot is stale, its auto-pause can no longer be changed (`not_editable`),
 and it stays that way until you either create a new enrollment code and enrol an agent, or switch the server back to
 `local` with `POST /api/servers/:serverId/local-connection` ([`servers.md`](./servers.md), ADR-0031 amendment 2).
+
+## Self-serve servers (ADR-0046, #525): shipped dark
+
+`POST /api/servers/agent` with `{ "displayName": "..." }` lets any signed-in, active account create an agent server of
+its own, without the operator. The backend picks the id (20 random base32 characters); the server is born `agent`, with
+no host, no tokens and no connection test, and the caller is its owner. The owner then makes a code with the usual
+`POST /api/servers/:serverId/agent/enrollment-codes` and puts it in the agent or the mod. In the database the server is
+`servers.servers.created_via = 'self_serve'` (everything else is `operator`), and a trigger refuses to commit a
+self-serve server that has no owner. `npm run admin -- list-servers` shows `via=operator` or `via=self_serve`. The
+operator's managed list (`GET /api/servers/managed`) shows operator-created agent servers only, since the operator is not
+a member of a self-serve one.
+
+**It is off until you turn it on.** Off, the route answers 403 `forbidden` for everyone and nothing else changes.
+
+| Setting (`backend/.env`, on AWS the task definition) | Cap | Default | Bounds | Refusal |
+|---|---|---|---|---|
+| `SELF_SERVE_ENABLED` | the kill switch | `false` | `true` or `false` | 403 `forbidden` |
+| `SELF_SERVE_MAX_SERVERS_PER_ACCOUNT` | C1, live self-serve servers one account created | 2 | 1 to 20 | 409 `server_limit_reached` |
+| `SELF_SERVE_MAX_PENDING_PER_ACCOUNT` | C3, of those, never enrolled (no credential row, ever) | 1 | 1 to C1 | 409 `server_limit_reached`, naming the pending server |
+| `SELF_SERVE_MAX_SERVERS_TOTAL` | C2, live self-serve servers in total | 25 | 1 to 1000, at least C1 | 409 `server_limit_reached`, "the service is full" |
+| `SELF_SERVE_CREATES_PER_DAY` | C5, creations per account in any 24 h, removed servers included | 5 | 1 to 100 | 429 `rate_limited` with `Retry-After` |
+| `SELF_SERVE_PENDING_TTL_HOURS` | C4, hours a self-serve server may stay never-enrolled before the sweep removes it | 24 | 1 to 168 | (none: the server is removed) |
+
+The caps count self-serve servers only, and the operator's account is exempt from all of them. All are checked under
+the server-management advisory lock in the create transaction, so concurrent creates cannot pass one together. **C1, C3
+and C5 count by creator** (`servers.servers.created_by_user_id`, #526), not by current owner, so handing a server to
+another account never frees a slot. C5 counts the rows the account created in the last 24 hours, live or removed, so a
+restart does not reset it and create-and-remove churn is counted; a refused create writes no row and is not counted. Only
+the operator changes a setting, by editing it and restarting the backend; there is no API. A bad value stops the backend
+at startup, naming the variable. Lowering a cap never deletes a server; it only refuses new creates.
+
+**The owner may rename and remove their self-serve server** (#526, ADR-0046 section 1.8): `PATCH
+/api/servers/:serverId/name` and `DELETE /api/servers/:serverId`, the routes the operator uses for agent servers. Who gets
+what:
+
+| Caller | Self-serve server | Operator-created server |
+|---|---|---|
+| its owner | 200 | 403 `forbidden` (operator only, as before) |
+| an admin or viewer of it | 403 `forbidden` | 403 `forbidden` |
+| not a member (the operator included) | 404, as for an unknown server | 404 |
+| the operator, as a member | as above for their role | unchanged (the operator-only routes as before) |
+
+Ownership and `created_via` are re-checked under the server's row lock in the same transaction as the change. A remove is
+the same purge as `remove-server` (`abuse-response.md`, step 2): the agent's credential and any unspent code go (the agent
+gets 401), and so do the members, history, alerts and map; the runtime entry is dropped at once, so no restart is needed.
+It writes `server.deleted` with the owner's user id and `detail: { reason: "owner_removed" }`; a rename writes
+`server.updated` with `detail: { fields: ["displayName"] }`. A removed self-serve id is never handed out again: the create
+is a plain INSERT, so the same id is a unique violation. **Rename and remove keep working while `SELF_SERVE_ENABLED=false`**
+(intended: the switch stops new servers, and an owner can always delete their data).
+
+A self-serve server is agent-only: the operator's `POST /api/servers/:serverId/local-connection` refuses it with 403
+`forbidden`. The owner's rename and remove, the sweep and the operator's management writes take one shared in-process
+lock, so their runtime changes never interleave, and every runtime entry added after a commit (a create, an enrolment,
+a first snapshot) is checked against the database again and dropped if the server was removed meanwhile.
+
+**The pending sweep (C4).** Every 10 minutes, the backend removes up to 50 self-serve servers (oldest first) that are
+older than `SELF_SERVE_PENDING_TTL_HOURS` and have no `agents.agent_credentials` row. A server that ever enrolled, even
+with a revoked credential, is never swept, and operator-created servers are never candidates. Each removal locks the
+server row and checks enrolment again in its own transaction (an enrolment in flight wins), then runs the same purge,
+writing `server.deleted` with no actor and `detail: { reason: "never_enrolled" }`. It runs whether or not
+`SELF_SERVE_ENABLED` is on, so turning creation off does not strand pending servers. The log line `removed self-serve
+servers that never enrolled` carries `{ swept, skipped }`, and the counter `satis.servers.pending_swept` (no labels) adds
+the number swept; counts only, never an id or a name. A steady rate of sweeps means accounts create servers they never
+connect (ADR-0045 M3's residual): look at `list-servers`.
+
+**To turn it on** (only once every ADR-0046 release gate in section 7 is closed and the owner says go):
+1. `npm run db:migrate` (the `created_via` column and the trigger, `1791590400000_self_serve_servers`; the creator
+   column and its index, `1791676800000_self_serve_creator`).
+2. Set `SELF_SERVE_ENABLED=true` in `backend/.env` (it needs `DATABASE_URL`) and, if needed, the caps above.
+3. Restart the backend. The startup log says `self-serve server creation is ON`.
+
+**To turn it off:** set `SELF_SERVE_ENABLED=false` (or remove it) and restart. Existing self-serve servers keep working;
+abuse is handled with `npm run admin -- list-servers`, `disable-user` and `remove-server` (`abuse-response.md`).
 
 ## Commands
 
@@ -104,7 +184,8 @@ body), which the agent honours and retries.
 | Failed authentications | client network (IPv6 /64) | 60 a minute | a missing, malformed, unknown or revoked credential |
 | Failed authentications | whole process | 6,000 a minute | a flood from many addresses costs at most this many lookups |
 | World layers | credential | 20 per 10 minutes, 2 MB each | `map/routes/agentWorldRoutes.ts` |
-| Enrolment | client network / process | 10 / 120 a minute | `agents/routes/agentApi.ts` |
+| Enrolment | client network / process | 10 / 1,200 a minute (was 120 before #524) | `ENROLL_*` in `agents/config.ts`, used by `agents/routes/agentApi.ts`; the guess arithmetic is by the constant |
+| Enrolment codes created (#527, ADR-0046 C7) | account | 10 a minute and 20 an hour (both apply) | bounds enrolment churn and its audit rows; a setup needs 1 to 3 codes. The hourly cap is `ENROLLMENT_CODES_PER_HOUR` (whole number 1 to 1000, default 20; a bad value stops the backend at startup). A fixed window from the account's first code, in memory per instance, so a restart resets it. The operator's account is exempt from the hourly cap (bulk re-enrolment after a restore) but not the minute one. A refusal is the usual 429 `rate_limited` with `Retry-After`, and says "this hour" |
 
 Successful authentications never count against the failure budgets, and a credential that authenticated in the last
 15 minutes skips them entirely (it is still looked up every time, so a revocation is immediate). A flood of junk

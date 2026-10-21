@@ -15,6 +15,8 @@ export interface ServerSwitch {
   serverCount: number;
   /** Drops the selection, so ServerGate shows the picker again. */
   change: () => void;
+  /** Selects a server by id (e.g. the one the player just added). */
+  select: (serverId: string) => void;
 }
 
 export const ServerSwitchContext = createContext<ServerSwitch | null>(null);

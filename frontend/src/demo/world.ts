@@ -16,6 +16,10 @@ import type {
   PowerHistoryPoint,
   PowerHistoryResponse,
   PowerResponse,
+  RailsLayerData,
+  RailsWorldLayerResponse,
+  ResourceNodesLayerData,
+  ResourceNodesWorldLayerResponse,
   ServerListResponse,
   ServerPlayersResponse,
   SettingsResponse,
@@ -455,6 +459,67 @@ export function factory(now: number): FactoryResponse {
   };
 }
 
+/**
+ * The demo's map world layers (ADR-0038 M5): made-up rails and resource nodes around the demo factory
+ * (whole metres, +x east, +y south: docs-vault/raw-sources/world-coordinates.md). A world layer changes
+ * rarely, so the demo's reading is "taken" ten minutes before the visit.
+ */
+const worldEnvelope = (now: number, layer: string, count: number) => ({
+  layer,
+  hash: `demo-${layer}`,
+  observedAt: new Date(now - 10 * 60_000).toISOString(),
+  truncated: false,
+  count,
+});
+
+/** A gentle curve as short straight steps, from `a` to `b`, bowing out by `bow` metres. */
+function arc(a: [number, number], b: [number, number], bow: number, steps = 12): [number, number][] {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const length = Math.hypot(dx, dy) || 1;
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps;
+    const lift = Math.sin(Math.PI * t) * bow;
+    return [Math.round(a[0] + dx * t - (dy / length) * lift), Math.round(a[1] + dy * t + (dx / length) * lift)];
+  });
+}
+
+const DEMO_RAILS: RailsLayerData = [
+  { id: "demo-rail-1", points: arc([-1900, -900], [-1560, -840], 30) },
+  { id: "demo-rail-2", points: arc([-1560, -840], [-1100, -1100], -60) },
+  { id: "demo-rail-3", points: arc([-1560, -840], [-1300, -600], 40) },
+  { id: "demo-rail-4", points: arc([-1900, -900], [-2300, -1250], 50) },
+];
+
+const node = (type: string, purity: string, x: number, y: number, exploited: boolean, nodeType = "node") => ({
+  type,
+  purity,
+  nodeType,
+  x,
+  y,
+  exploited,
+});
+const DEMO_NODES: ResourceNodesLayerData = [
+  node("Iron Ore", "pure", -1765, -1040, true),
+  node("Iron Ore", "normal", -1830, -960, false),
+  node("Copper Ore", "normal", -1610, -930, true),
+  node("Limestone", "impure", -1500, -1050, false),
+  node("Coal", "normal", -1380, -900, false),
+  node("Caterium Ore", "pure", -1150, -1180, false),
+  node("Sulfur", "impure", -2050, -760, false),
+  node("Crude Oil", "pure", -1250, -700, false),
+  node("Bauxite", "normal", -2240, -1290, false),
+  node("Nitrogen Gas", "pure", -1000, -820, false, "frackingSatellite"),
+  node("Geothermal", "normal", -1660, -690, false, "geyser"),
+];
+
+export function railsWorld(now: number): RailsWorldLayerResponse {
+  return { ...worldEnvelope(now, "rails", DEMO_RAILS.length), data: DEMO_RAILS };
+}
+
+export function resourceNodesWorld(now: number): ResourceNodesWorldLayerResponse {
+  return { ...worldEnvelope(now, "resourceNodes", DEMO_NODES.length), data: DEMO_NODES };
+}
+
 export function settings(now: number, state: { autoPause: boolean; pending: boolean }): SettingsResponse {
   return { ...envelope(now), data: { ...state, editable: true } };
 }
@@ -466,7 +531,7 @@ export function agent(now: number): AgentStatusResponse {
 
 /** A made-up enrolment code: it enrols nothing, since the demo has no backend. */
 export function enrollmentCode(now: number): z.infer<typeof EnrollmentCodeResponseSchema> {
-  return { code: "DEMO-DEMO", expiresAt: new Date(now + 10 * 60_000).toISOString() };
+  return { code: "DEMO-DEMO-DEMO", expiresAt: new Date(now + 10 * 60_000).toISOString() };
 }
 
 // Stored production history (ADR-0027 decision 3), invented like the rest: the demo's own items, a

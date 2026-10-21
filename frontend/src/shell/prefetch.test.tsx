@@ -102,7 +102,7 @@ describe("pageQueries", () => {
     const keys = (path: string) => pageQueries(path, "s1").map((q) => q.queryKey.join("/"));
     expect(keys("/app")).toEqual(["servers/s1/status", "servers/s1/power", "servers/s1/factory"]);
     expect(keys("/app/power")).toEqual(["servers/s1/power"]);
-    expect(keys("/app/map")).toEqual(["servers/s1/factory"]);
+    expect(keys("/app/map")).toEqual(["servers/s1/factory", "servers/s1/map/world/rails", "servers/s1/map/world/resourceNodes"]);
     expect(keys("/app/factory")).toContain("servers/s1/factory");
     expect(keys("/app/factory")).toContain("servers/s1/history/items/7d");
     expect(keys("/app/settings")).toContain("servers/s1/settings");
