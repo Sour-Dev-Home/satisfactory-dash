@@ -10,6 +10,7 @@ import {
   purgeExpired,
   rollUp,
   RAW_RETENTION_MS,
+  MINUTE_ROLLUP_RETENTION_MS,
 } from "./historyRepository.js";
 
 const available = dbTestsAvailable();
@@ -118,5 +119,23 @@ describe.skipIf(!available)("telemetry history against a real Postgres", () => {
     const purged = await purgeExpired(pool, now, { batchSize: 5 });
     expect(purged.powerSamples).toBeGreaterThanOrEqual(12);
     expect(await count("power_samples", server.id)).toBe(1);
+  });
+
+  it("purges 1-minute rollups after 7 days at the boundary, and never the hourly ones", async () => {
+    const server = await newServer();
+    const now = Date.now();
+    expect(MINUTE_ROLLUP_RETENTION_MS).toBe(7 * 24 * 3_600_000);
+    const row = (resolution: number, atMs: number) =>
+      admin.query(
+        "INSERT INTO telemetry.item_rollups (server_id, item, resolution, bucket, samples, current_min, current_avg, current_max, max_avg) VALUES ($1, 'Desc_X_C', $2, $3, 1, 1, 1, 1, 1)",
+        [server.id, resolution, new Date(atMs)],
+      );
+    await row(60, now - MINUTE_ROLLUP_RETENTION_MS - 60_000); // just past 7 days: goes
+    await row(60, now - MINUTE_ROLLUP_RETENTION_MS + 60_000); // just inside 7 days: stays
+    await row(3600, now - MINUTE_ROLLUP_RETENTION_MS - 3_600_000); // hourly, 7 days old: stays
+    const purged = await purgeExpired(pool, now, { batchSize: 5 });
+    expect(purged.itemMinutes).toBe(1);
+    expect(purged.itemHours).toBe(0);
+    expect(await count("item_rollups", server.id)).toBe(2);
   });
 });

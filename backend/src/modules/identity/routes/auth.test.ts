@@ -178,7 +178,7 @@ describe("POST /api/auth/login", () => {
   // like supertest's here. Visitors must be told apart by CF-Connecting-IP, or one
   // attacker's failures would lock everyone out.
   it("keeps separate lockout counts per tunnel visitor (CF-Connecting-IP)", async () => {
-    const { app } = buildApp();
+    const { app, lines } = buildApp();
     const loginAs = (visitor: string, password: string) =>
       request(app)
         .post(endpoints.auth.login.path())
@@ -189,6 +189,8 @@ describe("POST /api/auth/login", () => {
       expect((await loginAs("203.0.113.5", `attacker-${i}`)).status).toBe(401);
     }
     expect((await loginAs("203.0.113.5", PASSWORD)).status).toBe(429);
+    // the rate-limit warning keeps the caller's IP, the only abuse signal the privacy page promises to log
+    expect(lines.map((line) => JSON.parse(line)).find((line) => line.msg === "login rate-limited")).toMatchObject({ ip: "203.0.113.5" });
     expect((await loginAs("198.51.100.7", PASSWORD)).status).toBe(200); // the owner still gets in
   });
 
@@ -199,6 +201,7 @@ describe("POST /api/auth/login", () => {
     await login(app, { username: "Hunter2-MyRealPassw0rd", password: "whatever-else" });
     const failure = lines.map((line) => JSON.parse(line)).find((line) => line.msg === "login failed");
     expect(failure).toMatchObject({ usernameMatched: false });
+    expect(typeof failure.ip).toBe("string"); // sign-in events keep the IP (privacy page); normal request lines do not
     expect(lines.join(" ")).not.toContain("Hunter2-MyRealPassw0rd");
   });
 

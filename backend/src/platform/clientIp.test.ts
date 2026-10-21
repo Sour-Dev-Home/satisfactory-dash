@@ -51,17 +51,17 @@ describe("clientIp", () => {
   });
 });
 
-// Architect request (go-live observability): behind the tunnel the raw socket address
-// is 127.0.0.1 for everyone, so every request line also carries the resolved client IP.
-// The raw address stays in req.remoteAddress, so a spoof shows as a mismatch.
+// Data hygiene (2026-10-21): a request line carries no client IP at all (the resolved one, the raw socket
+// address or the forwarding headers). Sign-in and rate-limit events log it themselves.
 describe("request logs", () => {
-  it("record the resolved client IP on every request, next to the raw socket address", async () => {
+  it("carry no client IP: not the resolved one, the socket address or the forwarding header", async () => {
     const lines: Record<string, unknown>[] = [];
     const logger = createLogger({ level: "info" }, { write: (line: string) => lines.push(JSON.parse(line)) });
     const app = createApp({ logger, routers: [healthRouter] });
     await request(app).get("/api/health").set("CF-Connecting-IP", "203.0.113.9");
     const completed = lines.find((line) => line.msg === "request completed")!;
-    expect(completed.clientIp).toBe("203.0.113.9");
-    expect(String((completed.req as { remoteAddress: string }).remoteAddress)).toMatch(/127\.0\.0\.1|::1/);
+    expect(completed.clientIp).toBeUndefined();
+    expect((completed.req as { remoteAddress?: string }).remoteAddress).toBeUndefined();
+    expect(JSON.stringify(completed)).not.toContain("203.0.113.9");
   });
 });

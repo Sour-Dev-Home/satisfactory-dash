@@ -1,0 +1,1 @@
+- 2026-10-21 — data-retention hygiene: request log lines drop the client IP and query string (IPs stay on sign-in and rate-limit events), sweeps for expired enrollment codes, passed mutes and finished outbox rows, a daily top-5 table-size log line, privacy page retention list, and 1-minute history rollups now kept 7 days (was 30).

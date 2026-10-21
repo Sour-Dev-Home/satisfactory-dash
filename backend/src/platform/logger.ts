@@ -14,6 +14,12 @@ export const REDACT_PATHS = [
   "req.headers.cookie",
   'req.headers["x-frm-authorization"]',
   'res.headers["set-cookie"]',
+  // Data hygiene (2026-10-21): the caller's address also rides in these request headers. Request lines carry no IP;
+  // only sign-in and rate-limit events log it, from the resolved value (clientIp.ts).
+  'req.headers["cf-connecting-ip"]',
+  'req.headers["x-forwarded-for"]',
+  'req.headers["x-real-ip"]',
+  'req.headers["true-client-ip"]',
   // A Location can carry secrets (the Google sign-in redirect holds state, nonce and code_challenge) and has
   // little diagnostic value anywhere: redacted globally so a future auth route cannot forget it.
   "res.headers.location",

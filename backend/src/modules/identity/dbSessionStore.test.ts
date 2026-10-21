@@ -268,6 +268,9 @@ describe("session purge", () => {
       const { db, query } = fakeDb([
         ["identity", () => connRefused],
         ["audit.purge_expired_events", () => ({ rows: [{ deleted: "0" }] })],
+        ["alerts.", () => ({ rows: [{ deleted: 0 }] })], // the retention sweeps and the size report
+        ["agents.", () => ({ rows: [{ deleted: 0 }] })],
+        ["pg_class", () => ({ rows: [] })],
       ]);
       const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       const worker = createSessionPurgeWorker(db, logger);

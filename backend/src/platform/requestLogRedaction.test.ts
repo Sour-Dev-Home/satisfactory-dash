@@ -27,9 +27,22 @@ describe("request log lines", () => {
     expect(text).not.toContain("SECRET-STATE-456");
   });
 
-  it("still log other URLs as before", async () => {
+  it("log every URL as its path only, without the query string", async () => {
     const { app, lines } = build();
-    await request(app).get("/api/other?x=1");
-    expect(lines.join("\n")).toContain("/api/other?x=1");
+    await request(app).get("/api/other?x=1&email=a@b.c");
+    const text = lines.join(" ");
+    expect(text).toContain("/api/other");
+    expect(text).not.toContain("x=1");
+    expect(text).not.toContain("a@b.c");
+  });
+
+  it("carry no client IP, neither the resolved one nor the socket address", async () => {
+    const { app, lines } = build();
+    await request(app).get("/api/other").set("CF-Connecting-IP", "203.0.113.9");
+    const line = JSON.parse(lines[0]!) as Record<string, unknown> & { req: Record<string, unknown> };
+    expect(line.clientIp).toBeUndefined();
+    expect(line.req.remoteAddress).toBeUndefined();
+    expect(lines.join(" ")).not.toContain("203.0.113.9");
+    expect(line.req.headers).toBeDefined();
   });
 });

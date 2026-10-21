@@ -233,7 +233,7 @@
         <li>
           Game data (power, production and machine states): recorded so the dashboard can show
           history and send alerts. Detailed readings are kept for 48 hours, one-minute averages
-          for 30 days, and hourly averages for 1 year. Machine state changes are kept for 30 days.
+          for 7 days, and hourly averages for 1 year. Machine state changes are kept for 30 days.
           It describes the game world, not you. Player names and player counts are never part of it.
         </li>
         <li>
@@ -250,8 +250,14 @@
           Data for a server removed from Satisfactory Dash: deleted at once (the list above), except in
           backups, which age out within 37 days.
         </li>
-        <li>Audit events: 1 year. They're kept for security and hold no emails or names.</li>
-        <li>Server logs, including IP addresses on sign-in events: 14 days.</li>
+        <li>Audit events: 1 year. They're kept for security and hold no emails or names. They hold a pseudonymous user id, and that stays for the year even after you delete your account.</li>
+        <li>
+          Server logs: 14 days. A request's log line holds no IP address. Your IP address is logged only
+          on sign-in events and when a rate limit or abuse protection steps in.
+        </li>
+        <li>Request metrics (counts and timings of requests, with no personal data beyond server ids): 90 days.</li>
+        <li>Commands sent to a server's agent: 7 days after they finish.</li>
+        <li>Push-notification subscriptions: until you remove them, or your browser's push service drops them.</li>
       </ul>
 
       <h2>Your choices and rights</h2>
