@@ -9,17 +9,55 @@ import type { Db } from "./dbSessionStore.js";
 import type { GoogleClaims } from "./googleOidc.js";
 import type { CreatedSession } from "./sessionStore.js";
 import { SESSION_TTL_SECONDS } from "./sessionToken.js";
-import { addIdentity, authMethodsForUser, findUserByIdentity, setUserEmail } from "./repositories/userRepository.js";
+import {
+  addIdentity,
+  authMethodsForUser,
+  countUsersCreatedLastHour,
+  createSignupUser,
+  displayNameTaken,
+  findUserByIdentity,
+  setUserEmail,
+  takeSignupLock,
+} from "./repositories/userRepository.js";
+import { generateDisplayName } from "./generatedName.js";
+import type { MetricsRecorder } from "../../platform/metrics/index.js";
+import { createSignupNetworkLimit } from "./signupNetworkLimit.js";
+import type { SignupNetworkLimit } from "./signupNetworkLimit.js";
+import { TERMS_VERSION } from "./signupConfig.js";
+import type { SignupConfig } from "./signupConfig.js";
 import type { User } from "./repositories/userRepository.js";
 
 export type GoogleSignInResult =
   | { kind: "signed_in"; session: CreatedSession }
-  /** Nothing was created: `not_invited` (closed sign-up) or `disabled`. */
-  | { kind: "refused"; reason: "not_invited" | "disabled" | "unverified_email" };
+  /** Nothing was created: `not_invited` (closed sign-up), `disabled`, or in open sign-up `terms_required`
+   *  (a new account that has not accepted the terms) and `signup_busy` (C8, the hourly cap). */
+  | { kind: "refused"; reason: RefusalReason };
+
+export type RefusalReason =
+  | "not_invited"
+  | "disabled"
+  | "unverified_email"
+  | "terms_required"
+  | "signup_busy"
+  | "signup_network_busy";
+
+export interface GoogleSignInOptions {
+  /** The terms version the person accepted on the sign-in page (from the login attempt). */
+  acceptedTermsVersion?: string | undefined;
+  /** The caller's client address, for the per-network share of new accounts (kept in memory, never stored). */
+  network?: string | undefined;
+}
 
 export interface GoogleSignIn {
-  complete(claims: GoogleClaims, replacingSessionCookie: string | undefined): Promise<GoogleSignInResult>;
+  complete(
+    claims: GoogleClaims,
+    replacingSessionCookie: string | undefined,
+    options?: GoogleSignInOptions,
+  ): Promise<GoogleSignInResult>;
 }
+
+const CLOSED_SIGNUP: SignupConfig = { mode: "closed", maxPerHour: 0 };
+const NO_METRICS: MetricsRecorder = { counter: () => undefined, histogram: () => undefined };
 
 /**
  * ADR-0025 decisions 4 and 5. The account is found by (provider "google", sub) and NEVER by email,
@@ -29,12 +67,15 @@ export interface GoogleSignIn {
  * user row and storing no email. Resolving the account, the session and the audit row are one
  * transaction. Audit rows carry ids and codes only, never the email.
  */
-export function createGoogleSignIn(db: Db, bootstrapOwnerEmail: string): GoogleSignIn {
-  const refuse = async (
-    client: Queryable,
-    reason: "not_invited" | "disabled" | "unverified_email",
-    userId?: string,
-  ): Promise<GoogleSignInResult> => {
+export function createGoogleSignIn(
+  db: Db,
+  bootstrapOwnerEmail: string,
+  signup: SignupConfig = CLOSED_SIGNUP,
+  deps: { networkLimit?: SignupNetworkLimit; metrics?: MetricsRecorder } = {},
+): GoogleSignIn {
+  const networkLimit = deps.networkLimit ?? createSignupNetworkLimit();
+  const metrics = deps.metrics ?? NO_METRICS;
+  const refuse = async (client: Queryable, reason: RefusalReason, userId?: string): Promise<GoogleSignInResult> => {
     await recordAuditEvent(client, {
       action: "signin.refused",
       ...(userId ? { actorUserId: userId } : {}),
@@ -69,15 +110,74 @@ export function createGoogleSignIn(db: Db, bootstrapOwnerEmail: string): GoogleS
     return { ...operator, email: claims.email.trim().toLowerCase() };
   };
 
-  const attempt = (claims: GoogleClaims, replacing: string | undefined): Promise<GoogleSignInResult> =>
+  /**
+   * Open sign-up (ADR-0046, C8). Returns the new user, or the refusal to send. Everything runs under the
+   * sign-up lock: the identity is looked up again (a racing first sign-in of the same sub just won), the
+   * hourly count and the insert can't be raced past the cap, and the generated name is still free at the
+   * insert. No email is stored: the account is keyed on (google, sub) alone.
+   */
+  const signUp = async (
+    client: Queryable,
+    claims: GoogleClaims,
+    termsVersion: string,
+    network: string | undefined,
+  ): Promise<User | GoogleSignInResult> => {
+    await takeSignupLock(client);
+    const raced = await findUserByIdentity(client, "google", claims.sub);
+    if (raced !== undefined) {
+      return raced;
+    }
+    // One network's own share first, so it can't use up the process-wide hourly cap alone.
+    if (network !== undefined && !networkLimit.allows(network)) {
+      metrics.counter("satis.signup.refused", { reason: "network_limit" });
+      return refuse(client, "signup_network_busy");
+    }
+    if ((await countUsersCreatedLastHour(client)) >= signup.maxPerHour) {
+      metrics.counter("satis.signup.refused", { reason: "signup_busy" });
+      return refuse(client, "signup_busy");
+    }
+    const displayName = await generateDisplayName((name) => displayNameTaken(client, name));
+    const user = await createSignupUser(client, { displayName, termsVersion });
+    await addIdentity(client, { userId: user.id, provider: "google", subject: claims.sub });
+    // Ids and the terms version only: the audit trail never holds an email or a name.
+    await recordAuditEvent(client, {
+      action: "signup",
+      actorUserId: user.id,
+      detail: { provider: "google", termsVersion },
+    });
+    if (network !== undefined) {
+      networkLimit.record(network);
+    }
+    return user;
+  };
+
+  const attempt = (
+    claims: GoogleClaims,
+    replacing: string | undefined,
+    options: GoogleSignInOptions,
+  ): Promise<GoogleSignInResult> =>
     withTransaction(db, async (client) => {
       // The one hard requirement on the claims: a boolean true (the string "true" is not accepted).
       if (claims.emailVerified !== true) {
         return refuse(client, "unverified_email");
       }
-      const user = await resolveUser(client, claims);
+      let user = await resolveUser(client, claims);
       if (user === undefined) {
-        return refuse(client, "not_invited");
+        // The bootstrap address belongs to the operator and never self-registers: if it could not be linked (the
+        // operator is disabled, or another Google account already holds the link), open sign-up must not hand
+        // that address a brand-new account.
+        const reserved = claims.email !== undefined && claims.email.trim().toLowerCase() === bootstrapOwnerEmail;
+        if (signup.mode !== "open" || reserved) {
+          return refuse(client, "not_invited");
+        }
+        if (options.acceptedTermsVersion !== TERMS_VERSION) {
+          return refuse(client, "terms_required");
+        }
+        const created = await signUp(client, claims, TERMS_VERSION, options.network);
+        if ("kind" in created) {
+          return created;
+        }
+        user = created;
       }
       if (user.status !== "active") {
         return refuse(client, "disabled", user.id);
@@ -95,15 +195,15 @@ export function createGoogleSignIn(db: Db, bootstrapOwnerEmail: string): GoogleS
     });
 
   return {
-    async complete(claims, replacing) {
+    async complete(claims, replacing, options = {}) {
       try {
         try {
-          return await attempt(claims, replacing);
+          return await attempt(claims, replacing, options);
         } catch (err) {
           // Two first sign-ins racing on the bootstrap link: the loser hits the unique constraint
           // and simply re-reads what the winner wrote.
           if (isUniqueViolation(err)) {
-            return await attempt(claims, replacing);
+            return await attempt(claims, replacing, options);
           }
           throw err;
         }

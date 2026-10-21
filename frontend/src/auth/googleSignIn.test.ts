@@ -1,5 +1,40 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { googleStartHref, offersGoogle, signInErrorText } from "./googleSignIn";
+import { TERMS_VERSION, googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
+
+describe("open sign-up helpers (ADR-0046)", () => {
+  it("offersSignup needs google_signup in the list", () => {
+    expect(offersSignup(["password", "google", "google_signup"])).toBe(true);
+    expect(offersSignup(["password", "google"])).toBe(false);
+    expect(offersSignup(undefined)).toBe(false);
+  });
+
+  it("needsTermsStep is true only for the terms_required code", () => {
+    expect(needsTermsStep("?error=terms_required")).toBe(true);
+    expect(needsTermsStep("?error=not_invited")).toBe(false);
+    expect(needsTermsStep("")).toBe(false);
+  });
+
+  it("googleStartHref adds the terms version only when asked", () => {
+    expect(new URL(googleStartHref("/app"), "http://x").searchParams.get("terms")).toBeNull();
+    expect(new URL(googleStartHref("/app", true), "http://x").searchParams.get("terms")).toBe(TERMS_VERSION);
+  });
+
+  it("keeps the original page through the terms step, but only a plain /app path", () => {
+    const ret = (search: string, accept = true) => new URL(googleStartHref("/app/login", accept, termsReturnPath(search)), "http://x").searchParams.get("return");
+    expect(ret("?error=terms_required&return=%2Fapp%2Fpower%3Ftab%3Dx")).toBe("/app/power?tab=x");
+    for (const bad of ["https://evil.example/app", "//evil.example", "/app/login", "/apple", "/%2F%2Fevil", "/app\\evil", "javascript:alert(1)", ""]) {
+      expect(ret(`?return=${encodeURIComponent(bad)}`), bad).toBe("/app");
+    }
+    expect(ret("?error=terms_required")).toBe("/app");
+  });
+
+  it("maps the two new error codes to fixed texts", () => {
+    expect(signInErrorText("?error=terms_required")).toContain("Accept the Terms");
+    expect(signInErrorText("?error=signup_busy")).toContain("paused");
+  });
+});
 
 describe("signInErrorText", () => {
   it.each([
@@ -81,5 +116,19 @@ describe("googleStartHref", () => {
       expect(back === "/app" || back?.startsWith("/app/")).toBe(true);
       expect(back?.startsWith("//")).toBe(false);
     }
+  });
+});
+
+describe("the terms version stays in step with the backend and the terms page", () => {
+  it("matches the backend's TERMS_VERSION (a drift would silently refuse every new account)", () => {
+    const backend = readFileSync(resolve(__dirname, "../../../backend/src/modules/identity/signupConfig.ts"), "utf8");
+    expect(/export const TERMS_VERSION = "([^"]+)"/.exec(backend)?.[1]).toBe(TERMS_VERSION);
+  });
+
+  it("is the 'Last updated' date of public/terms.html", () => {
+    const html = readFileSync(resolve(__dirname, "../../public/terms.html"), "utf8");
+    const m = /Last updated: (\d+) (\w+) (\d{4})/.exec(html)!;
+    const month = String(new Date(`${m[2]} 1, 2000`).getMonth() + 1).padStart(2, "0");
+    expect(`${m[3]}-${month}-${m[1]!.padStart(2, "0")}`).toBe(TERMS_VERSION);
   });
 });

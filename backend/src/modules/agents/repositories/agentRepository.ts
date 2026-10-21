@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { parseFirst } from "../../../platform/db/rows.js";
+import { parseFirst, parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../../platform/db/timedQuery.js";
 
 /**
  * ADR-0031 PR 5a: the SQL behind agent enrolment and credentials. A code and an agent's secret are stored only as their
- * SHA-256 (a code is a 10-minute, single-use secret of 40 bits; the secret is 256 random bits, so a fast hash is enough
+ * SHA-256 (a code is a 10-minute, single-use secret of 60 bits; the secret is 256 random bits, so a fast hash is enough
  * and lets the auth lookup be one indexed equality). Every function takes a `Queryable`, so the enrolment can run
  * several of them in one transaction.
  */
@@ -187,4 +187,17 @@ const REVOKE = `
 export async function revokeCredential(db: Queryable, serverUuid: string): Promise<boolean> {
   const result = await timedQuery(db, "agents.revokeCredential", REVOKE, [serverUuid]);
   return result.rows.length > 0;
+}
+
+const EVER_ENROLLED = `
+  SELECT server_id::text AS server_id
+  FROM agents.agent_credentials
+  WHERE server_id = ANY($1::uuid[])`;
+
+/** ADR-0046 C3 (the servers module's self-serve create, injected by the composition root): which of these servers
+ *  (internal ids) have ever enrolled, meaning a credential row exists, revoked or not. */
+export async function enrolledServerIds(db: Queryable, serverUuids: readonly string[]): Promise<ReadonlySet<string>> {
+  if (serverUuids.length === 0) return new Set();
+  const result = await timedQuery(db, "agents.enrolledServerIds", EVER_ENROLLED, [serverUuids]);
+  return new Set(parseRows(z.object({ server_id: z.string() }), result.rows, "agents.enrolledServerIds").map((row) => row.server_id));
 }

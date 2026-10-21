@@ -15,7 +15,7 @@ const repo = vi.hoisted(() => ({
   updateConnection: vi.fn(),
   addMember: vi.fn(),
   findServerByPublicId: vi.fn(),
-  listAgentServers: vi.fn(),
+  listOperatorAgentServers: vi.fn(),
   lockServerByPublicId: vi.fn(),
   switchToLocalKind: vi.fn(),
   renameServer: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock("./repositories/connectionRepository.js", () => ({
 vi.mock("./repositories/memberRepository.js", () => ({ addMember: repo.addMember }));
 vi.mock("./repositories/serverRepository.js", () => ({
   findServerByPublicId: repo.findServerByPublicId,
-  listAgentServers: repo.listAgentServers,
+  listOperatorAgentServers: repo.listOperatorAgentServers,
   lockServerByPublicId: repo.lockServerByPublicId,
   switchToLocalKind: repo.switchToLocalKind,
   renameServer: repo.renameServer,
@@ -292,7 +292,7 @@ describe("servers reached through an edge agent (ADR-0031): listed and renameabl
   const agentRow = { id: "uuid-agent", publicId: "alex", displayName: "Alex", hostingMode: "self", connectionKind: "agent" as const };
 
   it("lists them in the contract's shape: id, name and kind `agent`, no connection field", async () => {
-    repo.listAgentServers.mockResolvedValue([{ publicId: "alex", displayName: "Alex" }, { publicId: "bo", displayName: "Bo" }]);
+    repo.listOperatorAgentServers.mockResolvedValue([{ publicId: "alex", displayName: "Alex" }, { publicId: "bo", displayName: "Bo" }]);
     const { service } = setup();
     expect(await service.listAgentServers()).toEqual([
       { id: "alex", displayName: "Alex", kind: "agent" },

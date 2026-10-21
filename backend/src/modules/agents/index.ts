@@ -27,6 +27,8 @@ export { createCommandsService } from "./services/commandsService.js";
 export type { AgentCommandsService, CommandsService, CommandsServiceDeps } from "./services/commandsService.js";
 export { CommandNotifier } from "./services/commandNotifier.js";
 export { releaseAgentServer } from "./services/releaseAgent.js";
+// ADR-0046 C3: "has this server ever enrolled", injected into the servers module's self-serve create by the composition root.
+export { enrolledServerIds } from "./repositories/agentRepository.js";
 export type { ReleasedAgent } from "./services/releaseAgent.js";
 export { createAgentSettingsServices } from "./services/agentSettings.js";
 export type { AgentSettingsServices } from "./services/agentSettings.js";

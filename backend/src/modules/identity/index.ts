@@ -8,6 +8,10 @@ import type { RequestHandler } from "express";
 import { ConfigError } from "../../platform/errors.js";
 import { loadAuthConfigFromEnv } from "./authConfig.js";
 import { loadGoogleConfigFromEnv } from "./googleConfig.js";
+import { loadSignupConfigFromEnv } from "./signupConfig.js";
+import { createLogger } from "../../platform/logger.js";
+import { createBackgroundRecorder } from "../../platform/metrics/index.js";
+import type { MetricsSink } from "../../platform/metrics/index.js";
 import { createGoogleOidc } from "./googleOidc.js";
 import type { GoogleOidcOptions } from "./googleOidc.js";
 import { createGoogleSignIn } from "./googleSignIn.js";
@@ -51,6 +55,8 @@ export interface IdentityOptions {
   logger?: PurgeLogger;
   /** Test-only: point Google sign-in at a local fake issuer. Never read from the environment. */
   googleOidc?: GoogleOidcOptions;
+  /** Tests only: where the sign-up refusal counters go (default the process-wide background aggregator). */
+  metrics?: MetricsSink;
 }
 
 /** Throws ConfigError when the login settings are missing or invalid (backend must not start). */
@@ -70,7 +76,15 @@ export function createIdentityModule(
   if (googleConfig && !options.db) {
     throw new ConfigError("Google sign-in needs the database: set DATABASE_URL, or unset the GOOGLE_* settings.");
   }
-  const signInMethods = googleConfig ? ["password", "google"] : ["password"];
+  // ADR-0046 section 3: SIGNUP_MODE (default closed) is validated even when Google is off, so a typo never
+  // goes unnoticed; "open" without Google would promise sign-up nothing can deliver, so it is an error.
+  const signup = loadSignupConfigFromEnv(env);
+  if (signup.mode === "open" && !googleConfig) {
+    throw new ConfigError("SIGNUP_MODE=open needs Google sign-in: set the GOOGLE_* settings, or leave SIGNUP_MODE closed.");
+  }
+  const signupOpen = signup.mode === "open";
+  // "google_signup" tells the sign-in page that a new Google account can be created (terms step).
+  const signInMethods = googleConfig ? ["password", "google", ...(signupOpen ? ["google_signup"] : [])] : ["password"];
   const authRouter = Router().use(
     createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter(), signInMethods }),
   );
@@ -79,7 +93,10 @@ export function createIdentityModule(
       ? createGoogleAuthRouter({
           config: googleConfig,
           oidc: createGoogleOidc(googleConfig, options.googleOidc),
-          signIn: createGoogleSignIn(options.db, googleConfig.bootstrapOwnerEmail),
+          signIn: createGoogleSignIn(options.db, googleConfig.bootstrapOwnerEmail, signup, {
+            metrics: createBackgroundRecorder(createLogger(), options.metrics),
+          }),
+          signupOpen,
           db: options.db,
         })
       : createGoogleDisabledRouter(),

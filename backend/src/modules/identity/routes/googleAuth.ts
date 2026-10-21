@@ -12,6 +12,7 @@ import type { GoogleSignIn } from "../googleSignIn.js";
 import { readSessionCookie, setSessionCookie } from "../session.js";
 import { ReturnPathSchema } from "../returnPath.js";
 import { consumeLoginAttempt, createLoginAttempt, hashLoginAttemptId, newLoginAttemptId } from "../repositories/loginAttemptRepository.js";
+import { TERMS_VERSION } from "../signupConfig.js";
 import { createLoginRequestCap } from "./loginRequestCap.js";
 
 /** The cookie that ties a callback to the attempt /start created: only a random id, nothing else. */
@@ -27,7 +28,7 @@ const ATTEMPT_COOKIE_OPTIONS: CookieOptions = {
 
 /** The fixed set of reasons a failed sign-in sends the browser back with (`/app/login?error=`).
  *  Google's own error text is never passed through. */
-export type GoogleLoginError = "denied" | "expired" | "failed" | "not_invited" | "unavailable";
+export type GoogleLoginError = "denied" | "expired" | "failed" | "not_invited" | "unavailable" | "terms_required" | "signup_busy";
 
 const DEFAULT_RETURN_PATH = "/app";
 
@@ -35,6 +36,8 @@ export interface GoogleAuthDeps {
   config: GoogleConfig;
   oidc: GoogleOidc;
   signIn: GoogleSignIn;
+  /** Open sign-up (ADR-0046): when true, /start keeps the accepted terms version on the attempt. */
+  signupOpen?: boolean;
   db: Queryable;
 }
 
@@ -56,13 +59,18 @@ export function createGoogleDisabledRouter(): Router {
  * stored, validated return path or a fixed error code; nothing from the query string is reflected.
  */
 export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
-  const { config, oidc: google, signIn, db } = deps;
+  const { config, oidc: google, signIn, db, signupOpen = false } = deps;
   const router = Router();
   const noStore = (res: Response) => void res.setHeader("Cache-Control", "no-store");
   // Both routes are top-level browser navigations: a failure must never render JSON at the API host, so
   // every failure is a redirect built ONLY from the frontend origin plus a fixed path and code.
-  const failTo = (res: Response, error: GoogleLoginError) =>
-    res.redirect(302, `${config.frontendOrigin}/app/login?error=${error}`);
+  // `returnPath` (only for the terms step) is the attempt's stored, already validated /app path: it lets the
+  // sign-in page send the visitor back where they were. The frontend only hands it back to /start, which validates it.
+  const failTo = (res: Response, error: GoogleLoginError, returnPath?: string) =>
+    res.redirect(
+      302,
+      `${config.frontendOrigin}/app/login?error=${error}${returnPath === undefined ? "" : `&return=${encodeURIComponent(returnPath)}`}`,
+    );
   // Same per-IP cap as password login (IPv6 by /56); one instance covering both routes. Over the cap the
   // browser is sent back to the login screen ("unavailable"), not shown a 429 body.
   const cap = createLoginRequestCap("google sign-in", (_req, res) => {
@@ -82,7 +90,15 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
       // Discovery first: when Google is unreachable nothing is written.
       const url = await google.authorizationUrl({ state, nonce, codeVerifier });
       const attempt = newLoginAttemptId();
-      await createLoginAttempt(db, { idHash: attempt.idHash, state, nonce, codeVerifier, returnPath });
+      // Terms acceptance (ADR-0046 question 6): only the current version counts, only while sign-up is open.
+      // It rides on the single-use attempt, so the callback's own query string can never claim it.
+      // A link from a third party's page would be cross-site (Sec-Fetch-Site), and could record an acceptance the
+      // person never saw: only a same-origin or same-site navigation (the sign-in page, on the same registrable
+      // domain as the API) counts. Otherwise the person just gets the terms step.
+      const fetchSite = req.get("sec-fetch-site");
+      const fromOurPage = fetchSite === "same-origin" || fetchSite === "same-site";
+      const termsVersion = signupOpen && fromOurPage && req.query.terms === TERMS_VERSION ? TERMS_VERSION : undefined;
+      await createLoginAttempt(db, { idHash: attempt.idHash, state, nonce, codeVerifier, returnPath, termsVersion });
       res.cookie(LOGIN_ATTEMPT_COOKIE, attempt.id, { ...ATTEMPT_COOKIE_OPTIONS, maxAge: ATTEMPT_COOKIE_MAX_AGE_SECONDS * 1000 });
       res.redirect(302, url.toString());
     } catch (err) {
@@ -129,13 +145,24 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
       if (claims.sub.length < 1 || claims.sub.length > 255) {
         throw new Error("Unusable subject claim.");
       }
-      const result = await signIn.complete(claims, readSessionCookie(req));
+      const result = await signIn.complete(claims, readSessionCookie(req), {
+        acceptedTermsVersion: attempt.termsVersion,
+        network: ip,
+      });
       if (result.kind === "refused") {
         // A disabled account or an unverified email looks like a generic failure to the browser
-        // (the reason is in the audit row): only "not invited" tells the person something they can act on.
-        const code: GoogleLoginError = result.reason === "not_invited" ? "not_invited" : "failed";
+        // (the reason is in the audit row): only the reasons the person can act on are told apart.
+        // "signup_busy" says nothing about the account or the count, only to try later.
+        const actionable: Partial<Record<typeof result.reason, GoogleLoginError>> = {
+          not_invited: "not_invited",
+          terms_required: "terms_required",
+          signup_busy: "signup_busy",
+          // One network's own share looks the same as the global cap: it says nothing about counts or limits.
+          signup_network_busy: "signup_busy",
+        };
+        const code: GoogleLoginError = actionable[result.reason] ?? "failed";
         req.log.warn({ ip, code }, "google sign-in refused");
-        failTo(res, code);
+        failTo(res, code, code === "terms_required" ? attempt.returnPath : undefined);
         return;
       }
       setSessionCookie(res, result.session.cookieValue, result.session.maxAgeSeconds);

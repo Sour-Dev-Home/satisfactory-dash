@@ -35,7 +35,7 @@ import {
   updateConnection,
 } from "./repositories/connectionRepository.js";
 import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
-import { findServerByPublicId, listAgentServers, lockServerByPublicId, renameServer, softDeleteServer, switchToLocalKind, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, listOperatorAgentServers, lockServerByPublicId, renameServer, softDeleteServer, switchToLocalKind, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
 
 /**
@@ -280,7 +280,8 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
     },
 
     async listAgentServers() {
-      return (await listAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
+      // ADR-0046 section 6: operator-created only (the startup load still loads every agent server).
+      return (await listOperatorAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
     },
 
     /** Renames a server reached through an edge agent. Only for those: a `local` server has a connection and is renamed
