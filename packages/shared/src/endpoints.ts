@@ -29,6 +29,7 @@ import {
 import { ServerPlayersResponseSchema } from "./players";
 import { MapLiveResponseSchema, MapWorldLayerResponseSchema, WorldIngestResponseSchema } from "./map";
 import { LoginRequestSchema, SessionResponseSchema } from "./auth";
+import { DeleteAccountResponseSchema, LeaveServerResponseSchema } from "./account";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
 import {
   AlertDestinationsResponseSchema,
@@ -190,6 +191,28 @@ export const endpoints = {
     // path, optionally with `?return=/app/...`; the answer is a 302, never JSON, so there is no
     // response schema. Offer it only when `signInMethods` includes "google" (Google off = 404).
     googleStart: { method: "GET", route: "/api/auth/google/start", path: () => "/api/auth/google/start" },
+  },
+  // ADR-0047: the signed-in user deletes their own account. No body; needs a sign-in within the last 10 minutes (403
+  // reauth_required), refuses the operator (403 forbidden, reason operator_account) and an owner of an operator-created
+  // server (409 would_orphan, reason operator_servers, with `servers`). See account.ts.
+  account: {
+    remove: {
+      method: "DELETE",
+      route: "/api/account",
+      path: () => "/api/account",
+      response: DeleteAccountResponseSchema,
+    },
+  },
+  // ADR-0047: a member leaves a server. Server-scoped (ADR-0001) and open to any MEMBER (`memberSelfService`, viewers
+  // included): it removes only the caller's own membership. No body. The owner gets 409 would_orphan, reason last_owner.
+  members: {
+    leave: {
+      method: "POST",
+      route: "/api/servers/:serverId/members/me/leave",
+      path: scoped("members/me/leave"),
+      response: LeaveServerResponseSchema,
+      memberSelfService: true,
+    },
   },
   // ADR-0030 phase 1: the operator manages the local servers. Every entry is `operatorOnly`: the
   // seeded operator account, not merely an owner or admin (a non-operator answers 403, a non-member

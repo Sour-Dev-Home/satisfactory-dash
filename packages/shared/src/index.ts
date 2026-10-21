@@ -12,6 +12,7 @@ export * from "./powerHistory";
 export * from "./history";
 export * from "./alerts";
 export * from "./auth";
+export * from "./account";
 export * from "./settings";
 export * from "./map";
 export * from "./agent";

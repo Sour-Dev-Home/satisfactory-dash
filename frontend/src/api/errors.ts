@@ -134,6 +134,9 @@ const kindByCode = {
   agent_outdated: "unknown",
   command_not_found: "unknown",
   command_expired: "unknown",
+  // ADR-0047: account deletion and leaving a server. The Settings screens (task 3) word these themselves.
+  would_orphan: "unknown",
+  reauth_required: "unknown",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",
