@@ -9,11 +9,12 @@ import { ErrorNotice } from "../components/ErrorNotice";
 import { useServerSwitch } from "../servers/ServerContext";
 import { ServerNameForm } from "./ServerNameForm";
 import {
-  DELETE_CLOSING,
-  DELETE_GOES,
-  DELETE_LEAD,
   PENDING_ACTION,
   PENDING_ACTION_REST,
+  REMOVE_CLOSING,
+  REMOVE_GAME_UNTOUCHED,
+  REMOVE_GOES,
+  REMOVE_LEAD,
   isPending,
   ownerActionErrorText,
 } from "./selfServeText";
@@ -22,7 +23,8 @@ type Mode = "idle" | "renaming" | "confirming";
 
 /**
  * The owner's controls for a server they added (ADR-0046): its name and status, the note about the 24-hour
- * removal while it is unenrolled, rename, and delete behind a typed confirmation that says what goes. Only
+ * removal while it is unenrolled, rename, and "Remove from Satisfactory Dash" behind a typed confirmation that says what
+ * goes (never "delete": the player's game and its saves are never touched, ADR-0047 amendment). Only
  * mounted for the owner of a `self_serve` server (`isSelfServeOwner`); the backend answers 403 to anyone else.
  * It renders a fragment so its `dl` is a direct child of the section's `.panel` and takes the agent panel's style.
  */
@@ -36,10 +38,10 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
   const [typed, setTyped] = useState("");
   // Focus follows the control that replaces the one clicked, and returns to the opener on cancel.
   const focusIn = useCallback((el: HTMLElement | null) => el?.focus(), []);
-  const [returnTo, setReturnTo] = useState<"rename" | "delete" | null>(null);
+  const [returnTo, setReturnTo] = useState<"rename" | "remove" | null>(null);
   const explainId = useId();
 
-  const close = (from: "rename" | "delete") => {
+  const close = (from: "rename" | "remove") => {
     setMode("idle");
     setTyped("");
     setReturnTo(from);
@@ -54,7 +56,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
   const escapeCancels = (event: KeyboardEvent) => {
     if (event.key === "Escape" && !remove.isPending) {
       event.stopPropagation();
-      close("delete");
+      close("remove");
     }
   };
 
@@ -98,17 +100,18 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
         <form
           onSubmit={confirmDelete}
           onKeyDown={escapeCancels}
-          aria-label={`Confirm deleting ${server.displayName}`}
+          aria-label={`Confirm removing ${server.displayName} from Satisfactory Dash`}
           className="grid animate-reveal gap-2 text-sm"
         >
           <div id={explainId} ref={focusIn} tabIndex={-1} className="grid gap-1">
-            <p className="mb-0">{DELETE_LEAD}</p>
+            <p className="mb-0">{REMOVE_LEAD}</p>
             <ul className="mb-0 list-disc pl-5">
-              {DELETE_GOES.map((item) => (
+              {REMOVE_GOES.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-            <p className="mb-0">{DELETE_CLOSING}</p>
+            <p className="mb-0">{REMOVE_CLOSING}</p>
+            <p className="mb-0">{REMOVE_GAME_UNTOUCHED}</p>
           </div>
           <label htmlFor={`${explainId}-name`}>
             Type <strong>{server.displayName}</strong> to confirm
@@ -125,11 +128,11 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
             The name must match exactly, capital letters included.
           </span>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => close("delete")} disabled={remove.isPending}>
+            <button type="button" onClick={() => close("remove")} disabled={remove.isPending}>
               Cancel
             </button>
             <button type="submit" className={DANGER_BUTTON} disabled={!matches || remove.isPending}>
-              {remove.isPending ? "Deleting…" : "Delete this server"}
+              {remove.isPending ? "Removing…" : "Remove from Satisfactory Dash"}
             </button>
           </div>
           {remove.error != null &&
@@ -156,9 +159,9 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
             Rename
           </button>
           <button
-            ref={returnTo === "delete" ? focusIn : undefined}
+            ref={returnTo === "remove" ? focusIn : undefined}
             type="button"
-            aria-label={`Delete ${server.displayName}`}
+            aria-label={`Remove ${server.displayName} from Satisfactory Dash`}
             className={DANGER_BUTTON_QUIET}
             onClick={() => {
               setMode("confirming");
@@ -166,7 +169,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
               remove.reset();
             }}
           >
-            Delete…
+            Remove…
           </button>
         </div>
       )}

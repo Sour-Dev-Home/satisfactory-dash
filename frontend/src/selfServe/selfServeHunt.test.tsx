@@ -45,16 +45,16 @@ describe("delete versus a list refetch already in flight", () => {
       }),
     );
     const { client } = renderSection();
-    fireEvent.click(await screen.findByRole("button", { name: "Delete My first world" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
     fireEvent.change(screen.getByLabelText(/Type My first world to confirm/), { target: { value: "My first world" } });
     void client.refetchQueries({ queryKey: queries.servers().queryKey, exact: true });
     await waitFor(() => expect(listCalls).toBe(2));
-    fireEvent.click(screen.getByRole("button", { name: "Delete this server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Satisfactory Dash" }));
     await waitFor(() => expect(deleted).toBe(true));
     await screen.findByText("No game servers are configured.");
     releaseStale();
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByRole("button", { name: "Delete My first world" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove My first world from Satisfactory Dash" })).not.toBeInTheDocument();
     expect(client.getQueryData<{ servers: unknown[] }>(queries.servers().queryKey)?.servers).toHaveLength(0);
   });
 });

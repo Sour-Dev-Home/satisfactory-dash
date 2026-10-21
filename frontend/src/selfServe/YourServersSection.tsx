@@ -4,7 +4,7 @@ import { OwnedServerPanel } from "./OwnedServerPanel";
 import { useYourServer } from "./useYourServer";
 
 /**
- * Settings → Your server (ADR-0046): the owner's rename and delete for a server they added, and "Add your
+ * Settings → Your server (ADR-0046): the owner's rename and removal for a server they added, and "Add your
  * server" while self-serve is on. The shell mounts it only when `useYourServer().visible`, so nobody sees a
  * control that would answer 403. The server list is already loaded by ServerGate: nothing to wait for.
  */

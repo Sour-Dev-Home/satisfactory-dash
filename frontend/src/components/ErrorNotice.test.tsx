@@ -8,6 +8,7 @@ import {
   errorWithDetail,
 } from "@satisfactory-dash/shared/fixtures";
 import { ApiError, BackendUnreachableError, ContractDriftError, RequestValidationError } from "../api/errors";
+import { errorLastOwner, errorReauthRequired } from "../test/accountMocks";
 import { ErrorNotice } from "./ErrorNotice";
 
 // ErrorNotice had no test of its own; these pin the rules the contract sets for it (ADR-0003).
@@ -32,6 +33,15 @@ describe("ErrorNotice", () => {
   ] as const)("shows the backend's safe message for %s", (_, body, status) => {
     render(<ErrorNotice error={new ApiError(status, body.error)} />);
     expect(screen.getByRole("alert")).toHaveTextContent(body.error.message);
+  });
+
+  it("words ADR-0047's refusals outside the account screen: a recent sign-in, and the backend's would_orphan message", () => {
+    const { unmount } = render(<ErrorNotice error={new ApiError(403, errorReauthRequired.error)} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign in again first: this needs a sign-in from the last 10 minutes.");
+    unmount();
+    render(<ErrorNotice error={new ApiError(409, errorLastOwner.error)} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(errorLastOwner.error.message);
+    expect(screen.getByRole("alert")).toHaveTextContent(errorLastOwner.error.requestId);
   });
 
   it("handles an unknown code generically with the envelope's message", () => {

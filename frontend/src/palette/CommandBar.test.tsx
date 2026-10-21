@@ -26,7 +26,7 @@ function barTree({ serverCount = 1, change = vi.fn(), withButton = true } = {}) 
   return (
     <MemoryRouter initialEntries={["/app"]}>
       <ServerContext value={serversSingle.servers[0]}>
-        <ServerSwitchContext value={{ serverCount, change, select: vi.fn() }}>
+        <ServerSwitchContext value={{ serverCount, change, select: vi.fn(), left: vi.fn(), leftName: null, clearLeft: vi.fn() }}>
           {withButton && <button type="button">Somewhere else</button>}
           <CommandBar />
           <Where />
@@ -218,7 +218,9 @@ describe("CommandBar's lazy chunk (#387)", () => {
     return renderWithClient(
       <MemoryRouter initialEntries={["/app"]}>
         <ServerContext value={serversSingle.servers[0]}>
-          <ServerSwitchContext value={{ serverCount: 1, change: vi.fn(), select: vi.fn() }}>
+          <ServerSwitchContext
+            value={{ serverCount: 1, change: vi.fn(), select: vi.fn(), left: vi.fn(), leftName: null, clearLeft: vi.fn() }}
+          >
             <CommandBar load={load} />
           </ServerSwitchContext>
         </ServerContext>

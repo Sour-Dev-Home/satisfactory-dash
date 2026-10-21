@@ -46,8 +46,21 @@ describe("classifyError", () => {
     ["upstream_error", "upstream"],
     ["bad_request", "client_bug"],
     ["internal", "client_bug"],
+    // ADR-0047: never "unauthorized" (a 403 that keeps the session) and never generic.
+    ["would_orphan", "would_orphan"],
+    ["reauth_required", "reauth_required"],
   ])("maps code %s to %s", (code, kind) => {
     expect(classifyError(new ApiError(500, { code, message: "m", requestId: "r" }))).toBe(kind);
+  });
+
+  it("keeps the envelope's reason and servers (ADR-0047), and leaves them undefined when absent", () => {
+    const servers = [{ id: "default", displayName: "Satisfactory server" }];
+    const error = new ApiError(409, { code: "would_orphan", reason: "operator_servers", servers, message: "m", requestId: "r" });
+    expect(error.reason).toBe("operator_servers");
+    expect(error.servers).toEqual(servers);
+    const plain = new ApiError(403, { code: "forbidden", message: "m", requestId: "r" });
+    expect(plain.reason).toBeUndefined();
+    expect(plain.servers).toBeUndefined();
   });
 
   it("doesn't treat inherited object keys as known codes", () => {

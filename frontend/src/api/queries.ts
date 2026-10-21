@@ -130,7 +130,8 @@ export function createQueryClient(): QueryClient {
   // Every protected route answers 401 once the session is gone (ADR-0011); handling it here
   // means no screen has to. The login mutation opts out: its 401 is "wrong password".
   const onUnauthorized = (error: unknown) => {
-    if (classifyError(error) === "unauthorized") signOutLocally(client);
+    // Already signed out (e.g. a poll in flight when the account was deleted): keep the answer that names the methods.
+    if (classifyError(error) === "unauthorized" && !isSignedOut(client)) signOutLocally(client);
   };
   const client = new QueryClient({
     queryCache: new QueryCache({

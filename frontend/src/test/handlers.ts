@@ -34,6 +34,7 @@ import {
   statusRunning,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import { accountDeleted, serverLeft } from "./accountMocks";
 import { createdAgentServer } from "./selfServeMocks";
 
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
@@ -91,4 +92,7 @@ export const handlers = [
   http.get(endpoints.agent.status.route, () => HttpResponse.json(agentStatusNotEnrolled)),
   http.post(endpoints.agent.enrollmentCode.route, () => HttpResponse.json(agentEnrollmentCodeResponse, { status: 201 })),
   http.delete(endpoints.agent.revoke.route, () => HttpResponse.json(agentRevokeResponse)),
+  // ADR-0047: deleting your account and leaving a server both succeed by default; tests override the refusals.
+  http.delete(endpoints.account.remove.route, () => HttpResponse.json(accountDeleted)),
+  http.post(endpoints.members.leave.route, () => HttpResponse.json(serverLeft)),
 ];

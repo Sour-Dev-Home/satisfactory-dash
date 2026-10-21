@@ -11,6 +11,12 @@ export class ApiError extends Error {
   /** Seconds from a `Retry-After` header (a 429), when the answer carried a whole number of them. */
   readonly retryAfterSeconds: number | undefined;
 
+  /** The envelope's stable sub-code (ADR-0027 PR 7), e.g. `operator_servers`. A plain string: handle unknown ones. */
+  readonly reason: string | undefined;
+
+  /** The servers the error is about (ADR-0047: those blocking an account deletion). Ids and names only. */
+  readonly servers: NonNullable<ApiErrorResponse["error"]["servers"]> | undefined;
+
   constructor(status: number, body: ApiErrorResponse["error"], retryAfterSeconds?: number) {
     super(body.message);
     this.name = "ApiError";
@@ -19,6 +25,8 @@ export class ApiError extends Error {
     this.requestId = body.requestId;
     this.detail = body.detail;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.reason = body.reason;
+    this.servers = body.servers;
   }
 }
 
@@ -86,6 +94,8 @@ export type ErrorKind =
   | "forbidden"
   | "service_unavailable"
   | "not_editable"
+  | "would_orphan"
+  | "reauth_required"
   | "upstream_unreachable"
   | "upstream_auth_rejected"
   | "upstream"
@@ -134,9 +144,12 @@ const kindByCode = {
   agent_outdated: "unknown",
   command_not_found: "unknown",
   command_expired: "unknown",
-  // ADR-0047: account deletion and leaving a server. The Settings screens (task 3) word these themselves.
-  would_orphan: "unknown",
-  reauth_required: "unknown",
+  // ADR-0047: account deletion and leaving a server. The change would leave a server without an owner (its `reason`
+  // says which: last_owner, operator_servers), and the action needs a sign-in from the last 10 minutes. The account
+  // screens (src/account/) word each reason; anywhere else ErrorNotice says them generically. reauth_required is a 403
+  // but never "signed out": the session is still good for everything else.
+  would_orphan: "would_orphan",
+  reauth_required: "reauth_required",
   // Requests this client builds should never produce these, so each is a bug on our side.
   bad_request: "client_bug",
   not_found: "client_bug",
