@@ -111,6 +111,10 @@ const tokenOnCanvas = (page: Page, tokenName: string) =>
     return false;
   }, tokenName);
 
+/** How many resource-node icons (#571) have finished loading a real image. */
+const loadedNodeIcons = (page: Page) =>
+  page.evaluate(() => [...document.querySelectorAll<HTMLImageElement>("img.node-icon")].filter((img) => img.complete && img.naturalWidth > 0).length);
+
 // ADR-0038 M5: the rails and resource nodes are the data-derived base map. Drawn on the canvas, and
 // also text, and each layer's toggle removes what it drew (the CSP gate above covers pan and zoom).
 test("the world layers draw, read as text, and toggle", async ({ page, mockApi }, testInfo) => {
@@ -120,10 +124,13 @@ test("the world layers draw, read as text, and toggle", async ({ page, mockApi }
   await expect(page.getByText(/^7 resource nodes on the map \(2 in use\)/)).toBeVisible();
   await expect(page.getByRole("table", { name: /Rail segments in view/ })).toBeVisible();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
-  await expect.poll(() => tokenOnCanvas(page, "--color-node"), { message: "resource nodes on the canvas" }).toBe(true);
+  // #571: every fixture node is a known resource, so each is its game icon (an <img> marker), none a canvas circle.
+  // Loaded, not just present: a CSP or path mistake leaves a broken image with naturalWidth 0.
+  await expect.poll(() => loadedNodeIcons(page), { message: "resource icons loaded" }).toBe(7);
 
   await page.getByRole("checkbox", { name: "Resource nodes" }).uncheck();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toHaveCount(0);
+  await expect(page.locator("img.node-icon")).toHaveCount(0);
   await expect.poll(() => tokenOnCanvas(page, "--color-node"), { message: "no nodes after the toggle" }).toBe(false);
   await page.getByRole("checkbox", { name: "Resource nodes" }).check();
   await expect(page.getByRole("table", { name: /Resource nodes in view/ })).toBeVisible();
