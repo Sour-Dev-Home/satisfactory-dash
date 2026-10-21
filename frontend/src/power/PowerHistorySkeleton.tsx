@@ -8,8 +8,8 @@ export function PowerHistorySkeleton() {
   return (
     <PanelSkeleton label="Loading power history…" rows={0}>
       <Skeleton className="h-6 w-24" />
-      <Skeleton className="h-8" />
-      <Skeleton className="h-chart-slot" />
+      <Skeleton className="h-16 sm:h-8" />
+      <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
       <Skeleton className="h-5 w-32" />
     </PanelSkeleton>
   );

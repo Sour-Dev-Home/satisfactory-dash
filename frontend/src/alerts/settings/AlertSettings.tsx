@@ -71,7 +71,7 @@ export function AlertSettings() {
         )}
       </Part>
 
-      <Part heading="Rules" query={rules} loading="Loading the alert rules…">
+      <Part heading="Rules" query={rules} loading="Loading the alert rules…" blocks={4}>
         {(data) => (
           <Rules
             serverId={server.id}
@@ -92,11 +92,14 @@ function Part<T>({
   heading,
   query,
   loading,
+  blocks = 0,
   children,
 }: {
   heading: string;
   query: UseQueryResult<T>;
   loading: string;
+  /** Cards its skeleton stands in for, under its first line. */
+  blocks?: number;
   children: (data: T) => ReactNode;
 }) {
   const id = `alert-settings-${heading.toLowerCase()}`;
@@ -105,7 +108,7 @@ function Part<T>({
       <h4 id={id} className="mb-0">
         {heading}
       </h4>
-      <Loadable pending={query.isPending} skeleton={<PartSkeleton label={loading} />}>
+      <Loadable pending={query.isPending} skeleton={<PartSkeleton label={loading} blocks={blocks} />}>
       {!query.data ? (
         <ErrorNotice
           error={query.error}
@@ -123,13 +126,19 @@ function Part<T>({
   );
 }
 
-/** One part of the alert settings while it loads: a couple of lines where its content will be. */
-function PartSkeleton({ label }: { label: string }) {
+/**
+ * One part of the alert settings while it loads (#494): a line of text where a short part's content
+ * will be, and for the rules, a line then a card per rule (about 190 px each), since the list is most
+ * of the panel and everything under it waits on its height.
+ */
+function PartSkeleton({ label, blocks }: { label: string; blocks: number }) {
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-3">
       <SkeletonStatus>{label}</SkeletonStatus>
       <Skeleton className="h-lh w-64" />
-      <Skeleton className="h-touch w-40" />
+      {Array.from({ length: blocks }, (_, i) => (
+        <Skeleton key={i} className="h-48" />
+      ))}
     </div>
   );
 }

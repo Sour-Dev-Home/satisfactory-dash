@@ -29,24 +29,48 @@ interface Probe {
   paintedEarly: boolean;
   /** A skeleton was ever shown (data-loading="shown"). */
   skeletonShown: boolean;
-  /** Sum of layout-shift values. */
+  /** Sum of layout-shift values from the page's own mount on (the app's sign-in and shell come before it). */
   cls: number;
   /** What moved, for the failure message. */
   shifts: string[];
+  /** The real panels' boxes in the first frame the page showed. */
+  atReveal: Boxes | null;
 }
+
+type Boxes = Record<string, { x: number; y: number; width: number }>;
 
 /** Records, every frame and for every layout shift, from before the app starts. */
 async function installProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const probe: Probe = { paintedEarly: false, skeletonShown: false, cls: 0, shifts: [] };
-    (window as unknown as { __probe: Probe }).__probe = probe;
+    const probe: Probe = { paintedEarly: false, skeletonShown: false, cls: 0, shifts: [], atReveal: null };
+    let pageMountedAt = Infinity;
+    const boxes = (): Boxes => {
+      const found: Boxes = {};
+      for (const el of document.querySelectorAll("[data-page-reveal] section[aria-labelledby]")) {
+        const heading = document.getElementById(el.getAttribute("aria-labelledby") ?? "");
+        const rect = el.getBoundingClientRect();
+        found[heading?.textContent?.trim() || el.getAttribute("aria-labelledby") || "?"] = {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y + window.scrollY),
+          width: Math.round(rect.width),
+        };
+      }
+      return found;
+    };
+    (window as unknown as { __probe: Probe; __boxes: () => Boxes }).__probe = probe;
+    (window as unknown as { __boxes: () => Boxes }).__boxes = boxes;
     const frame = () => {
-      const container = document.querySelector('[data-page-reveal]');
-      if (container && container.getAttribute("data-page-reveal") !== "revealed") {
-        const painted = [...container.querySelectorAll("section, [data-skeleton], h3")].some(
-          (el) => getComputedStyle(el).visibility !== "hidden",
-        );
-        if (painted) probe.paintedEarly = true;
+      const container = document.querySelector("[data-page-reveal]");
+      if (container) {
+        if (pageMountedAt === Infinity) pageMountedAt = performance.now();
+        if (container.getAttribute("data-page-reveal") !== "revealed") {
+          const painted = [...container.querySelectorAll("section, [data-skeleton], h3")].some(
+            (el) => getComputedStyle(el).visibility !== "hidden",
+          );
+          if (painted) probe.paintedEarly = true;
+        } else if (!probe.atReveal) {
+          probe.atReveal = boxes();
+        }
       }
       if (document.querySelector('[data-loading="shown"]')) probe.skeletonShown = true;
       requestAnimationFrame(frame);
@@ -55,6 +79,9 @@ async function installProbe(page: Page): Promise<void> {
     try {
       new PerformanceObserver((list) => {
         for (const entry of list.getEntries() as unknown as { value: number; startTime: number; sources?: { node?: Node }[] }[]) {
+          // The app's own mount (sign-in, then the shell, which moves the footer) lands in the same frames
+          // as the page's; only what happens after them is the page's.
+          if (entry.startTime < pageMountedAt + 150) continue; // shifts this soon after the page mounts are the app shell appearing
           probe.cls += entry.value;
           probe.shifts.push(
             `${entry.value.toFixed(4)} @${Math.round(entry.startTime)}ms ${(entry.sources ?? []).map((s) => s.node?.nodeName).join(",")}`,
@@ -70,21 +97,7 @@ async function installProbe(page: Page): Promise<void> {
 const readProbe = (page: Page) => page.evaluate(() => (window as unknown as { __probe: Probe }).__probe);
 
 /** The boxes of the real panels on screen (named sections), by name. */
-async function panelBoxes(page: Page): Promise<Record<string, { x: number; y: number; width: number }>> {
-  return page.evaluate(() => {
-    const boxes: Record<string, { x: number; y: number; width: number }> = {};
-    for (const el of document.querySelectorAll("[data-page-reveal] section[aria-labelledby]")) {
-      const heading = document.getElementById(el.getAttribute("aria-labelledby") ?? "");
-      const rect = el.getBoundingClientRect();
-      boxes[heading?.textContent?.trim() || el.getAttribute("aria-labelledby") || "?"] = {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y + window.scrollY),
-        width: Math.round(rect.width),
-      };
-    }
-    return boxes;
-  });
-}
+const panelBoxes = (page: Page) => page.evaluate(() => (window as unknown as { __boxes: () => Boxes }).__boxes());
 
 for (const motion of ["no-preference", "reduce"] as const) {
   test.describe(`page reveal, motion ${motion}`, () => {
@@ -97,7 +110,6 @@ for (const motion of ["no-preference", "reduce"] as const) {
         await page.goto(path);
         // The reads take 800 ms, past the 400 ms budget: the page reveals with skeletons, then fills in.
         await expect(page.locator('[data-page-reveal="revealed"]')).toBeVisible({ timeout: 10_000 });
-        const atReveal = await panelBoxes(page);
 
         await expect(page.getByText(ready).first()).toBeVisible({ timeout: 15_000 });
         await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });
@@ -108,7 +120,8 @@ for (const motion of ["no-preference", "reduce"] as const) {
 
         const probe = await readProbe(page);
         expect(probe.paintedEarly, "a panel or skeleton was painted before the page revealed").toBe(false);
-        for (const [panel, box] of Object.entries(atReveal)) {
+        expect(probe.atReveal, "the page never reported its reveal").not.toBeNull();
+        for (const [panel, box] of Object.entries(probe.atReveal ?? {})) {
           const after = settled[panel];
           expect(after, `${panel} should still be on the page`).toBeDefined();
           // Skeletons are estimates of their panels (a table's row count, a rule list's length vary),
@@ -169,9 +182,10 @@ test.describe("prefetch", () => {
     await expect(page.getByText("Total play time on this save")).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Main" });
 
-    const factoryRequest = page.waitForRequest((r) => /\/factory$/.test(new URL(r.url()).pathname));
-    await nav.getByRole("link", { name: "Factory", exact: true }).hover();
-    await factoryRequest;
+    // The Overview already read the factory and power; settings is a page the Overview never touches.
+    const settingsRequest = page.waitForRequest((r) => /\/settings$/.test(new URL(r.url()).pathname));
+    await nav.getByRole("link", { name: "Settings", exact: true }).hover();
+    await settingsRequest;
   });
 
   test("focusing a tab link with the keyboard starts its reads too", async ({ page, mockApi }) => {
@@ -180,8 +194,8 @@ test.describe("prefetch", () => {
     await expect(page.getByText("Total play time on this save")).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Main" });
 
-    const settingsRequest = page.waitForRequest((r) => /\/settings$/.test(new URL(r.url()).pathname));
+    const rulesRequest = page.waitForRequest((r) => /\/alerts\/rules$/.test(new URL(r.url()).pathname));
     await nav.getByRole("link", { name: "Settings", exact: true }).focus();
-    await settingsRequest;
+    await rulesRequest;
   });
 });

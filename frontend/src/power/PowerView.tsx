@@ -8,7 +8,7 @@ import { PowerPanel } from "./PowerPanel";
 /** The Power panel while it loads: one circuit's card and the "Updated" line under it. */
 function PowerSkeleton() {
   return (
-    <PanelSkeleton label="Loading power…" rows={1} rowClass="h-24">
+    <PanelSkeleton label="Loading power…" rows={1} rowClass="h-38 sm:h-25">
       <Skeleton className="h-lh w-28" />
     </PanelSkeleton>
   );
