@@ -218,7 +218,7 @@ describe("AutoPauseView", () => {
     fireEvent.click(checkbox());
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Game server unreachable.");
-    expect(alert).toHaveTextContent(errorUpstreamUnreachable.error.requestId);
+    expect(alert).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
     expect(checkbox()).not.toBeChecked();
   });
 
