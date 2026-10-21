@@ -1,7 +1,7 @@
 # CloudWatch alarms to the owner's email (#501, #560). Six alarms and three log-filter custom metrics, inside the free
 # tier (10 alarms, 10 custom metrics); SNS email is free for the first 1,000 notifications a month. No new AWS service
 # beyond SNS and CloudWatch.
-# Every alarm mails on ALARM and again on OK. The address is var.alarm_email (git-ignored tfvars).
+# Every alarm mails on ALARM and again on OK, except auth-failures (ALARM only, #560). The address is var.alarm_email (git-ignored tfvars).
 
 resource "aws_sns_topic" "alarms" {
   name = "satis-${local.environment}-alarms"
@@ -133,14 +133,14 @@ resource "aws_cloudwatch_metric_alarm" "backend_critical" {
   ok_actions          = local.alarm_actions
 }
 
-# #560 (OWASP A09): failed or refused sign-ins, all clients together: a wrong password ("login failed"), a rate-limited
-# login, a failed Google sign-in, and a refused one ("google sign-in refused": not invited, a disabled account, the sign-up
-# caps). A terms_required refusal is the normal first-sign-in step, so it is not counted. These lines are warn (level 40),
-# which backend-errors never counts.
+# #560 (OWASP A09): failed or refused sign-ins, all clients together: a wrong password ("login failed"), a failed Google
+# sign-in, and a refused one ("google sign-in refused": not invited, a disabled account, the sign-up caps). A
+# terms_required refusal is the normal first-sign-in step, and "login rate-limited" means the limiter is already working,
+# so neither is counted. These lines are warn (level 40), which backend-errors never counts.
 resource "aws_cloudwatch_log_metric_filter" "auth_failures" {
   name           = "satis-${local.environment}-auth-failures"
   log_group_name = aws_cloudwatch_log_group.backend.name
-  pattern        = "{ ($.msg = \"login failed\") || ($.msg = \"login rate-limited\") || ($.msg = \"google sign-in failed\") || (($.msg = \"google sign-in refused\") && ($.code != \"terms_required\")) }"
+  pattern        = "{ ($.msg = \"login failed\") || ($.msg = \"google sign-in failed\") || (($.msg = \"google sign-in refused\") && ($.code != \"terms_required\")) }"
 
   metric_transformation {
     name          = "AuthFailureLines"
@@ -150,17 +150,19 @@ resource "aws_cloudwatch_log_metric_filter" "auth_failures" {
   }
 }
 
+# Two breaching periods in a row, and no OK mail: one client bursting and pausing cannot flap it into hundreds of mails
+# a day (the SNS free tier is 1,000 a month, shared with the other alarms). It returns to OK silently.
 resource "aws_cloudwatch_metric_alarm" "auth_failures" {
   alarm_name          = "satis-${local.environment}-auth-failures"
-  alarm_description   = "Many failed or refused sign-ins in a short window (password guessing, or a sign-up flood). runbooks/aws.md, Alarms."
+  alarm_description   = "Many failed or refused sign-ins for two periods in a row (password guessing, or a sign-up flood). No OK mail. runbooks/aws.md, Alarms."
   namespace           = "Satis/${local.environment}"
   metric_name         = aws_cloudwatch_log_metric_filter.auth_failures.metric_transformation[0].name
   statistic           = "Sum"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = var.alarms.auth_failures_max
   period              = var.alarms.auth_failures_period
-  evaluation_periods  = 1
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm_actions
-  ok_actions          = local.alarm_actions
 }

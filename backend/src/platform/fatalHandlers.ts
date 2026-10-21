@@ -1,3 +1,5 @@
+import { formatErrorDetail } from "./formatErrorDetail.js";
+
 /**
  * #560 (OWASP A10): a crash leaves one JSON `fatal` line (pino level 60), not a plain-text stack trace the CloudWatch
  * JSON filters cannot match. An uncaught exception or an unhandled promise rejection is logged with its error, the log is
@@ -29,7 +31,11 @@ export function installFatalHandlers(deps: FatalHandlerDeps): void {
     if (exiting) return; // a second failure while flushing: the first one is already on its way out
     exiting = true;
     try {
-      deps.logger.fatal({ err: reason, code }, msg);
+      // An allowlist, never the raw error: pino's err serializer would write every enumerable property (a pg `detail`
+      // quoting row values, request headers) and REDACT_PATHS does not cover err.*.
+      const stack = reason instanceof Error && typeof reason.stack === "string" ? reason.stack : undefined;
+      const errorName = reason instanceof Error ? reason.name : typeof reason;
+      deps.logger.fatal({ err: formatErrorDetail(reason), errorName, ...(stack === undefined ? {} : { stack }), code }, msg);
     } catch {
       // A logger that cannot write must not keep the process alive.
     }

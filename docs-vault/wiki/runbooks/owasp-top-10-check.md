@@ -115,7 +115,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | The audit log covers sign-in, sign-up, sessions, user disable, server lifecycle, membership, agents, push and account deletion | identity, servers, agents and alerts repositories | PASS |
 | Alarms for no running task, RDS storage and CPU, and backend errors (`level >= 50`), sent to SNS email | `infra/aws/alarms.tf` | PASS |
 | Repeated worker failures page someone: one `error` (`WORKER_FAILING`) after about 5 minutes of failing, the `backend-critical` alarm on one such line, an hourly alert-evaluator heartbeat | `platform/failureStreak.ts`, `infra/aws/alarms.tf` | PASS (#560) |
-| Auth anomalies alarm: failed and refused sign-ins, 20 in 5 minutes (`auth-failures`) | `infra/aws/alarms.tf` | PASS (#560) |
+| Auth anomalies alarm: failed and refused sign-ins, 20 in each of two 5-minute periods (`auth-failures`, ALARM mail only) | `infra/aws/alarms.tf` | PASS (#560) |
 | The `/api/health/ready` uptime monitor | external, documented in `ecs.tf` | Check by hand |
 
 ## A10 Mishandling of Exceptional Conditions

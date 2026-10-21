@@ -306,20 +306,27 @@ run "alarms_mail_on_alarm_and_ok" {
     condition = alltrue([for a in [
       aws_cloudwatch_metric_alarm.ecs_no_running_task, aws_cloudwatch_metric_alarm.rds_free_storage,
       aws_cloudwatch_metric_alarm.rds_cpu_high, aws_cloudwatch_metric_alarm.backend_errors,
-      aws_cloudwatch_metric_alarm.backend_critical, aws_cloudwatch_metric_alarm.auth_failures,
+      aws_cloudwatch_metric_alarm.backend_critical,
     ] : length(a.alarm_actions) == 1 && length(a.ok_actions) == 1])
-    error_message = "every alarm notifies the topic on ALARM and on OK"
+    error_message = "every alarm but auth-failures notifies the topic on ALARM and on OK"
   }
 
-  # #560: a single fatal or escalated worker line pages; 20 failed sign-ins in 5 minutes page; quiet means OK.
+  # #560: auth-failures mails on ALARM only, so a client bursting and pausing cannot flap it into hundreds of mails.
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.auth_failures.alarm_actions) == 1 && try(length(aws_cloudwatch_metric_alarm.auth_failures.ok_actions), 0) == 0
+    error_message = "auth-failures notifies the topic on ALARM and never on OK"
+  }
+
+  # #560: a single fatal or escalated worker line pages; 20 failed sign-ins in each of two 5-minute periods in a row page.
   assert {
     condition = (
       aws_cloudwatch_metric_alarm.backend_critical.threshold == 1 && aws_cloudwatch_metric_alarm.backend_critical.period == 300 &&
       aws_cloudwatch_metric_alarm.auth_failures.threshold == 20 && aws_cloudwatch_metric_alarm.auth_failures.period == 300 &&
+      aws_cloudwatch_metric_alarm.auth_failures.evaluation_periods == 2 && aws_cloudwatch_metric_alarm.auth_failures.datapoints_to_alarm == 2 &&
       aws_cloudwatch_metric_alarm.backend_critical.treat_missing_data == "notBreaching" &&
       aws_cloudwatch_metric_alarm.auth_failures.treat_missing_data == "notBreaching"
     )
-    error_message = "the #560 alarms default to 1 critical line and 20 sign-in failures per 5 minutes, missing data not breaching"
+    error_message = "the #560 alarms default to 1 critical line per 5 minutes and 20 sign-in failures in 2 of 2 five-minute periods, missing data not breaching"
   }
 
   assert {
@@ -328,9 +335,14 @@ run "alarms_mail_on_alarm_and_ok" {
   }
 
   assert {
-    condition = alltrue([for msg in ["login failed", "login rate-limited", "google sign-in failed", "google sign-in refused"] :
+    condition = alltrue([for msg in ["login failed", "google sign-in failed", "google sign-in refused"] :
     strcontains(aws_cloudwatch_log_metric_filter.auth_failures.pattern, "$.msg = \"${msg}\"")])
     error_message = "the sign-in filter matches the backend's exact msg strings (identity/routes/auth.ts, googleAuth.ts)"
+  }
+
+  assert {
+    condition     = !strcontains(aws_cloudwatch_log_metric_filter.auth_failures.pattern, "rate-limited")
+    error_message = "rate-limited logins are not counted: they mean the limiter already works"
   }
 
   assert {

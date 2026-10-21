@@ -207,7 +207,8 @@ The budget alert in `budget.tf` is the second signal; confirm its email subscrip
 an SNS topic. **After the apply, open the "AWS Notification - Subscription Confirmation" mail and click
 Confirm**: until then the subscription is pending and no alarm mail arrives. Check with
 `aws sns list-subscriptions-by-topic --topic-arn <arn>` (it shows `PendingConfirmation` until confirmed).
-Every alarm mails on ALARM and again on OK. Thresholds are the `alarms` variable (`variables.tf`).
+Every alarm mails on ALARM and again on OK, except `auth-failures`, which mails on ALARM only (#560: one client bursting
+and pausing could otherwise flap it into hundreds of mails a day against the 1,000-a-month SNS free tier). Thresholds are the `alarms` variable (`variables.tf`).
 
 | Alarm | Fires when (default) | What to do |
 |---|---|---|
@@ -216,7 +217,7 @@ Every alarm mails on ALARM and again on OK. Thresholds are the `alarms` variable
 | `rds-cpu-high` | average CPU over 80% for 3 five-minute periods | Sustained load drains the t4g CPU credits. Look for a stuck query or poller; then size up. |
 | `backend-errors` | 5 or more error-level pino lines (level 50+) in 5 minutes | Read the `backend` log group around the time. Metric `Satis/prod` `BackendErrorLines`. |
 | `backend-critical` (#560) | 1 line in 5 minutes that is `fatal` (level 60: an uncaught exception or unhandled rejection, then exit 1) or `code: WORKER_FAILING` (a background worker has failed for about 5 minutes) | A fatal line: read its `err.stack`; ECS restarts the task, and `ecs-no-running-task` follows if it keeps crashing. `WORKER_FAILING`: its `job` field names the worker (table below); the first failure's `warn` line just before it has the cause, usually the database. The worker's recovery `info` line ends it. Metric `BackendCriticalLines`. |
-| `auth-failures` (#560) | 20 or more failed or refused sign-ins in 5 minutes, all clients together: `login failed`, `login rate-limited`, `google sign-in failed`, `google sign-in refused` (not `code: terms_required`) | Password guessing or a sign-up flood. Group the lines by `ip`; `usernameMatched` says whether a real username is being guessed. The per-IP login limiter already slows one source; block a persistent one at Cloudflare. Metric `AuthFailureLines`. |
+| `auth-failures` (#560) | 20 or more failed or refused sign-ins in each of two 5-minute periods in a row, all clients together: `login failed`, `google sign-in failed`, `google sign-in refused` (not `code: terms_required`). `login rate-limited` is not counted: it means the limiter already works. No OK mail: check the console to see it has cleared | Password guessing or a sign-up flood. Group the lines by `ip`; `usernameMatched` says whether a real username is being guessed. The per-IP login limiter already slows one source; block a persistent one at Cloudflare. Metric `AuthFailureLines`. |
 
 **Worker escalation (#560).** Each background worker warns once when it starts failing, logs ONE `error`
 (`msg: "background worker keeps failing"`, `code: WORKER_FAILING`, `job`, `failures`) once the streak spans about five

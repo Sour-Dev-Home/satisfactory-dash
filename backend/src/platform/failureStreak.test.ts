@@ -45,7 +45,10 @@ describe("FailureStreak", () => {
     for (let i = 0; i < 10; i++) s.failure({ err: "boom", code: "OWN_CODE" });
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect(log.error).toHaveBeenCalledTimes(1);
-    expect(log.error).toHaveBeenCalledWith({ err: "boom", code: WORKER_FAILING_CODE, job: "test-job", failures: 3 }, WORKER_FAILING_MSG);
+    expect(log.error).toHaveBeenCalledWith(
+      { err: "boom", tickCode: "OWN_CODE", code: WORKER_FAILING_CODE, job: "test-job", failures: 3 },
+      WORKER_FAILING_MSG,
+    );
     expect(log.info).not.toHaveBeenCalled();
   });
 

@@ -66,8 +66,10 @@ export class FailureStreak {
   failure(fields: object = {}): void {
     this.count++;
     if (this.count === this.escalateAfter) {
+      // The worker's own code (e.g. ALERT_DELIVERY_TICK_FAILED) is kept as `tickCode`; `code` is the alarm's.
+      const { code: tickCode, ...rest } = fields as { code?: unknown };
       this.options.logger.error(
-        { ...fields, code: WORKER_FAILING_CODE, job: this.options.job, failures: this.count },
+        { ...rest, ...(tickCode === undefined ? {} : { tickCode }), code: WORKER_FAILING_CODE, job: this.options.job, failures: this.count },
         WORKER_FAILING_MSG,
       );
     } else if (this.count === 1) {
