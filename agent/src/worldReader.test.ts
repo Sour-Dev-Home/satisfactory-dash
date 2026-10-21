@@ -217,7 +217,7 @@ describe("the conveyors layer", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     h.ports.getConveyors.mockResolvedValue({ data: [], dropped: 0, skip: "tooManyEdges" } as Awaited<ReturnType<WorldPorts["getConveyors"]>>);
     await vi.advanceTimersByTimeAsync(660_000);
-    expect(h.warnings("world_layer_skipped").map((w) => w.fields.reason)).toEqual(["unsupportedFrm", "tooManyEdges"]);
+    expect(h.warnings("world_layer_skipped").map((w) => w.fields?.reason)).toEqual(["unsupportedFrm", "tooManyEdges"]);
     await h.stop();
   });
 });
