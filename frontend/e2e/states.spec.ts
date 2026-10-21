@@ -32,15 +32,19 @@ interface StateCase {
    * "Updated 8 s ago" or the mute field's default of an hour ahead, then reads the same every run.
    */
   clock?: string;
-  /** What the browser says about web push: this device already subscribed, or notifications blocked. */
-  browser?: "subscribed" | "denied";
+  /**
+   * What the browser says about web push: not asked yet ("off"), already subscribed, or notifications blocked.
+   * Always stubbed for these states: headless Chromium reports its own permission ("denied" in CI).
+   */
+  browser?: "off" | "subscribed" | "denied";
 }
 
-/** Stands in for the browser's push state before the page loads (the real browser starts with none). */
-async function stubPushBrowser(page: Page, state: "subscribed" | "denied") {
+/** Stands in for the browser's push state before the page loads. */
+async function stubPushBrowser(page: Page, state: "off" | "subscribed" | "denied") {
   await page.addInitScript((s) => {
-    if (s === "denied") Object.defineProperty(Notification, "permission", { get: () => "denied" });
-    else {
+    const permission = s === "denied" ? "denied" : s === "subscribed" ? "granted" : "default";
+    Object.defineProperty(Notification, "permission", { get: () => permission });
+    if (s === "subscribed") {
       ServiceWorkerContainer.prototype.getRegistration = () =>
         Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve({}) } } as unknown as ServiceWorkerRegistration);
     }
@@ -198,10 +202,10 @@ const CASES: StateCase[] = [
   // ADR-0044 web push, Settings → Alerts. "default-settings" is the backend with push off. Here it is on,
   // and the browser is as it comes (permission not asked yet), already subscribed, or has blocked
   // notifications; and a viewer, who gets the opt-in like anyone.
-  { scenario: "push-enabled", path: "/app/settings", shows: /This device is not subscribed/, clock: FIXTURE_NOW },
+  { scenario: "push-enabled", path: "/app/settings", shows: /This device is not subscribed/, clock: FIXTURE_NOW, browser: "off" },
   { scenario: "push-opted-in", name: "push-subscribed", path: "/app/settings", shows: /This device is subscribed/, clock: FIXTURE_NOW, browser: "subscribed" },
   { scenario: "push-enabled", name: "push-denied", path: "/app/settings", shows: /Notifications are blocked for this site/, clock: FIXTURE_NOW, browser: "denied" },
-  { scenario: "push-viewer", path: "/app/settings", shows: /Owners, admins and viewers can each set it/, clock: FIXTURE_NOW },
+  { scenario: "push-viewer", path: "/app/settings", shows: /Owners, admins and viewers can each set it/, clock: FIXTURE_NOW, browser: "off" },
   // Settings → Game PC agent (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
   { scenario: "agent-local-operator", path: "/app/settings", shows: /forgets its stored game-server tokens/, clock: AGENT_NOW },
   {
