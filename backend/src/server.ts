@@ -72,6 +72,7 @@ import {
   createAgentsService,
   createCommandSweeper,
   createCommandsService,
+  loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
 import { createIdentityModule } from "./modules/identity/index.js";
 import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createWorldRoutes } from "./modules/map/index.js";
@@ -110,6 +111,8 @@ function orExit<T>(load: () => T): T {
 
 // A bad PORT used to become NaN (listen(NaN) picks a random port); now the backend refuses to start.
 const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
+// ADR-0046 C7 (#527): a bad value stops the backend at startup, like PORT.
+const enrollmentCodesPerHour = orExit(() => loadEnrollmentCodesPerHour(process.env));
 
 // A servers file replaces the single-server variables; naming any that are still set (names
 // only, never values) keeps a half-migrated .env from being confusing.
@@ -413,6 +416,7 @@ export const app = createApp({
       ? createAgentUserRouters(createAgentsService({
             db: database.pool,
             canManage: (userId) => serverManagement?.canManage(userId) ?? false,
+            codesPerHour: enrollmentCodesPerHour,
             // In memory, from the last snapshot the ingest recorded: fresher than last_seen_at (written at most every 30 s).
             lastHeardAt: (serverId) => directory.get(serverId)?.telemetry.observations?.snapshot().agent?.lastHeardAt,
           }), agentCommands)

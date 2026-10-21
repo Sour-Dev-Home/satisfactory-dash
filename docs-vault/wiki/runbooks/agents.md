@@ -148,6 +148,7 @@ body), which the agent honours and retries.
 | Failed authentications | whole process | 6,000 a minute | a flood from many addresses costs at most this many lookups |
 | World layers | credential | 20 per 10 minutes, 2 MB each | `map/routes/agentWorldRoutes.ts` |
 | Enrolment | client network / process | 10 / 1,200 a minute (was 120 before #524) | `ENROLL_*` in `agents/config.ts`, used by `agents/routes/agentApi.ts`; the guess arithmetic is by the constant |
+| Enrolment codes created (#527, ADR-0046 C7) | account | 10 a minute and 20 an hour (both apply) | bounds enrolment churn and its audit rows; a setup needs 1 to 3 codes. The hourly cap is `ENROLLMENT_CODES_PER_HOUR` (whole number 1 to 1000, default 20; a bad value stops the backend at startup). A fixed window from the account's first code, in memory per instance, so a restart resets it. The operator's account is exempt from the hourly cap (bulk re-enrolment after a restore) but not the minute one. A refusal is the usual 429 `rate_limited` with `Retry-After`, and says "this hour" |
 
 Successful authentications never count against the failure budgets, and a credential that authenticated in the last
 15 minutes skips them entirely (it is still looked up every time, so a revocation is immediate). A flood of junk

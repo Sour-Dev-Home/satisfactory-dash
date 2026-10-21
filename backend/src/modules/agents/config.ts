@@ -1,4 +1,5 @@
 import type { Cadence } from "@satisfactory-dash/shared";
+import { ConfigError } from "../../platform/errors.js";
 
 /** ADR-0031 PR 5a: the cadence the backend asks every agent to sample at, and answers with in every snapshot response. */
 export const AGENT_CADENCE: Cadence = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
@@ -76,3 +77,23 @@ export const RECENTLY_VALID_MAX = 1_000;
 
 /** An agent's `last_seen_at` is written at most this often per credential. */
 export const LAST_SEEN_INTERVAL_MS = 30_000;
+
+/** Enrolment codes one account may create per minute (each creation drops the server's previous code). */
+export const ENROLLMENT_CODES_PER_MINUTE = 10;
+
+/** ADR-0046 C7 (#527): the default for enrolment codes one account may create per hour. A setup needs 1 to 3 (a typo, the
+ *  10-minute expiry), so 20 bounds enrolment churn and its audit rows. In memory, per backend instance, like the minute
+ *  limit (ADR-0046 section 2 C7 and Consequences accept this). */
+export const ENROLLMENT_CODES_PER_HOUR_DEFAULT = 20;
+
+/** `ENROLLMENT_CODES_PER_HOUR`: a whole number from 1 to 1000, or unset for the default. Anything else is a ConfigError,
+ *  so the backend refuses to start; the message never echoes the value. The operator's account is exempt from the limit. */
+export function loadEnrollmentCodesPerHour(env: Record<string, string | undefined>): number {
+  const text = env.ENROLLMENT_CODES_PER_HOUR?.trim();
+  if (!text) return ENROLLMENT_CODES_PER_HOUR_DEFAULT;
+  const value = /^\d{1,4}$/.test(text) ? Number(text) : Number.NaN;
+  if (!Number.isInteger(value) || value < 1 || value > 1000) {
+    throw new ConfigError(`ENROLLMENT_CODES_PER_HOUR must be a whole number from 1 to 1000 (or unset for ${ENROLLMENT_CODES_PER_HOUR_DEFAULT}).`);
+  }
+  return value;
+}
