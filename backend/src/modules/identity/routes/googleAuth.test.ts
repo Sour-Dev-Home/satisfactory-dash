@@ -11,6 +11,7 @@ import type { GoogleConfig } from "../googleConfig.js";
 import { createGoogleOidc } from "../googleOidc.js";
 import type { GoogleSignIn, GoogleSignInResult } from "../googleSignIn.js";
 import { SESSION_COOKIE } from "../session.js";
+import { TERMS_VERSION } from "../signupConfig.js";
 import { LOGIN_REQUESTS_PER_WINDOW } from "./loginRequestCap.js";
 import { LOGIN_ATTEMPT_COOKIE, createGoogleAuthRouter, createGoogleDisabledRouter } from "./googleAuth.js";
 
@@ -20,7 +21,7 @@ const REDIRECT_URI = "http://localhost:3001/api/auth/google/callback";
 
 /** Just enough of identity.login_attempts for the router (the real SQL runs in the DB tests). */
 class FakeAttemptDb implements Queryable {
-  rows = new Map<string, { state: string; nonce: string; code_verifier: string; return_path: string; expires: number }>();
+  rows = new Map<string, { state: string; nonce: string; code_verifier: string; return_path: string; terms_version: string | null; expires: number }>();
   failWith: Error | undefined;
   query(sql: string, values: unknown[] = []): Promise<{ rows: unknown[] }> {
     if (this.failWith) {
@@ -28,8 +29,8 @@ class FakeAttemptDb implements Queryable {
     }
     const key = (values[0] as Buffer).toString("hex");
     if (sql.includes("INSERT INTO identity.login_attempts")) {
-      const [, state, nonce, code_verifier, return_path] = values as string[];
-      this.rows.set(key, { state: state!, nonce: nonce!, code_verifier: code_verifier!, return_path: return_path!, expires: Date.now() + 600_000 });
+      const [, state, nonce, code_verifier, return_path, terms_version] = values as string[];
+      this.rows.set(key, { state: state!, nonce: nonce!, code_verifier: code_verifier!, return_path: return_path!, terms_version: terms_version ?? null, expires: Date.now() + 600_000 });
       return Promise.resolve({ rows: [] });
     }
     if (sql.includes("DELETE FROM identity.login_attempts") && sql.includes("id_hash = $1")) {
@@ -68,7 +69,7 @@ describe("Google sign-in routes", () => {
     await issuer.close();
   });
 
-  function build(options: { result?: GoogleSignInResult; issuerUrl?: URL } = {}) {
+  function build(options: { result?: GoogleSignInResult; issuerUrl?: URL; signupOpen?: boolean } = {}) {
     const db = new FakeAttemptDb();
     const complete = vi.fn(async (): Promise<GoogleSignInResult> => options.result ?? signedIn);
     const signIn: GoogleSignIn = { complete };
@@ -81,6 +82,7 @@ describe("Google sign-in routes", () => {
           config,
           oidc: createGoogleOidc(config, { issuer: options.issuerUrl ?? issuer.issuer, allowInsecureRequests: true }),
           signIn,
+          ...(options.signupOpen ? { signupOpen: true } : {}),
           db,
         }),
       ],
@@ -90,6 +92,41 @@ describe("Google sign-in routes", () => {
   }
 
   const setCookies = (res: request.Response) => [res.headers["set-cookie"] ?? []].flat() as string[];
+
+  describe("terms acceptance (ADR-0046 question 6)", () => {
+    const claims = { sub: "google-sub-1", email: "owner@example.com", email_verified: true };
+    const accepted = async (opts: { signupOpen: boolean; startQuery: string; callbackExtra?: string }) => {
+      const { app, complete } = build({ signupOpen: opts.signupOpen });
+      const begun = await request(app).get(`/api/auth/google/start?${opts.startQuery}`);
+      const cookie = (begun.headers["set-cookie"] as unknown as string[]).find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=`))!.split(";")[0]!;
+      const authUrl = new URL(begun.headers.location!);
+      const code = issuer.issueCode({
+        claims,
+        nonce: authUrl.searchParams.get("nonce")!,
+        codeChallenge: authUrl.searchParams.get("code_challenge")!,
+      });
+      await request(app)
+        .get(`/api/auth/google/callback?code=${code}&state=${authUrl.searchParams.get("state")}${opts.callbackExtra ?? ""}`)
+        .set("Cookie", cookie);
+      return (complete.mock.calls[0] as unknown as [unknown, unknown, { acceptedTermsVersion?: string }])[2].acceptedTermsVersion;
+    };
+
+    it("passes the current terms version from /start to the sign-in service when sign-up is open", async () => {
+      expect(await accepted({ signupOpen: true, startQuery: `terms=${TERMS_VERSION}` })).toBe(TERMS_VERSION);
+    });
+
+    it.each([
+      ["sign-up is closed", false, `terms=${TERMS_VERSION}`],
+      ["the version is not the current one", true, "terms=1999-01-01"],
+      ["no terms were sent", true, "return=%2Fapp"],
+    ])("passes nothing when %s", async (_label, signupOpen, startQuery) => {
+      expect(await accepted({ signupOpen, startQuery })).toBeUndefined();
+    });
+
+    it("never takes the terms from the callback's own query string", async () => {
+      expect(await accepted({ signupOpen: true, startQuery: "return=%2Fapp", callbackExtra: `&terms=${TERMS_VERSION}` })).toBeUndefined();
+    });
+  });
 
   describe("GET /start", () => {
     it("redirects to the provider with S256 PKCE, state, nonce and only the openid email scope", async () => {
@@ -243,7 +280,7 @@ describe("Google sign-in routes", () => {
       const cookies = setCookies(res);
       expect(cookies.find((c) => c.startsWith(`${SESSION_COOKIE}=${"S".repeat(43)}`))).toMatch(/HttpOnly/i);
       expect(cookies.find((c) => c.startsWith(`${LOGIN_ATTEMPT_COOKIE}=;`))).toBeDefined();
-      expect(complete).toHaveBeenCalledWith({ sub: "google-sub-1", email: "owner@example.com", emailVerified: true }, old);
+      expect(complete).toHaveBeenCalledWith({ sub: "google-sub-1", email: "owner@example.com", emailVerified: true }, old, { acceptedTermsVersion: undefined });
       expect(res.headers["cache-control"]).toBe("no-store");
     });
 
@@ -322,6 +359,8 @@ describe("Google sign-in routes", () => {
       ["not_invited", "not_invited"],
       ["disabled", "failed"],
       ["unverified_email", "failed"],
+      ["terms_required", "terms_required"],
+      ["signup_busy", "signup_busy"],
     ] as const)("a refused sign-in (%s) redirects with error=%s and starts no session", async (reason, code) => {
       const { app } = build({ result: { kind: "refused", reason } });
       const begun = await beginGoogleSignIn(app);
@@ -334,7 +373,7 @@ describe("Google sign-in routes", () => {
       const { app, complete } = build();
       const begun = await beginGoogleSignIn(app);
       await completeGoogleSignIn(app, issuer, begun, { claims: { ...claims, email_verified: "true" } });
-      expect(complete).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: "true" }), undefined);
+      expect(complete).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: "true" }), undefined, { acceptedTermsVersion: undefined });
     });
 
     it("refuses an unusable subject (empty or over 255 characters) without calling the sign-in service", async () => {

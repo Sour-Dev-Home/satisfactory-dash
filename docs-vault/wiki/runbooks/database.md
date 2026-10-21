@@ -177,3 +177,23 @@ Before the owner approves gate B:
 - Test the whole sign-in on localhost first, then in production: the first sign-in with the
   bootstrap address links to the operator; any other Google account must land on
   `/app/login?error=not_invited` and create nothing.
+
+## Open sign-up: `SIGNUP_MODE` (ADR-0046, #528)
+
+Default is closed: nothing above changes. Open it only when the ADR-0046 section 7 gates are closed
+(#311, #186 and the rest) and the owner says go.
+
+- **Open:** set `SIGNUP_MODE=open` (backend `.env`; on AWS put it in `backend_environment`, a plain setting)
+  and restart. It needs the four Google settings; open without them stops the backend at startup, as does
+  any value other than `closed` or `open` (the message never prints values). A verified Google account with
+  no account yet is sent back to `/app/login?error=terms_required` once, ticks the terms (unticked by
+  default) and signs in again; that creates the account, its identity and its session in one transaction.
+- **What a new account holds:** a generated name `Player-XXXX`, no email, the terms version and time
+  (`identity.users.terms_version` and `terms_accepted_at`) and one `signup` audit row (ids and the terms version).
+- **C8 cap:** `SIGNUP_MAX_PER_HOUR` (default 20, 1 to 1000), counted from `identity.users.created_at` over
+  the last hour, process-wide. Over it the person sees "try again later" (`signup_busy`) and a
+  `signin.refused` audit row with reason `signup_busy` is written.
+- **Close again:** set `SIGNUP_MODE=closed` (or remove it) and restart. Existing accounts keep working; a
+  disabled account is refused in both modes.
+- **Terms change:** bump `TERMS_VERSION` in `backend/src/modules/identity/signupConfig.ts` and in
+  `frontend/src/auth/googleSignIn.ts` together with `frontend/public/terms.html`.

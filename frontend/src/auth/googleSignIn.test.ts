@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { googleStartHref, offersGoogle, signInErrorText } from "./googleSignIn";
+import { TERMS_VERSION, googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText } from "./googleSignIn";
+
+describe("open sign-up helpers (ADR-0046)", () => {
+  it("offersSignup needs google_signup in the list", () => {
+    expect(offersSignup(["password", "google", "google_signup"])).toBe(true);
+    expect(offersSignup(["password", "google"])).toBe(false);
+    expect(offersSignup(undefined)).toBe(false);
+  });
+
+  it("needsTermsStep is true only for the terms_required code", () => {
+    expect(needsTermsStep("?error=terms_required")).toBe(true);
+    expect(needsTermsStep("?error=not_invited")).toBe(false);
+    expect(needsTermsStep("")).toBe(false);
+  });
+
+  it("googleStartHref adds the terms version only when asked", () => {
+    expect(new URL(googleStartHref("/app"), "http://x").searchParams.get("terms")).toBeNull();
+    expect(new URL(googleStartHref("/app", true), "http://x").searchParams.get("terms")).toBe(TERMS_VERSION);
+  });
+
+  it("maps the two new error codes to fixed texts", () => {
+    expect(signInErrorText("?error=terms_required")).toContain("Accept the Terms");
+    expect(signInErrorText("?error=signup_busy")).toContain("paused");
+  });
+});
 
 describe("signInErrorText", () => {
   it.each([
