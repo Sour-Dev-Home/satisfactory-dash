@@ -88,7 +88,7 @@ describe("plainAlertText (hunt)", () => {
     const text = "a".repeat(3) + "\u{1F600}".repeat(10);
     for (let max = 0; max <= 20; max += 1) {
       const out = plainAlertText(text, max);
-      expect(out.isWellFormed(), `max ${max}`).toBe(true);
+      expect(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(out), `max ${max}`).toBe(false);
       expect(out.length, `max ${max}`).toBeLessThanOrEqual(Math.max(max, 1));
     }
   });
