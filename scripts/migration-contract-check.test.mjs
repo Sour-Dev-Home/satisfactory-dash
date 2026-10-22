@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkDirectory, checkMigration } from "./migration-contract-check.mjs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { LEGACY_CHECK_FILES, checkDirectory, checkMigration } from "./migration-contract-check.mjs";
 
 const flagged = (sql) => checkMigration(`-- Up Migration\n${sql}\n-- Down Migration\nDROP TABLE x;`).length > 0;
 
@@ -71,8 +73,25 @@ test("CHECK constraints: new ones on existing rows are flagged, safe shapes are 
   assert.equal(flagged("ALTER TABLE a.t ADD CONSTRAINT c1 CHECK (n > 0) NOT VALID;"), false);
   assert.equal(flagged("CREATE TABLE a.t (n int);\nALTER TABLE a.t ADD CONSTRAINT c1 CHECK (n > 0);"), false);
   assert.equal(flagged("ALTER TABLE a.t DROP CONSTRAINT c1;\nALTER TABLE a.t ADD CONSTRAINT c1 CHECK (k IN ('a','b'));"), false);
-  assert.equal(flagged("ALTER TABLE a.t ADD COLUMN x int, ADD CONSTRAINT c1 CHECK (x > 0);"), false);
-  assert.equal(flagged("ALTER TABLE a.t ALTER COLUMN x DROP NOT NULL;\nALTER TABLE a.t ADD CONSTRAINT c1 CHECK (x IS NOT NULL OR y);"), false);
+});
+
+test("CHECK constraints: adding a column or dropping a NOT NULL exempts only the legacy files (#587)", () => {
+  const addCol = "ALTER TABLE a.t ADD COLUMN x int, ADD CONSTRAINT c1 CHECK (y > 0);";
+  const relax = "ALTER TABLE a.t ALTER COLUMN x DROP NOT NULL;\nALTER TABLE a.t ADD CONSTRAINT c1 CHECK (x IS NOT NULL OR y);";
+  for (const sql of [addCol, relax]) {
+    assert.equal(checkMigration(sql).length > 0, true, sql);
+    assert.deepEqual(checkMigration(sql, { legacyCheckExemption: true }), [], sql);
+  }
+  // What a new file writes instead.
+  assert.deepEqual(checkMigration("ALTER TABLE a.t ADD COLUMN x int, ADD CONSTRAINT c1 CHECK (y > 0) NOT VALID;"), []);
+});
+
+test("the legacy exemption is keyed by filename", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "mig-"));
+  const sql = "ALTER TABLE a.t ADD COLUMN x int, ADD CONSTRAINT c1 CHECK (y > 0);";
+  writeFileSync(path.join(dir, [...LEGACY_CHECK_FILES][0]), sql);
+  writeFileSync(path.join(dir, "1799999999999_new.sql"), sql);
+  assert.deepEqual(checkDirectory(dir).map((r) => r.file), ["1799999999999_new.sql"]);
 });
 
 test("the repository's existing migrations all pass", () => {

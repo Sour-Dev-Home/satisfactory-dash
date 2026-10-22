@@ -9,14 +9,21 @@
 // Only the Up section is read (everything before `-- Down Migration`); rollbacks are allowed to contract.
 // Comments and string literals are blanked before matching. Objects created in the same file may be dropped,
 // since no earlier release can depend on them. Static analysis cannot know whether a CHECK meets existing rows, so a
-// CHECK is exempt when it is NOT VALID, sits on a table created in the file, replaces a same-named constraint
-// (widening), or the same file adds a column to, or drops a NOT NULL on, that table.
+// CHECK is exempt when it is NOT VALID, sits on a table created in the file, or replaces a same-named constraint
+// (widening). The three migrations in LEGACY_CHECK_FILES, written before this check, were also exempt because the
+// same file adds a column to, or drops a NOT NULL on, that table (#587): too loose for new files, which use NOT VALID.
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CONTRACT_LINE = /^[ \t]*--[ \t]*contract:[ \t]*\S/im;
 const DOWN_MARKER = /^[ \t]*--[ \t]*down migration\b/im;
+/** Already applied in production; their CHECKs met every existing row (outbox_one_target, users_terms_pair, servers_live_has_name). */
+export const LEGACY_CHECK_FILES = new Set([
+  "1791331200000_web_push.sql",
+  "1791504000000_signup_terms.sql",
+  "1791763200000_removed_servers_keep_no_name.sql",
+]);
 
 /** Blank comments and single-quoted literals (keeping length-free placeholders), unquote identifiers. */
 export function sanitize(sql) {
@@ -72,7 +79,7 @@ function splitTop(text, sep) {
 const lastName = (ref) => ref.split(".").pop().toLowerCase();
 const NAME = String.raw`((?:[\w$]+\.)?[\w$]+)`;
 
-export function checkMigration(sql) {
+export function checkMigration(sql, { legacyCheckExemption = false } = {}) {
   const up = sql.split(DOWN_MARKER)[0];
   if (CONTRACT_LINE.test(up)) return []; // justified: the author states why contracting is safe now
   const statements = splitTop(sanitize(up), ";");
@@ -127,7 +134,8 @@ export function checkMigration(sql) {
       if (add && !/\bNOT VALID\b/i.test(a)) {
         const name = add[1] ? lastName(add[1]) : "";
         const replacesDropped = statements.some((s) => new RegExp(`DROP CONSTRAINT(?: IF EXISTS)? (?:[\\w$]+\\.)?${name}\\b`, "i").test(s)) && name;
-        if (!tableIsNew(table) && !replacesDropped && !tablesWithNewColumns.has(table) && !relaxedTables.has(table)) flag(a, "adds a CHECK to existing rows");
+        const legacy = legacyCheckExemption && (tablesWithNewColumns.has(table) || relaxedTables.has(table));
+        if (!tableIsNew(table) && !replacesDropped && !legacy) flag(a, "adds a CHECK to existing rows");
       }
       if (/^ADD (?:COLUMN )?(?!CONSTRAINT|CHECK|UNIQUE|PRIMARY|FOREIGN|EXCLUDE)/i.test(a) && /\bNOT NULL\b/i.test(a) && !/\b(DEFAULT|GENERATED)\b/i.test(a) && !tableIsNew(table)) {
         flag(a, "adds a NOT NULL column without a default");
@@ -140,7 +148,7 @@ export function checkMigration(sql) {
 export function checkDirectory(dir) {
   const results = [];
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
-    const problems = checkMigration(readFileSync(path.join(dir, file), "utf8"));
+    const problems = checkMigration(readFileSync(path.join(dir, file), "utf8"), { legacyCheckExemption: LEGACY_CHECK_FILES.has(file) });
     if (problems.length) results.push({ file, problems });
   }
   return results;
