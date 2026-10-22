@@ -1,0 +1,48 @@
+{
+  "run": "manual",
+  "requirements": [
+    "manual"
+  ],
+  "pass": true,
+  "reasons": [
+    "the server answered QueryServerState in all 90 samples over 45 min; availability only, G-B1/G-B2 are the owner's checks in the game"
+  ],
+  "startedAt": "2026-10-21T17:22:05.139Z",
+  "endedAt": "2026-10-21T18:09:55.240Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.21-17.24.40:739][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.21-17.24.40:763][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-17.24.40:786][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-17.24.40:826][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.21-17.24.41:011][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use.",
+    "[2026.10.21-17.27.16:865][644]LogNetVersion: Checksum from delegate: 1"
+  ],
+  "modLines": [
+    "[2026.10.21-17.24.40:737][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg"
+  ],
+  "harnessCommit": "a60cc5853fc97ae606825c917048eda5da74ebbc",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39642650093"
+}

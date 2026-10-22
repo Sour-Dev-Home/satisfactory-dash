@@ -1,0 +1,52 @@
+{
+  "run": "tick-cost",
+  "requirements": [
+    "tick-cost",
+    "C4",
+    "S12",
+    "memory"
+  ],
+  "pass": true,
+  "reasons": [
+    "tick median 29.921367645263672 without the mod, 29.911152839660645 with it (60 and 60 samples); S12: 1 new endpoint(s), all the recorder's (28 and 28 outbound samples); working set at the end 0.4 MB above the baseline's (limit 100); over the window it grew -22.8 MB vs 0.2 MB, -23.0 MB more (limit 25) (22 and 22 memory samples); same save in both boots (session e938bb1fad08); 1 circuit group(s) in the save (the reader scans ids 0-9999 per power read)"
+  ],
+  "startedAt": "2026-10-21T12:34:30.821Z",
+  "endedAt": "2026-10-21T13:07:13.799Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.21-12.52.45:510][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.21-12.52.45:530][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-12.52.45:549][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-12.52.45:591][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.21-12.52.45:692][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.21-12.52.45:510][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg",
+    "[2026.10.21-12.53.45:668][445]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.21-12.53.45:746][448]LogSatisDash: Display: Enrolled; reporting to the backend"
+  ],
+  "harnessCommit": "77064ba40d5cd5fd1dcfea50724db325221c8305",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39600584441"
+}

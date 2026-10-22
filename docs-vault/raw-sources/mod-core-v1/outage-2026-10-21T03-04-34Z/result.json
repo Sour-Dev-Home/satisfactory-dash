@@ -1,0 +1,55 @@
+{
+  "run": "outage",
+  "requirements": [
+    "outage",
+    "C4"
+  ],
+  "pass": true,
+  "reasons": [
+    "one push failure and one recovery logged (command poll: 1 failed, 1 recovered); 35 of 36 snapshots observed during the outage delivered afterwards (29 needed); tick median 29.978426933288574 before, 29.923702239990234 during, 29.997102737426758 after"
+  ],
+  "startedAt": "2026-10-21T03:04:34.711Z",
+  "endedAt": "2026-10-21T03:20:23.006Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.21-03.07.13:100][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.21-03.07.13:121][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-03.07.13:142][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-03.07.13:173][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.21-03.07.13:318][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.21-03.07.13:100][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg",
+    "[2026.10.21-03.08.13:341][978]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.21-03.08.13:415][981]LogSatisDash: Display: Enrolled; reporting to the backend",
+    "[2026.10.21-03.14.15:625][793]LogSatisDash: Warning: Couldn't reach the backend at http://127.0.0.1:51697 (ConnectionError)",
+    "[2026.10.21-03.14.15:625][794]LogSatisDash: Warning: Polling for commands failed (0); retrying with backoff",
+    "[2026.10.21-03.14.19:782][918]LogSatisDash: Warning: Pushing snapshots failed (0); retrying with backoff (1 queued)",
+    "[2026.10.21-03.17.46:737][ 90]LogSatisDash: Display: Polling for commands recovered after 9 attempts",
+    "[2026.10.21-03.17.51:688][239]LogSatisDash: Display: Pushing snapshots recovered after 10 attempts (41 queued, 0 dropped)"
+  ],
+  "harnessCommit": "57015291da390ad37ad0df8d3594a29824664287",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39536478691"
+}

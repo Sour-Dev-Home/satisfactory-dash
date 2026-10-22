@@ -1,0 +1,95 @@
+{
+ "source": "FRM 1.5.4 getBelts/getPipes on the harness test server during manual session run 39642650093, read-only, trimmed to ID, ClassName, ConnectedTo0/1, ItemsPerMinute/Speed (no positions or geometry)",
+ "gb1": {
+  "built_A_B_C": [
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455581",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "",
+    "ConnectedTo1": "Build_ConveyorBeltMk1_C_2147455502",
+    "ItemsPerMinute": 60
+   },
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455502",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "Build_ConveyorBeltMk1_C_2147455581",
+    "ConnectedTo1": "Build_ConveyorBeltMk1_C_2147455405",
+    "ItemsPerMinute": 60
+   },
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455405",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "Build_ConveyorBeltMk1_C_2147455502",
+    "ConnectedTo1": "",
+    "ItemsPerMinute": 60
+   }
+  ],
+  "after_B_dismantled": [
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455581",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "",
+    "ConnectedTo1": "",
+    "ItemsPerMinute": 60
+   },
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455405",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "",
+    "ConnectedTo1": "",
+    "ItemsPerMinute": 60
+   }
+  ],
+  "after_B_rebuilt": [
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455581",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "",
+    "ConnectedTo1": "Build_ConveyorBeltMk1_C_2147455285",
+    "ItemsPerMinute": 60
+   },
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455405",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "Build_ConveyorBeltMk1_C_2147455285",
+    "ConnectedTo1": "",
+    "ItemsPerMinute": 60
+   },
+   {
+    "ID": "Build_ConveyorBeltMk1_C_2147455285",
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "ConnectedTo0": "Build_ConveyorBeltMk1_C_2147455581",
+    "ConnectedTo1": "Build_ConveyorBeltMk1_C_2147455405",
+    "ItemsPerMinute": 60
+   }
+  ]
+ },
+ "gb2": {
+  "world_pipes_before": {
+   "Build_Pipeline_C Speed=5": 156
+  },
+  "new_mk2_pipes": [
+   {
+    "ID": "Build_PipelineMK2_C_2147455208",
+    "ClassName": "Build_PipelineMK2_C",
+    "ConnectedTo0": "",
+    "ConnectedTo1": "Build_PipelineMK2_C_2147455117",
+    "Speed": 10
+   },
+   {
+    "ID": "Build_PipelineMK2_C_2147455117",
+    "ClassName": "Build_PipelineMK2_C",
+    "ConnectedTo0": "Build_PipelineMK2_C_2147455208",
+    "ConnectedTo1": "Build_PipelineMK2_C_2147455054",
+    "Speed": 10
+   },
+   {
+    "ID": "Build_PipelineMK2_C_2147455054",
+    "ClassName": "Build_PipelineMK2_C",
+    "ConnectedTo0": "Build_PipelineMK2_C_2147455117",
+    "ConnectedTo1": "",
+    "Speed": 10
+   }
+  ]
+ }
+}

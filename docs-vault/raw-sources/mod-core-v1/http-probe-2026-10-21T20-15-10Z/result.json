@@ -1,0 +1,61 @@
+{
+  "run": "http-probe",
+  "requirements": [
+    "S1",
+    "S2",
+    "S3",
+    "S9",
+    "user-agent"
+  ],
+  "pass": true,
+  "reasons": [
+    "User-Agent kept; the redirect target received nothing; TLS 1.3 and 1.2 offered, nothing older; an untrusted certificate refused"
+  ],
+  "startedAt": "2026-10-21T20:15:10.405Z",
+  "endedAt": "2026-10-21T20:21:48.223Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.21-20.17.34:376][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.21-20.17.34:396][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-20.17.34:436][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-20.17.34:468][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.21-20.17.34:611][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.21-20.17.34:374][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg",
+    "[2026.10.21-20.18.34:616][414]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.21-20.18.34:677][417]LogSatisDash: Display: Enrolled; reporting to the backend",
+    "[2026.10.21-20.18.50:697][897]LogSatisDash: Warning: The backend redirected a request; its answer was refused (redirects are never accepted)",
+    "[2026.10.21-20.18.50:697][897]LogSatisDash: Warning: Pushing snapshots failed (0); retrying with backoff (1 queued)",
+    "[2026.10.21-20.18.50:697][898]LogSatisDash: Warning: Polling for commands failed (0); retrying with backoff",
+    "[2026.10.21-20.20.34:733][ 13]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.21-20.20.34:800][ 15]LogSatisDash: Warning: Couldn't reach the backend at https://127.0.0.1:64074 (TlsError)",
+    "[2026.10.21-20.20.34:800][ 16]LogSatisDash: Warning: Enrolment failed (0); retrying with backoff",
+    "[2026.10.21-20.21.35:065][815]LogSatisDash: Warning: Couldn't reach the backend at https://127.0.0.1:49925 (TlsError)",
+    "[2026.10.21-20.21.35:065][816]LogSatisDash: Warning: Enrolment failed (0); retrying with backoff"
+  ],
+  "harnessCommit": "a9cd9dba3219641e049d8866b7cb7f9184ebfed6",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39668565578"
+}
