@@ -5,10 +5,34 @@ import {
   bottlenecksItemLevelOldFrm,
   bottlenecksUnknownKind,
 } from "@satisfactory-dash/shared/fixtures";
-import { cappedByLine, detailLine, sectionNotes } from "./bottlenecks";
+import { cappedByLine, detailLine, fixLine, isSmallGap, machineLabel, sectionNotes } from "./bottlenecks";
 
 const [belt, lift] = bottlenecksBeltLevel.data.findings;
-const cap = belt.rootCause.cappedBy;
+const cap = belt.rootCause.cappedBy!;
+
+describe("machineLabel, fixLine and isSmallGap (#592)", () => {
+  it("names a machine by class, recipe and place, leaving out what is missing", () => {
+    expect(machineLabel({ buildingName: "Constructor", recipe: "Iron Plate", at: { x: 120, y: -40 } })).toBe("Constructor, Iron Plate, near (120, −40)");
+    expect(machineLabel({ buildingName: "Constructor", recipe: null })).toBe("Constructor");
+    expect(machineLabel({ buildingName: "Constructor" })).toBe("Constructor");
+  });
+
+  it("says how many more producers, at what rate each", () => {
+    expect(fixLine({ producerName: "Smelter", recipe: "Iron Ingot", perMachinePerMinute: 30, machines: 3, unit: "items/min" })).toBe(
+      "About 3 more Smelter (Iron Ingot), 30 items/min each, at full speed.",
+    );
+    expect(fixLine({ producerName: "Water Extractor", recipe: null, perMachinePerMinute: 120, machines: 1, unit: "m3/min" })).toBe(
+      "About 1 more Water Extractor, 120 m³/min each, at full speed.",
+    );
+  });
+
+  it("flags a deficit under 2% of demand, and only a deficit", () => {
+    const deficit = (supply: number, demand: number) => ({ ...belt, rootCause: { kind: "deficit", supplyMaxPerMinute: supply, demandMaxPerMinute: demand } });
+    expect(isSmallGap(deficit(2426, 2453))).toBe(true);
+    expect(isSmallGap(deficit(90, 100))).toBe(false);
+    expect(isSmallGap(belt)).toBe(false);
+  });
+});
 
 describe("cappedByLine", () => {
   it("names the tier, the rate in items/min and the position", () => {

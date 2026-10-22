@@ -1,8 +1,11 @@
 import {
+  BOTTLENECK_AFFECTED_MAX,
   BOTTLENECK_CHAIN_MAX_STEPS,
   BOTTLENECKS_DEFAULT_LIMIT,
   BOTTLENECKS_MAX_LIMIT,
   type Bottleneck,
+  type BottleneckFix,
+  type BottleneckMachine,
   type BottleneckNote,
   type BottleneckStep,
   type Bottlenecks,
@@ -108,7 +111,8 @@ interface Region {
 }
 
 const byString = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-const num = (n: number): string => String(Math.round(n * 100) / 100);
+/** A rate for a sentence (#592): whole numbers, or one decimal under 10. */
+const num = (n: number): string => String(Math.abs(n) < 10 ? Math.round(n * 10) / 10 : Math.round(n));
 
 /** Dinic max-flow over an arc list. Residual-reachable-from-source after the flow is the min cut closest to the source,
  *  unique whatever flow was found, which keeps the result deterministic. */
@@ -728,7 +732,7 @@ function walk(
 ): void {
   const v = finder.best(m, dir, skipItem);
   if (!v || steps.length >= BOTTLENECK_CHAIN_MAX_STEPS) return;
-  const visitKey = `${m.id}  if (visited.has(v.rate.className)) {${v.rate.className}`;
+  const visitKey = `${m.id}\0${v.rate.className}`;
   if (visited.has(visitKey)) {
     steps.push({ kind: "loop", itemClassName: v.rate.className, itemName: v.rate.name });
     return;
@@ -766,6 +770,49 @@ function rootKey(raw: { m: FactoryBuilding; steps: BottleneckStep[] }): string {
   return `${root.kind}\0${root.itemClassName ?? ""}\0${root.cappedBy?.conveyorId ?? root.buildingId ?? ""}`;
 }
 
+function machineOf(b: FactoryBuilding): BottleneckMachine {
+  const m: BottleneckMachine = { buildingId: b.id, buildingName: b.name.slice(0, 200), recipe: b.recipe === null ? null : b.recipe.slice(0, 200) };
+  if (b.location) m.at = { x: Math.round(b.location.xM), y: Math.round(b.location.yM) };
+  return m;
+}
+
+/**
+ * For a deficit root (#592): the item's most common producer (class and recipe, then the lower of those on a tie) and
+ * how many more would close the gap. One machine's rate is its rated maximum scaled back to 100% clock, the group's
+ * median of those; the gap is between rated maxima, so it is "at full speed".
+ */
+function fixFor(root: BottleneckStep, buildings: readonly FactoryBuilding[]): BottleneckFix | undefined {
+  if (root.kind !== "deficit" || root.itemClassName === undefined) return undefined;
+  const gap = (root.demandMaxPerMinute ?? 0) - (root.supplyMaxPerMinute ?? 0);
+  if (!(gap > EPS)) return undefined;
+  const producers = new Map<string, { name: string; recipe: string | null; rates: number[] }>();
+  for (const b of buildings) {
+    const rate = b.production.find((p) => p.className === root.itemClassName);
+    if (!rate || !(rate.maxPerMinute > EPS)) continue;
+    const clock = b.clockSpeedPercent;
+    const perMachine = clock !== undefined && clock > EPS ? (rate.maxPerMinute * 100) / clock : rate.maxPerMinute;
+    const key = `${b.name}\0${b.recipe ?? ""}`;
+    const entry = producers.get(key);
+    if (entry) entry.rates.push(perMachine);
+    else producers.set(key, { name: b.name, recipe: b.recipe, rates: [perMachine] });
+  }
+  let best: { key: string; name: string; recipe: string | null; rates: number[] } | undefined;
+  for (const [key, p] of producers) {
+    if (!best || p.rates.length > best.rates.length || (p.rates.length === best.rates.length && key < best.key)) best = { key, ...p };
+  }
+  if (!best) return undefined;
+  const rates = [...best.rates].sort((a, b) => a - b);
+  const perMachinePerMinute = rates[(rates.length - 1) >> 1];
+  const fix: BottleneckFix = {
+    producerName: best.name.slice(0, 200),
+    recipe: best.recipe === null ? null : best.recipe.slice(0, 200),
+    perMachinePerMinute: Math.round(perMachinePerMinute * 100) / 100 || perMachinePerMinute,
+    machines: Math.min(100_000, Math.max(1, Math.ceil(gap / perMachinePerMinute - EPS))),
+  };
+  if (root.unit !== undefined) fix.unit = root.unit;
+  return fix;
+}
+
 function describe(step: BottleneckStep, dir: "up" | "down", who: string, nameOf: (id: string | undefined) => string): string {
   const item = step.itemName ?? step.itemClassName ?? "the item";
   const u = unitSuffix(step.unit);
@@ -775,7 +822,7 @@ function describe(step: BottleneckStep, dir: "up" | "down", who: string, nameOf:
     case "notConnected":
       return `${item} is made in the factory, but no belt or pipe connects a producer or a source to ${who}`;
     case "deficit":
-      return `${item} is made at most ${num(step.supplyMaxPerMinute ?? 0)}${u} and its consumers want ${num(step.demandMaxPerMinute ?? 0)}${u}`;
+      return `at full speed, ${item} is made at most ${num(step.supplyMaxPerMinute ?? 0)}${u} and its consumers want ${num(step.demandMaxPerMinute ?? 0)}${u}`;
     case "upstream":
       return `${item} comes from ${nameOf(step.buildingId)}, which is short itself`;
     case "logistics": {
@@ -874,10 +921,20 @@ export function findBottlenecks(
     (a, b) => (shared.get(b.key) ?? 0) - (shared.get(a.key) ?? 0) || b.lost - a.lost || byString(a.m.id, b.m.id),
   );
 
+  // One finding per root cause (#592), in the order above: the most shared first. Its representative is the machine
+  // losing the most output, so the top `limit` are `limit` different causes.
+  const groups = new Map<string, Raw[]>();
+  for (const r of raws) {
+    const group = groups.get(r.key);
+    if (group) group.push(r);
+    else groups.set(r.key, [r]);
+  }
+
   const nameIndex = new Map(sorted.map((b) => [b.id, b.name]));
   const lookup = (id: string | undefined): string => (id === undefined ? "a machine" : (nameIndex.get(id) ?? "a machine"));
 
-  const findings: Bottleneck[] = raws.slice(0, limit).map((r) => {
+  const findings: Bottleneck[] = [...groups.values()].slice(0, limit).map((group) => {
+    const r = group[0];
     const root = r.steps[r.steps.length - 1];
     const dir = r.state === "underfed" ? "up" : "down";
     const first = describe(r.steps[0], dir, r.m.name, lookup);
@@ -892,18 +949,26 @@ export function findBottlenecks(
       if (text.charCodeAt(cut - 1) >= 0xd800 && text.charCodeAt(cut - 1) <= 0xdbff) cut--;
       text = `${text.slice(0, cut)}…`;
     }
-    return {
+    const self = machineOf(r.m);
+    const finding: Bottleneck = {
       buildingId: r.m.id,
       buildingName: r.m.name.slice(0, 200),
       state: r.state,
       rootCause: root,
       chain: r.steps,
       text,
+      recipe: self.recipe,
+      affectedCount: group.length,
+      affected: group.slice(0, BOTTLENECK_AFFECTED_MAX).map((g) => machineOf(g.m)),
     };
+    if (self.at) finding.at = self.at;
+    const fix = fixFor(root, sorted);
+    if (fix) finding.fix = fix;
+    return finding;
   });
 
   const notes: BottleneckNote[] =
     beltData === "unsupported" ? [noteFor("updateFrm")] : beltData === "tooLarge" ? [noteFor("beltDataTooLarge")] : [noteFor("connectionsRefresh")];
 
-  return { findings, truncated: raws.length > limit, beltData, connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES, notes };
+  return { findings, truncated: groups.size > limit, beltData, connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES, notes };
 }

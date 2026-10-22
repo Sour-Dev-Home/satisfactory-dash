@@ -97,6 +97,37 @@ describe("item level (no connection data)", () => {
     expect(root.kind).toBe("deficit");
     expect(root.supplyMaxPerMinute).toBe(30);
     expect(root.demandMaxPerMinute).toBe(60);
+    // #592: one more P closes the 30/min gap.
+    expect(r.findings[0].fix).toEqual({ producerName: "Machine P", recipe: "Recipe", perMachinePerMinute: 30, machines: 1, unit: "items/min" });
+    expect(r.findings[0].text).toContain("at full speed");
+  });
+
+  it("fix (#592): the most common producer, scaled to 100% clock, its median rate, and the gap rounded up", () => {
+    const smelter = (id: string, max: number, clock?: number) => ({
+      ...machine(id, { out: [[PLATE, max]], current: max, name: "Smelter" }),
+      recipe: "Iron Ingot",
+      ...(clock === undefined ? {} : { clockSpeedPercent: clock }),
+    });
+    const r = run(
+      [
+        smelter("S1", 30),
+        smelter("S2", 15, 50), // 30/min at 100%
+        smelter("S3", 45, 150), // 30/min at 100%
+        { ...machine("F", { out: [[PLATE, 40]], current: 40, name: "Foundry" }), recipe: "Alt" },
+        machine("M", { state: "underfed", ing: [[PLATE, 200]] }),
+      ],
+      "unsupported",
+    );
+    // Supply 130, demand 200: 70 short, 30 each, so 3 more.
+    expect(r.findings[0].fix).toMatchObject({ producerName: "Smelter", recipe: "Iron Ingot", perMachinePerMinute: 30, machines: 3 });
+  });
+
+  it("findings carry the representative's recipe and rounded position (#592)", () => {
+    const m = { ...machine("M", { state: "underfed", ing: [[PLATE, 60]] }), location: { xM: 10.6, yM: -20.4, zM: 0, rotationDeg: 0 } };
+    const f = run([m], "unsupported").findings[0];
+    expect(f).toMatchObject({ recipe: "Recipe", at: { x: 11, y: -20 }, affectedCount: 1 });
+    expect(f.affected).toEqual([{ buildingId: "M", buildingName: "Machine M", recipe: "Recipe", at: { x: 11, y: -20 } }]);
+    expect(f.fix).toBeUndefined(); // noProducer: nothing to add more of
   });
 
   it("upstream: a producer that is unpowered is the terminal", () => {
@@ -115,11 +146,13 @@ describe("item level (no connection data)", () => {
     const r = run(
       [
         machine("P", { state: "underfed", ing: [[ORE, 60]], out: [[PLATE, 120]] }),
-        machine("M", { state: "underfed", ing: [[PLATE, 60]] }),
+        // M loses the most output, so it is the shared cause's representative and its own chain is the one shown.
+        machine("M", { state: "underfed", ing: [[PLATE, 60]], out: [["Big_C", 1000]] }),
       ],
       "unsupported",
     );
     const m = r.findings.find((f) => f.buildingId === "M");
+    expect(m?.affected?.map((a) => a.buildingId)).toEqual(["M", "P"]);
     expect(m?.chain.map((s) => s.kind)).toEqual(["upstream", "noProducer"]);
     expect(m?.rootCause).toMatchObject({ kind: "noProducer", itemClassName: ORE });
   });
@@ -252,12 +285,15 @@ describe("belt level", () => {
       ...consumers.map((c, i) => edge(`b${String(i).padStart(2, "0")}`, "S1", c.id)),
     ];
     const r = run([maker, ...consumers], edges, 50);
-    expect(r.findings).toHaveLength(12);
-    for (const f of r.findings) {
-      expect(f.rootCause.kind).toBe("logistics");
-      expect(f.rootCause.cappedBy).toMatchObject({ conveyorId: "a0", capacityPerMinute: 120 });
-      expect(f.text).toContain("affects 12 machines");
-    }
+    // One shared cause, one finding (#592) that lists all 12.
+    expect(r.findings).toHaveLength(1);
+    const [f] = r.findings;
+    expect(f.rootCause.kind).toBe("logistics");
+    expect(f.rootCause.cappedBy).toMatchObject({ conveyorId: "a0", capacityPerMinute: 120 });
+    expect(f.text).toContain("affects 12 machines");
+    expect(f.affectedCount).toBe(12);
+    expect(f.affected?.map((a) => a.buildingId)).toContain(f.buildingId);
+    expect(new Set(f.affected?.map((a) => a.buildingId)).size).toBe(12);
   });
 
   it("a shared cut outranks one unlocated logistics case", () => {
@@ -272,8 +308,9 @@ describe("belt level", () => {
       edge("z1", "PP", "Z"),
     ];
     const r = run([maker, plate, z, ...wires], edges);
-    expect(r.findings.map((f) => f.buildingId).slice(0, 3).sort()).toEqual(["C0", "C1", "C2"]);
-    expect(r.findings[3].buildingId).toBe("Z");
+    expect(r.findings.map((f) => f.affectedCount)).toEqual([3, 1]);
+    expect(r.findings[0].affected?.map((a) => a.buildingId).sort()).toEqual(["C0", "C1", "C2"]);
+    expect(r.findings[1].buildingId).toBe("Z");
   });
 
   it("a pipe loop: pipes are arcs both ways, so flow reaches a machine whatever the end order", () => {
@@ -447,8 +484,9 @@ describe("ranking and limit", () => {
       share("S2"),
     ];
     const r = run(ms, "unsupported");
-    // S1 and S2 share a noProducer of Plate; then the two 500s (id order), then the 50.
-    expect(r.findings.map((f) => f.buildingId)).toEqual(["S1", "S2", "M02", "M03", "M01"]);
+    // S1 and S2 share a noProducer of Plate: one finding (#592); then the two 500s (id order), then the 50.
+    expect(r.findings.map((f) => f.buildingId)).toEqual(["S1", "M02", "M03", "M01"]);
+    expect(r.findings[0].affected?.map((a) => a.buildingId)).toEqual(["S1", "S2"]);
   });
 
   it("is deterministic: input order does not change the output", () => {
@@ -562,7 +600,11 @@ describe("fresh-eyes findings", () => {
     const start = performance.now();
     const r = run(buildings, edges);
     expect(performance.now() - start).toBeLessThan(5000);
-    expect(r.findings).toHaveLength(10);
+    // One cause (the trunk), so one finding (#592), listing the first 50 of its 1500 machines.
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].affectedCount).toBe(1500);
+    expect(r.findings[0].affected).toHaveLength(50);
+    expect(r.truncated).toBe(false);
   });
 });
 
@@ -584,7 +626,8 @@ describe("wrong-answer fixes", () => {
 
   it("the same item at two different buildings in a chain is not a loop", () => {
     // A needs X from B, B needs Y from C, C needs X from D (starved of ore).
-    const A = machine("A", { state: "underfed", ing: [["X_C", 60]] });
+    // A loses the most output, so it represents the shared cause.
+    const A = machine("A", { state: "underfed", ing: [["X_C", 60]], out: [["Big_C", 1000]] });
     const B = machine("B", { state: "underfed", ing: [["Y_C", 60]], out: [["X_C", 60]] });
     const C = machine("C", { state: "underfed", ing: [["X_C", 60]], out: [["Y_C", 60]] });
     const D = machine("D", { state: "unpowered", out: [["X_C", 60]] });

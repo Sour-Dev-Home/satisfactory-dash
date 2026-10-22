@@ -73,6 +73,34 @@ export const BottleneckStepSchema = z.object({
   cappedBy: BottleneckCappedBySchema.optional().describe("On `logistics` only: the conveyor that caps the flow"),
 });
 
+/** How many of a cause's machines a finding lists (#592); `affectedCount` says how many there are in all. */
+export const BOTTLENECK_AFFECTED_MAX = 50;
+
+/** One machine a cause affects, named the way a player finds it: class, recipe and about where (#592). */
+export const BottleneckMachineSchema = z.object({
+  buildingId: z.string().min(1).max(128),
+  buildingName: z.string().max(200),
+  recipe: z.string().max(200).nullable(),
+  at: ConveyorPointSchema.optional().describe('Whole metres, for "near (x, y)"; missing when the building has no position'),
+});
+
+/**
+ * For a `deficit` root (#592): the item's most common producer (class and recipe) and how many more of it would cover
+ * the gap. `perMachinePerMinute` is one machine's rated output at 100% clock; `machines` rounds the gap up.
+ */
+export const BottleneckFixSchema = z.object({
+  producerName: z.string().max(200),
+  recipe: z.string().max(200).nullable(),
+  perMachinePerMinute: z.number().finite().positive(),
+  machines: z.number().int().min(1).max(100_000),
+  unit: z.enum(["items/min", "m3/min"]).nullable().optional(),
+});
+
+/**
+ * One root cause (#592: the backend groups machines that share one): the representative machine (the one losing the
+ * most output), the cause, and the machines it affects. The fields after `text` are optional so a newly deployed
+ * frontend still parses an older backend's findings, which are one per machine.
+ */
 export const BottleneckSchema = z.object({
   buildingId: z.string().min(1).max(128),
   buildingName: z.string().max(200),
@@ -80,6 +108,11 @@ export const BottleneckSchema = z.object({
   rootCause: BottleneckStepSchema.describe("The ranked terminal verdict"),
   chain: z.array(BottleneckStepSchema).max(BOTTLENECK_CHAIN_MAX_STEPS),
   text: z.string().min(1).max(500).describe("One deterministic sentence built by the backend"),
+  recipe: z.string().max(200).nullable().optional().describe("The representative machine's recipe"),
+  at: ConveyorPointSchema.optional().describe("The representative machine's position, whole metres"),
+  affectedCount: z.number().int().min(1).optional().describe("How many machines share this root cause, this one included"),
+  affected: z.array(BottleneckMachineSchema).max(BOTTLENECK_AFFECTED_MAX).optional().describe("The first of them, most output lost first"),
+  fix: BottleneckFixSchema.optional(),
 });
 
 /**
@@ -108,7 +141,7 @@ export const BottleneckNoteSchema = z.object({
 
 export const BottlenecksSchema = z.object({
   findings: z.array(BottleneckSchema).max(BOTTLENECKS_MAX_LIMIT),
-  truncated: z.boolean().describe("true = more machines had a root cause than `limit`"),
+  truncated: z.boolean().describe("true = there were more root causes than `limit` (more machines, from an older backend)"),
   beltData: z.enum(BOTTLENECK_BELT_DATA_MODES),
   /** How often the connection graph is re-read (ADR-0038's world tier), for the "refresh every N minutes" note. */
   connectionsRefreshMinutes: z.number().int().min(1).max(1440),
@@ -125,6 +158,8 @@ export const BottlenecksResponseSchema = snapshotEnvelope(BottlenecksSchema);
 export type BottleneckCappedBy = z.infer<typeof BottleneckCappedBySchema>;
 export type BottleneckStep = z.infer<typeof BottleneckStepSchema>;
 export type Bottleneck = z.infer<typeof BottleneckSchema>;
+export type BottleneckMachine = z.infer<typeof BottleneckMachineSchema>;
+export type BottleneckFix = z.infer<typeof BottleneckFixSchema>;
 export type BottleneckBeltData = (typeof BOTTLENECK_BELT_DATA_MODES)[number];
 export type BottleneckNote = z.infer<typeof BottleneckNoteSchema>;
 export type Bottlenecks = z.infer<typeof BottlenecksSchema>;

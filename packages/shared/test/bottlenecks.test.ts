@@ -101,7 +101,7 @@ describe("BottleneckSchema and BottlenecksSchema", () => {
 describe("bottleneck fixtures agree with the conveyors fixture they cite", () => {
   it("every cappedBy matches a conveyorsSample edge's kind, tier, capacity, ends and position", () => {
     const edges = new Map(fixtures.conveyorsSample.data.map((e) => [e.id, e]));
-    const cuts = fixtures.bottlenecksBeltLevel.data.findings.map((f) => f.rootCause.cappedBy!);
+    const cuts = fixtures.bottlenecksBeltLevel.data.findings.flatMap((f) => (f.rootCause.cappedBy ? [f.rootCause.cappedBy] : []));
     expect(cuts).toHaveLength(2);
     for (const cut of cuts) {
       const edge = edges.get(cut.conveyorId);

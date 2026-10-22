@@ -1,4 +1,4 @@
-import type { Bottleneck, BottleneckCappedBy, Bottlenecks } from "@satisfactory-dash/shared";
+import type { Bottleneck, BottleneckCappedBy, BottleneckFix, BottleneckMachine, Bottlenecks } from "@satisfactory-dash/shared";
 import { formatPerMinute, type RateUnit } from "../format";
 
 /** Pipes carry m³/min, belts and lifts items/min (ADR-0015); the contract's cap has no unit field of its own. */
@@ -6,10 +6,34 @@ function capUnit(kind: BottleneckCappedBy["kind"]): RateUnit {
   return kind === "pipe" ? "m3/min" : "items/min";
 }
 
+const near = (at: BottleneckCappedBy["at"]) => {
+  const minus = (n: number) => String(n).replace("-", "−");
+  return `near (${minus(at.x)}, ${minus(at.y)})`;
+};
+
 /** "Conveyor Belt Mk.1 · 60 items/min · near (-554, -1278)": the conveyor that caps the flow (ADR-0048). */
 export function cappedByLine(cap: BottleneckCappedBy): string {
-  const minus = (n: number) => String(n).replace("-", "−");
-  return `${cap.tier} · ${formatPerMinute(cap.capacityPerMinute, capUnit(cap.kind))} · near (${minus(cap.at.x)}, ${minus(cap.at.y)})`;
+  return `${cap.tier} · ${formatPerMinute(cap.capacityPerMinute, capUnit(cap.kind))} · ${near(cap.at)}`;
+}
+
+/** "Constructor, Iron Plate, near (120, −40)": a machine the way a player finds it (#592). Missing parts are left out. */
+export function machineLabel(m: Pick<BottleneckMachine, "buildingName" | "at"> & { recipe?: string | null }): string {
+  return [m.buildingName, m.recipe ?? null, m.at ? near(m.at) : null].filter((p) => p !== null && p !== "").join(", ");
+}
+
+/** "About 3 more Smelter (Iron Ingot), 30 items/min each": what would close a deficit at full speed (#592). */
+export function fixLine(fix: BottleneckFix): string {
+  const who = fix.recipe ? `${fix.producerName} (${fix.recipe})` : fix.producerName;
+  return `About ${fix.machines} more ${who}, ${formatPerMinute(fix.perMachinePerMinute, fix.unit ?? null)} each, at full speed.`;
+}
+
+/**
+ * Rated maxima at a set clock can differ from the game's by a rounding step, so a deficit under 2% of what is wanted
+ * may be no real shortage (#592).
+ */
+export function isSmallGap(finding: Bottleneck): boolean {
+  const { kind, supplyMaxPerMinute: supply, demandMaxPerMinute: demand } = finding.rootCause;
+  return kind === "deficit" && supply !== undefined && demand !== undefined && demand > 0 && (demand - supply) / demand < 0.02;
 }
 
 /**
