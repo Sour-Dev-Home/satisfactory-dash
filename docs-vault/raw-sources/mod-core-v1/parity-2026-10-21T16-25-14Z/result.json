@@ -1,0 +1,49 @@
+{
+  "run": "parity",
+  "requirements": [
+    "parity"
+  ],
+  "pass": true,
+  "reasons": [
+    "356 pairs within 2500 ms, largest gap 2491 ms; 356 mod and 361 Node agent snapshots accepted (0 and 0 over the recorder's 2 MB cap, judged without their bulky parts): status compared in 356 pairs, autoPause in 356; power in 356 rounds against the Node agent's neighbours (1 circuit group); every compared field matches"
+  ],
+  "startedAt": "2026-10-21T16:25:14.512Z",
+  "endedAt": "2026-10-21T16:59:37.426Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.21-16.28.25:219][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.21-16.28.25:241][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-16.28.25:262][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.21-16.28.25:300][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.21-16.28.25:472][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.21-16.28.25:218][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg",
+    "[2026.10.21-16.29.25:659][923]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.21-16.29.25:732][925]LogSatisDash: Display: Enrolled; reporting to the backend"
+  ],
+  "harnessCommit": "e0cc1abed68d5865b513683c2e7e9bb4595b6676",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/39634443490"
+}

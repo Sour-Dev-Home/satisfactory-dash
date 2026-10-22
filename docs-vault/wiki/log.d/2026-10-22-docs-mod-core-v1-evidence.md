@@ -1,0 +1,1 @@
+- 2026-10-22 — Added `raw-sources/mod-core-v1/`: the core mod v1 evidence from satisfactory-dash-mod (Plan 2B done, mod PR #42): result.json for http-probe, enrol, revoke, command, outage, tick-cost, parity and manual, the trimmed G-B1/G-B2 excerpt, and a README. The mod-test automation report is left out (it names the runner machine); its run link and counts are in the README.
