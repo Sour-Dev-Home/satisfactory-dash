@@ -32,12 +32,32 @@ describe("BottlenecksView", () => {
   it("lists the findings in rank order with the sentence, the state and the capping conveyor", async () => {
     renderView();
     const list = await screen.findByRole("list", { name: "Bottlenecks" });
-    const items = within(list).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("Constructor · Underfed");
+    const items = [...list.children] as HTMLElement[];
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent("Constructor, Concrete, near (−560, −1290) · Underfed");
     expect(items[0]).toHaveTextContent(bottlenecksBeltLevel.data.findings[0].text);
     expect(items[0]).toHaveTextContent("Capped by: Conveyor Belt Mk.1 · 60 items/min · near (−554, −1278)");
+    // One cause, so no machine list.
+    expect(within(items[0]).queryByText(/Affects/)).not.toBeInTheDocument();
     expect(items[1]).toHaveTextContent("Refinery · Backed up");
+  });
+
+  it("one row per shared cause: the fix, and the machines it affects (#592)", async () => {
+    renderView();
+    const list = await screen.findByRole("list", { name: "Bottlenecks" });
+    const row = list.children[2] as HTMLElement;
+    expect(row).toHaveTextContent("Constructor, Iron Plate, near (1204, −388) · Underfed");
+    expect(row).toHaveTextContent("Fix: About 1 more Smelter (Iron Ingot), 30 items/min each, at full speed.");
+    // 27 short of 2453 is 1.1%: may be clock rounding.
+    expect(row).toHaveTextContent(/may be clock rounding/);
+    expect(within(row).getByText("Affects 61 machines")).toBeInTheDocument();
+    const machines = [...row.querySelectorAll("details li")].map((li) => li.textContent);
+    expect(machines).toEqual([
+      "Constructor, Iron Plate, near (1204, −388)",
+      "Constructor, Iron Rod, near (1214, −388)",
+      "Constructor, Screw, near (1224, −388)",
+      "and 58 more",
+    ]);
     expect(screen.getByRole("heading", { name: "Bottlenecks" })).toBeInTheDocument();
     expect(screen.getByText("Connections refresh every 10 minutes.")).toBeInTheDocument();
   });
