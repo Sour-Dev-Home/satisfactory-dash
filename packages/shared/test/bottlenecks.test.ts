@@ -5,6 +5,8 @@ import {
   BOTTLENECKS_MAX_LIMIT,
   BOTTLENECK_CHAIN_MAX_STEPS,
   BottleneckCappedBySchema,
+  BottleneckFixSchema,
+  BottleneckMachineSchema,
   BottleneckSchema,
   BottleneckStepSchema,
   BottlenecksQuerySchema,
@@ -116,5 +118,30 @@ describe("bottleneck fixtures agree with the conveyors fixture they cite", () =>
         at: edge!.at,
       });
     }
+  });
+});
+
+describe("BottleneckFixSchema and BottleneckMachineSchema bounds (fresh eyes, #592)", () => {
+  const fix = { producerName: "Smelter", recipe: null, perMachinePerMinute: 30, machines: 1 };
+  it("fix.machines is an integer from 1 to 100,000; perMachinePerMinute is finite and positive", () => {
+    expect(BottleneckFixSchema.safeParse(fix).success).toBe(true);
+    expect(BottleneckFixSchema.safeParse({ ...fix, machines: 100_000 }).success).toBe(true);
+    for (const machines of [0, 100_001, 1.5, Number.NaN]) expect(BottleneckFixSchema.safeParse({ ...fix, machines }).success).toBe(false);
+    for (const perMachinePerMinute of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(BottleneckFixSchema.safeParse({ ...fix, perMachinePerMinute }).success).toBe(false);
+    }
+  });
+  it("a machine's position is whole metres within 1,000,000, and optional", () => {
+    const m = { buildingId: "a", buildingName: "n", recipe: null };
+    expect(BottleneckMachineSchema.safeParse(m).success).toBe(true);
+    expect(BottleneckMachineSchema.safeParse({ ...m, at: { x: -1_000_000, y: 1_000_000 } }).success).toBe(true);
+    expect(BottleneckMachineSchema.safeParse({ ...m, at: { x: 1_000_001, y: 0 } }).success).toBe(false);
+    expect(BottleneckMachineSchema.safeParse({ ...m, at: { x: 1.5, y: 0 } }).success).toBe(false);
+  });
+  it("affected holds at most 50 machines and affectedCount is at least 1", () => {
+    const m = { buildingId: "a", buildingName: "n", recipe: null };
+    expect(BottleneckSchema.safeParse({ ...finding, affected: Array.from({ length: 50 }, () => m) }).success).toBe(true);
+    expect(BottleneckSchema.safeParse({ ...finding, affected: Array.from({ length: 51 }, () => m) }).success).toBe(false);
+    expect(BottleneckSchema.safeParse({ ...finding, affectedCount: 0 }).success).toBe(false);
   });
 });

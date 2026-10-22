@@ -772,7 +772,13 @@ function rootKey(raw: { m: FactoryBuilding; steps: BottleneckStep[] }): string {
 
 function machineOf(b: FactoryBuilding): BottleneckMachine {
   const m: BottleneckMachine = { buildingId: b.id, buildingName: b.name.slice(0, 200), recipe: b.recipe === null ? null : b.recipe.slice(0, 200) };
-  if (b.location) m.at = { x: Math.round(b.location.xM), y: Math.round(b.location.yM) };
+  // The contract's whole-metre bounds are +-1,000,000; a position outside them (or not finite) is left out rather than
+  // failing the whole response's validation.
+  if (b.location && Number.isFinite(b.location.xM) && Number.isFinite(b.location.yM)) {
+    const x = Math.round(b.location.xM) || 0;
+    const y = Math.round(b.location.yM) || 0;
+    if (Math.abs(x) <= 1_000_000 && Math.abs(y) <= 1_000_000) m.at = { x, y };
+  }
   return m;
 }
 

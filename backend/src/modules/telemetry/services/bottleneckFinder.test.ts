@@ -636,3 +636,81 @@ describe("wrong-answer fixes", () => {
     expect(a?.rootCause.kind).toBe("unpowered");
   });
 });
+
+describe("grouping and fix: contract and determinism (fresh eyes, #592)", () => {
+  const X = "Desc_X_C";
+  const at = (xM: number, yM: number) => ({ xM, yM, zM: 0, rotationDeg: 0 });
+  const consumer = (id: string, extra: Partial<FactoryBuilding> = {}): FactoryBuilding => ({
+    ...machine(id, { state: "underfed", ing: [[X, 100]], out: [["Out_C", 10]] }),
+    ...extra,
+  });
+  const maker = (id: string, extra: Partial<FactoryBuilding> = {}): FactoryBuilding => ({ ...machine(id, { out: [[X, 30]], current: 30 }), ...extra });
+
+  it("coordinates outside the contract's whole-metre bounds, or not finite, never break the response", () => {
+    const b = [
+      maker("P"),
+      consumer("A", { location: at(5_000_000, -5_000_000) }),
+      consumer("B", { location: at(Number.POSITIVE_INFINITY, 1) }),
+      consumer("C", { location: at(-0.4, -0.5) }),
+    ];
+    const r = run(b, "unsupported");
+    expect(r.findings[0].affectedCount).toBe(3);
+  });
+
+  it("long names and recipes stay inside the schema's 200 characters, in affected and in fix", () => {
+    const long = "x".repeat(500);
+    const b = [maker("P", { name: long, recipe: long }), consumer("A", { name: long, recipe: long })];
+    const r = run(b, "unsupported");
+    expect(r.findings[0].fix?.producerName).toHaveLength(200);
+  });
+
+  it("a producer with a tiny rate or tiny clock yields a positive, in-bounds fix", () => {
+    for (const [max, clock] of [[0.001, 100], [30, 1e-8], [30, 1e6], [1e-6, 250]] as const) {
+      const b = [maker("P", { production: [rate(X, max, max)], clockSpeedPercent: clock }), consumer("A")];
+      const f = run(b, "unsupported").findings[0];
+      expect(f.fix?.perMachinePerMinute).toBeGreaterThan(0);
+      expect(f.fix?.machines).toBeGreaterThanOrEqual(1);
+      expect(f.fix?.machines).toBeLessThanOrEqual(100_000);
+    }
+  });
+
+  it("clock 0, negative or undefined falls back to the rated rate; a zero-max producer is not the fix", () => {
+    const zero = maker("Z", { production: [rate(X, 0, 0)], name: "Zeroer" });
+    for (const clock of [0, -50, undefined]) {
+      const f = run([maker("P", { clockSpeedPercent: clock }), zero, consumer("A")], "unsupported").findings[0];
+      expect(f.fix).toMatchObject({ producerName: "Machine P", perMachinePerMinute: 30 });
+    }
+  });
+
+  it("input order changes nothing: groups, affected order, representative and fix tie-breaks", () => {
+    const b = [
+      maker("P1", { name: "Beta", recipe: "R2" }),
+      maker("P2", { name: "Alpha", recipe: "R1", production: [rate(X, 45, 45)] }),
+      consumer("A", { location: at(1, 2) }),
+      consumer("B"),
+      consumer("C"),
+      { ...machine("D", { state: "underfed", ing: [["Y_C", 5]], out: [["Out_C", 10]] }) },
+    ];
+    const base = JSON.stringify(run(b, "unsupported"));
+    const orders = [[...b].reverse(), [b[3], b[0], b[5], b[1], b[4], b[2]]];
+    for (const o of orders) expect(JSON.stringify(run(o, "unsupported"))).toBe(base);
+    // One of each is "most common": the lower (name, recipe) key wins.
+    expect(JSON.parse(base).findings.find((f: { fix?: unknown }) => f.fix).fix.producerName).toBe("Alpha");
+  });
+
+  it("truncated is true only when there are more causes than the limit, and the groups are distinct causes", () => {
+    const b: FactoryBuilding[] = [];
+    for (let i = 0; i < 3; i++) b.push(machine(`M${i}`, { state: "underfed", ing: [[`Item${i}_C`, 10]] }));
+    expect(run(b, "unsupported", 3)).toMatchObject({ truncated: false });
+    const r = run(b, "unsupported", 2);
+    expect(r.truncated).toBe(true);
+    expect(new Set(r.findings.map((f) => f.rootCause.itemClassName)).size).toBe(2);
+  });
+
+  it("affected is capped at 50 while affectedCount counts all", () => {
+    const b = [maker("P"), ...Array.from({ length: 60 }, (_, i) => consumer(`C${String(i).padStart(2, "0")}`))];
+    const f = run(b, "unsupported").findings[0];
+    expect(f.affectedCount).toBe(60);
+    expect(f.affected).toHaveLength(50);
+  });
+});

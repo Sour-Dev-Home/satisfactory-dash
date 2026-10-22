@@ -104,3 +104,24 @@ describe("sectionNotes against a backend that disagrees with its own mode", () =
     expect(notes).toEqual(["Same.", "Refresh."]);
   });
 });
+
+describe("helpers: edge cases (fresh eyes, #592)", () => {
+  it("machineLabel leaves out empty parts and shows a negative zero as 0", () => {
+    expect(machineLabel({ buildingName: "Constructor", recipe: "" })).toBe("Constructor");
+    expect(machineLabel({ buildingName: "", recipe: null, at: { x: -0, y: -5 } })).toBe("near (0, −5)");
+  });
+  it("fixLine reads for one machine, no recipe and a fluid", () => {
+    expect(fixLine({ producerName: "Refinery", recipe: null, perMachinePerMinute: 30, machines: 1, unit: "m3/min" })).toMatch(
+      /^About 1 more Refinery, .*m.*each, at full speed\.$/,
+    );
+  });
+  it("isSmallGap: only a deficit with a positive demand, strictly under 2%", () => {
+    const f = (kind: string, supply?: number, demand?: number) =>
+      ({ ...belt, rootCause: { kind, supplyMaxPerMinute: supply, demandMaxPerMinute: demand } }) as typeof belt;
+    expect(isSmallGap(f("deficit", 99, 100))).toBe(true);
+    expect(isSmallGap(f("deficit", 98, 100))).toBe(false);
+    expect(isSmallGap(f("deficit", 0, 0))).toBe(false);
+    expect(isSmallGap(f("deficit", undefined, 100))).toBe(false);
+    expect(isSmallGap(f("surplus", 99, 100))).toBe(false);
+  });
+});
