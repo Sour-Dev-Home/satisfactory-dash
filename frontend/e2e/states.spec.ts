@@ -42,6 +42,8 @@ interface StateCase {
    * placeholder" wait below passes before a slow history read has even mounted the placeholder.
    */
   ready?: string;
+  /** A viewport width for a layout between the two projects' (#593); runs in the desktop project only. */
+  width?: number;
 }
 
 /** Stands in for the browser's push state before the page loads. */
@@ -113,6 +115,10 @@ const CASES: StateCase[] = [
   { scenario: "paused", shows: "Paused: no players connected" },
   { scenario: "paused", name: "paused-power", path: "/app/power", shows: "Paused: no players connected, values are frozen." },
   { scenario: "stale", shows: /Showing last known data from/ },
+  // 1024 px, where the Health card is at its narrowest beside Players: a long status word must never sit
+  // under the tick gauge (#593).
+  { scenario: "default", name: "default-narrow-desktop", shows: "Total play time on this save", width: 1024 },
+  { scenario: "stale", name: "stale-narrow-desktop", shows: /Showing last known data from/, width: 1024 },
   // The Health card's tick dial and text (the red zone is below 10 ticks/s).
   { scenario: "slow-tick", shows: "8.2 ticks/s" },
   // With FicsitRemoteMonitoring, the online names show under the count (ADR-0029).
@@ -375,8 +381,10 @@ async function addServer(page: Page, host: string) {
   await page.getByRole("button", { name: "Add server" }).click();
 }
 
-for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser, ready } of CASES) {
+for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser, ready, width } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
+    test.skip(width !== undefined && testInfo.project.name !== "desktop", "one narrow-desktop width is enough");
+    if (width !== undefined) await page.setViewportSize({ width, height: page.viewportSize()?.height ?? 900 });
     await mockApi(scenario);
     if (browser) await stubPushBrowser(page, browser);
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.

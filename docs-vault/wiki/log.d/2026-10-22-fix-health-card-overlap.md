@@ -1,0 +1,1 @@
+- 2026-10-22 — Health card (#593): from lg the status and the tick gauge row wraps, and the status block never shrinks below its longest word, so "DEGRADED" is no longer drawn under the gauge at about 1024 px. New 1024 px e2e states (`default-narrow-desktop`, `stale-narrow-desktop`) via a `width` case option.

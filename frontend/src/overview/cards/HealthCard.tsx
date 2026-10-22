@@ -118,10 +118,11 @@ export function HealthCard({
       {/* Stacked in the narrow column; from lg up, where the card takes half the row (#329), the
           status and the tick gauge sit side by side so the card's width isn't left empty (the owner's
           pick, after the ui review). Reading order stays status first. */}
-      {/* No wrapping from lg: a long headline wraps inside the status block (min-w-0, flex-1) while the
-          gauge keeps its size, so the two never fall onto separate lines at the lg boundary (ui review). */}
-      <div className="grid gap-3 lg:flex lg:items-center lg:justify-between lg:gap-4">
-        <div className="flex min-w-0 items-center gap-3 lg:flex-1">
+      {/* From lg a long headline wraps inside the status block while the gauge keeps its size. The block
+          never shrinks below its longest word (min-w-auto), so when "DEGRADED" and the gauge don't both
+          fit, at 1024 px say, the gauge wraps below instead of being drawn over the word (#593). */}
+      <div className="grid gap-3 lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-4">
+        <div className="flex min-w-0 items-center gap-3 lg:min-w-auto lg:flex-1">
           <Heart health={overall.health} quiet={hidden} />
           <p role="status" className="mb-0 grid">
             <span
