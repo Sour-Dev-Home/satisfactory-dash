@@ -1,0 +1,1 @@
+- 2026-10-22 — Migration contract check (#587): a new CHECK on an existing table is no longer exempt just because the same file adds a column to, or drops a NOT NULL on, that table. Only the three migrations written before the check (`LEGACY_CHECK_FILES`) keep that exemption; new files use `NOT VALID`, a new table, a same-name replacement or a `-- contract:` line.
