@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ConveyorEdge } from "@satisfactory-dash/shared";
-import { buildGraph, passThroughComponents, weaklyConnectedComponents, type Graph } from "./connectionGraph.js";
+import { buildGraph, passThroughComponents, walkRegion, weaklyConnectedComponents, type Graph } from "./connectionGraph.js";
 
 /** `from`/`to` are node ids; null = open end. Kind by id prefix: "S" splitter, "M" merger, "J" junction, else machine. */
 function edge(id: string, from: string | null, to: string | null, kind: ConveyorEdge["kind"] = "belt"): ConveyorEdge {
@@ -115,5 +115,80 @@ describe("passThroughComponents", () => {
     const [c] = passThroughComponents(g);
     expect(names(g, c.ins)).toEqual(["A", "B"]);
     expect(names(g, c.outs)).toEqual(["A", "B"]);
+  });
+});
+
+describe("edge cases (fresh-eyes pass)", () => {
+  it("keeps a self-loop as a single-node component with no arcs", () => {
+    const g = buildGraph([edge("e1", "A", "A"), edge("e2", "S1", "S1")]);
+    expect(weaklyConnectedComponents(g).map((c) => names(g, c))).toEqual([["A"], ["S1"]]);
+    expect(passThroughComponents(g)).toEqual([{ nodes: [1], ins: [], outs: [] }]);
+  });
+
+  it("ignores an edge with both ends open and lists a dead-end pass-through as an isolated component", () => {
+    const g = buildGraph([edge("e0", null, null), edge("e1", "S1", null), edge("e2", null, "A")]);
+    expect(weaklyConnectedComponents(g).map((c) => names(g, c))).toEqual([["S1"], ["A"]]);
+    expect(passThroughComponents(g)).toEqual([{ nodes: [0], ins: [], outs: [] }]);
+  });
+
+  it("does not repeat a terminal for duplicate parallel edges", () => {
+    const g = buildGraph([edge("e1", "P", "S1"), edge("e2", "P", "S1"), edge("e3", "S1", "C"), edge("e4", "S1", "C")]);
+    const [c] = passThroughComponents(g);
+    expect(names(g, c.ins)).toEqual(["P"]);
+    expect(names(g, c.outs)).toEqual(["C"]);
+    expect(weaklyConnectedComponents(g)).toHaveLength(1);
+  });
+
+  it("covers a node that has no arcs (hand-built graph) in both functions", () => {
+    const g: Graph = { kind: ["machine", "splitter", "machine"], idToNode: new Map(), out: [[], [], []], in: [[], [], []] };
+    expect(weaklyConnectedComponents(g)).toEqual([[0], [1], [2]]);
+    expect(passThroughComponents(g)).toEqual([{ nodes: [1], ins: [], outs: [] }]);
+  });
+
+  it("treats a terminal between two pass-through groups as a boundary, not a link", () => {
+    const g = buildGraph([edge("e1", "S1", "T", "pipe"), edge("e2", "T", "S2", "pipe")]);
+    expect(weaklyConnectedComponents(g)).toHaveLength(1);
+    const comps = passThroughComponents(g);
+    expect(comps.map((c) => names(g, c.nodes))).toEqual([["S1"], ["S2"]]);
+    for (const c of comps) {
+      expect(names(g, c.ins)).toEqual(["T"]);
+      expect(names(g, c.outs)).toEqual(["T"]);
+    }
+  });
+
+  it("is order independent over many permutations of a mixed graph", () => {
+    const edges = [
+      edge("e1", "P", "S1"),
+      edge("e2", "S1", "M"),
+      edge("e3", "M", "S2", "pipe"),
+      edge("e4", "S2", "S2"),
+      edge("e5", null, "J1"),
+      edge("e6", "J1", "C"),
+      edge("e7", "X", "Y"),
+    ];
+    const base = buildGraph(edges);
+    let seed = 7;
+    const rnd = (): number => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    for (let i = 0; i < 40; i++) {
+      const shuffled = [...edges].sort(() => rnd() - 0.5);
+      const h = buildGraph(shuffled);
+      expect(weaklyConnectedComponents(h)).toEqual(weaklyConnectedComponents(base));
+      expect(passThroughComponents(h)).toEqual(passThroughComponents(base));
+    }
+  });
+
+  it("handles a 20,000-node chain without recursion", () => {
+    const n = 20000;
+    const edges: ConveyorEdge[] = [];
+    for (let i = 0; i < n; i++) edges.push(edge(`e${String(i).padStart(6, "0")}`, i === 0 ? "P" : `S${i}`, i === n - 1 ? "C" : `S${i + 1}`));
+    const g = buildGraph(edges);
+    expect(weaklyConnectedComponents(g)).toHaveLength(1);
+    const [c] = passThroughComponents(g);
+    expect(c.nodes).toHaveLength(n - 1);
+    expect(names(g, c.ins)).toEqual(["P"]);
+    expect(names(g, c.outs)).toEqual(["C"]);
+    const r = walkRegion(g, g.idToNode.get("C") as number, "any", "back");
+    expect(r.nodes).toHaveLength(n + 1);
+    expect(names(g, r.terminals)).toEqual(["P"]);
   });
 });
