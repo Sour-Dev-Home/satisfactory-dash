@@ -9,9 +9,11 @@ locals {
   deploy_account    = data.aws_caller_identity.current.account_id
 
   # GitHub's `sub` once the repository's OIDC subject template includes repo, context and
-  # job_workflow_ref (runbooks/aws.md, "Deploy from GitHub"). StringEquals is case-sensitive: check it
-  # against the first run's token [NEEDS VERIFICATION].
-  prod_deploy_subject = "repo:${var.github_repository}:environment:production:job_workflow_ref:${var.github_repository}/.github/workflows/deploy.yml@refs/heads/main"
+  # job_workflow_ref (runbooks/aws.md, "Deploy from GitHub"). The template uses GitHub's immutable subject:
+  # its repo part carries the owner's and repository's numeric ids, so a renamed or recreated repository
+  # with the same name can't assume the role. job_workflow_ref keeps the names. StringEquals is
+  # case-sensitive: check it against the first run's token [NEEDS VERIFICATION].
+  prod_deploy_subject = "${var.github_subject_prefix}:environment:production:job_workflow_ref:${var.github_repository}/.github/workflows/deploy.yml@refs/heads/main"
 
   # Plain, non-secret String parameters for CI (D2): the base revisions it copies, and the release record.
   deploy_parameter_prefix = "/satis/deploy/${local.environment}"

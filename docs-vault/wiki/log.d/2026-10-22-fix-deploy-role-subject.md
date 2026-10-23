@@ -1,0 +1,1 @@
+- 2026-10-22 — ADR-0049 PR 2 follow-up: the deploy role's trust policy matches GitHub's immutable OIDC subject (`repo:<owner>@<id>/<repo>@<id>`), which the repository's subject template reported once set. New variable `github_subject_prefix`, validated; runbook updated.
