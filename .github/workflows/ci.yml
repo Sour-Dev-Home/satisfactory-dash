@@ -46,6 +46,8 @@ jobs:
           PR_LABELS_JSON=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '[.[].name]')
           export PR_FILES_JSON PR_LABELS_JSON
           node scripts/log-check.mjs
+          # #561: an applied migration never changes; a fix is a new migration.
+          node scripts/migration-immutable.mjs
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
