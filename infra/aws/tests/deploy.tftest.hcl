@@ -70,7 +70,7 @@ run "d1_only_deploy_yml_on_main_in_production_can_assume_the_role" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:Sour-Dev-Home/satisfactory-dash:environment:production:job_workflow_ref:Sour-Dev-Home/satisfactory-dash/.github/workflows/deploy.yml@refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = "repo:Sour-Dev-Home@332263924/satisfactory-dash@1380549261:environment:production:job_workflow_ref:Sour-Dev-Home/satisfactory-dash/.github/workflows/deploy.yml@refs/heads/main"
         }
       }
     }]
@@ -168,4 +168,14 @@ run "github_repository_must_be_owner_slash_repo" {
   }
 
   expect_failures = [var.github_repository]
+}
+
+run "github_subject_prefix_must_be_the_immutable_form" {
+  command = plan
+
+  variables {
+    github_subject_prefix = "repo:Sour-Dev-Home/satisfactory-dash"
+  }
+
+  expect_failures = [var.github_subject_prefix]
 }

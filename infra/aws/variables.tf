@@ -222,3 +222,14 @@ variable "github_repository" {
     error_message = "github_repository must be owner/repo."
   }
 }
+
+variable "github_subject_prefix" {
+  description = "The `sub` claim's repo part, exactly as `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` reports `sub_claim_prefix` (GitHub's immutable subject: names plus numeric ids)."
+  type        = string
+  default     = "repo:Sour-Dev-Home@332263924/satisfactory-dash@1380549261"
+
+  validation {
+    condition     = can(regex("^repo:[A-Za-z0-9-]+@[0-9]+/[A-Za-z0-9._-]+@[0-9]+$", var.github_subject_prefix))
+    error_message = "github_subject_prefix must be repo:<owner>@<owner id>/<repo>@<repo id>."
+  }
+}

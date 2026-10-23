@@ -162,8 +162,11 @@ definitions updated in place for `skip_destroy`; **no task definition replaced a
      -F use_default=false -f 'include_claim_keys[]=repo' -f 'include_claim_keys[]=context' -f 'include_claim_keys[]=job_workflow_ref'
    gh api repos/Sour-Dev-Home/satisfactory-dash/actions/oidc/customization/sub
    ```
-   No other workflow uses OIDC, so nothing else changes. The token's `sub` then reads
-   `repo:Sour-Dev-Home/satisfactory-dash:environment:production:job_workflow_ref:Sour-Dev-Home/satisfactory-dash/.github/workflows/deploy.yml@refs/heads/main`,
+   No other workflow uses OIDC, so nothing else changes. GitHub answers with `use_immutable_subject: true`
+   and a `sub_claim_prefix` of `repo:<owner>@<owner id>/<repo>@<repo id>`, which must equal Terraform's
+   `github_subject_prefix` (set 2026-10-22: `repo:Sour-Dev-Home@332263924/satisfactory-dash@1380549261`).
+   The token's `sub` then reads
+   `repo:Sour-Dev-Home@332263924/satisfactory-dash@1380549261:environment:production:job_workflow_ref:Sour-Dev-Home/satisfactory-dash/.github/workflows/deploy.yml@refs/heads/main`,
    which must match the trust policy exactly, case included: PR 3's first run prints it.
 3. **Check the role** in the IAM policy simulator (ADR-0049 D1 [NEEDS VERIFICATION]):
    `ecs:DescribeTaskDefinition` on `*` and `cloudwatch:DescribeAlarms` on the two alarm ARNs should
