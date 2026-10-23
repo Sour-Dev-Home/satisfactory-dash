@@ -154,8 +154,11 @@ GitHub → Actions → **Deploy** → Run workflow, on `main`:
   out, watches `backend-errors` and `backend-critical` for 10 minutes (either in `ALARM` rolls back to
   what ran before), checks `/api/health/ready` and writes `/satis/deploy/prod/released`.
 - `redeploy`: the released images on the current base, after a Terraform configuration apply. No migration.
-- `rollback` with `sha` empty: the previous release (`released.previous`); or a sha. No migration (the
-  schema stays ahead, which an older build accepts) and no alarm pre-check.
+- `rollback` with `sha` empty: the last good release. That's `released.previous` when production runs the
+  recorded release, or the recorded release itself when it doesn't (a deploy whose health check failed,
+  or a manual rollout). Or give a sha. No migration (the schema stays ahead, which an older build
+  accepts), no alarm pre-check and no 10-minute watch (the alarm that prompted it would still read
+  `ALARM`); ECS's own alarm rollback still applies.
 
 It refuses to start while either alarm is already in `ALARM` (except `rollback`), and refuses a base task
 definition that isn't what Terraform applied (another execution role, a task role, another container or
