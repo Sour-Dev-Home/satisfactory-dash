@@ -92,12 +92,50 @@ const REGISTERABLE = [
 
 /** A copy of the base with one container's image replaced, and nothing else changed (D2). No tags: the role has none. */
 export function revisionFrom(base, container, image) {
+  return revisionWith(base, { [container]: image });
+}
+
+/** The same with several containers' images replaced at once (staging swaps three). */
+export function revisionWith(base, images) {
   const input = {};
   for (const k of REGISTERABLE) if (base[k] !== undefined && base[k] !== null) input[k] = structuredClone(base[k]);
-  const target = (input.containerDefinitions ?? []).find((c) => c.name === container);
-  if (!target) throw new Error(`the base has no ${container} container`);
-  target.image = image;
+  for (const [container, image] of Object.entries(images)) {
+    const target = (input.containerDefinitions ?? []).find((c) => c.name === container);
+    if (!target) throw new Error(`the base has no ${container} container`);
+    target.image = image;
+  }
   return input;
+}
+
+export const STAGING_CONTAINERS = ["postgres", "db-previous", "db-setup", "backend", "cloudflared"];
+const STAGING_POSTGRES = /^public\.ecr\.aws\/docker\/library\/postgres:18@sha256:[0-9a-f]{64}$/;
+
+/**
+ * D3: the staging base as Terraform applied it: its family and own execution role, no task role, exactly the five
+ * containers in order, postgres from the ECR Public mirror by digest and cloudflared at the pin.
+ */
+export function checkStagingBase(td, { cloudflared }) {
+  const problems = [];
+  if (td.family !== "satis-staging") problems.push(`family is ${td.family}`);
+  if (roleName(td.executionRoleArn) !== "satis-staging-ecs-execution") problems.push(`execution role is ${td.executionRoleArn}`);
+  if (td.taskRoleArn) problems.push(`has a task role (${td.taskRoleArn})`);
+  const names = (td.containerDefinitions ?? []).map((c) => c.name);
+  if (names.join(",") !== STAGING_CONTAINERS.join(",")) problems.push(`containers are ${names.join(", ") || "none"}`);
+  const image = (name) => (td.containerDefinitions ?? []).find((c) => c.name === name)?.image;
+  if (!STAGING_POSTGRES.test(image("postgres") ?? "")) problems.push(`postgres image is ${image("postgres")}`);
+  if (image("cloudflared") !== cloudflared) problems.push(`cloudflared image is ${image("cloudflared")}, not the pin`);
+  return problems;
+}
+
+/** The staging network Terraform published: one subnet list, exactly one security group, a public IP for egress. */
+export function checkStagingNetwork(net) {
+  const v = net?.awsvpcConfiguration;
+  const ok =
+    v && Array.isArray(v.subnets) && v.subnets.length > 0 && v.subnets.every((s) => /^subnet-[0-9a-f]+$/.test(s)) &&
+    Array.isArray(v.securityGroups) && v.securityGroups.length === 1 && /^sg-[0-9a-f]+$/.test(v.securityGroups[0]) &&
+    v.assignPublicIp === "ENABLED" && Object.keys(v).length === 3;
+  if (!ok) throw new Error("the published staging network is not one subnet list, one security group and a public IP");
+  return net;
 }
 
 /** The release record (`/satis/deploy/<env>/released`, D2): `{}` until the first release. */

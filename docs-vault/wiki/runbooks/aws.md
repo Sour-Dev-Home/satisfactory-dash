@@ -145,9 +145,22 @@ Steps 1-5 are now the fallback. The usual way is the **Deploy** workflow (below)
 from GitHub. A Terraform change to the backend's configuration still needs the apply (step 4), then the
 workflow's `redeploy` to run it.
 
-### Deploy from GitHub (ADR-0049 PR 3)
+### Deploy from GitHub (ADR-0049 PRs 3 and 5)
 
-GitHub → Actions → **Deploy** → Run workflow, on `main`:
+**Automatic (PR 5):** every merge to `main` that changes what goes into the backend images runs "Backend
+images", and when that succeeds, **Deploy** runs by itself: staging first, then production with no approval
+(owner answer 1). A merge that changes no backend path publishes no images, and Deploy ends green with "Nothing
+to deploy". **Staging** starts the `satis-staging` task with this release's images, db-previous on the released
+ops image (the schema production has now, then this release's migrations), and checks through Access that
+`/api/health` and `/ready` answer, both setup containers exited 0, and the staging admin signs in and sees an
+empty server list. It always stops the task and prints each container's exit code (and the log tails, redacted,
+on failure). Production never starts if staging fails. The `staging` GitHub environment holds
+`AWS_STAGING_ROLE_ARN` (variable) and `STAGING_ADMIN_PASSWORD`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`
+(secrets); see "Staging: one-time setup". **Tunnels:** `satis-prod` (`api.satis-manager.com`, the production
+task's) and `satis-staging` (`api-staging.satis-manager.com`, only the staging task's). Never put a staging route
+on `satis-prod` or a production token in `/satis/staging/`.
+
+**By hand:** GitHub → Actions → **Deploy** → Run workflow, on `main` (a `deploy` runs staging first too):
 
 - `deploy` with `sha` empty: the newest commit on `main` whose images were published. Or give a full
   40-character sha. It migrates first (on a non-zero exit the service is never touched), rolls the backend
