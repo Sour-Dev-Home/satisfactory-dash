@@ -1,0 +1,107 @@
+name: Deploy
+
+# ADR-0049 PR 3: the production deploy, by hand for now. Staging and the automatic run after "Backend images" come in
+# PRs 4 and 5. Actions:
+#   deploy    the images of `sha` (empty: the newest commit on main with published images): migrate, roll out, watch
+#   redeploy  the released digests on the current base (picks up a Terraform config change); no migration
+#   rollback  released.previous, or the images of `sha`; no migration, no alarm pre-check
+#
+# Never add pull_request_target or workflow_call: the deploy role trusts this file on main, in the production
+# environment, and nothing else (infra/aws/deploy_iam.tf). Sessions never approve, reject or re-run this workflow's
+# production runs (CLAUDE.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy, redeploy or rollback
+        type: choice
+        options: [deploy, redeploy, rollback]
+        default: deploy
+      sha:
+        description: "Commit on main (40 hex). deploy: empty = newest with images. rollback: empty = the previous release."
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    # No AWS: the two digests, checked (linux/arm64, revision label = sha), used by every later step.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+      backend: ${{ steps.r.outputs.backend }}
+      ops: ${{ steps.r.outputs.ops }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 50
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - id: r
+        if: inputs.action == 'deploy' || inputs.sha != ''
+        env:
+          SHA: ${{ inputs.sha }}
+        run: node scripts/deploy/deploy.mjs resolve "$SHA"
+      - name: Summary
+        env:
+          ACTION: ${{ inputs.action }}
+          SHA: ${{ steps.r.outputs.sha }}
+          BACKEND: ${{ steps.r.outputs.backend }}
+          OPS: ${{ steps.r.outputs.ops }}
+        run: |
+          {
+            echo "### $ACTION ${SHA:-(from the release record)}"
+            [ -n "$SHA" ] && echo "- backend \`$BACKEND\`" && echo "- ops \`$OPS\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - name: Print the OIDC subject
+        # Not a secret (ADR-0049 D1): the trust policy's StringEquals must match it exactly, case included.
+        run: |
+          set -euo pipefail
+          token="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)"
+          payload="$(cut -d. -f2 <<< "$token" | tr '_-' '/+')"
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="$payload="; done
+          echo "sub: $(base64 -d <<< "$payload" | jq -r .sub)"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: deploy-${{ github.run_id }}
+          role-duration-seconds: 3600
+          # The trust policy allows AssumeRoleWithWebIdentity only, not sts:TagSession.
+          role-skip-session-tagging: true
+      - name: ${{ inputs.action }}
+        env:
+          ACTION: ${{ inputs.action }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          BACKEND: ${{ needs.resolve.outputs.backend }}
+          OPS: ${{ needs.resolve.outputs.ops }}
+          DEPLOY_DISCORD_WEBHOOK: ${{ secrets.DEPLOY_DISCORD_WEBHOOK }}
+        run: node scripts/deploy/deploy.mjs production "$ACTION" "$SHA" "$BACKEND" "$OPS"
