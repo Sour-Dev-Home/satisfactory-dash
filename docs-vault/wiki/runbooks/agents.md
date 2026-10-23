@@ -169,7 +169,8 @@ history and alerts is capped per server below the input bounds (#515): see `hist
 ## Limits on the agent API (#514, ADR-0045)
 
 All in process, per backend instance (`backend/src/modules/agents/config.ts`; token buckets in
-`platform/tokenBucket.ts`). Every refusal is the usual 429 `rate_limited` with `Retry-After` (or 413 for an oversized
+`platform/tokenBucket.ts`). The agent API and the world-layer routes share one `createAgentAuth` instance (#562), so the
+failure and lookup budgets below cover both together. Every refusal is the usual 429 `rate_limited` with `Retry-After` (or 413 for an oversized
 body), which the agent honours and retries.
 
 | Limit | Key | Size | Why |

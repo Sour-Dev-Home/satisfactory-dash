@@ -81,7 +81,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | #514 agent limits: per credential, per network, then global with a refund | `agents/routes/agentApi.ts` | PASS |
 | SSRF: webhooks go to exactly discord.com or discordapp.com, push to allowlisted hosts (checked again at send), no redirects followed, server addresses DNS-pinned | `discordWebhook.ts`, `pushSender.ts`, `servers/addressGuard.ts` | PASS |
 | Races: the ownerless trigger, lock order for enrolment, deletion and transfer, guarded code consumption | migrations `…members_never_ownerless`, `accountDeletion.ts`, `memberRepository.ts` | PASS (#556; transfer-API follow-up in #311) |
-| **One agent-auth failure budget** | the world-layer `createAgentAuth` (`server.ts:476`) doubles it | GAP Low, #562 |
+| **One agent-auth failure budget** | `server.ts` builds one `createAgentAuth` (`agentAuth`) for the agent API and the world-layer routes; `agentAuthShared.test.ts` | PASS (#562) |
 | **The threat model matches the code** | ADR-0045 Amendment 3 recomputes M1 for 60-bit codes and 1,200/min (branch `chore/561-562-hardening`) | PASS |
 
 ## A07 Authentication Failures
@@ -92,7 +92,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | The cookie is httpOnly, Secure, SameSite=Lax, `path=/api` | `identity/session.ts` | PASS |
 | Google OIDC: state, nonce and PKCE stored server-side and used once; issuer, audience and expiry checked; `email_verified` required; accounts found by `sub` | `identity/googleOidc.ts`, `googleSignIn.ts`, `loginAttemptRepository.ts` | PASS |
 | Sensitive actions require a recent sign-in: account deletion needs one in the last 10 min, and using the site doesn't count | `identity/accountDeletion.ts` | PASS (#556) |
-| **The operator login is capped beyond per-IP** | `identity/loginRateLimiter.ts` is per /56 only, and a full table evicts blocked buckets | GAP Low, #562 |
+| **The operator login is capped beyond per-IP** | `identity/loginRateLimiter.ts`: 5 failures per /56 and 100 for the whole process per 15 min (a network that signed in within 7 days skips the global one); a full table never drops a live block | PASS (#562) |
 | Enrolment codes are single-use, expire after 10 min, one open per server, and are never logged | `agents/repositories/agentRepository.ts` | PASS |
 
 ## A08 Software or Data Integrity Failures

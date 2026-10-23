@@ -421,6 +421,10 @@ function attachAgentRuntime(publicId: string): Promise<void> {
   return swap;
 }
 
+// #562: ONE agent-auth instance for the agent API and the world-layer routes, so they share the failure budgets, the
+// recently-valid list and the per-credential lookup budget (map has no edge to agents, so it is injected).
+const agentAuth = database ? createAgentAuth({ db: database.pool }) : undefined;
+
 export const app = createApp({
   logger,
   allowedOrigins: identity.allowedOrigins,
@@ -488,12 +492,11 @@ export const app = createApp({
   ],
   // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
   agentRouters: [
-    ...(database && agentCommands
-      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered })
+    ...(database && agentCommands && agentAuth
+      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered, auth: agentAuth })
       : []),
-    // ADR-0038 M3 (#353): a second createAgentAuth instance (its own last-seen throttling map), same
-    // pattern as agentApi.ts's own construction — map has no edge to agents, so this is injected.
-    ...(database && worldIngest ? [createAgentWorldRouter({ auth: createAgentAuth({ db: database.pool }), ingest: worldIngest })] : []),
+    // ADR-0038 M3 (#353): the world layers, behind the same agentAuth as the agent API (#562).
+    ...(agentAuth && worldIngest ? [createAgentWorldRouter({ auth: agentAuth, ingest: worldIngest })] : []),
   ],
 });
 

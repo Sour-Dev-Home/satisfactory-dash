@@ -4,7 +4,7 @@
  * It hands each snapshot to the telemetry module's agent-backed services (through their index) and switches a server's
  * connection kind through the servers module's index; it knows nothing about how a game server is read.
  */
-import type { Router } from "express";
+import type { RequestHandler, Router } from "express";
 import type { Logger } from "pino";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { withTransaction } from "../../platform/db/transaction.js";
@@ -14,7 +14,6 @@ import { AGENT_CADENCE } from "./config.js";
 import { setAgentVersion } from "./repositories/agentRepository.js";
 import { createAgentApiRouter } from "./routes/agentApi.js";
 import { createAgentUserRouter } from "./routes/agentUser.js";
-import { createAgentAuth } from "./services/agentAuth.js";
 import { CommandSweeper } from "./services/commandSweeper.js";
 import type { AgentCommandsService, CommandsService } from "./services/commandsService.js";
 import { createEnrollmentService } from "./services/enrollmentService.js";
@@ -59,6 +58,9 @@ export interface AgentApiModuleDeps {
    *  first snapshot of a server that has none. */
   attachAgentRuntime: (publicId: string) => Promise<void>;
   isReady?: () => boolean;
+  /** The one `createAgentAuth` instance of the process, shared with the world-layer routes (#562): a second instance
+   *  would double the failure budgets and the per-credential lookup budget. */
+  auth: RequestHandler;
 }
 
 /** The agent's own API, to be mounted at /agent/v1 (createApp's `agentRouters`): no session, its own credential. */
@@ -66,7 +68,7 @@ export function createAgentApiRouters(deps: AgentApiModuleDeps): Router[] {
   const cadence = () => AGENT_CADENCE;
   return [
     createAgentApiRouter({
-      auth: createAgentAuth({ db: deps.db }),
+      auth: deps.auth,
       enrollment: createEnrollmentService({ db: deps.db, cadence, attachAgentRuntime: deps.attachAgentRuntime, logger: deps.logger }),
       commands: deps.commands,
       directory: deps.directory,
