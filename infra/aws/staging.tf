@@ -221,6 +221,11 @@ resource "aws_iam_role" "staging_deploy" {
 }
 
 # Exactly D1's staging table; tests/staging.tftest.hcl asserts every action list.
+# Accepted residual (security review, PR 4): ECS has no IAM condition on RunTask's network settings, so a session of
+# this role could start a staging revision with production's task group, which RDS admits: network reach to the
+# database, not its credentials (the execution role reads only /satis/staging/). Only deploy.yml on main can assume
+# this role, and that same file already assumes satis-prod-deploy, which runs code holding production's secrets, so
+# this adds no reach. The workflow passes only /satis/deploy/staging/network and refuses anything else (PR 5).
 resource "aws_iam_role_policy" "staging_deploy" {
   name = "${local.staging_name}-deploy"
   role = aws_iam_role.staging_deploy.id

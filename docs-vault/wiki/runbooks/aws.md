@@ -195,14 +195,15 @@ Do these once, in order:
    policy 2 on the application, action **Service Auth**, including that token. Keep its client id and secret for
    PR 5 (GitHub `staging` environment secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`).
 3. **Values** (PowerShell, from `satisfactory-dash`, after the usual `refresh`). Hex passwords need no URL
-   encoding. Never reuse a production value.
+   encoding. Never reuse a production value. Not under `Start-Transcript` (it prints the admin password once),
+   and copy the tunnel token to the clipboard first, so it never lands in PowerShell's history.
    ```powershell
    $hex = { [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)).ToLower() }   # 48 hex, CSPRNG
    $pg = & $hex; $mig = & $hex; $app = & $hex
    $adminPw = & $hex; $adminPw   # the staging admin's password: keep it for PR 5 (STAGING_ADMIN_PASSWORD)
    $hash = $adminPw | npm run --silent hash-password -w backend
    function put($k, $v) { aws ssm put-parameter --name "/satis/staging/$k" --type SecureString --value $v --overwrite --query Version }
-   put TUNNEL_TOKEN '<token from step 1>'
+   $tok = (Get-Clipboard).Trim(); put TUNNEL_TOKEN $tok; Remove-Variable tok   # the token from step 1, copied
    put SESSION_SECRET (& $hex)
    put DASHBOARD_ADMIN_USER 'staging-admin'
    put DASHBOARD_ADMIN_PASSWORD_HASH $hash
