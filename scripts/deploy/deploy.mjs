@@ -190,7 +190,7 @@ async function notify(deps, n) {
   deps.log(`notice:\n${text}`);
   if (!url) return deps.log("notice: no DEPLOY_DISCORD_WEBHOOK, not sent");
   try {
-    const r = await deps.fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: text, allowed_mentions: { parse: [] } }) });
+    const r = await deps.fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: text, allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(10_000) });
     if (!r.ok) deps.log(`notice: Discord answered ${r.status}`);
   } catch (e) {
     deps.log(`notice: not sent (${e.message})`);
@@ -253,7 +253,8 @@ export async function production(deps, action, given = {}, c = CONFIG) {
     if (!(await healthy(deps, c))) throw new Error(`${c.healthUrl} did not answer 200; the new revision is running, check it`);
 
     // D5 step 6.
-    const record = nextReleased(released, { sha: target.sha, backend: target.backend, ops: target.ops, taskDefinition });
+    // A redeploy re-runs the same release, so what it replaces is not a previous release: keep the one it had.
+    const record = nextReleased(action === "redeploy" ? released.previous : released, { sha: target.sha, backend: target.backend, ops: target.ops, taskDefinition });
     deps.aws(["ssm", "put-parameter", "--name", param(c.environment, "released"), "--type", "String", "--overwrite", "--value", JSON.stringify(record)]);
     deps.log("released: recorded");
     await notify(deps, { outcome: "released", action, ...target });

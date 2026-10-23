@@ -32,8 +32,13 @@ export function digestFromInspect(inspect, sha) {
     .filter((p) => p && p.os !== "unknown")
     .map((p) => `${p.os}/${p.architecture}`);
   if (!platforms.includes("linux/arm64")) throw new Error(`no linux/arm64 image (has ${platforms.join(", ") || "none"})`);
-  const images = inspect.image && typeof inspect.image === "object" ? Object.values(inspect.image) : [];
+  // A single-platform image inspects as the config itself, not a platform map.
+  const raw = inspect.image && typeof inspect.image === "object" ? inspect.image : null;
+  const map = raw && ("config" in raw || "architecture" in raw) ? { [`${raw.os}/${raw.architecture}`]: raw } : (raw ?? {});
+  const images = Object.values(map);
   if (images.length === 0) throw new Error("no image configs to check the revision label on");
+  // The arm64 image itself must have a config to check, not just be listed in the index.
+  if (!Object.keys(map).some((k) => k === "linux/arm64" || k.startsWith("linux/arm64/"))) throw new Error("no linux/arm64 image config to check the revision label on");
   for (const img of images) {
     const revision = img?.config?.Labels?.["org.opencontainers.image.revision"];
     if (revision !== sha) throw new Error(`revision label is ${revision ?? "missing"}, not ${sha}`);
@@ -106,6 +111,10 @@ export function parseReleased(value) {
   if (r === null || typeof r !== "object" || Array.isArray(r)) throw new Error("the released record is not an object");
   if (Object.keys(r).length === 0) return null;
   for (const k of ["sha", "backend", "ops", "taskDefinition"]) if (typeof r[k] !== "string") throw new Error(`released.${k} is missing`);
+  if (r.previous != null) {
+    if (typeof r.previous !== "object" || Array.isArray(r.previous)) throw new Error("released.previous is not an object");
+    for (const k of ["sha", "backend", "ops", "taskDefinition"]) if (typeof r.previous[k] !== "string") throw new Error(`released.previous.${k} is missing`);
+  }
   return r;
 }
 

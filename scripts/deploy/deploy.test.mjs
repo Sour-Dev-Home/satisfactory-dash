@@ -243,7 +243,8 @@ test("redeploy: the released digests on the current base, without a migration", 
   const record = await production(deps, "redeploy");
   assert.ok(!ops(deps).includes("ecs run-task"));
   assert.equal(record.backend, D("3"));
-  assert.equal(record.previous.sha, SHA);
+  assert.equal(record.previous.sha, OLD_SHA, "a redeploy keeps the real previous release, so a rollback still goes back");
+  assert.equal(record.taskDefinition, ARN(11));
 });
 
 test("deploy refuses without a resolved sha and digests; unknown actions refuse", async () => {
@@ -319,4 +320,131 @@ test("rolloutStatus", () => {
 test("the notice never pings and keeps the detail short", () => {
   const t = noticeText({ outcome: "failed", action: "deploy", sha: SHA, backend: D("1"), ops: D("2"), detail: "x".repeat(500), runUrl: "https://r" });
   assert.match(t, /^❌ Deploy failed \(deploy\) aaaaaaaa\nbackend 111111111111 · ops 222222222222\nx{300}\nhttps:\/\/r$/);
+});
+
+// ---- fresh-eyes pass ----
+
+test("redeploy of a first release (no previous) records previous null", async () => {
+  const deps = fakeDeps({ released: released(false) });
+  assert.equal((await production(deps, "redeploy")).previous, null);
+});
+
+test("rollout: ECS keeps the old deployment ACTIVE; a circuit-breaker rollback is a failure", () => {
+  const d = (status, taskDefinition, rolloutState, rolloutStateReason) => ({ status, taskDefinition, rolloutState, rolloutStateReason });
+  // New PRIMARY done but the service field lags: still waiting.
+  assert.equal(rolloutStatus({ taskDefinition: "o", deployments: [d("PRIMARY", "n", "COMPLETED"), d("ACTIVE", "o", "COMPLETED")] }, "n").state, "waiting");
+  // Circuit breaker: old td is the new PRIMARY, ours FAILED.
+  const rb = rolloutStatus({ taskDefinition: "o", deployments: [d("PRIMARY", "o", "IN_PROGRESS"), d("ACTIVE", "n", "FAILED", "tasks failed to start")] }, "n");
+  assert.equal(rb.state, "failed");
+  assert.match(rb.reason, /tasks failed/);
+  // Rolling back to `before` while ours is still ACTIVE.
+  assert.equal(rolloutStatus({ taskDefinition: "o", deployments: [d("PRIMARY", "o", "IN_PROGRESS"), d("ACTIVE", "n", "COMPLETED")] }, "o").state, "waiting");
+  assert.equal(rolloutStatus({ taskDefinition: "o", deployments: [d("PRIMARY", "o", "COMPLETED"), d("ACTIVE", "n", "COMPLETED")] }, "o").state, "done");
+  assert.equal(rolloutStatus(undefined, "n").state, "failed");
+  assert.equal(rolloutStatus({}, "n").state, "failed");
+});
+
+test("a rollout that never completes times out and notifies once", async () => {
+  const stuck = fakeDeps({ webhook: "https://d.example/h" });
+  const real = stuck.aws;
+  stuck.aws = (args, input) => {
+    const out = real(args, input);
+    if (args[1] === "describe-services") out.services[0].deployments = [{ status: "PRIMARY", taskDefinition: ARN(12), rolloutState: "IN_PROGRESS" }, { status: "ACTIVE", taskDefinition: ARN(9), rolloutState: "COMPLETED" }];
+    return out;
+  };
+  await assert.rejects(production(stuck, "deploy", target), /rollout did not complete in time/);
+  assert.equal(stuck.posts.length, 1);
+  assert.match(stuck.posts[0].body.content, /Deploy failed/);
+});
+
+test("a failed rollback after an alarm is reported once, as a failure", async () => {
+  const bad = fakeDeps({ alarmAt: (n) => (n === 1 ? "ALARM" : "OK"), rollout: (td) => td !== ARN(9), webhook: "https://d.example/h" });
+  await assert.rejects(production(bad, "deploy", target), /rollout failed/);
+  assert.equal(bad.posts.length, 1, "one notice only");
+  assert.match(bad.posts[0].body.content, /Deploy failed/);
+});
+
+test("the alarm rollback goes to the revision that ran before, waits, notifies once, records nothing", async () => {
+  const deps = fakeDeps({ alarmAt: (n) => (n === 3 ? "ALARM" : "OK"), webhook: "https://d.example/h" });
+  await assert.rejects(production(deps, "deploy", target), /^Error: rolled back: satis-prod-backend-critical/);
+  const updates = deps.calls.filter((c) => c.args[1] === "update-service").map((c) => c.args[c.args.indexOf("--task-definition") + 1]);
+  assert.deepEqual(updates, [ARN(12), ARN(9)]);
+  assert.equal(deps.posts.length, 1);
+  assert.match(deps.posts[0].body.content, /Rolled back/);
+  assert.ok(!deps.calls.some((c) => c.args[1] === "put-parameter"));
+});
+
+test("notice failures never fail the deploy, and the webhook call can time out", async () => {
+  for (const fetchImpl of [async () => { throw new Error("dns"); }, async () => ({ ok: false, status: 500 })]) {
+    const deps = fakeDeps({ webhook: "https://d.example/h" });
+    const base = deps.fetch;
+    deps.fetch = (url, init) => (init?.method === "POST" ? fetchImpl() : base(url, init));
+    const record = await production(deps, "deploy", target);
+    assert.equal(record.sha, SHA);
+  }
+  const deps = fakeDeps({ webhook: "https://d.example/h" });
+  const base = deps.fetch;
+  let signal;
+  deps.fetch = (url, init) => { if (init?.method === "POST") signal = init.signal; return base(url, init); };
+  await production(deps, "deploy", target);
+  assert.ok(signal instanceof AbortSignal, "a hanging webhook must time out instead of hanging the deploy");
+});
+
+test("a failed deploy with a throwing webhook still reports the original error", async () => {
+  const deps = fakeDeps({ migrateExit: 2, webhook: "https://d.example/h" });
+  deps.fetch = async () => { throw new Error("dns"); };
+  await assert.rejects(production(deps, "deploy", target), /db-migrate exited 2/);
+});
+
+test("parseReleased with odd values", () => {
+  assert.equal(parseReleased(null), null);
+  assert.equal(parseReleased(undefined), null);
+  assert.throws(() => parseReleased(5), /not an object/);
+  assert.throws(() => parseReleased({}), /not JSON/);
+  assert.throws(() => parseReleased("null"), /not an object/);
+  assert.throws(() => parseReleased(""), /not JSON/);
+  const ok = { sha: "s", backend: "b", ops: "o", taskDefinition: "t" };
+  assert.deepEqual(parseReleased(JSON.stringify({ ...ok, previous: null })), { ...ok, previous: null });
+  assert.throws(() => parseReleased(JSON.stringify({ ...ok, previous: "x" })), /previous is not an object/);
+  assert.throws(() => parseReleased(JSON.stringify({ ...ok, previous: { sha: "s" } })), /previous.backend is missing/);
+});
+
+test("revisionFrom does not mutate the base or share its objects, and keeps what ECS needs", () => {
+  const base = backendBase();
+  const snap = JSON.stringify(base);
+  const input = revisionFrom(base, "backend", imageRef("backend", D("3")));
+  assert.equal(JSON.stringify(base), snap);
+  input.containerDefinitions[0].secrets.push("x");
+  assert.equal(JSON.stringify(base), snap);
+  for (const k of ["family", "executionRoleArn", "networkMode", "requiresCompatibilities", "cpu", "memory", "runtimePlatform"]) assert.deepEqual(input[k], base[k], k);
+  assert.equal(input.revision, undefined);
+  assert.equal("taskRoleArn" in input, false);
+  assert.throws(() => revisionFrom({ family: "f" }, "backend", "i"), /no backend container/);
+  assert.throws(() => revisionFrom(base, "ops", "i"), /no ops container/);
+});
+
+test("digestFromInspect: single-platform image shape and an index whose arm64 has no config", () => {
+  const cfg = (sha) => ({ os: "linux", architecture: "arm64", config: { Labels: { "org.opencontainers.image.revision": sha } } });
+  const arm = { platform: { os: "linux", architecture: "arm64" } };
+  const single = (sha) => ({ manifest: { digest: D("9"), manifests: [arm] }, image: cfg(sha) });
+  assert.equal(digestFromInspect(single(SHA), SHA), D("9"));
+  assert.throws(() => digestFromInspect(single(OLD_SHA), SHA), /revision label is b+/);
+  // arm64 is listed, but only amd64's config is present: the label of arm64 was never checked.
+  const partial = { manifest: { digest: D("9"), manifests: [arm, { platform: { os: "linux", architecture: "amd64" } }] }, image: { "linux/amd64": cfg(SHA) } };
+  assert.throws(() => digestFromInspect(partial, SHA), /no linux\/arm64 image config/);
+  assert.throws(() => digestFromInspect(null, SHA), /no sha256 digest/);
+  assert.throws(() => digestFromInspect({ manifest: { digest: D("9"), manifests: [arm] }, image: { "linux/arm64": { config: { Labels: null } } } }, SHA), /revision label is missing/);
+});
+
+test("resolveNewest and resolveSha edge cases", () => {
+  assert.throws(() => resolveNewest({ inspect() {}, recentShas: () => [], log() {} }, 5), /none of the last 5/);
+  assert.throws(() => resolveSha({ inspect() {} }, undefined), /not a full commit sha/);
+});
+
+test("rollback to a given sha needs digests, and chains previous one level", async () => {
+  await assert.rejects(production(fakeDeps({ released: released() }), "rollback", { sha: OLD_SHA }), /needs its resolved digests/);
+  const deps = fakeDeps({ released: released() });
+  const record = await production(deps, "rollback", { sha: OLD_SHA, backend: D("5"), ops: D("6") });
+  assert.equal(record.previous.sha, SHA);
+  assert.equal(record.previous.previous, undefined);
 });
