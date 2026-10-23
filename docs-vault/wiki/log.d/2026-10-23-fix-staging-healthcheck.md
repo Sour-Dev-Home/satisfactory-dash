@@ -1,0 +1,1 @@
+- 2026-10-23 — Staging postgres health check: 10 retries and a 30 s start period (ECS refuses more than 10 retries; the first staging apply failed on 12). A test now holds every container health check to ECS's limits.

@@ -169,3 +169,16 @@ run "d2_staging_records_are_plain_strings" {
     error_message = "RunTask uses staging's own group"
   }
 }
+
+run "every_health_check_is_within_ecs_limits" {
+  command = apply
+
+  # RegisterTaskDefinition refuses retries above 10, interval outside 5-300, timeout outside 2-60 and startPeriod above
+  # 300 (seconds); the mock provider doesn't, so these are asserted here (the first staging apply hit retries = 12).
+  assert {
+    condition = alltrue([for td in [aws_ecs_task_definition.staging, aws_ecs_task_definition.main] : alltrue([for c in jsondecode(td.container_definitions) : try(
+      c.healthCheck.retries >= 1 && c.healthCheck.retries <= 10 && c.healthCheck.interval >= 5 && c.healthCheck.interval <= 300 && c.healthCheck.timeout >= 2 && c.healthCheck.timeout <= 60 && c.healthCheck.startPeriod <= 300,
+    true)])])
+    error_message = "a health check outside ECS's limits fails RegisterTaskDefinition"
+  }
+}
