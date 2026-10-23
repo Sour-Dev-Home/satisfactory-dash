@@ -78,7 +78,14 @@ const KIND_NAMES: ReadonlyMap<ConveyorNodeKind, string> = new Map([
 ]);
 const kindName = (k: ConveyorNodeKind): string => KIND_NAMES.get(k) ?? "other";
 
-const r2 = (n: number): number => Math.round(n * 100) / 100;
+/** Two decimals, and always a finite, non-negative number the contract accepts (a sum of huge rates can overflow). */
+const r2 = (n: number): number => {
+  if (Number.isNaN(n) || n <= 0) return 0;
+  if (!Number.isFinite(n)) return Number.MAX_VALUE;
+  return n >= 1e15 ? n : Math.round(n * 100) / 100;
+};
+/** A state is a record key in the contract (40 characters at most). */
+const STATE_MAX = 40;
 const snap = (v: number): number => Math.round(v / KEY_GRID_M) * KEY_GRID_M || 0;
 const whole = (v: number): number => Math.round(v) || 0;
 
@@ -173,7 +180,9 @@ interface Cand {
   item: { className: string; name: string } | null;
   inferred: boolean;
   mixed: boolean;
-  conveyorIds: Set<string>;
+  /** The links this edge passes through, by reference: copying every link's conveyor ids into each candidate of a large
+   *  merger (groups in x groups out, thousands of conveyors) exhausted memory. */
+  links: Link[];
   chains: number[];
   linkCount: number;
 }
@@ -281,7 +290,10 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
     grp.units.push(unit);
     if (b) {
       grp.ids.push(b.id);
-      if (b.state !== undefined) grp.stateCounts[b.state] = (grp.stateCounts[b.state] ?? 0) + 1;
+      if (b.state !== undefined) {
+        const st = b.state.slice(0, STATE_MAX);
+        grp.stateCounts[st] = (grp.stateCounts[st] ?? 0) + 1;
+      }
       addRates(grp.prod, b.production);
       addRates(grp.ing, b.ingredients);
     }
@@ -364,12 +376,12 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
         truncated = true;
         return;
       }
-      c = { s, d, kind, item, inferred, mixed: false, conveyorIds: new Set(), chains: [], linkCount: 0 };
+      c = { s, d, kind, item, inferred, mixed: false, links: [], chains: [], linkCount: 0 };
       cands.set(key, c);
     }
     c.mixed ||= link.mixed;
     c.inferred ||= inferred;
-    for (const id of link.conveyorIds) c.conveyorIds.add(id);
+    c.links.push(link);
     c.linkCount++;
     if (link.chain && link.arcs.length > 0) c.chains.push(Math.min(...link.arcs.map((a) => a.cap)));
   };
@@ -478,7 +490,7 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
       rate,
       mixed: c.mixed,
       capacityPerMinute: chain,
-      conveyorCount: c.conveyorIds.size,
+      conveyorCount: c.links.length === 1 ? c.links[0].conveyorIds.size : new Set(c.links.flatMap((l) => [...l.conveyorIds])).size,
     });
   }
   outEdges.sort((a, b) => byString(a.from, b.from) || byString(a.to, b.to) || byString(a.itemClassName ?? "", b.itemClassName ?? "") || byString(a.kind, b.kind));
@@ -643,7 +655,8 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
   if (kept.some((grp) => grp.ids.length > PLANNER_MAX_MACHINE_IDS)) truncated = true;
 
   // ---- unconnected machines and notes ----
-  const allUnconnected = sorted.filter((b) => b.recipe !== null && !g.idToNode.has(b.id)).map((b) => b.id);
+  // An id the contract cannot carry (empty, or over 128 characters) can never be named by a conveyor either, so it is left out.
+  const allUnconnected = sorted.filter((b) => b.recipe !== null && !g.idToNode.has(b.id) && b.id.length >= 1 && b.id.length <= 128).map((b) => b.id);
   const unconnectedMachineIds = allUnconnected.slice(0, 20_000);
   if (allUnconnected.length > unconnectedMachineIds.length) truncated = true;
   const beltData: ProductionGraph["beltData"] = allUnconnected.length > 0 ? "stale" : "present";
