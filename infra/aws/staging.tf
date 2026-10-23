@@ -148,7 +148,7 @@ resource "aws_ecs_task_definition" "staging" {
       # Loopback only: the backend and the setup containers share the task's network namespace.
       command          = ["postgres", "-c", "listen_addresses=127.0.0.1"]
       secrets          = [{ name = "POSTGRES_PASSWORD", valueFrom = local.staging_ssm_arns["POSTGRES_PASSWORD"] }]
-      healthCheck      = { command = ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"], interval = 5, timeout = 5, retries = 12, startPeriod = 10 }
+      healthCheck      = { command = ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"], interval = 5, timeout = 5, retries = 10, startPeriod = 30 }
       logConfiguration = { logDriver = "awslogs", options = merge(local.staging_log_options, { "awslogs-stream-prefix" = "postgres" }) }
     },
     {
