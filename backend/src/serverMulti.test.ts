@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
-import net from "node:net";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,19 +15,12 @@ let session: string;
 let dir: string;
 const PASSWORD = "server-multi-test-password";
 
-async function closedPort(): Promise<number> {
-  const server = net.createServer();
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as net.AddressInfo;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  return port;
-}
-
-const ports = { alpha: 0, beta: 0 };
+// Two fixed privileged ports nothing listens on, never released ephemeral ones: a parallel test file's supertest server
+// can take a released port and answer for the "game server" (server.test.ts). Different last digits, so neither
+// `:${port}` is a substring of the other's address.
+const ports = { alpha: 1, beta: 9 };
 
 beforeAll(async () => {
-  ports.alpha = await closedPort();
-  ports.beta = await closedPort();
   dir = mkdtempSync(path.join(tmpdir(), "servers-file-"));
   const file = path.join(dir, "servers.json");
   writeFileSync(
