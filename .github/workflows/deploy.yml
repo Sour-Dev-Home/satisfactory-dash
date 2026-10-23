@@ -100,6 +100,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: staging
+    outputs:
+      skip: ${{ steps.s.outputs.skip }}
     permissions:
       contents: read
       id-token: write
@@ -118,7 +120,10 @@ jobs:
           role-duration-seconds: 3600
           role-skip-session-tagging: true
       - name: staging
+        id: s
         env:
+          # Automatic runs skip images production already runs (a later merge with no backend change).
+          DEPLOY_AUTO: ${{ github.event_name == 'workflow_run' }}
           SHA: ${{ needs.resolve.outputs.sha }}
           BACKEND: ${{ needs.resolve.outputs.backend }}
           OPS: ${{ needs.resolve.outputs.ops }}
@@ -132,7 +137,8 @@ jobs:
     # A deploy only after staging passed; redeploy and rollback ship images production already ran, so they skip it.
     if: >-
       !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.skip != 'true' &&
-      (needs.staging.result == 'success' || (needs.staging.result == 'skipped' && needs.resolve.outputs.action != 'deploy'))
+      ((needs.staging.result == 'success' && needs.staging.outputs.skip != 'true') ||
+       (needs.staging.result == 'skipped' && needs.resolve.outputs.action != 'deploy'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: production

@@ -195,13 +195,6 @@ test("revisionWith swaps several images and leaves the base alone", () => {
   assert.throws(() => revisionWith(base, { nope: "x" }), /no nope container/);
 });
 
-test("resolveAuto: a commit that published no images is a green skip", () => {
-  const logs = [];
-  const none = { inspect: () => { throw new Error("manifest unknown"); }, log: (s) => logs.push(s) };
-  assert.deepEqual(resolveAuto(none, SHA), { sha: SHA, backend: "", ops: "", skip: "true" });
-  assert.match(logs[0], /no published images for aaaaaaaa/);
-  assert.throws(() => resolveAuto(none, "main"), /not a full commit sha/);
-});
 
 test("the staging hostname and user are the ones the setup created", () => {
   assert.equal(STAGING.url, "https://api-staging.satis-manager.com");
@@ -295,13 +288,51 @@ test("revisionWith: an empty map is a clean copy; a released record without ops 
   assert.ok(!ops(deps).includes("run-task"));
 });
 
-test("resolveAuto skips only when the image is missing; other errors fail", () => {
-  const boom = (m) => ({ inspect: () => { throw new Error(m); }, log() {} });
-  for (const m of ["ERROR: x:y: not found", "manifest unknown", "denied: no such manifest"]) assert.equal(resolveAuto(boom(m), SHA).skip, "true");
+
+// An index with both platforms whose revision label is `sha`, as `docker buildx imagetools inspect --format '{{json .}}'`.
+const published = (sha, digest) => ({
+  manifest: { digest, manifests: [{ platform: { os: "linux", architecture: "amd64" } }, { platform: { os: "linux", architecture: "arm64" } }] },
+  image: { "linux/amd64": { config: { Labels: { "org.opencontainers.image.revision": sha } } }, "linux/arm64": { config: { Labels: { "org.opencontainers.image.revision": sha } } } },
+});
+const NEWER = "c".repeat(40);
+const OLDER = "d".repeat(40);
+/** A registry where only `images` (sha -> [backend, ops] digests) are published. */
+const registry = (images, error) => ({
+  inspect: (ref) => {
+    if (error) throw new Error(error);
+    const [repo, sha] = ref.split(":").slice(-2);
+    const found = images[sha];
+    if (!found) throw new Error(`ERROR: ${ref}: not found`);
+    return published(sha, repo.endsWith("-backend") ? found[0] : found[1]);
+  },
+  recentShas: () => [NEWER, SHA, OLDER],
+  log() {},
+});
+
+test("resolveAuto: the newest published images on main, even when the triggering commit published none (coalesced runs)", () => {
+  // The run is for NEWER (no backend change); SHA, a merge before it, did publish: it must still ship.
+  assert.deepEqual(resolveAuto(registry({ [SHA]: [D("1"), D("2")] }), NEWER), { sha: SHA, backend: D("1"), ops: D("2"), skip: "false" });
+  // The triggering commit's own images when it published them.
+  assert.equal(resolveAuto(registry({ [NEWER]: [D("3"), D("4")], [SHA]: [D("1"), D("2")] }), SHA).sha, NEWER);
+  // Nothing published anywhere in reach: a green skip.
+  assert.equal(resolveAuto(registry({}), NEWER).skip, "true");
+  assert.throws(() => resolveAuto(registry({}), "main"), /not a full commit sha/);
+});
+
+test("resolveAuto fails loudly on anything but a missing image, never shipping an older release instead", () => {
   for (const m of ["dial tcp: i/o timeout", "unauthorized: authentication required", "Cannot connect to the Docker daemon"]) {
-    assert.throws(() => resolveAuto(boom(m), SHA), new RegExp(m.split(" ")[0]));
+    assert.throws(() => resolveAuto(registry({}, m), SHA), new RegExp(m.split(" ")[0]));
   }
-  // An image that is there but wrong (arm64 missing) is a failure, not a skip.
-  const wrong = { inspect: () => ({ manifest: { digest: D("1"), manifests: [{ platform: { os: "linux", architecture: "amd64" } }] } }), log() {} };
+  const wrong = { inspect: () => ({ manifest: { digest: D("1"), manifests: [{ platform: { os: "linux", architecture: "amd64" } }] } }), recentShas: () => [SHA], log() {} };
   assert.throws(() => resolveAuto(wrong, SHA), /arm64/);
+});
+
+test("an automatic staging run skips images production already runs, before starting anything", async () => {
+  const deps = fakeDeps({ released: JSON.stringify({ sha: SHA, backend: D("3"), ops: D("4"), taskDefinition: "x", previous: null }) });
+  assert.deepEqual(await staging(deps, target, { ...STAGING, skipIfReleased: true }), { skipped: true });
+  assert.ok(!ops(deps).includes("register-task-definition") && !ops(deps).includes("run-task"));
+  // A dispatched deploy may re-ship them on purpose.
+  const again = fakeDeps({ released: JSON.stringify({ sha: SHA, backend: D("3"), ops: D("4"), taskDefinition: "x", previous: null }) });
+  assert.equal((await staging(again, target)).skipped, undefined);
+  assert.ok(ops(again).includes("run-task"));
 });

@@ -322,6 +322,12 @@ export async function staging(deps, target, s = STAGING) {
   if (!password || !accessId || !accessSecret) throw new Error("STAGING_ADMIN_PASSWORD, CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set");
 
   const released = parseReleased(getParam(deps, param("prod", "released")));
+  // An automatic run whose newest images production already runs (a merge with no backend change, after the release
+  // that did): nothing to do. A dispatched deploy may still re-ship them on purpose.
+  if (s.skipIfReleased && released && released.backend === target.backend && released.ops === target.ops) {
+    deps.log(`staging: production already runs ${target.sha.slice(0, 8)}'s images; nothing to deploy`);
+    return { skipped: true };
+  }
   const previousOps = released?.ops ?? target.ops;
   deps.log(`staging: ${target.sha} on top of ${released ? `the released ops ${previousOps}` : "a fresh database (nothing released yet)"}`);
 
@@ -446,16 +452,30 @@ async function stopStaging(deps, s, taskArn, ok) {
 }
 
 /** For the automatic run: a sha whose image run published nothing (no backend change) is a green skip, not a failure. */
-export function resolveAuto(deps, sha) {
-  try {
-    return { ...resolveSha(deps, sha), skip: "false" };
-  } catch (e) {
-    // Only "the image isn't there" is a skip. A registry/network error, or an image that is there but wrong (revision
-    // label, no arm64), must fail loudly: skipping would silently drop a release.
-    if (!isSha(sha) || !/not found|manifest unknown|no such manifest|name unknown/i.test(e.message)) throw e;
-    deps.log(`resolve: no published images for ${sha.slice(0, 8)} (${e.message.split("\n")[0]}); nothing to deploy`);
-    return { sha, backend: "", ops: "", skip: "true" };
+const NOT_PUBLISHED = /not found|manifest unknown|no such manifest|name unknown/i;
+
+/**
+ * For the automatic run: the newest commit on main (walking back from HEAD, at most `limit`) whose images are
+ * published. Not only the triggering commit's: GitHub keeps one pending run per concurrency group, so a run for a later
+ * merge can cancel the one for an earlier backend change, and that change must still ship. Whether production already
+ * runs these images is staging's check (it can read the release record; this job has no AWS).
+ *
+ * Only "the image isn't there" moves on to an older commit. A registry or network error, or an image that is there but
+ * wrong (revision label, no arm64), fails loudly: skipping it would silently ship an older release instead.
+ */
+export function resolveAuto(deps, sha, limit = 50) {
+  if (!isSha(sha)) throw new Error(`not a full commit sha: ${sha}`);
+  for (const candidate of deps.recentShas(limit)) {
+    try {
+      const r = resolveSha(deps, candidate);
+      if (candidate !== sha) deps.log(`resolve: run for ${sha.slice(0, 8)}; the newest published images are ${candidate.slice(0, 8)}'s`);
+      return { ...r, skip: "false" };
+    } catch (e) {
+      if (!NOT_PUBLISHED.test(e.message)) throw e;
+    }
   }
+  deps.log(`resolve: no published images in the last ${limit} commits; nothing to deploy`);
+  return { sha, backend: "", ops: "", skip: "true" };
 }
 
 function output(env, pairs) {
@@ -474,7 +494,8 @@ async function main(argv) {
     output(deps.env, resolveAuto(deps, rest[0]));
   } else if (cmd === "staging") {
     const [sha, backend, ops] = rest;
-    await staging(deps, { sha, backend, ops });
+    const r = await staging(deps, { sha, backend, ops }, { ...STAGING, skipIfReleased: deps.env.DEPLOY_AUTO === "true" });
+    output(deps.env, { skip: r.skipped ? "true" : "false" });
   } else if (cmd === "production") {
     const [action, sha, backend, ops] = rest;
     await production(deps, action, { sha: sha || undefined, backend: backend || undefined, ops: ops || undefined });
