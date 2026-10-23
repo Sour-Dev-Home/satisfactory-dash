@@ -1,7 +1,6 @@
 import type { Ref } from "react";
-import { formatTickRate } from "../../format";
-import { DataAge } from "../../components/DataAge";
 import { cn } from "../../lib/cn";
+import { AgeBadge } from "./AgeBadge";
 import { Rivets } from "./Rivets";
 import { StationTiles, type OverviewSection } from "./StationTiles";
 import { tickTone, toneClass } from "./tick";
@@ -39,29 +38,25 @@ function Heart({ health, quiet }: { health: Shown; quiet: boolean }) {
 /** How fresh the status is: its snapshot's time, and whether the backend says it's late. */
 export type Age = { observedAt: string; late: boolean };
 
-function TickRow({ tick, age }: { tick: Tick; age?: Age }) {
-  // flex-none: beside the status from lg, the gauge keeps its size and the status text wraps instead.
-  if (tick === null) return <p className="mb-0 flex-none text-sm text-muted">Server tick: no game running.</p>;
+/** The one tick line under the status (#616): rate and verdict, then the bar. Fixed size, so nothing moves. */
+function TickRow({ tick }: { tick: Tick }) {
+  if (tick === null) return <p className="mb-0 text-sm text-muted">Tick: no game running.</p>;
   const slow = tick.health === "slow";
   return (
-    <div className="flex flex-none items-end gap-3">
-      <TickGauge rate={tick.rate} health={tick.health} />
-      <p className="mb-0 grid text-sm">
-        <span className="text-muted">Server tick</span>
-        <span className="text-base font-semibold text-fg-strong">{formatTickRate(tick.rate)}</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <p className="mb-0 tabular-nums">
+        <span className="text-muted">Tick </span>
+        <span className="font-semibold text-fg-strong">{tick.rate.toFixed(1)}/s</span>
+        <span className="text-muted"> · </span>
         <span className={slow ? cn("font-semibold", toneClass(tickTone(tick))) : "text-muted"}>{slow ? "Slow" : "Healthy"}</span>
-        {age && (
-          <span className="text-muted">
-            <DataAge observedAt={age.observedAt} late={age.late} />
-          </span>
-        )}
       </p>
+      <TickGauge rate={tick.rate} health={tick.health} />
     </div>
   );
 }
 
 /**
- * The Health card: the one place the overall state is said (#442), with the server tick beside it
+ * The Health card: the one place the overall state is said (#442), with the server tick under it
  * and Server, Power and Factory as station tiles below (the owner's calls). Only shows what health.ts
  * derived and what the backend classified (tickHealth). A dismissed warning stays in the card,
  * quietly, until something changes.
@@ -78,7 +73,7 @@ export function HealthCard({
   overall: { health: Shown; headline: string };
   /** Left out while the status loads or fails: the card then shows no tick. */
   tick?: Tick;
-  /** The status snapshot's age, shown with the tick ("Updated 8 s ago"). */
+  /** The status snapshot's age, the badge beside the heading (exact: "Updated 8 s ago"). */
   age?: Age;
   /** Server, Power and Factory, as station tiles. */
   sections?: OverviewSection[];
@@ -103,6 +98,7 @@ export function HealthCard({
         <h3 id="health-heading" ref={headingRef} tabIndex={-1} className="mb-0">
           Health
         </h3>
+        {age && <AgeBadge observedAt={age.observedAt} late={age.late} />}
         {onDismiss && !hidden && (
           <button
             type="button"
@@ -115,14 +111,9 @@ export function HealthCard({
           </button>
         )}
       </div>
-      {/* Stacked in the narrow column; from lg up, where the card takes half the row (#329), the
-          status and the tick gauge sit side by side so the card's width isn't left empty (the owner's
-          pick, after the ui review). Reading order stays status first. */}
-      {/* From lg a long headline wraps inside the status block while the gauge keeps its size. The block
-          never shrinks below its longest word (min-w-auto), so when "DEGRADED" and the gauge don't both
-          fit, at 1024 px say, the gauge wraps below instead of being drawn over the word (#593). */}
-      <div className="grid gap-3 lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-4">
-        <div className="flex min-w-0 items-center gap-3 lg:min-w-auto lg:flex-1">
+      {/* One stacked layout at every width (#616): status first, then the tick line. */}
+      <div className="grid gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Heart health={overall.health} quiet={hidden} />
           <p role="status" className="mb-0 grid">
             <span
@@ -139,7 +130,7 @@ export function HealthCard({
             </span>
           </p>
         </div>
-        {tick !== undefined && <TickRow tick={tick} age={age} />}
+        {tick !== undefined && <TickRow tick={tick} />}
       </div>
       <StationTiles sections={sections} />
     </section>

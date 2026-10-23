@@ -411,3 +411,23 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
   });
 }
+
+// #616: the age badge's label changes, nothing in the Health card moves.
+test("the Health card keeps its layout as the status ages", async ({ page, mockApi }) => {
+  await mockApi("default");
+  await page.clock.setFixedTime(LIVE_NOW);
+  await page.goto("/app");
+  const card = page.getByRole("region", { name: "Health" });
+  const badge = card.locator("[data-age-label]");
+  await expect(badge).toHaveText("live");
+  const boxes = async () => [
+    await card.getByRole("heading", { name: "Health" }).boundingBox(),
+    await card.locator("[data-age]").boundingBox(),
+    await card.locator("svg[data-gauge]").boundingBox(),
+    await card.boundingBox(),
+  ];
+  const before = await boxes();
+  await page.clock.setFixedTime(new Date(Date.parse(LIVE_NOW) + 195_000).toISOString());
+  await expect(badge).toHaveText("3 min");
+  expect(await boxes()).toEqual(before);
+});
