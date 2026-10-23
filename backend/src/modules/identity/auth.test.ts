@@ -320,6 +320,92 @@ describe("LoginRateLimiter", () => {
     now += WINDOW_MS - 1000;
     expect(limiter.retryAfterSeconds("3.3.3.3")).toBe(0);
   });
+
+  describe("global budget edges (#562 fresh-eyes)", () => {
+    const fill = (limiter: LoginRateLimiter, n: number, from = 0) => {
+      for (let i = 0; i < n; i++) limiter.recordFailure(ipv4(from + i));
+    };
+
+    it("is still blocked 1 ms before the window ends and open exactly at the boundary", () => {
+      let now = 1_000_000;
+      const limiter = new LoginRateLimiter(() => now);
+      fill(limiter, GLOBAL_MAX_FAILURES);
+      now += WINDOW_MS - 1;
+      expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(1);
+      now += 1;
+      expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(0);
+    });
+
+    it("a second success from the same network does not refund twice", () => {
+      const limiter = new LoginRateLimiter();
+      fill(limiter, 10);
+      limiter.recordFailure("192.0.2.1");
+      limiter.recordSuccess("192.0.2.1"); // refunds its own
+      limiter.recordSuccess("192.0.2.1"); // trusted now: must not refund another's failure
+      fill(limiter, GLOBAL_MAX_FAILURES - 10, 10);
+      expect(limiter.retryAfterSeconds("203.0.113.9")).toBeGreaterThan(0);
+    });
+
+    it("a trusted network that keeps failing never spends the global budget, only its own bucket", () => {
+      const limiter = new LoginRateLimiter();
+      limiter.recordFailure("198.51.100.7");
+      limiter.recordSuccess("198.51.100.7");
+      for (let i = 0; i < GLOBAL_MAX_FAILURES * 2; i++) {
+        limiter.recordFailure("198.51.100.7");
+        limiter.recordSuccess("198.51.100.7");
+      }
+      expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(0);
+      for (let i = 0; i < MAX_FAILURES; i++) limiter.recordFailure("198.51.100.7");
+      expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(0);
+      expect(limiter.retryAfterSeconds("198.51.100.7")).toBeGreaterThan(0);
+    });
+
+    it("keeps at most 100 trusted networks: the 101st evicts the oldest", () => {
+      const limiter = new LoginRateLimiter();
+      for (let i = 0; i < 101; i++) limiter.recordSuccess(ipv4(i));
+      fill(limiter, GLOBAL_MAX_FAILURES, 1000);
+      expect(limiter.retryAfterSeconds(ipv4(0))).toBeGreaterThan(0); // evicted
+      expect(limiter.retryAfterSeconds(ipv4(1))).toBe(0);
+      expect(limiter.retryAfterSeconds(ipv4(100))).toBe(0);
+    });
+
+    it("re-signing in refreshes trust order instead of evicting an active network", () => {
+      const limiter = new LoginRateLimiter();
+      for (let i = 0; i < 100; i++) limiter.recordSuccess(ipv4(i));
+      limiter.recordSuccess(ipv4(0)); // refresh the oldest
+      limiter.recordSuccess(ipv4(500)); // 101st: evicts ipv4(1), not ipv4(0)
+      fill(limiter, GLOBAL_MAX_FAILURES, 1000);
+      expect(limiter.retryAfterSeconds(ipv4(0))).toBe(0);
+      expect(limiter.retryAfterSeconds(ipv4(1))).toBeGreaterThan(0);
+    });
+
+    it("trust is per IPv6 /56, and an IPv4 address never matches an IPv6 block", () => {
+      const limiter = new LoginRateLimiter();
+      limiter.recordSuccess("2001:db8:0:1::1");
+      fill(limiter, GLOBAL_MAX_FAILURES);
+      expect(limiter.retryAfterSeconds("2001:db8:0:1::abcd")).toBe(0);
+      expect(limiter.retryAfterSeconds("2001:db8:0:ff00::1")).toBeGreaterThan(0);
+      expect(limiter.retryAfterSeconds("192.0.2.1")).toBeGreaterThan(0);
+    });
+
+    it("trust expires exactly at TRUSTED_MS", () => {
+      let now = 1_000_000;
+      const limiter = new LoginRateLimiter(() => now);
+      limiter.recordSuccess("198.51.100.7");
+      now += TRUSTED_MS - 1;
+      fill(limiter, GLOBAL_MAX_FAILURES);
+      expect(limiter.retryAfterSeconds("198.51.100.7")).toBe(0);
+      now += 1;
+      expect(limiter.retryAfterSeconds("198.51.100.7")).toBeGreaterThan(0);
+    });
+
+    it("stays bounded under many distinct failing keys", () => {
+      const limiter = new LoginRateLimiter(() => 1_000_000, 50);
+      for (let i = 0; i < 5000; i++) limiter.recordFailure(ipv4(i));
+      // @ts-expect-error reading private state to check the bound
+      expect(limiter.buckets.size).toBeLessThanOrEqual(50);
+    });
+  });
 });
 
 describe("loadAuthConfigFromEnv", () => {
