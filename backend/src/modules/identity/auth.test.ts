@@ -4,7 +4,13 @@ import type { ParsedPasswordHash } from "./passwordHash.js";
 import { createHmac, randomBytes } from "node:crypto";
 import { SESSION_TTL_SECONDS, createSessionToken, readSessionToken, verifySessionToken } from "./sessionToken.js";
 import { SessionDenylist } from "./sessionDenylist.js";
-import { LoginRateLimiter, MAX_FAILURES, WINDOW_MS } from "./loginRateLimiter.js";
+import {
+  GLOBAL_MAX_FAILURES,
+  LoginRateLimiter,
+  MAX_FAILURES,
+  TRUSTED_MS,
+  WINDOW_MS,
+} from "./loginRateLimiter.js";
 import { SingleOperatorAuthenticator } from "./authenticator.js";
 import { loadAuthConfigFromEnv } from "./authConfig.js";
 import { ConfigError } from "../../platform/errors.js";
@@ -247,6 +253,72 @@ describe("LoginRateLimiter", () => {
     limiter.recordSuccess("1.2.3.4");
     limiter.recordFailure("1.2.3.4");
     expect(limiter.retryAfterSeconds("1.2.3.4")).toBe(0);
+  });
+
+  // #562: one failure each from many addresses never trips a per-IP block.
+  const ipv4 = (i: number) => `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`;
+
+  it(`refuses every untrusted network once ${GLOBAL_MAX_FAILURES} failures are spread over many addresses`, () => {
+    let now = 1_000_000;
+    const limiter = new LoginRateLimiter(() => now);
+    for (let i = 0; i < GLOBAL_MAX_FAILURES - 1; i++) limiter.recordFailure(ipv4(i));
+    expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(0);
+    limiter.recordFailure(ipv4(GLOBAL_MAX_FAILURES));
+    expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(WINDOW_MS / 1000);
+    now += WINDOW_MS;
+    expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(0);
+  });
+
+  it("refunds a successful login, so successes never spend the global budget", () => {
+    const limiter = new LoginRateLimiter();
+    for (let i = 0; i < GLOBAL_MAX_FAILURES * 2; i++) {
+      limiter.recordFailure(ipv4(i));
+      limiter.recordSuccess(ipv4(i));
+    }
+    expect(limiter.retryAfterSeconds("192.0.2.1")).toBe(0);
+  });
+
+  it("lets a network that signed in skip a spent global budget, but not its own per-IP limit", () => {
+    let now = 1_000_000;
+    const limiter = new LoginRateLimiter(() => now);
+    limiter.recordFailure("198.51.100.7");
+    limiter.recordSuccess("198.51.100.7");
+    for (let i = 0; i < GLOBAL_MAX_FAILURES; i++) limiter.recordFailure(ipv4(i));
+    expect(limiter.retryAfterSeconds("192.0.2.1")).toBeGreaterThan(0);
+    expect(limiter.retryAfterSeconds("198.51.100.7")).toBe(0);
+    for (let i = 0; i < MAX_FAILURES; i++) limiter.recordFailure("198.51.100.7");
+    expect(limiter.retryAfterSeconds("198.51.100.7")).toBeGreaterThan(0);
+    // The trust ends after TRUSTED_MS.
+    now += TRUSTED_MS;
+    for (let i = 0; i < GLOBAL_MAX_FAILURES; i++) limiter.recordFailure(ipv4(i));
+    expect(limiter.retryAfterSeconds("198.51.100.7")).toBeGreaterThan(0);
+  });
+
+  it("makes room in a full table by dropping the oldest bucket that isn't blocked, never a block", () => {
+    const limiter = new LoginRateLimiter(Date.now, 3);
+    for (let i = 0; i < MAX_FAILURES; i++) limiter.recordFailure("1.1.1.1"); // blocked, oldest
+    limiter.recordFailure("2.2.2.2");
+    limiter.recordFailure("3.3.3.3");
+    limiter.recordFailure("4.4.4.4"); // full: drops 2.2.2.2
+    expect(limiter.retryAfterSeconds("1.1.1.1")).toBeGreaterThan(0);
+    for (let i = 0; i < MAX_FAILURES - 1; i++) limiter.recordFailure("3.3.3.3");
+    // 3.3.3.3 was not dropped: one more failure from it would have started a fresh count.
+    expect(limiter.retryAfterSeconds("3.3.3.3")).toBeGreaterThan(0);
+  });
+
+  it("refuses a new network while every tracked bucket is blocked, and keeps every block", () => {
+    let now = 1_000_000;
+    const limiter = new LoginRateLimiter(() => now, 2);
+    for (let i = 0; i < MAX_FAILURES; i++) limiter.recordFailure("1.1.1.1");
+    now += 1000;
+    for (let i = 0; i < MAX_FAILURES; i++) limiter.recordFailure("2.2.2.2");
+    // Seconds until the oldest block ends.
+    expect(limiter.retryAfterSeconds("3.3.3.3")).toBe(WINDOW_MS / 1000 - 1);
+    limiter.recordFailure("3.3.3.3"); // even if the route didn't ask first, no block is dropped
+    expect(limiter.retryAfterSeconds("1.1.1.1")).toBeGreaterThan(0);
+    expect(limiter.retryAfterSeconds("2.2.2.2")).toBeGreaterThan(0);
+    now += WINDOW_MS - 1000;
+    expect(limiter.retryAfterSeconds("3.3.3.3")).toBe(0);
   });
 });
 
