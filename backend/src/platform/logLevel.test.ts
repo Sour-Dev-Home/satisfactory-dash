@@ -3,7 +3,7 @@ import { Router } from "express";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { createLogger } from "./logger.js";
-import { RateLimitedError, UnauthorizedError } from "./errorResponse.js";
+import { ApiFailure, RateLimitedError, UnauthorizedError } from "./errorResponse.js";
 import { requestLogLevel } from "./logLevel.js";
 import { createReadinessRouter } from "./health.js";
 
@@ -30,6 +30,14 @@ describe("requestLogLevel", () => {
     expect(requestLogLevel(503, new Error("boom"), "/api/health/ready")).toBe("error");
     expect(requestLogLevel(500, undefined, "/api/health/ready")).toBe("error");
     expect(requestLogLevel(200, undefined, "/api/health/ready")).toBe("info");
+  });
+
+  it("a 503 upstream_unreachable (the agent has not reported) is a warn; any other code, or another status, is not", () => {
+    expect(requestLogLevel(503, new Error("x"), "/api/servers/a/status", "upstream_unreachable")).toBe("warn");
+    expect(requestLogLevel(503, undefined, "/api/servers/a/status", "upstream_unreachable")).toBe("warn");
+    expect(requestLogLevel(503, new Error("x"), "/api/servers/a/status", "service_unavailable")).toBe("error");
+    expect(requestLogLevel(500, new Error("x"), "/api/servers/a/status", "upstream_unreachable")).toBe("error");
+    expect(requestLogLevel(503, new Error("x"), "/api/servers/a/status", undefined)).toBe("error");
   });
 
   it("a handled client error (an error object with a 4xx status) is not an error", () => {
@@ -79,6 +87,14 @@ describe("log levels in the real request pipeline", () => {
     const res = await request(createApp({ logger, routers: [] })).get("/api/nothing-here");
     expect(res.status).toBe(404);
     expect(new Set(lines.map((l) => l.level))).toEqual(new Set([LEVEL.warn]));
+  });
+
+  it("an agent that has not reported yet (503 upstream_unreachable) is a warn on both lines, never level 50", async () => {
+    const { status, levels } = await levelsFor(() => {
+      throw new ApiFailure("upstream_unreachable", "This server's agent has not reported yet");
+    });
+    expect(status).toBe(503);
+    expect(levels).toEqual([LEVEL.warn]);
   });
 
   it("an unexpected failure (500) is an error", async () => {

@@ -393,7 +393,8 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
     // Only real failures are errors (a 401 is routine while signed out, other 4xx are warnings).
-    log[requestLogLevel(status, err)]({ code, detail, requestId }, message);
+    res.locals.errorCode = code;
+    log[requestLogLevel(status, err, undefined, code)]({ code, detail, requestId }, message);
 
     if (err instanceof RateLimitedError) {
       res.setHeader("Retry-After", String(err.retryAfterSeconds));
