@@ -14,9 +14,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   REPOSITORIES,
+  STAGING_CONTAINERS,
   alarming,
   checkBackendBase,
   checkMigrateBase,
+  checkStagingBase,
+  checkStagingNetwork,
   cloudflaredPin,
   digestFromInspect,
   imageRef,
@@ -26,6 +29,7 @@ import {
   noticeText,
   parseReleased,
   revisionFrom,
+  revisionWith,
   rolloutStatus,
 } from "./lib.mjs";
 
@@ -292,6 +296,149 @@ export async function production(deps, action, given = {}, c = CONFIG) {
   }
 }
 
+export const STAGING = {
+  cluster: "satis-staging",
+  logGroup: "/ecs/satis-staging",
+  url: "https://api-staging.satis-manager.com",
+  user: "staging-admin",
+  // Postgres, db:init, two migration runs and the backend's own start, then the tunnel: a few minutes at most.
+  upTimeoutMs: 8 * 60_000,
+  stopTimeoutMs: 3 * 60_000,
+  pollMs: 10_000,
+};
+
+const redact = (s) => String(s).replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]").replace(/[\w.-]+\.rds\.amazonaws\.com/gi, "[rds host]");
+
+/**
+ * D4 step 2: run this release on staging and check it. The task is the staging base with three images swapped: this
+ * release's backend, this release's ops (db-setup) and the released ops (db-previous: the schema production has now,
+ * then this release's migrations on top). Then, through Access: /api/health and /ready answer 200, the staging admin
+ * signs in, reads the session and the (empty) server list; and both setup containers exited 0. The task is always
+ * stopped, and every container's exit code printed; on failure, the log tails too.
+ */
+export async function staging(deps, target, s = STAGING) {
+  if (!isSha(target.sha) || !isDigest(target.backend) || !isDigest(target.ops)) throw new Error("staging needs the resolved sha and both digests");
+  const { STAGING_ADMIN_PASSWORD: password, CF_ACCESS_CLIENT_ID: accessId, CF_ACCESS_CLIENT_SECRET: accessSecret } = deps.env;
+  if (!password || !accessId || !accessSecret) throw new Error("STAGING_ADMIN_PASSWORD, CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set");
+
+  const released = parseReleased(getParam(deps, param("prod", "released")));
+  const previousOps = released?.ops ?? target.ops;
+  deps.log(`staging: ${target.sha} on top of ${released ? `the released ops ${previousOps}` : "a fresh database (nothing released yet)"}`);
+
+  const baseArn = getParam(deps, param("staging", "task-definition"));
+  const base = describeTd(deps, baseArn);
+  const problems = checkStagingBase(base, { cloudflared: cloudflaredPin(deps.readFile("infra/aws/ecs.tf")) });
+  if (problems.length) throw new Error(`the staging base ${baseArn} is not what Terraform applied: ${problems.join("; ")}`);
+  // Only the published network, checked: never one passed in (the staging role can't be limited to it, PR 4 review).
+  const net = checkStagingNetwork(JSON.parse(getParam(deps, param("staging", "network"))));
+
+  const taskDefinition = register(deps, revisionWith(base, {
+    backend: imageRef("backend", target.backend),
+    "db-setup": imageRef("ops", target.ops),
+    "db-previous": imageRef("ops", previousOps),
+  }));
+  deps.log(`staging: registered ${taskDefinition}`);
+  const run = deps.aws(["ecs", "run-task", "--cluster", s.cluster, "--launch-type", "FARGATE", "--task-definition", taskDefinition, "--network-configuration", JSON.stringify(net)]);
+  const taskArn = run.tasks?.[0]?.taskArn;
+  if (!taskArn) throw new Error(`the staging task did not start: ${JSON.stringify(run.failures ?? [])}`);
+  deps.log(`staging: started ${taskArn}`);
+
+  const access = { "CF-Access-Client-Id": accessId, "CF-Access-Client-Secret": accessSecret };
+  const describe = () => deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
+  let ok = false;
+  try {
+    // Up: /api/health answers 200 through the tunnel, while the task is still running.
+    const deadline = deps.now() + s.upTimeoutMs;
+    for (;;) {
+      const t = describe();
+      if (t?.lastStatus === "STOPPED") throw new Error(`the staging task stopped before it answered (${t.stoppedReason ?? "no reason"})`);
+      const r = await get(deps, `${s.url}/api/health`, access);
+      if (r?.status === 200) break;
+      if (deps.now() > deadline) throw new Error(`staging did not answer /api/health within ${s.upTimeoutMs / 60_000} minutes (last: ${r?.status ?? "no answer"})`);
+      await deps.sleep(s.pollMs);
+    }
+    const ready = await get(deps, `${s.url}/api/health/ready`, access);
+    if (ready?.status !== 200) throw new Error(`/api/health/ready answered ${ready?.status ?? "nothing"}`);
+
+    // The migrations: the backend starting proves the schema is current (it refuses one behind its build); both setup
+    // containers must also have exited 0.
+    const setup = Object.fromEntries((describe()?.containers ?? []).map((c) => [c.name, c.exitCode]));
+    for (const name of ["db-previous", "db-setup"]) if (setup[name] !== 0) throw new Error(`${name} exited ${setup[name] ?? "without finishing"}`);
+
+    // Sign in as the staging admin, read the session and the server list (a fresh database has none).
+    const login = await deps.fetch(`${s.url}/api/auth/login`, {
+      method: "POST",
+      headers: { ...access, "content-type": "application/json" },
+      body: JSON.stringify({ username: s.user, password }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (login.status !== 200) throw new Error(`sign-in answered ${login.status}`);
+    const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+    if (!cookie) throw new Error("sign-in set no session cookie");
+    const session = await getJson(deps, `${s.url}/api/auth/session`, { ...access, cookie });
+    if (session?.authenticated !== true) throw new Error("the session does not read as signed in");
+    const servers = await getJson(deps, `${s.url}/api/servers`, { ...access, cookie });
+    if (!Array.isArray(servers?.servers) || servers.servers.length !== 0) throw new Error(`the server list is not empty (${JSON.stringify(servers).slice(0, 120)})`);
+    deps.log("staging: health, ready, migrations, sign-in, session and server list all good");
+    ok = true;
+  } finally {
+    await stopStaging(deps, s, taskArn, ok);
+  }
+  return { taskDefinition };
+}
+
+async function get(deps, url, headers) {
+  try {
+    return await deps.fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+  } catch {
+    return null;
+  }
+}
+
+async function getJson(deps, url, headers) {
+  const r = await get(deps, url, headers);
+  if (r?.status !== 200) throw new Error(`${new URL(url).pathname} answered ${r?.status ?? "nothing"}`);
+  return r.json();
+}
+
+async function stopStaging(deps, s, taskArn, ok) {
+  try {
+    deps.aws(["ecs", "stop-task", "--cluster", s.cluster, "--task", taskArn, "--reason", "staging check done"]);
+  } catch (e) {
+    deps.log(`staging: stop-task failed (${e.message.split("\n")[0]}); the task stops on its own when ECS gives up, check it`);
+  }
+  const deadline = deps.now() + s.stopTimeoutMs;
+  let t;
+  for (;;) {
+    t = deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
+    if (t?.lastStatus === "STOPPED" || deps.now() > deadline) break;
+    await deps.sleep(s.pollMs);
+  }
+  for (const c of t?.containers ?? []) deps.log(`staging: ${c.name} exit ${c.exitCode ?? "-"}${c.reason ? ` (${c.reason})` : ""}`);
+  if (ok) return;
+  const id = taskArn.split("/").pop();
+  for (const name of STAGING_CONTAINERS) {
+    try {
+      const events = deps.aws(["logs", "filter-log-events", "--log-group-name", s.logGroup, "--log-stream-names", `${name}/${name}/${id}`, "--limit", "40"]).events ?? [];
+      if (events.length) deps.log(`staging: ${name} log:`);
+      for (const e of events) deps.log(`  | ${redact(e.message)}`);
+    } catch {
+      // no stream: the container never started
+    }
+  }
+}
+
+/** For the automatic run: a sha whose image run published nothing (no backend change) is a green skip, not a failure. */
+export function resolveAuto(deps, sha) {
+  try {
+    return { ...resolveSha(deps, sha), skip: "false" };
+  } catch (e) {
+    if (!isSha(sha)) throw e;
+    deps.log(`resolve: no published images for ${sha.slice(0, 8)} (${e.message.split("\n")[0]}); nothing to deploy`);
+    return { sha, backend: "", ops: "", skip: "true" };
+  }
+}
+
 function output(env, pairs) {
   const lines = Object.entries(pairs).map(([k, v]) => `${k}=${v}`).join("\n");
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `${lines}\n`);
@@ -303,7 +450,12 @@ async function main(argv) {
   const [cmd, ...rest] = argv;
   if (cmd === "resolve") {
     const r = rest[0] ? resolveSha(deps, rest[0]) : resolveNewest(deps);
-    output(deps.env, r);
+    output(deps.env, { ...r, skip: "false" });
+  } else if (cmd === "resolve-auto") {
+    output(deps.env, resolveAuto(deps, rest[0]));
+  } else if (cmd === "staging") {
+    const [sha, backend, ops] = rest;
+    await staging(deps, { sha, backend, ops });
   } else if (cmd === "production") {
     const [action, sha, backend, ops] = rest;
     await production(deps, action, { sha: sha || undefined, backend: backend || undefined, ops: ops || undefined });
