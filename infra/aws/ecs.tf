@@ -41,6 +41,11 @@ resource "aws_ecs_task_definition" "main" {
   cpu                      = "512"
   memory                   = "1024"
 
+  # ADR-0049 D2: this revision is the base CI copies. Terraform reads its own revision, not the newest
+  # in the family (CI registers those), and a config change never deregisters one a rollback may need.
+  track_latest = false
+  skip_destroy = true
+
   # No task role: nothing in the app calls AWS (ADR-0034 §3), so the containers get no credentials.
   execution_role_arn = aws_iam_role.execution.arn
 
@@ -119,6 +124,15 @@ resource "aws_ecs_service" "main" {
     rollback = true
   }
 
+  # ADR-0049 D5, the second net beside the circuit breaker: either alarm in ALARM during a deployment
+  # fails it and rolls back to the last completed one. ECS ignores an alarm already in ALARM when the
+  # deployment starts, so the deploy workflow checks both first.
+  alarms {
+    alarm_names = [aws_cloudwatch_metric_alarm.backend_critical.alarm_name, aws_cloudwatch_metric_alarm.backend_errors.alarm_name]
+    enable      = true
+    rollback    = true
+  }
+
   # The public IP is for egress only (no NAT gateway); the task group has no inbound rules.
   network_configuration {
     subnets          = aws_subnet.public[*].id
@@ -129,6 +143,13 @@ resource "aws_ecs_service" "main" {
   enable_execute_command = false
   propagate_tags         = "SERVICE"
 
-  # `terraform apply` waits for the deploy, so a rollback shows up as a failed apply.
+  # `terraform apply` waits for the service to be steady, so a rollback shows up as a failed apply.
   wait_for_steady_state = true
+
+  # ADR-0049 D2: Terraform owns the configuration, CI owns which image runs. A plan stays clean after a
+  # CI rollout, and an apply never rolls an image back. A new base reaches the service at the next
+  # deploy (runbooks/aws.md, "Deploy").
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }

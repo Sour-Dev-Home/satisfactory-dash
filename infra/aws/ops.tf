@@ -137,6 +137,10 @@ resource "aws_ecs_task_definition" "ops" {
   cpu                      = "256"
   memory                   = "512"
 
+  # ADR-0049 D2, as for the backend: db-migrate's revision is CI's base, and old revisions stay registered.
+  track_latest = false
+  skip_destroy = true
+
   # No task role: the jobs call no AWS API (the B2 upload is an S3-compatible API with a B2 key).
   execution_role_arn = aws_iam_role.ops_execution[each.key].arn
 

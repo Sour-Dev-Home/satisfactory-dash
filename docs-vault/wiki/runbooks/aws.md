@@ -28,7 +28,10 @@ NET="awsvpcConfiguration={subnets=[$(terraform output -json public_subnet_ids | 
 run_ops() {  # run_ops <task> [extra run-task arguments]: runs it, waits, prints the exit code
   local task="$1"; shift
   local arn
-  arn=$(aws ecs run-task --cluster satis-prod --launch-type FARGATE --task-definition "satis-prod-ops-$task" \
+  # The exact revision Terraform applied, never the family's newest (ADR-0049 D2). Needs jq.
+  local td
+  td=$(terraform output -json ops_task_definition_arns | jq -er --arg t "$task" '.[$t]') || return 1
+  arn=$(aws ecs run-task --cluster satis-prod --launch-type FARGATE --task-definition "$td" \
     --network-configuration "$NET" "$@" --query 'tasks[0].taskArn' --output text) || return 1
   aws ecs wait tasks-stopped --cluster satis-prod --tasks "$arn"
   aws ecs describe-tasks --cluster satis-prod --tasks "$arn" \
@@ -45,7 +48,10 @@ $subnets = (terraform output -json public_subnet_ids | ConvertFrom-Json) -join '
 $NET = "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$(terraform output -raw task_security_group_id)],assignPublicIp=ENABLED}"
 function run_ops {  # run_ops <task> [extra run-task arguments]: runs it, waits, prints the exit code
   $task = $args[0]; $rest = @($args | Select-Object -Skip 1)
-  $arn = aws ecs run-task --cluster satis-prod --launch-type FARGATE --task-definition "satis-prod-ops-$task" `
+  # The exact revision Terraform applied, never the family's newest (ADR-0049 D2).
+  $td = (terraform output -json ops_task_definition_arns | ConvertFrom-Json).$task
+  if (-not $td) { Write-Error "no ops task named $task"; return }
+  $arn = aws ecs run-task --cluster satis-prod --launch-type FARGATE --task-definition $td `
     --network-configuration $NET @rest --query 'tasks[0].taskArn' --output text
   if ($LASTEXITCODE -ne 0) { return }
   aws ecs wait tasks-stopped --cluster satis-prod --tasks $arn
@@ -112,12 +118,56 @@ and the same for `-ops`).
 2. Ops first, so the migrations run before the new backend starts (compose.yaml's order):
    `terraform plan -target=aws_ecs_task_definition.ops -out=ops.tfplan`, read, apply.
 3. `run_ops db-migrate` (see **Migrate**).
-4. `terraform plan -out=deploy.tfplan`, read it (only the backend task definition, the service and
-   the schedule's task revision should change), `terraform apply deploy.tfplan`.
+4. `terraform plan -out=deploy.tfplan`, read it (only the backend task definition, the deploy
+   records' values and the schedule's task revision should change; never the service), `terraform
+   apply deploy.tfplan`. That registers the new backend revision but does not run it: the service
+   ignores its task definition (ADR-0049 D2), so the deploy workflow can own which image runs.
+5. Roll it out, and wait:
+   ```sh
+   PREV=$(aws ecs describe-services --cluster satis-prod --services satis-prod --query 'services[0].taskDefinition' --output text)
+   aws ecs update-service --cluster satis-prod --service satis-prod --task-definition "$(terraform output -raw backend_task_definition_arn)" --query 'service.deployments[0].rolloutState'
+   aws ecs wait services-stable --cluster satis-prod --services satis-prod
+   ```
+   (PowerShell: the same commands, with `$PREV = aws ecs describe-services ...` and
+   `--task-definition (terraform output -raw backend_task_definition_arn)`.) Keep `$PREV`: it is the
+   revision to go back to.
 
 The service stops the old task before starting the new one (one backend, ADR-0010), so expect a short
-outage. A new task that never turns healthy trips the circuit breaker, which rolls back; the apply
-then fails. Put the last good `backend_image` back in `terraform.tfvars` and apply again.
+outage. A new task that never turns healthy trips the circuit breaker, and `backend-errors` or
+`backend-critical` going to `ALARM` during the rollout fails it too; either rolls the service back to the
+last completed deployment. Check with `aws ecs describe-services --cluster satis-prod --services
+satis-prod --query 'services[0].deployments[0].rolloutState'` (`COMPLETED` is good, `FAILED` rolled
+back). To go back by hand, `aws ecs update-service --cluster satis-prod --service satis-prod
+--task-definition "$PREV"`, and put the last good `backend_image` back in `terraform.tfvars` so the
+next apply's base matches.
+
+Steps 1-5 are the interim deploy until the deploy workflow (ADR-0049 PR 3) ships; it does the same
+from GitHub, after staging passes.
+
+### Deploy from GitHub: one-time setup (ADR-0049 PR 2)
+
+After the apply that creates `satis-prod-deploy` (plan: the OIDC provider, the role and its policy,
+three `/satis/deploy/prod/*` parameters, the service updated in place for `alarms`, the task
+definitions updated in place for `skip_destroy`; **no task definition replaced and no new deployment**):
+
+1. **Environment.** GitHub → Settings → Environments → New environment `production`. Required
+   reviewers: none (ADR-0049 owner answer 1: production deploys automatically once staging passes;
+   adding yourself later turns approval back on). Deployment branches and tags: Selected, `main` only.
+   Add the environment variable
+   `AWS_DEPLOY_ROLE_ARN` = `terraform output -raw deploy_role_arn` (a variable, not a secret: an ARN
+   is not a credential, and the trust policy is what guards it).
+2. **OIDC subject template.** So the role is bound to `deploy.yml` on `main`, not just the environment:
+   ```sh
+   gh api -X PUT repos/Sour-Dev-Home/satisfactory-dash/actions/oidc/customization/sub \
+     -F use_default=false -f 'include_claim_keys[]=repo' -f 'include_claim_keys[]=context' -f 'include_claim_keys[]=job_workflow_ref'
+   gh api repos/Sour-Dev-Home/satisfactory-dash/actions/oidc/customization/sub
+   ```
+   No other workflow uses OIDC, so nothing else changes. The token's `sub` then reads
+   `repo:Sour-Dev-Home/satisfactory-dash:environment:production:job_workflow_ref:Sour-Dev-Home/satisfactory-dash/.github/workflows/deploy.yml@refs/heads/main`,
+   which must match the trust policy exactly, case included: PR 3's first run prints it.
+3. **Check the role** in the IAM policy simulator (ADR-0049 D1 [NEEDS VERIFICATION]):
+   `ecs:DescribeTaskDefinition` on `*` and `cloudwatch:DescribeAlarms` on the two alarm ARNs should
+   be allowed; anything outside the table (for example `ecs:DeleteService`) denied.
 
 ### Health checks
 
