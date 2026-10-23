@@ -38,6 +38,7 @@ function fakeDeps(opts = {}) {
   const requests = [];
   let t = 0;
   let stopped = false;
+  let describes = 0;
   const params = new Map([
     ["/satis/deploy/prod/released", opts.released ?? JSON.stringify({ sha: "b".repeat(40), backend: D("5"), ops: D("6"), taskDefinition: "x", previous: null })],
     ["/satis/deploy/staging/task-definition", "arn:aws:ecs:us-east-1:123456789012:task-definition/satis-staging:1"],
@@ -58,6 +59,9 @@ function fakeDeps(opts = {}) {
       if (op === "run-task") return opts.noStart ? { tasks: [], failures: [{ reason: "RESOURCE:CPU" }] } : { tasks: [{ taskArn: TASK }] };
       if (op === "stop-task") return (stopped = true), {};
       if (op === "describe-tasks") {
+        describes++;
+        if (opts.describeThrowsWhenStopping && stopped) throw new Error("ThrottlingException\nrate exceeded");
+        const lag = describes <= (opts.exitLag ?? 0);
         const dead = stopped || (opts.diesAt !== undefined && t >= opts.diesAt);
         return {
           tasks: [{
@@ -65,15 +69,15 @@ function fakeDeps(opts = {}) {
             stoppedReason: dead && !stopped ? "Essential container in task exited" : undefined,
             containers: [
               { name: "postgres", exitCode: dead ? 0 : undefined },
-              { name: "db-previous", exitCode: opts.previousExit ?? 0 },
-              { name: "db-setup", exitCode: opts.setupExit ?? 0 },
+              { name: "db-previous", exitCode: lag ? undefined : (opts.previousExit ?? 0) },
+              { name: "db-setup", exitCode: lag ? undefined : (opts.setupExit ?? 0) },
               { name: "backend", exitCode: dead ? 137 : undefined },
               { name: "cloudflared", exitCode: dead ? 137 : undefined },
             ],
           }],
         };
       }
-      if (op === "filter-log-events") return { events: [{ message: `boom at postgres://u:p@h/db (${arg("--log-stream-names")})` }] };
+      if (op === "get-log-events") return { events: [{ message: `boom at postgres://u:p@h/db (${arg("--log-stream-name")})` }] };
       throw new Error(`unexpected aws ${args.join(" ")}`);
     },
     readFile: (p) => (p === "infra/aws/ecs.tf" ? ECS_TF : ""),
@@ -117,7 +121,7 @@ test("staging: three images swapped, the published network, health, sign-in, ses
   assert.ok(ops(deps).includes("stop-task"));
   assert.ok(deps.requests.every((r) => r.init.headers?.["CF-Access-Client-Secret"] === "secret"), "every request carries the Access token");
   assert.ok(!deps.logs.join("\n").includes("secret"), "the Access secret is never logged");
-  assert.ok(!ops(deps).includes("filter-log-events"), "no log tail on success");
+  assert.ok(!ops(deps).includes("get-log-events"), "no log tail on success");
 });
 
 test("nothing released yet: db-previous runs this release's ops image on a fresh database", async () => {
@@ -140,7 +144,7 @@ for (const [name, opts, pattern] of [
     const deps = fakeDeps(opts);
     await assert.rejects(staging(deps, target), pattern);
     assert.ok(ops(deps).includes("stop-task"), "always stopped");
-    assert.ok(ops(deps).includes("filter-log-events"));
+    assert.ok(ops(deps).includes("get-log-events"));
     const logged = deps.logs.join("\n");
     assert.match(logged, /postgres:\/\/\[redacted\]/);
     assert.doesNotMatch(logged, /u:p@h/);
@@ -202,4 +206,94 @@ test("resolveAuto: a commit that published no images is a green skip", () => {
 test("the staging hostname and user are the ones the setup created", () => {
   assert.equal(STAGING.url, "https://api-staging.satis-manager.com");
   assert.equal(STAGING.user, "staging-admin");
+});
+
+test("a setup container's exit code that describe-tasks shows late is waited for, not failed", async () => {
+  // describe 1 is the up-poll; the exit check then sees no exitCode for two more reads.
+  const deps = fakeDeps({ exitLag: 3 });
+  await staging(deps, target);
+  assert.ok(ops(deps).includes("stop-task"));
+});
+
+test("an exit code that never appears fails as 'without finishing' and still stops the task", async () => {
+  const deps = fakeDeps({ exitLag: 10 ** 6 });
+  await assert.rejects(staging(deps, target), /exited without finishing/);
+  assert.ok(ops(deps).includes("stop-task"));
+});
+
+test("a describe-tasks that throws while stopping neither masks the failure nor skips the log tails", async () => {
+  const deps = fakeDeps({ ready: 503, describeThrowsWhenStopping: true });
+  await assert.rejects(staging(deps, target), /ready answered 503/);
+  assert.ok(ops(deps).includes("get-log-events"));
+  assert.match(deps.logs.join("\n"), /describe-tasks failed \(ThrottlingException\)/);
+});
+
+test("log tails read the newest lines of <container>/<container>/<task id>", async () => {
+  const deps = fakeDeps({ ready: 503 });
+  await assert.rejects(staging(deps, target));
+  const calls = deps.calls.filter((c) => c.args[1] === "get-log-events").map((c) => c.args);
+  assert.equal(calls.length, 5);
+  assert.ok(calls.every((a) => a.includes("--no-start-from-head")), "the end of the stream, not the start");
+  assert.equal(calls[3][calls[3].indexOf("--log-stream-name") + 1], "backend/backend/t123");
+});
+
+test("Access's 302 login redirect is never taken as healthy; the run fails after the timeout naming it", async () => {
+  const deps = fakeDeps({ env: { ...ENV, CF_ACCESS_CLIENT_ID: "wrong" } });
+  await assert.rejects(staging(deps, target), /did not answer.*last: 302/);
+  assert.ok(deps.requests.every((r) => r.init.redirect === "manual" || r.url.endsWith("/login")));
+  assert.ok(ops(deps).includes("stop-task"));
+});
+
+test("a fetch that throws during the health poll is retried like a 502", async () => {
+  const deps = fakeDeps();
+  const real = deps.fetch;
+  let n = 0;
+  deps.fetch = async (u, i) => { if (new URL(u).pathname === "/api/health" && n++ < 2) throw new Error("ECONNRESET"); return real(u, i); };
+  await staging(deps, target);
+});
+
+test("a login that sets several cookies sends them all, without attributes", async () => {
+  const deps = fakeDeps();
+  const real = deps.fetch;
+  deps.fetch = async (u, i) => {
+    const r = await real(u, i);
+    if (new URL(u).pathname === "/api/auth/login") r.headers = { getSetCookie: () => ["satis_session=abc; Path=/api; HttpOnly; Secure", "other=1; Path=/"] };
+    return r;
+  };
+  await assert.rejects(staging(deps, target), /does not read as signed in/);
+  const session = deps.requests.find((r) => r.url.endsWith("/api/auth/session"));
+  assert.equal(session.init.headers.cookie, "satis_session=abc; other=1");
+});
+
+test("a login with no Set-Cookie fails", async () => {
+  const deps = fakeDeps();
+  const real = deps.fetch;
+  deps.fetch = async (u, i) => {
+    const r = await real(u, i);
+    if (new URL(u).pathname === "/api/auth/login") r.headers = { getSetCookie: () => [] };
+    return r;
+  };
+  await assert.rejects(staging(deps, target), /no session cookie/);
+});
+
+test("revisionWith: an empty map is a clean copy; a released record without ops is refused", async () => {
+  const base = stagingBase();
+  const copy = revisionWith(base, {});
+  assert.deepEqual(copy.containerDefinitions, base.containerDefinitions);
+  assert.notEqual(copy.containerDefinitions, base.containerDefinitions);
+  const bad = JSON.stringify({ sha: "b".repeat(40), backend: D("5"), taskDefinition: "x", previous: null });
+  const deps = fakeDeps({ released: bad });
+  await assert.rejects(staging(deps, target), /released\.ops is missing/);
+  assert.ok(!ops(deps).includes("run-task"));
+});
+
+test("resolveAuto skips only when the image is missing; other errors fail", () => {
+  const boom = (m) => ({ inspect: () => { throw new Error(m); }, log() {} });
+  for (const m of ["ERROR: x:y: not found", "manifest unknown", "denied: no such manifest"]) assert.equal(resolveAuto(boom(m), SHA).skip, "true");
+  for (const m of ["dial tcp: i/o timeout", "unauthorized: authentication required", "Cannot connect to the Docker daemon"]) {
+    assert.throws(() => resolveAuto(boom(m), SHA), new RegExp(m.split(" ")[0]));
+  }
+  // An image that is there but wrong (arm64 missing) is a failure, not a skip.
+  const wrong = { inspect: () => ({ manifest: { digest: D("1"), manifests: [{ platform: { os: "linux", architecture: "amd64" } }] } }), log() {} };
+  assert.throws(() => resolveAuto(wrong, SHA), /arm64/);
 });

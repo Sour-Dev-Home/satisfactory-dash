@@ -341,12 +341,12 @@ export async function staging(deps, target, s = STAGING) {
   const run = deps.aws(["ecs", "run-task", "--cluster", s.cluster, "--launch-type", "FARGATE", "--task-definition", taskDefinition, "--network-configuration", JSON.stringify(net)]);
   const taskArn = run.tasks?.[0]?.taskArn;
   if (!taskArn) throw new Error(`the staging task did not start: ${JSON.stringify(run.failures ?? [])}`);
-  deps.log(`staging: started ${taskArn}`);
-
-  const access = { "CF-Access-Client-Id": accessId, "CF-Access-Client-Secret": accessSecret };
-  const describe = () => deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
   let ok = false;
   try {
+    // Inside the try so that nothing between run-task and here can leave the task running.
+    deps.log(`staging: started ${taskArn}`);
+    const access = { "CF-Access-Client-Id": accessId, "CF-Access-Client-Secret": accessSecret };
+    const describe = () => deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
     // Up: /api/health answers 200 through the tunnel, while the task is still running.
     const deadline = deps.now() + s.upTimeoutMs;
     for (;;) {
@@ -362,8 +362,16 @@ export async function staging(deps, target, s = STAGING) {
 
     // The migrations: the backend starting proves the schema is current (it refuses one behind its build); both setup
     // containers must also have exited 0.
-    const setup = Object.fromEntries((describe()?.containers ?? []).map((c) => [c.name, c.exitCode]));
-    for (const name of ["db-previous", "db-setup"]) if (setup[name] !== 0) throw new Error(`${name} exited ${setup[name] ?? "without finishing"}`);
+    // describe-tasks is eventually consistent: a container that has exited can show no exitCode for a moment, so an
+    // absent code is retried a few times; a non-zero one fails at once.
+    for (let attempt = 0; ; attempt++) {
+      const setup = Object.fromEntries((describe()?.containers ?? []).map((c) => [c.name, c.exitCode]));
+      const bad = ["db-previous", "db-setup"].find((n) => setup[n] !== 0);
+      if (!bad) break;
+      if (setup[bad] !== undefined && setup[bad] !== null) throw new Error(`${bad} exited ${setup[bad]}`);
+      if (attempt >= 5) throw new Error(`${bad} exited without finishing`);
+      await deps.sleep(s.pollMs);
+    }
 
     // Sign in as the staging admin, read the session and the server list (a fresh database has none).
     const login = await deps.fetch(`${s.url}/api/auth/login`, {
@@ -410,7 +418,12 @@ async function stopStaging(deps, s, taskArn, ok) {
   const deadline = deps.now() + s.stopTimeoutMs;
   let t;
   for (;;) {
-    t = deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
+    // A describe-tasks that throws must not escape: it would mask the real failure and skip the log tails.
+    try {
+      t = deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
+    } catch (e) {
+      deps.log(`staging: describe-tasks failed (${e.message.split("\n")[0]})`);
+    }
     if (t?.lastStatus === "STOPPED" || deps.now() > deadline) break;
     await deps.sleep(s.pollMs);
   }
@@ -419,7 +432,7 @@ async function stopStaging(deps, s, taskArn, ok) {
   const id = taskArn.split("/").pop();
   for (const name of STAGING_CONTAINERS) {
     try {
-      const events = deps.aws(["logs", "filter-log-events", "--log-group-name", s.logGroup, "--log-stream-names", `${name}/${name}/${id}`, "--limit", "40"]).events ?? [];
+      const events = deps.aws(["logs", "get-log-events", "--log-group-name", s.logGroup, "--log-stream-name", `${name}/${name}/${id}`, "--no-start-from-head", "--limit", "40"]).events ?? [];
       if (events.length) deps.log(`staging: ${name} log:`);
       for (const e of events) deps.log(`  | ${redact(e.message)}`);
     } catch {
@@ -433,7 +446,9 @@ export function resolveAuto(deps, sha) {
   try {
     return { ...resolveSha(deps, sha), skip: "false" };
   } catch (e) {
-    if (!isSha(sha)) throw e;
+    // Only "the image isn't there" is a skip. A registry/network error, or an image that is there but wrong (revision
+    // label, no arm64), must fail loudly: skipping would silently drop a release.
+    if (!isSha(sha) || !/not found|manifest unknown|no such manifest|name unknown/i.test(e.message)) throw e;
     deps.log(`resolve: no published images for ${sha.slice(0, 8)} (${e.message.split("\n")[0]}); nothing to deploy`);
     return { sha, backend: "", ops: "", skip: "true" };
   }
