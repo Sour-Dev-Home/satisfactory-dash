@@ -131,7 +131,7 @@ export function nextReleased(current, release) {
 export function rolloutStatus(service, taskDefinition) {
   const deployments = service?.deployments ?? [];
   const ours = deployments.find((d) => d.taskDefinition === taskDefinition);
-  if (!ours) return { state: "failed", reason: "our deployment is gone (rolled back or replaced)" };
+  if (!ours) return { state: "failed", gone: true, reason: "our deployment is not listed (rolled back, replaced, or not listed yet)" };
   if (ours.rolloutState === "FAILED") return { state: "failed", reason: ours.rolloutStateReason ?? "rollout failed" };
   const primary = deployments.find((d) => d.status === "PRIMARY");
   if (primary && primary.taskDefinition !== taskDefinition) return { state: "failed", reason: `the service's primary is ${primary.taskDefinition}` };

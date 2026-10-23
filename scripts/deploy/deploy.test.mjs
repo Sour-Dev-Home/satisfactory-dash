@@ -66,8 +66,8 @@ function fakeDeps(opts = {}) {
   const logs = [];
   const posts = [];
   let t = 0;
-  let serviceTd = ARN(9);
-  let deployments = [{ status: "PRIMARY", taskDefinition: ARN(9), rolloutState: "COMPLETED" }];
+  let serviceTd = opts.serviceTd ?? ARN(9);
+  let deployments = [{ status: "PRIMARY", taskDefinition: serviceTd, rolloutState: "COMPLETED" }];
   let registered = 10;
   let alarmPolls = 0;
   const params = new Map([
@@ -108,7 +108,7 @@ function fakeDeps(opts = {}) {
       }
       if (svc === "ecs" && op === "run-task") return opts.migrateStarts === false ? { tasks: [], failures: [{ reason: "RESOURCE:MEMORY" }] } : { tasks: [{ taskArn: "arn:aws:ecs:us-east-1:123456789012:task/satis-prod/abc123" }] };
       if (svc === "ecs" && op === "describe-tasks") return { tasks: [{ lastStatus: "STOPPED", containers: [{ exitCode: opts.migrateExit ?? 0 }], stoppedReason: "Essential container in task exited" }] };
-      if (svc === "logs" && op === "get-log-events") return { events: [{ message: "migration 42 failed" }] };
+      if (svc === "logs" && op === "get-log-events") return { events: [{ message: "migration 42 failed" }, { message: "connect to postgres://satis_migrator:pw@satis-prod.abc123.us-east-1.rds.amazonaws.com:5432/satis refused (satis-prod.abc123.us-east-1.rds.amazonaws.com)" }] };
       if (svc === "cloudwatch" && op === "describe-alarms") {
         const state = opts.alarmAt?.(alarmPolls++) ?? "OK";
         return { MetricAlarms: CONFIG.alarms.map((n, i) => ({ AlarmName: n, StateValue: i === 0 ? state : "OK" })) };
@@ -221,10 +221,14 @@ const released = (prev = true) =>
   });
 
 test("rollback: released.previous's backend on the current base, no migration, no alarm pre-check", async () => {
-  const deps = fakeDeps({ released: released(), alarmAt: (n) => (n === 0 ? "ALARM" : "OK") });
-  // The first describe-alarms answers ALARM: a rollback must not stop on it, so that poll is the watch's first.
-  await assert.rejects(production(deps, "rollback"), /rolled back/);
-  const fresh = fakeDeps({ released: released() });
+  // The alarm that caused the rollback still reads ALARM: the rollback neither stops on it nor undoes itself.
+  const deps = fakeDeps({ released: released(), serviceTd: ARN(12), alarmAt: () => "ALARM" });
+  const firing = await production(deps, "rollback");
+  assert.equal(firing.sha, OLD_SHA);
+  assert.ok(!ops(deps).includes("cloudwatch describe-alarms"), "no pre-check and no watch after a rollback");
+  const updates = deps.calls.filter((c) => c.args[1] === "update-service");
+  assert.equal(updates.length, 1, "the service stays on the rollback revision");
+  const fresh = fakeDeps({ released: released(), serviceTd: ARN(12) });
   const record = await production(fresh, "rollback");
   assert.ok(!ops(fresh).includes("ecs run-task"));
   const reg = fresh.calls.find((c) => c.args[1] === "register-task-definition").input;
@@ -234,8 +238,50 @@ test("rollback: released.previous's backend on the current base, no migration, n
 });
 
 test("rollback with nothing previous asks for a sha; redeploy with nothing released refuses", async () => {
-  await assert.rejects(production(fakeDeps({ released: released(false) }), "rollback"), /no previous release/);
+  await assert.rejects(production(fakeDeps({ released: released(false), serviceTd: ARN(12) }), "rollback"), /no previous release/);
   await assert.rejects(production(fakeDeps(), "redeploy"), /nothing released yet/);
+});
+
+test("rollback when production isn't running the recorded release goes back to that release, not two back", async () => {
+  // e.g. a deploy whose health check failed: its revision runs, but released still names the last good one.
+  const deps = fakeDeps({ released: released(), serviceTd: ARN(13) });
+  const record = await production(deps, "rollback");
+  const reg = deps.calls.find((c) => c.args[1] === "register-task-definition").input;
+  assert.equal(reg.containerDefinitions.find((c) => c.name === "backend").image, imageRef("backend", D("3")));
+  assert.equal(record.sha, SHA);
+  assert.ok(deps.logs.some((l) => /not the recorded release/.test(l)));
+});
+
+test("a deployment not listed yet right after update-service is waited for, not failed", async () => {
+  const deps = fakeDeps();
+  const real = deps.aws;
+  let hidden = 2;
+  deps.aws = (args, input) => {
+    const r = real(args, input);
+    if (args[1] === "describe-services" && deps.calls.some((c) => c.args[1] === "update-service") && hidden > 0) {
+      hidden -= 1;
+      return { services: [{ ...r.services[0], taskDefinition: ARN(9), deployments: [{ status: "PRIMARY", taskDefinition: ARN(9), rolloutState: "COMPLETED" }] }] };
+    }
+    return r;
+  };
+  const record = await production(deps, "deploy", target);
+  assert.equal(record.taskDefinition, ARN(12));
+});
+
+test("the watch rides out a flaky alarm read, but three in a row stop it", async () => {
+  const flaky = (failAt) => {
+    const deps = fakeDeps();
+    const real = deps.aws;
+    let n = 0;
+    deps.aws = (args, input) => {
+      if (args[1] === "describe-alarms" && failAt(n++)) throw new Error("Throttling: Rate exceeded");
+      return real(args, input);
+    };
+    return deps;
+  };
+  // Poll 0 is the pre-check; one failure in the watch is fine.
+  assert.equal((await production(flaky((n) => n === 3), "deploy", target)).sha, SHA);
+  await assert.rejects(production(flaky((n) => n >= 3 && n <= 5), "deploy", target), /could not read the alarms.*Rate exceeded/);
 });
 
 test("redeploy: the released digests on the current base, without a migration", async () => {
@@ -447,4 +493,13 @@ test("rollback to a given sha needs digests, and chains previous one level", asy
   const record = await production(deps, "rollback", { sha: OLD_SHA, backend: D("5"), ops: D("6") });
   assert.equal(record.previous.sha, SHA);
   assert.equal(record.previous.previous, undefined);
+});
+
+test("the migrate log tail never shows a connection string or the database host (public Actions logs)", async () => {
+  const deps = fakeDeps({ migrateExit: 1 });
+  await assert.rejects(production(deps, "deploy", target), /db-migrate exited 1/);
+  const tail = deps.logs.filter((l) => l.startsWith("  |")).join("\n");
+  assert.match(tail, /postgres:\/\/\[redacted\]/);
+  assert.match(tail, /\(\[rds host\]\)/);
+  assert.doesNotMatch(tail, /pw@|rds\.amazonaws\.com/);
 });

@@ -37,7 +37,9 @@ export const CONFIG = {
   service: "satis-prod",
   alarms: ["satis-prod-backend-critical", "satis-prod-backend-errors"],
   healthUrl: "https://api.satis-manager.com/api/health/ready",
-  rolloutTimeoutMs: 20 * 60_000,
+  // Worst case (migrate 15 + rollout 12 + watch 10 + rollback 12 + health 3 = 52 minutes) stays inside the job's
+  // 60 minutes and the role's 1-hour session.
+  rolloutTimeoutMs: 12 * 60_000,
   migrateTimeoutMs: 15 * 60_000,
   // D5 step 4: the alarms' 5-minute periods can outlast ECS's own bake time, so CI watches for 10 minutes.
   watchMs: 10 * 60_000,
@@ -142,7 +144,9 @@ function printMigrateLog(deps, taskArn) {
   try {
     const id = taskArn.split("/").pop();
     const events = deps.aws(["logs", "get-log-events", "--log-group-name", `/ecs/satis-${CONFIG.environment}/ops`, "--log-stream-name", `db-migrate/ops/${id}`, "--limit", "50"]).events ?? [];
-    for (const e of events) deps.log(`  | ${e.message}`);
+    // This repository's Actions logs are public: never echo a connection string or the database host.
+    const redact = (s) => String(s).replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]").replace(/[\w.-]+\.rds\.amazonaws\.com/gi, "[rds host]");
+    for (const e of events) deps.log(`  | ${redact(e.message)}`);
   } catch (e) {
     deps.log(`  (no migrate log: ${e.message.split("\n")[0]})`);
   }
@@ -158,11 +162,14 @@ async function rollOut(deps, c, taskDefinition) {
 }
 
 async function waitRollout(deps, c, taskDefinition) {
-  const deadline = deps.now() + c.rolloutTimeoutMs;
+  const start = deps.now();
+  const deadline = start + c.rolloutTimeoutMs;
   for (;;) {
     const s = rolloutStatus(describeService(deps, c), taskDefinition);
     if (s.state === "done") return deps.log("rollout: COMPLETED");
-    if (s.state === "failed") throw new Error(`rollout failed: ${s.reason}`);
+    // Right after update-service, DescribeServices may not list the new deployment yet: give it a minute.
+    const notListedYet = s.state === "failed" && s.gone && deps.now() - start < 60_000;
+    if (s.state === "failed" && !notListedYet) throw new Error(`rollout failed: ${s.reason}`);
     if (deps.now() > deadline) throw new Error(`rollout did not complete in time (${s.reason})`);
     await deps.sleep(c.pollMs);
   }
@@ -217,8 +224,16 @@ export async function production(deps, action, given = {}, c = CONFIG) {
     if (!isDigest(given.backend) || !isDigest(given.ops)) throw new Error("rollback to a sha needs its resolved digests");
     target = given;
   } else {
-    if (!released?.previous) throw new Error("no previous release to roll back to; give a sha");
-    target = { sha: released.previous.sha, backend: released.previous.backend, ops: released.previous.ops };
+    // Back to the last good release. When production isn't running the recorded release (a deploy whose health check
+    // failed, or a manual rollout), that recorded one is the last good; otherwise it's the one before (security review).
+    const running = describeService(deps, c).taskDefinition;
+    if (released && running !== released.taskDefinition) {
+      deps.log(`rollback: the service runs ${running}, not the recorded release; going back to the recorded release`);
+      target = { sha: released.sha, backend: released.backend, ops: released.ops };
+    } else {
+      if (!released?.previous) throw new Error("no previous release to roll back to; give a sha");
+      target = { sha: released.previous.sha, backend: released.previous.backend, ops: released.previous.ops };
+    }
   }
   deps.log(`${action}: ${target.sha} backend ${target.backend} ops ${target.ops}`);
 
@@ -234,10 +249,22 @@ export async function production(deps, action, given = {}, c = CONFIG) {
     deps.log(`backend: registered ${taskDefinition}`);
     const before = await rollOut(deps, c, taskDefinition);
 
-    // D5 step 4: watch both alarms; either one in ALARM rolls back to what ran before.
-    const until = deps.now() + c.watchMs;
+    // D5 step 4: watch both alarms; either one in ALARM rolls back to what ran before. Not after a rollback: it usually
+    // runs because an alarm fired, and that alarm's 5-minute period would still read ALARM, so the watch would undo the
+    // rollback (security review). ECS's own alarm rollback still covers it.
+    const until = action === "rollback" ? deps.now() : deps.now() + c.watchMs;
+    let errors = 0;
     while (deps.now() < until) {
-      const firing = alarmsNow(deps, c);
+      let firing;
+      try {
+        firing = alarmsNow(deps, c);
+        errors = 0;
+      } catch (e) {
+        // One flaky call shouldn't fail a good release; three in a row means we can't watch, so stop.
+        if (++errors >= 3) throw new Error(`could not read the alarms during the watch: ${e.message.split("\n")[0]}; the new revision is running`);
+        await deps.sleep(c.pollMs);
+        continue;
+      }
       if (firing.length) {
         deps.log(`watch: ${firing.join(", ")} in ALARM; rolling back to ${before}`);
         deps.aws(["ecs", "update-service", "--cluster", c.cluster, "--service", c.service, "--task-definition", before]);
