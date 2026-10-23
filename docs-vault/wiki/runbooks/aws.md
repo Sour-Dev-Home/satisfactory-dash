@@ -142,7 +142,7 @@ back). To go back by hand, `aws ecs update-service --cluster satis-prod --servic
 next apply's base matches.
 
 Steps 1-5 are the interim deploy until the deploy workflow (ADR-0049 PR 3) ships; it does the same
-from GitHub, behind the `production` environment's approval.
+from GitHub, after staging passes.
 
 ### Deploy from GitHub: one-time setup (ADR-0049 PR 2)
 
@@ -151,7 +151,9 @@ three `/satis/deploy/prod/*` parameters, the service updated in place for `alarm
 definitions updated in place for `skip_destroy`; **no task definition replaced and no new deployment**):
 
 1. **Environment.** GitHub → Settings → Environments → New environment `production`. Required
-   reviewers: you. Deployment branches and tags: Selected, `main` only. Add the environment variable
+   reviewers: none (ADR-0049 owner answer 1: production deploys automatically once staging passes;
+   adding yourself later turns approval back on). Deployment branches and tags: Selected, `main` only.
+   Add the environment variable
    `AWS_DEPLOY_ROLE_ARN` = `terraform output -raw deploy_role_arn` (a variable, not a secret: an ARN
    is not a credential, and the trust policy is what guards it).
 2. **OIDC subject template.** So the role is bound to `deploy.yml` on `main`, not just the environment:

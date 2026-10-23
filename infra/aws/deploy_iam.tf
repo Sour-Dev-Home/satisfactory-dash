@@ -1,6 +1,8 @@
 # ADR-0049 D1 and D2 (PR 2): GitHub Actions deploys production through OIDC, so no AWS key is stored
 # anywhere. The one role is assumable only by deploy.yml on main, in a job that names the `production`
-# environment, whose protection rules (the owner as reviewer, main only) gate the credentials.
+# environment (main only). That environment has no required reviewer (owner answer 1, 2026-10-21): what
+# merges to main reaches production, gated by the required checks, staging and the alarm rollback.
+# deploy.yml must never be triggered by pull_request_target or workflow_call (security review, PR 2).
 
 locals {
   deploy_arn_prefix = "arn:${data.aws_partition.current.partition}"

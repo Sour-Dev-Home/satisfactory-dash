@@ -86,7 +86,9 @@ test('criterion 4: SSM parameters are named, never read or written', () => {
   assert.doesNotMatch(all, /data\s+"aws_ssm_parameter"/, 'a data source would copy the value into state');
   // A resource would keep the value in state, so the only ones are ADR-0049 D2's deploy records: plain,
   // non-secret Strings under /satis/deploy/, all in deploy_iam.tf.
-  const resources = [...all.matchAll(/resource\s+"aws_ssm_parameter"\s+"(\w+)"\s*\{([\s\S]*?)\n\}/g)];
+  // Count every declaration first, however its labels are written, so one the capture below misses fails.
+  assert.equal((all.match(/resource\s+"?aws_ssm_parameter"?\s/g) ?? []).length, 3, 'exactly the three deploy records');
+  const resources = [...all.matchAll(/resource\s+"?aws_ssm_parameter"?\s+"?([^"\s{]+)"?\s*\{([\s\S]*?)\n\}/g)];
   assert.deepEqual(resources.map((m) => m[1]).sort(), ['deploy_backend_task_definition', 'deploy_migrate_task_definition', 'deploy_released']);
   for (const [, name, body] of resources) {
     assert.match(body, /name\s*=\s*"\$\{local\.deploy_parameter_prefix\}\//, `${name} lives under the deploy prefix`);
