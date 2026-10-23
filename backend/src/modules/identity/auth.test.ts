@@ -489,3 +489,34 @@ describe("loadAuthConfigFromEnv", () => {
     expect(config.allowedOrigins).toEqual(["https://satis-manager.com", "http://localhost:5173"]);
   });
 });
+
+describe("global budget: review follow-ups (#562)", () => {
+  // Distinct untrusted IPv4 addresses, so the per-IP limit never blocks first.
+  const ip = (i: number) => `203.0.${Math.floor(i / 256)}.${i % 256}`;
+
+  it("recordFailure reports the one failure that spends the budget", () => {
+    const limiter = new LoginRateLimiter(() => 0);
+    const spent = Array.from({ length: GLOBAL_MAX_FAILURES + 2 }, (_, i) => limiter.recordFailure(ip(i)));
+    expect(spent.filter(Boolean)).toHaveLength(1);
+    expect(spent[GLOBAL_MAX_FAILURES - 1]).toBe(true);
+  });
+
+  it("a success refunds only in the window it was charged in", () => {
+    let now = 0;
+    const limiter = new LoginRateLimiter(() => now);
+    limiter.recordFailure("198.51.100.7"); // charged in window 1
+    now = WINDOW_MS + 1; // window 2 starts on the next count
+    for (let i = 0; i < GLOBAL_MAX_FAILURES - 1; i += 1) limiter.recordFailure(ip(i));
+    limiter.recordSuccess("198.51.100.7"); // must not take one off window 2
+    limiter.recordFailure(ip(500));
+    expect(limiter.retryAfterSeconds(ip(501))).toBeGreaterThan(0);
+  });
+
+  it("a success in the same window still refunds", () => {
+    const limiter = new LoginRateLimiter(() => 0);
+    for (let i = 0; i < GLOBAL_MAX_FAILURES - 1; i += 1) limiter.recordFailure(ip(i));
+    limiter.recordFailure("198.51.100.7");
+    limiter.recordSuccess("198.51.100.7");
+    expect(limiter.retryAfterSeconds(ip(600))).toBe(0);
+  });
+});

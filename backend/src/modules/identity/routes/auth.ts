@@ -57,7 +57,10 @@ export function createAuthRouter(
     // Count the attempt BEFORE the slow password check and clear it on success.
     // Counting only after a failure let parallel guesses all get through before any
     // was recorded (found by PR #24's fresh-eyes review).
-    rateLimiter.recordFailure(ip);
+    if (rateLimiter.recordFailure(ip)) {
+      // Once per window (#562 review): tells an attack apart from a forgotten password in the logs and auth-failures alarm.
+      req.log.warn({ ip }, "login failure budget spent: password sign-in refused for untrusted networks until the window ends");
+    }
     const principal = await authenticator.verifyCredentials(parsed.data.username, parsed.data.password);
     if (!principal) {
       // Never log the submitted password -- nor the submitted username, since people

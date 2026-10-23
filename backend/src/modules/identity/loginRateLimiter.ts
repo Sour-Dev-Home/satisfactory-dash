@@ -49,6 +49,8 @@ export class LoginRateLimiter {
   private readonly trusted = new Map<string, number>();
   private globalFailures = 0;
   private globalResetAt = 0;
+  /** Network key -> the global window it was charged in, so a success refunds only that window (review, #562). */
+  private readonly charged = new Map<string, number>();
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -77,37 +79,49 @@ export class LoginRateLimiter {
     return 0;
   }
 
-  /** Counted BEFORE the password check (see the route); recordSuccess undoes it. */
-  recordFailure(ip: string): void {
+  /**
+   * Counted BEFORE the password check (see the route); recordSuccess undoes it. Returns true when this failure spent
+   * the last of the global budget, so the route can log it once per window: from then until the window ends, password
+   * sign-in is refused from every network that hasn't signed in recently (an attack, or a forgotten password).
+   */
+  recordFailure(ip: string): boolean {
     const key = keyFor(ip);
+    let spent = false;
     if (!this.isTrusted(key)) {
       this.globalWindow();
       this.globalFailures += 1;
+      this.charged.set(key, this.globalResetAt);
+      spent = this.globalFailures === GLOBAL_MAX_FAILURES;
     }
     const bucket = this.current(key);
     if (bucket) {
       bucket.failures += 1;
-      return;
+      return spent;
     }
     if (this.buckets.size >= this.maxTrackedIps) {
       this.prune();
       // Every bucket is a live block: retryAfterSeconds refuses this key, so there is nothing to track.
       if (this.buckets.size >= this.maxTrackedIps) {
-        return;
+        return spent;
       }
     }
     this.buckets.set(key, { failures: 1, resetAt: this.now() + WINDOW_MS });
+    return spent;
   }
 
+  /**
+   * A completed password sign-in. Only the operator signs in with a password (SingleOperatorAuthenticator; Google
+   * sign-in never calls this), so only the operator's networks become trusted. If password sign-in ever opens to other
+   * accounts, trust must stay operator-only, or anyone could fill the trusted set (security review, #562).
+   */
   recordSuccess(ip: string): void {
     const key = keyFor(ip);
     this.buckets.delete(key);
-    if (this.isTrusted(key)) {
-      // Not charged to the global budget by recordFailure; just extend the trust.
-      this.trusted.delete(key);
-    } else if (this.globalFailures > 0) {
-      this.globalFailures -= 1;
-    }
+    // Refund the pre-counted attempt only in the window it was charged in, so a success after a rollover never lowers
+    // the new window's count (security review, #562).
+    if (this.charged.get(key) === this.globalResetAt && this.globalFailures > 0) this.globalFailures -= 1;
+    this.charged.delete(key);
+    if (this.isTrusted(key)) this.trusted.delete(key);
     if (this.trusted.size >= MAX_TRUSTED_NETWORKS) {
       const oldest = this.trusted.keys().next().value;
       if (oldest !== undefined) {
@@ -126,6 +140,8 @@ export class LoginRateLimiter {
     if (this.globalResetAt <= this.now()) {
       this.globalFailures = 0;
       this.globalResetAt = this.now() + WINDOW_MS;
+      // Charges from an ended window are never refunded, so this map holds at most one window's failures.
+      this.charged.clear();
     }
     return this.globalFailures;
   }
