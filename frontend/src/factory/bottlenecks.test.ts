@@ -5,7 +5,7 @@ import {
   bottlenecksItemLevelOldFrm,
   bottlenecksUnknownKind,
 } from "@satisfactory-dash/shared/fixtures";
-import { cappedByLine, detailLine, fixLine, isSmallGap, machineLabel, sectionNotes } from "./bottlenecks";
+import { cappedByLine, cappedBySegments, detailLine, detailSegments, fixLine, isSmallGap, machineLabel, sectionNotes } from "./bottlenecks";
 
 const [belt, lift] = bottlenecksBeltLevel.data.findings;
 const cap = belt.rootCause.cappedBy!;
@@ -123,5 +123,18 @@ describe("helpers: edge cases (fresh eyes, #592)", () => {
     expect(isSmallGap(f("deficit", 0, 0))).toBe(false);
     expect(isSmallGap(f("deficit", undefined, 100))).toBe(false);
     expect(isSmallGap(f("surplus", 99, 100))).toBe(false);
+  });
+});
+
+describe("cappedBySegments and detailSegments (#586)", () => {
+  it("splits the capped-by line into the three segments it joins", () => {
+    expect(cappedBySegments(cap)).toEqual(["Conveyor Belt Mk.1", "60 items/min", "near (−554, −1278)"]);
+    expect(cappedBySegments(cap).join(" · ")).toBe(cappedByLine(cap));
+  });
+
+  it("is null wherever detailLine is", () => {
+    expect(detailSegments(belt)).toEqual(cappedBySegments(cap));
+    expect(detailSegments({ ...belt, rootCause: { kind: "deficit" } })).toBeNull();
+    expect(detailLine({ ...belt, rootCause: { kind: "deficit" } })).toBeNull();
   });
 });

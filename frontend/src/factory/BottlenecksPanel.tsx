@@ -1,6 +1,27 @@
 import type { Bottleneck, Bottlenecks } from "@satisfactory-dash/shared";
+import { cn } from "../lib/cn";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
-import { detailLine, fixLine, isSmallGap, machineLabel, sectionNotes, stateLabel } from "./bottlenecks";
+import { detailSegments, fixLine, isSmallGap, machineLabel, sectionNotes, stateLabel } from "./bottlenecks";
+
+/**
+ * "Capped by: Conveyor Belt Mk.1 · 60 items/min · near (−554, −1278)", each segment kept whole so a narrow screen breaks
+ * only at a separator, never leaving a trailing "·" (#586). In the body colour: it's the row's actionable data.
+ */
+function CappedBy({ finding }: { finding: Bottleneck }) {
+  const segments = detailSegments(finding);
+  if (segments === null) return null;
+  return (
+    <p className="text-sm text-fg">
+      Capped by:{" "}
+      {segments.map((s, i) => (
+        <span key={i}>
+          {i > 0 && " · "}
+          <span className="whitespace-nowrap">{s}</span>
+        </span>
+      ))}
+    </p>
+  );
+}
 
 /** "Affects 61 machines", opening to the list the backend sent (its first 50) and how many more there are (#592). */
 function AffectedMachines({ finding }: { finding: Bottleneck }) {
@@ -40,18 +61,20 @@ export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: nu
       {data.findings.length === 0 ? (
         <p>No bottlenecks: no machine is underfed or backed up.</p>
       ) : (
-        <ol aria-labelledby="bottlenecks-heading" className="grid gap-3">
+        // Rows ruled like the Factory table's, so ten of them still read as separate findings on a phone (#586).
+        <ol aria-labelledby="bottlenecks-heading" className="grid">
           {data.findings.map((f, i) => (
-            <li key={f.buildingId} className="flex gap-3">
+            <li key={f.buildingId} className="flex gap-3 border-t border-line py-3 first:border-t-0 first:pt-0">
               <span aria-hidden="true" className="w-6 shrink-0 text-muted tabular-nums">
                 {i + 1}
               </span>
               <div className="min-w-0 break-words">
                 <p className="font-semibold text-fg-strong">
-                  {machineLabel(f)} <span className="font-normal text-warn">· {stateLabel(f.state)}</span>
+                  {/* Underfed in the info colour, so it can't read as healthy beside the amber "Backed up" (#586). */}
+                  {machineLabel(f)} <span className={cn("font-normal", f.state === "underfed" ? "text-info" : "text-warn")}>· {stateLabel(f.state)}</span>
                 </p>
                 <p>{f.text}</p>
-                {detailLine(f) !== null && <p className="text-sm text-muted">Capped by: {detailLine(f)}</p>}
+                <CappedBy finding={f} />
                 {f.fix && <p className="text-sm">Fix: {fixLine(f.fix)}</p>}
                 {isSmallGap(f) && (
                   <p className="text-sm text-muted">The gap is under 2% of what is wanted, so it may be clock rounding.</p>
@@ -62,14 +85,15 @@ export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: nu
           ))}
         </ol>
       )}
-      {data.truncated && (
-        <p className="text-sm text-muted">
-          Showing the top {limit}; {data.findings.some((f) => f.affectedCount !== undefined) ? "more causes" : "more machines"} have a
-          bottleneck.
-        </p>
-      )}
-      {notes.length > 0 && (
-        <ul aria-label="Bottleneck notes" className="grid gap-0.5 break-words text-sm text-muted">
+      {/* One list: the truncation line is a note like the others (#586). */}
+      {(data.truncated || notes.length > 0) && (
+        <ul aria-label="Bottleneck notes" className="grid gap-1 break-words text-sm text-muted">
+          {data.truncated && (
+            <li>
+              Showing the top {limit}; {data.findings.some((f) => f.affectedCount !== undefined) ? "more causes" : "more machines"} have
+              a bottleneck.
+            </li>
+          )}
           {notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
@@ -92,6 +116,8 @@ export function BottlenecksSkeleton() {
           <Skeleton className="h-lh w-full max-w-64 text-sm" />
         </div>
       ))}
+      {/* The notes line, so the card doesn't grow a line when it fills (#586). */}
+      <Skeleton className="h-lh w-56 text-sm" />
     </section>
   );
 }
