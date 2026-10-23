@@ -10,10 +10,22 @@ import {
   type BottleneckStep,
   type Bottlenecks,
   type ConveyorEdge,
-  type ConveyorNodeKind,
   type FactoryBuilding,
   type ProductionRate,
 } from "@satisfactory-dash/shared";
+import {
+  SINK_KINDS,
+  SOURCE_KINDS,
+  TERMINAL_KINDS,
+  buildGraph,
+  byString,
+  usable,
+  walkRegion,
+  type Arc,
+  type Filter,
+  type Graph,
+  type Region,
+} from "./connectionGraph.js";
 
 /**
  * The bottleneck finder (ADR-0048 and its 2026-10-21 amendment, Decisions 3 and 4): a pure, deterministic function of
@@ -41,20 +53,10 @@ export interface BottleneckOptions {
 
 const EPS = 1e-9;
 
-/** Ends whose machines the flow never passes through; an arc into one stops there. `other` (a class the adapter does not
- *  know) is a dead end rather than a guessed pass-through. Splitters, mergers, junctions and a belt joined to a belt are
- *  uncapped pass-throughs (amendment, Decision 3). */
-const TERMINAL_KINDS: ReadonlySet<ConveyorNodeKind> = new Set(["machine", "storage", "station", "extractor", "consumer", "other"]);
-/** Unread supplies: their item and rate are unknown until follow-up 5, so they feed any item, uncapped and flagged. */
-const SOURCE_KINDS: ReadonlySet<ConveyorNodeKind> = new Set(["extractor", "storage", "station"]);
-/** Unread drains, the downstream mirror of the sources. */
-const SINK_KINDS: ReadonlySet<ConveyorNodeKind> = new Set(["storage", "station", "consumer"]);
-
 /** Bad producer or consumer states, most definitive first. Terminal states end a chain; `underfed` and `backedUp` recurse. */
 const BAD_STATE_PRIORITY: ReadonlyMap<string, number> = new Map([["unpowered", 0], ["paused", 1], ["idle", 2], ["underfed", 3], ["backedUp", 4]]);
 const TERMINAL_STATES: ReadonlySet<string> = new Set(["unpowered", "paused", "idle"]);
 
-type Filter = "solid" | "fluid" | "any";
 type VerdictKind = "noProducer" | "notConnected" | "deficit" | "upstream" | "logistics" | "noConsumer" | "surplus" | "downstream";
 
 /** Per-machine rank, lowest wins: noProducer > notConnected > deficit > upstream > logistics with a cap > logistics
@@ -86,31 +88,6 @@ interface Verdict {
   beltLevel: boolean;
 }
 
-interface Arc {
-  from: number;
-  to: number;
-  cap: number;
-  edge: ConveyorEdge;
-}
-
-interface Graph {
-  kind: ConveyorNodeKind[];
-  idToNode: Map<string, number>;
-  out: Arc[][];
-  in: Arc[][];
-}
-
-interface Region {
-  /** Arcs inside the region, root-ward (up) or leaf-ward (down). */
-  arcs: Arc[];
-  /** Nodes reached, root first, in discovery order. */
-  nodes: number[];
-  /** The terminals reached (not expanded), root excluded. */
-  terminals: number[];
-  terminalSet: Set<number>;
-}
-
-const byString = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 /** A rate for a sentence (#592): whole numbers, or one decimal under 10. */
 const num = (n: number): string => String(Math.abs(n) < 10 ? Math.round(n * 10) / 10 : Math.round(n));
 
@@ -239,109 +216,8 @@ function cutEdges(net: Network, owners: ReadonlyMap<number, ConveyorEdge>, sourc
   return [...found.values()].sort((a, b) => (a.capacityPerMinute ?? 0) - (b.capacityPerMinute ?? 0) || byString(a.id, b.id));
 }
 
-/**
- * The connection graph (amendment, Decision 3). A belt or lift is one arc end 0 to end 1; a pipe is two arcs, because pipe
- * ends are not oriented; an open end adds no arc. A conveyor named as an end of another (`fromKind`/`toKind` "conveyor")
- * is joined to the matching end of that conveyor (end 1 of A to end 0 of B and vice versa) with a union-find, so a chain of
- * directly joined conveyors is one path. Edges are processed in id order so node numbering and kinds are deterministic.
- */
-function buildGraph(input: readonly ConveyorEdge[]): Graph {
-  const edges = [...input].sort((a, b) => byString(a.id, b.id));
-  const edgeById = new Map<string, ConveyorEdge>();
-  for (const e of edges) if (!edgeById.has(e.id)) edgeById.set(e.id, e);
-
-  const index = new Map<string, number>();
-  const parent: number[] = [];
-  const slot = (key: string): number => {
-    let i = index.get(key);
-    if (i === undefined) {
-      i = parent.length;
-      index.set(key, i);
-      parent.push(i);
-    }
-    return i;
-  };
-  const find = (i: number): number => {
-    while (parent[i] !== i) {
-      parent[i] = parent[parent[i]];
-      i = parent[i];
-    }
-    return i;
-  };
-  const union = (a: string, b: string): void => {
-    parent[find(slot(a))] = find(slot(b));
-  };
-  const endKey = (e: ConveyorEdge, end: 0 | 1): string => `\0${e.id}\0${end}`;
-  const endId = (e: ConveyorEdge, end: 0 | 1): string | null => (end === 0 ? e.from : e.to);
-  const endNodeKind = (e: ConveyorEdge, end: 0 | 1): ConveyorNodeKind | null => (end === 0 ? e.fromKind : e.toKind);
-
-  for (const e of edges) {
-    for (const end of [0, 1] as const) {
-      const id = endId(e, end);
-      if (id === null) continue;
-      if (endNodeKind(e, end) === "conveyor") {
-        const ref = edgeById.get(id);
-        union(endKey(e, end), ref ? endKey(ref, end === 0 ? 1 : 0) : `\0missing\0${id}`);
-      } else {
-        union(endKey(e, end), id);
-      }
-    }
-  }
-
-  const nodeOfRoot = new Map<number, number>();
-  const kind: ConveyorNodeKind[] = [];
-  const idToNode = new Map<string, number>();
-  const nodeFor = (e: ConveyorEdge, end: 0 | 1): number => {
-    const root = find(slot(endKey(e, end)));
-    let n = nodeOfRoot.get(root);
-    if (n === undefined) {
-      n = kind.length;
-      nodeOfRoot.set(root, n);
-      kind.push("conveyor");
-    }
-    const nk = endNodeKind(e, end);
-    const id = endId(e, end);
-    if (nk !== null && nk !== "conveyor" && id !== null) {
-      // The first real kind seen (edges are in id order) names the node; every real id lands on it.
-      if (kind[n] === "conveyor") kind[n] = nk;
-      if (!idToNode.has(id)) idToNode.set(id, n);
-    }
-    return n;
-  };
-
-  const arcs: Arc[] = [];
-  for (const e of edges) {
-    if (e.from === null || e.to === null) continue;
-    const a = nodeFor(e, 0);
-    const b = nodeFor(e, 1);
-    if (a === b) continue;
-    const cap = e.capacityPerMinute ?? Infinity;
-    arcs.push({ from: a, to: b, cap, edge: e });
-    if (e.kind === "pipe") arcs.push({ from: b, to: a, cap, edge: e });
-  }
-  // Register ends of open-ended edges too, so a machine at the other end of a dead-end belt still counts as named.
-  for (const e of edges) {
-    if (e.from === null && e.to !== null) nodeFor(e, 1);
-    if (e.to === null && e.from !== null) nodeFor(e, 0);
-  }
-
-  const out: Arc[][] = kind.map(() => []);
-  const inn: Arc[][] = kind.map(() => []);
-  for (const arc of arcs) {
-    out[arc.from].push(arc);
-    inn[arc.to].push(arc);
-  }
-  return { kind, idToNode, out, in: inn };
-}
-
 function filterOf(unit: ProductionRate["unit"]): Filter {
   return unit === "m3/min" ? "fluid" : unit === "items/min" ? "solid" : "any";
-}
-
-/** A pipe carries only fluids and a belt or lift only solids; an item of unknown unit may use either. */
-function usable(arc: Arc, filter: Filter): boolean {
-  if (filter === "any") return true;
-  return filter === "fluid" ? arc.edge.kind === "pipe" : arc.edge.kind !== "pipe";
 }
 
 function sumRate(rates: readonly ProductionRate[] | undefined, className: string): number {
@@ -393,31 +269,12 @@ class Finder {
     return this.graph?.idToNode.get(b.id);
   }
 
-  /** The region a flow to (back) or from (fwd) `root` can use: expand through pass-through nodes, stop at terminals. */
+  /** The region a flow to (back) or from (fwd) `root` can use (`walkRegion`), cached per (direction, filter, root). */
   private region(root: number, filter: Filter, dir: "back" | "fwd"): Region {
     const key = `${dir}\0${filter}\0${root}`;
     const cached = this.regions.get(key);
     if (cached) return cached;
-    const g = this.graph as Graph;
-    const arcs: Arc[] = [];
-    const nodes = [root];
-    const terminals: number[] = [];
-    const seen = new Set<number>([root]);
-    for (let qi = 0; qi < nodes.length; qi++) {
-      const u = nodes[qi];
-      if (qi > 0 && TERMINAL_KINDS.has(g.kind[u])) continue;
-      for (const arc of dir === "back" ? g.in[u] : g.out[u]) {
-        if (!usable(arc, filter)) continue;
-        arcs.push(arc);
-        const w = dir === "back" ? arc.from : arc.to;
-        if (!seen.has(w)) {
-          seen.add(w);
-          nodes.push(w);
-          if (TERMINAL_KINDS.has(g.kind[w])) terminals.push(w);
-        }
-      }
-    }
-    const region = { arcs, nodes, terminals, terminalSet: new Set(terminals) };
+    const region = walkRegion(this.graph as Graph, root, filter, dir);
     this.regions.set(key, region);
     return region;
   }
