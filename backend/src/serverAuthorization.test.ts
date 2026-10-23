@@ -61,7 +61,10 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
 // ADR-0047 (#311 task 2a) added `members.leave` to the contract before its route; task 2b mounted it, so nothing is
 // exempt again. Leave is a member's own write (`memberSelfService`), and the owner is refused with 409 would_orphan.
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0050 (planner PR 2, the contract) added `productionGraph` before its route. Until planner PR 4 mounts it there is
+// nothing to guard, so exactly that one is exempt. PR 4 deletes this line (the test below fails until it does).
+const NOT_YET_MOUNTED = (name: string): boolean => name === "productionGraph";
+const SCOPED = scopedEndpoints(endpoints).filter((endpoint) => !NOT_YET_MOUNTED(endpoint.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
@@ -300,6 +303,23 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
       "POST /api/servers/:serverId/members/me/leave",
       "PUT /api/servers/:serverId/alerts/push",
     ]);
+  });
+
+  it("exempts only productionGraph, in the contract but not mounted yet (ADR-0050 PR 2), and no other", () => {
+    const exempt = scopedEndpoints(endpoints).filter((endpoint) => NOT_YET_MOUNTED(endpoint.name));
+    expect(exempt.map((endpoint) => `${endpoint.method} ${endpoint.route}`)).toEqual(["GET /api/servers/:serverId/production-graph"]);
+  });
+
+  // The exemption expires on its own: the moment PR 4 mounts the route, this fails until NOT_YET_MOUNTED is deleted, so
+  // the route can never ship without the generated authorization tests.
+  it("the exempt endpoint is still unmounted: an authorized owner gets the app's own unmatched-route 404", async () => {
+    const app = buildApp();
+    for (const endpoint of scopedEndpoints(endpoints).filter((e) => NOT_YET_MOUNTED(e.name))) {
+      const res = await call(app, endpoint.name, endpoint.method, urlFor(endpoint.route, "alpha"), OWNER);
+      const mounted = `${endpoint.name} is now mounted: delete NOT_YET_MOUNTED so the generated authorization tests cover it (ADR-0050 PR 4)`;
+      expect(res.status, mounted).toBe(404);
+      expect(res.body?.error?.code, mounted).toBe("not_found");
+    }
   });
 
   // A route that is in the contract but not mounted answers the app's own 404 to an authorized owner; every scoped

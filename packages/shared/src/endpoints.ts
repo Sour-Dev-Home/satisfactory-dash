@@ -17,6 +17,7 @@ import {
 import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
 import { BottlenecksQuerySchema, BottlenecksResponseSchema } from "./bottlenecks";
+import { ProductionGraphResponseSchema } from "./productionGraph";
 import { PowerResponseSchema } from "./power";
 import { PowerHistoryResponseSchema } from "./powerHistory";
 import {
@@ -115,6 +116,13 @@ export const endpoints = {
     path: scoped("bottlenecks"),
     query: BottlenecksQuerySchema,
     response: BottlenecksResponseSchema,
+  },
+  // ADR-0050 (production planner): the whole factory as a coarse graph. In the contract before its route (PR 4).
+  productionGraph: {
+    method: "GET",
+    route: "/api/servers/:serverId/production-graph",
+    path: scoped("production-graph"),
+    response: ProductionGraphResponseSchema,
   },
   power: {
     method: "GET",
