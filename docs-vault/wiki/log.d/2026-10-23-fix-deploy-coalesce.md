@@ -1,0 +1,1 @@
+- 2026-10-23 — Deploy: an automatic run deploys the newest commit on main with published images, not only its own (GitHub keeps one pending run per concurrency group, so a later merge's run could cancel an earlier backend change's and that change never shipped), and staging skips green, with production, when production already runs those images. Dispatched deploys are unchanged.
