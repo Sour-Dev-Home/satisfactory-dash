@@ -13,7 +13,12 @@ const near = (at: BottleneckCappedBy["at"]) => {
 
 /** "Conveyor Belt Mk.1 · 60 items/min · near (-554, -1278)": the conveyor that caps the flow (ADR-0048). */
 export function cappedByLine(cap: BottleneckCappedBy): string {
-  return `${cap.tier} · ${formatPerMinute(cap.capacityPerMinute, capUnit(cap.kind))} · ${near(cap.at)}`;
+  return cappedBySegments(cap).join(" · ");
+}
+
+/** The same as three segments, so the panel can keep each one whole and break only at the separators (#586). */
+export function cappedBySegments(cap: BottleneckCappedBy): [string, string, string] {
+  return [cap.tier, formatPerMinute(cap.capacityPerMinute, capUnit(cap.kind)), near(cap.at)];
 }
 
 /** "Constructor, Iron Plate, near (120, −40)": a machine the way a player finds it (#592). Missing parts are left out. */
@@ -45,7 +50,13 @@ export function detailLine(finding: Bottleneck): string | null {
   return rootCause.kind === "logistics" && rootCause.cappedBy ? cappedByLine(rootCause.cappedBy) : null;
 }
 
-export const stateLabel = (state: "underfed" | "backedUp") => (state === "underfed" ? "Underfed" : "Backed up");
+/** The capping conveyor's segments for a finding, or null (as `detailLine`). */
+export function detailSegments(finding: Bottleneck): [string, string, string] | null {
+  const { rootCause } = finding;
+  return rootCause.kind === "logistics" && rootCause.cappedBy ? cappedBySegments(rootCause.cappedBy) : null;
+}
+
+export const stateLabel =(state: "underfed" | "backedUp") => (state === "underfed" ? "Underfed" : "Backed up");
 
 /**
  * The section's notes, as plain sentences. The backend builds each note's text and the client shows it as is; a note

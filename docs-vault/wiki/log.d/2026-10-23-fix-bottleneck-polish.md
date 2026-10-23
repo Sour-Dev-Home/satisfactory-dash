@@ -1,0 +1,1 @@
+- 2026-10-23 — Bottlenecks polish (#586): the capped-by line in the body colour with each segment kept whole; "Underfed" in the info colour beside the amber "Backed up"; ruled rows; the truncation line joins the notes list; the skeleton gains the notes line.
