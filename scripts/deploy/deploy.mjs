@@ -354,6 +354,8 @@ export async function staging(deps, target, s = STAGING) {
       if (t?.lastStatus === "STOPPED") throw new Error(`the staging task stopped before it answered (${t.stoppedReason ?? "no reason"})`);
       const r = await get(deps, `${s.url}/api/health`, access);
       if (r?.status === 200) break;
+      // Access answers before the tunnel: a redirect means it refused the service token, which waiting won't fix.
+      if (r && r.status >= 300 && r.status < 400) throw new Error(`Cloudflare Access answered ${r.status}: check CF_ACCESS_CLIENT_ID/SECRET and the application's Service Auth policy`);
       if (deps.now() > deadline) throw new Error(`staging did not answer /api/health within ${s.upTimeoutMs / 60_000} minutes (last: ${r?.status ?? "no answer"})`);
       await deps.sleep(s.pollMs);
     }
@@ -378,6 +380,8 @@ export async function staging(deps, target, s = STAGING) {
       method: "POST",
       headers: { ...access, "content-type": "application/json" },
       body: JSON.stringify({ username: s.user, password }),
+      // Never followed: fetch keeps custom headers (the Access secret) and a 307's body (the password) across origins.
+      redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     });
     if (login.status !== 200) throw new Error(`sign-in answered ${login.status}`);

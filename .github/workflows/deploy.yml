@@ -131,7 +131,7 @@ jobs:
     needs: [resolve, staging]
     # A deploy only after staging passed; redeploy and rollback ship images production already ran, so they skip it.
     if: >-
-      always() && needs.resolve.result == 'success' && needs.resolve.outputs.skip != 'true' &&
+      !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.skip != 'true' &&
       (needs.staging.result == 'success' || (needs.staging.result == 'skipped' && needs.resolve.outputs.action != 'deploy'))
     runs-on: ubuntu-latest
     timeout-minutes: 60

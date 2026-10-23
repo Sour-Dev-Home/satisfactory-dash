@@ -237,11 +237,19 @@ test("log tails read the newest lines of <container>/<container>/<task id>", asy
   assert.equal(calls[3][calls[3].indexOf("--log-stream-name") + 1], "backend/backend/t123");
 });
 
-test("Access's 302 login redirect is never taken as healthy; the run fails after the timeout naming it", async () => {
+test("Access's 302 (a rejected service token) fails at once, never as healthy, and nothing follows a redirect", async () => {
   const deps = fakeDeps({ env: { ...ENV, CF_ACCESS_CLIENT_ID: "wrong" } });
-  await assert.rejects(staging(deps, target), /did not answer.*last: 302/);
-  assert.ok(deps.requests.every((r) => r.init.redirect === "manual" || r.url.endsWith("/login")));
+  await assert.rejects(staging(deps, target), /Cloudflare Access answered 302/);
+  assert.equal(deps.requests.length, 1, "no waiting out the 8 minutes");
   assert.ok(ops(deps).includes("stop-task"));
+});
+
+test("the sign-in POST never follows a redirect (it carries the Access secret and the password)", async () => {
+  const deps = fakeDeps();
+  await staging(deps, target);
+  const login = deps.requests.find((r) => r.url.endsWith("/api/auth/login"));
+  assert.equal(login.init.redirect, "manual");
+  assert.ok(deps.requests.every((r) => r.init.redirect === "manual"));
 });
 
 test("a fetch that throws during the health poll is retried like a 502", async () => {
