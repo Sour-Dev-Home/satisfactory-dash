@@ -178,6 +178,12 @@ definition that isn't what Terraform applied (another execution role, a task rol
 cloudflared off its pin). The release history is `aws ssm get-parameter-history --name
 /satis/deploy/prod/released`.
 
+**Provenance (#561):** from the first image run after it merged, every pushed image carries a signed SLSA build
+provenance attestation (Sigstore, keyless). To check that a digest was built by this repository's workflow from a
+given commit: `gh attestation verify oci://ghcr.io/sour-dev-home/satisfactory-dash-backend@sha256:<digest> -R
+Sour-Dev-Home/satisfactory-dash` (the same for `-ops`). Images built before that have none, so the deploy doesn't
+require one yet.
+
 **First runs, in order** (ADR-0049 build task 3):
 1. `deploy` with the sha production runs now (the one in `terraform.tfvars`). It re-registers the same images
    and writes the first `released` record. Its log prints the OIDC token's `sub`: it must equal the trust
