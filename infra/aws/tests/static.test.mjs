@@ -84,7 +84,15 @@ test('criterion 3: the master password is managed by RDS, never set', () => {
 test('criterion 4: SSM parameters are named, never read or written', () => {
   const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
   assert.doesNotMatch(all, /data\s+"aws_ssm_parameter"/, 'a data source would copy the value into state');
-  assert.doesNotMatch(all, /resource\s+"aws_ssm_parameter"/, 'a resource would keep the value in state');
+  // A resource would keep the value in state, so the only ones are ADR-0049 D2's deploy records: plain,
+  // non-secret Strings under /satis/deploy/, all in deploy_iam.tf.
+  const resources = [...all.matchAll(/resource\s+"aws_ssm_parameter"\s+"(\w+)"\s*\{([\s\S]*?)\n\}/g)];
+  assert.deepEqual(resources.map((m) => m[1]).sort(), ['deploy_backend_task_definition', 'deploy_migrate_task_definition', 'deploy_released']);
+  for (const [, name, body] of resources) {
+    assert.match(body, /name\s*=\s*"\$\{local\.deploy_parameter_prefix\}\//, `${name} lives under the deploy prefix`);
+    assert.match(body, /type\s*=\s*"String"/, `${name} is a plain String, never a SecureString`);
+  }
+  assert.match(code(read('deploy_iam.tf')), /deploy_parameter_prefix\s*=\s*"\/satis\/deploy\/\$\{local\.environment\}"/);
   assert.doesNotMatch(all, /data\s+"aws_secretsmanager_secret_version"/);
   const ssm = code(read('ssm.tf'));
   for (const name of ['TUNNEL_TOKEN', 'B2_ACCESS_KEY_ID', 'B2_SECRET_ACCESS_KEY', 'BACKUP_HEARTBEAT_URL', 'SESSION_SECRET']) {

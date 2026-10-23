@@ -62,3 +62,18 @@ output "backup_schedule_name" {
   description = "The EventBridge Scheduler schedule that runs the backup task."
   value       = aws_scheduler_schedule.backup.name
 }
+
+output "ops_task_definition_arns" {
+  description = "Each ops task's exact revision, for run_ops (ADR-0049 D2: never the family, whose newest revision anyone allowed to register could have added)."
+  value       = { for k, td in aws_ecs_task_definition.ops : k => td.arn }
+}
+
+output "backend_task_definition_arn" {
+  description = "The backend's base revision as last applied; the service runs it only after an update-service or a CI deploy (ADR-0049 D2)."
+  value       = aws_ecs_task_definition.main.arn
+}
+
+output "deploy_role_arn" {
+  description = "satis-prod-deploy, for the production environment's AWS_DEPLOY_ROLE_ARN variable on GitHub (ADR-0049 D1)."
+  value       = aws_iam_role.prod_deploy.arn
+}

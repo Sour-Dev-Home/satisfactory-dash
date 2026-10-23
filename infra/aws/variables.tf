@@ -211,3 +211,14 @@ variable "alarms" {
     error_message = "backend_errors_max, backend_critical_max and auth_failures_max must be at least 1."
   }
 }
+
+variable "github_repository" {
+  description = "owner/repo whose deploy.yml may assume the deploy role (ADR-0049 D1), exactly as GitHub's OIDC token spells it."
+  type        = string
+  default     = "Sour-Dev-Home/satisfactory-dash"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$", var.github_repository))
+    error_message = "github_repository must be owner/repo."
+  }
+}
