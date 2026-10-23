@@ -16,6 +16,7 @@ export * from "./account";
 export * from "./settings";
 export * from "./map";
 export * from "./bottlenecks";
+export * from "./productionGraph";
 export * from "./agent";
 export * from "./endpoints";
 export * from "./ownValue";

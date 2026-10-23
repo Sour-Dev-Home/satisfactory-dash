@@ -1,0 +1,180 @@
+import type { ProductionGraphResponse } from "../src/index";
+
+/**
+ * ADR-0050: production-graph responses. SYNTHETIC: no capture records a planner graph (the service is PR 3). Two sites:
+ * an iron line (miner -> 4x Smelter -> 8x Constructor manifold -> storage, with a loop back from a Constructor through
+ * a recycler, and a mixed belt into the storage) and a small copper outpost; one machine on no conveyor yet.
+ */
+
+const CONNECTIONS_REFRESH = { code: "connectionsRefresh", text: "Connections refresh every 10 minutes." };
+const rate = (className: string, name: string, currentPerMinute: number, maxPerMinute: number) => ({
+  className,
+  name,
+  unit: "items/min" as const,
+  currentPerMinute,
+  maxPerMinute,
+});
+
+const IRON = "site|1200|-400";
+const COPPER = "site|-2300|900";
+
+export const productionGraphTwoSites = {
+  serverId: "default",
+  observedAt: "2026-10-23T15:05:00.000Z",
+  stale: false,
+  data: {
+    nodes: [
+      {
+        key: "Build_MinerMk2_C||1150|-400",
+        kind: "extractor",
+        className: "Build_MinerMk2_C",
+        name: "Miner Mk.2",
+        recipe: null,
+        count: 1,
+        machineIds: ["Build_MinerMk2_C_1"],
+        stateCounts: { producing: 1 },
+        products: [rate("Desc_OreIron_C", "Iron Ore", 120, 120)],
+        ingredients: [],
+        at: { x: 1150, y: -400 },
+        siteKey: IRON,
+        loop: false,
+      },
+      {
+        key: "Build_SmelterMk1_C|Iron Ingot|1200|-400",
+        kind: "machines",
+        className: "Build_SmelterMk1_C",
+        name: "Smelter",
+        recipe: "Iron Ingot",
+        count: 4,
+        machineIds: ["Build_SmelterMk1_C_1", "Build_SmelterMk1_C_2", "Build_SmelterMk1_C_3", "Build_SmelterMk1_C_4"],
+        stateCounts: { producing: 4 },
+        products: [rate("Desc_IronIngot_C", "Iron Ingot", 120, 120)],
+        ingredients: [rate("Desc_OreIron_C", "Iron Ore", 120, 120)],
+        at: { x: 1200, y: -400 },
+        siteKey: IRON,
+        loop: false,
+      },
+      {
+        key: "Build_ConstructorMk1_C|Iron Plate|1250|-400",
+        kind: "machines",
+        className: "Build_ConstructorMk1_C",
+        name: "Constructor",
+        recipe: "Iron Plate",
+        count: 8,
+        machineIds: Array.from({ length: 8 }, (_, i) => `Build_ConstructorMk1_C_${i + 1}`),
+        stateCounts: { producing: 6, underfed: 2 },
+        products: [rate("Desc_IronPlate_C", "Iron Plate", 72, 160)],
+        ingredients: [rate("Desc_IronIngot_C", "Iron Ingot", 108, 240)],
+        at: { x: 1250, y: -400 },
+        siteKey: IRON,
+        loop: true,
+      },
+      {
+        key: "Build_ConstructorMk1_C|Iron Plate Recycle|1260|-420",
+        kind: "machines",
+        className: "Build_ConstructorMk1_C",
+        name: "Constructor",
+        recipe: "Iron Plate Recycle",
+        count: 1,
+        machineIds: ["Build_ConstructorMk1_C_9"],
+        stateCounts: { producing: 1 },
+        products: [rate("Desc_IronIngot_C", "Iron Ingot", 6, 10)],
+        ingredients: [rate("Desc_IronPlate_C", "Iron Plate", 4, 6)],
+        at: { x: 1260, y: -420 },
+        siteKey: IRON,
+        loop: true,
+      },
+      {
+        key: "Build_StorageContainerMk1_C||1300|-400",
+        kind: "storage",
+        className: "Build_StorageContainerMk1_C",
+        name: "Storage Container",
+        recipe: null,
+        count: 1,
+        machineIds: ["Build_StorageContainerMk1_C_1"],
+        stateCounts: {},
+        products: [],
+        ingredients: [],
+        at: { x: 1300, y: -400 },
+        siteKey: IRON,
+        loop: false,
+      },
+      {
+        key: "Build_MinerMk1_C||-2300|900",
+        kind: "extractor",
+        className: "Build_MinerMk1_C",
+        name: "Miner Mk.1",
+        recipe: null,
+        count: 1,
+        machineIds: ["Build_MinerMk1_C_1"],
+        stateCounts: { producing: 1 },
+        products: [rate("Desc_OreCopper_C", "Copper Ore", 60, 60)],
+        ingredients: [],
+        at: { x: -2300, y: 900 },
+        siteKey: COPPER,
+        loop: false,
+      },
+      {
+        key: "Build_SmelterMk1_C|Copper Ingot|-2290|900",
+        kind: "machines",
+        className: "Build_SmelterMk1_C",
+        name: "Smelter",
+        recipe: "Copper Ingot",
+        count: 2,
+        machineIds: ["Build_SmelterMk1_C_5", "Build_SmelterMk1_C_6"],
+        stateCounts: { producing: 2 },
+        products: [rate("Desc_CopperIngot_C", "Copper Ingot", 60, 60)],
+        ingredients: [rate("Desc_OreCopper_C", "Copper Ore", 60, 60)],
+        at: { x: -2290, y: 900 },
+        siteKey: COPPER,
+        loop: false,
+      },
+    ],
+    edges: [
+      { from: "Build_MinerMk2_C||1150|-400", to: "Build_SmelterMk1_C|Iron Ingot|1200|-400", kind: "belt", itemClassName: "Desc_OreIron_C", itemName: "Iron Ore", ratePerMinute: 120, rate: "measured", mixed: false, capacityPerMinute: 270, conveyorCount: 3 },
+      { from: "Build_SmelterMk1_C|Iron Ingot|1200|-400", to: "Build_ConstructorMk1_C|Iron Plate|1250|-400", kind: "belt", itemClassName: "Desc_IronIngot_C", itemName: "Iron Ingot", ratePerMinute: 102.2, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 14 },
+      { from: "Build_ConstructorMk1_C|Iron Plate Recycle|1260|-420", to: "Build_ConstructorMk1_C|Iron Plate|1250|-400", kind: "belt", itemClassName: "Desc_IronIngot_C", itemName: "Iron Ingot", ratePerMinute: 5.8, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 2 },
+      { from: "Build_ConstructorMk1_C|Iron Plate|1250|-400", to: "Build_ConstructorMk1_C|Iron Plate Recycle|1260|-420", kind: "belt", itemClassName: "Desc_IronPlate_C", itemName: "Iron Plate", ratePerMinute: 4, rate: "measured", mixed: false, capacityPerMinute: 60, conveyorCount: 1 },
+      { from: "Build_ConstructorMk1_C|Iron Plate|1250|-400", to: "Build_StorageContainerMk1_C||1300|-400", kind: "belt", itemClassName: "Desc_IronPlate_C", itemName: "Iron Plate", ratePerMinute: null, rate: "unknown", mixed: true, capacityPerMinute: null, conveyorCount: 4 },
+      { from: "Build_MinerMk1_C||-2300|900", to: "Build_SmelterMk1_C|Copper Ingot|-2290|900", kind: "belt", itemClassName: "Desc_OreCopper_C", itemName: "Copper Ore", ratePerMinute: 60, rate: "measured", mixed: false, capacityPerMinute: 60, conveyorCount: 2 },
+    ],
+    sites: [
+      {
+        key: IRON,
+        name: "Iron Plate site",
+        at: { x: 1232, y: -403 },
+        machineCount: 15,
+        stateCounts: { producing: 12, underfed: 2 },
+        topOutputs: [rate("Desc_IronPlate_C", "Iron Plate", 72, 160)],
+        nodeKeys: [
+          "Build_MinerMk2_C||1150|-400",
+          "Build_SmelterMk1_C|Iron Ingot|1200|-400",
+          "Build_ConstructorMk1_C|Iron Plate|1250|-400",
+          "Build_ConstructorMk1_C|Iron Plate Recycle|1260|-420",
+          "Build_StorageContainerMk1_C||1300|-400",
+        ],
+      },
+      {
+        key: COPPER,
+        name: "Copper Ingot site",
+        at: { x: -2293, y: 900 },
+        machineCount: 3,
+        stateCounts: { producing: 3 },
+        topOutputs: [rate("Desc_CopperIngot_C", "Copper Ingot", 60, 60)],
+        nodeKeys: ["Build_MinerMk1_C||-2300|900", "Build_SmelterMk1_C|Copper Ingot|-2290|900"],
+      },
+    ],
+    unconnectedMachineIds: ["Build_AssemblerMk1_C_1"],
+    beltData: "stale",
+    connectionsRefreshMinutes: 10,
+    notes: [CONNECTIONS_REFRESH],
+  },
+} satisfies ProductionGraphResponse;
+
+/** An empty factory, or one the conveyors layer hasn't been read for yet. */
+export const productionGraphEmpty = {
+  serverId: "default",
+  observedAt: "2026-10-23T15:05:00.000Z",
+  stale: false,
+  data: { nodes: [], edges: [], sites: [], unconnectedMachineIds: [], beltData: "present", connectionsRefreshMinutes: 10, notes: [CONNECTIONS_REFRESH] },
+} satisfies ProductionGraphResponse;
