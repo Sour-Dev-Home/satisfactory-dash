@@ -141,8 +141,41 @@ back). To go back by hand, `aws ecs update-service --cluster satis-prod --servic
 --task-definition "$PREV"`, and put the last good `backend_image` back in `terraform.tfvars` so the
 next apply's base matches.
 
-Steps 1-5 are the interim deploy until the deploy workflow (ADR-0049 PR 3) ships; it does the same
-from GitHub, after staging passes.
+Steps 1-5 are now the fallback. The usual way is the **Deploy** workflow (below), which does the same
+from GitHub. A Terraform change to the backend's configuration still needs the apply (step 4), then the
+workflow's `redeploy` to run it.
+
+### Deploy from GitHub (ADR-0049 PR 3)
+
+GitHub → Actions → **Deploy** → Run workflow, on `main`:
+
+- `deploy` with `sha` empty: the newest commit on `main` whose images were published. Or give a full
+  40-character sha. It migrates first (on a non-zero exit the service is never touched), rolls the backend
+  out, watches `backend-errors` and `backend-critical` for 10 minutes (either in `ALARM` rolls back to
+  what ran before), checks `/api/health/ready` and writes `/satis/deploy/prod/released`.
+- `redeploy`: the released images on the current base, after a Terraform configuration apply. No migration.
+- `rollback` with `sha` empty: the previous release (`released.previous`); or a sha. No migration (the
+  schema stays ahead, which an older build accepts) and no alarm pre-check.
+
+It refuses to start while either alarm is already in `ALARM` (except `rollback`), and refuses a base task
+definition that isn't what Terraform applied (another execution role, a task role, another container or
+cloudflared off its pin). The release history is `aws ssm get-parameter-history --name
+/satis/deploy/prod/released`.
+
+**First runs, in order** (ADR-0049 build task 3):
+1. `deploy` with the sha production runs now (the one in `terraform.tfvars`). It re-registers the same images
+   and writes the first `released` record. Its log prints the OIDC token's `sub`: it must equal the trust
+   policy's (`terraform output` / `deploy_iam.tf`), case included. An `AccessDenied` on
+   `AssumeRoleWithWebIdentity` means they differ.
+2. One real `deploy` of a newer commit.
+3. One `rollback` (to the release before), then `deploy` forward again.
+
+After that, stop editing image digests in `terraform.tfvars` for deploys: `backend_image` and `ops_image`
+are only the bases' bootstrap images and the image of `db-init`, `backup` and `restore`.
+
+**Notices:** add the `production` environment secret `DEPLOY_DISCORD_WEBHOOK` (a webhook for its own
+channel, not the alert webhooks) to get one message per released, failed or rolled-back deploy. Without it
+the step only logs.
 
 ### Deploy from GitHub: one-time setup (ADR-0049 PR 2)
 
