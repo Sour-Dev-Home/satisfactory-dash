@@ -169,7 +169,7 @@ export function walkRegion(g: Graph, root: number, filter: Filter, dir: "back" |
 }
 
 /** Union-find over `n` nodes; `link` joins two, `find` returns a representative. */
-function disjointSets(n: number): { find: (i: number) => number; link: (a: number, b: number) => void } {
+export function disjointSets(n: number): { find: (i: number) => number; link: (a: number, b: number) => void } {
   const parent = Array.from({ length: n }, (_, i) => i);
   const find = (i: number): number => {
     while (parent[i] !== i) {
