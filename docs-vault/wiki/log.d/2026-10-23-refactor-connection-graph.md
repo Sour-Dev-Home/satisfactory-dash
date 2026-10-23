@@ -1,0 +1,1 @@
+- 2026-10-23 — Extracted the connection graph (`buildGraph`, `Arc`/`Graph`/`Region`, the node-kind sets, the region walk) from `bottleneckFinder.ts` into `telemetry/services/connectionGraph.ts` with no behaviour change, and added `weaklyConnectedComponents` and `passThroughComponents` for the production planner (ADR-0050 build task 1).
