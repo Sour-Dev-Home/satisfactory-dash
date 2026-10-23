@@ -85,13 +85,14 @@ test('criterion 4: SSM parameters are named, never read or written', () => {
   const all = tfFiles().map((f) => code(readFileSync(f, 'utf8'))).join('\n');
   assert.doesNotMatch(all, /data\s+"aws_ssm_parameter"/, 'a data source would copy the value into state');
   // A resource would keep the value in state, so the only ones are ADR-0049 D2's deploy records: plain,
-  // non-secret Strings under /satis/deploy/, all in deploy_iam.tf.
+  // non-secret Strings under /satis/deploy/, in deploy_iam.tf and staging.tf. Staging's own values stay unnamed
+  // here: /satis/staging/ is only ever named, like /satis/prod/.
   // Count every declaration first, however its labels are written, so one the capture below misses fails.
-  assert.equal((all.match(/resource\s+"?aws_ssm_parameter"?\s/g) ?? []).length, 3, 'exactly the three deploy records');
+  assert.equal((all.match(/resource\s+"?aws_ssm_parameter"?\s/g) ?? []).length, 5, 'exactly the five deploy records');
   const resources = [...all.matchAll(/resource\s+"?aws_ssm_parameter"?\s+"?([^"\s{]+)"?\s*\{([\s\S]*?)\n\}/g)];
-  assert.deepEqual(resources.map((m) => m[1]).sort(), ['deploy_backend_task_definition', 'deploy_migrate_task_definition', 'deploy_released']);
+  assert.deepEqual(resources.map((m) => m[1]).sort(), ['deploy_backend_task_definition', 'deploy_migrate_task_definition', 'deploy_released', 'deploy_staging_network', 'deploy_staging_task_definition']);
   for (const [, name, body] of resources) {
-    assert.match(body, /name\s*=\s*"\$\{local\.deploy_parameter_prefix\}\//, `${name} lives under the deploy prefix`);
+    assert.match(body, /name\s*=\s*"(\$\{local\.deploy_parameter_prefix\}|\/satis\/deploy\/staging)\//, `${name} lives under a deploy prefix`);
     assert.match(body, /type\s*=\s*"String"/, `${name} is a plain String, never a SecureString`);
   }
   assert.match(code(read('deploy_iam.tf')), /deploy_parameter_prefix\s*=\s*"\/satis\/deploy\/\$\{local\.environment\}"/);

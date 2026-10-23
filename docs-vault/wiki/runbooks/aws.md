@@ -180,6 +180,47 @@ are only the bases' bootstrap images and the image of `db-init`, `backup` and `r
 channel, not the alert webhooks) to get one message per released, failed or rolled-back deploy. Without it
 the step only logs.
 
+### Staging: one-time setup (ADR-0049 PR 4)
+
+Staging is one throwaway task (no service, nothing running between deploys) with its own PostgreSQL in the task,
+its own cluster `satis-staging`, egress-only group (RDS never admits it), execution role (reads only
+`/satis/staging/`) and tunnel. PR 5 makes the Deploy workflow start it, test it and stop it before production.
+Do these once, in order:
+
+1. **Tunnel.** Cloudflare Zero Trust → Networks → Tunnels → Create a tunnel (cloudflared) named `satis-staging`.
+   Public hostname `api-staging.satis-manager.com` → `http://127.0.0.1:3001` (the catch-all stays 404, as for
+   production). Copy the token from the install command (the long string after `--token`).
+2. **Access.** Zero Trust → Access → Applications → Add → Self-hosted, domain `api-staging.satis-manager.com`.
+   Policy 1, Allow: your email. Then Access → Service auth → Create a service token `satis-staging-ci`, and
+   policy 2 on the application, action **Service Auth**, including that token. Keep its client id and secret for
+   PR 5 (GitHub `staging` environment secrets `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`).
+3. **Values** (PowerShell, from `satisfactory-dash`, after the usual `refresh`). Hex passwords need no URL
+   encoding. Never reuse a production value. Not under `Start-Transcript` (it prints the admin password once),
+   and copy the tunnel token to the clipboard first, so it never lands in PowerShell's history.
+   ```powershell
+   $hex = { [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)).ToLower() }   # 48 hex, CSPRNG
+   $pg = & $hex; $mig = & $hex; $app = & $hex
+   $adminPw = & $hex; $adminPw   # the staging admin's password: keep it for PR 5 (STAGING_ADMIN_PASSWORD)
+   $hash = $adminPw | npm run --silent hash-password -w backend
+   function put($k, $v) { aws ssm put-parameter --name "/satis/staging/$k" --type SecureString --value $v --overwrite --query Version }
+   $tok = (Get-Clipboard).Trim(); put TUNNEL_TOKEN $tok; Remove-Variable tok   # the token from step 1, copied
+   put SESSION_SECRET (& $hex)
+   put DASHBOARD_ADMIN_USER 'staging-admin'
+   put DASHBOARD_ADMIN_PASSWORD_HASH $hash
+   put POSTGRES_PASSWORD $pg
+   put DB_MIGRATOR_PASSWORD $mig
+   put DB_APP_PASSWORD $app
+   put DATABASE_URL "postgres://satis_app:$app@127.0.0.1:5432/satis"
+   put MIGRATOR_DATABASE_URL "postgres://satis_migrator:$mig@127.0.0.1:5432/satis"
+   ```
+4. **Apply.** `terraform plan "-out=staging.tfplan"`. Expect only creates: the cluster, the log group, the
+   security group, `satis-staging-ecs-execution` and `satis-staging-deploy` with their policies, the task
+   definition `satis-staging`, the two `/satis/deploy/staging/*` parameters. **Nothing in production changes.**
+   Then `terraform apply staging.tfplan`, and note `terraform output -raw staging_deploy_role_arn` for PR 5
+   (`AWS_STAGING_ROLE_ARN` on the `staging` environment).
+
+Cost: nothing while idle; a run is about 10 minutes of 0.5 vCPU / 2 GB (well under a cent) plus 3 days of logs.
+
 ### Deploy from GitHub: one-time setup (ADR-0049 PR 2)
 
 After the apply that creates `satis-prod-deploy` (plan: the OIDC provider, the role and its policy,

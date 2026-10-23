@@ -77,3 +77,8 @@ output "deploy_role_arn" {
   description = "satis-prod-deploy, for the production environment's AWS_DEPLOY_ROLE_ARN variable on GitHub (ADR-0049 D1)."
   value       = aws_iam_role.prod_deploy.arn
 }
+
+output "staging_deploy_role_arn" {
+  description = "satis-staging-deploy, for the staging environment's AWS_STAGING_ROLE_ARN variable on GitHub (ADR-0049 D1)."
+  value       = aws_iam_role.staging_deploy.arn
+}
