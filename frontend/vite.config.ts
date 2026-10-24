@@ -100,8 +100,20 @@ export default defineConfig(({ command, mode }) => {
       ...(mode === 'mock' ? [mockServiceWorker()] : []),
       ...(mode === 'demo' ? [demoBuild()] : []),
     ],
-    // The demo build lands next to the production one, never over it.
-    build: mode === 'demo' ? { outDir: 'dist-demo' } : undefined,
+    build: {
+      // The demo build lands next to the production one, never over it.
+      ...(mode === 'demo' ? { outDir: 'dist-demo' } : {}),
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            // zod and its jitless switch (shared/browser.ts) in one chunk, so the switch runs before any chunk that
+            // imports zod builds a schema. Otherwise a shared chunk (first seen with the lazy planner graph) ran ahead
+            // of the entry's `import '@satisfactory-dash/shared/browser'` and zod's `new Function("")` probe hit the CSP.
+            groups: [{ name: 'zod', test: /[\\/]node_modules[\\/]zod[\\/]|[\\/]packages[\\/]shared[\\/]src[\\/]browser\.ts$/, priority: 100 }],
+          },
+        },
+      },
+    },
     define: {
       // The deployed commit for the AGPL source link (src/source.ts). Cloudflare Workers
       // Builds sets WORKERS_CI_COMMIT_SHA; it's empty locally and in GitHub CI, so the link

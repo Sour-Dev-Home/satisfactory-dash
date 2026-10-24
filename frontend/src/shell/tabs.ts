@@ -6,10 +6,10 @@ export interface Tab {
 }
 
 /**
- * ADR-0050 task 5: the Planner page is built and routed (`/app/planner`) but not listed anywhere a user looks
- * (nav, nav prefetch, command bar) until task 6 lands the graph view. That PR flips this to `true`.
+ * ADR-0050: the Planner tab (nav, nav prefetch, command bar). It was routed but unlisted from task 5 until task 6 landed
+ * the graph view; the owner's call was to show the tab then. A parameter below keeps the hidden form testable.
  */
-export const PLANNER_IN_NAV = false;
+export const PLANNER_IN_NAV = true;
 
 const BEFORE_PLANNER: Tab[] = [
   { to: "/app", label: "Overview", end: true },

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 import type { Bottleneck, PlannerEdge, PlannerNode, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
 import { DataAge } from "../components/DataAge";
 import { formatTime } from "../format";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
+import { BottleneckBadge } from "./BottleneckBadge";
+import { LazySiteGraph } from "./graph/GraphLoader";
+import { useWideScreen } from "./graph/useWideScreen";
 import {
-  BOTTLENECKS_LINK,
-  bottleneckCountText,
   edgeCapacityText,
   edgeItemText,
   edgeRateText,
@@ -20,16 +20,6 @@ import {
   stateCountsText,
   totalMachines,
 } from "./plannerText";
-
-/** A bottleneck count that links to the Factory page's Bottlenecks section; "No bottlenecks" is plain text. */
-function BottleneckBadge({ count, what }: { count: number; what: string }) {
-  if (count === 0) return <span className="text-muted">{bottleneckCountText(0)}</span>;
-  return (
-    <Link to={BOTTLENECKS_LINK} aria-label={`${bottleneckCountText(count)} in ${what}, on the Factory page`} className="font-semibold text-warn">
-      {bottleneckCountText(count)}
-    </Link>
-  );
-}
 
 function SiteCard({
   site,
@@ -145,6 +135,9 @@ function SiteDetail({
   const edges = siteEdges(graph, nodes);
   const byKey = new Map(graph.nodes.map((n) => [n.key, n]));
   const count = siteFindings(nodes, findings).length;
+  const wide = useWideScreen();
+  const [mode, setMode] = useState<"graph" | "tables" | null>(null);
+  const view = mode ?? (wide ? "graph" : "tables");
   return (
     <div className="grid gap-3">
       <button type="button" onClick={onBack} className="min-h-touch justify-self-start">
@@ -163,7 +156,18 @@ function SiteDetail({
         )}
       </p>
 
-      <section aria-labelledby="planner-groups-heading" className="grid gap-2">
+      {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this site's, until it is closed. */}
+      <div role="group" aria-label="View" className="flex gap-2">
+        {(["graph", "tables"] as const).map((m) => (
+          <button key={m} type="button" aria-pressed={view === m} onClick={() => setMode(m)} className="min-h-touch">
+            {m === "graph" ? "Graph" : "Tables"}
+          </button>
+        ))}
+      </div>
+
+      {view === "graph" && <LazySiteGraph site={site} graph={graph} findings={findings} />}
+
+      <section aria-labelledby="planner-groups-heading" hidden={view !== "tables"} className="grid gap-2">
         <h5 id="planner-groups-heading" className="m-0">
           Groups
         </h5>
@@ -191,7 +195,7 @@ function SiteDetail({
         )}
       </section>
 
-      <section aria-labelledby="planner-edges-heading" className="grid gap-2">
+      <section aria-labelledby="planner-edges-heading" hidden={view !== "tables"} className="grid gap-2">
         <h5 id="planner-edges-heading" className="m-0">
           Connections
         </h5>
