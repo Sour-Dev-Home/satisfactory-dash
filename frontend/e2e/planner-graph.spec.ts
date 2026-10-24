@@ -18,7 +18,8 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
   // dagre has laid out the cards, and the edge words are drawn.
-  await expect(svg.getByText("Iron Ore · 120 items/min")).toBeVisible();
+  // exact: the edge's <title> tooltip carries the same words after "from to:".
+  await expect(svg.getByText("Iron Ore · 120 items/min", { exact: true })).toBeVisible();
 
   // Wheel zoom about the pointer, then drag to pan.
   const box = (await svg.boundingBox())!;
@@ -61,7 +62,7 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await expect(group).toBeFocused();
 
   // The same panel by pointer: click the card in the picture.
-  await svg.getByText("Miner Mk.2").click();
+  await svg.getByText("Miner Mk.2", { exact: true }).click();
   await expect(page.getByRole("complementary", { name: "Miner Mk.2" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("complementary")).toHaveCount(0);
