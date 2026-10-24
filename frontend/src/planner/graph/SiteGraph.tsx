@@ -8,9 +8,9 @@ import { layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
-  STAGE_H,
-  STAGE_W,
+  FALLBACK_STAGE,
   ZOOM_STEP,
+  canvasHeight,
   fitView,
   keyView,
   panBy,
@@ -18,6 +18,7 @@ import {
   toStage,
   zoomAt,
   zoomCentre,
+  type Stage,
   type View,
 } from "./viewport";
 
@@ -57,12 +58,24 @@ export default function SiteGraph({
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const laidByKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
   const items = useMemo(() => siteItems(layout.sourceEdges), [layout]);
-  const fit = useMemo(() => fitView(layout.width, layout.height), [layout.width, layout.height]);
   const ids = useId();
   const markerId = `${ids}-arrow`;
   const panelId = `${ids}-panel`;
 
-  const [view, setView] = useState<View>(fit);
+  // The SVG's measured size is the stage (1 unit = 1 CSS px); jsdom has no ResizeObserver and keeps the fallback.
+  const [stage, setStage] = useState<Stage>(FALLBACK_STAGE);
+  const fit = useMemo(() => fitView(layout.width, layout.height, stage), [layout.width, layout.height, stage]);
+  const canvasH = canvasHeight(layout.width, layout.height, stage.width);
+  // Until the user pans or zooms the view is the fit, so it follows the measured size; after that it is theirs.
+  const [moved, setMoved] = useState<View | null>(null);
+  const view = moved ?? fit;
+  const viewRef = useRef(view);
+  const stageRef = useRef(stage);
+  useEffect(() => {
+    viewRef.current = view;
+    stageRef.current = stage;
+  });
+  const setView = (change: View | ((v: View) => View)) => setMoved(typeof change === "function" ? change(viewRef.current) : change);
   const [item, setItem] = useState(ALL_ITEMS);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -76,13 +89,27 @@ export default function SiteGraph({
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null ? undefined : nodeByKey.get(openKey);
 
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = Math.round(svg.clientWidth);
+      const height = Math.round(svg.clientHeight);
+      if (width > 0 && height > 0) setStage((s) => (s.width === width && s.height === height ? s : { width, height }));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
+
   // The wheel needs preventDefault (the page must not scroll), which React's passive listener cannot do.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const p = toStage(svg.getBoundingClientRect(), event.clientX, event.clientY);
+      const p = toStage(svg.getBoundingClientRect(), stageRef.current, event.clientX, event.clientY);
       setView((v) => zoomAt(v, Math.exp(-event.deltaY * WHEEL_SENSITIVITY), p.x, p.y));
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
@@ -96,7 +123,7 @@ export default function SiteGraph({
     let moved = 0;
     const onMove = (e: PointerEvent) => {
       const rect = svgRef.current?.getBoundingClientRect();
-      const scale = rect ? toStage(rect, 0, 0).scale : 1;
+      const scale = rect ? toStage(rect, stageRef.current, 0, 0).scale : 1;
       const dx = e.clientX - last.x;
       const dy = e.clientY - last.y;
       moved += Math.abs(dx) + Math.abs(dy);
@@ -122,7 +149,7 @@ export default function SiteGraph({
       close();
       return;
     }
-    const next = keyView(view, event.key, fit);
+    const next = keyView(view, event.key, fit, stage);
     if (next === null) return;
     event.preventDefault();
     setView(next);
@@ -140,7 +167,7 @@ export default function SiteGraph({
   };
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
-    setView((v) => revealRect(v, n));
+    setView((v) => revealRect(v, n, stageRef.current));
   };
 
   const lit = (key: string) => reach === null || reach.nodes.has(key);
@@ -166,10 +193,10 @@ export default function SiteGraph({
           </select>
         </label>
         <div role="group" aria-label="Zoom" className="flex gap-2">
-          <button type="button" onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP))} disabled={view.k >= MAX_ZOOM} className="min-h-touch">
+          <button type="button" onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP, stage))} disabled={view.k >= MAX_ZOOM} className="min-h-touch">
             Zoom in
           </button>
-          <button type="button" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP))} disabled={view.k <= MIN_ZOOM} className="min-h-touch">
+          <button type="button" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={view.k <= MIN_ZOOM} className="min-h-touch">
             Zoom out
           </button>
           <button type="button" onClick={() => setView(fit)} className="min-h-touch">
@@ -200,10 +227,11 @@ export default function SiteGraph({
               layout.sourceEdges,
               site.name,
             )}
-            viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}
+            viewBox={`0 0 ${stage.width} ${stage.height}`}
+            height={canvasH}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
-            className="h-map min-h-map-min w-full cursor-grab touch-none rounded-card border border-line bg-surface"
+            className="max-h-map min-h-map-min w-full cursor-grab touch-none rounded-card border border-line bg-surface"
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">

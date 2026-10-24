@@ -128,6 +128,13 @@ describe("the site graph", () => {
     expect(transformOf(svg)).toBe(before0);
   });
 
+  it("sizes the canvas from the drawing through the SVG height attribute, not an inline style", async () => {
+    const svg = await openGraph();
+    expect(Number(svg.getAttribute("height"))).toBeGreaterThan(0);
+    expect(svg.getAttribute("viewBox")).toMatch(/^0 0 \d+ \d+$/);
+    expect(svg.getAttribute("style")).toBeNull();
+  });
+
   it("pans by dragging, and zooms with the wheel", async () => {
     const svg = await openGraph();
     const before = transformOf(svg);

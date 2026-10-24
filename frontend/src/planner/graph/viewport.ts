@@ -1,10 +1,21 @@
-/** The graph's pan and zoom, in stage units (the SVG's viewBox), and the maths that moves it. All pure. */
+/**
+ * The graph's pan and zoom, in stage units, and the maths that moves it. All pure: the stage is the SVG's viewBox, which
+ * the component sets to the element's measured size, so one stage unit is one CSS pixel and `text-sm` stays 14 px at k = 1.
+ */
 
-/** The SVG's viewBox: the drawing is scaled to fit it, so the maths never needs the element's pixel size. */
-export const STAGE_W = 1000;
-export const STAGE_H = 600;
+export interface Stage {
+  width: number;
+  height: number;
+}
+
+/** The stage before the element is measured (and in jsdom, which has no ResizeObserver). */
+export const FALLBACK_STAGE: Stage = { width: 1000, height: 600 };
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 4;
+/** The smallest scale a fit goes to: below it the text is under ~10 px, so the drawing is panned instead. */
+export const MIN_FIT_ZOOM = 0.8;
+/** Space kept around the drawing by a fit and by the canvas height, in stage units. */
+export const FIT_PAD = 16;
 export const ZOOM_STEP = 1.25;
 export const PAN_STEP = 60;
 
@@ -24,26 +35,44 @@ export function zoomAt(view: View, factor: number, cx: number, cy: number): View
   return { k, x: cx - (cx - view.x) * real, y: cy - (cy - view.y) * real };
 }
 
-export const zoomCentre = (view: View, factor: number) => zoomAt(view, factor, STAGE_W / 2, STAGE_H / 2);
+export const zoomCentre = (view: View, factor: number, stage: Stage) => zoomAt(view, factor, stage.width / 2, stage.height / 2);
 
 export const panBy = (view: View, dx: number, dy: number): View => ({ ...view, x: view.x + dx, y: view.y + dy });
 
-/** The view that shows a whole drawing of the given size, centred, never enlarged past 1:1. */
-export function fitView(width: number, height: number): View {
+/** The scale at which a drawing fits `avail` x `availH`: never above 1:1, never below the readable floor. */
+const fitScale = (width: number, height: number, availW: number, availH: number) =>
+  Math.max(MIN_FIT_ZOOM, Math.min(1, availW / width, availH / height));
+
+/**
+ * The view that shows a drawing of the given size: scaled down only as needed, never below MIN_FIT_ZOOM and never above
+ * 1:1. An axis that fits is centred; one that does not (only possible at the floor) is anchored at the left or top of the
+ * drawing, since the flow starts at the extractors and reads left to right.
+ */
+export function fitView(width: number, height: number, stage: Stage): View {
   if (width <= 0 || height <= 0) return { x: 0, y: 0, k: 1 };
-  const k = clampK(Math.min(1, STAGE_W / width, STAGE_H / height));
-  return { k, x: (STAGE_W - width * k) / 2, y: (STAGE_H - height * k) / 2 };
+  const availW = Math.max(1, stage.width - 2 * FIT_PAD);
+  const availH = Math.max(1, stage.height - 2 * FIT_PAD);
+  const k = fitScale(width, height, availW, availH);
+  const place = (size: number, avail: number, total: number) => (size <= avail ? (total - size) / 2 : FIT_PAD);
+  return { k, x: place(width * k, availW, stage.width), y: place(height * k, availH, stage.height) };
+}
+
+/** The canvas height that suits a drawing at this stage width (the CSS min and max heights clamp it). */
+export function canvasHeight(width: number, height: number, stageWidth: number): number {
+  if (width <= 0 || height <= 0) return FALLBACK_STAGE.height;
+  const k = fitScale(width, height, Math.max(1, stageWidth - 2 * FIT_PAD), Infinity);
+  return Math.ceil(height * k + 2 * FIT_PAD);
 }
 
 /** What a key does to the view, or null when it is none of the graph's keys. */
-export function keyView(view: View, key: string, fit: View): View | null {
+export function keyView(view: View, key: string, fit: View, stage: Stage): View | null {
   switch (key) {
     case "+":
     case "=":
-      return zoomCentre(view, ZOOM_STEP);
+      return zoomCentre(view, ZOOM_STEP, stage);
     case "-":
     case "_":
-      return zoomCentre(view, 1 / ZOOM_STEP);
+      return zoomCentre(view, 1 / ZOOM_STEP, stage);
     case "0":
       return fit;
     case "ArrowLeft":
@@ -59,17 +88,17 @@ export function keyView(view: View, key: string, fit: View): View | null {
   }
 }
 
-/** A pointer position (client pixels) as a stage point, allowing for the bars `preserveAspectRatio="meet"` leaves. */
-export function toStage(rect: { left: number; top: number; width: number; height: number }, clientX: number, clientY: number) {
+/** A pointer position (client pixels) as a stage point, allowing for any bars `preserveAspectRatio="meet"` leaves. */
+export function toStage(rect: { left: number; top: number; width: number; height: number }, stage: Stage, clientX: number, clientY: number) {
   if (rect.width <= 0 || rect.height <= 0) return { x: clientX, y: clientY, scale: 1 };
-  const scale = Math.min(rect.width / STAGE_W, rect.height / STAGE_H);
-  const offX = (rect.width - STAGE_W * scale) / 2;
-  const offY = (rect.height - STAGE_H * scale) / 2;
+  const scale = Math.min(rect.width / stage.width, rect.height / stage.height);
+  const offX = (rect.width - stage.width * scale) / 2;
+  const offY = (rect.height - stage.height * scale) / 2;
   return { x: (clientX - rect.left - offX) / scale, y: (clientY - rect.top - offY) / scale, scale };
 }
 
 /** The view moved the least that brings a layout rectangle fully into the stage (with a margin); unchanged if it is in. */
-export function revealRect(view: View, r: { x: number; y: number; width: number; height: number }, margin = 24): View {
+export function revealRect(view: View, r: { x: number; y: number; width: number; height: number }, stage: Stage, margin = 24): View {
   const left = view.x + r.x * view.k;
   const right = left + r.width * view.k;
   const top = view.y + r.y * view.k;
@@ -77,8 +106,8 @@ export function revealRect(view: View, r: { x: number; y: number; width: number;
   let dx = 0;
   let dy = 0;
   if (left < margin) dx = margin - left;
-  else if (right > STAGE_W - margin) dx = STAGE_W - margin - right;
+  else if (right > stage.width - margin) dx = stage.width - margin - right;
   if (top < margin) dy = margin - top;
-  else if (bottom > STAGE_H - margin) dy = STAGE_H - margin - bottom;
+  else if (bottom > stage.height - margin) dy = stage.height - margin - bottom;
   return dx === 0 && dy === 0 ? view : panBy(view, dx, dy);
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MAX_ZOOM, MIN_ZOOM, STAGE_H, STAGE_W, fitView, keyView, panBy, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
+import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, fitView, keyView, panBy, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
 
 const home = { x: 0, y: 0, k: 1 };
+const stage = FALLBACK_STAGE;
 
 describe("viewport", () => {
   it("zooms about a point, which stays where it is", () => {
@@ -13,30 +14,57 @@ describe("viewport", () => {
   });
 
   it("clamps the zoom", () => {
-    expect(zoomCentre(home, 1000).k).toBe(MAX_ZOOM);
-    expect(zoomCentre(home, 1e-6).k).toBe(MIN_ZOOM);
+    expect(zoomCentre(home, 1000, stage).k).toBe(MAX_ZOOM);
+    expect(zoomCentre(home, 1e-6, stage).k).toBe(MIN_ZOOM);
+    // Manual zoom may go below the fit floor.
+    expect(MIN_ZOOM).toBeLessThan(MIN_FIT_ZOOM);
   });
 
-  it("fits a drawing into the stage, centred, and does not enlarge a small one", () => {
-    const big = fitView(STAGE_W * 2, STAGE_H);
-    expect(big.k).toBeCloseTo(0.5);
-    expect(big.x).toBeCloseTo(0);
-    expect(big.y).toBeCloseTo((STAGE_H - STAGE_H * 0.5) / 2);
-    expect(fitView(100, 100)).toEqual({ k: 1, x: (STAGE_W - 100) / 2, y: (STAGE_H - 100) / 2 });
-    expect(fitView(0, 0)).toEqual(home);
+  it("fits a drawing that is a little too big by scaling it down, centred", () => {
+    const k = (stage.width - 2 * FIT_PAD) / 1100;
+    expect(k).toBeGreaterThan(MIN_FIT_ZOOM);
+    const v = fitView(1100, 200, stage);
+    expect(v.k).toBeCloseTo(k);
+    expect(v.x).toBeCloseTo(FIT_PAD);
+    expect(v.y).toBeCloseTo((stage.height - 200 * k) / 2);
+  });
+
+  it("never enlarges a small drawing past 1:1, and centres it", () => {
+    expect(fitView(100, 100, stage)).toEqual({ k: 1, x: (stage.width - 100) / 2, y: (stage.height - 100) / 2 });
+    expect(fitView(0, 0, stage)).toEqual(home);
+  });
+
+  it("never fits below the readable floor, and anchors a too-wide drawing at its left", () => {
+    const v = fitView(5000, 200, stage);
+    expect(v.k).toBe(MIN_FIT_ZOOM);
+    expect(v.x).toBe(FIT_PAD);
+    expect(v.y).toBeCloseTo((stage.height - 200 * MIN_FIT_ZOOM) / 2);
+    const tall = fitView(300, 5000, stage);
+    expect(tall.k).toBe(MIN_FIT_ZOOM);
+    expect(tall.y).toBe(FIT_PAD);
+    expect(tall.x).toBeCloseTo((stage.width - 300 * MIN_FIT_ZOOM) / 2);
+  });
+
+  it("sizes the canvas to the drawing at the fit scale, with padding", () => {
+    expect(canvasHeight(400, 100, 1000)).toBe(100 + 2 * FIT_PAD);
+    // Too wide for the floor: scaled to 0.8 and no further.
+    expect(canvasHeight(5000, 1000, 1000)).toBe(Math.ceil(1000 * MIN_FIT_ZOOM + 2 * FIT_PAD));
+    // Scaled down only as needed.
+    expect(canvasHeight(1100, 1000, 1000)).toBe(Math.ceil(1000 * ((1000 - 2 * FIT_PAD) / 1100) + 2 * FIT_PAD));
+    expect(canvasHeight(0, 0, 1000)).toBe(FALLBACK_STAGE.height);
   });
 
   it("maps keys to moves: + - zoom, arrows pan the picture the way the arrow points the view, 0 fits", () => {
     const fit = { x: 5, y: 5, k: 0.5 };
-    expect(keyView(home, "+", fit)!.k).toBeGreaterThan(1);
-    expect(keyView(home, "-", fit)!.k).toBeLessThan(1);
-    expect(keyView(home, "0", fit)).toBe(fit);
-    expect(keyView(home, "ArrowRight", fit)!.x).toBeLessThan(0);
-    expect(keyView(home, "ArrowLeft", fit)!.x).toBeGreaterThan(0);
-    expect(keyView(home, "ArrowDown", fit)!.y).toBeLessThan(0);
-    expect(keyView(home, "ArrowUp", fit)!.y).toBeGreaterThan(0);
-    expect(keyView(home, "a", fit)).toBeNull();
-    expect(keyView(home, "Enter", fit)).toBeNull();
+    expect(keyView(home, "+", fit, stage)!.k).toBeGreaterThan(1);
+    expect(keyView(home, "-", fit, stage)!.k).toBeLessThan(1);
+    expect(keyView(home, "0", fit, stage)).toBe(fit);
+    expect(keyView(home, "ArrowRight", fit, stage)!.x).toBeLessThan(0);
+    expect(keyView(home, "ArrowLeft", fit, stage)!.x).toBeGreaterThan(0);
+    expect(keyView(home, "ArrowDown", fit, stage)!.y).toBeLessThan(0);
+    expect(keyView(home, "ArrowUp", fit, stage)!.y).toBeGreaterThan(0);
+    expect(keyView(home, "a", fit, stage)).toBeNull();
+    expect(keyView(home, "Enter", fit, stage)).toBeNull();
   });
 
   it("pans by a delta", () => {
@@ -46,18 +74,20 @@ describe("viewport", () => {
   it("converts a pointer to stage units, allowing for bars when the element is not 5:3", () => {
     const wide = { left: 100, top: 50, width: 2000, height: 600 };
     // scale = min(2, 1) = 1; the stage is centred: bars of 500 px each side.
-    const p = toStage(wide, 100 + 500 + 250, 50 + 300);
+    const p = toStage(wide, stage, 100 + 500 + 250, 50 + 300);
     expect(p).toEqual({ x: 250, y: 300, scale: 1 });
-    expect(toStage({ left: 0, top: 0, width: 0, height: 0 }, 7, 8)).toEqual({ x: 7, y: 8, scale: 1 });
+    // A stage measured to the element is 1:1 with no bars.
+    expect(toStage({ left: 10, top: 20, width: 800, height: 400 }, { width: 800, height: 400 }, 110, 70)).toEqual({ x: 100, y: 50, scale: 1 });
+    expect(toStage({ left: 0, top: 0, width: 0, height: 0 }, stage, 7, 8)).toEqual({ x: 7, y: 8, scale: 1 });
   });
 
   it("reveals a rectangle with the least move, and leaves a visible one alone", () => {
     const inside = { x: 100, y: 100, width: 50, height: 50 };
-    expect(revealRect(home, inside)).toBe(home);
-    const right = revealRect(home, { x: STAGE_W + 100, y: 100, width: 100, height: 50 });
+    expect(revealRect(home, inside, stage)).toBe(home);
+    const right = revealRect(home, { x: stage.width + 100, y: 100, width: 100, height: 50 }, stage);
     expect(right.x).toBeLessThan(0);
-    expect(right.x + (STAGE_W + 200)).toBeLessThanOrEqual(STAGE_W);
+    expect(right.x + (stage.width + 200)).toBeLessThanOrEqual(stage.width);
     expect(right.y).toBe(0);
-    expect(revealRect(home, { x: -200, y: -50, width: 100, height: 40 })).toMatchObject({ x: 224, y: 74 });
+    expect(revealRect(home, { x: -200, y: -50, width: 100, height: 40 }, stage)).toMatchObject({ x: 224, y: 74 });
   });
 });
