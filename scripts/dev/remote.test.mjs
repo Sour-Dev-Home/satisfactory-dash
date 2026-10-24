@@ -2,8 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildBaselinesScript, buildCleanScript, buildFetchScript, buildTestScript, classifyRun, decideTarget, isHost, isName, isSha, onPrefailure,
-  parseCiImage, parseTestArgs, sanitizeName, shq, sshArgs, TESTS_START, vitestArgs, workspacesFor,
+  isWorkspace, parseCiImage, parseTestArgs, sanitizeName, shq, sshArgs, stripControl, TESTS_START, vitestArgs, workspacesFor, createStateCommit,
 } from "./remote.mjs";
+import { extractPngTar, MAX_FILE_BYTES } from "./tarRead.mjs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const SHA = "a".repeat(40);
 const DIGEST = "b".repeat(64);
@@ -129,9 +134,110 @@ test("buildBaselinesScript mirrors CI's container env and command, in a separate
 });
 
 test("fetch and clean scripts validate and quote", () => {
-  assert.match(buildFetchScript({ name: "feat-x", folder: "frontend/e2e/__screenshots__" }), /tar -cf - \./);
+  assert.match(buildFetchScript({ name: "feat-x", folder: "frontend/e2e/__screenshots__" }), /find \. -type f -name '\*\.png' -print0 \| tar --null --format=ustar -T - -cf -/);
   assert.throws(() => buildFetchScript({ name: "x", folder: "../etc" }));
   assert.match(buildCleanScript("feat-x"), /refs\/remote-test\/feat-x/);
   assert.match(buildCleanScript(null), /rm -rf "\$HOME\/remote-test" "\$HOME\/remote-test\.git"/);
   assert.throws(() => buildCleanScript("a; id"));
+});
+
+// ---- hostile box output -------------------------------------------------------------------------------------------
+
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("pixels")]);
+
+/** A tiny ustar writer: entries are { name, data?, type?, prefix?, link? }. */
+function tar(entries) {
+  const parts = [];
+  for (const e of entries) {
+    const data = e.data ?? Buffer.alloc(0);
+    const h = Buffer.alloc(512);
+    h.write(e.name, 0, "latin1");
+    h.write("0000644\0", 100);
+    h.write(`${data.length.toString(8).padStart(11, "0")}\0`, 124);
+    h.write(e.type ?? "0", 156);
+    if (e.link) h.write(e.link, 157, "latin1");
+    h.write("ustar\0" + "00", 257, "latin1");
+    if (e.prefix) h.write(e.prefix, 345, "latin1");
+    parts.push(h, data, Buffer.alloc((512 - (data.length % 512)) % 512));
+  }
+  parts.push(Buffer.alloc(1024));
+  return Buffer.concat(parts);
+}
+
+function listFiles(dir) {
+  return readdirSync(dir, { recursive: true });
+}
+
+test("extractPngTar writes a normal archive (directories, prefix, nested names)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tar-ok-"));
+  try {
+    const names = extractPngTar(tar([
+      { name: "desktop", type: "5" },
+      { name: "desktop/map.png", data: PNG },
+      { name: "b.png", data: PNG, prefix: "mobile/deep" },
+    ]), dir);
+    assert.deepEqual(names, ["desktop/map.png", "mobile/deep/b.png"]);
+    assert.deepEqual(readFileSync(join(dir, "mobile/deep/b.png")), PNG);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("extractPngTar rejects the whole archive for anything but regular .png files, writing nothing", () => {
+  const big = Buffer.concat([PNG, Buffer.alloc(MAX_FILE_BYTES)]);
+  const cases = {
+    symlink: [{ name: "x.png", type: "2", link: "../../.ssh/id_ed25519" }],
+    hardlink: [{ name: "x.png", type: "1", link: "ok.png" }],
+    pax: [{ name: "pax", type: "x", data: Buffer.from("20 path=a.png\n") }],
+    gnuLongName: [{ name: "././@LongLink", type: "L", data: Buffer.from("a.png\0") }],
+    fifo: [{ name: "x.png", type: "6" }],
+    parent: [{ name: "../x.png", data: PNG }],
+    parentMid: [{ name: "a/../x.png", data: PNG }],
+    absolute: [{ name: "/etc/x.png", data: PNG }],
+    backslash: [{ name: "a\\x.png", data: PNG }],
+    notPng: [{ name: "x.txt", data: PNG }],
+    badSignature: [{ name: "x.png", data: Buffer.from("not a png at all") }],
+    oversize: [{ name: "x.png", data: big }],
+  };
+  for (const [label, entries] of Object.entries(cases)) {
+    const dir = mkdtempSync(join(tmpdir(), "tar-bad-"));
+    try {
+      // a valid file first proves that nothing is applied when a later entry is bad
+      assert.throws(() => extractPngTar(tar([{ name: "ok.png", data: PNG }, ...entries]), dir), /tar:/, label);
+      assert.deepEqual(listFiles(dir), [], label);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("stripControl drops ESC, OSC/BEL and other control bytes but keeps tab, newline and CR", () => {
+  assert.equal(stripControl("a\x1b]52;c;ZXZpbA==\x07b"), "a]52;c;ZXZpbA==b");
+  assert.equal(stripControl("\x1b[31mred\x1b[0m\ttab\r\n\x7f\x9b\x00"), "[31mred[0m\ttab\r\n");
+  assert.ok(!stripControl("x\x1b").includes("\x1b"));
+});
+
+test("isWorkspace rejects a leading dash", () => {
+  assert.ok(isWorkspace("backend") && isWorkspace("packages/shared"));
+  assert.ok(!isWorkspace("-x") && !isWorkspace("--help") && !isWorkspace("a/../b"));
+});
+
+test("createStateCommit --untracked ships tracked-but-ignored files and never untracked ignored ones", () => {
+  const repo = mkdtempSync(join(tmpdir(), "state-"));
+  const git = (...a) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { encoding: "utf8" }).trim();
+  try {
+    git("init", "-q");
+    writeFileSync(join(repo, ".gitignore"), "*.secret\n");
+    writeFileSync(join(repo, "tracked.secret"), "t");
+    writeFileSync(join(repo, "a.txt"), "a");
+    git("add", "-f", ".");
+    git("commit", "-q", "-m", "init");
+    writeFileSync(join(repo, "new.txt"), "n");
+    writeFileSync(join(repo, "untracked.secret"), "s");
+    const { sha } = createStateCommit(repo, { untracked: true });
+    const files = git("ls-tree", "-r", "--name-only", sha).split("\n");
+    assert.deepEqual(files.sort(), [".gitignore", "a.txt", "new.txt", "tracked.secret"]);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });

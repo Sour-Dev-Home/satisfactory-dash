@@ -14,7 +14,7 @@
 //             why and continues with the CI path above. --untracked also ships new files.
 //
 // It works for satisfactory-dash and the portfolio (lib.mjs REPOS). It refuses a worktree on main.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,13 +22,16 @@ import { configFor, parseArgs, pickDispatchedRun, repoOf, run, selectFiles } fro
 import {
   buildBaselinesScript, buildFetchScript, classifyRun, hostFromEnv, HOST_ENV, isHost, parseCiImage, PreTestError, sanitizeName, shipState, sshCapture, sshRun,
 } from "./remote.mjs";
+import { extractPngTar } from "./tarRead.mjs";
 
+/** Regular .png files under `dir`; symlinks and every other kind of entry are skipped (never followed). */
 function filesUnder(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...filesUnder(p));
-    else out.push(p);
+    const st = lstatSync(p);
+    if (st.isDirectory()) out.push(...filesUnder(p));
+    else if (st.isFile() && name.toLowerCase().endsWith(".png")) out.push(p);
   }
   return out;
 }
@@ -104,8 +107,9 @@ async function viaBox({ args, worktree, cfg, repo }) {
       const tarball = await sshCapture(host, buildFetchScript({ name, folder: cfg.screenshots }));
       const dir = join(tmp, "shots");
       mkdirSync(dir);
-      // Stream on stdin and extract into the cwd: no Windows path ever reaches tar (GNU tar reads "C:" as a host).
-      run("tar", ["-xf", "-"], { input: tarball, cwd: dir });
+      // The box is less trusted than this PC: parse the archive ourselves (regular .png files only, whole archive
+      // rejected on anything else) instead of handing it to the system tar, which turns symlinks into file copies.
+      extractPngTar(tarball, dir);
       applyBaselines({ tmp: dir, worktree, cfg, args, source: `a local run in CI's container image (${ci.version})` });
     } catch (e) {
       return fail(`could not copy the baselines back (${e.message})`);

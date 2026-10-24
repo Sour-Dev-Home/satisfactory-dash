@@ -31,7 +31,16 @@ export const isSha = (s) => typeof s === "string" && /^[0-9a-f]{40}$/.test(s);
 /** An ssh destination or alias: never starts with "-" (an option) and has no whitespace, quotes or shell characters. */
 export const isHost = (s) => typeof s === "string" && /^[A-Za-z0-9._][A-Za-z0-9._@-]*$/.test(s);
 /** A workspace directory like "backend" or "packages/shared". */
-export const isWorkspace = (s) => typeof s === "string" && /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(s) && !s.includes("..");
+export const isWorkspace = (s) => typeof s === "string" && /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(s) && !s.includes("..") && !s.startsWith("-");
+
+/**
+ * Text from the box made safe to print: every C0 control character except tab, newline and carriage return, DEL and the
+ * C1 range are dropped one by one (no escape-sequence parsing, so a sequence split across chunks is neutralised too).
+ */
+export const stripControl = (s) => String(s).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
+
+/** Cap on what the box may send back through one ssh command (matches the archive cap in tarRead.mjs). */
+export const MAX_CAPTURE_BYTES = 300 * 1024 * 1024;
 
 /** POSIX single-quoting: safe for any string except it must not contain NUL. */
 export function shq(s) {
@@ -196,7 +205,7 @@ exec npm run e2e -w frontend -- --update-snapshots=changed
 /** Remote script that prints the regenerated screenshots folder as a tar stream on stdout. */
 export function buildFetchScript({ name, folder }) {
   if (!isName(name) || !isWorkspace(folder)) throw new Error("bad name or folder");
-  return `set -eu\ncd "$HOME/remote-test/"${shq(`${name}.pw`)}/${shq(folder)}\ntar -cf - .\n`;
+  return `set -eu\ncd "$HOME/remote-test/"${shq(`${name}.pw`)}/${shq(folder)}\nfind . -type f -name '*.png' -print0 | tar --null --format=ustar -T - -cf -\n`;
 }
 
 /** Remote script for `--clean`: one checkout (all its variants) and its ref, or everything. */
@@ -235,7 +244,8 @@ export function sshRun(host, script, { quiet = false } = {}) {
     const tail = [];
     const child = spawn("ssh", sshArgs(host, script), { stdio: ["ignore", "pipe", "pipe"] });
     let buf = "";
-    const line = (l) => {
+    const line = (raw) => {
+      const l = stripControl(raw);
       if (l.trim() === TESTS_START) {
         started = true;
         return;
@@ -253,7 +263,7 @@ export function sshRun(host, script, { quiet = false } = {}) {
       }
     });
     child.stderr.on("data", (d) => {
-      const s = d.toString("utf8");
+      const s = stripControl(d.toString("utf8"));
       for (const l of s.split("\n").filter(Boolean)) tail.push(l);
       if (!quiet) process.stderr.write(s);
     });
@@ -266,15 +276,33 @@ export function sshRun(host, script, { quiet = false } = {}) {
 }
 
 /** Runs `script` on the host and returns its stdout as a Buffer (for tar streams). Rejects on a nonzero exit. */
-export function sshCapture(host, script) {
+export function sshCapture(host, script, max = MAX_CAPTURE_BYTES) {
   return new Promise((resolve, reject) => {
     const child = spawn("ssh", sshArgs(host, script), { stdio: ["ignore", "pipe", "pipe"] });
     const chunks = [];
     let err = "";
-    child.stdout.on("data", (d) => chunks.push(d));
-    child.stderr.on("data", (d) => (err += d.toString("utf8")));
+    let size = 0;
+    let tooBig = false;
+    child.stdout.on("data", (d) => {
+      if (tooBig) return;
+      size += d.length;
+      if (size > max) {
+        tooBig = true;
+        chunks.length = 0;
+        child.kill();
+        return;
+      }
+      chunks.push(d);
+    });
+    child.stderr.on("data", (d) => {
+      if (err.length < 8192) err += stripControl(d.toString("utf8"));
+    });
     child.on("error", reject);
-    child.on("close", (code) => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`ssh exited ${code}: ${err.trim().split("\n").pop()}`))));
+    child.on("close", (code) => {
+      if (tooBig) reject(new Error(`the box sent more than ${max} bytes`));
+      else if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ssh exited ${code}: ${err.trim().split("\n").pop()}`));
+    });
   });
 }
 
@@ -298,6 +326,8 @@ export function createStateCommit(worktree, { untracked = false } = {}) {
     const tmpIndex = `${git(worktree, ["rev-parse", "--absolute-git-dir"])}/remote-test-index-${process.pid}`;
     try {
       const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
+      // Start from HEAD so tracked files that match .gitignore stay in; `add -A` then adds only non-ignored new files.
+      git(worktree, ["read-tree", "HEAD"], { env });
       git(worktree, ["add", "-A"], { env });
       const tree = git(worktree, ["write-tree"], { env });
       const sha = git(worktree, ["commit-tree", tree, "-p", head, "-m", "remote-test state"], { env });

@@ -33,6 +33,14 @@ screenshots folder is copied back and applied exactly like the CI path ("applied
 `--commit`). No push to GitHub is needed. The first run pulls the image and installs; a run takes about 4 minutes
 (the whole e2e suite runs, as in CI). A separate checkout (`<name>.pw`) keeps its container-built `node_modules`.
 
+## Trust
+
+The box is less trusted than your PC, and the box decides the remote pass/fail, so CI stays the gate: a green run on
+the box never replaces a green CI run. Its output is printed with control characters stripped. The screenshots come
+back as a tar stream that `scripts/dev/tarRead.mjs` parses itself: only regular `.png` files with a PNG signature (at
+most 10 MB each, 2,000 files, 300 MB in all) are accepted, and anything else (a symlink, hardlink, odd name) rejects the
+whole archive and applies nothing. `--untracked` never ships files that `.gitignore` excludes (such as `.env`).
+
 ## When things fail
 
 "Anything can fail, including that box."
