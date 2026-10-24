@@ -4,6 +4,7 @@ import { productionGraphTwoSites } from "@satisfactory-dash/shared/fixtures";
 import { productionGraph as demoProductionGraph } from "../../demo/world";
 import { LABEL_GAP, LABEL_H, LINE_H, NODE_SEP, RANK_SEP, TITLE_H, labelPlacement, layoutSite, nodeSize } from "./layoutSite";
 import { edgeLabel } from "./graphModel";
+import { fitView } from "./viewport";
 
 const graph: ProductionGraph = ProductionGraphSchema.parse(productionGraphTwoSites.data);
 const iron = graph.sites[0];
@@ -151,6 +152,7 @@ describe("the compact metrics and label placement", () => {
   it("words a label by how sure the rate is: about for an estimate, plain when measured, no number when unknown", () => {
     const labels = layoutSite(iron, graph).edges.map((e) => e.label);
     expect(labels).toContain("Iron Ingot · about 102.2 items/min");
+    expect(layoutSite(iron, graph).edges.map((e) => e.labelLines)).toContainEqual(["Iron Ingot", "about 102.2 items/min"]);
     expect(labels).toContain("Iron Ore · 120 items/min");
     expect(labels.some((l) => l.includes("~"))).toBe(false);
     const unknown = graph.edges.find((e) => e.rate === "unknown")!;
@@ -164,3 +166,17 @@ function segmentDistance(px: number, py: number, a: { x: number; y: number }, b:
   const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - a.x) * (b.x - a.x) + (py - a.y) * (b.y - a.y)) / len2));
   return Math.hypot(px - (a.x + t * (b.x - a.x)), py - (a.y + t * (b.y - a.y)));
 }
+
+describe("layout width with two-line edge labels", () => {
+  it("keeps the fixture iron site narrow, with labels of at most two lines", () => {
+    const layout = layoutSite(iron, graph);
+    // Was about 1745 with one-line labels; 1561 now, a 0.61 fit on a 990 x 500 stage and 0.89 at 1440 px.
+    expect(fitView(layout.width, layout.height, { width: 1440, height: 600 }).k).toBeGreaterThanOrEqual(0.85);
+    expect(layout.width).toBeLessThanOrEqual(1600);
+    for (const e of layout.edges) {
+      expect(e.labelLines.length).toBeGreaterThanOrEqual(1);
+      expect(e.labelLines.length).toBeLessThanOrEqual(2);
+      expect(e.labelLines.join(" · ").length).toBeGreaterThan(0);
+    }
+  });
+});

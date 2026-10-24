@@ -4,7 +4,7 @@ import { cn } from "../../lib/cn";
 import { bottleneckCountText, groupLabel, nodeFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { edgeTitle, graphSummary, reachFor, siteItems } from "./graphModel";
-import { LINE_H, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
+import { LABEL_LINE_H, LINE_H, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -300,7 +300,11 @@ export default function SiteGraph({
                     />
                     {/* Just above the line; the halo only matters where another line crosses the words. */}
                     <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
-                      {e.label}
+                      {e.labelLines.map((line, i) => (
+                        <tspan key={i} x={e.labelX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
+                          {line}
+                        </tspan>
+                      ))}
                     </text>
                   </g>
                 );

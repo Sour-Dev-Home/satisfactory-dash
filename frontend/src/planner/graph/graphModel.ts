@@ -36,6 +36,17 @@ export function edgeLabel(edge: PlannerEdge): string {
   return parts.join(" · ");
 }
 
+/**
+ * The same label split for the canvas, so a rank gap needs only the longer line: the item (and "mixed" when the belt is),
+ * then the rate; an unknown rate has no second line.
+ */
+export function edgeLabelLines(edge: PlannerEdge): string[] {
+  const item = edge.itemName ?? edge.itemClassName ?? "Item unknown";
+  const lines = [edge.mixed ? `${item} · mixed` : item];
+  if (edge.rate !== "unknown" && edge.ratePerMinute !== null) lines.push(edgeRateText(edge));
+  return lines;
+}
+
 /** An edge's full words for its tooltip and the accessible text: the label plus how sure the rate is. */
 export function edgeTitle(edge: PlannerEdge, from: string, to: string): string {
   const sure = edge.rate === "measured" ? "measured" : edge.rate === "estimated" ? "estimated" : "rate unknown";

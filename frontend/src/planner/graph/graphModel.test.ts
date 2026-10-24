@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerEdge } from "@satisfactory-dash/shared";
 import { productionGraphTwoSites } from "@satisfactory-dash/shared/fixtures";
-import { edgeLabel, edgeTitle, graphSummary, nodeBodyLines, nodeTitle, reachFor, siteItems } from "./graphModel";
+import { edgeLabel, edgeLabelLines, edgeTitle, graphSummary, nodeBodyLines, nodeTitle, reachFor, siteItems } from "./graphModel";
 
 const edge = (from: string, to: string, item: string | null, extra: Partial<PlannerEdge> = {}): PlannerEdge => ({
   from,
@@ -92,5 +92,13 @@ describe("graphSummary", () => {
       "Graph of Iron Plate site: 5 groups, 6 connections, 2 in a loop. The Tables view lists the same.",
     );
     expect(graphSummary(nodes.slice(0, 1), [], "S")).toContain("1 group, 0 connections");
+  });
+});
+
+describe("edgeLabelLines", () => {
+  it("splits the item from the rate, and drops the second line for an unknown rate", () => {
+    expect(edgeLabelLines(edge("a", "b", "Iron Ingot", { rate: "estimated", ratePerMinute: 102.2 }))).toEqual(["Iron Ingot", "about 102.2 items/min"]);
+    expect(edgeLabelLines(edge("a", "b", "Iron Plate", { rate: "unknown", ratePerMinute: null, mixed: true }))).toEqual(["Iron Plate · mixed"]);
+    expect(edgeLabelLines(edge("a", "b", null, { itemName: null, rate: "unknown", ratePerMinute: null }))).toEqual(["Item unknown"]);
   });
 });

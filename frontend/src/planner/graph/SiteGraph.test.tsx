@@ -105,8 +105,9 @@ describe("the site graph", () => {
     expect(names).toContain("8× Constructor, Iron Plate, in a loop");
     expect(names.some((n) => n?.endsWith(", in a loop"))).toBe(true);
     // Edge words per Decision 2, drawn in the picture.
-    expect(svg.textContent).toContain("Iron Ore · 120 items/min");
-    expect(svg.textContent).toContain("Iron Ingot · about 102.2 items/min");
+    expect(svg.textContent).toContain("Iron Ore");
+    expect(svg.textContent).toContain("120 items/min");
+    expect(svg.textContent).toContain("about 102.2 items/min");
   });
 
   it("zooms and pans from the keyboard and the buttons, and fits again", async () => {
@@ -269,7 +270,7 @@ describe("the graph's readable chrome", () => {
   it("draws card text at the readable sizes, and edge labels as halo text with a named class", async () => {
     const svg = await openGraph();
     expect(svg.querySelector("text.text-base.font-semibold")).not.toBeNull();
-    const label = [...svg.querySelectorAll("text")].find((t) => t.textContent === "Iron Ore · 120 items/min")!;
+    const label = [...svg.querySelectorAll("text")].find((t) => t.textContent === "Iron Ore120 items/min")!;
     expect(label).toHaveClass("text-sm", "paint-stroke-first");
     expect(label.getAttribute("class")).not.toContain("[paint-order");
     // The rate and state lines are in full colour; only the recipe line is muted.
@@ -280,17 +281,20 @@ describe("the graph's readable chrome", () => {
     const svg = await openGraph();
     const hint = "Drag or use the arrow keys to see more →";
     const fades = () => [...document.querySelectorAll("[data-fade]")].filter((f) => f.getAttribute("data-clipped") === "true").map((f) => f.getAttribute("data-fade"));
-    // jsdom's 1000 x 600 stage is narrower than the fixture's drawing at the fit floor: the right edge is clipped.
+    // jsdom's 1000 x 600 stage holds the fixture's drawing at the fit (two-line labels keep it narrow): nothing is clipped.
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    expect(fades()).toEqual([]);
+    // Zoomed in, the right edge runs past the canvas: the hint and the fades come.
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(screen.getByText(hint)).toBeInTheDocument();
-    expect(fades()).toEqual(["right"]);
+    expect(fades().length).toBeGreaterThan(0);
     for (const f of document.querySelectorAll("[data-fade]")) {
       expect(f).toHaveAttribute("aria-hidden", "true");
       expect(f.getAttribute("style")).toBeNull();
     }
     // Zoomed out to fit inside, nothing is clipped and the hint goes.
     const zoomOut = screen.getByRole("button", { name: "Zoom out" });
-    fireEvent.click(zoomOut);
-    fireEvent.click(zoomOut);
+    for (let i = 0; i < 4; i++) fireEvent.click(zoomOut);
     expect(scaleOf(svg)).toBeLessThan(0.5);
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
     expect(fades()).toEqual([]);
