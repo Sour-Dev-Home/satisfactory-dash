@@ -8,6 +8,9 @@ import { createLogger } from "../../../platform/logger.js";
 import { InMemoryServerDirectory, createServersRouter } from "../../servers/index.js";
 import type { ServerAccess } from "../../servers/index.js";
 import type { TelemetryServices } from "../telemetryServices.js";
+import { UpstreamError } from "../../../platform/errors.js";
+import { ApiFailure } from "../../../platform/errorResponse.js";
+import { observed } from "../../../platform/snapshot.js";
 import { createProductionGraphRouter } from "./productionGraph.js";
 
 const access: ServerAccess = {
@@ -34,12 +37,15 @@ const layerRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function build(opts: { rows?: unknown[]; noDb?: boolean; logLines?: string[] } = {}) {
+function build(opts: { rows?: unknown[]; noDb?: boolean; logLines?: string[]; factory?: () => Promise<unknown>; dbFails?: boolean } = {}) {
   const telemetry = {
-    production: { getFactoryOverview: async () => factoryStatesAndIngredients.data },
+    production: { getFactoryOverview: opts.factory ?? (async () => factoryStatesAndIngredients.data) },
   } as unknown as TelemetryServices;
   const directory = new InMemoryServerDirectory([{ id: "default", displayName: "Home", services: { telemetry } }]);
-  const db = { query: (_text: string, _values?: unknown[]) => Promise.resolve({ rows: opts.rows ?? [] }) };
+  const db = {
+    query: (_text: string, _values?: unknown[]) =>
+      opts.dbFails ? Promise.reject(new Error("db down")) : Promise.resolve({ rows: opts.rows ?? [] }),
+  };
   const lines = opts.logLines;
   return createApp({
     logger: lines
@@ -105,6 +111,43 @@ describe("GET /api/servers/:serverId/production-graph", () => {
     const skipRow = (reason: string) => layerRow({ hash: `skipped:${reason}`, data: [], count: 0 });
     expect((await get(build({ rows: [skipRow("tooManyEdges")] }))).body.data.beltData).toBe("tooLarge");
     expect((await get(build({ rows: [skipRow("unsupportedFrm")] }))).body.data.beltData).toBe("unsupported");
+  });
+
+  it("a failed factory read is mapped like bottlenecks (502 upstream)", async () => {
+    const res = await get(build({ factory: async () => { throw new UpstreamError("down"); } }));
+    expect(res.status).toBe(502);
+  });
+
+  it("an agent that has not reported is 503 upstream_unreachable", async () => {
+    const res = await get(build({ factory: async () => { throw new ApiFailure("upstream_unreachable", "not reported"); } }));
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("upstream_unreachable");
+  });
+
+  it("a database error is a 500 and logs no graph line", async () => {
+    const logLines: string[] = [];
+    const res = await get(build({ dbFails: true, logLines }));
+    expect(res.status).toBe(500);
+    expect(logLines.join("")).not.toContain("production graph built");
+  });
+
+  it("carries the factory snapshot's own observedAt and stale, not now", async () => {
+    const factory = async () => observed({ ...factoryStatesAndIngredients.data }, { observedAt: "2026-01-02T03:04:05.000Z", stale: true });
+    const res = await get(build({ factory }));
+    expect(res.status).toBe(200);
+    expect(res.body.observedAt).toBe("2026-01-02T03:04:05.000Z");
+    expect(res.body.stale).toBe(true);
+  });
+
+  it("an empty factory with an empty layer is a valid empty graph with zero stats", async () => {
+    const logLines: string[] = [];
+    const factory = async () => ({ ...factoryStatesAndIngredients.data, buildings: [] });
+    const res = await get(build({ factory, rows: [layerRow({ data: [], count: 0 })], logLines }));
+    expect(res.status).toBe(200);
+    expect(ProductionGraphResponseSchema.parse(res.body)).toEqual(res.body);
+    expect(res.body.data.nodes).toEqual([]);
+    const entry = logLines.map((l) => JSON.parse(l) as Record<string, unknown>).find((e) => e.msg === "production graph built")!;
+    expect(entry).toMatchObject({ components: 0, sites: 0, groups: 0, links: 0, level: 30 });
   });
 
   it("logs one info line of counts and timing, with no names from the game server", async () => {
