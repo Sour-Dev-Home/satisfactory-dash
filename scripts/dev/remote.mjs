@@ -321,12 +321,15 @@ function git(worktree, args, opts = {}) {
  * Returns { sha, untracked: [paths not included] }.
  */
 export function createStateCommit(worktree, { untracked = false } = {}) {
+  // The state commit is throwaway (pushed only to the box's private ref), so it gets a fixed identity: a machine with
+  // no git user (a CI runner) can still make it, and the developer's name never travels with it.
+  const ident = { GIT_AUTHOR_NAME: "remote-test", GIT_AUTHOR_EMAIL: "remote-test@localhost", GIT_COMMITTER_NAME: "remote-test", GIT_COMMITTER_EMAIL: "remote-test@localhost" };
   const head = git(worktree, ["rev-parse", "HEAD"]);
   const extra = git(worktree, ["ls-files", "--others", "--exclude-standard"]).split("\n").filter(Boolean);
   if (untracked) {
     const tmpIndex = `${git(worktree, ["rev-parse", "--absolute-git-dir"])}/remote-test-index-${process.pid}`;
     try {
-      const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
+      const env = { ...process.env, ...ident, GIT_INDEX_FILE: tmpIndex };
       // Start from HEAD so tracked files that match .gitignore stay in; `add -A` then adds only non-ignored new files.
       git(worktree, ["read-tree", "HEAD"], { env });
       git(worktree, ["add", "-A"], { env });
@@ -337,7 +340,7 @@ export function createStateCommit(worktree, { untracked = false } = {}) {
       rmSync(tmpIndex, { force: true });
     }
   }
-  const stash = git(worktree, ["stash", "create"]);
+  const stash = git(worktree, ["stash", "create"], { env: { ...process.env, ...ident } });
   return { sha: isSha(stash) ? stash : head, untracked: extra };
 }
 
