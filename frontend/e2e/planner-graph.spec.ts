@@ -18,8 +18,9 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
   // dagre has laid out the cards, and the edge words are drawn.
-  // exact: the edge's <title> tooltip carries the same words after "from to:".
-  await expect(svg.getByText("Iron Ore · 120 items/min", { exact: true })).toBeVisible();
+  // An edge label is two <tspan> lines, item then rate (the <title> tooltip keeps the one-line form).
+  await expect(svg.locator("tspan", { hasText: /^Iron Ore$/ }).first()).toBeVisible();
+  await expect(svg.locator("tspan", { hasText: /^120 items\/min$/ }).first()).toBeVisible();
 
   // Wheel zoom about the pointer, then drag to pan.
   const box = (await svg.boundingBox())!;
