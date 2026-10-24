@@ -197,3 +197,8 @@ Run from the project root (`satisfactory-dash/`):
 - `npm run preflight` — run before every push: the branch's PR is still open and not conflicting, no local
   absolute path (or private identifier from `PREFLIGHT_PATTERNS_FILE`) in the diff or commit messages, and the
   worktree has `node_modules`
+- `npm run remote-test -- <worktree> [--workspace <ws>] [--db] [--files <globs...>] [--workers N] [--local] [--no-fallback]` —
+  run vitest on the optional remote box (`DEV_REMOTE_HOST`), falling back to local with 2 workers if the box fails before
+  the tests; see `docs-vault/wiki/runbooks/dev-remote.md`
+- `npm run baselines -- <worktree> --local` — regenerate the visual baselines on the box in CI's pinned Playwright image
+  (no push needed), falling back to the CI path if the box is unset or fails before the tests
