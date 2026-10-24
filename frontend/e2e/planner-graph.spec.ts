@@ -62,7 +62,8 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await expect(group).toBeFocused();
 
   // The same panel by pointer: click the card in the picture.
-  await svg.getByText("Miner Mk.2", { exact: true }).click();
+  // The card's drawn name, not its <title> tooltip (same words).
+  await svg.locator("text", { hasText: /^Miner Mk\.2$/ }).click();
   await expect(page.getByRole("complementary", { name: "Miner Mk.2" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("complementary")).toHaveCount(0);
