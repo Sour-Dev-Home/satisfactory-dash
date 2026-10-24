@@ -61,8 +61,10 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await expect(panel).toHaveCount(0);
   await expect(group).toBeFocused();
 
-  // The same panel by pointer: click the card in the picture.
+  // The same panel by pointer: click the card in the picture, after Fit to view (the pans above moved it out of
+  // sight, and the fit no longer shrinks the drawing below a readable zoom; it starts at the left, the extractors).
   // The card's drawn name, not its <title> tooltip (same words).
+  await page.getByRole("button", { name: "Fit to view" }).click();
   await svg.locator("text", { hasText: /^Miner Mk\.2$/ }).click();
   await expect(page.getByRole("complementary", { name: "Miner Mk.2" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
