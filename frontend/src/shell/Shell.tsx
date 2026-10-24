@@ -40,6 +40,7 @@ import { cn } from "../lib/cn";
 import { chipButton } from "../ui/chip";
 import { PageReveal } from "../ui/PageReveal";
 import { ToAlertSettings, ToApp } from "./ToApp";
+import { navFadeClass, revealActiveTab } from "./navFade";
 import { PREFETCH_FRESH_MS, pageQueries } from "./pageQueries";
 import { visibleTabs } from "./tabs";
 
@@ -288,6 +289,25 @@ export function Shell() {
     focusHeading();
   }, [pathname, focusHeading]);
 
+  // A phone's tab bar scrolls sideways: fade the end(s) it can still scroll to, and keep the active tab in view.
+  const nav = useRef<HTMLElement>(null);
+  const [navFade, setNavFade] = useState("");
+  const measureNav = useCallback(() => {
+    const el = nav.current;
+    if (el) setNavFade(navFadeClass(el.scrollLeft, el.clientWidth, el.scrollWidth));
+  }, []);
+  useEffect(() => {
+    measureNav();
+    const el = nav.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureNav);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureNav, canManageServers]);
+  useEffect(() => {
+    revealActiveTab(nav.current);
+  }, [pathname, canManageServers]);
+
   // Instant tab changes (#494): hovering or focusing a tab starts its page's primary queries, so
   // by the click they are usually cached. Same options as the page's own, so same cache entries.
   const client = useQueryClient();
@@ -311,7 +331,12 @@ export function Shell() {
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
         {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;
             an operator's sixth still scrolls. */}
-        <nav aria-label="Main" className="-mx-1 flex min-w-0 max-w-full gap-0 overflow-x-auto sm:gap-1">
+        <nav
+          ref={nav}
+          aria-label="Main"
+          onScroll={measureNav}
+          className={cn("-mx-1 flex min-w-0 max-w-full gap-0 overflow-x-auto sm:gap-1", navFade)}
+        >
           {visibleTabs(canManageServers).map((tab) => (
             <NavLink
               key={tab.to}

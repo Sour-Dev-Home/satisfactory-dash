@@ -12,8 +12,8 @@ export interface Stage {
 export const FALLBACK_STAGE: Stage = { width: 1000, height: 600 };
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 4;
-/** The smallest scale a fit goes to: below it the text is under ~10 px, so the drawing is panned instead. */
-export const MIN_FIT_ZOOM = 0.8;
+/** The smallest scale a fit goes to: below it the text (14 px body, 16 px titles) is under ~8 px, so the drawing is panned instead. */
+export const MIN_FIT_ZOOM = 0.6;
 /** Space kept around the drawing by a fit and by the canvas height, in stage units. */
 export const FIT_PAD = 16;
 export const ZOOM_STEP = 1.25;
@@ -96,6 +96,33 @@ export function toStage(rect: { left: number; top: number; width: number; height
   const offY = (rect.height - stage.height * scale) / 2;
   return { x: (clientX - rect.left - offX) / scale, y: (clientY - rect.top - offY) / scale, scale };
 }
+
+/** Which edges of the stage a drawing runs past. */
+export interface Clipped {
+  left: boolean;
+  right: boolean;
+  top: boolean;
+  bottom: boolean;
+}
+
+/** Less than this many stage units past an edge is rounding, not a clipped drawing. */
+const CLIP_SLACK = 1;
+
+/** Where the drawing (its layout size at this view) is cut off by the stage: the edges a fade and the hint stand for. */
+export function clippedEdges(view: View, layout: { width: number; height: number }, stage: Stage): Clipped {
+  if (layout.width <= 0 || layout.height <= 0) return { left: false, right: false, top: false, bottom: false };
+  return {
+    left: view.x < -CLIP_SLACK,
+    right: view.x + layout.width * view.k > stage.width + CLIP_SLACK,
+    top: view.y < -CLIP_SLACK,
+    bottom: view.y + layout.height * view.k > stage.height + CLIP_SLACK,
+  };
+}
+
+export const isClipped = (c: Clipped) => c.left || c.right || c.top || c.bottom;
+
+/** The part of the stage left of a drawer of `panelWidth` px that overlays its right side (a drawer wider than the stage leaves none). */
+export const stageBesidePanel = (stage: Stage, panelWidth: number): Stage => ({ width: Math.max(1, stage.width - panelWidth), height: stage.height });
 
 /** The view moved the least that brings a layout rectangle fully into the stage (with a margin); unchanged if it is in. */
 export function revealRect(view: View, r: { x: number; y: number; width: number; height: number }, stage: Stage, margin = 24): View {

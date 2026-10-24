@@ -1,20 +1,23 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
 import { bottleneckCountText, groupLabel, nodeFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { edgeTitle, graphSummary, reachFor, siteItems } from "./graphModel";
-import { layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
+import { LINE_H, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
   FALLBACK_STAGE,
   ZOOM_STEP,
   canvasHeight,
+  clippedEdges,
   fitView,
+  isClipped,
   keyView,
   panBy,
   revealRect,
+  stageBesidePanel,
   toStage,
   zoomAt,
   zoomCentre,
@@ -26,17 +29,42 @@ const ALL_ITEMS = "";
 /** A pointer that moved less than this (client pixels) between down and up was a click, not a drag. */
 const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
-const BADGE_W = 76;
-const BADGE_H = 16;
+const BADGE_W = 88;
+const BADGE_H = 20;
 
 const edgePath = (e: LaidEdge) => e.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
 
+type EdgeStyle = Pick<LaidEdge["edge"], "mixed" | "kind" | "rate">;
+
 /** Stroke colour by what the edge carries (a pipe, a mixed belt), dash by how sure its rate is (Decision 2). */
-function edgeClass(e: LaidEdge["edge"]) {
+function edgeClass(e: EdgeStyle) {
   if (e.mixed) return "stroke-warn";
   return e.kind === "pipe" ? "stroke-info" : e.rate === "unknown" ? "stroke-line" : "stroke-muted";
 }
 const edgeDash = (rate: LaidEdge["edge"]["rate"]) => (rate === "measured" ? undefined : rate === "estimated" ? "8 5" : "2 5");
+const edgeWidth = (mixed: boolean) => (mixed ? 3 : 2);
+
+/** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
+const FADES = [
+  { edge: "left", className: "inset-y-px left-px w-graph-fade rounded-l-card bg-linear-to-r" },
+  { edge: "right", className: "inset-y-px right-px w-graph-fade rounded-r-card bg-linear-to-l" },
+  { edge: "top", className: "inset-x-px top-px h-graph-fade rounded-t-card bg-linear-to-b" },
+  { edge: "bottom", className: "inset-x-px bottom-px h-graph-fade rounded-b-card bg-linear-to-t" },
+] as const;
+
+const ICON_PROPS = { viewBox: "0 0 24 24", "aria-hidden": true, className: "size-5", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+/** A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. */
+function ToolButton({ name, icon, onClick, disabled }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className="inline-flex min-h-touch min-w-touch items-center justify-center">
+      <svg {...ICON_PROPS} className="size-5 sm:hidden">
+        {icon}
+      </svg>
+      <span className="sr-only sm:not-sr-only">{name}</span>
+    </button>
+  );
+}
 
 /**
  * ADR-0050 Decision 3 and 4, the graph: dagre's layout of one site drawn as SVG, with pan (drag, arrows), zoom (wheel,
@@ -88,6 +116,18 @@ export default function SiteGraph({
   const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.sourceEdges)), [activeItem, layout]);
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null ? undefined : nodeByKey.get(openKey);
+  const clipped = clippedEdges(view, layout, stage);
+  const overflowing = isClipped(clipped);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // From lg the panel is a drawer over the canvas's right side: bring the opened group into the part left of it.
+  useEffect(() => {
+    const panel = panelRef.current;
+    const n = openKey === null ? undefined : laidByKey.get(openKey);
+    if (!panel || !n || getComputedStyle(panel).position !== "absolute") return;
+    const visible = stageBesidePanel(stageRef.current, panel.offsetWidth);
+    setView((v) => revealRect(v, n, visible));
+  }, [openKey, laidByKey]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -180,10 +220,11 @@ export default function SiteGraph({
 
   return (
     <div className="grid gap-3">
+      {/* One row on a phone: the item, then icon buttons; the filter's status, when there is one, takes the next line. */}
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2">
+        <label className="flex min-w-0 flex-1 basis-0 items-center gap-2 sm:flex-none sm:basis-auto">
           <span>Item</span>
-          <select value={activeItem} onChange={(e) => setItem(e.target.value)} className="min-h-touch">
+          <select value={activeItem} onChange={(e) => setItem(e.target.value)} className="min-h-touch min-w-0 flex-1 sm:flex-none">
             <option value={ALL_ITEMS}>All items</option>
             {items.map((i) => (
               <option key={i.className} value={i.className}>
@@ -193,31 +234,34 @@ export default function SiteGraph({
           </select>
         </label>
         <div role="group" aria-label="Zoom" className="flex gap-2">
-          <button type="button" onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP, stage))} disabled={view.k >= MAX_ZOOM} className="min-h-touch">
-            Zoom in
-          </button>
-          <button type="button" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={view.k <= MIN_ZOOM} className="min-h-touch">
-            Zoom out
-          </button>
-          <button type="button" onClick={() => setView(fit)} className="min-h-touch">
-            Fit to view
-          </button>
+          <ToolButton
+            name="Zoom in"
+            onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP, stage))}
+            disabled={view.k >= MAX_ZOOM}
+            icon={<path d="M12 5v14M5 12h14" />}
+          />
+          <ToolButton name="Zoom out" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={view.k <= MIN_ZOOM} icon={<path d="M5 12h14" />} />
+          <ToolButton name="Fit to view" onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />} />
         </div>
         {reach !== null && (
-          <span role="status" className="text-sm text-muted">
+          <span role="status" className="w-full text-sm text-muted sm:w-auto">
             {reach.nodes.size} of {layout.nodes.length} groups carry or feed this item.
           </span>
         )}
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row">
+      {/* What to do about a drawing that runs past the canvas; the line keeps its height so the page does not jump. */}
+      <p className="m-0 h-lh text-sm text-muted">{overflowing && "Drag or use the arrow keys to see more →"}</p>
+
+      {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}
+      <div className="relative flex flex-col gap-3 lg:block">
         <div
           role="group"
           tabIndex={0}
           aria-label="Graph viewport. Plus and minus zoom, arrow keys pan, 0 fits the graph."
           aria-keyshortcuts="+ - 0 ArrowUp ArrowDown ArrowLeft ArrowRight"
           onKeyDown={onKeyDown}
-          className="relative min-w-0 flex-1"
+          className="relative min-w-0"
         >
           <svg
             ref={svgRef}
@@ -249,12 +293,13 @@ export default function SiteGraph({
                     <path
                       d={edgePath(e)}
                       fill="none"
-                      strokeWidth={e.edge.mixed ? 3 : 2}
+                      strokeWidth={edgeWidth(e.edge.mixed)}
                       strokeDasharray={edgeDash(e.edge.rate)}
                       markerEnd={`url(#${markerId})`}
                       className={edgeClass(e.edge)}
                     />
-                    <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-xs [paint-order:stroke]">
+                    {/* Just above the line; the halo only matters where another line crosses the words. */}
+                    <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
                       {e.label}
                     </text>
                   </g>
@@ -279,18 +324,19 @@ export default function SiteGraph({
                       strokeWidth={ringed ? 3 : 1}
                       className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")}
                     />
-                    <text x={12} y={22} className="fill-fg-strong text-sm font-semibold">
+                    <text x={12} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
                       {n.title}
                     </text>
+                    {/* Muted (5.6:1 on the card) only for the recipe, the first line; the rates and states read in full colour. */}
                     {n.lines.map((line, i) => (
-                      <text key={i} x={12} y={22 + 18 * (i + 1)} className="fill-muted text-xs">
+                      <text key={i} x={12} y={TITLE_H + LINE_H * (i + 1)} className={cn("text-sm", i === 0 ? "fill-muted" : "fill-fg")}>
                         {line}
                       </text>
                     ))}
                     {finding > 0 && (
                       <g transform={`translate(${n.width - BADGE_W - 8} ${-BADGE_H / 2})`}>
                         <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />
-                        <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-xs font-semibold">
+                        <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
                           Bottleneck
                         </text>
                       </g>
@@ -300,6 +346,16 @@ export default function SiteGraph({
               })}
             </g>
           </svg>
+          {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
+          {FADES.map((f) => (
+            <div
+              key={f.edge}
+              aria-hidden="true"
+              data-fade={f.edge}
+              data-clipped={clipped[f.edge]}
+              className={cn("pointer-events-none absolute from-surface to-transparent transition-opacity", f.className, clipped[f.edge] ? "opacity-100" : "opacity-0")}
+            />
+          ))}
           {/* The keyboard's way into the groups: real buttons, visually hidden, ringing the focused group in the picture. */}
           <ul aria-label="Groups in the graph" className="m-0 list-none p-0">
             {tabOrder.map((n) => {
@@ -328,7 +384,7 @@ export default function SiteGraph({
           </ul>
         </div>
         {openNode && (
-          <div className="lg:w-graph-panel lg:shrink-0">
+          <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
             <GroupPanel key={openNode.key} id={panelId} node={openNode} findings={findings} onClose={close} />
           </div>
         )}
@@ -339,12 +395,26 @@ export default function SiteGraph({
   );
 }
 
-/** What the line styles mean, in the words of the tables (ADR-0050 Decision 2). */
+/** The line styles, drawn as samples with the words of the tables (ADR-0050 Decision 2). */
+const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
+  { label: "measured", edge: { mixed: false, kind: "belt", rate: "measured" } },
+  { label: "about (estimated)", edge: { mixed: false, kind: "belt", rate: "estimated" } },
+  { label: "unknown", edge: { mixed: false, kind: "belt", rate: "unknown" } },
+  { label: "mixed belt", edge: { mixed: true, kind: "belt", rate: "measured" } },
+  { label: "pipe", edge: { mixed: false, kind: "pipe", rate: "measured" } },
+];
+
 function Legend() {
   return (
-    <p className="m-0 text-sm text-muted">
-      Solid line: measured rate. Dashed line: estimated, shown as &quot;about&quot;. Dotted line: rate unknown, no number. Amber line:
-      mixed belt. Blue line: pipe. Drag to pan, scroll or use the buttons to zoom.
-    </p>
+    <ul aria-label="Line styles" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
+      {LEGEND.map(({ label, edge }) => (
+        <li key={label} className="flex items-center gap-2">
+          <svg aria-hidden="true" viewBox="0 0 32 6" className="h-1.5 w-8 shrink-0">
+            <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={edgeWidth(edge.mixed)} strokeDasharray={edgeDash(edge.rate)} className={edgeClass(edge)} />
+          </svg>
+          <span>{label}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

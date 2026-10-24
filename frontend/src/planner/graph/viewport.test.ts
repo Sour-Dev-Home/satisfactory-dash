@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, fitView, keyView, panBy, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
+import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, stageBesidePanel, keyView, panBy, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
 
 const home = { x: 0, y: 0, k: 1 };
 const stage = FALLBACK_STAGE;
@@ -47,7 +47,7 @@ describe("viewport", () => {
 
   it("sizes the canvas to the drawing at the fit scale, with padding", () => {
     expect(canvasHeight(400, 100, 1000)).toBe(100 + 2 * FIT_PAD);
-    // Too wide for the floor: scaled to 0.8 and no further.
+    // Too wide for the floor: scaled to the floor and no further.
     expect(canvasHeight(5000, 1000, 1000)).toBe(Math.ceil(1000 * MIN_FIT_ZOOM + 2 * FIT_PAD));
     // Scaled down only as needed.
     expect(canvasHeight(1100, 1000, 1000)).toBe(Math.ceil(1000 * ((1000 - 2 * FIT_PAD) / 1100) + 2 * FIT_PAD));
@@ -89,5 +89,43 @@ describe("viewport", () => {
     expect(right.x + (stage.width + 200)).toBeLessThanOrEqual(stage.width);
     expect(right.y).toBe(0);
     expect(revealRect(home, { x: -200, y: -50, width: 100, height: 40 }, stage)).toMatchObject({ x: 224, y: 74 });
+  });
+});
+
+describe("overflow", () => {
+  const drawing = { width: 800, height: 400 };
+  it("reports no clipped edge when the drawing is inside the stage, and none for an empty drawing", () => {
+    const c = clippedEdges({ x: 100, y: 100, k: 1 }, drawing, stage);
+    expect(c).toEqual({ left: false, right: false, top: false, bottom: false });
+    expect(isClipped(c)).toBe(false);
+    expect(isClipped(clippedEdges({ x: -500, y: 0, k: 1 }, { width: 0, height: 0 }, stage))).toBe(false);
+  });
+
+  it("reports each edge the drawing runs past", () => {
+    expect(clippedEdges({ x: -50, y: 0, k: 1 }, drawing, stage)).toEqual({ left: true, right: false, top: false, bottom: false });
+    expect(clippedEdges({ x: 300, y: 0, k: 1 }, drawing, stage)).toMatchObject({ right: true, left: false });
+    expect(clippedEdges({ x: 0, y: -20, k: 1 }, drawing, stage)).toMatchObject({ top: true });
+    expect(clippedEdges({ x: 0, y: 300, k: 1 }, drawing, stage)).toMatchObject({ bottom: true });
+    // Zooming in grows the drawing past the stage on all sides.
+    expect(isClipped(clippedEdges({ x: 0, y: 0, k: 2 }, drawing, stage))).toBe(true);
+  });
+
+  it("ignores a rounding error of a pixel", () => {
+    expect(isClipped(clippedEdges({ x: -0.5, y: 0, k: 1 }, { width: 1000.5, height: 600 }, stage))).toBe(false);
+  });
+
+  it("a fit that reaches the floor clips the far edges only", () => {
+    const big = { width: 3000, height: 2000 };
+    const c = clippedEdges(fitView(big.width, big.height, stage), big, stage);
+    expect(c).toEqual({ left: false, right: true, top: false, bottom: true });
+  });
+
+  it("leaves the part of the stage beside a drawer, never less than a pixel", () => {
+    expect(stageBesidePanel(stage, 352)).toEqual({ width: stage.width - 352, height: stage.height });
+    expect(stageBesidePanel(stage, 5000).width).toBe(1);
+  });
+
+  it("floors a fit at 0.6", () => {
+    expect(MIN_FIT_ZOOM).toBe(0.6);
   });
 });

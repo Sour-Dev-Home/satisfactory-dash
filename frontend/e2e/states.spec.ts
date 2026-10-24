@@ -183,15 +183,16 @@ const CASES: StateCase[] = [
     act: openIronSite,
   },
   { scenario: "default", name: "planner-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
+  // The item filter with something to dim: no recycle loop, so Iron Ingot leaves the recycler out ("4 of 5 groups").
   {
-    scenario: "default",
+    scenario: "planner-filter-dimmed",
     name: "planner-graph-filtered",
     path: "/app/planner",
-    shows: /groups carry or feed this item/,
+    shows: /4 of 5 groups carry or feed this item/,
     clock: PLANNER_NOW,
     act: async (page) => {
       await openIronGraph(page);
-      await page.getByLabel("Item").selectOption({ label: "Iron Ore" });
+      await page.getByLabel("Item").selectOption({ label: "Iron Ingot" });
     },
   },
   {

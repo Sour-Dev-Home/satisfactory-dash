@@ -240,3 +240,99 @@ describe("joinMachines", () => {
     expect(joinMachines({ machineIds: ["x"] }, odd).machines[0]).toMatchObject({ state: null, outputs: [] });
   });
 });
+
+describe("the graph's readable chrome", () => {
+  it("has an icon toolbar with the three named buttons, and each is a touch target", async () => {
+    await openGraph();
+    for (const name of ["Zoom in", "Zoom out", "Fit to view"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toHaveClass("min-h-touch", "min-w-touch");
+      expect(button.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+    }
+  });
+
+  it("draws a legend of line samples with text labels", async () => {
+    await openGraph();
+    const legend = screen.getByRole("list", { name: "Line styles" });
+    expect(within(legend).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "measured",
+      "about (estimated)",
+      "unknown",
+      "mixed belt",
+      "pipe",
+    ]);
+    for (const svg of legend.querySelectorAll("svg")) expect(svg).toHaveAttribute("aria-hidden", "true");
+    expect(legend.querySelectorAll("line[stroke-dasharray]")).toHaveLength(2);
+    expect(legend.textContent).not.toMatch(/drag|scroll/i);
+  });
+
+  it("draws card text at the readable sizes, and edge labels as halo text with a named class", async () => {
+    const svg = await openGraph();
+    expect(svg.querySelector("text.text-base.font-semibold")).not.toBeNull();
+    const label = [...svg.querySelectorAll("text")].find((t) => t.textContent === "Iron Ore · 120 items/min")!;
+    expect(label).toHaveClass("text-sm", "paint-stroke-first");
+    expect(label.getAttribute("class")).not.toContain("[paint-order");
+    // The rate and state lines are in full colour; only the recipe line is muted.
+    expect(svg.querySelectorAll("text.fill-muted").length).toBe(5);
+  });
+
+  it("says how to see more only while the drawing runs past the canvas, and fades the clipped edges", async () => {
+    const svg = await openGraph();
+    const hint = "Drag or use the arrow keys to see more →";
+    const fades = () => [...document.querySelectorAll("[data-fade]")].filter((f) => f.getAttribute("data-clipped") === "true").map((f) => f.getAttribute("data-fade"));
+    // jsdom's 1000 x 600 stage is narrower than the fixture's drawing at the fit floor: the right edge is clipped.
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(fades()).toEqual(["right"]);
+    for (const f of document.querySelectorAll("[data-fade]")) {
+      expect(f).toHaveAttribute("aria-hidden", "true");
+      expect(f.getAttribute("style")).toBeNull();
+    }
+    // Zoomed out to fit inside, nothing is clipped and the hint goes.
+    const zoomOut = screen.getByRole("button", { name: "Zoom out" });
+    fireEvent.click(zoomOut);
+    fireEvent.click(zoomOut);
+    expect(scaleOf(svg)).toBeLessThan(0.5);
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    expect(fades()).toEqual([]);
+    for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(fades().length).toBeGreaterThan(1);
+  });
+
+  it("opens the panel as a drawer from lg and brings the group into the part left of it", async () => {
+    const svg = await openGraph();
+    const tx = (el: Element) => Number(/translate\((-?[\d.e-]+)/.exec(el.getAttribute("transform")!)![1]);
+    const storage = [...svg.querySelectorAll(":scope > g > g")].find((g) => g.hasAttribute("transform") && g.textContent?.includes("Storage"))!;
+    const left = () => tx(svg.querySelector(":scope > g")!) + scaleOf(svg) * tx(storage);
+    const before = left();
+    const real = window.getComputedStyle.bind(window);
+    // From lg the panel's wrapper is absolute (the CSS is not loaded in jsdom): say so for the panel's wrapper only.
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) =>
+      el.querySelector?.("aside")
+        ? new Proxy(real(el, pseudo), {
+            get: (target, prop) => {
+              const value: unknown = Reflect.get(target, prop);
+              return prop === "position" ? "absolute" : typeof value === "function" ? value.bind(target) : value;
+            },
+          })
+        : real(el, pseudo),
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    fireEvent.click(await groupButton(/Storage/));
+    await screen.findByRole("complementary");
+    // The stage is 1000 wide in jsdom, the drawer 800: the card must now end inside the 200 px left of it.
+    expect(left()).toBeLessThan(before);
+    expect(left() + scaleOf(svg) * 120).toBeLessThanOrEqual(200 + 1);
+    vi.restoreAllMocks();
+  });
+
+  it("leaves the view alone when the panel is stacked (not absolute)", async () => {
+    const svg = await openGraph();
+    const before = transformOf(svg);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    expect(transformOf(svg)).toBe(before);
+    vi.restoreAllMocks();
+  });
+});

@@ -3,16 +3,22 @@ import type { PlannerEdge, PlannerNode, PlannerSite, ProductionGraph } from "@sa
 import { siteNodes } from "../plannerText";
 import { edgeLabel, nodeBodyLines, nodeTitle } from "./graphModel";
 
-// Sizes are SVG user units, tied to the canvas's text classes (title `text-sm` 14 px, body and labels `text-xs` 12 px).
-export const CHAR_W_TITLE = 8;
-export const CHAR_W_BODY = 6.6;
+// Sizes are SVG user units, tied to the canvas's text classes (title `text-base` 16 px semibold, body lines and edge
+// labels `text-sm` 14 px). The title's baseline is TITLE_H down from the card's top, each line LINE_H below the last.
+export const CHAR_W_TITLE = 9.2;
+export const CHAR_W_BODY = 7.7;
 export const NODE_PAD_X = 12;
-export const NODE_PAD_Y = 10;
-export const TITLE_H = 20;
-export const LINE_H = 16;
+export const NODE_PAD_Y = 5;
+export const TITLE_H = 24;
+export const LINE_H = 20;
 export const NODE_MIN_W = 120;
-export const LABEL_H = 16;
-export const LABEL_PAD = 8;
+export const LABEL_H = 18;
+export const LABEL_PAD = 4;
+/** The gap between an edge label and the line it names. */
+export const LABEL_GAP = 4;
+/** Dagre's spacing, tight on purpose: a fit should show the drawing, so the ranks and rows sit close. */
+export const RANK_SEP = 56;
+export const NODE_SEP = 20;
 
 export interface LaidNode {
   key: string;
@@ -32,9 +38,11 @@ export interface LaidEdge {
   /** The path, from the source card's side to the destination's. */
   points: { x: number; y: number }[];
   label: string;
-  /** The label's centre. */
+  /** The label's centre: just above the middle of the path (see `labelPlacement`). */
   labelX: number;
   labelY: number;
+  /** The label's estimated width. */
+  labelWidth: number;
 }
 
 export interface SiteLayout {
@@ -59,6 +67,47 @@ export function nodeSize(node: PlannerNode): Pick<LaidNode, "width" | "height" |
   };
 }
 
+/** The estimated width of an edge label's text. */
+export const labelWidth = (text: string) => Math.ceil(text.length * CHAR_W_BODY + LABEL_PAD);
+
+type Point = { x: number; y: number };
+
+/**
+ * Where an edge's label goes: the centre of a `width` x `LABEL_H` box beside the path's middle (by length), pushed off the
+ * segment along its normal, on the upper side (the right when the segment is vertical), far enough that the box clears the
+ * line by `LABEL_GAP`. So a level edge's label sits just above it and a steep one's beside it. A path with no length puts
+ * the label on its point.
+ */
+export function labelPlacement(points: readonly Point[], width: number): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  if (total === 0) return { ...points[0] };
+  let rest = total / 2;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0 || rest > len) {
+      rest -= len;
+      continue;
+    }
+    const t = rest / len;
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    // The normal on the upper side; a vertical segment has none, so the right.
+    let nx = uy;
+    let ny = -ux;
+    if (ny > 0 || (ny === 0 && nx < 0)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const d = Math.abs(nx) * (width / 2) + Math.abs(ny) * (LABEL_H / 2) + LABEL_GAP;
+    return { x: a.x + (b.x - a.x) * t + nx * d, y: a.y + (b.y - a.y) * t + ny * d };
+  }
+  return { ...points[points.length - 1] };
+}
+
 /**
  * One site's picture (ADR-0050 Decision 3): dagre, left to right (sources left, outputs right), over the site's groups
  * and the connections between them. Pure and deterministic: the same site gives the same positions. A connection with an
@@ -70,7 +119,7 @@ export function layoutSite(site: PlannerSite, graph: ProductionGraph): SiteLayou
   const sourceEdges = graph.edges.filter((e) => sizes.has(e.from) && sizes.has(e.to));
 
   const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: "LR", acyclicer: "greedy", ranker: "network-simplex", nodesep: 28, ranksep: 90, edgesep: 14, marginx: 16, marginy: 16 });
+  g.setGraph({ rankdir: "LR", acyclicer: "greedy", ranker: "network-simplex", nodesep: NODE_SEP, ranksep: RANK_SEP, edgesep: 10, marginx: 16, marginy: 16 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const n of nodes) {
     const s = sizes.get(n.key)!;
@@ -78,7 +127,7 @@ export function layoutSite(site: PlannerSite, graph: ProductionGraph): SiteLayou
   }
   const labels = sourceEdges.map(edgeLabel);
   sourceEdges.forEach((e, i) => {
-    g.setEdge(e.from, e.to, { width: labels[i].length * CHAR_W_BODY + LABEL_PAD, height: LABEL_H, labelpos: "c" }, String(i));
+    g.setEdge(e.from, e.to, { width: labelWidth(labels[i]), height: LABEL_H, labelpos: "c" }, String(i));
   });
   dagre.layout(g);
 
@@ -89,7 +138,10 @@ export function layoutSite(site: PlannerSite, graph: ProductionGraph): SiteLayou
   });
   const laidEdges: LaidEdge[] = sourceEdges.map((edge, index) => {
     const e = g.edge(edge.from, edge.to, String(index));
-    return { index, edge, points: e.points ?? [], label: labels[index], labelX: e.x ?? 0, labelY: e.y ?? 0 };
+    const points = e.points ?? [];
+    const width = labelWidth(labels[index]);
+    const at = points.length > 0 ? labelPlacement(points, width) : { x: e.x ?? 0, y: e.y ?? 0 };
+    return { index, edge, points, label: labels[index], labelX: at.x, labelY: at.y, labelWidth: width };
   });
   // An empty graph comes back from dagre with width and height -Infinity.
   const { width, height } = g.graph();

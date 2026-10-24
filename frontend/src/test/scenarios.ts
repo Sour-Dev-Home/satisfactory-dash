@@ -492,6 +492,14 @@ export const SCENARIOS = {
     ),
   },
   "planner-stale": { productionGraph: ok({ ...productionGraphTwoSites, stale: true }) },
+  // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
+  // 5 groups) dims it and shows what the filter does.
+  "planner-filter-dimmed": {
+    productionGraph: ok({
+      ...productionGraphTwoSites,
+      data: { ...productionGraphTwoSites.data, edges: productionGraphTwoSites.data.edges.filter((_, i) => i !== 2 && i !== 3) },
+    }),
+  },
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
   // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
   "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },

@@ -4,7 +4,7 @@ import { factoryMixed } from "@satisfactory-dash/shared/fixtures";
 import { layoutSite } from "./layoutSite";
 import { reachFor, edgeLabel, graphSummary } from "./graphModel";
 import { joinMachines } from "./panelJoin";
-import { FIT_PAD, MAX_ZOOM, MIN_ZOOM, canvasHeight, fitView, keyView, revealRect, toStage, zoomAt } from "./viewport";
+import { FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, fitView, keyView, revealRect, toStage, zoomAt } from "./viewport";
 
 const rate = { className: "Desc_X_C", name: "X", unit: "items/min" as const, currentPerMinute: 1, maxPerMinute: 2 };
 const node = (key: string, name = "Same name"): PlannerNode => ({
@@ -87,9 +87,9 @@ describe("viewport hunt", () => {
       }
     }
   });
-  it("fit never exceeds 1 and floors at 0.8 for a huge drawing, anchored at FIT_PAD", () => {
+  it("fit never exceeds 1 and floors at 0.6 for a huge drawing, anchored at FIT_PAD", () => {
     const v = fitView(1e5, 1e5, { width: 1000, height: 600 });
-    expect(v).toEqual({ k: 0.8, x: FIT_PAD, y: FIT_PAD });
+    expect(v).toEqual({ k: MIN_FIT_ZOOM, x: FIT_PAD, y: FIT_PAD });
   });
   it("zoom clamps at both extremes, repeatedly, and the anchor stays put", () => {
     let v = { x: 10, y: 20, k: 1 };

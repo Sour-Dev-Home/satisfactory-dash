@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerEdge, type PlannerNode, type PlannerSite, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphTwoSites } from "@satisfactory-dash/shared/fixtures";
 import { productionGraph as demoProductionGraph } from "../../demo/world";
-import { layoutSite, nodeSize } from "./layoutSite";
+import { LABEL_GAP, LABEL_H, LINE_H, NODE_SEP, RANK_SEP, TITLE_H, labelPlacement, layoutSite, nodeSize } from "./layoutSite";
+import { edgeLabel } from "./graphModel";
 
 const graph: ProductionGraph = ProductionGraphSchema.parse(productionGraphTwoSites.data);
 const iron = graph.sites[0];
@@ -113,3 +114,53 @@ describe("layoutSite", () => {
     console.info(`layoutSite timings (ms): ${JSON.stringify(Object.fromEntries(Object.entries(timings).map(([k, v]) => [k, Math.round(v)])))}`);
   });
 });
+
+describe("the compact metrics and label placement", () => {
+  it("keeps the ranks and rows tight, and sizes a card from the readable type", () => {
+    expect(RANK_SEP).toBe(56);
+    expect(NODE_SEP).toBe(20);
+    const node = graph.nodes[0];
+    const { height, lines } = nodeSize(node);
+    expect(height).toBe(TITLE_H + lines.length * LINE_H + 10);
+  });
+
+  it("puts a label just above the middle of a level edge, clear of the line by the gap", () => {
+    const at = labelPlacement([{ x: 0, y: 100 }, { x: 200, y: 100 }], 120);
+    expect(at.x).toBeCloseTo(100);
+    expect(at.y).toBeCloseTo(100 - (LABEL_H / 2 + LABEL_GAP));
+  });
+
+  it("uses the segment that holds the path's middle, and puts a label beside a vertical one", () => {
+    // Lengths 10 and 90: the middle (50) is on the second, vertical, segment; the label goes right of it.
+    const at = labelPlacement([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 90 }], 80);
+    expect(at.y).toBeCloseTo(40);
+    expect(at.x).toBeCloseTo(10 + 40 + LABEL_GAP);
+    expect(labelPlacement([], 50)).toEqual({ x: 0, y: 0 });
+    expect(labelPlacement([{ x: 5, y: 6 }], 50)).toEqual({ x: 5, y: 6 });
+  });
+
+  it("lays every label of a site above its edge, not on it", () => {
+    for (const e of layoutSite(iron, graph).edges) {
+      // The label box clears the path: its centre is at least the box's half-height from every segment.
+      const dist = Math.min(...e.points.slice(1).map((p, i) => segmentDistance(e.labelX, e.labelY, e.points[i], p)));
+      expect(dist).toBeGreaterThanOrEqual(LABEL_H / 2 + LABEL_GAP - 0.01);
+      expect(e.labelWidth).toBeGreaterThan(0);
+    }
+  });
+
+  it("words a label by how sure the rate is: about for an estimate, plain when measured, no number when unknown", () => {
+    const labels = layoutSite(iron, graph).edges.map((e) => e.label);
+    expect(labels).toContain("Iron Ingot · about 102.2 items/min");
+    expect(labels).toContain("Iron Ore · 120 items/min");
+    expect(labels.some((l) => l.includes("~"))).toBe(false);
+    const unknown = graph.edges.find((e) => e.rate === "unknown")!;
+    expect(edgeLabel(unknown)).not.toMatch(/\d/);
+  });
+});
+
+/** The distance from a point to the segment a-b. */
+function segmentDistance(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }) {
+  const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - a.x) * (b.x - a.x) + (py - a.y) * (b.y - a.y)) / len2));
+  return Math.hypot(px - (a.x + t * (b.x - a.x)), py - (a.y + t * (b.y - a.y)));
+}

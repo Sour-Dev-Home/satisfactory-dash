@@ -84,3 +84,17 @@ test("the Planner is a tab, after Factory", async ({ page, mockApi }) => {
   const labels = await nav.getByRole("link").allTextContents();
   expect(labels.indexOf("Planner")).toBe(labels.indexOf("Factory") + 1);
 });
+
+test("an item filter dims the groups it does not reach", async ({ page, mockApi }) => {
+  await mockApi("planner-filter-dimmed");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
+  await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
+  await page.getByLabel("Item").selectOption({ label: "Iron Ingot" });
+  await expect(page.getByRole("status")).toContainText("4 of 5 groups carry or feed this item");
+  // The recycler (its card) and nothing else of the cards is faded; the edges that miss the item are too.
+  await expect(svg.locator("g.opacity-graph-dim", { hasText: "Iron Plate Recycle" }).first()).toBeAttached();
+  expect(await svg.locator("g.opacity-graph-dim").count()).toBeGreaterThan(0);
+});
