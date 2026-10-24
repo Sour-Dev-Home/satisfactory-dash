@@ -168,7 +168,8 @@ export function buildTestScript({ name, sha, workspaces, db, files, workers }) {
   if (!Number.isInteger(workers)) throw new Error("workers must be an integer");
   if (!workspaces.every(isWorkspace)) throw new Error("bad workspace");
   const run = vitestArgs({ db, files, workers }).map(shq).join(" ");
-  const env = db ? "REQUIRE_DB=1 " : "";
+  // No colour: escape codes from the box are stripped before printing (stripControl), so they'd show as literal text.
+  const env = `NO_COLOR=1 FORCE_COLOR=0 ${db ? "REQUIRE_DB=1 " : ""}`;
   const steps = workspaces
     .map((w) => `echo ${shq(`== ${w}`)}; ( cd ${shq(w)} && ${env}npx --no-install vitest ${run} ) || { r=$?; [ "$rc" -eq 0 ] && rc=$r; }`)
     .join("\n");
