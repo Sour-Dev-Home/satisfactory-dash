@@ -1,0 +1,1 @@
+- 2026-10-24 — Mounted `GET /api/servers/:serverId/production-graph` beside the bottlenecks route (same inputs, member guard, 503 without a database, no cache), logging one info line of component, site, group and link counts and duration per request so the 150 m site merge distance can be tuned; removed the authorization sweep's temporary exemption (ADR-0050 build task 4).
