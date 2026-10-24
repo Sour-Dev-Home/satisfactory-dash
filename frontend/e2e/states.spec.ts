@@ -119,8 +119,8 @@ const CASES: StateCase[] = [
   // under the tick gauge (#593).
   { scenario: "default", name: "default-narrow-desktop", shows: "Total play time on this save", width: 1024 },
   { scenario: "stale", name: "stale-narrow-desktop", shows: /Showing last known data from/, width: 1024 },
-  // The Health card's tick dial and text (the red zone is below 10 ticks/s).
-  { scenario: "slow-tick", shows: "8.2 ticks/s" },
+  // The Health card's tick bar and line (the red zone is below 10 ticks/s).
+  { scenario: "slow-tick", shows: "8.2/s" },
   // With FicsitRemoteMonitoring, the online names show under the count (ADR-0029).
   { scenario: "players-some", shows: "Pioneer-Alpha" },
   { scenario: "players-many", shows: "10 of 12 players connected" },
@@ -411,3 +411,27 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
   });
 }
+
+// #616: the age badge's label changes, nothing in the Health card moves.
+test("the Health card keeps its layout as the status ages", async ({ page, mockApi }) => {
+  await mockApi("default");
+  await page.clock.setFixedTime(LIVE_NOW);
+  await page.goto("/app");
+  const card = page.getByRole("region", { name: "Health" });
+  const badge = card.locator("[data-age-label]");
+  await expect(badge).toHaveText("live");
+  // Measured once the page's entrance animations end: mid-reveal the card is still sliding by a fraction of a pixel.
+  const boxes = async () => {
+    await settleAnimations(page);
+    return [
+      await card.getByRole("heading", { name: "Health" }).boundingBox(),
+      await card.locator("[data-age]").boundingBox(),
+      await card.locator("svg[data-gauge]").boundingBox(),
+      await card.boundingBox(),
+    ];
+  };
+  const before = await boxes();
+  await page.clock.setFixedTime(new Date(Date.parse(LIVE_NOW) + 195_000).toISOString());
+  await expect(badge).toHaveText("3 min");
+  expect(await boxes()).toEqual(before);
+});

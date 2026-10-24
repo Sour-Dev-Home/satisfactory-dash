@@ -1,0 +1,1 @@
+- 2026-10-23 — Health card: freshness is now a coarse badge in the header (live / < 1 min / N min, amber when late; exact age on hover and for screen readers) and the tick is one fixed line with a bar gauge, in one stacked layout at every width (#616).
