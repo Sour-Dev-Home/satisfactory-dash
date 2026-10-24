@@ -91,6 +91,7 @@ export function layoutSite(site: PlannerSite, graph: ProductionGraph): SiteLayou
     const e = g.edge(edge.from, edge.to, String(index));
     return { index, edge, points: e.points ?? [], label: labels[index], labelX: e.x ?? 0, labelY: e.y ?? 0 };
   });
-  const { width = 0, height = 0 } = g.graph();
-  return { nodes: laidNodes, edges: laidEdges, sourceEdges, width, height };
+  // An empty graph comes back from dagre with width and height -Infinity.
+  const { width, height } = g.graph();
+  return { nodes: laidNodes, edges: laidEdges, sourceEdges, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
 }

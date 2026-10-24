@@ -78,7 +78,9 @@ export function GroupPanel({
             ))}
           </ul>
           {joined.machines.length > shown.length && (
-            <p className="m-0 text-sm text-muted">{joined.machines.length - shown.length} more machines are not listed here.</p>
+            <p className="m-0 text-sm text-muted">
+              {joined.machines.length - shown.length} more {joined.machines.length - shown.length === 1 ? "machine is" : "machines are"} not listed here.
+            </p>
           )}
           {joined.missing > 0 && (
             <p className="m-0 text-sm text-muted">
