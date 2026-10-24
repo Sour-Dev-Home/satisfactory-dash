@@ -17,8 +17,8 @@ export interface MapContext {
   /** A design token's current value (e.g. "--color-ok"), for canvas colours. */
   color: (token: string) => string;
   /**
-   * Any design token's current value, e.g. a motion token ("--duration-pulse"). Reduced motion sets
-   * the motion tokens to 0s, so a layer that times its canvas animation by one honours it for free.
+   * Any design token's current value, e.g. a motion token ("--duration-base"). Reduced motion sets
+   * the motion tokens to 0s, so a layer that times a canvas animation by one honours it for free.
    */
   token: (name: string) => string;
 }

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MACHINE_HOUSING, MACHINE_WINDOW, STATION_VIEWBOX } from "../ui/stationShapes";
 import { buildingsLayer } from "./buildingsLayer";
 import type { MapContext } from "./layers";
-import { hitRadius, ICON_MAX_PX, ICON_MIN_PX, iconPx, pulseReach } from "./machineIcon";
+import { hitRadius, ICON_MAX_PX, ICON_MIN_PX, iconPx, ringRadius, ringReach } from "./machineIcon";
 
 /** One canvas call, with the drawing state it ran under. */
 interface Call {
@@ -89,14 +89,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function context(pulse = "1.6s"): MapContext {
-  const token = (name: string) => (name === "--duration-pulse" ? pulse : (COLORS.get(name) ?? ""));
+function context(): MapContext {
+  const token = (name: string) => COLORS.get(name) ?? "";
   return { L, map, renderer, project: (x, y) => [-y, x], color: token, token };
 }
 
 /** Leaflet draws on its next frame; run it now, from a clean record. */
 type RendererInternals = { _redraw: () => void; _redrawRequest: number | null; _redrawBounds: unknown };
-/** Every canvas renderer on the map: the shared one, and the pulse rings' own when there is one. */
+/** Every canvas renderer on the map: the shared one, and the backed-up rings' own when there is one. */
 const renderers = () => {
   const found: L.Canvas[] = [];
   map.eachLayer((layer) => {
@@ -113,25 +113,6 @@ function paint(only?: L.Canvas) {
     internals._redraw();
   }
   return recorder.calls;
-}
-
-/** A controllable prefers-reduced-motion query: `setReduced` fires its change event. */
-function stubReducedMotion(initial: boolean) {
-  const listeners = new Set<() => void>();
-  const query = {
-    matches: initial,
-    media: "(prefers-reduced-motion: reduce)",
-    addEventListener: (_type: string, fn: () => void) => listeners.add(fn),
-    removeEventListener: (_type: string, fn: () => void) => listeners.delete(fn),
-  };
-  vi.stubGlobal("matchMedia", (media: string) => (media === query.media ? query : { ...query, matches: false }));
-  return {
-    listeners,
-    setReduced(reduced: boolean) {
-      query.matches = reduced;
-      for (const fn of [...listeners]) fn();
-    },
-  };
 }
 
 const base = factoryMixed.data.buildings[1];
@@ -253,67 +234,59 @@ describe("buildingsLayer.draw: machine icons on the canvas renderer", () => {
   });
 });
 
-describe("buildingsLayer.draw: the backed-up pulse", () => {
-  it("runs no animation frame loop when no machine is backed up", () => {
+/** Lets the repaints a zoom or a removal queued run on the stub. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+describe("buildingsLayer.draw: the backed-up ring", () => {
+  it("draws a still warn ring for a backed-up machine only, at the zoom's size, with no frame loop or timer", async () => {
+    const setTimer = vi.spyOn(globalThis, "setTimeout");
+    const setTick = vi.spyOn(globalThis, "setInterval");
+    // A first draw starts jsdom's own frame timer (Leaflet's repaint); after that the ring adds no timer.
+    buildingsLayer.draw(context(), factory(ONE_PER_STATE))();
+    setTimer.mockClear();
+    setTick.mockClear();
+    const cleanup = buildingsLayer.draw(context(), factory([...ONE_PER_STATE, BACKED_UP]));
+    expect(setTimer).not.toHaveBeenCalled();
+    expect(setTick).not.toHaveBeenCalled();
+    setTimer.mockRestore();
+    setTick.mockRestore();
+    for (const zoom of [-5, 3]) {
+      // Centred on the backed-up machine, so it is in view (and painted) at every zoom.
+      map.setView([-20, BACKED_UP.location!.xM], zoom, { animate: false });
+      expect(rings(paint())).toEqual([{ radius: ringRadius(iconPx(zoom)), color: "WARN", alpha: 1 }]);
+    }
+    // Nothing re-arms itself: no animation frame of ours.
+    expect(requestFrame).not.toHaveBeenCalled();
+    cleanup();
+    await settle();
+  });
+
+  it("draws no ring when no machine is backed up, at either zoom", async () => {
     const cleanup = buildingsLayer.draw(context(), factory(ONE_PER_STATE));
+    for (const zoom of [-5, 3]) {
+      map.setView([-20, 0], zoom, { animate: false });
+      expect(rings(paint())).toEqual([]);
+    }
     expect(requestFrame).not.toHaveBeenCalled();
     cleanup();
-    expect(requestFrame).not.toHaveBeenCalled();
+    await settle();
   });
 
-  it("pulses a backed-up machine: a warn ring that grows and fades, about 1.6 s a cycle", () => {
-    buildingsLayer.draw(context(), factory([...ONE_PER_STATE, BACKED_UP]));
-    expect(requestFrame).toHaveBeenCalledTimes(1);
-
-    frames.shift()!(0);
-    const start = rings(paint());
-    frames.shift()!(800);
-    const middle = rings(paint());
-    frames.shift()!(1500);
-    const late = rings(paint());
-
-    for (const ring of [...start, ...middle, ...late]) expect(ring.color).toBe("WARN");
-    expect(start).toHaveLength(1);
-    expect(middle[0].radius).toBeGreaterThan(start[0].radius);
-    expect(middle[0].alpha).toBeLessThan(start[0].alpha as number);
-    expect(late[0].radius).toBeGreaterThan(middle[0].radius);
-    // A cycle is 1.6 s: at 1.6 s it starts over, small and opaque again.
-    frames.shift()!(1600);
-    expect(rings(paint())).toEqual(start);
-    // Still looping: each frame asks for the next.
-    expect(frames).toHaveLength(1);
-  });
-
-  it("stops the loop when the layer is removed", () => {
+  it("keeps the ring in proportion to the icon at every zoom", async () => {
     const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
-    frames.shift()!(0);
+    const ratio = (zoom: number) => {
+      map.setZoom(zoom, { animate: false });
+      return markersOf().find((m) => m.options.interactive === false)!._radius / iconPx(zoom);
+    };
+    expect(ratio(-5)).toBeCloseTo(ratio(3), 10);
+    expect(ringReach(ICON_MAX_PX)).toBeCloseTo(ringReach(ICON_MIN_PX) * (ICON_MAX_PX / ICON_MIN_PX), 10);
     cleanup();
-    expect(cancelFrame).toHaveBeenCalled();
-    // A frame already queued doesn't start it again.
-    frames.shift()?.(16);
-    expect(frames).toHaveLength(0);
-  });
-
-  it("shows the ring still under reduced motion (the motion tokens are 0): no loop", () => {
-    buildingsLayer.draw(context("0s"), factory([BACKED_UP]));
-    expect(requestFrame).not.toHaveBeenCalled();
-    const still = rings(paint());
-    expect(still).toHaveLength(1);
-    expect(still[0].color).toBe("WARN");
-    expect(still[0].alpha).toBeGreaterThan(0);
-  });
-
-  it("reads the cycle from the token, in ms or s", () => {
-    buildingsLayer.draw(context("1600ms"), factory([BACKED_UP]));
-    frames.shift()!(0);
-    const start = rings(paint());
-    frames.shift()!(1600);
-    expect(rings(paint())).toEqual(start);
+    await settle();
   });
 });
 
 describe("buildingsLayer.legend", () => {
-  it("names each state with the same machine icon in its colour, and the pulsing backed-up icon", () => {
+  it("names each state with the same machine icon in its colour, and the ringed backed-up icon", () => {
     render(buildingsLayer.legend() as ReactElement);
     const expected: [RegExp, string][] = [
       [/^Producing$/, "fill-ok"],
@@ -333,7 +306,6 @@ describe("buildingsLayer.legend", () => {
       expect(housing).toHaveAttribute("width", String(MACHINE_HOUSING.width));
     });
     expect(items[4].querySelector("svg polygon")).not.toBeNull();
-    // True with and without motion: under reduced motion the ring holds still.
     expect(items[4]).toHaveTextContent("Backed up (a ring marks it)");
     // No recipe is hollow as on the canvas: an outline in muted, no window; the others no outline.
     items.forEach((item, i) => {
@@ -417,13 +389,13 @@ describe("buildingsLayer: hit-testing after the shape change", () => {
       expect(scales).toContain(size / STATION_VIEWBOX);
       // The rings reach round the icon at that size, and never catch the pointer.
       const ring = markersOf().find((m) => m.options.interactive === false)!;
-      expect(ring._radius).toBe(pulseReach(size));
+      expect(ring._radius).toBe(ringReach(size));
       cleanup();
       await new Promise((resolve) => setTimeout(resolve, 50)); // let the repaints the zoom and removal queued run on the stub
     });
   }
 
-  it("never lets the pulse rings catch the pointer: they are not interactive", () => {
+  it("never lets the rings catch the pointer: they are not interactive", () => {
     buildingsLayer.draw(context(), factory([BACKED_UP]));
     const rings = markersOf().filter((m) => m.options.interactive === false);
     expect(rings).toHaveLength(1);
@@ -439,24 +411,17 @@ describe("buildingsLayer: hit-testing after the shape change", () => {
   });
 });
 
-describe("buildingsLayer: the pulse loop's lifecycle", () => {
-  it("asks for one frame at a time however many machines are backed up", () => {
+describe("buildingsLayer: the ring's lifecycle", () => {
+  it("asks for no frame however many machines are backed up", () => {
     const many = Array.from({ length: 300 }, (_, i) => building(i, { recipe: "Screw", production: running, isBackedUp: true, state: "backedUp", location: { xM: (i % 20) * 8, yM: Math.floor(i / 20) * 8, zM: 0, rotationDeg: 0 } }));
     buildingsLayer.draw(context(), factory(many));
-    expect(requestFrame).toHaveBeenCalledTimes(1);
-    frames.shift()!(0);
-    expect(requestFrame).toHaveBeenCalledTimes(2);
-    expect(frames).toHaveLength(1);
+    expect(requestFrame).not.toHaveBeenCalled();
     expect(rings(paint())).toHaveLength(300);
   });
 
-  it("starts no loop again when the next draw has no backed-up machine, after the last one cleared", () => {
+  it("draws no ring in the next draw when the last backed-up machine cleared", () => {
     const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
-    frames.shift()!(0);
     cleanup();
-    expect(cancelFrame).toHaveBeenCalledTimes(1);
-    frames.length = 0; // the mock does not drop the cancelled frame
-    requestFrame.mockClear();
     buildingsLayer.draw(context(), factory([{ ...BACKED_UP, isBackedUp: false, state: "producing" }]));
     expect(requestFrame).not.toHaveBeenCalled();
     expect(frames).toHaveLength(0);
@@ -475,53 +440,14 @@ describe("buildingsLayer: the pulse loop's lifecycle", () => {
     cleanup();
   });
 
-  it("treats an unreadable pulse token as no animation (ring shown still)", () => {
-    buildingsLayer.draw(context(""), factory([BACKED_UP]));
-    expect(requestFrame).not.toHaveBeenCalled();
-    expect(rings(paint())).toHaveLength(1);
-  });
-
-  // Was a known bug (the token was read once at draw time): the layer now follows the
-  // prefers-reduced-motion query's change event.
-  it("stops the loop when reduced motion is switched on while it runs, and shows the ring still", () => {
-    const motion = stubReducedMotion(false);
-    let pulse = "1.6s";
-    const ctx = { ...context(), token: (name: string) => (name === "--duration-pulse" ? pulse : (COLORS.get(name) ?? "")) };
-    buildingsLayer.draw(ctx, factory([BACKED_UP]));
-    frames.shift()!(0);
-    pulse = "0s"; // the OS setting changed at runtime: the motion tokens go to 0s with it
-    motion.setReduced(true);
-    expect(cancelFrame).toHaveBeenCalled();
-    frames.shift()?.(16); // a frame already queued doesn't carry on
-    expect(frames).toHaveLength(0);
-    const still = rings(paint());
-    expect(still).toHaveLength(1);
-    expect(still[0].alpha).toBeGreaterThan(0);
-  });
-
-  it("starts the loop when reduced motion is switched off at runtime", () => {
-    const motion = stubReducedMotion(true);
-    let pulse = "0s";
-    const ctx = { ...context(), token: (name: string) => (name === "--duration-pulse" ? pulse : (COLORS.get(name) ?? "")) };
-    buildingsLayer.draw(ctx, factory([BACKED_UP]));
-    expect(requestFrame).not.toHaveBeenCalled();
-    pulse = "1.6s";
-    motion.setReduced(false);
-    expect(requestFrame).toHaveBeenCalledTimes(1);
-  });
-
-  it("stops listening to the motion setting when the layer is removed", () => {
-    const motion = stubReducedMotion(false);
+  it("listens to nothing, motion setting included, however many machines are backed up", () => {
+    const query = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    const matchMedia = vi.fn(() => query);
+    vi.stubGlobal("matchMedia", matchMedia);
     const cleanup = buildingsLayer.draw(context(), factory([BACKED_UP]));
-    expect(motion.listeners.size).toBe(1);
     cleanup();
-    expect(motion.listeners.size).toBe(0);
-  });
-
-  it("listens to nothing when no machine is backed up", () => {
-    const motion = stubReducedMotion(false);
-    buildingsLayer.draw(context(), factory(ONE_PER_STATE));
-    expect(motion.listeners.size).toBe(0);
+    expect(matchMedia).not.toHaveBeenCalled();
+    expect(query.addEventListener).not.toHaveBeenCalled();
   });
 });
 
@@ -541,13 +467,13 @@ describe("buildingsLayer: icons scale with the zoom", () => {
     });
     expect(iconPx(-1.5)).toBeGreaterThan(ICON_MIN_PX);
     expect(iconPx(-1.5)).toBeLessThan(ICON_MAX_PX);
-    // The size starts no frame loop of its own: only the backed-up pulse asked for one.
-    expect(requestFrame).toHaveBeenCalledTimes(1);
+    // The size starts no frame loop of its own, and neither does the ring.
+    expect(requestFrame).not.toHaveBeenCalled();
     await new Promise((resolve) => setTimeout(resolve, 50)); // let the repaints the zooms queued run on the stub
   });
 });
 
-describe("buildingsLayer: the work a pulse frame costs", () => {
+describe("buildingsLayer: the ring's own canvas", () => {
   it("repaints only the rings, on their own canvas: never the icons or the grid on the shared one", () => {
     // Scattered backed-up machines: their redraw areas would union into nearly the whole map.
     const scattered = [0, 1, 2, 3].map((i) =>
@@ -559,10 +485,10 @@ describe("buildingsLayer: the work a pulse frame costs", () => {
     const ringCanvas = renderers().find((r) => r !== renderer)!;
     expect(ringCanvas).toBeDefined();
 
-    frames.shift()!(400);
-    // The tick asked the shared canvas for nothing.
+    // Nothing is queued on the shared canvas, and no frame is waiting.
     expect(shared._redrawRequest).toBeNull();
     expect(shared._redrawBounds).toBeNull();
+    expect(frames).toHaveLength(0);
     // The ring canvas's repaint draws exactly one arc per backed-up machine, and no icon.
     const calls = paint(ringCanvas);
     expect(rings(calls)).toHaveLength(scattered.length);

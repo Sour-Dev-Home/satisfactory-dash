@@ -116,7 +116,6 @@
   --duration-fast: 120ms; /* hover and colour changes, a page's reveal */
   --duration-base: 180ms; /* a dropdown opening, a detail expanding */
   --duration-slow: 240ms; /* larger surfaces */
-  --duration-pulse: 1.6s; /* one cycle of a backed-up machine's ring on the map (canvas, src/map/) */
   --duration-shimmer: 1.8s; /* one slow cycle of a loading skeleton (#494) */
   /* Loading (#494). A skeleton shows only if its data takes longer than the delay, then stays at
      least the minimum; a page waits for its primary queries up to the budget, then reveals every
@@ -380,7 +379,6 @@
       --duration-fast: 0s;
       --duration-base: 0s;
       --duration-slow: 0s;
-      --duration-pulse: 0s;
       --duration-shimmer: 0s;
       --duration-skeleton-min: 0s;
     }

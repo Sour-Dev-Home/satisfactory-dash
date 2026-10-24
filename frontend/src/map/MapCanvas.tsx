@@ -19,7 +19,7 @@ export interface DrawnLayer {
   draw: (ctx: MapContext) => () => void;
 }
 
-/** A design token's current value (a colour, or a motion token such as --duration-pulse). */
+/** A design token's current value (a colour, or a motion token such as --duration-base). */
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 /**

@@ -1,0 +1,1 @@
+- 2026-10-24 — Map: a backed-up machine's ring is now a thin still ring (owner's call: the pulse was distracting and glitchy while zooming); it is drawn once per Leaflet repaint at a fixed share of the icon size, so it scales with the zoom, and the frame loop, `--duration-pulse` token and `PULSE_TOKEN` are gone. The map baselines need regenerating in CI.

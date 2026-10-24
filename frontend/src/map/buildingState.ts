@@ -27,8 +27,6 @@ export const isHollow = (state: BuildingState) => state === "noRecipe";
 export const BACKED_UP_TOKEN = "--color-warn";
 /** The mark on a machine (its window, or the warning triangle): the canvas showing through. */
 export const MARK_TOKEN = "--color-canvas";
-/** How long one backed-up pulse takes; 0s under reduced motion. */
-export const PULSE_TOKEN = "--duration-pulse";
 
 /** A state's label and token, reading own keys only (#368). */
 export const stateLabel = (state: BuildingState) => ownValue(STATE_LABEL, state) ?? state;

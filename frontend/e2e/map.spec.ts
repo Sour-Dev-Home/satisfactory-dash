@@ -139,8 +139,7 @@ test("the world layers draw, read as text, and toggle", async ({ page, mockApi }
 });
 
 test.describe("the map's first view", () => {
-  // The backed-up pulse is drawn on the canvas, which Playwright's `animations: "disabled"` can't
-  // stop: under reduced motion the ring holds still, so the screenshot is stable.
+  // Reduced motion also turns off Leaflet's zoom and fade animations, so the screenshot is stable.
   test.use({ reducedMotion: "reduce" });
 
   test("the map's first view", async ({ page, mockApi }) => {
@@ -156,24 +155,18 @@ test.describe("the map's first view", () => {
 const canvasPixels = (page: Page) =>
   page.evaluate(() => [...document.querySelectorAll<HTMLCanvasElement>(".map-canvas canvas")].map((c) => c.toDataURL()).join());
 
-// ADR-0041 item 6: a backed-up machine pulses (the default scenario has two), and holds still under
-// reduced motion.
+// A backed-up machine's ring (the default scenario has two) is still, with or without reduced motion.
 for (const motion of ["no-preference", "reduce"] as const) {
   test.describe(`motion ${motion}`, () => {
     test.use({ reducedMotion: motion });
 
-    test(`a backed-up machine's ring ${motion === "reduce" ? "holds still" : "pulses"}`, async ({ page, mockApi }) => {
+    test("a backed-up machine's ring holds still", async ({ page, mockApi }) => {
       await mockApi("default");
       await page.goto("/app/map");
       await findMarker(page);
       const first = await canvasPixels(page);
-      if (motion === "reduce") {
-        // Long enough for several frames of a 1.6 s cycle, had one been running.
-        await page.waitForTimeout(400);
-        expect(await canvasPixels(page)).toBe(first);
-      } else {
-        await expect.poll(() => canvasPixels(page), { message: "the canvas changes as the ring pulses" }).not.toBe(first);
-      }
+      await page.waitForTimeout(400);
+      expect(await canvasPixels(page)).toBe(first);
     });
   });
 }
