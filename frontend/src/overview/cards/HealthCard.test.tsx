@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HealthCard } from "./HealthCard";
 
 describe("HealthCard", () => {
@@ -27,25 +27,75 @@ describe("HealthCard", () => {
     expect(screen.getByRole("status").firstElementChild).toHaveClass(colour);
   });
 
-  it("shows the server tick as a dial and as text, with the backend's own slow verdict", () => {
-    const { rerender } = render(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 21.44, health: "healthy" }} />);
+  it("shows the tick as one line with a bar gauge, with the backend's own slow verdict", () => {
+    const { rerender } = render(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 21.94, health: "healthy" }} />);
     const card = screen.getByRole("region", { name: "Health" });
-    expect(card).toHaveTextContent("Server tick21.4 ticks/sHealthy");
-    // The dial is decoration: hidden, with the needle clamped to its 0-30 scale.
+    expect(card).toHaveTextContent("Tick 21.9/s · Healthy");
+    // The bar is decoration: hidden, clamped to its 0-30 scale.
     expect(card.querySelector("svg[data-gauge]")).toHaveAttribute("aria-hidden", "true");
     rerender(<HealthCard overall={{ health: "degraded", headline: "x" }} tick={{ rate: 8.2, health: "slow" }} />);
     expect(screen.getByText("Slow")).toHaveClass("text-bad");
+    expect(card).toHaveTextContent("Tick 8.2/s · Slow");
     rerender(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 60, health: "healthy" }} />);
     expect(card.querySelector("svg[data-gauge]")).toHaveAttribute("data-gauge", "30");
-    expect(card).toHaveTextContent("60.0 ticks/s");
+    expect(card).toHaveTextContent("Tick 60.0/s");
   });
 
-  it("says no game is running instead of a dial, and shows no tick while the status loads", () => {
+  it("says no game is running instead of a bar, and shows no tick while the status loads", () => {
     const { rerender } = render(<HealthCard overall={{ health: "degraded", headline: "x" }} tick={null} />);
-    expect(screen.getByText("Server tick: no game running.")).toBeInTheDocument();
+    expect(screen.getByText("Tick: no game running.")).toBeInTheDocument();
     expect(screen.getByRole("region").querySelector("svg[data-gauge]")).toBeNull();
     rerender(<HealthCard overall={{ health: "pending", headline: "x" }} />);
-    expect(screen.queryByText(/Server tick/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tick/)).not.toBeInTheDocument();
+  });
+
+  describe("the freshness badge", () => {
+    const OBSERVED = "2026-09-22T22:25:00.000Z";
+    const at = (seconds: number) => new Date(Date.parse(OBSERVED) + seconds * 1000);
+    const badge = () => screen.getByRole("region").querySelector("[data-age]")!;
+    const renderAt = (seconds: number, late = false) => {
+      vi.useFakeTimers({ now: at(seconds) });
+      render(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 20, health: "healthy" }} age={{ observedAt: OBSERVED, late }} />);
+    };
+    afterEach(() => vi.useRealTimers());
+
+    it.each([
+      [3, "live"],
+      [14, "live"],
+      [15, "< 1 min"],
+      [59, "< 1 min"],
+      [60, "1 min"],
+      [200, "3 min"],
+    ])("reads %d s old as %s", (seconds, label) => {
+      renderAt(seconds);
+      expect(badge().querySelector("[data-age-label]")).toHaveTextContent(label);
+    });
+
+    it("sits in the header with the heading, not in the tick line", () => {
+      renderAt(8);
+      const header = screen.getByRole("heading", { name: "Health" }).parentElement!;
+      expect(header).toContainElement(badge() as HTMLElement);
+      expect(screen.getByText("Tick").closest("div")).not.toContainElement(badge() as HTMLElement);
+      expect(screen.getByText("Tick").closest("div")).not.toHaveTextContent(/live|ago/);
+    });
+
+    it("keeps the exact age as accessible text and a tooltip", () => {
+      renderAt(8);
+      expect(screen.getByText("Updated 8 s ago")).toHaveClass("sr-only");
+      expect(badge()).toHaveAttribute("title", expect.stringContaining("Updated 8 s ago"));
+    });
+
+    it("turns amber and says so when the backend calls the data late", () => {
+      renderAt(8, true);
+      expect(badge()).toHaveClass("text-warn");
+      expect(badge().querySelector("[data-age-label]")).toHaveTextContent("late");
+      expect(badge()).toHaveTextContent("newer data is overdue");
+    });
+
+    it("is not shown without an age", () => {
+      render(<HealthCard overall={{ health: "ok", headline: "x" }} />);
+      expect(screen.getByRole("region").querySelector("[data-age]")).toBeNull();
+    });
   });
 
   it("offers dismissal only when asked to, and reports the click", () => {

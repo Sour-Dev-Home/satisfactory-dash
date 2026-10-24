@@ -1,0 +1,1 @@
+- 2026-10-23 — Added the production planner service (`telemetry/services/productionGraph.ts`): groups machines into manifold nodes, infers an item and a measured/estimated/unknown rate per edge, flags loops (iterative Tarjan), and finds sites (components merged within 150 m), as a pure function of the factory snapshot and the conveyors layer (ADR-0050 build task 3; no route yet).

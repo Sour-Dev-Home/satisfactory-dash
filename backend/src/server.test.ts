@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
-import net from "node:net";
 import type { Express } from "express";
 import { hashPassword } from "./modules/identity/passwordHash.js";
 
@@ -9,16 +8,10 @@ let app: Express;
 let session: string;
 const PASSWORD = "server-test-password";
 
-/** A port that nothing is listening on: bind an ephemeral port, then release it. No
- *  host, so it's reserved dual-stack (both ::1 and 127.0.0.1, which "localhost"
- *  resolves to). */
-async function closedPort(): Promise<number> {
-  const server = net.createServer();
-  await new Promise<void>((resolve) => server.listen(0, resolve));
-  const { port } = server.address() as net.AddressInfo;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  return port;
-}
+/** A port that nothing listens on, on ::1 or 127.0.0.1. A fixed privileged port, never a released ephemeral one:
+ *  supertest binds ephemeral ports for every request in every parallel test file, and one took a released port and
+ *  answered the "game server" with a 404 (Dependabot PR #611's run). The OS never hands out port 1 as ephemeral. */
+const CLOSED_PORT = 1;
 
 // server.ts reads its config when imported, so pin every game-server setting first.
 // These tests used to rely on nothing listening on the defaults (7777/8080) and failed
@@ -26,7 +19,7 @@ async function closedPort(): Promise<number> {
 // but dotenv never overrides a variable that's already set, so setting all of them
 // here keeps a developer's local .env out of the test (found by PR #20's review).
 beforeAll(async () => {
-  const port = String(await closedPort());
+  const port = String(CLOSED_PORT);
   // "localhost" resolves to both ::1 and 127.0.0.1, which is what produces the
   // AggregateError the detail test below checks.
   process.env.SATISFACTORY_SERVER_HOST = "localhost";

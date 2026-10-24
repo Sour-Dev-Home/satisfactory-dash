@@ -39,7 +39,9 @@ export function createRequestLogger(logger: Logger): RequestHandler {
       ...timingLogFields(res as Response),
       route: matchedRoute(req as Request),
     }),
-    customLogLevel: (req, res, err) => requestLogLevel(res.statusCode, err, (req as Request).originalUrl ?? req.url), // originalUrl: a mounted router strips the prefix from url
+    // originalUrl: a mounted router strips the prefix from url. errorCode: set by the error handler (logLevel.ts).
+    customLogLevel: (req, res, err) =>
+      requestLogLevel(res.statusCode, err, (req as Request).originalUrl ?? req.url, (res as Response).locals?.errorCode),
     // pino-http wraps this: it receives the standard serialized request (id, method, url, ...).
     serializers: {
       req: (req: { url: string; query?: unknown; remoteAddress?: unknown; remotePort?: unknown }) => {

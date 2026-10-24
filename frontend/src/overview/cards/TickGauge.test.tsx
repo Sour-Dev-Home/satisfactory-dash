@@ -26,10 +26,15 @@ describe("TickGauge", () => {
     expect(svgOf(1000)).toHaveAttribute("data-gauge", String(GAUGE_MAX));
   });
 
-  it.each([0, SLOW_BELOW, GAUGE_MAX, -5, 1000])("draws a needle with finite coordinates at rate %d", (rate) => {
-    const line = svgOf(rate).querySelector("line")!;
-    expect(Number.isFinite(Number(line.getAttribute("x2")))).toBe(true);
-    expect(Number.isFinite(Number(line.getAttribute("y2")))).toBe(true);
+  it.each([0, SLOW_BELOW, GAUGE_MAX, -5, 1000])("draws a bar with a finite width at rate %d", (rate) => {
+    const fill = svgOf(rate).querySelector('[data-zone="value"]');
+    // Nothing to fill at zero or below.
+    expect(Number.isFinite(Number(fill?.getAttribute("width") ?? 0))).toBe(true);
+    expect(fill === null).toBe(rate <= 0);
+  });
+
+  it("fills in proportion to the 0-30 scale", () => {
+    expect(svgOf(15).querySelector('[data-zone="value"]')).toHaveAttribute("width", "60");
   });
 
   it("draws nothing red while the tick is healthy, at any rate", () => {
@@ -46,7 +51,7 @@ describe("TickGauge", () => {
     [12, "slow", "warn"],
     [SLOW_BELOW, "slow", "warn"],
     [8.2, "slow", "bad"],
-  ] as const)("colours its arc at %d ticks/s (%s) as %s, by the same verdict as its word", (rate, health, tone) => {
+  ] as const)("colours its fill at %d ticks/s (%s) as %s, by the same verdict as its word", (rate, health, tone) => {
     const { container } = render(<TickGauge rate={rate} health={health} />);
     const svg = container.querySelector("svg")!;
     expect(svg).toHaveAttribute("data-tone", tone);
@@ -54,10 +59,9 @@ describe("TickGauge", () => {
     expect(tickTone({ rate, health })).toBe(tone);
   });
 
-  it("draws no needle and marks itself NaN for a non-finite rate (data validation's job, not this component's)", () => {
+  it("draws no fill and marks itself NaN for a non-finite rate (data validation's job, not this component's)", () => {
     const svg = svgOf(NaN);
     expect(svg).toHaveAttribute("data-gauge", "NaN");
-    const line = svg.querySelector("line")!;
-    expect(line.getAttribute("x2")).toBe("NaN");
+    expect(svg.querySelector('[data-zone="value"]')).toBeNull();
   });
 });
