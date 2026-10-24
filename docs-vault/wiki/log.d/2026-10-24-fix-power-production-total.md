@@ -1,0 +1,1 @@
+- 2026-10-24 — Power circuit `productionMW` now means total produced (the in-game graph's Produced), derived on the FRM path as max(PowerProduction, PowerConsumed) in `totalPowerProductionMW` (#620, owner option A); doc-only contract text change, evidence and the battery follow-up in data-gap-analysis.md.

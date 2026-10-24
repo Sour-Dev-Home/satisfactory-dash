@@ -73,6 +73,7 @@ export interface FactoryBuilding {
 
 export interface PowerCircuit {
   circuitGroupId: number;
+  /** Total produced, MW (the in-game graph's Produced); on the FRM path max(base production, consumption), #620. */
   powerProduction: number;
   powerConsumed: number;
   powerCapacity: number;
