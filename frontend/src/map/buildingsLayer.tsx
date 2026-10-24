@@ -5,7 +5,6 @@ import {
   BACKED_UP_TOKEN,
   isHollow,
   MARK_TOKEN,
-  PULSE_TOKEN,
   stateLabel,
   stateToken,
   buildingState,
@@ -13,11 +12,10 @@ import {
   type BuildingState,
 } from "./buildingState";
 import type { MapLayer } from "./layers";
-import { drawMachine, drawPulse, durationMs, hitRadius, ICON_MIN_PX, iconPx, pulseReach, STILL_PROGRESS } from "./machineIcon";
+import { drawMachine, drawRing, hitRadius, ICON_MIN_PX, iconPx, ringReach } from "./machineIcon";
 import { MachineGlyph } from "./MachineGlyph";
 
 const STATES: BuildingState[] = ["producing", "idle", "paused", "noRecipe"];
-const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 /** The legend's housing colour per state: the same tokens the canvas reads (buildingState.ts). */
 const FILL: Record<BuildingState, string> = {
   producing: "fill-ok",
@@ -112,7 +110,7 @@ export const buildingsLayer: MapLayer<Factory> = {
   label: "Buildings",
   defaultVisible: true,
 
-  draw({ L, map, project, renderer, color, token }, data) {
+  draw({ L, map, project, renderer, color }, data) {
     const Drawn = drawnMarker(L);
     const group = L.layerGroup();
     const warn = color(BACKED_UP_TOKEN);
@@ -120,26 +118,27 @@ export const buildingsLayer: MapLayer<Factory> = {
     const buildings = placed(data.buildings);
     const backedUp = buildings.filter(isBackedUpState);
 
-    // The pulse (ADR-0041 item 6): one ring per backed-up machine, all on one clock, on a canvas of
-    // their own (the one overlay #443 allows; still canvas, no DOM per building). A pulse frame then
-    // repaints only rings: the shared canvas with the icons and the grid is never touched, however
-    // far apart the rings are. That canvas sits in the tile pane (unused: the base map is drawn
-    // lines, not tiles), under the shared canvas, so the rings show beneath the icons and never
-    // take the pointer from them. None of it exists when nothing is backed up.
+    // The backed-up ring: one still ring per backed-up machine, drawn only when Leaflet repaints
+    // (zoom, pan, data change), never on a timer. It sits on a canvas of its own (the one overlay
+    // #443 allows; still canvas, no DOM per building) in the tile pane (unused: the base map is
+    // drawn lines, not tiles), under the shared canvas, so the rings show beneath the icons and
+    // never take the pointer from them; they are not interactive, so the icons' hit circles stay
+    // the icon's size. Each ring's radius and stroke are shares of the zoom's icon size, set in
+    // the marker's projection step like the icon's, so they scale together. None of it exists
+    // when nothing is backed up.
     const ringRenderer = backedUp.length > 0 ? new (ringCanvas(L))({ pane: "tilePane", padding: 0.5 }) : null;
-    const clock = { progress: STILL_PROGRESS };
-    const pulses = ringRenderer
-      ? backedUp.map((b) =>
-          new Drawn(project(b.location.xM, b.location.yM), {
-            renderer: ringRenderer,
-            radius: pulseReach(iconPx(map.getZoom())),
-            radiusAt: pulseReach,
-            stroke: false,
-            interactive: false,
-            paint: (ctx, at, size) => drawPulse(ctx, at.x, at.y, size, clock.progress, warn),
-          }).addTo(group),
-        )
-      : [];
+    if (ringRenderer) {
+      for (const b of backedUp) {
+        new Drawn(project(b.location.xM, b.location.yM), {
+          renderer: ringRenderer,
+          radius: ringReach(iconPx(map.getZoom())),
+          radiusAt: ringReach,
+          stroke: false,
+          interactive: false,
+          paint: (ctx, at, size) => drawRing(ctx, at.x, at.y, size, warn),
+        }).addTo(group);
+      }
+    }
 
     for (const building of buildings) {
       const state = buildingState(building);
@@ -165,47 +164,7 @@ export const buildingsLayer: MapLayer<Factory> = {
     }
     group.addTo(map);
 
-    // The loop runs only while a ring exists and motion is allowed. The cycle is a motion token, so
-    // reduced motion (every duration 0s) shows the ring still; the query's change event re-decides
-    // at runtime, so switching the setting stops or starts the loop at once.
-    const motion = pulses.length > 0 && typeof matchMedia === "function" ? matchMedia(REDUCED_MOTION) : null;
-    let frame = 0;
-    let generation = 0;
-    const stop = () => {
-      generation++;
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-    };
-    const start = () => {
-      stop();
-      const period = motion?.matches ? 0 : durationMs(token(PULSE_TOKEN));
-      if (pulses.length === 0 || period <= 0) {
-        clock.progress = STILL_PROGRESS;
-        return false;
-      }
-      const mine = generation;
-      let first: number | null = null;
-      const tick = (now: number) => {
-        if (mine !== generation) return; // a frame queued before a stop
-        first ??= now;
-        clock.progress = ((now - first) % period) / period;
-        for (const pulse of pulses) pulse.redraw();
-        frame = requestAnimationFrame(tick);
-      };
-      clock.progress = 0;
-      frame = requestAnimationFrame(tick);
-      return true;
-    };
-    const onMotionChange = () => {
-      // Stopped: repaint the rings once, still.
-      if (!start()) for (const pulse of pulses) pulse.redraw();
-    };
-    start();
-    motion?.addEventListener("change", onMotionChange);
-
     return () => {
-      motion?.removeEventListener("change", onMotionChange);
-      stop();
       group.remove();
       ringRenderer?.remove();
     };

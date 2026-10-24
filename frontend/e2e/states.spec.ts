@@ -389,8 +389,7 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     if (browser) await stubPushBrowser(page, browser);
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
-    // The backed-up ring pulses on the canvas, which "animations: disabled" cannot stop: reduced motion
-    // holds it still, so every map screenshot shows the same frame.
+    // Reduced motion also turns off Leaflet's zoom and fade animations, so every map screenshot is stable.
     if (path === "/app/map") await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(path);
     if (act) {

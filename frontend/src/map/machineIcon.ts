@@ -112,37 +112,22 @@ export function drawMachine(
   ctx.restore();
 }
 
-const RING_WIDTH = 2;
-/** The pulse ring grows from just outside the housing to the icon's full size as its radius. */
-const ringFrom = (size: number) => size / 2 - 1;
-const ringTo = (size: number) => size;
+/** The backed-up ring: still, a fixed share of the icon's size, so it scales with the zoom. */
+const RING_RADIUS_SHARE = 0.75;
+/** Its stroke, in px at the smallest icon; it grows with the icon like everything else. */
+const RING_WIDTH_PX = 1.5;
+const ringWidth = (size: number) => (RING_WIDTH_PX * size) / ICON_MIN_PX;
+export const ringRadius = (size: number) => size * RING_RADIUS_SHARE;
 /** How far the ring reaches at an icon size, for the redraw area Leaflet clears around it. */
-export const pulseReach = (size: number) => ringTo(size) + RING_WIDTH;
-/** Where the ring sits when it's shown still (reduced motion): near the icon, mostly opaque. */
-export const STILL_PROGRESS = 0.4;
+export const ringReach = (size: number) => ringRadius(size) + ringWidth(size);
 
-/** Smooth in and out (cubic), so the ring eases away and back without a jolt. */
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-
-/**
- * The backed-up pulse round an icon `size` px across, at `progress` (0 to 1 through one cycle): a
- * ring in the warn colour that grows and fades out.
- */
-export function drawPulse(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, progress: number, color: string) {
-  const t = easeInOut(Math.min(Math.max(progress, 0), 1));
+/** The backed-up ring round an icon `size` px across: a thin still ring in the warn colour. */
+export function drawRing(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) {
   ctx.save();
   ctx.beginPath();
-  ctx.arc(x, y, ringFrom(size) + (ringTo(size) - ringFrom(size)) * t, 0, Math.PI * 2);
-  ctx.globalAlpha = 1 - t;
+  ctx.arc(x, y, ringRadius(size), 0, Math.PI * 2);
   ctx.strokeStyle = orFallback(color);
-  ctx.lineWidth = RING_WIDTH;
+  ctx.lineWidth = ringWidth(size);
   ctx.stroke();
   ctx.restore();
-}
-
-/** A CSS time ("1.6s", "1600ms") in milliseconds; 0 for anything else, which means "don't animate". */
-export function durationMs(value: string): number {
-  const match = /^(\d*\.?\d+)(ms|s)$/.exec(value.trim());
-  if (!match) return 0;
-  return Number(match[1]) * (match[2] === "s" ? 1000 : 1);
 }
