@@ -136,6 +136,8 @@ export const demoHandlers = [
   get(endpoints.factory.route, ({ params }) => guarded(params, () => Response.json(world.factory(demoNow())))),
   // ADR-0048 (#349): the bottleneck finder, a made-up answer for the demo factory.
   get(endpoints.bottlenecks.route, ({ params }) => guarded(params, () => Response.json(world.bottlenecks(demoNow())))),
+  // ADR-0050: the production planner, a made-up two-site world over the demo factory's machines.
+  get(endpoints.productionGraph.route, ({ params }) => guarded(params, () => Response.json(world.productionGraph(demoNow())))),
   // ADR-0038 M5: the map's world layers, one made-up reading each. An unknown layer is a 404 like the real route.
   get(endpoints.map.worldLayer.route, ({ params }) =>
     guarded(params, () => {

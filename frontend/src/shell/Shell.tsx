@@ -25,6 +25,7 @@ import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { MapView } from "../map/MapView";
 import { OverviewView } from "../overview/OverviewView";
+import { PlannerView } from "../planner/PlannerView";
 import { isPaletteShortcut } from "../palette/paletteCommands";
 import { PowerHistorySection } from "../power/PowerHistorySection";
 import { PowerView } from "../power/PowerView";
@@ -40,6 +41,7 @@ import { chipButton } from "../ui/chip";
 import { PageReveal } from "../ui/PageReveal";
 import { ToAlertSettings, ToApp } from "./ToApp";
 import { PREFETCH_FRESH_MS, pageQueries } from "./pageQueries";
+import { visibleTabs } from "./tabs";
 
 type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
 
@@ -247,17 +249,6 @@ function Page({
   );
 }
 
-const TABS = [
-  { to: "/app", label: "Overview", end: true },
-  { to: "/app/power", label: "Power" },
-  { to: "/app/factory", label: "Factory" },
-  { to: "/app/map", label: "Map" },
-  { to: "/app/settings", label: "Settings" },
-];
-
-/** ADR-0030: the operator only (hiding it is UX; the backend enforces). */
-const SERVERS_TAB: (typeof TABS)[number] = { to: "/app/servers", label: "Servers" };
-
 /**
  * The signed-in app (ADR-0016 item 4), mounted under /app/* so / and future public pages stay
  * free (ADR-0021). Renders inside AuthGate and ServerGate.
@@ -321,7 +312,7 @@ export function Shell() {
         {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;
             an operator's sixth still scrolls. */}
         <nav aria-label="Main" className="-mx-1 flex min-w-0 max-w-full gap-0 overflow-x-auto sm:gap-1">
-          {(canManageServers ? [...TABS, SERVERS_TAB] : TABS).map((tab) => (
+          {visibleTabs(canManageServers).map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
@@ -403,6 +394,18 @@ export function Shell() {
             <Page key="factory" title="Factory" path="/app/factory" onRevealed={focusHeading}>
               <Section label="Factory" probe="factory">
                 <FactoryView />
+              </Section>
+            </Page>
+          }
+        />
+        {/* ADR-0050: always routed; listed in the nav, prefetch and command bar only when PLANNER_IN_NAV (shell/tabs.ts). */}
+        <Route
+          path="planner"
+          element={
+            <Page key="planner" title="Planner" path="/app/planner" onRevealed={focusHeading}>
+              <Section label="Production planner" probe="planner">
+                {/* Keyed by server: a site opened on one server must not follow the user to another. */}
+                <PlannerView key={server.id} />
               </Section>
             </Page>
           }

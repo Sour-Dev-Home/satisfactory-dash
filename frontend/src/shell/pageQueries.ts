@@ -18,6 +18,8 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
       const since = sinceYesterdayQueries(serverId);
       return [queries.factory(serverId), since.history, since.transitions].map(asPageQuery);
     }
+    case "/app/planner":
+      return [queries.productionGraph(serverId)].map(asPageQuery);
     case "/app/map":
       // The world layers are on by default (the data-derived base map), so the reveal waits for them too.
       return [queries.factory(serverId), queries.mapRails(serverId), queries.mapResourceNodes(serverId)].map(asPageQuery);

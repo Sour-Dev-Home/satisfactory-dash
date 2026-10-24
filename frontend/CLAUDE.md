@@ -26,6 +26,8 @@ contract needs to grow, not that this module should special-case a backend detai
   queries, no auth, no API calls (`e2e/landing.spec.ts`). Its link-preview tags are static
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
+  The Planner page (ADR-0050, `src/planner/`) is routed at `/app/planner` but listed in no nav, prefetch or command
+  bar until `PLANNER_IN_NAV` in `src/shell/tabs.ts` is flipped (task 6).
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`

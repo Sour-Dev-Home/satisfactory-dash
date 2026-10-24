@@ -7,6 +7,7 @@ import {
   ManagedServerListResponseSchema,
   PowerHistoryResponseSchema,
   PowerResponseSchema,
+  ProductionGraphResponseSchema,
   ServerListResponseSchema,
   SettingsResponseSchema,
   StatusResponseSchema,
@@ -27,6 +28,7 @@ describe("the demo world", () => {
     expect(() => PowerHistoryResponseSchema.parse(world.powerHistory(now))).not.toThrow();
     expect(() => FactoryResponseSchema.parse(world.factory(now))).not.toThrow();
     expect(() => BottlenecksResponseSchema.parse(world.bottlenecks(now))).not.toThrow();
+    expect(() => ProductionGraphResponseSchema.parse(world.productionGraph(now))).not.toThrow();
     expect(() => SettingsResponseSchema.parse(world.settings(now, { autoPause: true, pending: true }))).not.toThrow();
   });
 

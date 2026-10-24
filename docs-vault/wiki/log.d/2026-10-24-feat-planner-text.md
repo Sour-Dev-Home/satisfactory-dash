@@ -1,0 +1,1 @@
+- 2026-10-24 — Planner page, text form (ADR-0050 task 5): a card per site and per-site group and connection tables at /app/planner, with rate words, bottleneck counts joined from the finder, every beltData state, scenarios and demo data; routed but kept out of the nav, prefetch and command bar until the graph view lands.
