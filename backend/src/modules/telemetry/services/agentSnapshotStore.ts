@@ -32,11 +32,15 @@ export interface RecordedSnapshot {
   players?: ServerPlayersResponse;
   /** The game's auto-pause setting, read in this snapshot (never present on an unreachable one). */
   autoPause?: boolean;
+  /** The agent's `settings.pending`: the auto-pause change waits to be applied by the game (absent = not pending). */
+  autoPausePending?: boolean;
 }
 
 /** The last auto-pause value an agent reported, with when it was read and whether that is older than its cadence allows. */
 export interface AutoPauseReading {
   autoPause: boolean;
+  /** The agent said the change waits to be applied; false when it did not say. */
+  pending: boolean;
   observedAtMs: number;
   stale: boolean;
 }
@@ -53,7 +57,7 @@ export class LatestSnapshotStore {
   private reachable: boolean | undefined;
   private lastReceivedAtMs: number | undefined;
   private lastPowerAtMs: number | undefined;
-  private autoPauseReading: { autoPause: boolean; observedAtMs: number } | undefined;
+  private autoPauseReading: { autoPause: boolean; pending: boolean; observedAtMs: number } | undefined;
 
   constructor(
     private readonly cadence: () => Cadence,
@@ -73,7 +77,7 @@ export class LatestSnapshotStore {
     }
     if (snapshot.power !== undefined) this.lastPowerAtMs = snapshot.receivedAtMs;
     if (snapshot.autoPause !== undefined && snapshot.observedAtMs >= (this.autoPauseReading?.observedAtMs ?? -Infinity)) {
-      this.autoPauseReading = { autoPause: snapshot.autoPause, observedAtMs: snapshot.observedAtMs };
+      this.autoPauseReading = { autoPause: snapshot.autoPause, pending: snapshot.autoPausePending === true, observedAtMs: snapshot.observedAtMs };
     }
   }
 

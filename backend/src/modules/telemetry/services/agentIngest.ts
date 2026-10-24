@@ -97,6 +97,7 @@ export class AgentIngest implements AgentSnapshotSink {
       factory,
       players: snapshot.players,
       autoPause: snapshot.settings?.autoPause,
+      autoPausePending: snapshot.settings?.pending,
     });
     observations.recordPollSuccess(receivedAtMs);
     if (snapshot.mapLive !== undefined) {

@@ -46,6 +46,8 @@ export interface CommandsService {
 /** An auto-pause value the agent reported in a snapshot; the composition root passes the telemetry store's reading in this shape. */
 export interface ReportedAutoPause {
   autoPause: boolean;
+  /** The agent's `settings.pending` (a deferred change the game accepted); absent = not pending. */
+  pending?: boolean;
   observedAtMs: number;
   stale: boolean;
 }
@@ -151,7 +153,7 @@ export function createCommandsService(deps: CommandsServiceDeps): CommandsServic
         // shows an edit made in the game since, and one taken before it is out of date.
         if (reported !== undefined && (confirmedValue === undefined || confirmedAtMs === undefined || reported.observedAtMs >= confirmedAtMs)) {
           // Kept while the game is unreachable, then marked stale by the reading's age.
-          return observed({ autoPause: reported.autoPause, pending: open !== undefined, editable }, { observedAt: new Date(reported.observedAtMs).toISOString(), stale: reported.stale });
+          return observed({ autoPause: reported.autoPause, pending: open !== undefined || reported.pending === true, editable }, { observedAt: new Date(reported.observedAtMs).toISOString(), stale: reported.stale });
         }
         if (confirmedValue === undefined) {
           throw new ApiFailure("upstream_unreachable", "This server's auto-pause setting is not known yet: the agent has not reported it or confirmed a change");

@@ -121,7 +121,16 @@ export const SnapshotRequestSchema = z
     reachable: z.boolean().describe("false = the game server or FRM could not be reached; no parts follow"),
     paused: z.boolean().nullable().describe("The game's pause state, or null when unknown"),
     settings: z
-      .strictObject({ autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot") })
+      .strictObject({
+        autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot"),
+        pending: z
+          .boolean()
+          .optional()
+          .describe(
+            "true = the game accepted a change (autoPause already shows the new value) that waits to be applied, e.g. " +
+              "it sits in PendingServerOptions. A deferred change reports its command ok, never failed; absent = not pending",
+          ),
+      })
       .optional()
       .describe("Game settings read in this snapshot; absent when not read, and always absent when the game is unreachable"),
     status: AgentStatusSchema.optional(),
