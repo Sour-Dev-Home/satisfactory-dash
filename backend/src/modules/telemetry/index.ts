@@ -40,6 +40,7 @@ import { ObservationBoard } from "./services/observationBoard.js";
 import type { HistoryDb } from "./services/historyQueryService.js";
 import { createHistoryRouter } from "./routes/history.js";
 import { createBottlenecksRouter } from "./routes/bottlenecks.js";
+import { createProductionGraphRouter } from "./routes/productionGraph.js";
 import type { BottlenecksRouteDeps } from "./routes/bottlenecks.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { Cadence } from "@satisfactory-dash/shared";
@@ -183,6 +184,7 @@ export function createTelemetryRouters(directory: ServerDirectory<TelemetryScope
     createStatusRouter(directory),
     createFactoryRouter(directory),
     createBottlenecksRouter(directory, bottlenecks),
+    createProductionGraphRouter(directory, bottlenecks),
     createPowerRouter(directory),
     createPowerHistoryRouter(directory),
     createHistoryRouter(directory),
