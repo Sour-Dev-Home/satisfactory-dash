@@ -1,0 +1,114 @@
+import type { PlannerEdge, PlannerNode } from "@satisfactory-dash/shared";
+import { edgeRateText, outputLine } from "../plannerText";
+
+// What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
+
+/** Longest line a card prints; longer text is cut with an ellipsis (the full text stays in the node's title and the tables). */
+export const MAX_LINE_CHARS = 34;
+const MAX_OUTPUT_LINES = 2;
+
+const cut = (text: string, max = MAX_LINE_CHARS) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/** The card's heading, "8× Constructor" (a single machine has no count). */
+export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name);
+
+/** The card's body lines after the title: recipe, up to two outputs (actual over max), a loop marker. Never empty. */
+export function nodeBodyLines(node: PlannerNode): string[] {
+  const lines = [cut(node.recipe ?? "No recipe")];
+  if (node.products.length === 0) lines.push("No output data");
+  else {
+    for (const rate of node.products.slice(0, MAX_OUTPUT_LINES)) lines.push(cut(outputLine(rate)));
+    const more = node.products.length - MAX_OUTPUT_LINES;
+    if (more > 0) lines.push(`+${more} more ${more === 1 ? "output" : "outputs"}`);
+  }
+  if (node.loop) lines.push("In a loop");
+  return lines;
+}
+
+/**
+ * An edge's label on the canvas (ADR-0050 Decision 2): the item, then the rate in the table's words ("about" for an
+ * estimate), and no number at all for an unknown one; a mixed belt says so.
+ */
+export function edgeLabel(edge: PlannerEdge): string {
+  const parts = [edge.itemName ?? edge.itemClassName ?? "Item unknown"];
+  if (edge.rate !== "unknown" && edge.ratePerMinute !== null) parts.push(edgeRateText(edge));
+  if (edge.mixed) parts.push("mixed");
+  return parts.join(" · ");
+}
+
+/** An edge's full words for its tooltip and the accessible text: the label plus how sure the rate is. */
+export function edgeTitle(edge: PlannerEdge, from: string, to: string): string {
+  const sure = edge.rate === "measured" ? "measured" : edge.rate === "estimated" ? "estimated" : "rate unknown";
+  return `${from} to ${to}: ${edgeLabel(edge)} (${sure})`;
+}
+
+/** The item a filter option stands for. */
+export interface ItemOption {
+  className: string;
+  name: string;
+}
+
+/** The items the site's connections carry, sorted by name; connections whose item could not be inferred are left out. */
+export function siteItems(edges: readonly PlannerEdge[]): ItemOption[] {
+  const byClass = new Map<string, string>();
+  for (const e of edges) if (e.itemClassName !== null) byClass.set(e.itemClassName, e.itemName ?? e.itemClassName);
+  return [...byClass].map(([className, name]) => ({ className, name })).sort((a, b) => a.name.localeCompare(b.name) || a.className.localeCompare(b.className));
+}
+
+/** What an item filter lights up. */
+export interface Reach {
+  nodes: ReadonlySet<string>;
+  /** Indexes into the edge list the walk was given. */
+  edges: ReadonlySet<number>;
+}
+
+function closure(seeds: Iterable<string>, next: ReadonlyMap<string, string[]>): Set<string> {
+  const seen = new Set(seeds);
+  const stack = [...seen];
+  while (stack.length > 0) {
+    for (const n of next.get(stack.pop()!) ?? []) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        stack.push(n);
+      }
+    }
+  }
+  return seen;
+}
+
+/**
+ * The reachability walk of ADR-0050 Decision 4, on the coarse graph. The seeds are the groups at either end of a
+ * connection that carries the item: upstream from the groups it leaves (what feeds them) and downstream from the groups
+ * it arrives at (what they feed). A connection is lit when it carries the item or both its ends are on one walk.
+ */
+export function reachFor(itemClassName: string, edges: readonly PlannerEdge[]): Reach {
+  const forward = new Map<string, string[]>();
+  const backward = new Map<string, string[]>();
+  const push = (m: Map<string, string[]>, k: string, v: string) => m.set(k, [...(m.get(k) ?? []), v]);
+  const sources = new Set<string>();
+  const sinks = new Set<string>();
+  for (const e of edges) {
+    push(forward, e.from, e.to);
+    push(backward, e.to, e.from);
+    if (e.itemClassName === itemClassName) {
+      sources.add(e.from);
+      sinks.add(e.to);
+    }
+  }
+  // Upstream of where the item leaves, downstream of where it arrives: a sibling branch or a second feeder is not lit.
+  const up = closure(sources, backward);
+  const down = closure(sinks, forward);
+  const lit = new Set<number>();
+  edges.forEach((e, i) => {
+    if (e.itemClassName === itemClassName || (up.has(e.from) && up.has(e.to)) || (down.has(e.from) && down.has(e.to))) lit.add(i);
+  });
+  return { nodes: new Set([...down, ...up]), edges: lit };
+}
+
+/** The canvas's accessible name: counts only, since the tables carry the detail. */
+export function graphSummary(nodes: readonly PlannerNode[], edges: readonly PlannerEdge[], siteName: string): string {
+  const loops = nodes.filter((n) => n.loop).length;
+  const g = `${nodes.length} ${nodes.length === 1 ? "group" : "groups"}`;
+  const c = `${edges.length} ${edges.length === 1 ? "connection" : "connections"}`;
+  return `Graph of ${siteName}: ${g}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}. The Tables view lists the same.`;
+}

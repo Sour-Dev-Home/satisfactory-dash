@@ -17,6 +17,15 @@ async function skeletonsShown(page: Page) {
   await expect(page.locator('[data-loading="shown"]').first()).toBeVisible();
 }
 
+const openIronSite = (page: Page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+
+/** The Iron Plate site on the graph view, whichever view the screen opens on. */
+async function openIronGraph(page: Page) {
+  await openIronSite(page);
+  await page.getByRole("button", { name: "Graph" }).click();
+  await expect(page.getByRole("img", { name: /^Graph of Iron Plate site/ })).toBeVisible();
+}
+
 interface StateCase {
   scenario: ScenarioName;
   /** Visible text that proves the state has rendered. */
@@ -150,7 +159,7 @@ const CASES: StateCase[] = [
   { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
   { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
-  // ADR-0050 task 5, the Planner page (hidden from the nav until task 6, but routed). The fixtures were observed at
+  // ADR-0050 task 5, the Planner page. The fixtures were observed at
   // PLANNER_NOW minus 8 s, so the age reads the same every run.
   { scenario: "default", name: "planner-sites", path: "/app/planner", shows: "Iron Plate site", clock: PLANNER_NOW },
   {
@@ -159,7 +168,44 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: /Connections/,
     clock: PLANNER_NOW,
-    act: (page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click(),
+    act: async (page) => {
+      await openIronSite(page);
+      await page.getByRole("button", { name: "Tables" }).click();
+    },
+  },
+  // ADR-0050 task 6, the graph. A site opens on the graph at 1440 px and on the tables at 390 px (Decision 4).
+  {
+    scenario: "default",
+    name: "planner-site-default-view",
+    path: "/app/planner",
+    shows: /^(Zoom in|Connections)$/,
+    clock: PLANNER_NOW,
+    act: openIronSite,
+  },
+  { scenario: "default", name: "planner-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
+  {
+    scenario: "default",
+    name: "planner-graph-filtered",
+    path: "/app/planner",
+    shows: /groups carry or feed this item/,
+    clock: PLANNER_NOW,
+    act: async (page) => {
+      await openIronGraph(page);
+      await page.getByLabel("Item").selectOption({ label: "Iron Ore" });
+    },
+  },
+  {
+    scenario: "planner-group-panel",
+    name: "planner-group-panel",
+    path: "/app/planner",
+    shows: /Iron Plate: 9 \/ 20 items\/min/,
+    clock: PLANNER_NOW,
+    act: async (page) => {
+      await openIronGraph(page);
+      // The group's button is visually hidden (the keyboard's way in): reach it as a keyboard user does.
+      await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
+      await page.keyboard.press("Enter");
+    },
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
@@ -167,7 +213,7 @@ const CASES: StateCase[] = [
   { scenario: "planner-too-large", path: "/app/planner", shows: /connection data is too large/, clock: PLANNER_NOW },
   { scenario: "planner-stale", path: "/app/planner", shows: /Showing last known planner data from/, clock: PLANNER_NOW },
   { scenario: "planner-error", path: "/app/planner", shows: "Game server unreachable.", clock: PLANNER_NOW },
-  // The skeleton has no text, and the hidden Planner has no tab of its own to match (PLANNER_IN_NAV), so the shell's.
+  // The skeleton has no text of its own to match, so the shell's nav tab.
   { scenario: "loading-panels", name: "loading-planner", path: "/app/planner", shows: "Overview", act: skeletonsShown },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },

@@ -398,7 +398,7 @@ export function Shell() {
             </Page>
           }
         />
-        {/* ADR-0050: always routed; listed in the nav, prefetch and command bar only when PLANNER_IN_NAV (shell/tabs.ts). */}
+        {/* ADR-0050: always routed; listed in the nav, prefetch and command bar while PLANNER_IN_NAV (shell/tabs.ts). */}
         <Route
           path="planner"
           element={

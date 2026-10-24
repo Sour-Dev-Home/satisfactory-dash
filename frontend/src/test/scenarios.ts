@@ -316,6 +316,27 @@ const plannerItemLevel = (beltData: "unsupported" | "tooLarge", note: { code: st
   data: { ...productionGraphEmpty.data, beltData, notes: [note] },
 });
 
+/** The factory read with the planner fixture's constructor manifold in it (Build_ConstructorMk1_C_1..8), for the graph's group panel. */
+const factoryWithPlannerManifold = {
+  ...factoryMixed,
+  data: {
+    ...factoryMixed.data,
+    buildings: Array.from({ length: 8 }, (_, i) => ({
+      ...factoryMixed.data.buildings[0],
+      id: `Build_ConstructorMk1_C_${i + 1}`,
+      name: "Constructor",
+      className: "Build_ConstructorMk1_C",
+      recipe: "Iron Plate",
+      state: i < 6 ? "producing" : "underfed",
+      isBackedUp: false,
+      clockSpeedPercent: i === 7 ? 150 : 100,
+      production: [{ className: "Desc_IronPlate_C", name: "Iron Plate", unit: "items/min" as const, currentPerMinute: 9 + i, maxPerMinute: 20, percent: ((9 + i) / 20) * 100 }],
+    })),
+    backedUpCount: 0,
+    stateCounts: { producing: 6, underfed: 2 },
+  },
+};
+
 /** The factory's bottleneck finding moved onto a machine the planner fixture has (its constructor manifold, Iron Plate). */
 const bottlenecksOnPlannerSite = {
   ...bottlenecksBeltLevel,
@@ -472,6 +493,8 @@ export const SCENARIOS = {
   },
   "planner-stale": { productionGraph: ok({ ...productionGraphTwoSites, stale: true }) },
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
+  // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
+  "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },
   "planner-error": { productionGraph: fail(502, errorUpstreamUnreachable) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },

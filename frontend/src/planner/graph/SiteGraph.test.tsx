@@ -1,0 +1,235 @@
+import { act, fireEvent, screen, within } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { endpoints } from "@satisfactory-dash/shared";
+import { bottlenecksBeltLevel, factoryMixed, productionGraphTwoSites, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { ServerContext } from "../../servers/ServerContext";
+import { renderWithClient } from "../../test/render";
+import { server } from "../../test/server";
+import { PlannerView } from "../PlannerView";
+import { joinMachines } from "./panelJoin";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  return act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+});
+
+const building = factoryMixed.data.buildings[0];
+const machine = (id: string, extra: Partial<typeof building> = {}) => ({
+  ...building,
+  id,
+  name: "Constructor",
+  state: "producing",
+  clockSpeedPercent: 100,
+  production: [{ className: "Desc_IronPlate_C", name: "Iron Plate", unit: "items/min" as const, currentPerMinute: 18, maxPerMinute: 20, percent: 90 }],
+  ...extra,
+});
+const factoryWithPlannerMachines = {
+  ...factoryMixed,
+  data: {
+    ...factoryMixed.data,
+    buildings: [machine("Build_ConstructorMk1_C_1"), machine("Build_ConstructorMk1_C_2", { state: "underfed", clockSpeedPercent: 160 }), machine("Build_ConstructorMk1_C_3")],
+  },
+};
+const findingOnConstructors = {
+  ...bottlenecksBeltLevel,
+  data: {
+    ...bottlenecksBeltLevel.data,
+    findings: [{ ...bottlenecksBeltLevel.data.findings[0], buildingId: "Build_ConstructorMk1_C_2", affectedCount: 1,
+        affected: [{ buildingId: "Build_ConstructorMk1_C_2", buildingName: "Constructor", recipe: "Iron Plate" }],
+      },
+    ],
+  },
+};
+
+function renderView() {
+  server.use(http.get(endpoints.factory.route, () => HttpResponse.json(factoryWithPlannerMachines)));
+  return renderWithClient(
+    <MemoryRouter>
+      <ServerContext value={serversSingle.servers[0]}>
+        <PlannerView />
+      </ServerContext>
+    </MemoryRouter>,
+  );
+}
+
+async function openGraph() {
+  renderView();
+  fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+  return screen.findByRole("img", { name: /^Graph of Iron Plate site/ }, { timeout: 3_000 });
+}
+
+/** The drawing's transform: the <g> that holds edges and nodes. */
+const transformOf = (svg: HTMLElement) => svg.querySelector(":scope > g")!.getAttribute("transform")!;
+const scaleOf = (svg: HTMLElement) => Number(/scale\(([\d.e-]+)\)/.exec(transformOf(svg))![1]);
+const groupButton = (name: RegExp) => screen.findByRole("button", { name });
+const dimmed = (svg: HTMLElement) => svg.querySelectorAll(":scope > g > g.opacity-graph-dim").length;
+
+describe("the site view toggle", () => {
+  it("opens on the tables where there is no wide screen, and the graph is one press away", async () => {
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
+    expect(await screen.findByRole("button", { name: "Tables" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(screen.queryByRole("img", { name: /^Graph of/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    expect(await screen.findByRole("img", { name: /^Graph of Iron Plate site/ }, { timeout: 3_000 })).toBeInTheDocument();
+    // The tables are the text alternative: still in the page, hidden from view while the graph shows.
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    expect(screen.getAllByRole("table")).toHaveLength(2);
+  });
+
+  it("opens on the graph on a wide screen", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("min-width"),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
+    expect(await screen.findByRole("img", { name: /^Graph of Iron Plate site/ }, { timeout: 3_000 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("the site graph", () => {
+  it("is an image with a summary, and every group is a keyboard button with a name", async () => {
+    const svg = await openGraph();
+    expect(svg).toHaveAccessibleName("Graph of Iron Plate site: 5 groups, 5 connections, 2 in a loop. The Tables view lists the same.");
+    const list = screen.getByRole("list", { name: "Groups in the graph" });
+    const names = within(list).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(names).toHaveLength(5);
+    expect(names).toContain("8× Constructor, Iron Plate, in a loop");
+    expect(names.some((n) => n?.endsWith(", in a loop"))).toBe(true);
+    // Edge words per Decision 2, drawn in the picture.
+    expect(svg.textContent).toContain("Iron Ore · 120 items/min");
+    expect(svg.textContent).toContain("Iron Ingot · about 102.2 items/min");
+  });
+
+  it("zooms and pans from the keyboard and the buttons, and fits again", async () => {
+    const svg = await openGraph();
+    const viewport = screen.getByRole("group", { name: /^Graph viewport/ });
+    const start = scaleOf(svg);
+    const before0 = transformOf(svg);
+    fireEvent.keyDown(viewport, { key: "+" });
+    expect(scaleOf(svg)).toBeGreaterThan(start);
+    fireEvent.keyDown(viewport, { key: "-" });
+    fireEvent.keyDown(viewport, { key: "-" });
+    expect(scaleOf(svg)).toBeLessThan(start);
+    const before = transformOf(svg);
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
+    expect(transformOf(svg)).not.toBe(before);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(scaleOf(svg)).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Fit to view" }));
+    expect(transformOf(svg)).toBe(before0);
+  });
+
+  it("pans by dragging, and zooms with the wheel", async () => {
+    const svg = await openGraph();
+    const before = transformOf(svg);
+    fireEvent.pointerDown(svg, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent(window, new MouseEvent("pointermove", { clientX: 160, clientY: 130 }));
+    fireEvent(window, new MouseEvent("pointerup"));
+    expect(transformOf(svg)).not.toBe(before);
+    const k = scaleOf(svg);
+    fireEvent.wheel(svg, { deltaY: -200, clientX: 10, clientY: 10 });
+    expect(scaleOf(svg)).toBeGreaterThan(k);
+  });
+
+  it("filters by item: lights what carries it upstream and downstream, dims the rest, and clears", async () => {
+    // Without the recycle loop's two connections, the recycler stands alone: no item reaches it.
+    const data = productionGraphTwoSites.data;
+    server.use(
+      http.get(endpoints.productionGraph.route, () =>
+        HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: data.edges.filter((_, i) => i !== 2 && i !== 3) } }),
+      ),
+    );
+    const svg = await openGraph();
+    expect(dimmed(svg)).toBe(0);
+    const select = screen.getByRole("combobox", { name: "Item" });
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["All items", "Iron Ingot", "Iron Ore", "Iron Plate"]);
+    fireEvent.change(select, { target: { value: "Desc_IronIngot_C" } });
+    // Ingot goes smelter -> plates: the miner is upstream, the storage downstream, the recycler neither.
+    expect(await screen.findByRole("status")).toHaveTextContent("4 of 5 groups");
+    expect(dimmed(svg)).toBe(1);
+    fireEvent.change(select, { target: { value: "Desc_OreIron_C" } });
+    expect(screen.getByRole("status")).toHaveTextContent("4 of 5 groups");
+    fireEvent.change(select, { target: { value: "" } });
+    expect(dimmed(svg)).toBe(0);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("opens a group's machines in a side panel from the factory read, and Escape returns focus to the group", async () => {
+    const svg = await openGraph();
+    const button = await groupButton(/^8× Constructor, Iron Plate, in a loop$/);
+    button.focus();
+    fireEvent.click(button);
+    const panel = await screen.findByRole("complementary", { name: "8× Constructor, Iron Plate" });
+    await within(panel).findByRole("list", { name: "Machines in 8× Constructor, Iron Plate" });
+    const items = within(panel).getAllByRole("listitem");
+    // Three of the group's eight ids are in the factory read; the rest are said to be missing.
+    expect(items).toHaveLength(3);
+    expect(items[1]).toHaveTextContent("Constructor");
+    expect(items[1]).toHaveTextContent("Underfed · Clock 160%");
+    expect(items[1]).toHaveTextContent("Iron Plate: 18 / 20 items/min");
+    expect(items[0]).not.toHaveTextContent("Clock");
+    expect(panel).toHaveTextContent("5 machines are not in the latest factory read.");
+    expect(panel.contains(document.activeElement)).toBe(true);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(svg.querySelector("rect.stroke-accent")).not.toBeNull();
+
+    fireEvent.keyDown(panel, { key: "Escape" });
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it("closes the panel with its Close button and hands focus back", async () => {
+    await openGraph();
+    const button = await groupButton(/^Miner Mk\.2$/);
+    fireEvent.click(button);
+    const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it("badges a group with a finding, in the picture, its button name and the panel's link", async () => {
+    server.use(http.get(endpoints.bottlenecks.route, () => HttpResponse.json(findingOnConstructors)));
+    // The finding sits on a machine of the constructor manifold; the factory read carries that machine.
+    const svg = await openGraph();
+    const button = await groupButton(/^8× Constructor, Iron Plate, in a loop, 1 bottleneck$/);
+    expect(svg.textContent).toContain("Bottleneck");
+    fireEvent.click(button);
+    const panel = await screen.findByRole("complementary");
+    expect(within(panel).getByRole("link", { name: /1 bottleneck in 8× Constructor, Iron Plate/ })).toHaveAttribute(
+      "href",
+      "/app/factory#bottlenecks-heading",
+    );
+  });
+
+  it("leaves the badge out while the bottlenecks read has not answered", async () => {
+    server.use(http.get(endpoints.bottlenecks.route, () => new Promise<never>(() => {})));
+    const svg = await openGraph();
+    expect(svg.textContent).not.toContain("Bottleneck");
+  });
+});
+
+describe("joinMachines", () => {
+  const buildings = factoryWithPlannerMachines.data.buildings;
+  it("joins by id in the group's order, counts the missing, and words state and clock like the Factory page", () => {
+    const joined = joinMachines({ machineIds: ["Build_ConstructorMk1_C_2", "gone", "Build_ConstructorMk1_C_1"] }, buildings);
+    expect(joined.missing).toBe(1);
+    expect(joined.machines.map((m) => m.id)).toEqual(["Build_ConstructorMk1_C_2", "Build_ConstructorMk1_C_1"]);
+    expect(joined.machines[0]).toMatchObject({ state: "Underfed", clock: "Clock 160%", outputs: ["Iron Plate: 18 / 20 items/min"] });
+    expect(joined.machines[1].clock).toBeNull();
+  });
+
+  it("a state this build does not know has no label, and a machine with no recipe has no outputs", () => {
+    const odd = [{ ...buildings[0], id: "x", state: "melting", production: [] }];
+    expect(joinMachines({ machineIds: ["x"] }, odd).machines[0]).toMatchObject({ state: null, outputs: [] });
+  });
+});

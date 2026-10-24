@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { PREVIEW } from "../src/landing/preview";
 import { expect, test } from "./fixtures";
 
@@ -84,6 +85,30 @@ test.describe("production build", () => {
   });
 });
 
+// ADR-0050 Decision 3: dagre lives in the planner graph's lazy chunk only, and that chunk stays under 100 kB gzip.
+const GRAPH_CHUNK_GZIP_BUDGET = 100 * 1024;
+/** A string only dagre's source carries (its ranker names); the entry chunk must never hold it. */
+const DAGRE_MARKER = "network-simplex";
+
+function checkGraphChunk(dist: string) {
+  const assets = join(dist, "assets");
+  const scripts = readdirSync(assets).filter((f) => f.endsWith(".js"));
+  const withDagre = scripts.filter((f) => readFileSync(join(assets, f), "utf8").includes(DAGRE_MARKER));
+  expect(withDagre, "exactly one chunk holds dagre, and it is the graph's").toHaveLength(1);
+  expect(withDagre[0]).toMatch(/^SiteGraph-/);
+  // The entry chunk is the one index.html loads (and anything it preloads at the start is checked by the marker above).
+  const html = readFileSync(join(dist, "index.html"), "utf8");
+  expect(html).not.toContain(withDagre[0]);
+  const gzipped = gzipSync(readFileSync(join(assets, withDagre[0]))).length;
+  expect(gzipped, `graph chunk is ${gzipped} bytes gzip`).toBeLessThan(GRAPH_CHUNK_GZIP_BUDGET);
+}
+
+test.describe("the planner graph's chunk", () => {
+  test("holds dagre alone and stays under its gzip budget (production build)", () => {
+    checkGraphChunk(DIST);
+  });
+});
+
 // The demo site (ADR-0026), built by e2e/build-demo.mjs with the production API URL set.
 const DIST_DEMO = join(import.meta.dirname, "..", "dist-demo");
 const API_ORIGIN = "api.satis-manager.com";
@@ -104,6 +129,10 @@ test.describe("demo build", () => {
   test("is the demo: its own text is there (so the other checks aren't vacuous)", () => {
     const text = bundleText(DIST_DEMO);
     for (const marker of DEMO_MARKERS) expect(text, `demo bundle lacks ${marker}`).toContain(marker);
+  });
+
+  test("holds dagre in the graph's lazy chunk alone, under its gzip budget", () => {
+    checkGraphChunk(DIST_DEMO);
   });
 
   test("has no landing page: the demo's / is 'Enter demo'", () => {

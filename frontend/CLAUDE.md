@@ -18,7 +18,7 @@ contract needs to grow, not that this module should special-case a backend detai
   routing framework.
 - Routing (ADR-0016 item 4, ADR-0021): React Router in declarative mode (`BrowserRouter` in
   `App.tsx`). The signed-in app lives under `/app/*` (`src/shell/Shell.tsx`: tabs Overview,
-  Power, Factory, Map, Settings, plus Servers for the operator only: ADR-0030, `src/serverManagement/`,
+  Power, Factory, Planner, Map, Settings, plus Servers for the operator only: ADR-0030, `src/serverManagement/`,
   shown when the server list says `canManageServers`; tokens are write-only there, never prefilled or
   shown beyond their last 4). `/` is the static landing page (`src/landing/`, main site only;
   the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
@@ -26,8 +26,16 @@ contract needs to grow, not that this module should special-case a backend detai
   queries, no auth, no API calls (`e2e/landing.spec.ts`). Its link-preview tags are static
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
-  The Planner page (ADR-0050, `src/planner/`) is routed at `/app/planner` but listed in no nav, prefetch or command
-  bar until `PLANNER_IN_NAV` in `src/shell/tabs.ts` is flipped (task 6).
+  The Planner page (ADR-0050, `src/planner/`) is a tab after Factory (`PLANNER_IN_NAV` in `src/shell/tabs.ts`, on since
+  the graph view landed): site cards, then a site as a Graph or Tables view (the graph is the default from 640 px, the
+  tables below, `useWideScreen`). The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind
+  `GraphLoader.tsx`, the Map's pattern) and the only place `@dagrejs/dagre` is imported: `layoutSite` is pure and
+  deterministic (sizes from text, left to right), the canvas is SVG styled by token classes and attributes only
+  (no `style=`), `role="img"` with a counts label, and the keyboard reaches each group through a list of visually
+  hidden buttons beside it (an image's children are presentational). Colours and sizes stay tokens; the node and
+  label metrics in `layoutSite.ts` are tied to the `text-sm`/`text-xs` classes. `build-output.spec.ts` checks that
+  dagre sits in that one chunk, off the entry chunk, under 100 kB gzip; `e2e/planner-graph.spec.ts` is the CSP gate.
+  A layout over 100 ms on a real site is Decision 3's trigger to move `layoutSite` into a worker.
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
