@@ -88,7 +88,7 @@ describe("PlannerView: the site overview", () => {
 describe("PlannerView: a site's detail", () => {
   async function openIron() {
     renderView();
-    fireEvent.click(await screen.findByRole("button", { name: "Open Iron Plate site" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
     return screen.findByRole("heading", { name: "Iron Plate site", level: 4 });
   }
 
@@ -96,7 +96,7 @@ describe("PlannerView: a site's detail", () => {
     const heading = await openIron();
     expect(heading).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "All sites" }));
-    expect(await screen.findByRole("button", { name: "Open Copper Ingot site" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open site: Copper Ingot site" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Production planner" })).toHaveFocus();
   });
 
@@ -140,7 +140,7 @@ describe("PlannerView: a site's detail", () => {
     const nodes = productionGraphTwoSites.data.nodes.map((n, i) => (i === 1 ? { ...n, name } : n));
     answer({ ...productionGraphTwoSites, data: { ...productionGraphTwoSites.data, nodes } });
     renderView();
-    fireEvent.click(await screen.findByRole("button", { name: "Open Iron Plate site" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
     expect((await screen.findAllByText(name, { exact: false })).length).toBeGreaterThan(0);
     expect(document.querySelector("img[src='x']")).toBeNull();
   });

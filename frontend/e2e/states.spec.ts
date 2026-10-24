@@ -159,7 +159,7 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: /Connections/,
     clock: PLANNER_NOW,
-    act: (page) => page.getByRole("button", { name: "Open Iron Plate site" }).click(),
+    act: (page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click(),
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
@@ -167,7 +167,8 @@ const CASES: StateCase[] = [
   { scenario: "planner-too-large", path: "/app/planner", shows: /connection data is too large/, clock: PLANNER_NOW },
   { scenario: "planner-stale", path: "/app/planner", shows: /Showing last known planner data from/, clock: PLANNER_NOW },
   { scenario: "planner-error", path: "/app/planner", shows: "Game server unreachable.", clock: PLANNER_NOW },
-  { scenario: "loading-panels", name: "loading-planner", path: "/app/planner", shows: "Production planner", act: skeletonsShown },
+  // The skeleton has no text, and the hidden Planner has no tab of its own to match (PLANNER_IN_NAV), so the shell's.
+  { scenario: "loading-panels", name: "loading-planner", path: "/app/planner", shows: "Overview", act: skeletonsShown },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },
   // ADR-0031 PR 4: auto-pause on a server reached through the game PC's agent, after the toggle.

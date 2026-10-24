@@ -64,7 +64,8 @@ function SiteCard({
           <BottleneckBadge count={siteFindings(nodes, findings).length} what={site.name} />
         </p>
       )}
-      <button type="button" onClick={onOpen} aria-label={`Open ${site.name}`} className="min-h-touch justify-self-start">
+      {/* The name starts with the visible words (WCAG 2.5.3, label in name), then says which site. */}
+      <button type="button" onClick={onOpen} aria-label={`Open site: ${site.name}`} className="min-h-touch justify-self-start">
         Open site
       </button>
     </li>
