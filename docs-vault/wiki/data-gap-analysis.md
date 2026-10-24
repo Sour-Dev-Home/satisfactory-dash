@@ -21,3 +21,32 @@ solid/fluid source for labelling units, and confirming whether FRM's tunneled Ga
 transport (documented as a fallback) actually works on this version — it returned
 `404` in the 2026-09-21 spike, so the adapter targets FRM's direct Web Server instead
 (see `frm-api.md`).
+
+## Power: FRM `PowerProduction` is base production, not total (#620)
+
+Owner decision (2026-10-24, option A): the dash's circuit "production" (`productionMW`) is the TOTAL produced, as the
+in-game power graph shows "Produced". It is derived on the FRM path as `max(PowerProduction, PowerConsumed)` per circuit
+group (`packages/game-adapter/src/totalPowerProduction.ts`).
+
+Evidence (none of it is in `raw-sources/` yet, so all of it is [NEEDS VERIFICATION]):
+
+- FRM 1.5.4 `Power.cpp:47`: `PowerProduction = mBaseProduction`, the generators' base output only. [NEEDS VERIFICATION]
+  `raw-sources/frm-getPower.md` only says "Power production of the circuit."
+- SML 3.12.0 `FGPowerCircuit.h:426-433` and `:104` (`PowerProduced`): the circuit's total produced, which FRM does not
+  forward. [NEEDS VERIFICATION]
+- Test-server observation from the mod session (2026-10-23): a demand-following grid read 0 MW base production with 4 MW
+  consumed, while the game showed 4 MW produced. The owner's grid read 3,633 base with 1,314 used (base above draw, so
+  the total equals base). [NEEDS VERIFICATION: no capture file]
+
+Derivation rule: a circuit cannot consume more than it produces, so `max(base, consumed)` is exact when the grid follows
+demand and when base exceeds the draw. Fits both observations above.
+
+Battery caveat [NEEDS VERIFICATION]: with batteries, discharge may be counted as production in the game's figure. The
+same rule is kept; no battery heuristic is invented.
+
+Follow-ups:
+
+- Capture `getPower` + `getGenerators` on a demand-following grid, with and without batteries, into `raw-sources/`, and
+  check the rule against the in-game graph.
+- Exact alternative if the rule proves wrong: sum `getGenerators` `BaseProd` + `RegulatedDemandProd` per circuit
+  (FRM `Power.cpp:382-385`). [NEEDS VERIFICATION]

@@ -19,7 +19,12 @@ export const PowerCircuitSchema = z.object({
       "FRM circuit GROUP id (a power switch can join circuits into one group). Unique within one " +
         "response; stability across server restarts [NEEDS VERIFICATION], so don't persist it.",
     ),
-  productionMW: z.number().describe("Current generation, MW. Reads 0 while the fuse is tripped."),
+  productionMW: z
+    .number()
+    .describe(
+      "Total produced, MW, as the in-game graph's Produced; on the FRM path derived as max(base production, " +
+        "consumption) [NEEDS VERIFICATION with batteries]. Reads 0 while the fuse is tripped.",
+    ),
   consumptionMW: z
     .number()
     .describe("Current draw, MW. Excludes battery charging. Reads 0 while the fuse is tripped."),

@@ -30,6 +30,7 @@ import type {
 import { mapConveyors, mapRailSegments, mapResourceNodes, mapTrains, mapTrainStations } from "./map/index.js";
 import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
+import { totalPowerProductionMW } from "./totalPowerProduction.js";
 
 const MAX_REPORTED_ISSUES = 5;
 
@@ -212,7 +213,8 @@ export class SatisfactoryServerAdapter {
     const raw = parseUpstream("getPower", RawFrmPowerResponseSchema, await this.frmApi.get<unknown>("getPower"));
     return raw.map((circuit) => ({
       circuitGroupId: circuit.CircuitGroupID,
-      powerProduction: circuit.PowerProduction,
+      // Total produced, not FRM's base production (#620): see totalPowerProductionMW.
+      powerProduction: totalPowerProductionMW(circuit.PowerProduction, circuit.PowerConsumed),
       powerConsumed: circuit.PowerConsumed,
       powerCapacity: circuit.PowerCapacity,
       maxPowerConsumed: circuit.PowerMaxConsumed,
