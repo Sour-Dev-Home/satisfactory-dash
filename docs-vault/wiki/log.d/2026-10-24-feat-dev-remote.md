@@ -1,0 +1,1 @@
+- 2026-10-24 — Optional remote dev box (`DEV_REMOTE_HOST`): `npm run remote-test` runs a worktree's vitest (and `--db`) over ssh with fallbacks to local, and `npm run baselines -- <worktree> --local` regenerates visual baselines in CI's pinned Playwright image on the box; the box is optional and every failure falls back; runbook dev-remote.md.

@@ -21,7 +21,7 @@ the owner. Write the PR body to a temp file first. Before shipping, run the fitt
 
 ## Regenerate visual baselines
 ```sh
-npm run baselines -- <worktree> [--only "<glob>"]... [--run <id>] [--commit "<message>"]
+npm run baselines -- <worktree> [--only "<glob>"]... [--run <id>] [--commit "<message>"] [--local]
 ```
 Push the branch first. CI screenshots the pushed commit, and the script refuses to run otherwise. It dispatches
 the repo's screenshot workflow, waits, fails loudly if a test failed (fix the test; the run saved nothing), then
@@ -30,6 +30,8 @@ applies the artifact and lists what changed.
   (#503), so unrelated screens no longer change; `--only` is no longer needed. Still read the changed list
   before committing.
 - `--run` reuses a finished or running run instead of dispatching a new one.
+- `--local` regenerates on the optional remote box (`DEV_REMOTE_HOST`) in the same pinned image, with no push; if the box is
+  unset or fails before the tests it says why and continues with the CI path. See runbooks/dev-remote.md.
 - It commits only with `--commit`, and never pushes.
 
 ## Clean up

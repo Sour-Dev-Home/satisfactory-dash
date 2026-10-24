@@ -14,6 +14,8 @@ added or removed.
 - [`runbooks/backups.md`](./runbooks/backups.md) — the nightly encrypted database backup (pg_dump, age,
   put-only S3 upload): the owner's one-time AWS and age setup, a local trial without AWS, and the
   restore rehearsal (ADR-0025 decision 7).
+- [`runbooks/dev-remote.md`](./runbooks/dev-remote.md) — the optional remote dev box (`DEV_REMOTE_HOST`): `npm run remote-test` and
+  `npm run baselines -- <worktree> --local`, what ships, and every fallback.
 - [`runbooks/delivery-metrics.md`](./runbooks/delivery-metrics.md) — `npm run delivery-metrics` (#280): DORA-style
   aggregates from the GitHub API and the log fragments (throughput, lead time, change-failure
   proxies), the stable JSON shape, and the definitions and limits.
