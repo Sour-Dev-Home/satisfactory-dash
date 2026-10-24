@@ -392,11 +392,11 @@ describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
   it("is kept with the reading's own time, and stale after three status intervals", () => {
     const t = setup();
     t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);
-    expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: false });
+    expect(t.store.autoPause()).toEqual({ autoPause: true, pending: false, observedAtMs: T0, stale: false });
     t.advance(3 * CADENCE.statusSeconds * 1000);
     expect(t.store.autoPause()?.stale).toBe(false);
     t.advance(1);
-    expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: true });
+    expect(t.store.autoPause()).toEqual({ autoPause: true, pending: false, observedAtMs: T0, stale: true });
   });
 
   it("a snapshot without it does not clear it, and a newer one replaces it", () => {
@@ -408,6 +408,15 @@ describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
     t.advance(1000);
     t.ingest.ingest(t.running({ settings: { autoPause: false } }), T0 + 2000);
     expect(t.store.autoPause()).toMatchObject({ autoPause: false, observedAtMs: T0 + 2000 });
+  });
+
+  it("keeps the agent's settings.pending with the reading; absent means not pending", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: { autoPause: true, pending: true } }), T0);
+    expect(t.store.autoPause()).toMatchObject({ autoPause: true, pending: true });
+    t.advance(1000);
+    t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0 + 1000);
+    expect(t.store.autoPause()).toMatchObject({ autoPause: true, pending: false });
   });
 
   it("a late or retried snapshot never puts an older value over a newer one", () => {
@@ -423,7 +432,7 @@ describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
     t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);
     t.advance(60_000);
     t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(t.now()).toISOString() }, t.now());
-    expect(t.store.autoPause()).toEqual({ autoPause: true, observedAtMs: T0, stale: true });
+    expect(t.store.autoPause()).toEqual({ autoPause: true, pending: false, observedAtMs: T0, stale: true });
   });
 });
 

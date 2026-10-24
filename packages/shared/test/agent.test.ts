@@ -118,6 +118,9 @@ describe("agent contract: snapshots", () => {
     const withSettings = (settings: unknown) => SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestPartial, settings }).success;
     expect(SnapshotRequestSchema.safeParse(fixtures.agentSnapshotRequestPartial).success).toBe(true);
     expect([withSettings({ autoPause: false }), withSettings({ autoPause: true }), withSettings(undefined)]).toEqual([true, true, true]);
+    expect([withSettings({ autoPause: true, pending: true }), withSettings({ autoPause: true, pending: false }), withSettings({ autoPause: true, pending: undefined })]).toEqual([true, true, true]);
+    expect([withSettings({ autoPause: true, pending: "yes" }), withSettings({ autoPause: true, pending: null }), withSettings({ autoPause: true, pending: 1 })]).toEqual([false, false, false]);
+    expect(SnapshotRequestSchema.parse(fixtures.agentSnapshotRequestSettingsPending).settings).toEqual({ autoPause: true, pending: true });
     expect([withSettings({}), withSettings({ autoPause: "yes" }), withSettings({ autoPause: null }), withSettings({ autoPause: true, extra: 1 }), withSettings(null)]).toEqual([false, false, false, false, false]);
   });
 

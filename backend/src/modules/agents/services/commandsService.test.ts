@@ -257,6 +257,13 @@ describe("readAutoPause", () => {
       expect(await readWith(pool, reading(true, T0 + 5000))).toEqual({ autoPause: true, pending: false, editable: true });
     });
 
+    it("a reading that says pending is pending even with no open command (a deferred change the game accepted), and absent means not pending", async () => {
+      const pool = withRecent([confirmedAt(true, T0)]);
+      expect(await readWith(pool, { ...reading(true, T0 + 5000), pending: true })).toEqual({ autoPause: true, pending: true, editable: true });
+      expect(await readWith(pool, { ...reading(true, T0 + 5000), pending: false })).toMatchObject({ pending: false });
+      expect(await readWith(pool, reading(true, T0 + 5000))).toMatchObject({ pending: false });
+    });
+
     it("a reading taken BEFORE the last confirmed change is out of date: the confirmed value wins", async () => {
       const pool = withRecent([confirmedAt(false, T0)]);
       const data = await readWith(pool, reading(true, T0 - 5000));

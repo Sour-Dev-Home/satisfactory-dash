@@ -58,6 +58,12 @@ export const agentSnapshotRequestPartial = {
   power: agentPowerOk,
 } satisfies SnapshotRequest;
 
+/** The game accepted an auto-pause change that waits to be applied: `settings.pending: true` (the command itself reported ok). */
+export const agentSnapshotRequestSettingsPending = {
+  ...agentSnapshotRequestPartial,
+  settings: { autoPause: true, pending: true },
+} satisfies SnapshotRequest;
+
 /** ADR-0038 M1 (#352): a full snapshot that also carries mapLive (trains and stations), layered on
  *  top of the full snapshot without changing it, so this fixture (and only this one) exercises the
  *  new optional part. */

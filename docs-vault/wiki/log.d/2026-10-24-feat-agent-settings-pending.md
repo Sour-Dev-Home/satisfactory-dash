@@ -1,0 +1,1 @@
+- 2026-10-24 — Agent snapshots gain an optional `settings.pending`; a deferred auto-pause change reports the command `ok` and `GET /settings` shows it as pending (#621, additive, ADR-0007).

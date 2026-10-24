@@ -101,6 +101,7 @@ example after you changed the task's logon type).
 - **Samples** the game every `min(cadence)` seconds; the backend sets the cadence (today 5 s status and power, 30 s factory)
   and can change it in any answer. It sends the parts that are due, and `settings.autoPause` on each status cadence, **only
   when the game is reachable and the read worked**. A game that cannot be reached sends `reachable: false` and no parts.
+  A change the game accepted but defers is reported as command `ok` plus `settings.pending: true` (optional; absent = not pending), never as a failure.
 - **Never sends what the backend derives**: no circuit status, machine state, counts or units (the backend applies its own
   rules; see [`agents.md`](./agents.md)). It conforms every reading to the backend's input bounds first (strings cut to 200,
   lists capped, float noise clamped, a non-finite number dropped with its entry) so a snapshot is not refused whole.

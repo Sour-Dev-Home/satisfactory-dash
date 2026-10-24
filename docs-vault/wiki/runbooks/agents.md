@@ -140,6 +140,10 @@ cadence), never on an unreachable snapshot. A reading taken after the last confi
 game since; one taken before it is out of date. While the game is unreachable the last reading is kept, and the envelope's
 `observedAt` is its time and `stale` is true once it is older than three status intervals. With neither a reading nor a
 confirmed change (an agent that sends no `settings`) the value is unknown and the read answers `upstream_unreachable`.
+A deferred change (the game accepted it, but it waits in `PendingServerOptions`) is **not a failure**: the agent reports
+the command `ok` (there is no new result code; the code enum stays closed) and sends `settings.pending: true` next to
+`settings.autoPause` (the new value). `GET /settings` then answers `pending: true` while the latest reading says so, as it
+does while a command waits. `pending` is optional: absent means not pending, so an older agent or mod is unchanged.
 Restarting the backend forgets the reading until the next snapshot.
 
 ## What the agent sends, and what the backend derives (ADR-0031)
