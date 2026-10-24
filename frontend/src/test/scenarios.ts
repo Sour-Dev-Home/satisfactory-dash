@@ -54,6 +54,8 @@ import {
   historyPower24h,
   historyTransitions24h,
   managedServersAllStates,
+  productionGraphEmpty,
+  productionGraphTwoSites,
   managedServersWithAgent,
   renameAgentServerResponse,
   managedServersEmpty,
@@ -138,6 +140,8 @@ export const ROUTES = {
   powerHistory: endpoints.powerHistory,
   factory: endpoints.factory,
   bottlenecks: endpoints.bottlenecks,
+  // ADR-0050: the Planner page (task 5).
+  productionGraph: endpoints.productionGraph,
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
@@ -241,6 +245,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   powerHistory: ok(powerHistoryNormal),
   factory: ok(factoryMixed),
   bottlenecks: ok(bottlenecksBeltLevel),
+  // Two sites, one machine on no conveyor yet (beltData "stale"), a loop, a mixed belt and an estimated edge.
+  productionGraph: ok(productionGraphTwoSites),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   settings: ok(settingsEditable),
@@ -304,6 +310,29 @@ const bottlenecksTooLarge = {
   },
 };
 
+/** The planner when the conveyors layer could not be used: no edges, no sites, and the finder's own note for the mode. */
+const plannerItemLevel = (beltData: "unsupported" | "tooLarge", note: { code: string; text: string }) => ({
+  ...productionGraphEmpty,
+  data: { ...productionGraphEmpty.data, beltData, notes: [note] },
+});
+
+/** The factory's bottleneck finding moved onto a machine the planner fixture has (its constructor manifold, Iron Plate). */
+const bottlenecksOnPlannerSite = {
+  ...bottlenecksBeltLevel,
+  data: {
+    ...bottlenecksBeltLevel.data,
+    findings: bottlenecksBeltLevel.data.findings.slice(0, 1).map((f) => ({
+      ...f,
+      buildingId: "Build_ConstructorMk1_C_3",
+      affectedCount: 2,
+      affected: [
+        { buildingId: "Build_ConstructorMk1_C_3", buildingName: "Constructor", recipe: "Iron Plate" },
+        { buildingId: "Build_ConstructorMk1_C_4", buildingName: "Constructor", recipe: "Iron Plate" },
+      ],
+    })),
+  },
+};
+
 /**
  * ADR-0047: an account stored in the database (it names its sign-in methods, so it can be deleted) that signed in with
  * Google, on a backend that offers Google: the recent-sign-in refusal then offers "Sign in again with Google".
@@ -318,6 +347,7 @@ const upstreamDown = (error: unknown): Partial<Record<RouteKey, MockResponse>> =
   power: fail(502, error),
   powerHistory: fail(502, error),
   factory: fail(502, error),
+  productionGraph: fail(502, error),
   settings: fail(502, error),
 });
 
@@ -348,6 +378,7 @@ export const SCENARIOS = {
   "loading-panels": {
     factory: { ...BASE.factory, delay: "never" },
     bottlenecks: { ...BASE.bottlenecks, delay: "never" },
+    productionGraph: { ...BASE.productionGraph, delay: "never" },
     historyItems: { ...BASE.historyItems, delay: "never" },
     historyTransitions: { ...BASE.historyTransitions, delay: "never" },
     powerHistory: { ...BASE.powerHistory, delay: "never" },
@@ -361,6 +392,7 @@ export const SCENARIOS = {
     powerHistory: slow(BASE.powerHistory),
     factory: slow(BASE.factory),
     bottlenecks: slow(BASE.bottlenecks),
+    productionGraph: slow(BASE.productionGraph),
     mapRails: slow(BASE.mapRails),
     mapResourceNodes: slow(BASE.mapResourceNodes),
     settings: slow(BASE.settings),
@@ -421,6 +453,26 @@ export const SCENARIOS = {
   "bottlenecks-too-large": { bottlenecks: ok(bottlenecksTooLarge) },
   "bottlenecks-empty": { bottlenecks: ok(bottlenecksEmpty) },
   "bottlenecks-unknown-kind": { bottlenecks: ok(bottlenecksUnknownKind) },
+  // ADR-0050 task 5, the Planner page at /app/planner (default shows two sites, a loop, a mixed belt, an estimated edge and
+  // a machine on no conveyor yet): an empty factory, belt data unavailable (older FRM, over the cap), the data stale, a
+  // bottleneck finding on a planner machine (the per-site count), and the read failing.
+  "planner-empty": { productionGraph: ok(productionGraphEmpty) },
+  "planner-old-frm": {
+    productionGraph: ok(
+      plannerItemLevel("unsupported", { code: "updateFrm", text: "Item-level results only. Update FRM to 1.5.4 or newer for belt detail." }),
+    ),
+  },
+  "planner-too-large": {
+    productionGraph: ok(
+      plannerItemLevel("tooLarge", {
+        code: "beltDataTooLarge",
+        text: "Item-level results only: this factory's connection data is too large to read.",
+      }),
+    ),
+  },
+  "planner-stale": { productionGraph: ok({ ...productionGraphTwoSites, stale: true }) },
+  "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
+  "planner-error": { productionGraph: fail(502, errorUpstreamUnreachable) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },
   // ADR-0031 PR 4: after the toggle, the change is on its way to the game PC, or it failed there.

@@ -62,6 +62,8 @@ async function stubPushBrowser(page: Page, state: "off" | "subscribed" | "denied
 const FIXTURE_NOW = "2026-09-26T12:00:00.000Z";
 /** Eight seconds after the live fixtures were observed: every view reads "Updated 8 s ago". */
 const LIVE_NOW = "2026-09-22T22:25:12.000Z";
+/** Eight seconds after the planner fixtures were observed. */
+const PLANNER_NOW = "2026-10-23T15:05:08.000Z";
 /** 8 s after the agent fixtures' last-seen time, so "Last seen 8 s ago" holds still. */
 const AGENT_NOW = "2026-09-26T12:00:13.000Z";
 
@@ -148,6 +150,25 @@ const CASES: StateCase[] = [
   { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
   { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
+  // ADR-0050 task 5, the Planner page (hidden from the nav until task 6, but routed). The fixtures were observed at
+  // PLANNER_NOW minus 8 s, so the age reads the same every run.
+  { scenario: "default", name: "planner-sites", path: "/app/planner", shows: "Iron Plate site", clock: PLANNER_NOW },
+  {
+    scenario: "default",
+    name: "planner-site-detail",
+    path: "/app/planner",
+    shows: /Connections/,
+    clock: PLANNER_NOW,
+    act: (page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click(),
+  },
+  { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
+  { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
+  { scenario: "planner-old-frm", path: "/app/planner", shows: /Update FRM to 1.5.4/, clock: PLANNER_NOW },
+  { scenario: "planner-too-large", path: "/app/planner", shows: /connection data is too large/, clock: PLANNER_NOW },
+  { scenario: "planner-stale", path: "/app/planner", shows: /Showing last known planner data from/, clock: PLANNER_NOW },
+  { scenario: "planner-error", path: "/app/planner", shows: "Game server unreachable.", clock: PLANNER_NOW },
+  // The skeleton has no text, and the hidden Planner has no tab of its own to match (PLANNER_IN_NAV), so the shell's.
+  { scenario: "loading-panels", name: "loading-planner", path: "/app/planner", shows: "Overview", act: skeletonsShown },
   { scenario: "settings-read-only", path: "/app/settings", shows: /Read-only: the backend has no verified admin token/ },
   { scenario: "settings-pending", path: "/app/settings", shows: "Change pending: the server will apply it." },
   // ADR-0031 PR 4: auto-pause on a server reached through the game PC's agent, after the toggle.

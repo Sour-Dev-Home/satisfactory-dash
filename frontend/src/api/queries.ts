@@ -239,6 +239,13 @@ export const queries = {
       queryFn: ({ signal }) => apiGetQuery(signal, endpoints.bottlenecks, { limit }, serverId),
       refetchInterval: POLL_MS.factory,
     }),
+  /** ADR-0050: the whole factory as a coarse graph (the Planner page), polled with the factory like the bottlenecks. */
+  productionGraph: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "production-graph"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.productionGraph, serverId),
+      refetchInterval: POLL_MS.factory,
+    }),
   /**
    * ADR-0038 M5: the map's world layers. The caller turns one off by passing `enabled: false`, so a
    * hidden layer costs no request. The browser revalidates with If-None-Match (the route's ETag), so a

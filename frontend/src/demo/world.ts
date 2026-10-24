@@ -17,6 +17,7 @@ import type {
   PowerHistoryPoint,
   PowerHistoryResponse,
   PowerResponse,
+  ProductionGraphResponse,
   RailsLayerData,
   RailsWorldLayerResponse,
   ResourceNodesLayerData,
@@ -524,6 +525,206 @@ export function bottlenecks(now: number): BottlenecksResponse {
     },
   };
 }
+
+type PlannerNodeData = ProductionGraphResponse["data"]["nodes"][number];
+type PlannerEdgeData = ProductionGraphResponse["data"]["edges"][number];
+type PlannerRateData = PlannerNodeData["products"][number];
+
+const IRON_WORKS = "site|-1690|-990";
+const OIL_OUTPOST = "site|-1540|-870";
+
+const plannerRate = (className: string, name: string, current: number, max: number, unit: "items/min" | "m3/min" = "items/min"): PlannerRateData => ({
+  className,
+  name,
+  unit,
+  currentPerMinute: current,
+  maxPerMinute: max,
+});
+
+function plannerNode(
+  n: {
+    kind: PlannerNodeData["kind"];
+    className: string;
+    name: string;
+    recipe: string | null;
+    ids: string[];
+    states: Record<string, number>;
+    at: { x: number; y: number };
+    site: string;
+    loop?: boolean;
+    products?: PlannerRateData[];
+    ingredients?: PlannerRateData[];
+  },
+): PlannerNodeData {
+  return {
+    key: `${n.className}|${n.recipe ?? ""}|${n.at.x}|${n.at.y}`,
+    kind: n.kind,
+    className: n.className,
+    name: n.name,
+    recipe: n.recipe,
+    count: n.ids.length,
+    machineIds: n.ids,
+    stateCounts: n.states,
+    products: n.products ?? [],
+    ingredients: n.ingredients ?? [],
+    at: n.at,
+    siteKey: n.site,
+    loop: n.loop ?? false,
+  };
+}
+
+const PLANNER_NODES = {
+  miner: plannerNode({
+    kind: "extractor", className: "Build_MinerMk2_C", name: "Miner Mk.2", recipe: null, ids: ["demo-12"], states: { producing: 1 },
+    at: { x: -1740, y: -985 }, site: IRON_WORKS, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 75, 120)],
+  }),
+  smelters: plannerNode({
+    kind: "machines", className: "Build_SmelterMk1_C", name: "Smelter", recipe: "Iron Ingot", ids: ["demo-1", "demo-2"], states: { producing: 2 },
+    at: { x: -1720, y: -985 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_IronIngot_C", "Iron Ingot", 75, 75)], ingredients: [plannerRate("Desc_OreIron_C", "Iron Ore", 75, 75)],
+  }),
+  plates: plannerNode({
+    kind: "machines", className: "Build_ConstructorMk1_C", name: "Constructor", recipe: "Iron Plate", ids: ["demo-3"], states: { producing: 1 },
+    at: { x: -1700, y: -980 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_IronPlate_C", "Iron Plate", 20, 20)], ingredients: [plannerRate("Desc_IronIngot_C", "Iron Ingot", 30, 30)],
+  }),
+  rods: plannerNode({
+    kind: "machines", className: "Build_ConstructorMk1_C", name: "Constructor", recipe: "Iron Rod", ids: ["demo-4"], states: { producing: 1 },
+    at: { x: -1700, y: -990 }, site: IRON_WORKS, loop: true,
+    products: [plannerRate("Desc_IronRod_C", "Iron Rod", 15, 15)], ingredients: [plannerRate("Desc_IronIngot_C", "Iron Ingot", 15, 15)],
+  }),
+  screws: plannerNode({
+    kind: "machines", className: "Build_ConstructorMk1_C", name: "Constructor", recipe: "Screw", ids: ["demo-5"], states: { underfed: 1 },
+    at: { x: -1690, y: -990 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_IronScrew_C", "Screw", 30, 40)], ingredients: [plannerRate("Desc_IronRod_C", "Iron Rod", 7.5, 10)],
+  }),
+  rotors: plannerNode({
+    kind: "machines", className: "Build_AssemblerMk1_C", name: "Assembler", recipe: "Rotor", ids: ["demo-7"], states: { backedUp: 1 },
+    at: { x: -1675, y: -1000 }, site: IRON_WORKS, loop: true,
+    products: [plannerRate("Desc_Rotor_C", "Rotor", 0, 4)],
+    ingredients: [plannerRate("Desc_IronRod_C", "Iron Rod", 0, 20), plannerRate("Desc_IronScrew_C", "Screw", 0, 100)],
+  }),
+  reinforced: plannerNode({
+    kind: "machines", className: "Build_AssemblerMk1_C", name: "Assembler", recipe: "Reinforced Iron Plate", ids: ["demo-6", "demo-10"],
+    states: { producing: 1, backedUp: 1 }, at: { x: -1675, y: -980 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5.5, 10)],
+    ingredients: [plannerRate("Desc_IronPlate_C", "Iron Plate", 33, 60), plannerRate("Desc_IronScrew_C", "Screw", 66, 120)],
+  }),
+  frames: plannerNode({
+    kind: "machines", className: "Build_ManufacturerMk1_C", name: "Manufacturer", recipe: "Modular Frame", ids: ["demo-8"], states: { producing: 1 },
+    at: { x: -1655, y: -990 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_ModularFrame_C", "Modular Frame", 2, 2)],
+    ingredients: [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 3, 3), plannerRate("Desc_IronRod_C", "Iron Rod", 12, 12)],
+  }),
+  depot: plannerNode({
+    kind: "storage", className: "Build_StorageContainerMk1_C", name: "Storage Container", recipe: null, ids: ["demo-11"], states: {},
+    at: { x: -1640, y: -985 }, site: IRON_WORKS,
+  }),
+  oil: plannerNode({
+    kind: "extractor", className: "Build_OilPump_C", name: "Oil Extractor", recipe: null, ids: ["demo-13"], states: { producing: 1 },
+    at: { x: -1560, y: -860 }, site: OIL_OUTPOST, products: [plannerRate("Desc_LiquidOil_C", "Crude Oil", 30, 60, "m3/min")],
+  }),
+  refinery: plannerNode({
+    kind: "machines", className: "Build_OilRefinery_C", name: "Refinery", recipe: "Plastic", ids: ["demo-9"], states: { producing: 1 },
+    at: { x: -1540, y: -870 }, site: OIL_OUTPOST,
+    products: [plannerRate("Desc_Plastic_C", "Plastic", 20, 20), plannerRate("Desc_HeavyOilResidue_C", "Heavy Oil Residue", 10, 10, "m3/min")],
+    ingredients: [plannerRate("Desc_LiquidOil_C", "Crude Oil", 30, 30, "m3/min")],
+  }),
+  plasticStore: plannerNode({
+    kind: "storage", className: "Build_StorageContainerMk1_C", name: "Storage Container", recipe: null, ids: ["demo-14"], states: {},
+    at: { x: -1520, y: -875 }, site: OIL_OUTPOST,
+  }),
+  burner: plannerNode({
+    kind: "consumer", className: "Build_GeneratorFuel_C", name: "Fuel Generator", recipe: null, ids: ["demo-15"], states: { producing: 1 },
+    at: { x: -1530, y: -855 }, site: OIL_OUTPOST,
+  }),
+};
+
+const N = PLANNER_NODES;
+const plannerEdge = (
+  from: PlannerNodeData,
+  to: PlannerNodeData,
+  item: [string, string] | null,
+  rate: number | null,
+  how: PlannerEdgeData["rate"],
+  extra: Partial<PlannerEdgeData> = {},
+): PlannerEdgeData => ({
+  from: from.key,
+  to: to.key,
+  kind: "belt",
+  itemClassName: item?.[0] ?? null,
+  itemName: item?.[1] ?? null,
+  ratePerMinute: rate,
+  rate: how,
+  mixed: false,
+  capacityPerMinute: null,
+  conveyorCount: 2,
+  ...extra,
+});
+
+const ORE_ITEM: [string, string] = ["Desc_OreIron_C", "Iron Ore"];
+const INGOT_ITEM: [string, string] = ["Desc_IronIngot_C", "Iron Ingot"];
+const ROD_ITEM: [string, string] = ["Desc_IronRod_C", "Iron Rod"];
+const SCREW_ITEM: [string, string] = ["Desc_IronScrew_C", "Screw"];
+const RIP_ITEM: [string, string] = ["Desc_IronPlateReinforced_C", "Reinforced Iron Plate"];
+
+/**
+ * The demo's production planner (ADR-0050): two made-up sites. The iron works has a loop (overflow rods returning from the
+ * rotor assembler), a mixed belt into its depot with no known rate, and estimated edges where a splitter shares a belt; the
+ * oil outpost has pipes. The machine ids are the demo factory's, so the bottleneck counts join.
+ */
+export function productionGraph(now: number): ProductionGraphResponse {
+  const nodes = Object.values(N);
+  const siteNodes = (site: string) => nodes.filter((n) => n.siteKey === site);
+  const siteOf = (site: string, name: string, at: { x: number; y: number }, outputs: PlannerRateData[]) => {
+    const mine = siteNodes(site);
+    const states: Record<string, number> = {};
+    for (const n of mine) for (const [s, c] of Object.entries(n.stateCounts)) states[s] = (states[s] ?? 0) + c;
+    return {
+      key: site,
+      name,
+      at,
+      machineCount: mine.reduce((sum, n) => sum + n.count, 0),
+      stateCounts: states,
+      topOutputs: outputs,
+      nodeKeys: mine.map((n) => n.key),
+    };
+  };
+  return {
+    ...envelope(now),
+    data: {
+      nodes,
+      edges: [
+        plannerEdge(N.miner, N.smelters, ORE_ITEM, 75, "measured", { capacityPerMinute: 120, conveyorCount: 3 }),
+        plannerEdge(N.smelters, N.plates, INGOT_ITEM, 30, "estimated", { conveyorCount: 6 }),
+        plannerEdge(N.smelters, N.rods, INGOT_ITEM, 15, "estimated", { conveyorCount: 5 }),
+        plannerEdge(N.rods, N.screws, ROD_ITEM, 7.5, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.rods, N.rotors, ROD_ITEM, 7.5, "estimated"),
+        plannerEdge(N.rotors, N.rods, ROD_ITEM, 2.5, "estimated", { conveyorCount: 3 }),
+        plannerEdge(N.screws, N.reinforced, SCREW_ITEM, 30, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.plates, N.reinforced, ["Desc_IronPlate_C", "Iron Plate"], 20, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.reinforced, N.frames, RIP_ITEM, 3, "measured"),
+        plannerEdge(N.reinforced, N.depot, RIP_ITEM, null, "unknown", { mixed: true, conveyorCount: 4 }),
+        plannerEdge(N.frames, N.depot, ["Desc_ModularFrame_C", "Modular Frame"], 2, "measured"),
+        { ...plannerEdge(N.oil, N.refinery, ["Desc_LiquidOil_C", "Crude Oil"], 30, "measured", { capacityPerMinute: 300 }), kind: "pipe" },
+        plannerEdge(N.refinery, N.plasticStore, ["Desc_Plastic_C", "Plastic"], 20, "estimated"),
+        { ...plannerEdge(N.refinery, N.burner, ["Desc_HeavyOilResidue_C", "Heavy Oil Residue"], null, "unknown"), kind: "pipe" },
+      ],
+      sites: [
+        siteOf(IRON_WORKS, "Iron works", { x: -1690, y: -990 }, [
+          plannerRate("Desc_ModularFrame_C", "Modular Frame", 2, 2),
+          plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5.5, 10),
+        ]),
+        siteOf(OIL_OUTPOST, "Oil outpost", { x: -1540, y: -866 }, [plannerRate("Desc_Plastic_C", "Plastic", 20, 20)]),
+      ],
+      unconnectedMachineIds: [],
+      beltData: "present",
+      connectionsRefreshMinutes: 10,
+      notes: [{ code: "connectionsRefresh", text: "Connections refresh every 10 minutes." }],
+    },
+  };
+}
+
 /**
  * The demo's map world layers (ADR-0038 M5): made-up rails and resource nodes around the demo factory
  * (whole metres, +x east, +y south: docs-vault/raw-sources/world-coordinates.md). A world layer changes

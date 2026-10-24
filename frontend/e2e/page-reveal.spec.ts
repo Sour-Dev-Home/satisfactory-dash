@@ -20,6 +20,7 @@ const PAGES = [
   { name: "Overview", path: "/app", ready: "Total play time on this save" },
   { name: "Power", path: "/app/power", ready: /Circuit 0/ },
   { name: "Factory", path: "/app/factory", ready: /machines · .* backed up/ },
+  { name: "Planner", path: "/app/planner", ready: "Production planner" },
   { name: "Map", path: "/app/map", ready: "Buildings in view" },
   { name: "Settings", path: "/app/settings", ready: /Auto-pause when no players/ },
 ] as const;

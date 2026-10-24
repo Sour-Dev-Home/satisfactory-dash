@@ -1,4 +1,5 @@
 import type { FactoryResponse, PowerResponse } from "@satisfactory-dash/shared";
+import { PLANNER_IN_NAV } from "../shell/tabs";
 import { formatMW } from "../format";
 import { circuitLink, factorySearchLink, itemHistoryLink } from "../lib/deepLinks";
 import { labelFor, type ItemLabel } from "../factory/itemLabels";
@@ -54,13 +55,22 @@ export interface PaletteInput {
   power?: PowerResponse;
   factory?: FactoryResponse;
   labels: Map<string, ItemLabel>;
+  /** Whether the Planner page is listed (default `PLANNER_IN_NAV`; a parameter so tests can show both). */
+  plannerInNav?: boolean;
 }
 
 /**
  * Everything the command bar (#351) offers for the selected server, from data already on hand.
  * Pure, so it's tested without the dialog; the dialog does the matching (cmdk).
  */
-export function paletteGroups({ isOperator, serverCount, power, factory, labels }: PaletteInput): PaletteGroup[] {
+export function paletteGroups({
+  isOperator,
+  serverCount,
+  power,
+  factory,
+  labels,
+  plannerInNav = PLANNER_IN_NAV,
+}: PaletteInput): PaletteGroup[] {
   const groups: PaletteGroup[] = [];
 
   groups.push({
@@ -69,6 +79,7 @@ export function paletteGroups({ isOperator, serverCount, power, factory, labels 
       { id: "page-overview", label: "Overview", to: "/app" },
       { id: "page-power", label: "Power", to: "/app/power" },
       { id: "page-factory", label: "Factory", to: "/app/factory" },
+      ...(plannerInNav ? [{ id: "page-planner", label: "Planner", to: "/app/planner" }] : []),
       { id: "page-map", label: "Map", to: "/app/map" },
       { id: "page-settings", label: "Settings", to: "/app/settings" },
       ...(isOperator ? [{ id: "page-servers", label: "Servers", to: "/app/servers" }] : []),
