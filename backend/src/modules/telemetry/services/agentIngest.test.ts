@@ -427,6 +427,18 @@ describe("the auto-pause setting an agent reports (settings.autoPause)", () => {
     expect(t.store.autoPause()).toMatchObject({ autoPause: false, observedAtMs: T0 });
   });
 
+  it("a late pending:true snapshot never revives pending after a newer applied one, and an unreachable one keeps the last pending", () => {
+    const t = setup();
+    t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);
+    const older = { ...t.running({ settings: { autoPause: true, pending: true } }), observedAt: new Date(T0 - 4000).toISOString() };
+    t.ingest.ingest(older, T0 + 100);
+    expect(t.store.autoPause()).toMatchObject({ pending: false, observedAtMs: T0 });
+    t.ingest.ingest(t.running({ settings: { autoPause: true, pending: true } }), T0 + 1000);
+    t.advance(60_000);
+    t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(t.now()).toISOString() }, t.now());
+    expect(t.store.autoPause()).toMatchObject({ pending: true, stale: true });
+  });
+
   it("an unreachable game keeps the last value, stale by age, instead of clearing it", () => {
     const t = setup();
     t.ingest.ingest(t.running({ settings: { autoPause: true } }), T0);

@@ -264,6 +264,13 @@ describe("readAutoPause", () => {
       expect(await readWith(pool, reading(true, T0 + 5000))).toMatchObject({ pending: false });
     });
 
+    it("a pending reading taken BEFORE the confirmation is out of date too; an open change keeps pending when the reading says not", async () => {
+      const pool = withRecent([confirmedAt(false, T0)]);
+      expect(await readWith(pool, { ...reading(true, T0 - 5000), pending: true })).toEqual({ autoPause: false, pending: false, editable: true });
+      const open = withRecent([row({ id: "p", status: "sent", params: { enabled: true } }), confirmedAt(false, T0)]);
+      expect(await readWith(open, { ...reading(true, T0 + 5000), pending: false })).toEqual({ autoPause: true, pending: true, editable: true });
+    });
+
     it("a reading taken BEFORE the last confirmed change is out of date: the confirmed value wins", async () => {
       const pool = withRecent([confirmedAt(false, T0)]);
       const data = await readWith(pool, reading(true, T0 - 5000));
