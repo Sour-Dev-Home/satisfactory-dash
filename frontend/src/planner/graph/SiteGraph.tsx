@@ -330,7 +330,7 @@ export default function SiteGraph({
     <div className="grid gap-3">
       {/* One row on a phone: the item, then icon buttons; the filter's status, when there is one, takes the next line. */}
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex min-w-0 flex-1 basis-0 items-center gap-2 sm:flex-none sm:basis-auto">
+        <label className="flex min-w-40 flex-1 basis-0 items-center gap-2 sm:flex-none sm:basis-auto">
           <span>Item</span>
           <select value={activeItem} onChange={(e) => setItem(e.target.value)} className="min-h-touch min-w-0 flex-1 sm:flex-none">
             <option value={ALL_ITEMS}>All items</option>
@@ -519,7 +519,7 @@ function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => v
       <rect width={f.width} height={f.height} rx={10} strokeWidth={1} strokeDasharray="6 4" className="fill-surface stroke-line" />
       <title>{f.title}</title>
       <rect x={NODE_PAD_X} y={tabY} width={title.length * CHAR_W_BODY + NODE_PAD_X} height={FRAME_HEADER_H} className="fill-surface" />
-      <text x={NODE_PAD_X + NODE_PAD_X / 2} y={0} dominantBaseline="central" className="fill-muted text-sm">
+      <text x={NODE_PAD_X + NODE_PAD_X / 2} y={0} dominantBaseline="central" className="fill-fg text-sm">
         {title}
       </text>
       <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} className="cursor-pointer">

@@ -335,7 +335,10 @@ function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasF
  * only moves rates does not change. Text is never part of the memo: the laid nodes carry the scene's current words.
  */
 export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
-  const sizes = scene.cards.map(cardSize);
+  const own = scene.cards.map(cardSize);
+  // The overview's factory cards are peers: one height, so the row reads evenly.
+  const tallest = scene.level === "overview" ? Math.max(0, ...own.map((s) => s.height)) : 0;
+  const sizes = tallest === 0 ? own : own.map((s) => ({ ...s, height: tallest }));
   const known = new Set(scene.cards.map((c) => c.key));
   const flows = scene.flows.filter((f) => known.has(f.from) && known.has(f.to));
   const labels = flows.map((f) => labelSize(f.labelLines));

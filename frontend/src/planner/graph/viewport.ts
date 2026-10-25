@@ -12,8 +12,8 @@ export interface Stage {
 export const FALLBACK_STAGE: Stage = { width: 1000, height: 600 };
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 4;
-/** The smallest scale a fit goes to: below it the text (14 px body, 16 px titles) is under ~8 px, so the drawing is panned instead. */
-export const MIN_FIT_ZOOM = 0.6;
+/** The smallest scale a fit goes to: below it the text (14 px body, 16 px titles) is under ~11 px, so the drawing is panned instead. */
+export const MIN_FIT_ZOOM = 0.8;
 /** Space kept around the drawing by a fit and by the canvas height, in stage units. */
 export const FIT_PAD = 16;
 export const ZOOM_STEP = 1.25;

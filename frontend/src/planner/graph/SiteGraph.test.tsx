@@ -307,11 +307,8 @@ describe("the graph's readable chrome", () => {
     const svg = await openGraph();
     const hint = "Drag or use the arrow keys to see more →";
     const fades = () => [...document.querySelectorAll("[data-fade]")].filter((f) => f.getAttribute("data-clipped") === "true").map((f) => f.getAttribute("data-fade"));
-    // jsdom's 1000 x 600 stage holds the fixture's drawing at the fit (two-line labels keep it narrow): nothing is clipped.
-    expect(screen.queryByText(hint)).not.toBeInTheDocument();
-    expect(fades()).toEqual([]);
-    // Zoomed in, the right edge runs past the canvas: the hint and the fades come.
-    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    // The fit stops at the readable floor, and jsdom's 1000 x 600 stage is too narrow for the fixture's drawing there:
+    // the right edge runs past the canvas, so the hint and the fades come.
     expect(screen.getByText(hint)).toBeInTheDocument();
     expect(fades().length).toBeGreaterThan(0);
     for (const f of document.querySelectorAll("[data-fade]")) {
