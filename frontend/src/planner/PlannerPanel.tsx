@@ -1,25 +1,35 @@
-import { useEffect, useRef, useState } from "react";
-import type { Bottleneck, PlannerEdge, PlannerNode, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Bottleneck, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
 import { DataAge } from "../components/DataAge";
 import { formatTime } from "../format";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge } from "./BottleneckBadge";
+import { FactoryFacts, FactoryFlows } from "./FactoryParts";
 import { LazySiteGraph } from "./graph/GraphLoader";
-import { useWideScreen } from "./graph/useWideScreen";
 import {
-  edgeCapacityText,
-  edgeItemText,
-  edgeRateText,
+  connectionRows,
+  factoryAsSite,
+  factoryModels,
+  factoryOfNode,
+  hasFactories,
+  remoteInfo,
+  unassignedCount,
+  type FactoryModel,
+} from "./graph/hierarchy";
+import { useWideScreen } from "./graph/useWideScreen";
+import { ConnectionsTable, GroupsTable, type FactoryColumns } from "./PlannerTables";
+import {
+  factoryTitle,
   groupLabel,
-  nodeFindings,
   outputLine,
   plannerNotes,
-  siteEdges,
   siteFindings,
   siteNodes,
   stateCountsText,
   totalMachines,
 } from "./plannerText";
+
+type Graph = ProductionGraphResponse["data"];
 
 function SiteCard({
   site,
@@ -28,7 +38,7 @@ function SiteCard({
   onOpen,
 }: {
   site: PlannerSite;
-  graph: ProductionGraphResponse["data"];
+  graph: Graph;
   findings: readonly Bottleneck[] | undefined;
   onOpen: () => void;
 }) {
@@ -62,101 +72,95 @@ function SiteCard({
   );
 }
 
-function GroupRow({ node, findings }: { node: PlannerNode; findings: readonly Bottleneck[] | undefined }) {
-  const hits = nodeFindings(node, findings).length;
+function FactoryCard({
+  model,
+  findings,
+  onOpen,
+}: {
+  model: FactoryModel;
+  findings: readonly Bottleneck[] | undefined;
+  onOpen: () => void;
+}) {
+  const { factory } = model;
   return (
-    <tr>
-      <th scope="row" className="break-words">
-        {node.name}
-      </th>
-      <td data-label="Count">{node.count}</td>
-      <td data-label="Recipe" className="break-words">
-        {node.recipe ?? "No recipe"}
-      </td>
-      <td data-label="Output">
-        {node.products.length === 0 ? (
-          <span className="text-muted">No output data</span>
-        ) : (
-          node.products.map((rate) => (
-            <span key={rate.className} className="block break-words">
-              {outputLine(rate)}
-            </span>
-          ))
-        )}
-      </td>
-      <td data-label="States">{stateCountsText(node.stateCounts)}</td>
-      <td data-label="Loop">{node.loop ? "In a loop" : "No"}</td>
-      <td data-label="Bottlenecks">
-        {findings === undefined ? <span className="text-muted">Not read</span> : <BottleneckBadge count={hits} what={groupLabel(node)} />}
-      </td>
-    </tr>
+    <li className="grid content-start gap-2 rounded-card border border-line p-4">
+      <h4 className="m-0 break-words">{factoryTitle(factory)}</h4>
+      <FactoryFacts model={model} findings={findings} />
+      <button type="button" onClick={onOpen} aria-label={`Open factory: ${factory.name}`} className="min-h-touch justify-self-start">
+        Open factory
+      </button>
+    </li>
   );
 }
 
-function EdgeRow({ edge, nodes }: { edge: PlannerEdge; nodes: ReadonlyMap<string, PlannerNode> }) {
-  const label = (key: string) => {
-    const node = nodes.get(key);
-    return node ? groupLabel(node) : "Group not listed";
-  };
-  const capacity = edgeCapacityText(edge);
-  return (
-    <tr>
-      <th scope="row" className="break-words">
-        {label(edge.from)}
-      </th>
-      <td data-label="To" className="break-words">
-        {label(edge.to)}
-      </td>
-      <td data-label="Item" className="break-words">
-        {edgeItemText(edge)}
-      </td>
-      <td data-label="Rate">{edgeRateText(edge)}</td>
-      <td data-label="Capacity">{capacity ?? <span className="text-muted">Not known</span>}</td>
-      <td data-label="Carrier">{edge.kind === "pipe" ? "Pipe" : "Belt"}</td>
-    </tr>
-  );
-}
-
-function SiteDetail({
+/**
+ * One opened site or factory: its groups (bubbles with their groups indented) and the connections touching them, as
+ * tables, or the graph on a wide screen. A factory adds where it stands, what it makes and how its shared groups split.
+ */
+function Detail({
   site,
   graph,
   findings,
+  factory,
   onBack,
 }: {
   site: PlannerSite;
-  graph: ProductionGraphResponse["data"];
+  graph: Graph;
   findings: readonly Bottleneck[] | undefined;
+  /** Set when a factory is open: `site` is then the factory seen as one site for the canvas. */
+  factory?: FactoryModel;
   onBack: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  // Opening a site replaces the cards, so focus follows to the new heading (as a page change does).
+  // Opening one replaces the cards, so focus follows to the new heading (as a page change does).
   useEffect(() => heading.current?.focus(), []);
-  const nodes = siteNodes(graph, site);
-  const edges = siteEdges(graph, nodes);
-  const byKey = new Map(graph.nodes.map((n) => [n.key, n]));
+  const nodes = useMemo(() => (factory === undefined ? siteNodes(graph, site) : factory.nodes), [graph, site, factory]);
+  const rows = useMemo(() => connectionRows(graph, new Set(nodes.map((n) => n.key))), [graph, nodes]);
+  const byKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
+  const factoryNames = useMemo(() => new Map((graph.factories ?? []).map((f) => [f.key, f.name])), [graph]);
+  const owner = useMemo(() => factoryOfNode(graph), [graph]);
+  const columns: FactoryColumns | undefined = useMemo(
+    () => (factory === undefined ? undefined : { remote: remoteInfo(graph, factory), nameOf: factoryNames }),
+    [graph, factory, factoryNames],
+  );
+  const labelOf = (key: string) => {
+    const node = byKey.get(key);
+    if (!node) return "Group not listed";
+    const home = owner.get(key);
+    // An end in another factory says so; in the same factory (or when sites are the unit) it is just the group.
+    if (factory !== undefined && home !== undefined && home !== factory.factory.key) return `${groupLabel(node)} (${factoryNames.get(home) ?? "another factory"})`;
+    return groupLabel(node);
+  };
   const count = siteFindings(nodes, findings).length;
   const wide = useWideScreen();
   const [mode, setMode] = useState<"graph" | "tables" | null>(null);
   const view = mode ?? (wide ? "graph" : "tables");
+  const noun = factory === undefined ? "site" : "factory";
   return (
     <div className="grid gap-3">
       <button type="button" onClick={onBack} className="min-h-touch justify-self-start">
-        All sites
+        {factory === undefined ? "All sites" : "All factories"}
       </button>
       <h4 ref={heading} tabIndex={-1} id="planner-site-heading" className="m-0 break-words">
-        {site.name}
+        {factory === undefined ? site.name : factoryTitle(factory.factory)}
       </h4>
-      <p className="m-0">
-        {site.machineCount} {site.machineCount === 1 ? "machine" : "machines"} · {stateCountsText(site.stateCounts)}
-        {findings !== undefined && (
-          <>
-            {" · "}
-            <BottleneckBadge count={count} what={site.name} />
-          </>
-        )}
-      </p>
+      {factory === undefined ? (
+        <p className="m-0">
+          {site.machineCount} {site.machineCount === 1 ? "machine" : "machines"} · {stateCountsText(site.stateCounts)}
+          {findings !== undefined && (
+            <>
+              {" · "}
+              <BottleneckBadge count={count} what={site.name} />
+            </>
+          )}
+        </p>
+      ) : (
+        <div className="grid content-start gap-2">
+          <FactoryFacts model={factory} findings={findings} detail />
+        </div>
+      )}
 
-      {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this site's, until it is closed. */}
+      {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this one's, until it is closed. */}
       <div role="group" aria-label="View" className="flex gap-2">
         {(["graph", "tables"] as const).map((m) => (
           <button key={m} type="button" aria-pressed={view === m} onClick={() => setMode(m)} className="min-h-touch">
@@ -171,54 +175,17 @@ function SiteDetail({
         <h5 id="planner-groups-heading" className="m-0">
           Groups
         </h5>
-        {nodes.length === 0 ? (
-          <p className="m-0">This site lists no machine groups.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Group</th>
-                <th scope="col">Count</th>
-                <th scope="col">Recipe</th>
-                <th scope="col">Output, actual / max</th>
-                <th scope="col">States</th>
-                <th scope="col">Loop</th>
-                <th scope="col">Bottlenecks</th>
-              </tr>
-            </thead>
-            <tbody>
-              {nodes.map((node) => (
-                <GroupRow key={node.key} node={node} findings={findings} />
-              ))}
-            </tbody>
-          </table>
-        )}
+        {nodes.length === 0 ? <p className="m-0">This {noun} lists no machine groups.</p> : <GroupsTable nodes={nodes} findings={findings} factory={columns} />}
       </section>
 
       <section aria-labelledby="planner-edges-heading" hidden={view !== "tables"} className="grid gap-2">
         <h5 id="planner-edges-heading" className="m-0">
           Connections
         </h5>
-        {edges.length === 0 ? (
-          <p className="m-0">No connections between this site&apos;s groups are known.</p>
+        {rows.length === 0 ? (
+          <p className="m-0">No connections between this {noun}&apos;s groups are known.</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">From</th>
-                <th scope="col">To</th>
-                <th scope="col">Item</th>
-                <th scope="col">Rate per minute</th>
-                <th scope="col">Capacity</th>
-                <th scope="col">Carrier</th>
-              </tr>
-            </thead>
-            <tbody>
-              {edges.map((edge) => (
-                <EdgeRow key={`${edge.from}>${edge.to}>${edge.itemClassName ?? ""}>${edge.kind}`} edge={edge} nodes={byKey} />
-              ))}
-            </tbody>
-          </table>
+          <ConnectionsTable rows={rows} labelOf={labelOf} />
         )}
         <p className="m-0 text-sm text-muted">
           A rate with no word is measured. &quot;About&quot; is estimated from how machines share a belt. &quot;Unknown&quot; means the
@@ -230,9 +197,10 @@ function SiteDetail({
 }
 
 /**
- * ADR-0050 Decision 4, the text form: a card per site (the overview) and, for one opened site, a table of its groups and
- * a table of its connections. Names come from the game server and are only ever text. Bottleneck counts come from the
- * Factory page's own read (`findings`, joined by building id); `undefined` means that read has not answered.
+ * ADR-0050 Decision 4, the text form, with ADR-0055's factory level above it: a card per factory (or per site, when the
+ * backend sent no factories) and, for one opened, a table of its groups and a table of its connections. Names come from
+ * the game server and are only ever text. Bottleneck counts come from the Factory page's own read (`findings`, joined by
+ * building id); `undefined` means that read has not answered.
  */
 export function PlannerPanel({
   snapshot,
@@ -246,19 +214,30 @@ export function PlannerPanel({
   findings?: readonly Bottleneck[];
   findingsTruncated?: boolean;
   refetchFailed?: boolean;
-  /** The opened site's key, or null for the overview. */
+  /** The opened factory's (or site's) key, or null for the overview. */
   selected: string | null;
   onSelect: (key: string | null) => void;
 }) {
   const graph = snapshot.data;
-  const site = selected === null ? undefined : graph.sites.find((s) => s.key === selected);
-  const notes = plannerNotes(graph);
+  const byFactory = hasFactories(graph);
+  const models = useMemo(() => (byFactory ? factoryModels(graph) : []), [graph, byFactory]);
+  const model = selected === null ? undefined : models.find((m) => m.factory.key === selected);
+  const factorySite = useMemo(() => (model === undefined ? undefined : factoryAsSite(model)), [model]);
+  const site = selected === null || byFactory ? undefined : graph.sites.find((s) => s.key === selected);
+  const open = model !== undefined || site !== undefined;
+  const orphans = byFactory ? unassignedCount(graph) : 0;
+  const orphanNote = `${orphans} ${orphans === 1 ? "group belongs" : "groups belong"} to no factory, so ${orphans === 1 ? "it is" : "they are"} not listed under one.`;
+  const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
   const overviewHeading = useRef<HTMLHeadingElement>(null);
-  // Back from a site: focus the overview's heading, but not on the page's first render.
+  // Back from one: focus the overview's heading, but not on the page's first render.
   const [cameBack, setCameBack] = useState(false);
   useEffect(() => {
-    if (cameBack && site === undefined) overviewHeading.current?.focus();
-  }, [cameBack, site]);
+    if (cameBack && !open) overviewHeading.current?.focus();
+  }, [cameBack, open]);
+  const back = () => {
+    setCameBack(true);
+    onSelect(null);
+  };
 
   return (
     <section aria-labelledby="planner-heading" className="panel content-start">
@@ -267,7 +246,7 @@ export function PlannerPanel({
       </h3>
       {snapshot.stale && <p>Showing last known planner data from {formatTime(snapshot.observedAt)}.</p>}
 
-      {graph.sites.length === 0 ? (
+      {graph.sites.length === 0 && !byFactory ? (
         <p>
           {graph.beltData === "unsupported" || graph.beltData === "tooLarge"
             ? "No sites to show: the planner needs belt data, and this server has none to read."
@@ -275,17 +254,31 @@ export function PlannerPanel({
               ? "No sites to show yet: the planner needs belt data, and the agent hasn't sent any."
               : "No sites yet: no machines are connected by conveyors."}
         </p>
+      ) : model !== undefined && factorySite !== undefined ? (
+        <Detail key={model.factory.key} site={factorySite} graph={graph} findings={findings} factory={model} onBack={back} />
       ) : site !== undefined ? (
-        <SiteDetail
-          key={site.key}
-          site={site}
-          graph={graph}
-          findings={findings}
-          onBack={() => {
-            setCameBack(true);
-            onSelect(null);
-          }}
-        />
+        <Detail key={site.key} site={site} graph={graph} findings={findings} onBack={back} />
+      ) : byFactory ? (
+        <>
+          <p className="summary">
+            {models.length} {models.length === 1 ? "factory" : "factories"} · {totalMachines(graph.sites)} machines in {graph.nodes.length}{" "}
+            {graph.nodes.length === 1 ? "group" : "groups"}
+          </p>
+          <ul aria-label="Factories" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
+            {models.map((m) => (
+              <FactoryCard
+                key={m.factory.key}
+                model={m}
+                findings={findings}
+                onOpen={() => {
+                  setCameBack(false);
+                  onSelect(m.factory.key);
+                }}
+              />
+            ))}
+          </ul>
+          <FactoryFlows graph={graph} models={models} />
+        </>
       ) : (
         <>
           <p className="summary">

@@ -32,6 +32,21 @@ describe("the demo world", () => {
     expect(() => SettingsResponseSchema.parse(world.settings(now, { autoPause: true, pending: true }))).not.toThrow();
   });
 
+  it("gives the planner three factories that own every group once, a shared split and a train to a remote site (ADR-0055)", () => {
+    const graph = ProductionGraphResponseSchema.parse(world.productionGraph(world.DEMO_EPOCH)).data;
+    expect(graph.factories?.map((f) => f.name)).toEqual(["Reinforced Iron Plate factory", "Modular Frame factory", "Plastic factory"]);
+    const owned = graph.factories!.flatMap((f) => f.nodeKeys);
+    expect(new Set(owned).size).toBe(owned.length);
+    expect([...owned].sort()).toEqual(graph.nodes.map((n) => n.key).sort());
+    for (const node of graph.nodes) expect(node.factoryKey).toBeDefined();
+    for (const node of graph.nodes) {
+      if (node.shares) expect(node.shares.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 9);
+    }
+    expect(graph.transports?.map((t) => t.mode)).toEqual(["train"]);
+    expect(graph.edges.some((e) => e.flow === "excess" && e.destination === "sink")).toBe(true);
+    expect(graph.sites.map((s) => s.name)).toContain("Ore farm");
+  });
+
   it.each(HistoryRangeSchema.options)("stores power history for %s that matches the schema, oldest first", (range) => {
     const history = HistoryPowerResponseSchema.parse(world.historyPower(world.DEMO_EPOCH, range)).data;
     expect(history.range).toBe(range);

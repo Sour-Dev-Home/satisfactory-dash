@@ -19,6 +19,12 @@ async function skeletonsShown(page: Page) {
 
 const openIronSite = (page: Page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
 
+/** The Iron Plate factory (ADR-0055) on its tables, whichever view the screen opens on. */
+async function openPlateFactoryTables(page: Page) {
+  await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).click();
+  await page.getByRole("button", { name: "Tables" }).click();
+}
+
 /** The Iron Plate site on the graph view, whichever view the screen opens on. */
 async function openIronGraph(page: Page) {
   await openIronSite(page);
@@ -73,6 +79,8 @@ const FIXTURE_NOW = "2026-09-26T12:00:00.000Z";
 const LIVE_NOW = "2026-09-22T22:25:12.000Z";
 /** Eight seconds after the planner fixtures were observed. */
 const PLANNER_NOW = "2026-10-23T15:05:08.000Z";
+/** The same for the factories fixture (ADR-0055). */
+const FACTORIES_NOW = "2026-10-24T12:00:08.000Z";
 /** 8 s after the agent fixtures' last-seen time, so "Last seen 8 s ago" holds still. */
 const AGENT_NOW = "2026-09-26T12:00:13.000Z";
 
@@ -217,6 +225,24 @@ const CASES: StateCase[] = [
       await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
       await page.keyboard.press("Enter");
     },
+  },
+  // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
+  { scenario: "planner-factories", path: "/app/planner", shows: "Flows between factories", clock: FACTORIES_NOW },
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-detail",
+    path: "/app/planner",
+    shows: /Connections/,
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryTables,
+  },
+  {
+    scenario: "planner-factories-trees",
+    name: "planner-factory-trees",
+    path: "/app/planner",
+    shows: /tree 1 of 2/,
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryTables,
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },

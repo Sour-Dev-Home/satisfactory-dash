@@ -27,8 +27,11 @@ contract needs to grow, not that this module should special-case a backend detai
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
   The Planner page (ADR-0050, `src/planner/`) is a tab after Factory (`PLANNER_IN_NAV` in `src/shell/tabs.ts`, on since
-  the graph view landed): site cards, then a site as a Graph or Tables view (the graph is the default from 640 px, the
-  tables below, `useWideScreen`). The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind
+  the graph view landed): factory cards when the response has `factories` (ADR-0055; site cards otherwise), then one as a
+  Graph or Tables view (the graph is the default from 640 px, the tables below, `useWideScreen`). The hierarchy is pure
+  in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the fold cap, flows summed between cards, factory models);
+  its words are in `plannerText.ts`, and an opened factory reaches the graph as one site (`factoryAsSite`) until the
+  factory canvas lands. The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind
   `GraphLoader.tsx`, the Map's pattern) and the only place `@dagrejs/dagre` is imported: `layoutSite` is pure and
   deterministic (sizes from text, left to right), the canvas is SVG styled by token classes and attributes only
   (no `style=`), `role="img"` with a counts label, and the keyboard reaches each group through a list of visually
