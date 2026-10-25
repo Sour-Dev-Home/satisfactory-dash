@@ -64,12 +64,17 @@ export interface SelfServeRuntime {
   remove(publicId: string): Promise<unknown>;
 }
 
+/** Extra work for the create transaction (see `SelfServeService.create`). */
+export type SelfServeCreateHook = (client: Queryable, server: { id: string; publicId: string }) => Promise<void>;
+
 /** The server is operator-created: the owner path does not apply (nothing was changed). */
 export const NOT_SELF_SERVE = "not_self_serve";
 
 export interface SelfServeService {
   isOperator(userId: string): boolean;
-  create(actorUserId: string, input: CreateAgentServerRequest): Promise<AgentServer>;
+  /** `inTransaction` (ADR-0051 pairing approval) runs in the create transaction after the server and its owner exist, with the
+   *  server's internal id: whatever it throws rolls the whole creation back. */
+  create(actorUserId: string, input: CreateAgentServerRequest, inTransaction?: SelfServeCreateHook): Promise<AgentServer>;
   /** The owner renames their self-serve server. 404 for an unknown or removed one, 403 when the caller is not its owner. */
   renameAsOwner(actorUserId: string, publicId: string, displayName: string): Promise<AgentServer | typeof NOT_SELF_SERVE>;
   /** The owner removes their self-serve server: `softDeleteServer`'s purge, the credential and codes with it, then the runtime
@@ -133,7 +138,7 @@ export function createSelfServeService(deps: SelfServeDeps): SelfServeService {
   return {
     isOperator: (userId) => deps.isOperator(userId),
 
-    async create(actorUserId, input) {
+    async create(actorUserId, input, inTransaction) {
       const exempt = deps.isOperator(actorUserId);
       const publicId = generateId();
       const server = await withTransaction(deps.db, async (client) => {
@@ -146,6 +151,7 @@ export function createSelfServeService(deps: SelfServeDeps): SelfServeService {
         if (member !== "added") throw new Error("could not add the owner of a new self-serve server");
         // Ids only: the display name is the player's own text and stays out of the audit trail.
         await recordAuditEvent(client, { action: "server.created", actorUserId, serverId: row.id, detail: { via: "self_serve" } });
+        await inTransaction?.(client, { id: row.id, publicId: row.publicId });
         return row;
       });
 

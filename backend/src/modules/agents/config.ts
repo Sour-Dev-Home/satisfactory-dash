@@ -97,3 +97,32 @@ export function loadEnrollmentCodesPerHour(env: Record<string, string | undefine
   }
   return value;
 }
+
+/** ADR-0051 section 1 / ADR-0057 D6, device-code pairing. Starting a pairing is unauthenticated, so it is limited per client
+ *  network (an IPv6 /64 counts as one) AND across the process: 6 an hour per network (a setup needs one to three), 600 an
+ *  hour overall. The overall cap also bounds the open codes: 600 an hour x 15 minutes = at most 150 open at a time, so a
+ *  60-bit code guess at the entry limits below has about 150 / 2^60 chance per try. In memory, per instance (ADR-0010). */
+export const PAIRING_START_PER_NETWORK_PER_HOUR = 6;
+export const PAIRING_START_GLOBAL_PER_HOUR = 600;
+/** Polls per network per minute: a pairing polls every 5 s (12 a minute) and slow_down only lengthens that; this leaves room
+ *  for several agents behind one address and only stops a flood. */
+export const PAIRING_POLL_PER_NETWORK_PER_MINUTE = 120;
+/** A poll sooner than the expected interval minus this grace (network jitter) is answered `slow_down`. */
+export const PAIRING_POLL_GRACE_SECONDS = 1;
+/** Code entry (lookup and approve share the budget, every try counts, hit or miss), per signed-in account, like C7: 10 a
+ *  minute and 20 an hour; the operator is exempt from the hourly one. Plus per client network, so one address cannot spread
+ *  tries over many accounts. */
+export const PAIRING_ENTRY_PER_ACCOUNT_PER_MINUTE = 10;
+export const PAIRING_ENTRY_PER_ACCOUNT_PER_HOUR = 20;
+export const PAIRING_ENTRY_PER_NETWORK_PER_MINUTE = 30;
+
+/**
+ * ADR-0057 D6 to D8, GET /api/compat: the version policy the dashboard compares each server's reported versions with.
+ * For now it is this constant (the versions this repo knows: the agent's package version; the mod has no release yet, so it
+ * mirrors the agent's). Later it would be read from a table the operator edits, so a security advisory needs no deploy; the
+ * response shape is the contract's and does not change.
+ */
+export const COMPAT_POLICY = {
+  mod: { current: "0.1.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
+  agent: { current: "0.1.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
+};
