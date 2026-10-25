@@ -1,4 +1,4 @@
-# ADR-0053: Deploy uptime without extra cost
+# ADR-0054: Deploy uptime without extra cost
 
 Status: **Proposed** (2026-10-24). The owner approves the build (issue #600). Amends ADR-0049 D5 ("expect the same
 short outage on every rollout") and the single-instance note in `infra/aws/ecs.tf:116-120` that cites ADR-0010.
