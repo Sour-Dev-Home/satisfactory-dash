@@ -114,6 +114,33 @@ describe.skipIf(!available)("alert quality summary over alerts.alert_events", ()
     ]);
   });
 
+  it("breaks an identical-timestamp tie by insertion order (fired then resolved at the same instant is a 0 s flap)", async () => {
+    await event(serverA, "power_outage", "c1", "fired", T0);
+    await event(serverA, "power_outage", "c1", "resolved", T0);
+    expect(await alertQualitySummary(pool, NOW)).toEqual([
+      { month: "2026-10", kind: "power_outage", fired: 1, flaps: 1, medianResolveSeconds: 0 },
+    ]);
+  });
+
+  it("a trailing fired after a resolved is open, and an orphan resolved (fired before the cutoff) adds nothing", async () => {
+    await event(serverA, "power_outage", "c1", "fired", "2026-07-30T00:00:00Z");
+    await event(serverA, "power_outage", "c1", "resolved", "2026-08-02T00:00:00Z");
+    await event(serverA, "power_outage", "c1", "fired", T0);
+    expect(await alertQualitySummary(pool, NOW)).toEqual([
+      { month: "2026-10", kind: "power_outage", fired: 1, flaps: 0, medianResolveSeconds: null },
+    ]);
+  });
+
+  it("interpolates an even-count median and rounds to one decimal", async () => {
+    for (const [subject, secs] of [["a", 100], ["b", 201]] as const) {
+      await event(serverA, "fuse_trip", subject, "fired", T0);
+      await event(serverA, "fuse_trip", subject, "resolved", T0 + secs * 1000);
+    }
+    expect(await alertQualitySummary(pool, NOW)).toEqual([
+      { month: "2026-10", kind: "fuse_trip", fired: 2, flaps: 2, medianResolveSeconds: 150.5 },
+    ]);
+  });
+
   it("carries no server, subject or summary: only month, kind and counts", async () => {
     await event(serverA, "power_outage", "secret-subject", "fired", T0);
     const [row] = await alertQualitySummary(pool, NOW);
