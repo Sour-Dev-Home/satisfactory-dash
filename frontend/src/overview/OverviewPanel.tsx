@@ -24,7 +24,10 @@ export function OverviewPanel({
   roster,
   bannerHidden = false,
   onDismiss,
+  unreachable = false,
 }: {
+  /** The status snapshot says the game is unreachable: the cards show its last reading, dimmed (ADR-0052). */
+  unreachable?: boolean;
   overall: { health: Shown; headline: string };
   sections: OverviewSection[];
   players: PlayersState;
@@ -59,7 +62,8 @@ export function OverviewPanel({
     : undefined;
 
   return (
-    <section aria-labelledby="overview-heading" className="grid gap-4">
+    // data-stale: the whole page is the game's last reading while it is unreachable (ADR-0052; index.css).
+    <section aria-labelledby="overview-heading" className="grid gap-4" data-stale={unreachable ? "" : undefined}>
       {/* tabIndex -1: the shell moves focus here after navigation (Shell.tsx). */}
       <h2 id="overview-heading" tabIndex={-1} className="sr-only">
         Overview

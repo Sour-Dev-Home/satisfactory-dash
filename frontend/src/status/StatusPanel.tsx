@@ -11,7 +11,8 @@ import { formatDuration } from "../format";
 export function StatusPanel({ snapshot, refetchFailed = false }: { snapshot: StatusResponse; refetchFailed?: boolean }) {
   const status = snapshot.data;
   return (
-    <section aria-labelledby="status-heading" className="panel">
+    // data-stale: dimmed while the game is unreachable and this is its last reading (ADR-0052; index.css).
+    <section aria-labelledby="status-heading" className="panel" data-stale={snapshot.unreachableSince !== undefined ? "" : undefined}>
       <h3 id="status-heading">Server status</h3>
       <dl>
         <dt>Save</dt>

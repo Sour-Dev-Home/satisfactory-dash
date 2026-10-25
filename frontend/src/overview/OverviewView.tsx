@@ -85,6 +85,7 @@ export function OverviewView() {
         players={players}
         tick={tick}
         age={age}
+        unreachable={status.data?.unreachableSince !== undefined}
         power={powerState}
         roster={roster}
         bannerHidden={dismissible && dismissal.hidden}

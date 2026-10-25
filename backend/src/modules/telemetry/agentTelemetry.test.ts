@@ -87,17 +87,34 @@ describe("an agent-backed server's live routes", () => {
     expect(StatusResponseSchema.parse((await get(t, endpoints.status.route)).body).observedAt).toBe(new Date(T0 + 5000).toISOString());
   });
 
-  it("say the game is unreachable when the agent says so, and recover with the next reachable snapshot", async () => {
+  it("serve the last parts stale with unreachableSince when the agent says the game is unreachable (ADR-0052), and recover with the next reachable snapshot", async () => {
     const t = setup();
     t.send({});
     t.advance(5000);
     t.telemetry.agentIngest!.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(T0 + 5000).toISOString() }, T0 + 5000);
     const down = await get(t, endpoints.status.route);
-    expect(down.status).toBe(503);
-    expect(down.body.error.code).toBe("upstream_unreachable");
+    expect(down.status).toBe(200);
+    const body = StatusResponseSchema.parse(down.body);
+    expect(body).toMatchObject({ stale: true, observedAt: new Date(T0).toISOString(), unreachableSince: new Date(T0 + 5000).toISOString() });
+    for (const route of [endpoints.power.route, endpoints.factory.route]) {
+      const res = await get(t, route);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ stale: true, unreachableSince: new Date(T0 + 5000).toISOString() });
+    }
     t.advance(5000);
     t.send({});
-    expect((await get(t, endpoints.status.route)).status).toBe(200);
+    const back = await get(t, endpoints.status.route);
+    expect(back.status).toBe(200);
+    expect(back.body.stale).toBe(false);
+    expect("unreachableSince" in back.body).toBe(false);
+  });
+
+  it("still answer 503 when the game is unreachable and nothing was ever stored", async () => {
+    const t = setup();
+    t.telemetry.agentIngest!.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(T0).toISOString() }, T0);
+    const down = await get(t, endpoints.status.route);
+    expect(down.status).toBe(503);
+    expect(down.body.error.code).toBe("upstream_unreachable");
   });
 
   it("answer 'no player list' (not an error) when the agent has no player data", async () => {

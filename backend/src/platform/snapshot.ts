@@ -12,6 +12,8 @@ export interface Observation {
   observedAt: string;
   /** true = older than the reading's own cadence allows: last known data. */
   stale: boolean;
+  /** ADR-0052: when the game server stopped being reachable (ISO time); set only with `stale: true`. */
+  unreachableSince?: string;
 }
 
 const OBSERVATION = Symbol("observation");
@@ -24,7 +26,16 @@ export function observed<T extends object>(data: T, observation: Observation): T
   return copy;
 }
 
-export function snapshot<T>(serverId: string, data: T): { serverId: string; observedAt: string; stale: boolean; data: T } {
+export function snapshot<T>(
+  serverId: string,
+  data: T,
+): { serverId: string; observedAt: string; stale: boolean; unreachableSince?: string; data: T } {
   const mark = typeof data === "object" && data !== null ? (data as { [OBSERVATION]?: Observation })[OBSERVATION] : undefined;
-  return { serverId, observedAt: mark?.observedAt ?? new Date().toISOString(), stale: mark?.stale ?? false, data };
+  return {
+    serverId,
+    observedAt: mark?.observedAt ?? new Date().toISOString(),
+    stale: mark?.stale ?? false,
+    ...(mark?.unreachableSince !== undefined ? { unreachableSince: mark.unreachableSince } : {}),
+    data,
+  };
 }

@@ -47,6 +47,7 @@ import type { Cadence } from "@satisfactory-dash/shared";
 import { AgentIngest } from "./services/agentIngest.js";
 import type { MapLiveSink } from "./services/agentIngest.js";
 import { LatestSnapshotStore } from "./services/agentSnapshotStore.js";
+import { withLastGood } from "./services/lastGood.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
@@ -114,12 +115,18 @@ export function createTelemetryServices(
     serverPublicId: options.history?.serverPublicId,
   });
   workers.unshift(poller);
+  // ADR-0052: each live read remembers its last success (memory only) and serves it stale while the game is unreachable.
+  const clock = options.now ?? Date.now;
+  const statusService = new ServerStatusService(ports);
+  const productionService = new ProductionService(ports, resolveUnit);
+  const powerService = new PowerService(ports);
+  const playersService = new PlayersService(ports);
   return {
-    status: new ServerStatusService(ports),
-    production: new ProductionService(ports, resolveUnit),
-    power: new PowerService(ports),
+    status: { getStatus: withLastGood(() => statusService.getStatus(), clock) },
+    production: { getFactoryOverview: withLastGood(() => productionService.getFactoryOverview(), clock) },
+    power: { getPowerOverview: withLastGood(() => powerService.getPowerOverview(), clock) },
     powerHistory: new PowerHistoryService(store, poller, { intervalSeconds, now: options.now }),
-    players: new PlayersService(ports),
+    players: { getPlayers: withLastGood(() => playersService.getPlayers(), clock) },
     // ADR-0027: the same server's stored history, for the history routes (absent without a database).
     ...(observations ? { observations } : {}),
     ...(options.history

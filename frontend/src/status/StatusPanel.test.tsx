@@ -6,6 +6,7 @@ import {
   statusRunning,
   statusSlow,
   statusStale,
+  statusUnreachable,
 } from "@satisfactory-dash/shared/fixtures";
 import { StatusPanel } from "./StatusPanel";
 
@@ -43,6 +44,14 @@ describe("StatusPanel", () => {
   it("keeps showing a stale snapshot's values and its own observedAt", () => {
     render(<StatusPanel snapshot={statusStale} />);
     expect(valueOf("Data").querySelector("time")).toHaveAttribute("dateTime", statusStale.observedAt);
+  });
+
+  it("dims (data-stale) only while the game is unreachable (ADR-0052), still showing the values", () => {
+    const { container, rerender } = render(<StatusPanel snapshot={statusUnreachable} />);
+    expect(container.querySelector("section")).toHaveAttribute("data-stale");
+    expect(valueOf("Save")).toHaveTextContent("ExampleSession");
+    rerender(<StatusPanel snapshot={statusStale} />);
+    expect(container.querySelector("section")).not.toHaveAttribute("data-stale");
   });
 
   it("hides save-specific values when no save is loaded", () => {

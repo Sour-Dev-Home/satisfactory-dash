@@ -12,6 +12,7 @@ import {
   statusPaused,
   statusRunning,
   statusStale,
+  statusUnreachable,
 } from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
 import { renderWithClient } from "../test/render";
@@ -84,6 +85,33 @@ describe("StatusBanners", () => {
     expect(alert).toHaveTextContent("Game server unreachable.");
     expect(alert).not.toHaveTextContent("Request ID");
     expect(alert).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
+  });
+
+  // ADR-0052: a 200 that carries unreachableSince says it with the time, next to the last-known-data line.
+  it("shows game server unreachable since the time when the snapshot says so, and the last-known-data line", async () => {
+    statusReturns(statusUnreachable);
+    renderBanners();
+    const since = new Date(statusUnreachable.unreachableSince).toLocaleString();
+    expect(await screen.findByText(`Game server unreachable since ${since}.`)).toBeInTheDocument();
+    expect(screen.getByText(/Showing last known data from/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says nothing about the game being unreachable for a stale snapshot without unreachableSince", async () => {
+    statusReturns(statusStale);
+    renderBanners();
+    await screen.findByText(/Showing last known data/);
+    expect(screen.queryByText(/Game server unreachable/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the 503 path alongside: a failed refresh over cached unreachable data says it once", async () => {
+    const { client } = renderBanners();
+    await waitFor(() => expect(client.getQueryData(queries.status("default").queryKey)).toEqual(statusRunning));
+    client.setQueryData(queries.status("default").queryKey, statusUnreachable);
+    statusReturns(errorUpstreamUnreachable, 502);
+    await client.refetchQueries({ queryKey: queries.status("default").queryKey });
+    await screen.findByRole("alert");
+    expect(screen.getAllByText(/Game server unreachable/)).toHaveLength(1);
   });
 
   it.each([
