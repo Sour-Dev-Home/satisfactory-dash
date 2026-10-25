@@ -1,6 +1,7 @@
 # ADR-0058: Native game readers in the mod, then remove the FRM dependency and bridge
 
-Status: **proposed** (2026-10-25). Written to carry out the owner's decision recorded in ADR-0051 section 2 ("lets move
+Status: **accepted** (owner, 2026-10-25; answers and the sprint grouping in "Owner's answers" at the end, which override
+Decisions 2 and 6 where they differ). Written to carry out the owner's decision recorded in ADR-0051 section 2 ("lets move
 to removing the dependency now. its a big project and scraps some work but it would be worth it ... Ideally we get
 parity with the info we already use for the dashboard"). Nothing here is built until the owner approves it in the mod
 session; the owner questions are at the end, each with a recommendation.
@@ -307,13 +308,43 @@ note):**
 6. **Test save for drones and trucks:** will the owner build a small save with one drone pair and one truck route on the
    test install? Needed only for the planned layers, not for parity.
 
+## Owner's answers (2026-10-25)
+Verbatim: "Yes, yes, yes wait, no on check job, tolerances fine, we have a save already with drones and trucks mod
+claude knows about it, yes on banners. Can we combine more endpoints under one sprint/test run. the overhead on each
+subagent/task is large for the mod".
+
+1. **Scope:** yes. Parity rows 1-10 only.
+2. **Node agent:** yes. It stays on FRM, frozen, until a later ADR retires it.
+3. **Public mod release:** wait for R0-R4, so no public release ever needs FRM.
+4. **Similarity check: no.** The CPD job is not built and FRM's code is never fetched, by a tool or by anyone. The control
+   is the clean-room process of Decision 6, rules 1-5 (never open FRM's files; allowed sources only; our own names; the
+   incident protocol; a provenance file per reader). This replaces the "similarity check before release" in ADR-0051
+   section 2 and the CPD design in Decision 6. Build task 3 is dropped.
+5. **Tolerances:** approved as written (Decision 3) and amended per reader after the first run if needed. The token
+   thresholds lapse with the check.
+6. **Drone and truck save:** not needed. The save the mod session already uses (the one with drones and trucks, from
+   #651) serves the planned layers.
+
+**Sprints instead of one reader per task (owner: "combine more endpoints under one sprint/test run").** Each sprint is
+one mod-session plan with one header survey, the readers built together, **one combined 30-minute parity run** and **one
+tick-cost run** that cover every reader in the sprint, and one evidence PR to this repo. A reader that misses its
+tolerance in the shared run stays on the bridge, and the rest of the sprint switches. The gates per reader (Decision 3)
+are unchanged; only the runs and the overhead are shared.
+
+| Sprint | Readers | Why together |
+|---|---|---|
+| S1 | R0 the rest of power, R1 players, R4 resource nodes | All low difficulty and exact-match. One survey of small classes, and the cheapest first run of the whole process |
+| S2 | R2a and R2b factory, R3 trains and train routes | The core data, run on the same large save. The parity run compares factory and trains together; R2b's rate semantics are isolated in the evidence, not in a separate run |
+| S3 | R5 rails, R6 conveyors, then R7, the removal release | The geometry and graph layers (R6 joins R2's ids), then the release that deletes the bridge and the dependency |
+
+The first public mod release (answer 3) follows S2, plus R4 from S1.
+
 ## Build tasks (after approval; all in the mod repo unless noted, one PR each, no stacking)
 
 1. Dash repo: commit this ADR, README row, log fragment. This change.
 2. Mod: the clean-room contributor note, the PR-template checkbox, the provenance-file CI check.
-3. Mod: the similarity workflow (CPD pin, ephemeral runner, filtered output); first run on the existing native code
-   (status, power) as the baseline.
-4. Mod and dash docs: per reader, in the order R0 to R6: header-survey note (dash `raw-sources`), reader plus tests and
+3. ~~Mod: the similarity workflow~~ **Dropped** (owner, answer 4).
+4. Mod and dash docs: per **sprint** (S1, S2, S3, as in the owner's answers), not per reader: header-survey note (dash `raw-sources`), reader plus tests and
    provenance (mod), parity and tick-cost runs (mod CI, owner-approved dispatch), evidence and `mod-claims.md` row (dash),
    then the switch PR (mod).
 5. Mod: the removal release R7, then the notes for hosts.
