@@ -241,6 +241,8 @@ const CASES: StateCase[] = [
   // The envelope's own message (the generic branch). "Request ID:" shows for every API error.
   { scenario: "unknown-error-code", shows: /^Something went wrong$/ },
   { scenario: "backend-unreachable", shows: "Couldn't reach the dashboard backend." },
+  // ADR-0054 D4: a deploy gap (Cloudflare's 530 page) says "updating" once, not "couldn't reach the backend".
+  { scenario: "deploy-gap", shows: "The dashboard is updating, back in a moment." },
   { scenario: "contract-drift", shows: /doesn't understand/ },
   // Server management (ADR-0030), operator only: the three stored states, then the add form's refusals.
   { scenario: "servers-manage", path: "/app/servers", shows: "This server's saved address isn't allowed. Edit the host or remove it." },

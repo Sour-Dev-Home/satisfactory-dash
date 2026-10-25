@@ -129,6 +129,18 @@ describe("apiGet", () => {
     expect(error).toMatchObject({ status: 502, path: "/api/servers" });
   });
 
+  it.each([502, 503, 504, 530])("throws BackendUnreachableError for a JSON body that isn't the envelope at %i", async (status) => {
+    server.use(http.get(endpoints.servers.route, () => HttpResponse.json({ message: "edge" }, { status })));
+    const error = await caught(apiGet(endpoints.servers));
+    expect(error).toBeInstanceOf(BackendUnreachableError);
+    expect(error).toMatchObject({ status });
+  });
+
+  it("keeps the API's own 503 envelope an ApiError, not a deploy gap", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(errorUpstreamUnreachable, { status: 503 })));
+    expect(await caught(apiGet(endpoints.status, "default"))).toBeInstanceOf(ApiError);
+  });
+
   it("throws BackendUnreachableError when the request gets no response", async () => {
     server.use(http.get(endpoints.servers.route, () => HttpResponse.error()));
     const error = await caught(apiGet(endpoints.servers));

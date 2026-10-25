@@ -140,12 +140,11 @@ describe("StatusBanners", () => {
     );
   });
 
-  it("shows when the dashboard backend can't be reached", async () => {
+  it("says the dashboard is updating when the backend gives no response at all (ADR-0054 D4)", async () => {
     server.use(http.get(endpoints.status.route, () => HttpResponse.error()));
     renderBanners();
-    expect(await screen.findByRole("alert", undefined, { timeout: 3000 })).toHaveTextContent(
-      "Couldn't reach the dashboard backend.",
-    );
+    expect(await screen.findByText("The dashboard is updating, back in a moment.", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   // The owner's report (2026-10-21): a status read that never answered went back to pending on each
@@ -172,5 +171,38 @@ describe("StatusBanners", () => {
     await waitFor(() => expect(client.isFetching()).toBe(0));
     expect(screen.getByRole("alert")).toBe(notice);
     expect(calls).toBe(2);
+  });
+
+  // ADR-0054 D4: the edge answers while the backend is replaced. One "updating" line, the last data stays, the
+  // "couldn't reach" error stays quiet, and the notice goes once the backend answers.
+  it("says the dashboard is updating on a non-envelope 530 and keeps the last data, then clears", async () => {
+    statusReturns(statusStale);
+    const { client } = renderBanners();
+    expect(await screen.findByText(/Showing last known data from/)).toBeInTheDocument();
+
+    server.use(http.get(endpoints.status.route, () => HttpResponse.text("<!DOCTYPE html><title>Error 1033</title>", { status: 530 })));
+    await client.refetchQueries({ queryKey: queries.status("default").queryKey });
+    expect(await screen.findByText("The dashboard is updating, back in a moment.")).toBeInTheDocument();
+    expect(screen.getAllByText(/back in a moment/)).toHaveLength(1);
+    expect(screen.queryByText(/Couldn't reach the dashboard backend/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Showing last known data from/)).toBeInTheDocument();
+
+    statusReturns(statusRunning);
+    await client.refetchQueries({ queryKey: queries.status("default").queryKey });
+    await waitFor(() => expect(screen.queryByText(/back in a moment/)).not.toBeInTheDocument());
+  });
+
+  it("keeps \"Game server unreachable\" for the API's own 503, with no updating notice", async () => {
+    statusReturns(errorUpstreamUnreachable, 503);
+    renderBanners();
+    expect(await screen.findByText("Game server unreachable.")).toBeInTheDocument();
+    expect(screen.queryByText(/back in a moment/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the old wording for a proxy page that isn't a deploy gap (500)", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.text("oops", { status: 500 })));
+    renderBanners();
+    expect(await screen.findByText("Couldn't reach the dashboard backend.", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByText(/back in a moment/)).not.toBeInTheDocument();
   });
 });

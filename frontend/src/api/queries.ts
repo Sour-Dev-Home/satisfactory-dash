@@ -21,6 +21,7 @@ import {
 import type { z } from "zod";
 import { apiGetAbortable, apiGetQuery } from "./client";
 import { BackendUnreachableError, ContractDriftError, classifyError } from "./errors";
+import { deployGapFor } from "./deployGap";
 import { rememberError } from "./settled";
 
 /** ADR-0005 poll intervals. Settings poll only while a change is pending. */
@@ -140,11 +141,14 @@ export function createQueryClient(): QueryClient {
         // Kept past the refetch that clears it, so a poll of a failed query doesn't blank its notice.
         rememberError(error, query);
         onUnauthorized(error);
+        // ADR-0054 D4: a deploy gap starts the "updating" notice and its retries; an API answer ends them.
+        deployGapFor(client).onQueryError(error);
       },
       // A session check can also end the session without any 401 (e.g. a focus refetch after
       // the cookie expired). Drop the old session's data then too. setQueryData doesn't pass
       // through here, so signOutLocally can't recurse.
       onSuccess: (data, query) => {
+        deployGapFor(client).onQueryAnswered();
         if (keyEquals(query.queryKey, SESSION_KEY) && (data as SessionResponse).authenticated === false) {
           dropSessionData(client);
         }

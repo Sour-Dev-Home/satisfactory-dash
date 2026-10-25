@@ -68,6 +68,23 @@ export class BackendUnreachableError extends Error {
 }
 
 /**
+ * Statuses that something in front of the backend answers while the backend is being replaced (ADR-0054 D4):
+ * 502, 503 and 504 from an edge or proxy, and Cloudflare's 530 (error 1033) when no connector is up.
+ */
+export const DEPLOY_GAP_STATUSES: readonly number[] = [502, 503, 504, 530];
+
+/**
+ * True when the dashboard backend isn't there right now in the way a deploy causes: no response at all (a network
+ * failure) or a gap status, and never the API's own error envelope (that is an ApiError). Any other proxy page
+ * (a 500, a 404) is a fault, not an update.
+ */
+export function isDeployGapError(error: unknown): boolean {
+  return (
+    error instanceof BackendUnreachableError && (error.status === undefined || DEPLOY_GAP_STATUSES.includes(error.status))
+  );
+}
+
+/**
  * A request body failed the endpoint's shared request schema, so it was never sent. Mirrors
  * the backend's validation so the contract is checked in both directions.
  */

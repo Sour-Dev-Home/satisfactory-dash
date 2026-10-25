@@ -523,6 +523,12 @@ export const SCENARIOS = {
   "upstream-invalid": upstreamDown(errorWithDetail),
   "unknown-error-code": upstreamDown(errorUnknownCode),
   "backend-unreachable": { session: { status: 502, text: "Bad Gateway" } },
+  // ADR-0054 D4: no connector is up for the backend, so Cloudflare answers every read with its HTML error page (530).
+  // The last-data case (the notice over a filled page) needs a first answer and then the gap: it is in deployGap.test.tsx.
+  "deploy-gap": {
+    status: { status: 530, text: "<!DOCTYPE html><title>Error 1033</title>" },
+    power: { status: 530, text: "<!DOCTYPE html><title>Error 1033</title>" },
+  },
   "contract-drift": { status: ok({ ...statusRunning, data: { ...statusRunning.data, gamePaused: "no" } }) },
   // Server management (ADR-0030), at /app/servers: one row per stored state (ok, unreadable, refused).
   "servers-manage": { servers: operatorSingle },
