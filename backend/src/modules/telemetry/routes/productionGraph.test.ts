@@ -184,6 +184,51 @@ describe("GET /api/servers/:serverId/production-graph", () => {
     });
   });
 
+  describe("the trainRoutes layer (ADR-0055 PR 6a)", () => {
+    const belt = (id: string, from: string, fromKind: string, to: string, toKind: string) => ({
+      id,
+      kind: "belt",
+      from,
+      fromKind,
+      to,
+      toKind,
+      capacityPerMinute: 60,
+      tier: "Conveyor Belt Mk.1",
+      at: { x: 100, y: 200 },
+    });
+    const conveyors = [
+      belt("Build_ConveyorBeltMk1_C_1", "Build_MinerMk1_C_1", "extractor", "Dock1", "station"),
+      belt("Build_ConveyorBeltMk1_C_2", "Dock2", "station", "Build_StorageContainerMk1_C_2", "storage"),
+    ];
+    const routes = [
+      { recordType: "station", id: "s1", name: "Farm ", platforms: [{ id: "Dock1", mode: "load", items: ["Desc_OreIron_C"] }] },
+      { recordType: "station", id: "s2", name: "Base", platforms: [{ id: "Dock2", mode: "unload", items: ["Desc_OreIron_C"] }] },
+      { recordType: "train", id: "t1", name: "Hauler", stops: ["Farm ", "Base"], items: [] },
+    ];
+    const routesRow = (over: Record<string, unknown> = {}) => layerRow({ data: routes, count: routes.length, ...over });
+    const graphOf = async (trainRoutes: unknown[]) => {
+      const res = await get(build({ layers: { conveyors: [layerRow({ data: conveyors, count: 2 })], trainRoutes } }));
+      expect(res.status).toBe(200);
+      expect(ProductionGraphResponseSchema.parse(res.body)).toEqual(res.body);
+      return res.body.data as { transports: { mode: string; itemClassName: string | null; carriers: number }[]; logistics: string };
+    };
+
+    it("passes the stored layer to the builder: one train edge between the platforms", async () => {
+      const g = await graphOf([routesRow()]);
+      expect(g.logistics).toBe("present");
+      expect(g.transports).toEqual([expect.objectContaining({ mode: "train", itemClassName: "Desc_OreIron_C", carriers: 1 })]);
+    });
+
+    it("no row, a truncated row, a skip or a row failing its schema: logistics notRead, no train edge", async () => {
+      const bad = [[], [routesRow({ truncated: true })], [routesRow({ hash: "skipped:tooManyEdges", data: [], count: 0 })], [routesRow({ data: [{ nope: 1 }] })]];
+      for (const rows of bad) {
+        const g = await graphOf(rows);
+        expect(g.logistics).toBe("notRead");
+        expect(g.transports).toEqual([]);
+      }
+    });
+  });
+
   it("logs one info line of counts and timing, with no names from the game server", async () => {
     const logLines: string[] = [];
     const res = await get(build({ logLines, rows: [layerRow()] }));
