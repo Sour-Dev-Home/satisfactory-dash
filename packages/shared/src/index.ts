@@ -18,5 +18,6 @@ export * from "./map";
 export * from "./bottlenecks";
 export * from "./productionGraph";
 export * from "./agent";
+export * from "./metrics";
 export * from "./endpoints";
 export * from "./ownValue";

@@ -74,6 +74,7 @@ import {
   SnapshotRequestSchema,
   SnapshotResponseSchema,
 } from "./agent";
+import { DeliveryIngestResponseSchema, DeliverySnapshotSchema, MetricsOverviewSchema, MetricsQuerySchema } from "./metrics";
 
 const scoped = (resource: string) => (serverId: string) =>
   `/api/servers/${encodeURIComponent(serverId)}/${resource}`;
@@ -562,6 +563,24 @@ export const endpoints = {
       route: "/agent/v1/world/:layer",
       path: (layer: string) => `/agent/v1/world/${encodeURIComponent(layer)}`,
       response: WorldIngestResponseSchema,
+    },
+  },
+  // ADR-0056 section 2: the operator-only metrics page (not server-scoped). `window` is optional (default 24h).
+  metrics: {
+    overview: {
+      method: "GET",
+      route: "/api/admin/metrics",
+      path: () => "/api/admin/metrics",
+      query: MetricsQuerySchema,
+      response: MetricsOverviewSchema,
+    },
+    // ADR-0056 section 4: the daily delivery snapshot, pushed by a workflow with a bearer secret (not a session).
+    deliveryIngest: {
+      method: "POST",
+      route: "/api/internal/metrics/delivery",
+      path: () => "/api/internal/metrics/delivery",
+      request: DeliverySnapshotSchema,
+      response: DeliveryIngestResponseSchema,
     },
   },
 } as const;
