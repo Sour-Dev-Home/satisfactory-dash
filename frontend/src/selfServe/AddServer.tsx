@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAddServer } from "../api/selfServeWrites";
 import { ServerNameForm } from "./ServerNameForm";
 import { CODE_LIFETIME, addServerErrorText, isLimitRefusal } from "./selfServeText";
@@ -41,6 +41,9 @@ export function AddServer({
           </p>
         </>
       )}
+      <p className="mb-0 text-sm text-muted">
+        Have a code from your server? <Link to="/app/pair">Pair it</Link>.
+      </p>
       <ServerNameForm
         label="Server name"
         placeholder="e.g. Our factory"
