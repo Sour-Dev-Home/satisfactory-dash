@@ -56,6 +56,7 @@ export class LatestSnapshotStore {
   private parts: StoredParts = {};
   private reachable: boolean | undefined;
   private unreachableSinceMs: number | undefined;
+  private stateObservedAtMs: number | undefined;
   private lastReceivedAtMs: number | undefined;
   private lastPowerAtMs: number | undefined;
   private autoPauseReading: { autoPause: boolean; pending: boolean; observedAtMs: number } | undefined;
@@ -67,12 +68,16 @@ export class LatestSnapshotStore {
 
   record(snapshot: RecordedSnapshot): void {
     // ADR-0052: the outage starts at the first unreachable snapshot of a run; a reachable snapshot ends it.
-    if (!snapshot.reachable) {
-      if (this.reachable !== false) this.unreachableSinceMs = snapshot.observedAtMs;
-    } else {
-      this.unreachableSinceMs = undefined;
+    // A late or retried snapshot observed before the one that set the current state must not flip it.
+    if (snapshot.observedAtMs >= (this.stateObservedAtMs ?? -Infinity)) {
+      if (!snapshot.reachable) {
+        if (this.reachable !== false) this.unreachableSinceMs = snapshot.observedAtMs;
+      } else {
+        this.unreachableSinceMs = undefined;
+      }
+      this.reachable = snapshot.reachable;
+      this.stateObservedAtMs = snapshot.observedAtMs;
     }
-    this.reachable = snapshot.reachable;
     this.lastReceivedAtMs = snapshot.receivedAtMs;
     if (!snapshot.reachable) return; // the parts stay as they were, and reads serve them stale (ADR-0052)
     for (const part of ["status", "power", "factory", "players"] as const) {
