@@ -12,7 +12,7 @@
     <header><a href="/">Satis Manager</a></header>
     <main>
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 21 October 2026</p>
+      <p class="updated">Last updated: 24 October 2026</p>
 
       <p>
         Satis Manager, the hosted Satisfactory Dash service, is a free dashboard for a Satisfactory
@@ -87,7 +87,10 @@
           </tr>
           <tr>
             <td>The number of players connected to a server, and its player limit</td>
-            <td>Shown live on the dashboard; not stored. To run the service you asked for.</td>
+            <td>
+              Shown live on the dashboard. The latest reading is kept as a single cached copy, replaced by
+              each new reading and deleted when the server is removed. To run the service you asked for.
+            </td>
           </tr>
           <tr>
             <td>In-game names of players connected to a server you're a member of, when that server reports them</td>
@@ -235,6 +238,10 @@
           history and send alerts. Detailed readings are kept for 48 hours, one-minute averages
           for 7 days, and hourly averages for 1 year. Machine state changes are kept for 30 days.
           It describes the game world, not you. Player names and player counts are never part of it.
+        </li>
+        <li>
+          The latest reading of each server (status, power and factory; never player names): one copy,
+          replaced as new readings arrive, deleted when the server is removed.
         </li>
         <li>
           Alerts (which alert fired or cleared, and when): kept for 90 days. A message that could not

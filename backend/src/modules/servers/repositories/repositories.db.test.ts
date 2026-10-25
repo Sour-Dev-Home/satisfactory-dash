@@ -174,6 +174,18 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
       expect(await count("SELECT count(*) AS n FROM alerts.push_optins WHERE server_id = $1", revived.id)).toBe(0);
     });
 
+    it("soft delete removes the cached last snapshot, and another server keeps its own (ADR-0052)", async () => {
+      const server = await upsertConfiguredServer(pool, { publicId: "snap-revive", displayName: "Snap" });
+      const other = await upsertConfiguredServer(pool, { publicId: "snap-keep", displayName: "Keeper" });
+      for (const id of [server.id, other.id]) {
+        await admin.query("INSERT INTO telemetry.latest_snapshots (server_id, reachable, last_received_at) VALUES ($1, true, now())", [id]);
+      }
+      expect(await softDeleteServer(pool, "snap-revive")).toBe(true);
+      const count = async (id: string) => Number((await admin.query("SELECT count(*) AS n FROM telemetry.latest_snapshots WHERE server_id = $1", [id])).rows[0].n);
+      expect(await count(server.id)).toBe(0);
+      expect(await count(other.id)).toBe(1);
+    });
+
     it("the clean-up migration deletes leftovers of servers removed before the fix and leaves live servers alone (#516)", async () => {
       const gone = await upsertConfiguredServer(pool, { publicId: "old-gone", displayName: "Gone" });
       const live = await upsertConfiguredServer(pool, { publicId: "old-live", displayName: "Live" });

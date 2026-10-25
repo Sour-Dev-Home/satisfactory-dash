@@ -52,8 +52,22 @@ const CADENCE_KEY: Record<SnapshotPart, keyof Cadence> = {
   players: "statusSeconds",
 };
 
+/** ADR-0052 2.3: the persisted slice of the store (never players). */
+export interface PersistedState {
+  reachable: boolean;
+  unreachableSinceMs: number | undefined;
+  lastReceivedAtMs: number;
+  status: StoredParts["status"];
+  power: StoredParts["power"];
+  factory: StoredParts["factory"];
+  autoPause: { autoPause: boolean; pending: boolean; observedAtMs: number } | undefined;
+}
+
 export class LatestSnapshotStore {
   private parts: StoredParts = {};
+  /** Parts loaded from the database: served stale, whatever their age, until a fresh snapshot replaces them. */
+  private readonly restored = new Set<SnapshotPart>();
+  private reachabilityListener: (() => void) | undefined;
   private reachable: boolean | undefined;
   private unreachableSinceMs: number | undefined;
   private stateObservedAtMs: number | undefined;
@@ -69,6 +83,7 @@ export class LatestSnapshotStore {
   record(snapshot: RecordedSnapshot): void {
     // ADR-0052: the outage starts at the first unreachable snapshot of a run; a reachable snapshot ends it.
     // A late or retried snapshot observed before the one that set the current state must not flip it.
+    const reachableBefore = this.reachable;
     if (snapshot.observedAtMs >= (this.stateObservedAtMs ?? -Infinity)) {
       if (!snapshot.reachable) {
         if (this.reachable !== false) this.unreachableSinceMs = snapshot.observedAtMs;
@@ -79,18 +94,73 @@ export class LatestSnapshotStore {
       this.stateObservedAtMs = snapshot.observedAtMs;
     }
     this.lastReceivedAtMs = snapshot.receivedAtMs;
-    if (!snapshot.reachable) return; // the parts stay as they were, and reads serve them stale (ADR-0052)
+    if (!snapshot.reachable) {
+      // the parts stay as they were, and reads serve them stale (ADR-0052)
+      this.notifyIfReachabilityChanged(reachableBefore);
+      return;
+    }
     for (const part of ["status", "power", "factory", "players"] as const) {
       const data = snapshot[part];
       // A late or retried snapshot must not put an older reading over a newer one.
       if (data !== undefined && snapshot.observedAtMs >= (this.parts[part]?.observedAtMs ?? -Infinity)) {
         (this.parts as Record<SnapshotPart, unknown>)[part] = { data, observedAtMs: snapshot.observedAtMs };
+        this.restored.delete(part);
       }
     }
+    this.notifyIfReachabilityChanged(reachableBefore);
     if (snapshot.power !== undefined) this.lastPowerAtMs = snapshot.receivedAtMs;
     if (snapshot.autoPause !== undefined && snapshot.observedAtMs >= (this.autoPauseReading?.observedAtMs ?? -Infinity)) {
       this.autoPauseReading = { autoPause: snapshot.autoPause, pending: snapshot.autoPausePending === true, observedAtMs: snapshot.observedAtMs };
     }
+  }
+
+  /** Called after a snapshot that changed whether the game is reachable (including the first one). One listener. */
+  onReachabilityChange(listener: () => void): void {
+    this.reachabilityListener = listener;
+  }
+
+  private notifyIfReachabilityChanged(before: boolean | undefined): void {
+    if (this.reachable !== before) this.reachabilityListener?.();
+  }
+
+  /**
+   * ADR-0052 2.4: put a row loaded at startup under whatever has arrived since. Only parts that are absent or older
+   * are taken, and each is served stale until a fresh snapshot replaces it; the reachability state is taken only when
+   * no snapshot has set one yet. Players are never restored.
+   */
+  restore(state: PersistedState): void {
+    for (const part of ["status", "power", "factory"] as const) {
+      const loaded = state[part];
+      if (loaded !== undefined && loaded.observedAtMs > (this.parts[part]?.observedAtMs ?? -Infinity)) {
+        (this.parts as Record<SnapshotPart, unknown>)[part] = loaded;
+        this.restored.add(part);
+      }
+    }
+    if (this.reachable === undefined) {
+      this.reachable = state.reachable;
+      this.unreachableSinceMs = state.reachable ? undefined : state.unreachableSinceMs;
+      const times = [state.status, state.power, state.factory].map((p) => p?.observedAtMs ?? -Infinity);
+      this.stateObservedAtMs = Math.max(...times, state.unreachableSinceMs ?? -Infinity);
+      if (this.stateObservedAtMs === -Infinity) this.stateObservedAtMs = undefined;
+    }
+    this.lastReceivedAtMs = Math.max(this.lastReceivedAtMs ?? -Infinity, state.lastReceivedAtMs);
+    if (state.autoPause !== undefined && state.autoPause.observedAtMs > (this.autoPauseReading?.observedAtMs ?? -Infinity)) {
+      this.autoPauseReading = state.autoPause;
+    }
+  }
+
+  /** The state to persist, or undefined before any snapshot arrived (or restored): nothing to write. */
+  persistedState(): PersistedState | undefined {
+    if (this.reachable === undefined || this.lastReceivedAtMs === undefined) return undefined;
+    return {
+      reachable: this.reachable,
+      unreachableSinceMs: this.unreachableSinceMs,
+      lastReceivedAtMs: this.lastReceivedAtMs,
+      status: this.parts.status,
+      power: this.parts.power,
+      factory: this.parts.factory,
+      autoPause: this.autoPauseReading,
+    };
   }
 
   /**
@@ -163,7 +233,7 @@ export class LatestSnapshotStore {
     const staleAfterMs = STALE_AFTER_INTERVALS * this.cadence()[cadenceKey] * 1000;
     return observed(stored.data as object, {
       observedAt: new Date(stored.observedAtMs).toISOString(),
-      stale: this.now() - stored.observedAtMs > staleAfterMs,
+      stale: this.restored.has(part) || this.now() - stored.observedAtMs > staleAfterMs,
     }) as NonNullable<StoredParts[K]>["data"];
   }
 }
