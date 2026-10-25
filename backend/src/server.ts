@@ -15,7 +15,8 @@ import { createMetricsAggregator, createSeriesFlushWorker } from "./platform/met
 import { buildCommit } from "./platform/buildInfo.js";
 import { writeRunFile } from "./platform/runFile.js";
 import { formatErrorDetail } from "./platform/formatErrorDetail.js";
-import { Database, databasePortOf, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
+import { Database, LeaderLock, createLeaderLockClient, databasePortOf, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
+import { LeaderWorkerGroup } from "./platform/leaderWorkers.js";
 import {
   configuredServerEnvNamesInUse,
   createGameServerConnection,
@@ -161,6 +162,11 @@ const worldIngest = database ? new WorldIngestService(database.pool, logger.chil
 // ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
 function buildServer(id: string, displayName: string, untimedConfig: SatisfactoryServerConfig) {
+  // ADR-0054 D3: its pollers run only on the leader, and are one-shot: stepping down swaps in a fresh build (ServerRuntime).
+  return { ...buildPolledServer(id, displayName, untimedConfig), rebuild: (name: string) => buildPolledServer(id, name, untimedConfig) };
+}
+
+function buildPolledServer(id: string, displayName: string, untimedConfig: SatisfactoryServerConfig) {
   // ADR-0032: every call to the game server reports how long it took, so a request's time splits into app and upstream.
   const config: SatisfactoryServerConfig = { ...untimedConfig, onUpstreamCall: recordUpstreamCall };
   const connection = createGameServerConnection(config);
@@ -236,6 +242,9 @@ const directory = new ServerRuntime(entries, {
     logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to stop"),
   // #516: a removed server's live map reading must not be served to a server re-created under the same id.
   onRemoved: (serverId) => mapLiveStore.forget(serverId),
+  // ADR-0054 D3: with a database, a polled server's pollers run only on the leader instance (an agent server's workers run
+  // everywhere: they only hold what reached this instance). Without one this process is always the leader.
+  leaderGated: database !== undefined,
 });
 // Process-wide workers. Started once the server is listening, and stopped on shutdown.
 const workers: { start(): void; stop(): Promise<void> }[] = [];
@@ -275,28 +284,55 @@ logger.info({ pushConfigured: pushConfig.vapid !== null }, "web push VAPID keys 
 // worker below (drains it into Postgres every 60 s). Created unconditionally: without a database it
 // still exists so the middleware has something to record into, just nothing ever flushes it.
 const metricsAggregator = createMetricsAggregator();
-const databaseWorkers = [
-  ...identity.workers,
-  ...(database ? [createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
-  ...(database ? [createSeriesFlushWorker(database.pool, metricsAggregator, logger.child({ worker: "metrics-flush" }))] : []),
+// ADR-0054 D3: workers that are timer-driven and global run on the leader only (two copies would double alerts, Discord
+// sends and purges). They are factories: most workers are one-shot, so each leadership term builds fresh ones.
+type LeaderWorkerFactory = () => { start(): void; stop(): Promise<void> };
+const leaderWorkerFactories: LeaderWorkerFactory[] = [
+  // The session purge worker is restartable (stop clears its timers), so the same instance serves every term.
+  ...identity.workers.map((worker) => () => worker),
+  ...(database ? [() => createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
   // ADR-0031 PR 5b: expires agent commands that ran out and purges old finished ones.
-  ...(database ? [createCommandSweeper(database.pool, logger.child({ worker: "agent-commands" }))] : []),
+  ...(database ? [() => createCommandSweeper(database.pool, logger.child({ worker: "agent-commands" }))] : []),
   // ADR-0027 PR 5: the alert engine evaluates every server's rules from the pollers' last readings and records the
-  // transitions in the alert log. It needs the database up, so it starts with the others. PR 6: with ALERT_DELIVERY
-  // on it also queues each new event for the server's destinations, and the sender delivers them; off (the default)
-  // it queues nothing and sends nothing.
+  // transitions in the alert log. PR 6: with ALERT_DELIVERY on it also queues each new event for the server's
+  // destinations, and the sender delivers them; off (the default) it queues nothing and sends nothing.
   // ADR-0044 (348-2): with push enabled too (VAPID configured), each new event is also queued for the subscriptions of
   // the server's opted-in, active members, and the same sender delivers them.
+  // ADR-0054 D3.4: built on becoming leader, so its agent-silence clock starts then (the restart grace).
   ...(database
     ? [
-        createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), {
-          deliver: alertDelivery === "on",
-          deliverPush: pushEnabled(alertDelivery, pushConfig, secretsKeyring),
-        }),
+        () =>
+          createAlertEvaluator(database.pool, directory, logger.child({ worker: "alerts" }), {
+            deliver: alertDelivery === "on",
+            deliverPush: pushEnabled(alertDelivery, pushConfig, secretsKeyring),
+          }),
       ]
     : []),
   ...(database && alertDelivery === "on" && secretsKeyring
-    ? [createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }), { push: pushConfig })]
+    ? [() => createAlertDelivery(database.pool, secretsKeyring, logger.child({ worker: "alert-delivery" }), { push: pushConfig })]
+    : []),
+];
+// The database workers start once the database is up and the servers are loaded (bootSequence). Metrics flush runs on
+// every instance (each drains only its own counters, and the writes are additive); the leader lock starts the rest when
+// this instance becomes the leader. #526's pending-server sweeper joins the leader factories below.
+const leaderWorkers = new LeaderWorkerGroup(leaderWorkerFactories, logger.child({ worker: "leader" }));
+const databaseWorkers = [
+  ...(database ? [createSeriesFlushWorker(database.pool, metricsAggregator, logger.child({ worker: "metrics-flush" }))] : []),
+  ...(database && databaseConfig
+    ? [
+        new LeaderLock({
+          createClient: () => createLeaderLockClient(databaseConfig),
+          logger: logger.child({ worker: "leader-lock" }),
+          onAcquired: async () => {
+            await directory.setLeader(true);
+            leaderWorkers.start();
+          },
+          onLost: async () => {
+            await leaderWorkers.stop();
+            await directory.setLeader(false);
+          },
+        }),
+      ]
     : []),
 ];
 
@@ -375,7 +411,7 @@ const managementRouters = serverManagement
 // #526 (ADR-0046 C4): self-serve servers that never enrolled within SELF_SERVE_PENDING_TTL_HOURS are removed. Runs whatever
 // SELF_SERVE_ENABLED says (turning creation off must not strand pending servers), started with the other database workers.
 if (database) {
-  databaseWorkers.push(
+  leaderWorkerFactories.push(() =>
     createPendingServerSweeper({
       db: database.pool,
       logger: logger.child({ worker: "pending-servers" }),

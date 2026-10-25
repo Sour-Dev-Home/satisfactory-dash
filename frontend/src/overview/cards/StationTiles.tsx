@@ -15,6 +15,7 @@ export interface OverviewSection {
 
 function shown(state: SectionState): { health: Shown; summary: string } {
   if (state === "pending") return { health: "pending", summary: "Loading…" };
+  if (state === "updating") return { health: "updating", summary: "Back in a moment" };
   if (state === "error") return { health: "unavailable", summary: "Couldn't load this section" };
   return state;
 }

@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG, production, resolveNewest, resolveSha } from "./deploy.mjs";
+import { INPUTS_LABEL } from "./inputs.mjs";
 import {
+  alreadyReleased,
+  inputsFromInspect,
   checkBackendBase,
   checkMigrateBase,
   cloudflaredPin,
@@ -304,9 +307,9 @@ test("resolve: both digests for a sha, checked; newest skips commits without ima
     if (ref.endsWith(`:${OLD_SHA}`)) throw new Error("manifest unknown");
     return inspectOf(ref.includes("-backend:") ? D("7") : D("8"), SHA);
   };
-  assert.deepEqual(resolveSha({ inspect }, SHA), { sha: SHA, backend: D("7"), ops: D("8") });
+  assert.deepEqual(resolveSha({ inspect }, SHA), { sha: SHA, backend: D("7"), ops: D("8"), inputs: "" });
   const logs = [];
-  assert.deepEqual(resolveNewest({ inspect, recentShas: () => [OLD_SHA, SHA], log: (s) => logs.push(s) }), { sha: SHA, backend: D("7"), ops: D("8") });
+  assert.deepEqual(resolveNewest({ inspect, recentShas: () => [OLD_SHA, SHA], log: (s) => logs.push(s) }), { sha: SHA, backend: D("7"), ops: D("8"), inputs: "" });
   assert.match(logs[0], /bbbbbbbb: manifest unknown/);
   assert.throws(() => resolveSha({ inspect }, "main"), /not a full commit sha/);
   assert.throws(() => resolveNewest({ inspect: () => { throw new Error("x"); }, recentShas: () => [SHA], log() {} }), /none of the last/);
@@ -502,4 +505,134 @@ test("the migrate log tail never shows a connection string or the database host 
   assert.match(tail, /postgres:\/\/\[redacted\]/);
   assert.match(tail, /\(\[rds host\]\)/);
   assert.doesNotMatch(tail, /pw@|rds\.amazonaws\.com/);
+});
+
+// --- ADR-0054 D1: build inputs ---
+
+const H = (c) => c.repeat(64);
+const labelled = (digest, sha, inputs, platforms = ["linux/amd64", "linux/arm64"]) => {
+  const i = inspectOf(digest, sha, platforms);
+  for (const [p, img] of Object.entries(i.image)) {
+    const v = typeof inputs === "function" ? inputs(p) : inputs;
+    if (v !== undefined) img.config.Labels[INPUTS_LABEL] = v;
+  }
+  return i;
+};
+const withInputs = (prev, inputs, prevInputs) =>
+  JSON.stringify({
+    sha: SHA, backend: D("3"), ops: D("4"), taskDefinition: ARN(12), ...(inputs === undefined ? {} : { inputs }),
+    previous: prev ? { sha: OLD_SHA, backend: D("5"), ops: D("6"), taskDefinition: ARN(8), ...(prevInputs === undefined ? {} : { inputs: prevInputs }) } : null,
+  });
+
+test("alreadyReleased: equal valid inputs or equal digests match; nothing else does", () => {
+  const rel = { sha: OLD_SHA, backend: D("5"), ops: D("6"), taskDefinition: "x", inputs: H("a") };
+  const t = { sha: SHA, backend: D("3"), ops: D("4") };
+  assert.equal(alreadyReleased(rel, { ...t, inputs: H("a") }), "inputs");
+  assert.equal(alreadyReleased(rel, { ...t, backend: D("5"), ops: D("6") }), "images");
+  assert.equal(alreadyReleased(rel, { ...t, inputs: H("b") }), null, "different inputs");
+  assert.equal(alreadyReleased({ ...rel, inputs: undefined }, { ...t, inputs: H("a") }), null, "a record without inputs never matches");
+  assert.equal(alreadyReleased(rel, t), null, "a target without inputs never matches");
+  assert.equal(alreadyReleased({ ...rel, inputs: "" }, { ...t, inputs: "" }), null);
+  assert.equal(alreadyReleased({ ...rel, inputs: "x" }, { ...t, inputs: "x" }), null, "only a valid hash matches");
+  assert.equal(alreadyReleased({ ...rel, inputs: H("A") }, { ...t, inputs: H("A") }), null);
+  assert.equal(alreadyReleased(null, { ...t, inputs: H("a") }), null, "nothing released yet");
+  assert.equal(alreadyReleased(rel, { ...t, backend: D("5") }), null, "one digest alone is not the same images");
+  assert.equal(alreadyReleased({ ...rel, previous: { inputs: H("c") } }, { ...t, inputs: H("c") }), null, "the previous release's inputs are not production's");
+});
+
+test("inputsFromInspect: the label only when every platform carries the same valid hash", () => {
+  assert.equal(inputsFromInspect(labelled(D("1"), SHA, H("a"))), H("a"));
+  assert.equal(inputsFromInspect(labelled(D("1"), SHA, undefined)), null, "no label");
+  assert.equal(inputsFromInspect(labelled(D("1"), SHA, (p) => (p === "linux/arm64" ? H("a") : undefined))), null, "one platform unlabelled");
+  assert.equal(inputsFromInspect(labelled(D("1"), SHA, (p) => (p === "linux/arm64" ? H("a") : H("b")))), null, "platforms disagree");
+  assert.equal(inputsFromInspect(labelled(D("1"), SHA, "nothex")), null);
+  assert.equal(inputsFromInspect({ manifest: {}, image: { config: { Labels: { [INPUTS_LABEL]: H("c") } }, os: "linux", architecture: "arm64" } }), H("c"), "single-platform shape");
+  assert.equal(inputsFromInspect({}), null);
+  assert.equal(inputsFromInspect(null), null);
+});
+
+test("resolveSha carries the inputs only when both images agree", () => {
+  const reg = (b, o) => ({ inspect: (ref) => (ref.includes("-backend:") ? labelled(D("7"), SHA, b) : labelled(D("8"), SHA, o)) });
+  assert.equal(resolveSha(reg(H("a"), H("a")), SHA).inputs, H("a"));
+  assert.equal(resolveSha(reg(H("a"), H("b")), SHA).inputs, "", "backend and ops disagree");
+  assert.equal(resolveSha(reg(H("a"), undefined), SHA).inputs, "", "ops unlabelled");
+  assert.equal(resolveSha(reg(undefined, undefined), SHA).inputs, "");
+});
+
+test("deploy records the inputs, and a deploy with production's inputs still deploys (production never skips)", async () => {
+  const deps = fakeDeps({ released: withInputs(false, H("a")) });
+  const record = await production(deps, "deploy", { ...target, backend: D("7"), ops: D("8"), inputs: H("a") });
+  assert.ok(ops(deps).includes("ecs update-service"), "rolled out");
+  assert.equal(record.inputs, H("a"));
+  assert.equal(record.previous.inputs, H("a"), "previous keeps its own inputs");
+  assert.equal(JSON.parse(deps.params.get("/satis/deploy/prod/released")).inputs, H("a"));
+});
+
+test("a deploy without valid inputs records none, so the next automatic run cannot skip on it", async () => {
+  for (const inputs of [undefined, "", "zz", H("A")]) {
+    const record = await production(fakeDeps({ released: withInputs(false, H("a")) }), "deploy", { ...target, inputs });
+    assert.equal("inputs" in record, false, String(inputs));
+  }
+});
+
+test("redeploy keeps the released inputs (the same images); it never skips", async () => {
+  const deps = fakeDeps({ released: withInputs(true, H("a"), H("b")) });
+  const record = await production(deps, "redeploy");
+  assert.ok(ops(deps).includes("ecs update-service"));
+  assert.equal(record.inputs, H("a"));
+  assert.equal(record.previous.inputs, H("b"));
+});
+
+test("rollback records the inputs of the release it goes back to, never the newer one's", async () => {
+  // To released.previous: its own inputs, or none.
+  let deps = fakeDeps({ released: withInputs(true, H("a"), H("b")), serviceTd: ARN(12) });
+  let record = await production(deps, "rollback");
+  assert.ok(ops(deps).includes("ecs update-service"), "never skips");
+  assert.equal(record.sha, OLD_SHA);
+  assert.equal(record.inputs, H("b"));
+  deps = fakeDeps({ released: withInputs(true, H("a")), serviceTd: ARN(12) });
+  record = await production(deps, "rollback");
+  assert.equal("inputs" in record, false, "a previous release without inputs stays without");
+  // To a given sha: that sha's resolved inputs.
+  record = await production(fakeDeps({ released: withInputs(true, H("a")) }), "rollback", { sha: OLD_SHA, backend: D("5"), ops: D("6"), inputs: H("c") });
+  assert.equal(record.inputs, H("c"));
+  record = await production(fakeDeps({ released: withInputs(true, H("a")) }), "rollback", { sha: OLD_SHA, backend: D("5"), ops: D("6") });
+  assert.equal("inputs" in record, false);
+});
+
+test("once the service may change, the record loses its inputs until a release is recorded (a revert of a broken deploy still ships)", async () => {
+  // S2's health check fails: production runs S2, the record still names R1, and must no longer carry R1's inputs.
+  const deps = fakeDeps({ released: withInputs(true, H("a"), H("b")), health: 503 });
+  await assert.rejects(production(deps, "deploy", { ...target, backend: D("7"), ops: D("8"), inputs: H("c") }), /did not answer 200/);
+  const rec = JSON.parse(deps.params.get("/satis/deploy/prod/released"));
+  assert.equal("inputs" in rec, false, "inputs cleared");
+  assert.equal(rec.sha, SHA, "the rest of the record is unchanged");
+  assert.equal(rec.previous.inputs, H("b"));
+  // The revert of S2 has R1's inputs: the automatic run must deploy it.
+  assert.equal(alreadyReleased(parseReleased(JSON.stringify(rec)), { sha: OLD_SHA, backend: D("9"), ops: D("a"), inputs: H("a") }), null);
+  // The clear happens before update-service.
+  const order = ops(deps);
+  assert.ok(order.indexOf("ssm put-parameter") < order.indexOf("ecs update-service"));
+  // An alarm rollback and a failed rollout leave it cleared too.
+  for (const opts of [{ alarmAt: (n) => (n > 2 ? "ALARM" : "OK") }, { rollout: () => false }]) {
+    const d = fakeDeps({ released: withInputs(true, H("a")), ...opts });
+    await assert.rejects(production(d, "deploy", { ...target, inputs: H("c") }));
+    assert.equal("inputs" in JSON.parse(d.params.get("/satis/deploy/prod/released")), false);
+  }
+});
+
+test("a deploy that fails before touching the service keeps the record as it was", async () => {
+  const deps = fakeDeps({ released: withInputs(true, H("a")), migrateExit: 1 });
+  await assert.rejects(production(deps, "deploy", { ...target, inputs: H("c") }), /db-migrate exited 1/);
+  assert.equal(JSON.parse(deps.params.get("/satis/deploy/prod/released")).inputs, H("a"));
+  assert.ok(!ops(deps).includes("ssm put-parameter"));
+});
+
+test("nextReleased keeps only valid inputs, and only with the release they belong to", () => {
+  const r1 = nextReleased(null, { sha: "1", backend: "b", ops: "o", taskDefinition: "t", inputs: H("a") });
+  assert.equal(r1.inputs, H("a"));
+  const r2 = nextReleased(r1, { sha: "2", backend: "b2", ops: "o2", taskDefinition: "t2" });
+  assert.equal("inputs" in r2, false, "the new release without a hash does not inherit the old one's");
+  assert.equal(r2.previous.inputs, H("a"));
+  assert.equal("inputs" in nextReleased(null, { sha: "1", backend: "b", ops: "o", taskDefinition: "t", inputs: "bad" }), false);
 });

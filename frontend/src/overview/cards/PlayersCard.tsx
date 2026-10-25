@@ -4,7 +4,7 @@ import { initials, MAX_FIGURES, MAX_NAMES, playersText } from "./players";
 import { PlayerTile } from "./PlayerTile";
 import { Rivets } from "./Rivets";
 
-export type PlayersState = { status: Status } | "pending" | "error";
+export type PlayersState = { status: Status } | "pending" | "updating" | "error";
 
 /**
  * The Players card (the cards brief, item 1; restyled in #442): a square tile per player slot,
@@ -48,6 +48,7 @@ function OnlineNames({ roster }: { roster: ServerPlayersResponse }) {
 
 function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPlayersResponse }) {
   if (state === "pending") return <SkeletonLine label="Loading…" />;
+  if (state === "updating") return <p className="text-muted">Updating…</p>;
   if (state === "error") return <p className="text-muted">Couldn't load the player count.</p>;
   const { status } = state;
   if (!status.isGameRunning) return <p className="text-muted">No game running.</p>;

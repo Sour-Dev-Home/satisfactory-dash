@@ -248,6 +248,8 @@ export const QUERY_NAMES = [
   "telemetry.insertItemSamples",
   "telemetry.insertPowerSamples",
   "telemetry.insertTransitions",
+  "telemetry.latestSnapshots.load",
+  "telemetry.latestSnapshots.upsert",
   "telemetry.purge",
   "telemetry.rollupItemHours",
   "telemetry.rollupItemMinutes",

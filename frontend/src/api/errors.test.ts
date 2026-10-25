@@ -18,10 +18,32 @@ import {
   ContractDriftError,
   RequestValidationError,
   classifyError,
+  isDeployGapError,
 } from "./errors";
 
 const apiError = (body: { error: ConstructorParameters<typeof ApiError>[1] }, status = 500) =>
   new ApiError(status, body.error);
+
+describe("isDeployGapError", () => {
+  it.each([502, 503, 504, 530, undefined])("counts a proxy answer of %s as a deploy gap", (status) => {
+    expect(isDeployGapError(new BackendUnreachableError("/api/x", status))).toBe(true);
+  });
+
+  it.each([400, 404, 500, 501, 521, 524])("does not count a proxy page of %i", (status) => {
+    expect(isDeployGapError(new BackendUnreachableError("/api/x", status))).toBe(false);
+  });
+
+  it("never counts the API's own envelope, even at a gap status", () => {
+    expect(isDeployGapError(apiError(errorUpstreamUnreachable, 503))).toBe(false);
+    expect(isDeployGapError(apiError(errorUpstreamUnreachable, 502))).toBe(false);
+  });
+
+  it("does not count other errors", () => {
+    expect(isDeployGapError(new ContractDriftError("/api/x", 200, []))).toBe(false);
+    expect(isDeployGapError(new Error("boom"))).toBe(false);
+    expect(isDeployGapError(null)).toBe(false);
+  });
+});
 
 describe("classifyError", () => {
   it.each([

@@ -72,4 +72,45 @@ test.describe("on a phone", () => {
     // The tabs don't fit, so this proves the nav itself scrolls (the check isn't vacuous).
     expect(await nav.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   });
+
+  // The last tab was cut at the right edge in the phone screenshots: scrolled to the end it must sit fully
+  // inside the nav and the window, and nothing (a fade mask included) may cover it.
+  for (const scenario of ["default", "servers-manage"] as const) {
+    test(`the last tab is fully visible once the nav is scrolled to its end (${scenario})`, async ({ page, mockApi }) => {
+      await mockApi(scenario);
+      await page.goto("/app");
+      const nav = page.getByRole("navigation", { name: "Main" });
+      await nav.waitFor();
+      const overBy = await nav.evaluate((el) => el.scrollWidth - el.clientWidth);
+      const overflows = overBy > 1;
+      // The six standard tabs fit whole (no scrolling, no fade: the old cut-off "SET"); the operator's seventh scrolls.
+      expect(overflows, scenario === "default" ? `the standard tabs fit at 390 px (over by ${overBy}px)` : "the extra tab overflows, so the check is real").toBe(
+        scenario !== "default",
+      );
+      if (!overflows) expect(await nav.evaluate((el) => getComputedStyle(el).maskImage)).toBe("none");
+      await nav.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+      });
+      const last = nav.getByRole("link").last();
+      await expect(last).toHaveText(scenario === "default" ? /^settings$/i : /^servers$/i);
+      await expect.poll(() => nav.evaluate((el) => Math.round(el.scrollLeft + el.clientWidth - el.scrollWidth))).toBe(0);
+      const box = await last.boundingBox();
+      const navBox = await nav.boundingBox();
+      const width = page.viewportSize()?.width ?? 0;
+      expect(box && navBox).toBeTruthy();
+      expect(box!.x + box!.width, "right edge within the nav").toBeLessThanOrEqual(navBox!.x + navBox!.width + 0.5);
+      expect(box!.x + box!.width, "right edge within the window").toBeLessThanOrEqual(width);
+      // The fade mask must not reach the last tab: at the end only the start is faded (to the left), or none at all.
+      expect(await nav.evaluate((el) => getComputedStyle(el).maskImage)).not.toContain("to right");
+      // The first tab's label is still on the page's text edge (16 px) and the page does not scroll sideways.
+      if (!overflows) {
+        const first = await nav.getByRole("link").first().evaluate((el) => {
+          const label = document.createRange();
+          label.selectNodeContents(el);
+          return label.getBoundingClientRect().x;
+        });
+        expect(first).toBeGreaterThanOrEqual(15);
+      }
+    });
+  }
 });

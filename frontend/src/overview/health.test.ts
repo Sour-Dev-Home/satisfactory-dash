@@ -172,6 +172,16 @@ describe("overallHealth", () => {
     expect(overallHealth([ok, ok, ok])).toEqual({ health: "ok", headline: "All systems operational" });
   });
 
+  it("says updating, not unavailable, for sections in a deploy gap", () => {
+    expect(overallHealth(["updating", "updating", ok])).toEqual({ health: "updating", headline: "Back in a moment" });
+    expect(canDismiss("updating")).toBe(false);
+  });
+
+  it("lets a real warning outrank updating, and an error outrank both", () => {
+    expect(overallHealth(["updating", { health: "degraded", summary: "" }]).health).toBe("degraded");
+    expect(overallHealth(["updating", "error"]).health).toBe("unavailable");
+  });
+
   it("takes the worst section", () => {
     expect(overallHealth([ok, { health: "paused", summary: "" }, { health: "degraded", summary: "" }])).toEqual({
       health: "degraded",

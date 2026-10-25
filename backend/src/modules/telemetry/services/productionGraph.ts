@@ -26,6 +26,7 @@ import {
   type Arc,
   type Filter,
 } from "./connectionGraph.js";
+import { classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
 
 /**
  * The production planner's graph (ADR-0050, Decisions 1, 2 and 8): the whole factory as a coarse graph of machine groups,
@@ -35,7 +36,9 @@ import {
  *
  * Steps: the finder's connection graph; units (one per terminal node); groups (same kind, class, recipe and feeding
  * pass-through component); edges between groups with an inferred item and a rate that says how sure it is; loops
- * (iterative Tarjan); sites (weakly connected components merged within `SITE_MERGE_DISTANCE_M`).
+ * (iterative Tarjan); sites (weakly connected components merged within `SITE_MERGE_DISTANCE_M`). ADR-0055 PR 3 adds
+ * each edge's `flow` and `destination` and each node's `treeKey` (`plannerFlows.ts`); sites are unchanged (ADR-0055
+ * replaces ADR-0053 Decision 2 with the factory reduction).
  */
 
 /** Decision 8: components whose machines' bounding boxes are within this many metres are one site. A starting value, to be
@@ -428,6 +431,24 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
     }
   });
 
+  // ---- flow classes and destinations (ADR-0053 Decision 1, ADR-0055 Decision 3): topology and items only, no rates ----
+  const candList = [...cands.values()];
+  const flowGroups: TreeGroup[] = groups.map((grp) => {
+    const classes = new Set(grp.units.map((u) => (u.building ? u.building.className : u.id.replace(/_\d+$/, ""))));
+    return {
+      key: grp.key,
+      siteKey: "",
+      kind: grp.kind,
+      className: grp.className,
+      buildClass: classes.size === 1 ? (classes.values().next().value as string) : null,
+      recipe: grp.recipe,
+      ingredients: new Set(grp.ing.keys()),
+    };
+  });
+  const flowArcs: FlowArc[] = candList.map((c) => ({ s: c.s, d: c.d, item: c.item?.className ?? null }));
+  const flows = classifyFlows(flowGroups, flowArcs);
+  const destinations = classifyDestinations(flowGroups, flowArcs, flows);
+
   // ---- rates (flow balance) ----
   const byDest = new Map<string, Cand[]>();
   const destsOfSource = new Map<string, Set<number>>();
@@ -443,8 +464,8 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
     else destsOfSource.set(sk, new Set([c.d]));
   }
 
-  const outEdges: PlannerEdge[] = [];
-  for (const c of cands.values()) {
+  const rates: { ratePerMinute: number | null; rate: PlannerEdge["rate"] }[] = [];
+  for (const c of candList) {
     let ratePerMinute: number | null = null;
     let rate: PlannerEdge["rate"] = "unknown";
     if (c.item !== null) {
@@ -479,6 +500,35 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
         }
       }
     }
+    rates.push({ ratePerMinute, rate });
+  }
+  // Excess rate (ADR-0053 Decision 1): the source's output of the item minus its supply edges for it, when every one has
+  // a number and this is its single excess destination for the item; estimated, never measured.
+  const supplyOf = new Map<string, number[]>();
+  const excessOf = new Map<string, number>();
+  candList.forEach((c, i) => {
+    if (c.item === null) return;
+    const sk = `${c.s}|${c.item.className}`;
+    if (flows[i] === "supply") {
+      const list = supplyOf.get(sk);
+      if (list) list.push(i);
+      else supplyOf.set(sk, [i]);
+    } else if (flows[i] === "excess") excessOf.set(sk, (excessOf.get(sk) ?? 0) + 1);
+  });
+  candList.forEach((c, i) => {
+    if (flows[i] !== "excess" || c.item === null || rates[i].ratePerMinute !== null) return;
+    const sk = `${c.s}|${c.item.className}`;
+    const out = groups[c.s].prod.get(c.item.className);
+    const sup = supplyOf.get(sk) ?? [];
+    if (!out || excessOf.get(sk) !== 1 || sup.some((j) => rates[j].ratePerMinute === null)) return;
+    let used = 0;
+    for (const j of sup) used += rates[j].ratePerMinute as number;
+    rates[i] = { ratePerMinute: Math.max(0, out.cur - used), rate: "estimated" };
+  });
+
+  const outEdges: PlannerEdge[] = [];
+  candList.forEach((c, i) => {
+    const { ratePerMinute, rate } = rates[i];
     const chain = c.linkCount === 1 && c.chains.length === 1 && Number.isFinite(c.chains[0]) ? c.chains[0] : null;
     outEdges.push({
       from: groups[c.s].key,
@@ -491,8 +541,10 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
       mixed: c.mixed,
       capacityPerMinute: chain,
       conveyorCount: c.links.length === 1 ? c.links[0].conveyorIds.size : new Set(c.links.flatMap((l) => [...l.conveyorIds])).size,
+      flow: flows[i],
+      destination: destinations[i],
     });
-  }
+  });
   outEdges.sort((a, b) => byString(a.from, b.from) || byString(a.to, b.to) || byString(a.itemClassName ?? "", b.itemClassName ?? "") || byString(a.kind, b.kind));
 
   // ---- loops: strongly connected components of the group graph ----
@@ -610,6 +662,10 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
     });
   }
 
+  // ---- source trees (ADR-0053 Decision 3): bubbles of recipe x upstream closure; sites only scope non-machine bubbles ----
+  groups.forEach((grp, i) => (flowGroups[i].siteKey = grp.siteKey));
+  const treeKeys = sourceTrees(flowGroups, flowArcs, flows);
+
   // ---- caps (deterministic): the largest sites, then the largest groups, then the first edges in key order ----
   sites.sort((a, b) => b.machineCount - a.machineCount || byString(a.key, b.key));
   let keptSites = sites;
@@ -649,6 +705,7 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
         at: n,
         siteKey: grp.siteKey,
         loop: grp.loop,
+        treeKey: treeKeys[grp.idx],
       };
     })
     .sort((a, b) => byString(a.key, b.key));

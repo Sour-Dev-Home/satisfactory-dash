@@ -17,7 +17,9 @@ name: satis
 
 services:
   postgres:
-    image: postgres:18
+    # postgres 18, pinned by its multi-arch index digest (#561), the same one staging runs (infra/aws/staging.tf; a
+    # static test keeps the two equal). Dependabot's docker-compose entry bumps it; carry the bump into staging.tf.
+    image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -85,8 +87,8 @@ services:
       start_period: 10s
 
   cloudflared:
-    # cloudflared 2026.10.1, pinned by its multi-arch index digest: a re-pushed tag can't change it.
-    image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
+    # cloudflared 2026.10.3, pinned by its multi-arch index digest: a re-pushed tag can't change it.
+    image: cloudflare/cloudflared:2026.10.3@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
     profiles: [tunnel]
     restart: unless-stopped
     network_mode: "service:backend"
