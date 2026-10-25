@@ -28,3 +28,10 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+
+  # compose.yaml pins postgres and cloudflared by digest (#561). infra/aws/ holds the same pins (staging.tf, ecs.tf),
+  # which Dependabot can't see: infra/aws/tests/static.test.mjs fails a bump until the PR copies it there too.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly

@@ -17,7 +17,9 @@ name: satis
 
 services:
   postgres:
-    image: postgres:18
+    # postgres 18, pinned by its multi-arch index digest (#561), the same one staging runs (infra/aws/staging.tf; a
+    # static test keeps the two equal). Dependabot's docker-compose entry bumps it; carry the bump into staging.tf.
+    image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}

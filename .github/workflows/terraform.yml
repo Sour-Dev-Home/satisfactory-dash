@@ -10,10 +10,13 @@ on:
     paths:
       - 'infra/aws/**'
       - '.github/workflows/terraform.yml'
+      - 'compose.yaml'
   pull_request:
     paths:
       - 'infra/aws/**'
       - '.github/workflows/terraform.yml'
+      # The static checks compare infra/aws/'s image pins with compose.yaml's, so a compose-only bump runs them (#561).
+      - 'compose.yaml'
 
 permissions:
   contents: read
