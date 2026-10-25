@@ -222,6 +222,11 @@ the privacy page.
 Answered 2026-10-24: all nine as recommended. Items 2 and 4 are the owner's to send (the FRM maintainer, Coffee
 Stain); milestone 1 stays open until their answers are dated in `LEGAL.md`.
 
+**Changed 2026-10-24 (owner):** questions 2 and 4 are answered "don't ask": "not gonna ask, not expected within the
+community". The owner accepts the risk in writing (dated in `LEGAL.md`), so milestone 1 rests on that acceptance and
+the ficsit.app transparency sections, not on answers from FRM's maintainer or Coffee Stain. A `.uplugin` dependency
+names FRM for SMM to install; it does not bundle or redistribute FRM's code.
+
 1. **Pairing:** adopt device-code pairing as the main path, with the config-file code kept as the fallback?
    Recommended: yes.
 2. **FRM licence (legal, yours):** ask FRM's maintainer for a licence statement or written permission to declare FRM
