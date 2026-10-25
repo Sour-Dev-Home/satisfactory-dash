@@ -85,6 +85,18 @@ describe.skipIf(!available)("map.factory_designations against a real Postgres", 
     expect(await store().remove(two, (await store().list(one))[0]!.id, user)).toBe(false);
   });
 
+  it("another server's designation id cannot be updated or collide in the overlap check", async () => {
+    const one = await newServer();
+    const two = await newServer();
+    const a = await create(one, "A", [m("a1", "S", 1, 1)]);
+    const b = await create(two, "B", [m("b1", "S", 2, 2)]);
+    if (a.kind !== "created" || b.kind !== "created") throw new Error("expected created");
+    expect(await store().update(two, a.designation.id, { userId: user, name: "hijack" })).toEqual({ kind: "not_found" });
+    // Server two's designation naming server one's building is no overlap: the check is per server.
+    expect((await store().update(two, b.designation.id, { userId: user, members: [m("a1", "S", 1, 1)] })).kind).toBe("updated");
+    expect((await store().list(one))[0]?.name).toBe("A");
+  });
+
   it("stops at the per-server cap", async () => {
     const server = await newServer();
     for (let i = 0; i < PLANNER_DESIGNATIONS_MAX_PER_SERVER; i++) {

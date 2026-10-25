@@ -170,6 +170,34 @@ describe("designation routes", () => {
     expect(huge.status).toBe(413);
   });
 
+  it("the larger limit covers PUT, a trailing slash and any path case, but not other routes", async () => {
+    const { app } = build();
+    const created = await request(app).post(path).send(body("Small"));
+    const id = created.body.id as string;
+    const members = Array.from({ length: 1000 }, (_, i) => m(`id-${i}-${"x".repeat(120)}`, `Build_${"X".repeat(150)}_C`, i, -i));
+    expect(JSON.stringify({ members }).length).toBeGreaterThan(100_000);
+    const put = await request(app).put(`${path}/${id}`).send({ members });
+    expect(put.status).toBe(200);
+    const slash = await request(app).put(`${path}/${id}/`).send({ name: "Renamed", members });
+    expect(slash.status).toBe(200);
+    const upper = await request(app).put(path.replace("designations", "DESIGNATIONS") + `/${id}`).send({ members });
+    expect([200, 404]).toContain(upper.status);
+    expect(upper.status).not.toBe(413);
+    const other = await request(app).post("/api/servers/default/somewhere/else").send({ members });
+    expect(other.status).not.toBe(201);
+    const big = await request(app).put(`${path}/${id}`).send({ members, pad: "x".repeat(600_000) });
+    expect(big.status).toBe(413);
+    expect(big.body.error.code).toBe("payload_too_large");
+  });
+
+  it("a name-only PUT keeps the designation's own members and is no overlap", async () => {
+    const { app } = build();
+    const created = await request(app).post(path).send(body("One", [m("b1", "S", 1, 1), m(null, "S", 5, 5)]));
+    const res = await request(app).put(`${path}/${created.body.id}`).send({ name: "Two" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ name: "Two", members: [m("b1", "S", 1, 1), m(null, "S", 5, 5)] });
+  });
+
   it("an unknown server is 404 and without a database every route is 503", async () => {
     const { app } = build();
     expect((await request(app).get(endpoints.plannerDesignations.list.path("nope"))).status).toBe(404);
