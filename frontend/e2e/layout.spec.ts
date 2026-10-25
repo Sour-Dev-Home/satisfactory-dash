@@ -81,9 +81,10 @@ test.describe("on a phone", () => {
       await page.goto("/app");
       const nav = page.getByRole("navigation", { name: "Main" });
       await nav.waitFor();
-      const overflows = await nav.evaluate((el) => el.scrollWidth - el.clientWidth > 1);
+      const overBy = await nav.evaluate((el) => el.scrollWidth - el.clientWidth);
+      const overflows = overBy > 1;
       // The six standard tabs fit whole (no scrolling, no fade: the old cut-off "SET"); the operator's seventh scrolls.
-      expect(overflows, scenario === "default" ? "the standard tabs fit at 390 px" : "the extra tab overflows, so the check is real").toBe(
+      expect(overflows, scenario === "default" ? `the standard tabs fit at 390 px (over by ${overBy}px)` : "the extra tab overflows, so the check is real").toBe(
         scenario !== "default",
       );
       if (!overflows) expect(await nav.evaluate((el) => getComputedStyle(el).maskImage)).toBe("none");
