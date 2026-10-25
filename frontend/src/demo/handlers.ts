@@ -6,6 +6,7 @@ import {
 } from "@satisfactory-dash/shared";
 import * as alerts from "./alerts";
 import { demoNow } from "./clock";
+import { demoMetricsOverview } from "./metrics";
 import { del, get, patch, post, put, type Params } from "./router";
 import * as world from "./world";
 
@@ -89,6 +90,14 @@ export const demoHandlers = [
 
   get(endpoints.servers.route, ({ params }) => guarded(params, () => Response.json(world.servers))),
   get(endpoints.serverManagement.list.route, ({ params }) => guarded(params, () => Response.json(world.managedServers))),
+  // ADR-0056: the operator's metrics page. The demo user is the operator; `?window=` is validated like the real route.
+  get(endpoints.metrics.overview.route, ({ params, request }) =>
+    guarded(params, () => {
+      const query = endpoints.metrics.overview.query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!query.success) return error(400, "bad_request", "That metrics window isn't available.");
+      return Response.json(demoMetricsOverview(demoNow(), query.data.window));
+    }),
+  ),
   post(endpoints.serverManagement.testConnection.route, async ({ params, request }) => {
     const body = await bodyOf(request);
     return guarded(params, () => (onThisMachine(body.host) ? Response.json(TEST_PASSED) : LAN_REFUSED()));

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import demo from "../fixtures/metrics-overview.demo.json";
 import { deliverySnapshotSample, metricsOverviewAvailable, metricsOverviewUnavailable } from "../fixtures/metrics";
 import {
   DeliverySnapshotSchema,
@@ -18,16 +17,9 @@ const histogram = (labels: Record<string, string>) => ({
 });
 
 describe("the metrics overview contract", () => {
-  it("parses the demo fixture and the test fixtures", () => {
-    expect(MetricsOverviewSchema.safeParse(demo).success).toBe(true);
+  it("parses the test fixtures", () => {
     expect(MetricsOverviewSchema.safeParse(metricsOverviewAvailable).success).toBe(true);
     expect(MetricsOverviewSchema.safeParse(metricsOverviewUnavailable).success).toBe(true);
-  });
-
-  it("has no personal data in the demo fixture: only invented ids and example links", () => {
-    const text = JSON.stringify(demo);
-    expect(text).not.toMatch(/@/);
-    expect(demo.links.statusPage).toContain("example.com");
   });
 
   it("refuses a label value with @, whitespace, nothing or over 200 characters", () => {

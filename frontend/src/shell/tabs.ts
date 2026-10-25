@@ -1,3 +1,5 @@
+import { IS_DEMO } from "../demo/mode";
+
 /** One tab of the signed-in app's main nav. */
 export interface Tab {
   to: string;
@@ -25,12 +27,27 @@ const AFTER_PLANNER: Tab[] = [
 /** ADR-0030: the operator only (hiding it is UX; the backend enforces). */
 export const SERVERS_TAB: Tab = { to: "/app/servers", label: "Servers" };
 
-/** The tabs a user sees, in order. `plannerInNav` is a parameter only so tests can show the post-PR-6 nav. */
-export function visibleTabs(canManageServers: boolean, plannerInNav: boolean = PLANNER_IN_NAV): Tab[] {
+/**
+ * ADR-0056: the operator's metrics page. In the real app it is never a tab, even for the operator (the owner's "not
+ * easily reachable"): the command bar and the Servers page link to it. Only the demo build shows it, so visitors find it
+ * (Q1). The route and the command are separate (Shell, paletteCommands).
+ */
+export const METRICS_TAB: Tab = { to: "/app/metrics", label: "Metrics" };
+
+/**
+ * The tabs a user sees, in order. `plannerInNav` and `metricsInNav` are parameters only so tests can show the other
+ * navs; `metricsInNav` is the demo build, and the tab is still the operator's.
+ */
+export function visibleTabs(
+  canManageServers: boolean,
+  plannerInNav: boolean = PLANNER_IN_NAV,
+  metricsInNav: boolean = IS_DEMO,
+): Tab[] {
   return [
     ...BEFORE_PLANNER,
     ...(plannerInNav ? [PLANNER_TAB] : []),
     ...AFTER_PLANNER,
     ...(canManageServers ? [SERVERS_TAB] : []),
+    ...(canManageServers && metricsInNav ? [METRICS_TAB] : []),
   ];
 }

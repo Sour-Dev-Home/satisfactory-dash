@@ -1,6 +1,6 @@
 import type { DeliverySnapshot, MetricsOverview } from "../src/index";
 
-/** ADR-0056 PR 2: invented values for the metrics contract, for tests. The demo's own data is `metrics-overview.demo.json`. */
+/** ADR-0056 PR 2: invented values for the metrics contract, for tests. The demo's own data lives in the frontend's demo world (`frontend/src/demo/metrics.ts`), which parses it with the schema. */
 
 export const deliverySnapshotSample = {
   schemaVersion: 2,

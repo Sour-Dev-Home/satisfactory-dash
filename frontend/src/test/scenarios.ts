@@ -1,5 +1,9 @@
 import { endpoints, ownValue, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
 import {
+  errorForbidden,
+  errorServiceUnavailable,
+  metricsOverviewAvailable,
+  metricsOverviewUnavailable,
   agentEnrollmentCodeResponse,
   agentRevokeResponse,
   agentStatusEnrolled,
@@ -150,6 +154,8 @@ export const ROUTES = {
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
+  // ADR-0056: the operator's metrics page (the window is a query string, which doesn't change the route).
+  metrics: endpoints.metrics.overview,
   mapResourceNodes: endpoints.map.worldLayer,
   // ADR-0038 M6: the live trains and stations (its own endpoint).
   mapLive: endpoints.map.live,
@@ -257,6 +263,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapLive: ok(mapLiveResponse),
+  metrics: ok(metricsOverviewAvailable),
   settings: ok(settingsEditable),
   setAutoPause: ok(settingsEditable),
   managedServers: ok(managedServersAllStates),
@@ -418,6 +425,44 @@ const googleAccount = ok({ ...sessionAuthenticatedWithAccount, signInMethods: ["
 
 /** The operator with one server: the Servers tab shows (ADR-0030). */
 const operatorSingle = ok({ ...serversSingle, canManageServers: true });
+
+/**
+ * ADR-0056: the metrics page with every table filled: all four latency groups, both counter groups, the worst servers,
+ * and an alert month per kind. Built from the shared metrics fixture's own rows, so a contract change shows here.
+ */
+const metricsFull = (() => {
+  const base = metricsOverviewAvailable;
+  const [histogram] = base.system.histograms;
+  const [counter] = base.system.counters;
+  return {
+    ...base,
+    window: "24h" as const,
+    system: {
+      ...base.system,
+      histograms: [
+        histogram,
+        { ...histogram, labels: { route: "/api/health", status_class: "5xx" }, count: 3, p50Ms: 200, p95Ms: 500, p99Ms: 500 },
+        { ...histogram, metric: "http.server.upstream.duration", labels: { api: "frm" }, p50Ms: 10, p95Ms: 50, p99Ms: 1000 },
+        { ...histogram, metric: "db.client.operation.duration", labels: { query: "history.insertPowerSamples" }, p50Ms: 2, p95Ms: 10, p99Ms: 20 },
+        { ...histogram, metric: "satis.poller.lag", labels: { group: "status" }, p50Ms: 1000, p95Ms: 2000, p99Ms: null },
+      ],
+      counters: [
+        { ...counter, metric: "satis.history.rows_written", labels: {}, total: 41230 },
+        counter,
+        { ...counter, metric: "satis.alerts.events_dropped", labels: {}, total: 0 },
+      ],
+      servers: [...base.system.servers, { ...base.system.servers[0], server: "def456" }],
+    },
+    alerts: {
+      ...base.alerts,
+      months: [
+        ...base.alerts.months,
+        { month: "2026-02", kind: "power_outage", fired: 3, flaps: 0, medianResolveSeconds: 1260 },
+        { month: "2026-02", kind: "stopped_machines", fired: 5, flaps: 1, medianResolveSeconds: 2400 },
+      ],
+    },
+  };
+})();
 
 const upstreamDown = (error: unknown): Partial<Record<RouteKey, MockResponse>> => ({
   status: fail(502, error),
@@ -606,6 +651,15 @@ export const SCENARIOS = {
   "contract-drift": { status: ok({ ...statusRunning, data: { ...statusRunning.data, gamePaused: "no" } }) },
   // Server management (ADR-0030), at /app/servers: one row per stored state (ok, unreadable, refused).
   "servers-manage": { servers: operatorSingle },
+  // ADR-0056: the operator's metrics page: every table filled, each section's reason for having no data, a 429, and a failing read.
+  "metrics": { servers: operatorSingle, metrics: ok(metricsFull) },
+  "metrics-unavailable": { servers: operatorSingle, metrics: ok(metricsOverviewUnavailable) },
+  "metrics-rate-limited": { servers: operatorSingle, metrics: { status: 429, body: errorRateLimited, headers: { "Retry-After": "60" } } },
+  "metrics-error": { servers: operatorSingle, metrics: fail(503, errorServiceUnavailable) },
+  // A signed-in user who isn't the operator: the page behaves as an unknown one.
+  "metrics-forbidden": { metrics: fail(403, errorForbidden) },
+  "metrics-slow": { servers: operatorSingle, metrics: { ...ok(metricsFull), delay: 800 } },
+  "metrics-loading": { servers: operatorSingle, metrics: { ...BASE.metrics, delay: "never" } },
   // ADR-0031: a stored connection plus a server read through the game PC's agent.
   // Its switch back answers for that same server, so the success notice names it (ui review).
   "servers-with-agent": {

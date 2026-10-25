@@ -81,6 +81,16 @@ test("every screen works offline: enter, overview, power, factory, settings, log
   await expect(page.getByRole("alert")).toContainText("The demo doesn't change servers.");
   await expectNoAxeViolations(page, testInfo);
 
+  // The operator's metrics page (ADR-0056): a visible tab in the demo only, with its made-up numbers labelled as such.
+  await nav.getByRole("link", { name: "Metrics" }).click();
+  await expect(page).toHaveURL(/\/app\/metrics/);
+  await expect(page.getByText(/Sample data: made-up numbers/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "System" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Alert quality" })).toBeVisible();
+  await page.getByRole("button", { name: "7 d" }).click();
+  await expect(page.getByRole("button", { name: "7 d" })).toHaveAttribute("aria-pressed", "true");
+  await expectNoAxeViolations(page, testInfo);
+
   // The account menu (ADR-0025): axe-checked open, then Sign out. The demo offers no Google.
   await page.getByRole("button", { name: "Account" }).click();
   await expect(page.getByRole("button", { name: "Sign out everywhere" })).toBeVisible();

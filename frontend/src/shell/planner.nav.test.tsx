@@ -31,7 +31,7 @@ describe("the Planner tab", () => {
 
   it("is in the command bar's pages, after Factory", () => {
     const pages = paletteGroups({ isOperator: true, serverCount: 1, labels: new Map() }).find((g) => g.heading === "Pages");
-    expect(pages?.commands.map((c) => c.label)).toEqual(["Overview", "Power", "Factory", "Planner", "Map", "Settings", "Servers"]);
+    expect(pages?.commands.map((c) => c.label)).toEqual(["Overview", "Power", "Factory", "Planner", "Map", "Settings", "Servers", "Metrics"]);
     expect(pages?.commands.find((c) => c.label === "Planner")?.to).toBe("/app/planner");
   });
 

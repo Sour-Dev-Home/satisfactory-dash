@@ -39,6 +39,12 @@ contract needs to grow, not that this module should special-case a backend detai
   label metrics in `layoutSite.ts` are tied to the `text-sm`/`text-xs` classes. `build-output.spec.ts` checks that
   dagre sits in that one chunk, off the entry chunk, under 100 kB gzip; `e2e/planner-graph.spec.ts` is the CSP gate.
   A layout over 100 ms on a real site is Decision 3's trigger to move `layoutSite` into a worker.
+  The metrics page (ADR-0056, `src/metrics/`, `/app/metrics`) is the operator's and is never a tab in the real app, even
+  for the operator (`METRICS_TAB` in `shell/tabs.ts` shows only when `IS_DEMO`, so demo visitors find it): the doors are
+  the command bar's operator-only "Metrics" entry and `MetricsLink` on the Servers page. `Shell` routes it only when
+  `canManageServers`, so anyone else gets the unknown-page redirect; a 403 from the read redirects the same way, a 429
+  is a calm retry note, and a 401 stays central. It has no polling (Refresh, 60 s stale time), shows percentiles as the
+  bucket upper bounds they are (`metricsText.ts`), and the demo's data is `src/demo/metrics.ts` ("Sample data").
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`

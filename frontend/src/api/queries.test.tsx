@@ -31,6 +31,13 @@ describe("query options", () => {
     });
   });
 
+  it("reads the operator's metrics once, fresh for a minute, with no polling (ADR-0056)", () => {
+    const options = queries.metrics("24h");
+    expect(options.queryKey).toEqual(["metrics", "24h"]);
+    expect(options.staleTime).toBe(60_000);
+    expect("refetchInterval" in options).toBe(false);
+  });
+
   it("reads the agent's status every 30 s, the rate its last-seen time moves (ADR-0031 PR 7)", () => {
     expect(queries.agentStatus("default").refetchInterval).toBe(30_000);
   });

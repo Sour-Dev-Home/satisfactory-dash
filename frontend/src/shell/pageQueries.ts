@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { sinceYesterdayQueries } from "../factory/FactoryHistory";
+import { DEFAULT_METRICS_WINDOW } from "../metrics/metricsText";
 import { asPageQuery, type PageQuery } from "../ui/usePageReveal";
 
 /**
@@ -34,6 +35,8 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
       ].map(asPageQuery);
     case "/app/servers":
       return [queries.managedServers()].map(asPageQuery);
+    case "/app/metrics":
+      return [queries.metrics(DEFAULT_METRICS_WINDOW)].map(asPageQuery);
     default:
       return [];
   }
