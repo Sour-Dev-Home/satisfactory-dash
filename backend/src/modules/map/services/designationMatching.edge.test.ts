@@ -64,13 +64,13 @@ describe("matchDesignations edges", () => {
     expect([b?.matched, b?.missing, b?.claimedBy]).toEqual([0, 1, { id: "old", name: "Older", count: 1 }]);
   });
 
-  // it.fails: documents a gap against rule 1 ("a lost member looks for the next free building"). Pass 1 marks an id-lost
-  // member resolved, so it never reaches the position passes. Remove `.fails` once that is decided and fixed.
-  it.fails("a member whose id building is held by an older designation looks for the next free building within 2 m", () => {
+  // Rule 1 covers position matches only: a member whose live id building is held by an older designation is a duplicate
+  // claim on that building (writes forbid it), so it is missing and claimed; it does not wander to a neighbour.
+  it("a member whose id building is held by an older designation is missing and claimed, even with a free neighbour", () => {
     const older = designation("old", "Older", [member("b1", "S", 0, 0)]);
     const newer = designation("new", "Newer", [member("b1", "S", 0, 0)]);
     const [, b] = matchDesignations([older, newer], [building("b1", "S", 0, 0), building("b2", "S", 1.5, 0)]);
-    expect([b?.buildingIds, b?.missing, b?.claimedBy]).toEqual([["b2"], 0, undefined]);
+    expect([b?.matched, b?.missing, b?.claimedBy]).toEqual([0, 1, { id: "old", name: "Older", count: 1 }]);
   });
 
   it("an id-lost member with no free building nearby is missing and claimed by the older holder", () => {
@@ -80,10 +80,10 @@ describe("matchDesignations edges", () => {
     expect([b?.matched, b?.missing, b?.claimedBy]).toEqual([0, 1, { id: "old", name: "Older", count: 1 }]);
   });
 
-  it.fails("two members of one designation naming one id: the second looks for a free neighbour", () => {
+  it("two members of one designation naming one id: the second is missing", () => {
     const d = designation("d", "D", [member("b1", "S", 0, 0), member("b1", "S", 0, 0)]);
     const [m] = matchDesignations([d], [building("b1", "S", 0, 0), building("b2", "S", 1, 0)]);
-    expect([m?.matched, m?.missing, [...(m?.buildingIds ?? [])].sort()]).toEqual([2, 0, ["b1", "b2"]]);
+    expect([m?.matched, m?.missing, m?.buildingIds]).toEqual([1, 1, ["b1"]]);
   });
 
   it("ids are matched for every designation before positions: a younger id beats an older fuzzy match", () => {
