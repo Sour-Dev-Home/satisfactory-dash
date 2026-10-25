@@ -385,11 +385,19 @@ export function foldStorage(nodes: readonly PlannerNode[], parts: readonly FlowP
  */
 function dominanceChildren(all: ReadonlyMap<string, PlannerNode>, visible: ReadonlySet<string>): Map<string, string[]> {
   const children = new Map<string, string[]>();
+  const parentOf = new Map<string, string>();
   for (const key of visible) {
     let p = all.get(key)?.collapseUnder ?? null;
     let guard = 0;
     while (p !== null && !visible.has(p) && guard++ < 64) p = all.get(p)?.collapseUnder ?? null;
     if (p === null || p === key || !visible.has(p)) continue;
+    parentOf.set(key, p);
+  }
+  for (const [key, p] of parentOf) {
+    // A cycle in the data (never a real post-dominator tree) would let a collapsed card hide itself: drop its edges.
+    let up: string | undefined = p;
+    for (let steps = 0; up !== undefined && up !== key && steps <= parentOf.size; steps++) up = parentOf.get(up);
+    if (up === key) continue;
     const list = children.get(p);
     if (list === undefined) children.set(p, [key]);
     else list.push(key);
