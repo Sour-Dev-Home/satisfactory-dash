@@ -1,7 +1,7 @@
 # ADR-0051: Public release plan: device-code pairing, FRM, milestones, hosting after AWS, no email
 
-Status: **proposed**, pending the owner's answers to the questions at the end. Nothing here is built until the
-owner approves it. The legal items (FRM's licence, Coffee Stain's terms) are the owner's to clear; this ADR
+Status: **accepted** (2026-10-24): the owner took every recommendation in "Questions for the owner" ("yes on 1",
+answering the whole list). The legal items (FRM's licence, Coffee Stain's terms) are the owner's to clear; this ADR
 records them as blockers and does not decide them.
 
 Paths are under `backend/src/modules/` unless they start with a top-level directory. "The mod" is the companion
@@ -213,12 +213,14 @@ the privacy page.
 
 ## Revisit when
 
-- The owner answers the questions below (status becomes accepted, or sections change).
 - FRM's maintainer states a licence, or Coffee Stain publishes terms.
 - Oracle A1 capacity is unavailable by 2027-01-05 (switch to option B).
 - C2 refusals in the capped beta show demand above 25 servers (re-derive C2 from #515's bound and the load report).
 
 ## Questions for the owner
+
+Answered 2026-10-24: all nine as recommended. Items 2 and 4 are the owner's to send (the FRM maintainer, Coffee
+Stain); milestone 1 stays open until their answers are dated in `LEGAL.md`.
 
 1. **Pairing:** adopt device-code pairing as the main path, with the config-file code kept as the fallback?
    Recommended: yes.
