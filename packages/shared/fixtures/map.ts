@@ -73,13 +73,13 @@ export const railsWorldResponseTruncated = {
 export const resourceNodesSample = {
   observedAt: "2026-09-27T04:54:27.000Z",
   data: [
-    { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false },
-    { type: "SAM", purity: "impure", nodeType: "node", x: 1619, y: 1038, exploited: false },
-    { type: "SAM", purity: "pure", nodeType: "node", x: 1629, y: 654, exploited: false },
-    { type: "Limestone", purity: "normal", nodeType: "node", x: -2808, y: -421, exploited: false },
-    { type: "Coal", purity: "normal", nodeType: "node", x: -996, y: -1468, exploited: true },
-    { type: "Iron Ore", purity: "pure", nodeType: "node", x: -1106, y: -1352, exploited: true },
-    { type: "Nitrogen Gas", purity: "pure", nodeType: "frackingSatellite", x: 2125, y: 1381, exploited: false },
+    { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false, className: "Desc_LiquidOil_C" },
+    { type: "SAM", purity: "impure", nodeType: "node", x: 1619, y: 1038, exploited: false, className: "Desc_SAM_C" },
+    { type: "SAM", purity: "pure", nodeType: "node", x: 1629, y: 654, exploited: false, className: "Desc_SAM_C" },
+    { type: "Limestone", purity: "normal", nodeType: "node", x: -2808, y: -421, exploited: false, className: "Desc_Stone_C" },
+    { type: "Coal", purity: "normal", nodeType: "node", x: -996, y: -1468, exploited: true, className: "Desc_Coal_C" },
+    { type: "Iron Ore", purity: "pure", nodeType: "node", x: -1106, y: -1352, exploited: true, className: "Desc_OreIron_C" },
+    { type: "Nitrogen Gas", purity: "pure", nodeType: "frackingSatellite", x: 2125, y: 1381, exploited: false, className: "Desc_NitrogenGas_C" },
   ],
 } satisfies ResourceNodesWorldIngestRequest;
 

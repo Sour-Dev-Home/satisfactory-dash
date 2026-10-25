@@ -34,6 +34,9 @@ export function mapResourceNode(raw: RawResourceNode): ResourceNode | undefined 
     x,
     y,
     exploited: raw.Exploited,
+    // ADR-0055 PR 2: kept when FRM sends one the contract accepts (non-empty, <= 200 chars); otherwise omitted
+    // rather than failing the layer, like an older row.
+    ...(raw.ClassName !== undefined && raw.ClassName.length > 0 && raw.ClassName.length <= 200 ? { className: raw.ClassName } : {}),
   };
 }
 

@@ -97,6 +97,43 @@ describe("mapResourceNodes (ADR-0038 M2, architect follow-up on #367)", () => {
     expect(mapResourceNode({ ...baseNode, location: { x: boundaryCm, y: -boundaryCm, z: 0 } })).toMatchObject({ x: 1_000_000, y: -1_000_000 });
   });
 
+  it("keeps FRM's ClassName as className: the real capture's names, by item (ADR-0055 PR 2)", () => {
+    const raw = z.array(RawFrmResourceNodeSchema).parse(readCaptureArray(CAPTURE_PATH));
+    const pairs = new Set(mapResourceNodes(raw).data.map((n) => `${n.type}=${n.className}`));
+    expect([...pairs].sort()).toEqual([
+      "Coal=Desc_Coal_C",
+      "Crude Oil=Desc_LiquidOil_C",
+      "Iron Ore=Desc_OreIron_C",
+      "Limestone=Desc_Stone_C",
+      "Nitrogen Gas=Desc_NitrogenGas_C",
+      "SAM=Desc_SAM_C",
+      "Water=Desc_Water_C",
+    ]);
+  });
+
+  it("omits className (no key) when FRM sent none, empty, or one over the contract's 200-char bound, and the layer still parses", () => {
+    const none = mapResourceNode(baseNode);
+    expect(none).toBeDefined();
+    expect("className" in none!).toBe(false);
+    expect("className" in mapResourceNode({ ...baseNode, ClassName: "" })!).toBe(false);
+    const tooLong = mapResourceNode({ ...baseNode, ClassName: "D".repeat(201) })!;
+    expect("className" in tooLong).toBe(false);
+    expect(mapResourceNode({ ...baseNode, ClassName: "D".repeat(200) })?.className).toHaveLength(200);
+    expect(ResourceNodesLayerDataSchema.safeParse([none, tooLong]).success).toBe(true);
+  });
+
+  it("a non-string ClassName (null, number) must not fail the raw parse: one odd node would otherwise throw the whole layer", () => {
+    for (const bad of [null, 5, {}]) {
+      expect(z.array(RawFrmResourceNodeSchema).safeParse([{ ...baseNode, ClassName: bad }]).success).toBe(true);
+    }
+  });
+
+  it("an old stored row without className still parses against the contract", () => {
+    const oldRow = { type: "Iron Ore", purity: "pure", nodeType: "node", x: 1, y: 2, exploited: false };
+    expect(ResourceNodesLayerDataSchema.safeParse([oldRow]).success).toBe(true);
+    expect(ResourceNodesLayerDataSchema.parse([oldRow])[0]).not.toHaveProperty("className");
+  });
+
   it("maps an empty array to an empty array without throwing, and reports 0 dropped", () => {
     expect(mapResourceNodes([])).toEqual({ data: [], dropped: 0 });
   });
