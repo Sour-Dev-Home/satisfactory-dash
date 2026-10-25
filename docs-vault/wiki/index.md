@@ -41,6 +41,9 @@ added or removed.
 - [`runbooks/agent-app.md`](./runbooks/agent-app.md) — the edge agent program itself (ADR-0031 PR 6): first setup in order
   (set the game's tokens at a hidden prompt, `check`, enrol, run), where the DPAPI-protected store and the 7-day logs
   live, the Scheduled Task and its logon-type trap, what it sends, and troubleshooting by exit code and log event.
+- [`runbooks/agent-linux.md`](./runbooks/agent-linux.md) — the same agent as a hardened systemd service (ADR-0057 Decision 2
+  step 4): the dedicated `satis-agent` user (not `DynamicUser=`, and why), install in order, the halted state and
+  `Restart=`, updating by hand, logs via `journalctl`.
 - [`runbooks/agent-switch-over.md`](./runbooks/agent-switch-over.md) — the owner's switch-over from a backend-polled server
   to the edge agent (ADR-0031 PR 8): the checklist, the order (agent from the checkout, `set-tokens`, `check`, a code in
   Settings, `enroll`, the Scheduled Task), the parity week (history and alerts against the week before), retiring the local
