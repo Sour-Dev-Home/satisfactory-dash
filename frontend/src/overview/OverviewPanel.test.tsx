@@ -18,6 +18,15 @@ function baseProps(overrides: Partial<Parameters<typeof OverviewPanel>[0]> = {})
 
 const healthHeading = () => screen.getByRole("heading", { name: "Health" });
 
+describe("OverviewPanel: unreachable game (ADR-0052)", () => {
+  it("dims the page (data-stale) only when told the game is unreachable", () => {
+    const { container, rerender } = render(<OverviewPanel {...baseProps({ unreachable: true })} />);
+    expect(container.querySelector("section")).toHaveAttribute("data-stale");
+    rerender(<OverviewPanel {...baseProps()} />);
+    expect(container.querySelector("section")).not.toHaveAttribute("data-stale");
+  });
+});
+
 describe("OverviewPanel: Hide-button focus management", () => {
   it("moves focus to the Health heading once the click's own hidden transition lands", () => {
     const onDismiss = vi.fn();

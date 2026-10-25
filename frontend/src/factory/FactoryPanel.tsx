@@ -52,7 +52,8 @@ export function FactoryPanel({
   const showInputs = buildings.some((b) => b.ingredients !== undefined);
 
   return (
-    <section aria-labelledby="factory-heading" className="panel">
+    // data-stale: dimmed while the game is unreachable and this is its last reading (ADR-0052; index.css).
+    <section aria-labelledby="factory-heading" className="panel" data-stale={snapshot.unreachableSince !== undefined ? "" : undefined}>
       <h3 id="factory-heading">Factory</h3>
       {snapshot.stale && <p>Showing last known factory data from {formatTime(snapshot.observedAt)}.</p>}
 

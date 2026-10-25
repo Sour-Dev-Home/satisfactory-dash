@@ -6,6 +6,7 @@ import {
   factoryMixed,
   factoryOldBackend,
   factoryUnknownItem,
+  factoryUnreachable,
 } from "@satisfactory-dash/shared/fixtures";
 import { FactoryPanel } from "./FactoryPanel";
 
@@ -24,6 +25,13 @@ function pick(label: string) {
 }
 
 describe("FactoryPanel", () => {
+  it("dims (data-stale) only while the game is unreachable (ADR-0052)", () => {
+    const { container, rerender } = render(<FactoryPanel snapshot={factoryUnreachable} />);
+    expect(container.querySelector("section")).toHaveAttribute("data-stale");
+    rerender(<FactoryPanel snapshot={{ ...factoryMixed, stale: true }} />);
+    expect(container.querySelector("section")).not.toHaveAttribute("data-stale");
+  });
+
   it("summarizes the factory, taking the backed-up count from the backend", () => {
     render(<FactoryPanel snapshot={factoryMixed} />);
     expect(screen.getByText("5 machines · 2 backed up · 0 paused · 1 without a recipe")).toBeInTheDocument();

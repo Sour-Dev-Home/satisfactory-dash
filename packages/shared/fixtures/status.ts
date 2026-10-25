@@ -67,3 +67,11 @@ export const statusStale = {
   observedAt: "2026-09-22T22:20:00.000Z",
   stale: true,
 } satisfies StatusResponse;
+
+/** ADR-0052: the game could not be reached; the last reading is served stale, with when the outage began. */
+export const statusUnreachable = {
+  ...statusRunning,
+  observedAt: "2026-09-22T22:20:00.000Z",
+  stale: true,
+  unreachableSince: "2026-09-22T22:21:00.000Z",
+} satisfies StatusResponse;

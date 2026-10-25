@@ -9,6 +9,7 @@ import {
   powerOk,
   powerOutage,
   powerStale,
+  powerUnreachable,
 } from "@satisfactory-dash/shared/fixtures";
 import { PowerPanel } from "./PowerPanel";
 
@@ -22,6 +23,13 @@ function valueIn(card: HTMLElement, label: string): HTMLElement {
 }
 
 describe("PowerPanel", () => {
+  it("dims (data-stale) only while the game is unreachable (ADR-0052)", () => {
+    const { container, rerender } = render(<PowerPanel snapshot={powerUnreachable} />);
+    expect(container.querySelector("section")).toHaveAttribute("data-stale");
+    rerender(<PowerPanel snapshot={powerStale} />);
+    expect(container.querySelector("section")).not.toHaveAttribute("data-stale");
+  });
+
   it("shows a healthy circuit's readings in MW without alarms", () => {
     render(<PowerPanel snapshot={powerOk} />);
     const main = circuit(0);

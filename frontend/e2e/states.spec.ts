@@ -126,6 +126,10 @@ const CASES: StateCase[] = [
   { scenario: "paused", shows: "Paused: no players connected" },
   { scenario: "paused", name: "paused-power", path: "/app/power", shows: "Paused: no players connected, values are frozen." },
   { scenario: "stale", shows: /Showing last known data from/ },
+  // ADR-0052: the game is down, the last reading stays, dimmed, under a banner with when it went down.
+  { scenario: "unreachable-last-data", shows: /Game server unreachable since/ },
+  { scenario: "unreachable-last-data", name: "unreachable-last-data-power", path: "/app/power", shows: /Game server unreachable since/ },
+  { scenario: "unreachable-last-data", name: "unreachable-last-data-factory", path: "/app/factory", shows: /Game server unreachable since/ },
   // 1024 px, where the Health card is at its narrowest beside Players: a long status word must never sit
   // under the tick gauge (#593).
   { scenario: "default", name: "default-narrow-desktop", shows: "Total play time on this save", width: 1024 },

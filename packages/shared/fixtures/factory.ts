@@ -134,6 +134,14 @@ export const factoryMixed = {
   },
 } satisfies FactoryResponse;
 
+/** ADR-0052: the game could not be reached; the last factory reading is served stale. */
+export const factoryUnreachable = {
+  ...factoryMixed,
+  observedAt: "2026-09-22T22:20:00.000Z",
+  stale: true,
+  unreachableSince: "2026-09-22T22:21:00.000Z",
+} satisfies FactoryResponse;
+
 /** SYNTHETIC: an item that isn't in the backend's catalog (e.g. a modded item), so `unit` is
  *  null and the client shows just "per minute" (ADR-0015). */
 export const factoryUnknownItem = {

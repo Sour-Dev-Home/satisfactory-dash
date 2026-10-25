@@ -55,6 +55,7 @@ const CADENCE_KEY: Record<SnapshotPart, keyof Cadence> = {
 export class LatestSnapshotStore {
   private parts: StoredParts = {};
   private reachable: boolean | undefined;
+  private unreachableSinceMs: number | undefined;
   private lastReceivedAtMs: number | undefined;
   private lastPowerAtMs: number | undefined;
   private autoPauseReading: { autoPause: boolean; pending: boolean; observedAtMs: number } | undefined;
@@ -65,9 +66,15 @@ export class LatestSnapshotStore {
   ) {}
 
   record(snapshot: RecordedSnapshot): void {
+    // ADR-0052: the outage starts at the first unreachable snapshot of a run; a reachable snapshot ends it.
+    if (!snapshot.reachable) {
+      if (this.reachable !== false) this.unreachableSinceMs = snapshot.observedAtMs;
+    } else {
+      this.unreachableSinceMs = undefined;
+    }
     this.reachable = snapshot.reachable;
     this.lastReceivedAtMs = snapshot.receivedAtMs;
-    if (!snapshot.reachable) return; // the parts stay as they were; reads say "unreachable" until a reachable snapshot arrives
+    if (!snapshot.reachable) return; // the parts stay as they were, and reads serve them stale (ADR-0052)
     for (const part of ["status", "power", "factory", "players"] as const) {
       const data = snapshot[part];
       // A late or retried snapshot must not put an older reading over a newer one.
@@ -117,18 +124,27 @@ export class LatestSnapshotStore {
   }
 
   /**
-   * One part, wrapped with its own observation time and staleness. Throws upstream_unreachable when there is nothing to
-   * serve: the agent has not reported yet, or its last snapshot said the game could not be reached (a request-through
-   * server answers the same when its game is down). `fallback` is served when the agent is fine but never sent the part.
+   * One part, wrapped with its own observation time and staleness. While the game is unreachable the last stored part
+   * is still served, always stale and with `unreachableSince` (ADR-0052). Throws upstream_unreachable when there is
+   * nothing to serve: the agent has not reported yet, or the game is unreachable and the part was never stored (a
+   * request-through server answers the same when its game is down and nothing was read). `fallback` is served when the
+   * agent is fine but never sent the part.
    */
   read<K extends SnapshotPart>(part: K, fallback?: NonNullable<StoredParts[K]>["data"]): NonNullable<StoredParts[K]>["data"] {
     if (this.reachable === undefined) {
       throw new ApiFailure("upstream_unreachable", "This server's agent has not reported yet");
     }
-    if (!this.reachable) {
-      throw new ApiFailure("upstream_unreachable", "The game server could not be reached by its agent");
-    }
     const stored = this.parts[part] as { data: NonNullable<StoredParts[K]>["data"]; observedAtMs: number } | undefined;
+    if (!this.reachable) {
+      if (stored === undefined) {
+        throw new ApiFailure("upstream_unreachable", "The game server could not be reached by its agent");
+      }
+      return observed(stored.data as object, {
+        observedAt: new Date(stored.observedAtMs).toISOString(),
+        stale: true,
+        ...(this.unreachableSinceMs !== undefined ? { unreachableSince: new Date(this.unreachableSinceMs).toISOString() } : {}),
+      }) as NonNullable<StoredParts[K]>["data"];
+    }
     if (stored === undefined) {
       if (fallback !== undefined) {
         return observed(fallback as object, { observedAt: new Date(this.lastReceivedAtMs ?? this.now()).toISOString(), stale: false }) as NonNullable<StoredParts[K]>["data"];

@@ -12,6 +12,12 @@ export function snapshotEnvelope<T extends z.ZodType>(data: T) {
     serverId: ServerIdSchema,
     observedAt: z.iso.datetime().describe("UTC time the backend read this from the game server"),
     stale: z.boolean().describe("true = last known data; refreshing from the game server is failing"),
+    unreachableSince: z.iso
+      .datetime()
+      .optional()
+      .describe(
+        "Set when the game server could not be reached at the last attempt: when that started (UTC). Absent = reachable, or not known. When set, stale is true (ADR-0052)",
+      ),
     data,
   });
 }

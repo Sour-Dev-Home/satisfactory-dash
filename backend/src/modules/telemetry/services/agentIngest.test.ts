@@ -199,15 +199,15 @@ describe("an unreachable game", () => {
     expect(t.history.recordPower).not.toHaveBeenCalled();
   });
 
-  it("makes every live read say so until a reachable snapshot arrives, and keeps no stale part alive", () => {
+  it("serves the last parts stale (ADR-0052) until a reachable snapshot arrives", () => {
     const t = setup();
     t.ingest.ingest(t.running(), T0);
     t.advance(5000);
     t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(t.now()).toISOString() }, t.now());
-    expect(() => t.store.read("status")).toThrowError(expect.objectContaining({ code: "upstream_unreachable" }));
+    expect(snapshot("x", t.store.read("status"))).toMatchObject({ stale: true, unreachableSince: new Date(T0 + 5000).toISOString() });
     t.advance(5000);
     t.ingest.ingest(t.running(), t.now());
-    expect(() => t.store.read("status")).not.toThrow();
+    expect(snapshot("x", t.store.read("status")).stale).toBe(false);
   });
 });
 

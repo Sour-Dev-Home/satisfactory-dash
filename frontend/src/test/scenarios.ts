@@ -47,6 +47,7 @@ import {
   bottlenecksUnknownKind,
   factoryEmpty,
   factoryMixed,
+  factoryUnreachable,
   factoryStatesAndIngredients,
   factoryUnknownItem,
   healthOk,
@@ -72,6 +73,7 @@ import {
   powerOk,
   powerOutage,
   powerStale,
+  powerUnreachable,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -94,6 +96,7 @@ import {
   statusRunning,
   statusSlow,
   statusStale,
+  statusUnreachable,
   testConnectionApiUnauthorized,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
@@ -438,6 +441,12 @@ export const SCENARIOS = {
   "server-picker": { servers: ok(serversMultiple) },
   "paused": { status: ok(statusPaused) },
   "stale": { status: ok(statusStale), power: ok(powerStale) },
+  // ADR-0052: the game is unreachable, and the backend serves each part's last reading, stale, with when it went down.
+  "unreachable-last-data": {
+    status: ok(statusUnreachable),
+    power: ok(powerUnreachable),
+    factory: ok(factoryUnreachable),
+  },
   "slow-tick": { status: ok(statusSlow) },
   // The Players card's filled figures and its "+N" (every status fixture has 0 connected).
   // With FicsitRemoteMonitoring: 3 online, matching the count, so the names show (ADR-0029).

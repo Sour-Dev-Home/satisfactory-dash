@@ -102,3 +102,11 @@ export const powerStale = {
   observedAt: "2026-09-22T22:30:00.000Z",
   stale: true,
 } satisfies PowerResponse;
+
+/** ADR-0052: the game could not be reached; the last power reading is served stale. */
+export const powerUnreachable = {
+  ...powerOk,
+  observedAt: "2026-09-22T22:20:00.000Z",
+  stale: true,
+  unreachableSince: "2026-09-22T22:21:00.000Z",
+} satisfies PowerResponse;

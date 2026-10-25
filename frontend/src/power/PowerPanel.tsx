@@ -30,7 +30,8 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
   useHashTarget(isCircuitAnchor);
 
   return (
-    <section aria-labelledby="power-heading" className="panel">
+    // data-stale: dimmed while the game is unreachable and this is its last reading (ADR-0052; index.css).
+    <section aria-labelledby="power-heading" className="panel" data-stale={snapshot.unreachableSince !== undefined ? "" : undefined}>
       <h3 id="power-heading">Power</h3>
       {hasOutage && (
         <p role="alert" className="banner banner-alarm">
