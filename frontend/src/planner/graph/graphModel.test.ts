@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerEdge } from "@satisfactory-dash/shared";
 import { productionGraphTwoSites } from "@satisfactory-dash/shared/fixtures";
-import { edgeLabel, edgeLabelLines, edgeTitle, graphSummary, nodeBodyLines, nodeTitle, reachFor, siteItems } from "./graphModel";
+import { edgeLabel, edgeLabelLines, edgeTitle, graphSummary, MAX_LINE_CHARS, MAX_TITLE_CHARS, nodeBodyLines, nodeTitle, reachFor, siteItems, wrapText } from "./graphModel";
 
 const edge = (from: string, to: string, item: string | null, extra: Partial<PlannerEdge> = {}): PlannerEdge => ({
   from,
@@ -41,6 +41,22 @@ describe("node text", () => {
     expect(nodeBodyLines(plates)[0]).toBe("Iron Plate");
     expect(nodeBodyLines(plates)[1]).toMatch(/^Iron Plate: /);
     expect(nodeBodyLines(recycle).at(-1)).toBe("In a loop");
+  });
+
+  it("wraps long body text at spaces, cuts a third line, and keeps short text whole", () => {
+    expect(wrapText("Iron Plate")).toEqual(["Iron Plate"]);
+    expect(wrapText("Iron Plate: 20 / 60 items/min")).toEqual(["Iron Plate: 20 / 60", "items/min"]);
+    expect(wrapText("Pure Copper Ingot Recipe Variant Alternate Mk2").at(-1)!.endsWith("…")).toBe(true);
+    expect(wrapText("Pure Copper Ingot Recipe Variant Alternate Mk2")).toHaveLength(2);
+    expect(wrapText("A".repeat(50), 10, 2)).toEqual(["AAAAAAAAAA", "AAAAAAAAA…"]);
+    expect(wrapText("")).toEqual([""]);
+    for (const l of wrapText("Reinforced Iron Plate: 5.25 / 5.25 items/min")) expect(l.length).toBeLessThanOrEqual(MAX_LINE_CHARS);
+  });
+
+  it("cuts a long title with an ellipsis", () => {
+    const t = nodeTitle({ name: "Particle Accelerator Mk.2 Extended", count: 12 });
+    expect(t.length).toBe(MAX_TITLE_CHARS);
+    expect(t.endsWith("…")).toBe(true);
   });
 
   it("says when there is no recipe or no output data, and counts outputs beyond two", () => {

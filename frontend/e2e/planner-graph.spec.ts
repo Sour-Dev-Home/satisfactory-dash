@@ -77,7 +77,36 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await expect(svg).toHaveCount(0);
 });
 
-test("the Planner is a tab, after Factory", async ({ page, mockApi }) => {
+test("a two-finger pinch zooms the graph and a two-finger drag pans it", async ({ page, mockApi }) => {
+  await mockApi("planner-group-panel");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
+  await expect(svg).toBeVisible();
+  const box = (await svg.boundingBox())!;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const fitted = await scaleOf(svg);
+  // Playwright's touchscreen only taps, so the two fingers are dispatched as pointer events (they bubble to the window).
+  const touch = (type: string, pointerId: number, x: number, y: number) =>
+    svg.dispatchEvent(type, { pointerId, pointerType: "touch", isPrimary: pointerId === 1, button: 0, clientX: x, clientY: y });
+  await touch("pointerdown", 1, cx - 50, cy);
+  await touch("pointerdown", 2, cx + 50, cy);
+  await touch("pointermove", 2, cx + 150, cy);
+  // The fingers' distance doubled: so did the scale.
+  await expect.poll(() => scaleOf(svg)).toBeCloseTo(fitted * 2, 3);
+  const pinched = await transformOf(svg);
+  // Both fingers move the same way: a pan at the same scale.
+  await touch("pointermove", 1, cx - 10, cy + 30);
+  await touch("pointermove", 2, cx + 190, cy + 30);
+  await expect.poll(() => transformOf(svg)).not.toBe(pinched);
+  await expect.poll(() => scaleOf(svg)).toBeCloseTo(fitted * 2, 1);
+  await touch("pointerup", 1, cx - 10, cy + 30);
+  await touch("pointerup", 2, cx + 190, cy + 30);
+});
+
+test("the Planner is a tab, after Factory",async ({ page, mockApi }) => {
   await mockApi("default");
   await page.goto("/app");
   const nav = page.getByRole("navigation", { name: "Main" });

@@ -1,7 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import type { PlannerEdge, PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { siteNodes } from "../plannerText";
-import { edgeLabel, edgeLabelLines, nodeBodyLines, nodeTitle } from "./graphModel";
+import { edgeLabel, edgeLabelLines, nodeBody, nodeTitle } from "./graphModel";
 
 // Sizes are SVG user units, tied to the canvas's text classes (title `text-base` 16 px semibold, body lines and edge
 // labels `text-sm` 14 px). The title's baseline is TITLE_H down from the card's top, each line LINE_H below the last.
@@ -19,7 +19,7 @@ export const LABEL_PAD = 4;
 /** The gap between an edge label and the line it names. */
 export const LABEL_GAP = 4;
 /** Dagre's spacing, tight on purpose: a fit should show the drawing, so the ranks and rows sit close. */
-export const RANK_SEP = 56;
+export const RANK_SEP = 48;
 export const NODE_SEP = 20;
 
 export interface LaidNode {
@@ -31,6 +31,8 @@ export interface LaidNode {
   height: number;
   title: string;
   lines: string[];
+  /** How many leading `lines` are the recipe (drawn muted). */
+  recipeLines: number;
 }
 
 export interface LaidEdge {
@@ -61,13 +63,14 @@ export interface SiteLayout {
 }
 
 /** A card's size from its text: as wide as its longest line, as tall as its lines. */
-export function nodeSize(node: PlannerNode): Pick<LaidNode, "width" | "height" | "title" | "lines"> {
+export function nodeSize(node: PlannerNode): Pick<LaidNode, "width" | "height" | "title" | "lines" | "recipeLines"> {
   const title = nodeTitle(node);
-  const lines = nodeBodyLines(node);
+  const { lines, recipeLines } = nodeBody(node);
   const text = Math.max(title.length * CHAR_W_TITLE, ...lines.map((l) => l.length * CHAR_W_BODY));
   return {
     title,
     lines,
+    recipeLines,
     width: Math.max(NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
     height: Math.ceil(TITLE_H + lines.length * LINE_H + 2 * NODE_PAD_Y),
   };

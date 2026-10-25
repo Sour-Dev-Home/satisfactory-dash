@@ -170,9 +170,10 @@ function segmentDistance(px: number, py: number, a: { x: number; y: number }, b:
 describe("layout width with two-line edge labels", () => {
   it("keeps the fixture iron site narrow, with labels of at most two lines", () => {
     const layout = layoutSite(iron, graph);
-    // Was about 1745 with one-line labels; 1561 now, a 0.61 fit on a 990 x 500 stage and 0.89 at 1440 px.
-    expect(fitView(layout.width, layout.height, { width: 1440, height: 600 }).k).toBeGreaterThanOrEqual(0.85);
-    expect(layout.width).toBeLessThanOrEqual(1600);
+    // Was about 1745 with one-line labels, then 1561 (a 0.61 fit on a 990 x 500 stage); narrower, wrapped cards now fit
+    // a 990 px stage at a readable zoom.
+    expect(fitView(layout.width, layout.height, { width: 990, height: 500 }).k).toBeGreaterThanOrEqual(0.75);
+    expect(layout.width).toBeLessThanOrEqual(1270);
     for (const e of layout.edges) {
       expect(e.labelLines.length).toBeGreaterThanOrEqual(1);
       expect(e.labelLines.length).toBeLessThanOrEqual(2);
