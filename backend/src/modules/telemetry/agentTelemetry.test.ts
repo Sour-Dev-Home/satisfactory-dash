@@ -143,7 +143,7 @@ describe("an agent-backed server's live routes", () => {
     expect(t.telemetry.observations!.snapshot().polls.consecutiveFailures).toBe(1);
   });
 
-  it("has only the history recorder as a worker (no poller, nothing calls a game server)", () => {
-    expect(setup().telemetry.workers).toHaveLength(1);
+  it("has only the history recorder and the last-snapshot writer as workers (no poller, nothing calls a game server)", () => {
+    expect(setup().telemetry.workers).toHaveLength(2);
   });
 });
