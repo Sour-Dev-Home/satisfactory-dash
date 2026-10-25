@@ -31,6 +31,11 @@ export async function readEdges(db: Queryable, serverId: string, log?: Pick<Logg
   // #577: a stored skip says why there is no graph (too large vs an FRM without connection fields).
   const skip = skipReasonOf(row);
   if (skip !== undefined) return skip === "unsupportedFrm" ? "unsupported" : "tooLarge";
+  if (row.hash.startsWith("skipped:")) {
+    // A skip reason this backend doesn't know (version skew): its empty data is not a real, empty graph.
+    log?.warn({ serverId }, "stored conveyors layer has an unknown skip reason; treating it as not received");
+    return "notReceived";
+  }
   if (row.truncated) return "tooLarge";
   const parsed = ConveyorsLayerDataSchema.safeParse(row.data);
   if (!parsed.success) {

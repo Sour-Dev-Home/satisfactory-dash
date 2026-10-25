@@ -65,7 +65,18 @@ describe("readEdges", () => {
     expect(warnings).toHaveLength(1);
   });
 
-  it("does not warn for a missing row, a skip or a good row", async () => {
+  it("maps tooManyEdges, a truncated row, and truncated+skip to tooLarge", async () => {
+    expect(await readEdges(dbWith([layerRow({ hash: "skipped:tooManyEdges", data: [], count: 0 })]), "s1")).toBe("tooLarge");
+    expect(await readEdges(dbWith([layerRow({ truncated: true })]), "s1")).toBe("tooLarge");
+    expect(await readEdges(dbWith([layerRow({ hash: "skipped:unsupportedFrm", truncated: true })]), "s1")).toBe("unsupported");
+  });
+
+  it("does not report an unknown skip reason as a good (empty) graph", async () => {
+    const result = await readEdges(dbWith([layerRow({ hash: "skipped:somethingNew", data: [], count: 0 })]), "s1");
+    expect(Array.isArray(result)).toBe(false);
+  });
+
+  it("does not warn for a missing row,a skip or a good row", async () => {
     const warnings: unknown[][] = [];
     const log = { warn: (...args: unknown[]) => void warnings.push(args) };
     expect(await readEdges(dbWith([]), "s1", log as never)).toBe("notReceived");
