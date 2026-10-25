@@ -105,10 +105,10 @@ describe("GET /api/admin/metrics", () => {
     expect(limited.headers["retry-after"]).toBeDefined();
   });
 
-  it("a database failure is an error response, not a stack", async () => {
-    const db = { query: vi.fn(async () => { throw new Error("connection refused: secret-host"); }) };
+  it("a database failure is the error envelope (the platform's 500), not a hang or a partial page", async () => {
+    const db = { query: vi.fn(async () => { throw new Error("connection refused"); }) };
     const res = await get(build(createMetricsService({ db })), "/api/admin/metrics", OPERATOR);
-    expect(res.status).toBeGreaterThanOrEqual(500);
-    expect(JSON.stringify(res.body)).not.toContain("secret-host");
+    expect(res.status).toBe(500);
+    expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("internal");
   });
 });

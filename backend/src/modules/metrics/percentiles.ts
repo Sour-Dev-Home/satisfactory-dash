@@ -24,7 +24,7 @@ export function percentileUpperBound(buckets: readonly number[], q: number): Buc
   for (let i = 0; i < buckets.length; i++) {
     cumulative += buckets[i];
     if (cumulative >= rank) {
-      const bound = BUCKET_BOUNDS_MS[i];
+      const bound = BUCKET_BOUNDS_MS.at(i) ?? Number.POSITIVE_INFINITY;
       return Number.isFinite(bound) ? bound : null;
     }
   }
