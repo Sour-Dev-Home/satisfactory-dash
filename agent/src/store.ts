@@ -86,7 +86,8 @@ export class AgentStore {
 
   /** Opens the store in `dir`; a missing file is a fresh, empty store. A file that is not the expected shape is an error. */
   static open(dir: string, dpapi: SecretBox): AgentStore {
-    const file = path.join(dir, "store.json");
+    const file = path.join(dir, STORE_FILE_NAME);
+    dpapi.verify?.(); // the file box refuses a loose or symlinked store before anything is parsed from it
     if (!existsSync(file)) return new AgentStore(dir, StoreFileSchema.parse({ version: 1 }), dpapi);
     let parsed: unknown;
     try {

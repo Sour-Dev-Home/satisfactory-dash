@@ -15,6 +15,8 @@ export interface SecretBox {
   protect(plaintext: string): Promise<string>;
   /** Returns the secret a blob stands for. Throws when the box cannot (wrong user, loose file, bad blob). */
   unprotect(blob: string): Promise<string>;
+  /** Optional startup check, run by `AgentStore.open` BEFORE the store file is read; throws when the store is unsafe. */
+  verify?(): void;
 }
 
 export type SecretStoreKind = "dpapi" | "file";
@@ -128,6 +130,7 @@ export function fileSecretBox(dir: string): SecretBox {
     assertPrivateFile(file);
   };
   return {
+    verify: guard,
     async protect(plaintext) {
       guard();
       if (plaintext === "") throw new FileSecretBoxError("protect_failed", "An empty secret is not stored.");

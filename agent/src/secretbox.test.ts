@@ -41,7 +41,9 @@ describe("fileSecretBox", () => {
     await store.setSecret("apiToken", "tok-VALUE-NEVER-SHOWN");
     const file = path.join(dir, "store.json");
     chmodSync(file, 0o644);
-    const error = await AgentStore.open(dir, fileSecretBox(dir)).getSecret("apiToken").catch((e: unknown) => e);
+    const error = await Promise.resolve()
+      .then(() => AgentStore.open(dir, fileSecretBox(dir)))
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(FileSecretBoxError);
     const message = (error as Error).message;
     expect(message).toContain(file);
@@ -52,6 +54,13 @@ describe("fileSecretBox", () => {
     await expect(fileSecretBox(dir).unprotect("YQ==")).rejects.toThrow(/permissions 640/);
     chmodSync(file, 0o400); // stricter than 0600 is fine
     await expect(fileSecretBox(dir).unprotect("YQ==")).resolves.toBe("a");
+  });
+
+  posixIt("AgentStore.open refuses a loose store file before parsing it", () => {
+    const store = AgentStore.open(dir, fileSecretBox(dir));
+    store.setBackend({ backendUrl: "https://api.example.test", serverId: "s1" });
+    chmodSync(path.join(dir, "store.json"), 0o644);
+    expect(() => AgentStore.open(dir, fileSecretBox(dir))).toThrow(/chmod 600/);
   });
 
   posixIt("refuses a store file that is a symlink, even to a 0600 target", async () => {
