@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import type { RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { MapTrain, MapTrainStation, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
 import type { ViewM } from "./MapCanvas";
 import {
   formatMetres,
   formatPoint,
   nodeInView,
   nodeKindLabel,
+  pointInView,
   polylineLengthM,
   purityLabel,
   railInView,
@@ -92,6 +93,57 @@ export function RailsTable({ segments, view }: { segments: readonly RailSegment[
               <td data-label="Length">{formatMetres(polylineLengthM(s.points))}</td>
               <td data-label="From (m)">{formatPoint(s.points[0])}</td>
               <td data-label="To (m)">{formatPoint(s.points[s.points.length - 1])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ViewTable>
+  );
+}
+
+/** The live trains in view (ADR-0038 M6): `status` is the game's own word, shown as received. */
+export function TrainsTable({ trains, view }: { trains: readonly MapTrain[]; view: ViewM | null }) {
+  const listed = trains.filter((t) => pointInView(view, t));
+  return (
+    <ViewTable id="map-trains-heading" title="Trains in view" count={listed.length} empty={trains.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-trains-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Train</th>
+            <th scope="col">Status</th>
+            <th scope="col">Position (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.map((t) => (
+            <tr key={t.id}>
+              <td data-label="Train">{t.name}</td>
+              <td data-label="Status">{t.status}</td>
+              <td data-label="Position (m)">{formatPoint([t.x, t.y])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ViewTable>
+  );
+}
+
+export function StationsTable({ stations, view }: { stations: readonly MapTrainStation[]; view: ViewM | null }) {
+  const listed = stations.filter((s) => pointInView(view, s));
+  return (
+    <ViewTable id="map-stations-heading" title="Train stations in view" count={listed.length} empty={stations.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-stations-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Station</th>
+            <th scope="col">Position (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.map((s) => (
+            <tr key={s.id}>
+              <td data-label="Station">{s.name}</td>
+              <td data-label="Position (m)">{formatPoint([s.x, s.y])}</td>
             </tr>
           ))}
         </tbody>

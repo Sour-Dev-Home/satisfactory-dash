@@ -138,6 +138,27 @@ test("the world layers draw, read as text, and toggle", async ({ page, mockApi }
   await expectNoAxeViolations(page, testInfo);
 });
 
+// ADR-0038 M6: the live trains. Drawn on the canvas (a dot per train, a ring per station), also text,
+// and the toggle removes what they drew. The tooltip is built from text nodes (the CSP gate above covers hover).
+test("the live trains draw, read as text, and toggle", async ({ page, mockApi }, testInfo) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("1 train and 2 stations on the map.")).toBeVisible();
+  await expect(page.getByRole("table", { name: /Trains in view \(1\)/ })).toBeVisible();
+  await expect(page.getByRole("table", { name: /Train stations in view \(2\)/ })).toBeVisible();
+  await expect.poll(() => tokenOnCanvas(page, "--color-train"), { message: "a train drawn" }).toBe(true);
+  await expect.poll(() => tokenOnCanvas(page, "--color-station"), { message: "a station drawn" }).toBe(true);
+
+  await page.getByRole("checkbox", { name: "Trains" }).uncheck();
+  await expect(page.getByRole("table", { name: /Trains in view/ })).toHaveCount(0);
+  await expect.poll(() => tokenOnCanvas(page, "--color-train"), { message: "no train after the toggle" }).toBe(false);
+  await expect.poll(() => tokenOnCanvas(page, "--color-station"), { message: "no station after the toggle" }).toBe(false);
+  await page.getByRole("checkbox", { name: "Trains" }).check();
+  await expect(page.getByRole("table", { name: /Trains in view \(1\)/ })).toBeVisible();
+
+  await expectNoAxeViolations(page, testInfo);
+});
+
 test.describe("the map's first view", () => {
   // Reduced motion also turns off Leaflet's zoom and fade animations, so the screenshot is stable.
   test.use({ reducedMotion: "reduce" });

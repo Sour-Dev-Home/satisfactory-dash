@@ -146,6 +146,8 @@ export const demoHandlers = [
       return error(404, "not_found", "Unknown map layer");
     }),
   ),
+  // ADR-0038 M6: two made-up trains running over the demo rails, worked out from the demo clock.
+  get(endpoints.map.live.route, ({ params }) => guarded(params, () => Response.json(world.mapLive(demoNow())))),
   // Stored history (ADR-0027): the same query rules as the backend's, so a bad range is a 400 here too.
   get(endpoints.history.items.route, ({ params, request }) =>
     guarded(params, () => {

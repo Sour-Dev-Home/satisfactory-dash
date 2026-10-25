@@ -27,6 +27,7 @@ describe("query options", () => {
       command: 1_000,
       agent: 30_000,
       mapWorld: 300_000,
+      mapLive: 10_000,
     });
   });
 

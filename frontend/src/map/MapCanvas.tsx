@@ -96,12 +96,28 @@ export default function MapCanvas({
     };
   }, [config]);
 
-  // Each visible layer draws when its data changes, and cleans up before the next draw.
+  // Each visible layer draws when its data changes, and cleans up before the next draw. Only from the
+  // first layer that changed (a different layer or a new `draw`) upward: the layers above it redraw so
+  // the stacking order holds, those below keep what they drew. A live poll then redraws only the
+  // trains layer (the top one), never the rails, nodes and buildings under it.
+  const drawn = useRef<{ layer: DrawnLayer; cleanup: () => void }[]>([]);
   useEffect(() => {
     if (!ctx) return;
-    const cleanups = layers.map((l) => l.draw(ctx));
-    return () => cleanups.forEach((cleanup) => cleanup());
+    const current = drawn.current;
+    let keep = 0;
+    while (keep < current.length && keep < layers.length && current[keep].layer.id === layers[keep].id && current[keep].layer.draw === layers[keep].draw) {
+      keep++;
+    }
+    for (const { cleanup } of current.splice(keep).reverse()) cleanup();
+    for (const layer of layers.slice(keep)) current.push({ layer, cleanup: layer.draw(ctx) });
   }, [ctx, layers]);
+  // The map is going (or its context was replaced): everything drawn goes with it.
+  useEffect(
+    () => () => {
+      for (const { cleanup } of drawn.current.splice(0).reverse()) cleanup();
+    },
+    [ctx],
+  );
 
   return (
     <div

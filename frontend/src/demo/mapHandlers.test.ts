@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   endpoints,
   MAP_WORLD_LAYER_DATA_SCHEMAS,
+  MapLiveResponseSchema,
+  MapLiveSchema,
   MapWorldLayerResponseSchema,
   RailsWorldLayerResponseSchema,
   ResourceNodesWorldLayerResponseSchema,
@@ -9,7 +11,7 @@ import {
 } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
 import { transport } from "./transport";
-import { DEMO_EPOCH, DEMO_SERVER_ID, railsWorld, resourceNodesWorld } from "./world";
+import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, railsWorld, resourceNodesWorld } from "./world";
 
 // ADR-0038 M5: the demo answers the map's world layers from its own made-up world (world.ts), through
 // the same transport the page uses, and never touches the network.
@@ -64,6 +66,36 @@ describe("the demo's map world layers", () => {
     for (const now of [DEMO_EPOCH, Date.now()]) {
       expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.rails).parse(railsWorld(now))).not.toThrow();
       expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.resourceNodes).parse(resourceNodesWorld(now))).not.toThrow();
+    }
+  });
+});
+
+describe("the demo's live trains (ADR-0038 M6)", () => {
+  it("serves trains and stations that satisfy the contract", async () => {
+    const res = await call(endpoints.map.live.path(DEMO_SERVER_ID));
+    expect(res.status).toBe(200);
+    const body = MapLiveResponseSchema.parse(await res.json());
+    expect(body.stale).toBe(false);
+    expect(body.data.trains.length).toBeGreaterThan(0);
+    expect(body.data.stations.length).toBeGreaterThan(0);
+  });
+
+  it("is a 401 when signed out", async () => {
+    resetDemoState();
+    expect((await call(endpoints.map.live.path(DEMO_SERVER_ID))).status).toBe(401);
+  });
+
+  it("moves its trains with the clock, within the rails' reach, and stays valid at any time", () => {
+    const at = (now: number) => mapLive(now).data.trains[0];
+    expect(at(DEMO_EPOCH)).not.toEqual(at(DEMO_EPOCH + 60_000));
+    const rails = railsWorld(DEMO_EPOCH).data.flatMap((s) => s.points);
+    const [minX, maxX] = [Math.min(...rails.map((p) => p[0])), Math.max(...rails.map((p) => p[0]))];
+    for (let minute = 0; minute < 12; minute++) {
+      const now = DEMO_EPOCH + minute * 30_000;
+      expect(() => MapLiveSchema.parse(mapLive(now).data)).not.toThrow();
+      const train = at(now);
+      expect(train.x).toBeGreaterThanOrEqual(minX - 1);
+      expect(train.x).toBeLessThanOrEqual(maxX + 1);
     }
   });
 });

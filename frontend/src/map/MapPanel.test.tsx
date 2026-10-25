@@ -11,6 +11,7 @@ import {
 import { endpoints, type FactoryResponse } from "@satisfactory-dash/shared";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "../test/mapLiveResponses";
 import { server } from "../test/server";
 import { renderWithClient } from "../test/render";
 import type { DrawnLayer, ViewM } from "./MapCanvas";
@@ -30,6 +31,7 @@ vi.mock("./MapCanvas", () => ({
 
 const buildings = factoryMixed.data.buildings;
 const railsRoute = endpoints.map.worldLayer.route.replace(":layer", "rails");
+const liveRoute = endpoints.map.live.route;
 const nodesRoute = endpoints.map.worldLayer.route.replace(":layer", "resourceNodes");
 const ids = () => canvas.layers.map((l) => l.id);
 const mount = (snapshot: FactoryResponse = factoryMixed) => renderWithClient(<MapPanel snapshot={snapshot} serverId="default" />);
@@ -89,7 +91,7 @@ describe("MapPanel", () => {
 describe("MapPanel world layers (ADR-0038 M5)", () => {
   it("draws rails, then resource nodes, then buildings, once the world data arrives", async () => {
     mount();
-    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings"]));
+    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "trains"]));
   });
 
   it("describes both layers in text and lists them in view", async () => {
@@ -117,7 +119,7 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
     mount();
     await screen.findByRole("table", { name: /Resource nodes in view/ });
     fireEvent.click(screen.getByRole("checkbox", { name: "Resource nodes" }));
-    expect(ids()).toEqual(["rails", "buildings"]);
+    expect(ids()).toEqual(["rails", "buildings", "trains"]);
     expect(screen.queryByRole("table", { name: /Resource nodes in view/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/resource nodes on the map/)).not.toBeInTheDocument();
     expect(screen.queryByText("In use (filled)")).not.toBeInTheDocument();
@@ -253,5 +255,107 @@ describe("MapPanel world tables (hunt)", () => {
     await screen.findByRole("table", { name: /Rail segments in view \(2\)/ });
     expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
     spy.mockRestore();
+  });
+});
+
+describe("MapPanel live trains (ADR-0038 M6)", () => {
+  it("draws the trains layer on top once the live reading arrives, and says what it holds", async () => {
+    canvas.view = null;
+    mount();
+    expect(await screen.findByText("1 train and 2 stations on the map.")).toBeInTheDocument();
+    expect(ids().at(-1)).toBe("trains");
+    const trains = await screen.findByRole("table", { name: /Trains in view \(1\)/ });
+    expect(within(trains).getByText("Self-Driving")).toBeInTheDocument();
+    expect(within(trains).getByText(mapLiveResponse.data.trains[0].name)).toBeInTheDocument();
+    const stations = await screen.findByRole("table", { name: /Train stations in view \(2\)/ });
+    expect(within(stations).getAllByRole("row")).toHaveLength(1 + mapLiveResponse.data.stations.length);
+  });
+
+  it("follows the view in the trains tables", async () => {
+    const station = mapLiveResponse.data.stations[0];
+    canvas.view = { minX: station.x - 1, maxX: station.x + 1, minY: station.y - 1, maxY: station.y + 1 };
+    mount();
+    await screen.findByRole("table", { name: /Train stations in view \(1\)/ });
+    expect(screen.getByText("None in view. Zoom out or pan to see more.")).toBeInTheDocument();
+    canvas.view = null;
+  });
+
+  it("changes the trains layer, and no other, when a refetch brings new positions", async () => {
+    const { client } = mount();
+    await waitFor(() => expect(ids()).toContain("trains"));
+    const before = Object.fromEntries(canvas.layers.map((l) => [l.id, l.draw]));
+    // A refetch of the same reading changes nothing (structural sharing keeps the data): nothing redraws.
+    await client.refetchQueries({ queryKey: ["servers", "default", "map", "live"] });
+    expect(canvas.layers.find((l) => l.id === "trains")!.draw).toBe(before.trains);
+    server.use(
+      http.get(liveRoute, () =>
+        HttpResponse.json({ ...mapLiveResponse, data: { ...mapLiveResponse.data, trains: [{ ...mapLiveResponse.data.trains[0], x: -900 }] } }),
+      ),
+    );
+    await client.refetchQueries({ queryKey: ["servers", "default", "map", "live"] });
+    await waitFor(() => expect(canvas.layers.find((l) => l.id === "trains")!.draw).not.toBe(before.trains));
+    for (const id of ["rails", "resourceNodes", "buildings"]) {
+      expect(canvas.layers.find((l) => l.id === id)!.draw, id).toBe(before[id]);
+    }
+  });
+
+  it("drops the layer, its legend, text and tables when toggled off", async () => {
+    mount();
+    await screen.findByRole("table", { name: /Trains in view/ });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Trains" }));
+    expect(ids()).toEqual(["rails", "resourceNodes", "buildings"]);
+    expect(screen.queryByRole("table", { name: /Trains in view/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: /Train stations in view/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("1 train and 2 stations on the map.")).not.toBeInTheDocument();
+  });
+
+  it("asks for the live reading only while the Trains toggle is on", async () => {
+    const asked = vi.fn();
+    server.use(
+      http.get(liveRoute, () => {
+        asked();
+        return HttpResponse.json(mapLiveResponse);
+      }),
+    );
+    mount();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Trains" }));
+    await screen.findByRole("table", { name: /Rail segments in view/ });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(asked.mock.calls.length).toBeLessThanOrEqual(1);
+    const whileOff = asked.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(asked.mock.calls.length).toBe(whileOff);
+  });
+
+  it("says so when there are no trains or stations yet, and has no legend row", async () => {
+    server.use(http.get(liveRoute, () => HttpResponse.json(mapLiveResponseEmpty)));
+    mount();
+    expect(await screen.findByText("No trains or stations built yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Station")).not.toBeInTheDocument();
+  });
+
+  it("says the positions are the last known ones when the backend flags the reading stale", async () => {
+    server.use(http.get(liveRoute, () => HttpResponse.json(mapLiveResponseStale)));
+    mount();
+    expect(await screen.findByText(/last known train positions/)).toBeInTheDocument();
+  });
+
+  it("shows a failed live read as an error with Retry, and keeps the rest of the map", async () => {
+    let failing = true;
+    server.use(
+      http.get(liveRoute, () => (failing ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 }) : HttpResponse.json(mapLiveResponse))),
+    );
+    mount();
+    expect(await screen.findByText(/Trains couldn't load/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("1 train and 2 stations on the map.")).toBeInTheDocument();
+  });
+
+  it("refuses a malformed live reading as a contract error", async () => {
+    server.use(http.get(liveRoute, () => HttpResponse.json({ ...mapLiveResponse, data: { trains: [{ id: "t" }], stations: [] } })));
+    mount();
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

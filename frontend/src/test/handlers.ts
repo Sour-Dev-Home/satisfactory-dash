@@ -37,6 +37,7 @@ import {
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
 import { accountDeleted, serverLeft } from "./accountMocks";
+import { mapLiveResponse } from "./mapLiveResponses";
 import { createdAgentServer } from "./selfServeMocks";
 
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
@@ -67,6 +68,7 @@ export const handlers = [
   // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
   http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
   http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),
+  http.get(endpoints.map.live.route, () => HttpResponse.json(mapLiveResponse)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).

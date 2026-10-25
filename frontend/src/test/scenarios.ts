@@ -100,6 +100,7 @@ import {
   testConnectionApiUnauthorized,
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
+import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
 import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
   createdAgentServer,
@@ -149,6 +150,8 @@ export const ROUTES = {
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
   mapResourceNodes: endpoints.map.worldLayer,
+  // ADR-0038 M6: the live trains and stations (its own endpoint).
+  mapLive: endpoints.map.live,
   settings: endpoints.settings.get,
   setAutoPause: endpoints.settings.setAutoPause,
   // ADR-0030, operator only.
@@ -252,6 +255,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   productionGraph: ok(productionGraphTwoSites),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
+  mapLive: ok(mapLiveResponse),
   settings: ok(settingsEditable),
   setAutoPause: ok(settingsEditable),
   managedServers: ok(managedServersAllStates),
@@ -434,6 +438,7 @@ export const SCENARIOS = {
     productionGraph: slow(BASE.productionGraph),
     mapRails: slow(BASE.mapRails),
     mapResourceNodes: slow(BASE.mapResourceNodes),
+    mapLive: slow(BASE.mapLive),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
     historyPower: slow(BASE.historyPower),
@@ -492,6 +497,10 @@ export const SCENARIOS = {
   "map-world-empty": { mapRails: ok(railsWorldResponseEmpty), mapResourceNodes: ok(resourceNodesWorldResponseEmpty) },
   "map-world-truncated": { mapRails: ok(railsWorldResponseTruncated) },
   "map-world-error": { mapRails: fail(502, errorUpstreamUnreachable), mapResourceNodes: fail(502, errorUpstreamUnreachable) },
+  // ADR-0038 M6, the live trains: none built yet, the game unreachable (last known positions), or the read failing.
+  "map-live-empty": { mapLive: ok(mapLiveResponseEmpty) },
+  "map-live-stale": { mapLive: ok(mapLiveResponseStale) },
+  "map-live-error": { mapLive: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
   // ADR-0048 (#349), the Bottlenecks section: an older FRM (item level, update note), connection data over the cap,

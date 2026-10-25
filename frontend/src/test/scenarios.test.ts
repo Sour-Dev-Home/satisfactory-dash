@@ -30,6 +30,10 @@ describe("matchRoute", () => {
     expect(matchRoute("GET", "/api/servers/default/map/world/belts")).toBeUndefined();
   });
 
+  it("routes the live trains read (ADR-0038 M6) to its own key", () => {
+    expect(matchRoute("GET", "/api/servers/default/map/live")).toBe("mapLive");
+  });
+
   it("accepts a lowercase method", () => {
     expect(matchRoute("get", "/api/health")).toBe("health");
     expect(matchRoute("put", "/api/servers/default/settings/auto-pause")).toBe("setAutoPause");

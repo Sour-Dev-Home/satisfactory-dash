@@ -35,6 +35,8 @@ export const POLL_MS = {
   agent: 30_000,
   /** A world layer (rails, resource nodes) changes at most every 10 min (ADR-0038 D3); 5 min is enough. */
   mapWorld: 300_000,
+  /** The live trains and stations (ADR-0038 M6): in-memory on the backend, polled every 10 s while the map is open. */
+  mapLive: 10_000,
 } as const;
 
 /** One stored world layer, as the map reads it (ADR-0038): the layer's own data type, narrowed. */
@@ -267,6 +269,13 @@ export const queries = {
       queryFn: ({ signal }): Promise<WorldLayerRead<ResourceNodesLayerData>> =>
         readWorldLayer(signal, serverId, "resourceNodes", ResourceNodesLayerDataSchema),
       refetchInterval: POLL_MS.mapWorld,
+    }),
+  /** ADR-0038 M6: the map's live trains and stations. Off with the Trains toggle (`enabled: false`), so a hidden layer costs no request. */
+  mapLive: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "map", "live"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.map.live, serverId),
+      refetchInterval: POLL_MS.mapLive,
     }),
   // ADR-0030, operator only: every stored connection, with what the edit form needs. Not under
   // ["servers", ...], so ServerGate's "the selected server is gone" handling never sees it.

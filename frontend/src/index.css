@@ -48,6 +48,9 @@
      rails a light steel that stands clear of the grid lines, resource nodes a violet. */
   --color-rail: #c4ccd6;
   --color-node: #b79df5;
+  /* The live trains layer (ADR-0038 M6): a train a teal dot, a station a ring in a warm yellow, both clear of rails and nodes. */
+  --color-train: #4dd0c8;
+  --color-station: #f2c14e;
   /* The backing chip behind a building icon: the game's icons are dark glyphs that vanish on the dark card. */
   --color-icon-chip: #c4ccd6;
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
@@ -126,6 +129,7 @@
   --duration-fast: 120ms; /* hover and colour changes, a page's reveal */
   --duration-base: 180ms; /* a dropdown opening, a detail expanding */
   --duration-slow: 240ms; /* larger surfaces */
+  --duration-glide: 1s; /* a train sliding to its new position between two polls (the map; a canvas layer reads it) */
   --duration-shimmer: 1.8s; /* one slow cycle of a loading skeleton (#494) */
   /* Loading (#494). A skeleton shows only if its data takes longer than the delay, then stays at
      least the minimum; a page waits for its primary queries up to the budget, then reveals every
@@ -390,6 +394,7 @@
       --duration-fast: 0s;
       --duration-base: 0s;
       --duration-slow: 0s;
+      --duration-glide: 0s;
       --duration-shimmer: 0s;
       --duration-skeleton-min: 0s;
     }

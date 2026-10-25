@@ -109,6 +109,10 @@ const CASES: StateCase[] = [
   { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
   { scenario: "map-world-truncated", path: "/app/map", shows: /Showing part of the rails/ },
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
+  // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
+  { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
+  { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },
+  { scenario: "map-live-error", path: "/app/map", shows: /Trains couldn't load/ },
   // The map's Filters (2026-10-21): open, with one in-view resource type and one building state hidden, in-use nodes only.
   { scenario: "default", name: "map-filtered", path: "/app/map", shows: /^\d+ of \d+ resource nodes shown/, act: filterTheMap },
   { scenario: "login", shows: "Sign in" },
