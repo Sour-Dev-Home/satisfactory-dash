@@ -1,5 +1,6 @@
 import { useId } from "react";
 import type { AgentServer } from "@satisfactory-dash/shared";
+import { ServerUpdateLine } from "../updates/UpdateBanners";
 import type { FormMode } from "./ServerForm";
 
 /**
@@ -18,6 +19,7 @@ export function AgentServerRow({ server, onEdit }: { server: AgentServer; onEdit
         <p className="mb-0 text-sm text-muted">
           {server.id} · read through the game PC's agent. Its agent's status is on Settings.
         </p>
+        <ServerUpdateLine serverId={server.id} />
       </div>
       <div className="flex flex-wrap gap-3">
         <button

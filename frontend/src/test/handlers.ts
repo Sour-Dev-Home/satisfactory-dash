@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { compatQuiet } from "./updateMocks";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
   agentEnrollmentCodeResponse,
@@ -105,6 +106,7 @@ export const handlers = [
   http.post(endpoints.push.test.route, () => HttpResponse.json(alertSendTestOk)),
   // The game PC agent (ADR-0031 PR 7): a directly reached server with none enrolled.
   http.get(endpoints.agent.status.route, () => HttpResponse.json(agentStatusNotEnrolled)),
+  http.get(endpoints.compat.route, () => HttpResponse.json(compatQuiet)),
   http.post(endpoints.agent.enrollmentCode.route, () => HttpResponse.json(agentEnrollmentCodeResponse, { status: 201 })),
   http.delete(endpoints.agent.revoke.route, () => HttpResponse.json(agentRevokeResponse)),
   // ADR-0047: deleting your account and leaving a server both succeed by default; tests override the refusals.

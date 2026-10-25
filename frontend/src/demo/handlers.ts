@@ -209,6 +209,8 @@ export const demoHandlers = [
 
   // The game PC agent (ADR-0031 PR 7). A code can be shown; revoking is refused, like server changes.
   get(endpoints.agent.status.route, ({ params }) => guarded(params, () => Response.json(world.agent(demoNow())))),
+  // ADR-0057: the version policy. Made up: the demo's agent (0.1.0) is one release behind, so visitors see "Update available".
+  get(endpoints.compat.route, () => Response.json(world.compat())),
   post(endpoints.agent.enrollmentCode.route, ({ params }) =>
     guarded(params, () => Response.json(world.enrollmentCode(demoNow()), { status: 201 })),
   ),
