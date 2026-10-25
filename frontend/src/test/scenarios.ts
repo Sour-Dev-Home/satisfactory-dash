@@ -636,6 +636,15 @@ export const SCENARIOS = {
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
   // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
   "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },
+  // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
+  // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
+  "basic-data": {
+    power: fail(502, errorUpstreamUnreachable),
+    powerHistory: fail(502, errorUpstreamUnreachable),
+    factory: fail(502, errorUpstreamUnreachable),
+    productionGraph: fail(502, errorUpstreamUnreachable),
+    bottlenecks: fail(502, errorUpstreamUnreachable),
+  },
   "planner-error": { productionGraph: fail(502, errorUpstreamUnreachable) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },

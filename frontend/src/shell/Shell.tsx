@@ -31,6 +31,7 @@ import { PlannerView } from "../planner/PlannerView";
 import { isPaletteShortcut } from "../palette/paletteCommands";
 import { PowerHistorySection } from "../power/PowerHistorySection";
 import { PowerView } from "../power/PowerView";
+import { BasicDataGate } from "../components/BasicData";
 import { LeftStatus } from "../servers/LeftStatus";
 import { useSelectedServer, useServerSwitch } from "../servers/ServerContext";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
@@ -431,13 +432,15 @@ export function Shell() {
           path="power"
           element={
             <Page key="power" title="Power" path="/app/power" onRevealed={focusHeading}>
-              <Section label="Power" probe="power">
-                <PowerView />
-              </Section>
-              <Section label="Power history" probe="power-history">
-                {/* Keyed by server: its polls must never carry over to another server's chart. */}
-                <PowerHistorySection key={server.id} />
-              </Section>
+              <BasicDataGate>
+                <Section label="Power" probe="power">
+                  <PowerView />
+                </Section>
+                <Section label="Power history" probe="power-history">
+                  {/* Keyed by server: its polls must never carry over to another server's chart. */}
+                  <PowerHistorySection key={server.id} />
+                </Section>
+              </BasicDataGate>
             </Page>
           }
         />
@@ -445,9 +448,11 @@ export function Shell() {
           path="factory"
           element={
             <Page key="factory" title="Factory" path="/app/factory" onRevealed={focusHeading}>
-              <Section label="Factory" probe="factory">
-                <FactoryView />
-              </Section>
+              <BasicDataGate>
+                <Section label="Factory" probe="factory">
+                  <FactoryView />
+                </Section>
+              </BasicDataGate>
             </Page>
           }
         />
@@ -456,10 +461,12 @@ export function Shell() {
           path="planner"
           element={
             <Page key="planner" title="Planner" path="/app/planner" onRevealed={focusHeading}>
-              <Section label="Production planner" probe="planner">
-                {/* Keyed by server: a site opened on one server must not follow the user to another. */}
-                <PlannerView key={server.id} />
-              </Section>
+              <BasicDataGate>
+                <Section label="Production planner" probe="planner">
+                  {/* Keyed by server: a site opened on one server must not follow the user to another. */}
+                  <PlannerView key={server.id} />
+                </Section>
+              </BasicDataGate>
             </Page>
           }
         />
@@ -467,10 +474,12 @@ export function Shell() {
           path="map"
           element={
             <Page key="map" title="Map" path="/app/map" onRevealed={focusHeading}>
-              <Section label="Factory map" probe="map">
-                {/* Keyed by server: the first view fits that server's factory. */}
-                <MapView key={server.id} />
-              </Section>
+              <BasicDataGate>
+                <Section label="Factory map" probe="map">
+                  {/* Keyed by server: the first view fits that server's factory. */}
+                  <MapView key={server.id} />
+                </Section>
+              </BasicDataGate>
             </Page>
           }
         />

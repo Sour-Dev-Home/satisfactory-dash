@@ -173,6 +173,9 @@ const CASES: StateCase[] = [
   { scenario: "unreachable-last-data", shows: /Game server unreachable since/ },
   { scenario: "unreachable-last-data", name: "unreachable-last-data-power", path: "/app/power", shows: /Game server unreachable since/ },
   { scenario: "unreachable-last-data", name: "unreachable-last-data-factory", path: "/app/factory", shows: /Game server unreachable since/ },
+  // ADR-0057: a vanilla-only server; the game's own facts on the Overview, and the one notice in place of power.
+  { scenario: "basic-data", shows: /Basic data:/ },
+  { scenario: "basic-data", name: "basic-data-power", path: "/app/power", shows: /Basic data:/ },
   // 1024 px, where the Health card is at its narrowest beside Players: a long status word must never sit
   // under the tick gauge (#593).
   { scenario: "default", name: "default-narrow-desktop", shows: "Total play time on this save", width: 1024 },
