@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { InMemoryServerDirectory, ServerRuntime } from "../../servers/index.js";
 import type { TelemetryScope } from "../../telemetry/index.js";
 import { ObservationBoard } from "../../telemetry/services/observationBoard.js";
-import { AlertEvaluatorWorker, EVENT_QUOTA_WINDOW_MS, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR, type AlertsDb } from "./alertEvaluatorWorker.js";
+import { AlertEvaluatorWorker, withEvaluatorGrace, EVENT_QUOTA_WINDOW_MS, MAX_ALERT_EVENTS_PER_SERVER_PER_HOUR, type AlertsDb } from "./alertEvaluatorWorker.js";
 import { RULE_KINDS } from "./rules.js";
 import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";
 
@@ -280,6 +280,33 @@ describe("AlertEvaluatorWorker.tick", () => {
       board.recordAgentSeen(now);
       await worker.tick();
       expect(fake.events.map((event) => `${event.kind}:${event.transition}`)).toEqual(["agent_offline:fired", "agent_offline:resolved"]);
+    });
+
+    it("ADR-0054 D3.4: an evaluator started on becoming leader long after the board began still gives the full grace", async () => {
+      const fake = fakeDb();
+      const board = new ObservationBoard({ agentStartedAt: now }); // this follower booted now; the agent reports elsewhere
+      const directory = new ServerRuntime<TelemetryScope>([agentEntry("friend", board)]);
+      now += 300 * SEC; // becomes leader five minutes later
+      const worker = new AlertEvaluatorWorker(fake.db, directory, { logger: logger().logger, now: () => now });
+      worker.start();
+      await worker.stop(); // only the start time matters here; the ticks are driven by hand
+      await worker.tick();
+      now += 100 * SEC;
+      await worker.tick();
+      expect(fake.events).toEqual([]); // 400 s since the board began, but only 100 s since this evaluator started
+      now += 30 * SEC;
+      await worker.tick();
+      expect(fake.events).toMatchObject([{ kind: "agent_offline", transition: "fired" }]);
+    });
+  });
+
+  describe("withEvaluatorGrace", () => {
+    it("moves an agent's start forward to the evaluator's start, and leaves later boards and polled servers alone", () => {
+      expect(withEvaluatorGrace({ agent: { startedAt: 10, lastHeardAt: 5 } } as never, 50)).toEqual({ agent: { startedAt: 50, lastHeardAt: 5 } });
+      const later = { agent: { startedAt: 90, lastHeardAt: undefined } } as never;
+      expect(withEvaluatorGrace(later, 50)).toBe(later);
+      const polled = { polls: {} } as never;
+      expect(withEvaluatorGrace(polled, 50)).toBe(polled);
     });
   });
 

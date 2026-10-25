@@ -35,6 +35,7 @@ const DIRECT_QUERY_ALLOWLIST = new Map([
   ["platform/db/database.ts", 2], // the readiness probe's SELECT 1
   ["platform/db/schemaVersion.ts", 1], // the schema check at startup
   ["platform/db/admin.ts", 22], // the admin bootstrap (migrations, roles, grants)
+  ["platform/db/leaderLock.ts", 3], // ADR-0054: try-lock, SELECT 1 and unlock on the lock's own client, every 5 s (not a request's query)
 ]);
 
 /** Also a generic (`.query<Row>(`) or spaced (`.query (`) call, so those can't slip past. */
