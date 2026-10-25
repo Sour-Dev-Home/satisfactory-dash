@@ -118,7 +118,7 @@ describe("layoutSite", () => {
 
 describe("the compact metrics and label placement", () => {
   it("keeps the ranks and rows tight, and sizes a card from the readable type", () => {
-    expect(RANK_SEP).toBe(56);
+    expect(RANK_SEP).toBe(40);
     expect(NODE_SEP).toBe(20);
     const node = graph.nodes[0];
     const { height, lines } = nodeSize(node);

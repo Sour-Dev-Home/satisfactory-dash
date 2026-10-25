@@ -19,7 +19,7 @@ export const LABEL_PAD = 4;
 /** The gap between an edge label and the line it names. */
 export const LABEL_GAP = 4;
 /** Dagre's spacing, tight on purpose: a fit should show the drawing, so the ranks and rows sit close. */
-export const RANK_SEP = 48;
+export const RANK_SEP = 40;
 export const NODE_SEP = 20;
 
 export interface LaidNode {
