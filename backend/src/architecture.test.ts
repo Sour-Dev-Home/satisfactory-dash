@@ -27,8 +27,11 @@ import { ownValue } from "@satisfactory-dash/shared";
  */
 const ALLOWED_MODULE_EDGES: Record<string, string[]> = {
   gameserver: [],
-  servers: [],
+  // ADR-0056 section 3: the operator gate lives in identity and servers uses it (identity imports nothing from servers).
+  servers: ["identity"],
   identity: [],
+  // ADR-0056 PR 3: the operator metrics page reads metrics.series_hourly and uses identity's operator gate.
+  metrics: ["identity"],
   // ADR-0048 amendment (#349) PR 4: the bottlenecks route reads the conveyors world layer through the map module's index.
   // map never imports telemetry, so this adds no cycle.
   telemetry: ["gameserver", "servers", "map"],

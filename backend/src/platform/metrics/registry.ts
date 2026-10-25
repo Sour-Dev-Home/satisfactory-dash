@@ -262,6 +262,8 @@ export const QUERY_NAMES = [
   "audit.purgeExpiredAuditEvents",
   "audit.recordAuditEvent",
   "metrics.addSeriesDelta",
+  "metrics.counterTotals",
+  "metrics.histogramBuckets",
   "metrics.mergeBucketCountsInDb",
   "metrics.purgeExpiredSeries",
   "retention.expiredEnrollmentCodes",
