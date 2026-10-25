@@ -235,3 +235,57 @@ export function passThroughComponents(g: Graph): PassThroughComponent[] {
     return { nodes, ins: asc(ins), outs: asc(outs) };
   });
 }
+
+/**
+ * Tarjan's strongly connected components, iterative: belt chains can be tens of thousands of segments deep, so no
+ * recursion. Components are numbered in emission order (sinks first), the reverse of a topological order.
+ */
+export function stronglyConnected(adj: readonly number[][]): { comp: number[]; count: number; members: number[][] } {
+  const n = adj.length;
+  const index = Array.from({ length: n }, () => -1);
+  const low = Array.from({ length: n }, () => 0);
+  const onStack = Array.from({ length: n }, () => false);
+  const comp = Array.from({ length: n }, () => -1);
+  const members: number[][] = [];
+  const stack: number[] = [];
+  let next = 0;
+  for (let root = 0; root < n; root++) {
+    if (index[root] !== -1) continue;
+    const work: { v: number; i: number }[] = [{ v: root, i: 0 }];
+    index[root] = low[root] = next++;
+    stack.push(root);
+    onStack[root] = true;
+    while (work.length > 0) {
+      const frame = work[work.length - 1];
+      const v = frame.v;
+      if (frame.i < adj[v].length) {
+        const w = adj[v][frame.i++];
+        if (index[w] === -1) {
+          index[w] = low[w] = next++;
+          stack.push(w);
+          onStack[w] = true;
+          work.push({ v: w, i: 0 });
+        } else if (onStack[w]) low[v] = Math.min(low[v], index[w]);
+        continue;
+      }
+      work.pop();
+      if (work.length > 0) {
+        const parent = work[work.length - 1].v;
+        low[parent] = Math.min(low[parent], low[v]);
+      }
+      if (low[v] === index[v]) {
+        const id = members.length;
+        const list: number[] = [];
+        let w: number;
+        do {
+          w = stack.pop() as number;
+          onStack[w] = false;
+          comp[w] = id;
+          list.push(w);
+        } while (w !== v);
+        members.push(list);
+      }
+    }
+  }
+  return { comp, count: members.length, members };
+}

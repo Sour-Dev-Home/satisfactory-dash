@@ -331,6 +331,6 @@ describe("adversarial input still parses", () => {
     expect(codes(g)).toContain("graphTruncated");
   });
   it("stats report counts", () => {
-    expect(buildProductionGraphWithStats([], []).stats).toEqual({ components: 0, sites: 0, groups: 0, links: 0 });
+    expect(buildProductionGraphWithStats([], []).stats).toMatchObject({ components: 0, sites: 0, groups: 0, links: 0 });
   });
 });

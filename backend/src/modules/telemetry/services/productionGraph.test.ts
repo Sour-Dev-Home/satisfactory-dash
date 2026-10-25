@@ -557,3 +557,39 @@ describe("a generated 10x factory", () => {
     expect(parsed.sites.length).toBe(stats.sites);
   });
 });
+
+describe("production graph: logical factories (ADR-0055 PR 6b)", () => {
+  const chain = (cur: number): ReturnType<typeof buildProductionGraphWithStats> =>
+    buildProductionGraphWithStats(
+      [
+        machine("a", { className: "Build_SmelterMk1_C", recipe: "Ingot", ing: [["Desc_Ore_C", 30, cur]], out: [["Desc_Ingot_C", 30, cur]], at: [0, 0] }),
+        machine("b", { className: "Build_ConstructorMk1_C", recipe: "Plate", ing: [["Desc_Ingot_C", 30, cur]], out: [["Desc_Plate_C", 20, cur]], at: [20, 0] }),
+      ],
+      [edge("e1", "X1", "a"), edge("e2", "a", "b"), edge("e3", "b", "T1")],
+    );
+
+  it("puts the whole line in one named factory, with the node annotations and a topology hash", () => {
+    const { graph, stats } = chain(30);
+    expect(() => ProductionGraphSchema.parse(graph)).not.toThrow();
+    expect(graph.factories).toHaveLength(1);
+    expect(graph.factories?.[0]).toMatchObject({ machineCount: 2, designationId: null });
+    for (const nd of graph.nodes) expect(nd.factoryKey).toBe(graph.factories?.[0].key);
+    expect(graph.nodes.every((nd) => nd.collapseUnder !== undefined)).toBe(true);
+    expect(graph.topologyHash).toMatch(/^[0-9a-f]{32}$/);
+    expect(stats.factoryReduction).toMatchObject({ factories: 1, unassignedGroups: 0, sharedNodes: 0 });
+  });
+
+  it("a change of current rates alone keeps the factories and the topology hash", () => {
+    const a = chain(30).graph;
+    const b = chain(3).graph;
+    expect(b.topologyHash).toBe(a.topologyHash);
+    expect(b.factories?.map((f) => f.key)).toEqual(a.factories?.map((f) => f.key));
+    expect(b.nodes.map((nd) => [nd.key, nd.factoryKey, nd.collapseUnder])).toEqual(a.nodes.map((nd) => [nd.key, nd.factoryKey, nd.collapseUnder]));
+  });
+
+  it("no belt data: no factories, no hash", () => {
+    const g = buildProductionGraph([], "notReceived");
+    expect(g.factories).toBeUndefined();
+    expect(g.topologyHash).toBeUndefined();
+  });
+});
