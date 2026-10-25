@@ -4,7 +4,7 @@ import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph }
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import { EMPTY_VIEW, factoryScene, overviewScene, type Scene } from "./canvasScene";
 import { factoryModels } from "./hierarchy";
-import { FRAME_HEADER_H, GLYPH_CLEARANCE, LABEL_GAP, clearLayoutMemo, labelPlacement, layoutScene, layoutStats } from "./layoutSite";
+import { FRAME_HEADER_H, GLYPH_AT, GLYPH_CLEARANCE, LABEL_GAP, clearLayoutMemo, labelPlacement, layoutScene, layoutStats, pathMidpoint } from "./layoutSite";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const models = factoryModels(FIXTURE);
@@ -83,6 +83,14 @@ describe("layoutScene", () => {
     const plain = labelPlacement(flat, 50, 18);
     expect(plain.y).toBe(-(9 + LABEL_GAP));
     expect(labelPlacement(flat, 50, 18, GLYPH_CLEARANCE).y).toBe(plain.y - GLYPH_CLEARANCE);
+  });
+
+  it("stands a glyph a third along its path, clear of the label at the middle, and clamps the fraction", () => {
+    const line = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+    expect(pathMidpoint(line, GLYPH_AT).x).toBeCloseTo(100 * GLYPH_AT);
+    expect(pathMidpoint(line).x).toBeCloseTo(50);
+    expect(pathMidpoint(line, 3).x).toBe(100);
+    expect(pathMidpoint(line, -1).x).toBe(0);
   });
 
   it("draws an expanded bubble's groups inside a frame, with room above for its header", () => {

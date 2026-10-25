@@ -11,6 +11,9 @@ export const CHAR_W_TITLE = 9.2;
 export const CHAR_W_BODY = 7.7;
 export const NODE_PAD_X = 10;
 export const NODE_PAD_Y = 5;
+/** The upstream pill (collapse upstream) straddles a card's bottom edge: its height, and the room a card keeps for its upper half. */
+export const PILL_H = 24;
+export const PILL_RESERVE = PILL_H / 2 + 2;
 export const TITLE_H = 24;
 export const LINE_H = 20;
 export const NODE_MIN_W = 100;
@@ -105,7 +108,8 @@ export function cardSize(card: Card): CardSize {
     iconUrl,
     titleX: NODE_PAD_X + titleShift,
     width: Math.max(NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
-    height: Math.ceil(TITLE_H + card.lines.length * LINE_H + 2 * NODE_PAD_Y),
+    // A card with an upstream pill makes room below its text for the pill's upper half.
+    height: Math.ceil(TITLE_H + card.lines.length * LINE_H + 2 * NODE_PAD_Y + (card.upstream === undefined ? 0 : PILL_RESERVE)),
   };
 }
 
@@ -132,10 +136,14 @@ const lengthOf = (points: readonly Point[]): number => {
   return total;
 };
 
-/** The point halfway along a path by length (the first point of a path with no length, the origin of an empty one). */
-export function pathMidpoint(points: readonly Point[]): Point {
+/** Where along its path (0 to 1, by length) a transport's glyph stands, and how much further each further transport of the pair. */
+export const GLYPH_AT = 0.3;
+export const GLYPH_SPREAD = 0.2;
+
+/** The point `fraction` of the way along a path by length, halfway by default (the first point of a path with no length, the origin of an empty one). */
+export function pathMidpoint(points: readonly Point[], fraction = 0.5): Point {
   if (points.length === 0) return { x: 0, y: 0 };
-  let rest = lengthOf(points) / 2;
+  let rest = lengthOf(points) * Math.min(1, Math.max(0, fraction));
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1];
     const b = points[i];
@@ -341,7 +349,9 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
 }
 
 function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
-  for (const merged of [false, true]) {
+  // Merged first: the flows of one pair of cards share one routed edge, so parallel flows never bend round each other's
+  // label boxes (a lone flow is the same either way). The separate form is the fallback.
+  for (const merged of [true, false]) {
     try {
       return placeWith(scene, sizes, drawn, labels, merged);
     } catch {
@@ -394,8 +404,14 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
     const b = p.frames.get(f.key);
     return b === undefined ? [] : [{ key: f.key, bubbleKey: f.bubbleKey, title: f.title, ...b }];
   });
+  // A transport's glyph stands a third of the way along its path, clear of the labels at the middle; transports sharing a
+  // pair of cards (one path) stand further apart.
+  const seen = new Map<string, number>();
   const edges: LaidEdge[] = flows.map((flow, index) => {
     const points = p.paths[index];
+    const pair = `${flow.from}\u0001${flow.to}`;
+    const before = isTransport(flow) ? (seen.get(pair) ?? 0) : 0;
+    if (isTransport(flow)) seen.set(pair, before + 1);
     const { width, height } = labels[index];
     const at = points.length > 0 ? labelPlacement(points, width, height, isTransport(flow) ? GLYPH_CLEARANCE : 0) : { x: 0, y: 0 };
     return {
@@ -408,7 +424,7 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
       labelY: at.y - p.stack[index],
       labelWidth: width,
       labelHeight: height,
-      mid: pathMidpoint(points),
+      mid: pathMidpoint(points, GLYPH_AT + GLYPH_SPREAD * before),
       length: lengthOf(points),
     };
   });

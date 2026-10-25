@@ -14,6 +14,7 @@ import {
   LABEL_LINE_H,
   LINE_H,
   NODE_PAD_X,
+  PILL_H,
   TITLE_H,
   isTransport,
   layoutScene,
@@ -54,7 +55,6 @@ const WHEEL_SENSITIVITY = 0.0015;
 const BADGE_W = 88;
 const BADGE_H = 20;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
-const PILL_H = 24;
 const PILL_MIN_W = 24;
 const PILL_HIT = 44;
 /** The Collapse button in a frame's header. */
@@ -469,7 +469,7 @@ export default function SiteGraph({
             onPointerDown={onPointerDown}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
-            className="max-h-map min-h-map-min w-full cursor-grab touch-none select-none rounded-card border border-line bg-surface"
+            className="max-h-map min-h-graph-min w-full cursor-grab touch-none select-none rounded-card border border-line bg-surface"
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
@@ -719,7 +719,7 @@ function CardView({
         >
           <title>{upstreamName(card)}</title>
           <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-          <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />
+          <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
           <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
             {pillText}
           </text>
@@ -751,7 +751,7 @@ function Legend({ modes }: { modes: readonly string[] }) {
       ))}
       {modes.map((mode) => (
         <li key={mode} className="flex items-center gap-2">
-          <svg aria-hidden="true" viewBox="-15 -15 30 30" className="size-6 shrink-0">
+          <svg aria-hidden="true" viewBox="-15 -15 30 30" className="size-5 shrink-0">
             <TransportGlyph mode={mode} />
           </svg>
           <span>{carrierWord(mode).toLowerCase()}</span>

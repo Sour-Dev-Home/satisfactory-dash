@@ -94,6 +94,8 @@
   --opacity-node-free: 0.55;
   --spacing-map: 60svh;
   --spacing-map-min: 320px;
+  /* The planner canvas's floor: a short drawing keeps a small canvas instead of 320 px of empty space (ADR-0055). */
+  --spacing-graph-min: 200px;
   --spacing-overview-rail: 17rem;
   /* The planner graph (ADR-0050): the side panel's width, and what an item filter dims. */
   --spacing-graph-panel: 22rem;
