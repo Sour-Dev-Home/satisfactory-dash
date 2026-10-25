@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.5",
-    "dependency-cruiser": "^18.5.0"
+    "dependency-cruiser": "^18.7.0"
   },
   "allowScripts": {
     "cpu-features": false,
