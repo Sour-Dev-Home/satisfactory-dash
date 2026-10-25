@@ -309,12 +309,12 @@ describe("SatisfactoryServerAdapter", () => {
   });
 
   it("maps getResourceNode items, including nodeType (#352, #367 follow-ups)", async () => {
-    const satellite = { ...resourceNodeFixture, Name: "Nitrogen Gas", NodeType: "Fracking Satellite" };
+    const satellite = { ...resourceNodeFixture, Name: "Nitrogen Gas", ClassName: "Desc_NitrogenGas_C", NodeType: "Fracking Satellite" };
     const { adapter, frmApi } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue([resourceNodeFixture, satellite]) } });
     const { data, dropped } = await adapter.getResourceNodes();
     expect(data).toEqual([
-      { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false },
-      { type: "Nitrogen Gas", purity: "normal", nodeType: "frackingSatellite", x: 1783, y: 2061, exploited: false },
+      { type: "Crude Oil", purity: "normal", nodeType: "node", x: 1783, y: 2061, exploited: false, className: "Desc_LiquidOil_C" },
+      { type: "Nitrogen Gas", purity: "normal", nodeType: "frackingSatellite", x: 1783, y: 2061, exploited: false, className: "Desc_NitrogenGas_C" },
     ]);
     expect(dropped).toBe(0);
     expect(frmApi.get).toHaveBeenCalledWith("getResourceNode");

@@ -89,7 +89,9 @@ describe("ResourceNode.className (ADR-0053 Decision 5)", () => {
   const node = fixtures.resourceNodesSample.data[0]!;
 
   it("is optional: an older layer without it parses", () => {
-    expect("className" in node).toBe(false);
+    const { className: _className, ...oldRow } = node;
+    expect("className" in oldRow).toBe(false);
+    expect(ResourceNodeSchema.safeParse(oldRow).success).toBe(true);
     expect(ResourceNodeSchema.safeParse(node).success).toBe(true);
   });
 
