@@ -58,6 +58,9 @@ export function createLeaderLockClient(config: DatabaseConfig): LeaderLockClient
     statement_timeout: config.statementTimeoutMs,
     query_timeout: config.statementTimeoutMs + 1_000,
     keepAlive: true,
+    // Server-side keepalives for this session only: a half-open connection (the network dropped without a reset) would
+    // otherwise keep its lock on the server for the OS default (minutes), leaving no leader that long. About 60 s here.
+    options: "-c tcp_keepalives_idle=30 -c tcp_keepalives_interval=10 -c tcp_keepalives_count=3",
     application_name: "satisfactory-dash-leader",
   });
 }
@@ -199,18 +202,20 @@ export class LeaderLock {
     this.client = undefined;
     this.locked = false;
     this.followerLogged = false;
-    void client.end().catch(() => {});
     // The code only: a driver message can quote connection details.
     const code = errorCode(err);
     if (this.leader) {
       this.leader = false;
       this.failing = true;
       this.options.logger.warn({ code }, "lost the leader lock (its database connection failed): stopping leader-only workers, retrying");
+      // The workers stop BEFORE the client closes: if the connection is in fact alive (a slow query timed out), the lock
+      // stays held until they have stopped, so a follower cannot start its copies alongside them.
       await this.runCallback("onLost");
     } else if (!this.failing) {
       this.failing = true;
       this.options.logger.warn({ code }, "leader lock: database connection failed, retrying every few seconds");
     }
+    void client.end().catch(() => {});
   }
 
   private recovered(): void {

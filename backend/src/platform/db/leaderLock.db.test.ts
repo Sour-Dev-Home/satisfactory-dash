@@ -35,11 +35,15 @@ describe.skipIf(!available)("LeaderLock against a real Postgres", () => {
     await db?.drop();
   });
 
-  function instance(key: string) {
+  function instance(key: string, options: { connections?: number } = {}) {
     const terms = { acquired: 0, lost: 0 };
+    let connections = 0;
     const lock = new LeaderLock({
-      createClient: () =>
-        createLeaderLockClient({ url: db.appUrl, poolMax: 1, statementTimeoutMs: 5_000, connectionTimeoutMs: 3_000 }),
+      createClient: () => {
+        // `connections`: how many clients this instance may open (a dead task never reconnects).
+        if (options.connections !== undefined && ++connections > options.connections) throw new Error("gone");
+        return createLeaderLockClient({ url: db.appUrl, poolMax: 1, statementTimeoutMs: 5_000, connectionTimeoutMs: 3_000 });
+      },
       logger: silent,
       key,
       intervalMs: INTERVAL_MS,
@@ -103,17 +107,39 @@ describe.skipIf(!available)("LeaderLock against a real Postgres", () => {
     // a notices through the client's 'error' event, without waiting for its next tick.
     const lossMs = await until(() => !a.lock.isLeader(), 2_000);
     expect(a.terms.lost).toBe(1);
-    await until(() => b.lock.isLeader(), INTERVAL_MS + 2_000);
+    // Whichever instance ticks first takes the lock: b, or a itself on its reconnect. Either way exactly one leader.
+    await until(() => a.lock.isLeader() || b.lock.isLeader(), INTERVAL_MS + 2_000);
     const failoverMs = Date.now() - droppedAt;
-    console.log(`leader-lock: loss noticed after ${lossMs} ms, failover after a dropped connection: ${failoverMs} ms`);
+    console.log(
+      `leader-lock: loss noticed after ${lossMs} ms, new leader (${b.lock.isLeader() ? "the follower" : "the old leader, reconnected"}) after a dropped connection: ${failoverMs} ms`,
+    );
     expect(failoverMs).toBeLessThanOrEqual(INTERVAL_MS + 1_000);
 
-    // a reconnects as a follower: still one leader.
-    await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS + 1_000));
-    expect(a.lock.isLeader()).toBe(false);
-    expect(b.lock.isLeader()).toBe(true);
+    // Two more intervals: both keep trying, and there is still exactly one leader.
+    await new Promise((resolve) => setTimeout(resolve, 2 * INTERVAL_MS));
+    expect([a.lock.isLeader(), b.lock.isLeader()].filter(Boolean)).toHaveLength(1);
     expect(await holders(key)).toHaveLength(1);
     await Promise.all([a.lock.stop(), b.lock.stop()]);
     expect(await holders(key)).toHaveLength(0);
+  }, 40_000);
+
+  it("a leader whose connection drops and never comes back (a dead task): the follower leads within one interval", async () => {
+    const key = "1003";
+    const a = instance(key, { connections: 1 });
+    const b = instance(key);
+    a.lock.start();
+    await until(() => a.lock.isLeader(), 5_000);
+    b.lock.start();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const [leaderPid] = await holders(key);
+    const droppedAt = Date.now();
+    await admin.query("SELECT pg_terminate_backend($1)", [leaderPid]);
+    await until(() => b.lock.isLeader(), INTERVAL_MS + 2_000);
+    const failoverMs = Date.now() - droppedAt;
+    console.log(`leader-lock failover to the follower after the leader's connection died: ${failoverMs} ms`);
+    expect(failoverMs).toBeLessThanOrEqual(INTERVAL_MS + 1_000);
+    expect(a.lock.isLeader()).toBe(false);
+    expect(a.terms).toEqual({ acquired: 1, lost: 1 });
+    await Promise.all([a.lock.stop(), b.lock.stop()]);
   }, 40_000);
 });

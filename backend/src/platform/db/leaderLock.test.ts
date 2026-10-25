@@ -158,6 +158,19 @@ describe("LeaderLock", () => {
     await lock.stop();
   });
 
+  it("a failed check stops the workers BEFORE closing the client, so a live session keeps the lock until they stopped", async () => {
+    const server = new FakeServer();
+    let endedDuringLost: boolean | undefined;
+    const { lock } = lockOn(server, { onLost: () => void (endedDuringLost = server.clients[0]!.ended) });
+    lock.start();
+    await advance(0);
+    server.clients[0]!.queryError = Object.assign(new Error("timeout"), { code: "57014" });
+    await advance(5_000);
+    expect(endedDuringLost).toBe(false);
+    expect(server.clients[0]!.ended).toBe(true);
+    await lock.stop();
+  });
+
   it("while the database is down it retries every interval and warns once per streak", async () => {
     const server = new FakeServer();
     server.connectError = Object.assign(new Error("refused"), { code: "ECONNREFUSED" });
