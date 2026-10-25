@@ -106,7 +106,7 @@ added or removed.
   accepted 2026-10-21): the backend coarsens the finder's connection graph into machine groups with inferred items and measured or
   estimated rates, dagre lays out one site at a time in a lazy chunk, sites are computed from connected components
   merged by distance, which graph algorithms are worth building, train links gated on a capture, build tasks.
-- [`decisions/0051-public-release-plan.md`](./decisions/0051-public-release-plan.md) — public release plan (proposed
+- [`decisions/0051-public-release-plan.md`](./decisions/0051-public-release-plan.md) — public release plan (accepted
   2026-10-24): device-code pairing, FRM as a dependency (blocked on legal clearance), the ordered milestones to a
   public beta, hosting after the AWS Free plan, and no email.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
