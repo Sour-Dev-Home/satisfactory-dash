@@ -258,9 +258,11 @@ a few tens of factories [estimate: well under 5 ms]; PR 6's generated-10x test b
   names rendered as text only. User-authored configuration, not telemetry: ADR-0052's "a cache, not a database" is about
   snapshots and does not apply; nothing here holds game state beyond class names and positions the player chose.
 - **Why positions and not ids:** a rebuilt belt gets a new id (G-B1, `raw-sources/frm-conveyor-gchecks-2026-10-21.md`),
-  and building id stability across restarts is `[NEEDS VERIFICATION]` (`packages/shared/src/factory.ts:42-44`). A
-  machine deleted and rebuilt in place has a new id but the same class and position. Matching on read: exact
-  `(class, x, y)`, else the nearest machine of that class within 2 m, one-to-one, in member order.
+  and a machine deleted and rebuilt in place has a new id but the same class and position. **Verified 2026-10-25:**
+  building ids survive a dedicated-server restart (340 of 340 identical,
+  `raw-sources/captured-responses/frm-getFactory-2026-10-25-id-stability.md`). So members also store the id
+  (`{id, c, x, y}`), and matching on read is: the same id, else exact `(class, x, y)`, else the nearest machine of
+  that class within 2 m, one-to-one, in member order.
 - **Conflicts:** a write whose members overlap another designation is refused (409, naming the other one). An overlap on
   read (drift after a rebuild) goes to the older designation, and the newer says "N machines claimed by …". Members not
   found: "N machines no longer found", with a clean-up action; all missing: listed as unmatched, never deleted silently.
