@@ -1,5 +1,6 @@
 // Pure parts of the production deploy (ADR-0049 D2, D4, D5): what an image reference may be, what a base task definition
 // must look like, how CI copies one with a new image, and the release record. No I/O here; deploy.mjs does the calls.
+import { INPUTS_LABEL, isInputs } from "./inputs.mjs";
 
 /** The two pinned GHCR repositories (D2). Nothing else is ever registered. */
 export const REPOSITORIES = {
@@ -44,6 +45,30 @@ export function digestFromInspect(inspect, sha) {
     if (revision !== sha) throw new Error(`revision label is ${revision ?? "missing"}, not ${sha}`);
   }
   return digest;
+}
+
+/**
+ * ADR-0054 D1: the build-inputs label of an inspected image, or null unless every platform's config carries the same
+ * valid hash. Null never matches a release record, so an image without the label (or with a broken one) deploys.
+ */
+export function inputsFromInspect(inspect) {
+  const raw = inspect?.image && typeof inspect.image === "object" ? inspect.image : null;
+  const map = raw && ("config" in raw || "architecture" in raw) ? { single: raw } : (raw ?? {});
+  const values = Object.values(map).map((img) => img?.config?.Labels?.[INPUTS_LABEL]);
+  if (values.length === 0 || !values.every((v) => isInputs(v) && v === values[0])) return null;
+  return values[0];
+}
+
+/**
+ * ADR-0054 D1, the automatic run's skip: why production already runs what `target` would ship ("images": the same
+ * digests; "inputs": images built from the same build inputs), or null to deploy. Only a valid hash on both sides
+ * matches, so a record from before the hash existed, or a target whose images lack it, always deploys.
+ */
+export function alreadyReleased(released, target) {
+  if (!released || !target) return null;
+  if (isDigest(target.backend) && isDigest(target.ops) && released.backend === target.backend && released.ops === target.ops) return "images";
+  if (isInputs(released.inputs) && isInputs(target.inputs) && released.inputs === target.inputs) return "inputs";
+  return null;
 }
 
 /** The cloudflared pin in infra/aws/ecs.tf (`cloudflared_image = "…"`), which the backend base must carry (D2). */
@@ -156,10 +181,13 @@ export function parseReleased(value) {
   return r;
 }
 
-/** The next record: this release, with the one it replaces as `previous` (one level deep, so it never grows). */
+/**
+ * The next record: this release, with the one it replaces as `previous` (one level deep, so it never grows). `inputs`
+ * (ADR-0054 D1) is kept only when it is a valid hash of exactly the images recorded beside it; otherwise left out.
+ */
 export function nextReleased(current, release) {
-  const previous = current ? { sha: current.sha, backend: current.backend, ops: current.ops, taskDefinition: current.taskDefinition } : null;
-  return { ...release, previous };
+  const entry = (r) => ({ sha: r.sha, backend: r.backend, ops: r.ops, taskDefinition: r.taskDefinition, ...(isInputs(r.inputs) ? { inputs: r.inputs } : {}) });
+  return { ...entry(release), previous: current ? entry(current) : null };
 }
 
 /**
