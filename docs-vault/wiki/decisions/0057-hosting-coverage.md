@@ -24,7 +24,7 @@ as easy as possible to set up our system. the ideal ideal is a person has a serv
 page to setup if needed (codes or whatever, code given in game) and they see the dashboard thereafter. No to 8. Basic data
 view is fine."
 
-On the updates question, relayed by the coordinator the same day: "Mod updates for the agent should ever be force pushed,
+On the updates question, later the same day (the owner's own message in the dash session): "Mod updates for the agent should ever be force pushed,
 isntead should be deliberate by the user. We can limit functionality of the dashboard if they dont update. This is in case
 on of our updates to the agent is a major vulnerability like remote code execution". The architect reads "ever" as
 "never": no update is ever pushed to a server; every update is a deliberate user action.
