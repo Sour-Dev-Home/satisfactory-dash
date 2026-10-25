@@ -27,8 +27,8 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
-import { mapConveyors, mapRailSegments, mapResourceNodes, mapTrains, mapTrainStations } from "./map/index.js";
-import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrains, MappedTrainStations } from "./map/index.js";
+import { mapConveyors, mapRailSegments, mapResourceNodes, mapTrainRoutes, mapTrains, mapTrainStations } from "./map/index.js";
+import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
 import { totalPowerProductionMW } from "./totalPowerProduction.js";
 
@@ -300,5 +300,15 @@ export class SatisfactoryServerAdapter {
   async getTrainStations(): Promise<MappedTrainStations> {
     const raw = parseUpstream("getTrainStation", z.array(RawFrmTrainStationSchema), await this.frmApi.get<unknown>("getTrainStation"));
     return mapTrainStations(raw);
+  }
+
+  /** ADR-0055 PR 5: the `trainRoutes` world layer, stations with their platforms' cargo plus trains with their timetable
+   *  stops and cargo (map/trainRoutesMapper.ts). The two reads go back to back so they agree. A record without an id and
+   *  name is dropped (`dropped`), not the layer. Read every 10 min on the world tier, never at the snapshot cadence. */
+  async getTrainRoutes(): Promise<MappedTrainRoutes> {
+    const array = z.array(z.unknown());
+    const stations = parseUpstream("getTrainStation", array, await this.frmApi.get<unknown>("getTrainStation"));
+    const trains = parseUpstream("getTrains", array, await this.frmApi.get<unknown>("getTrains"));
+    return mapTrainRoutes({ stations, trains });
   }
 }

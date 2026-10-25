@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MappedConveyors, MappedRailSegments, MappedResourceNodes } from "@satisfactory-dash/game-adapter";
+import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes } from "@satisfactory-dash/game-adapter";
 import { MAP_WORLD_LAYER_MAX_BYTES } from "@satisfactory-dash/shared";
 import type { ConveyorsSkipReason, MapWorldLayer, WorldIngestResponse } from "@satisfactory-dash/shared";
 import { backoffDelayMs } from "./backoff.js";
@@ -14,6 +14,8 @@ import { failureCode } from "./sampler.js";
 export const RAILS_INTERVAL_MS = 600_000;
 /** Conveyors (ADR-0048 amendment): every 10 min, the same world tier as rails; the graph changes only when the player builds. */
 export const CONVEYORS_INTERVAL_MS = 600_000;
+/** Train routes (ADR-0055 PR 5): every 10 min, the world tier; stations and timetables change only when the player builds or edits. */
+export const TRAIN_ROUTES_INTERVAL_MS = 600_000;
 /** Resource nodes: every 30 min. `getResourceNode` runs on the game thread, so it is read least often. */
 export const RESOURCE_NODES_INTERVAL_MS = 1_800_000;
 /** ±10%, as the local poller: agents that started together do not read their games in the same tick. */
@@ -24,6 +26,7 @@ export interface WorldPorts {
   getRails(): Promise<MappedRailSegments>;
   getResourceNodes(): Promise<MappedResourceNodes>;
   getConveyors(): Promise<MappedConveyors>;
+  getTrainRoutes(): Promise<MappedTrainRoutes>;
 }
 
 export interface WorldClient {
@@ -95,6 +98,7 @@ export class WorldReader {
         this.loop("rails", RAILS_INTERVAL_MS, () => ports.getRails()),
         this.loop("resourceNodes", RESOURCE_NODES_INTERVAL_MS, () => ports.getResourceNodes()),
         this.loop("conveyors", CONVEYORS_INTERVAL_MS, () => ports.getConveyors()),
+        this.loop("trainRoutes", TRAIN_ROUTES_INTERVAL_MS, () => ports.getTrainRoutes()),
       ]);
     } finally {
       signal.removeEventListener("abort", stopFromOutside);

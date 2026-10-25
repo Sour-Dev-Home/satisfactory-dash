@@ -182,6 +182,7 @@ describe("SatisfactoryServerAdapter", () => {
     ["getTrainRails", (a: SatisfactoryServerAdapter) => a.getRails()],
     ["getResourceNode", (a: SatisfactoryServerAdapter) => a.getResourceNodes()],
     ["getBelts", (a: SatisfactoryServerAdapter) => a.getConveyors()],
+    ["getTrainStation", (a: SatisfactoryServerAdapter) => a.getTrainRoutes()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -300,6 +301,24 @@ describe("SatisfactoryServerAdapter", () => {
     expect(get.mock.calls.map((call) => call[0])).toEqual(["getBelts", "getLifts", "getPipes"]);
     expect(result.dropped).toBe(0);
     expect(result.data.map((e) => [e.id, e.kind, e.capacityPerMinute])).toEqual([["a1", "lift", 60], ["b1", "belt", 60], ["c1", "pipe", 300]]);
+  });
+
+  it("reads getTrainStation then getTrains and maps them to the trainRoutes layer", async () => {
+    const responses: Record<string, unknown[]> = {
+      getTrainStation: [{ ID: "s1", Name: "A ", CargoInventory: [{ ID: "p1", LoadingMode: "Loading", Inventory: [{ ClassName: "Desc_Silica_C", Amount: 5 }] }] }],
+      getTrains: [{ ID: "t1", Name: "T", TimeTable: [{ StationName: "A " }], Vehicles: [{ Inventory: [{ ClassName: "Desc_Silica_C" }] }] }],
+    };
+    const get = vi.fn(async (endpoint: string) => responses[endpoint] as never);
+    const { adapter } = buildAdapter({ frm: { get } });
+    const result = await adapter.getTrainRoutes();
+    expect(get.mock.calls.map((call) => call[0])).toEqual(["getTrainStation", "getTrains"]);
+    expect(result).toEqual({
+      dropped: 0,
+      data: [
+        { recordType: "station", id: "s1", name: "A ", platforms: [{ id: "p1", mode: "load", items: ["Desc_Silica_C"] }] },
+        { recordType: "train", id: "t1", name: "T", stops: ["A "], items: ["Desc_Silica_C"] },
+      ],
+    });
   });
 
   it("getConveyors from an FRM without the connection fields resolves to skip unsupportedFrm, not an error", async () => {

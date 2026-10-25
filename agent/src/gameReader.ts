@@ -23,7 +23,7 @@ export interface GameConnectionInput {
 
 /** The two collaborators the reader wraps: injectable so tests need no game. */
 export interface GameReaderDeps {
-  adapter: Pick<SatisfactoryServerAdapter, "getServerHealth" | "getServerStatus" | "getPowerCircuits" | "getFactoryBuildings" | "getPlayers" | "getTrains" | "getTrainStations" | "getRails" | "getResourceNodes" | "getConveyors">;
+  adapter: Pick<SatisfactoryServerAdapter, "getServerHealth" | "getServerStatus" | "getPowerCircuits" | "getFactoryBuildings" | "getPlayers" | "getTrains" | "getTrainStations" | "getRails" | "getResourceNodes" | "getConveyors" | "getTrainRoutes">;
   options: ServerOptionsPort;
 }
 
@@ -40,6 +40,7 @@ export function createGameReader(deps: GameReaderDeps): AgentGame {
       getRails: () => adapter.getRails(),
       getResourceNodes: () => adapter.getResourceNodes(),
       getConveyors: () => adapter.getConveyors(),
+      getTrainRoutes: () => adapter.getTrainRoutes(),
     },
     async readStatus() {
       const [health, status] = await Promise.all([adapter.getServerHealth(), adapter.getServerStatus()]);

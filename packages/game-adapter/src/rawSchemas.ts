@@ -251,6 +251,38 @@ export const RawFrmTrainSchema = z.object({
 });
 
 /**
+ * ADR-0055 PR 5 (the `trainRoutes` layer). Every field below is lenient (conform, don't reject): a missing or odd value
+ * becomes an empty list or `undefined` and the mapper decides what survives, so one bad platform, wagon or stop never costs
+ * the whole station or train. Only the id and name must be present (without them a record cannot be told apart or matched).
+ * Items are the inventory entries' `ClassName`; amounts are ignored on purpose (the layer's hash must be stable between reads).
+ */
+const RawFrmInventorySchema = z.array(z.object({ ClassName: z.string().optional().catch(undefined) }).catch({})).catch([]);
+
+/** A station's docking platform (`CargoInventory[]`): `LoadingMode` is "Loading" or "Unloading" today, kept as a plain string. */
+const RawFrmStationPlatformSchema = z
+  .object({
+    ID: z.string().optional().catch(undefined),
+    LoadingMode: z.string().optional().catch(undefined),
+    Inventory: RawFrmInventorySchema,
+  })
+  .catch({ Inventory: [] });
+
+/** getTrainStation for the trainRoutes layer. No `location`: the layer carries none, and the 2026-10-21 capture trims it. */
+export const RawFrmTrainRouteStationSchema = z.object({
+  ID: z.string().min(1),
+  Name: z.string(),
+  CargoInventory: z.array(RawFrmStationPlatformSchema).catch([]),
+});
+
+/** getTrains for the trainRoutes layer: the timetable's stop names, in order, and each wagon's cargo. */
+export const RawFrmTrainRouteTrainSchema = z.object({
+  ID: z.string().min(1),
+  Name: z.string(),
+  TimeTable: z.array(z.object({ StationName: z.string().optional().catch(undefined) }).catch({})).catch([]),
+  Vehicles: z.array(z.object({ Inventory: RawFrmInventorySchema }).catch({ Inventory: [] })).catch([]),
+});
+
+/**
  * ADR-0038 M3: GET /getTrainStation (docs-vault/raw-sources/captured-responses/
  * frm-getTrainStation-2026-09-27-full.json). The docking platforms (`CargoInventory`), bounding
  * box and power are not the map's concern.

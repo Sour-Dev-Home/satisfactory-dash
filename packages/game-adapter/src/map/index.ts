@@ -9,4 +9,6 @@ export type { MappedTrains } from "./trainsMapper.js";
 export { mapTrainStation, mapTrainStations } from "./stationsMapper.js";
 export type { MappedTrainStations } from "./stationsMapper.js";
 export { toWholeMetres, inWholeMetreBounds, MAX_WHOLE_METRES } from "./coordinates.js";
+export { mapTrainRoutes } from "./trainRoutesMapper.js";
+export type { MappedTrainRoutes, RawTrainRouteResponses } from "./trainRoutesMapper.js";
 export { mapNodeType } from "./nodeType.js";

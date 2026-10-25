@@ -22,6 +22,7 @@ export type {
   MappedConveyors,
   MappedRailSegments,
   MappedResourceNodes,
+  MappedTrainRoutes,
   MappedTrains,
   MappedTrainStations,
 } from "@satisfactory-dash/game-adapter";

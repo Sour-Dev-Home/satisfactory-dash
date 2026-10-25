@@ -13,6 +13,7 @@ function fakePorts(overrides: Partial<LocalWorldPollerPorts> = {}): LocalWorldPo
     getRails: vi.fn().mockResolvedValue(empty),
     getResourceNodes: vi.fn().mockResolvedValue(empty),
     getConveyors: vi.fn().mockResolvedValue(empty),
+    getTrainRoutes: vi.fn().mockResolvedValue(empty),
     getTrains: vi.fn().mockResolvedValue(empty),
     getTrainStations: vi.fn().mockResolvedValue(empty),
     ...overrides,
@@ -33,7 +34,7 @@ describe("LocalWorldPoller", () => {
     await poller.stop();
   });
 
-  it("ingests rails/resourceNodes/conveyors under their own layer name", async () => {
+  it("ingests rails/resourceNodes/conveyors/trainRoutes under their own layer name", async () => {
     const ports = fakePorts({
       getRails: vi.fn().mockResolvedValue({ data: [{ id: "r1" }], dropped: 0 }),
       getResourceNodes: vi.fn().mockResolvedValue({ data: [{ type: "Iron Ore" }], dropped: 0 }),
@@ -42,9 +43,9 @@ describe("LocalWorldPoller", () => {
     const mapLive = { record: vi.fn() };
     const poller = new LocalWorldPoller(ports, { logger: fakeLogger(), serverPublicId: "srv-1", ingest, mapLive, jitter: () => 0.5 });
     poller.start();
-    await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalledTimes(4));
     const layers = ingest.ingest.mock.calls.map((call) => call[1]);
-    expect(layers.sort()).toEqual(["conveyors", "rails", "resourceNodes"]);
+    expect(layers.sort()).toEqual(["conveyors", "rails", "resourceNodes", "trainRoutes"]);
     await poller.stop();
   });
 
@@ -79,6 +80,18 @@ describe("LocalWorldPoller", () => {
     poller.start();
     await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalled());
     expect(logger.warn).not.toHaveBeenCalled();
+    await poller.stop();
+  });
+
+  it("ingests the trainRoutes layer as read, on the 10 min world tier, and warns on dropped records", async () => {
+    const records = [{ recordType: "station", id: "s1", name: "A ", platforms: [] }];
+    const ports = fakePorts({ getTrainRoutes: vi.fn().mockResolvedValue({ data: records, dropped: 1 }) });
+    const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
+    const logger = fakeLogger();
+    const poller = new LocalWorldPoller(ports, { logger, serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
+    poller.start();
+    await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalledWith("srv-1", "trainRoutes", { observedAt: expect.any(String), data: records }));
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ layer: "trainRoutes", dropped: 1 }), expect.any(String));
     await poller.stop();
   });
 
@@ -124,7 +137,7 @@ describe("LocalWorldPoller", () => {
     const poller = new LocalWorldPoller(ports, { logger, serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
     poller.start();
     await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ loop: "conveyors" }), expect.any(String)));
-    await vi.waitFor(() => expect(ingest.ingest.mock.calls.map((call) => call[1]).sort()).toEqual(["rails", "resourceNodes"]));
+    await vi.waitFor(() => expect(ingest.ingest.mock.calls.map((call) => call[1]).sort()).toEqual(["rails", "resourceNodes", "trainRoutes"]));
     await poller.stop();
   });
 

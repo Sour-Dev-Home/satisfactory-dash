@@ -42,6 +42,20 @@ describe("POST /agent/v1/world/:layer", () => {
     expect(ingest.ingest).toHaveBeenCalledWith("srv-9", "rails", railBody);
   });
 
+  it("accepts a trainRoutes body (stations and trains in one array) and rejects an unknown recordType's body shape", async () => {
+    const { app, ingest } = build({ auth: fakeAuth("srv-9") });
+    const body = {
+      observedAt: "2026-10-25T00:00:00.000Z",
+      data: [
+        { recordType: "station", id: "s1", name: "A ", platforms: [{ id: "p1", mode: "load", items: ["Desc_Silica_C"] }] },
+        { recordType: "train", id: "t1", name: "T", stops: ["A ", "B"], items: [] },
+      ],
+    };
+    const res = await request(app).post(endpoints.agentApi.world.path("trainRoutes")).send(body);
+    expect(res.status).toBe(200);
+    expect(ingest.ingest).toHaveBeenCalledWith("srv-9", "trainRoutes", body);
+  });
+
   it("a conveyors skip body (reason, no data) is forwarded to the ingest service (#577)", async () => {
     const { app, ingest } = build({ auth: fakeAuth("srv-9") });
     const body = { observedAt: "2026-10-21T00:00:00.000Z", skipped: "tooManyEdges" };
