@@ -21,7 +21,7 @@ const openIronSite = (page: Page) => page.getByRole("button", { name: "Open site
 
 /** The Iron Plate factory (ADR-0055) on its tables, whichever view the screen opens on. */
 async function openPlateFactoryTables(page: Page) {
-  await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).click();
+  await pressButton(page, "Open factory: Iron Plate factory");
   await page.getByRole("button", { name: "Tables" }).click();
 }
 
