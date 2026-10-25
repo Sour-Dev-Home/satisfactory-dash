@@ -10,12 +10,14 @@ import type { GoogleClaims } from "./googleOidc.js";
 import type { CreatedSession } from "./sessionStore.js";
 import { SESSION_TTL_SECONDS } from "./sessionToken.js";
 import {
+  acceptedTermsVersion,
   addIdentity,
   authMethodsForUser,
   countUsersCreatedLastHour,
   createSignupUser,
   displayNameTaken,
   findUserByIdentity,
+  recordTermsAcceptance,
   setUserEmail,
   takeSignupLock,
 } from "./repositories/userRepository.js";
@@ -38,6 +40,8 @@ export type RefusalReason =
   | "disabled"
   | "unverified_email"
   | "terms_required"
+  /** #568: an existing account accepted an older terms version and has not accepted the current one. */
+  | "terms_changed"
   | "signup_busy"
   | "signup_network_busy";
 
@@ -181,6 +185,21 @@ export function createGoogleSignIn(
       }
       if (user.status !== "active") {
         return refuse(client, "disabled", user.id);
+      }
+      // #568 (#530 decision 9): an account that accepted an older terms version accepts the current one before
+      // any session exists. Nothing is started until then, so no other route is reachable meanwhile. An account
+      // that never accepted any (invited, or the seeded operator) is not asked here.
+      const accepted = await acceptedTermsVersion(client, user.id);
+      if (accepted !== null && accepted < TERMS_VERSION) {
+        if (options.acceptedTermsVersion !== TERMS_VERSION) {
+          return refuse(client, "terms_changed", user.id);
+        }
+        await recordTermsAcceptance(client, user.id, TERMS_VERSION);
+        await recordAuditEvent(client, {
+          action: "terms_accepted",
+          actorUserId: user.id,
+          detail: { provider: "google", termsVersion: TERMS_VERSION, previousTermsVersion: accepted },
+        });
       }
       const cookieValue = await startSession(client, user.id, replacing, { provider: "google" });
       const authMethods = await authMethodsForUser(client, user.id);

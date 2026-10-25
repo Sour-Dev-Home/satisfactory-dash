@@ -13,6 +13,7 @@ const ERROR_TEXT: Record<string, string> = {
   not_invited: "This Google account hasn't been invited yet. Ask the server's owner for an invitation.",
   unavailable: "Google sign-in isn't available right now. Try again later.",
   terms_required: "There is no account for this Google sign-in yet. Accept the Terms below to create one.",
+  terms_changed: "The Terms have changed since you last accepted them. Accept the new version below to continue.",
   signup_busy: "New accounts are paused for a while. Try again later.",
 };
 /**
@@ -21,6 +22,16 @@ const ERROR_TEXT: Record<string, string> = {
  * other value, so bump both together.
  */
 export const TERMS_VERSION = "2026-10-21";
+
+/**
+ * What changed in `TERMS_VERSION`, shown to an existing account asked to accept it again (#568). Rewrite it
+ * whenever `TERMS_VERSION` is bumped for a material change: a short, factual line per change.
+ */
+export const TERMS_CHANGES: readonly string[] = [
+  "You must be at least 18 (it was 13).",
+  "Per-account limits on servers and setup codes, and what happens when a server is removed.",
+  "You are responsible for telling your players that their in-game names are shown to your server's members.",
+];
 
 const UNKNOWN_ERROR = "Sign-in didn't work. Try again.";
 
@@ -52,11 +63,15 @@ export const termsReturnPath = (search: string): string | null => {
 /** Whether the URL says Google found no account and the terms must be accepted to create one. */
 export const needsTermsStep = (search: string): boolean => new URLSearchParams(search).get("error") === "terms_required";
 
+/** Whether the URL says an existing account accepted an older version of the Terms and must accept this one (#568). */
+export const needsTermsReaccept = (search: string): boolean => new URLSearchParams(search).get("error") === "terms_changed";
+
 /**
  * The "Sign in with Google" link: a full-page navigation to the backend (it answers with a
  * redirect to Google, never JSON), returning to the /app page the visitor was on. Only an /app
  * path is sent back; /app/login, or anything else, returns to the Overview. `acceptTerms` adds the
- * terms version the person just ticked (the backend honours it only for a new account).
+ * terms version the person just ticked (the backend honours it for a new account, and for an existing
+ * account that accepted an older version, #568).
  */
 export function googleStartHref(pathname: string, acceptTerms = false, returnTo?: string | null): string {
   const inApp = pathname === "/app" || pathname.startsWith("/app/");

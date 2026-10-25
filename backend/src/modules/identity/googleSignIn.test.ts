@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { createGoogleSignIn } from "./googleSignIn.js";
 import type { Db } from "./dbSessionStore.js";
+import { TERMS_VERSION } from "./signupConfig.js";
 
 const OWNER = "owner@example.com";
 
 interface Store {
-  users: Array<{ id: string; email: string | null; status: "active" | "disabled" }>;
+  users: Array<{ id: string; email: string | null; status: "active" | "disabled"; termsVersion?: string | null }>;
   identities: Array<{ userId: string; provider: string; subject: string }>;
   audits: Array<{ action: string; detail: Record<string, unknown> }>;
   sessions: number;
@@ -30,6 +31,15 @@ function fakeDb(seed: Partial<Store> = {}) {
       const identity = store.identities.find((i) => i.provider === params[0] && i.subject === params[1]);
       const user = store.users.find((u) => u.id === identity?.userId);
       return { rows: user ? [{ id: user.id, display_name: "Op", email: user.email, status: user.status, created_at: now }] : [] };
+    }
+    if (text.startsWith("SELECT terms_version")) {
+      const user = store.users.find((u) => u.id === params[0]);
+      return { rows: user ? [{ terms_version: user.termsVersion ?? null }] : [] };
+    }
+    if (text.includes("SET terms_version")) {
+      const user = store.users.find((u) => u.id === params[0]);
+      if (user) user.termsVersion = params[1] as string;
+      return { rows: [] };
     }
     if (text.startsWith("SELECT provider")) {
       return { rows: store.identities.filter((i) => i.userId === params[0]).map((i) => ({ provider: i.provider })) };
@@ -144,5 +154,85 @@ describe("createGoogleSignIn (in-memory)", () => {
     const result = await createGoogleSignIn(db, OWNER).complete(claims(), undefined);
     expect(result).toEqual({ kind: "refused", reason: "not_invited" });
     expect(store.identities).toHaveLength(1);
+  });
+
+  describe("an older accepted terms version (#568)", () => {
+    const returning = (termsVersion: string | null) =>
+      fakeDb({
+        users: [{ id: "u-2", email: null, status: "active", termsVersion }],
+        identities: [{ userId: "u-2", provider: "google", subject: "sub-9" }],
+      });
+    const them = claims({ sub: "sub-9", email: "z@example.com" });
+
+    it("is refused terms_changed without the current version ticked, with no session and nothing written", async () => {
+      const { db, store } = returning("2026-09-24");
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: "2026-09-24" });
+      expect(result).toEqual({ kind: "refused", reason: "terms_changed" });
+      expect(store.sessions).toBe(0);
+      expect(store.users[0]!.termsVersion).toBe("2026-09-24");
+      expect(store.audits).toEqual([{ action: "signin.refused", detail: { provider: "google", reason: "terms_changed" } }]);
+    });
+
+    it("records the current version and signs in once it is ticked", async () => {
+      const { db, store } = returning("2026-09-24");
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(result.kind).toBe("signed_in");
+      expect(store.users[0]!.termsVersion).toBe(TERMS_VERSION);
+      expect(store.audits.map((a) => a.action)).toEqual(["terms_accepted", "login"]);
+      expect(store.sessions).toBe(1);
+    });
+
+    it("refuses a disabled account as disabled, not terms_changed, and records no acceptance even when ticked", async () => {
+      const { db, store } = fakeDb({
+        users: [{ id: "u-2", email: null, status: "disabled", termsVersion: "2026-09-24" }],
+        identities: [{ userId: "u-2", provider: "google", subject: "sub-9" }],
+      });
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(result).toEqual({ kind: "refused", reason: "disabled" });
+      expect(store.users[0]!.termsVersion).toBe("2026-09-24");
+      expect(store.sessions).toBe(0);
+    });
+
+    it("refuses an unverified email as unverified_email before looking at the terms", async () => {
+      const { db, store } = returning("2026-09-24");
+      const result = await createGoogleSignIn(db, OWNER).complete({ ...them, emailVerified: false }, undefined, {
+        acceptedTermsVersion: TERMS_VERSION,
+      });
+      expect(result).toEqual({ kind: "refused", reason: "unverified_email" });
+      expect(store.users[0]!.termsVersion).toBe("2026-09-24");
+    });
+
+    it("ignores any ticked version that is not the current one", async () => {
+      const { db, store } = returning("2026-09-24");
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: "2999-01-01" });
+      expect(result).toEqual({ kind: "refused", reason: "terms_changed" });
+      expect(store.sessions).toBe(0);
+    });
+
+    it("keeps the terms audit free of the email and records the previous version", async () => {
+      const { db, store } = returning("2026-09-24");
+      await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(store.audits[0]).toEqual({
+        action: "terms_accepted",
+        detail: { provider: "google", termsVersion: TERMS_VERSION, previousTermsVersion: "2026-09-24" },
+      });
+    });
+
+    // Parity with the frontend's copy is checked in frontend/src/auth/googleSignIn.test.ts.
+    it("TERMS_VERSION is a zero-padded YYYY-MM-DD date, so the string comparison orders versions", () => {
+      expect(TERMS_VERSION).toMatch(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
+    });
+
+    it.each([
+      ["the current version", TERMS_VERSION],
+      ["no version (invited or seeded)", null],
+      ["a newer version than this build knows (a rollback)", "2999-01-01"],
+    ])("signs in normally with %s, writing nothing", async (_label, version) => {
+      const { db, store } = returning(version);
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined);
+      expect(result.kind).toBe("signed_in");
+      expect(store.users[0]!.termsVersion).toBe(version);
+      expect(store.audits.map((a) => a.action)).toEqual(["login"]);
+    });
   });
 });

@@ -10,7 +10,7 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { AccountMenu } from "./AccountMenu";
 import { AuthGate } from "./AuthGate";
-import { TERMS_VERSION } from "./googleSignIn";
+import { TERMS_CHANGES, TERMS_VERSION } from "./googleSignIn";
 
 function ServerList() {
   const servers = useQuery(queries.servers());
@@ -103,6 +103,67 @@ describe("the terms step of open sign-up (ADR-0046)", () => {
     renderGate();
     expect(await screen.findByRole("alert")).toHaveTextContent("New accounts are paused for a while. Try again later.");
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("re-accepting changed terms (#568)", () => {
+  it.each([
+    ["sign-up is closed", withGoogle],
+    ["sign-up is open", { ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] }],
+  ])("lists what changed, links the Terms, needs the tick, and keeps the return path (%s)", async (_label, session) => {
+    window.history.replaceState(null, "", "/app/login?error=terms_changed&return=%2Fapp%2Fpower");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(session)));
+    renderGate();
+    const box = await screen.findByRole("checkbox", { name: /I accept the updated Terms/ });
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole("group", { name: "The Terms have changed" })).toBeInTheDocument();
+    // An expected step, not a failure: no alert banner repeating the legend.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("You accepted an earlier version. Accept this one to continue.")).toBeInTheDocument();
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual([...TERMS_CHANGES]);
+    expect(screen.getByRole("link", { name: /updated Terms/ })).toHaveAttribute("href", "/terms.html");
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeDisabled();
+    fireEvent.click(box);
+    const href = new URL(screen.getByRole("link", { name: "Continue with Google" }).getAttribute("href")!, "http://x");
+    expect(href.searchParams.get("terms")).toBe(TERMS_VERSION);
+    expect(href.searchParams.get("return")).toBe("/app/power");
+  });
+
+  it("offers a decline that goes back to the plain sign-in page (no session exists to sign out of)", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_changed");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(withGoogle)));
+    renderGate();
+    expect(await screen.findByRole("link", { name: "Decline and stay signed out" })).toHaveAttribute("href", "/app/login");
+  });
+
+  it("shows the message but no terms step when Google is not offered", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_changed");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)));
+    renderGate();
+    expect(await screen.findByRole("alert")).toHaveTextContent("The Terms have changed");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Decline/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the sign-up terms step, not the re-accept step, for terms_required", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_required");
+    server.use(
+      http.get(endpoints.auth.session.route, () =>
+        HttpResponse.json({ ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] }),
+      ),
+    );
+    renderGate();
+    await screen.findByRole("checkbox");
+    expect(screen.queryByText("What changed:")).not.toBeInTheDocument();
+  });
+
+  it("shows nothing about changed terms on a plain sign-in", async () => {
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(withGoogle)));
+    renderGate();
+    await screen.findByRole("link", { name: "Sign in with Google" });
+    expect(screen.queryByText("What changed:")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Decline/ })).not.toBeInTheDocument();
   });
 });
 

@@ -28,7 +28,7 @@ const ATTEMPT_COOKIE_OPTIONS: CookieOptions = {
 
 /** The fixed set of reasons a failed sign-in sends the browser back with (`/app/login?error=`).
  *  Google's own error text is never passed through. */
-export type GoogleLoginError = "denied" | "expired" | "failed" | "not_invited" | "unavailable" | "terms_required" | "signup_busy";
+export type GoogleLoginError = "denied" | "expired" | "failed" | "not_invited" | "unavailable" | "terms_required" | "terms_changed" | "signup_busy";
 
 const DEFAULT_RETURN_PATH = "/app";
 
@@ -36,8 +36,6 @@ export interface GoogleAuthDeps {
   config: GoogleConfig;
   oidc: GoogleOidc;
   signIn: GoogleSignIn;
-  /** Open sign-up (ADR-0046): when true, /start keeps the accepted terms version on the attempt. */
-  signupOpen?: boolean;
   db: Queryable;
 }
 
@@ -59,7 +57,7 @@ export function createGoogleDisabledRouter(): Router {
  * stored, validated return path or a fixed error code; nothing from the query string is reflected.
  */
 export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
-  const { config, oidc: google, signIn, db, signupOpen = false } = deps;
+  const { config, oidc: google, signIn, db } = deps;
   const router = Router();
   const noStore = (res: Response) => void res.setHeader("Cache-Control", "no-store");
   // Both routes are top-level browser navigations: a failure must never render JSON at the API host, so
@@ -90,14 +88,16 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
       // Discovery first: when Google is unreachable nothing is written.
       const url = await google.authorizationUrl({ state, nonce, codeVerifier });
       const attempt = newLoginAttemptId();
-      // Terms acceptance (ADR-0046 question 6): only the current version counts, only while sign-up is open.
-      // It rides on the single-use attempt, so the callback's own query string can never claim it.
+      // Terms acceptance (ADR-0046 question 6, #568): only the current version counts. It is kept whatever the
+      // sign-up mode, because an existing account re-accepts a changed version even while sign-up is closed (an
+      // unknown account is still refused before the terms matter). It rides on the single-use attempt, so the
+      // callback's own query string can never claim it.
       // A link from a third party's page would be cross-site (Sec-Fetch-Site), and could record an acceptance the
       // person never saw: only a same-origin or same-site navigation (the sign-in page, on the same registrable
       // domain as the API) counts. Otherwise the person just gets the terms step.
       const fetchSite = req.get("sec-fetch-site");
       const fromOurPage = fetchSite === "same-origin" || fetchSite === "same-site";
-      const termsVersion = signupOpen && fromOurPage && req.query.terms === TERMS_VERSION ? TERMS_VERSION : undefined;
+      const termsVersion = fromOurPage && req.query.terms === TERMS_VERSION ? TERMS_VERSION : undefined;
       await createLoginAttempt(db, { idHash: attempt.idHash, state, nonce, codeVerifier, returnPath, termsVersion });
       res.cookie(LOGIN_ATTEMPT_COOKIE, attempt.id, { ...ATTEMPT_COOKIE_OPTIONS, maxAge: ATTEMPT_COOKIE_MAX_AGE_SECONDS * 1000 });
       res.redirect(302, url.toString());
@@ -156,13 +156,15 @@ export function createGoogleAuthRouter(deps: GoogleAuthDeps): Router {
         const actionable: Partial<Record<typeof result.reason, GoogleLoginError>> = {
           not_invited: "not_invited",
           terms_required: "terms_required",
+          // Only the person who just signed in to this Google account learns it has an account here.
+          terms_changed: "terms_changed",
           signup_busy: "signup_busy",
           // One network's own share looks the same as the global cap: it says nothing about counts or limits.
           signup_network_busy: "signup_busy",
         };
         const code: GoogleLoginError = actionable[result.reason] ?? "failed";
         req.log.warn({ ip, code }, "google sign-in refused");
-        failTo(res, code, code === "terms_required" ? attempt.returnPath : undefined);
+        failTo(res, code, code === "terms_required" || code === "terms_changed" ? attempt.returnPath : undefined);
         return;
       }
       setSessionCookie(res, result.session.cookieValue, result.session.maxAgeSeconds);

@@ -100,7 +100,6 @@ export function createIdentityModule(
           signIn: createGoogleSignIn(options.db, googleConfig.bootstrapOwnerEmail, signup, {
             metrics: createBackgroundRecorder(createLogger(), options.metrics),
           }),
-          signupOpen,
           db: options.db,
         })
       : createGoogleDisabledRouter(),

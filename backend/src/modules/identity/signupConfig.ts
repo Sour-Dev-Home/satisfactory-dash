@@ -3,7 +3,9 @@ import { ConfigError } from "../../platform/errors.js";
 /**
  * The terms text a new account accepts (ADR-0046 question 6). It is the "Last updated" date of
  * `frontend/public/terms.html`; bump it with that page (and `TERMS_VERSION` in
- * `frontend/src/auth/googleSignIn.ts`) so a changed text is accepted again by new accounts.
+ * `frontend/src/auth/googleSignIn.ts`, with its `TERMS_CHANGES` summary) so a changed text is accepted by new
+ * accounts and, at their next sign-in, again by existing ones (#568). Always `YYYY-MM-DD`: sign-in compares versions
+ * as strings, so "older" is only right in that zero-padded form (a unit test checks it).
  */
 export const TERMS_VERSION = "2026-10-21";
 
