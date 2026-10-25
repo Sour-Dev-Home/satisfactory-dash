@@ -4,7 +4,7 @@ import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph }
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import { EMPTY_VIEW, factoryScene, overviewScene, type Scene } from "./canvasScene";
 import { factoryModels } from "./hierarchy";
-import { FRAME_HEADER_H, clearLayoutMemo, layoutScene, layoutStats } from "./layoutSite";
+import { FRAME_HEADER_H, GLYPH_CLEARANCE, LABEL_GAP, clearLayoutMemo, labelPlacement, layoutScene, layoutStats } from "./layoutSite";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const models = factoryModels(FIXTURE);
@@ -69,6 +69,20 @@ describe("layoutScene", () => {
     expect(layout.edges).toHaveLength(1);
     expect(layout.edges[0].points.length).toBeGreaterThanOrEqual(2);
     expect(layout.frames).toEqual([]);
+  });
+
+  it("puts a transport's glyph on the middle of its path and its label clear of the glyph", () => {
+    const layout = layoutScene(factoryScene(FIXTURE, models[0], EMPTY_VIEW), FIXTURE.topologyHash);
+    const train = layout.edges.find((e) => e.flow.carrier === "train")!;
+    const first = train.points[0];
+    const last = train.points[train.points.length - 1];
+    expect(train.length).toBeGreaterThan(0);
+    expect(train.mid.x).toBeGreaterThanOrEqual(Math.min(first.x, last.x) - 1);
+    expect(train.mid.x).toBeLessThanOrEqual(Math.max(first.x, last.x) + 1);
+    const flat = [{ x: 0, y: 0 }, { x: 200, y: 0 }];
+    const plain = labelPlacement(flat, 50, 18);
+    expect(plain.y).toBe(-(9 + LABEL_GAP));
+    expect(labelPlacement(flat, 50, 18, GLYPH_CLEARANCE).y).toBe(plain.y - GLYPH_CLEARANCE);
   });
 
   it("draws an expanded bubble's groups inside a frame, with room above for its header", () => {

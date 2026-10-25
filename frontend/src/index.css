@@ -152,6 +152,15 @@
   --animate-reveal: reveal var(--duration-fast) var(--ease-standard);
   --animate-pop: pop var(--duration-base) var(--ease-standard);
   --animate-shimmer: shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
+  /* `animate-graph-in`: the planner canvas easing in after a card opens, closes or hides what feeds it (ADR-0055). */
+  --animate-graph-in: graph-in var(--duration-slow) var(--ease-in-out);
+  --opacity-graph-in: 0.3;
+
+  @keyframes graph-in {
+    from {
+      opacity: var(--opacity-graph-in);
+    }
+  }
 
   @keyframes reveal {
     from {

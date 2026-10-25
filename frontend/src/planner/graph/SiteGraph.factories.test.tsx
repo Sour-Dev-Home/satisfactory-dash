@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
+import { COLLAPSED_KEY, MOTION_KEY, STORAGE_DETAIL_KEY } from "./plannerPrefs";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -19,10 +20,10 @@ const DATA = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const answer = (body: JsonBodyType) => server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(body)));
 const withData = (data: object) => ({ ...productionGraphFactories, data: { ...DATA, ...data } });
 
-/** A wide screen: the graph is the default view. */
-function wideScreen() {
+/** A wide screen (the graph is the default view), with the operator's reduced-motion setting on or off. */
+function wideScreen(reducedMotion = false) {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query.includes("min-width"),
+    matches: query.includes("min-width") || (reducedMotion && query.includes("prefers-reduced-motion")),
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
@@ -114,10 +115,70 @@ describe("an opened factory", () => {
     expect(svg.querySelector("[style]")).toBeNull();
   });
 
-  it("draws the train as an ordinary line with its mode in the tooltip", async () => {
+  it("draws the train as a glyph on its edge, named in the legend and the edge's tooltip", async () => {
     const svg = await openPlate();
+    expect(svg.querySelector('[data-glyph="train"]')).not.toBeNull();
     const titles = [...svg.querySelectorAll("title")].map((t) => t.textContent);
-    expect(titles.some((t) => t?.startsWith("Train: Miner Mk.2 to Main Depot"))).toBe(true);
+    expect(titles.some((t) => t?.startsWith("Train, route Ore Run: Miner Mk.2 to Main Depot"))).toBe(true);
+    const legend = screen.getByRole("list", { name: "Line styles" });
+    expect(within(legend).getByText("train")).toBeInTheDocument();
+    expect(within(legend).queryByText("truck")).not.toBeInTheDocument();
+  });
+
+  it("hides storage behind the toggle: terminal storage becomes a chip on the group that fills it, and the choice is remembered", async () => {
+    const svg = await openPlate();
+    const toggle = screen.getByRole("button", { name: "Storage detail" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(cardNames()).toContain("Storage Container");
+    expect(within(svg).queryByText("1 flow to storage")).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(cardNames()).not.toContain("Storage Container");
+    expect(within(svg).getByText("1 flow to storage")).toBeInTheDocument();
+    expect(window.localStorage.getItem(STORAGE_DETAIL_KEY)).toBe("off");
+  });
+
+  it("starts with storage hidden when the viewer chose that before", async () => {
+    window.localStorage.setItem(STORAGE_DETAIL_KEY, "off");
+    await openPlate();
+    expect(screen.getByRole("button", { name: "Storage detail" })).toHaveAttribute("aria-pressed", "false");
+    expect(cardNames()).not.toContain("Storage Container");
+  });
+
+  it("hides what only feeds a card behind a count, shows it again from the count, and Escape restores the last one", async () => {
+    const svg = await openPlate();
+    const hide = await button("Hide 1 group that only feeds Storage Container");
+    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    fireEvent.click(hide);
+    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
+    expect(svg.querySelector('[data-upstream="collapsed"]')).toHaveTextContent("+1");
+    expect(window.localStorage.getItem(COLLAPSED_KEY)).not.toBeNull();
+    const show = screen.getByRole("button", { name: "Show 1 group hidden behind Storage Container" });
+    expect(show).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(show);
+    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    fireEvent.click(screen.getByRole("button", { name: "Hide 1 group that only feeds Storage Container" }));
+    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+  });
+
+  it("the minus on the card in the picture does the same", async () => {
+    const svg = await openPlate();
+    const pill = svg.querySelector('[data-upstream="open"]')!;
+    expect(pill).toHaveTextContent("−");
+    fireEvent.click(pill);
+    expect(svg.querySelector('[data-upstream="collapsed"]')).not.toBeNull();
+  });
+
+  it("starts with the upstream hidden that the viewer hid before", async () => {
+    const first = await openPlate();
+    fireEvent.click(await button("Hide 1 group that only feeds Storage Container"));
+    expect(first.querySelector('[data-upstream="collapsed"]')).not.toBeNull();
+    cleanup();
+    const again = await openPlate();
+    expect(again.querySelector('[data-upstream="collapsed"]')).not.toBeNull();
+    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
   });
 });
 
@@ -156,5 +217,65 @@ describe("drill-down into a bubble", () => {
     await openPlate();
     fireEvent.click(await button("4× Constructor, Iron Plate"));
     expect(await screen.findByRole("complementary", { name: /^4× Constructor, Iron Plate/ })).toBeInTheDocument();
+  });
+});
+
+describe("the transport motion", () => {
+  beforeEach(() => answer(productionGraphFactories));
+  const moving = (svg: HTMLElement) => svg.querySelectorAll("animateMotion");
+
+  it("moves the glyph along its edge under System when the operator has not asked for reduced motion", async () => {
+    wideScreen(false);
+    const svg = await openPlate();
+    expect(moving(svg)).toHaveLength(1);
+    const edge = svg.querySelector("animateMotion")!;
+    expect(edge.getAttribute("path")).toMatch(/^M[\d. -]+L/);
+    expect(edge.getAttribute("repeatCount")).toBe("indefinite");
+    expect(edge.closest("g[data-moving]")?.getAttribute("data-moving")).toBe("true");
+  });
+
+  it("stays still under System with reduced motion, and the toggle's On overrides that", async () => {
+    wideScreen(true);
+    const svg = await openPlate();
+    expect(moving(svg)).toHaveLength(0);
+    expect(svg.querySelector('[data-glyph="train"]')).not.toBeNull();
+    expect(svg.querySelector('g[class~="animate-graph-in"]')).toBeNull();
+    fireEvent.change(screen.getByLabelText("Motion"), { target: { value: "on" } });
+    expect(moving(svg)).toHaveLength(1);
+    expect(window.localStorage.getItem(MOTION_KEY)).toBe("on");
+  });
+
+  it("Off stops it, and the choice is remembered", async () => {
+    wideScreen(false);
+    window.localStorage.setItem(MOTION_KEY, "off");
+    const svg = await openPlate();
+    expect(screen.getByLabelText("Motion")).toHaveValue("off");
+    expect(moving(svg)).toHaveLength(0);
+  });
+
+  it("does not move in a hidden tab", async () => {
+    wideScreen(false);
+    const svg = await openPlate();
+    expect(moving(svg)).toHaveLength(1);
+    const show = (state: "hidden" | "visible") => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    };
+    show("hidden");
+    expect(moving(svg)).toHaveLength(0);
+    show("visible");
+    expect(moving(svg)).toHaveLength(1);
+    Reflect.deleteProperty(document, "visibilityState");
+  });
+
+  it("has no motion control on a canvas with no transport", async () => {
+    wideScreen(false);
+    renderView();
+    await overview();
+    fireEvent.click(await button("Open factory: Iron Rod factory"));
+    await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
+    expect(screen.queryByLabelText("Motion")).not.toBeInTheDocument();
   });
 });

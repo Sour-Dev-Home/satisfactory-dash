@@ -819,8 +819,21 @@ export function productionGraph(now: number): ProductionGraphResponse {
         demoFactory(FRAME_FACTORY, "Modular Frame factory", [plannerRate("Desc_ModularFrame_C", "Modular Frame", 2, 2)], ["Rotor"]),
         demoFactory(PLASTIC_FACTORY, "Plastic factory", [plannerRate("Desc_Plastic_C", "Plastic", 20, 20)], []),
       ],
-      // One train carries the remote ore to the iron works.
+      // One train carries the remote ore to the iron works; surplus plates are uploaded to the depot (the two modes with readers today).
       transports: [
+        {
+          from: N.plates.key,
+          to: N.depot.key,
+          mode: "depot",
+          itemClassName: "Desc_IronPlate_C",
+          itemName: "Iron Plate",
+          ratePerMinute: 4,
+          rate: "estimated",
+          carriers: 1,
+          routeName: "Depot upload",
+          flow: "output",
+          destination: "storage",
+        },
         {
           from: N.farmPlatform.key,
           to: N.dockPlatform.key,

@@ -146,7 +146,14 @@ export function clippedEdges(view: View, layout: { width: number; height: number
   };
 }
 
-export const isClipped = (c: Clipped) => c.left || c.right || c.top || c.bottom;
+/** Whether a layout-space box (a flow's bounds) is at least partly inside the stage at this view. */
+export function isInView(view: View, stage: Stage, box: { x: number; y: number; width: number; height: number }): boolean {
+  const left = view.x + box.x * view.k;
+  const top = view.y + box.y * view.k;
+  return left < stage.width && left + box.width * view.k > 0 && top < stage.height && top + box.height * view.k > 0;
+}
+
+export const isClipped =(c: Clipped) => c.left || c.right || c.top || c.bottom;
 
 /** The part of the stage left of a drawer of `panelWidth` px that overlays its right side (a drawer wider than the stage leaves none). */
 export const stageBesidePanel = (stage: Stage, panelWidth: number): Stage => ({ width: Math.max(1, stage.width - panelWidth), height: stage.height });
