@@ -116,6 +116,7 @@ export const QUERY_NAMES = [
   "alerts.api.serverUuid",
   "alerts.api.setMute",
   "alerts.api.updateRule",
+  "alerts.qualityByMonth",
   "alerts.claimDue",
   "alerts.countRecentEvents",
   "alerts.deadForDestination",
