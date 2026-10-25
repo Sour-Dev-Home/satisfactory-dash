@@ -38,6 +38,8 @@ added or removed.
   server ids (public string vs internal UUID), which errors are `ApiFailure` and which are plain classes, the rate-limiter
   defaults that bite in tests, ordering rules in the servers module, running DB tests locally, the CI-wait one-liner, and
   the worktree git rules.
+- [`runbooks/agent-linux.md`](./runbooks/agent-linux.md) — the Linux agent (ADR-0057): tarball and GHCR image, how to verify the
+  keyless cosign signatures, install, update on purpose (never auto-pull; pin by digest).
 - [`runbooks/agent-app.md`](./runbooks/agent-app.md) — the edge agent program itself (ADR-0031 PR 6): first setup in order
   (set the game's tokens at a hidden prompt, `check`, enrol, run), where the DPAPI-protected store and the 7-day logs
   live, the Scheduled Task and its logon-type trap, what it sends, and troubleshooting by exit code and log event.

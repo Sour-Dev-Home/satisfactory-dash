@@ -1,0 +1,196 @@
+name: Agent release
+
+# ADR-0057 Decision 2 step 5 + Decision 7: the Linux agent's container image on GHCR and a signed release tarball.
+# Nothing here runs on a push to main or a pull request. It runs ONLY when the owner creates a tag `agent-vX.Y.Z`
+# (publishes), or by hand with workflow_dispatch (builds both artifacts and pushes/signs/releases NOTHING).
+#   image   -> ghcr.io/sour-dev-home/satisfactory-dash-agent  (linux/amd64 + linux/arm64), tag :agent-vX.Y.Z (no :latest)
+#   tarball -> a GitHub release with satis-agent-<version>-linux.tar.gz, SHA256SUMS and SHA256SUMS.sigstore.json
+# Signing is keyless (Sigstore through this workflow's OIDC identity); no private key exists anywhere.
+# No auto-update: the runbook pins the image by digest (runbooks/agent-linux.md).
+
+on:
+  push:
+    tags: ["agent-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tarball:
+    # Builds the release directory and tarball. Read-only; the publish jobs take its output.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then
+            # A release tag must sit on a commit that is on main (a tag pushed on a side branch publishes nothing).
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$REF_NAME is not on main"; exit 1; }
+            [[ "$REF_NAME" =~ ^agent-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag '$REF_NAME' is not agent-vX.Y.Z"; exit 1; }
+            echo "version=${REF_NAME#agent-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build -w agent
+      - name: Assemble the tarball
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="satis-agent-${VERSION}-linux"
+          [ -f agent/packaging/linux/satis-agent.service ] || { echo "::error::agent/packaging/linux/satis-agent.service is missing"; exit 1; }
+          mkdir -p "out/$name"
+          cp agent/dist/agent.cjs agent/packaging/linux/satis-agent.service agent/packaging/linux/install.sh LICENSE "out/$name/"
+          chmod 755 "out/$name/install.sh"
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$(git log -1 --format=%ct)" \
+            -C out -czf "out/$name.tar.gz" "$name"
+          (cd out && sha256sum "$name.tar.gz" > SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-files
+          path: |
+            out/*.tar.gz
+            out/SHA256SUMS
+          if-no-files-found: error
+
+  image-build:
+    # workflow_dispatch only: the image for both platforms, built and thrown away, to test the Dockerfile.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build both platforms (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+  publish-image:
+    # Tag pushes only. Pushes the image, attests its build provenance and signs its digest.
+    if: github.event_name == 'push'
+    needs: tarball
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      IMAGE: ghcr.io/sour-dev-home/satisfactory-dash-agent
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:agent-v${{ needs.tarball.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.tarball.outputs.version }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+      - name: Attest build provenance
+        # Verify with `gh attestation verify oci://<image>@<digest> -R Sour-Dev-Home/satisfactory-dash`.
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign the image digest (keyless)
+        # Signs the digest, never a tag (cosign docs). --recursive also signs each platform image in the index.
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::not an image digest: $DIGEST"; exit 1; }
+          cosign sign --yes --recursive "${IMAGE}@${DIGEST}"
+      - name: Both platforms are published
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          platforms="$(docker buildx imagetools inspect "${IMAGE}@${DIGEST}" --format '{{json .Manifest}}' \
+            | jq -r '.manifests[] | select(.platform.os != "unknown") | "\(.platform.os)/\(.platform.architecture)"' | sort -u)"
+          echo "$platforms"
+          for want in linux/amd64 linux/arm64; do
+            grep -qx "$want" <<< "$platforms" || { echo "::error::image has no $want build"; exit 1; }
+          done
+
+  publish-release:
+    # Tag pushes only, after the image: signs SHA256SUMS (keyless) and creates the GitHub release.
+    if: github.event_name == 'push'
+    needs: [tarball, publish-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: out
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign SHA256SUMS (keyless)
+        working-directory: out
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+      - name: Create the release
+        working-directory: out
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          DIGEST: ${{ needs.publish-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          notes="Image (pin by digest): ghcr.io/sour-dev-home/satisfactory-dash-agent@${DIGEST}"
+          notes="${notes}"$'\n\n'"Verify before installing: docs-vault/wiki/runbooks/agent-linux.md. Nothing here updates itself."
+          gh release create "$TAG" --repo "$REPO" --verify-tag --title "$TAG" --notes "$notes" \
+            ./*.tar.gz ./SHA256SUMS ./SHA256SUMS.sigstore.json
