@@ -361,7 +361,10 @@ export default function SiteGraph({
                       className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")}
                     />
                     {n.iconUrl !== undefined && (
-                      <image href={n.iconUrl} x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} aria-hidden="true" />
+                      <g aria-hidden="true">
+                        <rect x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} rx={4} className="fill-icon-chip" />
+                        <image href={n.iconUrl} x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} />
+                      </g>
                     )}
                     <text x={n.titleX} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
                       {n.title}

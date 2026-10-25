@@ -48,6 +48,8 @@
      rails a light steel that stands clear of the grid lines, resource nodes a violet. */
   --color-rail: #c4ccd6;
   --color-node: #b79df5;
+  /* The backing chip behind a building icon: the game's icons are dark glyphs that vanish on the dark card. */
+  --color-icon-chip: #c4ccd6;
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
   --color-bad-edge: rgb(239 83 80 / 0.35);
   --color-bad-on-soft: #ff8a80;
