@@ -26,11 +26,13 @@ import {
   byString,
   disjointSets,
   passThroughComponents,
+  stronglyConnected,
   usable,
   weaklyConnectedComponents,
   type Arc,
   type Filter,
 } from "./connectionGraph.js";
+import { reduceFactories, type ReductionStats } from "./factoryReduction.js";
 import { buildLogisticsEdges } from "./logisticsEdges.js";
 import { DEPOT_CLASS, classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
 import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plannerItems.js";
@@ -48,7 +50,9 @@ import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plann
  * replaces ADR-0053 Decision 2 with the factory reduction). ADR-0055 PR 4 infers more items (ADR-0053 Decision 4): an
  * extractor's from the resource node under it, a storage's from the single item flowing into it, a data-less source's
  * from its destination's single unmet need, and one mixed edge per item for a multi-product source into a data-less
- * destination; each inferred item says how in `itemFrom`. What cannot be known stays null.
+ * destination; each inferred item says how in `itemFrom`. What cannot be known stays null. ADR-0055 PR 6b adds the
+ * logical factories (`factoryReduction.ts`, run last over the capped nodes, edges and transports): each node's
+ * `factoryKey`, `shares`, `collapseUnder` and `role`, the response's `factories` and `topologyHash`. Sites are unchanged.
  */
 
 /** Decision 8: components whose machines' bounding boxes are within this many metres are one site. A starting value, to be
@@ -70,7 +74,23 @@ export interface ProductionGraphStats {
   sites: number;
   groups: number;
   links: number;
+  /** ADR-0055 Decision 4: counts per save, so the 0.95 shared threshold and the small-factory fold can be tuned on a real one. */
+  factoryReduction: ReductionStats & { reduceMs: number };
 }
+
+const NO_REDUCTION: ProductionGraphStats["factoryReduction"] = {
+  seeds: 0,
+  factories: 0,
+  components: 0,
+  factoriesPerComponent: [],
+  sharedNodes: 0,
+  maxShareFactories: 1,
+  lowestTopShare: 1,
+  largestFactoryMachines: 0,
+  unassignedGroups: 0,
+  droppedFactories: 0,
+  reduceMs: 0,
+};
 
 export interface ProductionGraphResult {
   graph: ProductionGraph;
@@ -223,7 +243,7 @@ const DOWNSTREAM_KINDS: ReadonlySet<string> = new Set(["extractor", "storage", "
 function emptyGraph(beltData: ProductionGraph["beltData"], notes: BottleneckNote[]): ProductionGraphResult {
   return {
     graph: { nodes: [], edges: [], sites: [], unconnectedMachineIds: [], beltData, connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES, notes },
-    stats: { components: 0, sites: 0, groups: 0, links: 0 },
+    stats: { components: 0, sites: 0, groups: 0, links: 0, factoryReduction: NO_REDUCTION },
   };
 }
 
@@ -913,6 +933,23 @@ export function buildProductionGraphWithStats(
     truncated = true;
   }
 
+  // ---- logical factories (ADR-0055 Decision 4, PR 6b): over the capped nodes, edges and transports; rules in factoryReduction.ts ----
+  const reduceStarted = performance.now();
+  const reduction = reduceFactories({ nodes, edges: keptEdges, transports, snap });
+  const reduceMs = Math.round((performance.now() - reduceStarted) * 100) / 100;
+  if (reduction.stats.droppedFactories > 0) truncated = true;
+  const reducedNodes: PlannerNode[] = nodes.map((nd) => {
+    const ann = reduction.annotations.get(nd.key);
+    if (!ann) return nd;
+    return {
+      ...nd,
+      ...(ann.factoryKey === undefined ? {} : { factoryKey: ann.factoryKey }),
+      ...(ann.shares === undefined ? {} : { shares: ann.shares }),
+      collapseUnder: ann.collapseUnder,
+      ...(ann.role === undefined ? {} : { role: ann.role }),
+    };
+  });
+
   // ---- unconnected machines and notes ----
   // An id the contract cannot carry (empty, or over 128 characters) can never be named by a conveyor either, so it is left out.
   const allUnconnected = sorted.filter((b) => b.recipe !== null && !g.idToNode.has(b.id) && b.id.length >= 1 && b.id.length <= 128).map((b) => b.id);
@@ -937,70 +974,24 @@ export function buildProductionGraphWithStats(
 
   return {
     graph: {
-      nodes,
+      nodes: reducedNodes,
       edges: keptEdges,
       sites: keptSites,
       unconnectedMachineIds,
       beltData,
       connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES,
       notes,
+      factories: reduction.factories,
       transports,
+      topologyHash: reduction.topologyHash,
       logistics: trainRoutes === null ? "notRead" : "present",
     },
-    stats: { components: atomIdx.size, sites: keptSites.length, groups: groups.length, links: links.length },
+    stats: {
+      components: atomIdx.size,
+      sites: keptSites.length,
+      groups: groups.length,
+      links: links.length,
+      factoryReduction: { ...reduction.stats, reduceMs },
+    },
   };
-}
-
-/**
- * Tarjan's strongly connected components, iterative: belt chains can be tens of thousands of segments deep, so no
- * recursion. Components are numbered in emission order (sinks first), the reverse of a topological order.
- */
-function stronglyConnected(adj: readonly number[][]): { comp: number[]; count: number; members: number[][] } {
-  const n = adj.length;
-  const index = Array.from({ length: n }, () => -1);
-  const low = Array.from({ length: n }, () => 0);
-  const onStack = Array.from({ length: n }, () => false);
-  const comp = Array.from({ length: n }, () => -1);
-  const members: number[][] = [];
-  const stack: number[] = [];
-  let next = 0;
-  for (let root = 0; root < n; root++) {
-    if (index[root] !== -1) continue;
-    const work: { v: number; i: number }[] = [{ v: root, i: 0 }];
-    index[root] = low[root] = next++;
-    stack.push(root);
-    onStack[root] = true;
-    while (work.length > 0) {
-      const frame = work[work.length - 1];
-      const v = frame.v;
-      if (frame.i < adj[v].length) {
-        const w = adj[v][frame.i++];
-        if (index[w] === -1) {
-          index[w] = low[w] = next++;
-          stack.push(w);
-          onStack[w] = true;
-          work.push({ v: w, i: 0 });
-        } else if (onStack[w]) low[v] = Math.min(low[v], index[w]);
-        continue;
-      }
-      work.pop();
-      if (work.length > 0) {
-        const parent = work[work.length - 1].v;
-        low[parent] = Math.min(low[parent], low[v]);
-      }
-      if (low[v] === index[v]) {
-        const id = members.length;
-        const list: number[] = [];
-        let w: number;
-        do {
-          w = stack.pop() as number;
-          onStack[w] = false;
-          comp[w] = id;
-          list.push(w);
-        } while (w !== v);
-        members.push(list);
-      }
-    }
-  }
-  return { comp, count: members.length, members };
 }
