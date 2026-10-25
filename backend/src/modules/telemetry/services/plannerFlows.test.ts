@@ -150,8 +150,8 @@ describe("flow classes (ADR-0053 Decision 1)", () => {
     const g = buildProductionGraph(b, e);
     const s = nodeOf(g, "S");
     expect(edgesFrom(g, s)).toEqual([expect.objectContaining({ flow: "supply", destination: "factory", itemClassName: INGOT })]);
-    // Storage as a source has no item yet (PR 4): an unknown item into a machine is still supply.
-    expect(g.edges.find((x) => x.to === nodeOf(g, "P").key)).toMatchObject({ flow: "supply", destination: "factory", itemClassName: null });
+    // ADR-0055 PR 4: the storage passes on the single item flowing into it.
+    expect(g.edges.find((x) => x.to === nodeOf(g, "P").key)).toMatchObject({ flow: "supply", destination: "factory", itemClassName: INGOT, itemFrom: "upstream" });
   });
 
   it("a storage chain ending in a terminal: supply into the middle, output at the end, destination storage throughout", () => {
@@ -163,7 +163,7 @@ describe("flow classes (ADR-0053 Decision 1)", () => {
     const first = edgesFrom(g, s)[0];
     expect(first).toMatchObject({ flow: "supply", destination: "storage" });
     const second = g.edges.find((x) => x.from === first.to) as PlannerEdge;
-    expect(second).toMatchObject({ flow: "output", destination: "storage", itemClassName: null });
+    expect(second).toMatchObject({ flow: "output", destination: "storage", itemClassName: INGOT, itemFrom: "upstream" });
   });
 });
 
