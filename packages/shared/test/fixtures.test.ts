@@ -11,6 +11,15 @@ import {
   CommandResultResponseSchema,
   EnrollRequestSchema,
   EnrollResponseSchema,
+  CompatResponseSchema,
+  PairingApproveRequestSchema,
+  PairingApproveResponseSchema,
+  PairingLookupRequestSchema,
+  PairingLookupResponseSchema,
+  PairingPollRequestSchema,
+  PairingPollResponseSchema,
+  PairingStartRequestSchema,
+  PairingStartResponseSchema,
   EnrollmentCodeResponseSchema,
   RevokeAgentResponseSchema,
   SetAutoPauseResponseSchema,
@@ -124,6 +133,16 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["agentResultResponse", CommandResultResponseSchema],
   ["agentStatus", AgentStatusResponseSchema],
   ["agentRevokeResponse", RevokeAgentResponseSchema],
+  // ADR-0051 section 1 / ADR-0057: pairing and the compat block.
+  ["pairingStartRequest", PairingStartRequestSchema],
+  ["pairingStartResponse", PairingStartResponseSchema],
+  ["pairingPollRequest", PairingPollRequestSchema],
+  ["pairingPollResponse", PairingPollResponseSchema],
+  ["pairingLookupRequest", PairingLookupRequestSchema],
+  ["pairingLookupResponse", PairingLookupResponseSchema],
+  ["pairingApproveRequest", PairingApproveRequestSchema],
+  ["pairingApproveResponse", PairingApproveResponseSchema],
+  ["compat", CompatResponseSchema],
   // ADR-0038 M1 (#352): the map contract's fixtures. "railsWorldResponse" and "resourceNodesWorldResponse" must come
   // before nothing else here (neither is a prefix of another listed name); "railsSample"/"resourceNodesSample" are the
   // ingest requests, kept separate since they are a different schema (no `layer`/`hash`/`truncated`/`count`).
@@ -503,7 +522,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
     // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
-    expect(all.length).toBe(64); // + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050)
+    expect(all.length).toBe(69); // + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;
