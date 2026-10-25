@@ -41,7 +41,8 @@ import { chipButton } from "../ui/chip";
 import { PageReveal } from "../ui/PageReveal";
 import { ToAlertSettings, ToApp } from "./ToApp";
 import { navFadeClass, revealActiveTab } from "./navFade";
-import { PREFETCH_FRESH_MS, pageQueries } from "./pageQueries";
+import { whenIdle } from "../lib/idle";
+import { pageQueries, paletteQueries, prefetchFresh } from "./pageQueries";
 import { visibleTabs } from "./tabs";
 
 type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
@@ -56,13 +57,39 @@ const loadPalette = (): Promise<PaletteModule> =>
  * convention (the owner's exception to ADR-0016 item 8). The dialog is a native <dialog> opened with
  * showModal(): a real modal (the page behind is inert; Esc closes), with no library dialog, because
  * Radix Dialog's scroll lock injects a <style> element that the CSP (style-src 'self') blocks. The
- * search inside (`palette/CommandBar.tsx`, cmdk) loads on the first open. Focus goes back where it
- * was on close. `load` is for tests.
+ * search inside (`palette/CommandBar.tsx`, cmdk) is its own chunk: preloaded once the app is idle (not
+ * under Save-Data or 2G, `lib/idle.ts`), and on hover or focus of the Search button, which also starts
+ * the search's reads; otherwise it loads on the first open. Focus goes back where it was on close.
+ * `load` and `preload` are for tests.
  */
-export function CommandBar({ load = loadPalette }: { load?: () => Promise<PaletteModule> }) {
+export function CommandBar({
+  load = loadPalette,
+  preload = whenIdle,
+}: {
+  load?: () => Promise<PaletteModule>;
+  preload?: (task: () => void) => () => void;
+}) {
   const [open, setOpen] = useState(false);
+  // One import at a time, shared by the preload, the hover and the bar; a failure clears it, so the next try imports afresh.
+  const inFlight = useRef<Promise<PaletteModule> | null>(null);
+  const [loadOnce] = useState(() => (): Promise<PaletteModule> => {
+    inFlight.current ??= load().catch((error: unknown) => {
+      inFlight.current = null;
+      throw error;
+    });
+    return inFlight.current;
+  });
   // React.lazy keeps a failed import for good, so a failure swaps in a fresh one to import again.
-  const [Palette, setPalette] = useState(() => lazy(load));
+  const [Palette, setPalette] = useState(() => lazy(loadOnce));
+  const server = useSelectedServer();
+  const client = useQueryClient();
+  // A failed preload says nothing: opening the bar tries again and shows the error there.
+  const warmChunk = useCallback(() => void loadOnce().catch(() => {}), [loadOnce]);
+  const warm = () => {
+    warmChunk();
+    prefetchFresh(client, paletteQueries(server.id));
+  };
+  useEffect(() => preload(warmChunk), [preload, warmChunk]);
   const dialog = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
 
@@ -107,6 +134,8 @@ export function CommandBar({ load = loadPalette }: { load?: () => Promise<Palett
       <button
         type="button"
         onClick={openBar}
+        onPointerEnter={warm}
+        onFocus={warm}
         aria-label="Search (Ctrl+K)"
         title="Search (Ctrl+K)"
         aria-haspopup="dialog"
@@ -130,7 +159,7 @@ export function CommandBar({ load = loadPalette }: { load?: () => Promise<Palett
         className="mx-auto mt-16 w-palette animate-pop rounded-card border border-line bg-surface p-0 text-fg shadow-lg backdrop:bg-scrim backdrop:backdrop-blur-sm max-sm:mt-4"
       >
         {open && (
-          <PaletteBoundary onError={() => setPalette(() => lazy(load))}>
+          <PaletteBoundary onError={() => setPalette(() => lazy(loadOnce))}>
             <Suspense fallback={<PaletteLoading />}>
               <Palette onDone={() => setOpen(false)} />
             </Suspense>
@@ -312,11 +341,7 @@ export function Shell() {
   // by the click they are usually cached. Same options as the page's own, so same cache entries.
   const client = useQueryClient();
   const prefetch = (path: string) => {
-    if (path === pathname) return;
-    for (const query of pageQueries(path, server.id)) {
-      const own = typeof query.staleTime === "number" ? query.staleTime : 0;
-      void client.prefetchQuery({ queryKey: query.queryKey, queryFn: query.queryFn, staleTime: Math.max(own, PREFETCH_FRESH_MS) });
-    }
+    if (path !== pathname) prefetchFresh(client, pageQueries(path, server.id));
   };
 
   return (

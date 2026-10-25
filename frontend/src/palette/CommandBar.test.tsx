@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { powerOk, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { queries } from "../api/queries";
 import { ServerContext, ServerSwitchContext } from "../servers/ServerContext";
 import { CommandBar } from "../shell/Shell";
 import { renderWithClient } from "../test/render";
@@ -22,13 +23,16 @@ function Where() {
   return <output aria-label="URL">{`${pathname}${search}${hash}`}</output>;
 }
 
+/** No idle preload: these tests count imports from the first open. The preload's own tests pass a scheduler. */
+const noPreload = () => () => {};
+
 function barTree({ serverCount = 1, change = vi.fn(), withButton = true } = {}) {
   return (
     <MemoryRouter initialEntries={["/app"]}>
       <ServerContext value={serversSingle.servers[0]}>
         <ServerSwitchContext value={{ serverCount, change, select: vi.fn(), left: vi.fn(), leftName: null, clearLeft: vi.fn() }}>
           {withButton && <button type="button">Somewhere else</button>}
-          <CommandBar />
+          <CommandBar preload={noPreload} />
           <Where />
         </ServerSwitchContext>
       </ServerContext>
@@ -214,14 +218,17 @@ describe("CommandBar's lazy chunk (#387)", () => {
   const realPalette = () => import("./CommandBar").then((m) => ({ default: m.Palette }));
   afterEach(() => vi.restoreAllMocks());
 
-  function renderWith(load: () => Promise<{ default: typeof import("./CommandBar").Palette }>) {
+  function renderWith(
+    load: () => Promise<{ default: typeof import("./CommandBar").Palette }>,
+    preload: (task: () => void) => () => void = noPreload,
+  ) {
     return renderWithClient(
       <MemoryRouter initialEntries={["/app"]}>
         <ServerContext value={serversSingle.servers[0]}>
           <ServerSwitchContext
             value={{ serverCount: 1, change: vi.fn(), select: vi.fn(), left: vi.fn(), leftName: null, clearLeft: vi.fn() }}
           >
-            <CommandBar load={load} />
+            <CommandBar load={load} preload={preload} />
           </ServerSwitchContext>
         </ServerContext>
       </MemoryRouter>,
@@ -322,5 +329,81 @@ describe("CommandBar's lazy chunk (#387)", () => {
     pressCtrlK();
     expect(await searchBox()).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("CommandBar's preload (idle, and on intent)", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const realPalette = () => import("./CommandBar").then((m) => ({ default: m.Palette }));
+  /** A scheduler the test fires by hand, standing in for `whenIdle`. */
+  function manualIdle() {
+    const tasks: (() => void)[] = [];
+    const cancel = vi.fn();
+    const schedule = vi.fn((task: () => void) => {
+      tasks.push(task);
+      return cancel;
+    });
+    return { schedule, cancel, fire: () => act(() => tasks.forEach((task) => task())) };
+  }
+  function renderPreloading(load: () => ReturnType<typeof realPalette>, preload: (task: () => void) => () => void) {
+    return renderWithClient(
+      <MemoryRouter initialEntries={["/app"]}>
+        <ServerContext value={serversSingle.servers[0]}>
+          <ServerSwitchContext
+            value={{ serverCount: 1, change: vi.fn(), select: vi.fn(), left: vi.fn(), leftName: null, clearLeft: vi.fn() }}
+          >
+            <CommandBar load={load} preload={preload} />
+          </ServerSwitchContext>
+        </ServerContext>
+      </MemoryRouter>,
+    );
+  }
+
+  it("imports the chunk when the browser is idle, once, and the first open then shares that import", async () => {
+    const idle = manualIdle();
+    const load = vi.fn(realPalette);
+    renderPreloading(load, idle.schedule);
+    expect(idle.schedule).toHaveBeenCalledOnce();
+    expect(load).not.toHaveBeenCalled();
+    idle.fire();
+    expect(load).toHaveBeenCalledOnce();
+    await act(() => load.mock.results[0].value);
+    pressCtrlK();
+    expect(await searchBox()).toHaveFocus();
+    expect(load).toHaveBeenCalledOnce();
+  });
+
+  it("cancels the idle task on unmount", () => {
+    const idle = manualIdle();
+    const { unmount } = renderPreloading(vi.fn(realPalette), idle.schedule);
+    unmount();
+    expect(idle.cancel).toHaveBeenCalled();
+  });
+
+  it("a failed preload says nothing, and the first open imports afresh", async () => {
+    const idle = manualIdle();
+    const load = vi.fn<() => ReturnType<typeof realPalette>>()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch dynamically imported module"))
+      .mockImplementation(realPalette);
+    renderPreloading(load, idle.schedule);
+    idle.fire();
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    pressCtrlK();
+    expect(await searchBox()).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("hovering or focusing the Search button imports the chunk and starts the search's reads", async () => {
+    const load = vi.fn(realPalette);
+    const { client } = renderPreloading(load, noPreload);
+    const button = screen.getByRole("button", { name: "Search (Ctrl+K)" });
+    fireEvent.pointerEnter(button);
+    expect(load).toHaveBeenCalledOnce();
+    const serverId = serversSingle.servers[0].id;
+    await waitFor(() => expect(client.getQueryData(queries.power(serverId).queryKey)).toBeDefined());
+    expect(client.getQueryState(queries.factory(serverId).queryKey)).toBeDefined();
+    act(() => button.focus());
+    expect(load).toHaveBeenCalledOnce();
   });
 });
