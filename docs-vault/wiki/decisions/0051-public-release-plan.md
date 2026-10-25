@@ -126,6 +126,36 @@ building on it, and whether SMM installs optional dependencies.] ficsit.app list
 **Recommendation:** no FRM dependency now. Once the owner clears the licence, declare FRM as a **required**
 `^1.5.4` dependency in the same mod release as the FRM bridge, and not before.
 
+**Owner's decisions (2026-10-25), replacing the recommendation above.** The owner's words, in order:
+1. "For the compile our mod against FRM. no. Id rather make code from scratch to get the functionality. I dont want to
+   have to ask anyone and would rather be safe".
+2. "its fine to use FRM for the api endpoints it exposes".
+3. "Why cant it be a required dependency instead. Many mods are like that".
+4. "yes, but lets move to removing the dependency now. its a big project and scraps some work but it would be worth
+   it. ... Ideally we get parity with the info we already use for the dashboard".
+
+FRM still states no licence (re-checked 2026-10-25: GitHub reports `license: none`, no LICENSE file). The README's only
+grant is "Feel free to create your own web UI or serial apps".
+
+- **Never FRM's code.** Nobody links to it, compiles against it, bundles it or redistributes it, and nobody reads,
+  copies or uses its source as a reference. This is a clean room for every session and subagent
+  (`frm-license-status-2026-09-27.md`).
+- **FRM's API is fine as an interim.** The mod's existing FRM bridge (mod PRs #48-#52) and the agent keep calling FRM's
+  local HTTP endpoints as a client. Until native parity, FRM may be declared a **required** dependency (SMM downloads
+  it from FRM's own ficsit.app release; we ship none of its files).
+- **Goal: remove the dependency, starting now.** The mod reads every piece of data the dashboard uses today itself,
+  with code written from scratch against the game's own classes (SML and the game's headers, cited to
+  `raw-sources/`). Then the FRM dependency and bridge are deleted. Work built only for the bridge is scrapped as it is
+  replaced; the owner accepted that cost.
+- **How we use FRM meanwhile:** only as a black box. Its JSON output, captured from a running server, shows what the
+  game exposes and is the reference for parity runs (native reader against FRM, the way power was proven within 3%).
+  Our data shapes are our own, under `/agent/v1`.
+- **Accidental copying:** before any mod release that contains native readers, a similarity check compares the mod's
+  source with FRM's repository and reports only an overlap score, with no session reading FRM's code. Any match is
+  rewritten.
+- **Nobody is asked:** no message to FRM's maintainer.
+- **The plan** (parity inventory, readers in order, evidence gates, tick-cost limits) is its own ADR, ADR-0058.
+
 ### 3. Beta to public: milestones, in order
 
 Each needs the one before it. Done items are listed so the order is checkable.
