@@ -150,7 +150,8 @@ grant is "Feel free to create your own web UI or serial apps".
 - **How we use FRM meanwhile:** only as a black box. Its JSON output, captured from a running server, shows what the
   game exposes and is the reference for parity runs (native reader against FRM, the way power was proven within 3%).
   Our data shapes are our own, under `/agent/v1`.
-- **Accidental copying:** before any mod release that contains native readers, a similarity check compares the mod's
+- **Accidental copying** (*superseded by ADR-0058's owner's answer 4, 2026-10-25: no similarity check job; the
+  clean-room rules are the control*): before any mod release that contains native readers, a similarity check compares the mod's
   source with FRM's repository and reports only an overlap score, with no session reading FRM's code. Any match is
   rewritten.
 - **Nobody is asked:** no message to FRM's maintainer.
