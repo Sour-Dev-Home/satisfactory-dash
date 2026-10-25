@@ -6,4 +6,5 @@
 export { AgentStore, DEFAULT_GAME, resolveDataDir, StoreError } from "./store.js";
 export type { SecretName, StoreFile } from "./store.js";
 export { createDpapi, DpapiError } from "./dpapi.js";
-export type { Dpapi } from "./dpapi.js";
+export { createSecretBox, fileSecretBox, FileSecretBoxError, resolveSecretStoreKind } from "./secretbox.js";
+export type { SecretBox, SecretStoreKind } from "./secretbox.js";

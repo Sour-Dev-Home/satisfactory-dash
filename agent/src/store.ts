@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { isIPv6 } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import type { Dpapi } from "./dpapi.js";
+import { ensurePrivateDir, STORE_FILE_NAME, writeFileAtomic } from "./secretbox.js";
+import type { SecretBox } from "./secretbox.js";
 
 /**
  * The agent's own state on disk (ADR-0031 PR 6): where the backend is, which server this agent reports for, how to reach
@@ -38,12 +39,17 @@ export class StoreError extends Error {
   }
 }
 
-/** Where the agent keeps its files: SD_AGENT_HOME, else the user's local app data, else the home folder. */
+/**
+ * Where the agent keeps its files: SD_AGENT_HOME, else the user's local app data, else STATE_DIRECTORY (set by systemd; a
+ * colon-separated list when the unit names several, of which the first is used), else the home folder.
+ */
 export function resolveDataDir(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string {
   const explicit = env.SD_AGENT_HOME;
   if (explicit !== undefined && explicit !== "") return path.resolve(explicit);
   const local = env.LOCALAPPDATA;
   if (local !== undefined && local !== "") return path.join(local, "satisfactory-dash-agent");
+  const firstState = env.STATE_DIRECTORY?.split(":")[0];
+  if (firstState !== undefined && firstState !== "") return path.resolve(firstState);
   return path.join(home, ".satisfactory-dash-agent");
 }
 
@@ -73,13 +79,13 @@ export class AgentStore {
   private constructor(
     private readonly dir: string,
     data: StoreFile,
-    private readonly dpapi: Dpapi,
+    private readonly dpapi: SecretBox,
   ) {
     this.data = data;
   }
 
   /** Opens the store in `dir`; a missing file is a fresh, empty store. A file that is not the expected shape is an error. */
-  static open(dir: string, dpapi: Dpapi): AgentStore {
+  static open(dir: string, dpapi: SecretBox): AgentStore {
     const file = path.join(dir, "store.json");
     if (!existsSync(file)) return new AgentStore(dir, StoreFileSchema.parse({ version: 1 }), dpapi);
     let parsed: unknown;
@@ -149,19 +155,8 @@ export class AgentStore {
 
   /** Writes the file atomically (a temporary file, then a rename), so a crash never leaves half a store. */
   private save(): void {
-    mkdirSync(this.dir, { recursive: true });
-    const file = path.join(this.dir, "store.json");
-    const temporary = `${file}.${process.pid}.tmp`;
-    try {
-      writeFileSync(temporary, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-      renameSync(temporary, file);
-    } catch (err) {
-      try {
-        unlinkSync(temporary); // no half-written copy of the store is left behind (an antivirus lock can fail the rename)
-      } catch {
-        // nothing to remove
-      }
-      throw err;
-    }
+    ensurePrivateDir(this.dir); // 0700 where modes mean something
+    // temp (0600) + fsync + rename; no half-written copy is left behind (an antivirus lock can fail the rename)
+    writeFileAtomic(path.join(this.dir, STORE_FILE_NAME), `${JSON.stringify(this.data, null, 2)}\n`);
   }
 }

@@ -1,4 +1,5 @@
-import { createDpapi } from "./dpapi.js";
+import { createSecretBox, FileSecretBoxError } from "./secretbox.js";
+import { resolveDataDir } from "./store.js";
 import { PromptAborted, readHidden } from "./prompt.js";
 import { runCli } from "./cli.js";
 import { FATAL_LINE, installFatalHandlers } from "./fatal.js";
@@ -9,11 +10,20 @@ async function main(): Promise<void> {
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  let secretBox;
+  try {
+    secretBox = createSecretBox({ dir: resolveDataDir(process.env) });
+  } catch (err) {
+    if (!(err instanceof FileSecretBoxError)) throw err;
+    process.stderr.write(`${err.message}\n`); // a path and a fix, never a secret
+    process.exitCode = 1;
+    return;
+  }
   const code = await runCli(process.argv.slice(2), {
     env: process.env,
     out: (line) => process.stdout.write(`${line}\n`),
     err: (line) => process.stderr.write(`${line}\n`),
-    dpapi: createDpapi(),
+    dpapi: secretBox,
     prompt: (question) => readHidden(question, { stdin: process.stdin as never, stderr: process.stderr }),
     signal: controller.signal,
   });
