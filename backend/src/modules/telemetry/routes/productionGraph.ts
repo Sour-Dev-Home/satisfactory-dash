@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Logger } from "pino";
-import { ProductionGraphResponseSchema, ResourceNodesLayerDataSchema, endpoints, type ResourceNode } from "@satisfactory-dash/shared";
+import { ProductionGraphResponseSchema, ResourceNodesLayerDataSchema, TrainRoutesLayerDataSchema, endpoints, type ResourceNode, type TrainRouteRecord } from "@satisfactory-dash/shared";
 import { getLatestWorldLayer } from "../../map/index.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import type { ServerDirectory } from "../../servers/index.js";
@@ -31,6 +31,22 @@ export async function readResourceNodes(db: Queryable, serverId: string, log?: P
 }
 
 /**
+ * ADR-0055 PR 6a: the stored trainRoutes layer, for train transport edges. Null (not read) on any doubt: no row, a skip, a
+ * schema failure, or a truncated row (a missing station would make a timetable name look unknown, and a partial layer
+ * could pair the wrong stops). An empty array is a real read of a save with no trains.
+ */
+export async function readTrainRoutes(db: Queryable, serverId: string, log?: Pick<Logger, "warn">): Promise<TrainRouteRecord[] | null> {
+  const row = await getLatestWorldLayer(db, serverId, "trainRoutes");
+  if (row === undefined || row.truncated || row.hash.startsWith("skipped:")) return null;
+  const parsed = TrainRoutesLayerDataSchema.safeParse(row.data);
+  if (!parsed.success) {
+    log?.warn({ serverId, issues: parsed.error.issues.slice(0, 3).map((i) => i.message) }, "stored trainRoutes layer failed its schema; no train transport edges");
+    return null;
+  }
+  return parsed.data;
+}
+
+/**
  * ADR-0050 (production planner), build task 4: the production graph, computed on demand from the server's latest factory
  * snapshot and its stored conveyors layer (plus the resource-nodes layer, ADR-0055 PR 4), exactly like the bottlenecks route (same inputs, same member guard, same 503
  * without a database, no cache: Decision 5). Each request logs one compact line of counts and timing, with no game-server
@@ -45,8 +61,9 @@ export function createProductionGraphRouter(directory: ServerDirectory<Telemetry
     const factory = await services.telemetry.production.getFactoryOverview();
     const edges = await readEdges(deps.db, serverId, req.log);
     const resourceNodes = await readResourceNodes(deps.db, serverId, req.log);
+    const trainRoutes = await readTrainRoutes(deps.db, serverId, req.log);
     const started = performance.now();
-    const { graph, stats } = buildProductionGraphWithStats(factory.buildings, edges, resourceNodes);
+    const { graph, stats } = buildProductionGraphWithStats(factory.buildings, edges, resourceNodes, trainRoutes);
     const durationMs = Math.round(performance.now() - started);
     req.log.info({ ...stats, durationMs }, "production graph built");
     sendValidated(res, ProductionGraphResponseSchema, { ...snapshot(serverId, factory), data: graph });

@@ -4,6 +4,7 @@ import {
   PLANNER_MAX_NODES,
   PLANNER_MAX_RATES,
   PLANNER_MAX_SITES,
+  PLANNER_MAX_TRANSPORTS,
   type BottleneckNote,
   type ConveyorEdge,
   type ConveyorNodeKind,
@@ -14,7 +15,9 @@ import {
   type PlannerSite,
   type ProductionGraph,
   type ProductionRate,
+  type PlannerTransport,
   type ResourceNode,
+  type TrainRouteRecord,
 } from "@satisfactory-dash/shared";
 import { BELT_DATA_NOT_RECEIVED_TEXT, CONNECTIONS_REFRESH_MINUTES, type BottleneckEdges } from "./bottleneckFinder.js";
 import {
@@ -28,7 +31,8 @@ import {
   type Arc,
   type Filter,
 } from "./connectionGraph.js";
-import { classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
+import { buildLogisticsEdges } from "./logisticsEdges.js";
+import { DEPOT_CLASS, classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
 import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plannerItems.js";
 
 /**
@@ -225,8 +229,13 @@ function emptyGraph(beltData: ProductionGraph["beltData"], notes: BottleneckNote
 
 /** The planner's graph for one snapshot. `edges` is the conveyors layer of one read, or why it is missing; `resourceNodes`
  *  is the stored resource-nodes layer (empty when absent: no extractor then gets its item from a node). */
-export function buildProductionGraph(buildings: readonly FactoryBuilding[], edges: BottleneckEdges, resourceNodes: readonly ResourceNode[] = []): ProductionGraph {
-  return buildProductionGraphWithStats(buildings, edges, resourceNodes).graph;
+export function buildProductionGraph(
+  buildings: readonly FactoryBuilding[],
+  edges: BottleneckEdges,
+  resourceNodes: readonly ResourceNode[] = [],
+  trainRoutes: readonly TrainRouteRecord[] | null = null,
+): ProductionGraph {
+  return buildProductionGraphWithStats(buildings, edges, resourceNodes, trainRoutes).graph;
 }
 
 /** As `buildProductionGraph`, plus component, site and group counts (to tune `SITE_MERGE_DISTANCE_M` on a real save). */
@@ -234,6 +243,7 @@ export function buildProductionGraphWithStats(
   buildings: readonly FactoryBuilding[],
   edges: BottleneckEdges,
   resourceNodes: readonly ResourceNode[] = [],
+  trainRoutes: readonly TrainRouteRecord[] | null = null,
 ): ProductionGraphResult {
   if (edges === "unsupported") {
     return emptyGraph("unsupported", [{ code: "updateFrm", text: "No production graph; update FRM to 1.5.4 or newer for belt detail." }]);
@@ -875,6 +885,34 @@ export function buildProductionGraphWithStats(
     .sort((a, b) => byString(a.key, b.key));
   if (kept.some((grp) => grp.ids.length > PLANNER_MAX_MACHINE_IDS)) truncated = true;
 
+  // ---- transport edges (ADR-0055 Decision 2, PR 6a): trains and the Depot; the pure rules are in logisticsEdges.ts ----
+  const itemNames = new Map<string, string>();
+  for (const grp of groups) for (const acc of [...grp.prod.values(), ...grp.ing.values()]) if (!itemNames.has(acc.className)) itemNames.set(acc.className, acc.name);
+  for (const e of keptEdges) if (e.itemClassName !== null && e.itemName !== null && !itemNames.has(e.itemClassName)) itemNames.set(e.itemClassName, e.itemName);
+  const logistics = buildLogisticsEdges({
+    trainRoutes,
+    edges: keptEdges,
+    nodeOfPlatform: (platformId) => {
+      const node = g.idToNode.get(platformId);
+      const gi = node === undefined ? undefined : groupOfNode.get(node);
+      return gi !== undefined && keptKeys.has(groups[gi].key) ? groups[gi].key : null;
+    },
+    uploaders: kept
+      .filter((grp) => flowGroups[grp.idx].buildClass === DEPOT_CLASS)
+      .map((grp) => ({ key: grp.key, at: grp.posN > 0 ? { x: whole(grp.posSum.x / grp.posN), y: whole(grp.posSum.y / grp.posN) } : { x: 0, y: 0 } })),
+    itemNames,
+  });
+  notes.push(...logistics.notes);
+  let transports: PlannerTransport[] = logistics.transports;
+  if (logistics.depotNode !== null && nodes.length < PLANNER_MAX_NODES) {
+    nodes.push(logistics.depotNode);
+    nodes.sort((a, b) => byString(a.key, b.key));
+  } else transports = transports.filter((t) => t.mode !== "depot");
+  if (transports.length > PLANNER_MAX_TRANSPORTS) {
+    transports = transports.slice(0, PLANNER_MAX_TRANSPORTS);
+    truncated = true;
+  }
+
   // ---- unconnected machines and notes ----
   // An id the contract cannot carry (empty, or over 128 characters) can never be named by a conveyor either, so it is left out.
   const allUnconnected = sorted.filter((b) => b.recipe !== null && !g.idToNode.has(b.id) && b.id.length >= 1 && b.id.length <= 128).map((b) => b.id);
@@ -898,7 +936,17 @@ export function buildProductionGraphWithStats(
   }
 
   return {
-    graph: { nodes, edges: keptEdges, sites: keptSites, unconnectedMachineIds, beltData, connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES, notes },
+    graph: {
+      nodes,
+      edges: keptEdges,
+      sites: keptSites,
+      unconnectedMachineIds,
+      beltData,
+      connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES,
+      notes,
+      transports,
+      logistics: trainRoutes === null ? "notRead" : "present",
+    },
     stats: { components: atomIdx.size, sites: keptSites.length, groups: groups.length, links: links.length },
   };
 }
