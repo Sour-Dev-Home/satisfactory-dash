@@ -153,6 +153,7 @@ describe("the world reader inside the agent (ADR-0038 M4)", () => {
       getRails: vi.fn<WorldPorts["getRails"]>(async () => ({ data: [], dropped: 0 }) as MappedRailSegments),
       getResourceNodes: vi.fn<WorldPorts["getResourceNodes"]>(async () => ({ data: [], dropped: 0 })),
       getConveyors: vi.fn<WorldPorts["getConveyors"]>(async () => ({ data: [], dropped: 0 })),
+      getTrainRoutes: vi.fn<WorldPorts["getTrainRoutes"]>(async () => ({ data: [], dropped: 0 })),
     };
     const posted: MapWorldLayer[] = [];
     const client: RunAgentOptions["client"] & WorldClient = {

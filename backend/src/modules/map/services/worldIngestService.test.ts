@@ -43,6 +43,22 @@ describe("WorldIngestService", () => {
     expect(JSON.parse(calls[0]?.[6] as string)).toHaveLength(5_000);
   });
 
+  it("stores the trainRoutes layer, caps it at 4,000 records and drops a record with an unknown recordType (conform, don't reject)", async () => {
+    const station = (i: number) => ({ recordType: "station", id: `s${i}`, name: "A ", platforms: [{ id: "p", mode: "unload", items: ["Desc_Silica_C"] }] });
+    const ingest = async (data: unknown[]) => {
+      const { db, calls } = fakeDb();
+      await new WorldIngestService(db, fakeLogger()).ingest("srv-1", "trainRoutes", { observedAt: "2026-10-25T00:00:00.000Z", data });
+      return calls[0] ?? [];
+    };
+    const mixed = await ingest([station(1), { recordType: "tram", id: "x" }]);
+    expect(mixed[1]).toBe("trainRoutes");
+    expect(mixed[5]).toBe(1);
+    expect(JSON.parse(mixed[6] as string)).toEqual([station(1)]);
+    const over = await ingest(Array.from({ length: 4_001 }, (_, i) => station(i)));
+    expect(over[4]).toBe(true);
+    expect(over[5]).toBe(4_000);
+  });
+
   it("caps the conveyors layer at its own 50,000 edges, not the shared 5,000 (ADR-0048 amendment)", async () => {
     const edge = (i: number) => ({
       id: `belt-${i}`, kind: "belt", from: "a", fromKind: "machine", to: "b", toKind: "splitter",
