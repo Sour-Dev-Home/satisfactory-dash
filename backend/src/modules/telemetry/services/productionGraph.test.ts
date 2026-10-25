@@ -491,6 +491,12 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(fromStorage).toEqual([expect.objectContaining({ itemClassName: null })]);
   });
 
+  it("a storage known to hold one item and fed something unknown never guesses a different need", () => {
+    const b = [machine("m", { className: SMELTER, recipe: "Iron Ingot", out: [[INGOT, 30]] }), smelter()];
+    const g = buildProductionGraph(b, [edge("a", "m", "T1"), edge("b", "Mod_1", "T1", { fromKind: "other" }), edge("c", "T1", "s")]);
+    expect(g.edges.find((x) => x.from.startsWith("storage"))).toMatchObject({ itemClassName: null });
+  });
+
   it("a storage nothing feeds takes its machine's single unmet need (downstream); a station too", () => {
     const g = buildProductionGraph([smelter()], [edge("a", "T1", "s")]);
     expect(only(g)).toMatchObject({ itemClassName: ORE, itemFrom: "downstream" });

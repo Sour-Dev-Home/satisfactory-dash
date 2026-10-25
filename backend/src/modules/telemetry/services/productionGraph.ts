@@ -482,8 +482,11 @@ export function buildProductionGraphWithStats(
       for (const o of link.ins) if (o !== s && o !== d) for (const k of groups[o].prod.keys()) others.add(k);
       const need = [...dst.ing.values()].filter((i) => carries(link, filterOf(i.unit)) && !others.has(i.className));
       if (need.length !== 1) return NULL_ITEM;
-      // A storage known to receive another item the destination also uses may be sending that one: unknown.
-      for (const p of partialOf[s]) if (p !== need[0].className && dst.ing.has(p)) return NULL_ITEM;
+      // A storage with known inputs must be known to receive the need, and nothing else the destination uses: otherwise
+      // it may be sending what it is known to hold (and the need is a guess). Only a storage with no known input guesses.
+      const partial = partialOf[s];
+      if (partial.size > 0 && !partial.has(need[0].className)) return NULL_ITEM;
+      for (const p of partial) if (p !== need[0].className && dst.ing.has(p)) return NULL_ITEM;
       return { t: "items", items: [rateItem(need[0])], from: "downstream", inferred: true, split: false, mixed: false };
     }
     return NULL_ITEM;
@@ -521,6 +524,12 @@ export function buildProductionGraphWithStats(
     let unknown = false;
     const items = new Map<string, ResourceItem>();
     for (const { link, s } of intoStorage.get(d) as { link: Link; s: number }[]) {
+      // A pipe has no direction: a machine that also takes a fluid may be drawing from the tank rather than filling it,
+      // so its products are not proof of what the tank holds.
+      if (!link.solid && groups[s].prod.size > 0 && [...groups[s].ing.values()].some((i) => i.unit !== "items/min")) {
+        unknown = true;
+        continue;
+      }
       const r = send(link, s, d);
       if (r.t === "null") unknown = true;
       else if (r.t === "items") for (const i of r.items) if (!items.has(i.className)) items.set(i.className, i);
