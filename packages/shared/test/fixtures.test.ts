@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
+  DeliverySnapshotSchema,
+  MetricsOverviewSchema,
   AgentCommandsResponseSchema,
   AgentStatusResponseSchema,
   CommandResponseSchema,
@@ -110,6 +112,8 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["pushOptInRequest", PushOptInRequestSchema],
   ["pushOptIn", PushOptInResponseSchema],
   // ADR-0031 PR 3: the edge agent's fixtures. "agentEnrollmentCode" and "agentEnroll..." differ at the letter after "Enroll".
+  ["deliverySnapshot", DeliverySnapshotSchema], // ADR-0056 PR 2
+  ["metricsOverview", MetricsOverviewSchema],
   ["agentEnrollRequest", EnrollRequestSchema],
   ["agentEnrollResponse", EnrollResponseSchema],
   ["agentEnrollmentCode", EnrollmentCodeResponseSchema],
@@ -499,7 +503,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
     // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
-    expect(all.length).toBe(62); // + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050)
+    expect(all.length).toBe(64); // + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;
