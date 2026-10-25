@@ -74,6 +74,17 @@ import {
   SnapshotRequestSchema,
   SnapshotResponseSchema,
 } from "./agent";
+import {
+  CompatResponseSchema,
+  PairingApproveRequestSchema,
+  PairingApproveResponseSchema,
+  PairingLookupRequestSchema,
+  PairingLookupResponseSchema,
+  PairingPollRequestSchema,
+  PairingPollResponseSchema,
+  PairingStartRequestSchema,
+  PairingStartResponseSchema,
+} from "./pairing";
 import { DeliveryIngestResponseSchema, DeliverySnapshotSchema, MetricsOverviewSchema, MetricsQuerySchema } from "./metrics";
 
 const scoped = (resource: string) => (serverId: string) =>
@@ -533,6 +544,22 @@ export const endpoints = {
       request: EnrollRequestSchema,
       response: EnrollResponseSchema, // 201
     },
+    // ADR-0051 section 1 / ADR-0057: device-code pairing, unauthenticated like `enroll`. `startPairing` answers 201; `pollPairing`
+    // takes the secret in the BODY (never the URL) and answers 200 pending | expired | slow_down, or 201 approved (enrol's shape).
+    startPairing: {
+      method: "POST",
+      route: "/agent/v1/pairings",
+      path: () => "/agent/v1/pairings",
+      request: PairingStartRequestSchema,
+      response: PairingStartResponseSchema, // 201
+    },
+    pollPairing: {
+      method: "POST",
+      route: "/agent/v1/pairings/poll",
+      path: () => "/agent/v1/pairings/poll",
+      request: PairingPollRequestSchema,
+      response: PairingPollResponseSchema,
+    },
     snapshots: {
       method: "POST",
       route: "/agent/v1/snapshots",
@@ -565,6 +592,26 @@ export const endpoints = {
       response: WorldIngestResponseSchema,
     },
   },
+  // ADR-0051 section 1 / ADR-0057: device-code pairing, dashboard side (signed-in user, not server-scoped). Contract only;
+  // the codes are typed in, never prefilled from a URL. An unknown, spent or expired code is 404 not_found.
+  pairings: {
+    lookup: {
+      method: "POST",
+      route: "/api/pairings/lookup",
+      path: () => "/api/pairings/lookup",
+      request: PairingLookupRequestSchema,
+      response: PairingLookupResponseSchema,
+    },
+    approve: {
+      method: "POST",
+      route: "/api/pairings/approve",
+      path: () => "/api/pairings/approve",
+      request: PairingApproveRequestSchema,
+      response: PairingApproveResponseSchema,
+    },
+  },
+  // ADR-0057 Decisions 6 to 8: the version policy for the mod and the agent (signed-in user, read-only).
+  compat: { method: "GET", route: "/api/compat", path: () => "/api/compat", response: CompatResponseSchema },
   // ADR-0056 section 2: the operator-only metrics page (not server-scoped). `window` is optional (default 24h).
   metrics: {
     overview: {
