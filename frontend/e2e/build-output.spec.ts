@@ -114,7 +114,7 @@ const DIST_DEMO = join(import.meta.dirname, "..", "dist-demo");
 const API_ORIGIN = "api.satis-manager.com";
 const NETWORK_TRANSPORT_MARKER = "satisManagerNetworkTransport";
 /** Text only the demo build has. The prod check above fails if any of it leaks there. */
-const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] no demo data", "Demo World"];
+const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] no demo data", "Demo World", "Sample data: made-up numbers", "sample-srv-a"];
 /** Text only the landing page (src/landing/) has; main site only. */
 const LANDING_MARKER = "Sign-in is invite-only during the beta.";
 

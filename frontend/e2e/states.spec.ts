@@ -292,6 +292,14 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Switch back to local for Factory two" }).click(),
   },
   { scenario: "servers-first", shows: "No game servers yet. Add the first one; for now it has to run on this machine." },
+  // The operator's metrics page (ADR-0056): every table filled, each section's reason for having no data, a 429, a
+  // failing read, the loading skeleton, and a user who isn't the operator (the unknown-page redirect lands on the Overview).
+  { scenario: "metrics", path: "/app/metrics", shows: /Timings are bucket upper bounds/ },
+  { scenario: "metrics-unavailable", path: "/app/metrics", shows: "The daily delivery feed isn't set up on this backend." },
+  { scenario: "metrics-rate-limited", path: "/app/metrics", shows: /asked for too often/ },
+  { scenario: "metrics-error", path: "/app/metrics", shows: "Retry" },
+  { scenario: "metrics-forbidden", path: "/app/metrics", shows: "Total play time on this save" },
+  { scenario: "metrics-loading", path: "/app/metrics", shows: "Refresh", act: skeletonsShown },
   {
     scenario: "servers-lan-refused",
     path: "/app/servers",

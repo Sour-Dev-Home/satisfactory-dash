@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import type { ScenarioName } from "../src/test/scenarios";
 import { expect, settleAnimations, test } from "./fixtures";
 
 /**
@@ -16,14 +17,24 @@ const CLS_BUDGET = 0.02;
 /** How far a panel that was already on screen at the reveal may end up from there (a control row). */
 const PANEL_DRIFT_PX = 48;
 
-const PAGES = [
+interface PageCase {
+  name: string;
+  path: string;
+  ready: string | RegExp;
+  /** The scenarios for the slow and the fast load, when the page needs more than the default user (the operator's pages). */
+  scenarios?: { slow: ScenarioName; fast: ScenarioName };
+}
+
+const PAGES: readonly PageCase[] = [
   { name: "Overview", path: "/app", ready: "Total play time on this save" },
   { name: "Power", path: "/app/power", ready: /Circuit 0/ },
   { name: "Factory", path: "/app/factory", ready: /machines · .* backed up/ },
   { name: "Planner", path: "/app/planner", ready: "Production planner" },
   { name: "Map", path: "/app/map", ready: "Buildings in view" },
   { name: "Settings", path: "/app/settings", ready: /Auto-pause when no players/ },
-] as const;
+  // ADR-0056: operator only, so it needs the operator's server list.
+  { name: "Metrics", path: "/app/metrics", ready: /Timings are bucket upper bounds/, scenarios: { slow: "metrics-slow", fast: "metrics" } },
+];
 
 interface Probe {
   /** A real panel or skeleton block was visible before the page said it was revealed. */
@@ -104,10 +115,10 @@ for (const motion of ["no-preference", "reduce"] as const) {
   test.describe(`page reveal, motion ${motion}`, () => {
     test.use({ reducedMotion: motion });
 
-    for (const { name, path, ready } of PAGES) {
+    for (const { name, path, ready, scenarios } of PAGES) {
       test(`${name}: nothing is painted before the reveal, and nothing on screen moves after it`, async ({ page, mockApi }) => {
         await installProbe(page);
-        await mockApi("slow-queries");
+        await mockApi(scenarios?.slow ?? "slow-queries");
         await page.goto(path);
         // The reads take 800 ms, past the 400 ms budget: the page reveals with skeletons, then fills in.
         await expect(page.locator('[data-page-reveal="revealed"]')).toBeVisible({ timeout: 10_000 });
@@ -136,7 +147,7 @@ for (const motion of ["no-preference", "reduce"] as const) {
 
       test(`${name}: a fast load never shows a skeleton`, async ({ page, mockApi }) => {
         await installProbe(page);
-        await mockApi("default");
+        await mockApi(scenarios?.fast ?? "default");
         await page.goto(path);
         await expect(page.getByText(ready).first()).toBeVisible({ timeout: 15_000 });
         await expect(page.locator("[data-chart-loading]")).toHaveCount(0, { timeout: 15_000 });

@@ -24,6 +24,8 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { StatusBanners } from "../components/StatusBanners";
 import { FactoryView } from "../factory/FactoryView";
 import { MapView } from "../map/MapView";
+import { MetricsLink } from "../metrics/MetricsLink";
+import { MetricsView } from "../metrics/MetricsView";
 import { OverviewView } from "../overview/OverviewView";
 import { PlannerView } from "../planner/PlannerView";
 import { isPaletteShortcut } from "../palette/paletteCommands";
@@ -510,6 +512,20 @@ export function Shell() {
               <Page key="servers" title="Servers" path="/app/servers" onRevealed={focusHeading}>
                 <Section label="Server management" probe="servers">
                   <ServerManagementView />
+                </Section>
+                <MetricsLink />
+              </Page>
+            }
+          />
+        )}
+        {/* ADR-0056: operator only and never in the real nav (shell/tabs.ts). Anyone else gets the unknown-page redirect below. */}
+        {canManageServers && (
+          <Route
+            path="metrics"
+            element={
+              <Page key="metrics" title="Metrics" path="/app/metrics" onRevealed={focusHeading}>
+                <Section label="Metrics" probe="metrics">
+                  <MetricsView />
                 </Section>
               </Page>
             }

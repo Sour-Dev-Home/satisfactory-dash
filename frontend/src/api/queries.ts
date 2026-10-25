@@ -13,6 +13,7 @@ import {
   ResourceNodesLayerDataSchema,
   type HistoryRange,
   type MapWorldLayer,
+  type MetricsWindow,
   type RailsLayerData,
   type ResourceNodesLayerData,
   type SessionResponse,
@@ -38,6 +39,9 @@ export const POLL_MS = {
   /** The live trains and stations (ADR-0038 M6): in-memory on the backend, polled every 10 s while the map is open. */
   mapLive: 10_000,
 } as const;
+
+/** How long a metrics read counts as fresh: the series store is flushed once a minute (ADR-0056 section 7). */
+export const METRICS_STALE_MS = 60_000;
 
 /** One stored world layer, as the map reads it (ADR-0038): the layer's own data type, narrowed. */
 export interface WorldLayerRead<T> {
@@ -283,6 +287,16 @@ export const queries = {
     queryOptions({
       queryKey: MANAGED_KEY,
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.serverManagement.list),
+    }),
+  // ADR-0056, operator only: the metrics page. No polling (the backend flushes once a minute, so a read is fresh for
+  // that long); the page's Refresh button refetches. Not under ["servers", ...]: it is not about one server. The last
+  // answer stays up while another window loads.
+  metrics: (window: MetricsWindow) =>
+    queryOptions({
+      queryKey: ["metrics", window],
+      queryFn: ({ signal }) => apiGetQuery(signal, endpoints.metrics.overview, { window }),
+      staleTime: METRICS_STALE_MS,
+      placeholderData: (previous) => previous,
     }),
   // ADR-0031 PR 4: a change relayed through the edge agent, followed to its result. Polled about once
   // a second while it's on its way (it usually lands within seconds), never once it's final.

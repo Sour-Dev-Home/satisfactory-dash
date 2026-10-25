@@ -83,6 +83,8 @@ export function paletteGroups({
       { id: "page-map", label: "Map", to: "/app/map" },
       { id: "page-settings", label: "Settings", to: "/app/settings" },
       ...(isOperator ? [{ id: "page-servers", label: "Servers", to: "/app/servers" }] : []),
+      // ADR-0056: the metrics page is not a tab in the real app, so this is how the operator finds it.
+      ...(isOperator ? [{ id: "page-metrics", label: "Metrics", keywords: ["system", "latency", "alerts", "operator"], to: "/app/metrics" }] : []),
     ],
   });
 
