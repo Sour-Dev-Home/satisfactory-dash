@@ -242,3 +242,105 @@ describe("remove and replace", () => {
     expect(removed.start).not.toHaveBeenCalled();
   });
 });
+
+describe("ServerRuntime leader gating (ADR-0054 D3)", () => {
+  /** A polled server whose rebuild hands out a new worker each time, recording every build. */
+  function polled(id: string) {
+    const builds: ReturnType<typeof fakeWorker>[] = [];
+    const build = (displayName: string): RuntimeServer<{ tag: string }> => {
+      const worker = fakeWorker();
+      builds.push(worker);
+      return { id, displayName, services: { tag: `${id}#${builds.length}` }, workers: [worker] };
+    };
+    return { entry: { ...build(`Name ${id}`), rebuild: build }, builds };
+  }
+
+  it("without the option the runtime is always leader (local mode)", () => {
+    const { entry, builds } = polled("a");
+    const runtime = new ServerRuntime([entry]);
+    runtime.start();
+    expect(builds[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("gated: a polled server's workers wait for leadership, an agent server's start at once", async () => {
+    const { entry, builds } = polled("a");
+    const agentWorker = fakeWorker();
+    const runtime = new ServerRuntime([entry, { ...server("b", [agentWorker]), kind: "agent" }], { leaderGated: true });
+    runtime.start();
+    expect(builds[0]!.start).not.toHaveBeenCalled();
+    expect(agentWorker.start).toHaveBeenCalledTimes(1);
+    await runtime.setLeader(true);
+    expect(builds[0]!.start).toHaveBeenCalledTimes(1);
+    await runtime.setLeader(true); // no change: no second start
+    expect(builds[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("stepping down stops the pollers and swaps in a fresh build that the next term starts; agent workers are untouched", async () => {
+    const { entry, builds } = polled("a");
+    const agentWorker = fakeWorker();
+    const runtime = new ServerRuntime([entry, { ...server("b", [agentWorker]), kind: "agent" }], { leaderGated: true });
+    runtime.start();
+    await runtime.setLeader(true);
+    await runtime.setLeader(false);
+    expect(builds[0]!.stop).toHaveBeenCalledTimes(1);
+    expect(builds).toHaveLength(2);
+    expect(builds[1]!.start).not.toHaveBeenCalled();
+    expect(runtime.get("a")).toEqual({ tag: "a#2" }); // the fresh build serves reads
+    expect(agentWorker.stop).not.toHaveBeenCalled();
+    await runtime.setLeader(true);
+    expect(builds[1]!.start).toHaveBeenCalledTimes(1);
+    // A second step-down keeps the rebuild (a third build), so every term gets fresh pollers.
+    await runtime.setLeader(false);
+    expect(builds).toHaveLength(3);
+  });
+
+  it("a rebuild keeps the renamed display name", async () => {
+    const { entry } = polled("a");
+    const runtime = new ServerRuntime([entry], { leaderGated: true });
+    runtime.start();
+    await runtime.setLeader(true);
+    runtime.rename("a", "Renamed");
+    await runtime.setLeader(false);
+    expect(runtime.list()).toEqual([{ id: "a", displayName: "Renamed" }]);
+  });
+
+  it("a server added or replaced while a follower does not start its pollers until leadership", async () => {
+    const runtime = new ServerRuntime<{ tag: string }>([], { leaderGated: true });
+    runtime.start();
+    const { entry, builds } = polled("a");
+    runtime.add(entry);
+    expect(builds[0]!.start).not.toHaveBeenCalled();
+    const replacement = polled("a");
+    await runtime.replace(replacement.entry);
+    expect(replacement.builds[0]!.start).not.toHaveBeenCalled();
+    await runtime.setLeader(true);
+    expect(replacement.builds[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("leadership before the runtime starts: the pollers start with start()", async () => {
+    const { entry, builds } = polled("a");
+    const runtime = new ServerRuntime([entry], { leaderGated: true });
+    await runtime.setLeader(true);
+    expect(builds[0]!.start).not.toHaveBeenCalled();
+    runtime.start();
+    expect(builds[0]!.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("a rebuild that throws keeps the old entry and reports it", async () => {
+    const worker = fakeWorker();
+    const onWorkerStartError = vi.fn();
+    const entry: RuntimeServer<{ tag: string }> = {
+      ...server("a", [worker]),
+      rebuild: () => {
+        throw new Error("boom");
+      },
+    };
+    const runtime = new ServerRuntime([entry], { leaderGated: true, onWorkerStartError });
+    runtime.start();
+    await runtime.setLeader(true);
+    await runtime.setLeader(false);
+    expect(worker.stop).toHaveBeenCalledTimes(1);
+    expect(onWorkerStartError).toHaveBeenCalledWith("a", expect.any(Error));
+    expect(runtime.get("a")).toEqual({ tag: "a" });
+  });
+});
