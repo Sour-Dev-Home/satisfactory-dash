@@ -18,6 +18,13 @@ import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
 import { BottlenecksQuerySchema, BottlenecksResponseSchema } from "./bottlenecks";
 import { ProductionGraphResponseSchema } from "./productionGraph";
+import {
+  CreatePlannerDesignationRequestSchema,
+  DeletePlannerDesignationResponseSchema,
+  PlannerDesignationSchema,
+  PlannerDesignationsResponseSchema,
+  UpdatePlannerDesignationRequestSchema,
+} from "./plannerDesignations";
 import { PowerResponseSchema } from "./power";
 import { PowerHistoryResponseSchema } from "./powerHistory";
 import {
@@ -135,6 +142,38 @@ export const endpoints = {
     route: "/api/servers/:serverId/production-graph",
     path: scoped("production-graph"),
     response: ProductionGraphResponseSchema,
+  },
+  // ADR-0055 Decision 5: the player's named sets of buildings. Reads: any member. Writes: the existing member-write guard
+  // (403 forbidden for a viewer). In the contract before its routes (PR 9).
+  plannerDesignations: {
+    list: {
+      method: "GET",
+      route: "/api/servers/:serverId/planner/designations",
+      path: scoped("planner/designations"),
+      response: PlannerDesignationsResponseSchema,
+    },
+    // 201. 409 designation_overlap (with `error.other`) or designation_cap.
+    create: {
+      method: "POST",
+      route: "/api/servers/:serverId/planner/designations",
+      path: scoped("planner/designations"),
+      request: CreatePlannerDesignationRequestSchema,
+      response: PlannerDesignationSchema,
+    },
+    // 409 designation_overlap (with `error.other`); 404 not_found for an unknown designation.
+    update: {
+      method: "PUT",
+      route: "/api/servers/:serverId/planner/designations/:designationId",
+      path: (serverId: string, designationId: string) => `${scoped("planner/designations")(serverId)}/${encodeURIComponent(designationId)}`,
+      request: UpdatePlannerDesignationRequestSchema,
+      response: PlannerDesignationSchema,
+    },
+    remove: {
+      method: "DELETE",
+      route: "/api/servers/:serverId/planner/designations/:designationId",
+      path: (serverId: string, designationId: string) => `${scoped("planner/designations")(serverId)}/${encodeURIComponent(designationId)}`,
+      response: DeletePlannerDesignationResponseSchema,
+    },
   },
   power: {
     method: "GET",

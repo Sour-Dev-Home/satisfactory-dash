@@ -17,6 +17,8 @@ export interface ClassifiedFailure {
   reason?: string;
   /** ADR-0047: the servers the error is about (see ApiFailure). */
   servers?: FailureServer[];
+  /** ADR-0055: the designation a designation_overlap write collides with (see ApiFailure). */
+  other?: { id: string; name: string };
 }
 
 /** A server named in an error envelope: its public id and display name, nothing else. */
@@ -76,6 +78,9 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   agent_outdated: 426,
   command_not_found: 404,
   command_expired: 409,
+  // ADR-0055 PR 9: Planner designations.
+  designation_overlap: 409,
+  designation_cap: 409,
   // ADR-0047: account deletion and leaving a server. 403, not 401, so the client does not read it as "signed out".
   would_orphan: 409,
   reauth_required: 403,
@@ -239,6 +244,8 @@ export class ApiFailure extends Error {
     /** ADR-0047: the servers the refusal is about, today only those blocking an account deletion (`would_orphan`, reason
      *  `operator_servers`). The caller's own servers only, by public id and display name. */
     readonly servers?: readonly FailureServer[],
+    /** ADR-0055: the other designation of a `designation_overlap` (its id and name, which is the player's own text). */
+    readonly other?: { readonly id: string; readonly name: string },
   ) {
     super(message);
     this.name = "ApiFailure";
@@ -305,6 +312,7 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
       message: err.message,
       ...(safeReason(err.reason) !== undefined && { reason: safeReason(err.reason) }),
       ...(err.servers !== undefined && { servers: err.servers.map(({ id, displayName }) => ({ id, displayName })) }),
+      ...(err.other !== undefined && { other: { id: err.other.id, name: err.other.name } }),
     };
   }
   if (err instanceof UnauthorizedError) {
@@ -387,7 +395,7 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
       next(err);
       return;
     }
-    const { code, message, reason, servers } = classifyRequestFailure(err);
+    const { code, message, reason, servers, other } = classifyRequestFailure(err);
     const detail = detailFor(err);
     const status = ownValue(HTTP_STATUS_BY_CODE, code) ?? 500;
     const log = req.log ?? fallbackLogger;
@@ -400,7 +408,7 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
       res.setHeader("Retry-After", String(err.retryAfterSeconds));
     }
     const body: ApiErrorResponse = {
-      error: { code, message, requestId, ...(reason !== undefined && { reason }), ...(servers !== undefined && { servers }) },
+      error: { code, message, requestId, ...(reason !== undefined && { reason }), ...(servers !== undefined && { servers }), ...(other !== undefined && { other }) },
     };
     // A service_unavailable cause is a database error (host, port, driver text): never in a body,
     // even in development. The full cause is in the log line above.

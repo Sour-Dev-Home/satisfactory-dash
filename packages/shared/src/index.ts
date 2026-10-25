@@ -17,6 +17,7 @@ export * from "./settings";
 export * from "./map";
 export * from "./bottlenecks";
 export * from "./productionGraph";
+export * from "./plannerDesignations";
 export * from "./agent";
 export * from "./pairing";
 export * from "./metrics";
