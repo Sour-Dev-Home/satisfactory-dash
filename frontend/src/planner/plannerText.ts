@@ -226,7 +226,8 @@ export const destinationChipText = (destination: string, count: number): string 
 
 /** "850 m" under a kilometre, else "1.8 km". */
 export function distanceText(metres: number): string {
-  return metres < 1000 ? `${Math.round(metres)} m` : `${(Math.round(metres / 100) / 10).toLocaleString("en")} km`;
+  const whole = Math.round(metres);
+  return whole < 1000 ? `${whole} m` : `${(Math.round(metres / 100) / 10).toLocaleString("en")} km`;
 }
 
 /** "Ore farm, 1.8 km, by train": a remote group's place, distance and the transport that joins its site. */

@@ -360,17 +360,21 @@ export function factoryModels(graph: ProductionGraph): FactoryModel[] {
   const siteByKey = new Map(graph.sites.map((s) => [s.key, s]));
   const outgoing = [...graph.edges, ...(graph.transports ?? [])];
   return (graph.factories ?? []).map((factory) => {
-    const nodes = factory.nodeKeys.flatMap((key) => byKey.get(key) ?? []);
+    const nodes = [...new Set(factory.nodeKeys)].flatMap((key) => byKey.get(key) ?? []);
+    const siteKeys = [...new Set(factory.siteKeys)];
     const inFactory = new Set(nodes.map((n) => n.key));
-    const home = homeSite(nodes, graph.sites, factory.siteKeys);
+    const home = homeSite(nodes, graph.sites, siteKeys);
     const machinesAt = new Map<string, number>();
     for (const n of nodes) machinesAt.set(n.siteKey, (machinesAt.get(n.siteKey) ?? 0) + n.count);
-    const remoteSites = factory.siteKeys
+    const remoteSites = siteKeys
       .filter((key) => key !== home?.key)
       .flatMap((key) => siteByKey.get(key) ?? [])
       .sort((a, b) => (machinesAt.get(b.key) ?? 0) - (machinesAt.get(a.key) ?? 0));
+    // Keyed by game-server strings: a Map while summing, an own-property object after.
+    const summed = new Map<string, number>();
+    for (const n of nodes) for (const [state, count] of Object.entries(n.stateCounts)) summed.set(state, (summed.get(state) ?? 0) + count);
     const stateCounts: Record<string, number> = {};
-    for (const n of nodes) for (const [state, count] of Object.entries(n.stateCounts)) stateCounts[state] = (stateCounts[state] ?? 0) + count;
+    for (const [state, count] of summed) Object.defineProperty(stateCounts, state, { value: count, enumerable: true, writable: true, configurable: true });
     const ends = new Map<string, number>();
     for (const x of outgoing) {
       if (!inFactory.has(x.from) || x.destination === undefined || ONWARD_DESTINATIONS.has(x.destination)) continue;
