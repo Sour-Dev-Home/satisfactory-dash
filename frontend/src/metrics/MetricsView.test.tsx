@@ -159,6 +159,6 @@ describe("MetricsView", () => {
   it("never shows a server's name, only its public id", async () => {
     renderView();
     await screen.findByRole("region", { name: "System" });
-    expect(screen.getByRole("columnheader", { name: "Server (public id)" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Server" })).toBeInTheDocument();
   });
 });

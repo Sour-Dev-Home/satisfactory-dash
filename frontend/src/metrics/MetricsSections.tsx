@@ -117,7 +117,7 @@ function ServerRows({ id, rows }: { id: string; rows: readonly ServerMetricSumma
     <table aria-labelledby={id}>
       <thead>
         <tr>
-          <th scope="col">Server (public id)</th>
+          <th scope="col">Server</th>
           <th scope="col">What</th>
           <th scope="col">Result</th>
         </tr>
@@ -125,7 +125,7 @@ function ServerRows({ id, rows }: { id: string; rows: readonly ServerMetricSumma
       <tbody>
         {rows.map((row, i) => (
           <tr key={`${row.kind}:${row.metric}:${row.server}:${labelsText(row.labels)}:${i}`}>
-            <th scope="row" data-label="Server (public id)">
+            <th scope="row" data-label="Server">
               {row.server}
             </th>
             <td data-label="What">
@@ -188,7 +188,7 @@ export function SystemSection({ system }: { system: MetricsOverview["system"] })
       )}
       {system.servers.length > 0 && (
         <div className="grid gap-2">
-          <SubHeading id={`${id}-servers`}>Servers with the most to look at</SubHeading>
+          <SubHeading id={`${id}-servers`}>Servers with the most to look at (by public id)</SubHeading>
           <ServerRows id={`${id}-servers`} rows={system.servers} />
         </div>
       )}
@@ -255,7 +255,7 @@ export function AlertsSection({ alerts }: { alerts: MetricsOverview["alerts"] })
 function DeliveryTable({ id, snapshot }: { id: string; snapshot: DeliverySnapshot }) {
   const { throughput, leadTimeHours, size, changeFailure, ci } = snapshot;
   const rows: Array<[string, string]> = [
-    ["Pull requests merged", `${countText(throughput.mergedPrs)} (${throughput.perDay} a day)`],
+    ["Pull requests merged", `${countText(throughput.mergedPrs)} (${Math.round(throughput.perDay * 10) / 10} a day)`],
     ["Lead time, median", hoursText(leadTimeHours.median)],
     ["Lead time, 90th percentile", hoursText(leadTimeHours.p90)],
     ["Median change size", size.medianLinesChanged === null ? "n/a" : `${countText(size.medianLinesChanged)} lines`],
@@ -313,12 +313,12 @@ export function LinksSection({ links }: { links: MetricsOverview["links"] }) {
     <Panel title="Elsewhere">
       <ul className="mb-0 grid gap-2 pl-5">
         <li>
-          <a href={links.statusPage} target="_blank" rel="noopener noreferrer">
+          <a href={links.statusPage} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-touch items-center">
             Public status page (uptime)<span className="sr-only"> (opens in a new tab)</span>
           </a>
         </li>
         <li>
-          <a href={links.probeRuns} target="_blank" rel="noopener noreferrer">
+          <a href={links.probeRuns} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-touch items-center">
             Latency probe runs on GitHub<span className="sr-only"> (opens in a new tab)</span>
           </a>
         </li>

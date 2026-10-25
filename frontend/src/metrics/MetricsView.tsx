@@ -18,9 +18,9 @@ function MetricsSkeleton() {
   return (
     <div className="grid gap-4">
       <SkeletonStatus>Loading metrics…</SkeletonStatus>
-      <PanelSkeleton label="Loading system metrics" rows={3} rowClass="h-24" />
-      <PanelSkeleton label="Loading alert quality" rows={2} />
-      <PanelSkeleton label="Loading delivery figures" rows={1} />
+      <PanelSkeleton label="Loading system metrics" rows={5} rowClass="h-24" />
+      <PanelSkeleton label="Loading alert quality" rows={3} />
+      <PanelSkeleton label="Loading delivery figures" rows={4} />
     </div>
   );
 }
@@ -69,7 +69,7 @@ export function MetricsView() {
           Sample data: made-up numbers for this demo. The real page is visible only to the site's operator.
         </p>
       )}
-      <p role="status" className="mb-0 text-sm text-muted empty:hidden">
+      <p role="status" className="mb-0 min-h-lh text-sm text-muted">
         {overview ? (switching ? `Loading ${windowWords(range)}…` : `Showing ${windowWords(overview.window)}, computed ${formatTime(overview.generatedAt)}.`) : ""}
       </p>
       {metrics.isError &&
