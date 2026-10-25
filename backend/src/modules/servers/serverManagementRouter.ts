@@ -17,12 +17,12 @@ import {
 } from "@satisfactory-dash/shared";
 import {
   BadRequestError,
-  ForbiddenError,
   InvalidServerIdError,
   RateLimitedError,
   ServiceUnavailableError,
   UnauthorizedError,
 } from "../../platform/errorResponse.js";
+import { assertOperator, requireOperator } from "../identity/index.js";
 import { routePath } from "../../platform/routePath.js";
 import { sendValidated } from "../../platform/sendValidated.js";
 import { UserRateLimiter } from "../../platform/userRateLimiter.js";
@@ -88,12 +88,9 @@ export function createServerManagementRouters(
   const writeLimiter = options.writeLimiter ?? new UserRateLimiter(WRITE_LIMIT);
   const testLimiter = options.testLimiter ?? new UserRateLimiter(TEST_LIMIT);
 
-  const operatorOnly: RequestHandler = (_req, res, next) => {
-    const id = userId(res);
-    if (options.isReady && !options.isReady()) throw new ServiceUnavailableError();
-    if (!service.canManage(id)) throw new ForbiddenError("Only the operator can manage servers.");
-    next();
-  };
+  // ADR-0056 section 3: the operator gate lives in identity and serves servers and metrics alike; same 401/503/403 as before.
+  const operatorRule = { isOperator: (id: string) => service.canManage(id), forbiddenMessage: "Only the operator can manage servers." };
+  const operatorOnly: RequestHandler = requireOperator({ ...operatorRule, isReady: () => options.isReady?.() ?? true });
   // #526: the `selfServeOwner` routes let an owner through to the handler, which tries the owner path first.
   const selfServeOwner = options.selfServeOwner;
   const isOwnerCaller = (res: { locals: Record<string, unknown> }): boolean => selfServeOwner !== undefined && res.locals.serverRole === "owner";
@@ -104,8 +101,8 @@ export function createServerManagementRouters(
     next();
   };
   /** After the owner path answered NOT_SELF_SERVE (an operator-created server): the operator-only rule, as before. */
-  const requireOperator = (res: { locals: { user?: { id?: unknown } } }): void => {
-    if (!service.canManage(userId(res))) throw new ForbiddenError("Only the operator can manage servers.");
+  const requireOperatorOf = (res: { locals: { user?: { id?: unknown } } }): void => {
+    assertOperator(res, operatorRule);
   };
   const limited =
     (limiter: UserRateLimiter): RequestHandler =>
@@ -167,7 +164,7 @@ export function createServerManagementRouters(
     if (isOwnerCaller(res)) {
       const owned = await orUnavailable(() => selfServeOwner!.renameAsOwner(userId(res), id, body.displayName));
       if (owned !== NOT_SELF_SERVE) return sendValidated(res, RenameServerResponseSchema, { server: owned });
-      requireOperator(res);
+      requireOperatorOf(res);
     }
     sendValidated(res, RenameServerResponseSchema, { server: await orUnavailable(() => service.renameAgentServer(userId(res), id, body.displayName)) });
   });
@@ -177,7 +174,7 @@ export function createServerManagementRouters(
     if (isOwnerCaller(res)) {
       const owned = await orUnavailable(() => selfServeOwner!.removeAsOwner(userId(res), id));
       if (owned !== NOT_SELF_SERVE) return sendValidated(res, DeleteServerResponseSchema, { deleted: true });
-      requireOperator(res);
+      requireOperatorOf(res);
     }
     await orUnavailable(() => service.remove(userId(res), id));
     sendValidated(res, DeleteServerResponseSchema, { deleted: true });

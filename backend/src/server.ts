@@ -84,6 +84,7 @@ import {
   loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
 import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
+import { createMetricsRouter, createMetricsService } from "./modules/metrics/index.js";
 import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -509,6 +510,15 @@ export const app = createApp({
             serverName: (id) => directory.list().find((server) => server.id === id)?.displayName,
           }),
         )
+      : []),
+    // ADR-0056 PR 3: GET /api/admin/metrics, operator only (the same gate as the server management routes); database only.
+    ...(database
+      ? [
+          createMetricsRouter(createMetricsService({ db: database.pool }), {
+            isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
+            isReady: () => serversRegistered,
+          }),
+        ]
       : []),
     // ADR-0044: web push (config, subscriptions, the per-server opt-in), after the servers router; database only.
     ...(database

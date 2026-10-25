@@ -33,6 +33,9 @@ export type { SessionUser } from "./sessionStore.js";
 export { createAccountDeletion } from "./accountDeletion.js";
 export type { AccountDeletion, AccountServersPort, DeleteAccountResult } from "./accountDeletion.js";
 export { createAccountRouter } from "./routes/account.js";
+// ADR-0056 section 3: the one operator gate (servers and metrics use it).
+export { assertOperator, requireOperator, signedInUserId } from "./requireOperator.js";
+export type { RequireOperatorOptions } from "./requireOperator.js";
 
 export interface IdentityWorker {
   start(): void;

@@ -213,7 +213,8 @@ const DELETE_HISTORY = [
   // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
   // server_members and server_connections above; telemetry (5 tables), alerts (rules and alert_state, alert_events,
   // server_mutes, destinations and outbox, push_optins), agents (3 tables) and map.world_layers here. The audit trail
-  // keeps its server_id on purpose, and metrics.series_hourly has no server column.
+  // keeps its server_id on purpose. metrics.series_hourly has no server_id column, but a `server` label holds
+  // the public id until the 90-day purge (a random id, not personal on its own; ADR-0056 section 5).
   "DELETE FROM map.world_layers WHERE server_id = $1",
   "DELETE FROM alerts.push_optins WHERE server_id = $1",
   // ADR-0052 PR 2: the cached last snapshot is one row a server; a soft delete does not fire the FK cascade.
