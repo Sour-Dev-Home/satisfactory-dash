@@ -218,10 +218,9 @@ describe("createGoogleSignIn (in-memory)", () => {
       });
     });
 
-    it("keeps the backend TERMS_VERSION equal to the one the sign-in page sends", async () => {
-      const { readFileSync } = await import("node:fs");
-      const source = readFileSync(new URL("../../../../frontend/src/auth/googleSignIn.ts", import.meta.url), "utf8");
-      expect(/export const TERMS_VERSION = "([^"]+)"/.exec(source)?.[1]).toBe(TERMS_VERSION);
+    // Parity with the frontend's copy is checked in frontend/src/auth/googleSignIn.test.ts.
+    it("TERMS_VERSION is a zero-padded YYYY-MM-DD date, so the string comparison orders versions", () => {
+      expect(TERMS_VERSION).toMatch(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
     });
 
     it.each([

@@ -102,7 +102,7 @@ export async function recordTermsAcceptance(db: Queryable, userId: string, terms
   await timedQuery(db, "identity.recordTermsAcceptance", UPDATE_TERMS_ACCEPTANCE, [userId, termsVersion]);
 }
 
-const SELECT_NAME_TAKEN =`SELECT 1 AS taken FROM identity.users WHERE display_name = $1 LIMIT 1`;
+const SELECT_NAME_TAKEN = `SELECT 1 AS taken FROM identity.users WHERE display_name = $1 LIMIT 1`;
 
 export async function displayNameTaken(db: Queryable, displayName: string): Promise<boolean> {
   const result = await timedQuery(db, "identity.displayNameTaken", SELECT_NAME_TAKEN, [displayName]);

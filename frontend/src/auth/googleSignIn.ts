@@ -70,7 +70,8 @@ export const needsTermsReaccept = (search: string): boolean => new URLSearchPara
  * The "Sign in with Google" link: a full-page navigation to the backend (it answers with a
  * redirect to Google, never JSON), returning to the /app page the visitor was on. Only an /app
  * path is sent back; /app/login, or anything else, returns to the Overview. `acceptTerms` adds the
- * terms version the person just ticked (the backend honours it only for a new account).
+ * terms version the person just ticked (the backend honours it for a new account, and for an existing
+ * account that accepted an older version, #568).
  */
 export function googleStartHref(pathname: string, acceptTerms = false, returnTo?: string | null): string {
   const inApp = pathname === "/app" || pathname.startsWith("/app/");
