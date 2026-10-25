@@ -1,3 +1,8 @@
-- 2026-10-25 — ADR-0051 §2, owner's decision: no FRM bridge or dependency in the mod. The mod reads game data with its
-  own code written from scratch (clean room: FRM's source is never read or copied), and nobody is asked. FRM still
-  states no licence (re-checked today). The agent keeps reading FRM's API where a player already runs it.
+- 2026-10-25 — ADR-0051 §2, owner's decisions:
+  - FRM's code is never used (clean room);
+  - FRM's API is fine as an interim, and FRM may be a required dependency until native parity;
+  - removing the dependency starts now: the mod will read everything the dashboard uses with its own code;
+  - a similarity check runs before release;
+  - the plan is ADR-0058.
+
+  FRM still states no licence (re-checked today).
