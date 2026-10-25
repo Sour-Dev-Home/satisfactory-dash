@@ -216,6 +216,8 @@ const DELETE_HISTORY = [
   // keeps its server_id on purpose, and metrics.series_hourly has no server column.
   "DELETE FROM map.world_layers WHERE server_id = $1",
   "DELETE FROM alerts.push_optins WHERE server_id = $1",
+  // ADR-0052 PR 2: the cached last snapshot is one row a server; a soft delete does not fire the FK cascade.
+  "DELETE FROM telemetry.latest_snapshots WHERE server_id = $1",
 ] as const;
 
 const IdRowSchema = z.object({ id: z.string() });

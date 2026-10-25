@@ -48,6 +48,8 @@ import { AgentIngest } from "./services/agentIngest.js";
 import type { MapLiveSink } from "./services/agentIngest.js";
 import { LatestSnapshotStore } from "./services/agentSnapshotStore.js";
 import { withLastGood } from "./services/lastGood.js";
+import { createLatestSnapshotRepository } from "./repositories/latestSnapshotRepository.js";
+import { LatestSnapshotWriter, loadLatestSnapshot } from "./services/latestSnapshotWriter.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
@@ -165,18 +167,23 @@ export function createAgentTelemetryServices(options: AgentTelemetryOptions): Te
   const intervalSeconds = options.cadence().powerSeconds;
   const powerStore = new InMemoryPowerHistoryStore({ intervalSeconds });
   const startedAt = now();
+  // ADR-0052 2.3-2.4: the last snapshot is kept in one row. It is loaded once (reads wait for it, at most 2 s, then see
+  // an empty store) and the writer upserts it on change; what was loaded is served stale until the agent reports.
+  const latestSnapshots = createLatestSnapshotRepository(options.history.db);
+  const loaded = loadLatestSnapshot(store, latestSnapshots, options.history.serverPublicId, logger);
+  const writer = new LatestSnapshotWriter(store, latestSnapshots, options.history.serverPublicId, { logger, ready: loaded });
   return {
-    status: { getStatus: async () => store.read("status") },
-    production: { getFactoryOverview: async () => store.read("factory") },
-    power: { getPowerOverview: async () => store.read("power") },
+    status: { getStatus: async () => (await loaded, store.read("status")) },
+    production: { getFactoryOverview: async () => (await loaded, store.read("factory")) },
+    power: { getPowerOverview: async () => (await loaded, store.read("power")) },
     powerHistory: new PowerHistoryService(powerStore, { startedAt: () => startedAt, lastSuccessAt: () => store.lastPowerAt() }, { intervalSeconds, now }),
     // Not listed by the agent yet is "no player list", the same answer a server without FRM gives.
-    players: { getPlayers: async () => store.read("players", { available: false, players: [] }) },
+    players: { getPlayers: async () => (await loaded, store.read("players", { available: false, players: [] })) },
     history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }),
     observations,
     agentIngest: new AgentIngest({ store, cadence: options.cadence, observations, history: recorder, powerStore, resolveUnit: options.resolveUnit ?? createUnitResolver(() => {}), mapLive: options.mapLive }),
     agentAutoPause: () => store.autoPause(),
-    workers: [recorder],
+    workers: [recorder, writer],
   };
 }
 
