@@ -1,4 +1,4 @@
-import { endpoints, ownValue, type Command } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
 import {
   agentEnrollmentCodeResponse,
   agentRevokeResponse,
@@ -56,6 +56,7 @@ import {
   historyTransitions24h,
   managedServersAllStates,
   productionGraphEmpty,
+  productionGraphFactories,
   productionGraphTwoSites,
   managedServersWithAgent,
   renameAgentServerResponse,
@@ -338,6 +339,39 @@ const plannerItemLevel = (beltData: "unsupported" | "tooLarge" | "notReceived", 
   data: { ...productionGraphEmpty.data, beltData, notes: [note] },
 });
 
+/**
+ * ADR-0055 PR 7: the factories fixture with a second Iron Plate tree in the Iron Plate factory (a bubble of two groups
+ * and a bubble of one, both "Iron Plate"), so the tables show trees, ordinals and an indented bubble.
+ */
+const plannerFactoriesTwoTrees = (() => {
+  const data = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
+  const first = data.nodes.find((n) => n.recipe === "Iron Plate")!;
+  const second = {
+    ...first,
+    key: "Build_ConstructorMk1_C|Iron Plate|1260|10",
+    machineIds: ["Build_ConstructorMk1_C_9"],
+    count: 1,
+    treeKey: "tree|Desc_IronPlate_C|1260|10",
+    at: { x: 1260, y: 10 },
+    products: [{ className: "Desc_IronPlate_C", name: "Iron Plate", unit: "items/min" as const, currentPerMinute: 12, maxPerMinute: 20 }],
+  };
+  const sibling = { ...first, key: "Build_ConstructorMk1_C|Iron Plate|1270|0", machineIds: ["Build_ConstructorMk1_C_8"], count: 1, treeKey: first.treeKey, at: { x: 1270, y: 0 } };
+  const nodes = data.nodes.map((n) => (n === first ? { ...n, treeKey: "tree|Desc_IronPlate_C|1250|0" } : n));
+  const plateFactory = data.factories![0];
+  return {
+    ...productionGraphFactories,
+    data: {
+      ...data,
+      nodes: [...nodes, { ...sibling, treeKey: "tree|Desc_IronPlate_C|1250|0" }, second],
+      factories: [
+        { ...plateFactory, nodeKeys: [...plateFactory.nodeKeys, sibling.key, second.key], machineCount: plateFactory.machineCount + 2 },
+        ...data.factories!.slice(1),
+      ],
+      sites: data.sites.map((s) => (s.nodeKeys.includes(first.key) ? { ...s, nodeKeys: [...s.nodeKeys, sibling.key, second.key] } : s)),
+    },
+  };
+})();
+
 /** The factory read with the planner fixture's constructor manifold in it (Build_ConstructorMk1_C_1..8), for the graph's group panel. */
 const factoryWithPlannerManifold = {
   ...factoryMixed,
@@ -536,6 +570,10 @@ export const SCENARIOS = {
     ),
   },
   "planner-stale": { productionGraph: ok({ ...productionGraphTwoSites, stale: true }) },
+  // ADR-0055 PR 7: factories as the first level (two, sharing a smelter 60/40; a remote miner joined by a train; an overflow
+  // to the sink and plates into storage), and the same with a second Iron Plate tree in one of them.
+  "planner-factories": { productionGraph: ok(productionGraphFactories) },
+  "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {

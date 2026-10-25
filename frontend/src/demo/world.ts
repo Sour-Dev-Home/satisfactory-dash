@@ -534,6 +534,12 @@ type PlannerRateData = PlannerNodeData["products"][number];
 
 const IRON_WORKS = "site|-1690|-990";
 const OIL_OUTPOST = "site|-1540|-870";
+const ORE_FARM = "site|-1990|-1090";
+
+// ADR-0055: the demo's three factories. A factory key is its product and the spot of its seed, valid for one response.
+const RIP_FACTORY = "factory|Desc_IronPlateReinforced_C|-1675|-980";
+const FRAME_FACTORY = "factory|Desc_ModularFrame_C|-1655|-990";
+const PLASTIC_FACTORY = "factory|Desc_Plastic_C|-1540|-870";
 
 const plannerRate = (className: string, name: string, current: number, max: number, unit: "items/min" | "m3/min" = "items/min"): PlannerRateData => ({
   className,
@@ -578,7 +584,24 @@ function plannerNode(
 const PLANNER_NODES = {
   miner: plannerNode({
     kind: "extractor", className: "Build_MinerMk2_C", name: "Miner Mk.2", recipe: null, ids: ["demo-12"], states: { producing: 1 },
-    at: { x: -1740, y: -985 }, site: IRON_WORKS, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 75, 120)],
+    at: { x: -1740, y: -985 }, site: IRON_WORKS, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 45, 120)],
+  }),
+  // A second ore supply, 300 m away, joined by a train (ADR-0055): the remote part of the iron factories.
+  oreFarm: plannerNode({
+    kind: "extractor", className: "Build_MinerMk1_C", name: "Miner Mk.1", recipe: null, ids: ["demo-16", "demo-17"], states: { producing: 2 },
+    at: { x: -1990, y: -1090 }, site: ORE_FARM, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 30, 60)],
+  }),
+  farmPlatform: plannerNode({
+    kind: "station", className: "Build_TrainDockingStation_C", name: "Freight Platform", recipe: null, ids: ["demo-18"], states: {},
+    at: { x: -1985, y: -1085 }, site: ORE_FARM,
+  }),
+  dockPlatform: plannerNode({
+    kind: "station", className: "Build_TrainDockingStation_C", name: "Freight Platform", recipe: null, ids: ["demo-19"], states: {},
+    at: { x: -1735, y: -990 }, site: IRON_WORKS,
+  }),
+  sink: plannerNode({
+    kind: "consumer", className: "Build_ResourceSink_C", name: "AWESOME Sink", recipe: null, ids: ["demo-20"], states: { producing: 1 },
+    at: { x: -1695, y: -970 }, site: IRON_WORKS,
   }),
   smelters: plannerNode({
     kind: "machines", className: "Build_SmelterMk1_C", name: "Smelter", recipe: "Iron Ingot", ids: ["demo-1", "demo-2"], states: { producing: 2 },
@@ -643,6 +666,40 @@ const PLANNER_NODES = {
 };
 
 const N = PLANNER_NODES;
+
+/**
+ * ADR-0055: which factory each group is listed under, how a shared group splits (percent of its design output) and the
+ * role of the ends. Made up to read like the backend's answer on a small base: reinforced plates are the iron factory's
+ * seed, the frames and the rotors a second line fed by its rods, and the oil outpost stands alone.
+ */
+function assign(
+  node: PlannerNodeData,
+  factory: string,
+  extra: { split?: [string, number][]; role?: string; under?: PlannerNodeData | null } = {},
+): void {
+  node.factoryKey = factory;
+  if (extra.split) node.shares = extra.split.map(([factoryKey, percent]) => ({ factoryKey, share: percent / 100 }));
+  if (extra.role) node.role = extra.role;
+  if (extra.under !== undefined) node.collapseUnder = extra.under === null ? null : extra.under.key;
+}
+const IRON_SPLIT: [string, number][] = [[RIP_FACTORY, 60], [FRAME_FACTORY, 40]];
+assign(N.miner, RIP_FACTORY, { split: IRON_SPLIT, under: N.smelters });
+assign(N.oreFarm, RIP_FACTORY, { split: IRON_SPLIT, under: N.farmPlatform });
+assign(N.farmPlatform, RIP_FACTORY, { split: IRON_SPLIT, role: "buffer", under: N.dockPlatform });
+assign(N.dockPlatform, RIP_FACTORY, { split: IRON_SPLIT, role: "buffer", under: N.smelters });
+assign(N.smelters, RIP_FACTORY, { split: IRON_SPLIT, under: N.reinforced });
+assign(N.plates, RIP_FACTORY, { under: N.reinforced });
+assign(N.screws, RIP_FACTORY, { under: N.reinforced });
+assign(N.reinforced, RIP_FACTORY, { under: null });
+assign(N.sink, RIP_FACTORY, { role: "sink", under: null });
+assign(N.depot, RIP_FACTORY, { split: [[RIP_FACTORY, 50], [FRAME_FACTORY, 50]], role: "storage", under: null });
+assign(N.rods, FRAME_FACTORY, { split: [[FRAME_FACTORY, 55], [RIP_FACTORY, 45]], under: N.frames });
+assign(N.rotors, FRAME_FACTORY, { under: null });
+assign(N.frames, FRAME_FACTORY, { under: null });
+assign(N.oil, PLASTIC_FACTORY, { under: N.refinery });
+assign(N.refinery, PLASTIC_FACTORY, { under: null });
+assign(N.plasticStore, PLASTIC_FACTORY, { role: "storage", under: null });
+assign(N.burner, PLASTIC_FACTORY, { role: "power", under: null });
 const plannerEdge = (
   from: PlannerNodeData,
   to: PlannerNodeData,
@@ -661,6 +718,8 @@ const plannerEdge = (
   mixed: false,
   capacityPerMinute: null,
   conveyorCount: 2,
+  flow: "supply",
+  destination: "factory",
   ...extra,
 });
 
@@ -670,10 +729,28 @@ const ROD_ITEM: [string, string] = ["Desc_IronRod_C", "Iron Rod"];
 const SCREW_ITEM: [string, string] = ["Desc_IronScrew_C", "Screw"];
 const RIP_ITEM: [string, string] = ["Desc_IronPlateReinforced_C", "Reinforced Iron Plate"];
 
+/** A demo factory over the groups assigned to it (`assign` above): the counts follow from them. */
+function demoFactory(key: string, name: string, products: PlannerRateData[], sideProducts: string[]) {
+  const mine = Object.values(N).filter((n) => n.factoryKey === key);
+  return {
+    key,
+    name,
+    designationId: null,
+    products,
+    sideProducts,
+    nodeKeys: mine.map((n) => n.key),
+    siteKeys: [...new Set(mine.map((n) => n.siteKey))],
+    machineCount: mine.filter((n) => n.kind === "machines" || n.kind === "extractor").reduce((sum, n) => sum + n.count, 0),
+    sharedNodeCount: mine.filter((n) => (n.shares?.length ?? 0) > 0).length,
+  };
+}
+
 /**
- * The demo's production planner (ADR-0050): two made-up sites. The iron works has a loop (overflow rods returning from the
- * rotor assembler), a mixed belt into its depot with no known rate, and estimated edges where a splitter shares a belt; the
- * oil outpost has pipes. The machine ids are the demo factory's, so the bottleneck counts join.
+ * The demo's production planner (ADR-0050, ADR-0055): three made-up sites and three factories over them. The iron works has
+ * a loop (overflow rods returning from the rotor assembler), a mixed belt into its depot with no known rate, an overflow
+ * of plates to the sink and estimated edges where a splitter shares a belt; its ore also comes by train from the ore farm,
+ * 300 m away, and its smelters and rods are shared by two factories; the oil outpost has pipes. The machine ids are the
+ * demo factory's, so the bottleneck counts join.
  */
 export function productionGraph(now: number): ProductionGraphResponse {
   const nodes = Object.values(N);
@@ -697,7 +774,9 @@ export function productionGraph(now: number): ProductionGraphResponse {
     data: {
       nodes,
       edges: [
-        plannerEdge(N.miner, N.smelters, ORE_ITEM, 75, "measured", { capacityPerMinute: 120, conveyorCount: 3 }),
+        plannerEdge(N.miner, N.smelters, ORE_ITEM, 45, "measured", { capacityPerMinute: 120, conveyorCount: 3 }),
+        plannerEdge(N.oreFarm, N.farmPlatform, ORE_ITEM, 30, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.dockPlatform, N.smelters, ORE_ITEM, 30, "estimated", { itemFrom: "upstream" }),
         plannerEdge(N.smelters, N.plates, INGOT_ITEM, 30, "estimated", { conveyorCount: 6 }),
         plannerEdge(N.smelters, N.rods, INGOT_ITEM, 15, "estimated", { conveyorCount: 5 }),
         plannerEdge(N.rods, N.screws, ROD_ITEM, 7.5, "measured", { capacityPerMinute: 60 }),
@@ -706,11 +785,15 @@ export function productionGraph(now: number): ProductionGraphResponse {
         plannerEdge(N.screws, N.reinforced, SCREW_ITEM, 30, "measured", { capacityPerMinute: 60 }),
         plannerEdge(N.plates, N.reinforced, ["Desc_IronPlate_C", "Iron Plate"], 20, "measured", { capacityPerMinute: 60 }),
         plannerEdge(N.reinforced, N.frames, RIP_ITEM, 3, "measured"),
-        plannerEdge(N.reinforced, N.depot, RIP_ITEM, null, "unknown", { mixed: true, conveyorCount: 4 }),
-        plannerEdge(N.frames, N.depot, ["Desc_ModularFrame_C", "Modular Frame"], 2, "measured"),
+        plannerEdge(N.plates, N.sink, ["Desc_IronPlate_C", "Iron Plate"], 2, "estimated", { flow: "excess", destination: "sink" }),
+        plannerEdge(N.reinforced, N.depot, RIP_ITEM, null, "unknown", { mixed: true, conveyorCount: 4, flow: "output", destination: "storage" }),
+        plannerEdge(N.frames, N.depot, ["Desc_ModularFrame_C", "Modular Frame"], 2, "measured", { flow: "output", destination: "storage" }),
         { ...plannerEdge(N.oil, N.refinery, ["Desc_LiquidOil_C", "Crude Oil"], 30, "measured", { capacityPerMinute: 300 }), kind: "pipe" },
-        plannerEdge(N.refinery, N.plasticStore, ["Desc_Plastic_C", "Plastic"], 20, "estimated"),
-        { ...plannerEdge(N.refinery, N.burner, ["Desc_HeavyOilResidue_C", "Heavy Oil Residue"], null, "unknown"), kind: "pipe" },
+        plannerEdge(N.refinery, N.plasticStore, ["Desc_Plastic_C", "Plastic"], 20, "estimated", { flow: "output", destination: "storage" }),
+        {
+          ...plannerEdge(N.refinery, N.burner, ["Desc_HeavyOilResidue_C", "Heavy Oil Residue"], null, "unknown", { flow: "output", destination: "power" }),
+          kind: "pipe",
+        },
       ],
       sites: [
         siteOf(IRON_WORKS, "Iron works", { x: -1690, y: -990 }, [
@@ -718,7 +801,32 @@ export function productionGraph(now: number): ProductionGraphResponse {
           plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5.5, 10),
         ]),
         siteOf(OIL_OUTPOST, "Oil outpost", { x: -1540, y: -866 }, [plannerRate("Desc_Plastic_C", "Plastic", 20, 20)]),
+        siteOf(ORE_FARM, "Ore farm", { x: -1990, y: -1090 }, [plannerRate("Desc_OreIron_C", "Iron Ore", 30, 60)]),
       ],
+      factories: [
+        demoFactory(RIP_FACTORY, "Reinforced Iron Plate factory", [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5.5, 10)], []),
+        demoFactory(FRAME_FACTORY, "Modular Frame factory", [plannerRate("Desc_ModularFrame_C", "Modular Frame", 2, 2)], ["Rotor"]),
+        demoFactory(PLASTIC_FACTORY, "Plastic factory", [plannerRate("Desc_Plastic_C", "Plastic", 20, 20)], []),
+      ],
+      // One train carries the remote ore to the iron works.
+      transports: [
+        {
+          from: N.farmPlatform.key,
+          to: N.dockPlatform.key,
+          mode: "train",
+          itemClassName: "Desc_OreIron_C",
+          itemName: "Iron Ore",
+          itemFrom: "upstream",
+          ratePerMinute: 30,
+          rate: "estimated",
+          carriers: 1,
+          routeName: "Ore Run",
+          flow: "supply",
+          destination: "factory",
+        },
+      ],
+      topologyHash: "demo-planner-topology",
+      logistics: "present",
       unconnectedMachineIds: [],
       beltData: "present",
       connectionsRefreshMinutes: 10,
