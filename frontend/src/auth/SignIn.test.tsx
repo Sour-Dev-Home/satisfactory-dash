@@ -117,7 +117,9 @@ describe("re-accepting changed terms (#568)", () => {
     const box = await screen.findByRole("checkbox", { name: /I accept the updated Terms/ });
     expect(box).not.toBeChecked();
     expect(screen.getByRole("group", { name: "The Terms have changed" })).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("The Terms have changed since you last accepted them.");
+    // An expected step, not a failure: no alert banner repeating the legend.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("You accepted an earlier version. Accept this one to continue.")).toBeInTheDocument();
     const items = screen.getAllByRole("listitem").map((li) => li.textContent);
     expect(items).toEqual([...TERMS_CHANGES]);
     expect(screen.getByRole("link", { name: /updated Terms/ })).toHaveAttribute("href", "/terms.html");

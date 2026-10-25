@@ -83,7 +83,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
           {notice}
         </p>
       )}
-      {urlError && (
+      {urlError && !(reacceptStep && offersGoogle(signInMethods)) && (
         // The global [role="alert"] style gives it the error look (index.css); red text on
         // that red-tinted background would fail contrast.
         <p role="alert">
@@ -97,9 +97,11 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
             <fieldset className="grid gap-3 border-0 p-0">
               <legend className="mb-2 font-semibold">{reacceptStep ? "The Terms have changed" : "Create your account"}</legend>
               {reacceptStep && (
-                <div className="grid gap-1 text-sm">
-                  <p className="mb-0">What changed:</p>
-                  <ul className="mb-0 grid gap-1 pl-5">
+                // An expected step, not a failure: no alert banner, the legend is the heading.
+                <div className="mb-1 grid gap-1 text-sm">
+                  <p className="mb-1">You accepted an earlier version. Accept this one to continue.</p>
+                  <p className="mb-0 font-semibold text-muted">What changed:</p>
+                  <ul className="mb-0 grid list-disc gap-1 pl-5">
                     {TERMS_CHANGES.map((change) => (
                       <li key={change}>{change}</li>
                     ))}
@@ -132,7 +134,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
               )}
               {reacceptStep && (
                 // No session exists until the new version is accepted: declining just leaves the person signed out.
-                <a href="/app/login" className="justify-self-center text-sm">
+                <a href="/app/login" className="inline-flex min-h-touch items-center justify-self-center text-sm">
                   Decline and stay signed out
                 </a>
               )}
