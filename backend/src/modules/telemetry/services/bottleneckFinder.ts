@@ -43,8 +43,12 @@ import {
 export const CONNECTIONS_REFRESH_MINUTES = 10;
 
 /** The conveyors layer as the finder gets it: the edges of one fresh read, or why there are none (owner answer 3:
- *  `unsupported` = FRM older than 1.5.4; ADR-0038: `tooLarge` = past the 2 MB world-layer cap). */
-export type BottleneckEdges = readonly ConveyorEdge[] | "unsupported" | "tooLarge";
+ *  `unsupported` = FRM older than 1.5.4; ADR-0038: `tooLarge` = past the 2 MB world-layer cap; `notReceived` = no usable
+ *  layer has arrived from the agent yet, which says nothing about FRM). */
+export type BottleneckEdges = readonly ConveyorEdge[] | "unsupported" | "tooLarge" | "notReceived";
+
+/** The `notReceived` wording, shared with the planner's graph. The agent reads belt data every `CONNECTIONS_REFRESH_MINUTES`. */
+export const BELT_DATA_NOT_RECEIVED_TEXT = `The agent hasn't sent belt data yet. If this stays, update the agent; it reads belts every ${CONNECTIONS_REFRESH_MINUTES} minutes.`;
 
 export interface BottleneckOptions {
   /** Top N; default 10 (owner answer 2), clamped to 1..50. */
@@ -728,6 +732,8 @@ function noteFor(code: string): BottleneckNote {
       return { code, text: "Item-level results only; update FRM to 1.5.4 or newer for belt detail." };
     case "beltDataTooLarge":
       return { code, text: "Item-level results only; the belt and pipe data is too large to use on this save." };
+    case "beltDataNotReceived":
+      return { code, text: `Item-level results only. ${BELT_DATA_NOT_RECEIVED_TEXT}` };
     default:
       return {
         code: "connectionsRefresh",
@@ -752,7 +758,7 @@ export function findBottlenecks(
   const finder = new Finder(sorted, typeof edges === "string" ? null : edges);
 
   const beltData: Bottlenecks["beltData"] =
-    edges === "unsupported" ? "unsupported" : edges === "tooLarge" ? "tooLarge" : finder.unnamedMachineCount() > 0 ? "stale" : "present";
+    typeof edges === "string" ? edges : finder.unnamedMachineCount() > 0 ? "stale" : "present";
 
   const raws: Raw[] = [];
   for (const m of sorted) {
@@ -831,7 +837,13 @@ export function findBottlenecks(
   });
 
   const notes: BottleneckNote[] =
-    beltData === "unsupported" ? [noteFor("updateFrm")] : beltData === "tooLarge" ? [noteFor("beltDataTooLarge")] : [noteFor("connectionsRefresh")];
+    beltData === "unsupported"
+      ? [noteFor("updateFrm")]
+      : beltData === "tooLarge"
+        ? [noteFor("beltDataTooLarge")]
+        : beltData === "notReceived"
+          ? [noteFor("beltDataNotReceived")]
+          : [noteFor("connectionsRefresh")];
 
   return { findings, truncated: groups.size > limit, beltData, connectionsRefreshMinutes: CONNECTIONS_REFRESH_MINUTES, notes };
 }

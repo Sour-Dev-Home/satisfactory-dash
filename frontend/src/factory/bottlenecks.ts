@@ -68,7 +68,8 @@ export function sectionNotes(data: Pick<Bottlenecks, "beltData" | "connectionsRe
   const notes = data.notes.filter(
     (n) =>
       (n.code !== "updateFrm" || data.beltData === "unsupported") &&
-      (n.code !== "beltDataTooLarge" || data.beltData === "tooLarge"),
+      (n.code !== "beltDataTooLarge" || data.beltData === "tooLarge") &&
+      (n.code !== "beltDataNotReceived" || data.beltData === "notReceived"),
   );
   const out = [...new Set(notes.map((n) => n.text))];
   const has = (code: string) => notes.some((n) => n.code === code);
@@ -77,6 +78,9 @@ export function sectionNotes(data: Pick<Bottlenecks, "beltData" | "connectionsRe
   }
   if (data.beltData === "tooLarge" && !has("beltDataTooLarge")) {
     out.push("Item-level results only: this factory's connection data is too large to read.");
+  }
+  if (data.beltData === "notReceived" && !has("beltDataNotReceived")) {
+    out.push("Item-level results only. The agent hasn't sent belt data yet; if this stays, update the agent.");
   }
   if ((data.beltData === "present" || data.beltData === "stale") && !has("connectionsRefresh")) {
     const m = data.connectionsRefreshMinutes;

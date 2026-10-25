@@ -161,6 +161,7 @@ const CASES: StateCase[] = [
   { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
   { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
   { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
+  { scenario: "bottlenecks-not-received", path: "/app/factory", shows: /agent hasn't sent belt data yet/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
   { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
   // ADR-0050 task 5, the Planner page. The fixtures were observed at
@@ -216,6 +217,7 @@ const CASES: StateCase[] = [
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
   { scenario: "planner-old-frm", path: "/app/planner", shows: /Update FRM to 1.5.4/, clock: PLANNER_NOW },
   { scenario: "planner-too-large", path: "/app/planner", shows: /connection data is too large/, clock: PLANNER_NOW },
+  { scenario: "planner-not-received", path: "/app/planner", shows: /agent hasn't sent belt data yet/, clock: PLANNER_NOW },
   { scenario: "planner-stale", path: "/app/planner", shows: /Showing last known planner data from/, clock: PLANNER_NOW },
   { scenario: "planner-error", path: "/app/planner", shows: "Game server unreachable.", clock: PLANNER_NOW },
   // The skeleton has no text of its own to match, so the shell's nav tab.

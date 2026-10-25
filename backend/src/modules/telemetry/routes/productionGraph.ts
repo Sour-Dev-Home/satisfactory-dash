@@ -24,7 +24,7 @@ export function createProductionGraphRouter(directory: ServerDirectory<Telemetry
     const { serverId, services } = resolveServer(directory, req);
     if (!deps) throw new ServiceUnavailableError();
     const factory = await services.telemetry.production.getFactoryOverview();
-    const edges = await readEdges(deps.db, serverId);
+    const edges = await readEdges(deps.db, serverId, req.log);
     const started = performance.now();
     const { graph, stats } = buildProductionGraphWithStats(factory.buildings, edges);
     const durationMs = Math.round(performance.now() - started);

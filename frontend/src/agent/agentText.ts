@@ -40,6 +40,15 @@ export function agentBackendUrl(configured: string | undefined): string {
   return origin.startsWith("https://") ? origin : "https://<your backend>";
 }
 
+/**
+ * The agent's reported version for Settings. A stamped build (`0.1.0+abc1234.20261024`) reads as
+ * `0.1.0 (build abc1234, 2026-10-24)`, so a copy built from old source is recognisable; anything else is shown as is.
+ */
+export function versionText(version: string): string {
+  const m = /^(.+)\+([0-9a-f]{4,12})\.(\d{4})(\d{2})(\d{2})$/.exec(version);
+  return m ? `${m[1]} (build ${m[2]}, ${m[3]}-${m[4]}-${m[5]})` : version;
+}
+
 /** Who may revoke the agent: the server's owner or admin. */
 export function canRevoke(role: ServerSummary["role"]): boolean {
   return role === "owner" || role === "admin";

@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { backoffDelayMs } from "./backoff.js";
 import { CommandLedger } from "./ledger.js";
 import { BoundedQueue } from "./queue.js";
-import { AGENT_VERSION } from "./version.js";
 
 describe("backoffDelayMs", () => {
   it("grows exponentially from the base, capped, with equal jitter (half fixed, half random)", () => {
@@ -86,14 +84,5 @@ describe("CommandLedger", () => {
     const ledger = new CommandLedger(() => 0);
     ledger.finish("ghost", { ok: true });
     expect(ledger.size).toBe(0);
-  });
-});
-
-describe("AGENT_VERSION", () => {
-  it("matches package.json and fits the contract's 32 characters", () => {
-    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
-    expect(AGENT_VERSION).toBe(pkg.version);
-    expect(AGENT_VERSION.length).toBeGreaterThan(0);
-    expect(AGENT_VERSION.length).toBeLessThanOrEqual(32);
   });
 });

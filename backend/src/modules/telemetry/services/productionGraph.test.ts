@@ -306,6 +306,7 @@ describe("stale, unconnected and missing belt data", () => {
     const b = [machine("a")];
     expect(run(b, "unsupported")).toMatchObject({ nodes: [], edges: [], sites: [], beltData: "unsupported" });
     expect(run(b, "tooLarge")).toMatchObject({ nodes: [], beltData: "tooLarge", notes: [{ code: "beltDataTooLarge" }] });
+    expect(run(b, "notReceived")).toMatchObject({ nodes: [], sites: [], beltData: "notReceived", notes: [{ code: "beltDataNotReceived" }] });
     expect(run(b, [])).toMatchObject({ beltData: "stale", unconnectedMachineIds: ["a"] });
   });
 });

@@ -313,8 +313,23 @@ const bottlenecksTooLarge = {
   },
 };
 
+/** The agent has sent no usable conveyors layer yet (an agent built before #570, or not read yet): not an FRM problem. */
+const bottlenecksNotReceived = {
+  ...bottlenecksItemLevelOldFrm,
+  data: {
+    ...bottlenecksItemLevelOldFrm.data,
+    beltData: "notReceived" as const,
+    notes: [
+      {
+        code: "beltDataNotReceived",
+        text: "Item-level results only. The agent hasn't sent belt data yet. If this stays, update the agent; it reads belts every 10 minutes.",
+      },
+    ],
+  },
+};
+
 /** The planner when the conveyors layer could not be used: no edges, no sites, and the finder's own note for the mode. */
-const plannerItemLevel = (beltData: "unsupported" | "tooLarge", note: { code: string; text: string }) => ({
+const plannerItemLevel = (beltData: "unsupported" | "tooLarge" | "notReceived", note: { code: string; text: string }) => ({
   ...productionGraphEmpty,
   data: { ...productionGraphEmpty.data, beltData, notes: [note] },
 });
@@ -481,6 +496,7 @@ export const SCENARIOS = {
   // nothing to report, and a newer backend's unknown step kind and note.
   "bottlenecks-old-frm": { bottlenecks: ok(bottlenecksItemLevelOldFrm) },
   "bottlenecks-too-large": { bottlenecks: ok(bottlenecksTooLarge) },
+  "bottlenecks-not-received": { bottlenecks: ok(bottlenecksNotReceived) },
   "bottlenecks-empty": { bottlenecks: ok(bottlenecksEmpty) },
   "bottlenecks-unknown-kind": { bottlenecks: ok(bottlenecksUnknownKind) },
   // ADR-0050 task 5, the Planner page at /app/planner (default shows two sites, a loop, a mixed belt, an estimated edge and
@@ -497,6 +513,14 @@ export const SCENARIOS = {
       plannerItemLevel("tooLarge", {
         code: "beltDataTooLarge",
         text: "Item-level results only: this factory's connection data is too large to read.",
+      }),
+    ),
+  },
+  "planner-not-received": {
+    productionGraph: ok(
+      plannerItemLevel("notReceived", {
+        code: "beltDataNotReceived",
+        text: "No production graph. The agent hasn't sent belt data yet. If this stays, update the agent; it reads belts every 10 minutes.",
       }),
     ),
   },

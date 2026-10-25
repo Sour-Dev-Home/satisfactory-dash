@@ -79,11 +79,13 @@ describe("GET /api/servers/:serverId/production-graph", () => {
     expect((await get(build({ noDb: true }))).status).toBe(503);
   });
 
-  it("no conveyors layer: 200, beltData unsupported, matches the schema", async () => {
+  it("no conveyors layer: 200, beltData notReceived (no FRM wording), matches the schema", async () => {
     const res = await get(build());
     expect(res.status).toBe(200);
     expect(ProductionGraphResponseSchema.parse(res.body)).toEqual(res.body);
-    expect(res.body.data.beltData).toBe("unsupported");
+    expect(res.body.data.beltData).toBe("notReceived");
+    expect(res.body.data.notes[0].code).toBe("beltDataNotReceived");
+    expect(res.body.data.notes[0].text).not.toMatch(/FRM/);
   });
 
   it("a stored layer: belt level ran, matches the schema", async () => {

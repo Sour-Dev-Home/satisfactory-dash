@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText } from "./agentText";
+import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText, versionText } from "./agentText";
+
+describe("versionText", () => {
+  it("spells out the build of a stamped version", () => {
+    expect(versionText("0.1.0+abc1234.20261024")).toBe("0.1.0 (build abc1234, 2026-10-24)");
+  });
+
+  it("shows a plain or unknown version as reported", () => {
+    expect(versionText("0.1.0")).toBe("0.1.0");
+    expect(versionText("weird+thing")).toBe("weird+thing");
+  });
+});
 
 describe("agentBackendUrl", () => {
   it("uses the configured API origin, without a trailing slash, so the command pastes as is", () => {
