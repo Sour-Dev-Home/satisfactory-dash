@@ -14,6 +14,11 @@ import { AGENT_CADENCE } from "./config.js";
 import { setAgentVersion } from "./repositories/agentRepository.js";
 import { createAgentApiRouter } from "./routes/agentApi.js";
 import { createAgentUserRouter } from "./routes/agentUser.js";
+import { createPairingApiRouter } from "./routes/pairingApi.js";
+import { createCompatRouter, createPairingUserRouter } from "./routes/pairingUser.js";
+import type { PairingUserRouterOptions } from "./routes/pairingUser.js";
+import { PairingSweeper } from "./services/pairingSweeper.js";
+import type { PairingService } from "./services/pairingService.js";
 import { CommandSweeper } from "./services/commandSweeper.js";
 import type { AgentCommandsService, CommandsService } from "./services/commandsService.js";
 import { createEnrollmentService } from "./services/enrollmentService.js";
@@ -40,6 +45,31 @@ export type { AgentAuthOptions, AgentIdentity } from "./services/agentAuth.js";
 /** The process-wide worker that expires stale commands and purges old ones; start it once the database is up. */
 export function createCommandSweeper(db: Queryable, logger: Logger): { start(): void; stop(): Promise<void> } {
   return new CommandSweeper(db, { logger });
+}
+
+// ADR-0051 section 1: device-code pairing. The service is built by the composition root (it needs the servers module's
+// self-serve create, injected as a port) and handed to the routers below.
+export { createPairingService } from "./services/pairingService.js";
+export type { PairingService, PairingServiceDeps } from "./services/pairingService.js";
+
+/** Deletes pairing rows an hour after they expire; start it once the database is up. */
+export function createPairingSweeper(db: Queryable, logger: Logger): { start(): void; stop(): Promise<void> } {
+  return new PairingSweeper(db, { logger });
+}
+
+/** The agent's unauthenticated pairing routes (`POST /agent/v1/pairings`, `.../poll`), for createApp's `agentRouters`. */
+export function createPairingApiRouters(service: PairingService, isReady?: () => boolean): Router[] {
+  return [createPairingApiRouter({ service, isReady })];
+}
+
+/** The owner's pairing routes (`POST /api/pairings/lookup` and `/approve`): signed-in, so a protected router. */
+export function createPairingUserRouters(service: PairingService, options: PairingUserRouterOptions): Router[] {
+  return [createPairingUserRouter(service, options)];
+}
+
+/** `GET /api/compat` (ADR-0057): the version policy, for any signed-in account; needs no database. */
+export function createCompatRouters(): Router[] {
+  return [createCompatRouter()];
 }
 
 /** The owner's routes under /api/servers/:serverId (enrolment code, agent status, revoke, a command's status). Mount them

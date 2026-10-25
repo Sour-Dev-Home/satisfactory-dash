@@ -11,7 +11,7 @@ import { environmentServerEntries, warnEnvServersNotServed } from "./platform/en
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
 import { recordUpstreamCall } from "./platform/requestTiming.js";
-import { createMetricsAggregator, createSeriesFlushWorker } from "./platform/metrics/index.js";
+import { createBackgroundRecorder, createMetricsAggregator, createSeriesFlushWorker } from "./platform/metrics/index.js";
 import { buildCommit } from "./platform/buildInfo.js";
 import { writeRunFile } from "./platform/runFile.js";
 import { formatErrorDetail } from "./platform/formatErrorDetail.js";
@@ -81,6 +81,11 @@ import {
   createAgentsService,
   createCommandSweeper,
   createCommandsService,
+  createCompatRouters,
+  createPairingApiRouters,
+  createPairingService,
+  createPairingSweeper,
+  createPairingUserRouters,
   loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
 import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
@@ -294,6 +299,8 @@ const leaderWorkerFactories: LeaderWorkerFactory[] = [
   ...(database ? [() => createHistoryMaintenance(database.pool, logger.child({ worker: "history-maintenance" }))] : []),
   // ADR-0031 PR 5b: expires agent commands that ran out and purges old finished ones.
   ...(database ? [() => createCommandSweeper(database.pool, logger.child({ worker: "agent-commands" }))] : []),
+  // ADR-0051 section 1: deletes device-code pairing rows an hour after they expire.
+  ...(database ? [() => createPairingSweeper(database.pool, logger.child({ worker: "agent-pairings" }))] : []),
   // ADR-0027 PR 5: the alert engine evaluates every server's rules from the pollers' last readings and records the
   // transitions in the alert log. PR 6: with ALERT_DELIVERY on it also queues each new event for the server's
   // destinations, and the sender delivers them; off (the default) it queues nothing and sends nothing.
@@ -462,6 +469,22 @@ function attachAgentRuntime(publicId: string): Promise<void> {
 // recently-valid list and the per-credential lookup budget (map has no edge to agents, so it is injected).
 const agentAuth = database ? createAgentAuth({ db: database.pool }) : undefined;
 
+// ADR-0051 section 1: device-code pairing. Approving a NEW server is the self-serve create (its caps, its kill switch), given
+// the approval to write in its own transaction; approving an existing one is the owner's.
+const pairingService =
+  database && selfServeService
+    ? createPairingService({
+        db: database.pool,
+        cadence: () => AGENT_CADENCE,
+        attachAgentRuntime,
+        createServer: (actorUserId, displayName, inTransaction) => selfServeService.create(actorUserId, { displayName }, inTransaction),
+        selfServeEnabled: () => selfServeConfig.enabled,
+        isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
+        metrics: createBackgroundRecorder(logger.child({ module: "pairing" })),
+        logger: logger.child({ module: "pairing" }),
+      })
+    : undefined;
+
 export const app = createApp({
   logger,
   allowedOrigins: identity.allowedOrigins,
@@ -535,12 +558,23 @@ export const app = createApp({
           }), agentCommands)
       : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
+    // ADR-0051 section 1: the owner types the agent's pairing code (lookup, approve). Not under /servers/:serverId.
+    ...(pairingService
+      ? createPairingUserRouters(pairingService, {
+          isReady: () => serversRegistered,
+          isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
+        })
+      : []),
+    // ADR-0057 D6 to D8: the version policy; any signed-in account, no database needed.
+    ...createCompatRouters(),
   ],
   // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
   agentRouters: [
     ...(database && agentCommands && agentAuth
       ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered, auth: agentAuth })
       : []),
+    // ADR-0051 section 1: the agent's pairing routes, unauthenticated like enrol.
+    ...(pairingService ? createPairingApiRouters(pairingService, () => serversRegistered) : []),
     // ADR-0038 M3 (#353): the world layers, behind the same agentAuth as the agent API (#562).
     ...(agentAuth && worldIngest ? [createAgentWorldRouter({ auth: agentAuth, ingest: worldIngest })] : []),
   ],

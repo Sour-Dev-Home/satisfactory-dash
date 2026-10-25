@@ -32,6 +32,24 @@ export interface EnrollmentServiceDeps {
 
 const codeInvalid = (): ApiFailure => new ApiFailure("enrollment_code_invalid", "That enrollment code is not valid. Create a new one in the dashboard.");
 
+/**
+ * The enrolment's minting step, shared with device-code pairing (ADR-0051 section 1) so both give exactly the same
+ * credential: stores the secret's hash for the server (replacing any earlier credential), switches the server to an
+ * 'agent' server (deleting its stored game-server tokens) and audits `agent.enrolled` (ids only). Runs in the caller's
+ * transaction, with the server row already locked. Returns the server's public id, or undefined when the server is gone
+ * (the caller rolls back).
+ */
+export async function installAgentCredential(
+  client: Queryable,
+  input: { serverUuid: string; agentSecret: string; agentVersion: string; detail: Record<string, string> },
+): Promise<string | undefined> {
+  await upsertCredential(client, { serverUuid: input.serverUuid, secretHash: sha256(input.agentSecret), agentVersion: input.agentVersion });
+  const switched = await switchToAgentConnection(client, input.serverUuid);
+  if (switched === undefined) return undefined;
+  await recordAuditEvent(client, { action: "agent.enrolled", serverId: input.serverUuid, detail: input.detail });
+  return switched;
+}
+
 export function createEnrollmentService(deps: EnrollmentServiceDeps): EnrollmentService {
   return {
     async enroll(code, agentVersion) {
@@ -45,10 +63,8 @@ export function createEnrollmentService(deps: EnrollmentServiceDeps): Enrollment
           if (owner === undefined || (await lockServer(client, owner)) === undefined) throw codeInvalid();
           const serverUuid = await consumeCode(client, codeHash);
           if (serverUuid === undefined) throw codeInvalid();
-          await upsertCredential(client, { serverUuid, secretHash: sha256(agentSecret), agentVersion });
-          const switched = await switchToAgentConnection(client, serverUuid);
+          const switched = await installAgentCredential(client, { serverUuid, agentSecret, agentVersion, detail: {} });
           if (switched === undefined) throw codeInvalid(); // the server was removed between the two statements: roll the code back too
-          await recordAuditEvent(client, { action: "agent.enrolled", serverId: serverUuid, detail: {} });
           return switched;
         });
       } catch (err) {

@@ -95,6 +95,15 @@ export const QUERY_NAMES = [
   "agents.lockServer",
   "agents.purgeOldCommands",
   "agents.recentCommandsOfType",
+  "agents.approvePairing",
+  "agents.consumePairing",
+  "agents.findOpenPairing",
+  "agents.insertPairing",
+  "agents.lockPairingBySecret",
+  "agents.lockServerRow",
+  "agents.peekPairingServer",
+  "agents.sweepPairings",
+  "agents.touchPairingPoll",
   "agents.revokeCredential",
   "agents.setAgentVersion",
   "agents.touchAgent",
@@ -217,6 +226,7 @@ export const QUERY_NAMES = [
   "servers.lockExpiredSelfServeServer",
   "servers.lockOwnedServers",
   "servers.lockOwnedServers.select",
+  "servers.lockServerForPairing",
   "servers.lockServerForSelfServeOwner",
   "servers.lockServerByPublicId",
   "servers.removeMember",
@@ -318,6 +328,12 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
   },
   // #526 (ADR-0046 C4): self-serve servers the pending sweep removed because they never enrolled within the TTL. A sustained
   // rate is accounts creating servers they never connect (M3's residual); `list-servers` names them.
+  // ADR-0051 section 1: device-code pairing, by event. `expired` counts pairings deleted by the sweep that were never
+  // collected (never approved, or approved and never polled for). A high expired-to-started ratio is a setup that fails.
+  "satis.pairing.events": {
+    kind: "counter",
+    labels: { event: isOneOf("started", "approved", "expired") },
+  },
   "satis.servers.pending_swept": {
     kind: "counter",
     labels: {},

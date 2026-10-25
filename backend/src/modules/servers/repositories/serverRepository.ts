@@ -207,12 +207,13 @@ const DELETE_HISTORY = [
   // ADR-0031 PR 5a: an enrolled agent's credential and any pending enrolment code go with the server, so a revived
   // id can never be reached by the old agent.
   "DELETE FROM agents.enrollment_codes WHERE server_id = $1",
+  "DELETE FROM agents.pairings WHERE server_id = $1", // ADR-0051: an approved pairing for the removed server
   "DELETE FROM agents.agent_credentials WHERE server_id = $1",
   "DELETE FROM agents.commands WHERE server_id = $1",
   // #516 (ADR-0045 "Retention"): the saved world layers and the push opt-ins also belong to the server, so a revived
   // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
   // server_members and server_connections above; telemetry (5 tables), alerts (rules and alert_state, alert_events,
-  // server_mutes, destinations and outbox, push_optins), agents (3 tables) and map.world_layers here. The audit trail
+  // server_mutes, destinations and outbox, push_optins), agents (4 tables) and map.world_layers here. The audit trail
   // keeps its server_id on purpose. metrics.series_hourly has no server_id column, but a `server` label holds
   // the public id until the 90-day purge (a random id, not personal on its own; ADR-0056 section 5).
   "DELETE FROM map.world_layers WHERE server_id = $1",
@@ -430,6 +431,29 @@ const IS_SELF_SERVE = `
 /** #526 (L1): whether this server (internal id) was created through self-serve, which makes it agent-only (ADR-0046). */
 export async function isSelfServeServer(db: Queryable, serverId: string): Promise<boolean> {
   return (await timedQuery(db, "servers.isSelfServeServer", IS_SELF_SERVE, [serverId])).rows.length > 0;
+}
+
+const LOCK_FOR_PAIRING = `
+  SELECT s.id, s.connection_kind, (m.user_id IS NOT NULL) AS is_owner
+  FROM servers.servers s
+  LEFT JOIN servers.server_members m ON m.server_id = s.id AND m.role = 'owner' AND m.user_id = $2
+  WHERE s.public_id = $1 AND s.deleted_at IS NULL
+  FOR NO KEY UPDATE OF s`;
+
+/** ADR-0051 (device-code pairing): the live server row, LOCKED (the server row first, as enrolment and revoke take it), with
+ *  its connection kind and whether this account owns it. Undefined for an unknown or removed server. */
+export async function lockServerForPairing(
+  db: Queryable,
+  publicId: string,
+  userId: string,
+): Promise<{ serverId: string; connectionKind: ConnectionKind; isOwner: boolean } | undefined> {
+  const result = await timedQuery(db, "servers.lockServerForPairing", LOCK_FOR_PAIRING, [publicId, userId]);
+  const row = parseFirst(
+    z.object({ id: z.string(), connection_kind: z.enum(["local", "agent"]), is_owner: z.boolean() }),
+    result.rows,
+    "servers.lockServerForPairing",
+  );
+  return row === undefined ? undefined : { serverId: row.id, connectionKind: row.connection_kind, isOwner: row.is_owner };
 }
 
 const LOCK_SELF_SERVE_FOR_OWNER = `
