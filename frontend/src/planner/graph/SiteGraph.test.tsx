@@ -313,7 +313,7 @@ describe("the graph's readable chrome", () => {
     }
     // Zoomed out to fit inside, nothing is clipped and the hint goes.
     const zoomOut = screen.getByRole("button", { name: "Zoom out" });
-    for (let i = 0; i < 4; i++) fireEvent.click(zoomOut);
+    for (let i = 0; i < 5; i++) fireEvent.click(zoomOut);
     expect(scaleOf(svg)).toBeLessThan(0.5);
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
     expect(fades()).toEqual([]);

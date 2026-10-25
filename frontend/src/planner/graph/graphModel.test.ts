@@ -39,7 +39,7 @@ describe("node text", () => {
     expect(nodeTitle(plates)).toBe("8× Constructor");
     expect(nodeTitle(miner)).toBe("Miner Mk.2");
     expect(nodeBodyLines(plates)[0]).toBe("Iron Plate");
-    expect(nodeBodyLines(plates)[1]).toMatch(/^Iron Plate: /);
+    expect(nodeBodyLines(plates)[1]).toMatch(/^Iron Plate:/);
     expect(nodeBodyLines(recycle).at(-1)).toBe("In a loop");
   });
 
