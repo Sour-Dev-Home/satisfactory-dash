@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, expectNoAxeViolations, test } from "./fixtures";
 
 // ADR-0050 task 6, the graph's CSP gate: pan, zoom, the item filter and the group panel, all with zero CSP violations
@@ -127,4 +127,47 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   // The recycler (its card) and nothing else of the cards is faded; the edges that miss the item are too.
   await expect(svg.locator("g.opacity-graph-dim", { hasText: "Iron Plate Recycle" }).first()).toBeAttached();
   expect(await svg.locator("g.opacity-graph-dim").count()).toBeGreaterThan(0);
+});
+
+// ADR-0055 PR 8a: the factory canvas under the production CSP (the guards fixture fails the test on any violation).
+test.describe("the factory canvas", () => {
+  const openPlate = async (page: Page) => {
+    await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Graph" }).click();
+    const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
+    await expect(svg).toBeVisible();
+    return svg;
+  };
+
+  test("the overview draws a card per factory with the flow between them, and a card opens its factory", async ({ page, mockApi }) => {
+    await mockApi("planner-factories");
+    await page.goto("/app/planner");
+    await page.getByRole("button", { name: "Graph" }).click();
+    const overview = page.getByRole("img", { name: /^Graph of Factories: 2 factories, 1 connection/ });
+    await expect(overview).toBeVisible();
+    await expect(overview.getByText("Iron Rod factory (+ Iron Rod)", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open factory: Iron Rod factory" }).focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Graph" }).click();
+    await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory: 2 groups, 1 connection/ })).toBeVisible();
+    await page.getByRole("button", { name: "All factories" }).click();
+    await expect(overview).toBeVisible();
+  });
+
+  test("opens a tree in place and folds it again", async ({ page, mockApi }, testInfo) => {
+    await mockApi("planner-factories-trees");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    await expect(svg.locator("[data-frame]")).toHaveCount(1);
+    await page.getByRole("button", { name: "Collapse 5× Constructor, Iron Plate, tree 1 of 2" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(svg.locator("[data-frame]")).toHaveCount(0);
+    await expect(svg.getByText("2 groups · tree 1 of 2")).toBeVisible();
+    await page.getByRole("button", { name: "5× Constructor, Iron Plate, tree 1 of 2" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(svg.locator("[data-frame]")).toHaveCount(1);
+    await expect(svg.locator("[style]")).toHaveCount(0);
+    await expectNoAxeViolations(page, testInfo);
+  });
 });

@@ -1,10 +1,24 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
-import { bottleneckCountText, groupLabel, nodeFindings } from "../plannerText";
+import { bottleneckCountText, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
-import { edgeTitle, graphSummary, reachFor, siteItems } from "./graphModel";
-import { BUILDING_ICON_SIZE, LABEL_LINE_H, LINE_H, NODE_PAD_X, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
+import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
+import { reachFor, siteItems } from "./graphModel";
+import type { FactoryModel } from "./hierarchy";
+import {
+  BUILDING_ICON_SIZE,
+  CHAR_W_BODY,
+  FRAME_HEADER_H,
+  LABEL_LINE_H,
+  LINE_H,
+  NODE_PAD_X,
+  TITLE_H,
+  layoutScene,
+  type LaidEdge,
+  type LaidFrame,
+  type LaidNode,
+} from "./layoutSite";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -33,17 +47,19 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 const BADGE_W = 88;
 const BADGE_H = 20;
+/** The Collapse button in a frame's header. */
+const COLLAPSE_W = 76;
 
-const edgePath = (e: LaidEdge) => e.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
+const edgePath = (points: readonly { x: number; y: number }[]) => points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
 
-type EdgeStyle = Pick<LaidEdge["edge"], "mixed" | "kind" | "rate">;
+type EdgeStyle = Pick<CanvasFlow, "mixed" | "carrier" | "rate">;
 
 /** Stroke colour by what the edge carries (a pipe, a mixed belt), dash by how sure its rate is (Decision 2). */
 function edgeClass(e: EdgeStyle) {
   if (e.mixed) return "stroke-warn";
-  return e.kind === "pipe" ? "stroke-info" : e.rate === "unknown" ? "stroke-line" : "stroke-muted";
+  return e.carrier === "pipe" ? "stroke-info" : e.rate === "unknown" ? "stroke-line" : "stroke-muted";
 }
-const edgeDash = (rate: LaidEdge["edge"]["rate"]) => (rate === "measured" ? undefined : rate === "estimated" ? "8 5" : "2 5");
+const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined : rate === "estimated" ? "8 5" : "2 5");
 const edgeWidth = (mixed: boolean) => (mixed ? 3 : 2);
 
 /** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
@@ -57,9 +73,9 @@ const FADES = [
 const ICON_PROPS = { viewBox: "0 0 24 24", "aria-hidden": true, className: "size-5", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
 /** A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. */
-function ToolButton({ name, icon, onClick, disabled }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean }) {
+function ToolButton({ name, icon, onClick, disabled, pressed }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="inline-flex min-h-touch min-w-touch items-center justify-center">
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} className="inline-flex min-h-touch min-w-touch items-center justify-center">
       <svg {...ICON_PROPS} className="size-5 sm:hidden">
         {icon}
       </svg>
@@ -68,26 +84,50 @@ function ToolButton({ name, icon, onClick, disabled }: { name: string; icon: Rea
   );
 }
 
+/** What the canvas shows: one site (an older backend), the factory overview, or one opened factory. */
+export type GraphTarget = { kind: "site"; site: PlannerSite } | { kind: "overview"; models: readonly FactoryModel[] } | { kind: "factory"; model: FactoryModel };
+
+/** A set with `key` added or removed. */
+function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
+  const next = new Set(set);
+  if (!next.delete(key)) next.add(key);
+  return next;
+}
+
 /**
- * ADR-0050 Decision 3 and 4, the graph: dagre's layout of one site drawn as SVG, with pan (drag, arrows), zoom (wheel,
- * buttons, + and -), fit, an item filter that lights what carries the item upstream and downstream, and a side panel
- * for a group's machines. The picture is `role="img"`; the keyboard reaches each group through a list of real buttons
- * beside it (an image's children are presentational, so buttons inside it would be hidden from assistive tech), and the
- * focused group is ringed in the picture. The Tables view is the full text alternative.
+ * ADR-0050 Decision 3 and 4, ADR-0055 Decision 6, the canvas: dagre's layout of a scene drawn as SVG. The first level is
+ * the factories; an opened factory shows its bubbles (a recipe from one source tree), which open in place into their
+ * groups inside a frame. Pan (drag, arrows), zoom (wheel, buttons, +
+ * and -), fit, an item filter that lights what carries the item upstream and downstream, and a side panel for a group's
+ * machines. The picture is `role="img"`; the keyboard reaches each card through a list of real buttons beside it (an
+ * image's children are presentational, so buttons inside it would be hidden from assistive tech), and the focused card is
+ * ringed in the picture. The Tables view is the full text alternative.
  */
 export default function SiteGraph({
-  site,
   graph,
+  target,
   findings,
+  onOpenFactory,
 }: {
-  site: PlannerSite;
   graph: ProductionGraph;
+  target: GraphTarget;
   findings: readonly Bottleneck[] | undefined;
+  /** A factory card was chosen on the overview. */
+  onOpenFactory?: (key: string) => void;
 }) {
-  const layout = useMemo(() => layoutSite(site, graph), [site, graph]);
+  // View state of this session: which bubbles differ from their default, which folds are open.
+  const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
+
+  const view: FactoryView = useMemo(() => ({ flipped, unfolded }), [flipped, unfolded]);
+  const scene: Scene = useMemo(
+    () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models) : factoryScene(graph, target.model, view)),
+    [target, graph, view],
+  );
+  const layout = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const laidByKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
-  const items = useMemo(() => siteItems(layout.sourceEdges), [layout]);
+  const items = useMemo(() => siteItems(layout.flows), [layout]);
   const ids = useId();
   const markerId = `${ids}-arrow`;
   const panelId = `${ids}-panel`;
@@ -98,11 +138,11 @@ export default function SiteGraph({
   const canvasH = canvasHeight(layout.width, layout.height, stage.width);
   // Until the user pans or zooms the view is the fit, so it follows the measured size; after that it is theirs.
   const [moved, setMoved] = useState<View | null>(null);
-  const view = moved ?? fit;
-  const viewRef = useRef(view);
+  const viewport = moved ?? fit;
+  const viewRef = useRef(viewport);
   const stageRef = useRef(stage);
   useEffect(() => {
-    viewRef.current = view;
+    viewRef.current = viewport;
     stageRef.current = stage;
   });
   const setView = (change: View | ((v: View) => View)) => setMoved(typeof change === "function" ? change(viewRef.current) : change);
@@ -113,12 +153,12 @@ export default function SiteGraph({
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const dragged = useRef(false);
 
-  // A filter item that left the site (a poll changed the edges) falls back to "all items".
+  // A filter item that left the scene (a poll changed the edges) falls back to "all items".
   const activeItem = items.some((i) => i.className === item) ? item : ALL_ITEMS;
-  const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.sourceEdges)), [activeItem, layout]);
+  const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.flows)), [activeItem, layout]);
   // An open group that left the graph (a poll) shows no panel.
-  const openNode = openKey === null ? undefined : nodeByKey.get(openKey);
-  const clipped = clippedEdges(view, layout, stage);
+  const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
+  const clipped = clippedEdges(viewport, layout, stage);
   const overflowing = isClipped(clipped);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -127,9 +167,19 @@ export default function SiteGraph({
     const panel = panelRef.current;
     const n = openKey === null ? undefined : laidByKey.get(openKey);
     if (!panel || !n || getComputedStyle(panel).position !== "absolute") return;
-    const visible = stageBesidePanel(stageRef.current, panel.offsetWidth);
-    setView((v) => revealRect(v, n, visible));
+    const visibleStage = stageBesidePanel(stageRef.current, panel.offsetWidth);
+    setView((v) => revealRect(v, n, visibleStage));
   }, [openKey, laidByKey]);
+
+  // A bubble that just opened: if the user has moved the view, bring its frame into sight.
+  const revealFrame = useRef<string | null>(null);
+  useEffect(() => {
+    const key = revealFrame.current;
+    const frame = key === null ? undefined : layout.frames.find((f) => f.bubbleKey === key);
+    if (frame === undefined) return;
+    revealFrame.current = null;
+    setView((v) => revealRect(v, frame, stageRef.current));
+  }, [layout]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -215,46 +265,72 @@ export default function SiteGraph({
     if (pointers.current.size < 2) pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
   };
 
+  const close = () => {
+    const key = openKey;
+    setOpenKey(null);
+    if (key !== null) buttons.current.get(key)?.focus();
+  };
+
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Escape" && openKey !== null) {
       close();
       return;
     }
-    const next = keyView(view, event.key, fit, stage);
+    const next = keyView(viewport, event.key, fit, stage);
     if (next === null) return;
     event.preventDefault();
     setView(next);
   };
 
-  const open = (key: string) => {
+  // What a card does when chosen: a factory opens, a bubble opens in place, a fold shows its trees, a group opens its panel.
+  const activate = (card: Card) => {
     // A drag that ends on a card is not a click on it.
     if (dragged.current) return;
-    setOpenKey(key);
+    if (card.kind === "factory") onOpenFactory?.(card.key);
+    else if (card.kind === "bubble" && card.bubbleKey !== undefined) {
+      setFlipped(toggled(flipped, card.bubbleKey));
+      revealFrame.current = card.bubbleKey;
+    } else if (card.kind === "fold") setUnfolded(toggled(unfolded, card.key));
+    else setOpenKey(card.key);
   };
-  const close = () => {
-    const key = openKey;
-    setOpenKey(null);
-    if (key !== null) buttons.current.get(key)?.focus();
+  const collapseBubble = (bubbleKey: string) => {
+    if (dragged.current) return;
+    setFlipped(toggled(flipped, bubbleKey));
   };
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
     setView((v) => revealRect(v, n, stageRef.current));
   };
+  /** "Collapse all" when most are open, "Expand all" otherwise: each flips every bubble to the other state. */
+  const everyBubbleOpen = scene.bubbleKeys.length > 0 && scene.cards.every((c) => c.kind !== "bubble");
+  const setAllBubbles = (open: boolean) => {
+    // A bubble is open by default in a small factory, collapsed in a big one: `flipped` holds what differs from that.
+    setFlipped(open === scene.openByDefault ? new Set() : new Set(scene.bubbleKeys));
+  };
 
   const lit = (key: string) => reach === null || reach.nodes.has(key);
-  const findingsOf = (key: string) => {
-    const node = nodeByKey.get(key);
-    return node && findings !== undefined ? nodeFindings(node, findings).length : 0;
-  };
+  const findingsByCard = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (findings === undefined) return counts;
+    for (const card of scene.cards) {
+      const nodes = card.nodeKeys.flatMap((k) => nodeByKey.get(k) ?? []);
+      counts.set(card.key, siteFindings(nodes, findings).length);
+    }
+    return counts;
+  }, [scene, nodeByKey, findings]);
+  const findingsOf = (key: string) => findingsByCard.get(key) ?? 0;
   // Tab order follows the picture: left to right, then top to bottom.
   const tabOrder = useMemo(() => [...layout.nodes].sort((a, b) => a.x - b.x || a.y - b.y || a.key.localeCompare(b.key)), [layout]);
+  const loops = useMemo(() => scene.cards.filter((c) => c.loop).length, [scene]);
+
+  const canFold = scene.bubbleKeys.length > 0;
 
   return (
     <div className="grid gap-3">
       {/* One row on a phone: the item, then icon buttons; the filter's status, when there is one, takes the next line. */}
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex min-w-0 flex-1 basis-0 items-center gap-2 sm:flex-none sm:basis-auto">
+        <label className="flex min-w-40 flex-1 basis-0 items-center gap-2 sm:flex-none sm:basis-auto">
           <span>Item</span>
           <select value={activeItem} onChange={(e) => setItem(e.target.value)} className="min-h-touch min-w-0 flex-1 sm:flex-none">
             <option value={ALL_ITEMS}>All items</option>
@@ -269,15 +345,24 @@ export default function SiteGraph({
           <ToolButton
             name="Zoom in"
             onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP, stage))}
-            disabled={view.k >= MAX_ZOOM}
+            disabled={viewport.k >= MAX_ZOOM}
             icon={<path d="M12 5v14M5 12h14" />}
           />
-          <ToolButton name="Zoom out" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={view.k <= MIN_ZOOM} icon={<path d="M5 12h14" />} />
+          <ToolButton name="Zoom out" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={viewport.k <= MIN_ZOOM} icon={<path d="M5 12h14" />} />
           <ToolButton name="Fit to view" onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />} />
         </div>
+        {canFold && (
+          <div role="group" aria-label="Detail" className="flex gap-2">
+            <ToolButton
+              name={everyBubbleOpen ? "Collapse all" : "Expand all"}
+              onClick={() => setAllBubbles(!everyBubbleOpen)}
+              icon={everyBubbleOpen ? <path d="M8 4l4 4 4-4M8 20l4-4 4 4" /> : <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />}
+            />
+          </div>
+        )}
         {reach !== null && (
           <span role="status" className="w-full text-sm text-muted sm:w-auto">
-            {reach.nodes.size} of {layout.nodes.length} groups carry or feed this item.
+            {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
           </span>
         )}
       </div>
@@ -298,11 +383,7 @@ export default function SiteGraph({
           <svg
             ref={svgRef}
             role="img"
-            aria-label={graphSummary(
-              layout.nodes.flatMap((n) => nodeByKey.get(n.key) ?? []),
-              layout.sourceEdges,
-              site.name,
-            )}
+            aria-label={sceneSummary(scene, loops)}
             viewBox={`0 0 ${stage.width} ${stage.height}`}
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
@@ -316,78 +397,26 @@ export default function SiteGraph({
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
             </defs>
-            <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+            <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
+              {layout.frames.map((f) => (
+                <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
+              ))}
               {layout.edges.map((e) => {
                 const on = reach === null || reach.edges.has(e.index);
-                const from = laidByKey.get(e.edge.from);
-                const to = laidByKey.get(e.edge.to);
-                return (
-                  <g key={e.index} className={cn("transition-opacity", !on && "opacity-graph-dim")}>
-                    <title>{edgeTitle(e.edge, from?.title ?? "", to?.title ?? "")}</title>
-                    <path
-                      d={edgePath(e)}
-                      fill="none"
-                      strokeWidth={edgeWidth(e.edge.mixed)}
-                      strokeDasharray={edgeDash(e.edge.rate)}
-                      markerEnd={`url(#${markerId})`}
-                      className={edgeClass(e.edge)}
-                    />
-                    {/* Just above the line; the halo only matters where another line crosses the words. */}
-                    <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
-                      {e.labelLines.map((line, i) => (
-                        <tspan key={i} x={e.labelX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
-                          {line}
-                        </tspan>
-                      ))}
-                    </text>
-                  </g>
-                );
+                const from = laidByKey.get(e.flow.from);
+                const to = laidByKey.get(e.flow.to);
+                return <Edge key={e.index} edge={e} markerId={markerId} dim={!on} from={from?.title ?? ""} to={to?.title ?? ""} />;
               })}
-              {layout.nodes.map((n) => {
-                const finding = findingsOf(n.key);
-                const isOpen = openKey === n.key;
-                const ringed = isOpen || focusKey === n.key;
-                return (
-                  <g
-                    key={n.key}
-                    transform={`translate(${n.x} ${n.y})`}
-                    onClick={() => open(n.key)}
-                    className={cn("cursor-pointer transition-opacity", !lit(n.key) && "opacity-graph-dim")}
-                  >
-                    <title>{groupLabel(nodeByKey.get(n.key)!)}</title>
-                    <rect
-                      width={n.width}
-                      height={n.height}
-                      rx={8}
-                      strokeWidth={ringed ? 3 : 1}
-                      className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")}
-                    />
-                    {n.iconUrl !== undefined && (
-                      <g aria-hidden="true">
-                        <rect x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} rx={4} className="fill-icon-chip" />
-                        <image href={n.iconUrl} x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} />
-                      </g>
-                    )}
-                    <text x={n.titleX} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
-                      {n.title}
-                    </text>
-                    {/* Muted (5.6:1 on the card) only for the recipe, the first line; the rates and states read in full colour. */}
-                    {n.lines.map((line, i) => (
-                      <text key={i} x={NODE_PAD_X}y={TITLE_H + LINE_H * (i + 1)} className={cn("text-sm", i < n.recipeLines ? "fill-muted" : "fill-fg")}>
-                        {line}
-                      </text>
-                    ))}
-                    {finding > 0 && (
-                      <g transform={`translate(${n.width - BADGE_W - 8} ${-BADGE_H / 2})`}>
-                        <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />
-                        <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
-                          Bottleneck
-                        </text>
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
+              {layout.nodes.map((n) => (
+                <CardView
+                  key={n.key}
+                  node={n}
+                  finding={findingsOf(n.key)}
+                  ringed={openKey === n.key || focusKey === n.key}
+                  dim={!lit(n.key)}
+                  onActivate={() => activate(n.card)}
+                />
+              ))}
             </g>
           </svg>
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
@@ -400,12 +429,12 @@ export default function SiteGraph({
               className={cn("pointer-events-none absolute from-surface to-transparent transition-opacity", f.className, clipped[f.edge] ? "opacity-100" : "opacity-0")}
             />
           ))}
-          {/* The keyboard's way into the groups: real buttons, visually hidden, ringing the focused group in the picture. */}
-          <ul aria-label="Groups in the graph" className="m-0 list-none p-0">
+          {/* The keyboard's way into the cards: real buttons, visually hidden, ringing the focused card in the picture. */}
+          <ul aria-label={scene.level === "overview" ? "Factories in the graph" : scene.level === "site" ? "Groups in the graph" : "Cards in the graph"} className="m-0 list-none p-0">
             {tabOrder.map((n) => {
-              const node = nodeByKey.get(n.key)!;
+              const card = n.card;
               const count = findingsOf(n.key);
-              const name = `${groupLabel(node)}${node.loop ? ", in a loop" : ""}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}`;
+              const name = `${cardButtonName(card)}${card.loop ? ", in a loop" : ""}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}`;
               return (
                 <li key={n.key}>
                   <button
@@ -415,9 +444,12 @@ export default function SiteGraph({
                       else buttons.current.delete(n.key);
                     }}
                     aria-label={name}
-                    aria-expanded={openKey === n.key}
-                    aria-controls={openKey === n.key ? panelId : undefined}
-                    onClick={() => setOpenKey(n.key)}
+                    aria-expanded={card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
+                    aria-controls={card.kind === "group" && openKey === n.key ? panelId : undefined}
+                    onClick={() => {
+                      dragged.current = false;
+                      activate(card);
+                    }}
                     onFocus={() => focusNode(n)}
                     onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
                     className="sr-only"
@@ -426,6 +458,17 @@ export default function SiteGraph({
               );
             })}
           </ul>
+          {layout.frames.length > 0 && (
+            <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
+              {layout.frames.map((f) => (
+                <li key={f.key}>
+                  <button type="button" onClick={() => setFlipped(toggled(flipped, f.bubbleKey))} className="sr-only">
+                    {`Collapse ${f.title}`}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {openNode && (
           <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
@@ -439,13 +482,111 @@ export default function SiteGraph({
   );
 }
 
+/** A card's keyboard name: what it is, and for a factory that choosing it opens it. */
+function cardButtonName(card: Card): string {
+  return card.kind === "factory" ? `Open factory: ${card.label}` : card.label;
+}
+
+/** A flow: the line and its label with a halo. */
+function Edge({ edge: e, markerId, dim, from, to }: { edge: LaidEdge; markerId: string; dim: boolean; from: string; to: string }) {
+  return (
+    <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+      <title>{flowTitle(e.flow, from, to)}</title>
+      <path d={edgePath(e.points)} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
+
+      {/* Just above the line; the halo only matters where another line crosses the words. */}
+      <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
+        {e.labelLines.map((line, i) => (
+          <tspan key={i} x={e.labelX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * An expanded bubble's frame: a dashed box round its groups. Its title and a Collapse button sit on tabs that straddle the
+ * top edge (half above it, in the gap dagre leaves between frames, half in the frame's own padding), like a fieldset legend.
+ */
+function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => void }) {
+  const room = Math.max(4, Math.floor((f.width - 4 * NODE_PAD_X - COLLAPSE_W) / CHAR_W_BODY));
+  const title = f.title.length > room ? `${f.title.slice(0, room - 1)}…` : f.title;
+  const tabY = -FRAME_HEADER_H / 2;
+  return (
+    <g transform={`translate(${f.x} ${f.y})`} data-frame={f.bubbleKey}>
+      <rect width={f.width} height={f.height} rx={10} strokeWidth={1} strokeDasharray="6 4" className="fill-surface stroke-line" />
+      <title>{f.title}</title>
+      <rect x={NODE_PAD_X} y={tabY} width={title.length * CHAR_W_BODY + NODE_PAD_X} height={FRAME_HEADER_H} className="fill-surface" />
+      <text x={NODE_PAD_X + NODE_PAD_X / 2} y={0} dominantBaseline="central" className="fill-fg text-sm">
+        {title}
+      </text>
+      <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} className="cursor-pointer">
+        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />
+        <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
+          Collapse
+        </text>
+      </g>
+    </g>
+  );
+}
+
+function CardView({
+  node: n,
+  finding,
+  ringed,
+  dim,
+  onActivate,
+}: {
+  node: LaidNode;
+  finding: number;
+  ringed: boolean;
+  dim: boolean;
+  onActivate: () => void;
+}) {
+  const card = n.card;
+  const stacked = card.kind === "bubble" || card.kind === "fold";
+  return (
+    <g transform={`translate(${n.x} ${n.y})`} onClick={onActivate} data-card={card.kind} className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}>
+      <title>{card.label}</title>
+      {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
+      {stacked && <rect x={5} y={5} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
+      <rect width={n.width} height={n.height} rx={8} strokeWidth={ringed ? 3 : 1} className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")} />
+      {n.iconUrl !== undefined && (
+        <g aria-hidden="true">
+          <rect x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} rx={4} className="fill-icon-chip" />
+          <image href={n.iconUrl} x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} />
+        </g>
+      )}
+      <text x={n.titleX} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
+        {n.title}
+      </text>
+      {/* Muted (5.6:1 on the card) only for the recipe, the first lines; the rates and states read in full colour. */}
+      {n.lines.map((line, i) => (
+        <text key={i} x={NODE_PAD_X} y={TITLE_H + LINE_H * (i + 1)} className={cn("text-sm", i < n.recipeLines ? "fill-muted" : "fill-fg")}>
+          {line}
+        </text>
+      ))}
+      {finding > 0 && (
+        <g transform={`translate(${n.width - BADGE_W - 8} ${-BADGE_H / 2})`}>
+          <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />
+          <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
+            Bottleneck
+          </text>
+        </g>
+      )}
+    </g>
+  );
+}
+
 /** The line styles, drawn as samples with the words of the tables (ADR-0050 Decision 2). */
 const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
-  { label: "measured", edge: { mixed: false, kind: "belt", rate: "measured" } },
-  { label: "about (estimated)", edge: { mixed: false, kind: "belt", rate: "estimated" } },
-  { label: "unknown", edge: { mixed: false, kind: "belt", rate: "unknown" } },
-  { label: "mixed belt", edge: { mixed: true, kind: "belt", rate: "measured" } },
-  { label: "pipe", edge: { mixed: false, kind: "pipe", rate: "measured" } },
+  { label: "measured", edge: { mixed: false, carrier: "belt", rate: "measured" } },
+  { label: "about (estimated)", edge: { mixed: false, carrier: "belt", rate: "estimated" } },
+  { label: "unknown", edge: { mixed: false, carrier: "belt", rate: "unknown" } },
+  { label: "mixed belt", edge: { mixed: true, carrier: "belt", rate: "measured" } },
+  { label: "pipe", edge: { mixed: false, carrier: "pipe", rate: "measured" } },
 ];
 
 function Legend() {

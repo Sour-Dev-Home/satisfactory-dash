@@ -266,9 +266,9 @@ export const productionGraphFactories = {
       node(SINK, "consumer", "Build_ResourceSink_C", "AWESOME Sink", null, MAIN, { x: 1300, y: 100 }, { role: "sink", factoryKey: ROD }),
     ],
     edges: [
-      { from: DEPOT, to: SMELTER, kind: "belt", itemClassName: "Desc_OreIron_C", itemName: "Iron Ore", ratePerMinute: 120, rate: "estimated", mixed: false, capacityPerMinute: 270, conveyorCount: 6, flow: "supply", itemFrom: "upstream", destination: "machine" },
-      { from: SMELTER, to: PLATE_CON, kind: "belt", itemClassName: "Desc_IronIngot_C", itemName: "Iron Ingot", ratePerMinute: 72, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 5, flow: "supply", itemFrom: "recipe", destination: "machine" },
-      { from: SMELTER, to: ROD_CON, kind: "belt", itemClassName: "Desc_IronIngot_C", itemName: "Iron Ingot", ratePerMinute: 48, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 5, flow: "supply", itemFrom: "recipe", destination: "machine" },
+      { from: DEPOT, to: SMELTER, kind: "belt", itemClassName: "Desc_OreIron_C", itemName: "Iron Ore", ratePerMinute: 120, rate: "estimated", mixed: false, capacityPerMinute: 270, conveyorCount: 6, flow: "supply", itemFrom: "upstream", destination: "factory" },
+      { from: SMELTER, to: PLATE_CON, kind: "belt", itemClassName: "Desc_IronIngot_C", itemName: "Iron Ingot", ratePerMinute: 72, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 5, flow: "supply", itemFrom: "recipe", destination: "factory" },
+      { from: SMELTER, to: ROD_CON, kind: "belt", itemClassName: "Desc_IronIngot_C", itemName: "Iron Ingot", ratePerMinute: 48, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 5, flow: "supply", itemFrom: "recipe", destination: "factory" },
       { from: PLATE_CON, to: STORE, kind: "belt", itemClassName: "Desc_IronPlate_C", itemName: "Iron Plate", ratePerMinute: 48, rate: "measured", mixed: false, capacityPerMinute: 120, conveyorCount: 2, flow: "output", destination: "storage" },
       { from: ROD_CON, to: SINK, kind: "belt", itemClassName: "Desc_IronRod_C", itemName: "Iron Rod", ratePerMinute: 6, rate: "estimated", mixed: false, capacityPerMinute: null, conveyorCount: 2, flow: "excess", destination: "sink" },
     ],
@@ -305,7 +305,7 @@ export const productionGraphFactories = {
       },
     ],
     transports: [
-      { from: MINER, to: DEPOT, mode: "train", itemClassName: "Desc_OreIron_C", itemName: "Iron Ore", itemFrom: "resourceNode", ratePerMinute: 120, rate: "estimated", carriers: 2, routeName: "Ore Run", flow: "supply", destination: "machine" },
+      { from: MINER, to: DEPOT, mode: "train", itemClassName: "Desc_OreIron_C", itemName: "Iron Ore", itemFrom: "resourceNode", ratePerMinute: 120, rate: "estimated", carriers: 2, routeName: "Ore Run", flow: "supply", destination: "factory" },
     ],
     topologyHash: "sha256-planner-factories-sample",
     logistics: "partial",

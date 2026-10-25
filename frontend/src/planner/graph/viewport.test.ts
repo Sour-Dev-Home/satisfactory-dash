@@ -125,8 +125,8 @@ describe("overflow", () => {
     expect(stageBesidePanel(stage, 5000).width).toBe(1);
   });
 
-  it("floors a fit at 0.6", () => {
-    expect(MIN_FIT_ZOOM).toBe(0.6);
+  it("floors a fit at 0.8", () => {
+    expect(MIN_FIT_ZOOM).toBe(0.8);
   });
 });
 

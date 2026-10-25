@@ -36,12 +36,12 @@ describe("PlannerView: the factory overview (ADR-0055)", () => {
     expect(plate).toHaveTextContent("Where: Main base + 1 remote");
     expect(within(plate).getByRole("list", { name: "Products of Iron Plate factory" })).toHaveTextContent("Iron Plate: 48 / 80 items/min");
     expect(plate).toHaveTextContent("3 shared groups, also feeding other factories");
-    expect(within(plate).getByRole("list", { name: "Where Iron Plate factory sends its output" })).toHaveTextContent("to storage: 1");
+    expect(within(plate).getByRole("list", { name: "Where Iron Plate factory sends its output" })).toHaveTextContent("1 flow to storage");
     const rod = await card("Iron Rod factory (+ Iron Rod)");
     expect(rod).toHaveTextContent("3 machines");
     expect(rod).toHaveTextContent("Where: Main base");
     expect(rod).not.toHaveTextContent("shared");
-    expect(within(rod).getByRole("list", { name: "Where Iron Rod factory sends its output" })).toHaveTextContent("to the Sink: 1");
+    expect(within(rod).getByRole("list", { name: "Where Iron Rod factory sends its output" })).toHaveTextContent("1 flow to the Sink");
     expect(screen.getByText(/2 factories · 13 machines in 7 groups/)).toBeInTheDocument();
     // The factory level replaces the site cards.
     expect(screen.queryByRole("list", { name: "Sites" })).not.toBeInTheDocument();
@@ -204,7 +204,7 @@ describe("PlannerView: trees in a factory", () => {
     const group = within(table).getByRole("rowheader", { name: "5× Constructor, Iron Plate, tree 1 of 2" });
     expect(group).toHaveAttribute("scope", "rowgroup");
     expect(group.closest("tbody")?.querySelectorAll("tr")).toHaveLength(3);
-    expect(within(table).getByText("Tree 2 of 2")).toBeInTheDocument();
+    expect(within(table).getByText("tree 2 of 2")).toBeInTheDocument();
   });
 
   it("folds trees beyond the cap behind one button that shows and hides them", async () => {

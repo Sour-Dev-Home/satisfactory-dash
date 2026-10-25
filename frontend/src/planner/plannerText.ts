@@ -220,9 +220,9 @@ const CHIP_WORD: Record<string, string> = {
   unknown: "to unknown ends",
 };
 
-/** A chip for where a factory's flows end: "to storage: 3". */
+/** A chip for where a factory's flows end: "3 flows to storage", "1 flow to the Depot". */
 export const destinationChipText = (destination: string, count: number): string =>
-  `${ownValue(CHIP_WORD, destination) ?? `to ${destination}`}: ${count}`;
+  `${count} ${count === 1 ? "flow" : "flows"} ${ownValue(CHIP_WORD, destination) ?? `to ${destination}`}`;
 
 /** "850 m" under a kilometre, else "1.8 km". */
 export function distanceText(metres: number): string {

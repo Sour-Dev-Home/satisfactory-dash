@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlannerNode, ProductionGraph } from "@satisfactory-dash/shared";
-import { aggregateFlows, bubblesOf, factoryAsSite, factoryModels, foldBubbles, shareSplit, type FlowPart } from "./hierarchy";
+import { aggregateFlows, bubblesOf, factoryModels, foldBubbles, shareSplit, type FlowPart } from "./hierarchy";
 import { distanceText } from "../plannerText";
 
 function node(over: Partial<PlannerNode> & { key: string }): PlannerNode {
@@ -56,7 +56,6 @@ describe("hunt: factoryModels", () => {
     const m = factoryModels(g)[0];
     expect(m.nodes).toHaveLength(1);
     expect(m.stateCounts.producing).toBe(2);
-    expect(factoryAsSite(m).nodeKeys).toEqual(["n1"]);
   });
 
   it("a site listed twice does not appear twice as remote", () => {

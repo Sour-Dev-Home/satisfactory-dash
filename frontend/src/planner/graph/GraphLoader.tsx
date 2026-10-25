@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
-import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import type { Bottleneck, ProductionGraph } from "@satisfactory-dash/shared";
 import { Skeleton, SkeletonStatus } from "../../ui/Skeleton";
+import type { GraphTarget } from "./SiteGraph";
 
 // dagre (about 17 kB gzip) and the canvas are only needed once a site's graph is shown: a separate chunk, as the Map's
 // Leaflet is. React.lazy caches a failed import for good, so on failure swap in a fresh lazy component and the
@@ -22,7 +23,12 @@ function GraphSkeleton() {
   );
 }
 
-export function LazySiteGraph(props: { site: PlannerSite; graph: ProductionGraph; findings: readonly Bottleneck[] | undefined }) {
+export function LazySiteGraph(props: {
+  graph: ProductionGraph;
+  target: GraphTarget;
+  findings: readonly Bottleneck[] | undefined;
+  onOpenFactory?: (key: string) => void;
+}) {
   return (
     <Suspense fallback={<GraphSkeleton />}>
       <SiteGraph {...props} />

@@ -61,7 +61,7 @@ export function FactoryFacts({
       {model.destinations.length > 0 && (
         <ul aria-label={`Where ${factory.name} sends its output`} className="m-0 flex list-none flex-wrap gap-2 p-0 text-sm">
           {model.destinations.map((d) => (
-            <li key={d.destination} className="rounded-card border border-line px-2">
+            <li key={d.destination} className="rounded-card border border-line px-2 py-1">
               {destinationChipText(d.destination, d.count)}
             </li>
           ))}

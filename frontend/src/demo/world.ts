@@ -629,11 +629,18 @@ const PLANNER_NODES = {
     products: [plannerRate("Desc_Rotor_C", "Rotor", 0, 4)],
     ingredients: [plannerRate("Desc_IronRod_C", "Iron Rod", 0, 20), plannerRate("Desc_IronScrew_C", "Screw", 0, 100)],
   }),
+  // Two groups of the same recipe in one tree: a bubble of two (ADR-0053 Decision 3) that opens in place on the canvas.
   reinforced: plannerNode({
-    kind: "machines", className: "Build_AssemblerMk1_C", name: "Assembler", recipe: "Reinforced Iron Plate", ids: ["demo-6", "demo-10"],
-    states: { producing: 1, backedUp: 1 }, at: { x: -1675, y: -980 }, site: IRON_WORKS,
-    products: [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5.5, 10)],
-    ingredients: [plannerRate("Desc_IronPlate_C", "Iron Plate", 33, 60), plannerRate("Desc_IronScrew_C", "Screw", 66, 120)],
+    kind: "machines", className: "Build_AssemblerMk1_C", name: "Assembler", recipe: "Reinforced Iron Plate", ids: ["demo-6"],
+    states: { producing: 1 }, at: { x: -1675, y: -980 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5, 5)],
+    ingredients: [plannerRate("Desc_IronPlate_C", "Iron Plate", 30, 30), plannerRate("Desc_IronScrew_C", "Screw", 60, 60)],
+  }),
+  reinforcedBacked: plannerNode({
+    kind: "machines", className: "Build_AssemblerMk1_C", name: "Assembler", recipe: "Reinforced Iron Plate", ids: ["demo-10"],
+    states: { backedUp: 1 }, at: { x: -1675, y: -977 }, site: IRON_WORKS,
+    products: [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 0.5, 5)],
+    ingredients: [plannerRate("Desc_IronPlate_C", "Iron Plate", 3, 30), plannerRate("Desc_IronScrew_C", "Screw", 6, 60)],
   }),
   frames: plannerNode({
     kind: "machines", className: "Build_ManufacturerMk1_C", name: "Manufacturer", recipe: "Modular Frame", ids: ["demo-8"], states: { producing: 1 },
@@ -691,6 +698,7 @@ assign(N.smelters, RIP_FACTORY, { split: IRON_SPLIT, under: N.reinforced });
 assign(N.plates, RIP_FACTORY, { under: N.reinforced });
 assign(N.screws, RIP_FACTORY, { under: N.reinforced });
 assign(N.reinforced, RIP_FACTORY, { under: null });
+assign(N.reinforcedBacked, RIP_FACTORY, { under: null });
 assign(N.sink, RIP_FACTORY, { role: "sink", under: null });
 assign(N.depot, RIP_FACTORY, { split: [[RIP_FACTORY, 50], [FRAME_FACTORY, 50]], role: "storage", under: null });
 assign(N.rods, FRAME_FACTORY, { split: [[FRAME_FACTORY, 55], [RIP_FACTORY, 45]], under: N.frames });
@@ -782,12 +790,15 @@ export function productionGraph(now: number): ProductionGraphResponse {
         plannerEdge(N.rods, N.screws, ROD_ITEM, 7.5, "measured", { capacityPerMinute: 60 }),
         plannerEdge(N.rods, N.rotors, ROD_ITEM, 7.5, "estimated"),
         plannerEdge(N.rotors, N.rods, ROD_ITEM, 2.5, "estimated", { conveyorCount: 3 }),
-        plannerEdge(N.screws, N.reinforced, SCREW_ITEM, 30, "measured", { capacityPerMinute: 60 }),
-        plannerEdge(N.plates, N.reinforced, ["Desc_IronPlate_C", "Iron Plate"], 20, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.screws, N.reinforced, SCREW_ITEM, 27, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.screws, N.reinforcedBacked, SCREW_ITEM, 3, "estimated"),
+        plannerEdge(N.plates, N.reinforced, ["Desc_IronPlate_C", "Iron Plate"], 18, "measured", { capacityPerMinute: 60 }),
+        plannerEdge(N.plates, N.reinforcedBacked, ["Desc_IronPlate_C", "Iron Plate"], 2, "estimated"),
         plannerEdge(N.reinforced, N.frames, RIP_ITEM, 3, "measured"),
         plannerEdge(N.plates, N.sink, ["Desc_IronPlate_C", "Iron Plate"], 2, "estimated", { flow: "excess", destination: "sink" }),
         plannerEdge(N.reinforced, N.depot, RIP_ITEM, null, "unknown", { mixed: true, conveyorCount: 4, flow: "output", destination: "storage" }),
-        plannerEdge(N.frames, N.depot, ["Desc_ModularFrame_C", "Modular Frame"], 2, "measured", { flow: "output", destination: "storage" }),
+        plannerEdge(N.reinforcedBacked, N.depot, RIP_ITEM, 0.5, "estimated", { flow: "output", destination: "storage" }),
+        plannerEdge(N.frames, N.depot,["Desc_ModularFrame_C", "Modular Frame"], 2, "measured", { flow: "output", destination: "storage" }),
         { ...plannerEdge(N.oil, N.refinery, ["Desc_LiquidOil_C", "Crude Oil"], 30, "measured", { capacityPerMinute: 300 }), kind: "pipe" },
         plannerEdge(N.refinery, N.plasticStore, ["Desc_Plastic_C", "Plastic"], 20, "estimated", { flow: "output", destination: "storage" }),
         {

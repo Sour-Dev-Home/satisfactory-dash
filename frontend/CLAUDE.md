@@ -27,18 +27,24 @@ contract needs to grow, not that this module should special-case a backend detai
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
   The Planner page (ADR-0050, `src/planner/`) is a tab after Factory (`PLANNER_IN_NAV` in `src/shell/tabs.ts`, on since
-  the graph view landed): factory cards when the response has `factories` (ADR-0055; site cards otherwise), then one as a
-  Graph or Tables view (the graph is the default from 640 px, the tables below, `useWideScreen`). The hierarchy is pure
-  in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the fold cap, flows summed between cards, factory models);
-  its words are in `plannerText.ts`, and an opened factory reaches the graph as one site (`factoryAsSite`) until the
-  factory canvas lands. The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind
-  `GraphLoader.tsx`, the Map's pattern) and the only place `@dagrejs/dagre` is imported: `layoutSite` is pure and
-  deterministic (sizes from text, left to right), the canvas is SVG styled by token classes and attributes only
-  (no `style=`), `role="img"` with a counts label, and the keyboard reaches each group through a list of visually
-  hidden buttons beside it (an image's children are presentational). Colours and sizes stay tokens; the node and
-  label metrics in `layoutSite.ts` are tied to the `text-sm`/`text-xs` classes. `build-output.spec.ts` checks that
-  dagre sits in that one chunk, off the entry chunk, under 100 kB gzip; `e2e/planner-graph.spec.ts` is the CSP gate.
-  A layout over 100 ms on a real site is Decision 3's trigger to move `layoutSite` into a worker.
+  the graph view landed): the factories when the response has `factories` (ADR-0055; sites otherwise), as a canvas or as
+  cards and a flows table, and one opened factory as a Graph or Tables view (the graph is the default from 640 px, the
+  tables below, `useWideScreen`). The hierarchy is pure in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the
+  fold cap, flows summed between cards, factory models); its words are in `plannerText.ts`. What the canvas draws is
+  data first: `canvasScene.ts` turns a graph and the viewer's choices into cards (a factory, a bubble of one recipe from
+  one source tree, a group, the "N more trees" fold), frames (an opened bubble's groups) and summed flows, with no React
+  and no dagre. A bubble opens in place into its groups inside a frame (Collapse on the frame, Collapse all and Expand
+  all in the toolbar); a factory above `COLLAPSE_AT` groups starts collapsed. The graph (`src/planner/graph/`) is a lazy
+  chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and the only place `@dagrejs/dagre` is imported:
+  `layoutScene` in `layoutSite.ts` is pure and deterministic (sizes from text, left to right), memoized by the response's
+  `topologyHash` plus a signature of the cards, flows and sizes (a poll that only moves rates reuses the placement; the
+  words are never part of the memo), with fallbacks when dagre throws (parallel flows merged into one routed edge with
+  stacked labels, then a plain grid). The canvas is SVG styled by token classes and attributes only (no `style=`),
+  `role="img"` with a counts label, and the keyboard reaches each card through a list of visually hidden buttons beside
+  it (an image's children are presentational). Colours and sizes stay tokens; the node and label metrics in
+  `layoutSite.ts` are tied to the `text-sm`/`text-xs` classes. `build-output.spec.ts` checks that dagre sits in that one
+  chunk, off the entry chunk, under 100 kB gzip; `e2e/planner-graph.spec.ts` is the CSP gate. A layout over 100 ms on a
+  real site is Decision 3's trigger to move `layoutScene` into a worker (`layoutStats()` and `layoutScene.test.ts` time it).
   The metrics page (ADR-0056, `src/metrics/`, `/app/metrics`) is the operator's and is never a tab in the real app, even
   for the operator (`METRICS_TAB` in `shell/tabs.ts` shows only when `IS_DEMO`, so demo visitors find it): the doors are
   the command bar's operator-only "Metrics" entry and `MetricsLink` on the Servers page. `Shell` routes it only when

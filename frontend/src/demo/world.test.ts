@@ -47,6 +47,18 @@ describe("the demo world", () => {
     expect(graph.sites.map((s) => s.name)).toContain("Ore farm");
   });
 
+  it("gives the planner canvas something to drill into: a bubble of two groups of one recipe, storage, and a post-dominated chain (ADR-0055 PR 8)", () => {
+    const graph = ProductionGraphResponseSchema.parse(world.productionGraph(world.DEMO_EPOCH)).data;
+    const reinforced = graph.nodes.filter((n) => n.recipe === "Reinforced Iron Plate");
+    expect(reinforced).toHaveLength(2);
+    expect(new Set(reinforced.map((n) => n.factoryKey)).size).toBe(1);
+    expect(graph.nodes.some((n) => n.kind === "storage" && n.role === "storage")).toBe(true);
+    expect(graph.nodes.filter((n) => typeof n.collapseUnder === "string").length).toBeGreaterThan(3);
+    // Every post-dominator is a group of the same factory.
+    const factoryOf = new Map(graph.nodes.map((n) => [n.key, n.factoryKey]));
+    for (const n of graph.nodes) if (typeof n.collapseUnder === "string") expect(factoryOf.get(n.collapseUnder)).toBe(n.factoryKey);
+  });
+
   it.each(HistoryRangeSchema.options)("stores power history for %s that matches the schema, oldest first", (range) => {
     const history = HistoryPowerResponseSchema.parse(world.historyPower(world.DEMO_EPOCH, range)).data;
     expect(history.range).toBe(range);

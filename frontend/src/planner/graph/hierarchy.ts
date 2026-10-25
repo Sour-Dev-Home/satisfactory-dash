@@ -461,24 +461,3 @@ export function shareSplit(node: Pick<PlannerNode, "shares" | "factoryKey">): Sh
   const rest = Math.round(Math.max(0, 1 - total) * 100);
   return { here: here === undefined ? null : Math.round(here.share * 100), others, rest };
 }
-
-/** A factory as a site, for the existing canvas, which draws one site's groups (the factory canvas is the next PR). */
-export function factoryAsSite(model: FactoryModel): PlannerSite {
-  const { factory, nodes } = model;
-  const machines = nodes.reduce((sum, n) => sum + n.count, 0);
-  const weight = (n: PlannerNode) => n.count;
-  const total = nodes.reduce((sum, n) => sum + weight(n), 0);
-  const at = {
-    x: total === 0 ? 0 : Math.round(nodes.reduce((sum, n) => sum + n.at.x * weight(n), 0) / total),
-    y: total === 0 ? 0 : Math.round(nodes.reduce((sum, n) => sum + n.at.y * weight(n), 0) / total),
-  };
-  return {
-    key: factory.key,
-    name: factory.name,
-    at,
-    machineCount: factory.machineCount > 0 ? factory.machineCount : machines,
-    stateCounts: model.stateCounts,
-    topOutputs: factory.products.slice(0, 5),
-    nodeKeys: nodes.map((n) => n.key),
-  };
-}

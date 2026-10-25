@@ -52,7 +52,7 @@ function GroupRow({
   const hits = nodeFindings(node, findings).length;
   const role = roleText(node.role);
   // A group alone in its bubble carries the tree's ordinal itself; in a bigger bubble the bubble's row says it.
-  const tree = !nested && bubble.of > 1 ? `Tree ${bubble.ordinal} of ${bubble.of}` : null;
+  const tree = !nested && bubble.of > 1 ? `tree ${bubble.ordinal} of ${bubble.of}` : null;
   const remote = factory?.remote.get(node.key);
   const split = factory === undefined ? null : shareSplit(node);
   return (

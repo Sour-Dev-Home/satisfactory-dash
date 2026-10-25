@@ -87,7 +87,7 @@ describe("viewport hunt", () => {
       }
     }
   });
-  it("fit never exceeds 1 and floors at 0.6 for a huge drawing, anchored at FIT_PAD", () => {
+  it("fit never exceeds 1 and floors at 0.8 for a huge drawing, anchored at FIT_PAD", () => {
     const v = fitView(1e5, 1e5, { width: 1000, height: 600 });
     expect(v).toEqual({ k: MIN_FIT_ZOOM, x: FIT_PAD, y: FIT_PAD });
   });
