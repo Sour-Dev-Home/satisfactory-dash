@@ -57,6 +57,7 @@ test("a backend-only change runs the backend and its jobs, not the frontend's", 
     backend: true,
     load: true,
     compose: true,
+    systemd: false,
   });
 });
 
@@ -102,6 +103,10 @@ test("inputs outside a workspace select the workspaces that read them", () => {
   const compose = outputs(pick("compose.yaml"));
   assert.equal(compose.compose, true);
   assert.equal(compose.backend, false);
+  const unit = outputs(pick("agent/packaging/linux/satis-agent.service"));
+  assert.equal(unit.systemd, true);
+  assert.equal(unit.backend, false);
+  assert.equal(outputs(pick("agent/src/main.ts")).systemd, false);
 });
 
 test("a docs-only change runs none of the heavy jobs", () => {
@@ -115,6 +120,7 @@ test("a docs-only change runs none of the heavy jobs", () => {
     backend: false,
     load: false,
     compose: false,
+    systemd: false,
   });
 });
 

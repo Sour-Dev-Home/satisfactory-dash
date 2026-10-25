@@ -23,6 +23,8 @@ on:
         value: ${{ jobs.select.outputs.load }}
       compose:
         value: ${{ jobs.select.outputs.compose }}
+      systemd:
+        value: ${{ jobs.select.outputs.systemd }}
 
 jobs:
   select:
@@ -38,6 +40,7 @@ jobs:
       backend: ${{ steps.select.outputs.backend }}
       load: ${{ steps.select.outputs.load }}
       compose: ${{ steps.select.outputs.compose }}
+      systemd: ${{ steps.select.outputs.systemd }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

@@ -39,7 +39,7 @@ export const SETUP = [
 
 /**
  * Paths outside a workspace that a workspace (or a job) reads anyway, and the targets they select. A target is
- * a workspace directory, or `load` (the load-smoke job) or `compose` (the compose job). Workspace targets also
+ * a workspace directory, or `load` (the load-smoke job), `compose` (the compose job) or `systemd` (the unit-file check). Workspace targets also
  * select their dependents.
  */
 export const INPUTS = [
@@ -51,6 +51,7 @@ export const INPUTS = [
   [/^\.env\.example$/, ["backend"]],
   [/^backend\/src\/modules\/identity\/signupConfig\.ts$/, ["frontend"]], // frontend/src/auth/googleSignIn.test.ts checks TERMS_VERSION against it
   [/^compose\.yaml$/, ["compose"]],
+  [/^agent\/packaging\//, ["systemd"]], // the Linux agent's unit file: `systemd-analyze verify` (ci.yml)
 ];
 
 /** Paths no build or test reads. The always-on checks (script tests, log fragment, security) still run. */
@@ -137,7 +138,7 @@ export function classify(file) {
   return "unattributed";
 }
 
-const ALL_TARGETS = [...WORKSPACES, "load", "compose"];
+const ALL_TARGETS = [...WORKSPACES, "load", "compose", "systemd"];
 
 /**
  * @param {string[] | undefined} changed the PR's changed paths; undefined when there is no PR to compare with
@@ -170,6 +171,7 @@ export function outputs(result) {
     backend: has("backend"),
     load: has("backend") || has("load"),
     compose: has("backend") || has("compose"),
+    systemd: has("systemd"),
   };
 }
 

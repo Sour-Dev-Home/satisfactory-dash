@@ -1,0 +1,53 @@
+[Unit]
+Description=Satisfactory Dash edge agent
+Documentation=https://github.com/Sour-Dev-Home/satisfactory-dash
+After=network-online.target
+Wants=network-online.target
+# Give up after 10 failed starts in 10 minutes rather than spin for ever. The agent's own halted marker (halted.json)
+# stays the source of truth for permanent failures: it ends with exit 0, which Restart=on-failure does not retry.
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=satis-agent
+Group=satis-agent
+# /var/lib/satis-agent, owned by the service user and created by systemd. The agent reads $STATE_DIRECTORY.
+StateDirectory=satis-agent
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/local/bin/node /opt/satis-agent/agent.cjs run
+Restart=on-failure
+RestartSec=5
+RestartSteps=6
+RestartMaxDelaySec=300
+TimeoutStopSec=30
+
+# Hardening. Node needs JIT, so no MemoryDenyWriteExecute=.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RemoveIPC=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
