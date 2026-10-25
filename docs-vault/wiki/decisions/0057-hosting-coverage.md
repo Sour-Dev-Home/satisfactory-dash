@@ -351,6 +351,11 @@ the user already plans. We never ask for, schedule or trigger a restart.
    the `pairing.txt` fallback, poll with `slow_down`, store the credential, clear it on 401. Mod reports its version.
 3. **Linux agent**: Decision 2 steps 2-4 (`SecretBox`, `STATE_DIRECTORY`, systemd unit), then the tarball and GHCR image
    (steps 5-6). The agent uses the same pairing endpoint when it has no credential.
+   **Stopped (owner, 2026-10-25):** "stop the developing of linux specific agent if the mod can eventually handle it
+   anyway". Steps 2-4 shipped (#680 `SecretBox` and `STATE_DIRECTORY`, #681 the systemd unit and
+   `runbooks/agent-linux.md`) and stay as they are; packaging (step 5, PR #682) was closed unmerged and the Docker sidecar
+   (step 6) is not built. Linux servers are to be covered by the mod (SML builds a Linux Server target). Revisit only if
+   a Linux self-hoster needs FRM data before the mod's FRM bridge exists; #682's branch is the starting point.
 4. **Dashboard update surface:** "update available" per server, compatibility banner, advisory banner and
    `min_safe_version` enforcement (frontend + backend); documentation of the deliberate-update steps.
 5. **Rehearsal on the homelab VM** against staging (Decision 4), including: pairing with a real mod, a mod update with a
