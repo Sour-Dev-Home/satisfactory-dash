@@ -38,7 +38,7 @@ import { snapshotEnvelope } from "./envelope";
  * (65 segments, 17-127 points each, in the captured world) or resourceNodes (608 items).
  */
 
-export const KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes", "conveyors"] as const;
+export const KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes", "conveyors", "trainRoutes"] as const;
 export type MapWorldLayer = (typeof KNOWN_MAP_WORLD_LAYERS)[number];
 
 /** Measured on the serialized projected JSON, uncompressed, by the sender; enforced again at ingest (see above). */
@@ -88,6 +88,7 @@ export const ResourceNodeSchema = z.object({
   x: WholeMetreSchema,
   y: WholeMetreSchema,
   exploited: z.boolean(),
+  className: z.string().max(200).optional().describe("ADR-0053 Decision 5: FRM's ClassName, e.g. Desc_OreIron_C; absent on an older layer"),
 });
 export const ResourceNodesLayerDataSchema = z.array(ResourceNodeSchema).max(MAP_WORLD_MAX_ITEMS);
 
@@ -162,11 +163,52 @@ export const ConveyorEdgeSchema = z
   });
 export const ConveyorsLayerDataSchema = z.array(ConveyorEdgeSchema).max(CONVEYORS_MAX_EDGES);
 
+// ---------------------------------------------------------------------------------------------------------------------
+// trainRoutes (ADR-0055 Decision 1): train stations with their platforms' cargo, and trains with their timetable stops
+// and cargo, from getTrainStation + getTrains. Item classes only (no amounts), so the hash is stable between reads. The
+// world-layer pipeline carries `data` as an array (count, truncate, per-item re-validation), so the two record types
+// share one array, told apart by `recordType`. A record with an unknown `recordType` fails its item schema and is
+// dropped at ingest (conform, don't reject); a new record type is therefore a new field value and not a new layer.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Sanity cap on stations plus trains in one layer; each half matches `MAP_LIVE_MAX_*`. */
+export const TRAIN_ROUTES_MAX_ITEMS = 4_000;
+export const TRAIN_ROUTES_MAX_PLATFORMS = 64;
+export const TRAIN_ROUTES_MAX_ITEM_CLASSES = 64;
+export const TRAIN_ROUTES_MAX_STOPS = 200;
+
+const ItemClassNames = z.array(z.string().min(1).max(200)).max(TRAIN_ROUTES_MAX_ITEM_CLASSES);
+
+export const TrainRoutePlatformSchema = z.object({
+  id: boundedString,
+  mode: z.string().max(40).describe("Known: load, unload (the platform's transfer direction); a plain string so a newer mode never breaks a parse"),
+  items: ItemClassNames.describe("Distinct cargo classes the platform handles; empty when unknown"),
+});
+
+export const TrainRouteStationSchema = z.object({
+  recordType: z.literal("station"),
+  id: boundedString,
+  name: boundedString.describe("The station's in-game name, player-chosen; game text, rendered as text only. May repeat across stations."),
+  platforms: z.array(TrainRoutePlatformSchema).max(TRAIN_ROUTES_MAX_PLATFORMS),
+});
+
+export const TrainRouteTrainSchema = z.object({
+  recordType: z.literal("train"),
+  id: boundedString,
+  name: boundedString.describe("The train's in-game name, player-chosen"),
+  stops: z.array(boundedString).max(TRAIN_ROUTES_MAX_STOPS).describe("Timetable stops as station names, in order"),
+  items: ItemClassNames.describe("Distinct cargo classes the train carries; empty when unknown"),
+});
+
+export const TrainRouteRecordSchema = z.discriminatedUnion("recordType", [TrainRouteStationSchema, TrainRouteTrainSchema]);
+export const TrainRoutesLayerDataSchema = z.array(TrainRouteRecordSchema).max(TRAIN_ROUTES_MAX_ITEMS);
+
 /** Each layer's item cap: what the ingest truncates an over-cap `data` array to (conform, don't reject). */
 export const MAP_WORLD_LAYER_MAX_ITEMS = {
   rails: MAP_WORLD_MAX_ITEMS,
   resourceNodes: MAP_WORLD_MAX_ITEMS,
   conveyors: CONVEYORS_MAX_EDGES,
+  trainRoutes: TRAIN_ROUTES_MAX_ITEMS,
 } satisfies Record<MapWorldLayer, number>;
 
 /** Keyed by `MapWorldLayer`, so M3's route (`:layer` is a runtime string) can look up the right
@@ -175,6 +217,7 @@ export const MAP_WORLD_LAYER_DATA_SCHEMAS = {
   rails: RailsLayerDataSchema,
   resourceNodes: ResourceNodesLayerDataSchema,
   conveyors: ConveyorsLayerDataSchema,
+  trainRoutes: TrainRoutesLayerDataSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** The PER-ITEM schema for one layer (a single `RailSegment`/`ResourceNode`, not the capped array).
@@ -186,6 +229,7 @@ export const MAP_WORLD_LAYER_ITEM_SCHEMAS = {
   rails: RailSegmentSchema,
   resourceNodes: ResourceNodeSchema,
   conveyors: ConveyorEdgeSchema,
+  trainRoutes: TrainRouteRecordSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** Exported (test-hunter, PR #374): the ingest route validates a body's `observedAt` FORMAT against
@@ -201,6 +245,7 @@ export const IsoTimeSchema = z.iso.datetime({ offset: true });
 export const RailsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: RailsLayerDataSchema });
 export const ResourceNodesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ResourceNodesLayerDataSchema });
 export const ConveyorsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ConveyorsLayerDataSchema });
+export const TrainRoutesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: TrainRoutesLayerDataSchema });
 
 /** Why the conveyors projection has no layer this cycle (game-adapter's `mapConveyors` `skip`): an FRM without connection
  *  fields, or a graph over `CONVEYORS_MAX_EDGES`. */
@@ -220,6 +265,7 @@ export const MAP_WORLD_LAYER_INGEST_SCHEMAS = {
   rails: RailsWorldIngestRequestSchema,
   resourceNodes: ResourceNodesWorldIngestRequestSchema,
   conveyors: ConveyorsWorldIngestRequestSchema,
+  trainRoutes: TrainRoutesWorldIngestRequestSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** 200/202. What POST /agent/v1/world/:layer answers: `unchanged` is true when the content hash
@@ -237,7 +283,7 @@ export const WorldIngestResponseSchema = z.object({ accepted: z.boolean(), uncha
  */
 export function worldLayerResponseSchema<T extends z.ZodType>(dataSchema: T) {
   return z.object({
-    layer: z.string().describe("Known: rails, resourceNodes, conveyors; more are added as their captures land (ADR-0038)"),
+    layer: z.string().describe("Known: rails, resourceNodes, conveyors, trainRoutes; more are added as their captures land (ADR-0038)"),
     hash: z.string().min(1),
     observedAt: IsoTimeSchema,
     truncated: z.boolean(),
@@ -248,6 +294,7 @@ export function worldLayerResponseSchema<T extends z.ZodType>(dataSchema: T) {
 export const RailsWorldLayerResponseSchema = worldLayerResponseSchema(RailsLayerDataSchema);
 export const ResourceNodesWorldLayerResponseSchema = worldLayerResponseSchema(ResourceNodesLayerDataSchema);
 export const ConveyorsWorldLayerResponseSchema = worldLayerResponseSchema(ConveyorsLayerDataSchema);
+export const TrainRoutesWorldLayerResponseSchema = worldLayerResponseSchema(TrainRoutesLayerDataSchema);
 /** For the endpoint registry (endpoints.ts), which needs one static schema per route: the client
  *  re-validates against the specific layer's schema via `MAP_WORLD_LAYER_DATA_SCHEMAS`, same as the
  *  route itself does at write time. */
@@ -255,6 +302,7 @@ export const MapWorldLayerResponseSchema = z.union([
   RailsWorldLayerResponseSchema,
   ResourceNodesWorldLayerResponseSchema,
   ConveyorsWorldLayerResponseSchema,
+  TrainRoutesWorldLayerResponseSchema,
 ]);
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -310,6 +358,13 @@ export type ConveyorsWorldIngestRequest = z.input<typeof ConveyorsWorldIngestReq
 export type ConveyorsSkipReason = z.infer<typeof ConveyorsSkipReasonSchema>;
 export type ConveyorsSkippedIngestRequest = z.input<typeof ConveyorsSkippedIngestRequestSchema>;
 export type ConveyorsWorldLayerResponse = z.infer<typeof ConveyorsWorldLayerResponseSchema>;
+export type TrainRoutePlatform = z.infer<typeof TrainRoutePlatformSchema>;
+export type TrainRouteStation = z.infer<typeof TrainRouteStationSchema>;
+export type TrainRouteTrain = z.infer<typeof TrainRouteTrainSchema>;
+export type TrainRouteRecord = z.infer<typeof TrainRouteRecordSchema>;
+export type TrainRoutesLayerData = z.infer<typeof TrainRoutesLayerDataSchema>;
+export type TrainRoutesWorldIngestRequest = z.input<typeof TrainRoutesWorldIngestRequestSchema>;
+export type TrainRoutesWorldLayerResponse = z.infer<typeof TrainRoutesWorldLayerResponseSchema>;
 export type MapTrain = z.infer<typeof MapTrainSchema>;
 export type MapTrainStation = z.infer<typeof MapTrainStationSchema>;
 export type MapLive = z.infer<typeof MapLiveSchema>;

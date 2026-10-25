@@ -12,6 +12,7 @@ import type {
   ResourceNodesWorldIngestRequest,
   SnapshotRequest,
   SnapshotResponse,
+  TrainRoutesWorldIngestRequest,
   WorldIngestResponse,
 } from "@satisfactory-dash/shared";
 import type { z } from "zod";
@@ -57,6 +58,8 @@ export interface WorldIngestBodies {
   resourceNodes: ResourceNodesWorldIngestRequest;
   // ADR-0048 amendment: in the contract now; the agent reads and sends it from amendment PR 2.
   conveyors: ConveyorsWorldIngestRequest | ConveyorsSkippedIngestRequest;
+  // ADR-0055 PR 1: in the contract now; the agent reads and sends it from ADR-0055 PR 5.
+  trainRoutes: TrainRoutesWorldIngestRequest;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;

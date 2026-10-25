@@ -6,6 +6,8 @@ import type {
   RailsWorldLayerResponse,
   ResourceNodesWorldIngestRequest,
   ResourceNodesWorldLayerResponse,
+  TrainRoutesWorldIngestRequest,
+  TrainRoutesWorldLayerResponse,
 } from "../src/index";
 
 /**
@@ -259,6 +261,29 @@ export const conveyorsWorldResponse = {
   count: conveyorsSample.data.length,
   data: conveyorsSample.data,
 } satisfies ConveyorsWorldLayerResponse;
+
+/**
+ * ADR-0055 Decision 1: the trainRoutes layer. SYNTHETIC in shape; names follow the 2026-10-21 captures' habits (a
+ * trailing space, two stations with the same name), which the mapper must keep as game text.
+ */
+export const trainRoutesSample = {
+  observedAt: "2026-10-24T12:00:00.000Z",
+  data: [
+    { recordType: "station", id: "Build_TrainStation_C_1", name: "Ore Pickup ", platforms: [{ id: "Build_TrainDockingStation_C_1", mode: "load", items: ["Desc_OreIron_C"] }] },
+    { recordType: "station", id: "Build_TrainStation_C_2", name: "Main Depot", platforms: [{ id: "Build_TrainDockingStation_C_2", mode: "unload", items: ["Desc_OreIron_C"] }, { id: "Build_TrainDockingStationLiquid_C_1", mode: "unload", items: [] }] },
+    { recordType: "station", id: "Build_TrainStation_C_3", name: "Main Depot", platforms: [] },
+    { recordType: "train", id: "Build_Train_C_1", name: "Ore Run", stops: ["Ore Pickup ", "Main Depot"], items: ["Desc_OreIron_C"] },
+  ],
+} satisfies TrainRoutesWorldIngestRequest;
+
+export const trainRoutesWorldResponse = {
+  layer: "trainRoutes",
+  hash: "sha256-trainroutes-sample",
+  observedAt: trainRoutesSample.observedAt,
+  truncated: false,
+  count: trainRoutesSample.data.length,
+  data: trainRoutesSample.data,
+} satisfies TrainRoutesWorldLayerResponse;
 
 /** A server whose conveyors layer was read and holds no conveyors (nothing built yet). An older FRM without the
  *  connection fields sends no conveyors layer at all, so it has no response of this kind. */
