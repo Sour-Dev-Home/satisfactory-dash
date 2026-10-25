@@ -69,7 +69,7 @@ describe("Google sign-in routes", () => {
     await issuer.close();
   });
 
-  function build(options: { result?: GoogleSignInResult; issuerUrl?: URL; signupOpen?: boolean } = {}) {
+  function build(options: { result?: GoogleSignInResult; issuerUrl?: URL } = {}) {
     const db = new FakeAttemptDb();
     const complete = vi.fn(async (): Promise<GoogleSignInResult> => options.result ?? signedIn);
     const signIn: GoogleSignIn = { complete };
@@ -82,7 +82,6 @@ describe("Google sign-in routes", () => {
           config,
           oidc: createGoogleOidc(config, { issuer: options.issuerUrl ?? issuer.issuer, allowInsecureRequests: true }),
           signIn,
-          ...(options.signupOpen ? { signupOpen: true } : {}),
           db,
         }),
       ],
@@ -95,8 +94,8 @@ describe("Google sign-in routes", () => {
 
   describe("terms acceptance (ADR-0046 question 6)", () => {
     const claims = { sub: "google-sub-1", email: "owner@example.com", email_verified: true };
-    const accepted = async (opts: { signupOpen: boolean; startQuery: string; callbackExtra?: string; fetchSite?: string }) => {
-      const { app, complete } = build({ signupOpen: opts.signupOpen });
+    const accepted = async (opts: { startQuery: string; callbackExtra?: string; fetchSite?: string }) => {
+      const { app, complete } = build();
       const begun = await request(app)
         .get(`/api/auth/google/start?${opts.startQuery}`)
         .set("Sec-Fetch-Site", opts.fetchSite ?? "same-site");
@@ -113,16 +112,15 @@ describe("Google sign-in routes", () => {
       return (complete.mock.calls[0] as unknown as [unknown, unknown, { acceptedTermsVersion?: string }])[2].acceptedTermsVersion;
     };
 
-    it("passes the current terms version from /start to the sign-in service when sign-up is open", async () => {
-      expect(await accepted({ signupOpen: true, startQuery: `terms=${TERMS_VERSION}` })).toBe(TERMS_VERSION);
+    it("passes the current terms version from /start to the sign-in service (whatever the sign-up mode, #568)", async () => {
+      expect(await accepted({ startQuery: `terms=${TERMS_VERSION}` })).toBe(TERMS_VERSION);
     });
 
     it.each([
-      ["sign-up is closed", false, `terms=${TERMS_VERSION}`],
-      ["the version is not the current one", true, "terms=1999-01-01"],
-      ["no terms were sent", true, "return=%2Fapp"],
-    ])("passes nothing when %s", async (_label, signupOpen, startQuery) => {
-      expect(await accepted({ signupOpen, startQuery })).toBeUndefined();
+      ["the version is not the current one", "terms=1999-01-01"],
+      ["no terms were sent", "return=%2Fapp"],
+    ])("passes nothing when %s", async (_label, startQuery) => {
+      expect(await accepted({ startQuery })).toBeUndefined();
     });
 
     it.each([
@@ -130,26 +128,27 @@ describe("Google sign-in routes", () => {
       ["a direct navigation", "none"],
       ["a header the browser did not send", ""],
     ])("ignores the terms on %s (a third party cannot record an acceptance the person never saw)", async (_label, fetchSite) => {
-      expect(await accepted({ signupOpen: true, startQuery: `terms=${TERMS_VERSION}`, fetchSite })).toBeUndefined();
+      expect(await accepted({ startQuery: `terms=${TERMS_VERSION}`, fetchSite })).toBeUndefined();
     });
 
     it("honours the terms from the same origin (dev proxy) as well as the same site", async () => {
-      expect(await accepted({ signupOpen: true, startQuery: `terms=${TERMS_VERSION}`, fetchSite: "same-origin" })).toBe(TERMS_VERSION);
+      expect(await accepted({ startQuery: `terms=${TERMS_VERSION}`, fetchSite: "same-origin" })).toBe(TERMS_VERSION);
     });
 
     it("sends the terms step back with the attempt's validated return path, and no other refusal", async () => {
-      const refusal = async (reason: "terms_required" | "not_invited") => {
+      const refusal = async (reason: "terms_required" | "terms_changed" | "not_invited") => {
         const { app } = build({ result: { kind: "refused", reason } });
         const begun = await beginGoogleSignIn(app, "/app/power?tab=x");
         const res = await completeGoogleSignIn(app, issuer, begun, { claims: { sub: "s", email: "a@example.com", email_verified: true } });
         return res.headers.location;
       };
       expect(await refusal("terms_required")).toBe(`${FRONTEND}/app/login?error=terms_required&return=%2Fapp%2Fpower%3Ftab%3Dx`);
+      expect(await refusal("terms_changed")).toBe(`${FRONTEND}/app/login?error=terms_changed&return=%2Fapp%2Fpower%3Ftab%3Dx`);
       expect(await refusal("not_invited")).toBe(`${FRONTEND}/app/login?error=not_invited`);
     });
 
     it("never takes the terms from the callback's own query string", async () => {
-      expect(await accepted({ signupOpen: true, startQuery: "return=%2Fapp", callbackExtra: `&terms=${TERMS_VERSION}` })).toBeUndefined();
+      expect(await accepted({ startQuery: "return=%2Fapp", callbackExtra: `&terms=${TERMS_VERSION}` })).toBeUndefined();
     });
   });
 
@@ -385,12 +384,14 @@ describe("Google sign-in routes", () => {
       ["disabled", "failed"],
       ["unverified_email", "failed"],
       ["terms_required", "terms_required"],
+      ["terms_changed", "terms_changed"],
       ["signup_busy", "signup_busy"],
     ] as const)("a refused sign-in (%s) redirects with error=%s and starts no session", async (reason, code) => {
       const { app } = build({ result: { kind: "refused", reason } });
       const begun = await beginGoogleSignIn(app);
       const res = await completeGoogleSignIn(app, issuer, begun, { claims });
-      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=${code}${code === "terms_required" ? "&return=%2Fapp" : ""}`);
+      const withReturn = code === "terms_required" || code === "terms_changed";
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=${code}${withReturn ? "&return=%2Fapp" : ""}`);
       expect(setCookies(res).some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
     });
 

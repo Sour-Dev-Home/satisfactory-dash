@@ -265,7 +265,7 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
       expect(await users()).toBe(1);
     });
 
-    it("/start keeps only the exact current version, and nothing at all while sign-up is closed", async () => {
+    it("/start keeps only the exact current version, in either sign-up mode (#568: re-acceptance)", async () => {
       const open = await buildApp({ SIGNUP_MODE: "open" });
       await request(open).get("/api/auth/google/start?terms=1999-01-01").set("Sec-Fetch-Site", "same-site");
       await request(open).get(`/api/auth/google/start?terms=${TERMS_VERSION}&terms=${TERMS_VERSION}`).set("Sec-Fetch-Site", "same-site");
@@ -276,7 +276,8 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
       await admin.query("TRUNCATE identity.login_attempts");
       const closed = await buildApp({});
       await request(closed).get(`/api/auth/google/start?terms=${TERMS_VERSION}`).set("Sec-Fetch-Site", "same-site");
-      expect(await attemptTerms()).toEqual([null]);
+      await request(closed).get("/api/auth/google/start?terms=1999-01-01").set("Sec-Fetch-Site", "same-site");
+      expect((await attemptTerms()).sort()).toEqual([TERMS_VERSION, null]);
     });
 
     it("an expired attempt with the terms ticked creates nothing and cannot be replayed", async () => {
@@ -382,6 +383,107 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
       await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION });
       expect(await count("SELECT count(*) AS n FROM identity.sessions")).toBe(sessions);
       expect(await count("SELECT count(*) AS n FROM identity.auth_identities WHERE provider_subject = 'google-sub-2'")).toBe(0);
+    });
+  });
+
+  // #568 (#530 decision 9): after a material change, an existing account re-accepts at its next sign-in.
+  describe("re-accepting a changed terms version", () => {
+    const OLD = "2026-09-24";
+    /** An account that signed up two days ago under the older terms. */
+    async function oldAccount(app: ReturnType<typeof createApp>, n = 1): Promise<string> {
+      await signIn(app, stranger(n), TERMS_VERSION);
+      const id = (await admin.query("SELECT user_id FROM identity.auth_identities WHERE provider_subject = $1", [`google-sub-${n}`])).rows[0].user_id;
+      await admin.query(
+        "UPDATE identity.users SET terms_version = $2, terms_accepted_at = now() - interval '2 days', created_at = now() - interval '2 days' WHERE id = $1",
+        [id, OLD],
+      );
+      await admin.query("TRUNCATE identity.sessions, audit.audit_events");
+      return id;
+    }
+    const termsOf = async (id: string) =>
+      (await admin.query("SELECT terms_version, terms_accepted_at FROM identity.users WHERE id = $1", [id])).rows[0];
+
+    it("an older accepted version gets terms_changed (with the return path), no session, and nothing recorded", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const id = await oldAccount(app);
+      const res = await signIn(app, stranger(1));
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=terms_changed&return=%2Fapp`);
+      expect(hasSession(res)).toBe(false);
+      expect(await count("SELECT count(*) AS n FROM identity.sessions")).toBe(0);
+      expect((await termsOf(id)).terms_version).toBe(OLD);
+      // A stale version ticked on the page does not count either.
+      expect((await signIn(app, stranger(1), OLD)).headers.location).toBe(`${FRONTEND}/app/login?error=terms_changed&return=%2Fapp`);
+      const refused = (await audits()).filter((a) => a.action === "signin.refused");
+      expect(refused).toEqual([
+        { action: "signin.refused", actor_user_id: id, detail: { provider: "google", reason: "terms_changed" } },
+        { action: "signin.refused", actor_user_id: id, detail: { provider: "google", reason: "terms_changed" } },
+      ]);
+    });
+
+    it("no other route is usable meanwhile: the refusal sets no cookie that the session guard accepts", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      await oldAccount(app);
+      const res = await signIn(app, stranger(1));
+      const cookies = ([res.headers["set-cookie"] ?? []].flat() as string[]).map((c) => c.split(";")[0]!).join("; ");
+      const session = await request(app).get("/api/auth/session").set("Cookie", cookies);
+      expect(session.body.authenticated).toBe(false);
+      expect((await request(app).get("/api/servers").set("Cookie", cookies)).status).toBe(401);
+    });
+
+    it("accepting records the new version and time, audits it, and signs in", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const id = await oldAccount(app);
+      const res = await signIn(app, stranger(1), TERMS_VERSION);
+      expect(res.headers.location).toBe(`${FRONTEND}/app`);
+      expect(hasSession(res)).toBe(true);
+      const row = await termsOf(id);
+      expect(row.terms_version).toBe(TERMS_VERSION);
+      expect(Math.abs(Date.now() - new Date(row.terms_accepted_at).getTime())).toBeLessThan(60_000);
+      const accepted = (await audits()).filter((a) => a.action === "terms_accepted");
+      expect(accepted).toEqual([
+        { action: "terms_accepted", actor_user_id: id, detail: { provider: "google", termsVersion: TERMS_VERSION, previousTermsVersion: OLD } },
+      ]);
+      // The next sign-in is a normal one: no terms needed, nothing recorded again.
+      const again = await signIn(app, stranger(1));
+      expect(again.headers.location).toBe(`${FRONTEND}/app`);
+      expect((await audits()).filter((a) => a.action === "terms_accepted")).toHaveLength(1);
+      expect(await users()).toBe(2);
+    });
+
+    it("works while sign-up is closed, and a closed unknown account is still not_invited", async () => {
+      const open = await buildApp({ SIGNUP_MODE: "open" });
+      const id = await oldAccount(open);
+      const closed = await buildApp({});
+      expect((await signIn(closed, stranger(1))).headers.location).toBe(`${FRONTEND}/app/login?error=terms_changed&return=%2Fapp`);
+      expect((await signIn(closed, stranger(1), TERMS_VERSION)).headers.location).toBe(`${FRONTEND}/app`);
+      expect((await termsOf(id)).terms_version).toBe(TERMS_VERSION);
+      expect((await signIn(closed, stranger(2), TERMS_VERSION)).headers.location).toBe(`${FRONTEND}/app/login?error=not_invited`);
+    });
+
+    it("a disabled account with an older version is refused as failed, never asked to re-accept", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const id = await oldAccount(app);
+      await setUserStatus(admin, id, "disabled");
+      const res = await signIn(app, stranger(1), TERMS_VERSION);
+      expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=failed`);
+      expect((await termsOf(id)).terms_version).toBe(OLD);
+    });
+
+    it("an account that never accepted any version (the linked operator) is not asked", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      const owner: FakeClaims = { sub: "google-sub-owner", email: "owner@example.com", email_verified: true };
+      expect((await signIn(app, owner)).headers.location).toBe(`${FRONTEND}/app`);
+      expect((await signIn(app, owner)).headers.location).toBe(`${FRONTEND}/app`);
+      expect(await count("SELECT count(*) AS n FROM identity.users WHERE terms_version IS NOT NULL")).toBe(0);
+    });
+
+    it("re-accepting does not use up the C8 hourly cap", async () => {
+      const app = await buildApp({ SIGNUP_MODE: "open" });
+      await oldAccount(app);
+      const signup = service(1);
+      expect(reasonOf(await signup.complete(claimsOf(1), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signed_in");
+      expect(reasonOf(await signup.complete(claimsOf(2), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signed_in");
+      expect(reasonOf(await signup.complete(claimsOf(3), undefined, { acceptedTermsVersion: TERMS_VERSION }))).toBe("signup_busy");
     });
   });
 });

@@ -6,7 +6,16 @@ import { ApiError, classifyError } from "../api/errors";
 import { LOGIN_MUTATION_KEY, SESSION_KEY } from "../api/queries";
 import { clearSignedOutNotice, signedOutNotice } from "../api/signedOutNotice";
 import { ErrorNotice } from "../components/ErrorNotice";
-import { googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
+import {
+  googleStartHref,
+  needsTermsReaccept,
+  needsTermsStep,
+  offersGoogle,
+  offersSignup,
+  signInErrorText,
+  TERMS_CHANGES,
+  termsReturnPath,
+} from "./googleSignIn";
 
 const GOOGLE_BUTTON =
   "inline-flex min-h-touch items-center justify-center rounded-lg border border-accent bg-accent px-button-x font-semibold text-on-accent no-underline disabled:cursor-not-allowed disabled:opacity-60";
@@ -24,6 +33,8 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
   // The terms step (ADR-0046 question 6) shows only when sign-up is open AND Google just found no account
   // for this sign-in: an existing account never sees it. The box starts unticked, on purpose.
   const termsStep = offersSignup(signInMethods) && needsTermsStep(search);
+  // #568: an existing account that accepted an older version accepts this one, whatever the sign-up mode.
+  const reacceptStep = !termsStep && needsTermsReaccept(search);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const client = useQueryClient();
   const [username, setUsername] = useState("");
@@ -82,9 +93,19 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
       {offersGoogle(signInMethods) && (
         <>
           {/* A link, not fetch: the backend answers with a redirect to Google. */}
-          {termsStep ? (
+          {termsStep || reacceptStep ? (
             <fieldset className="grid gap-3 border-0 p-0">
-              <legend className="mb-2 font-semibold">Create your account</legend>
+              <legend className="mb-2 font-semibold">{reacceptStep ? "The Terms have changed" : "Create your account"}</legend>
+              {reacceptStep && (
+                <div className="grid gap-1 text-sm">
+                  <p className="mb-0">What changed:</p>
+                  <ul className="mb-0 grid gap-1 pl-5">
+                    {TERMS_CHANGES.map((change) => (
+                      <li key={change}>{change}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -95,7 +116,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
                 <span>
                   I accept the{" "}
                   <a href="/terms.html" target="_blank" rel="noopener noreferrer">
-                    Terms (opens in a new tab)
+                    {reacceptStep ? "updated Terms" : "Terms"} (opens in a new tab)
                   </a>
                   .
                 </span>
@@ -108,6 +129,12 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
                 <button type="button" disabled className={GOOGLE_BUTTON}>
                   Continue with Google
                 </button>
+              )}
+              {reacceptStep && (
+                // No session exists until the new version is accepted: declining just leaves the person signed out.
+                <a href="/app/login" className="justify-self-center text-sm">
+                  Decline and stay signed out
+                </a>
               )}
             </fieldset>
           ) : (

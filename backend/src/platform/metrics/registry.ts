@@ -153,8 +153,10 @@ export const QUERY_NAMES = [
   "alerts.serverId",
   "alerts.upsertStates",
   // identity
+  "identity.acceptedTermsVersion",
   "identity.addIdentity",
   "identity.authMethodsForUser",
+  "identity.recordTermsAcceptance",
   "identity.consumeLoginAttempt",
   "identity.createLoginAttempt",
   "identity.countUsersCreatedLastHour",

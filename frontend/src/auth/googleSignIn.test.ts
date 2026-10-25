@@ -1,13 +1,37 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { TERMS_VERSION, googleStartHref, needsTermsStep, offersGoogle, offersSignup, signInErrorText, termsReturnPath } from "./googleSignIn";
+import {
+  TERMS_CHANGES,
+  TERMS_VERSION,
+  googleStartHref,
+  needsTermsReaccept,
+  needsTermsStep,
+  offersGoogle,
+  offersSignup,
+  signInErrorText,
+  termsReturnPath,
+} from "./googleSignIn";
 
 describe("open sign-up helpers (ADR-0046)", () => {
   it("offersSignup needs google_signup in the list", () => {
     expect(offersSignup(["password", "google", "google_signup"])).toBe(true);
     expect(offersSignup(["password", "google"])).toBe(false);
     expect(offersSignup(undefined)).toBe(false);
+  });
+
+  it("needsTermsReaccept is true only for the terms_changed code (#568), and has its own fixed text", () => {
+    expect(needsTermsReaccept("?error=terms_changed")).toBe(true);
+    expect(needsTermsReaccept("?error=terms_required")).toBe(false);
+    expect(needsTermsReaccept("")).toBe(false);
+    expect(needsTermsStep("?error=terms_changed")).toBe(false);
+    expect(signInErrorText("?error=terms_changed")).toMatch(/^The Terms have changed since you last accepted them\./);
+  });
+
+  it("TERMS_CHANGES is a short, non-empty list of distinct lines", () => {
+    expect(TERMS_CHANGES.length).toBeGreaterThan(0);
+    expect(new Set(TERMS_CHANGES).size).toBe(TERMS_CHANGES.length);
+    for (const line of TERMS_CHANGES) expect(line.trim().length).toBeGreaterThan(0);
   });
 
   it("needsTermsStep is true only for the terms_required code", () => {

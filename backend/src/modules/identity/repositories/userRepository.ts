@@ -72,16 +72,37 @@ export async function takeSignupLock(db: Queryable): Promise<void> {
 const COUNT_RECENT_USERS = `
   SELECT count(*)::int AS n
   FROM identity.users
-  WHERE terms_accepted_at > now() - interval '1 hour'`;
+  WHERE terms_accepted_at > now() - interval '1 hour'
+    AND created_at > now() - interval '1 hour'`;
 
 /** C8: accounts that SIGNED UP in the last hour. Counted by `terms_accepted_at` (set only by open sign-up, at
- *  creation), so the seeded operator and any invited or bulk-made account never use up the cap. Uses the partial index. */
+ *  creation, or by re-accepting a changed version, #568), so the seeded operator and any invited or bulk-made account
+ *  never use up the cap. `created_at` keeps an older account that just re-accepted out of the count; the partial
+ *  index still bounds the scan. */
 export async function countUsersCreatedLastHour(db: Queryable): Promise<number> {
   const result = await timedQuery(db, "identity.countUsersCreatedLastHour", COUNT_RECENT_USERS, []);
   return parseOne(z.object({ n: z.number() }), result.rows, "identity.countUsersCreatedLastHour").n;
 }
 
-const SELECT_NAME_TAKEN = `SELECT 1 AS taken FROM identity.users WHERE display_name = $1 LIMIT 1`;
+const SELECT_TERMS_VERSION = `SELECT terms_version FROM identity.users WHERE id = $1`;
+
+/** The terms version this account last accepted, or null when it never accepted any (invited or seeded accounts). */
+export async function acceptedTermsVersion(db: Queryable, userId: string): Promise<string | null> {
+  const result = await timedQuery(db, "identity.acceptedTermsVersion", SELECT_TERMS_VERSION, [userId]);
+  return parseFirst(z.object({ terms_version: z.string().nullable() }), result.rows, "identity.acceptedTermsVersion")
+    ?.terms_version ?? null;
+}
+
+const UPDATE_TERMS_ACCEPTANCE = `
+  UPDATE identity.users SET terms_version = $2, terms_accepted_at = now()
+  WHERE id = $1`;
+
+/** #568: an existing account accepted a changed terms version (the time is the database's `now()`). */
+export async function recordTermsAcceptance(db: Queryable, userId: string, termsVersion: string): Promise<void> {
+  await timedQuery(db, "identity.recordTermsAcceptance", UPDATE_TERMS_ACCEPTANCE, [userId, termsVersion]);
+}
+
+const SELECT_NAME_TAKEN =`SELECT 1 AS taken FROM identity.users WHERE display_name = $1 LIMIT 1`;
 
 export async function displayNameTaken(db: Queryable, displayName: string): Promise<boolean> {
   const result = await timedQuery(db, "identity.displayNameTaken", SELECT_NAME_TAKEN, [displayName]);

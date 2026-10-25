@@ -118,6 +118,7 @@ const CASES: StateCase[] = [
     path: "/app/login?error=not_invited",
     shows: "This Google account hasn't been invited yet. Ask the server's owner for an invitation.",
   },
+  { scenario: "login-terms-changed", path: "/app/login?error=terms_changed", shows: "What changed:" },
   { scenario: "login-failed", shows: "Invalid username or password", act: signIn },
   { scenario: "login-rate-limited", shows: "Try again later", act: signIn },
   { scenario: "no-servers", shows: "No game servers are configured." },

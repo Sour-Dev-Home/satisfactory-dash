@@ -450,6 +450,8 @@ export const SCENARIOS = {
   "login-google": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
   // The backend's redirect after a failed Google sign-in (the text is fixed, never the query).
   "login-google-error": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
+  // #568: an existing account that accepted an older Terms version is sent back to accept the current one.
+  "login-terms-changed": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
   "login-failed": { session: ok(sessionAnonymous), login: fail(401, errorLoginFailed) },
   "login-rate-limited": { session: ok(sessionAnonymous), login: fail(429, errorRateLimited) },
   "no-servers": { servers: ok(serversNone) },
