@@ -379,8 +379,16 @@ the user already plans. We never ask for, schedule or trigger a restart.
 - Game or FRM changes the API port, token flow or Linux target.
 - systemd-creds is asked for, or the agent secret stops being written by the agent.
 
-## Questions for the owner (all nine original questions answered; see "Owner's answers")
-Remaining, few, each with a recommendation:
+## Questions for the owner (all answered)
+The owner answered the four remaining questions on 2026-10-25, verbatim: "Confirm. Yes. Yes. Yes. Assume restart to
+update thats seems standard and i assume rented servers let you restart". So the architect's reading of Q1, Q2 and Q6
+stands (the packaging is now confirmed), `min_safe_version` is enforced 14 days after the banner (48 hours for an
+exploited issue, the owner raising the minimum by hand), the compatibility window is as written, and the pairing code
+appears in the log and console with the `pairing.txt` fallback and chat after a spike. A mod update is **assumed to need
+a server restart** (standard; rented hosts let the user restart), so Decision 7's restart caveat is the design, not an
+open question; the rehearsal still records it, and "Revisit when" keeps the case where a test shows otherwise.
+
+The questions as asked:
 1. **Confirm the reading of Q1, Q2 and Q6** (the mod is primary, the agent stays for hosts where the player controls a
    process, packaging as a GHCR image plus a tarball). *Recommend: confirm; no action if you say nothing.*
 2. **Enforcement of `min_safe_version`:** the backend refuses a known-vulnerable version after a banner and a grace
