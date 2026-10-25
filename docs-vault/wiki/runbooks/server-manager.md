@@ -29,6 +29,12 @@ npm start -w server-manager
 `npm start` runs the checkout's Electron on `server-manager/` and opens the window. The app lives in the tray from then
 on (see "The tray" below). Run it as yourself: it needs no administrator rights and must not be run elevated.
 
+Electron 45 has no install script: `npm ci` installs only its package, and the Electron binary
+(`node_modules/electron/dist/`) downloads the first time Electron is started through Node, as `npm start` does. A
+shortcut or login item that points at `node_modules\electron\dist\electron.exe` directly skips that step. So after every
+`npm ci`, run `npm start -w server-manager` once before using one. Without the binary, `electron.exe` exits at once and
+only logs `Invalid file descriptor to ICU data received`.
+
 ## First run: the two folders
 
 1. **The server folder.** The window asks for the dedicated server's install folder, the one that holds
