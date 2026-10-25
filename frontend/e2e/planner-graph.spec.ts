@@ -146,7 +146,7 @@ test.describe("the factory canvas", () => {
     await page.getByRole("button", { name: "Graph" }).click();
     const overview = page.getByRole("img", { name: /^Graph of Factories: 2 factories, 1 connection/ });
     await expect(overview).toBeVisible();
-    await expect(overview.getByText("Iron Rod factory (+ Iron Rod)")).toBeVisible();
+    await expect(overview.getByText("Iron Rod factory (+ Iron Rod)", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open factory: Iron Rod factory" }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory: 2 groups, 1 connection/ })).toBeVisible();
