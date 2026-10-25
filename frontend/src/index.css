@@ -132,7 +132,7 @@
   --duration-skeleton-min: 300ms;
   --duration-reveal-budget: 400ms;
   --opacity-skeleton-dim: 0.55; /* the low point of the shimmer */
-  --opacity-stale: 0.7; /* a panel showing the game's last reading while it is unreachable (ADR-0052) */
+  --opacity-stale: 0.85; /* a panel showing the game's last reading while it is unreachable (ADR-0052) */
   --spacing-motion-rise: 4px; /* how far entering content travels */
   /* Tailwind's `transition-*` utilities use the tokens too. */
   --default-transition-duration: var(--duration-fast);
