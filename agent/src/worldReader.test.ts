@@ -102,6 +102,19 @@ describe("the world reader's schedule", () => {
   });
 });
 
+describe("resource node className (ADR-0055 PR 2)", () => {
+  it("sends the adapter's className in the resourceNodes ingest body, which the contract accepts", async () => {
+    const h = setup();
+    const real: ResourceNode = { type: "Iron Ore", purity: "pure", nodeType: "node", x: 1, y: 2, exploited: false, className: "Desc_OreIron_C" };
+    h.world.resourceNodes = [real];
+    await h.start();
+    const body = h.sentFor("resourceNodes")[0]!.body;
+    expect(ResourceNodesWorldIngestRequestSchema.safeParse(body).success).toBe(true);
+    expect((body as { data: ResourceNode[] }).data[0]!.className).toBe("Desc_OreIron_C");
+    await h.stop();
+  });
+});
+
 describe("sending only on change", () => {
   it("the first read after start always sends, as the contract's ingest body", async () => {
     const h = setup();

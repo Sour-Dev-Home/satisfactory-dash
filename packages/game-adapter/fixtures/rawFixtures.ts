@@ -121,6 +121,7 @@ export const trainRailFixture: RawFrmTrainRail = {
 // Real capture: docs-vault/raw-sources/captured-responses/frm-getResourceNode-2026-09-27-trimmed.json, item 1.
 export const resourceNodeFixture: RawFrmResourceNode = {
   Name: "Crude Oil",
+  ClassName: "Desc_LiquidOil_C",
   Purity: "Normal",
   NodeType: "Node",
   Exploited: false,
