@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Logger } from "pino";
 import { BottlenecksQuerySchema, BottlenecksResponseSchema, ConveyorsLayerDataSchema, endpoints } from "@satisfactory-dash/shared";
 import type { ServerDirectory } from "../../servers/index.js";
 import { resolveServer } from "../../servers/index.js";
@@ -18,19 +19,25 @@ export interface BottlenecksRouteDeps {
 }
 
 /**
- * The conveyors layer as the finder gets it. No row (never read yet, or an agent or backend that predates skip reports) is
- * `unsupported`; a stored skip is `tooLarge` (over the edge cap) or `unsupported` (an FRM without connection fields). A row the ingest truncated to its item cap is a partial
- * graph, which would mislead more than item level does, so it is `tooLarge`. An unreadable row is `unsupported` too.
+ * The conveyors layer as the finder gets it. No row (the agent has not sent one yet, or it predates the conveyors layer) is
+ * `notReceived`, which says nothing about FRM. Only a stored skip for the FRM version gate (`unsupportedFrm`) is `unsupported`
+ * (an FRM without connection fields); a skip for `tooManyEdges` is `tooLarge`. A row the ingest truncated to its item cap is a
+ * partial graph, which would mislead more than item level does, so it is `tooLarge`. A row that fails its schema is logged
+ * and treated as `notReceived`: it is not proof of an old FRM.
  */
-export async function readEdges(db: Queryable, serverId: string): Promise<BottleneckEdges> {
+export async function readEdges(db: Queryable, serverId: string, log?: Pick<Logger, "warn">): Promise<BottleneckEdges> {
   const row = await getLatestWorldLayer(db, serverId, "conveyors");
-  if (row === undefined) return "unsupported";
+  if (row === undefined) return "notReceived";
   // #577: a stored skip says why there is no graph (too large vs an FRM without connection fields).
   const skip = skipReasonOf(row);
-  if (skip !== undefined) return skip === "tooManyEdges" ? "tooLarge" : "unsupported";
+  if (skip !== undefined) return skip === "unsupportedFrm" ? "unsupported" : "tooLarge";
   if (row.truncated) return "tooLarge";
   const parsed = ConveyorsLayerDataSchema.safeParse(row.data);
-  return parsed.success ? parsed.data : "unsupported";
+  if (!parsed.success) {
+    log?.warn({ serverId, issues: parsed.error.issues.slice(0, 3).map((i) => i.message) }, "stored conveyors layer failed its schema; treating it as not received");
+    return "notReceived";
+  }
+  return parsed.data;
 }
 
 /**
@@ -50,7 +57,7 @@ export function createBottlenecksRouter(directory: ServerDirectory<TelemetryScop
     }
     if (!deps) throw new ServiceUnavailableError();
     const factory = await services.telemetry.production.getFactoryOverview();
-    const edges = await readEdges(deps.db, serverId);
+    const edges = await readEdges(deps.db, serverId, req.log);
     const data = findBottlenecks(factory.buildings, edges, { limit: query.data.limit });
     // The factory snapshot's own time and staleness (an agent server), not "now".
     sendValidated(res, BottlenecksResponseSchema, { ...snapshot(serverId, factory), data });

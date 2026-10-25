@@ -156,6 +156,7 @@ describe("PlannerView: states", () => {
   it.each([
     ["unsupported", "Item-level results only. Update FRM to 1.5.4 or newer for belt detail."],
     ["tooLarge", "Item-level results only: this factory's connection data is too large to read."],
+    ["notReceived", "Item-level results only. The agent hasn't sent belt data yet; if this stays, update the agent."],
   ] as const)("shows the %s mode's note and no sites", async (beltData, note) => {
     answer({ ...productionGraphEmpty, data: { ...productionGraphEmpty.data, beltData, notes: [] } });
     renderView();

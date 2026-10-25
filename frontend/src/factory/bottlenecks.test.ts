@@ -75,6 +75,18 @@ describe("sectionNotes", () => {
     expect(notes[0]).toMatch(/too large/);
     expect(notes[0]).not.toMatch(/FRM/);
   });
+
+  it("gives notReceived its own note, never the FRM one, even from a disagreeing backend", () => {
+    const filled = sectionNotes({ ...bottlenecksItemLevelOldFrm.data, beltData: "notReceived", notes: [] });
+    expect(filled).toHaveLength(1);
+    expect(filled[0]).toMatch(/agent hasn't sent belt data/);
+    const stray = sectionNotes({
+      ...bottlenecksItemLevelOldFrm.data,
+      beltData: "notReceived",
+      notes: [{ code: "updateFrm", text: "Update FRM to 1.5.4." }],
+    });
+    expect(stray.join(" ")).not.toMatch(/FRM/);
+  });
 });
 
 describe("sectionNotes against a backend that disagrees with its own mode", () => {

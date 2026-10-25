@@ -121,13 +121,16 @@ export const BottleneckSchema = z.object({
  * - `stale`: belt level, but some machines are on no conveyor yet (built since the last read) and fell back to item level.
  * - `unsupported`: item level only; the server's FRM has no connection fields (older than 1.5.4).
  * - `tooLarge`: item level only; the conveyors layer passed the 2 MB world-layer cap and was skipped (ADR-0038).
+ * - `notReceived`: item level only; the backend has no usable conveyors layer from the agent yet (never sent, or an agent
+ *   built before the layer existed). Says nothing about FRM. Additive (ADR-0007): an older client treats it as unknown.
  */
-export const BOTTLENECK_BELT_DATA_MODES = ["present", "stale", "unsupported", "tooLarge"] as const;
+export const BOTTLENECK_BELT_DATA_MODES = ["present", "stale", "unsupported", "tooLarge", "notReceived"] as const;
 
 /** The section's notes. `connectionsRefresh`: "connections refresh every 10 minutes" (owner answer 4, shown whenever the
  *  belt level ran). `updateFrm`: "item-level results only; update FRM to 1.5.4 or newer for belt detail" (owner answer
- *  3, with `beltData: "unsupported"`). `beltDataTooLarge`: the item-level fallback for `tooLarge`. */
-export const KNOWN_BOTTLENECK_NOTE_CODES = ["connectionsRefresh", "updateFrm", "beltDataTooLarge"] as const;
+ *  3, with `beltData: "unsupported"`). `beltDataTooLarge`: the item-level fallback for `tooLarge`. `beltDataNotReceived`:
+ *  the agent has not sent belt data yet and may need updating (with `beltData: "notReceived"`). */
+export const KNOWN_BOTTLENECK_NOTE_CODES = ["connectionsRefresh", "updateFrm", "beltDataTooLarge", "beltDataNotReceived"] as const;
 export type KnownBottleneckNoteCode = (typeof KNOWN_BOTTLENECK_NOTE_CODES)[number];
 
 export const BottleneckNoteSchema = z.object({

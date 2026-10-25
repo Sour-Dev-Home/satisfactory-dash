@@ -14,7 +14,7 @@ import { formatTime } from "../format";
 import { useNow } from "../lib/useNow";
 import { EnrolmentGuide } from "../selfServe/EnrolmentGuide";
 import { useSelectedServer } from "../servers/ServerContext";
-import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText } from "./agentText";
+import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText, versionText } from "./agentText";
 import { useHashTarget } from "../lib/useHashTarget";
 
 const isAgentAnchor = (id: string) => id === "agent";
@@ -179,7 +179,7 @@ export function AgentPanel({
         {agent.enrolled && (
           <>
             <dt>Agent version</dt>
-            <dd>{agent.agentVersion ?? "Not reported yet"}</dd>
+            <dd>{agent.agentVersion ? versionText(agent.agentVersion) : "Not reported yet"}</dd>
           </>
         )}
       </dl>

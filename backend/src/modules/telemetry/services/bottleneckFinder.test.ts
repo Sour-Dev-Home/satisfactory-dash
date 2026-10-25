@@ -443,6 +443,15 @@ describe("beltData modes and notes", () => {
     expect(r.findings[0].rootCause.cappedBy).toBeUndefined();
   });
 
+  it("notReceived: item level only, says the agent has sent nothing and never mentions FRM", () => {
+    const r = run([P, M], "notReceived");
+    expect(r.beltData).toBe("notReceived");
+    expect(r.notes.map((n) => n.code)).toEqual(["beltDataNotReceived"]);
+    expect(r.notes[0].text).toMatch(/agent hasn't sent belt data/);
+    expect(r.notes[0].text).not.toMatch(/FRM/);
+    expect(r.findings[0].rootCause.cappedBy).toBeUndefined();
+  });
+
   it("an empty edge list is a stale graph, not a crash", () => {
     const r = run([P, M], []);
     expect(r.beltData).toBe("stale");

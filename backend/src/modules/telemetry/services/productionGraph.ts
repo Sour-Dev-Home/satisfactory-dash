@@ -14,7 +14,7 @@ import {
   type ProductionGraph,
   type ProductionRate,
 } from "@satisfactory-dash/shared";
-import { CONNECTIONS_REFRESH_MINUTES, type BottleneckEdges } from "./bottleneckFinder.js";
+import { BELT_DATA_NOT_RECEIVED_TEXT, CONNECTIONS_REFRESH_MINUTES, type BottleneckEdges } from "./bottleneckFinder.js";
 import {
   TERMINAL_KINDS,
   buildGraph,
@@ -206,6 +206,10 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
   }
   if (edges === "tooLarge") {
     return emptyGraph("tooLarge", [{ code: "beltDataTooLarge", text: "No production graph; the belt and pipe data is too large to use on this save." }]);
+  }
+
+  if (edges === "notReceived") {
+    return emptyGraph("notReceived", [{ code: "beltDataNotReceived", text: `No production graph. ${BELT_DATA_NOT_RECEIVED_TEXT}` }]);
   }
 
   const sorted = [...buildings].sort((a, b) => byString(a.id, b.id));

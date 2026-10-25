@@ -9,7 +9,7 @@ import { UpstreamError } from "../../../platform/errors.js";
 import { InMemoryServerDirectory, createServersRouter } from "../../servers/index.js";
 import type { ServerAccess } from "../../servers/index.js";
 import type { TelemetryServices } from "../telemetryServices.js";
-import { createBottlenecksRouter } from "./bottlenecks.js";
+import { createBottlenecksRouter, readEdges } from "./bottlenecks.js";
 
 const access: ServerAccess = {
   getRole: async (publicId, userId) => (publicId === "default" && userId === "member" ? "viewer" : undefined),
@@ -55,6 +55,26 @@ const get = (app: ReturnType<typeof build>, path = endpoints.bottlenecks.path("d
   return user ? r.set("x-test-user", user) : r;
 };
 
+describe("readEdges", () => {
+  const dbWith = (rows: unknown[]) => ({ query: (_text: string, _values?: unknown[]) => Promise.resolve({ rows }) });
+
+  it("logs a warning for a row failing its schema and treats it as not received", async () => {
+    const warnings: unknown[][] = [];
+    const log = { warn: (...args: unknown[]) => void warnings.push(args) };
+    expect(await readEdges(dbWith([layerRow({ data: [{ id: 1 }] })]), "s1", log as never)).toBe("notReceived");
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("does not warn for a missing row, a skip or a good row", async () => {
+    const warnings: unknown[][] = [];
+    const log = { warn: (...args: unknown[]) => void warnings.push(args) };
+    expect(await readEdges(dbWith([]), "s1", log as never)).toBe("notReceived");
+    expect(await readEdges(dbWith([layerRow({ hash: "skipped:unsupportedFrm", data: [], count: 0 })]), "s1", log as never)).toBe("unsupported");
+    expect(Array.isArray(await readEdges(dbWith([layerRow()]), "s1", log as never))).toBe(true);
+    expect(warnings).toHaveLength(0);
+  });
+});
+
 describe("GET /api/servers/:serverId/bottlenecks", () => {
   it("signed out is 401", async () => {
     expect((await get(build(), undefined, null)).status).toBe(401);
@@ -68,11 +88,13 @@ describe("GET /api/servers/:serverId/bottlenecks", () => {
     expect((await get(build(), endpoints.bottlenecks.path("nope"))).status).toBe(404);
   });
 
-  it("no conveyors layer: 200, item level, beltData unsupported", async () => {
+  it("no conveyors layer: 200, item level, beltData notReceived (not an FRM problem)", async () => {
     const res = await get(build());
     expect(res.status).toBe(200);
     expect(BottlenecksResponseSchema.parse(res.body)).toEqual(res.body);
-    expect(res.body.data.beltData).toBe("unsupported");
+    expect(res.body.data.beltData).toBe("notReceived");
+    expect(res.body.data.notes.map((n: { code: string }) => n.code)).toEqual(["beltDataNotReceived"]);
+    expect(JSON.stringify(res.body.data.notes)).not.toMatch(/FRM/);
     expect(res.body.data.findings.length).toBeGreaterThan(0);
     expect(res.body.data.findings.length).toBeLessThanOrEqual(10);
   });
@@ -94,13 +116,15 @@ describe("GET /api/servers/:serverId/bottlenecks", () => {
   it("a stored skip maps tooManyEdges to tooLarge and unsupportedFrm to unsupported (#577)", async () => {
     const skipRow = (reason: string) => layerRow({ hash: `skipped:${reason}`, data: [], count: 0 });
     expect((await get(build({ rows: [skipRow("tooManyEdges")] }))).body.data.beltData).toBe("tooLarge");
-    expect((await get(build({ rows: [skipRow("unsupportedFrm")] }))).body.data.beltData).toBe("unsupported");
+    const frm = await get(build({ rows: [skipRow("unsupportedFrm")] }));
+    expect(frm.body.data.beltData).toBe("unsupported");
+    expect(frm.body.data.notes.map((n: { code: string }) => n.code)).toEqual(["updateFrm"]);
   });
 
-  it("a stored layer that no longer parses falls back to unsupported", async () => {
+  it("a stored layer that no longer parses is treated as not received, not as an old FRM", async () => {
     const res = await get(build({ rows: [layerRow({ data: [{ id: 1 }] })] }));
     expect(res.status).toBe(200);
-    expect(res.body.data.beltData).toBe("unsupported");
+    expect(res.body.data.beltData).toBe("notReceived");
   });
 
   it("limit caps the findings and sets truncated", async () => {
