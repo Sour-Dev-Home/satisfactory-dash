@@ -354,13 +354,14 @@ export function Shell() {
       <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-line">
         {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
-        {/* Tighter tabs on phones (no gap, px-2.5) so the five standard tabs fit at 390 px;
-            an operator's sixth still scrolls. */}
+        {/* Tighter tabs on phones (no gap, px-1.5, no letter-spacing) so the six standard tabs (Planner made
+            them six) fit at 390 px, the last one whole instead of cut by the fade; an operator's seventh
+            still scrolls. -mx-1.5 cancels px-1.5, so the first label stays on the page's text edge. */}
         <nav
           ref={nav}
           aria-label="Main"
           onScroll={measureNav}
-          className={cn("-mx-1 flex min-w-0 max-w-full gap-0 overflow-x-auto sm:gap-1", navFade)}
+          className={cn("-mx-1.5 flex min-w-0 max-w-full gap-0 overflow-x-auto sm:-mx-1 sm:gap-1", navFade)}
         >
           {visibleTabs(canManageServers).map((tab) => (
             <NavLink
@@ -375,7 +376,7 @@ export function Shell() {
                   // Inset focus ring: the nav scrolls sideways at 390 px, which clips an outer one.
                   // The display face and capitals come from index.css (nav[aria-label="Main"] a); the
                   // active tab carries an amber underline (#444), eased in and out by the motion tokens.
-                  "inline-flex min-h-touch flex-none items-center border-b-2 px-2.5 font-semibold sm:px-3 no-underline transition-colors focus-visible:-outline-offset-2",
+                  "inline-flex min-h-touch flex-none items-center border-b-2 px-1.5 font-semibold max-sm:tracking-normal sm:px-3 no-underline transition-colors focus-visible:-outline-offset-2",
                   isActive ? "border-accent text-fg-strong" : "border-transparent text-muted hover:border-line hover:text-fg-strong",
                 )
               }

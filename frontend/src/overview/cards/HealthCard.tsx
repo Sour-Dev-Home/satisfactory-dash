@@ -17,7 +17,7 @@ export type Tick = { rate: number; health: "healthy" | "slow" } | null;
  * outlined while loading or when the warning is hidden. The words beside it carry the meaning.
  */
 function Heart({ health, quiet }: { health: Shown; quiet: boolean }) {
-  const outlined = quiet || health === "pending";
+  const outlined = quiet || health === "pending" || health === "updating";
   return (
     <svg
       viewBox="0 0 24 24"

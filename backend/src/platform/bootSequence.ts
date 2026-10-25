@@ -25,7 +25,8 @@ export interface BootDeps {
   database?: { start(): Promise<void> };
   /** Loads the stored servers into the runtime (or registers the configured ones). Runs after the database is up. */
   loadServers(): Promise<void>;
-  /** Workers that need the database (sessions purge, history rollup, alert evaluation): started after the servers are loaded. */
+  /** Workers that need the database (metrics flush, and the leader lock that starts the leader-only workers, ADR-0054 D3):
+   *  started after the servers are loaded. */
   databaseWorkers: readonly StartableWorker[];
   isShuttingDown(): boolean;
   /** A startup failure with a database: the caller logs it and exits, so the Scheduled Task's restart takes over. */

@@ -1,6 +1,8 @@
 # ADR-0054: Deploy uptime without extra cost
 
-Status: **Proposed** (2026-10-24). The owner approves the build (issue #600). Amends ADR-0049 D5 ("expect the same
+Status: **Accepted** (2026-10-24): the owner approved it ("approve the adr-0054"), taking the questions at the end as
+recommended: D1 to D3 in the build order below, D4 built now, and the minute of looser rate limits and late command
+wake-ups per deploy accepted. Amends ADR-0049 D5 ("expect the same
 short outage on every rollout") and the single-instance note in `infra/aws/ecs.tf:116-120` that cites ADR-0010.
 
 The owner's requirement (2026-10-24): "Ideally we have decent uptime (though if that incurs more cost not worth it).

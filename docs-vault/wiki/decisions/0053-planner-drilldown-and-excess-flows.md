@@ -2,7 +2,8 @@
 
 Status: **proposed** (architect, 2026-10-24; the owner reviews before anything is built). Amends ADR-0050 Decisions 1, 2,
 3 and 8; everything else in ADR-0050 stands. Paths are under `backend/src/modules/` unless they start with a top-level
-directory.
+directory. **Amended by ADR-0055** (logical factories): its Decision 2 is replaced (not built) and its Decision 7's PRs
+are reshaped there; Decisions 1 and 3 stand, with bubbles per factory.
 
 ## Context
 

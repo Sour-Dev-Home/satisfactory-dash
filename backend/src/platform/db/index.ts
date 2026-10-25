@@ -15,6 +15,8 @@ export {
 export { parseFirst, parseOne, parseRows, RowShapeError } from "./rows.js";
 export type { StartupErrorClass } from "./errors.js";
 export { LATEST_MIGRATION } from "./latestMigration.js";
+export { createLeaderLockClient, LeaderLock, LEADER_LOCK_INTERVAL_MS, LEADER_LOCK_KEY } from "./leaderLock.js";
+export type { LeaderLockClient, LeaderLockOptions } from "./leaderLock.js";
 export { createDbPool } from "./pool.js";
 export { assertSchemaCurrent } from "./schemaVersion.js";
 export type { Queryable } from "./schemaVersion.js";

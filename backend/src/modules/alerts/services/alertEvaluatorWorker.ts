@@ -99,6 +99,17 @@ function toRule(row: RuleRow): Rule | undefined {
 }
 
 /**
+ * ADR-0054 D3.4: an agent's silence is measured from the later of its board's start and this evaluator's start. A
+ * follower's boards begin at boot, but its evaluator starts only when it becomes leader; the agent may have been
+ * reporting to the old leader all along, so without this the new leader would see `agent_offline` sooner than the
+ * `offlineSeconds` grace a restart gives today.
+ */
+export function withEvaluatorGrace(observations: ObservationSnapshot, evaluatorStartedAt: number): ObservationSnapshot {
+  if (observations.agent === undefined || observations.agent.startedAt >= evaluatorStartedAt) return observations;
+  return { ...observations, agent: { ...observations.agent, startedAt: evaluatorStartedAt } };
+}
+
+/**
  * ADR-0027 decision 4: evaluates every server's alert rules every 30 seconds, from the pollers' last readings (no game
  * server call, no history query), and records the transitions in the alert log. It only runs with a database. One tick
  * is: seed the preset rules for any server not yet seeded (existing servers included), read the rules, the states and
@@ -125,6 +136,8 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   private readonly metrics: MetricsRecorder;
   private heartbeat = emptyHeartbeat();
   private heartbeatFrom = 0;
+  /** ADR-0054 D3.4: when this evaluator started (on becoming leader, which may be long after the boards began). */
+  private startedAtMs = 0;
 
   constructor(
     private readonly db: AlertsDb,
@@ -149,7 +162,8 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
   start(): void {
     if (this.started || this.stopped) return;
     this.started = true;
-    this.heartbeatFrom = this.now();
+    this.startedAtMs = this.now();
+    this.heartbeatFrom = this.startedAtMs;
     this.schedule(0);
   }
 
@@ -264,7 +278,7 @@ export class AlertEvaluatorWorker implements BackgroundWorker {
           this.evaluators.set(server.id, evaluator);
         }
         const states = await loadStates(this.db, server.id);
-        const observations = server.observations.snapshot();
+        const observations = withEvaluatorGrace(server.observations.snapshot(), this.startedAtMs);
         const evaluation = evaluator.evaluate({
           now,
           observations,

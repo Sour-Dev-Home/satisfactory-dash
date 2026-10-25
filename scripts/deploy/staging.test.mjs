@@ -37,8 +37,11 @@ function fakeDeps(opts = {}) {
   const logs = [];
   const requests = [];
   let t = 0;
-  let stopped = false;
+  const stoppedTasks = new Set();
+  let runs = 0;
   let describes = 0;
+  // ADR-0054 D2: tasks 1..pullFails stop at once with a pull failure; a later one runs normally.
+  const PULL = "CannotPullContainerError: ref pull has been retried 1 time(s): failed to resolve reference";
   const params = new Map([
     ["/satis/deploy/prod/released", opts.released ?? JSON.stringify({ sha: "b".repeat(40), backend: D("5"), ops: D("6"), taskDefinition: "x", previous: null })],
     ["/satis/deploy/staging/task-definition", "arn:aws:ecs:us-east-1:123456789012:task-definition/satis-staging:1"],
@@ -56,22 +59,26 @@ function fakeDeps(opts = {}) {
       if (svc === "ssm" && op === "get-parameter") return params.get(arg("--name"));
       if (op === "describe-task-definition") return { taskDefinition: { ...stagingBase(), ...opts.base } };
       if (op === "register-task-definition") return { taskDefinition: { taskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/satis-staging:2" } };
-      if (op === "run-task") return opts.noStart ? { tasks: [], failures: [{ reason: "RESOURCE:CPU" }] } : { tasks: [{ taskArn: TASK }] };
-      if (op === "stop-task") return (stopped = true), {};
+      if (op === "run-task") return opts.noStart ? { tasks: [], failures: [{ reason: "RESOURCE:CPU" }] } : { tasks: [{ taskArn: runs++ === 0 ? TASK : `${TASK}-${runs}` }] };
+      if (op === "stop-task") return stoppedTasks.add(arg("--task")), {};
       if (op === "describe-tasks") {
         describes++;
+        const arn = arg("--tasks");
+        const n = arn === TASK ? 1 : Number(arn.split("-").pop());
+        const stopped = stoppedTasks.has(arn);
+        const pullFailed = n <= (opts.pullFails ?? 0);
         if (opts.describeThrowsWhenStopping && stopped) throw new Error("ThrottlingException\nrate exceeded");
         const lag = describes <= (opts.exitLag ?? 0);
-        const dead = stopped || (opts.diesAt !== undefined && t >= opts.diesAt);
+        const dead = stopped || pullFailed || (opts.diesAt !== undefined && t >= opts.diesAt);
         return {
           tasks: [{
             lastStatus: dead ? "STOPPED" : "RUNNING",
-            stoppedReason: dead && !stopped ? "Essential container in task exited" : undefined,
+            stoppedReason: pullFailed ? (opts.pullOnContainer ? "Task failed to start" : PULL) : dead && !stopped ? (opts.stopReason ?? "Essential container in task exited") : undefined,
             containers: [
               { name: "postgres", exitCode: dead ? 0 : undefined },
               { name: "db-previous", exitCode: lag ? undefined : (opts.previousExit ?? 0) },
               { name: "db-setup", exitCode: lag ? undefined : (opts.setupExit ?? 0) },
-              { name: "backend", exitCode: dead ? 137 : undefined },
+              { name: "backend", exitCode: dead ? 137 : undefined, ...(pullFailed && opts.pullOnContainer ? { reason: PULL } : {}) },
               { name: "cloudflared", exitCode: dead ? 137 : undefined },
             ],
           }],
@@ -311,7 +318,7 @@ const registry = (images, error) => ({
 
 test("resolveAuto: the newest published images on main, even when the triggering commit published none (coalesced runs)", () => {
   // The run is for NEWER (no backend change); SHA, a merge before it, did publish: it must still ship.
-  assert.deepEqual(resolveAuto(registry({ [SHA]: [D("1"), D("2")] }), NEWER), { sha: SHA, backend: D("1"), ops: D("2"), skip: "false" });
+  assert.deepEqual(resolveAuto(registry({ [SHA]: [D("1"), D("2")] }), NEWER), { sha: SHA, backend: D("1"), ops: D("2"), inputs: "", skip: "false" });
   // The triggering commit's own images when it published them.
   assert.equal(resolveAuto(registry({ [NEWER]: [D("3"), D("4")], [SHA]: [D("1"), D("2")] }), SHA).sha, NEWER);
   // Nothing published anywhere in reach: a green skip.
@@ -329,10 +336,101 @@ test("resolveAuto fails loudly on anything but a missing image, never shipping a
 
 test("an automatic staging run skips images production already runs, before starting anything", async () => {
   const deps = fakeDeps({ released: JSON.stringify({ sha: SHA, backend: D("3"), ops: D("4"), taskDefinition: "x", previous: null }) });
-  assert.deepEqual(await staging(deps, target, { ...STAGING, skipIfReleased: true }), { skipped: true });
+  assert.deepEqual(await staging(deps, target, { ...STAGING, skipIfReleased: true }), { skipped: true, reason: "images" });
   assert.ok(!ops(deps).includes("register-task-definition") && !ops(deps).includes("run-task"));
   // A dispatched deploy may re-ship them on purpose.
   const again = fakeDeps({ released: JSON.stringify({ sha: SHA, backend: D("3"), ops: D("4"), taskDefinition: "x", previous: null }) });
   assert.equal((await staging(again, target)).skipped, undefined);
   assert.ok(ops(again).includes("run-task"));
+});
+
+// ADR-0054 D1: the build-inputs hash. A valid one is 64 hex characters.
+const H = (c) => c.repeat(64);
+const releasedWith = (extra) => JSON.stringify({ sha: "b".repeat(40), backend: D("5"), ops: D("6"), taskDefinition: "x", previous: null, ...extra });
+const auto = { ...STAGING, skipIfReleased: true };
+
+test("an automatic run skips new images built from the inputs production's release was built from", async () => {
+  const deps = fakeDeps({ released: releasedWith({ inputs: H("a") }) });
+  assert.deepEqual(await staging(deps, { ...target, inputs: H("a") }, auto), { skipped: true, reason: "inputs" });
+  assert.ok(!ops(deps).includes("register-task-definition") && !ops(deps).includes("run-task"), "nothing registered or started");
+  assert.match(deps.logs.join("\n"), /nothing deployable changed/);
+});
+
+for (const [name, released, inputs] of [
+  ["different inputs", { inputs: H("a") }, H("b")],
+  ["a release record from before the hash (no inputs)", {}, H("a")],
+  ["images without the label", { inputs: H("a") }, undefined],
+  ["neither side has a hash", {}, undefined],
+  ["an empty hash on both sides", { inputs: "" }, ""],
+  ["a malformed hash on both sides", { inputs: "zz" }, "zz"],
+  ["an upper-case copy of the hash", { inputs: H("A") }, H("A")],
+  ["a record hash that is not a string", { inputs: 7 }, 7],
+]) {
+  test(`an automatic run deploys on ${name}`, async () => {
+    const deps = fakeDeps({ released: releasedWith(released) });
+    const r = await staging(deps, { ...target, inputs }, auto);
+    assert.equal(r.skipped, undefined);
+    assert.ok(ops(deps).includes("run-task"));
+  });
+}
+
+test("a dispatched deploy never skips, even on equal inputs or equal images", async () => {
+  const deps = fakeDeps({ released: releasedWith({ inputs: H("a") }) });
+  assert.equal((await staging(deps, { ...target, inputs: H("a") })).skipped, undefined);
+  assert.ok(ops(deps).includes("run-task"));
+  const same = fakeDeps({ released: releasedWith({ backend: D("3"), ops: D("4"), inputs: H("a") }) });
+  assert.equal((await staging(same, { ...target, inputs: H("a") }, { ...STAGING, skipIfReleased: false })).skipped, undefined);
+});
+
+test("nothing released yet never skips on inputs", async () => {
+  const deps = fakeDeps({ released: "{}" });
+  assert.equal((await staging(deps, { ...target, inputs: H("a") }, auto)).skipped, undefined);
+});
+
+// ADR-0054 D2: a CannotPullContainerError stop retries once after 30 s.
+const stoppedArns = (deps) => deps.calls.filter((c) => c.args[1] === "stop-task").map((c) => c.args[c.args.indexOf("--task") + 1]);
+const runCount = (deps) => deps.calls.filter((c) => c.args[1] === "run-task").length;
+
+test("a pull failure retries once after 30 s and passes; both tasks are stopped", async () => {
+  const deps = fakeDeps({ pullFails: 1 });
+  await staging(deps, target);
+  const runs = deps.calls.filter((c) => c.args[1] === "run-task");
+  assert.equal(runs.length, 2, "started twice");
+  assert.equal(deps.calls.filter((c) => c.args[1] === "register-task-definition").length, 1, "the same revision both times");
+  assert.deepEqual(runs[0].args, runs[1].args);
+  assert.deepEqual(stoppedArns(deps), [TASK, `${TASK}-2`]);
+  assert.ok(deps.now() >= 30_000, "waited 30 s");
+  assert.match(deps.logs.join("\n"), /could not pull an image \(CannotPullContainerError.*starting it once more in 30 s/);
+  assert.match(deps.logs.join("\n"), /all good/);
+});
+
+test("a pull failure shown only on the container (task: 'Task failed to start') retries too", async () => {
+  const deps = fakeDeps({ pullFails: 1, pullOnContainer: true });
+  await staging(deps, target);
+  assert.equal(runCount(deps), 2);
+  assert.match(deps.logs.join("\n"), /could not pull an image \(Task failed to start: CannotPullContainerError/);
+});
+
+test("two pull failures fail the run, and the second task is stopped too", async () => {
+  const deps = fakeDeps({ pullFails: 2 });
+  await assert.rejects(staging(deps, target), /stopped before it answered \(CannotPullContainerError/);
+  assert.equal(runCount(deps), 2, "only one retry");
+  assert.deepEqual(stoppedArns(deps), [TASK, `${TASK}-2`]);
+});
+
+for (const reason of ["Essential container in task exited", "ResourceInitializationError: unable to pull secrets", "Task failed ELB health checks"]) {
+  test(`any other stop does not retry (${reason})`, async () => {
+    const deps = fakeDeps({ upAt: 10 ** 9, diesAt: 20_000, stopReason: reason });
+    await assert.rejects(staging(deps, target), /stopped before it answered/);
+    assert.equal(runCount(deps), 1);
+  });
+}
+
+test("a retry whose run-task fails reports that and leaves nothing more to stop", async () => {
+  const deps = fakeDeps({ pullFails: 1 });
+  const aws = deps.aws;
+  let n = 0;
+  deps.aws = (args, input) => (args[1] === "run-task" && n++ === 1 ? { tasks: [], failures: [{ reason: "RESOURCE:MEMORY" }] } : aws(args, input));
+  await assert.rejects(staging(deps, target), /did not start.*RESOURCE:MEMORY/);
+  assert.deepEqual(stoppedArns(deps), [TASK], "only the first task, which ran");
 });

@@ -26,6 +26,7 @@ export const WORKSPACES = ["packages/shared", "packages/game-adapter", "frontend
 export const SETUP = [
   /^\.github\//,
   /(^|\/)package(-lock)?\.json$/,
+  /(^|\/)\.npmrc$/,
   /^\.node-version$/,
   /^\.nvmrc$/,
   /^\.gitattributes$/,

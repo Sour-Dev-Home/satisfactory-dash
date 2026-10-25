@@ -20,6 +20,9 @@ export interface RuntimeServer<TServices> extends ServerSummary {
   /** ADR-0031: `agent` for a server reached through an edge agent (its runtime is fed by the agent's snapshots, not by pollers).
    *  Absent for a server the backend polls itself. */
   kind?: "agent";
+  /** ADR-0054 D3: builds a fresh, unstarted copy of a polled server (its workers are one-shot). Used when this instance
+   *  stops being the leader, so the next leadership term can start new pollers. Ignored for an agent server. */
+  rebuild?: (displayName: string) => RuntimeServer<TServices>;
 }
 
 /**
@@ -43,16 +46,21 @@ export interface ServerRuntimeOptions {
   /** Called after a server was removed and its workers stopped, so in-memory state keyed by its id can be dropped (#516:
    *  a re-created id must not inherit it). */
   onRemoved?: (serverId: string) => void;
+  /** ADR-0054 D3: a polled server's workers (the pollers that read the game server) run only while this instance is the
+   *  leader (`setLeader`). An agent server's workers run on every instance. Without it the instance is always leader. */
+  leaderGated?: boolean;
 }
 
 export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
   private readonly byId = new Map<string, RuntimeServer<TServices>>();
   private running = false;
+  private leader: boolean;
 
   constructor(
     entries: RuntimeServer<TServices>[] = [],
     private readonly options: ServerRuntimeOptions = {},
   ) {
+    this.leader = options.leaderGated !== true;
     for (const entry of entries) {
       this.register(entry);
     }
@@ -83,6 +91,7 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
   }
 
   private startWorkers(entry: RuntimeServer<TServices>): void {
+    if (entry.kind !== "agent" && !this.leader) return; // ADR-0054 D3: a follower does not poll game servers
     for (const worker of entry.workers) {
       try {
         worker.start();
@@ -157,6 +166,38 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
     for (const entry of this.byId.values()) {
       this.startWorkers(entry);
     }
+  }
+
+  /**
+   * ADR-0054 D3: becoming the leader starts every polled server's workers (if the runtime is running); stepping down
+   * stops them. The workers are one-shot, so on stepping down each polled entry is first swapped for a fresh, unstarted
+   * build (`rebuild`), which the next term starts. The swap is synchronous, so a `setLeader(true)` that follows at once
+   * starts the fresh entries while the old ones finish stopping. No-op when the state does not change.
+   */
+  async setLeader(leader: boolean): Promise<void> {
+    if (leader === this.leader) return;
+    this.leader = leader;
+    const polled = [...this.byId.values()].filter((entry) => entry.kind !== "agent");
+    if (leader) {
+      if (this.running) {
+        for (const entry of polled) this.startWorkers(entry);
+      }
+      return;
+    }
+    const stopping: Promise<void>[] = [];
+    for (const old of polled) {
+      if (old.rebuild !== undefined) {
+        try {
+          this.byId.set(old.id, { ...old.rebuild(old.displayName), rebuild: old.rebuild });
+        } catch (err) {
+          // The old entry stays: it keeps serving reads, but its pollers cannot run again until it is rebuilt by an edit.
+          if (!this.options.onWorkerStartError) throw err;
+          this.options.onWorkerStartError(old.id, err);
+        }
+      }
+      stopping.push(this.stopWorkers(old));
+    }
+    await Promise.all(stopping);
   }
 
   /** Stops every server's workers (servers stay registered). */

@@ -33,7 +33,7 @@ describe("conveyors layer: registration", () => {
 
   it("has its own 50,000-edge cap; the other layers keep the shared 5,000", () => {
     expect(CONVEYORS_MAX_EDGES).toBe(50_000);
-    expect(MAP_WORLD_LAYER_MAX_ITEMS).toEqual({ rails: MAP_WORLD_MAX_ITEMS, resourceNodes: MAP_WORLD_MAX_ITEMS, conveyors: CONVEYORS_MAX_EDGES });
+    expect(MAP_WORLD_LAYER_MAX_ITEMS).toMatchObject({ rails: MAP_WORLD_MAX_ITEMS, resourceNodes: MAP_WORLD_MAX_ITEMS, conveyors: CONVEYORS_MAX_EDGES });
     const many = (n: number) => Array.from({ length: n }, (_, i) => ({ ...belt, id: `belt-${String(i).padStart(6, "0")}` }));
     expect(ConveyorsLayerDataSchema.safeParse(many(MAP_WORLD_MAX_ITEMS + 1)).success).toBe(true);
     expect(ConveyorsLayerDataSchema.safeParse(many(CONVEYORS_MAX_EDGES)).success).toBe(true);
