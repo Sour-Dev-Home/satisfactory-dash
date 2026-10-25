@@ -53,6 +53,12 @@ describe("node text", () => {
     for (const l of wrapText("Reinforced Iron Plate: 5.25 / 5.25 items/min")) expect(l.length).toBeLessThanOrEqual(MAX_LINE_CHARS);
   });
 
+  it("keeps an output's figures and unit on one line", () => {
+    const lines = nodeBodyLines({ ...miner, recipe: null, products: [{ ...miner.products[0], name: "Iron Ingot", currentPerMinute: 120, maxPerMinute: 120 }] });
+    expect(lines).toContain("Iron Ingot:");
+    expect(lines.some((l) => l.replaceAll(" ", " ") === "120 / 120 items/min")).toBe(true);
+  });
+
   it("cuts a long title with an ellipsis", () => {
     const t = nodeTitle({ name: "Particle Accelerator Mk.2 Extended", count: 12 });
     expect(t.length).toBe(MAX_TITLE_CHARS);

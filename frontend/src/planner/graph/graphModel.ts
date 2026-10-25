@@ -38,6 +38,12 @@ export function wrapText(text: string, max = MAX_LINE_CHARS, maxLines = MAX_WRAP
   return lines.length > 0 ? lines : [""];
 }
 
+/** "Iron Ingot: 120 / 120 items/min" with no-break spaces after the colon, so a wrap leaves the figures and their unit together. */
+function keepFigures(line: string): string {
+  const at = line.indexOf(": ");
+  return at < 0 ? line : line.slice(0, at + 2) + line.slice(at + 2).replaceAll(" ", " ");
+}
+
 /** The card's heading, "8× Constructor" (a single machine has no count). */
 export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name, MAX_TITLE_CHARS);
 
@@ -50,7 +56,7 @@ export function nodeBody(node: PlannerNode): { lines: string[]; recipeLines: num
   const lines = [...recipe];
   if (node.products.length === 0) lines.push("No output data");
   else {
-    for (const rate of node.products.slice(0, MAX_OUTPUT_LINES)) lines.push(...wrapText(outputLine(rate)));
+    for (const rate of node.products.slice(0, MAX_OUTPUT_LINES)) lines.push(...wrapText(keepFigures(outputLine(rate))));
     const more = node.products.length - MAX_OUTPUT_LINES;
     if (more > 0) lines.push(`+${more} more ${more === 1 ? "output" : "outputs"}`);
   }
