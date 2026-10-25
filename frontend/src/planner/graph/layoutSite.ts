@@ -7,11 +7,11 @@ import { edgeLabel, edgeLabelLines, nodeBodyLines, nodeTitle } from "./graphMode
 // labels `text-sm` 14 px). The title's baseline is TITLE_H down from the card's top, each line LINE_H below the last.
 export const CHAR_W_TITLE = 9.2;
 export const CHAR_W_BODY = 7.7;
-export const NODE_PAD_X = 12;
+export const NODE_PAD_X = 10;
 export const NODE_PAD_Y = 5;
 export const TITLE_H = 24;
 export const LINE_H = 20;
-export const NODE_MIN_W = 120;
+export const NODE_MIN_W = 100;
 export const LABEL_H = 18;
 /** One line of an edge label (`text-sm` 14 px). */
 export const LABEL_LINE_H = 16;
