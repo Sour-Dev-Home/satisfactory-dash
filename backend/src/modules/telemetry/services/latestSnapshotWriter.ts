@@ -165,12 +165,12 @@ export class LatestSnapshotWriter implements BackgroundWorker {
   }
 
   private async write(): Promise<void> {
-    const state = this.store.persistedState();
-    if (state === undefined) return;
-    const key = changeKey(state);
-    if (key === this.writtenKey) return;
-    const write = this.toWrite(state);
     try {
+      const state = this.store.persistedState();
+      if (state === undefined) return;
+      const key = changeKey(state);
+      if (key === this.writtenKey) return;
+      const write = this.toWrite(state);
       await this.repo.upsert(this.serverPublicId, write);
       this.writtenKey = key;
     } catch (err) {
