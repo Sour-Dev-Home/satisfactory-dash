@@ -307,7 +307,9 @@ export default function SiteGraph({
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
-            className="max-h-map min-h-map-min w-full cursor-grab touch-none rounded-card border border-line bg-surface"
+            // A pan must not start a text selection or drag a building icon away as an image.
+            onDragStart={(e) => e.preventDefault()}
+            className="max-h-map min-h-map-min w-full cursor-grab touch-none select-none rounded-card border border-line bg-surface"
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">

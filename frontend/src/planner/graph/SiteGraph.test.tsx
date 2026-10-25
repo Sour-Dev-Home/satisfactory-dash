@@ -151,6 +151,13 @@ describe("the site graph", () => {
     expect(scaleOf(svg)).toBeGreaterThan(k);
   });
 
+  it("a drag on the canvas selects no text and never drags a building icon away as an image", async () => {
+    const svg = await openGraph();
+    expect(svg).toHaveClass("select-none");
+    // fireEvent returns false when a handler cancelled the event.
+    expect(fireEvent.dragStart(svg.querySelector("text") ?? svg)).toBe(false);
+  });
+
   it("pinches with two pointers: the distance scales the view, and a lifted finger leaves a one-finger pan", async () => {
     const svg = await openGraph();
     const k0 = scaleOf(svg);
