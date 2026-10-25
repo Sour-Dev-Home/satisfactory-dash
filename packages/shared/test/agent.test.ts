@@ -368,6 +368,8 @@ describe("agent contract: endpoints", () => {
     const all = Object.values(endpoints.agentApi);
     expect(all.map((e) => `${e.method} ${e.route}`)).toEqual([
       "POST /agent/v1/enroll",
+      "POST /agent/v1/pairings",
+      "POST /agent/v1/pairings/poll",
       "POST /agent/v1/snapshots",
       "GET /agent/v1/commands",
       "POST /agent/v1/commands/:commandId/result",
