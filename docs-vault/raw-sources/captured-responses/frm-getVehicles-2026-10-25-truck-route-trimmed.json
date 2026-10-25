@@ -1,0 +1,72 @@
+Captured: 2026-10-25T02:51Z, the mod project's separate test dedicated server (not the owner's live server), read-only. Versions at capture time: FicsitRemoteMonitoring 1.5.4, SML 3.12.0, FactoryGame 513885.
+Method: GET http://127.0.0.1:18081/getVehicles (FRM Web Server over loopback on the test server, no token needed).
+Scenario: an existing owner save with six drone ports and a truck route (one tractor on autopilot between two truck stations), loaded for the capture; nothing was built or changed. Purpose: ADR-0055 drone and truck route inference (PRs 12a/12b).
+Full response: 1 item, 1235 bytes. Keys of every item: ID, Name, ClassName, location, LocationSource, PathName, Route, NextStop, NextStopIndex, IsCurrentlyDocking, AutoPilotStatus, Driver, CurrentGear, ForwardSpeed, EngineRPM, ThrottlePercent, Airborne, FollowingPath, Autopilot, HasFuel, FuelConsumption, Inventory, FuelInventory, features.
+Trimmed (excerpt; frm-license-status-2026-09-27.md): kept the only item. The field features is REMOVED; every other field is unmodified.
+Measured over the full response:
+  - Route lists the stops in order as { Index, Name, IsStation, IsNextStop, PathNodeGUID }. Both stops are named "Truck Station" (the same as all three stations), so Name cannot tell which station a stop is, and getTruckStation has no PathNodeGUID to match. PathName is "Truck Station -> Truck Station".
+  - Driver is "" (no one driving; on autopilot). A driven vehicle would carry a player name here: redact it in any later capture.
+Redacted: nothing needed redacting (Driver empty; no player id or save name in the response).
+---
+[
+  {
+    "ID": "BP_Tractor_C_2147000841",
+    "Name": "Tractor",
+    "ClassName": "BP_Tractor_C",
+    "location": {
+      "x": -97558.47377400452,
+      "y": -58748.73942176903,
+      "z": 18425.084899064994,
+      "rotation": 359.68321006868274,
+      "pitch": -0.0720087865501062
+    },
+    "LocationSource": "Autopilot",
+    "PathName": "Truck Station -> Truck Station",
+    "Route": [
+      {
+        "Index": 0,
+        "Name": "Truck Station",
+        "IsStation": true,
+        "IsNextStop": true,
+        "PathNodeGUID": "3FB25224-47F0-332A-297E-AA947FF06759"
+      },
+      {
+        "Index": 1,
+        "Name": "Truck Station",
+        "IsStation": true,
+        "IsNextStop": false,
+        "PathNodeGUID": "C02C25DC-4828-21A7-104D-71849DC67FAE"
+      }
+    ],
+    "NextStop": "Truck Station",
+    "NextStopIndex": 0,
+    "IsCurrentlyDocking": false,
+    "AutoPilotStatus": "None",
+    "Driver": "",
+    "CurrentGear": 0,
+    "ForwardSpeed": 69.49622460937499,
+    "EngineRPM": 0,
+    "ThrottlePercent": 0,
+    "Airborne": true,
+    "FollowingPath": false,
+    "Autopilot": true,
+    "HasFuel": true,
+    "FuelConsumption": 0.05000000074505806,
+    "Inventory": [
+      {
+        "Name": "Versatile Framework",
+        "ClassName": "Desc_SpaceElevatorPart_2_C",
+        "Amount": 1229,
+        "MaxAmount": 50
+      }
+    ],
+    "FuelInventory": [
+      {
+        "Name": "Coal",
+        "ClassName": "Desc_Coal_C",
+        "Amount": 86,
+        "MaxAmount": 100
+      }
+    ]
+  }
+]

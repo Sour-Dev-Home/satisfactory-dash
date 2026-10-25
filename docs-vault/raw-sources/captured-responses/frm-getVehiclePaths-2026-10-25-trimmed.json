@@ -1,0 +1,107 @@
+Captured: 2026-10-25T02:51Z, the mod project's separate test dedicated server (not the owner's live server), read-only. Versions at capture time: FicsitRemoteMonitoring 1.5.4, SML 3.12.0, FactoryGame 513885.
+Method: GET http://127.0.0.1:18081/getVehiclePaths (FRM Web Server over loopback on the test server, no token needed).
+Scenario: an existing owner save with six drone ports and a truck route (one tractor on autopilot between two truck stations), loaded for the capture; nothing was built or changed. Purpose: ADR-0055 drone and truck route inference (PRs 12a/12b).
+Full response: 150 items, 97811 bytes. Keys of every item: ID, Name, ClassName, location, BoundingBox, ColorSlot, VehicleType, PathLength, PathPoints.
+Trimmed (excerpt; frm-license-status-2026-09-27.md): kept 3 of 150 items, the segment nearest each truck station. BoundingBox and ColorSlot are REMOVED; every other field is unmodified.
+Measured over the full response (all 150 items):
+  - Every item is one Build_VehiclePath_Tractor_C segment with exactly 2 PathPoints (its start and end), VehicleType [BP_Tractor_C], Name "Tractor Vehicle Path". Sum of PathLength: 404511.
+  - No segment carries a path-node id, a station reference or a vehicle reference. Inference (not stated by FRM): a route can only be rebuilt by chaining segments whose end and start points coincide.
+  - PathLength's unit is not documented; the first kept segment's PathLength against the straight distance between its two points suggests game units (centimetres) along the curve.
+  - Nearest path point to each truck station (station order as in getTruckStation): 114 m, 0 m, 0 m. The two stations at 0 m sit on the path network; the one 114 m away does not, so position alone tells which two stations the tractor's two-stop route serves.
+Redacted: nothing needed redacting.
+---
+[
+  {
+    "ID": "Build_VehiclePath_Tractor_C_2147453537",
+    "Name": "Tractor Vehicle Path",
+    "ClassName": "Build_VehiclePath_Tractor_C",
+    "location": {
+      "x": -70770.1875,
+      "y": -149694.171875,
+      "z": 18422.931640625,
+      "rotation": 90,
+      "pitch": 0
+    },
+    "VehicleType": [
+      {
+        "Name": "BP_Tractor_C",
+        "ClassName": "BP_Tractor_C"
+      }
+    ],
+    "PathLength": 1596.9541015625,
+    "PathPoints": [
+      {
+        "x": -70770.1875,
+        "y": -149694.171875,
+        "z": 18422.931640625
+      },
+      {
+        "x": -69500,
+        "y": -150300,
+        "z": 18400.005859375
+      }
+    ]
+  },
+  {
+    "ID": "Build_VehiclePath_Tractor_C_2147453462",
+    "Name": "Tractor Vehicle Path",
+    "ClassName": "Build_VehiclePath_Tractor_C",
+    "location": {
+      "x": -149469.015625,
+      "y": -28072.48828125,
+      "z": 18422.568359375,
+      "rotation": 90,
+      "pitch": 0
+    },
+    "VehicleType": [
+      {
+        "Name": "BP_Tractor_C",
+        "ClassName": "BP_Tractor_C"
+      }
+    ],
+    "PathLength": 1359.0643310546875,
+    "PathPoints": [
+      {
+        "x": -149469.015625,
+        "y": -28072.48828125,
+        "z": 18422.568359375
+      },
+      {
+        "x": -150300,
+        "y": -27100,
+        "z": 18400.01171875
+      }
+    ]
+  },
+  {
+    "ID": "Build_VehiclePath_Tractor_C_2147453436",
+    "Name": "Tractor Vehicle Path",
+    "ClassName": "Build_VehiclePath_Tractor_C",
+    "location": {
+      "x": -97434.5078125,
+      "y": -46491.84375,
+      "z": 18422.56640625,
+      "rotation": 90,
+      "pitch": 0
+    },
+    "VehicleType": [
+      {
+        "Name": "BP_Tractor_C",
+        "ClassName": "BP_Tractor_C"
+      }
+    ],
+    "PathLength": 2879.5947265625,
+    "PathPoints": [
+      {
+        "x": -97434.5078125,
+        "y": -46491.84375,
+        "z": 18422.56640625
+      },
+      {
+        "x": -97471.7578125,
+        "y": -49371.171875,
+        "z": 18422.595703125
+      }
+    ]
+  }
+]

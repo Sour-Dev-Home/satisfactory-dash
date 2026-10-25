@@ -1,0 +1,110 @@
+Captured: 2026-10-25T02:51Z, the mod project's separate test dedicated server (not the owner's live server), read-only. Versions at capture time: FicsitRemoteMonitoring 1.5.4, SML 3.12.0, FactoryGame 513885.
+Method: GET http://127.0.0.1:18081/getTruckStation (FRM Web Server over loopback on the test server, no token needed).
+Scenario: an existing owner save with six drone ports and a truck route (one tractor on autopilot between two truck stations), loaded for the capture; nothing was built or changed. Purpose: ADR-0055 drone and truck route inference (PRs 12a/12b).
+Full response: 3 items, 2577 bytes. Keys of every item: ID, Name, ClassName, location, BoundingBox, ColorSlot, LoadMode, TransferRate, MaxTransferRate, StationStatus, FuelRate, Inventory, FuelInventory, features, PowerInfo.
+Trimmed (excerpt, not the full response; frm-license-status-2026-09-27.md): kept all 3 items. The fields BoundingBox, ColorSlot and features are REMOVED; location is kept (it is the only way to tie a station to a path, see below); every other field is unmodified.
+Measured over the full response:
+  - All 3 stations have the same Name, "Truck Station" (the default label), and none carries a path-node id: there is no field that matches the PathNodeGUID values in getVehicles' Route.
+Redacted: nothing needed redacting (no player name, player id or save name in the response).
+---
+[
+  {
+    "ID": "Build_TruckStation_C_2147373815",
+    "Name": "Truck Station",
+    "ClassName": "Build_TruckStation_C",
+    "location": {
+      "x": -108700,
+      "y": -49800,
+      "z": 20100,
+      "rotation": 270,
+      "pitch": 0
+    },
+    "LoadMode": "Idle",
+    "TransferRate": 0,
+    "MaxTransferRate": 0,
+    "StationStatus": "Producing",
+    "FuelRate": 0,
+    "Inventory": [],
+    "FuelInventory": [],
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 6,
+      "FuseTriggered": false,
+      "PowerConsumed": 0.10000000149011612,
+      "MaxPowerConsumed": 20
+    }
+  },
+  {
+    "ID": "Build_TruckStation_C_2147258229",
+    "Name": "Truck Station",
+    "ClassName": "Build_TruckStation_C",
+    "location": {
+      "x": -150300,
+      "y": -27100,
+      "z": 18400.01171875,
+      "rotation": 0,
+      "pitch": 0
+    },
+    "LoadMode": "Idle",
+    "TransferRate": 0,
+    "MaxTransferRate": 0,
+    "StationStatus": "Producing",
+    "FuelRate": 0,
+    "Inventory": [
+      {
+        "Name": "Versatile Framework",
+        "ClassName": "Desc_SpaceElevatorPart_2_C",
+        "Amount": 2400,
+        "MaxAmount": 50
+      }
+    ],
+    "FuelInventory": [
+      {
+        "Name": "Coal",
+        "ClassName": "Desc_Coal_C",
+        "Amount": 100,
+        "MaxAmount": 100
+      }
+    ],
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 6,
+      "FuseTriggered": false,
+      "PowerConsumed": 0.10000000149011612,
+      "MaxPowerConsumed": 20
+    }
+  },
+  {
+    "ID": "Build_TruckStation_C_2147037197",
+    "Name": "Truck Station",
+    "ClassName": "Build_TruckStation_C",
+    "location": {
+      "x": -69500,
+      "y": -150300,
+      "z": 18400.005859375,
+      "rotation": 180,
+      "pitch": 0
+    },
+    "LoadMode": "Idle",
+    "TransferRate": 0,
+    "MaxTransferRate": 0,
+    "StationStatus": "Producing",
+    "FuelRate": 0,
+    "Inventory": [
+      {
+        "Name": "Versatile Framework",
+        "ClassName": "Desc_SpaceElevatorPart_2_C",
+        "Amount": 2385,
+        "MaxAmount": 50
+      }
+    ],
+    "FuelInventory": [],
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 6,
+      "FuseTriggered": false,
+      "PowerConsumed": 0.10000000149011612,
+      "MaxPowerConsumed": 20
+    }
+  }
+]
