@@ -70,6 +70,10 @@ contract needs to grow, not that this module should special-case a backend detai
   an entry from `endpoints`; they parse every body with the shared schema and throw
   `ApiError`, `ContractDriftError` or `BackendUnreachableError` (`src/api/errors.ts`).
   Components read data through the TanStack Query options in `src/api/queries.ts`.
+  Deploy gap (ADR-0054 D4): `isDeployGapError` (`errors.ts`) is a no-response failure or a non-envelope 502, 503,
+  504 or 530. `api/deployGap.ts` (fed by the query cache in `createQueryClient`) keeps the phase and retries the
+  failed reads with backoff; `StatusBanners` says "updating" once, for `DEPLOY_GAP_GIVE_UP_MS`, then the usual
+  "couldn't reach" error. Durations are named constants there.
 - Auth (ADR-0011): `src/auth/AuthGate.tsx` shows the app only when the session query says
   signed in. A 401 from any query or mutation (except login) signs out in one place,
   `createQueryClient`; screens never handle 401 themselves. Nothing auth-related goes in

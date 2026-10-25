@@ -558,6 +558,7 @@
     color: var(--color-warn-on-soft);
   }
   .banner-stale,
+  .banner-updating,
   .banner-paused {
     background: var(--color-info-soft);
     border-color: var(--color-info-edge);

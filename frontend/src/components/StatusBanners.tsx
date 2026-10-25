@@ -1,4 +1,5 @@
-import { classifyError } from "../api/errors";
+import { useDeployGapPhase } from "../api/deployGap";
+import { classifyError, isDeployGapError } from "../api/errors";
 import { queries } from "../api/queries";
 import { useSettledQuery } from "../api/settled";
 import { formatTime } from "../format";
@@ -21,6 +22,7 @@ import { ErrorNotice } from "./ErrorNotice";
 export function StatusBanners({ showPaused = true }: { showPaused?: boolean }) {
   const server = useSelectedServer();
   const { query: status, firstLoad, error } = useSettledQuery(queries.status(server.id));
+  const deployGap = useDeployGapPhase();
 
   // Nothing while it first loads: the page reveals once, and a line here would add a row above it and push it down (#494).
   if (firstLoad) return null;
@@ -30,9 +32,18 @@ export function StatusBanners({ showPaused = true }: { showPaused?: boolean }) {
   // last reading kept. The error path stays for the 503s; when a refresh failed that way too, its notice says it once.
   const unreachableSince = snapshot?.unreachableSince;
   const unreachableSaid = error != null && classifyError(error) === "upstream_unreachable";
+  // ADR-0054 D4: while the backend is being replaced the notice below says it once, and the failed status read's own
+  // "couldn't reach the backend" stays quiet. Past DEPLOY_GAP_GIVE_UP_MS the phase is "down" and that wording returns.
+  const updating = deployGap === "updating";
+  const errorSaid = updating && isDeployGapError(error);
   return (
     <>
-      {error != null && <ErrorNotice error={error} />}
+      {updating && (
+        <p role="status" className="banner banner-updating">
+          The dashboard is updating, back in a moment.
+        </p>
+      )}
+      {error != null && !errorSaid && <ErrorNotice error={error} />}
       {unreachableSince !== undefined && !unreachableSaid && (
         <p role="status" className="banner banner-stale">
           Game server unreachable since {formatTime(unreachableSince)}.

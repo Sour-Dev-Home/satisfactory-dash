@@ -1,5 +1,11 @@
 import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
-import { ApiError, BackendUnreachableError, ContractDriftError, RequestValidationError } from "./errors";
+import {
+  ApiError,
+  BackendUnreachableError,
+  ContractDriftError,
+  DEPLOY_GAP_STATUSES,
+  RequestValidationError,
+} from "./errors";
 import { transport } from "./transport";
 
 // Re-exported so nothing but this module imports the transport (the demo build enforces it).
@@ -133,6 +139,8 @@ async function request<T>(
   // A non-JSON error page came from something in front of the backend, not the backend itself.
   if (json === NOT_JSON) throw new BackendUnreachableError(path, res.status);
   const parsed = ApiErrorResponseSchema.safeParse(json);
+  // A deploy-gap status whose body isn't our envelope (a JSON page from the edge) is the edge talking too.
+  if (!parsed.success && DEPLOY_GAP_STATUSES.includes(res.status)) throw new BackendUnreachableError(path, res.status);
   if (!parsed.success) throw new ContractDriftError(path, res.status, formatIssues(parsed.error.issues));
   throw new ApiError(res.status, parsed.data.error, retryAfterSeconds(res));
 }
