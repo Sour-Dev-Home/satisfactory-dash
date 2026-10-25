@@ -5,6 +5,7 @@ import { queries } from "../../api/queries";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { BottleneckBadge } from "../BottleneckBadge";
 import { groupLabel, nodeFindings, stateCountsText } from "../plannerText";
+import { buildingIconUrl } from "./buildingIcons";
 import { joinMachines } from "./panelJoin";
 
 /** Machines listed at most; a group can hold a thousand and the page is not the place to scroll them all. */
@@ -37,13 +38,17 @@ export function GroupPanel({
   };
   const joined = factory.data ? joinMachines(node, factory.data.data.buildings) : null;
   const shown = joined?.machines.slice(0, PANEL_MAX_MACHINES) ?? [];
+  const icon = buildingIconUrl(node.className);
 
   return (
     <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="grid content-start gap-2 rounded-card border border-line p-4">
       <div className="flex items-start justify-between gap-2">
-        <h5 id={`${id}-heading`} ref={heading} tabIndex={-1} className="m-0 break-words">
-          {groupLabel(node)}
-        </h5>
+        <div className="flex min-w-0 items-center gap-2">
+          {icon !== undefined && <img src={icon} alt="" width={64} height={64} className="size-building-icon shrink-0 rounded-card bg-icon-chip" />}
+          <h5 id={`${id}-heading`} ref={heading} tabIndex={-1} className="m-0 break-words">
+            {groupLabel(node)}
+          </h5>
+        </div>
         <button type="button" onClick={onClose} className="min-h-touch shrink-0">
           Close
         </button>

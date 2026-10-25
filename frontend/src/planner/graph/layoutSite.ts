@@ -1,6 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import type { PlannerEdge, PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { siteNodes } from "../plannerText";
+import { buildingIconUrl } from "./buildingIcons";
 import { edgeLabel, edgeLabelLines, nodeBody, nodeTitle } from "./graphModel";
 
 // Sizes are SVG user units, tied to the canvas's text classes (title `text-base` 16 px semibold, body lines and edge
@@ -12,6 +13,9 @@ export const NODE_PAD_Y = 5;
 export const TITLE_H = 24;
 export const LINE_H = 20;
 export const NODE_MIN_W = 100;
+/** The building icon on a card: a square at the card's top-left, as tall as the title row, and the gap before the title. */
+export const BUILDING_ICON_SIZE = 18;
+export const BUILDING_ICON_GAP = 3;
 export const LABEL_H = 18;
 /** One line of an edge label (`text-sm` 14 px). */
 export const LABEL_LINE_H = 16;
@@ -33,6 +37,9 @@ export interface LaidNode {
   lines: string[];
   /** How many leading `lines` are the recipe (drawn muted). */
   recipeLines: number;
+  /** The building's icon, when its class has one; the title then starts `titleX` from the card's left. */
+  iconUrl: string | undefined;
+  titleX: number;
 }
 
 export interface LaidEdge {
@@ -63,14 +70,18 @@ export interface SiteLayout {
 }
 
 /** A card's size from its text: as wide as its longest line, as tall as its lines. */
-export function nodeSize(node: PlannerNode): Pick<LaidNode, "width" | "height" | "title" | "lines" | "recipeLines"> {
+export function nodeSize(node: PlannerNode): Pick<LaidNode, "width" | "height" | "title" | "lines" | "recipeLines" | "iconUrl" | "titleX"> {
   const title = nodeTitle(node);
   const { lines, recipeLines } = nodeBody(node);
-  const text = Math.max(title.length * CHAR_W_TITLE, ...lines.map((l) => l.length * CHAR_W_BODY));
+  const iconUrl = buildingIconUrl(node.className);
+  const titleShift = iconUrl === undefined ? 0 : BUILDING_ICON_SIZE + BUILDING_ICON_GAP;
+  const text = Math.max(title.length * CHAR_W_TITLE + titleShift, ...lines.map((l) => l.length * CHAR_W_BODY));
   return {
     title,
     lines,
     recipeLines,
+    iconUrl,
+    titleX: NODE_PAD_X + titleShift,
     width: Math.max(NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
     height: Math.ceil(TITLE_H + lines.length * LINE_H + 2 * NODE_PAD_Y),
   };

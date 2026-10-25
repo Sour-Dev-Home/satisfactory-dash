@@ -72,6 +72,15 @@ describe("layoutSite", () => {
     expect(layoutSite(big.site, big.graph)).toEqual(layoutSite(big.site, big.graph));
   });
 
+  it("shifts the title right of a known building's icon, and leaves an unknown class as it was", () => {
+    const known = nodeSize({ ...graph.nodes[0], className: "Build_ConstructorMk1_C" });
+    const unknown = nodeSize({ ...graph.nodes[0], className: "Build_SomethingNew_C" });
+    expect(known.iconUrl).toBe("/game-assets/buildings/constructor.webp");
+    expect(known.titleX).toBeGreaterThan(unknown.titleX);
+    expect(unknown.iconUrl).toBeUndefined();
+    expect(known.height).toBe(unknown.height);
+  });
+
   it("sizes a card from its text: longer text is wider, more lines are taller, and it is capped", () => {
     const [short, long] = [graph.nodes[0], { ...graph.nodes[2], recipe: "A".repeat(200) }];
     const a = nodeSize(short);
