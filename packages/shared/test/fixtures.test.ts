@@ -55,6 +55,8 @@ import {
   MapLiveSchema,
   BottlenecksResponseSchema,
   ProductionGraphResponseSchema,
+  TrainRoutesWorldIngestRequestSchema,
+  TrainRoutesWorldLayerResponseSchema,
   ConveyorsWorldIngestRequestSchema,
   ConveyorsWorldLayerResponseSchema,
   RailsWorldIngestRequestSchema,
@@ -132,6 +134,10 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["bottlenecks", BottlenecksResponseSchema],
   // ADR-0050: the production planner's graph.
   ["productionGraph", ProductionGraphResponseSchema],
+  ["productionGraphFactories", ProductionGraphResponseSchema],
+  // ADR-0055 Decision 1: the trainRoutes world layer.
+  ["trainRoutesWorldResponse", TrainRoutesWorldLayerResponseSchema],
+  ["trainRoutesSample", TrainRoutesWorldIngestRequestSchema],
   ["command", CommandResponseSchema],
   ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],
