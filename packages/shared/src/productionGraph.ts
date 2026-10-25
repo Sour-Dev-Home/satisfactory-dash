@@ -156,6 +156,6 @@ export type PlannerEdge = z.infer<typeof PlannerEdgeSchema>;
 export type PlannerShare = z.infer<typeof PlannerShareSchema>;
 export type PlannerTransport = z.infer<typeof PlannerTransportSchema>;
 export type PlannerFactory = z.infer<typeof PlannerFactorySchema>;
-export type PlannerSite =z.infer<typeof PlannerSiteSchema>;
+export type PlannerSite = z.infer<typeof PlannerSiteSchema>;
 export type ProductionGraph = z.infer<typeof ProductionGraphSchema>;
 export type ProductionGraphResponse = z.infer<typeof ProductionGraphResponseSchema>;

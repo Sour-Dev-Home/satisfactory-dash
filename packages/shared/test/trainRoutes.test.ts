@@ -66,6 +66,25 @@ describe("trainRoutes world layer (ADR-0055 Decision 1)", () => {
   });
 });
 
+describe("trainRoutes item schema as the ingest uses it (per-item re-validation)", () => {
+  it("drops junk items without throwing: null, missing recordType, a station with a train's fields", () => {
+    for (const junk of [null, undefined, 5, "station", {}, { id: "x" }, { ...train, recordType: undefined }, { ...station, recordType: "train" }]) {
+      expect(TrainRouteRecordSchema.safeParse(junk).success).toBe(false);
+    }
+  });
+
+  it("a platform needs mode and items; an id is bounded", () => {
+    const plat = (p: object) => ({ ...station, platforms: [p] });
+    expect(TrainRouteStationSchema.safeParse(plat({ id: "p", items: [] })).success).toBe(false);
+    expect(TrainRouteStationSchema.safeParse(plat({ id: "p", mode: "load" })).success).toBe(false);
+    expect(TrainRouteStationSchema.safeParse({ ...station, id: "i".repeat(201) }).success).toBe(false);
+  });
+
+  it("the layer array caps at exactly TRAIN_ROUTES_MAX_ITEMS", () => {
+    expect(TrainRoutesLayerDataSchema.safeParse(Array<unknown>(TRAIN_ROUTES_MAX_ITEMS).fill(train)).success).toBe(true);
+  });
+});
+
 describe("ResourceNode.className (ADR-0053 Decision 5)", () => {
   const node = fixtures.resourceNodesSample.data[0]!;
 
