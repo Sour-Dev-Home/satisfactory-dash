@@ -81,7 +81,12 @@ test.describe("on a phone", () => {
       await page.goto("/app");
       const nav = page.getByRole("navigation", { name: "Main" });
       await nav.waitFor();
-      expect(await nav.evaluate((el) => el.scrollWidth > el.clientWidth), "the tabs overflow, so the check is real").toBe(true);
+      const overflows = await nav.evaluate((el) => el.scrollWidth - el.clientWidth > 1);
+      // The six standard tabs fit whole (no scrolling, no fade: the old cut-off "SET"); the operator's seventh scrolls.
+      expect(overflows, scenario === "default" ? "the standard tabs fit at 390 px" : "the extra tab overflows, so the check is real").toBe(
+        scenario !== "default",
+      );
+      if (!overflows) expect(await nav.evaluate((el) => getComputedStyle(el).maskImage)).toBe("none");
       await nav.evaluate((el) => {
         el.scrollLeft = el.scrollWidth;
       });
@@ -94,8 +99,17 @@ test.describe("on a phone", () => {
       expect(box && navBox).toBeTruthy();
       expect(box!.x + box!.width, "right edge within the nav").toBeLessThanOrEqual(navBox!.x + navBox!.width + 0.5);
       expect(box!.x + box!.width, "right edge within the window").toBeLessThanOrEqual(width);
-      // The fade mask must not reach the last tab: at the end only the start is faded.
+      // The fade mask must not reach the last tab: at the end only the start is faded (to the left), or none at all.
       expect(await nav.evaluate((el) => getComputedStyle(el).maskImage)).not.toContain("to right");
+      // The first tab's label is still on the page's text edge (16 px) and the page does not scroll sideways.
+      if (!overflows) {
+        const first = await nav.getByRole("link").first().evaluate((el) => {
+          const label = document.createRange();
+          label.selectNodeContents(el);
+          return label.getBoundingClientRect().x;
+        });
+        expect(first).toBeGreaterThanOrEqual(15);
+      }
     });
   }
 });
