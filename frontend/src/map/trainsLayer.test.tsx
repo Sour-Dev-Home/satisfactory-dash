@@ -4,7 +4,7 @@ import * as L from "leaflet";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MapContext } from "./layers";
 import { GRID_BASE_MAP, project } from "./projection";
-import { durationMs, easeInOut, STATION_RADIUS_PX, TRAIN_RADIUS_PX, trainsLayer } from "./trainsLayer";
+import { durationMs, easeInOut, STATION_RADIUS_PX, TRAIN_HALO_PX, TRAIN_RADIUS_PX, trainsLayer } from "./trainsLayer";
 
 // Leaflet runs for real (the 2D context is a no-op); the tests read the layers Leaflet holds.
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
@@ -52,7 +52,13 @@ const circles = () => {
   return found;
 };
 const trainMarkers = () => circles().filter((c) => c.options.radius === TRAIN_RADIUS_PX);
-const stationMarkers = () => circles().filter((c) => c.options.radius === STATION_RADIUS_PX);
+const stationMarkers = () => {
+  const found: L.Polygon[] = [];
+  map.eachLayer((l) => {
+    if (l instanceof L.Polygon) found.push(l);
+  });
+  return found;
+};
 const tooltipText = (layer: L.Layer) => ((layer.getTooltip()!.getContent() as () => HTMLElement)() as HTMLElement).textContent;
 
 /** A controllable frame loop: `tick(ms)` runs the pending frame callback at that time. */
@@ -90,16 +96,19 @@ const live = (x: number, y = -1473): MapLive => ({
 });
 
 describe("trainsLayer", () => {
-  it("draws a ring per station and a dot per train, projected, in their tokens, and removes them on cleanup", () => {
+  it("draws a diamond ring per station and a dot per train, projected, in their tokens, and removes them on cleanup", () => {
     const cleanup = trainsLayer.draw(ctx, mapLiveSample);
     expect(stationMarkers()).toHaveLength(mapLiveSample.stations.length);
     expect(trainMarkers()).toHaveLength(mapLiveSample.trains.length);
     const [lat, lng] = project(GRID_BASE_MAP, mapLiveSample.trains[0].x, mapLiveSample.trains[0].y);
     expect(trainMarkers()[0].getLatLng()).toMatchObject({ lat, lng });
     expect(trainMarkers()[0].options.fillColor).toBe("TRAIN");
+    expect(trainMarkers()[0].options.color).toBe("UNKNOWN"); // the halo: --color-canvas
+    expect(trainMarkers()[0].options.weight).toBe(TRAIN_HALO_PX);
     expect(stationMarkers()[0].options.color).toBe("STATION");
     cleanup();
     expect(circles()).toHaveLength(0);
+    expect(stationMarkers()).toHaveLength(0);
   });
 
   it("draws nothing for an empty reading", () => {
@@ -214,6 +223,22 @@ describe("trainsLayer edge cases", () => {
     expect(trainMarkers()).toHaveLength(2);
     cleanup();
     expect(circles()).toHaveLength(0);
+    expect(stationMarkers()).toHaveLength(0);
+  });
+
+  it("draws a station as a diamond of fixed pixel size, rebuilt on zoom, and stops listening on cleanup", async () => {
+    const cleanup = trainsLayer.draw(ctx, mapLiveSample);
+    const span = () => {
+      const pts = (stationMarkers()[0].getLatLngs() as L.LatLng[][])[0].map((p) => map.latLngToLayerPoint(p));
+      return { w: Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x)), n: pts.length };
+    };
+    expect(span()).toEqual({ w: STATION_RADIUS_PX * 2, n: 4 });
+    map.setZoom(2, { animate: false });
+    expect(span().w).toBeCloseTo(STATION_RADIUS_PX * 2);
+    await new Promise((resolve) => setTimeout(resolve, 60)); // let Leaflet's own repaint run while the map is alive
+    const off = vi.spyOn(map, "off");
+    cleanup();
+    expect(off).toHaveBeenCalledWith("zoomend", expect.any(Function));
   });
 
   it("is safe to call cleanup twice and after the slide finished", () => {
