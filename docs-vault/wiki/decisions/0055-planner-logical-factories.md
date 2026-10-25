@@ -1,6 +1,7 @@
 # ADR-0055: Logical factories and multi-modal transport in the planner
 
-Status: **proposed** (architect, 2026-10-24; the owner reviews before anything is built). **Amends ADR-0053**: replaces
+Status: **accepted** (owner, 2026-10-24): questions 1, 2, 4, 5 and 6 as recommended; question 3 as option C (fold only
+dependent offshoots, Decision 6). **Amends ADR-0053**: replaces
 its Decision 2 (sites from supply edges) and Decision 7 (build PRs), extends Decisions 4, 5 and 6; Decisions 1 (flow
 classes) and 3 (bubbles of recipe x source tree) stand, with bubbles scoped per factory instead of per site. Also
 amends ADR-0050 Decision 6 (logistics edges) and Decision 8 (player-named sites become designated factories). Paths are
@@ -178,9 +179,12 @@ by a train is in the same component as the factory it feeds. Steps, each a pure 
 5. **Assign.** A node's home factory is its largest share. Ties (within 0.001): the factory whose seeds have the larger
    max output, then the lower factory key. A node whose largest share is under 0.95 is `shared` and lists its top shares
    (at most 4, the rest summed as "other").
-6. **Fold small factories.** A factory with fewer than 4 home machines that shares upstream with another factory in the
-   same component folds into the one it shares the most with (the sum of `min(share_f, share_g)` over nodes); the
-   product is listed as a side product, "Iron Plate factory (+ Iron Rod)". Disjoint small factories stay.
+6. **Fold small dependent factories** (owner, 2026-10-24: option C). A factory with fewer than `MIN_FACTORY_MACHINES`
+   (4) home machines folds into another factory only when it is a **dependent offshoot**: every supply input of its
+   home nodes comes from that one other factory. Its product is listed there as a side product, "Iron Plate factory
+   (+ Iron Rod)". A small factory keeps its own compact card when it has its own extractors, inputs from more than one
+   factory, or an output that leaves by train, truck, drone, the Depot or the sink. Designated factories and power
+   never fold. A folded side product can be popped out into its own card, which saves it as a designation.
 7. **Collapse targets (post-dominators).** Per factory, add a virtual exit after its seeds and compute post-dominators
    on its supply subgraph (Cooper, Harvey and Kennedy's iterative algorithm). A node's `collapseUnder` is its immediate
    post-dominator: the nearest node every one of its paths to the factory output goes through. "Collapse upstream" on a
@@ -403,6 +407,11 @@ The Planner is live (#629). PRs 3 to 6b add fields the frontend ignores; the fac
 - Building ids prove stable across restarts: ids may become a second key for designations (positions stay first).
 
 ## Questions for the owner
+
+Answered 2026-10-24: 1 yes (a designation claims the farms feeding it by share), 2 yes (factories replace sites as
+the first view), 3 option C (above), 4 yes (a session takes the trimmed `getStorageInv` and the `getFactory` pair
+read-only; the mod session builds the drone and truck test save on its own test install), 5 System, 6 owner and
+admin only.
 
 1. **Designated factory and remote upstream:** a designated factory also claims the far farms that feed it by share
    (mode `core`, recommended, matches the Modular Frame example), or only exactly the machines you drew around?

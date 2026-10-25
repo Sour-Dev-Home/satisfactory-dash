@@ -44,6 +44,12 @@ don't extend to this repo's own code — but **verify the actual LICENSE file in
 repository before relying on this**, and re-check if this project ever vendors,
 forks, or embeds any FRM code directly (that would change the analysis).
 
+**Owner's risk acceptance (2026-10-24, ADR-0051 questions 2 and 4):** the owner decided not to ask FRM's maintainer
+for a licence statement or Coffee Stain for written terms ("not gonna ask, not expected within the community"). The
+public release goes ahead under ficsit.app's community norms on that accepted risk. Declaring FRM as a `.uplugin`
+dependency only names it for SMM to install; the mod and this repo still never bundle, fork or redistribute FRM's
+code. Any monetization decision revisits this.
+
 ## Satisfactory's own EULA / IP
 
 Not independently confirmed. What's known: Coffee Stain Studios (the developer)

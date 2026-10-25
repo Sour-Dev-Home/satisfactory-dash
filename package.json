@@ -35,5 +35,12 @@
   "devDependencies": {
     "concurrently": "^10.0.5",
     "dependency-cruiser": "^18.5.0"
+  },
+  "allowScripts": {
+    "cpu-features": false,
+    "esbuild": true,
+    "fsevents": true,
+    "protobufjs": false,
+    "ssh2": false
   }
 }
