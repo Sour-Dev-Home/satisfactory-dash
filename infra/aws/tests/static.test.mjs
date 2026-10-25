@@ -159,6 +159,14 @@ test('#408 criterion 1: cloudflared runs the same pinned version and digest as c
   assert.deepEqual(ecs, compose);
 });
 
+test('#561: staging runs the same pinned postgres tag and digest as compose.yaml', () => {
+  const pin = (text) => text.match(/postgres:[0-9.]+@sha256:[0-9a-f]{64}/g);
+  const staging = pin(code(read('staging.tf')));
+  const compose = pin(readFileSync(join(root, '..', '..', 'compose.yaml'), 'utf8'));
+  assert.ok(staging && staging.length === 1, 'staging.tf pins postgres once');
+  assert.deepEqual(staging, compose);
+});
+
 test('#408 criterion 2: the backend health check uses node, since the image has no curl', () => {
   const tf = code(read('ecs.tf'));
   assert.match(tf, /"CMD",\s*"node",\s*"-e"/);
