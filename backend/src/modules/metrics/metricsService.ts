@@ -138,7 +138,14 @@ export function worstServers(histograms: readonly HistogramSeries[], counters: r
     const ranked = byMetric
       .get(key)!
       .sort((a, b) => b.score[0] - a.score[0] || b.score[1] - a.score[1] || b.score[2] - a.score[2] || (a.row.server < b.row.server ? -1 : 1));
-    for (const c of ranked.slice(0, METRICS_WORST_SERVERS_PER_METRIC)) out.push(c.row);
+    // "Five worst servers": one row per server (its worst label set), so one server never fills several slots.
+    const seen = new Set<string>();
+    for (const c of ranked) {
+      if (seen.has(c.row.server)) continue;
+      seen.add(c.row.server);
+      out.push(c.row);
+      if (seen.size === METRICS_WORST_SERVERS_PER_METRIC) break;
+    }
   }
   return out;
 }
