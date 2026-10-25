@@ -1,0 +1,244 @@
+Captured: 2026-10-25T15:15Z, the mod project's separate test dedicated server (not the owner's live server), read-only. Versions at capture time: FicsitRemoteMonitoring 1.5.4, SML 3.12.0, FactoryGame 513885.
+Method: GET http://127.0.0.1:18081/getDroneStation (FRM Web Server over loopback on the test server, no token needed).
+Scenario: the owner's save from the unpaired capture, with one hub port paired by the owner to a new port for this capture; nothing feeds either port by belt, so the only cargo was Batteries left in the home port's input, which the drone carried as cargo. Captured about 9 minutes after the world loaded. Purpose: ADR-0055 drone route inference (PRs 12a/12b); follows frm-getDroneStation-2026-10-25-unpaired-trimmed.json, which could not show a paired port.
+Full response: 7 items, 13051 bytes. Keys of every item: ID, Name, ClassName, location, BoundingBox, ColorSlot, InputInventory, OutputInventory, FuelInventory, PairedStation, DroneStatus, AvgIncRate, AvgIncStack, AvgOutRate, AvgOutStack, AvgRndTrip, AvgTotalIncRate, AvgTotalIncStack, AvgTotalOutRate, AvgTotalOutStack, AvgTripIncAmt, AvgTripOutAmt, EstTotalTransRate, EstLatestTotalIncStack, EstLatestTotalOutStack, LatestIncStack, LatestOutStack, LatestRndTrip, LatestTripIncAmt, LatestTripOutAmt, MedianRndTrip, MedianTripIncAmt, MedianTripOutAmt, ActiveFuel, FuelInfo, PowerInfo, features.
+Trimmed (excerpt, not the full response; frm-license-status-2026-09-27.md): kept the 2 paired ports of 7. The fields BoundingBox, ColorSlot and features are REMOVED from the kept items; every other field is unmodified.
+Measured over the full response (all 7 items):
+  - 2 ports are paired and 5 have PairedStation "None". PairedStation is the partner's Name, not its ID: "FUEL 5" has PairedStation "TestLand1" and "TestLand1" has "FUEL 5" (their IDs are "Build_DroneStation_C_2146556398" and "Build_DroneStation_C_2147451055"). The pairing is reported on both ports.
+  - The two paired ports are 58 m apart. The drone is based at "FUEL 5" (DroneStatus "En Route"); its partner reports DroneStatus "No Drone". The home port's InputInventory (its outgoing cargo) holds 3 Battery; the partner's holds nothing.
+  - The partner's non-zero trip fields: AvgTotalIncRate 6.524730205535889, AvgTotalIncStack 0.03262364864349365, EstTotalTransRate 3.240299701690674, EstLatestTotalIncStack 0.03262364864349365, EstLatestTotalOutStack 3.240299701690674. Its AvgTotalInc* values equal the home port's AvgOut* values, so the receiving port reports the flow in its *Total* fields while its own per-trip fields (Latest*, Avg*Rate, AvgRndTrip) stay zero.
+  - Types differ between the trip fields: LatestRndTrip is a number 119.54517364501953 (seconds), while AvgRndTrip is a string "00:01:59" and MedianRndTrip a string "00:01:59" (HH:MM:SS).
+  - Home port amounts: LatestTripOutAmt 13, LatestTripIncAmt 0, AvgOutRate 6.524730205535889, AvgIncRate 0, LatestOutStack 0.03262364864349365, EstTotalTransRate 3.240299701690674.
+Redacted: nothing needed redacting (no player name, player id or save name in the response). Name is a label a player typed.
+---
+[
+  {
+    "ID": "Build_DroneStation_C_2146556398",
+    "Name": "FUEL 5",
+    "ClassName": "Build_DroneStation_C",
+    "location": {
+      "x": -220400,
+      "y": 50300,
+      "z": 24800.009765625,
+      "rotation": 270,
+      "pitch": 0
+    },
+    "InputInventory": [
+      {
+        "Name": "Battery",
+        "ClassName": "Desc_Battery_C",
+        "Amount": 3,
+        "MaxAmount": 200
+      }
+    ],
+    "OutputInventory": [],
+    "FuelInventory": [
+      {
+        "Name": "Battery",
+        "ClassName": "Desc_Battery_C",
+        "Amount": 68,
+        "MaxAmount": 200
+      }
+    ],
+    "PairedStation": "TestLand1",
+    "DroneStatus": "En Route",
+    "AvgIncRate": 0,
+    "AvgIncStack": 0,
+    "AvgOutRate": 6.524730205535889,
+    "AvgOutStack": 0.03262364864349365,
+    "AvgRndTrip": "00:01:59",
+    "AvgTotalIncRate": 0,
+    "AvgTotalIncStack": 0,
+    "AvgTotalOutRate": 6.524730205535889,
+    "AvgTotalOutStack": 0.03262364864349365,
+    "AvgTripIncAmt": 0,
+    "AvgTripOutAmt": 13,
+    "EstTotalTransRate": 3.240299701690674,
+    "EstLatestTotalIncStack": 0,
+    "EstLatestTotalOutStack": 0.03262364864349365,
+    "LatestIncStack": 0,
+    "LatestOutStack": 0.03262364864349365,
+    "LatestRndTrip": 119.54517364501953,
+    "LatestTripIncAmt": 0,
+    "LatestTripOutAmt": 13,
+    "MedianRndTrip": "00:01:59",
+    "MedianTripIncAmt": 0,
+    "MedianTripOutAmt": 13,
+    "ActiveFuel": {
+      "FuelName": "Battery",
+      "SingleTripFuelCost": 8.52133846282959,
+      "EstimatedTransportRate": 3.240299701690674,
+      "EstimatedRoundTripTime": 166.6512451171875,
+      "EstimatedFuelCostRate": 3.0679657459259033
+    },
+    "FuelInfo": [
+      {
+        "FuelName": "Battery",
+        "SingleTripFuelCost": 8.52133846282959,
+        "EstimatedTransportRate": 3.240299701690674,
+        "EstimatedRoundTripTime": 166.6512451171875,
+        "EstimatedFuelCostRate": 3.0679657459259033
+      },
+      {
+        "FuelName": "Packaged Fuel",
+        "SingleTripFuelCost": 68.17070770263672,
+        "EstimatedTransportRate": 2.7138831615448,
+        "EstimatedRoundTripTime": 198.9768829345703,
+        "EstimatedFuelCostRate": 20.556371688842773
+      },
+      {
+        "FuelName": "Packaged Turbofuel",
+        "SingleTripFuelCost": 25.564016342163086,
+        "EstimatedTransportRate": 2.719205856323242,
+        "EstimatedRoundTripTime": 198.58740234375,
+        "EstimatedFuelCostRate": 7.723757743835449
+      },
+      {
+        "FuelName": "Packaged Rocket Fuel",
+        "SingleTripFuelCost": 7.1011152267456055,
+        "EstimatedTransportRate": 2.7245490550994873,
+        "EstimatedRoundTripTime": 198.19793701171875,
+        "EstimatedFuelCostRate": 2.1497039794921875
+      },
+      {
+        "FuelName": "Packaged Ionized Fuel",
+        "SingleTripFuelCost": 5.112802982330322,
+        "EstimatedTransportRate": 2.7299134731292725,
+        "EstimatedRoundTripTime": 197.8084716796875,
+        "EstimatedFuelCostRate": 1.5508344173431396
+      },
+      {
+        "FuelName": "Uranium Fuel Rod",
+        "SingleTripFuelCost": 0.0681707113981247,
+        "EstimatedTransportRate": 2.728123188018799,
+        "EstimatedRoundTripTime": 197.93829345703125,
+        "EstimatedFuelCostRate": 0.020664231851696968
+      },
+      {
+        "FuelName": "Plutonium Fuel Rod",
+        "SingleTripFuelCost": 0.03408535569906235,
+        "EstimatedTransportRate": 2.7299134731292725,
+        "EstimatedRoundTripTime": 197.8084716796875,
+        "EstimatedFuelCostRate": 0.01033889688551426
+      }
+    ],
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 6,
+      "FuseTriggered": false,
+      "PowerConsumed": 100,
+      "MaxPowerConsumed": 100
+    }
+  },
+  {
+    "ID": "Build_DroneStation_C_2147451055",
+    "Name": "TestLand1",
+    "ClassName": "Build_DroneStation_C",
+    "location": {
+      "x": -214600,
+      "y": 51000,
+      "z": 24800.01171875,
+      "rotation": 270,
+      "pitch": 0
+    },
+    "InputInventory": [],
+    "OutputInventory": [],
+    "FuelInventory": [
+      {
+        "Name": "Battery",
+        "ClassName": "Desc_Battery_C",
+        "Amount": 190,
+        "MaxAmount": 200
+      }
+    ],
+    "PairedStation": "FUEL 5",
+    "DroneStatus": "No Drone",
+    "AvgIncRate": 0,
+    "AvgIncStack": 0,
+    "AvgOutRate": 0,
+    "AvgOutStack": 0,
+    "AvgRndTrip": "00:00:00",
+    "AvgTotalIncRate": 6.524730205535889,
+    "AvgTotalIncStack": 0.03262364864349365,
+    "AvgTotalOutRate": 0,
+    "AvgTotalOutStack": 0,
+    "AvgTripIncAmt": 0,
+    "AvgTripOutAmt": 0,
+    "EstTotalTransRate": 3.240299701690674,
+    "EstLatestTotalIncStack": 0.03262364864349365,
+    "EstLatestTotalOutStack": 3.240299701690674,
+    "LatestIncStack": 0,
+    "LatestOutStack": 0,
+    "LatestRndTrip": 0,
+    "LatestTripIncAmt": 0,
+    "LatestTripOutAmt": 0,
+    "MedianRndTrip": "00:00:00",
+    "MedianTripIncAmt": 0,
+    "MedianTripOutAmt": 0,
+    "ActiveFuel": {
+      "FuelName": "N/A",
+      "SingleTripFuelCost": 0,
+      "EstimatedTransportRate": 0,
+      "EstimatedRoundTripTime": 0,
+      "EstimatedFuelCostRate": 0
+    },
+    "FuelInfo": [
+      {
+        "FuelName": "Battery",
+        "SingleTripFuelCost": 4.116841793060303,
+        "EstimatedTransportRate": 3.240299701690674,
+        "EstimatedRoundTripTime": 166.6512451171875,
+        "EstimatedFuelCostRate": 1.4822001457214355
+      },
+      {
+        "FuelName": "Packaged Fuel",
+        "SingleTripFuelCost": 32.93473434448242,
+        "EstimatedTransportRate": 2.7138831615448,
+        "EstimatedRoundTripTime": 198.9768829345703,
+        "EstimatedFuelCostRate": 9.931224822998047
+      },
+      {
+        "FuelName": "Packaged Turbofuel",
+        "SingleTripFuelCost": 12.350525856018066,
+        "EstimatedTransportRate": 2.719205856323242,
+        "EstimatedRoundTripTime": 198.58740234375,
+        "EstimatedFuelCostRate": 3.731513500213623
+      },
+      {
+        "FuelName": "Packaged Rocket Fuel",
+        "SingleTripFuelCost": 3.430701494216919,
+        "EstimatedTransportRate": 2.7245490550994873,
+        "EstimatedRoundTripTime": 198.19793701171875,
+        "EstimatedFuelCostRate": 1.0385682582855225
+      },
+      {
+        "FuelName": "Packaged Ionized Fuel",
+        "SingleTripFuelCost": 2.4701051712036133,
+        "EstimatedTransportRate": 2.7299134731292725,
+        "EstimatedRoundTripTime": 197.8084716796875,
+        "EstimatedFuelCostRate": 0.7492414712905884
+      },
+      {
+        "FuelName": "Uranium Fuel Rod",
+        "SingleTripFuelCost": 0.03293473273515701,
+        "EstimatedTransportRate": 2.728123188018799,
+        "EstimatedRoundTripTime": 197.93829345703125,
+        "EstimatedFuelCostRate": 0.009983333759009838
+      },
+      {
+        "FuelName": "Plutonium Fuel Rod",
+        "SingleTripFuelCost": 0.016467366367578506,
+        "EstimatedTransportRate": 2.7299134731292725,
+        "EstimatedRoundTripTime": 197.8084716796875,
+        "EstimatedFuelCostRate": 0.004994942806661129
+      }
+    ],
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 6,
+      "FuseTriggered": false,
+      "PowerConsumed": 100,
+      "MaxPowerConsumed": 100
+    }
+  }
+]
