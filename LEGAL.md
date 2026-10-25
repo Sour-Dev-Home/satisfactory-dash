@@ -60,7 +60,8 @@ enforcement action — which is evidence of practical tolerance, not a legal gua
 Epic store page or Coffee Stain's own site) before committing to any monetization
 plan.**
 
-**Game icons (#571, 2026-10-21):** the map draws resource nodes with the game's own icons, exported by the
+**Game icons (#571, 2026-10-21; building icons added 2026-10-24):** the map draws resource nodes, and the Planner
+draws buildings (graph cards and the group panel), with the game's own icons, exported by the
 owner from their game install and kept in `frontend/public/game-assets/`. They are © Coffee Stain Studios,
 used as fan content in a free, non-commercial tool, **not** covered by this repo's AGPL-3.0-only licence, and
 removed on request. `frontend/public/game-assets/NOTICE.md` states the boundary. This amends the "never

@@ -4,7 +4,7 @@ import { cn } from "../../lib/cn";
 import { bottleneckCountText, groupLabel, nodeFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { edgeTitle, graphSummary, reachFor, siteItems } from "./graphModel";
-import { LABEL_LINE_H, LINE_H, NODE_PAD_X, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
+import { BUILDING_ICON_SIZE, LABEL_LINE_H, LINE_H, NODE_PAD_X, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -360,7 +360,10 @@ export default function SiteGraph({
                       strokeWidth={ringed ? 3 : 1}
                       className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")}
                     />
-                    <text x={NODE_PAD_X} y={TITLE_H}className="fill-fg-strong text-base font-semibold">
+                    {n.iconUrl !== undefined && (
+                      <image href={n.iconUrl} x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} aria-hidden="true" />
+                    )}
+                    <text x={n.titleX} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
                       {n.title}
                     </text>
                     {/* Muted (5.6:1 on the card) only for the recipe, the first line; the rates and states read in full colour. */}
