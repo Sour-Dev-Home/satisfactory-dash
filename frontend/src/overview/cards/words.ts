@@ -2,7 +2,7 @@ import { ownValue } from "@satisfactory-dash/shared";
 import type { Health } from "../health";
 
 /** A health level, or still loading. */
-export type Shown = Health | "pending";
+export type Shown = Health | "pending" | "updating";
 
 /** The state in one word: the Health card's title and each section row's label. */
 export const WORD: Record<Shown, string> = {
@@ -12,6 +12,7 @@ export const WORD: Record<Shown, string> = {
   unavailable: "Unavailable",
   outage: "Outage",
   pending: "Checking…",
+  updating: "Updating…",
 };
 
 export const WORD_COLOR: Record<Shown, string> = {
@@ -21,6 +22,7 @@ export const WORD_COLOR: Record<Shown, string> = {
   unavailable: "text-muted",
   outage: "text-bad",
   pending: "text-muted",
+  updating: "text-muted",
 };
 
 /** The one-word state; lookups read own keys only (#368), so an unexpected value shows as "Checking…". */

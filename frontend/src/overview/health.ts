@@ -15,8 +15,11 @@ export interface SectionHealth {
   cause?: string;
 }
 
-/** A section still loading, or one that failed with no data to show. */
-export type SectionState = SectionHealth | "pending" | "error";
+/**
+ * A section still loading, or one that failed with no data to show. "updating" is the same failure while it is
+ * a deploy gap (ADR-0054 D4): calm, not an error, until the gap gives up.
+ */
+export type SectionState = SectionHealth | "pending" | "updating" | "error";
 
 /** Factory reads as degraded when more than this share of machines is backed up. */
 export const BACKED_UP_DEGRADED_SHARE = 0.25;
@@ -95,7 +98,7 @@ export function factoryHealth({ data, stale }: FactoryResponse): SectionHealth {
  * The owner's call: the banner can be dismissed for warnings and a paused game only. An
  * outage or missing data always shows.
  */
-export function canDismiss(health: Health | "pending"): boolean {
+export function canDismiss(health: Health | "pending" | "updating"): boolean {
   return health === "degraded" || health === "paused";
 }
 
@@ -130,17 +133,24 @@ const HEADLINE: Record<Health, string> = {
  * headline names the causes ("Server tick is slow · Factory backed up") instead of the generic
  * "Running with warnings", or nothing on the page would say why.
  */
-export function overallHealth(sections: SectionState[]): { health: Health | "pending"; headline: string } {
+export function overallHealth(sections: SectionState[]): { health: Health | "pending" | "updating"; headline: string } {
   let worst: Health = "ok";
   let pending = false;
+  let updating = false;
   for (const section of sections) {
     if (section === "pending") {
       pending = true;
       continue;
     }
+    if (section === "updating") {
+      updating = true;
+      continue;
+    }
     const health = section === "error" ? "unavailable" : section.health;
     if (rank(health) > rank(worst)) worst = health;
   }
+  // A deploy gap with nothing worse found: say "updating" rather than the grey "unavailable" (it holds back "all clear").
+  if (updating && worst === "ok") return { health: "updating", headline: "Back in a moment" };
   if (pending && worst === "ok") return { health: "pending", headline: "Checking…" };
   if (worst === "degraded") {
     const causes = sections.flatMap((s) => (typeof s === "object" && s.health === "degraded" && s.cause ? [s.cause] : []));

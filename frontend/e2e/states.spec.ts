@@ -243,6 +243,8 @@ const CASES: StateCase[] = [
   { scenario: "backend-unreachable", shows: "Couldn't reach the dashboard backend." },
   // ADR-0054 D4: a deploy gap (Cloudflare's 530 page) says "updating" once, not "couldn't reach the backend".
   { scenario: "deploy-gap", shows: "The dashboard is updating, back in a moment." },
+  // The panels with no data say "Updating…" (calm, no alert) while the gap is recent, not "Couldn't load".
+  { scenario: "deploy-gap", name: "deploy-gap-power", path: "/app/power", shows: "Updating…" },
   { scenario: "contract-drift", shows: /doesn't understand/ },
   // Server management (ADR-0030), operator only: the three stored states, then the add form's refusals.
   { scenario: "servers-manage", path: "/app/servers", shows: "This server's saved address isn't allowed. Edit the host or remove it." },
