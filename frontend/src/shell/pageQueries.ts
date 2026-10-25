@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { sinceYesterdayQueries } from "../factory/FactoryHistory";
 import { asPageQuery, type PageQuery } from "../ui/usePageReveal";
@@ -40,3 +41,19 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
 
 /** A prefetch skips a read newer than this, so hovering back and forth doesn't refetch every time. */
 export const PREFETCH_FRESH_MS = 10_000;
+
+/**
+ * The command bar's reads (`palette/CommandBar.tsx`): the server list (Change server), power (the circuits) and the
+ * factory (machines and items). Its Search button prefetches them on hover or focus, so the first search has them.
+ */
+export function paletteQueries(serverId: string): PageQuery[] {
+  return [queries.servers(), queries.power(serverId), queries.factory(serverId)].map(asPageQuery);
+}
+
+/** Starts each query, unless the cache has a read newer than its own staleTime or PREFETCH_FRESH_MS. */
+export function prefetchFresh(client: QueryClient, list: PageQuery[]): void {
+  for (const query of list) {
+    const own = typeof query.staleTime === "number" ? query.staleTime : 0;
+    void client.prefetchQuery({ queryKey: query.queryKey, queryFn: query.queryFn, staleTime: Math.max(own, PREFETCH_FRESH_MS) });
+  }
+}
