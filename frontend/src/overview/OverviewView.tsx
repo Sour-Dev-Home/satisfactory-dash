@@ -1,4 +1,5 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useDeployGapPhase } from "../api/deployGap";
 import { queries } from "../api/queries";
 import { isFirstLoad } from "../api/settled";
 import { useSelectedServer } from "../servers/ServerContext";
@@ -11,9 +12,8 @@ import {
   serverHealth,
   tickState,
   warningKey,
-  type SectionHealth,
-  type SectionState,
 } from "./health";
+import { failedOrPending, stateOf } from "./sectionState";
 import type { Tick } from "./cards/HealthCard";
 import type { PlayersState } from "./cards/PlayersCard";
 import { powerTotals, type PowerState } from "./cards/power";
@@ -22,28 +22,15 @@ import { OverviewPanel, type OverviewSection } from "./OverviewPanel";
 import { OverviewSkeleton } from "./OverviewSkeleton";
 
 /**
- * Data wins over an error: a failed background refetch keeps showing the last snapshot. Without data,
- * only a first load is pending: a failed read stays an error through its next polls (each goes back to
- * pending in TanStack Query), so the cards don't flip every interval.
- */
-function stateOf<T>(query: UseQueryResult<T>, health: (snapshot: T) => SectionHealth): SectionState {
-  if (query.data) return health(query.data);
-  return failedOrPending(query);
-}
-
-function failedOrPending(query: UseQueryResult<unknown>): "error" | "pending" {
-  return isFirstLoad(query) ? "pending" : "error";
-}
-
-/**
  * Container: reads the same query keys as the section pages, so the Overview adds no
  * requests the pages wouldn't make, and a future push path (ADR-0014) fills both.
  */
 export function OverviewView() {
   const server = useSelectedServer();
+  const phase = useDeployGapPhase();
   const status = useQuery(queries.status(server.id));
   // Same rule as the rows: data wins over an error.
-  const players: PlayersState = status.data ? { status: status.data.data } : failedOrPending(status);
+  const players: PlayersState = status.data ? { status: status.data.data } : failedOrPending(status, phase);
   // The Health card's tick (the owner's call): the backend's own tickHealth, nothing re-derived.
   const snapshot = status.data?.data;
   const tick: Tick | undefined = snapshot
@@ -59,12 +46,12 @@ export function OverviewView() {
   const power = useQuery(queries.power(server.id));
   const factory = useQuery(queries.factory(server.id));
   const sections: OverviewSection[] = [
-    { name: "Server", station: "server", to: canManageServers ? "/app/servers" : undefined, state: stateOf(status, serverHealth) },
-    { name: "Power", station: "power", to: "/app/power", state: stateOf(power, powerHealth) },
-    { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(factory, factoryHealth) },
+    { name: "Server", station: "server", to: canManageServers ? "/app/servers" : undefined, state: stateOf(status, phase, serverHealth) },
+    { name: "Power", station: "power", to: "/app/power", state: stateOf(power, phase, powerHealth) },
+    { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(factory, phase, factoryHealth) },
   ];
   // Same rule as the rows: data wins over an error.
-  const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : failedOrPending(power);
+  const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : failedOrPending(power, phase);
   // The tick has no row (it's in the Health card), but a slow one still makes the overall
   // health a warning, and a dismissed warning comes back when it starts. Loading and errors are
   // already counted by the Server row, so the tick only joins once there's a snapshot.

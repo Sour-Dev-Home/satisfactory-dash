@@ -107,6 +107,14 @@ function createDeployGap(client: QueryClient): DeployGap {
   };
 }
 
+/**
+ * A read that failed with no data to show reads "updating" (calm, not an error) while the gap is recent: its error
+ * is a deploy-gap one and the phase has not given up. Past the give-up, or for any other error, it is an error.
+ */
+export function isUpdatingGap(error: unknown, phase: DeployGapPhase): boolean {
+  return phase === "updating" && isDeployGapError(error);
+}
+
 /** The current phase, for the banner. Re-renders when it changes (including the move to "down"). */
 export function useDeployGapPhase(): DeployGapPhase {
   const gap = deployGapFor(useQueryClient());
