@@ -1,4 +1,5 @@
 import { render } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GRID_BASE_MAP } from "./projection";
 import MapCanvas, { type DrawnLayer, type ViewM } from "./MapCanvas";
@@ -114,4 +115,31 @@ describe("MapCanvas layer redraws (ADR-0038 M6)", () => {
     unmount();
     expect(log).toEqual(["clean rails"]);
   });
+
+  it("under StrictMode every draw is matched by a cleanup, and what remains is drawn once", () => {
+    const log: string[] = [];
+    const layers = [logged("rails", log), logged("trains", log)];
+    const { unmount } = render(
+      <StrictMode>
+        <MapCanvas {...props} layers={layers} />
+      </StrictMode>,
+    );
+    const live = () => log.filter((l) => l.startsWith("draw")).length - log.filter((l) => l.startsWith("clean")).length;
+    expect(live()).toBe(2);
+    unmount();
+    expect(live()).toBe(0);
+  });
+
+  it("redraws every layer when the config changes (a new map), cleaning the old ones first", () => {
+    const log: string[] = [];
+    const layers = [logged("rails", log), logged("trains", log)];
+    const { rerender, unmount } = render(<MapCanvas {...props} layers={layers} />);
+    log.length = 0;
+    rerender(<MapCanvas {...props} config={{ ...GRID_BASE_MAP }} layers={layers} />);
+    expect(log.filter((l) => l.startsWith("clean")).sort()).toEqual(["clean rails", "clean trains"]);
+    expect(log.filter((l) => l.startsWith("draw")).sort()).toEqual(["draw rails", "draw trains"]);
+    expect(log.lastIndexOf("clean rails")).toBeLessThan(log.indexOf("draw rails"));
+    unmount();
+  });
+
 });

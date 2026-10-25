@@ -85,6 +85,16 @@ describe("the demo's live trains (ADR-0038 M6)", () => {
     expect((await call(endpoints.map.live.path(DEMO_SERVER_ID))).status).toBe(401);
   });
 
+  it("stays finite, valid and unique-id at odd clocks (zero, negative, fractional, far future) and on cycle ends", () => {
+    const period = 6 * 60_000;
+    for (const now of [0, -1, -7 * period, 0.5, 1e13, DEMO_EPOCH + period / 2, DEMO_EPOCH + period, DEMO_EPOCH + 4 * 60_000 / 2]) {
+      const data = mapLive(now).data;
+      expect(() => MapLiveSchema.parse(data), String(now)).not.toThrow();
+      expect(new Set(data.trains.map((t) => t.id)).size).toBe(data.trains.length);
+      expect(new Set(data.stations.map((s) => s.id)).size).toBe(data.stations.length);
+    }
+  });
+
   it("moves its trains with the clock, within the rails' reach, and stays valid at any time", () => {
     const at = (now: number) => mapLive(now).data.trains[0];
     expect(at(DEMO_EPOCH)).not.toEqual(at(DEMO_EPOCH + 60_000));

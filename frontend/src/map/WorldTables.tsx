@@ -115,8 +115,9 @@ export function TrainsTable({ trains, view }: { trains: readonly MapTrain[]; vie
           </tr>
         </thead>
         <tbody>
-          {listed.map((t) => (
-            <tr key={t.id}>
+          {listed.map((t, i) => (
+            // Ids come from the game and nothing makes them unique, so the index backs the key up.
+            <tr key={`${t.id}:${i}`}>
               <td data-label="Train">{t.name}</td>
               <td data-label="Status">{t.status}</td>
               <td data-label="Position (m)">{formatPoint([t.x, t.y])}</td>
@@ -140,8 +141,8 @@ export function StationsTable({ stations, view }: { stations: readonly MapTrainS
           </tr>
         </thead>
         <tbody>
-          {listed.map((s) => (
-            <tr key={s.id}>
+          {listed.map((s, i) => (
+            <tr key={`${s.id}:${i}`}>
               <td data-label="Station">{s.name}</td>
               <td data-label="Position (m)">{formatPoint([s.x, s.y])}</td>
             </tr>

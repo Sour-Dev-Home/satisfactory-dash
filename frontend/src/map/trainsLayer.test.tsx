@@ -204,6 +204,90 @@ describe("trainsLayer", () => {
   });
 });
 
+describe("trainsLayer edge cases", () => {
+  const train = (id: string, x: number, y = 0) => ({ id, name: id, x, y, status: "Self-Driving" });
+
+  it("draws duplicate train ids as separate dots and removes them all on cleanup", () => {
+    fakeFrames();
+    trainsLayer.draw(ctx, { trains: [train("d", 0), train("d", 100)], stations: [] })();
+    const cleanup = trainsLayer.draw(ctx, { trains: [train("d", 500), train("d", 900)], stations: [] });
+    expect(trainMarkers()).toHaveLength(2);
+    cleanup();
+    expect(circles()).toHaveLength(0);
+  });
+
+  it("is safe to call cleanup twice and after the slide finished", () => {
+    const frames = fakeFrames();
+    trainsLayer.draw(ctx, live(0))();
+    const cleanup = trainsLayer.draw(ctx, live(1000));
+    frames.tick(1000);
+    cleanup();
+    expect(() => cleanup()).not.toThrow();
+    expect(circles()).toHaveLength(0);
+  });
+
+  it("a frame callback that fires after cleanup does not throw or re-add anything", () => {
+    let stale: FrameRequestCallback | undefined;
+    vi.spyOn(performance, "now").mockReturnValue(1000);
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => ((stale = cb), 3));
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    trainsLayer.draw(ctx, live(0))();
+    const cleanup = trainsLayer.draw(ctx, live(1000));
+    cleanup();
+    expect(() => stale!(1500)).not.toThrow();
+    expect(circles()).toHaveLength(0);
+  });
+
+  it("handles ids that are prototype names, huge coordinates and a zero-length move", () => {
+    const frames = fakeFrames();
+    const a = { trains: [train("__proto__", 0), train("constructor", 0), train("toString", 0)], stations: [] };
+    trainsLayer.draw(ctx, a)();
+    const cleanup = trainsLayer.draw(ctx, { trains: [train("__proto__", 1e9, -1e9), train("constructor", 0), train("toString", 0)], stations: [] });
+    expect(trainMarkers()).toHaveLength(3);
+    frames.tick(1000);
+    expect(trainMarkers().every((m) => Number.isFinite(m.getLatLng().lat) && Number.isFinite(m.getLatLng().lng))).toBe(true);
+    cleanup();
+  });
+
+  it("a train removed then re-added later does not slide from where it was long ago", () => {
+    fakeFrames();
+    trainsLayer.draw(ctx, { trains: [train("a", 0), train("b", 0)], stations: [] })();
+    trainsLayer.draw(ctx, { trains: [train("b", 0)], stations: [] })();
+    trainsLayer.draw(ctx, { trains: [train("a", 7000), train("b", 0)], stations: [] });
+    const to = project(GRID_BASE_MAP, 7000, 0);
+    const a = trainMarkers().find((m) => tooltipText(m)!.startsWith("a"))!;
+    expect(a.getLatLng()).toMatchObject({ lat: to[0], lng: to[1] });
+  });
+
+  it("a layer drawn on another map does not inherit this map's positions", () => {
+    fakeFrames();
+    trainsLayer.draw(ctx, live(0))();
+    const host = document.createElement("div");
+    Object.defineProperty(host, "clientWidth", { value: 400 });
+    Object.defineProperty(host, "clientHeight", { value: 300 });
+    document.body.append(host);
+    const renderer = L.canvas();
+    const other = L.map(host, { crs: L.CRS.Simple, renderer, zoom: 0, center: [0, 0] });
+    const cleanup = trainsLayer.draw({ ...ctx, map: other, renderer }, live(5000));
+    let marker: L.CircleMarker | undefined;
+    other.eachLayer((l) => {
+      if (l instanceof L.CircleMarker && l.options.radius === TRAIN_RADIUS_PX) marker = l;
+    });
+    const to = project(GRID_BASE_MAP, 5000, -1473);
+    expect(marker!.getLatLng()).toMatchObject({ lat: to[0], lng: to[1] });
+    cleanup();
+    other.remove();
+  });
+});
+
+describe("durationMs more", () => {
+  it("rejects exponent, trailing-dot and signed forms", () => {
+    for (const odd of ["1e3ms", "5.s", "+1s", "1 s", "Infinitys"]) expect(durationMs(odd), odd).toBe(0);
+    expect(durationMs(".5s")).toBe(500);
+    expect(durationMs("1.5s")).toBe(1500);
+  });
+});
+
 describe("durationMs", () => {
   it("reads seconds and milliseconds, and gives 0 for anything else so nothing animates", () => {
     expect(durationMs("1s")).toBe(1000);
