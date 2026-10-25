@@ -126,6 +126,22 @@ building on it, and whether SMM installs optional dependencies.] ficsit.app list
 **Recommendation:** no FRM dependency now. Once the owner clears the licence, declare FRM as a **required**
 `^1.5.4` dependency in the same mod release as the FRM bridge, and not before.
 
+**Owner's decision (2026-10-25), replacing the recommendation above:** "For the compile our mod against FRM. no. Id
+rather make code from scratch to get the functionality. I dont want to have to ask anyone and would rather be safe".
+FRM still states no licence (re-checked 2026-10-25: GitHub reports `license: none`, no LICENSE file; the README's only
+grant is "Feel free to create your own web UI or serial apps").
+- **No FRM bridge and no FRM dependency in the mod**: the mod never links to, compiles against, bundles, calls or
+  declares FRM. Sub-project 3 becomes the mod reading the factory, power, belt and world data itself, written from
+  scratch against the game's own classes (SML and the game's headers, cited to `raw-sources/`).
+- **Clean room:** FRM's source is never read, copied or used as a reference, by any session or subagent
+  (`frm-license-status-2026-09-27.md` already says so). FRM's documented JSON shapes, captured from a running server,
+  are evidence of what the game exposes. They are not code to copy. The mod's own data shapes are ours, under the
+  `/agent/v1` contract.
+- **Nobody is asked:** no message to FRM's maintainer.
+- **The agent and dashboard** keep reading FRM's local HTTP API where a player already runs it. That's a client of
+  the API, which the README's grant covers. Nothing new is built on FRM, and the north star (ADR-0057 Decision 6) is
+  the mod alone.
+
 ### 3. Beta to public: milestones, in order
 
 Each needs the one before it. Done items are listed so the order is checkable.
