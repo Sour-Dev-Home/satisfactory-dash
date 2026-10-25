@@ -42,7 +42,7 @@ describe("the demo world", () => {
     for (const node of graph.nodes) {
       if (node.shares) expect(node.shares.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 9);
     }
-    expect(graph.transports?.map((t) => t.mode)).toEqual(["train"]);
+    expect(graph.transports?.map((t) => t.mode)).toEqual(["depot", "train"]);
     expect(graph.edges.some((e) => e.flow === "excess" && e.destination === "sink")).toBe(true);
     expect(graph.sites.map((s) => s.name)).toContain("Ore farm");
   });

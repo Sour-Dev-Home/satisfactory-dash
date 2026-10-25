@@ -3,6 +3,7 @@ import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-da
 import { siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
 import { nodeBody, nodeTitle } from "./graphModel";
+import { GLYPH_SIZE } from "./transportModes";
 
 // Sizes are SVG user units, tied to the canvas's text classes (title `text-base` 16 px semibold, body lines and edge
 // labels `text-sm` 14 px). The title's baseline is TITLE_H down from the card's top, each line LINE_H below the last.
@@ -10,6 +11,9 @@ export const CHAR_W_TITLE = 9.2;
 export const CHAR_W_BODY = 7.7;
 export const NODE_PAD_X = 10;
 export const NODE_PAD_Y = 5;
+/** The upstream pill (collapse upstream) straddles a card's bottom edge: its height, and the room a card keeps for its upper half. */
+export const PILL_H = 24;
+export const PILL_RESERVE = PILL_H / 2 + 2;
 export const TITLE_H = 24;
 export const LINE_H = 20;
 export const NODE_MIN_W = 100;
@@ -28,6 +32,8 @@ export const NODE_SEP = 20;
 /** The graph's margin, and the height of the tab on an expanded bubble's frame that holds its title and its Collapse button (half of it stands above the frame's top edge). */
 export const MARGIN = 16;
 export const FRAME_HEADER_H = 22;
+/** A transport edge's label clears the glyph on the line's middle by this much more. */
+export const GLYPH_CLEARANCE = GLYPH_SIZE / 2;
 
 export interface LaidNode {
   key: string;
@@ -73,6 +79,9 @@ export interface LaidEdge {
   /** The label box's estimated width and height. */
   labelWidth: number;
   labelHeight: number;
+  /** The middle of the path by length, where a transport's glyph sits, and the path's length. */
+  mid: { x: number; y: number };
+  length: number;
 }
 
 export interface SiteLayout {
@@ -99,14 +108,15 @@ export function cardSize(card: Card): CardSize {
     iconUrl,
     titleX: NODE_PAD_X + titleShift,
     width: Math.max(NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
-    height: Math.ceil(TITLE_H + card.lines.length * LINE_H + 2 * NODE_PAD_Y),
+    // A card with an upstream pill makes room below its text for the pill's upper half.
+    height: Math.ceil(TITLE_H + card.lines.length * LINE_H + 2 * NODE_PAD_Y + (card.upstream === undefined ? 0 : PILL_RESERVE)),
   };
 }
 
 /** A group's card size, from the group alone. */
 export function nodeSize(node: PlannerNode): CardSize {
   const { lines, recipeLines } = nodeBody(node);
-  return cardSize({ key: node.key, kind: "group", nodeKeys: [node.key], title: nodeTitle(node), lines, mutedLines: recipeLines, className: node.className, label: "", loop: false, frame: undefined, bubbleKey: undefined });
+  return cardSize({ key: node.key, kind: "group", nodeKeys: [node.key], title: nodeTitle(node), lines, mutedLines: recipeLines, className: node.className, label: "", loop: false, frame: undefined, upstream: undefined, bubbleKey: undefined });
 }
 
 /** The estimated width of an edge label's text. */
@@ -126,13 +136,35 @@ const lengthOf = (points: readonly Point[]): number => {
   return total;
 };
 
+/** Where along its path (0 to 1, by length) a transport's glyph stands, and how much further each further transport of the pair. */
+export const GLYPH_AT = 0.3;
+export const GLYPH_SPREAD = 0.2;
+
+/** The point `fraction` of the way along a path by length, halfway by default (the first point of a path with no length, the origin of an empty one). */
+export function pathMidpoint(points: readonly Point[], fraction = 0.5): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  let rest = lengthOf(points) * Math.min(1, Math.max(0, fraction));
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0 || rest > len) {
+      rest -= len;
+      continue;
+    }
+    const t = rest / len;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+  return { ...points[points.length - 1] };
+}
+
 /**
  * Where an edge's label goes: the centre of a `width` x `LABEL_H` box beside the path's middle (by length), pushed off the
  * segment along its normal, on the upper side (the right when the segment is vertical), far enough that the box clears the
- * line by `LABEL_GAP`. So a level edge's label sits just above it and a steep one's beside it. A path with no length puts the label
- * on its point.
+ * line by `LABEL_GAP` (and by `extra` more, for the glyph on a transport's middle). So a level edge's label sits just above
+ * it and a steep one's beside it. A path with no length puts the label on its point.
  */
-export function labelPlacement(points: readonly Point[], width: number, height = LABEL_H): Point {
+export function labelPlacement(points: readonly Point[], width: number, height = LABEL_H, extra = 0): Point {
   if (points.length === 0) return { x: 0, y: 0 };
   const total = lengthOf(points);
   if (total === 0) return { ...points[0] };
@@ -155,7 +187,7 @@ export function labelPlacement(points: readonly Point[], width: number, height =
       nx = -nx;
       ny = -ny;
     }
-    const d = Math.abs(nx) * (width / 2) + Math.abs(ny) * (height / 2) + LABEL_GAP;
+    const d = Math.abs(nx) * (width / 2) + Math.abs(ny) * (height / 2) + LABEL_GAP + extra;
     return { x: a.x + (b.x - a.x) * t + nx * d, y: a.y + (b.y - a.y) * t + ny * d };
   }
   return { ...points[points.length - 1] };
@@ -207,9 +239,11 @@ function hashOf(text: string): string {
 function signature(scene: Scene, sizes: readonly CardSize[], labels: readonly { width: number; height: number }[], drawn: readonly CanvasFlow[]): string {
   const cards = scene.cards.map((c, i) => `${c.key}\u0001${sizes[i].width}\u0001${sizes[i].height}`).join("\u0002");
   const frames = scene.frames.map((f) => `${f.key}\u0001${f.cardKeys.join("\u0003")}`).join("\u0002");
-  const flows = drawn.map((f, i) => `${f.from}\u0001${f.to}\u0001${labels[i].width}\u0001${labels[i].height}`).join("\u0002");
+  const flows = drawn.map((f, i) => `${f.from}\u0001${f.to}\u0001${labels[i].width}\u0001${labels[i].height}\u0001${isTransport(f) ? "t" : "b"}`).join("\u0002");
   return hashOf(`${cards}\u0004${frames}\u0004${flows}`);
 }
+
+export const isTransport = (flow: Pick<CanvasFlow, "carrier">): boolean => flow.carrier !== "belt" && flow.carrier !== "pipe";
 
 type Box = { x: number; y: number; width: number; height: number };
 type LabelBox = { width: number; height: number };
@@ -315,7 +349,9 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
 }
 
 function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
-  for (const merged of [false, true]) {
+  // Merged first: the flows of one pair of cards share one routed edge, so parallel flows never bend round each other's
+  // label boxes (a lone flow is the same either way). The separate form is the fallback.
+  for (const merged of [true, false]) {
     try {
       return placeWith(scene, sizes, drawn, labels, merged);
     } catch {
@@ -368,10 +404,16 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
     const b = p.frames.get(f.key);
     return b === undefined ? [] : [{ key: f.key, bubbleKey: f.bubbleKey, title: f.title, ...b }];
   });
+  // A transport's glyph stands a third of the way along its path, clear of the labels at the middle; transports sharing a
+  // pair of cards (one path) stand further apart.
+  const seen = new Map<string, number>();
   const edges: LaidEdge[] = flows.map((flow, index) => {
     const points = p.paths[index];
+    const pair = `${flow.from}\u0001${flow.to}`;
+    const before = isTransport(flow) ? (seen.get(pair) ?? 0) : 0;
+    if (isTransport(flow)) seen.set(pair, before + 1);
     const { width, height } = labels[index];
-    const at = points.length > 0 ? labelPlacement(points, width, height) : { x: 0, y: 0 };
+    const at = points.length > 0 ? labelPlacement(points, width, height, isTransport(flow) ? GLYPH_CLEARANCE : 0) : { x: 0, y: 0 };
     return {
       index,
       flow,
@@ -382,6 +424,8 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
       labelY: at.y - p.stack[index],
       labelWidth: width,
       labelHeight: height,
+      mid: pathMidpoint(points, GLYPH_AT + GLYPH_SPREAD * before),
+      length: lengthOf(points),
     };
   });
   return { nodes, frames, edges, flows, width: p.width, height: p.height };

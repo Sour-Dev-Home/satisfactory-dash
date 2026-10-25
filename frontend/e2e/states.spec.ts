@@ -290,6 +290,37 @@ const CASES: StateCase[] = [
       await pressButton(page, "Collapse 5× Constructor, Iron Plate, tree 1 of 2");
     },
   },
+  // PR 8b: what only feeds a card hidden behind a count, storage folded into chips, and one transport of every mode.
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-upstream-hidden",
+    path: "/app/planner",
+    shows: "+1",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await pressButton(page, "Hide 1 group that only feeds Storage Container");
+    },
+  },
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-storage-folded",
+    path: "/app/planner",
+    shows: "1 flow to storage",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await page.getByRole("button", { name: "Storage detail" }).click();
+    },
+  },
+  {
+    scenario: "planner-factories-transports",
+    name: "planner-factory-transports",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryGraph,
+  },
   {
     scenario: "planner-factories",
     name: "planner-factory-detail",
@@ -584,7 +615,8 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
     // Reduced motion also turns off Leaflet's zoom and fade animations, so every map screenshot is stable.
-    if (path === "/app/map") await page.emulateMedia({ reducedMotion: "reduce" });
+    // The planner canvas's transport glyphs move unless the operator asks for reduced motion, so they sit still here too.
+    if (path === "/app/map" || path === "/app/planner") await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(path);
     if (act) {
       // Sign-in states act on the login form once it's there; the rest act on their page, and

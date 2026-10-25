@@ -39,6 +39,7 @@ const sceneOf = (cards: Card[], flows: CanvasFlow[] = [], frames: Frame[] = []):
   flows,
   bubbleKeys: [],
   foldKeys: [],
+  hasStorage: false,
   openByDefault: true,
   noun: "group",
 });

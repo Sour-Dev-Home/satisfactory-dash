@@ -34,7 +34,11 @@ contract needs to grow, not that this module should special-case a backend detai
   data first: `canvasScene.ts` turns a graph and the viewer's choices into cards (a factory, a bubble of one recipe from
   one source tree, a group, the "N more trees" fold), frames (an opened bubble's groups) and summed flows, with no React
   and no dagre. A bubble opens in place into its groups inside a frame (Collapse on the frame, Collapse all and Expand
-  all in the toolbar); a factory above `COLLAPSE_AT` groups starts collapsed. The graph (`src/planner/graph/`) is a lazy
+  all in the toolbar); a factory above `COLLAPSE_AT` groups starts collapsed. A card's "+N" pill hides what only feeds it
+  (the backend's `collapseUnder` tree), the Storage detail toggle folds buffers and terminal storage into chips, and a
+  transport wears its mode's glyph (`transportGlyphs.tsx`, tokens only, moved by SVG `animateMotion`, never in a hidden
+  tab or past 40 edges, never at all under System with reduced motion): the viewer's choices are `plannerPrefs.ts`
+  (localStorage in try/catch, validated; the page works without it). The graph (`src/planner/graph/`) is a lazy
   chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and the only place `@dagrejs/dagre` is imported:
   `layoutScene` in `layoutSite.ts` is pure and deterministic (sizes from text, left to right), memoized by the response's
   `topologyHash` plus a signature of the cards, flows and sizes (a poll that only moves rates reuses the placement; the
