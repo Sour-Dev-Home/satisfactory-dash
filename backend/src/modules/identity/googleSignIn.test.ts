@@ -182,6 +182,48 @@ describe("createGoogleSignIn (in-memory)", () => {
       expect(store.sessions).toBe(1);
     });
 
+    it("refuses a disabled account as disabled, not terms_changed, and records no acceptance even when ticked", async () => {
+      const { db, store } = fakeDb({
+        users: [{ id: "u-2", email: null, status: "disabled", termsVersion: "2026-09-24" }],
+        identities: [{ userId: "u-2", provider: "google", subject: "sub-9" }],
+      });
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(result).toEqual({ kind: "refused", reason: "disabled" });
+      expect(store.users[0]!.termsVersion).toBe("2026-09-24");
+      expect(store.sessions).toBe(0);
+    });
+
+    it("refuses an unverified email as unverified_email before looking at the terms", async () => {
+      const { db, store } = returning("2026-09-24");
+      const result = await createGoogleSignIn(db, OWNER).complete({ ...them, emailVerified: false }, undefined, {
+        acceptedTermsVersion: TERMS_VERSION,
+      });
+      expect(result).toEqual({ kind: "refused", reason: "unverified_email" });
+      expect(store.users[0]!.termsVersion).toBe("2026-09-24");
+    });
+
+    it("ignores any ticked version that is not the current one", async () => {
+      const { db, store } = returning("2026-09-24");
+      const result = await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: "2999-01-01" });
+      expect(result).toEqual({ kind: "refused", reason: "terms_changed" });
+      expect(store.sessions).toBe(0);
+    });
+
+    it("keeps the terms audit free of the email and records the previous version", async () => {
+      const { db, store } = returning("2026-09-24");
+      await createGoogleSignIn(db, OWNER).complete(them, undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(store.audits[0]).toEqual({
+        action: "terms_accepted",
+        detail: { provider: "google", termsVersion: TERMS_VERSION, previousTermsVersion: "2026-09-24" },
+      });
+    });
+
+    it("keeps the backend TERMS_VERSION equal to the one the sign-in page sends", async () => {
+      const { readFileSync } = await import("node:fs");
+      const source = readFileSync(new URL("../../../../frontend/src/auth/googleSignIn.ts", import.meta.url), "utf8");
+      expect(/export const TERMS_VERSION = "([^"]+)"/.exec(source)?.[1]).toBe(TERMS_VERSION);
+    });
+
     it.each([
       ["the current version", TERMS_VERSION],
       ["no version (invited or seeded)", null],

@@ -135,6 +135,27 @@ describe("re-accepting changed terms (#568)", () => {
     expect(await screen.findByRole("link", { name: "Decline and stay signed out" })).toHaveAttribute("href", "/app/login");
   });
 
+  it("shows the message but no terms step when Google is not offered", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_changed");
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)));
+    renderGate();
+    expect(await screen.findByRole("alert")).toHaveTextContent("The Terms have changed");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Decline/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the sign-up terms step, not the re-accept step, for terms_required", async () => {
+    window.history.replaceState(null, "", "/app/login?error=terms_required");
+    server.use(
+      http.get(endpoints.auth.session.route, () =>
+        HttpResponse.json({ ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] }),
+      ),
+    );
+    renderGate();
+    await screen.findByRole("checkbox");
+    expect(screen.queryByText("What changed:")).not.toBeInTheDocument();
+  });
+
   it("shows nothing about changed terms on a plain sign-in", async () => {
     server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(withGoogle)));
     renderGate();
