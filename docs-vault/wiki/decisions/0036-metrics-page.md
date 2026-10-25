@@ -3,6 +3,7 @@
 Status: accepted (owner, 2026-09-26): D1 push from Actions to a hashed-secret ingest endpoint;
 D2 build after the agent parity week, step 0 (#280's output shape) now; D3 uptime = status-page
 link only; D4 the "false alarm?" mark after the alert shadow week. Build tracked in #281.
+Amended by ADR-0056 (proposed): the build plan rescoped on the built `metrics.series_hourly`.
 
 ## Context
 - **Latency** today exists only in log files. `npm run latency-report` (`scripts/latency-report.mjs:1-14`)
