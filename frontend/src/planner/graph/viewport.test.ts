@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, stageBesidePanel, keyView, panBy, pinchView, revealRect, toStage, pinchView, zoomAt, zoomCentre } from "./viewport";
+import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, stageBesidePanel, keyView, panBy, pinchView, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
 
 const home = { x: 0, y: 0, k: 1 };
 const stage = FALLBACK_STAGE;
