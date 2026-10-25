@@ -51,6 +51,7 @@ jobs:
       sha: ${{ steps.r.outputs.sha }}
       backend: ${{ steps.r.outputs.backend }}
       ops: ${{ steps.r.outputs.ops }}
+      inputs: ${{ steps.r.outputs.inputs }}
       skip: ${{ steps.r.outputs.skip }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -85,12 +86,13 @@ jobs:
           SHA: ${{ steps.r.outputs.sha }}
           BACKEND: ${{ steps.r.outputs.backend }}
           OPS: ${{ steps.r.outputs.ops }}
+          INPUTS: ${{ steps.r.outputs.inputs }}
           SKIP: ${{ steps.r.outputs.skip }}
         run: |
           {
             if [ "$SKIP" = "true" ]; then echo "### Nothing to deploy: ${SHA:0:8} published no backend images"; exit 0; fi
             echo "### $ACTION ${SHA:-(from the release record)}"
-            if [ -n "$SHA" ]; then echo "- backend \`$BACKEND\`"; echo "- ops \`$OPS\`"; fi
+            if [ -n "$SHA" ]; then echo "- backend \`$BACKEND\`"; echo "- ops \`$OPS\`"; echo "- build inputs \`${INPUTS:-none on the images}\`"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   staging:
@@ -98,7 +100,7 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.skip != 'true' && needs.resolve.outputs.action == 'deploy'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     environment: staging
     outputs:
       skip: ${{ steps.s.outputs.skip }}
@@ -122,15 +124,17 @@ jobs:
       - name: staging
         id: s
         env:
-          # Automatic runs skip images production already runs (a later merge with no backend change).
+          # Automatic runs skip images production already runs, or built from the same inputs as its release (ADR-0054
+          # D1: a merge that changed nothing the backend images build from). Dispatched deploys never skip.
           DEPLOY_AUTO: ${{ github.event_name == 'workflow_run' }}
           SHA: ${{ needs.resolve.outputs.sha }}
           BACKEND: ${{ needs.resolve.outputs.backend }}
           OPS: ${{ needs.resolve.outputs.ops }}
+          INPUTS: ${{ needs.resolve.outputs.inputs }}
           STAGING_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: node scripts/deploy/deploy.mjs staging "$SHA" "$BACKEND" "$OPS"
+        run: node scripts/deploy/deploy.mjs staging "$SHA" "$BACKEND" "$OPS" "$INPUTS"
 
   production:
     needs: [resolve, staging]
@@ -174,5 +178,6 @@ jobs:
           SHA: ${{ needs.resolve.outputs.sha }}
           BACKEND: ${{ needs.resolve.outputs.backend }}
           OPS: ${{ needs.resolve.outputs.ops }}
+          INPUTS: ${{ needs.resolve.outputs.inputs }}
           DEPLOY_DISCORD_WEBHOOK: ${{ secrets.DEPLOY_DISCORD_WEBHOOK }}
-        run: node scripts/deploy/deploy.mjs production "$ACTION" "$SHA" "$BACKEND" "$OPS"
+        run: node scripts/deploy/deploy.mjs production "$ACTION" "$SHA" "$BACKEND" "$OPS" "$INPUTS"

@@ -1,7 +1,9 @@
 // The production deploy (ADR-0049 D4 steps 1 and 3, D5), run by .github/workflows/deploy.yml:
 //
 //   node scripts/deploy/deploy.mjs resolve [<sha>]                         no AWS: the two digests for a sha on main
-//   node scripts/deploy/deploy.mjs production <deploy|redeploy|rollback> [<sha> <backend digest> <ops digest>]
+//   node scripts/deploy/deploy.mjs production <deploy|redeploy|rollback> [<sha> <backend digest> <ops digest> [<inputs>]]
+//
+// `inputs` is the images' build-inputs hash (ADR-0054 D1, scripts/deploy/inputs.mjs); empty when they carry none.
 //
 // `production` runs with the satis-prod-deploy role's credentials (OIDC). It reads the base task definitions Terraform
 // published, copies each with the new image only, migrates first (deploy only), rolls the service out, watches the two
@@ -16,6 +18,7 @@ import {
   REPOSITORIES,
   STAGING_CONTAINERS,
   alarming,
+  alreadyReleased,
   checkBackendBase,
   checkMigrateBase,
   checkStagingBase,
@@ -23,6 +26,7 @@ import {
   cloudflaredPin,
   digestFromInspect,
   imageRef,
+  inputsFromInspect,
   isDigest,
   isSha,
   nextReleased,
@@ -32,6 +36,7 @@ import {
   revisionWith,
   rolloutStatus,
 } from "./lib.mjs";
+import { isInputs } from "./inputs.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -84,14 +89,18 @@ export function realDeps() {
   };
 }
 
-/** D4 step 1: both images for one sha, as digests, checked (arm64 present, revision label = sha). */
+/**
+ * D4 step 1: both images for one sha, as digests, checked (arm64 present, revision label = sha). `inputs` is their
+ * build-inputs hash (ADR-0054 D1) when both images carry the same valid one, else "" (which never matches a record).
+ */
 export function resolveSha(deps, sha) {
   if (!isSha(sha)) throw new Error(`not a full commit sha: ${sha}`);
-  return {
-    sha,
-    backend: digestFromInspect(deps.inspect(`${REPOSITORIES.backend}:${sha}`), sha),
-    ops: digestFromInspect(deps.inspect(`${REPOSITORIES.ops}:${sha}`), sha),
-  };
+  const backendInspect = deps.inspect(`${REPOSITORIES.backend}:${sha}`);
+  const opsInspect = deps.inspect(`${REPOSITORIES.ops}:${sha}`);
+  const backend = digestFromInspect(backendInspect, sha);
+  const ops = digestFromInspect(opsInspect, sha);
+  const a = inputsFromInspect(backendInspect);
+  return { sha, backend, ops, inputs: a !== null && a === inputsFromInspect(opsInspect) ? a : "" };
 }
 
 /** No sha given: the newest commit on main whose images were published (a commit that changed no backend path has none). */
@@ -211,6 +220,12 @@ async function notify(deps, n) {
 const runUrl = (env) => (env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}` : undefined);
 
 /**
+ * What a release is: the sha, both digests and, when known and valid, the build-inputs hash of exactly those images
+ * (ADR-0054 D1). Anything else about `r` is dropped, and a missing or broken hash stays out of the record.
+ */
+const releaseOf = (r) => ({ sha: r.sha, backend: r.backend, ops: r.ops, ...(isInputs(r.inputs) ? { inputs: r.inputs } : {}) });
+
+/**
  * D5: deploy (migrate, roll out, watch, check, record), redeploy (the released digests on the current base, no
  * migration) or rollback (released.previous or a given sha's digests, no migration, no alarm pre-check).
  */
@@ -220,23 +235,23 @@ export async function production(deps, action, given = {}, c = CONFIG) {
   let target;
   if (action === "deploy") {
     if (!isSha(given.sha) || !isDigest(given.backend) || !isDigest(given.ops)) throw new Error("deploy needs the resolved sha and both digests");
-    target = given;
+    target = releaseOf(given);
   } else if (action === "redeploy") {
     if (!released) throw new Error("nothing released yet to redeploy");
-    target = { sha: released.sha, backend: released.backend, ops: released.ops };
+    target = releaseOf(released);
   } else if (isSha(given.sha)) {
     if (!isDigest(given.backend) || !isDigest(given.ops)) throw new Error("rollback to a sha needs its resolved digests");
-    target = given;
+    target = releaseOf(given);
   } else {
     // Back to the last good release. When production isn't running the recorded release (a deploy whose health check
     // failed, or a manual rollout), that recorded one is the last good; otherwise it's the one before (security review).
     const running = describeService(deps, c).taskDefinition;
     if (released && running !== released.taskDefinition) {
       deps.log(`rollback: the service runs ${running}, not the recorded release; going back to the recorded release`);
-      target = { sha: released.sha, backend: released.backend, ops: released.ops };
+      target = releaseOf(released);
     } else {
       if (!released?.previous) throw new Error("no previous release to roll back to; give a sha");
-      target = { sha: released.previous.sha, backend: released.previous.backend, ops: released.previous.ops };
+      target = releaseOf(released.previous);
     }
   }
   deps.log(`${action}: ${target.sha} backend ${target.backend} ops ${target.ops}`);
@@ -285,7 +300,7 @@ export async function production(deps, action, given = {}, c = CONFIG) {
 
     // D5 step 6.
     // A redeploy re-runs the same release, so what it replaces is not a previous release: keep the one it had.
-    const record = nextReleased(action === "redeploy" ? released.previous : released, { sha: target.sha, backend: target.backend, ops: target.ops, taskDefinition });
+    const record = nextReleased(action === "redeploy" ? released.previous : released, { ...target, taskDefinition });
     deps.aws(["ssm", "put-parameter", "--name", param(c.environment, "released"), "--type", "String", "--overwrite", "--value", JSON.stringify(record)]);
     deps.log("released: recorded");
     await notify(deps, { outcome: "released", action, ...target });
@@ -305,6 +320,9 @@ export const STAGING = {
   upTimeoutMs: 8 * 60_000,
   stopTimeoutMs: 3 * 60_000,
   pollMs: 10_000,
+  // ADR-0054 D2: the pause before the one retry of a failed image pull. Two attempts (8 + 3 + 0.5 + 8 + 3 minutes
+  // at worst, plus the checks) stay inside the job's 30 minutes.
+  pullRetryMs: 30_000,
 };
 
 const redact = (s) => String(s).replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]").replace(/[\w.-]+\.rds\.amazonaws\.com/gi, "[rds host]");
@@ -322,11 +340,15 @@ export async function staging(deps, target, s = STAGING) {
   if (!password || !accessId || !accessSecret) throw new Error("STAGING_ADMIN_PASSWORD, CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set");
 
   const released = parseReleased(getParam(deps, param("prod", "released")));
-  // An automatic run whose newest images production already runs (a merge with no backend change, after the release
-  // that did): nothing to do. A dispatched deploy may still re-ship them on purpose.
-  if (s.skipIfReleased && released && released.backend === target.backend && released.ops === target.ops) {
-    deps.log(`staging: production already runs ${target.sha.slice(0, 8)}'s images; nothing to deploy`);
-    return { skipped: true };
+  // An automatic run whose newest images production already runs, or were built from the build inputs production's
+  // release was (ADR-0054 D1: a merge that changed nothing the Dockerfile builds from): nothing to do. Only the
+  // automatic run skips; a dispatched deploy may still re-ship them on purpose.
+  const same = s.skipIfReleased ? alreadyReleased(released, target) : null;
+  if (same) {
+    deps.log(same === "images"
+      ? `staging: production already runs ${target.sha.slice(0, 8)}'s images; nothing to deploy`
+      : `staging: ${target.sha.slice(0, 8)}'s images are built from the same inputs as the release production runs (${released.sha.slice(0, 8)}); nothing deployable changed`);
+    return { skipped: true, reason: same };
   }
   const previousOps = released?.ops ?? target.ops;
   deps.log(`staging: ${target.sha} on top of ${released ? `the released ops ${previousOps}` : "a fresh database (nothing released yet)"}`);
@@ -344,27 +366,33 @@ export async function staging(deps, target, s = STAGING) {
     "db-previous": imageRef("ops", previousOps),
   }));
   deps.log(`staging: registered ${taskDefinition}`);
-  const run = deps.aws(["ecs", "run-task", "--cluster", s.cluster, "--launch-type", "FARGATE", "--task-definition", taskDefinition, "--network-configuration", JSON.stringify(net)]);
-  const taskArn = run.tasks?.[0]?.taskArn;
-  if (!taskArn) throw new Error(`the staging task did not start: ${JSON.stringify(run.failures ?? [])}`);
+  const start = () => {
+    const run = deps.aws(["ecs", "run-task", "--cluster", s.cluster, "--launch-type", "FARGATE", "--task-definition", taskDefinition, "--network-configuration", JSON.stringify(net)]);
+    const arn = run.tasks?.[0]?.taskArn;
+    if (!arn) throw new Error(`the staging task did not start: ${JSON.stringify(run.failures ?? [])}`);
+    return arn;
+  };
+  let taskArn = start();
   let ok = false;
   try {
     // Inside the try so that nothing between run-task and here can leave the task running.
     deps.log(`staging: started ${taskArn}`);
     const access = { "CF-Access-Client-Id": accessId, "CF-Access-Client-Secret": accessSecret };
     const describe = () => deps.aws(["ecs", "describe-tasks", "--cluster", s.cluster, "--tasks", taskArn]).tasks?.[0];
-    // Up: /api/health answers 200 through the tunnel, while the task is still running.
-    const deadline = deps.now() + s.upTimeoutMs;
-    for (;;) {
-      const t = describe();
-      if (t?.lastStatus === "STOPPED") throw new Error(`the staging task stopped before it answered (${t.stoppedReason ?? "no reason"})`);
-      const r = await get(deps, `${s.url}/api/health`, access);
-      if (r?.status === 200) break;
-      // Access answers before the tunnel: a redirect means it refused the service token, which waiting won't fix.
-      if (r && r.status >= 300 && r.status < 400) throw new Error(`Cloudflare Access answered ${r.status}: check CF_ACCESS_CLIENT_ID/SECRET and the application's Service Auth policy`);
-      if (deps.now() > deadline) throw new Error(`staging did not answer /api/health within ${s.upTimeoutMs / 60_000} minutes (last: ${r?.status ?? "no answer"})`);
-      await deps.sleep(s.pollMs);
+    let stopped = await untilUp(deps, s, describe, access);
+    // ADR-0054 D2: Fargate's pull from ghcr.io can fail transiently. Once, after a pause, the same revision runs again;
+    // any other stop, or a second pull failure, fails as before.
+    if (stopped !== null && PULL_FAILED.test(stopped)) {
+      deps.log(`staging: the task could not pull an image (${stopped}); starting it once more in ${s.pullRetryMs / 1000} s`);
+      const first = taskArn;
+      taskArn = null;
+      await stopStaging(deps, s, first, false);
+      await deps.sleep(s.pullRetryMs);
+      taskArn = start();
+      deps.log(`staging: started ${taskArn}`);
+      stopped = await untilUp(deps, s, describe, access);
     }
+    if (stopped !== null) throw new Error(`the staging task stopped before it answered (${stopped})`);
     const ready = await get(deps, `${s.url}/api/health/ready`, access);
     if (ready?.status !== 200) throw new Error(`/api/health/ready answered ${ready?.status ?? "nothing"}`);
 
@@ -400,9 +428,30 @@ export async function staging(deps, target, s = STAGING) {
     deps.log("staging: health, ready, migrations, sign-in, session and server list all good");
     ok = true;
   } finally {
-    await stopStaging(deps, s, taskArn, ok);
+    if (taskArn) await stopStaging(deps, s, taskArn, ok);
   }
   return { taskDefinition };
+}
+
+/** ECS's stoppedReason when a container image could not be pulled (ADR-0054 D2). */
+const PULL_FAILED = /CannotPullContainerError/;
+
+/**
+ * Up: /api/health answers 200 through the tunnel while the task is still running. Returns null when it does, or the
+ * task's stoppedReason when the task stopped first; throws on Access refusing the token or the timeout.
+ */
+async function untilUp(deps, s, describe, access) {
+  const deadline = deps.now() + s.upTimeoutMs;
+  for (;;) {
+    const t = describe();
+    if (t?.lastStatus === "STOPPED") return String(t.stoppedReason ?? "no reason");
+    const r = await get(deps, `${s.url}/api/health`, access);
+    if (r?.status === 200) return null;
+    // Access answers before the tunnel: a redirect means it refused the service token, which waiting won't fix.
+    if (r && r.status >= 300 && r.status < 400) throw new Error(`Cloudflare Access answered ${r.status}: check CF_ACCESS_CLIENT_ID/SECRET and the application's Service Auth policy`);
+    if (deps.now() > deadline) throw new Error(`staging did not answer /api/health within ${s.upTimeoutMs / 60_000} minutes (last: ${r?.status ?? "no answer"})`);
+    await deps.sleep(s.pollMs);
+  }
 }
 
 async function get(deps, url, headers) {
@@ -493,14 +542,18 @@ async function main(argv) {
   } else if (cmd === "resolve-auto") {
     output(deps.env, resolveAuto(deps, rest[0]));
   } else if (cmd === "staging") {
-    const [sha, backend, ops] = rest;
-    const r = await staging(deps, { sha, backend, ops }, { ...STAGING, skipIfReleased: deps.env.DEPLOY_AUTO === "true" });
+    const [sha, backend, ops, inputs] = rest;
+    const r = await staging(deps, { sha, backend, ops, inputs: inputs || undefined }, { ...STAGING, skipIfReleased: deps.env.DEPLOY_AUTO === "true" });
     output(deps.env, { skip: r.skipped ? "true" : "false" });
+    if (r.skipped && deps.env.GITHUB_STEP_SUMMARY) {
+      const why = r.reason === "inputs" ? "its images are built from the same inputs as the release production runs" : "production already runs its images";
+      appendFileSync(deps.env.GITHUB_STEP_SUMMARY, `### Nothing deployable changed: ${sha.slice(0, 8)}\n${why}; staging and production skipped.\n`);
+    }
   } else if (cmd === "production") {
-    const [action, sha, backend, ops] = rest;
-    await production(deps, action, { sha: sha || undefined, backend: backend || undefined, ops: ops || undefined });
+    const [action, sha, backend, ops, inputs] = rest;
+    await production(deps, action, { sha: sha || undefined, backend: backend || undefined, ops: ops || undefined, inputs: inputs || undefined });
   } else {
-    throw new Error("usage: deploy.mjs resolve [<sha>] | production <deploy|redeploy|rollback> [<sha> <backend> <ops>]");
+    throw new Error("usage: deploy.mjs resolve [<sha>] | resolve-auto <sha> | staging <sha> <backend> <ops> [<inputs>] | production <deploy|redeploy|rollback> [<sha> <backend> <ops> [<inputs>]]");
   }
 }
 
