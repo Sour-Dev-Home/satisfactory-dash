@@ -14,10 +14,11 @@ import { ServerContext, ServerSwitchContext } from "./ServerContext";
  * Server discovery (ADR-0001): auto-selects when there's exactly one server, otherwise
  * shows a picker. The selection lives in memory only; server ids aren't persisted.
  */
-export function ServerGate({ children }: { children: ReactNode }) {
+export function ServerGate({ children, initialId }: { children: ReactNode; initialId?: string }) {
   const client = useQueryClient();
   const servers = useQuery(queries.servers());
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `initialId`: the server the pair page just paired. An id that is not in the list selects nothing.
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null);
   // Servers that answered server_not_found. Never auto-selected again, so rediscovery
   // returning the same list shows the picker instead of looping.
   const [lostIds, setLostIds] = useState<ReadonlySet<string>>(() => new Set());

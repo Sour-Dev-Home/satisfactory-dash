@@ -39,6 +39,7 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { accountDeleted, serverLeft } from "./accountMocks";
 import { mapLiveResponse } from "./mapLiveResponses";
+import { approved, lookedUp } from "./pairingMocks";
 import { createdAgentServer } from "./selfServeMocks";
 
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
@@ -83,6 +84,9 @@ export const handlers = [
   http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
   // ADR-0046: any signed-in user adds a server of their own.
   http.post(endpoints.selfServe.createAgentServer.route, () => HttpResponse.json(createdAgentServer, { status: 201 })),
+  // ADR-0051 section 1: the /pair page.
+  http.post(endpoints.pairings.lookup.route, () => HttpResponse.json(lookedUp)),
+  http.post(endpoints.pairings.approve.route, () => HttpResponse.json(approved)),
   // ADR-0031: an agent server's two edits.
   http.patch(endpoints.serverManagement.renameAgent.route, () => HttpResponse.json(renameAgentServerResponse)),
   http.post(endpoints.serverManagement.switchToLocal.route, () => HttpResponse.json(serverConnectionOk)),

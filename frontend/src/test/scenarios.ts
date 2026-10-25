@@ -120,6 +120,7 @@ import {
   listSelfServeOff,
   listSelfServeOn,
 } from "./selfServeMocks";
+import { approved, errorPairingForbidden, errorPairingNotFound, errorPairingRateLimited, lookedUp } from "./pairingMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
 // the dev mock mode (src/test/browser.ts, MSW in the browser) and the Playwright tests
@@ -170,6 +171,9 @@ export const ROUTES = {
   removeServer: endpoints.serverManagement.remove,
   // ADR-0046: any signed-in user adds a server of their own.
   createAgentServer: endpoints.selfServe.createAgentServer,
+  // ADR-0051 section 1: the /pair page.
+  pairingLookup: endpoints.pairings.lookup,
+  pairingApprove: endpoints.pairings.approve,
   // ADR-0031: an agent server's only edits (#266 rename, #273 switch back to local).
   renameAgent: endpoints.serverManagement.renameAgent,
   switchToLocal: endpoints.serverManagement.switchToLocal,
@@ -273,6 +277,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
   createAgentServer: { status: 201, body: createdAgentServer },
+  pairingLookup: ok(lookedUp),
+  pairingApprove: ok(approved),
   renameAgent: ok(renameAgentServerResponse),
   switchToLocal: ok(serverConnectionOk),
   historyPower: ok(historyPower24h),
@@ -720,6 +726,16 @@ export const SCENARIOS = {
     createAgentServer: { status: 429, body: errorDailyLimit, headers: { "Retry-After": "18000" } },
   },
   "self-serve-forbidden": { servers: ok(listSelfServeOn), createAgentServer: fail(403, errorSelfServeOff) },
+  // ADR-0051 section 1, the /pair page: a player who owns one server (so "One of my servers" has a choice), a code the
+  // server does not accept, a wait, and a refusal.
+  "pair": { servers: ok(serversRoleOwner) },
+  "pair-invalid": { servers: ok(serversRoleOwner), pairingLookup: fail(404, errorPairingNotFound) },
+  "pair-rate-limited": {
+    servers: ok(serversRoleOwner),
+    pairingLookup: { status: 429, body: errorPairingRateLimited, headers: { "Retry-After": "120" } },
+  },
+  "pair-forbidden": { servers: ok(serversRoleOwner), pairingLookup: fail(403, errorPairingForbidden) },
+  "pair-approve-invalid": { servers: ok(serversRoleOwner), pairingApprove: fail(404, errorPairingNotFound) },
   "self-serve-owner": { servers: ok(listOwnsEnrolled), agentStatus: ok(agentStatusEnrolled) },
   "self-serve-owner-pending": {
     servers: ok(listOwnsPending),
