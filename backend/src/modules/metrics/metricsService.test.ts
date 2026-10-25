@@ -68,8 +68,8 @@ describe("worstServers", () => {
 });
 
 describe("createMetricsService", () => {
-  const fakeDb = (histRows: unknown[], counterRows: unknown[]) => ({
-    query: async (sql: string) => ({ rows: sql.includes("unnest") ? histRows : counterRows }),
+  const fakeDb = (histRows: unknown[], counterRows: unknown[], alertRows: unknown[] = []) => ({
+    query: async (sql: string) => ({ rows: sql.includes("alert_events") ? alertRows : sql.includes("unnest") ? histRows : counterRows }),
   });
   const now = () => Date.parse("2026-10-25T10:30:00Z");
 
@@ -86,12 +86,30 @@ describe("createMetricsService", () => {
     expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
     expect(out.window).toBe("24h");
     expect(out.generatedAt).toBe("2026-10-25T10:30:00.000Z");
-    expect(out.alerts).toEqual({ available: false, reason: "not_built" });
+    expect(out.alerts).toEqual({ available: false, reason: "no_data" });
     expect(out.delivery).toEqual({ available: false, reason: "not_built" });
     if (!out.system.available) throw new Error("system should be available");
     expect(out.system.histograms.find((h) => h.metric === "http.server.request.duration")).toMatchObject({ count: 5, p50Ms: 5, p99Ms: null });
     expect(out.system.counters).toEqual([{ metric: "satis.agent.refused", labels: { status: "401" }, total: 7 }]);
     expect(out.system.servers.map((s) => s.server)).toEqual(["abc123", "abc123"]);
+  });
+
+  it("fills the alerts section from the alert log, drops an invalid kind and says no_data when empty", async () => {
+    const alertRows = [
+      { month: "2026-09", kind: "stopped_machines", fired: 3, flaps: 3, median_resolve_seconds: 120 },
+      { month: "2026-10", kind: "power_outage", fired: 2, flaps: 0, median_resolve_seconds: null },
+      { month: "2026-10", kind: "Bad Kind!", fired: 1, flaps: 0, median_resolve_seconds: null },
+    ];
+    const out = await createMetricsService({ db: fakeDb([], [], alertRows), now }).overview("1h");
+    expect(out.alerts).toEqual({
+      available: true,
+      asOf: "2026-10-25T10:30:00.000Z",
+      months: [
+        { month: "2026-09", kind: "stopped_machines", fired: 3, flaps: 3, medianResolveSeconds: 120 },
+        { month: "2026-10", kind: "power_outage", fired: 2, flaps: 0, medianResolveSeconds: null },
+      ],
+    });
+    expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
   });
 
   it("says no_data when nothing was recorded in the window", async () => {

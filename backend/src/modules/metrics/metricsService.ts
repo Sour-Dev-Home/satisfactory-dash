@@ -10,6 +10,7 @@ import type {
   MetricsWindow,
   ServerMetricSummary,
 } from "@satisfactory-dash/shared";
+import { alertQualitySummary } from "../alerts/index.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { readCounterSeries, readHistogramSeries } from "./metricsRepository.js";
 import type { CounterSeries, HistogramSeries } from "./metricsRepository.js";
@@ -156,9 +157,11 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
     async overview(window) {
       const nowMs = now();
       const { from, to } = windowBounds(window, nowMs);
-      const [histogramSeries, counterSeries] = await Promise.all([
+      const [histogramSeries, counterSeries, alertMonths] = await Promise.all([
         readHistogramSeries(options.db, from, to),
         readCounterSeries(options.db, from, to),
+        // Not window-bound: alert quality is per calendar month over the 90-day log (ADR-0056 section 2).
+        alertQualitySummary(options.db, nowMs),
       ]);
       const histograms = foldHistograms(histogramSeries);
       const counters = foldCounters(counterSeries);
@@ -170,8 +173,8 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
           histograms.length === 0 && counters.length === 0
             ? { available: false, reason: "no_data" }
             : { available: true, asOf: generatedAt, histograms, counters, servers: worstServers(histogramSeries, counterSeries) },
-        // PR 4 builds alert quality; PR 6b the delivery snapshot.
-        alerts: { available: false, reason: "not_built" },
+        alerts: alertMonths.length === 0 ? { available: false, reason: "no_data" } : { available: true, asOf: generatedAt, months: alertMonths },
+        // PR 6b builds the delivery snapshot.
         delivery: { available: false, reason: "not_built" },
         links: { ...METRICS_LINKS },
       };

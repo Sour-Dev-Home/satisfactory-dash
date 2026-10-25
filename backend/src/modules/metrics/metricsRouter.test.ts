@@ -23,8 +23,8 @@ const guard: RequestHandler = (req, res, next) => {
   next();
 };
 
-const rows = (histRows: unknown[], counterRows: unknown[]) => ({
-  query: vi.fn(async (sql: string) => ({ rows: sql.includes("unnest") ? histRows : counterRows })),
+const rows = (histRows: unknown[], counterRows: unknown[], alertRows: unknown[] = []) => ({
+  query: vi.fn(async (sql: string) => ({ rows: sql.includes("alert_events") ? alertRows : sql.includes("unnest") ? histRows : counterRows })),
 });
 
 function build(service: MetricsService, options: { isReady?: () => boolean; limiter?: UserRateLimiter } = {}) {
@@ -46,6 +46,7 @@ const seeded = () =>
     db: rows(
       [{ metric: "poller.cycle.duration", labels: { server: "abc123", group: "fast" }, ord: 4, n: 3 }],
       [{ metric: "satis.agent.refused", labels: { server: "abc123", status: "401" }, total: 2 }],
+      [{ month: "2026-10", kind: "power_outage", fired: 4, flaps: 1, median_resolve_seconds: "612.5" }],
     ),
     now: () => Date.parse("2026-10-25T10:30:00Z"),
   });
@@ -72,7 +73,11 @@ describe("GET /api/admin/metrics", () => {
     const body = MetricsOverviewSchema.parse(res.body);
     expect(body.window).toBe("24h");
     expect(body.system.available).toBe(true);
-    expect(body.alerts).toEqual({ available: false, reason: "not_built" });
+    expect(body.alerts).toEqual({
+      available: true,
+      asOf: body.generatedAt,
+      months: [{ month: "2026-10", kind: "power_outage", fired: 4, flaps: 1, medianResolveSeconds: 612.5 }],
+    });
     expect(body.delivery).toEqual({ available: false, reason: "not_built" });
   });
 
