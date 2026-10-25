@@ -50,7 +50,7 @@ test("adding a root .dockerignore changes the hash; it is optional today", () =>
 test("a missing required input, an extra path or an odd entry fails instead of hashing less", () => {
   for (const p of Object.keys(BASE)) {
     const { [p]: _gone, ...rest } = BASE;
-    assert.throws(() => inputsHash(lsTree(rest)), new RegExp(`build input ${p.replace(/[.]/g, "\\.")} is not in the commit`));
+    assert.throws(() => inputsHash(lsTree(rest)), new RegExp(`build input ${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} is not in the commit`));
   }
   assert.throws(() => inputsHash(lsTree({ ...BASE, frontend: ["040000", "tree", ID("7")] })), /not build inputs: frontend/);
   assert.throws(() => inputsHash(`${lsTree(BASE)}garbage\0`), /unexpected git ls-tree entry/);
