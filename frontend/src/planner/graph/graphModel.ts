@@ -4,15 +4,13 @@ import { edgeRateText, outputLine } from "../plannerText";
 // What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
 
 /** Longest line a card prints; longer text is cut with an ellipsis (the full text stays in the node's title and the tables). */
-export const MAX_LINE_CHARS = 24;
-/** The heading is larger type, so fewer characters fit the same card width. */
-export const MAX_TITLE_CHARS = 20;
+export const MAX_LINE_CHARS = 34;
 const MAX_OUTPUT_LINES = 2;
 
 const cut = (text: string, max = MAX_LINE_CHARS) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
 /** The card's heading, "8× Constructor" (a single machine has no count). */
-export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name, MAX_TITLE_CHARS);
+export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name);
 
 /** The card's body lines after the title: recipe, up to two outputs (actual over max), a loop marker. Never empty. */
 export function nodeBodyLines(node: PlannerNode): string[] {
