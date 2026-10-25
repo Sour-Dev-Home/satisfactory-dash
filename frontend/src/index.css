@@ -48,9 +48,10 @@
      rails a light steel that stands clear of the grid lines, resource nodes a violet. */
   --color-rail: #c4ccd6;
   --color-node: #b79df5;
-  /* The live trains layer (ADR-0038 M6): a train a teal dot, a station a ring in a warm yellow, both clear of rails and nodes. */
+  /* The live trains layer (ADR-0038 M6): a train a teal dot, a station a diamond ring in pink, both clear of rails, nodes and the
+     amber/yellow backed-up state (6.7:1 on the canvas). A train's halo is the canvas colour (--color-canvas). */
   --color-train: #4dd0c8;
-  --color-station: #f2c14e;
+  --color-station: #f472b6;
   /* The backing chip behind a building icon: the game's icons are dark glyphs that vanish on the dark card. */
   --color-icon-chip: #c4ccd6;
   /* Borders and text on the soft status backgrounds (banners, the error notice). */

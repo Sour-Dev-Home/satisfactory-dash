@@ -11,8 +11,12 @@ export const STATION_TOKEN = "--color-station";
 export const GLIDE_TOKEN = "--duration-glide";
 /** On-screen radii in pixels (Leaflet's radius is in pixels), the same at every zoom. */
 export const TRAIN_RADIUS_PX = 7;
-export const STATION_RADIUS_PX = 5;
+/** A station is a diamond ring, this far from its centre to each point, so it is no circle like a train or an alert. */
+export const STATION_RADIUS_PX = 6;
 export const STATION_WEIGHT_PX = 2;
+/** The outline round a train dot, in the canvas colour: it keeps a dot apart from the ones beside and under it. */
+export const TRAIN_HALO_PX = 2;
+export const HALO_TOKEN = "--color-canvas";
 
 /** A token's duration ("1s", "240ms") in milliseconds; 0 when it is missing or odd, so nothing animates. */
 export function durationMs(value: string): number {
@@ -32,6 +36,13 @@ export const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) 
  */
 const lastDrawn = new WeakMap<Leaflet.Map, Map<string, MapPoint>>();
 
+/** The four corners of a station's diamond, a fixed number of screen pixels round its centre at the current zoom. */
+function diamondAround(map: Leaflet.Map, at: MapPoint): Leaflet.LatLng[] {
+  const centre = map.latLngToLayerPoint(at);
+  const r = STATION_RADIUS_PX;
+  return ([[0, -r], [r, 0], [0, r], [-r, 0]] as const).map(([dx, dy]) => map.layerPointToLatLng([centre.x + dx, centre.y + dy]));
+}
+
 /** A tooltip as DOM text nodes: names come from the game server, so they never go through HTML. */
 function tooltip(title: string, ...lines: string[]): HTMLElement {
   const box = document.createElement("div");
@@ -50,7 +61,7 @@ const trainTooltip = (t: MapTrain) => tooltip(t.name, t.status, formatPoint([t.x
 const stationTooltip = (s: MapTrainStation) => tooltip(s.name, "Train station", formatPoint([s.x, s.y]));
 
 /**
- * ADR-0038 M6, the live trains layer: each train a dot, each station a ring, from `map/live` (polled
+ * ADR-0038 M6, the live trains layer: each train a dot, each station a diamond ring, from `map/live` (polled
  * every 10 s). Drawn on the shared canvas above the buildings. On a new reading a train slides to its
  * new place over `--duration-glide`, eased both ways. Only this layer redraws on a poll (the canvas
  * diffs layers), and it repaints in the same frame, so it doesn't flicker.
@@ -64,18 +75,27 @@ export const trainsLayer: MapLayer<MapLive> = {
     const group = L.layerGroup();
     const stationColor = color(STATION_TOKEN);
     const trainColor = color(TRAIN_TOKEN);
+    const haloColor = color(HALO_TOKEN);
+    const diamonds: { polygon: Leaflet.Polygon; at: MapPoint }[] = [];
     for (const station of live.stations) {
-      L.circleMarker(project(station.x, station.y), {
+      const at = project(station.x, station.y);
+      const polygon = L.polygon(diamondAround(map, at), {
         renderer,
-        radius: STATION_RADIUS_PX,
         color: stationColor,
         weight: STATION_WEIGHT_PX,
+        lineJoin: "miter",
         fillColor: stationColor,
         fillOpacity: 0.25,
       })
         .bindTooltip(() => stationTooltip(station), { sticky: true })
         .addTo(group);
+      diamonds.push({ polygon, at });
     }
+    // The diamond is a fixed size on screen, so it is rebuilt from its centre when the zoom changes.
+    const resize = () => {
+      for (const { polygon, at } of diamonds) polygon.setLatLngs(diamondAround(map, at));
+    };
+    if (diamonds.length > 0) map.on("zoomend", resize);
 
     const before = lastDrawn.get(map);
     const drawn = new Map<string, MapPoint>();
@@ -84,7 +104,7 @@ export const trainsLayer: MapLayer<MapLive> = {
     for (const train of live.trains) {
       const to = project(train.x, train.y);
       const from = glideMs > 0 ? (before?.get(train.id) ?? to) : to;
-      const marker = L.circleMarker(from, { renderer, radius: TRAIN_RADIUS_PX, stroke: false, fillColor: trainColor, fillOpacity: 1 })
+      const marker = L.circleMarker(from, { renderer, radius: TRAIN_RADIUS_PX, color: haloColor, weight: TRAIN_HALO_PX, fillColor: trainColor, fillOpacity: 1 })
         .bindTooltip(() => trainTooltip(train), { sticky: true })
         .addTo(group);
       drawn.set(train.id, from);
@@ -110,6 +130,7 @@ export const trainsLayer: MapLayer<MapLive> = {
     }
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      map.off("zoomend", resize);
       group.remove();
     };
   },
@@ -118,13 +139,13 @@ export const trainsLayer: MapLayer<MapLive> = {
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       <li className="flex items-center gap-1.5">
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="h-4 w-4 flex-none">
-          <circle cx="8" cy="8" r={TRAIN_RADIUS_PX} className="fill-train" />
+          <circle cx="8" cy="8" r={TRAIN_RADIUS_PX} className="fill-train stroke-canvas" strokeWidth={TRAIN_HALO_PX} />
         </svg>
         Train
       </li>
       <li className="flex items-center gap-1.5">
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="h-4 w-4 flex-none">
-          <circle cx="8" cy="8" r={STATION_RADIUS_PX} className="fill-station/25 stroke-station" strokeWidth={STATION_WEIGHT_PX} />
+          <polygon points={`8,${8 - STATION_RADIUS_PX} ${8 + STATION_RADIUS_PX},8 8,${8 + STATION_RADIUS_PX} ${8 - STATION_RADIUS_PX},8`} className="fill-station/25 stroke-station" strokeWidth={STATION_WEIGHT_PX} />
         </svg>
         Station
       </li>
