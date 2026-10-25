@@ -10,7 +10,7 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { endpoints, type FactoryResponse } from "@satisfactory-dash/shared";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "../test/mapLiveResponses";
 import { server } from "../test/server";
 import { renderWithClient } from "../test/render";
@@ -259,6 +259,10 @@ describe("MapPanel world tables (hunt)", () => {
 });
 
 describe("MapPanel live trains (ADR-0038 M6)", () => {
+  afterEach(() => {
+    canvas.view = null;
+  });
+
   it("draws the trains layer on top once the live reading arrives, and says what it holds", async () => {
     canvas.view = null;
     mount();
@@ -276,8 +280,7 @@ describe("MapPanel live trains (ADR-0038 M6)", () => {
     canvas.view = { minX: station.x - 1, maxX: station.x + 1, minY: station.y - 1, maxY: station.y + 1 };
     mount();
     await screen.findByRole("table", { name: /Train stations in view \(1\)/ });
-    expect(screen.getByText("None in view. Zoom out or pan to see more.")).toBeInTheDocument();
-    canvas.view = null;
+    expect(screen.getByRole("heading", { name: "Trains in view (0)" })).toBeInTheDocument();
   });
 
   it("changes the trains layer, and no other, when a refetch brings new positions", async () => {
