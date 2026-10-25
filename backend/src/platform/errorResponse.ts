@@ -76,6 +76,9 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   agent_outdated: 426,
   command_not_found: 404,
   command_expired: 409,
+  // ADR-0055 PR 9: Planner designations.
+  designation_overlap: 409,
+  designation_cap: 409,
   // ADR-0047: account deletion and leaving a server. 403, not 401, so the client does not read it as "signed out".
   would_orphan: 409,
   reauth_required: 403,
