@@ -62,7 +62,7 @@ interface Acc {
   routeName: string;
 }
 
-const FROM_RANK: Record<ItemFrom, number> = { inventory: 0, upstream: 1, downstream: 2 };
+const fromRank = (f: ItemFrom): number => (f === "inventory" ? 0 : f === "upstream" ? 1 : 2);
 const isSupply =(e: PlannerEdge): boolean => e.flow === undefined || e.flow === "supply";
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -199,7 +199,7 @@ export function buildLogisticsEdges(input: LogisticsInput): LogisticsResult {
               cur.trains.add(train.id);
               if (byString(routeName, cur.routeName) < 0) cur.routeName = routeName;
               // The same item reached by two platforms of one node: the strongest evidence wins, whatever the order.
-              if (item !== null && cur.item !== null && FROM_RANK[item.from] < FROM_RANK[cur.item.from]) cur.item = item;
+              if (item !== null && cur.item !== null && fromRank(item.from) < fromRank(cur.item.from)) cur.item = item;
             } else acc.set(key, { from, to, item, trains: new Set([train.id]), routeName });
           }
         }
