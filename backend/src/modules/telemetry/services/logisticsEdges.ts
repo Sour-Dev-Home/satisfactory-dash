@@ -62,7 +62,8 @@ interface Acc {
   routeName: string;
 }
 
-const isSupply = (e: PlannerEdge): boolean => e.flow === undefined || e.flow === "supply";
+const FROM_RANK: Record<ItemFrom, number> = { inventory: 0, upstream: 1, downstream: 2 };
+const isSupply =(e: PlannerEdge): boolean => e.flow === undefined || e.flow === "supply";
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 function nameList(names: readonly string[]): string {
@@ -154,9 +155,33 @@ export function buildLogisticsEdges(input: LogisticsInput): LogisticsResult {
       return [...out.values()].sort((a, b) => byString(a.className, b.className));
     };
 
+    // What one station sends to another, worked out once per ordered pair however many trains and stops reach it.
+    const pairCache = new Map<string, { key: string; from: string; to: string; item: ItemRef | null; routeName: string }[]>();
+    const pairEdges = (a: TrainRouteStation, b: TrainRouteStation) => {
+      const pairKey = `${a.id}\0${b.id}`;
+      const hit = pairCache.get(pairKey);
+      if (hit) return hit;
+      const out: { key: string; from: string; to: string; item: ItemRef | null; routeName: string }[] = [];
+      const routeName = `${a.name.trim()} to ${b.name.trim()}`.slice(0, NAME_MAX);
+      for (const lp of a.platforms) {
+        if (lp.mode !== "load") continue;
+        const from = input.nodeOfPlatform(lp.id);
+        if (from === null) continue;
+        for (const up of b.platforms) {
+          if (up.mode !== "unload") continue;
+          const to = input.nodeOfPlatform(up.id);
+          if (to === null || to === from) continue;
+          for (const item of carried(itemsAt(lp, true), itemsAt(up, false))) out.push({ key: `${from}\0${to}\0${item?.className ?? ""}`, from, to, item, routeName });
+        }
+      }
+      pairCache.set(pairKey, out);
+      return out;
+    };
+
     for (const train of trains) {
       const stops = train.stops.map(resolve);
       const n = stops.length;
+      const seen = new Set<string>();
       for (let i = 0; i < n; i++) {
         const a = stops[i];
         if (a === null) continue;
@@ -165,24 +190,17 @@ export function buildLogisticsEdges(input: LogisticsInput): LogisticsResult {
           const b = stops[(i + k) % n];
           if (b !== null && b.id === a.id) break;
           if (b === null) continue;
-          const routeName = `${a.name.trim()} to ${b.name.trim()}`.slice(0, NAME_MAX);
-          for (const lp of a.platforms) {
-            if (lp.mode !== "load") continue;
-            const from = input.nodeOfPlatform(lp.id);
-            if (from === null) continue;
-            for (const up of b.platforms) {
-              if (up.mode !== "unload") continue;
-              const to = input.nodeOfPlatform(up.id);
-              if (to === null || to === from) continue;
-              for (const item of carried(itemsAt(lp, true), itemsAt(up, false))) {
-                const key = `${from}\0${to}\0${item?.className ?? ""}`;
-                const cur = acc.get(key);
-                if (cur) {
-                  cur.trains.add(train.id);
-                  if (byString(routeName, cur.routeName) < 0) cur.routeName = routeName;
-                } else acc.set(key, { from, to, item, trains: new Set([train.id]), routeName });
-              }
-            }
+          const pairKey = `${a.id}\0${b.id}`;
+          if (seen.has(pairKey)) continue;
+          seen.add(pairKey);
+          for (const { key, from, to, item, routeName } of pairEdges(a, b)) {
+            const cur = acc.get(key);
+            if (cur) {
+              cur.trains.add(train.id);
+              if (byString(routeName, cur.routeName) < 0) cur.routeName = routeName;
+              // The same item reached by two platforms of one node: the strongest evidence wins, whatever the order.
+              if (item !== null && cur.item !== null && FROM_RANK[item.from] < FROM_RANK[cur.item.from]) cur.item = item;
+            } else acc.set(key, { from, to, item, trains: new Set([train.id]), routeName });
           }
         }
       }
@@ -194,9 +212,20 @@ export function buildLogisticsEdges(input: LogisticsInput): LogisticsResult {
   // Train edges. A rate only where one transport brings the item to that node: the downstream supply it serves.
   const arrivals = new Map<string, number>();
   for (const a of acc.values()) if (a.item !== null) arrivals.set(`${a.to}\0${a.item.className}`, (arrivals.get(`${a.to}\0${a.item.className}`) ?? 0) + 1);
-  const destinationOf = (node: string, cls: string | null): string => {
+  const supplyFrom = new Map<string, PlannerEdge[]>();
+  const edgesInto = new Map<string, PlannerEdge[]>();
+  const push = (m: Map<string, PlannerEdge[]>, k: string, e: PlannerEdge) => {
+    const list = m.get(k);
+    if (list) list.push(e);
+    else m.set(k, [e]);
+  };
+  for (const e of input.edges) {
+    if (isSupply(e)) push(supplyFrom, e.from, e);
+    push(edgesInto, e.to, e);
+  }
+  const destinationOf =(node: string, cls: string | null): string => {
     const dests = new Set<string>();
-    for (const e of input.edges) if (e.from === node && isSupply(e) && (cls === null || e.itemClassName === null || e.itemClassName === cls) && e.destination !== undefined) dests.add(e.destination);
+    for (const e of supplyFrom.get(node) ?? []) if ((cls === null || e.itemClassName === null || e.itemClassName === cls) && e.destination !== undefined) dests.add(e.destination);
     return dests.size === 1 ? [...dests][0] : "unknown";
   };
   const transports: PlannerTransport[] = [];
@@ -225,7 +254,7 @@ export function buildLogisticsEdges(input: LogisticsInput): LogisticsResult {
   // Depot edges: one per uploader and item, ending at the virtual node.
   const uploaders = [...input.uploaders].sort((a, b) => byString(a.key, b.key));
   for (const u of uploaders) {
-    const into = input.edges.filter((e) => e.to === u.key);
+    const into = edgesInto.get(u.key) ?? [];
     const byItem = new Map<string, PlannerEdge[]>();
     let anonymous = false;
     for (const e of into) {
