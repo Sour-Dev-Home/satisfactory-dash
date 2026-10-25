@@ -1,6 +1,7 @@
 # ADR-0056: The metrics page, rescoped on what is built (amends ADR-0036)
 
-Status: **Proposed** (architect, 2026-10-25), for #281 (which absorbed #331's ADR-0037 step 6). Amends ADR-0036
+Status: **Accepted** (owner, 2026-10-25: Q1 to Q5 all yes; see "Owner's answers" at the end). Proposed by the
+architect, 2026-10-25, for #281 (which absorbed #331's ADR-0037 step 6). Amends ADR-0036
 Decisions 1, 2, 4, 5, 6 and 7 and its build order. It keeps the owner's decisions D1 to D4 of 2026-09-26 as they
 are; the questions at the end are the only new choices.
 
@@ -175,3 +176,13 @@ later.
 - **Q4** Alert quality: show "flaps" (resolved within 5 minutes) as a labelled stand-in for false alarms until D4?
   Recommended: yes.
 - **Q5** Timing: start PR 2 now (D2's agent-parity-week gate has passed by the 2026-10-20 priority note)?
+
+## Owner's answers (2026-10-25)
+"1 yes, 2 ok, 3 yes, 4 yes, 5 yes".
+- **Q1** Yes: the demo build shows a visible "Metrics" nav tab; the real app keeps it out of the nav.
+- **Q2** Approved as worded. It landed with this acceptance rather than in PR 5, since it already describes what the
+  metrics store holds today (`privacy.html`, retention list).
+- **Q3** Yes: daily push only. The owner creates the `main`-only environment and its secret in the GitHub UI when PR 6d
+  is ready; sessions never touch environments or secrets (ADR-0049).
+- **Q4** Yes: "flaps" are shown, labelled as a stand-in for false alarms, until D4.
+- **Q5** Yes: PR 2 starts now.
