@@ -528,6 +528,7 @@ export const SCENARIOS = {
   "deploy-gap": {
     status: { status: 530, text: "<!DOCTYPE html><title>Error 1033</title>" },
     power: { status: 530, text: "<!DOCTYPE html><title>Error 1033</title>" },
+    factory: { status: 530, text: "<!DOCTYPE html><title>Error 1033</title>" },
   },
   "contract-drift": { status: ok({ ...statusRunning, data: { ...statusRunning.data, gamePaused: "no" } }) },
   // Server management (ADR-0030), at /app/servers: one row per stored state (ok, unreadable, refused).
