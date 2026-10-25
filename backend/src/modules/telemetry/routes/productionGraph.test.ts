@@ -37,14 +37,19 @@ const layerRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function build(opts: { rows?: unknown[]; noDb?: boolean; logLines?: string[]; factory?: () => Promise<unknown>; dbFails?: boolean } = {}) {
+function build(
+  opts: { rows?: unknown[]; layers?: Record<string, unknown[]>; noDb?: boolean; logLines?: string[]; factory?: () => Promise<unknown>; dbFails?: boolean } = {},
+) {
   const telemetry = {
     production: { getFactoryOverview: opts.factory ?? (async () => factoryStatesAndIngredients.data) },
   } as unknown as TelemetryServices;
   const directory = new InMemoryServerDirectory([{ id: "default", displayName: "Home", services: { telemetry } }]);
   const db = {
-    query: (_text: string, _values?: unknown[]) =>
-      opts.dbFails ? Promise.reject(new Error("db down")) : Promise.resolve({ rows: opts.rows ?? [] }),
+    // `layers` answers by the queried layer name (the second value); `rows` answers every query.
+    query: (_text: string, values?: unknown[]) =>
+      opts.dbFails
+        ? Promise.reject(new Error("db down"))
+        : Promise.resolve({ rows: opts.layers ? (opts.layers[String(values?.[1])] ?? []) : (opts.rows ?? []) }),
   };
   const lines = opts.logLines;
   return createApp({
@@ -150,6 +155,33 @@ describe("GET /api/servers/:serverId/production-graph", () => {
     expect(res.body.data.nodes).toEqual([]);
     const entry = logLines.map((l) => JSON.parse(l) as Record<string, unknown>).find((e) => e.msg === "production graph built")!;
     expect(entry).toMatchObject({ components: 0, sites: 0, groups: 0, links: 0, level: 30 });
+  });
+
+  describe("the resourceNodes layer (ADR-0055 PR 4)", () => {
+    const MINER = "Build_MinerMk1_C_1";
+    const conveyors = [
+      { id: "Build_ConveyorBeltMk1_C_9", kind: "belt", from: MINER, fromKind: "extractor", to: "Build_StorageContainerMk1_C_2", toKind: "storage", capacityPerMinute: 60, tier: "Conveyor Belt Mk.1", at: { x: 100, y: 200 } },
+    ];
+    const iron = { type: "Iron Ore", purity: "normal", nodeType: "node", x: 106, y: 200, exploited: true, className: "Desc_OreIron_C" };
+    const nodesRow = (over: Record<string, unknown> = {}) => layerRow({ data: [iron], count: 1, ...over });
+    const graphOf = async (resourceNodes: unknown[]) => {
+      const res = await get(build({ layers: { conveyors: [layerRow({ data: conveyors, count: 1 })], resourceNodes } }));
+      expect(res.status).toBe(200);
+      expect(ProductionGraphResponseSchema.parse(res.body)).toEqual(res.body);
+      return res.body.data as { edges: { itemClassName: string | null; itemFrom?: string }[] };
+    };
+
+    it("passes the stored layer to the builder: the miner's belt carries the node's item", async () => {
+      const g = await graphOf([nodesRow()]);
+      expect(g.edges).toEqual([expect.objectContaining({ itemClassName: "Desc_OreIron_C", itemFrom: "resourceNode" })]);
+    });
+
+    it("no row, a truncated row, a skip or a row failing its schema: no item from a node", async () => {
+      for (const rows of [[], [nodesRow({ truncated: true })], [nodesRow({ hash: "skipped:tooManyEdges", data: [], count: 0 })], [nodesRow({ data: [{ nope: 1 }] })]]) {
+        const g = await graphOf(rows);
+        expect(g.edges).toEqual([expect.objectContaining({ itemClassName: null })]);
+      }
+    });
   });
 
   it("logs one info line of counts and timing, with no names from the game server", async () => {

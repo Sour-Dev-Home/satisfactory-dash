@@ -5,6 +5,7 @@ import {
   PLANNER_MAX_RATES,
   PLANNER_MAX_SITES,
   type BottleneckNote,
+  type ConveyorEdge,
   type ConveyorNodeKind,
   type FactoryBuilding,
   type PlannerEdge,
@@ -13,6 +14,7 @@ import {
   type PlannerSite,
   type ProductionGraph,
   type ProductionRate,
+  type ResourceNode,
 } from "@satisfactory-dash/shared";
 import { BELT_DATA_NOT_RECEIVED_TEXT, CONNECTIONS_REFRESH_MINUTES, type BottleneckEdges } from "./bottleneckFinder.js";
 import {
@@ -27,6 +29,7 @@ import {
   type Filter,
 } from "./connectionGraph.js";
 import { classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
+import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plannerItems.js";
 
 /**
  * The production planner's graph (ADR-0050, Decisions 1, 2 and 8): the whole factory as a coarse graph of machine groups,
@@ -38,7 +41,10 @@ import { classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type Tr
  * pass-through component); edges between groups with an inferred item and a rate that says how sure it is; loops
  * (iterative Tarjan); sites (weakly connected components merged within `SITE_MERGE_DISTANCE_M`). ADR-0055 PR 3 adds
  * each edge's `flow` and `destination` and each node's `treeKey` (`plannerFlows.ts`); sites are unchanged (ADR-0055
- * replaces ADR-0053 Decision 2 with the factory reduction).
+ * replaces ADR-0053 Decision 2 with the factory reduction). ADR-0055 PR 4 infers more items (ADR-0053 Decision 4): an
+ * extractor's from the resource node under it, a storage's from the single item flowing into it, a data-less source's
+ * from its destination's single unmet need, and one mixed edge per item for a multi-product source into a data-less
+ * destination; each inferred item says how in `itemFrom`. What cannot be known stays null.
  */
 
 /** Decision 8: components whose machines' bounding boxes are within this many metres are one site. A starting value, to be
@@ -183,12 +189,32 @@ interface Cand {
   item: { className: string; name: string } | null;
   inferred: boolean;
   mixed: boolean;
+  /** How the item was found (ADR-0053 Decision 4); absent for a null item. */
+  from: ItemFrom | undefined;
+  /** One of several items a multi-product source may send into a data-less destination: its rate is always unknown. */
+  split: boolean;
   /** The links this edge passes through, by reference: copying every link's conveyor ids into each candidate of a large
    *  merger (groups in x groups out, thousands of conveyors) exhausted memory. */
   links: Link[];
   chains: number[];
   linkCount: number;
 }
+
+type ItemFrom = "recipe" | "resourceNode" | "upstream" | "downstream";
+
+/** What one source group sends one destination group through one link. */
+type Sent =
+  | { t: "skip" }
+  | { t: "unmatched" }
+  | { t: "null" }
+  | { t: "items"; items: ResourceItem[]; from: ItemFrom; inferred: boolean; split: boolean; mixed: boolean };
+const SKIP: Sent = { t: "skip" };
+const UNMATCHED: Sent = { t: "unmatched" };
+const NULL_ITEM: Sent = { t: "null" };
+
+/** Data-less sources that may take their destination's single unmet need (ADR-0053 Decision 4, step 2). `other`
+ *  (modded or unrecognised buildings) never does. */
+const DOWNSTREAM_KINDS: ReadonlySet<string> = new Set(["extractor", "storage", "station"]);
 
 function emptyGraph(beltData: ProductionGraph["beltData"], notes: BottleneckNote[]): ProductionGraphResult {
   return {
@@ -197,13 +223,18 @@ function emptyGraph(beltData: ProductionGraph["beltData"], notes: BottleneckNote
   };
 }
 
-/** The planner's graph for one snapshot. `edges` is the conveyors layer of one read, or why it is missing. */
-export function buildProductionGraph(buildings: readonly FactoryBuilding[], edges: BottleneckEdges): ProductionGraph {
-  return buildProductionGraphWithStats(buildings, edges).graph;
+/** The planner's graph for one snapshot. `edges` is the conveyors layer of one read, or why it is missing; `resourceNodes`
+ *  is the stored resource-nodes layer (empty when absent: no extractor then gets its item from a node). */
+export function buildProductionGraph(buildings: readonly FactoryBuilding[], edges: BottleneckEdges, resourceNodes: readonly ResourceNode[] = []): ProductionGraph {
+  return buildProductionGraphWithStats(buildings, edges, resourceNodes).graph;
 }
 
 /** As `buildProductionGraph`, plus component, site and group counts (to tune `SITE_MERGE_DISTANCE_M` on a real save). */
-export function buildProductionGraphWithStats(buildings: readonly FactoryBuilding[], edges: BottleneckEdges): ProductionGraphResult {
+export function buildProductionGraphWithStats(
+  buildings: readonly FactoryBuilding[],
+  edges: BottleneckEdges,
+  resourceNodes: readonly ResourceNode[] = [],
+): ProductionGraphResult {
   if (edges === "unsupported") {
     return emptyGraph("unsupported", [{ code: "updateFrm", text: "No production graph; update FRM to 1.5.4 or newer for belt detail." }]);
   }
@@ -370,12 +401,150 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
     for (const a of g.out[n]) if (TERMINAL_KINDS.has(g.kind[a.to])) finishLink([n], [a.to], [a], true, false);
   }
 
-  // ---- candidate edges: item per group pair (Decision 2) ----
+  // ---- extractors' items from the resource node under them (ADR-0053 Decision 4, step 1) ----
+  const lookup = resourceLookup(resourceNodes);
+  const extractorItem = (unit: Unit): ResourceItem | null => {
+    const byClass = itemOfExtractorClass(unit.building ? unit.building.className : unit.id.replace(/_\d+$/, ""));
+    if (byClass) return byClass;
+    // The end-0 point of a conveyor whose `from` is this extractor (not a pipe's arbitrary end), lowest conveyor id first.
+    const ids = new Set(idsOf.get(unit.node) ?? []);
+    let at: ConveyorEdge["at"] | null = null;
+    let atId = "";
+    for (const a of [...g.out[unit.node], ...g.in[unit.node]]) {
+      const e = a.edge;
+      if (e.from !== null && ids.has(e.from) && (at === null || byString(e.id, atId) < 0)) {
+        at = e.at;
+        atId = e.id;
+      }
+    }
+    return at === null ? null : lookup(at.x, at.y);
+  };
+  /** Per group: the item every one of its extractors stands on, or null (any unit unknown, or two resources). */
+  const resourceOf: (ResourceItem | null)[] = groups.map((grp) => {
+    if (grp.kind !== "extractor") return null;
+    let item: ResourceItem | null = null;
+    for (const u of grp.units) {
+      const it = extractorItem(u);
+      if (it === null || (item !== null && item.className !== it.className)) return null;
+      item = it;
+    }
+    return item;
+  });
+
+  // ---- candidate edges: item per group pair (Decision 2, ADR-0053 Decision 4) ----
+  /** A storage group's incoming items once every incoming pair's item is known (step 2, "upstream"); else null. */
+  const upstreamOf: (ResourceItem[] | null)[] = groups.map(() => null);
+  /** A storage group's known incoming items, even when some incoming pair is unknown. */
+  const partialOf: Set<string>[] = groups.map(() => new Set());
+  const isStorage = (grp: Group): boolean => grp.kind === "storage" && grp.prod.size === 0 && grp.ing.size === 0;
+  const knownSource = (s: number): { items: ResourceItem[]; from: ItemFrom } | null => {
+    const r = resourceOf[s];
+    if (r !== null) return { items: [r], from: "resourceNode" };
+    const up = upstreamOf[s];
+    return up === null ? null : { items: up, from: "upstream" };
+  };
+  const rateItem = (a: Acc): ResourceItem => ({ className: a.className, name: a.name, unit: a.unit });
+
+  const send = (link: Link, s: number, d: number): Sent => {
+    const src = groups[s];
+    const dst = groups[d];
+    const sData = src.prod.size > 0;
+    const dData = dst.ing.size > 0;
+    // A pipe has no direction, so each pair is tried both ways: a pure consumer is not a source, a pure producer (or an
+    // extractor) not a sink.
+    if (!link.solid && ((!sData && src.ing.size > 0) || (!dData && (dst.prod.size > 0 || dst.kind === "extractor")))) return SKIP;
+    if (sData && dData) {
+      const items = [...src.prod.values()].filter((p) => dst.ing.has(p.className) && carries(link, filterOf(p.unit))).map(rateItem);
+      return items.length === 0 ? UNMATCHED : { t: "items", items, from: "recipe", inferred: false, split: false, mixed: false };
+    }
+    if (sData) {
+      // A destination with no ingredient data (storage, a station, a sink) takes whatever the belt can carry; several
+      // fitting products are one edge each, mixed, rate unknown (step 3).
+      const fits = [...src.prod.values()].filter((p) => carries(link, filterOf(p.unit))).map(rateItem);
+      if (fits.length === 0) return UNMATCHED;
+      return { t: "items", items: fits, from: "recipe", inferred: false, split: fits.length > 1, mixed: fits.length > 1 };
+    }
+    const known = knownSource(s);
+    if (known) {
+      const fit = known.items.filter((i) => carries(link, filterOf(i.unit)));
+      const several = known.items.length > 1;
+      if (dData) {
+        // The destination's recipe picks among the source's items; one it does not use is a conflict, left unknown.
+        const used = fit.filter((i) => dst.ing.has(i.className));
+        return used.length === 0 ? NULL_ITEM : { t: "items", items: used, from: known.from, inferred: true, split: false, mixed: several };
+      }
+      // Into a data-less destination only a single known item passes on: a sushi belt into storage stays unknown.
+      return !several && fit.length === 1 ? { t: "items", items: fit, from: known.from, inferred: true, split: false, mixed: false } : NULL_ITEM;
+    }
+    if (dData && DOWNSTREAM_KINDS.has(src.kind)) {
+      // The destination's single unmet need: what it uses that no other producer on the same link supplies.
+      const others = new Set<string>();
+      for (const o of link.ins) if (o !== s && o !== d) for (const k of groups[o].prod.keys()) others.add(k);
+      const need = [...dst.ing.values()].filter((i) => carries(link, filterOf(i.unit)) && !others.has(i.className));
+      if (need.length !== 1) return NULL_ITEM;
+      // A storage with known inputs must be known to receive the need, and nothing else the destination uses: otherwise
+      // it may be sending what it is known to hold (and the need is a guess). Only a storage with no known input guesses.
+      const partial = partialOf[s];
+      if (partial.size > 0 && !partial.has(need[0].className)) return NULL_ITEM;
+      for (const p of partial) if (p !== need[0].className && dst.ing.has(p)) return NULL_ITEM;
+      return { t: "items", items: [rateItem(need[0])], from: "downstream", inferred: true, split: false, mixed: false };
+    }
+    return NULL_ITEM;
+  };
+
+  // Storage passes on what flows into it (step 2): a worklist to a fixpoint, so storage chains resolve in order. Values
+  // only go from unknown to known, so each storage is evaluated at most once per resolved predecessor.
+  const intoStorage = new Map<number, { link: Link; s: number }[]>();
+  const storageSuccessors = new Map<number, Set<number>>();
+  let storagePairs = 0;
+  for (const link of links) {
+    for (const d of link.outs) {
+      if (!isStorage(groups[d])) continue;
+      for (const s of link.ins) {
+        if (s === d) continue;
+        if (++storagePairs > MAX_PAIRS) {
+          truncated = true;
+          break;
+        }
+        const list = intoStorage.get(d);
+        if (list) list.push({ link, s });
+        else intoStorage.set(d, [{ link, s }]);
+        if (isStorage(groups[s])) {
+          const succ = storageSuccessors.get(s);
+          if (succ) succ.add(d);
+          else storageSuccessors.set(s, new Set([d]));
+        }
+      }
+    }
+  }
+  const work = [...intoStorage.keys()].sort((a, b) => a - b);
+  for (let w = 0; w < work.length; w++) {
+    const d = work[w];
+    if (upstreamOf[d] !== null) continue;
+    let unknown = false;
+    const items = new Map<string, ResourceItem>();
+    for (const { link, s } of intoStorage.get(d) as { link: Link; s: number }[]) {
+      // A pipe has no direction: a machine that also takes a fluid may be drawing from the tank rather than filling it,
+      // so its products are not proof of what the tank holds.
+      if (!link.solid && groups[s].prod.size > 0 && [...groups[s].ing.values()].some((i) => i.unit !== "items/min")) {
+        unknown = true;
+        continue;
+      }
+      const r = send(link, s, d);
+      if (r.t === "null") unknown = true;
+      else if (r.t === "items") for (const i of r.items) if (!items.has(i.className)) items.set(i.className, i);
+    }
+    partialOf[d] = new Set(items.keys());
+    if (unknown || items.size === 0) continue;
+    upstreamOf[d] = [...items.values()].sort((a, b) => byString(a.className, b.className));
+    for (const next of [...(storageSuccessors.get(d) ?? [])].sort((a, b) => a - b)) if (upstreamOf[next] === null) work.push(next);
+  }
+
   const cands = new Map<string, Cand>();
   let unmatched = 0;
   let pairs = 0;
-  const addCand = (link: Link, s: number, d: number, item: Cand["item"], unit: ProductionRate["unit"], inferred: boolean): void => {
-    const kind: "belt" | "pipe" = item === null ? (link.solid ? "belt" : "pipe") : unit === "m3/min" ? "pipe" : "belt";
+  const addCand = (link: Link, s: number, d: number, item: ResourceItem | null, sent: Extract<Sent, { t: "items" }> | null): void => {
+    const kind: "belt" | "pipe" = item === null ? (link.solid ? "belt" : "pipe") : item.unit === "m3/min" ? "pipe" : "belt";
     const key = `${s}|${d}|${kind}|${item?.className ?? ""}`;
     let c = cands.get(key);
     if (!c) {
@@ -383,11 +552,24 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
         truncated = true;
         return;
       }
-      c = { s, d, kind, item, inferred, mixed: false, links: [], chains: [], linkCount: 0 };
+      c = {
+        s,
+        d,
+        kind,
+        item: item === null ? null : { className: item.className, name: item.name },
+        inferred: false,
+        mixed: false,
+        from: sent?.from,
+        split: false,
+        links: [],
+        chains: [],
+        linkCount: 0,
+      };
       cands.set(key, c);
     }
-    c.mixed ||= link.mixed;
-    c.inferred ||= inferred;
+    c.mixed ||= link.mixed || (sent?.mixed ?? false);
+    c.inferred ||= sent?.inferred ?? false;
+    c.split ||= sent?.split ?? false;
     c.links.push(link);
     c.linkCount++;
     if (link.chain && link.arcs.length > 0) c.chains.push(Math.min(...link.arcs.map((a) => a.cap)));
@@ -395,42 +577,16 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
 
   links.forEach((link) => {
     for (const s of link.ins) {
-      const src = groups[s];
       for (const d of link.outs) {
         if (s === d) continue;
         if (++pairs > MAX_PAIRS) {
           truncated = true;
           return;
         }
-        const dst = groups[d];
-        const sData = src.prod.size > 0;
-        const dData = dst.ing.size > 0;
-        // A pipe has no direction, so each pair is tried both ways: a pure consumer is not a source, a pure producer not a sink.
-        if (!link.solid && ((!sData && src.ing.size > 0) || (!dData && dst.prod.size > 0))) continue;
-        if (sData && dData) {
-          let found = false;
-          for (const p of src.prod.values()) {
-            if (!dst.ing.has(p.className) || !carries(link, filterOf(p.unit))) continue;
-            found = true;
-            addCand(link, s, d, { className: p.className, name: p.name }, p.unit, false);
-          }
-          if (!found) unmatched++;
-        } else if (sData) {
-          // A destination with no ingredient data (storage, a station, a sink) takes whatever the belt can carry.
-          const fits = [...src.prod.values()].filter((p) => carries(link, filterOf(p.unit)));
-          if (fits.length === 1) addCand(link, s, d, { className: fits[0].className, name: fits[0].name }, fits[0].unit, false);
-          else if (fits.length > 1) addCand(link, s, d, null, null, false);
-          else unmatched++;
-        } else if (dData && src.kind === "extractor") {
-          // An extractor's item: what its destination needs that no other producer on the same link supplies.
-          const others = new Set<string>();
-          for (const o of link.ins) if (o !== s && o !== d) for (const k of groups[o].prod.keys()) others.add(k);
-          const need = [...dst.ing.values()].filter((i) => carries(link, filterOf(i.unit)) && !others.has(i.className));
-          if (need.length === 1) addCand(link, s, d, { className: need[0].className, name: need[0].name }, need[0].unit, true);
-          else addCand(link, s, d, null, null, false);
-        } else {
-          addCand(link, s, d, null, null, false);
-        }
+        const r = send(link, s, d);
+        if (r.t === "unmatched") unmatched++;
+        else if (r.t === "null") addCand(link, s, d, null, null);
+        else if (r.t === "items") for (const item of r.items) addCand(link, s, d, item, r);
       }
     }
   });
@@ -472,7 +628,8 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
   for (const c of candList) {
     let ratePerMinute: number | null = null;
     let rate: PlannerEdge["rate"] = "unknown";
-    if (c.item !== null) {
+    // A split edge (one of a multi-product source's items into a data-less destination) has no rate to give.
+    if (c.item !== null && !c.split) {
       const item = c.item.className;
       const dst = groups[c.d];
       const consumed = dst.ing.get(item);
@@ -520,7 +677,7 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
     } else if (flows[i] === "excess") excessOf.set(sk, (excessOf.get(sk) ?? 0) + 1);
   });
   candList.forEach((c, i) => {
-    if (flows[i] !== "excess" || c.item === null || rates[i].ratePerMinute !== null) return;
+    if (flows[i] !== "excess" || c.item === null || c.split || rates[i].ratePerMinute !== null) return;
     const sk = `${c.s}|${c.item.className}`;
     const out = groups[c.s].prod.get(c.item.className);
     const sup = supplyOf.get(sk) ?? [];
@@ -546,6 +703,7 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
       capacityPerMinute: chain,
       conveyorCount: c.links.length === 1 ? c.links[0].conveyorIds.size : new Set(c.links.flatMap((l) => [...l.conveyorIds])).size,
       flow: flows[i],
+      ...(c.item !== null && c.from !== undefined ? { itemFrom: c.from } : {}),
       destination: destinations[i],
     });
   });
@@ -695,6 +853,7 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
   const nodes: PlannerNode[] = kept
     .map((grp) => {
       const n = grp.posN > 0 ? { x: whole(grp.posSum.x / grp.posN), y: whole(grp.posSum.y / grp.posN) } : { x: 0, y: 0 };
+      const res = resourceOf[grp.idx];
       return {
         key: grp.key,
         kind: grp.kind,
@@ -710,6 +869,7 @@ export function buildProductionGraphWithStats(buildings: readonly FactoryBuildin
         siteKey: grp.siteKey,
         loop: grp.loop,
         treeKey: treeKeys[grp.idx],
+        ...(grp.kind === "extractor" ? { resource: res && { className: res.className.slice(0, 200), name: res.name.slice(0, 200) } } : {}),
       };
     })
     .sort((a, b) => byString(a.key, b.key));
