@@ -13,6 +13,8 @@ import type {
   HistoryTransitionsResponse,
   TransitionRange,
   ManagedServerListResponse,
+  MapLive,
+  MapLiveResponse,
   PowerCircuit,
   PowerHistoryPoint,
   PowerHistoryResponse,
@@ -784,6 +786,52 @@ export function railsWorld(now: number): RailsWorldLayerResponse {
 
 export function resourceNodesWorld(now: number): ResourceNodesWorldLayerResponse {
   return { ...worldEnvelope(now, "resourceNodes", DEMO_NODES.length), data: DEMO_NODES };
+}
+
+/** A point `u` (0 to 1) of the way along a polyline, by length, in whole metres. */
+function pointAlong(points: readonly [number, number][], u: number): [number, number] {
+  const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+  let left = u * lengths.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < lengths.length; i++) {
+    if (left <= lengths[i] || i === lengths.length - 1) {
+      const t = lengths[i] === 0 ? 0 : Math.min(1, left / lengths[i]);
+      return [Math.round(points[i][0] + (points[i + 1][0] - points[i][0]) * t), Math.round(points[i][1] + (points[i + 1][1] - points[i][1]) * t)];
+    }
+    left -= lengths[i];
+  }
+  return points[0];
+}
+
+/** The demo's stations sit at the ends of its rails. */
+const DEMO_STATIONS: MapLive["stations"] = [
+  { id: "demo-station-1", name: "Iron Works Depot", x: -1900, y: -900 },
+  { id: "demo-station-2", name: "Oil Outpost", x: -1100, y: -1100 },
+  { id: "demo-station-3", name: "Coal Halt", x: -1300, y: -600 },
+  { id: "demo-station-4", name: "Bauxite Siding", x: -2300, y: -1250 },
+];
+
+/** Back and forth along a track: a smooth 0 to 1 and back, once per `periodMs`, offset by `phase`. */
+const there = (now: number, periodMs: number, phase: number) => 0.5 - 0.5 * Math.cos(2 * Math.PI * (now / periodMs + phase));
+
+/**
+ * The demo's live trains (ADR-0038 M6): two made-up trains running back and forth over the demo rails,
+ * their place worked out from the clock, so the map keeps moving as the visitor watches. Whole metres.
+ */
+export function mapLive(now: number): MapLiveResponse {
+  const [a, b, c] = DEMO_RAILS;
+  const long = [...a.points, ...b.points.slice(1)];
+  const [x1, y1] = pointAlong(long, there(now, 6 * 60_000, 0));
+  const [x2, y2] = pointAlong(c.points, there(now, 4 * 60_000, 0.3));
+  return {
+    ...envelope(now),
+    data: {
+      trains: [
+        { id: "demo-train-1", name: "Iron Express", x: x1, y: y1, status: "Self-Driving" },
+        { id: "demo-train-2", name: "Coal Shuttle", x: x2, y: y2, status: "Self-Driving" },
+      ],
+      stations: DEMO_STATIONS,
+    },
+  };
 }
 
 export function settings(now: number, state: { autoPause: boolean; pending: boolean }): SettingsResponse {

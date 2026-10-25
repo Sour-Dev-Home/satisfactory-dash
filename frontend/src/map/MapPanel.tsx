@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { isBackedUpState, type Factory, type FactoryResponse } from "@satisfactory-dash/shared";
-import { queries, type WorldLayerRead } from "../api/queries";
+import { queries } from "../api/queries";
 import { ApiError } from "../api/errors";
 import { describeError } from "../components/ErrorNotice";
 import { formatPercent } from "../format";
@@ -12,10 +12,11 @@ import type { MapLayer } from "./layers";
 import type { DrawnLayer, ViewM } from "./MapCanvas";
 import { GRID_BASE_MAP } from "./projection";
 import { railsLayer } from "./railsLayer";
+import { trainsLayer } from "./trainsLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { buildingCounts, filterBuildings, filterNodes, typeEntries, useMapFilters } from "./mapFilters";
-import { EMPTY_FILTERED, EMPTY_VIEW, RailsTable, ResourceNodesTable } from "./WorldTables";
+import { EMPTY_FILTERED, EMPTY_VIEW, RailsTable, ResourceNodesTable, StationsTable, TrainsTable } from "./WorldTables";
 
 // Leaflet (about 40 kB gzip) is only needed here: a separate chunk, loaded with this page.
 // React.lazy caches a failed import for good, so on failure swap in a fresh lazy component
@@ -29,9 +30,10 @@ let MapCanvas = lazy(loadCanvas);
 
 /**
  * The layers in draw order, bottom first (ADR-0023 decision 5; ADR-0038 M5): the rails and the resource
- * nodes are the data-derived base map, the buildings sit on top. The trains layer (M6) joins next.
+ * nodes are the data-derived base map, the buildings sit on top, and the live trains (M6) on top of all:
+ * they are the layer that redraws every poll, so the canvas redraws only it.
  */
-const LAYERS = [railsLayer, resourceNodesLayer, buildingsLayer] as const;
+const LAYERS = [railsLayer, resourceNodesLayer, buildingsLayer, trainsLayer] as const;
 
 /** Binds a layer to its data, which is all the canvas needs to draw it. */
 const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, draw: (ctx) => layer.draw(ctx, data) });
@@ -46,7 +48,7 @@ function WorldLayerText<T>({
   layer,
   filtered,
 }: {
-  query: UseQueryResult<WorldLayerRead<T>>;
+  query: Pick<UseQueryResult<{ data: T; truncated?: boolean }>, "isError" | "isPending" | "data">;
   layer: MapLayer<T>;
   /** What the filters let through, when the layer has filters: the text then speaks of that ("N of M shown"). */
   filtered?: { data: T; shown: number; total: number };
@@ -152,11 +154,14 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   // A world layer is fetched only while its toggle is on (ADR-0038 §2).
   const rails = useQuery({ ...queries.mapRails(serverId), enabled: visible.has(railsLayer.id) });
   const nodes = useQuery({ ...queries.mapResourceNodes(serverId), enabled: visible.has(resourceNodesLayer.id) });
+  const live = useQuery({ ...queries.mapLive(serverId), enabled: visible.has(trainsLayer.id) });
   const railsData = visible.has(railsLayer.id) ? rails.data : undefined;
   const nodesData = visible.has(resourceNodesLayer.id) ? nodes.data : undefined;
+  const liveData = visible.has(trainsLayer.id) ? live.data : undefined;
   const failed = [
     { on: visible.has(railsLayer.id), label: railsLayer.label, query: rails },
     { on: visible.has(resourceNodesLayer.id), label: resourceNodesLayer.label, query: nodes },
+    { on: visible.has(trainsLayer.id), label: trainsLayer.label, query: live },
   ]
     .filter((f) => f.on && f.query.isError)
     .map((f) => ({ label: f.label, error: f.query.error, retry: () => void f.query.refetch() }));
@@ -168,14 +173,21 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   );
   const nodeTypes = useMemo(() => (allNodes ? typeEntries(allNodes) : []), [allNodes]);
 
-  // Stable while the data and toggles are: a new array would make the canvas redraw. In LAYERS order.
+  // Each layer is bound once per change of its own data: the canvas redraws only the layers whose bound
+  // `draw` changed (and those above them), so a train poll never redraws the rails, nodes or buildings.
+  const railsBound = useMemo(() => (railsData ? bind(railsLayer, railsData.data) : null), [railsData]);
+  const nodesBound = useMemo(() => (shownNodes ? bind(resourceNodesLayer, shownNodes) : null), [shownNodes]);
+  const buildingsBound = useMemo(() => bind(buildingsLayer, filteredFactory), [filteredFactory]);
+  const liveBound = useMemo(() => (liveData ? bind(trainsLayer, liveData.data) : null), [liveData]);
+  // In LAYERS order; a new array alone doesn't redraw anything.
   const drawn = useMemo(() => {
     const list: DrawnLayer[] = [];
-    if (railsData) list.push(bind(railsLayer, railsData.data));
-    if (shownNodes) list.push(bind(resourceNodesLayer, shownNodes));
-    if (visible.has(buildingsLayer.id)) list.push(bind(buildingsLayer, filteredFactory));
+    if (railsBound) list.push(railsBound);
+    if (nodesBound) list.push(nodesBound);
+    if (visible.has(buildingsLayer.id)) list.push(buildingsBound);
+    if (liveBound) list.push(liveBound);
     return list;
-  }, [visible, filteredFactory, railsData, shownNodes]);
+  }, [visible, railsBound, nodesBound, buildingsBound, liveBound]);
   // First view: the factory itself, not the whole 7.5 km world. Computed once: later polls
   // never move the view.
   const [fitTo] = useState<ViewM | undefined>(() => {
@@ -230,10 +242,14 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       {visible.has(buildingsLayer.id) && shown.length > 0 && (
         <LegendRow label={buildingsLayer.label}>{buildingsLayer.legend()}</LegendRow>
       )}
+      {liveData && (liveData.data.trains.length > 0 || liveData.data.stations.length > 0) && (
+        <LegendRow label={trainsLayer.label}>{trainsLayer.legend()}</LegendRow>
+      )}
       <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
-        A plain grid, 500 m per square, with the rails and resource nodes the server reported, nodes drawn
-        with the game's icons. Positions are approximate until they're checked in game.
+        A plain grid, 500 m per square, with the rails, resource nodes and trains the server reported, nodes drawn
+        with the game's icons. Trains move with the latest reading, about every 10 seconds. Positions are
+        approximate until they're checked in game.
       </p>
       <p className="text-sm text-muted">Satisfactory and its icons © Coffee Stain Studios. Not affiliated.</p>
 
@@ -244,6 +260,10 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           layer={resourceNodesLayer}
           filtered={allNodes && shownNodes ? { data: shownNodes, shown: shownNodes.length, total: allNodes.length } : undefined}
         />
+      )}
+      {visible.has(trainsLayer.id) && <WorldLayerText query={live} layer={trainsLayer} />}
+      {liveData?.stale && (
+        <p className="text-sm text-muted">The game server can't be reached, so these are the last known train positions.</p>
       )}
       {visible.has(buildingsLayer.id) && (
         <p>
@@ -291,6 +311,8 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       {/* After the buildings' list, so a world layer arriving never pushes it down. */}
       {railsData && <RailsTable segments={railsData.data} view={view} />}
       {allNodes && shownNodes && <ResourceNodesTable nodes={shownNodes} view={view} hidden={allNodes.length - shownNodes.length} />}
+      {liveData && <TrainsTable trains={liveData.data.trains} view={view} />}
+      {liveData && <StationsTable stations={liveData.data.stations} view={view} />}
     </section>
   );
 }

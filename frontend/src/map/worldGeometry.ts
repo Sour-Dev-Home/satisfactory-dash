@@ -54,3 +54,7 @@ export function countByType(nodes: readonly ResourceNode[]): [string, number][] 
 
 /** "1 rail segment", "2 rail segments": the count with the right form of the noun. */
 export const countOf = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Whether a point (a train, a station) lies in the view; no view yet means everything is. */
+export const pointInView = (view: ViewM | null, p: { x: number; y: number }) =>
+  !view || (p.x >= view.minX && p.x <= view.maxX && p.y >= view.minY && p.y <= view.maxY);

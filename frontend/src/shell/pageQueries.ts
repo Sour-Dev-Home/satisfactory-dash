@@ -23,7 +23,7 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
       return [queries.productionGraph(serverId)].map(asPageQuery);
     case "/app/map":
       // The world layers are on by default (the data-derived base map), so the reveal waits for them too.
-      return [queries.factory(serverId), queries.mapRails(serverId), queries.mapResourceNodes(serverId)].map(asPageQuery);
+      return [queries.factory(serverId), queries.mapRails(serverId), queries.mapResourceNodes(serverId), queries.mapLive(serverId)].map(asPageQuery);
     case "/app/settings":
       return [
         queries.settings(serverId),

@@ -98,7 +98,10 @@ contract needs to grow, not that this module should special-case a backend detai
   Leaflet through its `MapContext` (never imports it at runtime), draws on the shared canvas
   renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here), returns its cleanup, and supplies a legend and a text `describe`. Tooltip content
   is built from text nodes, never an HTML string (names come from the game server). Every
-  layer's data is also shown as text (the buildings-in-view table). `e2e/map.spec.ts` is the
+  layer's data is also shown as text (the buildings-in-view table). The live trains layer (ADR-0038 M6,
+  `trainsLayer`) polls `queries.mapLive` every 10 s; `MapCanvas` redraws only from the first layer whose
+  bound `draw` changed upward (`MapPanel` binds each layer once per change of its own data), and a layer
+  that animates times it by a motion token (`--duration-glide`), which reduced motion zeroes. `e2e/map.spec.ts` is the
   CSP gate (pan, zoom, hover, toggle); Leaflet overrides in `index.css` are unlayered.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
