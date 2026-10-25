@@ -2,7 +2,8 @@
 
 Status: **accepted** (owner, 2026-10-21; answers at the end; proposed by the architect the same day). Issue #588. Builds on
 ADR-0048 and its accepted amendment (the `conveyors` world layer and the finder's connection graph) and ADR-0038 (the
-10-minute world tier). Paths are under `backend/src/modules/` unless they start with a top-level directory.
+10-minute world tier). Paths are under `backend/src/modules/` unless they start with a top-level directory. Amended by
+ADR-0053 and by ADR-0055 (Decision 6's logistics edges and Decision 8's player-named sites, proposed).
 
 ## Context
 
