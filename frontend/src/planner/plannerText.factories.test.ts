@@ -123,11 +123,11 @@ describe("factory words", () => {
   });
 
   it("makes destination chips and keeps an unknown destination", () => {
-    expect(destinationChipText("storage", 3)).toBe("to storage: 3");
-    expect(destinationChipText("depot", 1)).toBe("to the Depot: 1");
-    expect(destinationChipText("sink", 2)).toBe("to the Sink: 2");
-    expect(destinationChipText("export", 1)).toBe("leaving by station: 1");
-    expect(destinationChipText("bin", 1)).toBe("to bin: 1");
+    expect(destinationChipText("storage", 3)).toBe("3 flows to storage");
+    expect(destinationChipText("depot", 1)).toBe("1 flow to the Depot");
+    expect(destinationChipText("sink", 2)).toBe("2 flows to the Sink");
+    expect(destinationChipText("export", 1)).toBe("1 flow leaving by station");
+    expect(destinationChipText("bin", 1)).toBe("1 flow to bin");
   });
 
   it("writes distances in metres under a kilometre and kilometres above", () => {

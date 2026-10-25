@@ -101,7 +101,7 @@ export interface ItemOption {
 }
 
 /** The items the site's connections carry, sorted by name; connections whose item could not be inferred are left out. */
-export function siteItems(edges: readonly PlannerEdge[]): ItemOption[] {
+export function siteItems(edges: readonly Pick<PlannerEdge, "itemClassName" | "itemName">[]): ItemOption[] {
   const byClass = new Map<string, string>();
   for (const e of edges) if (e.itemClassName !== null) byClass.set(e.itemClassName, e.itemName ?? e.itemClassName);
   return [...byClass].map(([className, name]) => ({ className, name })).sort((a, b) => a.name.localeCompare(b.name) || a.className.localeCompare(b.className));
@@ -133,7 +133,7 @@ function closure(seeds: Iterable<string>, next: ReadonlyMap<string, string[]>): 
  * connection that carries the item: upstream from the groups it leaves (what feeds them) and downstream from the groups
  * it arrives at (what they feed). A connection is lit when it carries the item or both its ends are on one walk.
  */
-export function reachFor(itemClassName: string, edges: readonly PlannerEdge[]): Reach {
+export function reachFor(itemClassName: string, edges: readonly Pick<PlannerEdge, "from" | "to" | "itemClassName">[]): Reach {
   const forward = new Map<string, string[]>();
   const backward = new Map<string, string[]>();
   const push = (m: Map<string, string[]>, k: string, v: string) => m.set(k, [...(m.get(k) ?? []), v]);

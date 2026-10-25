@@ -25,6 +25,19 @@ async function openPlateFactoryTables(page: Page) {
   await page.getByRole("button", { name: "Tables" }).click();
 }
 
+/** A visually hidden button (the canvas's keyboard way into a card), reached as a keyboard user does. */
+async function pressButton(page: Page, name: string | RegExp) {
+  await page.getByRole("button", { name }).focus();
+  await page.keyboard.press("Enter");
+}
+
+/** The Iron Plate factory (ADR-0055 PR 8) on its canvas, whichever view the screen opens on. */
+async function openPlateFactoryGraph(page: Page) {
+  await pressButton(page, "Open factory: Iron Plate factory");
+  await page.getByRole("button", { name: "Graph" }).click();
+  await expect(page.getByRole("img", { name: /^Graph of Iron Plate factory/ })).toBeVisible();
+}
+
 /** The Iron Plate site on the graph view, whichever view the screen opens on. */
 async function openIronGraph(page: Page) {
   await openIronSite(page);
@@ -227,7 +240,36 @@ const CASES: StateCase[] = [
     },
   },
   // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
-  { scenario: "planner-factories", path: "/app/planner", shows: "Flows between factories", clock: FACTORIES_NOW },
+  // The overview is the canvas from 640 px and the cards with the flows table below (ADR-0055 PR 8).
+  { scenario: "planner-factories", path: "/app/planner", shows: /^(Flows between factories|Zoom in)$/, clock: FACTORIES_NOW },
+  // PR 8a: an opened factory on the canvas, and a tree opened in place and folded again.
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-canvas",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryGraph,
+  },
+  {
+    scenario: "planner-factories-trees",
+    name: "planner-factory-bubble-open",
+    path: "/app/planner",
+    shows: "Collapse",
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryGraph,
+  },
+  {
+    scenario: "planner-factories-trees",
+    name: "planner-factory-bubble-folded",
+    path: "/app/planner",
+    shows: /2 groups · tree 1 of 2/,
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await pressButton(page, "Collapse 5× Constructor, Iron Plate, tree 1 of 2");
+    },
+  },
   {
     scenario: "planner-factories",
     name: "planner-factory-detail",

@@ -5,7 +5,6 @@ import {
   aggregateFlows,
   bubblesOf,
   connectionRows,
-  factoryAsSite,
   factoryModels,
   factoryOfNode,
   flowParts,
@@ -346,16 +345,3 @@ describe("shareSplit", () => {
   });
 });
 
-describe("factoryAsSite", () => {
-  it("presents a factory as a site for the canvas, weighting its centre by machines", () => {
-    const model = factoryModels(FACTORY_GRAPH)[1];
-    const site = factoryAsSite(model);
-    expect(site).toMatchObject({ key: model.factory.key, name: "Iron Rod factory", machineCount: 3, nodeKeys: model.factory.nodeKeys });
-    expect(site.topOutputs).toEqual(model.factory.products);
-  });
-
-  it("copes with a factory of no listed groups", () => {
-    const site = factoryAsSite({ ...factoryModels(FACTORY_GRAPH)[1], nodes: [] });
-    expect(site.at).toEqual({ x: 0, y: 0 });
-  });
-});

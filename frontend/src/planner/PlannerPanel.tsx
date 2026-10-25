@@ -8,7 +8,6 @@ import { FactoryFacts, FactoryFlows } from "./FactoryParts";
 import { LazySiteGraph } from "./graph/GraphLoader";
 import {
   connectionRows,
-  factoryAsSite,
   factoryModels,
   factoryOfNode,
   hasFactories,
@@ -94,23 +93,84 @@ function FactoryCard({
 }
 
 /**
+ * The first level when the backend sent factories (ADR-0055 Decision 6): the factories and the flows between them, as the
+ * canvas on a wide screen or as cards and a table on a phone. Choosing a factory (card or canvas) opens it.
+ */
+function FactoryOverview({
+  graph,
+  models,
+  findings,
+  onOpen,
+  viewMode: [view, setMode],
+}: {
+  graph: Graph;
+  models: readonly FactoryModel[];
+  findings: readonly Bottleneck[] | undefined;
+  onOpen: (key: string) => void;
+  /** Held by the page, so coming back from a factory shows the same view. */
+  viewMode: [ViewMode, (mode: ViewMode) => void];
+}) {
+  return (
+    <>
+      <p className="summary">
+        {models.length} {models.length === 1 ? "factory" : "factories"} · {totalMachines(graph.sites)} machines in {graph.nodes.length}{" "}
+        {graph.nodes.length === 1 ? "group" : "groups"}
+      </p>
+      <ViewToggle view={view} onPick={setMode} />
+      {view === "graph" ? (
+        <LazySiteGraph graph={graph} target={{ kind: "overview", models }} findings={findings} onOpenFactory={onOpen} />
+      ) : (
+        <>
+          <ul aria-label="Factories" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
+            {models.map((m) => (
+              <FactoryCard key={m.factory.key} model={m} findings={findings} onOpen={() => onOpen(m.factory.key)} />
+            ))}
+          </ul>
+          <FactoryFlows graph={graph} models={models} />
+        </>
+      )}
+    </>
+  );
+}
+
+type ViewMode = "graph" | "tables";
+
+/** Graph or Tables (Decision 4): wide screens open on the graph, a phone on the tables; the pick lasts until it is closed. */
+function useViewMode(): [ViewMode, (mode: ViewMode) => void] {
+  const wide = useWideScreen();
+  const [mode, setMode] = useState<ViewMode | null>(null);
+  return [mode ?? (wide ? "graph" : "tables"), setMode];
+}
+
+function ViewToggle({ view, onPick }: { view: ViewMode; onPick: (mode: ViewMode) => void }) {
+  return (
+    <div role="group" aria-label="View" className="flex gap-2">
+      {(["graph", "tables"] as const).map((m) => (
+        <button key={m} type="button" aria-pressed={view === m} onClick={() => onPick(m)} className="min-h-touch">
+          {m === "graph" ? "Graph" : "Tables"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * One opened site or factory: its groups (bubbles with their groups indented) and the connections touching them, as
  * tables, or the graph on a wide screen. A factory adds where it stands, what it makes and how its shared groups split.
  */
 function Detail({
-  site,
+  subject,
   graph,
   findings,
-  factory,
   onBack,
 }: {
-  site: PlannerSite;
+  /** What is open: one site (a backend without factories) or one factory. */
+  subject: { site: PlannerSite; factory?: undefined } | { factory: FactoryModel; site?: undefined };
   graph: Graph;
   findings: readonly Bottleneck[] | undefined;
-  /** Set when a factory is open: `site` is then the factory seen as one site for the canvas. */
-  factory?: FactoryModel;
   onBack: () => void;
 }) {
+  const { site, factory } = subject;
   const heading = useRef<HTMLHeadingElement>(null);
   // Opening one replaces the cards, so focus follows to the new heading (as a page change does).
   useEffect(() => heading.current?.focus(), []);
@@ -132,9 +192,7 @@ function Detail({
     return groupLabel(node);
   };
   const count = siteFindings(nodes, findings).length;
-  const wide = useWideScreen();
-  const [mode, setMode] = useState<"graph" | "tables" | null>(null);
-  const view = mode ?? (wide ? "graph" : "tables");
+  const [view, setMode] = useViewMode();
   const noun = factory === undefined ? "site" : "factory";
   return (
     <div className="grid gap-3">
@@ -161,15 +219,11 @@ function Detail({
       )}
 
       {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this one's, until it is closed. */}
-      <div role="group" aria-label="View" className="flex gap-2">
-        {(["graph", "tables"] as const).map((m) => (
-          <button key={m} type="button" aria-pressed={view === m} onClick={() => setMode(m)} className="min-h-touch">
-            {m === "graph" ? "Graph" : "Tables"}
-          </button>
-        ))}
-      </div>
+      <ViewToggle view={view} onPick={setMode} />
 
-      {view === "graph" && <LazySiteGraph site={site} graph={graph} findings={findings} />}
+      {view === "graph" && (
+        <LazySiteGraph graph={graph} target={factory === undefined ? { kind: "site", site } : { kind: "factory", model: factory }} findings={findings} />
+      )}
 
       <section aria-labelledby="planner-groups-heading" hidden={view !== "tables"} className="grid gap-2">
         <h5 id="planner-groups-heading" className="m-0">
@@ -222,12 +276,12 @@ export function PlannerPanel({
   const byFactory = hasFactories(graph);
   const models = useMemo(() => (byFactory ? factoryModels(graph) : []), [graph, byFactory]);
   const model = selected === null ? undefined : models.find((m) => m.factory.key === selected);
-  const factorySite = useMemo(() => (model === undefined ? undefined : factoryAsSite(model)), [model]);
   const site = selected === null || byFactory ? undefined : graph.sites.find((s) => s.key === selected);
   const open = model !== undefined || site !== undefined;
   const orphans = byFactory ? unassignedCount(graph) : 0;
   const orphanNote = `${orphans} ${orphans === 1 ? "group belongs" : "groups belong"} to no factory, so ${orphans === 1 ? "it is" : "they are"} not listed under one.`;
   const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
+  const overviewMode = useViewMode();
   const overviewHeading = useRef<HTMLHeadingElement>(null);
   // Back from one: focus the overview's heading, but not on the page's first render.
   const [cameBack, setCameBack] = useState(false);
@@ -254,31 +308,21 @@ export function PlannerPanel({
               ? "No sites to show yet: the planner needs belt data, and the agent hasn't sent any."
               : "No sites yet: no machines are connected by conveyors."}
         </p>
-      ) : model !== undefined && factorySite !== undefined ? (
-        <Detail key={model.factory.key} site={factorySite} graph={graph} findings={findings} factory={model} onBack={back} />
+      ) : model !== undefined ? (
+        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} onBack={back} />
       ) : site !== undefined ? (
-        <Detail key={site.key} site={site} graph={graph} findings={findings} onBack={back} />
+        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} onBack={back} />
       ) : byFactory ? (
-        <>
-          <p className="summary">
-            {models.length} {models.length === 1 ? "factory" : "factories"} · {totalMachines(graph.sites)} machines in {graph.nodes.length}{" "}
-            {graph.nodes.length === 1 ? "group" : "groups"}
-          </p>
-          <ul aria-label="Factories" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
-            {models.map((m) => (
-              <FactoryCard
-                key={m.factory.key}
-                model={m}
-                findings={findings}
-                onOpen={() => {
-                  setCameBack(false);
-                  onSelect(m.factory.key);
-                }}
-              />
-            ))}
-          </ul>
-          <FactoryFlows graph={graph} models={models} />
-        </>
+        <FactoryOverview
+          graph={graph}
+          models={models}
+          findings={findings}
+          viewMode={overviewMode}
+          onOpen={(key) => {
+            setCameBack(false);
+            onSelect(key);
+          }}
+        />
       ) : (
         <>
           <p className="summary">
