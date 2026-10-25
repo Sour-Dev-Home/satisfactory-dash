@@ -122,6 +122,12 @@ describe("mapResourceNodes (ADR-0038 M2, architect follow-up on #367)", () => {
     expect(ResourceNodesLayerDataSchema.safeParse([none, tooLong]).success).toBe(true);
   });
 
+  it("a non-string ClassName (null, number) must not fail the raw parse: one odd node would otherwise throw the whole layer", () => {
+    for (const bad of [null, 5, {}]) {
+      expect(z.array(RawFrmResourceNodeSchema).safeParse([{ ...baseNode, ClassName: bad }]).success).toBe(true);
+    }
+  });
+
   it("an old stored row without className still parses against the contract", () => {
     const oldRow = { type: "Iron Ore", purity: "pure", nodeType: "node", x: 1, y: 2, exploited: false };
     expect(ResourceNodesLayerDataSchema.safeParse([oldRow]).success).toBe(true);

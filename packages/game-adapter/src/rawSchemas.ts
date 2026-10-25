@@ -233,7 +233,7 @@ export const RawFrmResourceNodeSchema = z.object({
   Name: z.string(),
   /** ADR-0055 PR 2: the resource's item class (Desc_OreIron_C), for the planner's extractor items. Optional so a
    *  capture or FRM build without it still parses; the mapper omits the field then. */
-  ClassName: z.string().optional(),
+  ClassName: z.string().optional().catch(undefined),
   Purity: z.string(),
   NodeType: z.string(),
   Exploited: z.boolean(),
