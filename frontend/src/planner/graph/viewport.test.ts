@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, stageBesidePanel, keyView, panBy, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
+import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, stageBesidePanel, keyView, panBy, pinchView, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
 
 const home = { x: 0, y: 0, k: 1 };
 const stage = FALLBACK_STAGE;
@@ -127,5 +127,31 @@ describe("overflow", () => {
 
   it("floors a fit at 0.6", () => {
     expect(MIN_FIT_ZOOM).toBe(0.6);
+  });
+});
+
+describe("pinchView", () => {
+  const at = (ax: number, ay: number, bx: number, by: number) => [{ x: ax, y: ay }, { x: bx, y: by }] as const;
+
+  it("zooms by the change in finger distance, keeping the midpoint's layout point under it", () => {
+    const view = { x: 10, y: 20, k: 1 };
+    const out = pinchView(view, at(100, 100, 200, 100), at(50, 100, 250, 100));
+    expect(out.k).toBeCloseTo(2);
+    // The midpoint (150, 100) stays put, so the layout point under it is the same before and after.
+    expect(out.x).toBeCloseTo(150 - (150 - view.x) * 2);
+    expect(out.y).toBeCloseTo(100 - (100 - view.y) * 2);
+  });
+
+  it("pans with the midpoint when the distance is unchanged", () => {
+    expect(pinchView({ x: 0, y: 0, k: 1.5 }, at(100, 100, 200, 100), at(130, 120, 230, 120))).toEqual({ k: 1.5, x: 30, y: 20 });
+  });
+
+  it("clamps the zoom to the same limits as the wheel", () => {
+    expect(pinchView({ x: 0, y: 0, k: MAX_ZOOM }, at(0, 0, 10, 0), at(0, 0, 100, 0)).k).toBe(MAX_ZOOM);
+    expect(pinchView({ x: 0, y: 0, k: MIN_ZOOM }, at(0, 0, 100, 0), at(0, 0, 10, 0)).k).toBe(MIN_ZOOM);
+  });
+
+  it("only pans when the fingers coincide", () => {
+    expect(pinchView({ x: 0, y: 0, k: 1 }, at(5, 5, 5, 5), at(8, 5, 8, 5))).toEqual({ k: 1, x: 3, y: 0 });
   });
 });

@@ -3,27 +3,68 @@ import { edgeRateText, outputLine } from "../plannerText";
 
 // What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
 
-/** Longest line a card prints; longer text is cut with an ellipsis (the full text stays in the node's title and the tables). */
-export const MAX_LINE_CHARS = 34;
+/** Longest line a card prints; a longer body text wraps at a space onto a further line, up to MAX_WRAP_LINES, then is cut with an ellipsis. */
+export const MAX_LINE_CHARS = 22;
+/** The heading is larger type, so fewer characters fit the same card width. */
+export const MAX_TITLE_CHARS = 18;
+export const MAX_WRAP_LINES = 2;
 const MAX_OUTPUT_LINES = 2;
 
 const cut = (text: string, max = MAX_LINE_CHARS) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
-/** The card's heading, "8× Constructor" (a single machine has no count). */
-export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name);
+/**
+ * `text` as at most `maxLines` lines of at most `max` characters, broken at spaces (a word longer than a line is cut). What
+ * does not fit the last line ends in an ellipsis (the full text stays in the node's tooltip and the tables). Pure.
+ */
+export function wrapText(text: string, max = MAX_LINE_CHARS, maxLines = MAX_WRAP_LINES): string[] {
+  const lines: string[] = [];
+  let rest = text.trim();
+  while (rest.length > 0 && lines.length < maxLines) {
+    if (rest.length <= max) {
+      lines.push(rest);
+      rest = "";
+      break;
+    }
+    if (lines.length === maxLines - 1) {
+      lines.push(cut(rest, max));
+      rest = "";
+      break;
+    }
+    const space = rest.lastIndexOf(" ", max);
+    const at = space > 0 ? space : max;
+    lines.push(rest.slice(0, at).trimEnd());
+    rest = rest.slice(at).trimStart();
+  }
+  return lines.length > 0 ? lines : [""];
+}
 
-/** The card's body lines after the title: recipe, up to two outputs (actual over max), a loop marker. Never empty. */
-export function nodeBodyLines(node: PlannerNode): string[] {
-  const lines = [cut(node.recipe ?? "No recipe")];
+/** "Iron Ingot: 120 / 120 items/min" with no-break spaces after the colon, so a wrap leaves the figures and their unit together. */
+function keepFigures(line: string): string {
+  const at = line.indexOf(": ");
+  return at < 0 ? line : line.slice(0, at + 2) + line.slice(at + 2).replaceAll(" ", " ");
+}
+
+/** The card's heading, "8× Constructor" (a single machine has no count). */
+export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name, MAX_TITLE_CHARS);
+
+/**
+ * The card's body lines after the title: recipe, up to two outputs (actual over max), a loop marker; a long one wraps. Never
+ * empty. `recipeLines` is how many leading lines are the recipe (drawn muted).
+ */
+export function nodeBody(node: PlannerNode): { lines: string[]; recipeLines: number } {
+  const recipe = wrapText(node.recipe ?? "No recipe");
+  const lines = [...recipe];
   if (node.products.length === 0) lines.push("No output data");
   else {
-    for (const rate of node.products.slice(0, MAX_OUTPUT_LINES)) lines.push(cut(outputLine(rate)));
+    for (const rate of node.products.slice(0, MAX_OUTPUT_LINES)) lines.push(...wrapText(keepFigures(outputLine(rate))));
     const more = node.products.length - MAX_OUTPUT_LINES;
     if (more > 0) lines.push(`+${more} more ${more === 1 ? "output" : "outputs"}`);
   }
   if (node.loop) lines.push("In a loop");
-  return lines;
+  return { lines, recipeLines: recipe.length };
 }
+
+export const nodeBodyLines = (node: PlannerNode): string[] => nodeBody(node).lines;
 
 /**
  * An edge's label on the canvas (ADR-0050 Decision 2): the item, then the rate in the table's words ("about" for an

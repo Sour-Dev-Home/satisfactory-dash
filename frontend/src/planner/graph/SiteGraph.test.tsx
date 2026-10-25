@@ -64,7 +64,10 @@ async function openGraph() {
 /** The drawing's transform: the <g> that holds edges and nodes. */
 const transformOf = (svg: HTMLElement) => svg.querySelector(":scope > g")!.getAttribute("transform")!;
 const scaleOf = (svg: HTMLElement) => Number(/scale\(([\d.e-]+)\)/.exec(transformOf(svg))![1]);
-const groupButton = (name: RegExp) => screen.findByRole("button", { name });
+/** A window-level pointer event (jsdom has no PointerEvent, so the id is put on a MouseEvent). */
+const pointer = (type: string, pointerId: number, clientX: number, clientY: number) =>
+  fireEvent(window, Object.assign(new MouseEvent(type, { clientX, clientY }), { pointerId }));
+const groupButton =(name: RegExp) => screen.findByRole("button", { name });
 const dimmed = (svg: HTMLElement) => svg.querySelectorAll(":scope > g > g.opacity-graph-dim").length;
 
 describe("the site view toggle", () => {
@@ -139,13 +142,29 @@ describe("the site graph", () => {
   it("pans by dragging, and zooms with the wheel", async () => {
     const svg = await openGraph();
     const before = transformOf(svg);
-    fireEvent.pointerDown(svg, { button: 0, clientX: 100, clientY: 100 });
-    fireEvent(window, new MouseEvent("pointermove", { clientX: 160, clientY: 130 }));
-    fireEvent(window, new MouseEvent("pointerup"));
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    pointer("pointermove", 1, 160, 130);
+    pointer("pointerup", 1, 160, 130);
     expect(transformOf(svg)).not.toBe(before);
     const k = scaleOf(svg);
     fireEvent.wheel(svg, { deltaY: -200, clientX: 10, clientY: 10 });
     expect(scaleOf(svg)).toBeGreaterThan(k);
+  });
+
+  it("pinches with two pointers: the distance scales the view, and a lifted finger leaves a one-finger pan", async () => {
+    const svg = await openGraph();
+    const k0 = scaleOf(svg);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 2, clientX: 200, clientY: 100 });
+    pointer("pointermove", 2, 300, 100);
+    expect(scaleOf(svg)).toBeCloseTo(k0 * 2, 5);
+    pointer("pointerup", 2, 300, 100);
+    const after = transformOf(svg);
+    // The remaining finger pans from where it was, not from where it started.
+    pointer("pointermove", 1, 110, 100);
+    expect(transformOf(svg)).not.toBe(after);
+    expect(scaleOf(svg)).toBeCloseTo(k0 * 2, 5);
+    pointer("pointerup", 1, 110, 100);
   });
 
   it("filters by item: lights what carries it upstream and downstream, dims the rest, and clears", async () => {
@@ -294,7 +313,7 @@ describe("the graph's readable chrome", () => {
     }
     // Zoomed out to fit inside, nothing is clipped and the hint goes.
     const zoomOut = screen.getByRole("button", { name: "Zoom out" });
-    for (let i = 0; i < 4; i++) fireEvent.click(zoomOut);
+    for (let i = 0; i < 5; i++) fireEvent.click(zoomOut);
     expect(scaleOf(svg)).toBeLessThan(0.5);
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
     expect(fades()).toEqual([]);

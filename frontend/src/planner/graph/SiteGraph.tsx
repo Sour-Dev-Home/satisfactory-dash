@@ -4,7 +4,7 @@ import { cn } from "../../lib/cn";
 import { bottleneckCountText, groupLabel, nodeFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { edgeTitle, graphSummary, reachFor, siteItems } from "./graphModel";
-import { LABEL_LINE_H, LINE_H, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
+import { LABEL_LINE_H, LINE_H, NODE_PAD_X, TITLE_H, layoutSite, type LaidEdge, type LaidNode } from "./layoutSite";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -16,11 +16,13 @@ import {
   isClipped,
   keyView,
   panBy,
+  pinchView,
   revealRect,
   stageBesidePanel,
   toStage,
   zoomAt,
   zoomCentre,
+  type Pair,
   type Stage,
   type View,
 } from "./viewport";
@@ -156,31 +158,61 @@ export default function SiteGraph({
     return () => svg.removeEventListener("wheel", onWheel);
   }, []);
 
-  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0) return;
-    dragged.current = false;
-    let last = { x: event.clientX, y: event.clientY };
-    let moved = 0;
+  // The pointers that are down on the stage (client pixels, last seen): one pans, two pinch and pan together.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const travelled = useRef(0);
+
+  useEffect(() => {
+    const toStagePoint = (p: { x: number; y: number }) => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      const s = rect ? toStage(rect, stageRef.current, p.x, p.y) : p;
+      return { x: s.x, y: s.y };
+    };
     const onMove = (e: PointerEvent) => {
+      const prev = pointers.current.get(e.pointerId);
+      if (!prev) return;
+      const next = { x: e.clientX, y: e.clientY };
+      if (pointers.current.size === 2) {
+        const other = [...pointers.current].find(([id]) => id !== e.pointerId)![1];
+        pointers.current.set(e.pointerId, next);
+        dragged.current = true;
+        const before: Pair = [toStagePoint(prev), toStagePoint(other)];
+        const after: Pair = [toStagePoint(next), toStagePoint(other)];
+        setView((v) => pinchView(v, before, after));
+        return;
+      }
+      pointers.current.set(e.pointerId, next);
       const rect = svgRef.current?.getBoundingClientRect();
       const scale = rect ? toStage(rect, stageRef.current, 0, 0).scale : 1;
-      const dx = e.clientX - last.x;
-      const dy = e.clientY - last.y;
-      moved += Math.abs(dx) + Math.abs(dy);
-      last = { x: e.clientX, y: e.clientY };
-      if (moved > DRAG_SLOP) {
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      travelled.current += Math.abs(dx) + Math.abs(dy);
+      if (travelled.current > DRAG_SLOP) {
         dragged.current = true;
         setView((v) => panBy(v, dx / scale, dy / scale));
       }
     };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+    const onUp = (e: PointerEvent) => {
+      pointers.current.delete(e.pointerId);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    if (pointers.current.size === 0) {
+      dragged.current = false;
+      travelled.current = 0;
+    }
+    // A third finger is not tracked: two define the gesture.
+    if (pointers.current.size < 2) pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -328,12 +360,12 @@ export default function SiteGraph({
                       strokeWidth={ringed ? 3 : 1}
                       className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")}
                     />
-                    <text x={12} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
+                    <text x={NODE_PAD_X} y={TITLE_H}className="fill-fg-strong text-base font-semibold">
                       {n.title}
                     </text>
                     {/* Muted (5.6:1 on the card) only for the recipe, the first line; the rates and states read in full colour. */}
                     {n.lines.map((line, i) => (
-                      <text key={i} x={12} y={TITLE_H + LINE_H * (i + 1)} className={cn("text-sm", i === 0 ? "fill-muted" : "fill-fg")}>
+                      <text key={i} x={NODE_PAD_X}y={TITLE_H + LINE_H * (i + 1)} className={cn("text-sm", i < n.recipeLines ? "fill-muted" : "fill-fg")}>
                         {line}
                       </text>
                     ))}

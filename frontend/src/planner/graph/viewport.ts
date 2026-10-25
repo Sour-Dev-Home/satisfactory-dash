@@ -35,6 +35,33 @@ export function zoomAt(view: View, factor: number, cx: number, cy: number): View
   return { k, x: cx - (cx - view.x) * real, y: cy - (cy - view.y) * real };
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Two touch points, in stage units. */
+export type Pair = readonly [Point, Point];
+
+/** Fingers closer than this (stage units) give no usable ratio, so the gesture only pans. */
+const MIN_PINCH_SPAN = 1;
+
+/**
+ * A two-finger gesture from `prev` to `next`: the view zooms by the change in the fingers' distance and moves with their
+ * midpoint, so the layout point that was under the old midpoint ends under the new one (a pinch zooms about the midpoint,
+ * a two-finger drag pans). The zoom is clamped like every other zoom; at a clamp the midpoint still tracks.
+ */
+export function pinchView(view: View, prev: Pair, next: Pair): View {
+  const before = Math.hypot(prev[0].x - prev[1].x, prev[0].y - prev[1].y);
+  const after = Math.hypot(next[0].x - next[1].x, next[0].y - next[1].y);
+  const factor = before < MIN_PINCH_SPAN || after < MIN_PINCH_SPAN ? 1 : after / before;
+  const k = clampK(view.k * factor);
+  const real = k / view.k;
+  const m0 = { x: (prev[0].x + prev[1].x) / 2, y: (prev[0].y + prev[1].y) / 2 };
+  const m1 = { x: (next[0].x + next[1].x) / 2, y: (next[0].y + next[1].y) / 2 };
+  return { k, x: m1.x - (m0.x - view.x) * real, y: m1.y - (m0.y - view.y) * real };
+}
+
 export const zoomCentre = (view: View, factor: number, stage: Stage) => zoomAt(view, factor, stage.width / 2, stage.height / 2);
 
 export const panBy = (view: View, dx: number, dy: number): View => ({ ...view, x: view.x + dx, y: view.y + dy });
