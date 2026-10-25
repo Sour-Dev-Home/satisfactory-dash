@@ -600,6 +600,34 @@ test("rollback records the inputs of the release it goes back to, never the newe
   assert.equal("inputs" in record, false);
 });
 
+test("once the service may change, the record loses its inputs until a release is recorded (a revert of a broken deploy still ships)", async () => {
+  // S2's health check fails: production runs S2, the record still names R1, and must no longer carry R1's inputs.
+  const deps = fakeDeps({ released: withInputs(true, H("a"), H("b")), health: 503 });
+  await assert.rejects(production(deps, "deploy", { ...target, backend: D("7"), ops: D("8"), inputs: H("c") }), /did not answer 200/);
+  const rec = JSON.parse(deps.params.get("/satis/deploy/prod/released"));
+  assert.equal("inputs" in rec, false, "inputs cleared");
+  assert.equal(rec.sha, SHA, "the rest of the record is unchanged");
+  assert.equal(rec.previous.inputs, H("b"));
+  // The revert of S2 has R1's inputs: the automatic run must deploy it.
+  assert.equal(alreadyReleased(parseReleased(JSON.stringify(rec)), { sha: OLD_SHA, backend: D("9"), ops: D("a"), inputs: H("a") }), null);
+  // The clear happens before update-service.
+  const order = ops(deps);
+  assert.ok(order.indexOf("ssm put-parameter") < order.indexOf("ecs update-service"));
+  // An alarm rollback and a failed rollout leave it cleared too.
+  for (const opts of [{ alarmAt: (n) => (n > 2 ? "ALARM" : "OK") }, { rollout: () => false }]) {
+    const d = fakeDeps({ released: withInputs(true, H("a")), ...opts });
+    await assert.rejects(production(d, "deploy", { ...target, inputs: H("c") }));
+    assert.equal("inputs" in JSON.parse(d.params.get("/satis/deploy/prod/released")), false);
+  }
+});
+
+test("a deploy that fails before touching the service keeps the record as it was", async () => {
+  const deps = fakeDeps({ released: withInputs(true, H("a")), migrateExit: 1 });
+  await assert.rejects(production(deps, "deploy", { ...target, inputs: H("c") }), /db-migrate exited 1/);
+  assert.equal(JSON.parse(deps.params.get("/satis/deploy/prod/released")).inputs, H("a"));
+  assert.ok(!ops(deps).includes("ssm put-parameter"));
+});
+
 test("nextReleased keeps only valid inputs, and only with the release they belong to", () => {
   const r1 = nextReleased(null, { sha: "1", backend: "b", ops: "o", taskDefinition: "t", inputs: H("a") });
   assert.equal(r1.inputs, H("a"));

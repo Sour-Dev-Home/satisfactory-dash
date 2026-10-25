@@ -73,12 +73,12 @@ function fakeDeps(opts = {}) {
         return {
           tasks: [{
             lastStatus: dead ? "STOPPED" : "RUNNING",
-            stoppedReason: pullFailed ? PULL : dead && !stopped ? (opts.stopReason ?? "Essential container in task exited") : undefined,
+            stoppedReason: pullFailed ? (opts.pullOnContainer ? "Task failed to start" : PULL) : dead && !stopped ? (opts.stopReason ?? "Essential container in task exited") : undefined,
             containers: [
               { name: "postgres", exitCode: dead ? 0 : undefined },
               { name: "db-previous", exitCode: lag ? undefined : (opts.previousExit ?? 0) },
               { name: "db-setup", exitCode: lag ? undefined : (opts.setupExit ?? 0) },
-              { name: "backend", exitCode: dead ? 137 : undefined },
+              { name: "backend", exitCode: dead ? 137 : undefined, ...(pullFailed && opts.pullOnContainer ? { reason: PULL } : {}) },
               { name: "cloudflared", exitCode: dead ? 137 : undefined },
             ],
           }],
@@ -402,6 +402,13 @@ test("a pull failure retries once after 30 s and passes; both tasks are stopped"
   assert.ok(deps.now() >= 30_000, "waited 30 s");
   assert.match(deps.logs.join("\n"), /could not pull an image \(CannotPullContainerError.*starting it once more in 30 s/);
   assert.match(deps.logs.join("\n"), /all good/);
+});
+
+test("a pull failure shown only on the container (task: 'Task failed to start') retries too", async () => {
+  const deps = fakeDeps({ pullFails: 1, pullOnContainer: true });
+  await staging(deps, target);
+  assert.equal(runCount(deps), 2);
+  assert.match(deps.logs.join("\n"), /could not pull an image \(Task failed to start: CannotPullContainerError/);
 });
 
 test("two pull failures fail the run, and the second task is stopped too", async () => {

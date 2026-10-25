@@ -266,6 +266,15 @@ export async function production(deps, action, given = {}, c = CONFIG) {
     if (action === "deploy") await migrate(deps, c, target.ops);
     const taskDefinition = register(deps, revisionFrom(base, "backend", imageRef("backend", target.backend)));
     deps.log(`backend: registered ${taskDefinition}`);
+    // ADR-0054 D1: from here on production may end up running something other than the recorded release (a failed
+    // health check, a timeout, a cancelled job). Until this run records a release, the record carries no `inputs`, so
+    // no automatic run can skip on it; e.g. a revert of a broken release, whose inputs equal the recorded one's,
+    // still deploys over it. (Fresh-eyes review.)
+    if (released && "inputs" in released) {
+      const { inputs: _dropped, ...unpinned } = released;
+      deps.aws(["ssm", "put-parameter", "--name", param(c.environment, "released"), "--type", "String", "--overwrite", "--value", JSON.stringify(unpinned)]);
+      deps.log("released: inputs cleared until this run records a release");
+    }
     const before = await rollOut(deps, c, taskDefinition);
 
     // D5 step 4: watch both alarms; either one in ALARM rolls back to what ran before. Not after a rollback: it usually
@@ -444,7 +453,12 @@ async function untilUp(deps, s, describe, access) {
   const deadline = deps.now() + s.upTimeoutMs;
   for (;;) {
     const t = describe();
-    if (t?.lastStatus === "STOPPED") return String(t.stoppedReason ?? "no reason");
+    if (t?.lastStatus === "STOPPED") {
+      // Fargate sometimes puts the pull error only on the container ("Task failed to start" on the task).
+      const pull = (t.containers ?? []).map((c) => c?.reason).find((r) => typeof r === "string" && PULL_FAILED.test(r));
+      const reason = String(t.stoppedReason ?? "no reason");
+      return pull && !PULL_FAILED.test(reason) ? `${reason}: ${pull}` : reason;
+    }
     const r = await get(deps, `${s.url}/api/health`, access);
     if (r?.status === 200) return null;
     // Access answers before the tunnel: a redirect means it refused the service token, which waiting won't fix.

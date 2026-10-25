@@ -7,6 +7,9 @@
 // A false skip (a real change not deployed) is the failure to avoid, so: every path the Dockerfile copies is in
 // INPUT_PATHS (inputs.test.mjs parses the Dockerfile's COPY lines), a required path that is missing fails instead of
 // hashing less, and a record or image without a valid hash never matches (lib.mjs alreadyReleased).
+//
+// Not covered, accepted: the ops stage's apt-get packages are not pinned, so a rebuild that only picks up newer ones
+// is skipped; they ship with the next real change (a base-digest bump is one) or a dispatched deploy.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -26,6 +29,9 @@ export const INPUT_PATHS = [
   { path: "package.json", required: true },
   { path: "package-lock.json", required: true },
   { path: ".dockerignore", required: false },
+  // The build's settings (target, platforms, labels, build-push version, any future build-args) live here, not in
+  // the Dockerfile (fresh-eyes and security review).
+  { path: ".github/workflows/image.yml", required: true },
 ];
 
 // Bumped if the way the hash is formed ever changes, so an old hash can never equal a new one by accident.

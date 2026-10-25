@@ -17,7 +17,12 @@ const BASE = {
   "package.json": ["100644", "blob", ID("3")],
   "packages/game-adapter": ["040000", "tree", ID("4")],
   "packages/shared": ["040000", "tree", ID("5")],
+  ".github/workflows/image.yml": ["100644", "blob", ID("8")],
 };
+
+test("the workflow that sets the build's target, platforms and labels is a required input", () => {
+  assert.ok(INPUT_PATHS.some((e) => e.path === ".github/workflows/image.yml" && e.required));
+});
 
 test("the hash is stable, 64 hex, and independent of git's listing order", () => {
   const h = inputsHash(lsTree(BASE));
@@ -116,8 +121,9 @@ function contextSources(dockerfile) {
   return sources;
 }
 
-const normalize = (p) => p.replace(/^\.\//, "").replace(/\/+$/, "");
-const covered = (src) => INPUT_PATHS.some(({ path: p }) => normalize(src) === p || normalize(src).startsWith(`${p}/`));
+const normalize = (p) => path.posix.normalize(p).replace(/^\.\//, "").replace(/\/+$/, "");
+// Any `..` segment is refused outright, so `backend/../frontend` can't pass as under `backend`.
+const covered = (src) => !src.split("/").includes("..") && INPUT_PATHS.some(({ path: p }) => normalize(src) === p || normalize(src).startsWith(`${p}/`));
 
 test("every COPY source in backend/Dockerfile is a hashed build input", () => {
   const dockerfile = read("backend/Dockerfile");
@@ -148,6 +154,8 @@ test("the coverage check itself catches an uncovered COPY, a whole-context COPY 
   assert.ok(caught("FROM x\nCOPY --chown=node:node scripts \\\n  /s\n"));
   assert.ok(caught('FROM x\nCOPY ["tsconfig.base.json", "/repo/"]\n'));
   assert.ok(caught("FROM x\nCOPY . /repo\n"));
+  assert.ok(caught("FROM x\nCOPY backend/../frontend /x\n"), "a .. segment never counts as under an input");
+  assert.ok(caught("FROM x\nCOPY <<EOF /x\nhi\nEOF\n"), "a heredoc source is not a hashed path");
   assert.ok(caught("FROM x\nADD packages/shared docs /repo/\n"), "every source of a multi-source COPY is checked");
   assert.ok(!caught("FROM x\nCOPY --from=build /repo/frontend /x\nCOPY ./backend/ /b\n"), "--from and ./ forms are fine");
   assert.match("RUN --mount=type=bind,source=frontend,target=/f true", /--mount=(?=[^\s]*type=bind)(?![^\s]*from=)/i);
