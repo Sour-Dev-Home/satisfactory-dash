@@ -793,7 +793,16 @@ function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; ma
         </g>
       )}
 
-      {/* Just above the line; the halo only matters where another line crosses the words. */}
+      {/* On its own line, in the box the layout reserved for it: a pill the line runs under, so it stops at the words. */}
+      <rect
+        x={e.labelX - e.labelWidth / 2}
+        y={e.labelY - e.labelHeight / 2}
+        width={e.labelWidth}
+        height={e.labelHeight}
+        rx={e.labelHeight / 2}
+        data-label-pill=""
+        className="fill-surface"
+      />
       <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
         {e.labelLines.map((line, i) => (
           <tspan key={i} x={e.labelX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>

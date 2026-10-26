@@ -213,6 +213,9 @@ interface Placement {
   paths: Point[][];
   /** How far up each flow's label stands above where its own box would (flows merged into one dagre edge stack their labels). */
   stack: number[];
+  /** Each flow's label centre in the box dagre reserved for it (clear of cards and other labels), or null when the placement
+   *  has no such box (the grid fallback), so the label goes beside the path's middle as before. */
+  labelAt: (Point | null)[];
   width: number;
   height: number;
 }
@@ -313,9 +316,16 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     frames.set(f.key, box);
   }
   const paths = drawn.map((f, i) => (g.edge(f.from, f.to, edgeOf[i]).points ?? []).map((p: Point) => ({ x: p.x, y: p.y })));
+  // The label box dagre made room for: its centre, and for merged flows each label's row in it, top down. Placing a label
+  // anywhere else (the path's middle) put it on cards, other labels and other lines.
+  const labelAt = drawn.map((f, i): Point | null => {
+    const d = g.edge(f.from, f.to, edgeOf[i]) as { x?: number; y?: number; height?: number };
+    if (d.x === undefined || d.y === undefined || !Number.isFinite(d.x) || !Number.isFinite(d.y)) return null;
+    return { x: d.x, y: d.y - (d.height ?? labels[i].height) / 2 + stack[i] + labels[i].height / 2 };
+  });
   // An empty graph comes back from dagre with width and height -Infinity.
   const { width, height } = g.graph();
-  return { centres, frames, paths, stack, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
+  return { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
 }
 
 /** Where a straight line from a card's centre towards a point leaves the card. */
@@ -354,7 +364,7 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     return [leaves(a, sizeOf.get(f.from)!, b), leaves(b, sizeOf.get(f.to)!, a)];
   });
   const rows = Math.ceil(scene.cards.length / cols);
-  return { centres, frames, paths, stack: drawn.map(() => 0), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
+  return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
 }
 
 function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
@@ -422,15 +432,16 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
     const before = isTransport(flow) ? (seen.get(pair) ?? 0) : 0;
     if (isTransport(flow)) seen.set(pair, before + 1);
     const { width, height } = labels[index];
-    const at = points.length > 0 ? labelPlacement(points, width, height, isTransport(flow) ? GLYPH_CLEARANCE : 0) : { x: 0, y: 0 };
+    const own = p.labelAt[index];
+    const beside = own === null && points.length > 0 ? labelPlacement(points, width, height, isTransport(flow) ? GLYPH_CLEARANCE : 0) : { x: 0, y: 0 };
     return {
       index,
       flow,
       points,
       label: flow.label,
       labelLines: flow.labelLines,
-      labelX: at.x,
-      labelY: at.y - p.stack[index],
+      labelX: own?.x ?? beside.x,
+      labelY: own?.y ?? beside.y - p.stack[index],
       labelWidth: width,
       labelHeight: height,
       mid: pathMidpoint(points, GLYPH_AT + GLYPH_SPREAD * before),
