@@ -120,6 +120,7 @@ import {
   listSelfServeOff,
   listSelfServeOn,
 } from "./selfServeMocks";
+import { compatPolicy, compatQuiet, reporting } from "./updateMocks";
 import { approved, errorPairingForbidden, errorPairingNotFound, errorPairingRateLimited, lookedUp } from "./pairingMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
@@ -192,6 +193,8 @@ export const ROUTES = {
   agentStatus: endpoints.agent.status,
   agentEnrollmentCode: endpoints.agent.enrollmentCode,
   agentRevoke: endpoints.agent.revoke,
+  // ADR-0057 Decision 7: the version policy the update banners compare with.
+  compat: endpoints.compat,
   // ADR-0027 PR 9c: the owner/admin writes (same paths as the reads, told apart by method).
   alertRuleCreate: endpoints.alerts.rules.create,
   alertRuleUpdate: endpoints.alerts.rules.update,
@@ -295,6 +298,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   agentStatus: ok(agentStatusNotEnrolled),
   agentEnrollmentCode: { status: 201, body: agentEnrollmentCodeResponse },
   agentRevoke: ok(agentRevokeResponse),
+  // Nothing newer than the fixtures' agent, so no state but the update ones shows a version banner.
+  compat: ok(compatQuiet),
   // Each write answers as the backend would; the page re-reads or patches its cache from these.
   alertRuleCreate: { status: 201, body: alertRuleCreated },
   alertRuleUpdate: ok(alertRuleUpdatedPresetDisabled),
@@ -746,6 +751,19 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // ADR-0057 Decision 7: the version banners. An agent behind the newest release; the mod behind it (applies at the next
+  // restart); a version older than minSupported; a mod inside an advisory's range; and an agent below minSafe with no advisory.
+  "update-agent": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.3.5+ec24244.20261025")), compat: ok(compatPolicy) },
+  "update-mod": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("mod/1.1.5")), compat: ok(compatPolicy) },
+  "update-unsupported": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.1.5")), compat: ok({ ...compatPolicy, agent: { ...compatPolicy.agent, minSafe: "0.1.0" } }) },
+  "update-advisory": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("mod/1.0.5")), compat: ok(compatPolicy) },
+  "update-servers": {
+    servers: operatorSingle,
+    managedServers: ok(managedServersWithAgent),
+    agentStatus: ok(reporting("0.3.5")),
+    compat: ok(compatPolicy),
+  },
+  "update-min-safe": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.2.5")), compat: ok(compatPolicy) },
   // ADR-0046 (#529), Settings → Your server. Self-serve on for a player with no server of their own;
   // off; with no server at all (the add form is the screen); each refusal of "Add your server"; and the
   // owner of an enrolled and of a pending self-serve server.

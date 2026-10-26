@@ -471,6 +471,14 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // ADR-0057 Decision 7: the version banners in the shell (an update, an unsupported version, a security advisory from the
+  // policy's range and from minSafe) and the line on the Servers page.
+  { scenario: "update-agent", path: "/app/settings", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },
+  { scenario: "update-mod", path: "/app/settings", shows: /applies at the next server restart/, clock: AGENT_NOW },
+  { scenario: "update-unsupported", path: "/app/settings", shows: /Unsupported version/, clock: AGENT_NOW },
+  { scenario: "update-advisory", path: "/app/settings", shows: /Security advisory \(SD-2026-001\)/, clock: AGENT_NOW },
+  { scenario: "update-min-safe", path: "/app/settings", shows: /Security advisory: This version has a known security problem/, clock: AGENT_NOW },
+  { scenario: "update-servers", path: "/app/servers", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },
   // Self-serve (ADR-0046, #529). Settings → Add your server (on; off shows no section), the add form as the whole
   // screen for a player with no server, each refusal, and the owner of an enrolled and of a pending server.
   { scenario: "self-serve-add", path: "/app/settings", shows: "Add your server", clock: AGENT_NOW },

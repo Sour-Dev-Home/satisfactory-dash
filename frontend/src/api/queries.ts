@@ -40,6 +40,9 @@ export const POLL_MS = {
   mapLive: 10_000,
 } as const;
 
+/** How long the version policy counts as fresh (ADR-0057): it moves with releases, not seconds. */
+export const COMPAT_STALE_MS = 10 * 60_000;
+
 /** How long a metrics read counts as fresh: the series store is flushed once a minute (ADR-0056 section 7). */
 export const METRICS_STALE_MS = 60_000;
 
@@ -316,6 +319,14 @@ export const queries = {
       queryKey: ["servers", serverId, "agent"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.agent.status, serverId),
       refetchInterval: POLL_MS.agent,
+    }),
+  // ADR-0057 Decisions 6 to 8: the version policy the update banners compare each server's reported version with.
+  // It changes with a release, so it is read once and again only after COMPAT_STALE_MS.
+  compat: () =>
+    queryOptions({
+      queryKey: ["compat"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.compat),
+      staleTime: COMPAT_STALE_MS,
     }),
   // ADR-0027 PR 9: alerts. Alerts change on minute scales, and the header bell reads the status on
   // every page, so it's polled once a minute (never at the page's rate).

@@ -3,6 +3,7 @@ import { isBackedUpState, ownValue } from "@satisfactory-dash/shared";
 import type {
   AgentStatusResponse,
   BottlenecksResponse,
+  CompatResponse,
   EnrollmentCodeResponseSchema,
   FactoryBuilding,
   FactoryResponse,
@@ -973,6 +974,14 @@ export function settings(now: number, state: { autoPause: boolean; pending: bool
 /** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago. */
 export function agent(now: number): AgentStatusResponse {
   return { enrolled: true, lastSeenAt: new Date(now - 12_000).toISOString(), agentVersion: "0.1.0", connectionKind: "agent" };
+}
+
+/** The demo's version policy (ADR-0057): a newer agent exists, so the demo server shows "Update available". Nothing is offered to install. */
+export function compat(): CompatResponse {
+  return {
+    mod: { current: "1.0.0", minSupported: "1.0.0", minSafe: "1.0.0", advisories: [] },
+    agent: { current: "0.2.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
+  };
 }
 
 /** A made-up enrolment code: it enrols nothing, since the demo has no backend. */
