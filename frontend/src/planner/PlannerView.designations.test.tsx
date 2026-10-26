@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, ProductionGraphResponseSchema } from "@satisfactory-dash/shared";
 import {
   plannerDesignationOverlapError,
@@ -262,5 +262,186 @@ describe("PlannerView: a viewer", () => {
     await screen.findByRole("heading", { name: "Groups" });
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Designate selected" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PlannerView: designating on the canvas (ADR-0055 Decision 5, PR 10b)", () => {
+  beforeEach(() => {
+    // A wide screen: the graph is the default view.
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), addEventListener: () => {}, removeEventListener: () => {} }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const rodGraph = () => screen.findByRole("img", { name: /^Graph of Iron Rod factory/ }, { timeout: 3_000 });
+  const openRodGraph = async (servers = serversRoleOwner) => {
+    renderView(servers);
+    fireEvent.click(await screen.findByRole("button", { name: /^Open factory: Iron Rod factory/ }, { timeout: 3_000 }));
+    return rodGraph();
+  };
+  const cardList = () => screen.getByRole("list", { name: "Cards in the graph" });
+  /** jsdom has no layout: the SVG's rect is empty, so stage points are client points. */
+  const pointer = (type: string, pointerId: number, clientX: number, clientY: number) =>
+    fireEvent(window, Object.assign(new MouseEvent(type, { clientX, clientY }), { pointerId }));
+  /** A lasso round the whole drawing, from far outside it. */
+  const lassoAll = (svg: HTMLElement, opts: { shiftKey?: boolean } = {}) => {
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: -5000, clientY: -5000, ...opts });
+    pointer("pointermove", 1, 5000, -5000);
+    pointer("pointermove", 1, 5000, 5000);
+    pointer("pointermove", 1, -5000, 5000);
+    pointer("pointerup", 1, -5000, 5000);
+  };
+  const transformOf = (svg: HTMLElement) => svg.querySelector(":scope > g")?.getAttribute("transform");
+  const pickButtons = () => within(cardList()).getAllByRole("button", { name: /^Pick / });
+
+  it("Select mode turns a card's button into a pick toggle shared with the table's ticks, and Designate selected sends its machines", async () => {
+    serve();
+    const svg = await openRodGraph();
+    const select = screen.getByRole("button", { name: "Select" });
+    expect(select).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(select);
+    expect(select).toHaveAttribute("aria-pressed", "true");
+    const pick = within(cardList()).getByRole("button", { name: /^Pick .*Constructor/ });
+    expect(pick).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(pick);
+    expect(pick).toHaveAttribute("aria-pressed", "true");
+    expect(svg.querySelectorAll("[data-picked]")).toHaveLength(1);
+    expect(svg.querySelector("[data-check]")).not.toBeNull();
+    expect(screen.getByText("1 group, 2 machines selected")).toBeInTheDocument();
+    // The ticks in the Tables view are the same selection.
+    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    expect(screen.getByRole("checkbox", { name: "Select Constructor" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    await rodGraph();
+    fireEvent.click(screen.getByRole("button", { name: "Designate selected" }));
+    type("Name", "Rod works");
+    fireEvent.click(screen.getByRole("button", { name: "Designate" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]).toMatchObject({ method: "POST", body: { name: "Rod works", mode: "core", members: rodMembers } });
+  });
+
+  it("a lasso in Select mode picks every card it encloses instead of panning, and Escape clears the picks", async () => {
+    serve();
+    const svg = await openRodGraph();
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const before = transformOf(svg);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: -5000, clientY: -5000 });
+    pointer("pointermove", 1, 5000, -5000);
+    pointer("pointermove", 1, 5000, 5000);
+    // The shape is drawn while the pointer is down.
+    expect(svg.querySelector("[data-lasso]")).not.toBeNull();
+    pointer("pointermove", 1, -5000, 5000);
+    pointer("pointerup", 1, -5000, 5000);
+    expect(svg.querySelector("[data-lasso]")).toBeNull();
+    expect(transformOf(svg)).toBe(before);
+    const picks = pickButtons();
+    expect(picks.length).toBeGreaterThan(0);
+    for (const b of picks) expect(b).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    for (const b of pickButtons()) expect(b).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("Shift+drag lassos without Select mode, and a plain drag still pans", async () => {
+    serve();
+    const svg = await openRodGraph();
+    const before = transformOf(svg);
+    lassoAll(svg, { shiftKey: true });
+    expect(transformOf(svg)).toBe(before);
+    expect(svg.querySelectorAll("[data-picked]").length).toBeGreaterThan(0);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 2, clientX: 100, clientY: 100 });
+    pointer("pointermove", 2, 160, 130);
+    pointer("pointerup", 2, 160, 130);
+    expect(transformOf(svg)).not.toBe(before);
+  });
+
+  it("a member gets no Select mode, and Shift+drag pans", async () => {
+    serve();
+    const svg = await openRodGraph(serversRoleViewer);
+    expect(screen.queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Designate selected" })).not.toBeInTheDocument();
+    const before = transformOf(svg);
+    lassoAll(svg, { shiftKey: true });
+    expect(svg.querySelector("[data-picked]")).toBeNull();
+    expect(transformOf(svg)).not.toBe(before);
+  });
+
+  it("shows suggestions on the overview canvas, dashed with Keep, and Keep saves one; Cancel hands focus back", async () => {
+    serve();
+    renderView();
+    const svg = await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
+    expect(svg.querySelector("[data-suggested]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reason factories for me" }));
+    // The canvas stays: suggestions are drawn on it now.
+    expect(screen.getByRole("img", { name: /^Graph of Factories/ })).toBe(svg);
+    expect(svg.querySelectorAll("[data-suggested]").length).toBeGreaterThan(0);
+    expect(within(svg).getAllByText("Suggestion").length).toBeGreaterThan(0);
+    const keep = within(screen.getByRole("list", { name: "Suggested factories" })).getByRole("button", { name: "Keep Iron Plate factory" });
+    fireEvent.click(keep);
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Iron Plate factory");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(keep).toHaveFocus());
+    fireEvent.click(keep);
+    fireEvent.click(screen.getByRole("button", { name: "Keep factory" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0].body).toMatchObject({ name: "Iron Plate factory", mode: "core" });
+    expect((seen[0].body as { members: unknown[] }).members).toHaveLength(11);
+  });
+
+  it("a second finger cancels the lasso: nothing is picked and the pinch zooms", async () => {
+    serve();
+    const svg = await openRodGraph();
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const before = transformOf(svg);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: -5000, clientY: -5000 });
+    pointer("pointermove", 1, 5000, -5000);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 2, clientX: 100, clientY: 100 });
+    expect(svg.querySelector("[data-lasso]")).toBeNull();
+    pointer("pointermove", 2, 300, 300);
+    pointer("pointermove", 1, 5000, 5000);
+    pointer("pointerup", 2, 300, 300);
+    pointer("pointerup", 1, 5000, 5000);
+    expect(svg.querySelector("[data-picked]")).toBeNull();
+    expect(transformOf(svg)).not.toBe(before);
+  });
+
+  it("a lasso with Shift adds to the picks, and one without replaces them", async () => {
+    serve();
+    const svg = await openRodGraph();
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(within(cardList()).getByRole("button", { name: /^Pick .*Constructor/ }));
+    // A lasso far from every card, without Shift: replaces the pick with nothing.
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: -9000, clientY: -9000 });
+    pointer("pointermove", 1, -8000, -9000);
+    pointer("pointermove", 1, -8000, -8000);
+    pointer("pointerup", 1, -8000, -8000);
+    expect(svg.querySelector("[data-picked]")).toBeNull();
+    fireEvent.click(within(cardList()).getByRole("button", { name: /^Pick .*Constructor/ }));
+    const one = svg.querySelectorAll("[data-picked]").length;
+    lassoAll(svg, { shiftKey: true });
+    expect(svg.querySelectorAll("[data-picked]").length).toBeGreaterThan(one);
+  });
+
+  it("an open Keep form does not come back when the suggestions are switched off and on", async () => {
+    serve();
+    renderView();
+    await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
+    const toggle = screen.getByRole("button", { name: "Reason factories for me" });
+    fireEvent.click(toggle);
+    fireEvent.click(within(screen.getByRole("list", { name: "Suggested factories" })).getByRole("button", { name: "Keep Iron Plate factory" }));
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
+  });
+
+  it("a member sees the suggestions on the canvas but no Keep", async () => {
+    serve();
+    renderView(serversRoleViewer);
+    const svg = await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
+    fireEvent.click(screen.getByRole("button", { name: "Reason factories for me" }));
+    expect(svg.querySelectorAll("[data-suggested]").length).toBeGreaterThan(0);
+    expect(svg.querySelector("[data-keep]")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Suggested factories" })).not.toBeInTheDocument();
   });
 });

@@ -5,9 +5,10 @@ import { formatTime } from "../format";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge } from "./BottleneckBadge";
 import { FactoryFacts, FactoryFlows } from "./FactoryParts";
-import { DesignateBar, DesignatedControls, SuggestionControls } from "./DesignationParts";
+import { DesignateBar, DesignatedControls, KeepForm, SuggestionControls } from "./DesignationParts";
 import { useDesignations } from "./DesignationContext";
 import { LazySiteGraph } from "./graph/GraphLoader";
+import type { CanvasSuggestions } from "./graph/SiteGraph";
 import {
   connectionRows,
   factoryModels,
@@ -127,6 +128,20 @@ function FactoryOverview({
 }) {
   const [suggesting, setSuggesting] = suggest;
   const automatic = models.some((m) => m.factory.designationId === null);
+  const { canWrite, writes } = useDesignations();
+  const suggestions: CanvasSuggestions | undefined = useMemo(() => {
+    if (!suggesting) return undefined;
+    const byKey = new Map(models.map((m) => [m.factory.key, m]));
+    const keys = new Set(models.filter((m) => m.factory.designationId === null).map((m) => m.factory.key));
+    const keepForm =
+      canWrite && writes !== null
+        ? (key: string, onClose: (saved: boolean) => void) => {
+            const model = byKey.get(key);
+            return model === undefined ? null : <KeepForm key={key} model={model} onClose={onClose} />;
+          }
+        : undefined;
+    return { keys, keepForm };
+  }, [suggesting, models, canWrite, writes]);
   return (
     <>
       <p className="summary">
@@ -140,11 +155,7 @@ function FactoryOverview({
             type="button"
             aria-pressed={suggesting}
             className="min-h-touch"
-            onClick={() => {
-              setSuggesting(!suggesting);
-              // The suggestions are cards for now (the canvas shows them with the lasso, PR 10b), so show the cards.
-              if (!suggesting) setMode("tables");
-            }}
+            onClick={() => setSuggesting(!suggesting)}
           >
             Reason factories for me
           </button>
@@ -152,7 +163,7 @@ function FactoryOverview({
         </div>
       )}
       {view === "graph" ? (
-        <LazySiteGraph graph={graph} target={{ kind: "overview", models }} findings={findings} onOpenFactory={onOpen} />
+        <LazySiteGraph graph={graph} target={{ kind: "overview", models }} findings={findings} onOpenFactory={onOpen} suggestions={suggestions} />
       ) : (
         <>
           <ul aria-label="Factories" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
@@ -273,8 +284,17 @@ function Detail({
       {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this one's, until it is closed. */}
       <ViewToggle view={view} onPick={setMode} />
 
+      {/* One bar for both views: the canvas's picks and the table's ticks are the same selection. Above the graph it shows
+          only once something is picked, so it does not push the canvas down for nothing. */}
+      {selection !== undefined && nodes.length > 0 && (view === "tables" || picked.size > 0) && <DesignateBar nodes={nodes.filter((n) => picked.has(n.key))} onDone={() => setPicked(new Set())} />}
+
       {view === "graph" && (
-        <LazySiteGraph graph={graph} target={factory === undefined ? { kind: "site", site } : { kind: "factory", model: factory }} findings={findings} />
+        <LazySiteGraph
+          graph={graph}
+          target={factory === undefined ? { kind: "site", site } : { kind: "factory", model: factory }}
+          findings={findings}
+          selection={selection === undefined ? undefined : { selected: picked, replace: setPicked }}
+        />
       )}
 
       <section aria-labelledby="planner-groups-heading" hidden={view !== "tables"} className="grid gap-2">
@@ -284,10 +304,7 @@ function Detail({
         {nodes.length === 0 ? (
           <p className="m-0">This {noun} lists no machine groups.</p>
         ) : (
-          <>
-            {selection !== undefined && <DesignateBar nodes={nodes.filter((n) => picked.has(n.key))} onDone={() => setPicked(new Set())} />}
-            <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} />
-          </>
+          <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} />
         )}
       </section>
 

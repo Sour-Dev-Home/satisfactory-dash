@@ -31,6 +31,8 @@ import {
 import { MOTION_OPTIONS, motionOn, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
+import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
+import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -50,6 +52,7 @@ import {
   zoomAt,
   zoomCentre,
   type Pair,
+  type Point,
   type Stage,
   type View,
 } from "./viewport";
@@ -58,8 +61,6 @@ const ALL_ITEMS = "";
 /** A pointer that moved less than this (client pixels) between down and up was a click, not a drag. */
 const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
-const BADGE_W = 88;
-const BADGE_H = 20;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
 const PILL_HIT = 44;
@@ -70,6 +71,12 @@ const GLYPH_SPEED = 40;
 const GLYPH_MIN_S = 4;
 const GLYPH_MAX_S = 16;
 const MAX_MOVING = 40;
+/** A lasso adds a point once the pointer is this far (stage units) from the last one. */
+const LASSO_STEP = 3;
+/** The Keep pill on a suggested factory's card. */
+const KEEP_W = 56;
+/** The check on a selected card's corner. */
+const CHECK_R = 10;
 
 const edgePath = (points: readonly { x: number; y: number }[]) => points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
 
@@ -120,6 +127,33 @@ const usePageVisible = () =>
 /** What the canvas shows: one site (an older backend), the factory overview, or one opened factory. */
 export type GraphTarget = { kind: "site"; site: PlannerSite } | { kind: "overview"; models: readonly FactoryModel[] } | { kind: "factory"; model: FactoryModel };
 
+/** The groups picked to designate (ADR-0055 Decision 5), shared with the Groups table's ticks. */
+export interface CanvasSelection {
+  selected: ReadonlySet<string>;
+  replace: (nodeKeys: ReadonlySet<string>) => void;
+}
+
+/** The overview's automatic factories shown as suggestions, and the Keep form for one (owners and admins only). */
+export interface CanvasSuggestions {
+  keys: ReadonlySet<string>;
+  keepForm?: ((factoryKey: string, onClose: (saved: boolean) => void) => ReactNode) | undefined;
+}
+
+export interface SiteGraphProps {
+  graph: ProductionGraph;
+  target: GraphTarget;
+  findings: readonly Bottleneck[] | undefined;
+  /** A factory card was chosen on the overview. */
+  onOpenFactory?: (key: string) => void;
+  /** Given, the canvas has a Select mode: a lasso (or a click) picks the groups of the cards it takes. */
+  selection?: CanvasSelection | undefined;
+  suggestions?: CanvasSuggestions | undefined;
+}
+
+/** Whether a card can be picked: it stands for groups that are drawn (a fold's are hidden, a factory is not a group). */
+const pickable = (card: Card) => (card.kind === "group" || card.kind === "bubble") && card.nodeKeys.length > 0;
+const isPicked = (card: Card, selected: ReadonlySet<string>) => pickable(card) && card.nodeKeys.every((k) => selected.has(k));
+
 /** A set with `key` added or removed. */
 function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
   const next = new Set(set);
@@ -134,20 +168,11 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * and -), fit, an item filter that lights what carries the item upstream and downstream, and a side panel for a group's
  * machines. The picture is `role="img"`; the keyboard reaches each card through a list of real buttons beside it (an
  * image's children are presentational, so buttons inside it would be hidden from assistive tech), and the focused card is
- * ringed in the picture. The Tables view is the full text alternative.
+ * ringed in the picture. The Tables view is the full text alternative. With a selection, Select mode (or Shift+drag)
+ * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
+ * button) picks or unpicks one card instead of opening it. Suggested factories are dashed, with Keep.
  */
-export default function SiteGraph({
-  graph,
-  target,
-  findings,
-  onOpenFactory,
-}: {
-  graph: ProductionGraph;
-  target: GraphTarget;
-  findings: readonly Bottleneck[] | undefined;
-  /** A factory card was chosen on the overview. */
-  onOpenFactory?: (key: string) => void;
-}) {
+export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, suggestions }: SiteGraphProps) {
   // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
   // choices: whose upstream is hidden, storage shown, motion.
   const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
@@ -183,9 +208,13 @@ export default function SiteGraph({
   const viewport = moved ?? fit;
   const viewRef = useRef(viewport);
   const stageRef = useRef(stage);
+  const layoutRef = useRef(layout);
+  const selectionRef = useRef(selection);
   useEffect(() => {
     viewRef.current = viewport;
     stageRef.current = stage;
+    layoutRef.current = layout;
+    selectionRef.current = selection;
   });
   const setView = (change: View | ((v: View) => View)) => setMoved(typeof change === "function" ? change(viewRef.current) : change);
   const [item, setItem] = useState(ALL_ITEMS);
@@ -194,6 +223,20 @@ export default function SiteGraph({
   const svgRef = useRef<SVGSVGElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const dragged = useRef(false);
+  // Select mode (only with a selection) and the lasso being drawn, in layout units; the ref is what the window listeners see.
+  const [selecting, setSelecting] = useState(false);
+  const selectMode = selecting && selection !== undefined;
+  const [lasso, setLasso] = useState<readonly Point[] | null>(null);
+  const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);
+  // The suggested factory whose Keep form is open, and the hidden Keep buttons that focus returns to.
+  const [keeping, setKeeping] = useState<string | null>(null);
+  const keepButtons = useRef(new Map<string, HTMLButtonElement>());
+  // A cancelled Keep form hands focus back to that factory's Keep button once the form is gone.
+  // A new object each time, so cancelling the same factory's form twice still refocuses.
+  const [refocusKeep, setRefocusKeep] = useState<{ key: string } | null>(null);
+  useEffect(() => {
+    if (refocusKeep !== null) keepButtons.current.get(refocusKeep.key)?.focus();
+  }, [refocusKeep]);
 
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
   const activeItem = items.some((i) => i.className === item) ? item : ALL_ITEMS;
@@ -264,6 +307,18 @@ export default function SiteGraph({
       const prev = pointers.current.get(e.pointerId);
       if (!prev) return;
       const next = { x: e.clientX, y: e.clientY };
+      const drawing = lassoRef.current;
+      if (drawing !== null && drawing.id === e.pointerId) {
+        pointers.current.set(e.pointerId, next);
+        travelled.current += Math.abs(next.x - prev.x) + Math.abs(next.y - prev.y);
+        const p = toLayout(viewRef.current, toStagePoint(next));
+        const last = drawing.points[drawing.points.length - 1]!;
+        if (Math.hypot(p.x - last.x, p.y - last.y) * viewRef.current.k >= LASSO_STEP) {
+          drawing.points.push(p);
+          setLasso([...drawing.points]);
+        }
+        return;
+      }
       if (pointers.current.size === 2) {
         const other = [...pointers.current].find(([id]) => id !== e.pointerId)![1];
         pointers.current.set(e.pointerId, next);
@@ -286,6 +341,19 @@ export default function SiteGraph({
     };
     const onUp = (e: PointerEvent) => {
       pointers.current.delete(e.pointerId);
+      const drawing = lassoRef.current;
+      if (drawing === null || drawing.id !== e.pointerId) return;
+      lassoRef.current = null;
+      setLasso(null);
+      const pick = selectionRef.current;
+      // Too short to be a shape: a click, which the card's own handler takes. Any drag past the slop is not a click.
+      if (travelled.current > DRAG_SLOP) dragged.current = true;
+      if (e.type === "pointercancel" || pick === undefined || travelled.current <= DRAG_SLOP || drawing.points.length < MIN_LASSO_POINTS) return;
+      const taken = layoutRef.current.nodes.filter((n) => pickable(n.card));
+      const inside = new Set(cardsInLasso(taken, drawing.points));
+      const keys = new Set(drawing.add ? pick.selected : []);
+      for (const n of taken) if (inside.has(n.key)) for (const k of n.card.nodeKeys) keys.add(k);
+      pick.replace(keys);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -302,6 +370,16 @@ export default function SiteGraph({
     if (pointers.current.size === 0) {
       dragged.current = false;
       travelled.current = 0;
+      // One pointer in Select mode, or with Shift held, draws a lasso instead of panning; Shift adds to what is picked.
+      if (selection !== undefined && (selectMode || event.shiftKey)) {
+        const rect = svgRef.current?.getBoundingClientRect();
+        const s = rect ? toStage(rect, stageRef.current, event.clientX, event.clientY) : { x: event.clientX, y: event.clientY };
+        lassoRef.current = { id: event.pointerId, points: [toLayout(viewport, s)], add: event.shiftKey };
+      }
+    } else if (lassoRef.current !== null) {
+      // A second finger: the gesture is a pinch, not a lasso.
+      lassoRef.current = null;
+      setLasso(null);
     }
     // A third finger is not tracked: two define the gesture.
     if (pointers.current.size < 2) pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -316,9 +394,14 @@ export default function SiteGraph({
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Escape") {
-      // One thing at a time: the panel, then the last card whose upstream was hidden.
+      // One thing at a time: the panel, then what is picked, then the last card whose upstream was hidden.
       if (openKey !== null) {
         close();
+        return;
+      }
+      if (selection !== undefined && selection.selected.size > 0) {
+        event.preventDefault();
+        selection.replace(new Set());
         return;
       }
       const last = [...collapsed].pop();
@@ -338,6 +421,14 @@ export default function SiteGraph({
   const activate = (card: Card) => {
     // A drag that ends on a card is not a click on it.
     if (dragged.current) return;
+    if (selectMode && selection !== undefined && pickable(card)) {
+      const next = new Set(selection.selected);
+      const on = isPicked(card, selection.selected);
+      for (const k of card.nodeKeys) if (on) next.delete(k);
+      else next.add(k);
+      selection.replace(next);
+      return;
+    }
     if (card.kind === "factory") onOpenFactory?.(card.key);
     else if (card.kind === "bubble" && card.bubbleKey !== undefined) {
       setFlipped(toggled(flipped, card.bubbleKey));
@@ -352,6 +443,10 @@ export default function SiteGraph({
   const toggleUpstream = (key: string) => {
     if (dragged.current) return;
     setCollapsed(toggled(collapsed, key));
+  };
+  const keepCard = (key: string) => {
+    if (dragged.current) return;
+    setKeeping(key);
   };
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
@@ -399,6 +494,16 @@ export default function SiteGraph({
 
   const canSwitchStorage = scene.hasStorage;
   const canFold = scene.bubbleKeys.length > 0;
+  const suggested = (key: string) => scene.level === "overview" && suggestions !== undefined && suggestions.keys.has(key);
+  const keepForm = suggestions?.keepForm;
+  // A form for a card that is no longer a suggestion (switched off, kept elsewhere, gone from a poll) is dropped for good.
+  // (React's adjust-state-during-render: it re-renders at once, before any child or effect sees the stale form.)
+  const keepingGone = keeping !== null && !suggested(keeping);
+  if (keepingGone) setKeeping(null);
+  const closeKeep = (saved: boolean) => {
+    if (!saved && keeping !== null) setRefocusKeep({ key: keeping });
+    setKeeping(null);
+  };
 
   return (
     <div className="grid gap-3">
@@ -444,6 +549,16 @@ export default function SiteGraph({
             )}
           </div>
         )}
+        {selection !== undefined && (
+          <div role="group" aria-label="Designate" className="flex gap-2">
+            <ToolButton
+              name="Select"
+              pressed={selectMode}
+              onClick={() => setSelecting(!selecting)}
+              icon={<path d="M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5zM7 13l-1 5 3-2" />}
+            />
+          </div>
+        )}
         {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {reach !== null && (
           <span role="status" className="w-full text-sm text-muted sm:w-auto">
@@ -452,8 +567,20 @@ export default function SiteGraph({
         )}
       </div>
 
-      {/* What to do about a drawing that runs past the canvas; the line keeps its height so the page does not jump. */}
-      <p className="m-0 h-lh text-sm text-muted">{overflowing && "Drag or use the arrow keys to see more →"}</p>
+      {keeping !== null && !keepingGone && keepForm !== undefined && keepForm(keeping, closeKeep)}
+
+      {/* What a drag does now, or what to do about a drawing that runs past the canvas; the line keeps its height. */}
+      <p className="m-0 h-lh text-sm text-muted">
+        {selectMode
+          ? (
+              // One line at any width: a phone has no Shift or Escape, and one finger now draws, so two move the view.
+              <>
+                <span className="sm:hidden">Draw round cards to pick them; two fingers pan.</span>
+                <span className="hidden sm:inline">Draw round cards to pick them, or click one. Shift adds; Escape clears.</span>
+              </>
+            )
+          : overflowing && "Drag or use the arrow keys to see more →"}
+      </p>
 
       {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}
       <div className="relative flex flex-col gap-3 lg:block">
@@ -475,7 +602,7 @@ export default function SiteGraph({
             onPointerDown={onPointerDown}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
-            className="max-h-map min-h-graph-min w-full cursor-grab touch-none select-none rounded-card border border-line bg-surface"
+            className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode ? "cursor-crosshair" : "cursor-grab")}
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
@@ -498,11 +625,17 @@ export default function SiteGraph({
                   node={n}
                   finding={findingsOf(n.key)}
                   ringed={openKey === n.key || focusKey === n.key}
+                  picked={selection !== undefined && isPicked(n.card, selection.selected)}
+                  suggested={suggested(n.key)}
                   dim={!lit(n.key)}
                   onActivate={() => activate(n.card)}
                   onToggleUpstream={() => toggleUpstream(n.key)}
+                  onKeep={keepForm === undefined ? undefined : () => keepCard(n.key)}
                 />
               ))}
+              {lasso !== null && (
+                <path d={lassoPath(lasso)} data-lasso="" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" className="pointer-events-none fill-info-soft stroke-info" />
+              )}
             </g>
           </svg>
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
@@ -520,7 +653,9 @@ export default function SiteGraph({
             {tabOrder.map((n) => {
               const card = n.card;
               const count = findingsOf(n.key);
-              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}`;
+              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}`;
+              // In Select mode a pickable card's button picks it: a toggle, not an opener.
+              const picks = selectMode && pickable(card);
               return (
                 <li key={n.key}>
                   <button
@@ -529,9 +664,10 @@ export default function SiteGraph({
                       if (el) buttons.current.set(n.key, el);
                       else buttons.current.delete(n.key);
                     }}
-                    aria-label={name}
-                    aria-expanded={card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
-                    aria-controls={card.kind === "group" && openKey === n.key ? panelId : undefined}
+                    aria-label={picks ? `Pick ${name}` : name}
+                    aria-pressed={picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
+                    aria-expanded={picks ? undefined : card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
+                    aria-controls={!picks && card.kind === "group" && openKey === n.key ? panelId : undefined}
                     onClick={() => {
                       dragged.current = false;
                       activate(card);
@@ -544,6 +680,31 @@ export default function SiteGraph({
               );
             })}
           </ul>
+          {keepForm !== undefined && tabOrder.some((n) => suggested(n.key)) && (
+            <ul aria-label="Suggested factories" className="m-0 list-none p-0">
+              {tabOrder.flatMap((n) =>
+                suggested(n.key)
+                  ? [
+                      <li key={n.key}>
+                        <button
+                          type="button"
+                          ref={(el) => {
+                            if (el) keepButtons.current.set(n.key, el);
+                            else keepButtons.current.delete(n.key);
+                          }}
+                          onClick={() => setKeeping(n.key)}
+                          onFocus={() => focusNode(n)}
+                          onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
+                          className="sr-only"
+                        >
+                          {`Keep ${n.card.label}`}
+                        </button>
+                      </li>,
+                    ]
+                  : [],
+              )}
+            </ul>
+          )}
           {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined)) && (
             <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
               {layout.frames.map((f) => (
@@ -687,29 +848,69 @@ function CardView({
   node: n,
   finding,
   ringed,
+  picked,
+  suggested,
   dim,
   onActivate,
   onToggleUpstream,
+  onKeep,
 }: {
   node: LaidNode;
   finding: number;
   ringed: boolean;
+  /** Picked to designate: tinted, with a check on its corner (not colour alone). */
+  picked: boolean;
+  /** An automatic factory shown as a suggestion: a dashed outline, a "Suggestion" tag and Keep. */
+  suggested: boolean;
   dim: boolean;
   onActivate: () => void;
   onToggleUpstream: () => void;
+  onKeep: (() => void) | undefined;
 }) {
   const card = n.card;
   const stacked = card.kind === "bubble" || card.kind === "fold";
   const up = card.upstream;
   const pillText = up === undefined ? "" : up.collapsed ? `+${up.count}` : "−";
   const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
+  const { tagX, showTag } = suggestionTag(suggested, finding > 0, n.width);
   return (
-    <g transform={`translate(${n.x} ${n.y})`} onClick={onActivate} data-card={card.kind} className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}>
-      <title>{card.description}</title>
+    <g
+      transform={`translate(${n.x} ${n.y})`}
+      onClick={onActivate}
+      data-card={card.kind}
+      data-picked={picked || undefined}
+      data-suggested={suggested || undefined}
+      className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
+    >
+      <title>{suggested ? `${card.description} (suggestion)` : card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
       {stacked && <rect x={5} y={5} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
-      <rect width={n.width} height={n.height} rx={8} strokeWidth={ringed ? 3 : 1} className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")} />
+      <rect
+        width={n.width}
+        height={n.height}
+        rx={8}
+        strokeWidth={ringed || picked ? 3 : suggested ? 2 : 1}
+        // Dotted, so a suggestion never reads as an opened bubble's dashed frame.
+        strokeDasharray={suggested && !ringed ? "2 3" : undefined}
+        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : suggested ? "stroke-muted" : "stroke-line")}
+      />
+      {picked && <rect width={n.width} height={n.height} rx={8} className="pointer-events-none fill-info-soft" />}
       <CardIcon iconUrl={n.iconUrl} glyph={card.glyph} />
+      {picked && (
+        // Just outside the corner, clear of the icon chip.
+        <g aria-hidden="true" data-check="" transform={`translate(${-CHECK_R / 2} ${-CHECK_R / 2})`}>
+          <circle r={CHECK_R} className="fill-info-solid stroke-surface" strokeWidth={2} />
+          <path d="M-4.5 0 L-1.5 3 L4.5 -3.5" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg-strong" />
+        </g>
+      )}
+      {showTag && (
+        <g transform={`translate(${tagX} ${-BADGE_H / 2})`} data-suggestion-tag="">
+          <rect width={BADGE_W} height={BADGE_H} rx={8} strokeWidth={1} className="fill-surface stroke-muted" />
+          <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
+            Suggestion
+          </text>
+        </g>
+      )}
       {card.count !== undefined && (
         <g transform={`translate(${NODE_PAD_X + BUILDING_ICON_SIZE + BUILDING_ICON_GAP} ${ICON_TOP + (BUILDING_ICON_SIZE - COUNT_BADGE_H) / 2})`} data-count={card.count}>
           <rect width={countBadgeWidth(card.count)} height={COUNT_BADGE_H} rx={COUNT_BADGE_H / 2} strokeWidth={1} className="fill-surface stroke-line" />
@@ -749,6 +950,26 @@ function CardView({
           <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
           <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
             {pillText}
+          </text>
+        </g>
+      )}
+      {/* Keep a suggestion: a pill at the bottom-right, its hit area up to the touch size; the hidden "Keep" button is the
+          keyboard's way in. */}
+      {suggested && onKeep !== undefined && (
+        <g
+          transform={`translate(${n.width - KEEP_W - 8} ${n.height - PILL_H / 2})`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onKeep();
+          }}
+          data-keep=""
+          className="cursor-pointer"
+        >
+          <title>{`Keep ${card.label}`}</title>
+          <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(KEEP_W + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
+          <rect width={KEEP_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-info" />
+          <text x={KEEP_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+            Keep
           </text>
         </g>
       )}

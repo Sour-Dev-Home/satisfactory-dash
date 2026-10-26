@@ -20,6 +20,12 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   buffers and terminal storage into chips.
 - A transport wears its mode's glyph (`transportGlyphs.tsx`, tokens only, moved by SVG `animateMotion`). It never moves
   in a hidden tab or past 40 edges, and never at all under System with reduced motion.
+- Designations (ADR-0055 Decision 5) on the canvas: for owners and admins an opened factory's canvas has Select mode
+  (toolbar button, or Shift+drag). A freehand lasso picks the group and bubble cards whose centre it encloses
+  (`graph/lasso.ts`, pure), and in Select mode a click or a card's hidden button picks one card. The picks are the
+  same set as the Groups table's ticks, under one `DesignateBar`, and Escape clears them. A picked card is tinted,
+  with a check mark. With "Reason factories for me" on, the overview canvas draws automatic factories dashed, with a
+  "Suggestion" tag and a Keep pill (a hidden "Keep …" button for the keyboard) that opens `KeepForm`.
 - The viewer's choices are `plannerPrefs.ts` (localStorage in try/catch, validated; the page works without it).
 - The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and
   the only place `@dagrejs/dagre` is imported.
