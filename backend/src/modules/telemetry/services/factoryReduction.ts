@@ -776,7 +776,17 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   const factories: PlannerFactory[] = roots.map((f) => {
     const list = nodesOf.get(f) ?? [];
     const rates = new Map<string, { className: string; name: string; unit: PlannerRate["unit"]; cur: number; max: number }>();
-    for (const s of seedsOf[f]) {
+    // A designation's output is whatever leaves it (ADR-0055 Decision 5): a seed whose product only feeds machines of the
+    // same designation is an intermediate. A product with no known arc still counts; if every seed is internal, keep all.
+    const did = desigF[f]?.id;
+    const internal = (s: number): boolean => {
+      if (did === undefined) return false;
+      const cls = (seedProduct.get(s) as { className: string }).className;
+      const out = arcs.filter((a) => a.s === s && a.supply && (a.item === cls || a.item === null));
+      return out.length > 0 && out.every((a) => desigOf[a.d]?.id === did);
+    };
+    const outputs = seedsOf[f].filter((s) => !internal(s));
+    for (const s of outputs.length > 0 ? outputs : seedsOf[f]) {
       const cls = (seedProduct.get(s) as { className: string }).className;
       const p = nodes[s].products.find((x) => x.className === cls);
       if (!p) continue;

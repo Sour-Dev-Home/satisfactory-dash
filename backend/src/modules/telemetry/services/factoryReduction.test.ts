@@ -698,6 +698,20 @@ describe("designations (ADR-0055 Decision 5)", () => {
     expect(r.stats.unassignedGroups).toBe(0);
   });
 
+  it("lists as products only what leaves the designation, not its intermediates", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, edges, [["R1", D1, "Plates"], ["P1", D1, "Plates"]]);
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.products.map((p) => p.className)).toEqual(["Plate"]); // R1's ingots feed only P1, inside the designation
+  });
+
+  it("keeps an ingot as a product when it also leaves the designation", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, [...edges, edge("R1", "P2", "Ingot")], [["R1", D1, "Mixed"], ["P1", D1, "Mixed"]]);
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.products.map((p) => p.className).sort()).toEqual(["Ingot", "Plate"]);
+  });
+
   it("attributes shared remote upstream to a designated factory by share", () => {
     const { nodes, edges } = twoLines();
     const r = withDes(nodes, edges, [["R1", D1, "Line one"], ["P1", D1, "Line one"]]);
