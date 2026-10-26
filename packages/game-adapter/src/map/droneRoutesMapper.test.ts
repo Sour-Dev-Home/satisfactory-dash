@@ -13,30 +13,7 @@ function readCapture(name: string): unknown[] {
   return JSON.parse(text.slice(text.indexOf("\n---\n") + 5)) as unknown[];
 }
 
-/** The two paired ports of frm-getDroneStation-2026-10-25-paired-battery-cargo-trimmed.json (PR #659), with the fields the
- *  mapper reads, values unchanged. */
-const pairedCapture = () => [
-  {
-    ID: "Build_DroneStation_C_2146556398",
-    Name: "FUEL 5",
-    location: { x: -220400, y: 50300, z: 24800.009765625, rotation: 270, pitch: 0 },
-    InputInventory: [{ Name: "Battery", ClassName: "Desc_Battery_C", Amount: 3, MaxAmount: 200 }],
-    OutputInventory: [],
-    FuelInventory: [{ Name: "Battery", ClassName: "Desc_Battery_C", Amount: 68, MaxAmount: 200 }],
-    PairedStation: "TestLand1",
-    AvgOutRate: 6.524730205535889,
-  },
-  {
-    ID: "Build_DroneStation_C_2147451055",
-    Name: "TestLand1",
-    location: { x: -214600, y: 51000, z: 24800.01171875, rotation: 270, pitch: 0 },
-    InputInventory: [],
-    OutputInventory: [],
-    FuelInventory: [{ Name: "Battery", ClassName: "Desc_Battery_C", Amount: 190, MaxAmount: 200 }],
-    PairedStation: "FUEL 5",
-    AvgTotalIncRate: 6.524730205535889,
-  },
-];
+const pairedCapture = () => readCapture("frm-getDroneStation-2026-10-25-paired-battery-cargo-trimmed.json") as Record<string, unknown>[];
 
 const port = (over: Record<string, unknown> = {}) => ({
   ID: "p1",
@@ -81,6 +58,10 @@ describe("mapDroneRoutes on the 2026-10-25 captures (ADR-0055 PR 12a)", () => {
       { ...a, InputInventory: [{ ClassName: "Desc_Battery_C", Amount: 99 }], AvgOutRate: 1 },
     ]).data;
     expect(JSON.stringify(shuffled)).toBe(JSON.stringify(once));
+    // The second capture: the same pair carrying Aluminum Ingots. Only the cargo class changes.
+    const ingot = mapDroneRoutes(readCapture("frm-getDroneStation-2026-10-25-paired-ingot-cargo-trimmed.json")).data;
+    expect(ingot.map((p) => [p.name, p.paired])).toEqual(once.map((p) => [p.name, p.paired]));
+    expect(ingot.find((p) => p.name === "FUEL 5")!.input).not.toEqual(once.find((p) => p.name === "FUEL 5")!.input);
     const twins = [port({ ID: "a", Name: "2" }), port({ ID: "a", Name: "1" })];
     expect(JSON.stringify(mapDroneRoutes(twins).data)).toBe(JSON.stringify(mapDroneRoutes([...twins].reverse()).data));
     const classes = mapDroneRoutes([port({ InputInventory: [{ ClassName: "Desc_B_C" }, { ClassName: "Desc_A_C" }, { ClassName: "Desc_B_C" }] })]).data[0]!;
