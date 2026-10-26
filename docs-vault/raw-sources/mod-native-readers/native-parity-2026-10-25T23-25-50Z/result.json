@@ -1,0 +1,58 @@
+{
+  "run": "native-parity",
+  "requirements": [
+    "native-parity",
+    "R0-power",
+    "R1-players",
+    "R4-resource-nodes"
+  ],
+  "pass": true,
+  "reasons": [
+    "R0 power PASS: 351 rounds within 3% of FRM's neighbouring reads; every compared field matches",
+    "R0 power PASS: NOT EXERCISED by this world: fuseTriggered (never true)",
+    "R1 players PASS: 351 rounds, the (hash, online) lists equal FRM's",
+    "R1 players PASS: NOT EXERCISED by this world: any online player",
+    "R4 resource nodes PASS: 1 posted layer(s) valid against the contract and equal to FRM's (608 items, 31 exploited)"
+  ],
+  "startedAt": "2026-10-25T23:25:50.519Z",
+  "endedAt": "2026-10-26T00:00:05.896Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.25-23.27.57:026][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.25-23.27.57:047][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.25-23.27.57:067][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.25-23.27.57:102][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.25-23.27.57:265][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.25-23.27.57:024][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg",
+    "[2026.10.25-23.28.57:382][996]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.25-23.28.57:478][999]LogSatisDash: Display: Enrolled; reporting to the backend",
+    "[2026.10.25-23.28.57:904][ 12]LogSatisDash: Display: Readers: players=native resourceNodes=native",
+    "[2026.10.25-23.37.08:726][735]LogSatisDash: Display: Resource node scan (game thread only): 68822 actors in 35 steps, 608 nodes, longest step 0.25 ms, total 4.63 ms"
+  ],
+  "harnessCommit": "1b806ec47a9f6978d2ed1ca627e9366db21140d7",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40244496806"
+}

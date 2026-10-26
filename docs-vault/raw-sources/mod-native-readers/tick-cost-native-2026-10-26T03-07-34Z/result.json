@@ -1,0 +1,57 @@
+{
+  "run": "tick-cost-native",
+  "requirements": [
+    "tick-cost",
+    "C4",
+    "S12",
+    "memory",
+    "R0-R1-R4-tick-cost"
+  ],
+  "pass": true,
+  "reasons": [
+    "tick median 29.847058296203613 without the mod, 29.829033851623535 with it (60 and 60 samples); S12: 3 new endpoint(s), the recorder's and, matched by DNS name: 172.67.74.152:443 as api.ipify.org (baseline 104.26.12.205:443), and FRM's 127.0.0.1:18081 (owner, 2026-10-26) (28 and 28 outbound samples); working set at the end 9.8 MB above the baseline's (limit 100); over the last 5 minutes it grew -0.4 MB vs -50.2 MB (counted from 0 when negative), -0.4 MB more (limit 25) (22 and 22 memory samples); same save in both boots (session e938bb1fad08); 1 circuit group(s) in the save (the reader scans ids 0-9999 per power read)",
+    "native readers live in the window: 120 snapshots with players, 1 resourceNodes post(s)",
+    "native node scan cost, recorded not judged: 1 scan(s); longest single step 0.29 ms; longest total 4.71 ms (game thread only)"
+  ],
+  "startedAt": "2026-10-26T03:07:34.594Z",
+  "endedAt": "2026-10-26T03:37:44.903Z",
+  "toolchain": {
+    "required": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    },
+    "declared": {
+      "engine": "5.6.1",
+      "sml": "3.12.0"
+    }
+  },
+  "versionLines": [
+    "LogEOSShared: FEOSSDKManager::Initialize Initializing EOSSDK Version:1.18.1.2-47370208",
+    "LogInit:      CURL_VERSION_SSL",
+    "LogInit:      CURL_VERSION_LIBZ",
+    "LogInit:      CURL_VERSION_IPV6",
+    "LogInit:      CURL_VERSION_ASYNCHDNS",
+    "LogInit:      CURL_VERSION_LARGEFILE",
+    "LogInit:      CURL_VERSION_TLSAUTH_SRP",
+    "LogInit:      CURL_VERSION_HTTP2",
+    "LogInit: WinSock: version 1.1 (2.2), MaxSocks=32767, MaxUdp=65467",
+    "LogInit: Build: ++FactoryGame+rel-main-anniversary-2026-CL-513885",
+    "LogInit: Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Compatible Engine Version: 5.6.1-513885+++FactoryGame+rel-main-anniversary-2026",
+    "LogInit: Net CL: 513885",
+    "[2026.10.26-03.23.36:569][  0]LogSatisfactoryModLoader: Display: Version check passed successfully! Game Changelist: 513885",
+    "[2026.10.26-03.23.36:588][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.26-03.23.36:607][  0]LogSentrySdk: Using current project name and version as Sentry release.",
+    "[2026.10.26-03.23.36:637][  0]LogNetVersion: Set ProjectVersion to 0. Version Checksum will be recalculated on next use.",
+    "[2026.10.26-03.23.36:739][  0]LogNetVersion: Set ProjectVersion to ++FactoryGame+rel-main-anniversary-2026-CL-513885. Version Checksum will be recalculated on next use."
+  ],
+  "modLines": [
+    "[2026.10.26-03.23.36:569][  0]LogSatisDash: Display: Not enrolled: add an enrolment code from the dashboard to SatisDashAgent.cfg",
+    "[2026.10.26-03.24.36:631][ 33]LogSatisDash: Display: Enrolling with the code from SatisDashAgent.cfg",
+    "[2026.10.26-03.24.36:695][ 36]LogSatisDash: Display: Enrolled; reporting to the backend",
+    "[2026.10.26-03.24.37:124][ 48]LogSatisDash: Display: Readers: players=native resourceNodes=native",
+    "[2026.10.26-03.33.32:120][992]LogSatisDash: Display: Resource node scan (game thread only): 68822 actors in 35 steps, 608 nodes, longest step 0.29 ms, total 4.71 ms"
+  ],
+  "harnessCommit": "dde57ded46a0d1e1ac7f4317a31bd7d51b7fa0e2",
+  "runUrl": "https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40262414493"
+}
