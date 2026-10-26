@@ -78,6 +78,10 @@ added or removed.
 - [`frontend-wiring-checklist.md`](./frontend-wiring-checklist.md) — every file to change, in order, when the
   frontend gains an endpoint or a screen: the query or write hook, secrets kept out of caches, the three mocks
   (unit, e2e/dev:mock, demo), e2e states and baselines, checks and tier (#289).
+- [`frontend-planner-map.md`](./frontend-planner-map.md) — how the Planner canvas (ADR-0050: hierarchy, scene,
+  lazy dagre chunk, memoized `layoutScene`, token-only SVG), the operator's metrics page (ADR-0056) and the Map
+  (ADR-0023: Leaflet chunk, projection, `MapLayer` world layers) are built, with their CSP and bundle gates; moved out
+  of `frontend/CLAUDE.md`.
 - [`roadmap.md`](./roadmap.md) — where the product stands and what "a successful product" means as
   checkable targets (time to dashboard, alert speed and quality, adoption, security, release safety), approved
   by the owner on 2026-09-25 (ADR-0033).
