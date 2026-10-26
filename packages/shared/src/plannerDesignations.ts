@@ -9,11 +9,14 @@ import { z } from "zod";
  * per designation. The schemas cap members; the per-server cap is not enforceable in a schema, so the route enforces it
  * (409 `designation_cap`).
  *
- * MATCHING (read time, never stored). A member is found again in the live factory by, in order: the game's building id
- * when both sides have one; else an exact (class, x, y); else the nearest building of the same class within
- * PLANNER_DESIGNATION_MATCH_RADIUS_METRES. One-to-one (a building matches at most one member), members taken in order.
- * When two designations would claim the same building on read, the OLDER designation (by `createdAt`) keeps it and the
- * newer reports `claimedBy`.
+ * MATCHING (read time, never stored). Members are found again in the live factory in passes, each over every designation
+ * oldest (by `createdAt`) first: pass 1, the game's building id, which counts only when the live building is also of the
+ * member's class (an id on another class is stale and the member falls through); pass 2, an exact (class, x, y); pass 3,
+ * the nearest building of the same class within PLANNER_DESIGNATION_MATCH_RADIUS_METRES. One-to-one (a building matches
+ * at most one member), and the result does not depend on member order. A member whose position match would land on a
+ * building already held takes the next free building of the class within the radius; only when there is none is it
+ * missing, and then the OLDER designation holding that building keeps it and the newer reports `claimedBy`.
+ * (Write overlap: two members with ids overlap only on the same id; class and position decide only when a side has none.)
  *
  * ERRORS reuse the shared envelope (`ApiErrorResponseSchema`): not a member of the server is 404 `server_not_found`;
  * a viewer writing is 403 `forbidden` (the existing member-write guard); an unknown designation is 404 `not_found`; a bad

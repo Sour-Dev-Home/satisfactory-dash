@@ -4,10 +4,10 @@ import type { PlannerDesignationMember } from "@satisfactory-dash/shared";
 /**
  * ADR-0055 Decision 5: the pure parts of Planner designations. No I/O, so they are unit-tested on plain data.
  *
- * OVERLAP (on write): a new member belongs to another designation when they share the building id, else the same
- * (class, x, y). MATCHING (on read, never stored): a member is found in the live factory by the building id, else an
- * exact (class, x, y), else the nearest building of the same class within the match radius; one-to-one, in member order,
- * and the OLDER designation keeps a building both name.
+ * OVERLAP (on write): a new member belongs to another designation when they share the building id; the same (class, x, y)
+ * counts only when either side has no id. MATCHING (on read, never stored): in passes, oldest designation first: the
+ * building id (same class), then an exact (class, x, y), then the nearest free building of the class within the match
+ * radius; one-to-one, independent of member order, and the OLDER designation keeps a building both name.
  */
 
 /** A live building as the designations see it: the game's id, class and position in metres (not rounded). */
@@ -48,15 +48,19 @@ export interface OverlapOwner {
  * the write transaction, against the rows it just locked.
  */
 export function findOverlap(members: readonly PlannerDesignationMember[], others: readonly OverlapOwner[]): { id: string; name: string } | undefined {
-  const mine = new Set<string>();
+  const mineByKey = new Set<string>(); // keys of my members without an id
   const myIds = new Set<string>();
   for (const m of members) {
-    mine.add(keyOf(m.c, m.x, m.y));
     if (m.id !== null) myIds.add(m.id);
+    else mineByKey.add(keyOf(m.c, m.x, m.y));
   }
+  const myKeys = new Set(members.map((m) => keyOf(m.c, m.x, m.y)));
   for (const other of others) {
     for (const o of other.members) {
-      if ((o.id !== null && myIds.has(o.id)) || mine.has(keyOf(o.c, o.x, o.y))) return { id: other.id, name: other.name };
+      // Two ids settle it: different ids are different buildings, even at one class and position. Position only when a side has no id.
+      if (o.id !== null) {
+        if (myIds.has(o.id) || mineByKey.has(keyOf(o.c, o.x, o.y))) return { id: other.id, name: other.name };
+      } else if (myKeys.has(keyOf(o.c, o.x, o.y))) return { id: other.id, name: other.name };
     }
   }
   return undefined;
@@ -88,7 +92,7 @@ class BuildingIndex {
 
   /** The buildings of the class within the radius of (x, y), nearest first (an exact whole-metre hit counts as distance 0),
    *  ties by id so the answer never depends on input order. `skip` removes the ones already held. */
-  near(c: string, x: number, y: number, skip: (b: DesignationBuilding) => boolean): DesignationBuilding | undefined {
+  near(c: string, x: number, y: number, skip: (b: DesignationBuilding) => boolean, radius = PLANNER_DESIGNATION_MATCH_RADIUS_METRES): DesignationBuilding | undefined {
     const cx = Math.floor(x / CELL);
     const cy = Math.floor(y / CELL);
     let best: DesignationBuilding | undefined;
@@ -99,7 +103,7 @@ class BuildingIndex {
           if (skip(b)) continue;
           const exact = Math.round(b.x) === x && Math.round(b.y) === y;
           const dist = exact ? 0 : Math.hypot(b.x - x, b.y - y);
-          if (dist > PLANNER_DESIGNATION_MATCH_RADIUS_METRES) continue;
+          if (dist > radius) continue;
           if (dist < bestDist || (dist === bestDist && best !== undefined && b.id < best.id)) {
             best = b;
             bestDist = dist;
@@ -119,25 +123,62 @@ export function matchDesignations(designations: readonly MatchableDesignation[],
   const index = new BuildingIndex(buildings ?? []);
   const holder = new Map<string, string>(); // building id -> the designation that kept it
   const byId = new Map(designations.map((d) => [d.id, d] as const));
-  return designations.map((d): DesignationMatch => {
-    const buildingIds: string[] = [];
-    const lostTo = new Map<string, number>(); // older designation id -> members it took from this one
-    const mineHere = (b: DesignationBuilding) => holder.get(b.id) === d.id;
-    for (const m of d.members) {
-      // The building id first; when the live factory has no such building, position and class.
-      const byGameId = m.id === null ? undefined : index.get(m.id);
-      const found = byGameId ?? index.near(m.c, m.x, m.y, mineHere);
-      if (found === undefined || mineHere(found)) continue;
-      const owner = holder.get(found.id);
-      if (owner !== undefined) {
-        lostTo.set(owner, (lostTo.get(owner) ?? 0) + 1);
-      } else {
-        holder.set(found.id, d.id);
-        buildingIds.push(found.id);
+  // Per designation: the building each member (by index) ended on, and the members taken from it by older designations.
+  const found = designations.map((d) => Array.from<string | undefined>({ length: d.members.length }));
+  const resolved = designations.map((d) => Array.from<boolean>({ length: d.members.length }).fill(false));
+  const lostTo = designations.map(() => new Map<string, number>()); // older designation id -> members it took from this one
+  const lose = (di: number, owner: string): void => {
+    lostTo[di]!.set(owner, (lostTo[di]!.get(owner) ?? 0) + 1);
+  };
+
+  // Pass 1: the building id, for every member of every designation, oldest designation first. The class must agree: an id
+  // on another class is stale and the member falls through to the position passes.
+  designations.forEach((d, di) => {
+    d.members.forEach((m, mi) => {
+      const b = m.id === null ? undefined : index.get(m.id);
+      if (b === undefined || b.c !== m.c) return;
+      resolved[di]![mi] = true;
+      const owner = holder.get(b.id);
+      if (owner === undefined) {
+        holder.set(b.id, d.id);
+        found[di]![mi] = b.id;
+      } else if (owner !== d.id) lose(di, owner);
+    });
+  });
+
+  // Members in a fixed order (class, x, y, id) so the position passes never depend on the order they were stored in.
+  const sorted = designations.map((d) =>
+    d.members
+      .map((m, mi) => ({ m, mi }))
+      .sort((a, b) => (a.m.c < b.m.c ? -1 : a.m.c > b.m.c ? 1 : a.m.x - b.m.x || a.m.y - b.m.y || (a.m.id ?? "").localeCompare(b.m.id ?? ""))),
+  );
+  const isHeld = (b: DesignationBuilding): boolean => holder.has(b.id);
+
+  // Pass 2: an exact (class, x, y) for those still unmatched. Pass 3: the nearest free of the class within the radius; a
+  // member with none is missing, and when the building it would have taken is held by an older designation, it is claimed.
+  for (const pass of [2, 3] as const) {
+    designations.forEach((d, di) => {
+      for (const { m, mi } of sorted[di]!) {
+        if (resolved[di]![mi]) continue;
+        const b = index.near(m.c, m.x, m.y, isHeld, pass === 2 ? 0 : PLANNER_DESIGNATION_MATCH_RADIUS_METRES);
+        if (b !== undefined) {
+          holder.set(b.id, d.id);
+          found[di]![mi] = b.id;
+          resolved[di]![mi] = true;
+        } else if (pass === 3) {
+          resolved[di]![mi] = true;
+          const would = index.near(m.c, m.x, m.y, (x) => holder.get(x.id) === d.id);
+          const owner = would === undefined ? undefined : holder.get(would.id);
+          if (owner !== undefined) lose(di, owner);
+        }
       }
-    }
+    });
+  }
+
+  return designations.map((d, di): DesignationMatch => {
+    const buildingIds = found[di]!.filter((id): id is string => id !== undefined);
     let claimedBy: DesignationMatch["claimedBy"];
-    for (const [ownerId, count] of lostTo) {
+    for (const [ownerId, count] of lostTo[di]!) {
       const owner = byId.get(ownerId);
       if (owner !== undefined && (claimedBy === undefined || count > claimedBy.count)) claimedBy = { id: owner.id, name: owner.name, count };
     }

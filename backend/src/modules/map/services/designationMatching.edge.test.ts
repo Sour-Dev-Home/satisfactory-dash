@@ -42,9 +42,87 @@ describe("matchDesignations edges", () => {
     }
   });
 
-  it("the id decides even when the live building is of another class", () => {
+  it("an id on another class is stale: the member falls through to the position passes", () => {
     const d = designation("d", "D", [member("b1", "OldClass", 0, 0)]);
-    expect(matchDesignations([d], [building("b1", "NewClass", 500, 500)])[0]?.matched).toBe(1);
+    expect(matchDesignations([d], [building("b1", "NewClass", 500, 500)])[0]?.matched).toBe(0);
+    const [m] = matchDesignations([d], [building("b1", "NewClass", 500, 500), building("n", "OldClass", 1, 0)]);
+    expect(m?.buildingIds).toEqual(["n"]);
+  });
+
+  it("a lost member takes the next free building of the class within 2 m", () => {
+    const older = designation("old", "Older", [member("b1", "S", 0, 0)]);
+    const newer = designation("new", "Newer", [member(null, "S", 0, 0)]);
+    const [a, b] = matchDesignations([older, newer], [building("b1", "S", 0, 0), building("b2", "S", 1.5, 0)]);
+    expect(a?.buildingIds).toEqual(["b1"]);
+    expect([b?.buildingIds, b?.missing, b?.claimedBy]).toEqual([["b2"], 0, undefined]);
+  });
+
+  it("with the next building beyond 2 m the member is missing and claimed", () => {
+    const older = designation("old", "Older", [member("b1", "S", 0, 0)]);
+    const newer = designation("new", "Newer", [member(null, "S", 0, 0)]);
+    const [, b] = matchDesignations([older, newer], [building("b1", "S", 0, 0), building("b2", "S", 2.5, 0)]);
+    expect([b?.matched, b?.missing, b?.claimedBy]).toEqual([0, 1, { id: "old", name: "Older", count: 1 }]);
+  });
+
+  // Rule 1 covers position matches only: a member whose live id building is held by an older designation is a duplicate
+  // claim on that building (writes forbid it), so it is missing and claimed; it does not wander to a neighbour.
+  it("a member whose id building is held by an older designation is missing and claimed, even with a free neighbour", () => {
+    const older = designation("old", "Older", [member("b1", "S", 0, 0)]);
+    const newer = designation("new", "Newer", [member("b1", "S", 0, 0)]);
+    const [, b] = matchDesignations([older, newer], [building("b1", "S", 0, 0), building("b2", "S", 1.5, 0)]);
+    expect([b?.matched, b?.missing, b?.claimedBy]).toEqual([0, 1, { id: "old", name: "Older", count: 1 }]);
+  });
+
+  it("an id-lost member with no free building nearby is missing and claimed by the older holder", () => {
+    const older = designation("old", "Older", [member("b1", "S", 0, 0)]);
+    const newer = designation("new", "Newer", [member("b1", "S", 0, 0)]);
+    const [, b] = matchDesignations([older, newer], [building("b1", "S", 0, 0)]);
+    expect([b?.matched, b?.missing, b?.claimedBy]).toEqual([0, 1, { id: "old", name: "Older", count: 1 }]);
+  });
+
+  it("two members of one designation naming one id: the second is missing", () => {
+    const d = designation("d", "D", [member("b1", "S", 0, 0), member("b1", "S", 0, 0)]);
+    const [m] = matchDesignations([d], [building("b1", "S", 0, 0), building("b2", "S", 1, 0)]);
+    expect([m?.matched, m?.missing, m?.buildingIds]).toEqual([1, 1, ["b1"]]);
+  });
+
+  it("ids are matched for every designation before positions: a younger id beats an older fuzzy match", () => {
+    const older = designation("old", "Older", [member(null, "S", 0, 0)]);
+    const younger = designation("new", "Newer", [member("b1", "S", 0, 0)]);
+    const [a, b] = matchDesignations([older, younger], [building("b1", "S", 0, 0), building("b2", "S", 1, 0)]);
+    expect(b?.buildingIds).toEqual(["b1"]);
+    expect(a?.buildingIds).toEqual(["b2"]);
+  });
+
+  it("exact positions are taken before nearest ones, whatever the member order", () => {
+    const members = [member(null, "S", 0, 0), member(null, "S", 1, 0)];
+    const bs = [building("a", "S", 0.5, 0), building("b", "S", 1, 0)];
+    for (const order of [members, [...members].reverse()]) {
+      const [m] = matchDesignations([designation("d", "D", order)], bs);
+      expect([...(m?.buildingIds ?? [])].sort()).toEqual(["a", "b"]);
+      expect(m?.buildingIds).toHaveLength(2);
+    }
+  });
+
+  it("shuffling the members changes nothing in matched, missing or the building set", () => {
+    let seed = 7;
+    const rnd = (n: number) => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed % n;
+    };
+    for (let round = 0; round < 40; round++) {
+      const bs = Array.from({ length: 12 }, (_, i) => building(`b${i}`, rnd(2) ? "A" : "B", rnd(8), rnd(8)));
+      const mk = (i: number) =>
+        designation(`d${i}`, `D${i}`, Array.from({ length: 6 }, () => member(rnd(4) === 0 ? `b${rnd(12)}` : null, rnd(2) ? "A" : "B", rnd(8), rnd(8))));
+      const base = [mk(0), mk(1)];
+      const flipped = base.map((d) => ({ ...d, members: [...d.members].reverse() }));
+      const a = matchDesignations(base, bs);
+      const b = matchDesignations(flipped, bs);
+      a.forEach((r, i) => {
+        expect([r.matched, r.missing, r.claimedBy]).toEqual([b[i]?.matched, b[i]?.missing, b[i]?.claimedBy]);
+        expect([...r.buildingIds].sort()).toEqual([...(b[i]?.buildingIds ?? [])].sort());
+      });
+    }
   });
 
   it("an id that no longer exists falls back to position, but only for the same class", () => {
@@ -124,6 +202,15 @@ describe("findOverlap edges", () => {
 
   it("a null id never overlaps another null id on its own", () => {
     expect(findOverlap([member(null, "S", 11, 11)], [{ id: "o", name: "O", members: [member(null, "S", 12, 12)] }])).toBeUndefined();
+  });
+
+  it("two different ids are different buildings, even at one class and position", () => {
+    expect(findOverlap([member("b2", "S", 10, 10)], [other])).toBeUndefined();
+  });
+
+  it("falls back to class and position when either side has no id", () => {
+    expect(findOverlap([member(null, "S", 10, 10)], [other])).toEqual({ id: "o", name: "Other" });
+    expect(findOverlap([member("x", "S", -5, -5)], [other])).toEqual({ id: "o", name: "Other" });
   });
 
   it("no others and a hostile id are both fine", () => {
