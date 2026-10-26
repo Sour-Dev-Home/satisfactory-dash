@@ -7,6 +7,7 @@ import { ConfigError } from "./platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { bootSequence } from "./platform/bootSequence.js";
 import { Mutex } from "./platform/mutex.js";
+import { orderedShutdown } from "./platform/shutdown.js";
 import { environmentServerEntries, warnEnvServersNotServed } from "./platform/envServers.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
@@ -47,8 +48,10 @@ import {
   createMembersRouter,
   addressVerdict,
   loadSelfServeConfigFromEnv,
+  connectionSource,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
+  reconcileDatabaseServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
 import {
@@ -325,24 +328,29 @@ const leaderWorkerFactories: LeaderWorkerFactory[] = [
 // every instance (each drains only its own counters, and the writes are additive); the leader lock starts the rest when
 // this instance becomes the leader. #526's pending-server sweeper joins the leader factories below.
 const leaderWorkers = new LeaderWorkerGroup(leaderWorkerFactories, logger.child({ worker: "leader" }));
+// ADR-0054 D3.10: kept apart from the other workers so shutdown releases it last, after the HTTP drain (see shutdown).
+const leaderLock =
+  database && databaseConfig
+    ? new LeaderLock({
+        createClient: () => createLeaderLockClient(databaseConfig),
+        logger: logger.child({ worker: "leader-lock" }),
+        onAcquired: async () => {
+          // ADR-0054 D3.10: the old task releases the lock only once it can take no more requests, so every server
+          // write it handled during the deploy overlap is in the database, though not in this runtime. Catch up first, so
+          // the pollers start on the right list.
+          await reloadServersOnLeadership();
+          await directory.setLeader(true);
+          leaderWorkers.start();
+        },
+        onLost: async () => {
+          await leaderWorkers.stop();
+          await directory.setLeader(false);
+        },
+      })
+    : undefined;
 const databaseWorkers = [
   ...(database ? [createSeriesFlushWorker(database.pool, metricsAggregator, logger.child({ worker: "metrics-flush" }))] : []),
-  ...(database && databaseConfig
-    ? [
-        new LeaderLock({
-          createClient: () => createLeaderLockClient(databaseConfig),
-          logger: logger.child({ worker: "leader-lock" }),
-          onAcquired: async () => {
-            await directory.setLeader(true);
-            leaderWorkers.start();
-          },
-          onLost: async () => {
-            await leaderWorkers.stop();
-            await directory.setLeader(false);
-          },
-        }),
-      ]
-    : []),
+  ...(leaderLock ? [leaderLock] : []),
 ];
 
 // ADR-0025 PR 6: with a database, every /api/servers/:serverId route needs a membership (a
@@ -359,17 +367,66 @@ function buildFromConnection(c: ServerConnection) {
   if (addressVerdict(c.pinnedIp) !== "ok") {
     throw new Error("refusing to build a server whose address is not usable (not loopback while LAN servers wait for certificate pinning)");
   }
-  return buildServer(
-    c.publicId,
-    c.displayName,
-    createSatisfactoryServerConfig({ host: c.pinnedIp, apiPort: c.apiPort, apiToken: c.apiToken, frmPort: c.frmPort, frmToken: c.frmToken }),
-  );
+  return {
+    ...buildServer(
+      c.publicId,
+      c.displayName,
+      createSatisfactoryServerConfig({ host: c.pinnedIp, apiPort: c.apiPort, apiToken: c.apiToken, frmPort: c.frmPort, frmToken: c.frmToken }),
+    ),
+    // ADR-0054 D3: what the leadership reload compares, so an unchanged server keeps its pollers.
+    source: connectionSource(c),
+  };
 }
 
 const databasePort = databasePortOf(databaseConfig?.url);
 // #526 (L1): one mutex for every runtime change that follows a server write (the operator's management service, the
 // self-serve owner's rename and remove, the pending sweep), so their post-commit runtime changes run one at a time.
 const serverWriteMutex = new Mutex();
+
+/**
+ * ADR-0054 D3: on becoming the leader, bring this runtime in line with the stored servers (only what differs). Under the
+ * server-write mutex, so it never interleaves with this process's own post-commit runtime changes. A failure is logged
+ * and leadership goes ahead with the list this process has: a missed reload must never keep the leader workers stopped.
+ * Bounded too: past `RELOAD_ON_LEADERSHIP_MS` leadership goes ahead and the reload finishes on its own (still under the
+ * mutex, so it stays ordered with this process's writes), its changes landing on the running leader as an edit would.
+ */
+const RELOAD_ON_LEADERSHIP_MS = 5_000;
+async function reloadServersOnLeadership(): Promise<void> {
+  if (database === undefined || !serversRegistered) return;
+  const reload = reconcileOnLeadership();
+  const timedOut = await Promise.race([
+    reload.then(() => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), RELOAD_ON_LEADERSHIP_MS).unref()),
+  ]);
+  if (timedOut) logger.warn({ ms: RELOAD_ON_LEADERSHIP_MS }, "server reload on becoming leader is slow; leading with the loaded list meanwhile");
+}
+
+/** The reload itself; never rejects (a failure is logged). */
+async function reconcileOnLeadership(): Promise<void> {
+  if (database === undefined) return;
+  try {
+    const changes = await serverWriteMutex.run(() =>
+      reconcileDatabaseServers({
+        db: database.pool,
+        ring: secretsKeyring,
+        runtime: directory,
+        build: buildFromConnection,
+        buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
+        emptyMeansNone: true, // database mode serves nothing from the environment (#196), so an empty database is an empty list
+      }),
+    );
+    const changed = changes.added.length + changes.removed.length + changes.replaced.length + changes.renamed.length;
+    if (changed > 0) {
+      logger.info(
+        { added: changes.added, removed: changes.removed, replaced: changes.replaced, renamed: changes.renamed },
+        "servers reloaded from the database on becoming leader",
+      );
+    }
+  } catch (err) {
+    logger.error({ code: errorCode(err) }, "could not reload servers from the database on becoming leader; serving the loaded list");
+  }
+}
+
 const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
@@ -676,17 +733,23 @@ if (process.env.NODE_ENV !== "test") {
     // results don't matter, so a hung game server must not turn a deliberate stop into a failure.
     // The pool closes only AFTER the workers have stopped: the history recorders make one last write on stop (ADR-0027),
     // and a pool closed underneath them would lose those rows.
-    const workersStopped = Promise.race([
-      Promise.allSettled([...[...workers, ...databaseWorkers].map((worker) => worker.stop()), directory.stop()]).then(() =>
-        Promise.allSettled([database?.close()]),
-      ),
-      new Promise<void>((resolve) => setTimeout(resolve, 3_000).unref()),
-    ]);
     // Stop accepting requests now. Idle keep-alive sockets close at once; a request that never
     // finishes is cut after a grace period, otherwise close() would never complete.
-    httpServer.close(() => void workersStopped.then(() => process.exit(0)));
+    const httpClosed = new Promise<void>((resolve) => httpServer.close(() => resolve()));
     httpServer.closeIdleConnections();
     setTimeout(() => httpServer.closeAllConnections(), 5_000).unref();
+    // ADR-0054 D3.10: the leader lock is released only once no request can still commit a server write here, so the task
+    // that takes it next and reloads its server list sees every write this one made. Until then this task stays the one
+    // leader (its leader workers keep running); the pool closes last, after them.
+    const otherWorkers = [...workers, ...databaseWorkers].filter((worker) => worker !== leaderLock);
+    void orderedShutdown({
+      stopWorkers: () => Promise.allSettled([...otherWorkers.map((worker) => worker.stop()), directory.stop()]),
+      httpClosed,
+      releaseLeaderLock: async () => leaderLock?.stop(),
+      closeDatabase: async () => database?.close(),
+      // Past the 5 s request cut above, so the drain finishes first; under the 10 s forced exit.
+      timeoutMs: 8_000,
+    }).then(() => process.exit(0));
   };
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));

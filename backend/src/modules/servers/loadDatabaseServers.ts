@@ -88,3 +88,99 @@ export async function loadDatabaseServers<TServices>(deps: {
   }
   return { usingDatabase: true, loaded: connections.map((c) => c.publicId), unreadable, refused, ownershipSeeded };
 }
+
+/**
+ * ADR-0054 D3.10: what a polled server was built from, set as `RuntimeServer.source` by the composition root's builder, so
+ * a reload can tell an edited connection from an unchanged one. The address, the ports and the row's `updatedAt`, which
+ * every write sets (a token edit included): nothing derived from a token. Not the display name: a rename keeps the
+ * pollers. An entry built from a connection without `updatedAt` (a fresh write on this task) differs once and is rebuilt
+ * by the next reload, before its pollers start.
+ */
+export function connectionSource(c: Pick<ServerConnection, "host" | "pinnedIp" | "apiPort" | "frmPort" | "updatedAt">): string {
+  return JSON.stringify([c.host, c.pinnedIp, c.apiPort, c.frmPort, c.updatedAt ?? null]);
+}
+
+export interface ReconcileDatabaseServersResult {
+  added: string[];
+  removed: string[];
+  /** Polled servers whose connection changed: rebuilt, their pollers restarted. */
+  replaced: string[];
+  renamed: string[];
+  /** Rows this process cannot open; like at startup they are not served. */
+  unreadable: UnreadableConnection[];
+  refused: { serverId: string; publicId: string }[];
+}
+
+/**
+ * ADR-0054 D3: brings a RUNNING runtime in line with the database, changing only what differs. During a deploy's overlap
+ * two tasks serve, and a server write handled by one (add, remove, rename, connection edit, a switch to or from an agent)
+ * reaches only that task's runtime; the other loaded its servers at startup. The new task runs this when it becomes the
+ * leader, that is once the old task has stopped, so a write made there during the overlap is picked up.
+ *
+ * Unlike `loadDatabaseServers` it never clears the runtime: an unchanged server keeps its pollers and an agent server its
+ * in-memory snapshots. With nothing stored at all it changes nothing, as at startup. It seeds no owners (startup did).
+ * Run it under the server-write mutex, so it never interleaves with this process's own post-commit runtime changes.
+ */
+export async function reconcileDatabaseServers<TServices>(deps: {
+  db: Queryable;
+  ring: SecretsKeyring | null;
+  runtime: ServerRuntime<TServices>;
+  build: (connection: ServerConnection) => RuntimeServer<TServices>;
+  buildAgent?: (server: { publicId: string; displayName: string }) => RuntimeServer<TServices>;
+  policy?: AddressPolicy;
+  /** True in database mode, where the runtime holds only stored servers: an empty database then means the last one was
+   *  deleted elsewhere, so everything is removed. Default false: servers from the config stay (startup semantics). */
+  emptyMeansNone?: boolean;
+}): Promise<ReconcileDatabaseServersResult> {
+  const result: ReconcileDatabaseServersResult = { added: [], removed: [], replaced: [], renamed: [], unreadable: [], refused: [] };
+  const listed = await listConnections(deps.db, deps.ring);
+  const policy = deps.policy ?? DEFAULT_ADDRESS_POLICY;
+  const connections = listed.connections.filter((c) => addressVerdict(c.pinnedIp, policy) === "ok");
+  result.refused = listed.connections.filter((c) => addressVerdict(c.pinnedIp, policy) !== "ok").map(({ serverId, publicId }) => ({ serverId, publicId }));
+  result.unreadable = listed.unreadable;
+  const agentServers = deps.buildAgent ? await listAgentServers(deps.db) : [];
+  if (!deps.emptyMeansNone && listed.connections.length === 0 && listed.unreadable.length === 0 && agentServers.length === 0) return result;
+
+  const wanted = new Set([...connections.map((c) => c.publicId), ...agentServers.map((a) => a.publicId)]);
+  // A row this process cannot open right now (a keyring problem) still exists: a server already running from it keeps
+  // running, unlike at startup, where there is nothing to keep. A refused address is removed: that is a safety rule.
+  const unopenable = new Set(listed.unreadable.map((u) => u.publicId));
+  for (const { id } of deps.runtime.list()) {
+    if (!wanted.has(id) && !unopenable.has(id) && (await deps.runtime.remove(id))) result.removed.push(id);
+  }
+
+  for (const connection of connections) {
+    const current = deps.runtime.describe(connection.publicId);
+    if (current === undefined) {
+      deps.runtime.add(deps.build(connection));
+      result.added.push(connection.publicId);
+    } else if (current.kind === "agent") {
+      // Switched back to a polled server elsewhere: a deliberate un-enrol, so not a replace (which refuses it).
+      await deps.runtime.remove(connection.publicId);
+      deps.runtime.add(deps.build(connection));
+      result.replaced.push(connection.publicId);
+    } else if (current.source !== connectionSource(connection)) {
+      await deps.runtime.replace(deps.build(connection));
+      result.replaced.push(connection.publicId);
+    } else if (current.displayName !== connection.displayName) {
+      deps.runtime.rename(connection.publicId, connection.displayName);
+      result.renamed.push(connection.publicId);
+    }
+  }
+
+  for (const server of agentServers) {
+    const current = deps.runtime.describe(server.publicId);
+    if (current === undefined) {
+      deps.runtime.add(deps.buildAgent!(server));
+      result.added.push(server.publicId);
+    } else if (current.kind !== "agent") {
+      // Enrolled elsewhere: polled to agent, the same swap the enrolment makes.
+      await deps.runtime.replace(deps.buildAgent!(server));
+      result.replaced.push(server.publicId);
+    } else if (current.displayName !== server.displayName) {
+      deps.runtime.rename(server.publicId, server.displayName);
+      result.renamed.push(server.publicId);
+    }
+  }
+  return result;
+}
