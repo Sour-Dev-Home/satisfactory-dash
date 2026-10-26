@@ -40,6 +40,13 @@ const SLUG_BY_CLASS = new Map<string, string>([
   ["Build_ResourceSink_C", "resource-sink"],
   ["Build_SpaceElevator_C", "space-elevator"],
   ["Build_PipelinePump_C", "pipeline-pump"],
+  ["Build_GeneratorBiomass_C", "biomass-generator"],
+  ["Build_TrainDockingStationLiquid_C", "fluid-freight-platform"],
+  ["Build_IndustrialTank_C", "industrial-fluid-buffer"],
+  ["Build_FrackingSmasher_C", "resource-well-pressurizer"],
+  ["Build_FrackingExtractor_C", "resource-well-extractor"],
+  ["Build_AlienPowerBuilding_C", "alien-power-augmenter"],
+  ["Build_PowerStorageMk1_C", "power-storage"],
 ]);
 
 /** The icon URL for a building class, or undefined when the class has none. */
@@ -78,4 +85,4 @@ export function glyphKindOf(node: { kind: string; role?: string | undefined }): 
 export const BUILDING_ICON_CLASSES: readonly string[] = [...SLUG_BY_CLASS.keys()];
 
 /** Every slug the table can return, for the test that checks each file exists. */
-export const BUILDING_ICON_SLUGS: readonly string[] = [...SLUG_BY_CLASS.values()];
+export const BUILDING_ICON_SLUGS: readonly string[] = [...new Set(SLUG_BY_CLASS.values())];
