@@ -154,6 +154,15 @@ describe("reconcileDatabaseServers (ADR-0054 D3)", () => {
     expect(runtime.has("from-config")).toBe(true);
   });
 
+  it("removes the last server when the other task deleted it and the database now stores none (database mode)", async () => {
+    const last = polledEntry("last");
+    const runtime = runningRuntime([last, buildAgent({ publicId: "friend", displayName: "Friend" })]);
+    const result = await reconcileDatabaseServers({ db: await fakeDb([]), ring, runtime, build, buildAgent, policy: LAN_OK, emptyMeansNone: true });
+    expect(result.removed.sort()).toEqual(["friend", "last"]);
+    expect(runtime.size).toBe(0);
+    expect(last.workers[0]!.stop).toHaveBeenCalled();
+  });
+
   it("an entry rebuilt by stepping down keeps its source, so the next term does not restart an unchanged server", async () => {
     const runtime = new ServerRuntime([polledEntry("home")], { leaderGated: true });
     runtime.start();

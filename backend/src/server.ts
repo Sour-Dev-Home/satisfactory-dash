@@ -395,6 +395,7 @@ async function reloadServersOnLeadership(): Promise<void> {
         runtime: directory,
         build: buildFromConnection,
         buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
+        emptyMeansNone: true, // database mode serves nothing from the environment (#196), so an empty database is an empty list
       }),
     );
     const changed = changes.added.length + changes.removed.length + changes.replaced.length + changes.renamed.length;

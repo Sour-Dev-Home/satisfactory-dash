@@ -128,6 +128,9 @@ export async function reconcileDatabaseServers<TServices>(deps: {
   build: (connection: ServerConnection) => RuntimeServer<TServices>;
   buildAgent?: (server: { publicId: string; displayName: string }) => RuntimeServer<TServices>;
   policy?: AddressPolicy;
+  /** True in database mode, where the runtime holds only stored servers: an empty database then means the last one was
+   *  deleted elsewhere, so everything is removed. Default false: servers from the config stay (startup semantics). */
+  emptyMeansNone?: boolean;
 }): Promise<ReconcileDatabaseServersResult> {
   const result: ReconcileDatabaseServersResult = { added: [], removed: [], replaced: [], renamed: [], unreadable: [], refused: [] };
   const listed = await listConnections(deps.db, deps.ring);
@@ -136,7 +139,7 @@ export async function reconcileDatabaseServers<TServices>(deps: {
   result.refused = listed.connections.filter((c) => addressVerdict(c.pinnedIp, policy) !== "ok").map(({ serverId, publicId }) => ({ serverId, publicId }));
   result.unreadable = listed.unreadable;
   const agentServers = deps.buildAgent ? await listAgentServers(deps.db) : [];
-  if (listed.connections.length === 0 && listed.unreadable.length === 0 && agentServers.length === 0) return result;
+  if (!deps.emptyMeansNone && listed.connections.length === 0 && listed.unreadable.length === 0 && agentServers.length === 0) return result;
 
   const wanted = new Set([...connections.map((c) => c.publicId), ...agentServers.map((a) => a.publicId)]);
   for (const { id } of deps.runtime.list()) {
