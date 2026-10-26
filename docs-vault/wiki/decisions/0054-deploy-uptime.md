@@ -128,11 +128,18 @@ It cannot skip a real change:
 10. **Server list after a handover** (amendment, owner 2026-10-26: "Reload on leadership"). Each task's server runtime
     (`backend/src/modules/servers/serverRuntime.ts`) is loaded from the database once at startup and then changes only
     through that task's own writes. A server write served by the old task during the overlap (add, remove, rename,
-    connection edit, a switch to or from an agent) would be missing from the new task until its next restart, not for
-    a minute. So a task that takes the lock first reconciles its runtime with the database
-    (`reconcileDatabaseServers`), changing only what differs: an unchanged server keeps its pollers and an agent server
-    its in-memory snapshots. Polled entries carry a digest of their connection (`connectionSource`) to tell an edit
-    from an unchanged server. A failed reload is logged and leadership goes ahead. Ships and deploys before PR 3.
+    connection edit, a switch to or from an agent) would be missing from the new task until its next restart, however
+    long that is. So:
+    - a task that takes the lock first reconciles its runtime with the database (`reconcileDatabaseServers`), changing
+      only what differs: an unchanged server keeps its pollers and an agent server its in-memory snapshots; polled
+      entries carry a digest of their connection (`connectionSource`) to tell an edit from an unchanged server; a row it
+      cannot open right now keeps a server already running from it; an empty database removes everything (database
+      mode serves nothing from the environment);
+    - the old task releases the lock only after its HTTP server has closed (`platform/shutdown.ts`, after the 5 s
+      request cut at most), so no write it handles can commit after the new task's reload. Until then it stays the one
+      leader;
+    - the reload is bounded (5 s): past it, or on a failure (logged), leadership goes ahead with the loaded list.
+    Ships and deploys before PR 3.
 
 ### D4. Frontend: say "updating" during any gap left (optional)
 

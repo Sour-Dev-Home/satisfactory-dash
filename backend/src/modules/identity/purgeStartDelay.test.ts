@@ -158,6 +158,8 @@ describe("server.ts ordering (issue #153)", () => {
   });
 
   it("stops them on shutdown with the other workers", () => {
-    expect(source).toMatch(/\[\.\.\.workers, \.\.\.databaseWorkers\]\.map\(\(worker\) => worker\.stop\(\)\)/);
+    // ADR-0054 D3.10: every worker but the leader lock stops first; the lock is released after the HTTP drain.
+    expect(source).toMatch(/const otherWorkers = \[\.\.\.workers, \.\.\.databaseWorkers\]\.filter\(\(worker\) => worker !== leaderLock\)/);
+    expect(source).toMatch(/otherWorkers\.map\(\(worker\) => worker\.stop\(\)\)/);
   });
 });

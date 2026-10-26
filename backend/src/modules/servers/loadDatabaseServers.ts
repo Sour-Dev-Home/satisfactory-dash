@@ -142,8 +142,11 @@ export async function reconcileDatabaseServers<TServices>(deps: {
   if (!deps.emptyMeansNone && listed.connections.length === 0 && listed.unreadable.length === 0 && agentServers.length === 0) return result;
 
   const wanted = new Set([...connections.map((c) => c.publicId), ...agentServers.map((a) => a.publicId)]);
+  // A row this process cannot open right now (a keyring problem) still exists: a server already running from it keeps
+  // running, unlike at startup, where there is nothing to keep. A refused address is removed: that is a safety rule.
+  const unopenable = new Set(listed.unreadable.map((u) => u.publicId));
   for (const { id } of deps.runtime.list()) {
-    if (!wanted.has(id) && (await deps.runtime.remove(id))) result.removed.push(id);
+    if (!wanted.has(id) && !unopenable.has(id) && (await deps.runtime.remove(id))) result.removed.push(id);
   }
 
   for (const connection of connections) {

@@ -19,6 +19,10 @@ interface Stored {
   publicId: string;
   displayName?: string;
   apiToken?: string;
+  /** Sealed with another keyring: this process cannot open the row (unreadable). */
+  sealedWith?: typeof ring;
+  /** A stored address the policy refuses. */
+  pinnedIp?: string;
 }
 
 /** A database holding these polled servers (sealed for real) and these agent servers. */
@@ -26,8 +30,8 @@ async function fakeDb(polled: Stored[], agents: { publicId: string; displayName:
   const rows: unknown[] = [];
   for (const server of polled) {
     let written: unknown[] = [];
-    const conn = { ...base, apiToken: server.apiToken ?? base.apiToken };
-    await saveConnection({ query: async (t, v = []) => { if (t.includes("INSERT INTO servers.server_connections")) written = v; return { rows: [{}] }; } }, ring, `uuid-${server.publicId}`, conn);
+    const conn = { ...base, apiToken: server.apiToken ?? base.apiToken, pinnedIp: server.pinnedIp ?? base.pinnedIp };
+    await saveConnection({ query: async (t, v = []) => { if (t.includes("INSERT INTO servers.server_connections")) written = v; return { rows: [{}] }; } }, server.sealedWith ?? ring, `uuid-${server.publicId}`, conn);
     const [, host, pinned, apiPort, frmPort, apiEnc, frmEnc, keyId] = written;
     rows.push({
       server_id: `uuid-${server.publicId}`, public_id: server.publicId, display_name: server.displayName ?? `Name ${server.publicId}`, connection_kind: "local",
@@ -170,5 +174,18 @@ describe("reconcileDatabaseServers (ADR-0054 D3)", () => {
     await runtime.setLeader(false);
     const result = await reconcile(await fakeDb([{ publicId: "home" }]), runtime);
     expect(result.replaced).toEqual([]);
+  });
+
+  it("keeps a running server whose row this process cannot open right now, but removes one whose address is refused", async () => {
+    const otherRing = createSecretsKeyring("k9", new Map([["k9", randomBytes(32)]]));
+    const sealedAway = polledEntry("sealed");
+    const unsafe = polledEntry("unsafe");
+    const runtime = runningRuntime([sealedAway, unsafe]);
+    const result = await reconcile(await fakeDb([{ publicId: "sealed", sealedWith: otherRing }, { publicId: "unsafe", pinnedIp: "8.8.8.8" }]), runtime);
+    expect(result.unreadable.map((u) => u.publicId)).toEqual(["sealed"]);
+    expect(runtime.has("sealed")).toBe(true);
+    expect(sealedAway.workers[0]!.stop).not.toHaveBeenCalled();
+    expect(result.refused.map((r) => r.publicId)).toEqual(["unsafe"]);
+    expect(result.removed).toEqual(["unsafe"]);
   });
 });
