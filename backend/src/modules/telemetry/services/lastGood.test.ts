@@ -96,3 +96,50 @@ describe("withLastGood (ADR-0052 1.3)", () => {
     expect(snapshot("x", await read()).unreachableSince).toBe(iso(T0 + 3000));
   });
 });
+
+describe("withLastGood: overlapping calls (ordering races)", () => {
+  function deferred<V>() {
+    let resolve!: (v: V) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<V>((res, rej) => ((resolve = res), (reject = rej)));
+    return { promise, resolve, reject };
+  }
+
+  it("a slow older failure finishing after a newer success must not mark the newer data stale", async () => {
+    let clock = T0;
+    const a = deferred<object>();
+    const b = deferred<object>();
+    const reads = [() => Promise.resolve({ n: 0 }), () => a.promise, () => b.promise];
+    let i = 0;
+    const read = withLastGood(() => reads[i++]!(), () => clock);
+    await read();
+    clock = T0 + 1000;
+    const slow = read(); // started first
+    const fast = read(); // started second
+    b.resolve({ n: 2 });
+    await fast;
+    clock = T0 + 2000;
+    a.reject(down()); // the older call fails after the newer one succeeded
+    const got = snapshot("x", await slow);
+    expect(got.data).toEqual({ n: 2 });
+    expect(got.stale).toBe(false);
+  });
+
+  it("a slow older success finishing after a newer one must not replace the remembered value", async () => {
+    let clock = T0;
+    const a = deferred<object>();
+    const b = deferred<object>();
+    const reads = [() => a.promise, () => b.promise, () => Promise.reject(down())];
+    let i = 0;
+    const read = withLastGood(() => reads[i++]!(), () => clock);
+    const slow = read();
+    const fast = read();
+    b.resolve({ n: 2 });
+    await fast;
+    clock = T0 + 1000;
+    a.resolve({ n: 1 });
+    await slow;
+    clock = T0 + 2000;
+    expect(snapshot("x", await read()).data).toEqual({ n: 2 });
+  });
+});

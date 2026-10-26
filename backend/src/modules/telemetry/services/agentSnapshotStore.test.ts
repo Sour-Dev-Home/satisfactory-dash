@@ -164,3 +164,47 @@ describe("LatestSnapshotStore.restore (ADR-0052)", () => {
     expect(calls).toBe(2);
   });
 });
+
+describe("LatestSnapshotStore.record: late snapshots and the outage state (ADR-0052)", () => {
+  const T0 = Date.parse("2026-10-24T10:00:00.000Z");
+  const status = { sessionName: "s" } as never;
+  const up = (store: LatestSnapshotStore, at: number) => store.record({ reachable: true, observedAtMs: at, receivedAtMs: at, status });
+  const down = (store: LatestSnapshotStore, at: number) => store.record({ reachable: false, observedAtMs: at, receivedAtMs: at });
+
+  it("a late unreachable snapshot older than the latest reachable one does not start an outage", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 20_000);
+    up(store, T0 + 10_000);
+    down(store, T0 + 5000); // arrives late
+    expect(snapshot("x", store.read("status"))).not.toHaveProperty("unreachableSince");
+  });
+
+  it("a late reachable snapshot older than the outage start does not end the outage", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 20_000);
+    up(store, T0);
+    down(store, T0 + 10_000);
+    up(store, T0 + 5000); // arrives late
+    expect(snapshot("x", store.read("status")).unreachableSince).toBe(new Date(T0 + 10_000).toISOString());
+  });
+
+  it("a late reachable snapshot does not overwrite newer parts", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 20_000);
+    store.record({ reachable: true, observedAtMs: T0 + 10_000, receivedAtMs: T0 + 10_000, status: { sessionName: "new" } as never });
+    store.record({ reachable: true, observedAtMs: T0 + 5000, receivedAtMs: T0 + 12_000, status: { sessionName: "old" } as never });
+    expect(store.read("status")).toMatchObject({ sessionName: "new" });
+  });
+
+  it("unreachable first, then reachable: served fresh without the mark", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 6000);
+    down(store, T0);
+    up(store, T0 + 5000);
+    expect(snapshot("x", store.read("status"))).toMatchObject({ stale: false });
+    expect(snapshot("x", store.read("status"))).not.toHaveProperty("unreachableSince");
+  });
+
+  it("while unreachable a part never stored throws even when a fallback is given", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 6000);
+    up(store, T0);
+    down(store, T0 + 1000);
+    expect(() => store.read("players", { players: [] } as never)).toThrowError(expect.objectContaining({ code: "upstream_unreachable" }));
+  });
+});
