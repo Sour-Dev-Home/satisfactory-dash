@@ -247,14 +247,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const overflowing = isClipped(clipped);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // From lg the panel is a drawer over the canvas's right side: bring the opened group into the part left of it.
+  // From lg the panel is a drawer over the canvas's right side: bring the opened group into the part left of it. Once,
+  // when it opens: a later layout (a refetch of any read the page shows) must not move a view the user may have panned.
   useEffect(() => {
     const panel = panelRef.current;
-    const n = openKey === null ? undefined : laidByKey.get(openKey);
+    const n = openKey === null ? undefined : layoutRef.current.nodes.find((node) => node.key === openKey);
     if (!panel || !n || getComputedStyle(panel).position !== "absolute") return;
     const visibleStage = stageBesidePanel(stageRef.current, panel.offsetWidth);
     setView((v) => revealRect(v, n, visibleStage));
-  }, [openKey, laidByKey]);
+  }, [openKey]);
 
   // A bubble that just opened: if the user has moved the view, bring its frame into sight.
   const revealFrame = useRef<string | null>(null);

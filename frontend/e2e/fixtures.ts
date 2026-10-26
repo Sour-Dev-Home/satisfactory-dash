@@ -93,6 +93,23 @@ export async function settleAnimations(page: Page): Promise<void> {
   );
 }
 
+/** Rounds of `settleAnimations` before giving up on a quiet page, and the pause that lets a late fade start. */
+const QUIET_ROUNDS = 10;
+const QUIET_PAUSE_MS = 150;
+
+/**
+ * Settles animations until a pause starts no new one. A panel whose read answers late (a deploy gap's retries) fades in
+ * with its own `animate-reveal` after one settle looked, and axe measured it mid-fade.
+ */
+async function settleQuiet(page: Page): Promise<void> {
+  for (let round = 0; round < QUIET_ROUNDS; round++) {
+    await settleAnimations(page);
+    await page.waitForTimeout(QUIET_PAUSE_MS);
+    const running = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).length);
+    if (running === 0) return;
+  }
+}
+
 /**
  * Runs axe (WCAG 2.1 A/AA, contrast included) and fails the test on any violation (ADR-0016
  * item 5; failing since step 4). The full result is attached to the report either way.
@@ -100,9 +117,9 @@ export async function settleAnimations(page: Page): Promise<void> {
 export async function expectNoAxeViolations(page: Page, testInfo: TestInfo): Promise<void> {
   // A page still waiting to reveal (its reads have not answered: a deploy gap, an outage) fades in once
   // `--duration-reveal-budget` passes, possibly after `settleAnimations` looked. axe then measured its text mid-fade and
-  // reported contrast failures at random. Wait for every reveal to start, so settling catches the fade.
+  // reported contrast failures at random. Wait for every reveal to start, then for the page to stay still.
   await expect(page.locator('[data-page-reveal="waiting"]')).toHaveCount(0);
-  await settleAnimations(page);
+  await settleQuiet(page);
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     // axe's preload copies the page's CSS into <style> elements for css-orientation-lock

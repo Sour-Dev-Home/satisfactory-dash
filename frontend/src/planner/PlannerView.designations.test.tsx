@@ -74,17 +74,24 @@ function serve(opts: { designated?: boolean; members?: object[]; match?: object;
 }
 const rodDesignation = () => ({ id: DESIGNATION, name: "Rod works", mode: "core", members: rodMembers, createdAt: "2026-10-24T10:00:00.000Z", updatedAt: "2026-10-24T10:00:00.000Z" });
 
+let view: ReturnType<typeof renderWithClient>;
 function renderView(servers = serversRoleOwner) {
-  return renderWithClient(
+  return (view = renderWithClient(
     <MemoryRouter>
       <ServerContext value={servers.servers[0]}>
         <PlannerView />
       </ServerContext>
     </MemoryRouter>,
-  );
+  ));
 }
 
-const card = async (name: string) => (await screen.findByRole("heading", { name })).closest("li") as HTMLElement;
+/** A card once every read has answered: a save takes the machines' places from the factory read, and on a slow runner
+ *  the graph can show before it does ("The positions of these machines aren't known yet."). */
+const card = async (name: string) => {
+  const heading = await screen.findByRole("heading", { name });
+  await waitFor(() => expect(view.client.isFetching()).toBe(0));
+  return heading.closest("li") as HTMLElement;
+};
 const openRod = async (title = "Iron Rod factory (+ Iron Rod)") => {
   fireEvent.click(within(await card(title)).getByRole("button", { name: /^Open factory/ }));
   return screen.findByRole("heading", { name: "Groups" });
