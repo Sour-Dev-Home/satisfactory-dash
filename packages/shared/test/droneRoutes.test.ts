@@ -56,7 +56,7 @@ describe("droneRoutes item schema as the ingest uses it (per-item re-validation)
   it("drops junk items without throwing", () => {
     const { paired: _paired, ...noPaired } = home!;
     const { fuel: _fuel, ...noFuel } = home!;
-    for (const junk of [null, undefined, 5, "port", {}, { id: "x" }, noPaired, noFuel, { ...home, paired: "None".length }]) {
+    for (const junk of [null, undefined, 5, "port", {}, { id: "x" }, noPaired, noFuel, { ...home, paired: 5 }]) {
       expect(DronePortSchema.safeParse(junk).success).toBe(false);
     }
   });

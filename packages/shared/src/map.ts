@@ -206,7 +206,7 @@ export const TrainRoutesLayerDataSchema = z.array(TrainRouteRecordSchema).max(TR
 // ---------------------------------------------------------------------------------------------------------------------
 // droneRoutes (ADR-0055 Decision 1): drone ports with their pairing and cargo, from getDroneStation. FRM reports the
 // pairing on both ports as the partner's name, not its id (raw-sources/captured-responses/
-// frm-getDroneStation-2026-10-25-paired-*.json), so `paired` is a name and may match more than one port. Item classes
+// frm-getDroneStation-2026-10-25-paired-*.json, added by PR #659), so `paired` is a name and may match more than one port. Item classes
 // only, no amounts or trip rates, so the hash is stable between reads (the rates move on every trip).
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -216,7 +216,7 @@ export const DRONE_ROUTES_MAX_ITEMS = 2_000;
 export const DronePortSchema = z.object({
   id: boundedString,
   name: boundedString.describe("The port's in-game name, player-chosen; game text, rendered as text only. May repeat across ports."),
-  paired: boundedString.nullable().describe("The paired port's name as the game reports it; null when the port is not paired"),
+  paired: boundedString.nullable().describe("The paired port's name as the game reports it; null when the port is not paired. Names may repeat, so a name matching more than one port is ambiguous"),
   input: ItemClassNames.describe("Distinct item classes in the port's input inventory: the cargo it sends to its pair"),
   output: ItemClassNames.describe("Distinct item classes in the port's output inventory: the cargo it received"),
   fuel: ItemClassNames.describe("Distinct item classes in the port's fuel inventory: consumed by the drone, not carried"),

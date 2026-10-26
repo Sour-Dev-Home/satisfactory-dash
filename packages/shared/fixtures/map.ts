@@ -289,7 +289,7 @@ export const trainRoutesWorldResponse = {
 
 /**
  * ADR-0055 Decision 1: the droneRoutes layer, projected from the 2026-10-25 captures
- * (captured-responses/frm-getDroneStation-2026-10-25-paired-battery-cargo-trimmed.json for the pair,
+ * (captured-responses/frm-getDroneStation-2026-10-25-paired-battery-cargo-trimmed.json, added by PR #659, for the pair,
  * frm-getDroneStation-2026-10-25-unpaired-trimmed.json for "FUEL 1"): positions divided by 100 and rounded, "None"
  * read as not paired, inventories as their distinct class names. The pairing names the partner on both ports.
  */
