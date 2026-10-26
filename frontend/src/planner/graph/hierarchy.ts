@@ -146,6 +146,8 @@ export interface FlowPart {
   carrier: string;
   flow: string;
   unit: "items/min" | "m3/min";
+  /** A transport's route name (game text); a belt has none. */
+  routeName?: string | null;
 }
 
 export type FlowQuality = "measured" | "estimated" | "atLeast" | "unknown";
@@ -162,6 +164,8 @@ export interface AggregateFlow {
   parts: number;
   ratePerMinute: number | null;
   quality: FlowQuality;
+  /** The route name when the parts name exactly one (a summed flow of several routes names none). */
+  routeName?: string;
 }
 
 const edgePart = (e: PlannerEdge): FlowPart => ({
@@ -188,6 +192,7 @@ const transportPart = (t: PlannerTransport): FlowPart => ({
   carrier: t.mode,
   flow: t.flow ?? "supply",
   unit: "items/min",
+  routeName: t.routeName,
 });
 
 /** Every belt, pipe and transport of the graph as one list of parts (edges first, in the backend's order). */
@@ -225,7 +230,9 @@ export function aggregateFlows(parts: readonly FlowPart[], cardOf: (nodeKey: str
             : list.every((p) => p.rate === "measured")
               ? "measured"
               : "estimated";
+      const routes = new Set(list.flatMap((p) => (p.routeName === undefined || p.routeName === null || p.routeName === "" ? [] : [p.routeName])));
       return {
+        ...(routes.size === 1 ? { routeName: [...routes][0] } : {}),
         from,
         to,
         itemClassName: head.itemClassName,

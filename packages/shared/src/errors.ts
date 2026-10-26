@@ -73,6 +73,10 @@ export const KnownErrorCode = z.enum([
   // the client does not read it as "signed out").
   "would_orphan",
   "reauth_required",
+  // ADR-0055 Decision 5 (additive): planner designations. A write whose members overlap another designation (409, with
+  // `error.other` = { id, name } of that designation); creating beyond the per-server cap of 50 (409).
+  "designation_overlap",
+  "designation_cap",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;
@@ -89,6 +93,11 @@ export const ApiErrorResponseSchema = z.object({
     // webhook_invalid (not_https, host_not_allowed, ...). Never carries user input such as the URL.
     reason: z.string().optional().describe("A stable sub-code for the error, when the code has several causes"),
     // ADR-0047 (additive, optional): the servers that block an account deletion (would_orphan, reason operator_servers).
+    // ADR-0055 (additive, optional): the other designation in a designation_overlap error. The name is untrusted text.
+    other: z
+      .object({ id: z.string().max(64), name: z.string().min(1).max(64).regex(/^[^\p{C}\p{Zl}\p{Zp}]+$/u) })
+      .optional()
+      .describe("The designation a write overlaps, today only on designation_overlap"),
     servers: z
       .array(ServerSummarySchema.pick({ id: true, displayName: true }))
       .optional()

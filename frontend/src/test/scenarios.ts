@@ -390,6 +390,30 @@ const plannerFactoriesTwoTrees = (() => {
   };
 })();
 
+/**
+ * ADR-0055 PR 8: the factories fixture with one transport of every mode the canvas has a glyph for (the train is the
+ * fixture's own; only the train and the Depot have readers today, so the truck and the drone are synthetic), between the
+ * Iron Plate factory's groups, so the canvas shows all four icons and the legend lists them.
+ */
+const plannerFactoriesTransports = (() => {
+  const data = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
+  const keyOf = (className: string) => data.nodes.find((n) => n.className === className)!.key;
+  const train = data.transports![0];
+  const via = (mode: string, from: string, to: string, routeName: string) => ({ ...train, mode, from, to, routeName, carriers: 1 });
+  return {
+    ...productionGraphFactories,
+    data: {
+      ...data,
+      transports: [
+        train,
+        via("truck", keyOf("Build_SmelterMk1_C"), keyOf("Build_ConstructorMk1_C"), "Plate Run"),
+        via("drone", keyOf("Build_ConstructorMk1_C"), keyOf("Build_StorageContainerMk1_C"), "Courier"),
+        via("depot", keyOf("Build_TrainStation_C"), keyOf("Build_SmelterMk1_C"), "Upload"),
+      ],
+    },
+  };
+})();
+
 /** The factory read with the planner fixture's constructor manifold in it (Build_ConstructorMk1_C_1..8), for the graph's group panel. */
 const factoryWithPlannerManifold = {
   ...factoryMixed,
@@ -630,6 +654,7 @@ export const SCENARIOS = {
   // to the sink and plates into storage), and the same with a second Iron Plate tree in one of them.
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
+  "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {
@@ -641,6 +666,15 @@ export const SCENARIOS = {
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
   // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
   "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },
+  // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
+  // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
+  "basic-data": {
+    power: fail(502, errorUpstreamUnreachable),
+    powerHistory: fail(502, errorUpstreamUnreachable),
+    factory: fail(502, errorUpstreamUnreachable),
+    productionGraph: fail(502, errorUpstreamUnreachable),
+    bottlenecks: fail(502, errorUpstreamUnreachable),
+  },
   "planner-error": { productionGraph: fail(502, errorUpstreamUnreachable) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },

@@ -18,6 +18,9 @@ import {
   alertSendTestOk,
   alertSetMuteRequest,
   pushOptInRequest,
+  plannerDesignationCreateRequest,
+  plannerDesignationIronLine,
+  plannerDesignationUpdateRequest,
   alertStatusQuiet,
   alertUpdateRuleRequest,
   agentEnrollmentCodeResponse,
@@ -42,7 +45,8 @@ import { createAlertsRouters, createPushRouters } from "./modules/alerts/index.j
 import type { AlertsService, PushService } from "./modules/alerts/index.js";
 import { createAgentUserRouters } from "./modules/agents/index.js";
 import type { AgentsService } from "./modules/agents/index.js";
-import { MapLiveStore, createWorldRoutes } from "./modules/map/index.js";
+import { MapLiveStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
+import type { DesignationStore } from "./modules/map/index.js";
 import { scopedEndpoints } from "../test-support/scopedEndpoints.js";
 import type { Method } from "../test-support/scopedEndpoints.js";
 
@@ -64,7 +68,7 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 const SCOPED = scopedEndpoints(endpoints);
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
-  route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails");
+  route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails").replace(":designationId", plannerDesignationIronLine.id);
 
 const OWNER = "user-owner";
 const ADMIN = "user-admin";
@@ -208,6 +212,13 @@ const memberSelfService: MemberSelfService = {
   },
 };
 
+const designationStandIn: DesignationStore = {
+  list: async () => [],
+  create: async () => ({ kind: "created", designation: plannerDesignationIronLine }),
+  update: async () => ({ kind: "updated", designation: plannerDesignationIronLine }),
+  remove: async () => true,
+};
+
 function buildApp(options: { isReady?: () => boolean } = {}) {
   // Both servers exist on this process: what differs is who belongs to them.
   const directory = new InMemoryServerDirectory([
@@ -227,6 +238,8 @@ function buildApp(options: { isReady?: () => boolean } = {}) {
       // ADR-0038 M3 (#353): no row for either server yet, which is a valid 200 (a synthetic empty
       // response), so a plain empty fake db is enough to cover "a member can read it" here.
       createWorldRoutes(directory, { db: { query: () => Promise.resolve({ rows: [] }) }, mapLive: new MapLiveStore() }),
+      // ADR-0055 PR 9: a stand-in store that accepts every write (the real one needs a database; its tests are elsewhere).
+      createDesignationRoutes(directory, { store: designationStandIn, buildings: async () => null }),
       ...createTelemetryRouters(directory, { db: { query: () => Promise.resolve({ rows: [] }) } }),
       ...createSettingsRouters(directory),
       ...createAlertsRouters(alertsService),
@@ -247,6 +260,8 @@ const ALERT_BODIES: Record<string, unknown> = {
   "alerts.destinations.patchDiscord": alertPatchDiscordRequest,
   "alerts.mute.set": alertSetMuteRequest,
   "push.optIn.put": pushOptInRequest,
+  "plannerDesignations.create": plannerDesignationCreateRequest,
+  "plannerDesignations.update": plannerDesignationUpdateRequest,
 };
 const bodyFor = (name: string): unknown =>
   Object.hasOwn(ALERT_BODIES, name) ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
@@ -259,7 +274,7 @@ const hasBody = (name: string, method: Method) =>
   name !== "members.leave" &&
   name !== "agent.enrollmentCode";
 /** What a successful write answers: 200, except a create (201). */
-const successStatus = (name: string): number => (name === "alerts.rules.create" || name === "agent.enrollmentCode" ? 201 : 200);
+const successStatus = (name: string): number => (name === "alerts.rules.create" || name === "agent.enrollmentCode" || name === "plannerDesignations.create" ? 201 : 200);
 
 const call = (app: ReturnType<typeof buildApp>, name: string, method: Method, url: string, user: string) => {
   const req = request(app)[method.toLowerCase() as "get"](url).set("x-test-user", user);

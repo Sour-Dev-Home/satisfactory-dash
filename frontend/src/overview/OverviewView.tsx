@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDeployGapPhase } from "../api/deployGap";
+import { useBasicData } from "../api/basicData";
 import { queries } from "../api/queries";
 import { isFirstLoad } from "../api/settled";
 import { useSelectedServer } from "../servers/ServerContext";
@@ -45,11 +46,21 @@ export function OverviewView() {
   const canManageServers = useQuery(queries.servers()).data?.canManageServers === true;
   const power = useQuery(queries.power(server.id));
   const factory = useQuery(queries.factory(server.id));
-  const sections: OverviewSection[] = [
-    { name: "Server", station: "server", to: canManageServers ? "/app/servers" : undefined, state: stateOf(status, phase, serverHealth) },
-    { name: "Power", station: "power", to: "/app/power", state: stateOf(power, phase, powerHealth) },
-    { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(factory, phase, factoryHealth) },
-  ];
+  // A server with only the game's own API data (ADR-0057): the Server row alone, and no Power card.
+  const basic = useBasicData();
+  const serverSection: OverviewSection = {
+    name: "Server",
+    station: "server",
+    to: canManageServers ? "/app/servers" : undefined,
+    state: stateOf(status, phase, serverHealth),
+  };
+  const sections: OverviewSection[] = basic
+    ? [serverSection]
+    : [
+        serverSection,
+        { name: "Power", station: "power", to: "/app/power", state: stateOf(power, phase, powerHealth) },
+        { name: "Factory", station: "factory", to: "/app/factory", state: stateOf(factory, phase, factoryHealth) },
+      ];
   // Same rule as the rows: data wins over an error.
   const powerState: PowerState = power.data ? powerTotals(power.data.data.circuits) : failedOrPending(power, phase);
   // The tick has no row (it's in the Health card), but a slow one still makes the overall
@@ -73,7 +84,8 @@ export function OverviewView() {
         tick={tick}
         age={age}
         unreachable={status.data?.unreachableSince !== undefined}
-        power={powerState}
+        power={basic ? undefined : powerState}
+        basicData={basic}
         roster={roster}
         bannerHidden={dismissible && dismissal.hidden}
         onDismiss={dismissible ? dismissal.dismiss : undefined}
