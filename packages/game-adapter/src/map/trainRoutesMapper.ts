@@ -1,18 +1,13 @@
 import type { z } from "zod";
-import {
-  TRAIN_ROUTES_MAX_ITEM_CLASSES,
-  TRAIN_ROUTES_MAX_ITEMS,
-  TRAIN_ROUTES_MAX_PLATFORMS,
-  TRAIN_ROUTES_MAX_STOPS,
-} from "@satisfactory-dash/shared";
+import { TRAIN_ROUTES_MAX_ITEMS, TRAIN_ROUTES_MAX_PLATFORMS, TRAIN_ROUTES_MAX_STOPS } from "@satisfactory-dash/shared";
 import type { TrainRoutePlatform, TrainRouteRecord, TrainRouteStation, TrainRouteTrain } from "@satisfactory-dash/shared";
 import { RawFrmTrainRouteStationSchema, RawFrmTrainRouteTrainSchema } from "../rawSchemas.js";
+import { MAX_STRING, byId, itemClasses } from "./itemClasses.js";
 
 type RawStation = z.infer<typeof RawFrmTrainRouteStationSchema>;
 type RawTrain = z.infer<typeof RawFrmTrainRouteTrainSchema>;
 
-/** The contract's string bounds (`boundedString` 200 characters; item classes 1..200; mode 40). */
-const MAX_STRING = 200;
+/** The contract's mode bound (40 characters); strings and item classes are bounded in `itemClasses.ts`. */
 const MAX_MODE = 40;
 
 export interface MappedTrainRoutes {
@@ -28,21 +23,6 @@ export interface MappedTrainRoutes {
 export interface RawTrainRouteResponses {
   stations: readonly unknown[];
   trains: readonly unknown[];
-}
-
-const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
-/** Distinct item classes across inventories, sorted and capped. Classes the contract cannot hold are skipped. */
-function itemClasses(inventories: ReadonlyArray<ReadonlyArray<{ ClassName?: string | undefined }>>): string[] {
-  const set = new Set<string>();
-  for (const inventory of inventories) {
-    for (const entry of inventory) {
-      const cls = entry.ClassName;
-      if (cls !== undefined && cls.length > 0 && cls.length <= MAX_STRING) set.add(cls);
-    }
-  }
-  return [...set].sort(compareText).slice(0, TRAIN_ROUTES_MAX_ITEM_CLASSES);
 }
 
 /** FRM's `LoadingMode` ("Loading" / "Unloading") as the contract's `load` / `unload`; an unknown mode passes through lowercased. */

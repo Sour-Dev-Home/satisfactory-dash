@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes } from "@satisfactory-dash/game-adapter";
+import type { MappedConveyors, MappedDroneRoutes, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes } from "@satisfactory-dash/game-adapter";
 import { MAP_WORLD_LAYER_MAX_BYTES } from "@satisfactory-dash/shared";
 import type { ConveyorsSkipReason, MapWorldLayer, WorldIngestResponse } from "@satisfactory-dash/shared";
 import { backoffDelayMs } from "./backoff.js";
@@ -16,6 +16,8 @@ export const RAILS_INTERVAL_MS = 600_000;
 export const CONVEYORS_INTERVAL_MS = 600_000;
 /** Train routes (ADR-0055 PR 5): every 10 min, the world tier; stations and timetables change only when the player builds or edits. */
 export const TRAIN_ROUTES_INTERVAL_MS = 600_000;
+/** Drone routes (ADR-0055 PR 12a): every 10 min, the world tier; a port's pairing changes only when the player edits it. */
+export const DRONE_ROUTES_INTERVAL_MS = 600_000;
 /** Resource nodes: every 30 min. `getResourceNode` runs on the game thread, so it is read least often. */
 export const RESOURCE_NODES_INTERVAL_MS = 1_800_000;
 /** ±10%, as the local poller: agents that started together do not read their games in the same tick. */
@@ -27,6 +29,7 @@ export interface WorldPorts {
   getResourceNodes(): Promise<MappedResourceNodes>;
   getConveyors(): Promise<MappedConveyors>;
   getTrainRoutes(): Promise<MappedTrainRoutes>;
+  getDroneRoutes(): Promise<MappedDroneRoutes>;
 }
 
 export interface WorldClient {
@@ -99,6 +102,7 @@ export class WorldReader {
         this.loop("resourceNodes", RESOURCE_NODES_INTERVAL_MS, () => ports.getResourceNodes()),
         this.loop("conveyors", CONVEYORS_INTERVAL_MS, () => ports.getConveyors()),
         this.loop("trainRoutes", TRAIN_ROUTES_INTERVAL_MS, () => ports.getTrainRoutes()),
+        this.loop("droneRoutes", DRONE_ROUTES_INTERVAL_MS, () => ports.getDroneRoutes()),
       ]);
     } finally {
       signal.removeEventListener("abort", stopFromOutside);

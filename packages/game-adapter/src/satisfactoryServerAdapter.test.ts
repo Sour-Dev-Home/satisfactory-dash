@@ -183,6 +183,7 @@ describe("SatisfactoryServerAdapter", () => {
     ["getResourceNode", (a: SatisfactoryServerAdapter) => a.getResourceNodes()],
     ["getBelts", (a: SatisfactoryServerAdapter) => a.getConveyors()],
     ["getTrainStation", (a: SatisfactoryServerAdapter) => a.getTrainRoutes()],
+    ["getDroneStation", (a: SatisfactoryServerAdapter) => a.getDroneRoutes()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -319,6 +320,15 @@ describe("SatisfactoryServerAdapter", () => {
         { recordType: "train", id: "t1", name: "T", stops: ["A "], items: ["Desc_Silica_C"] },
       ],
     });
+  });
+
+  it("reads getDroneStation and maps it to the droneRoutes layer", async () => {
+    const body = [{ ID: "d1", Name: "Hub", location: { x: 1000, y: -2000, z: 0 }, InputInventory: [{ ClassName: "Desc_Battery_C" }], OutputInventory: [], FuelInventory: [], PairedStation: "Far" }];
+    const get = vi.fn(async (_endpoint: string) => body as never);
+    const { adapter } = buildAdapter({ frm: { get } });
+    const result = await adapter.getDroneRoutes();
+    expect(get.mock.calls.map((call) => call[0])).toEqual(["getDroneStation"]);
+    expect(result).toEqual({ dropped: 0, data: [{ id: "d1", name: "Hub", paired: "Far", input: ["Desc_Battery_C"], output: [], fuel: [], x: 10, y: -20 }] });
   });
 
   it("getConveyors from an FRM without the connection fields resolves to skip unsupportedFrm, not an error", async () => {

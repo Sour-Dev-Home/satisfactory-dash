@@ -61,7 +61,7 @@ export interface WorldIngestBodies {
   conveyors: ConveyorsWorldIngestRequest | ConveyorsSkippedIngestRequest;
   // ADR-0055 PR 1: in the contract now; the agent reads and sends it from ADR-0055 PR 5.
   trainRoutes: TrainRoutesWorldIngestRequest;
-  // ADR-0055 PR 12a: in the contract now; the agent reads and sends it from the drone layer PR.
+  // ADR-0055 PR 12a.
   droneRoutes: DroneRoutesWorldIngestRequest;
 }
 

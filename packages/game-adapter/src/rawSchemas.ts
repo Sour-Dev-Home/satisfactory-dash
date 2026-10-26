@@ -286,6 +286,22 @@ export const RawFrmTrainRouteTrainSchema = z.object({
 });
 
 /**
+ * getDroneStation for the droneRoutes layer (ADR-0055 PR 12a; captured-responses/frm-getDroneStation-2026-10-25-*.json).
+ * `PairedStation` is the partner's `Name`, "None" when unpaired; `InputInventory` is the cargo the port sends. Lenient
+ * like the train schemas: only the id, name and position must be present, an odd inventory becomes empty. Trip rates are
+ * not read (the layer's hash must be stable).
+ */
+export const RawFrmDronePortSchema = z.object({
+  ID: z.string().min(1),
+  Name: z.string(),
+  location: RawFrmLocationSchema,
+  PairedStation: z.string().optional().catch(undefined),
+  InputInventory: RawFrmInventorySchema,
+  OutputInventory: RawFrmInventorySchema,
+  FuelInventory: RawFrmInventorySchema,
+});
+
+/**
  * ADR-0038 M3: GET /getTrainStation (docs-vault/raw-sources/captured-responses/
  * frm-getTrainStation-2026-09-27-full.json). The docking platforms (`CargoInventory`), bounding
  * box and power are not the map's concern.

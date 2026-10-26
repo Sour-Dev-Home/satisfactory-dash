@@ -307,7 +307,7 @@ describe("run", () => {
     expect(t.all()).not.toContain(API_TOKEN);
   });
 
-  const worldPorts = (): WorldPorts => ({ getRails: vi.fn(async () => ({ data: [], dropped: 0 })), getResourceNodes: vi.fn(async () => ({ data: [], dropped: 0 })), getConveyors: vi.fn(async () => ({ data: [], dropped: 0 })), getTrainRoutes: vi.fn(async () => ({ data: [], dropped: 0 })) });
+  const worldPorts = (): WorldPorts => ({ getRails: vi.fn(async () => ({ data: [], dropped: 0 })), getResourceNodes: vi.fn(async () => ({ data: [], dropped: 0 })), getConveyors: vi.fn(async () => ({ data: [], dropped: 0 })), getTrainRoutes: vi.fn(async () => ({ data: [], dropped: 0 })), getDroneRoutes: vi.fn(async () => ({ data: [], dropped: 0 })) });
 
   it("passes the game connection's world ports to runAgent as `world`, beside the reader and a client that can send world layers (ADR-0038 M4)", async () => {
     const dpapi = await enrolled();
@@ -370,11 +370,12 @@ describe("run", () => {
     expect(vi.mocked(world.getRails).mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(vi.mocked(world.getResourceNodes).mock.calls.length).toBeGreaterThanOrEqual(2);
     const refused = t.out.filter((line) => line.includes("world_layer_refused"));
-    expect(refused).toHaveLength(4);
+    expect(refused).toHaveLength(5);
     expect(refused.filter((line) => line.includes("rails"))).toHaveLength(1);
     expect(refused.filter((line) => line.includes("resourceNodes"))).toHaveLength(1);
     expect(refused.filter((line) => line.includes("conveyors"))).toHaveLength(1);
     expect(refused.filter((line) => line.includes("trainRoutes"))).toHaveLength(1);
+    expect(refused.filter((line) => line.includes("droneRoutes"))).toHaveLength(1);
     expect(t.out.join("\n")).toContain("agent_stopped");
   });
 

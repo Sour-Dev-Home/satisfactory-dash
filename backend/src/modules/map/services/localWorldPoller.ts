@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { ConveyorsSkipReason, MapWorldLayer } from "@satisfactory-dash/shared";
-import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
+import type { MappedConveyors, MappedDroneRoutes, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { MapLiveSink } from "./mapLiveStore.js";
 import type { WorldIngestPort } from "./worldIngestService.js";
@@ -10,6 +10,7 @@ export interface LocalWorldPollerPorts {
   getResourceNodes(): Promise<MappedResourceNodes>;
   getConveyors(): Promise<MappedConveyors>;
   getTrainRoutes(): Promise<MappedTrainRoutes>;
+  getDroneRoutes(): Promise<MappedDroneRoutes>;
   getTrains(): Promise<MappedTrains>;
   getTrainStations(): Promise<MappedTrainStations>;
 }
@@ -27,6 +28,8 @@ export interface LocalWorldPollerOptions {
   conveyorsIntervalSeconds?: number;
   /** Train routes (ADR-0055 PR 5): every 10 min, jittered, the world tier. */
   trainRoutesIntervalSeconds?: number;
+  /** Drone routes (ADR-0055 PR 12a): every 10 min, jittered, the world tier. */
+  droneRoutesIntervalSeconds?: number;
   /** mapLive (trains, stations): at the factory cadence (30 s, matching FACTORY_HISTORY_INTERVAL_SECONDS). */
   mapLiveIntervalSeconds?: number;
   /** A read that takes longer than this is abandoned and counted as failed, per cadence. */
@@ -39,6 +42,7 @@ export interface LocalWorldPollerOptions {
 const DEFAULT_RAILS_INTERVAL_SECONDS = 600;
 const DEFAULT_CONVEYORS_INTERVAL_SECONDS = 600;
 const DEFAULT_TRAIN_ROUTES_INTERVAL_SECONDS = 600;
+const DEFAULT_DRONE_ROUTES_INTERVAL_SECONDS = 600;
 const DEFAULT_RESOURCE_NODES_INTERVAL_SECONDS = 1800;
 const DEFAULT_MAP_LIVE_INTERVAL_SECONDS = 30;
 const DEFAULT_POLL_TIMEOUT_MS = 30_000;
@@ -164,6 +168,7 @@ export class LocalWorldPoller {
       ),
       new Loop("conveyors", (options.conveyorsIntervalSeconds ?? DEFAULT_CONVEYORS_INTERVAL_SECONDS) * 1000, async () => ingestLayer("conveyors", await ports.getConveyors()), shared),
       new Loop("trainRoutes", (options.trainRoutesIntervalSeconds ?? DEFAULT_TRAIN_ROUTES_INTERVAL_SECONDS) * 1000, async () => ingestLayer("trainRoutes", await ports.getTrainRoutes()), shared),
+      new Loop("droneRoutes", (options.droneRoutesIntervalSeconds ?? DEFAULT_DRONE_ROUTES_INTERVAL_SECONDS) * 1000, async () => ingestLayer("droneRoutes", await ports.getDroneRoutes()), shared),
       new Loop(
         "mapLive",
         (options.mapLiveIntervalSeconds ?? DEFAULT_MAP_LIVE_INTERVAL_SECONDS) * 1000,

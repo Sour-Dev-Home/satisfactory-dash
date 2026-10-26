@@ -15,7 +15,7 @@ export type { VanillaApiClientLike, FrmApiClientLike } from "./satisfactoryServe
 // `getResourceNodes`, `getTrains`, `getTrainStations` on the adapter), each with a `dropped` count
 // for the conform-don't-reject rule. The backend reaches these through gameserver's facade.
 // ADR-0048 amendment (PR 2): `getConveyors`' shape; `skip` set means "send no conveyors layer".
-export type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
+export type { MappedConveyors, MappedDroneRoutes, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
 export { testGameServerConnection } from "./connectionTest.js";
 export type { ConnectionCheck, ConnectionCheckError, ConnectionTestResult } from "./connectionTest.js";
 export { VanillaApiClient, VanillaApiRequestError, createVanillaApiTransport } from "./vanillaApiClient.js";
