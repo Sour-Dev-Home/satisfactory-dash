@@ -27,8 +27,8 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
-import { mapConveyors, mapRailSegments, mapResourceNodes, mapTrainRoutes, mapTrains, mapTrainStations } from "./map/index.js";
-import type { MappedConveyors, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
+import { mapConveyors, mapDroneRoutes, mapRailSegments, mapResourceNodes, mapTrainRoutes, mapTrains, mapTrainStations } from "./map/index.js";
+import type { MappedConveyors, MappedDroneRoutes, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
 import { totalPowerProductionMW } from "./totalPowerProduction.js";
 
@@ -310,5 +310,13 @@ export class SatisfactoryServerAdapter {
     const stations = parseUpstream("getTrainStation", array, await this.frmApi.get<unknown>("getTrainStation"));
     const trains = parseUpstream("getTrains", array, await this.frmApi.get<unknown>("getTrains"));
     return mapTrainRoutes({ stations, trains });
+  }
+
+  /** ADR-0055 PR 12a: the `droneRoutes` world layer, drone ports with their pairing and cargo
+   *  (map/droneRoutesMapper.ts). A port without an id, name or position is dropped (`dropped`), not the layer. Read every
+   *  10 min on the world tier; getDroneStation is not a game-thread endpoint (ADR-0055 Decision 1). */
+  async getDroneRoutes(): Promise<MappedDroneRoutes> {
+    const ports = parseUpstream("getDroneStation", z.array(z.unknown()), await this.frmApi.get<unknown>("getDroneStation"));
+    return mapDroneRoutes(ports);
   }
 }

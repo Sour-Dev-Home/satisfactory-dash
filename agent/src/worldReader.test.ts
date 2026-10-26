@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAP_WORLD_LAYER_MAX_BYTES, RailsWorldIngestRequestSchema, ResourceNodesWorldIngestRequestSchema } from "@satisfactory-dash/shared";
-import type { ConveyorEdge, MapWorldLayer, RailSegment, ResourceNode, TrainRouteRecord } from "@satisfactory-dash/shared";
+import type { ConveyorEdge, DronePort, MapWorldLayer, RailSegment, ResourceNode, TrainRouteRecord } from "@satisfactory-dash/shared";
 import { BackendError } from "./backendClient.js";
 import type { AgentLogger, LogFields } from "./logger.js";
-import { CONVEYORS_INTERVAL_MS, RAILS_INTERVAL_MS, RESOURCE_NODES_INTERVAL_MS, TRAIN_ROUTES_INTERVAL_MS, WORLD_JITTER_FRACTION, WorldReader, jitteredIntervalMs } from "./worldReader.js";
+import { CONVEYORS_INTERVAL_MS, DRONE_ROUTES_INTERVAL_MS, RAILS_INTERVAL_MS, RESOURCE_NODES_INTERVAL_MS, TRAIN_ROUTES_INTERVAL_MS, WORLD_JITTER_FRACTION, WorldReader, jitteredIntervalMs } from "./worldReader.js";
 import type { WorldClient, WorldPorts } from "./worldReader.js";
 
 /** Fake timers drive the reader's sleeps; a fake adapter stands in for the game and a fake client for the backend. */
@@ -12,14 +12,16 @@ const rail = (x: number): RailSegment => ({ points: [[x, 0], [x + 10, 0]] }) as 
 const edge = (id: string): ConveyorEdge => ({ id, kind: "belt", from: "a", fromKind: "machine", to: null, toKind: null, capacityPerMinute: 60, tier: "Conveyor Belt Mk.1", at: { x: 0, y: 0 } });
 const node = (x: number): ResourceNode => ({ id: `n${x}`, type: "Desc_OreIron_C", purity: "normal", position: [x, 0] }) as unknown as ResourceNode;
 const station = (id: string): TrainRouteRecord => ({ recordType: "station", id, name: "A ", platforms: [{ id: "p1", mode: "load", items: ["Desc_Silica_C"] }] });
+const port = (id: string): DronePort => ({ id, name: "FUEL 5", paired: "TestLand1", input: ["Desc_Battery_C"], output: [], fuel: ["Desc_Battery_C"], x: -2204, y: 503 });
 
 function setup(options: { random?: () => number } = {}) {
-  const world = { rails: [rail(1)], resourceNodes: [node(1)], conveyors: [edge("b1")], trainRoutes: [station("s1")] };
+  const world = { rails: [rail(1)], resourceNodes: [node(1)], conveyors: [edge("b1")], trainRoutes: [station("s1")], droneRoutes: [port("d1")] };
   const ports = {
     getRails: vi.fn<WorldPorts["getRails"]>(async () => ({ data: world.rails, dropped: 0 })),
     getResourceNodes: vi.fn<WorldPorts["getResourceNodes"]>(async () => ({ data: world.resourceNodes, dropped: 0 })),
     getConveyors: vi.fn<WorldPorts["getConveyors"]>(async () => ({ data: world.conveyors, dropped: 0 })),
     getTrainRoutes: vi.fn<WorldPorts["getTrainRoutes"]>(async () => ({ data: world.trainRoutes, dropped: 0 })),
+    getDroneRoutes: vi.fn<WorldPorts["getDroneRoutes"]>(async () => ({ data: world.droneRoutes, dropped: 0 })),
   };
   const sent: { layer: MapWorldLayer; body: { observedAt: string; data?: unknown[]; skipped?: string } }[] = [];
   const client = {
@@ -429,6 +431,33 @@ describe("the trainRoutes layer", () => {
     h.world.trainRoutes = [station("s1"), station("s2")];
     await vi.advanceTimersByTimeAsync(660_000);
     expect(h.sentFor("trainRoutes")).toHaveLength(2);
+    await h.stop();
+  });
+});
+
+// ADR-0055 PR 12a: the droneRoutes layer, the same pipeline and tier.
+describe("the droneRoutes layer", () => {
+  it("is read on start and every 10 minutes, jittered like rails", async () => {
+    expect(DRONE_ROUTES_INTERVAL_MS).toBe(RAILS_INTERVAL_MS);
+    const h = setup({ random: () => 0 });
+    await h.start();
+    expect(h.ports.getDroneRoutes).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(540_000);
+    expect(h.ports.getDroneRoutes).toHaveBeenCalledTimes(2);
+    await h.stop();
+  });
+
+  it("sends the first read, nothing for an equal hash, and again when a pairing changes", async () => {
+    const h = setup();
+    await h.start();
+    expect(h.sentFor("droneRoutes")).toHaveLength(1);
+    expect(h.sentFor("droneRoutes")[0]!.body).toEqual({ observedAt: "2026-10-14T12:00:00.000Z", data: [port("d1")] });
+    h.world.droneRoutes = h.world.droneRoutes.map((p) => ({ ...p }));
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("droneRoutes")).toHaveLength(1);
+    h.world.droneRoutes = [{ ...port("d1"), paired: null }];
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("droneRoutes")).toHaveLength(2);
     await h.stop();
   });
 });

@@ -20,6 +20,7 @@ export type {
   Player,
   SessionInfo,
   MappedConveyors,
+  MappedDroneRoutes,
   MappedRailSegments,
   MappedResourceNodes,
   MappedTrainRoutes,
