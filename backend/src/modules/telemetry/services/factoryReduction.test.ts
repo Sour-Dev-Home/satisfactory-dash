@@ -729,3 +729,68 @@ describe("designations (ADR-0055 Decision 5)", () => {
     expect(r).toEqual(base);
   });
 });
+
+describe("designations: edge cases (test-hunter)", () => {
+  const D1 = "11111111-1111-4111-8111-111111111111";
+  const D2 = "22222222-2222-4222-8222-222222222222";
+  const des = (pairs: [string, string, string][]) => new Map(pairs.map(([k, id, name]) => [k, { id, name }]));
+
+  it("keeps a designated machine in its factory when it sits in a cycle", () => {
+    const nodes = [
+      extractor("E", "Ore", 100),
+      node("A", { count: 4, ing: [["Ore", 100], ["Loop", 50]], prod: [["Ingot", 100]], at: [0, 0] }),
+      node("B", { count: 4, ing: [["Ingot", 100]], prod: [["Loop", 50], ["Plate", 50]], at: [100, 0] }),
+      node("Sink", { kind: "consumer", className: SINK_CLASS }),
+    ];
+    const edges = [edge("E", "A", "Ore"), edge("A", "B", "Ingot"), edge("B", "A", "Loop"), edge("B", "Sink", "Plate", "output", "sink")];
+    const r = reduceFactories({ nodes, edges, transports: [], snap, designations: des([["A", D1, "Loop head"]]) });
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.name).toBe("Loop head");
+    expect(factoryOf(r, "A")).toBe(f?.key);
+    expect(r.stats.unassignedGroups).toBe(0);
+    expect(r.factories.map((x) => PlannerFactorySchema.safeParse(x).success)).not.toContain(false);
+  });
+
+  it("ignores a designation on a non-machine node", () => {
+    const nodes = [extractor("E", "Ore", 100), node("R", { count: 4, ing: [["Ore", 100]], prod: [["Ingot", 100]] }), node("Sink", { kind: "consumer", className: SINK_CLASS })];
+    const edges = [edge("E", "R", "Ore"), edge("R", "Sink", "Ingot", "output", "sink")];
+    const base = run(nodes, edges);
+    const r = reduceFactories({ nodes, edges, transports: [], snap, designations: des([["E", D1, "Ore"], ["Sink", D1, "Ore"]]) });
+    expect(r).toEqual(base);
+  });
+
+  it("gives two designations with the same name distinct factories and keys", () => {
+    const nodes = [node("X", { prod: [["Ingot", 10]], at: [0, 0] }), node("Y", { prod: [["Ingot", 10]], at: [500, 0] })];
+    const r = reduceFactories({ nodes, edges: [], transports: [], snap, designations: des([["X", D1, "Same"], ["Y", D2, "Same"]]) });
+    const ds = r.factories.filter((x) => x.designationId !== null);
+    expect(ds).toHaveLength(2);
+    expect(new Set(ds.map((x) => x.key)).size).toBe(2);
+    expect(factoryOf(r, "X")).not.toBe(factoryOf(r, "Y"));
+  });
+
+  it("is deterministic regardless of node order", () => {
+    const build = () => {
+      const nodes = [extractor("E", "Ore", 100), node("R1", { ing: [["Ore", 50]], prod: [["Ingot", 50]], at: [10, 0] }), node("R2", { ing: [["Ore", 50]], prod: [["Ingot", 50]], at: [0, 10] }), node("Sink", { kind: "consumer", className: SINK_CLASS })];
+      const edges = [edge("E", "R1", "Ore"), edge("E", "R2", "Ore"), edge("R1", "Sink", "Ingot", "output", "sink"), edge("R2", "Sink", "Ingot", "output", "sink")];
+      return { nodes, edges };
+    };
+    const a = build();
+    const b = build();
+    b.nodes.reverse();
+    b.edges.reverse();
+    const d = des([["R1", D1, "One"], ["R2", D1, "One"]]);
+    const ra = reduceFactories({ ...a, transports: [], snap, designations: d });
+    const rb = reduceFactories({ ...b, transports: [], snap, designations: d });
+    expect(serialise(rb)).toEqual(serialise(ra));
+    expect(ra.factories.filter((x) => x.designationId === D1)).toHaveLength(1);
+  });
+
+  it("never drops a designated factory for the factory cap", () => {
+    const nodes: PlannerNode[] = [];
+    for (let i = 0; i < 520; i++) nodes.push(node(`M${String(i).padStart(3, "0")}`, { count: 10, prod: [[`Item${i}`, 10]], at: [i * 100, 0] }));
+    nodes.push(node("Tiny", { count: 1, prod: [["Rare", 1]], at: [-5000, 0] }));
+    const r = reduceFactories({ nodes, edges: [], transports: [], snap, designations: des([["Tiny", D1, "Mine"]]) });
+    expect(r.factories.some((x) => x.designationId === D1)).toBe(true);
+    expect(r.stats.droppedFactories).toBeGreaterThan(0);
+  });
+});
