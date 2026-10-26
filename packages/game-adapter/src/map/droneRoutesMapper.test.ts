@@ -81,6 +81,8 @@ describe("mapDroneRoutes on the 2026-10-25 captures (ADR-0055 PR 12a)", () => {
       { ...a, InputInventory: [{ ClassName: "Desc_Battery_C", Amount: 99 }], AvgOutRate: 1 },
     ]).data;
     expect(JSON.stringify(shuffled)).toBe(JSON.stringify(once));
+    const twins = [port({ ID: "a", Name: "2" }), port({ ID: "a", Name: "1" })];
+    expect(JSON.stringify(mapDroneRoutes(twins).data)).toBe(JSON.stringify(mapDroneRoutes([...twins].reverse()).data));
     const classes = mapDroneRoutes([port({ InputInventory: [{ ClassName: "Desc_B_C" }, { ClassName: "Desc_A_C" }, { ClassName: "Desc_B_C" }] })]).data[0]!;
     expect(classes.input).toEqual(["Desc_A_C", "Desc_B_C"]);
   });

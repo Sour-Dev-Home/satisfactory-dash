@@ -2,7 +2,7 @@ import { DRONE_ROUTES_MAX_ITEMS } from "@satisfactory-dash/shared";
 import type { DronePort } from "@satisfactory-dash/shared";
 import { RawFrmDronePortSchema } from "../rawSchemas.js";
 import { inWholeMetreBounds, toWholeMetres } from "./coordinates.js";
-import { MAX_STRING, byId, itemClasses } from "./itemClasses.js";
+import { MAX_STRING, byId, compareText, itemClasses } from "./itemClasses.js";
 
 /** FRM's `PairedStation` for a port with no pair (captured-responses/frm-getDroneStation-2026-10-25-unpaired-trimmed.json). */
 const UNPAIRED = "None";
@@ -54,7 +54,8 @@ export function mapDroneRoutes(raw: readonly unknown[]): MappedDroneRoutes {
       y,
     });
   }
-  ports.sort(byId);
+  // Ids should be unique; if two are not, their whole content breaks the tie, so FRM's order never changes the hash.
+  ports.sort((a, b) => byId(a, b) || compareText(JSON.stringify(a), JSON.stringify(b)));
   if (ports.length > DRONE_ROUTES_MAX_ITEMS) {
     dropped += ports.length - DRONE_ROUTES_MAX_ITEMS;
     ports.length = DRONE_ROUTES_MAX_ITEMS;
