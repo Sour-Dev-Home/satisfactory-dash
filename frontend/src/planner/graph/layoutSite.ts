@@ -266,11 +266,6 @@ type Box = { x: number; y: number; width: number; height: number };
 type LabelBox = { width: number; height: number };
 
 /**
- * Dagre, once. `merged` gives each pair of cards one edge (the labels of its flows stacked into one box, the flows drawn
- * over the same path with their labels one above the other): the shape dagre's multigraph handling sometimes cannot route
- * (it throws "Not possible to find intersection inside of the rectangle" on some parallel edges that skip a rank).
- */
-/**
  * The flows that close a loop, by a depth-first search that starts from the sources (cards no flow enters), then from any
  * card not yet reached, in scene order: a flow into a card still on the search's path is a return. Starting inside a loop
  * instead (dagre's own search starts from the first card listed) reversed a forward flow and left the return pointing on.
@@ -312,6 +307,12 @@ export function returnFlows(cardKeys: readonly string[], flows: readonly { from:
   return returns;
 }
 
+/**
+ * Dagre, once, then our router. `merged` gives each pair of cards one edge (the labels of its flows stacked into one box,
+ * the flows drawn over the same path with their labels one above the other): the fallback for shapes dagre's multigraph
+ * handling cannot route (it throws "Not possible to find intersection inside of the rectangle" on some parallel edges that
+ * skip a rank).
+ */
 function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean): Placement {
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
   const nodesep = scene.frames.length > 0 ? NODE_SEP + FRAME_HEADER_H / 2 : NODE_SEP;
