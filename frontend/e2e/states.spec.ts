@@ -1,4 +1,5 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { FALLBACK_STAGE } from "../src/planner/graph/viewport";
 import type { ScenarioName } from "../src/test/scenarios";
 import { expect, expectNoAxeViolations, settleAnimations, test } from "./fixtures";
 
@@ -39,10 +40,20 @@ async function openPlateFactoryGraph(page: Page) {
 }
 
 /** The Iron Plate site on the graph view, whichever view the screen opens on. */
+/**
+ * Waits until the canvas has measured itself: its viewBox leaves `FALLBACK_STAGE` once the ResizeObserver reports. A
+ * visible SVG is not enough: a card focused before then is revealed against the fallback stage, and the view after it
+ * (and so the screenshot) depends on that race.
+ */
+async function canvasMeasured(svg: Locator) {
+  await expect(svg).toBeVisible();
+  await expect(svg).not.toHaveAttribute("viewBox", `0 0 ${FALLBACK_STAGE.width} ${FALLBACK_STAGE.height}`);
+}
+
 async function openIronGraph(page: Page) {
   await openIronSite(page);
   await page.getByRole("button", { name: "Graph" }).click();
-  await expect(page.getByRole("img", { name: /^Graph of Iron Plate site/ })).toBeVisible();
+  await canvasMeasured(page.getByRole("img", { name: /^Graph of Iron Plate site/ }));
 }
 
 interface StateCase {
