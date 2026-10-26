@@ -210,10 +210,30 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   );
 }
 
+/** The name form that keeps a suggested factory as a designation (its machines as members, mode `core`). */
+export function KeepForm({ model, onClose }: { model: FactoryModel; onClose: (saved: boolean) => void }) {
+  const { factory } = model;
+  const { places, writes } = useDesignations();
+  if (writes === null) return null;
+  return (
+    <NameForm
+      label={`Keep ${factory.name}`}
+      initial={factory.name.slice(0, 64)}
+      save="Keep factory"
+      onSave={(name) => {
+        const made = membersOf(model.nodes, places ?? new Map());
+        if (!made.ok) throw new PlanProblem(made.reason);
+        return writes.create.mutateAsync({ name, mode: "core", members: made.members });
+      }}
+      onClose={onClose}
+    />
+  );
+}
+
 /** An automatic factory shown as a suggestion (a dashed frame on its card): "Keep" saves it as a designation. */
 export function SuggestionControls({ model }: { model: FactoryModel }) {
   const { factory } = model;
-  const { canWrite, places, writes } = useDesignations();
+  const { canWrite, writes } = useDesignations();
   const [naming, setNaming] = useState(false);
   const keep = useRef<HTMLButtonElement>(null);
   return (
@@ -222,15 +242,8 @@ export function SuggestionControls({ model }: { model: FactoryModel }) {
       {canWrite &&
         writes !== null &&
         (naming ? (
-          <NameForm
-            label={`Keep ${factory.name}`}
-            initial={factory.name.slice(0, 64)}
-            save="Keep factory"
-            onSave={(name) => {
-              const made = membersOf(model.nodes, places ?? new Map());
-              if (!made.ok) throw new PlanProblem(made.reason);
-              return writes.create.mutateAsync({ name, mode: "core", members: made.members });
-            }}
+          <KeepForm
+            model={model}
             onClose={(saved) => {
               setNaming(false);
               if (!saved) queueMicrotask(() => keep.current?.focus());

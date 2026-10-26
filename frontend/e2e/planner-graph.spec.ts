@@ -247,3 +247,50 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   expect(body.members.every((m) => m.c === "Build_SmelterMk1_C")).toBe(true);
   await expect(page.getByRole("form", { name: "Name the designated factory" })).toHaveCount(0);
 });
+
+// ADR-0055 PR 10b: the canvas lasso and the suggestions on the canvas, by pointer, under the production CSP.
+test("an owner lassos a factory's cards on the canvas and keeps a suggestion there", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-designations");
+  await page.goto("/app/planner");
+  // The overview: "Reason factories for me" draws the automatic factories dashed, with a Keep pill.
+  await page.getByRole("button", { name: "Graph" }).click();
+  const overview = page.getByRole("img", { name: /^Graph of Factories/ });
+  await expect(overview).toBeVisible();
+  await page.getByRole("button", { name: "Reason factories for me" }).click();
+  await expect(overview).toBeVisible();
+  await expect(overview.locator("[data-suggested]").first()).toBeVisible();
+  await overview.locator("[data-keep]").first().click();
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("textbox", { name: "Name" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).click();
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
+  await expect(svg).toBeVisible();
+  await page.getByRole("button", { name: "Select" }).click();
+  // A lasso just inside the canvas's border encloses every card the fit shows.
+  const box = (await svg.boundingBox())!;
+  const at = (fx: number, fy: number) => ({ x: box.x + 4 + fx * (box.width - 8), y: box.y + 4 + fy * (box.height - 8) });
+  const corners = [at(0, 0), at(1, 0), at(1, 1), at(0, 1)];
+  const before = await transformOf(svg);
+  await page.mouse.move(corners[0]!.x, corners[0]!.y);
+  await page.mouse.down();
+  for (const c of corners.slice(1)) await page.mouse.move(c.x, c.y, { steps: 6 });
+  await expect(svg.locator("[data-lasso]")).toHaveCount(1);
+  await page.mouse.up();
+  await expect(svg.locator("[data-lasso]")).toHaveCount(0);
+  expect(await transformOf(svg)).toBe(before);
+  await expect(svg.locator("[data-picked]").first()).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /selected$/ })).toBeVisible();
+  await expect(svg.locator("[style]")).toHaveCount(0);
+  await expectNoAxeViolations(page, testInfo);
+
+  await page.getByRole("button", { name: "Designate selected" }).click();
+  const sent = page.waitForRequest((r) => r.method() === "POST" && r.url().includes("/planner/designations"));
+  await page.keyboard.type("Plate works");
+  await page.keyboard.press("Enter");
+  const body = (await sent).postDataJSON() as { name: string; mode: string; members: unknown[] };
+  expect(body).toMatchObject({ name: "Plate works", mode: "core" });
+  expect(body.members.length).toBeGreaterThan(0);
+});
