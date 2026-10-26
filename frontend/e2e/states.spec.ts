@@ -243,7 +243,7 @@ const CASES: StateCase[] = [
     clock: PLANNER_NOW,
     act: async (page) => {
       await openIronGraph(page);
-      await page.getByLabel("Item").selectOption({ label: "Iron Ingot" });
+      await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
     },
   },
   {
@@ -283,7 +283,7 @@ const CASES: StateCase[] = [
     scenario: "planner-factories-trees",
     name: "planner-factory-bubble-folded",
     path: "/app/planner",
-    shows: /2 groups · tree 1 of 2/,
+    shows: /^×\d+$/,
     clock: FACTORIES_NOW,
     act: async (page) => {
       await openPlateFactoryGraph(page);

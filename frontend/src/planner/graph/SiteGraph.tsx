@@ -7,15 +7,21 @@ import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
 import { reachFor, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
+import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
+import type { GlyphKind } from "./buildingIcons";
 import {
+  BUILDING_ICON_GAP,
   BUILDING_ICON_SIZE,
   CHAR_W_BODY,
+  COUNT_BADGE_H,
   FRAME_HEADER_H,
+  ICON_TOP,
   LABEL_LINE_H,
-  LINE_H,
   NODE_PAD_X,
   PILL_H,
-  TITLE_H,
+  cardLineY,
+  countBadgeWidth,
+  isHeadingLine,
   isTransport,
   layoutScene,
   type LaidEdge,
@@ -514,7 +520,7 @@ export default function SiteGraph({
             {tabOrder.map((n) => {
               const card = n.card;
               const count = findingsOf(n.key);
-              const name = `${cardButtonName(card)}${card.loop ? ", in a loop" : ""}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}`;
+              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}`;
               return (
                 <li key={n.key}>
                   <button
@@ -563,7 +569,7 @@ export default function SiteGraph({
         </div>
         {openNode && (
           <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
-            <GroupPanel key={openNode.key} id={panelId} node={openNode} findings={findings} onClose={close} />
+            <GroupPanel key={openNode.key} id={panelId} node={openNode} facts={laidByKey.get(openNode.key)?.card.facts} findings={findings} onClose={close} />
           </div>
         )}
       </div>
@@ -575,7 +581,7 @@ export default function SiteGraph({
 
 /** A card's keyboard name: what it is, and for a factory that choosing it opens it. */
 function cardButtonName(card: Card): string {
-  return card.kind === "factory" ? `Open factory: ${card.label}` : card.label;
+  return card.kind === "factory" ? `Open factory: ${card.description}` : card.description;
 }
 
 /** The hidden button's name for hiding or showing what a card post-dominates. */
@@ -656,6 +662,27 @@ function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => v
   );
 }
 
+/**
+ * A card's picture: the building's icon on its chip, or, when its class has none (or the file fails to load), the glyph for
+ * its kind on the same chip. Never a bare box.
+ */
+function CardIcon({ iconUrl, glyph }: { iconUrl: string | undefined; glyph: GlyphKind }) {
+  const [failed, setFailed] = useState(false);
+  const picture = iconUrl !== undefined && !failed;
+  return (
+    <g aria-hidden="true" data-icon={picture ? "image" : "glyph"}>
+      <rect x={NODE_PAD_X} y={ICON_TOP} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} rx={6} className="fill-icon-chip" />
+      {picture ? (
+        <image href={iconUrl} x={NODE_PAD_X} y={ICON_TOP} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} onError={() => setFailed(true)} />
+      ) : (
+        <g transform={`translate(${NODE_PAD_X + BUILDING_ICON_SIZE / 2} ${ICON_TOP + BUILDING_ICON_SIZE / 2}) scale(${BUILDING_ICON_SIZE / GLYPH_BOX})`}>
+          <BuildingGlyph kind={glyph} />
+        </g>
+      )}
+    </g>
+  );
+}
+
 function CardView({
   node: n,
   finding,
@@ -678,22 +705,22 @@ function CardView({
   const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
   return (
     <g transform={`translate(${n.x} ${n.y})`} onClick={onActivate} data-card={card.kind} className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}>
-      <title>{card.label}</title>
+      <title>{card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
       {stacked && <rect x={5} y={5} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
       <rect width={n.width} height={n.height} rx={8} strokeWidth={ringed ? 3 : 1} className={cn("fill-surface-2", ringed ? "stroke-accent" : "stroke-line")} />
-      {n.iconUrl !== undefined && (
-        <g aria-hidden="true">
-          <rect x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} rx={4} className="fill-icon-chip" />
-          <image href={n.iconUrl} x={NODE_PAD_X} y={TITLE_H - 15} width={BUILDING_ICON_SIZE} height={BUILDING_ICON_SIZE} />
+      <CardIcon iconUrl={n.iconUrl} glyph={card.glyph} />
+      {card.count !== undefined && (
+        <g transform={`translate(${NODE_PAD_X + BUILDING_ICON_SIZE + BUILDING_ICON_GAP} ${ICON_TOP + (BUILDING_ICON_SIZE - COUNT_BADGE_H) / 2})`} data-count={card.count}>
+          <rect width={countBadgeWidth(card.count)} height={COUNT_BADGE_H} rx={COUNT_BADGE_H / 2} strokeWidth={1} className="fill-surface stroke-line" />
+          <text x={countBadgeWidth(card.count) / 2} y={COUNT_BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-base font-semibold">
+            {`×${card.count}`}
+          </text>
         </g>
       )}
-      <text x={n.titleX} y={TITLE_H} className="fill-fg-strong text-base font-semibold">
-        {n.title}
-      </text>
-      {/* Muted (5.6:1 on the card) only for the recipe, the first lines; the rates and states read in full colour. */}
+      {/* One line (a factory's name, then one line); the recipe, the other outputs and the rest are in the tooltip and the panel. */}
       {n.lines.map((line, i) => (
-        <text key={i} x={NODE_PAD_X} y={TITLE_H + LINE_H * (i + 1)} className={cn("text-sm", i < n.recipeLines ? "fill-muted" : "fill-fg")}>
+        <text key={i} x={NODE_PAD_X} y={cardLineY(i)} className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : "fill-fg text-sm")}>
           {line}
         </text>
       ))}

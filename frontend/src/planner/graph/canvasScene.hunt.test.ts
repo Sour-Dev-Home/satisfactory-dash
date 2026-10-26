@@ -202,6 +202,8 @@ describe("factoryScene edge cases", () => {
     expect(s.cards).toHaveLength(1);
     expect(s.cards[0].lines.join(" ")).not.toContain("NaN");
     expect(s.cards[0].title).not.toContain("NaN");
+    // The "×N" badge only prints a finite count.
+    expect(s.cards[0].count === undefined || Number.isFinite(s.cards[0].count)).toBe(true);
   });
 
   it("huge counts do not break the words", () => {
@@ -239,11 +241,13 @@ describe("overviewScene edge cases", () => {
     const g = graphOf([node("a")]);
     const [m] = factoryModels(g);
     const s = overviewScene(g, [{ ...m, destinations: [{ destination: "__proto__", count: 1 }, { destination: "constructor", count: 0 }, { destination: "storage", count: 1e9 }, { destination: "toString", count: 2 }, { destination: "sink", count: 2 }] }]);
-    const lines = s.cards[0].lines.join("\n");
-    expect(lines).toContain("1 flow to __proto__");
-    expect(lines).toContain("0 flows to constructor");
-    expect(lines).toContain("+2 more ends");
-    expect(lines).not.toContain("function");
+    // The card is name plus one line; every end is in the tooltip and keyboard name.
+    expect(s.cards[0].lines).toHaveLength(2);
+    const words = s.cards[0].description;
+    expect(words).toContain("1 flow to __proto__");
+    expect(words).toContain("0 flows to constructor");
+    expect(words).toContain("2 flows to the Sink");
+    expect(words).not.toContain("function");
   });
 });
 

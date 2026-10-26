@@ -1,4 +1,5 @@
-import type { PlannerEdge, PlannerNode } from "@satisfactory-dash/shared";
+import type { PlannerEdge, PlannerNode, PlannerRate } from "@satisfactory-dash/shared";
+import { formatAmount } from "../../format";
 import { edgeRateText, outputLine } from "../plannerText";
 
 // What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
@@ -8,7 +9,6 @@ export const MAX_LINE_CHARS = 22;
 /** The heading is larger type, so fewer characters fit the same card width. */
 export const MAX_TITLE_CHARS = 18;
 export const MAX_WRAP_LINES = 2;
-const MAX_OUTPUT_LINES = 2;
 
 const cut = (text: string, max = MAX_LINE_CHARS) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
@@ -38,33 +38,33 @@ export function wrapText(text: string, max = MAX_LINE_CHARS, maxLines = MAX_WRAP
   return lines.length > 0 ? lines : [""];
 }
 
-/** "Iron Ingot: 120 / 120 items/min" with no-break spaces after the colon, so a wrap leaves the figures and their unit together. */
-export function keepFigures(line: string): string {
-  const at = line.indexOf(": ");
-  return at < 0 ? line : line.slice(0, at + 2) + line.slice(at + 2).replaceAll(" ", " ");
-}
-
 /** The card's heading, "8× Constructor" (a single machine has no count). */
 export const nodeTitle = (node: Pick<PlannerNode, "name" | "count">) => cut(node.count > 1 ? `${node.count}× ${node.name}` : node.name, MAX_TITLE_CHARS);
 
-/**
- * The card's body lines after the title: recipe, up to two outputs (actual over max), a loop marker; a long one wraps. Never
- * empty. `recipeLines` is how many leading lines are the recipe (drawn muted).
- */
-export function nodeBody(node: PlannerNode): { lines: string[]; recipeLines: number } {
-  const recipe = wrapText(node.recipe ?? "No recipe");
-  const lines = [...recipe];
-  if (node.products.length === 0) lines.push("No output data");
-  else {
-    for (const rate of node.products.slice(0, MAX_OUTPUT_LINES)) lines.push(...wrapText(keepFigures(outputLine(rate))));
-    const more = node.products.length - MAX_OUTPUT_LINES;
-    if (more > 0) lines.push(`+${more} more ${more === 1 ? "output" : "outputs"}`);
-  }
-  if (node.loop) lines.push("In a loop");
-  return { lines, recipeLines: recipe.length };
-}
+/** Longest summary line a card prints (the full words are in its tooltip, its keyboard name and the side panel). */
+export const MAX_SUMMARY_CHARS = 26;
+/** What a building with no name is called, so no card, tooltip or button name is ever empty. */
+export const UNKNOWN_BUILDING = "Unknown building";
 
-export const nodeBodyLines = (node: PlannerNode): string[] => nodeBody(node).lines;
+/** A name that is never blank: the given one, else the fallback. */
+export const nameOr = (name: string | null | undefined, fallback: string): string => (name === null || name === undefined || name.trim() === "" ? fallback : name);
+
+/** A node whose name came blank gets its class name, else "Unknown building", so no title, label or heading is ever empty. */
+export const withName = <T extends Pick<PlannerNode, "name" | "className">>(node: T): T => (node.name.trim() === "" ? { ...node, name: nameOr(node.className, UNKNOWN_BUILDING) } : node);
+
+/** One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the maximum is in the tooltip. */
+export const productSummary = (rate: PlannerRate): string => cut(`${nameOr(rate.name, rate.className)} · ${formatAmount(rate.currentPerMinute)}${rate.unit === "m3/min" ? " m³" : ""}/min`, MAX_SUMMARY_CHARS);
+
+/** The one line a group's card prints: its main product and rate, else "No output data". Never empty. */
+export const nodeSummary = (node: Pick<PlannerNode, "products">): string => (node.products.length === 0 ? "No output data" : productSummary(node.products[0]));
+
+/**
+ * Everything a group's card no longer prints, in full and unwrapped: the recipe, every output (actual over max), a loop
+ * marker. The tooltip, the keyboard name and the side panel all read these.
+ */
+export function nodeFacts(node: PlannerNode): { recipe: string; outputs: string[]; loop: boolean } {
+  return { recipe: nameOr(node.recipe, "No recipe"), outputs: node.products.length === 0 ? ["No output data"] : node.products.map(outputLine), loop: node.loop };
+}
 
 /**
  * An edge's label on the canvas (ADR-0050 Decision 2): the item, then the rate in the table's words ("about" for an

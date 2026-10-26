@@ -6,6 +6,7 @@ import { useSelectedServer } from "../../servers/ServerContext";
 import { BottleneckBadge } from "../BottleneckBadge";
 import { groupLabel, nodeFindings, stateCountsText } from "../plannerText";
 import { buildingIconUrl } from "./buildingIcons";
+import { nodeFacts, withName } from "./graphModel";
 import { joinMachines } from "./panelJoin";
 
 /** Machines listed at most; a group can hold a thousand and the page is not the place to scroll them all. */
@@ -19,11 +20,14 @@ export const PANEL_MAX_MACHINES = 100;
 export function GroupPanel({
   id,
   node,
+  facts = [],
   findings,
   onClose,
 }: {
   id: string;
   node: PlannerNode;
+  /** The factory view's further words for the group: its share split, where it stands, its storage chips. */
+  facts?: readonly string[];
   findings: readonly Bottleneck[] | undefined;
   onClose: () => void;
 }) {
@@ -39,6 +43,8 @@ export function GroupPanel({
   const joined = factory.data ? joinMachines(node, factory.data.data.buildings) : null;
   const shown = joined?.machines.slice(0, PANEL_MAX_MACHINES) ?? [];
   const icon = buildingIconUrl(node.className);
+  const { recipe, outputs, loop } = nodeFacts(node);
+  const label = groupLabel(withName(node));
 
   return (
     <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="grid content-start gap-2 rounded-card border border-line p-4">
@@ -46,7 +52,7 @@ export function GroupPanel({
         <div className="flex min-w-0 items-center gap-2">
           {icon !== undefined && <img src={icon} alt="" width={64} height={64} className="size-building-icon shrink-0 rounded-card bg-icon-chip" />}
           <h5 id={`${id}-heading`} ref={heading} tabIndex={-1} className="m-0 break-words">
-            {groupLabel(node)}
+            {label}
           </h5>
         </div>
         <button type="button" onClick={onClose} className="min-h-touch shrink-0">
@@ -58,15 +64,33 @@ export function GroupPanel({
         {findings !== undefined && (
           <>
             {" · "}
-            <BottleneckBadge count={nodeFindings(node, findings).length} what={groupLabel(node)} />
+            <BottleneckBadge count={nodeFindings(node, findings).length} what={label} />
           </>
         )}
       </p>
+      {/* What the card no longer prints: the recipe, every output, the loop marker and the factory view's further words. */}
+      <section aria-label={`About ${label}`} className="grid gap-1 text-sm">
+        <p className="m-0">
+          <span className="text-muted">Recipe: </span>
+          {recipe}
+        </p>
+        <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
+          {outputs.map((o) => (
+            <li key={o}>{o}</li>
+          ))}
+        </ul>
+        {loop && <p className="m-0">In a loop</p>}
+        {facts.map((f) => (
+          <p key={f} className="m-0">
+            {f}
+          </p>
+        ))}
+      </section>
       {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
       {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}
       {joined && (
         <>
-          <ul aria-label={`Machines in ${groupLabel(node)}`} className="m-0 grid list-none gap-2 p-0">
+          <ul aria-label={`Machines in ${label}`} className="m-0 grid list-none gap-2 p-0">
             {shown.map((m) => (
               <li key={m.id} className="grid gap-0.5 break-words border-b border-line pb-2 text-sm">
                 <span className="font-semibold">{m.name}</span>

@@ -1,12 +1,12 @@
 import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
-import { siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
+import { groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
-import { nodeBody, nodeTitle } from "./graphModel";
 import { GLYPH_SIZE } from "./transportModes";
 
-// Sizes are SVG user units, tied to the canvas's text classes (title `text-base` 16 px semibold, body lines and edge
-// labels `text-sm` 14 px). The title's baseline is TITLE_H down from the card's top, each line LINE_H below the last.
+// Sizes are SVG user units, tied to the canvas's text classes (a factory's name and the "×N" badge `text-base` 16 px
+// semibold, body lines and edge labels `text-sm` 14 px). A card is icon-first: the building's icon at the top-left with
+// the "×N" count beside it, then its lines (LINE_H each, the baseline of line i at `cardLineY(i)`).
 export const CHAR_W_TITLE = 9.2;
 export const CHAR_W_BODY = 7.7;
 export const NODE_PAD_X = 10;
@@ -14,12 +14,24 @@ export const NODE_PAD_Y = 5;
 /** The upstream pill (collapse upstream) straddles a card's bottom edge: its height, and the room a card keeps for its upper half. */
 export const PILL_H = 24;
 export const PILL_RESERVE = PILL_H / 2 + 2;
-export const TITLE_H = 24;
 export const LINE_H = 20;
 export const NODE_MIN_W = 100;
-/** The building icon on a card: a square at the card's top-left, as tall as the title row, and the gap before the title. */
-export const BUILDING_ICON_SIZE = 18;
-export const BUILDING_ICON_GAP = 3;
+/** The building icon on a card: a square at the card's top-left (`ICON_TOP` from its top), and the gap before the count badge. */
+export const BUILDING_ICON_SIZE = 40;
+export const BUILDING_ICON_GAP = 8;
+export const ICON_TOP = 8;
+/** The "×N" count badge beside the icon: its height and the padding either side of its text. */
+export const COUNT_BADGE_H = 24;
+export const COUNT_BADGE_PAD = 8;
+/** The gap between the icon row and the first line. */
+const LINES_GAP = 4;
+/** Where the lines start, and how far a line's baseline sits above its row's bottom. */
+const LINES_TOP = ICON_TOP + BUILDING_ICON_SIZE + LINES_GAP;
+const BASELINE_UP = 5;
+/** The baseline of a card's line `i`. */
+export const cardLineY = (i: number): number => LINES_TOP + LINE_H * (i + 1) - BASELINE_UP;
+/** The width of the "×N" badge for a count. */
+export const countBadgeWidth = (count: number): number => `×${count}`.length * CHAR_W_TITLE + 2 * COUNT_BADGE_PAD;
 export const LABEL_H = 18;
 /** One line of an edge label (`text-sm` 14 px). */
 export const LABEL_LINE_H = 16;
@@ -44,11 +56,8 @@ export interface LaidNode {
   height: number;
   title: string;
   lines: string[];
-  /** How many leading `lines` are drawn muted (the recipe, or where a factory stands). */
-  recipeLines: number;
-  /** The building's icon, when its class has one; the title then starts `titleX` from the card's left. */
+  /** The building's icon, when its class has one; the card draws its kind's glyph otherwise. */
   iconUrl: string | undefined;
-  titleX: number;
   card: Card;
 }
 
@@ -94,29 +103,29 @@ export interface SiteLayout {
   height: number;
 }
 
-type CardSize = Pick<LaidNode, "width" | "height" | "title" | "lines" | "recipeLines" | "iconUrl" | "titleX">;
+type CardSize = Pick<LaidNode, "width" | "height" | "title" | "lines" | "iconUrl">;
 
-/** A card's size from its text: as wide as its longest line, as tall as its lines. */
+/** Whether a line is drawn as a heading (`text-base`, semibold): a factory card's name. */
+export const isHeadingLine = (card: Pick<Card, "kind">, i: number): boolean => card.kind === "factory" && i === 0;
+
+/** A card's size: as wide as its icon row or its longest line, as tall as the icon row and its lines. */
 export function cardSize(card: Card): CardSize {
   const iconUrl = card.className === undefined ? undefined : buildingIconUrl(card.className);
-  const titleShift = iconUrl === undefined ? 0 : BUILDING_ICON_SIZE + BUILDING_ICON_GAP;
-  const text = Math.max(card.title.length * CHAR_W_TITLE + titleShift, ...card.lines.map((l) => l.length * CHAR_W_BODY));
+  const row = BUILDING_ICON_SIZE + (card.count === undefined ? 0 : BUILDING_ICON_GAP + countBadgeWidth(card.count));
+  const text = Math.max(row, ...card.lines.map((l, i) => l.length * (isHeadingLine(card, i) ? CHAR_W_TITLE : CHAR_W_BODY)));
   return {
     title: card.title,
     lines: card.lines,
-    recipeLines: card.mutedLines,
     iconUrl,
-    titleX: NODE_PAD_X + titleShift,
     width: Math.max(NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
     // A card with an upstream pill makes room below its text for the pill's upper half.
-    height: Math.ceil(TITLE_H + card.lines.length * LINE_H + 2 * NODE_PAD_Y + (card.upstream === undefined ? 0 : PILL_RESERVE)),
+    height: Math.ceil(LINES_TOP + card.lines.length * LINE_H + NODE_PAD_Y + (card.upstream === undefined ? 0 : PILL_RESERVE)),
   };
 }
 
 /** A group's card size, from the group alone. */
 export function nodeSize(node: PlannerNode): CardSize {
-  const { lines, recipeLines } = nodeBody(node);
-  return cardSize({ key: node.key, kind: "group", nodeKeys: [node.key], title: nodeTitle(node), lines, mutedLines: recipeLines, className: node.className, label: "", loop: false, frame: undefined, upstream: undefined, bubbleKey: undefined });
+  return cardSize(groupCard(node));
 }
 
 /** The estimated width of an edge label's text. */

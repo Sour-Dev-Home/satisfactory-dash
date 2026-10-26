@@ -44,9 +44,9 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await expect.poll(() => scaleOf(svg)).toBeCloseTo(fitted, 5);
 
   // The item filter lights the item's line and says how many groups it reached.
-  await page.getByLabel("Item").selectOption({ label: "Iron Ore" });
+  await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ore" });
   await expect(page.getByRole("status")).toContainText("groups carry or feed this item");
-  await page.getByLabel("Item").selectOption({ label: "All items" });
+  await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "All items" });
   await expect(page.getByRole("status")).toHaveCount(0);
 
   // The group panel: Enter on a group's button opens it, Escape closes it and returns focus to the group.
@@ -55,7 +55,7 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.keyboard.press("Enter");
   const panel = page.getByRole("complementary", { name: /^8× Constructor, Iron Plate/ });
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole("listitem")).toHaveCount(8);
+  await expect(panel.getByRole("list", { name: /^Machines in / }).getByRole("listitem")).toHaveCount(8);
   await expect(panel.getByText("Underfed · Clock 150%")).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Escape");
@@ -64,9 +64,9 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
 
   // The same panel by pointer: click the card in the picture, after Fit to view (the pans above moved it out of
   // sight, and the fit no longer shrinks the drawing below a readable zoom; it starts at the left, the extractors).
-  // The card's drawn name, not its <title> tooltip (same words).
+  // The card by its tooltip words (it prints an icon, a count and one line).
   await page.getByRole("button", { name: "Fit to view" }).click();
-  await svg.locator("text", { hasText: /^Miner Mk\.2$/ }).click();
+  await svg.locator("g[data-card]", { has: page.locator("title", { hasText: /^Miner Mk\.2\./ }) }).click();
   await expect(page.getByRole("complementary", { name: "Miner Mk.2" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("complementary")).toHaveCount(0);
@@ -122,10 +122,10 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   await page.getByRole("button", { name: "Graph" }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
-  await page.getByLabel("Item").selectOption({ label: "Iron Ingot" });
+  await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
   await expect(page.getByRole("status")).toContainText("4 of 5 groups carry or feed this item");
   // The recycler (its card) and nothing else of the cards is faded; the edges that miss the item are too.
-  await expect(svg.locator("g.opacity-graph-dim", { hasText: "Iron Plate Recycle" }).first()).toBeAttached();
+  await expect(svg.locator("g.opacity-graph-dim", { has: page.locator("title", { hasText: "Iron Plate Recycle" }) }).first()).toBeAttached();
   expect(await svg.locator("g.opacity-graph-dim").count()).toBeGreaterThan(0);
 });
 
@@ -200,7 +200,7 @@ test.describe("the factory canvas", () => {
     await expect(svg.locator('[data-upstream="collapsed"]')).toHaveCount(0);
 
     await page.getByRole("button", { name: "Storage detail" }).click();
-    await expect(svg.getByText("1 flow to storage")).toBeVisible();
+    await expect(page.getByRole("button", { name: /1 flow to storage/ })).toHaveCount(1);
     expect(await page.evaluate(() => window.localStorage.getItem("planner.storageDetail"))).toBe("off");
     await expectNoAxeViolations(page, testInfo);
   });
@@ -213,7 +213,7 @@ test.describe("the factory canvas", () => {
     await page.getByRole("button", { name: "Collapse 5× Constructor, Iron Plate, tree 1 of 2" }).focus();
     await page.keyboard.press("Enter");
     await expect(svg.locator("[data-frame]")).toHaveCount(0);
-    await expect(svg.getByText("2 groups · tree 1 of 2")).toBeVisible();
+    await expect(page.getByRole("button", { name: /2 groups · tree 1 of 2/ })).toHaveCount(1);
     await page.getByRole("button", { name: "5× Constructor, Iron Plate, tree 1 of 2" }).focus();
     await page.keyboard.press("Enter");
     await expect(svg.locator("[data-frame]")).toHaveCount(1);
