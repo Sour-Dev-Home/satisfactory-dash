@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerEdge, type PlannerNode, type PlannerSite, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphTwoSites } from "@satisfactory-dash/shared/fixtures";
 import { productionGraph as demoProductionGraph } from "../../demo/world";
-import { LABEL_GAP, LABEL_H, LINE_H, NODE_SEP, RANK_SEP, TITLE_H, labelPlacement, layoutSite, nodeSize } from "./layoutSite";
-import { edgeLabel } from "./graphModel";
+import { BUILDING_ICON_SIZE, LABEL_GAP, LABEL_H, LINE_H, NODE_PAD_X, NODE_SEP, RANK_SEP, cardLineY, countBadgeWidth, labelPlacement, layoutSite, nodeSize } from "./layoutSite";
+import { MAX_SUMMARY_CHARS, edgeLabel } from "./graphModel";
 import { fitView } from "./viewport";
 
 const graph: ProductionGraph = ProductionGraphSchema.parse(productionGraphTwoSites.data);
@@ -72,23 +72,32 @@ describe("layoutSite", () => {
     expect(layoutSite(big.site, big.graph)).toEqual(layoutSite(big.site, big.graph));
   });
 
-  it("shifts the title right of a known building's icon, and leaves an unknown class as it was", () => {
+  it("gives a known building its icon and an unknown class none (the card then draws its kind's glyph), at the same size", () => {
     const known = nodeSize({ ...graph.nodes[0], className: "Build_ConstructorMk1_C" });
     const unknown = nodeSize({ ...graph.nodes[0], className: "Build_SomethingNew_C" });
     expect(known.iconUrl).toBe("/game-assets/buildings/constructor.webp");
-    expect(known.titleX).toBeGreaterThan(unknown.titleX);
     expect(unknown.iconUrl).toBeUndefined();
     expect(known.height).toBe(unknown.height);
+    expect(known.width).toBe(unknown.width);
   });
 
-  it("sizes a card from its text: longer text is wider, more lines are taller, and it is capped", () => {
-    const [short, long] = [graph.nodes[0], { ...graph.nodes[2], recipe: "A".repeat(200) }];
+  it("is icon-first and compact: a group card is the icon row and one line, under 90 units tall", () => {
+    const { height, lines } = nodeSize(graph.nodes[0]);
+    expect(lines).toHaveLength(1);
+    expect(BUILDING_ICON_SIZE).toBe(40);
+    expect(height).toBeLessThan(90);
+    expect(height).toBeGreaterThan(BUILDING_ICON_SIZE + LINE_H);
+  });
+
+  it("sizes a card from its one line and its count badge: longer text is wider, but the line is capped", () => {
+    const [short, long] = [graph.nodes[0], { ...graph.nodes[2], products: [{ ...graph.nodes[2].products[0], name: "A".repeat(200) }] }];
     const a = nodeSize(short);
     const b = nodeSize(long);
     expect(b.width).toBeGreaterThan(a.width);
-    expect(b.lines[0].length).toBeLessThanOrEqual(34);
-    const withLoop = nodeSize({ ...short, loop: true });
-    expect(withLoop.height).toBeGreaterThan(nodeSize({ ...short, loop: false }).height);
+    expect(b.lines[0].length).toBeLessThanOrEqual(MAX_SUMMARY_CHARS);
+    // The recipe and the loop marker no longer make a card taller.
+    expect(nodeSize({ ...short, loop: true }).height).toBe(nodeSize({ ...short, loop: false }).height);
+    expect(nodeSize({ ...short, count: 1234 }).width).toBeGreaterThanOrEqual(NODE_PAD_X * 2 + BUILDING_ICON_SIZE + countBadgeWidth(1234));
   });
 
   it("keeps cards from overlapping", () => {
@@ -131,7 +140,7 @@ describe("the compact metrics and label placement", () => {
     expect(NODE_SEP).toBe(20);
     const node = graph.nodes[0];
     const { height, lines } = nodeSize(node);
-    expect(height).toBe(TITLE_H + lines.length * LINE_H + 10);
+    expect(height).toBe(cardLineY(lines.length - 1) + 5 + 5);
   });
 
   it("puts a label just above the middle of a level edge, clear of the line by the gap", () => {

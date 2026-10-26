@@ -4,7 +4,7 @@ import { runAgent } from "./agentRunner.js";
 import { BackendClient, BackendError } from "./backendClient.js";
 import type { FetchLike } from "./backendClient.js";
 import { DpapiError } from "./dpapi.js";
-import type { Dpapi } from "./dpapi.js";
+import type { SecretBox } from "./secretbox.js";
 import { connectToGame } from "./gameReader.js";
 import type { GameConnectionInput } from "./gameReader.js";
 import { clearHalted, readHalted, writeHalted } from "./halted.js";
@@ -40,7 +40,7 @@ export interface CliDeps {
   env: NodeJS.ProcessEnv;
   out: (line: string) => void;
   err: (line: string) => void;
-  dpapi: Dpapi;
+  dpapi: SecretBox;
   /** A hidden prompt: the answer is never echoed. */
   prompt: (question: string) => Promise<string>;
   fetch?: FetchLike;

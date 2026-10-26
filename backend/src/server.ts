@@ -64,6 +64,7 @@ import {
 } from "./modules/alerts/index.js";
 import {
   createAgentTelemetryServices,
+  createDesignationBuildings,
   createHistoryMaintenance,
   createTelemetryRouters,
   createTelemetryServices,
@@ -90,7 +91,7 @@ import {
 } from "./modules/agents/index.js";
 import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
 import { createMetricsRouter, createMetricsService } from "./modules/metrics/index.js";
-import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createWorldRoutes } from "./modules/map/index.js";
+import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
@@ -520,7 +521,9 @@ export const app = createApp({
     ...(database ? [createMembersRouter(createDbMemberSelfService(database.pool))] : []),
     // ADR-0038 M3 (#353): after the servers router, same as every other /servers/:serverId route.
     createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
-    ...createTelemetryRouters(directory, database ? { db: database.pool } : undefined),
+    // ADR-0055 PR 9: Planner designations. Buildings come from the latest snapshot through a port (map never imports telemetry).
+    createDesignationRoutes(directory, database ? { store: createDbDesignationStore(database.pool), buildings: createDesignationBuildings(directory) } : undefined),
+    ...createTelemetryRouters(directory, database ? { db: database.pool, designations: createDbDesignationStore(database.pool) } : undefined),
     ...createSettingsRouters(directory),
     // ADR-0027 PR 7b: the alerts API. After the servers router (its membership check covers these paths), and only with a
     // database (alerts live in it).

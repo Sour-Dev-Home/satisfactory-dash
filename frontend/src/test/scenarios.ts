@@ -62,6 +62,8 @@ import {
   productionGraphEmpty,
   productionGraphFactories,
   productionGraphTwoSites,
+  plannerDesignationDeleteResponse,
+  plannerDesignationIronLine,
   managedServersWithAgent,
   renameAgentServerResponse,
   managedServersEmpty,
@@ -120,6 +122,7 @@ import {
   listSelfServeOff,
   listSelfServeOn,
 } from "./selfServeMocks";
+import { compatPolicy, compatQuiet, reporting } from "./updateMocks";
 import { approved, errorPairingForbidden, errorPairingNotFound, errorPairingRateLimited, lookedUp } from "./pairingMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
@@ -152,6 +155,11 @@ export const ROUTES = {
   bottlenecks: endpoints.bottlenecks,
   // ADR-0050: the Planner page (task 5).
   productionGraph: endpoints.productionGraph,
+  // ADR-0055 PR 10a: the player's designated factories, and their writes.
+  plannerDesignations: endpoints.plannerDesignations.list,
+  plannerDesignationCreate: endpoints.plannerDesignations.create,
+  plannerDesignationUpdate: endpoints.plannerDesignations.update,
+  plannerDesignationRemove: endpoints.plannerDesignations.remove,
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
@@ -192,6 +200,8 @@ export const ROUTES = {
   agentStatus: endpoints.agent.status,
   agentEnrollmentCode: endpoints.agent.enrollmentCode,
   agentRevoke: endpoints.agent.revoke,
+  // ADR-0057 Decision 7: the version policy the update banners compare with.
+  compat: endpoints.compat,
   // ADR-0027 PR 9c: the owner/admin writes (same paths as the reads, told apart by method).
   alertRuleCreate: endpoints.alerts.rules.create,
   alertRuleUpdate: endpoints.alerts.rules.update,
@@ -264,6 +274,10 @@ const BASE: Record<RouteKey, MockResponse> = {
   bottlenecks: ok(bottlenecksBeltLevel),
   // Two sites, one machine on no conveyor yet (beltData "stale"), a loop, a mixed belt and an estimated edge.
   productionGraph: ok(productionGraphTwoSites),
+  plannerDesignations: ok({ designations: [], matches: [] }),
+  plannerDesignationCreate: { status: 201, body: plannerDesignationIronLine },
+  plannerDesignationUpdate: ok(plannerDesignationIronLine),
+  plannerDesignationRemove: ok(plannerDesignationDeleteResponse),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapLive: ok(mapLiveResponse),
@@ -295,6 +309,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   agentStatus: ok(agentStatusNotEnrolled),
   agentEnrollmentCode: { status: 201, body: agentEnrollmentCodeResponse },
   agentRevoke: ok(agentRevokeResponse),
+  // Nothing newer than the fixtures' agent, so no state but the update ones shows a version banner.
+  compat: ok(compatQuiet),
   // Each write answers as the backend would; the page re-reads or patches its cache from these.
   alertRuleCreate: { status: 201, body: alertRuleCreated },
   alertRuleUpdate: ok(alertRuleUpdatedPresetDisabled),
@@ -381,6 +397,71 @@ const plannerFactoriesTwoTrees = (() => {
         ...data.factories!.slice(1),
       ],
       sites: data.sites.map((s) => (s.nodeKeys.includes(first.key) ? { ...s, nodeKeys: [...s.nodeKeys, sibling.key, second.key] } : s)),
+    },
+  };
+})();
+
+/**
+ * ADR-0055 PR 10a: the factories fixture with one id per machine (its own is one per group) and a building for each at the
+ * group's place, the Iron Rod factory designated "Rod works" by two machines it holds and one it no longer finds, and the
+ * viewer an owner. The Iron Plate factory stays automatic, for the suggestions and the "Designate selected" form.
+ */
+const plannerDesignated = (() => {
+  const base = ProductionGraphResponseSchema.parse(productionGraphFactories);
+  const nodes = base.data.nodes.map((n) => ({ ...n, machineIds: Array.from({ length: n.count }, (_, i) => `${n.className}|${n.key}|${i}`) }));
+  const buildings = nodes.flatMap((n) =>
+    n.machineIds.map((id, i) => ({
+      ...factoryMixed.data.buildings[0],
+      id,
+      name: n.name,
+      className: n.className,
+      location: { xM: n.at.x + i * 4, yM: n.at.y, zM: 0, rotationDeg: 0 },
+    })),
+  );
+  const rod = nodes.find((n) => n.key === "Build_ConstructorMk1_C|Iron Rod|1250|100")!;
+  const live = rod.machineIds.map((id, i) => ({ id, c: rod.className, x: rod.at.x + i * 4, y: rod.at.y }));
+  const gone = { id: "Build_ConstructorMk1_C_retired", c: rod.className, x: 4000, y: 4000 };
+  const id = "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10";
+  return {
+    servers: ok(serversRoleOwner),
+    productionGraph: ok({
+      ...productionGraphFactories,
+      data: {
+        ...base.data,
+        nodes,
+        factories: base.data.factories!.map((f) => (f.name === "Iron Rod factory" ? { ...f, name: "Rod works", designationId: id, sideProducts: [] } : f)),
+      },
+    }),
+    factory: ok({ ...factoryMixed, data: { ...factoryMixed.data, buildings, backedUpCount: 0, stateCounts: {} } }),
+    plannerDesignations: ok({
+      designations: [
+        { id, name: "Rod works", mode: "core", members: [...live, gone], createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-22T18:30:00.000Z" },
+      ],
+      matches: [{ designationId: id, matched: live.length, missing: 1 }],
+    }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
+
+/**
+ * ADR-0055 PR 8: the factories fixture with one transport of every mode the canvas has a glyph for (the train is the
+ * fixture's own; only the train and the Depot have readers today, so the truck and the drone are synthetic), between the
+ * Iron Plate factory's groups, so the canvas shows all four icons and the legend lists them.
+ */
+const plannerFactoriesTransports = (() => {
+  const data = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
+  const keyOf = (className: string) => data.nodes.find((n) => n.className === className)!.key;
+  const train = data.transports![0];
+  const via = (mode: string, from: string, to: string, routeName: string) => ({ ...train, mode, from, to, routeName, carriers: 1 });
+  return {
+    ...productionGraphFactories,
+    data: {
+      ...data,
+      transports: [
+        train,
+        via("truck", keyOf("Build_SmelterMk1_C"), keyOf("Build_ConstructorMk1_C"), "Plate Run"),
+        via("drone", keyOf("Build_ConstructorMk1_C"), keyOf("Build_StorageContainerMk1_C"), "Courier"),
+        via("depot", keyOf("Build_TrainStation_C"), keyOf("Build_SmelterMk1_C"), "Upload"),
+      ],
     },
   };
 })();
@@ -625,6 +706,9 @@ export const SCENARIOS = {
   // to the sink and plates into storage), and the same with a second Iron Plate tree in one of them.
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
+  "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
+  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate or suggest.
+  "planner-designations": plannerDesignated,
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {
@@ -721,6 +805,19 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // ADR-0057 Decision 7: the version banners. An agent behind the newest release; the mod behind it (applies at the next
+  // restart); a version older than minSupported; a mod inside an advisory's range; and an agent below minSafe with no advisory.
+  "update-agent": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.3.5+ec24244.20261025")), compat: ok(compatPolicy) },
+  "update-mod": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("mod/1.1.5")), compat: ok(compatPolicy) },
+  "update-unsupported": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.1.5")), compat: ok({ ...compatPolicy, agent: { ...compatPolicy.agent, minSafe: "0.1.0" } }) },
+  "update-advisory": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("mod/1.0.5")), compat: ok(compatPolicy) },
+  "update-servers": {
+    servers: operatorSingle,
+    managedServers: ok(managedServersWithAgent),
+    agentStatus: ok(reporting("0.3.5")),
+    compat: ok(compatPolicy),
+  },
+  "update-min-safe": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.2.5")), compat: ok(compatPolicy) },
   // ADR-0046 (#529), Settings → Your server. Self-serve on for a player with no server of their own;
   // off; with no server at all (the add form is the screen); each refusal of "Add your server"; and the
   // owner of an enrolled and of a pending self-serve server.

@@ -52,6 +52,7 @@ const LAN_REFUSED = () => error(422, "lan_requires_cert_pinning", "Only loopback
 // Server management (ADR-0030) in the demo: the screens work and the connection test is simulated
 // (nothing is contacted), but nothing is saved, and a LAN server is refused like the real backend.
 const NOT_SAVED = () => error(403, "forbidden", "The demo doesn't change servers.");
+const NO_DESIGNATIONS = () => error(403, "forbidden", "The demo doesn't save designated factories.");
 const TEST_PASSED: TestConnectionResponse = { ok: true, api: { ok: true }, frm: { ok: true } };
 
 async function bodyOf(request: Request): Promise<Record<string, unknown>> {
@@ -166,6 +167,11 @@ export const demoHandlers = [
   get(endpoints.bottlenecks.route, ({ params }) => guarded(params, () => Response.json(world.bottlenecks(demoNow())))),
   // ADR-0050: the production planner, a made-up two-site world over the demo factory's machines.
   get(endpoints.productionGraph.route, ({ params }) => guarded(params, () => Response.json(world.productionGraph(demoNow())))),
+  // ADR-0055 PR 10a: the planner's designations. One is made up (the plastic line); like server changes, none is saved.
+  get(endpoints.plannerDesignations.list.route, ({ params }) => guarded(params, () => Response.json(world.plannerDesignations()))),
+  post(endpoints.plannerDesignations.create.route, ({ params }) => guarded(params, NO_DESIGNATIONS)),
+  put(endpoints.plannerDesignations.update.route, ({ params }) => guarded(params, NO_DESIGNATIONS)),
+  del(endpoints.plannerDesignations.remove.route, ({ params }) => guarded(params, NO_DESIGNATIONS)),
   // ADR-0038 M5: the map's world layers, one made-up reading each. An unknown layer is a 404 like the real route.
   get(endpoints.map.worldLayer.route, ({ params }) =>
     guarded(params, () => {
@@ -209,6 +215,8 @@ export const demoHandlers = [
 
   // The game PC agent (ADR-0031 PR 7). A code can be shown; revoking is refused, like server changes.
   get(endpoints.agent.status.route, ({ params }) => guarded(params, () => Response.json(world.agent(demoNow())))),
+  // ADR-0057: the version policy. Made up: the demo's agent (0.1.0) is one release behind, so visitors see "Update available".
+  get(endpoints.compat.route, () => Response.json(world.compat())),
   post(endpoints.agent.enrollmentCode.route, ({ params }) =>
     guarded(params, () => Response.json(world.enrollmentCode(demoNow()), { status: 201 })),
   ),

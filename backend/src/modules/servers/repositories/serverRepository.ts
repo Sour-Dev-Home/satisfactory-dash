@@ -213,10 +213,11 @@ const DELETE_HISTORY = [
   // #516 (ADR-0045 "Retention"): the saved world layers and the push opt-ins also belong to the server, so a revived
   // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
   // server_members and server_connections above; telemetry (5 tables), alerts (rules and alert_state, alert_events,
-  // server_mutes, destinations and outbox, push_optins), agents (4 tables) and map.world_layers here. The audit trail
+  // server_mutes, destinations and outbox, push_optins), agents (4 tables), map.world_layers and map.factory_designations here. The audit trail
   // keeps its server_id on purpose. metrics.series_hourly has no server_id column, but a `server` label holds
   // the public id until the 90-day purge (a random id, not personal on its own; ADR-0056 section 5).
   "DELETE FROM map.world_layers WHERE server_id = $1",
+  "DELETE FROM map.factory_designations WHERE server_id = $1", // ADR-0055 PR 9: the player's named sets of buildings
   "DELETE FROM alerts.push_optins WHERE server_id = $1",
   // ADR-0052 PR 2: the cached last snapshot is one row a server; a soft delete does not fire the FK cascade.
   "DELETE FROM telemetry.latest_snapshots WHERE server_id = $1",

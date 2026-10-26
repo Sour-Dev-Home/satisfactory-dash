@@ -593,3 +593,58 @@ describe("production graph: logical factories (ADR-0055 PR 6b)", () => {
     expect(g.topologyHash).toBeUndefined();
   });
 });
+
+describe("production graph: designations (ADR-0055 Decision 5)", () => {
+  const D1 = "11111111-1111-4111-8111-111111111111";
+  const D2 = "22222222-2222-4222-8222-222222222222";
+  const des = (pairs: [string, string, string][]) => new Map(pairs.map(([id, did, name]) => [id, { id: did, name }]));
+  const plateNodes = (g: { nodes: PlannerNode[] }) => g.nodes.filter((n) => n.recipe === "Iron Plate");
+
+  it("with no designations (absent, empty or matching nothing) the result is byte-identical", () => {
+    const { b, e } = manifold(4);
+    const base = JSON.stringify(buildProductionGraphWithStats(b, e).graph);
+    expect(JSON.stringify(buildProductionGraphWithStats(b, e, [], null, new Map()).graph)).toBe(base);
+  });
+
+  it("splits a group along a designation, and a group never mixes two designations", () => {
+    const { b, e } = manifold(4);
+    const g = buildProductionGraphWithStats(b, e, [], null, des([["con0", D1, "Plates A"], ["con1", D1, "Plates A"], ["con2", D2, "Plates B"]])).graph;
+    const sets = plateNodes(g).map((n) => n.machineIds.join(","));
+    expect(sets.sort()).toEqual(["con0,con1", "con2", "con3"]);
+    expect(ProductionGraphSchema.parse(g)).toBeTruthy();
+  });
+
+  it("sets designationId and name on one factory per designation, holding exactly its nodes", () => {
+    const { b, e } = manifold(4);
+    const g = buildProductionGraphWithStats(b, e, [], null, des([["con0", D1, "Plates A"], ["con1", D1, "Plates A"], ["con2", D2, "Plates B"]])).graph;
+    const f1 = g.factories?.find((f) => f.designationId === D1);
+    const f2 = g.factories?.find((f) => f.designationId === D2);
+    // 2 designated plate machines plus the shared smelter, whose largest share (2 of 4) is this designation.
+    expect(f1).toMatchObject({ name: "Plates A", machineCount: 3 });
+    expect(f2).toMatchObject({ name: "Plates B", machineCount: 1 });
+    expect(g.factories?.filter((f) => f.designationId !== null)).toHaveLength(2);
+    const a = plateNodes(g).find((n) => n.machineIds.join() === "con0,con1");
+    expect(a?.factoryKey).toBe(f1?.key);
+    // The undesignated plate machine is never pulled into a designation.
+    const free = plateNodes(g).find((n) => n.machineIds.join() === "con3");
+    expect(free?.factoryKey).not.toBe(f1?.key);
+    expect(free?.factoryKey).not.toBe(f2?.key);
+  });
+
+  it("a designated factory still pulls shared upstream in by share", () => {
+    const { b, e } = manifold(4);
+    const g = buildProductionGraphWithStats(b, e, [], null, des([["con0", D1, "Plates A"]])).graph;
+    const smelter = g.nodes.find((n) => n.className === SMELTER);
+    const f1 = g.factories?.find((f) => f.designationId === D1);
+    expect(smelter?.shares?.some((s) => s.factoryKey === f1?.key)).toBe(true);
+  });
+
+  it("a designation whose machines are all missing produces no factory", () => {
+    const { b, e } = manifold(4);
+    const base = JSON.stringify(buildProductionGraphWithStats(b, e).graph);
+    // The route only passes building ids that exist; ids the graph has no machine for change nothing.
+    const g = buildProductionGraphWithStats(b, e, [], null, des([["gone1", D1, "Gone"], ["gone2", D1, "Gone"]])).graph;
+    expect(g.factories?.some((f) => f.designationId === D1)).toBe(false);
+    expect(JSON.stringify(g)).toBe(base);
+  });
+});

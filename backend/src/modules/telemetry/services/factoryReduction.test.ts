@@ -650,3 +650,161 @@ describe("cost", () => {
     }
   });
 });
+
+describe("designations (ADR-0055 Decision 5)", () => {
+  const D1 = "11111111-1111-4111-8111-111111111111";
+  const D2 = "22222222-2222-4222-8222-222222222222";
+  const withDes = (nodes: PlannerNode[], edges: PlannerEdge[], pairs: [string, string, string][]): ReductionResult =>
+    reduceFactories({ nodes, edges, transports: [], snap, designations: new Map(pairs.map(([k, id, name]) => [k, { id, name }])) });
+
+  /** Ore from E feeds R1 and R2; each smelts into a plate machine that outputs to the sink. */
+  const twoLines = () => ({
+    nodes: [
+      extractor("E", "Ore", 200),
+      node("R1", { ing: [["Ore", 100]], prod: [["Ingot", 100]], at: [100, 0] }),
+      node("R2", { ing: [["Ore", 100]], prod: [["Ingot", 100]], at: [0, 100] }),
+      node("P1", { count: 4, ing: [["Ingot", 100]], prod: [["Plate", 80]], at: [200, 0] }),
+      node("P2", { count: 4, ing: [["Ingot", 100]], prod: [["Plate", 80]], at: [0, 200] }),
+      node("Sink", { kind: "consumer", className: SINK_CLASS }),
+    ],
+    edges: [
+      edge("E", "R1", "Ore"),
+      edge("E", "R2", "Ore"),
+      edge("R1", "P1", "Ingot"),
+      edge("R2", "P2", "Ingot"),
+      edge("P1", "Sink", "Plate", "output", "sink"),
+      edge("P2", "Sink", "Plate", "output", "sink"),
+    ],
+  });
+
+  it("changes nothing without designations", () => {
+    const { nodes, edges } = twoLines();
+    const base = run(nodes, edges);
+    expect(reduceFactories({ nodes, edges, transports: [], snap, designations: new Map() })).toEqual(base);
+    expect(base.factories.every((f) => f.designationId === null)).toBe(true);
+  });
+
+  it("fixes designated machines to their factory, which carries the designation id and name", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, edges, [["R1", D1, "My smelters"], ["P1", D1, "My smelters"]]);
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.name).toBe("My smelters");
+    expect(factoryOf(r, "R1")).toBe(f?.key);
+    expect(factoryOf(r, "P1")).toBe(f?.key);
+    expect(f?.nodeKeys).toEqual(expect.arrayContaining(["R1", "P1"]));
+    expect(factoryOf(r, "R2")).not.toBe(f?.key);
+    expect(factoryOf(r, "P2")).not.toBe(f?.key);
+    expect(r.factories.filter((x) => x.designationId === null)).toHaveLength(1);
+    expect(r.stats.unassignedGroups).toBe(0);
+  });
+
+  it("lists as products only what leaves the designation, not its intermediates", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, edges, [["R1", D1, "Plates"], ["P1", D1, "Plates"]]);
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.products.map((p) => p.className)).toEqual(["Plate"]); // R1's ingots feed only P1, inside the designation
+  });
+
+  it("keeps an ingot as a product when it also leaves the designation", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, [...edges, edge("R1", "P2", "Ingot")], [["R1", D1, "Mixed"], ["P1", D1, "Mixed"]]);
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.products.map((p) => p.className).sort()).toEqual(["Ingot", "Plate"]);
+  });
+
+  it("attributes shared remote upstream to a designated factory by share", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, edges, [["R1", D1, "Line one"], ["P1", D1, "Line one"]]);
+    const dKey = r.factories.find((x) => x.designationId === D1)?.key;
+    const shares = r.annotations.get("E")?.shares;
+    expect(shares?.map((s) => s.factoryKey)).toContain(dKey);
+    expect(shares?.length).toBe(2);
+    expect(shares?.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1, 5);
+  });
+
+  it("makes one factory per designation, even for a small one, and never folds it", () => {
+    const { nodes, edges } = twoLines();
+    const r = withDes(nodes, edges, [["R1", D1, "One"], ["R2", D2, "Two"]]);
+    const f1 = r.factories.find((x) => x.designationId === D1);
+    const f2 = r.factories.find((x) => x.designationId === D2);
+    expect(f1?.name).toBe("One");
+    expect(f2?.name).toBe("Two");
+    expect(f1?.key).not.toBe(f2?.key);
+    expect(factoryOf(r, "R1")).toBe(f1?.key);
+    expect(factoryOf(r, "R2")).toBe(f2?.key);
+    expect(r.factories.map((x) => PlannerFactorySchema.safeParse(x).success)).not.toContain(false);
+  });
+
+  it("a designation naming no node produces no factory", () => {
+    const { nodes, edges } = twoLines();
+    const base = run(nodes, edges);
+    const r = withDes(nodes, edges, [["nope", D1, "Ghost"]]);
+    expect(r.factories.some((x) => x.designationId === D1)).toBe(false);
+    expect(r).toEqual(base);
+  });
+});
+
+describe("designations: edge cases (test-hunter)", () => {
+  const D1 = "11111111-1111-4111-8111-111111111111";
+  const D2 = "22222222-2222-4222-8222-222222222222";
+  const des = (pairs: [string, string, string][]) => new Map(pairs.map(([k, id, name]) => [k, { id, name }]));
+
+  it("keeps a designated machine in its factory when it sits in a cycle", () => {
+    const nodes = [
+      extractor("E", "Ore", 100),
+      node("A", { count: 4, ing: [["Ore", 100], ["Loop", 50]], prod: [["Ingot", 100]], at: [0, 0] }),
+      node("B", { count: 4, ing: [["Ingot", 100]], prod: [["Loop", 50], ["Plate", 50]], at: [100, 0] }),
+      node("Sink", { kind: "consumer", className: SINK_CLASS }),
+    ];
+    const edges = [edge("E", "A", "Ore"), edge("A", "B", "Ingot"), edge("B", "A", "Loop"), edge("B", "Sink", "Plate", "output", "sink")];
+    const r = reduceFactories({ nodes, edges, transports: [], snap, designations: des([["A", D1, "Loop head"]]) });
+    const f = r.factories.find((x) => x.designationId === D1);
+    expect(f?.name).toBe("Loop head");
+    expect(factoryOf(r, "A")).toBe(f?.key);
+    expect(r.stats.unassignedGroups).toBe(0);
+    expect(r.factories.map((x) => PlannerFactorySchema.safeParse(x).success)).not.toContain(false);
+  });
+
+  it("ignores a designation on a non-machine node", () => {
+    const nodes = [extractor("E", "Ore", 100), node("R", { count: 4, ing: [["Ore", 100]], prod: [["Ingot", 100]] }), node("Sink", { kind: "consumer", className: SINK_CLASS })];
+    const edges = [edge("E", "R", "Ore"), edge("R", "Sink", "Ingot", "output", "sink")];
+    const base = run(nodes, edges);
+    const r = reduceFactories({ nodes, edges, transports: [], snap, designations: des([["E", D1, "Ore"], ["Sink", D1, "Ore"]]) });
+    expect(r).toEqual(base);
+  });
+
+  it("gives two designations with the same name distinct factories and keys", () => {
+    const nodes = [node("X", { prod: [["Ingot", 10]], at: [0, 0] }), node("Y", { prod: [["Ingot", 10]], at: [500, 0] })];
+    const r = reduceFactories({ nodes, edges: [], transports: [], snap, designations: des([["X", D1, "Same"], ["Y", D2, "Same"]]) });
+    const ds = r.factories.filter((x) => x.designationId !== null);
+    expect(ds).toHaveLength(2);
+    expect(new Set(ds.map((x) => x.key)).size).toBe(2);
+    expect(factoryOf(r, "X")).not.toBe(factoryOf(r, "Y"));
+  });
+
+  it("is deterministic regardless of node order", () => {
+    const build = () => {
+      const nodes = [extractor("E", "Ore", 100), node("R1", { ing: [["Ore", 50]], prod: [["Ingot", 50]], at: [10, 0] }), node("R2", { ing: [["Ore", 50]], prod: [["Ingot", 50]], at: [0, 10] }), node("Sink", { kind: "consumer", className: SINK_CLASS })];
+      const edges = [edge("E", "R1", "Ore"), edge("E", "R2", "Ore"), edge("R1", "Sink", "Ingot", "output", "sink"), edge("R2", "Sink", "Ingot", "output", "sink")];
+      return { nodes, edges };
+    };
+    const a = build();
+    const b = build();
+    b.nodes.reverse();
+    b.edges.reverse();
+    const d = des([["R1", D1, "One"], ["R2", D1, "One"]]);
+    const ra = reduceFactories({ ...a, transports: [], snap, designations: d });
+    const rb = reduceFactories({ ...b, transports: [], snap, designations: d });
+    expect(serialise(rb)).toEqual(serialise(ra));
+    expect(ra.factories.filter((x) => x.designationId === D1)).toHaveLength(1);
+  });
+
+  it("never drops a designated factory for the factory cap", () => {
+    const nodes: PlannerNode[] = [];
+    for (let i = 0; i < 520; i++) nodes.push(node(`M${String(i).padStart(3, "0")}`, { count: 10, prod: [[`Item${i}`, 10]], at: [i * 100, 0] }));
+    nodes.push(node("Tiny", { count: 1, prod: [["Rare", 1]], at: [-5000, 0] }));
+    const r = reduceFactories({ nodes, edges: [], transports: [], snap, designations: des([["Tiny", D1, "Mine"]]) });
+    expect(r.factories.some((x) => x.designationId === D1)).toBe(true);
+    expect(r.stats.droppedFactories).toBeGreaterThan(0);
+  });
+});

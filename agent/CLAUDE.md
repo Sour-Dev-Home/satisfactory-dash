@@ -9,8 +9,10 @@ loopback, pushes snapshots OUT to the backend and runs the commands the dashboar
 - **Imports only** `node:*`, `zod`, `@satisfactory-dash/shared` and `@satisfactory-dash/game-adapter` (bare). No Express,
   database, backend or frontend path, no HTTP library beyond node's `fetch` (`src/boundaries.test.ts`). What the agent
   pulls in is part of what a player must trust.
-- **Secrets**: the agent's credential and the game's tokens live ONLY as DPAPI blobs (`src/store.ts`, `src/dpapi.ts`). A
-  plaintext goes to PowerShell ONLY on stdin, never in an argument or the environment. Tokens are typed at a hidden prompt,
+- **Secrets**: the agent's credential and the game's tokens live ONLY in the platform's store (DPAPI on
+  Windows, a 0600 file in a 0700 state directory elsewhere; `src/store.ts`, `src/secretbox.ts`, `src/dpapi.ts`). The file
+  store refuses a looser file or a symlink with a `chmod 600` hint; `SD_AGENT_SECRET_STORE=dpapi|file` overrides the choice.
+  A DPAPI plaintext goes to PowerShell ONLY on stdin, never in an argument or the environment. Tokens are typed at a hidden prompt,
   never accepted as arguments or read from the environment. A secret that cannot be unprotected is a loud error, never an
   empty value.
 - **Logs** carry codes and counts only (`src/logger.ts` enforces it at runtime): never a secret, a token, a snapshot body or

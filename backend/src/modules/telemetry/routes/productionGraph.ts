@@ -1,7 +1,9 @@
 import { Router } from "express";
 import type { Logger } from "pino";
-import { ProductionGraphResponseSchema, ResourceNodesLayerDataSchema, TrainRoutesLayerDataSchema, endpoints, type ResourceNode, type TrainRouteRecord } from "@satisfactory-dash/shared";
-import { getLatestWorldLayer } from "../../map/index.js";
+import { ProductionGraphResponseSchema, ResourceNodesLayerDataSchema, TrainRoutesLayerDataSchema, endpoints, type FactoryBuilding, type ResourceNode, type TrainRouteRecord } from "@satisfactory-dash/shared";
+import { getLatestWorldLayer, matchDesignations } from "../../map/index.js";
+import type { DesignationStore } from "../../map/index.js";
+import { toDesignationBuildings } from "../services/designationBuildings.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import type { ServerDirectory } from "../../servers/index.js";
 import { resolveServer } from "../../servers/index.js";
@@ -47,6 +49,34 @@ export async function readTrainRoutes(db: Queryable, serverId: string, log?: Pic
 }
 
 /**
+ * ADR-0055 Decision 5: building id -> the designation that holds it, matched against this snapshot. Any failure to read
+ * the designations is an empty map (the graph is then fully automatic, as before); it never fails the graph.
+ */
+export async function readDesignated(
+  store: Pick<DesignationStore, "list"> | undefined,
+  serverId: string,
+  buildings: readonly FactoryBuilding[],
+  log?: Pick<Logger, "warn">,
+): Promise<Map<string, { id: string; name: string }>> {
+  const out = new Map<string, { id: string; name: string }>();
+  if (!store) return out;
+  try {
+    const designations = await store.list(serverId);
+    if (designations.length === 0) return out;
+    const byId = new Map(designations.map((d) => [d.id, d]));
+    for (const m of matchDesignations(designations, toDesignationBuildings(buildings))) {
+      const d = byId.get(m.designationId);
+      if (!d) continue;
+      for (const id of m.buildingIds) out.set(id, { id: d.id, name: d.name });
+    }
+  } catch (err) {
+    log?.warn({ serverId, err: err instanceof Error ? err.message : "unknown" }, "designations could not be read; the production graph is fully automatic");
+    out.clear();
+  }
+  return out;
+}
+
+/**
  * ADR-0050 (production planner), build task 4: the production graph, computed on demand from the server's latest factory
  * snapshot and its stored conveyors layer (plus the resource-nodes layer, ADR-0055 PR 4), exactly like the bottlenecks route (same inputs, same member guard, same 503
  * without a database, no cache: Decision 5). Each request logs one compact line of counts and timing, with no game-server
@@ -62,8 +92,9 @@ export function createProductionGraphRouter(directory: ServerDirectory<Telemetry
     const edges = await readEdges(deps.db, serverId, req.log);
     const resourceNodes = await readResourceNodes(deps.db, serverId, req.log);
     const trainRoutes = await readTrainRoutes(deps.db, serverId, req.log);
+    const designated = await readDesignated(deps.designations, serverId, factory.buildings, req.log);
     const started = performance.now();
-    const { graph, stats } = buildProductionGraphWithStats(factory.buildings, edges, resourceNodes, trainRoutes);
+    const { graph, stats } = buildProductionGraphWithStats(factory.buildings, edges, resourceNodes, trainRoutes, designated);
     const durationMs = Math.round(performance.now() - started);
     req.log.info({ ...stats, durationMs }, "production graph built");
     sendValidated(res, ProductionGraphResponseSchema, { ...snapshot(serverId, factory), data: graph });

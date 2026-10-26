@@ -4,6 +4,7 @@ import { queries } from "../api/queries";
 import { useSettledQuery } from "../api/settled";
 import { formatTime } from "../format";
 import { useSelectedServer } from "../servers/ServerContext";
+import { UpdateBanners } from "../updates/UpdateBanners";
 import { ErrorNotice } from "./ErrorNotice";
 
 /**
@@ -43,6 +44,8 @@ export function StatusBanners({ showPaused = true }: { showPaused?: boolean }) {
           The dashboard is updating, back in a moment.
         </p>
       )}
+      {/* ADR-0057: version notices come after the "updating" notice, which keeps priority. */}
+      <UpdateBanners />
       {error != null && !errorSaid && <ErrorNotice error={error} />}
       {unreachableSince !== undefined && !unreachableSaid && (
         <p role="status" className="banner banner-stale">

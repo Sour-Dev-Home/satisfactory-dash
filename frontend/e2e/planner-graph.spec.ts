@@ -44,9 +44,9 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await expect.poll(() => scaleOf(svg)).toBeCloseTo(fitted, 5);
 
   // The item filter lights the item's line and says how many groups it reached.
-  await page.getByLabel("Item").selectOption({ label: "Iron Ore" });
+  await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ore" });
   await expect(page.getByRole("status")).toContainText("groups carry or feed this item");
-  await page.getByLabel("Item").selectOption({ label: "All items" });
+  await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "All items" });
   await expect(page.getByRole("status")).toHaveCount(0);
 
   // The group panel: Enter on a group's button opens it, Escape closes it and returns focus to the group.
@@ -55,7 +55,7 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.keyboard.press("Enter");
   const panel = page.getByRole("complementary", { name: /^8× Constructor, Iron Plate/ });
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole("listitem")).toHaveCount(8);
+  await expect(panel.getByRole("list", { name: /^Machines in / }).getByRole("listitem")).toHaveCount(8);
   await expect(panel.getByText("Underfed · Clock 150%")).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Escape");
@@ -64,9 +64,9 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
 
   // The same panel by pointer: click the card in the picture, after Fit to view (the pans above moved it out of
   // sight, and the fit no longer shrinks the drawing below a readable zoom; it starts at the left, the extractors).
-  // The card's drawn name, not its <title> tooltip (same words).
+  // The card by its tooltip words (it prints an icon, a count and one line).
   await page.getByRole("button", { name: "Fit to view" }).click();
-  await svg.locator("text", { hasText: /^Miner Mk\.2$/ }).click();
+  await svg.locator("g[data-card]", { has: page.locator("title", { hasText: /^Miner Mk\.2\./ }) }).click();
   await expect(page.getByRole("complementary", { name: "Miner Mk.2" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("complementary")).toHaveCount(0);
@@ -122,10 +122,10 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   await page.getByRole("button", { name: "Graph" }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
-  await page.getByLabel("Item").selectOption({ label: "Iron Ingot" });
+  await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
   await expect(page.getByRole("status")).toContainText("4 of 5 groups carry or feed this item");
   // The recycler (its card) and nothing else of the cards is faded; the edges that miss the item are too.
-  await expect(svg.locator("g.opacity-graph-dim", { hasText: "Iron Plate Recycle" }).first()).toBeAttached();
+  await expect(svg.locator("g.opacity-graph-dim", { has: page.locator("title", { hasText: "Iron Plate Recycle" }) }).first()).toBeAttached();
   expect(await svg.locator("g.opacity-graph-dim").count()).toBeGreaterThan(0);
 });
 
@@ -155,6 +155,56 @@ test.describe("the factory canvas", () => {
     await expect(overview).toBeVisible();
   });
 
+  // ADR-0055 PR 8b: the transport glyphs move by SVG animateMotion, with no inline style and no script, and stop on the Motion toggle.
+  test("shows every transport mode as a glyph, moves them, and the Motion toggle stops them and is remembered", async ({ page, mockApi }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await mockApi("planner-factories-transports");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    for (const mode of ["train", "truck", "drone", "depot"]) await expect(svg.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
+    // Only the edges in view move (on a phone most of the four lie past the fitted canvas), so at least one does.
+    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
+    await expect(svg.locator("[style]")).toHaveCount(0);
+    await expectNoAxeViolations(page, testInfo);
+
+    await page.getByLabel("Motion").selectOption("off");
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    expect(await page.evaluate(() => window.localStorage.getItem("planner.motion"))).toBe("off");
+    await page.reload();
+    const again = await openPlate(page);
+    await expect(page.getByLabel("Motion")).toHaveValue("off");
+    await expect(again.locator("animateMotion")).toHaveCount(0);
+  });
+
+  test("System follows the operator's reduced-motion setting", async ({ page, mockApi }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await mockApi("planner-factories-transports");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    await expect(page.getByLabel("Motion")).toHaveValue("system");
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(svg.locator('[data-glyph="train"]')).toHaveCount(1);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
+  });
+
+  test("hides what only feeds a card behind a count, Escape restores it, and storage folds into chips", async ({ page, mockApi }, testInfo) => {
+    await mockApi("planner-factories");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    await page.getByRole("button", { name: "Hide 1 group that only feeds Storage Container" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(svg.locator('[data-upstream="collapsed"]')).toContainText("+1");
+    await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+    await page.keyboard.press("Escape");
+    await expect(svg.locator('[data-upstream="collapsed"]')).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Storage detail" }).click();
+    await expect(page.getByRole("button", { name: /1 flow to storage/ })).toHaveCount(1);
+    expect(await page.evaluate(() => window.localStorage.getItem("planner.storageDetail"))).toBe("off");
+    await expectNoAxeViolations(page, testInfo);
+  });
+
   test("opens a tree in place and folds it again", async ({ page, mockApi }, testInfo) => {
     await mockApi("planner-factories-trees");
     await page.goto("/app/planner");
@@ -163,11 +213,37 @@ test.describe("the factory canvas", () => {
     await page.getByRole("button", { name: "Collapse 5× Constructor, Iron Plate, tree 1 of 2" }).focus();
     await page.keyboard.press("Enter");
     await expect(svg.locator("[data-frame]")).toHaveCount(0);
-    await expect(svg.getByText("2 groups · tree 1 of 2")).toBeVisible();
+    await expect(page.getByRole("button", { name: /2 groups · tree 1 of 2/ })).toHaveCount(1);
     await page.getByRole("button", { name: "5× Constructor, Iron Plate, tree 1 of 2" }).focus();
     await page.keyboard.press("Enter");
     await expect(svg.locator("[data-frame]")).toHaveCount(1);
     await expect(svg.locator("[style]")).toHaveCount(0);
     await expectNoAxeViolations(page, testInfo);
   });
+});
+
+// ADR-0055 PR 10a: the text form of the lasso, by keyboard alone: tick a group, "Designate selected", name it, Enter.
+test("an owner designates a factory's groups from the keyboard", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-designations");
+  await page.goto("/app/planner");
+  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+    await page.getByRole(role, { name }).focus();
+    await page.keyboard.press(key);
+  };
+  await press("Open factory: Iron Plate factory");
+  await press("Tables");
+  await press("Select Smelter", "checkbox", "Space");
+  await expect(page.getByText("1 group, 4 machines selected")).toBeVisible();
+  await press("Designate selected");
+  // The name field takes focus, so typing and Enter are the whole of it.
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const sent = page.waitForRequest((r) => r.method() === "POST" && r.url().includes("/planner/designations"));
+  await page.keyboard.type("Smelter row");
+  await page.keyboard.press("Enter");
+  const body = (await sent).postDataJSON() as { name: string; mode: string; members: { id: string; c: string }[] };
+  expect(body).toMatchObject({ name: "Smelter row", mode: "core" });
+  expect(body.members).toHaveLength(4);
+  expect(body.members.every((m) => m.c === "Build_SmelterMk1_C")).toBe(true);
+  await expect(page.getByRole("form", { name: "Name the designated factory" })).toHaveCount(0);
 });

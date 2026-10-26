@@ -243,7 +243,7 @@ const CASES: StateCase[] = [
     clock: PLANNER_NOW,
     act: async (page) => {
       await openIronGraph(page);
-      await page.getByLabel("Item").selectOption({ label: "Iron Ingot" });
+      await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
     },
   },
   {
@@ -283,12 +283,43 @@ const CASES: StateCase[] = [
     scenario: "planner-factories-trees",
     name: "planner-factory-bubble-folded",
     path: "/app/planner",
-    shows: /2 groups · tree 1 of 2/,
+    shows: /^×\d+$/,
     clock: FACTORIES_NOW,
     act: async (page) => {
       await openPlateFactoryGraph(page);
       await pressButton(page, "Collapse 5× Constructor, Iron Plate, tree 1 of 2");
     },
+  },
+  // PR 8b: what only feeds a card hidden behind a count, storage folded into chips, and one transport of every mode.
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-upstream-hidden",
+    path: "/app/planner",
+    shows: "+1",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await pressButton(page, "Hide 1 group that only feeds Storage Container");
+    },
+  },
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-storage-folded",
+    path: "/app/planner",
+    shows: "1 flow to storage",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await page.getByRole("button", { name: "Storage detail" }).click();
+    },
+  },
+  {
+    scenario: "planner-factories-transports",
+    name: "planner-factory-transports",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryGraph,
   },
   {
     scenario: "planner-factories",
@@ -305,6 +336,35 @@ const CASES: StateCase[] = [
     shows: /tree 1 of 2/,
     clock: FACTORIES_NOW,
     act: openPlateFactoryTables,
+  },
+  // ADR-0055 PR 10a: designated factories in the text form. The overview opens on the canvas from 640 px, so each asks for the cards.
+  {
+    scenario: "planner-designations",
+    name: "planner-designated",
+    path: "/app/planner",
+    shows: /1 machine no longer found/,
+    clock: FACTORIES_NOW,
+    act: (page) => page.getByRole("button", { name: "Tables" }).click(),
+  },
+  {
+    scenario: "planner-designations",
+    name: "planner-suggestions",
+    path: "/app/planner",
+    shows: "Suggestion",
+    clock: FACTORIES_NOW,
+    act: (page) => page.getByRole("button", { name: "Reason factories for me" }).click(),
+  },
+  {
+    scenario: "planner-designations",
+    name: "planner-designate-form",
+    path: "/app/planner",
+    shows: "Designate",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryTables(page);
+      await page.getByRole("checkbox", { name: "Select Smelter" }).check();
+      await page.getByRole("button", { name: "Designate selected" }).click();
+    },
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
@@ -440,6 +500,14 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // ADR-0057 Decision 7: the version banners in the shell (an update, an unsupported version, a security advisory from the
+  // policy's range and from minSafe) and the line on the Servers page.
+  { scenario: "update-agent", path: "/app/settings", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },
+  { scenario: "update-mod", path: "/app/settings", shows: /applies at the next server restart/, clock: AGENT_NOW },
+  { scenario: "update-unsupported", path: "/app/settings", shows: /Unsupported version/, clock: AGENT_NOW },
+  { scenario: "update-advisory", path: "/app/settings", shows: /Security advisory \(SD-2026-001\)/, clock: AGENT_NOW },
+  { scenario: "update-min-safe", path: "/app/settings", shows: /Security advisory: This version has a known security problem/, clock: AGENT_NOW },
+  { scenario: "update-servers", path: "/app/servers", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },
   // Self-serve (ADR-0046, #529). Settings → Add your server (on; off shows no section), the add form as the whole
   // screen for a player with no server, each refusal, and the owner of an enrolled and of a pending server.
   { scenario: "self-serve-add", path: "/app/settings", shows: "Add your server", clock: AGENT_NOW },
@@ -584,7 +652,8 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
     // Reduced motion also turns off Leaflet's zoom and fade animations, so every map screenshot is stable.
-    if (path === "/app/map") await page.emulateMedia({ reducedMotion: "reduce" });
+    // The planner canvas's transport glyphs move unless the operator asks for reduced motion, so they sit still here too.
+    if (path === "/app/map" || path === "/app/planner") await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(path);
     if (act) {
       // Sign-in states act on the login form once it's there; the rest act on their page, and

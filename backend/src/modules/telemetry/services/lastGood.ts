@@ -12,18 +12,29 @@ import { observed } from "../../../platform/snapshot.js";
 export function withLastGood<T extends object>(read: () => Promise<T>, now: () => number = Date.now): () => Promise<T> {
   let remembered: { value: T; observedAtMs: number } | undefined;
   let unreachableSinceMs: number | undefined;
+  // Calls can overlap. Only the outcome of a call started after the last applied one changes the state, so a slow
+  // older call never overwrites a newer value or marks it stale.
+  let started = 0;
+  let applied = 0;
   return async () => {
+    const seq = ++started;
     try {
       const value = await read();
-      remembered = { value, observedAtMs: now() };
-      unreachableSinceMs = undefined;
+      if (seq > applied) {
+        applied = seq;
+        remembered = { value, observedAtMs: now() };
+        unreachableSinceMs = undefined;
+      }
       return value;
     } catch (error) {
+      const current = seq > applied;
+      if (current) applied = seq;
       if (!(error instanceof ApiFailure) || error.code !== "upstream_unreachable") {
-        unreachableSinceMs = undefined; // the game answered (with a fault), so the run of "unreachable" is over
+        if (current) unreachableSinceMs = undefined; // the game answered (with a fault), so the run of "unreachable" is over
         throw error;
       }
       if (remembered === undefined) throw error;
+      if (!current && unreachableSinceMs === undefined) return remembered.value; // a newer call already succeeded
       unreachableSinceMs ??= now();
       return observed(remembered.value, {
         observedAt: new Date(remembered.observedAtMs).toISOString(),

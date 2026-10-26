@@ -40,6 +40,9 @@ export const POLL_MS = {
   mapLive: 10_000,
 } as const;
 
+/** How long the version policy counts as fresh (ADR-0057): it moves with releases, not seconds. */
+export const COMPAT_STALE_MS = 10 * 60_000;
+
 /** How long a metrics read counts as fresh: the series store is flushed once a minute (ADR-0056 section 7). */
 export const METRICS_STALE_MS = 60_000;
 
@@ -249,6 +252,13 @@ export const queries = {
       queryFn: ({ signal }) => apiGetQuery(signal, endpoints.bottlenecks, { limit }, serverId),
       refetchInterval: POLL_MS.factory,
     }),
+  /** ADR-0055 Decision 5: the player's named sets of buildings, with how each matches the live factory; polled with the graph. */
+  plannerDesignations: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "planner-designations"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.plannerDesignations.list, serverId),
+      refetchInterval: POLL_MS.factory,
+    }),
   /** ADR-0050: the whole factory as a coarse graph (the Planner page), polled with the factory like the bottlenecks. */
   productionGraph: (serverId: string) =>
     queryOptions({
@@ -316,6 +326,14 @@ export const queries = {
       queryKey: ["servers", serverId, "agent"],
       queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.agent.status, serverId),
       refetchInterval: POLL_MS.agent,
+    }),
+  // ADR-0057 Decisions 6 to 8: the version policy the update banners compare each server's reported version with.
+  // It changes with a release, so it is read once and again only after COMPAT_STALE_MS.
+  compat: () =>
+    queryOptions({
+      queryKey: ["compat"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.compat),
+      staleTime: COMPAT_STALE_MS,
     }),
   // ADR-0027 PR 9: alerts. Alerts change on minute scales, and the header bell reads the status on
   // every page, so it's polled once a minute (never at the page's rate).

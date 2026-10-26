@@ -38,7 +38,7 @@ const layerRow = (over: Record<string, unknown> = {}) => ({
 });
 
 function build(
-  opts: { rows?: unknown[]; layers?: Record<string, unknown[]>; noDb?: boolean; logLines?: string[]; factory?: () => Promise<unknown>; dbFails?: boolean } = {},
+  opts: { rows?: unknown[]; layers?: Record<string, unknown[]>; noDb?: boolean; logLines?: string[]; factory?: () => Promise<unknown>; dbFails?: boolean; designations?: { list: () => Promise<unknown[]> } } = {},
 ) {
   const telemetry = {
     production: { getFactoryOverview: opts.factory ?? (async () => factoryStatesAndIngredients.data) },
@@ -58,7 +58,7 @@ function build(
       : createLogger({ level: "silent" }, { write: () => {} }),
     routers: [],
     sessionGuard: guard,
-    protectedRouters: [createServersRouter(directory, access), createProductionGraphRouter(directory, opts.noDb ? undefined : { db })],
+    protectedRouters: [createServersRouter(directory, access), createProductionGraphRouter(directory, opts.noDb ? undefined : { db, ...(opts.designations ? { designations: opts.designations as never } : {}) })],
   });
 }
 
@@ -243,5 +243,42 @@ describe("GET /api/servers/:serverId/production-graph", () => {
     for (const building of factoryStatesAndIngredients.data.buildings.slice(0, 20)) {
       expect(line).not.toContain(JSON.stringify(building.name));
     }
+  });
+});
+
+describe("GET production-graph: designations (ADR-0055 Decision 5)", () => {
+  const DID = "11111111-1111-4111-8111-111111111111";
+  const rate = (className: string, n: number) => ({ name: className, className, currentPerMinute: n, maxPerMinute: n, percent: 100, unit: "items/min" as const });
+  const mk = (id: string, recipe: string, ing: string, out: string, i: number) => ({
+    id, name: "Constructor", className: "Build_Constructor_C", recipe, isProducing: true, isPaused: false, isBackedUp: false,
+    production: [rate(out, 30)], ingredients: [rate(ing, 30)], state: "producing", location: { xM: i * 10, yM: 0, zM: 0, rotationDeg: 0 },
+  });
+  const buildings = [mk("m1", "Plate", "Ingot", "Plate", 1), mk("m2", "Plate", "Ingot", "Plate", 2)];
+  const factory = async () => ({ ...factoryStatesAndIngredients.data, buildings });
+  const belt = (id: string, from: string | null, to: string | null, fromKind: string | null, toKind: string | null) => ({
+    id, kind: "belt", from, fromKind, to, toKind, capacityPerMinute: 780, tier: "Conveyor Belt", at: { x: 1, y: 1 },
+  });
+  const rows = [layerRow({ data: [belt("b1", "m1", "T1", "machine", "storage"), belt("b2", "m2", "T1", "machine", "storage")], count: 2 })];
+  const member = (id: string, i: number) => ({ id, c: "Build_Constructor_C", x: i * 10, y: 0 });
+  const store = (list: () => Promise<unknown[]>) => ({ list });
+
+  it("a designation naming a machine makes a factory carrying its id and name, and splits the group", async () => {
+    const res = await get(build({ rows, factory, designations: store(async () => [{ id: DID, name: "Mine", mode: "core", members: [member("m1", 1)] }]) }));
+    expect(res.status).toBe(200);
+    expect(ProductionGraphResponseSchema.parse(res.body)).toEqual(res.body);
+    const f = res.body.data.factories.find((x: { designationId: string | null }) => x.designationId === DID);
+    expect(f.name).toBe("Mine");
+    const machines = res.body.data.nodes.filter((n: { kind: string }) => n.kind === "machines");
+    expect(machines.map((n: { machineIds: string[] }) => n.machineIds.join())).toEqual(expect.arrayContaining(["m1", "m2"]));
+    expect(machines.find((n: { machineIds: string[] }) => n.machineIds.includes("m1")).factoryKey).toBe(f.key);
+    expect(machines.find((n: { machineIds: string[] }) => n.machineIds.includes("m2")).factoryKey).not.toBe(f.key);
+  });
+
+  it("a store that fails, or has none, leaves the graph exactly as it is without designations", async () => {
+    const base = (await get(build({ rows, factory }))).body.data;
+    const failing = await get(build({ rows, factory, designations: store(async () => { throw new Error("db down"); }) }));
+    expect(failing.status).toBe(200);
+    expect(failing.body.data).toEqual(base);
+    expect((await get(build({ rows, factory, designations: store(async () => []) }))).body.data).toEqual(base);
   });
 });

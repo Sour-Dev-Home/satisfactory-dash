@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { compatQuiet } from "./updateMocks";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
   agentEnrollmentCodeResponse,
@@ -67,6 +68,8 @@ export const handlers = [
   http.get(endpoints.bottlenecks.route, () => HttpResponse.json(bottlenecksBeltLevel)),
   // ADR-0050: the Planner page.
   http.get(endpoints.productionGraph.route, () => HttpResponse.json(productionGraphTwoSites)),
+  // ADR-0055 PR 10a: no designations yet; tests that care override it.
+  http.get(endpoints.plannerDesignations.list.route, () => HttpResponse.json({ designations: [], matches: [] })),
   // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
   http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
   http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),
@@ -105,6 +108,7 @@ export const handlers = [
   http.post(endpoints.push.test.route, () => HttpResponse.json(alertSendTestOk)),
   // The game PC agent (ADR-0031 PR 7): a directly reached server with none enrolled.
   http.get(endpoints.agent.status.route, () => HttpResponse.json(agentStatusNotEnrolled)),
+  http.get(endpoints.compat.route, () => HttpResponse.json(compatQuiet)),
   http.post(endpoints.agent.enrollmentCode.route, () => HttpResponse.json(agentEnrollmentCodeResponse, { status: 201 })),
   http.delete(endpoints.agent.revoke.route, () => HttpResponse.json(agentRevokeResponse)),
   // ADR-0047: deleting your account and leaving a server both succeed by default; tests override the refusals.

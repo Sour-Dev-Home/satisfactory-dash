@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AgentStore, type Dpapi } from "@satisfactory-dash/agent";
+import { AgentStore, type SecretBox } from "@satisfactory-dash/agent";
 import { describe, expect, it } from "vitest";
 import { gameApiAccess, NEEDS_AGENT, type GameStore } from "./gameAccess";
 import type { GameApi } from "./gameApi";
@@ -74,7 +74,7 @@ describe("gameApiAccess", () => {
   it("reads the agent's real store format: no store file means no token", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sm-agent-"));
     try {
-      const dpapi: Dpapi = {
+      const dpapi: SecretBox = {
         protect: async () => {
           throw new Error("not used");
         },

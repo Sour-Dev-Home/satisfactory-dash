@@ -17,6 +17,9 @@ export class ApiError extends Error {
   /** The servers the error is about (ADR-0047: those blocking an account deletion). Ids and names only. */
   readonly servers: NonNullable<ApiErrorResponse["error"]["servers"]> | undefined;
 
+  /** ADR-0055: the designation a `designation_overlap` write ran into. The name is untrusted text. */
+  readonly other: ApiErrorResponse["error"]["other"];
+
   constructor(status: number, body: ApiErrorResponse["error"], retryAfterSeconds?: number) {
     super(body.message);
     this.name = "ApiError";
@@ -27,6 +30,7 @@ export class ApiError extends Error {
     this.retryAfterSeconds = retryAfterSeconds;
     this.reason = body.reason;
     this.servers = body.servers;
+    this.other = body.other;
   }
 }
 
@@ -161,6 +165,9 @@ const kindByCode = {
   agent_outdated: "unknown",
   command_not_found: "unknown",
   command_expired: "unknown",
+  // ADR-0055 PR 9: Planner designations. The designation UI (PR 10) words these itself.
+  designation_overlap: "unknown",
+  designation_cap: "unknown",
   // ADR-0047: account deletion and leaving a server. The change would leave a server without an owner (its `reason`
   // says which: last_owner, operator_servers), and the action needs a sign-in from the last 10 minutes. The account
   // screens (src/account/) word each reason; anywhere else ErrorNotice says them generically. reauth_required is a 403

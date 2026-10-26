@@ -4,7 +4,7 @@ import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph }
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import { EMPTY_VIEW, factoryScene, overviewScene, type Scene } from "./canvasScene";
 import { factoryModels } from "./hierarchy";
-import { FRAME_HEADER_H, clearLayoutMemo, layoutScene, layoutStats } from "./layoutSite";
+import { FRAME_HEADER_H, GLYPH_AT, GLYPH_CLEARANCE, LABEL_GAP, clearLayoutMemo, labelPlacement, layoutScene, layoutStats, pathMidpoint } from "./layoutSite";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const models = factoryModels(FIXTURE);
@@ -71,6 +71,28 @@ describe("layoutScene", () => {
     expect(layout.frames).toEqual([]);
   });
 
+  it("puts a transport's glyph on the middle of its path and its label clear of the glyph", () => {
+    const layout = layoutScene(factoryScene(FIXTURE, models[0], EMPTY_VIEW), FIXTURE.topologyHash);
+    const train = layout.edges.find((e) => e.flow.carrier === "train")!;
+    const first = train.points[0];
+    const last = train.points[train.points.length - 1];
+    expect(train.length).toBeGreaterThan(0);
+    expect(train.mid.x).toBeGreaterThanOrEqual(Math.min(first.x, last.x) - 1);
+    expect(train.mid.x).toBeLessThanOrEqual(Math.max(first.x, last.x) + 1);
+    const flat = [{ x: 0, y: 0 }, { x: 200, y: 0 }];
+    const plain = labelPlacement(flat, 50, 18);
+    expect(plain.y).toBe(-(9 + LABEL_GAP));
+    expect(labelPlacement(flat, 50, 18, GLYPH_CLEARANCE).y).toBe(plain.y - GLYPH_CLEARANCE);
+  });
+
+  it("stands a glyph a third along its path, clear of the label at the middle, and clamps the fraction", () => {
+    const line = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+    expect(pathMidpoint(line, GLYPH_AT).x).toBeCloseTo(100 * GLYPH_AT);
+    expect(pathMidpoint(line).x).toBeCloseTo(50);
+    expect(pathMidpoint(line, 3).x).toBe(100);
+    expect(pathMidpoint(line, -1).x).toBe(0);
+  });
+
   it("draws an expanded bubble's groups inside a frame, with room above for its header", () => {
     const g = generatedFactory(24, 3);
     const scene = factoryScene(g, factoryModels(g)[0], EMPTY_VIEW);
@@ -121,7 +143,7 @@ describe("the layout memo", () => {
     const layout = layoutScene(again, "hash-1");
     expect(layoutStats()).toMatchObject({ computed: 1, reused: 1 });
     // The words are the new ones even though the positions came from memory.
-    expect(layout.nodes.some((n) => n.lines.some((l) => /49\s\/\s80/.test(l)))).toBe(true);
+    expect(layout.nodes.some((n) => n.lines.some((l) => /49\/min/.test(l)))).toBe(true);
   });
 
   it("lays out again when the view changes the cards, or the sizes change", () => {
@@ -132,7 +154,7 @@ describe("the layout memo", () => {
     expect(layoutStats().computed).toBe(2);
     layoutScene(factoryScene(FIXTURE, models[0], EMPTY_VIEW), "h");
     expect(layoutStats().computed).toBe(3);
-    const wider = FIXTURE.nodes.map((n) => ({ ...n, name: n.name === "Smelter" ? "Smelter with a much longer name" : n.name }));
+    const wider = FIXTURE.nodes.map((n) => ({ ...n, products: n.name === "Smelter" ? n.products.map((p) => ({ ...p, name: "Iron Ingot with a much longer name" })) : n.products }));
     layoutScene(factoryScene({ ...FIXTURE, nodes: wider }, factoryModels({ ...FIXTURE, nodes: wider })[0], EMPTY_VIEW), "h");
     expect(layoutStats().computed).toBe(4);
   });

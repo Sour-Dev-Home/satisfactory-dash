@@ -3,6 +3,7 @@ import { isBackedUpState, ownValue } from "@satisfactory-dash/shared";
 import type {
   AgentStatusResponse,
   BottlenecksResponse,
+  CompatResponse,
   EnrollmentCodeResponseSchema,
   FactoryBuilding,
   FactoryResponse,
@@ -18,6 +19,7 @@ import type {
   PowerCircuit,
   PowerHistoryPoint,
   PowerHistoryResponse,
+  PlannerDesignationsResponse,
   PowerResponse,
   ProductionGraphResponse,
   RailsLayerData,
@@ -738,12 +740,12 @@ const SCREW_ITEM: [string, string] = ["Desc_IronScrew_C", "Screw"];
 const RIP_ITEM: [string, string] = ["Desc_IronPlateReinforced_C", "Reinforced Iron Plate"];
 
 /** A demo factory over the groups assigned to it (`assign` above): the counts follow from them. */
-function demoFactory(key: string, name: string, products: PlannerRateData[], sideProducts: string[]) {
+function demoFactory(key: string, name: string, products: PlannerRateData[], sideProducts: string[], designationId: string | null = null) {
   const mine = Object.values(N).filter((n) => n.factoryKey === key);
   return {
     key,
     name,
-    designationId: null,
+    designationId,
     products,
     sideProducts,
     nodeKeys: mine.map((n) => n.key),
@@ -817,10 +819,23 @@ export function productionGraph(now: number): ProductionGraphResponse {
       factories: [
         demoFactory(RIP_FACTORY, "Reinforced Iron Plate factory", [plannerRate("Desc_IronPlateReinforced_C", "Reinforced Iron Plate", 5.5, 10)], []),
         demoFactory(FRAME_FACTORY, "Modular Frame factory", [plannerRate("Desc_ModularFrame_C", "Modular Frame", 2, 2)], ["Rotor"]),
-        demoFactory(PLASTIC_FACTORY, "Plastic factory", [plannerRate("Desc_Plastic_C", "Plastic", 20, 20)], []),
+        demoFactory(PLASTIC_FACTORY, DEMO_DESIGNATION_NAME, [plannerRate("Desc_Plastic_C", "Plastic", 20, 20)], [], DEMO_DESIGNATION_ID),
       ],
-      // One train carries the remote ore to the iron works.
+      // One train carries the remote ore to the iron works; surplus plates are uploaded to the depot (the two modes with readers today).
       transports: [
+        {
+          from: N.plates.key,
+          to: N.depot.key,
+          mode: "depot",
+          itemClassName: "Desc_IronPlate_C",
+          itemName: "Iron Plate",
+          ratePerMinute: 4,
+          rate: "estimated",
+          carriers: 1,
+          routeName: "Depot upload",
+          flow: "output",
+          destination: "storage",
+        },
         {
           from: N.farmPlatform.key,
           to: N.dockPlatform.key,
@@ -962,6 +977,14 @@ export function agent(now: number): AgentStatusResponse {
   return { enrolled: true, lastSeenAt: new Date(now - 12_000).toISOString(), agentVersion: "0.1.0", connectionKind: "agent" };
 }
 
+/** The demo's version policy (ADR-0057): a newer agent exists, so the demo server shows "Update available". Nothing is offered to install. */
+export function compat(): CompatResponse {
+  return {
+    mod: { current: "1.0.0", minSupported: "1.0.0", minSafe: "1.0.0", advisories: [] },
+    agent: { current: "0.2.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
+  };
+}
+
 /** A made-up enrolment code: it enrols nothing, since the demo has no backend. */
 export function enrollmentCode(now: number): z.infer<typeof EnrollmentCodeResponseSchema> {
   return { code: "DEMO-DEMO-DEMO", expiresAt: new Date(now + 10 * 60_000).toISOString() };
@@ -1057,5 +1080,22 @@ export function historyTransitions(now: number, range: TransitionRange, limit: n
   return {
     ...envelope(now),
     data: { range, from, to: now, truncated: all.length > limit, transitions: all.slice(0, limit) },
+  };
+}
+
+/** The demo's one designated factory (ADR-0055 PR 10a): the plastic line, named by the player and held by its machines. */
+export const DEMO_DESIGNATION_ID = "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e6f";
+const DEMO_DESIGNATION_NAME = "Plastic line";
+
+/** The designations list: the plastic line's machines as the Factory read places them, all found. */
+export function plannerDesignations(): PlannerDesignationsResponse {
+  const ids = new Set(Object.values(N).filter((n) => n.factoryKey === PLASTIC_FACTORY).flatMap((n) => n.machineIds));
+  const members = buildings.flatMap((b) =>
+    ids.has(b.id) && b.location !== undefined ? [{ id: b.id, c: b.className, x: Math.round(b.location.xM), y: Math.round(b.location.yM) }] : [],
+  );
+  const stamp = new Date(DEMO_EPOCH).toISOString();
+  return {
+    designations: [{ id: DEMO_DESIGNATION_ID, name: DEMO_DESIGNATION_NAME, mode: "core", members, createdAt: stamp, updatedAt: stamp }],
+    matches: [{ designationId: DEMO_DESIGNATION_ID, matched: members.length, missing: 0 }],
   };
 }
