@@ -62,6 +62,8 @@ import {
   productionGraphEmpty,
   productionGraphFactories,
   productionGraphTwoSites,
+  plannerDesignationDeleteResponse,
+  plannerDesignationIronLine,
   managedServersWithAgent,
   renameAgentServerResponse,
   managedServersEmpty,
@@ -153,6 +155,11 @@ export const ROUTES = {
   bottlenecks: endpoints.bottlenecks,
   // ADR-0050: the Planner page (task 5).
   productionGraph: endpoints.productionGraph,
+  // ADR-0055 PR 10a: the player's designated factories, and their writes.
+  plannerDesignations: endpoints.plannerDesignations.list,
+  plannerDesignationCreate: endpoints.plannerDesignations.create,
+  plannerDesignationUpdate: endpoints.plannerDesignations.update,
+  plannerDesignationRemove: endpoints.plannerDesignations.remove,
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
@@ -267,6 +274,10 @@ const BASE: Record<RouteKey, MockResponse> = {
   bottlenecks: ok(bottlenecksBeltLevel),
   // Two sites, one machine on no conveyor yet (beltData "stale"), a loop, a mixed belt and an estimated edge.
   productionGraph: ok(productionGraphTwoSites),
+  plannerDesignations: ok({ designations: [], matches: [] }),
+  plannerDesignationCreate: { status: 201, body: plannerDesignationIronLine },
+  plannerDesignationUpdate: ok(plannerDesignationIronLine),
+  plannerDesignationRemove: ok(plannerDesignationDeleteResponse),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapLive: ok(mapLiveResponse),
@@ -388,6 +399,47 @@ const plannerFactoriesTwoTrees = (() => {
       sites: data.sites.map((s) => (s.nodeKeys.includes(first.key) ? { ...s, nodeKeys: [...s.nodeKeys, sibling.key, second.key] } : s)),
     },
   };
+})();
+
+/**
+ * ADR-0055 PR 10a: the factories fixture with one id per machine (its own is one per group) and a building for each at the
+ * group's place, the Iron Rod factory designated "Rod works" by two machines it holds and one it no longer finds, and the
+ * viewer an owner. The Iron Plate factory stays automatic, for the suggestions and the "Designate selected" form.
+ */
+const plannerDesignated = (() => {
+  const base = ProductionGraphResponseSchema.parse(productionGraphFactories);
+  const nodes = base.data.nodes.map((n) => ({ ...n, machineIds: Array.from({ length: n.count }, (_, i) => `${n.className}|${n.key}|${i}`) }));
+  const buildings = nodes.flatMap((n) =>
+    n.machineIds.map((id, i) => ({
+      ...factoryMixed.data.buildings[0],
+      id,
+      name: n.name,
+      className: n.className,
+      location: { xM: n.at.x + i * 4, yM: n.at.y, zM: 0, rotationDeg: 0 },
+    })),
+  );
+  const rod = nodes.find((n) => n.key === "Build_ConstructorMk1_C|Iron Rod|1250|100")!;
+  const live = rod.machineIds.map((id, i) => ({ id, c: rod.className, x: rod.at.x + i * 4, y: rod.at.y }));
+  const gone = { id: "Build_ConstructorMk1_C_retired", c: rod.className, x: 4000, y: 4000 };
+  const id = "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10";
+  return {
+    servers: ok(serversRoleOwner),
+    productionGraph: ok({
+      ...productionGraphFactories,
+      data: {
+        ...base.data,
+        nodes,
+        factories: base.data.factories!.map((f) => (f.name === "Iron Rod factory" ? { ...f, name: "Rod works", designationId: id, sideProducts: [] } : f)),
+      },
+    }),
+    factory: ok({ ...factoryMixed, data: { ...factoryMixed.data, buildings, backedUpCount: 0, stateCounts: {} } }),
+    plannerDesignations: ok({
+      designations: [
+        { id, name: "Rod works", mode: "core", members: [...live, gone], createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-22T18:30:00.000Z" },
+      ],
+      matches: [{ designationId: id, matched: live.length, missing: 1 }],
+    }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
 })();
 
 /**
@@ -655,6 +707,8 @@ export const SCENARIOS = {
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
+  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate or suggest.
+  "planner-designations": plannerDesignated,
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {

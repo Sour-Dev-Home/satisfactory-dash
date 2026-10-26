@@ -68,6 +68,8 @@ export const handlers = [
   http.get(endpoints.bottlenecks.route, () => HttpResponse.json(bottlenecksBeltLevel)),
   // ADR-0050: the Planner page.
   http.get(endpoints.productionGraph.route, () => HttpResponse.json(productionGraphTwoSites)),
+  // ADR-0055 PR 10a: no designations yet; tests that care override it.
+  http.get(endpoints.plannerDesignations.list.route, () => HttpResponse.json({ designations: [], matches: [] })),
   // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
   http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
   http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),

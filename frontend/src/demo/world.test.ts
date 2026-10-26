@@ -34,7 +34,7 @@ describe("the demo world", () => {
 
   it("gives the planner three factories that own every group once, a shared split and a train to a remote site (ADR-0055)", () => {
     const graph = ProductionGraphResponseSchema.parse(world.productionGraph(world.DEMO_EPOCH)).data;
-    expect(graph.factories?.map((f) => f.name)).toEqual(["Reinforced Iron Plate factory", "Modular Frame factory", "Plastic factory"]);
+    expect(graph.factories?.map((f) => f.name)).toEqual(["Reinforced Iron Plate factory", "Modular Frame factory", "Plastic line"]);
     const owned = graph.factories!.flatMap((f) => f.nodeKeys);
     expect(new Set(owned).size).toBe(owned.length);
     expect([...owned].sort()).toEqual(graph.nodes.map((n) => n.key).sort());

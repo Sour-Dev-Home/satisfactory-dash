@@ -221,3 +221,29 @@ test.describe("the factory canvas", () => {
     await expectNoAxeViolations(page, testInfo);
   });
 });
+
+// ADR-0055 PR 10a: the text form of the lasso, by keyboard alone: tick a group, "Designate selected", name it, Enter.
+test("an owner designates a factory's groups from the keyboard", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-designations");
+  await page.goto("/app/planner");
+  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+    await page.getByRole(role, { name }).focus();
+    await page.keyboard.press(key);
+  };
+  await press("Open factory: Iron Plate factory");
+  await press("Tables");
+  await press("Select Smelter", "checkbox", "Space");
+  await expect(page.getByText("1 group, 4 machines selected")).toBeVisible();
+  await press("Designate selected");
+  // The name field takes focus, so typing and Enter are the whole of it.
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const sent = page.waitForRequest((r) => r.method() === "POST" && r.url().includes("/planner/designations"));
+  await page.keyboard.type("Smelter row");
+  await page.keyboard.press("Enter");
+  const body = (await sent).postDataJSON() as { name: string; mode: string; members: { id: string; c: string }[] };
+  expect(body).toMatchObject({ name: "Smelter row", mode: "core" });
+  expect(body.members).toHaveLength(4);
+  expect(body.members.every((m) => m.c === "Build_SmelterMk1_C")).toBe(true);
+  await expect(page.getByRole("form", { name: "Name the designated factory" })).toHaveCount(0);
+});

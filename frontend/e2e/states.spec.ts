@@ -337,6 +337,35 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     act: openPlateFactoryTables,
   },
+  // ADR-0055 PR 10a: designated factories in the text form. The overview opens on the canvas from 640 px, so each asks for the cards.
+  {
+    scenario: "planner-designations",
+    name: "planner-designated",
+    path: "/app/planner",
+    shows: /1 machine no longer found/,
+    clock: FACTORIES_NOW,
+    act: (page) => page.getByRole("button", { name: "Tables" }).click(),
+  },
+  {
+    scenario: "planner-designations",
+    name: "planner-suggestions",
+    path: "/app/planner",
+    shows: "Suggestion",
+    clock: FACTORIES_NOW,
+    act: (page) => page.getByRole("button", { name: "Reason factories for me" }).click(),
+  },
+  {
+    scenario: "planner-designations",
+    name: "planner-designate-form",
+    path: "/app/planner",
+    shows: "Designate",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryTables(page);
+      await page.getByRole("checkbox", { name: "Select Smelter" }).check();
+      await page.getByRole("button", { name: "Designate selected" }).click();
+    },
+  },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
   { scenario: "planner-old-frm", path: "/app/planner", shows: /Update FRM to 1.5.4/, clock: PLANNER_NOW },
