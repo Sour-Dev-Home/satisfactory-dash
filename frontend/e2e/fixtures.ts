@@ -98,6 +98,10 @@ export async function settleAnimations(page: Page): Promise<void> {
  * item 5; failing since step 4). The full result is attached to the report either way.
  */
 export async function expectNoAxeViolations(page: Page, testInfo: TestInfo): Promise<void> {
+  // A page still waiting to reveal (its reads have not answered: a deploy gap, an outage) fades in once
+  // `--duration-reveal-budget` passes, possibly after `settleAnimations` looked. axe then measured its text mid-fade and
+  // reported contrast failures at random. Wait for every reveal to start, so settling catches the fade.
+  await expect(page.locator('[data-page-reveal="waiting"]')).toHaveCount(0);
   await settleAnimations(page);
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
