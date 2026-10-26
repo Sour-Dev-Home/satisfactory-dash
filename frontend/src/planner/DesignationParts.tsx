@@ -122,6 +122,17 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   const [renaming, setRenaming] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const rename = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // The confirm replaces the Remove button: focus its Cancel on open and the Remove button again on close.
+  const openConfirm = () => {
+    setConfirming(true);
+    queueMicrotask(() => cancel.current?.focus());
+  };
+  const closeConfirm = () => {
+    setConfirming(false);
+    queueMicrotask(() => trigger.current?.focus());
+  };
   const { busy, error, run } = useRun();
   if (designation === undefined || match === undefined) return <DesignatedMarker />;
 
@@ -176,17 +187,17 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
                   <button
                     type="button"
                     disabled={busy}
-                    className={DANGER_BUTTON}
-                    onClick={() => void run(() => writes.remove.mutateAsync(designation.id)).then((done) => done && setConfirming(false))}
+                    className={`${DANGER_BUTTON} min-h-touch`}
+                    onClick={() => void run(() => writes.remove.mutateAsync(designation.id)).then((done) => done && closeConfirm())}
                   >
                     Remove
                   </button>
-                  <button type="button" disabled={busy} onClick={() => setConfirming(false)}>
+                  <button ref={cancel} type="button" disabled={busy} onClick={() => closeConfirm()} className="min-h-touch">
                     Cancel
                   </button>
                 </span>
               ) : (
-                <button type="button" disabled={busy} onClick={() => setConfirming(true)} aria-label={`Remove ${factory.name}`} className={DANGER_BUTTON_QUIET}>
+                <button ref={trigger} type="button" disabled={busy} onClick={openConfirm} aria-label={`Remove ${factory.name}`} className={`${DANGER_BUTTON_QUIET} min-h-touch`}>
                   Remove
                 </button>
               )}

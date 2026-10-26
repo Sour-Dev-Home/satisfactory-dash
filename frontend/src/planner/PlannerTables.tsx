@@ -96,7 +96,7 @@ function GroupRow({
       {selection !== undefined && (
         <td data-label="Select">
           <label className="inline-flex min-h-touch items-center gap-2">
-            <input type="checkbox" checked={selection.selected.has(node.key)} onChange={() => selection.toggle(node.key)} />
+            <input type="checkbox" className="size-5" checked={selection.selected.has(node.key)} onChange={() => selection.toggle(node.key)} />
             <span className="sr-only">Select {node.name}</span>
           </label>
         </td>
