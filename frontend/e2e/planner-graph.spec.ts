@@ -259,12 +259,17 @@ test("an owner lassos a factory's cards on the canvas and keeps a suggestion the
   await page.getByRole("button", { name: "Reason factories for me" }).click();
   await expect(overview).toBeVisible();
   await expect(overview.locator("[data-suggested]").first()).toBeVisible();
-  await overview.locator("[data-keep]").first().click();
+  await expect(overview.locator("[data-keep]").first()).toBeAttached();
+  // At 390 px the fitted drawing can run past the canvas, so Keep is reached by its keyboard button, as in 10a.
+  await page.getByRole("button", { name: "Keep Iron Plate factory" }).focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox", { name: "Name" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).click();
+  // On the canvas, a factory's button is the keyboard's (visually hidden): focus it and press Enter.
+  await page.getByRole("button", { name: /^Open factory: Iron Plate factory/ }).focus();
+  await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "Graph" }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
   await expect(svg).toBeVisible();
