@@ -132,8 +132,13 @@ and the same for `-ops`).
    `--task-definition (terraform output -raw backend_task_definition_arn)`.) Keep `$PREV`: it is the
    revision to go back to.
 
-The service stops the old task before starting the new one (one backend, ADR-0010), so expect a short
-outage. A new task that never turns healthy trips the circuit breaker, and `backend-errors` or
+The rollout overlaps (ADR-0054 D3, 100% / 200%): the service starts the new task, waits for its backend
+health check, then stops the old one, so the tunnel keeps a connector and a deploy should cost no outage.
+For about a minute two tasks run: background workers stay on the advisory-lock leader alone
+(`backend/src/platform/db/leaderLock.ts`), while rate limits and the command wake-up are per task and a
+little looser. After the first overlapped deploy, check the uptime monitor (ADR-0028) for a down event; if
+one shows, measure where the gap is (task health, cloudflared registration), ADR-0054 "Revisit when".
+A new task that never turns healthy trips the circuit breaker, and `backend-errors` or
 `backend-critical` going to `ALARM` during the rollout fails it too; either rolls the service back to the
 last completed deployment. Check with `aws ecs describe-services --cluster satis-prod --services
 satis-prod --query 'services[0].deployments[0].rolloutState'` (`COMPLETED` is good, `FAILED` rolled

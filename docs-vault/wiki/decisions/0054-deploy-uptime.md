@@ -121,8 +121,9 @@ It cannot skip a real change:
    its next poll, at most 25 s later, during the overlap only. Accepted. LISTEN/NOTIFY is the change in
    `commandNotifier.ts` when two instances run all the time.
 8. **Database connections.** Two tasks plus two lock clients plus the migrate task at most; check `SHOW max_connections`
-   on the db.t4g.micro once before applying `[NEEDS VERIFICATION]`. `DATABASE_POOL_MAX` defaults to 10
-   (`platform/db/config.ts:49`).
+   on the db.t4g.micro once before applying. Measured 2026-10-26 by the owner (`SHOW max_connections` through the backup
+   ops task): **79**, against about 25 at most during an overlap (two pools of 10, two lock clients, the migrate task,
+   a backup). `DATABASE_POOL_MAX` defaults to 10 (`platform/db/config.ts:49`).
 9. **Order.** The leader lock ships and is deployed **before** the Terraform change. With the overlap but no lock, two
    alert evaluators would send duplicate Discord and push alerts.
 10. **Server list after a handover** (amendment, owner 2026-10-26: "Reload on leadership"). Each task's server runtime

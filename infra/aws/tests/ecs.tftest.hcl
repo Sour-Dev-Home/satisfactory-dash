@@ -162,6 +162,21 @@ run "criterion_3_one_task_public_ip_for_egress_and_circuit_breaker_rollback" {
   }
 }
 
+# ADR-0054 D3: the new task starts and turns healthy before the old one stops, so a deploy keeps a tunnel connector.
+run "adr_0054_overlap_rollout_keeps_the_old_task_until_the_new_one_is_healthy" {
+  command = apply
+
+  assert {
+    condition     = aws_ecs_service.main.deployment_minimum_healthy_percent == 100 && aws_ecs_service.main.deployment_maximum_percent == 200
+    error_message = "the overlap rollout: 100% healthy minimum, 200% maximum (ADR-0054 D3)"
+  }
+
+  assert {
+    condition     = aws_ecs_service.main.desired_count == 1
+    error_message = "still one task outside a deploy: the overlap is two tasks for about a minute, not two always"
+  }
+}
+
 run "criterion_4_execution_role_reads_only_satis_prod_and_injects_secrets" {
   command = apply
 

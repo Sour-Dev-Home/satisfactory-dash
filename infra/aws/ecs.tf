@@ -113,11 +113,14 @@ resource "aws_ecs_service" "main" {
   launch_type     = "FARGATE"
   desired_count   = 1
 
-  # One backend at a time (ADR-0010: in-process rate limits and pollers assume a single instance), so
-  # a deploy stops the old task before starting the new one. A new task that never turns healthy trips
-  # the circuit breaker, which rolls the service back to the last good task definition.
-  deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 100
+  # ADR-0054 D3, the overlap rollout: one task normally, two for about a minute per deploy. ECS starts the
+  # new task, waits for its backend health check (cloudflared connects only after it), then stops the old
+  # one, so the tunnel keeps a connector throughout. Safe because timer-driven workers run on the
+  # advisory-lock leader only (backend/src/platform/db/leaderLock.ts, ADR-0054 PR 2, in production first);
+  # rate limits and the command wake-up are per instance and looser during the overlap (D3.6, D3.7). A new
+  # task that never turns healthy trips the circuit breaker, which rolls back while the old task serves.
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
 
   deployment_circuit_breaker {
     enable   = true
