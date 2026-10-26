@@ -523,7 +523,7 @@ export const app = createApp({
     createWorldRoutes(directory, database ? { db: database.pool, mapLive: mapLiveStore } : undefined),
     // ADR-0055 PR 9: Planner designations. Buildings come from the latest snapshot through a port (map never imports telemetry).
     createDesignationRoutes(directory, database ? { store: createDbDesignationStore(database.pool), buildings: createDesignationBuildings(directory) } : undefined),
-    ...createTelemetryRouters(directory, database ? { db: database.pool } : undefined),
+    ...createTelemetryRouters(directory, database ? { db: database.pool, designations: createDbDesignationStore(database.pool) } : undefined),
     ...createSettingsRouters(directory),
     // ADR-0027 PR 7b: the alerts API. After the servers router (its membership check covers these paths), and only with a
     // database (alerts live in it).

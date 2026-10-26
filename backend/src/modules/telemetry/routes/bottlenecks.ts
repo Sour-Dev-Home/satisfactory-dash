@@ -4,6 +4,7 @@ import { BottlenecksQuerySchema, BottlenecksResponseSchema, ConveyorsLayerDataSc
 import type { ServerDirectory } from "../../servers/index.js";
 import { resolveServer } from "../../servers/index.js";
 import { getLatestWorldLayer, skipReasonOf } from "../../map/index.js";
+import type { DesignationStore } from "../../map/index.js";
 import { BadRequestError, ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { routePath } from "../../../platform/routePath.js";
@@ -16,6 +17,8 @@ import type { TelemetryScope } from "../telemetryServices.js";
 export interface BottlenecksRouteDeps {
   /** The database the `conveyors` world layer is stored in (map.world_layers). */
   db: Queryable;
+  /** ADR-0055 Decision 5: the Planner's designations, read by the production graph route only. Absent = automatic factories only. */
+  designations?: Pick<DesignationStore, "list">;
 }
 
 /**

@@ -64,6 +64,12 @@ export interface ReductionInput {
   transports: readonly PlannerTransport[];
   /** Snaps a metre coordinate onto the node-key grid (the caller owns `KEY_GRID_M`). */
   snap: (v: number) => number;
+  /**
+   * ADR-0055 Decision 5: node key -> the designation that holds that machine node. Designated nodes are fixed to their
+   * designation's factory (one per designation) and never reassigned; they seed it, so shared upstream is still attributed
+   * to it by share. Absent or empty = fully automatic.
+   */
+  designations?: ReadonlyMap<string, { id: string; name: string }>;
 }
 
 export interface NodeAnnotation {
@@ -174,6 +180,7 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   const ingMax = nodes.map((nd) => maxMap(nd.ingredients));
   const outputTotal = nodes.map((nd) => nd.products.reduce((s, p) => s + p.maxPerMinute, 0));
   const machinesIn = (i: number): number => (isMachine(i) ? nodes[i].count : 0);
+  const desigOf: ({ id: string; name: string } | undefined)[] = nodes.map((nd) => (nd.kind === "machines" ? input.designations?.get(nd.key) : undefined));
 
   // ---- roles ----
   const roles: (string | undefined)[] = nodes.map((nd, i) => {
@@ -239,6 +246,8 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
       isSeed[i] = outAll[i].length > 0 && !feedsMachine[i];
     }
   }
+  // A designated machine is always a seed: whatever leaves the designation is its output (ADR-0055 Decision 5).
+  for (let i = 0; i < n; i++) if (desigOf[i] !== undefined) isSeed[i] = true;
   // A machine that reaches no seed (a closed loop, say) becomes one, lowest key first, so no machine is left without a factory.
   {
     const reached = Array.from({ length: n }, () => false);
@@ -306,7 +315,17 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
       }
     }
     const byProduct = new Map<string, number[]>();
+    // Designated seeds never join this union: a designation is exactly one factory, linked below.
+    const firstOfDesignation = new Map<string, number>();
     for (const s of seedList) {
+      const d = desigOf[s];
+      if (d === undefined) continue;
+      const first = firstOfDesignation.get(d.id);
+      if (first === undefined) firstOfDesignation.set(d.id, s);
+      else sets.link(first, s);
+    }
+    for (const s of seedList) {
+      if (desigOf[s] !== undefined) continue;
       const cls = (seedProduct.get(s) as { className: string }).className;
       const list = byProduct.get(cls);
       if (list) list.push(s);
@@ -330,6 +349,7 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
             const v = stack.pop() as number;
             for (const a of inS[v]) {
               const u = arcs[a].s;
+              if (desigOf[u] !== undefined) continue;
               if (!isMachine(u) && !buffer[u]) continue;
               if (markPass[u] === pass) {
                 if (markStart[u] !== st && (isMachine(u) || machineUp[u])) sets.link(st, markStart[u]);
@@ -365,10 +385,17 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   const fSeedMax = seedsOf.map((list) =>
     list.reduce((sum, s) => sum + (prodMax[s].get((seedProduct.get(s) as { className: string }).className) ?? 0), 0),
   );
+  /** The designation a factory is (every seed of a designated factory has the same one), or undefined for an automatic one. */
+  const desigF = seedsOf.map((list) => desigOf[list[0]]);
   const fKey: string[] = [];
   {
     const count = new Map<string, number>();
     seedsOf.forEach((list, f) => {
+      const d = desigF[f];
+      if (d !== undefined) {
+        fKey.push(`factory|designation|${d.id.slice(0, KEY_PART_MAX)}`);
+        return;
+      }
       let sx = 0;
       let sy = 0;
       for (const s of list) {
@@ -470,6 +497,11 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
       }
     }
   }
+  // A designated machine is fixed to its factory even inside a cycle (where the mean above could pull it elsewhere).
+  for (let i = 0; i < n; i++) {
+    const f = seedFactory.get(i);
+    if (desigOf[i] !== undefined && f !== undefined) nodeVec[i] = new Map([[f, 1]]);
+  }
   // A non-machine node without a vector (terminal storage, the sink, a platform that ends a route) takes the mean of the
   // vectors of what feeds it, level by level so the order never matters.
   {
@@ -554,11 +586,14 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
         if (arc.transport && homeNow(arc.d) !== f) return null;
       }
     }
-    return inputs.size === 1 ? [...inputs][0] : null;
+    // A designated factory is fixed: nothing automatic folds into it.
+    if (inputs.size !== 1) return null;
+    const only = [...inputs][0];
+    return desigF[only] !== undefined ? null : only;
   };
   for (let guard = 0; guard <= F; guard++) {
     const small = [];
-    for (let f = 0; f < F; f++) if (parent[f] === f && machineCountOf(f) < MIN_FACTORY_MACHINES) small.push(f);
+    for (let f = 0; f < F; f++) if (parent[f] === f && desigF[f] === undefined && machineCountOf(f) < MIN_FACTORY_MACHINES) small.push(f);
     small.sort((a, b) => machineCountOf(a) - machineCountOf(b) || byString(fKey[a], fKey[b]));
     let changed = false;
     for (const f of small) {
@@ -596,7 +631,8 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   for (let f = 0; f < F; f++) if (parent[f] === f) rootsAll.push(f);
   const machineCount = Array.from({ length: F }, () => 0);
   for (let i = 0; i < n; i++) if (home[i] >= 0) machineCount[home[i]] += machinesIn(i);
-  rootsAll.sort((a, b) => machineCount[b] - machineCount[a] || byString(fKey[a], fKey[b]));
+  // Designated factories are never the ones dropped for the cap: they sort first.
+  rootsAll.sort((a, b) => Number(desigF[b] !== undefined) - Number(desigF[a] !== undefined) || machineCount[b] - machineCount[a] || byString(fKey[a], fKey[b]));
   const roots = rootsAll.slice(0, PLANNER_MAX_FACTORIES);
   const dropped = rootsAll.length - roots.length;
   const kept = new Set(roots);
@@ -610,6 +646,11 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   {
     const seen = new Map<string, number>();
     for (const f of roots) {
+      const d = desigF[f];
+      if (d !== undefined) {
+        nameOf.set(f, d.name.slice(0, NAME_MAX));
+        continue;
+      }
       const base = baseName(f);
       const k = (seen.get(base) ?? 0) + 1;
       seen.set(base, k);
@@ -735,7 +776,17 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   const factories: PlannerFactory[] = roots.map((f) => {
     const list = nodesOf.get(f) ?? [];
     const rates = new Map<string, { className: string; name: string; unit: PlannerRate["unit"]; cur: number; max: number }>();
-    for (const s of seedsOf[f]) {
+    // A designation's output is whatever leaves it (ADR-0055 Decision 5): a seed whose product only feeds machines of the
+    // same designation is an intermediate. A product with no known arc still counts; if every seed is internal, keep all.
+    const did = desigF[f]?.id;
+    const internal = (s: number): boolean => {
+      if (did === undefined) return false;
+      const cls = (seedProduct.get(s) as { className: string }).className;
+      const out = arcs.filter((a) => a.s === s && a.supply && (a.item === cls || a.item === null));
+      return out.length > 0 && out.every((a) => desigOf[a.d]?.id === did);
+    };
+    const outputs = seedsOf[f].filter((s) => !internal(s));
+    for (const s of outputs.length > 0 ? outputs : seedsOf[f]) {
       const cls = (seedProduct.get(s) as { className: string }).className;
       const p = nodes[s].products.find((x) => x.className === cls);
       if (!p) continue;
@@ -751,7 +802,7 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
     return {
       key: fKey[f],
       name: own,
-      designationId: null,
+      designationId: desigF[f]?.id ?? null,
       products: [...rates.values()]
         .sort((a, b) => b.max - a.max || byString(a.className, b.className))
         .slice(0, PLANNER_MAX_RATES)
