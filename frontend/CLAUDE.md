@@ -26,35 +26,6 @@ contract needs to grow, not that this module should special-case a backend detai
   queries, no auth, no API calls (`e2e/landing.spec.ts`). Its link-preview tags are static
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
-  The Planner page (ADR-0050, `src/planner/`) is a tab after Factory (`PLANNER_IN_NAV` in `src/shell/tabs.ts`, on since
-  the graph view landed): the factories when the response has `factories` (ADR-0055; sites otherwise), as a canvas or as
-  cards and a flows table, and one opened factory as a Graph or Tables view (the graph is the default from 640 px, the
-  tables below, `useWideScreen`). The hierarchy is pure in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the
-  fold cap, flows summed between cards, factory models); its words are in `plannerText.ts`. What the canvas draws is
-  data first: `canvasScene.ts` turns a graph and the viewer's choices into cards (a factory, a bubble of one recipe from
-  one source tree, a group, the "N more trees" fold), frames (an opened bubble's groups) and summed flows, with no React
-  and no dagre. A bubble opens in place into its groups inside a frame (Collapse on the frame, Collapse all and Expand
-  all in the toolbar); a factory above `COLLAPSE_AT` groups starts collapsed. A card's "+N" pill hides what only feeds it
-  (the backend's `collapseUnder` tree), the Storage detail toggle folds buffers and terminal storage into chips, and a
-  transport wears its mode's glyph (`transportGlyphs.tsx`, tokens only, moved by SVG `animateMotion`, never in a hidden
-  tab or past 40 edges, never at all under System with reduced motion): the viewer's choices are `plannerPrefs.ts`
-  (localStorage in try/catch, validated; the page works without it). The graph (`src/planner/graph/`) is a lazy
-  chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and the only place `@dagrejs/dagre` is imported:
-  `layoutScene` in `layoutSite.ts` is pure and deterministic (sizes from text, left to right), memoized by the response's
-  `topologyHash` plus a signature of the cards, flows and sizes (a poll that only moves rates reuses the placement; the
-  words are never part of the memo), with fallbacks when dagre throws (parallel flows merged into one routed edge with
-  stacked labels, then a plain grid). The canvas is SVG styled by token classes and attributes only (no `style=`),
-  `role="img"` with a counts label, and the keyboard reaches each card through a list of visually hidden buttons beside
-  it (an image's children are presentational). Colours and sizes stay tokens; the node and label metrics in
-  `layoutSite.ts` are tied to the `text-sm`/`text-xs` classes. `build-output.spec.ts` checks that dagre sits in that one
-  chunk, off the entry chunk, under 100 kB gzip; `e2e/planner-graph.spec.ts` is the CSP gate. A layout over 100 ms on a
-  real site is Decision 3's trigger to move `layoutScene` into a worker (`layoutStats()` and `layoutScene.test.ts` time it).
-  The metrics page (ADR-0056, `src/metrics/`, `/app/metrics`) is the operator's and is never a tab in the real app, even
-  for the operator (`METRICS_TAB` in `shell/tabs.ts` shows only when `IS_DEMO`, so demo visitors find it): the doors are
-  the command bar's operator-only "Metrics" entry and `MetricsLink` on the Servers page. `Shell` routes it only when
-  `canManageServers`, so anyone else gets the unknown-page redirect; a 403 from the read redirects the same way, a 429
-  is a calm retry note, and a 401 stays central. It has no polling (Refresh, 60 s stale time), shows percentiles as the
-  bucket upper bounds they are (`metricsText.ts`), and the demo's data is `src/demo/metrics.ts` ("Sample data").
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
@@ -107,21 +78,12 @@ contract needs to grow, not that this module should special-case a backend detai
   path (ADR-0014) can fill the same cache keys. Display formatting lives in the pure
   helpers in `src/format.ts`; they round, never change units (ADR-0006). No view
   registry; the map has the only plug-in contract.
-- Map (ADR-0023, `src/map/`): Leaflet with CRS.Simple, in a lazy chunk (`MapCanvas.tsx`) that
-  only the Map page loads. `projection.ts` is the one world-to-map mapping (`[lat, lng] =
-  [-yM, xM]`; bounds cited from docs-vault/raw-sources/world-coordinates.md); base maps are
-  configs (a neutral grid; the base stays data-derived, but #571 reversed #330's "no game art" for resource nodes: `resourceIcons.ts` maps FRM's `Name` to the game's icon in `public/game-assets/` (NOTICE.md: not AGPL), and an unknown type keeps the circle).
-  World layers (ADR-0038 M5: `railsLayer`, `resourceNodesLayer`) are `MapLayer<T>` over their own stored
-  list: `MapPanel` reads them through `queries.mapRails`/`mapResourceNodes`, only while the toggle is on,
-  and hands the canvas a bound `DrawnLayer`. A layer is a `MapLayer` (`layers.ts`): it gets
-  Leaflet through its `MapContext` (never imports it at runtime), draws on the shared canvas
-  renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here), returns its cleanup, and supplies a legend and a text `describe`. Tooltip content
-  is built from text nodes, never an HTML string (names come from the game server). Every
-  layer's data is also shown as text (the buildings-in-view table). The live trains layer (ADR-0038 M6,
-  `trainsLayer`) polls `queries.mapLive` every 10 s; `MapCanvas` redraws only from the first layer whose
-  bound `draw` changed upward (`MapPanel` binds each layer once per change of its own data), and a layer
-  that animates times it by a motion token (`--duration-glide`), which reduced motion zeroes. `e2e/map.spec.ts` is the
-  CSP gate (pan, zoom, hover, toggle); Leaflet overrides in `index.css` are unlayered.
+- Planner (ADR-0050, `src/planner/`), Map (ADR-0023, `src/map/`) and metrics (ADR-0056, `src/metrics/`): read
+  `docs-vault/wiki/frontend-planner-map.md` before changing any of them. Hard rules: each canvas is a lazy chunk
+  (`@dagrejs/dagre` and Leaflet are imported nowhere else), styled by tokens only (no `style=`, no raw values, motion
+  by token and off under reduced motion), every canvas has a keyboard and text path to its data, tooltips are built
+  from text nodes (names come from the game server), and `e2e/planner-graph.spec.ts` and `e2e/map.spec.ts` are their
+  CSP gates. The metrics page is the operator's: routed only when `canManageServers`, never a tab outside the demo.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.
