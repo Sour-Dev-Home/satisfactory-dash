@@ -74,6 +74,8 @@ import {
   DesignationOverlapErrorSchema,
   TrainRoutesWorldIngestRequestSchema,
   TrainRoutesWorldLayerResponseSchema,
+  DroneRoutesWorldIngestRequestSchema,
+  DroneRoutesWorldLayerResponseSchema,
   ConveyorsWorldIngestRequestSchema,
   ConveyorsWorldLayerResponseSchema,
   RailsWorldIngestRequestSchema,
@@ -174,6 +176,9 @@ const schemaByPrefix: [string, z.ZodType][] = [
   // ADR-0055 Decision 1: the trainRoutes world layer.
   ["trainRoutesWorldResponse", TrainRoutesWorldLayerResponseSchema],
   ["trainRoutesSample", TrainRoutesWorldIngestRequestSchema],
+  // ADR-0055 Decision 1: the droneRoutes world layer.
+  ["droneRoutesWorldResponse", DroneRoutesWorldLayerResponseSchema],
+  ["droneRoutesSample", DroneRoutesWorldIngestRequestSchema],
   ["command", CommandResponseSchema],
   ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],

@@ -38,7 +38,7 @@ import { snapshotEnvelope } from "./envelope";
  * (65 segments, 17-127 points each, in the captured world) or resourceNodes (608 items).
  */
 
-export const KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes", "conveyors", "trainRoutes"] as const;
+export const KNOWN_MAP_WORLD_LAYERS = ["rails", "resourceNodes", "conveyors", "trainRoutes", "droneRoutes"] as const;
 export type MapWorldLayer = (typeof KNOWN_MAP_WORLD_LAYERS)[number];
 
 /** Measured on the serialized projected JSON, uncompressed, by the sender; enforced again at ingest (see above). */
@@ -203,12 +203,35 @@ export const TrainRouteTrainSchema = z.object({
 export const TrainRouteRecordSchema = z.discriminatedUnion("recordType", [TrainRouteStationSchema, TrainRouteTrainSchema]);
 export const TrainRoutesLayerDataSchema = z.array(TrainRouteRecordSchema).max(TRAIN_ROUTES_MAX_ITEMS);
 
+// ---------------------------------------------------------------------------------------------------------------------
+// droneRoutes (ADR-0055 Decision 1): drone ports with their pairing and cargo, from getDroneStation. FRM reports the
+// pairing on both ports as the partner's name, not its id (raw-sources/captured-responses/
+// frm-getDroneStation-2026-10-25-paired-*.json, added by PR #659), so `paired` is a name and may match more than one port. Item classes
+// only, no amounts or trip rates, so the hash is stable between reads (the rates move on every trip).
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Sanity cap on drone ports in one layer, as `MAP_LIVE_MAX_STATIONS`. */
+export const DRONE_ROUTES_MAX_ITEMS = 2_000;
+
+export const DronePortSchema = z.object({
+  id: boundedString,
+  name: boundedString.describe("The port's in-game name, player-chosen; game text, rendered as text only. May repeat across ports."),
+  paired: boundedString.nullable().describe("The paired port's name as the game reports it; null when the port is not paired. Names may repeat, so a name matching more than one port is ambiguous"),
+  input: ItemClassNames.describe("Distinct item classes in the port's input inventory: the cargo it sends to its pair"),
+  output: ItemClassNames.describe("Distinct item classes in the port's output inventory: the cargo it received"),
+  fuel: ItemClassNames.describe("Distinct item classes in the port's fuel inventory: consumed by the drone, not carried"),
+  x: WholeMetreSchema,
+  y: WholeMetreSchema,
+});
+export const DroneRoutesLayerDataSchema = z.array(DronePortSchema).max(DRONE_ROUTES_MAX_ITEMS);
+
 /** Each layer's item cap: what the ingest truncates an over-cap `data` array to (conform, don't reject). */
 export const MAP_WORLD_LAYER_MAX_ITEMS = {
   rails: MAP_WORLD_MAX_ITEMS,
   resourceNodes: MAP_WORLD_MAX_ITEMS,
   conveyors: CONVEYORS_MAX_EDGES,
   trainRoutes: TRAIN_ROUTES_MAX_ITEMS,
+  droneRoutes: DRONE_ROUTES_MAX_ITEMS,
 } satisfies Record<MapWorldLayer, number>;
 
 /** Keyed by `MapWorldLayer`, so M3's route (`:layer` is a runtime string) can look up the right
@@ -218,6 +241,7 @@ export const MAP_WORLD_LAYER_DATA_SCHEMAS = {
   resourceNodes: ResourceNodesLayerDataSchema,
   conveyors: ConveyorsLayerDataSchema,
   trainRoutes: TrainRoutesLayerDataSchema,
+  droneRoutes: DroneRoutesLayerDataSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** The PER-ITEM schema for one layer (a single `RailSegment`/`ResourceNode`, not the capped array).
@@ -230,6 +254,7 @@ export const MAP_WORLD_LAYER_ITEM_SCHEMAS = {
   resourceNodes: ResourceNodeSchema,
   conveyors: ConveyorEdgeSchema,
   trainRoutes: TrainRouteRecordSchema,
+  droneRoutes: DronePortSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** Exported (test-hunter, PR #374): the ingest route validates a body's `observedAt` FORMAT against
@@ -246,6 +271,7 @@ export const RailsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTim
 export const ResourceNodesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ResourceNodesLayerDataSchema });
 export const ConveyorsWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: ConveyorsLayerDataSchema });
 export const TrainRoutesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: TrainRoutesLayerDataSchema });
+export const DroneRoutesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: DroneRoutesLayerDataSchema });
 
 /** Why the conveyors projection has no layer this cycle (game-adapter's `mapConveyors` `skip`): an FRM without connection
  *  fields, or a graph over `CONVEYORS_MAX_EDGES`. */
@@ -266,6 +292,7 @@ export const MAP_WORLD_LAYER_INGEST_SCHEMAS = {
   resourceNodes: ResourceNodesWorldIngestRequestSchema,
   conveyors: ConveyorsWorldIngestRequestSchema,
   trainRoutes: TrainRoutesWorldIngestRequestSchema,
+  droneRoutes: DroneRoutesWorldIngestRequestSchema,
 } satisfies Record<MapWorldLayer, z.ZodType>;
 
 /** 200/202. What POST /agent/v1/world/:layer answers: `unchanged` is true when the content hash
@@ -283,7 +310,7 @@ export const WorldIngestResponseSchema = z.object({ accepted: z.boolean(), uncha
  */
 export function worldLayerResponseSchema<T extends z.ZodType>(dataSchema: T) {
   return z.object({
-    layer: z.string().describe("Known: rails, resourceNodes, conveyors, trainRoutes; more are added as their captures land (ADR-0038)"),
+    layer: z.string().describe("Known: rails, resourceNodes, conveyors, trainRoutes, droneRoutes; more are added as their captures land (ADR-0038)"),
     hash: z.string().min(1),
     observedAt: IsoTimeSchema,
     truncated: z.boolean(),
@@ -295,6 +322,7 @@ export const RailsWorldLayerResponseSchema = worldLayerResponseSchema(RailsLayer
 export const ResourceNodesWorldLayerResponseSchema = worldLayerResponseSchema(ResourceNodesLayerDataSchema);
 export const ConveyorsWorldLayerResponseSchema = worldLayerResponseSchema(ConveyorsLayerDataSchema);
 export const TrainRoutesWorldLayerResponseSchema = worldLayerResponseSchema(TrainRoutesLayerDataSchema);
+export const DroneRoutesWorldLayerResponseSchema = worldLayerResponseSchema(DroneRoutesLayerDataSchema);
 /** For the endpoint registry (endpoints.ts), which needs one static schema per route: the client
  *  re-validates against the specific layer's schema via `MAP_WORLD_LAYER_DATA_SCHEMAS`, same as the
  *  route itself does at write time. */
@@ -303,6 +331,7 @@ export const MapWorldLayerResponseSchema = z.union([
   ResourceNodesWorldLayerResponseSchema,
   ConveyorsWorldLayerResponseSchema,
   TrainRoutesWorldLayerResponseSchema,
+  DroneRoutesWorldLayerResponseSchema,
 ]);
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -365,6 +394,10 @@ export type TrainRouteRecord = z.infer<typeof TrainRouteRecordSchema>;
 export type TrainRoutesLayerData = z.infer<typeof TrainRoutesLayerDataSchema>;
 export type TrainRoutesWorldIngestRequest = z.input<typeof TrainRoutesWorldIngestRequestSchema>;
 export type TrainRoutesWorldLayerResponse = z.infer<typeof TrainRoutesWorldLayerResponseSchema>;
+export type DronePort = z.infer<typeof DronePortSchema>;
+export type DroneRoutesLayerData = z.infer<typeof DroneRoutesLayerDataSchema>;
+export type DroneRoutesWorldIngestRequest = z.input<typeof DroneRoutesWorldIngestRequestSchema>;
+export type DroneRoutesWorldLayerResponse = z.infer<typeof DroneRoutesWorldLayerResponseSchema>;
 export type MapTrain = z.infer<typeof MapTrainSchema>;
 export type MapTrainStation = z.infer<typeof MapTrainStationSchema>;
 export type MapLive = z.infer<typeof MapLiveSchema>;

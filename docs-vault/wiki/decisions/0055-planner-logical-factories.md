@@ -83,7 +83,7 @@ the 30 s snapshot. All endpoints below are not game-thread. One layer per mode, 
 | --- | --- | --- | --- |
 | `trainRoutes` | `getTrainStation` + `getTrains` | stations `{id, name, platforms: [{id, mode, items: className[]}]}`, trains `{id, name, stops: stationName[], items: className[]}` | **Open now**: the 2026-10-21 capture passed checks 1 and 2 |
 | `storageContents` | `getStorageInv` | `[{id, items: className[]}]` (distinct classes, no amounts) | A trimmed read-only capture on the owner's save (size, id equals belt end id) |
-| `droneRoutes` | `getDroneStation` | `[{id, name, paired: name or null, input: className[], output: className[], x, y}]` | Designed from the FRM docs fields; see "Drones and trucks without a save" below |
+| `droneRoutes` | `getDroneStation` | `[{id, name, paired: name or null, input: className[], output: className[], fuel: className[], x, y}]` | Designed from the FRM docs fields; see "Drones and trucks without a save" below. Amended 2026-10-26 (PR 12a contract) after the paired capture: `paired` is the partner's name, reported on both ports; `fuel` added so a belt bringing fuel ends at the port; no trip rates (FRM's `AvgOutRate` is items/min, but it moves every trip and would rewrite the layer each read) |
 | `truckRoutes` | `getTruckStation` + `getVehiclePaths` + `getVehicles` | stations `{id, mode, items, x, y}`, paths `{id, name, points (whole metres, thinned)}`, vehicles `{pathName, autopilot}` | The same |
 
 **Drones and trucks without a save.** The owner uses trains but has no save with drones or trucks (2026-10-24: "need to
