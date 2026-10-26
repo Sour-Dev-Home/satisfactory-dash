@@ -125,6 +125,14 @@ It cannot skip a real change:
    (`platform/db/config.ts:49`).
 9. **Order.** The leader lock ships and is deployed **before** the Terraform change. With the overlap but no lock, two
    alert evaluators would send duplicate Discord and push alerts.
+10. **Server list after a handover** (amendment, owner 2026-10-26: "Reload on leadership"). Each task's server runtime
+    (`backend/src/modules/servers/serverRuntime.ts`) is loaded from the database once at startup and then changes only
+    through that task's own writes. A server write served by the old task during the overlap (add, remove, rename,
+    connection edit, a switch to or from an agent) would be missing from the new task until its next restart, not for
+    a minute. So a task that takes the lock first reconciles its runtime with the database
+    (`reconcileDatabaseServers`), changing only what differs: an unchanged server keeps its pollers and an agent server
+    its in-memory snapshots. Polled entries carry a digest of their connection (`connectionSource`) to tell an edit
+    from an unchanged server. A failed reload is logged and leadership goes ahead. Ships and deploys before PR 3.
 
 ### D4. Frontend: say "updating" during any gap left (optional)
 
@@ -193,6 +201,8 @@ one-owner, credits-funded dashboard.
    Tests against the test Postgres: two locks, one leader; closing the holder hands over within one interval; a broken
    lock connection stops the leader-only workers; the evaluator's board starts at acquisition; an older
    `last_received_at` does not overwrite the row. Deployed to production before PR 3.
+2b. **Server reload on leadership** (D3.10, added 2026-10-26): `reconcileDatabaseServers` in
+   `modules/servers/loadDatabaseServers.ts`, run from the leader lock's `onAcquired`. Deployed to production before PR 3.
 3. **Overlap rollout** (`infra/aws/ecs.tf:116-120` and its comment, a check in `infra/aws/tests/ecs.tftest.hcl`,
    `docs-vault/wiki/runbooks/aws.md` "Deploy", ADR-0049 D5's outage line). The owner applies Terraform; the next
    deploy is checked against the uptime monitor (ADR-0028) for no down event.

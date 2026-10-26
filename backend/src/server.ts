@@ -47,8 +47,10 @@ import {
   createMembersRouter,
   addressVerdict,
   loadSelfServeConfigFromEnv,
+  connectionSource,
   loadDatabaseServers,
   loadServerRegistryFromEnv,
+  reconcileDatabaseServers,
 } from "./modules/servers/index.js";
 import type { ServerConnection } from "./modules/servers/index.js";
 import {
@@ -333,6 +335,9 @@ const databaseWorkers = [
           createClient: () => createLeaderLockClient(databaseConfig),
           logger: logger.child({ worker: "leader-lock" }),
           onAcquired: async () => {
+            // ADR-0054 D3: the lock comes free when the old task stops, so a server write it handled during the deploy
+            // overlap is in the database but not in this runtime. Catch up first, so the pollers start on the right list.
+            await reloadServersOnLeadership();
             await directory.setLeader(true);
             leaderWorkers.start();
           },
@@ -359,17 +364,51 @@ function buildFromConnection(c: ServerConnection) {
   if (addressVerdict(c.pinnedIp) !== "ok") {
     throw new Error("refusing to build a server whose address is not usable (not loopback while LAN servers wait for certificate pinning)");
   }
-  return buildServer(
-    c.publicId,
-    c.displayName,
-    createSatisfactoryServerConfig({ host: c.pinnedIp, apiPort: c.apiPort, apiToken: c.apiToken, frmPort: c.frmPort, frmToken: c.frmToken }),
-  );
+  return {
+    ...buildServer(
+      c.publicId,
+      c.displayName,
+      createSatisfactoryServerConfig({ host: c.pinnedIp, apiPort: c.apiPort, apiToken: c.apiToken, frmPort: c.frmPort, frmToken: c.frmToken }),
+    ),
+    // ADR-0054 D3: what the leadership reload compares, so an unchanged server keeps its pollers.
+    source: connectionSource(c),
+  };
 }
 
 const databasePort = databasePortOf(databaseConfig?.url);
 // #526 (L1): one mutex for every runtime change that follows a server write (the operator's management service, the
 // self-serve owner's rename and remove, the pending sweep), so their post-commit runtime changes run one at a time.
 const serverWriteMutex = new Mutex();
+
+/**
+ * ADR-0054 D3: on becoming the leader, bring this runtime in line with the stored servers (only what differs). Under the
+ * server-write mutex, so it never interleaves with this process's own post-commit runtime changes. A failure is logged
+ * and leadership goes ahead with the list this process has: a missed reload must never keep the leader workers stopped.
+ */
+async function reloadServersOnLeadership(): Promise<void> {
+  if (database === undefined || !serversRegistered) return;
+  try {
+    const changes = await serverWriteMutex.run(() =>
+      reconcileDatabaseServers({
+        db: database.pool,
+        ring: secretsKeyring,
+        runtime: directory,
+        build: buildFromConnection,
+        buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
+      }),
+    );
+    const changed = changes.added.length + changes.removed.length + changes.replaced.length + changes.renamed.length;
+    if (changed > 0) {
+      logger.info(
+        { added: changes.added, removed: changes.removed, replaced: changes.replaced, renamed: changes.renamed },
+        "servers reloaded from the database on becoming leader",
+      );
+    }
+  } catch (err) {
+    logger.error({ code: errorCode(err) }, "could not reload servers from the database on becoming leader; serving the loaded list");
+  }
+}
+
 const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
