@@ -33,7 +33,7 @@ import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
-import { edgeCurvePath } from "./edgeCurve";
+import { roundedOrthogonalPath } from "./edgeShapes";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -779,7 +779,7 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
 
 /** A flow: the line, its label with a halo, and for a transport the mode's glyph on the middle (moving when it may). */
 function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string }) {
-  const path = edgeCurvePath(e.points);
+  const path = roundedOrthogonalPath(e.points);
   const transport = isTransport(e.flow);
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   return (

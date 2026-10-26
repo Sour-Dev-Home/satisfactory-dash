@@ -2,6 +2,7 @@ import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
+import { routeOrthogonal } from "./orthogonalRoute";
 import { GLYPH_SIZE } from "./transportModes";
 
 // Sizes are SVG user units, tied to the canvas's text classes (a factory's name and the "×N" badge `text-base` 16 px
@@ -225,7 +226,7 @@ interface Placement {
 
 const MEMO_LIMIT = 12;
 const memo = new Map<string, Placement>();
-const stats = { computed: 0, reused: 0, lastMs: 0, slowestMs: 0 };
+const stats = { computed: 0, reused: 0, lastMs: 0, slowestMs: 0, routerFailures: 0 };
 
 /** For tests and the timing guard: how many layouts dagre ran, how many the memo answered, and how long dagre took. */
 export const layoutStats = () => ({ ...stats });
@@ -235,6 +236,7 @@ export function clearLayoutMemo(): void {
   stats.reused = 0;
   stats.lastMs = 0;
   stats.slowestMs = 0;
+  stats.routerFailures = 0;
 }
 
 /** FNV-1a over a string: a short, stable name for "these cards, these flows, these sizes". */
@@ -268,24 +270,75 @@ type LabelBox = { width: number; height: number };
  * over the same path with their labels one above the other): the shape dagre's multigraph handling sometimes cannot route
  * (it throws "Not possible to find intersection inside of the rectangle" on some parallel edges that skip a rank).
  */
+/**
+ * The flows that close a loop, by a depth-first search that starts from the sources (cards no flow enters), then from any
+ * card not yet reached, in scene order: a flow into a card still on the search's path is a return. Starting inside a loop
+ * instead (dagre's own search starts from the first card listed) reversed a forward flow and left the return pointing on.
+ */
+export function returnFlows(cardKeys: readonly string[], flows: readonly { from: string; to: string }[]): Set<number> {
+  const out = new Map<string, number[]>();
+  const entered = new Set<string>();
+  flows.forEach((f, i) => {
+    out.set(f.from, [...(out.get(f.from) ?? []), i]);
+    if (f.from !== f.to) entered.add(f.to);
+  });
+  const returns = new Set<number>();
+  const done = new Set<string>();
+  const onPath = new Set<string>();
+  const visit = (start: string) => {
+    // Iterative, so a long chain cannot overflow the stack: each frame is a card and its next outgoing flow.
+    const frames: { key: string; next: number }[] = [{ key: start, next: 0 }];
+    onPath.add(start);
+    while (frames.length > 0) {
+      const top = frames[frames.length - 1];
+      const leaving = out.get(top.key) ?? [];
+      if (top.next >= leaving.length) {
+        frames.pop();
+        onPath.delete(top.key);
+        done.add(top.key);
+        continue;
+      }
+      const i = leaving[top.next++];
+      const to = flows[i].to;
+      if (onPath.has(to)) returns.add(i);
+      else if (!done.has(to)) {
+        onPath.add(to);
+        frames.push({ key: to, next: 0 });
+      }
+    }
+  };
+  for (const k of cardKeys) if (!entered.has(k) && !done.has(k)) visit(k);
+  for (const k of cardKeys) if (!done.has(k)) visit(k);
+  return returns;
+}
+
 function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean): Placement {
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
   const nodesep = scene.frames.length > 0 ? NODE_SEP + FRAME_HEADER_H / 2 : NODE_SEP;
-  g.setGraph({ rankdir: "LR", acyclicer: "greedy", ranker: "network-simplex", nodesep, ranksep: RANK_SEP, edgesep: 10, marginx: MARGIN, marginy: MARGIN });
+  // Loops are broken here (`returnFlows`), so dagre gets a graph without cycles. `tight-tree` gave the fewest crossings
+  // under the orthogonal router (ADR-0059).
+  g.setGraph({ rankdir: "LR", ranker: "tight-tree", nodesep, ranksep: RANK_SEP, edgesep: 10, marginx: MARGIN, marginy: MARGIN });
   g.setDefaultEdgeLabel(() => ({}));
   scene.cards.forEach((c, i) => g.setNode(c.key, { width: sizes[i].width, height: sizes[i].height }));
   for (const f of scene.frames) {
     g.setNode(f.key, {});
     for (const k of f.cardKeys) g.setParent(k, f.key);
   }
+  // Each flow as dagre sees it: a return flow reversed, so its route comes back target to source and is flipped below.
+  const returns = returnFlows(
+    scene.cards.map((c) => c.key),
+    drawn,
+  );
+  const ends = (i: number): [string, string] => (returns.has(i) ? [drawn[i].to, drawn[i].from] : [drawn[i].from, drawn[i].to]);
   // Which dagre edge draws each flow, and how far up its label stands from the first one's.
   const edgeOf: string[] = [];
   const stack: number[] = drawn.map(() => 0);
   if (merged) {
     const groups = new Map<string, number[]>();
-    drawn.forEach((f, i) => {
-      const list = groups.get(`${f.from}\u0001${f.to}`);
-      if (list === undefined) groups.set(`${f.from}\u0001${f.to}`, [i]);
+    drawn.forEach((_, i) => {
+      const pair = ends(i).join("\u0001");
+      const list = groups.get(pair);
+      if (list === undefined) groups.set(pair, [i]);
       else list.push(i);
     });
     let n = 0;
@@ -297,15 +350,21 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
         stack[i] = above;
         above += labels[i].height;
       }
-      g.setEdge(drawn[members[0]].from, drawn[members[0]].to, { width: Math.max(...members.map((i) => labels[i].width)), height: above, labelpos: "c" }, name);
+      const [v, w] = ends(members[0]);
+      g.setEdge(v, w, { width: Math.max(...members.map((i) => labels[i].width)), height: above, labelpos: "c" }, name);
     }
   } else {
-    drawn.forEach((f, i) => {
+    drawn.forEach((_, i) => {
       edgeOf[i] = String(i);
-      g.setEdge(f.from, f.to, { ...labels[i], labelpos: "c" }, String(i));
+      const [v, w] = ends(i);
+      g.setEdge(v, w, { ...labels[i], labelpos: "c" }, String(i));
     });
   }
   dagre.layout(g);
+  const edgeAt = (i: number) => {
+    const [v, w] = ends(i);
+    return g.edge(v, w, edgeOf[i]) as { points?: Point[]; x?: number; y?: number; height?: number };
+  };
 
   const centres = new Map<string, Point>();
   scene.cards.forEach((c) => {
@@ -318,17 +377,68 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     const box = { x: p.x - p.width / 2, y: p.y - p.height / 2, width: p.width, height: p.height };
     frames.set(f.key, box);
   }
-  const paths = drawn.map((f, i) => (g.edge(f.from, f.to, edgeOf[i]).points ?? []).map((p: Point) => ({ x: p.x, y: p.y })));
+  // Every route source to target, a return flow's turned back round.
+  const paths = drawn.map((_, i) => {
+    const route = (edgeAt(i).points ?? []).map((p: Point) => ({ x: p.x, y: p.y }));
+    return returns.has(i) ? route.reverse() : route;
+  });
   // The label box dagre made room for: its centre, and for merged flows each label's row in it, top down. Placing a label
   // anywhere else (the path's middle) put it on cards, other labels and other lines.
-  const labelAt = drawn.map((f, i): Point | null => {
-    const d = g.edge(f.from, f.to, edgeOf[i]) as { x?: number; y?: number; height?: number };
+  const labelAt = drawn.map((_, i): Point | null => {
+    const d = edgeAt(i);
     if (d.x === undefined || d.y === undefined || !Number.isFinite(d.x) || !Number.isFinite(d.y)) return null;
     return { x: d.x, y: d.y - (d.height ?? labels[i].height) / 2 + stack[i] + labels[i].height / 2 };
   });
   // An empty graph comes back from dagre with width and height -Infinity.
   const { width, height } = g.graph();
-  return { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
+  const placed: Placement = { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
+  try {
+    return routed(scene, sizes, drawn, labels, placed, (i) => {
+      const d = edgeAt(i);
+      const inner = paths[i].slice(1, -1);
+      const k = d.x === undefined || d.y === undefined ? -1 : inner.findIndex((p: Point) => Math.abs(p.x - d.x!) < 0.5 && Math.abs(p.y - d.y!) < 0.5);
+      return k < 0 ? undefined : k;
+    });
+  } catch {
+    // Our router failing on a shape: dagre's own routes still draw every flow (corners left sharp).
+    stats.routerFailures++;
+    return placed;
+  }
+}
+
+/**
+ * ADR-0059: dagre's placement redrawn by our orthogonal router. Every leg changes height only in the empty gap between two
+ * columns, on a track of its own, so no line crosses a card; cards move only where a gap had to widen for its tracks.
+ */
+function routed(
+  scene: Scene,
+  sizes: readonly CardSize[],
+  drawn: readonly CanvasFlow[],
+  labels: readonly LabelBox[],
+  placed: Placement,
+  labelWaypoint: (flow: number) => number | undefined,
+): Placement {
+  const cards = scene.cards.map((c, i) => {
+    const centre = placed.centres.get(c.key)!;
+    return { key: c.key, x: centre.x - sizes[i].width / 2, y: centre.y - sizes[i].height / 2, width: sizes[i].width, height: sizes[i].height };
+  });
+  const frameKeys = scene.frames.filter((f) => placed.frames.has(f.key)).map((f) => f.key);
+  const out = routeOrthogonal(
+    {
+      cards,
+      edges: drawn.map((f, i) => ({ from: f.from, to: f.to, waypoints: placed.paths[i].slice(1, -1), label: labelWaypoint(i) })),
+      labels: drawn.map((_, i) => {
+        const at = placed.labelAt[i];
+        return at === null ? undefined : { x: at.x - labels[i].width / 2, y: at.y - labels[i].height / 2, width: labels[i].width, height: labels[i].height };
+      }),
+      frames: frameKeys.map((k) => placed.frames.get(k)!),
+    },
+    { straighten: true },
+  );
+  const centres = new Map(out.cards.map((c) => [c.key, { x: c.x + c.width / 2, y: c.y + c.height / 2 }]));
+  const frames = new Map(frameKeys.map((k, i) => [k, out.frames[i]]));
+  const labelAt = out.labels.map((b, i) => (b === undefined ? placed.labelAt[i] : { x: b.x + b.width / 2, y: b.y + b.height / 2 }));
+  return { ...placed, centres, frames, paths: out.paths, labelAt, width: placed.width + out.widened };
 }
 
 /** Where a straight line from a card's centre towards a point leaves the card. */
@@ -371,9 +481,9 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
 }
 
 function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
-  // Merged first: the flows of one pair of cards share one routed edge, so parallel flows never bend round each other's
-  // label boxes (a lone flow is the same either way). The separate form is the fallback.
-  for (const merged of [true, false]) {
+  // Separate first: each flow gets its own label box and, from the router, its own track (ADR-0059 measured this form).
+  // Merged (one dagre edge per pair of cards, labels stacked in its box) is the fallback for shapes dagre cannot route.
+  for (const merged of [false, true]) {
     try {
       return placeWith(scene, sizes, drawn, labels, merged);
     } catch {
