@@ -20,6 +20,12 @@ import {
   stateCountsText,
 } from "./plannerText";
 
+/** Which groups are ticked for "Designate selected" (ADR-0055 Decision 5); absent when the viewer cannot designate. */
+export interface GroupSelection {
+  selected: ReadonlySet<string>;
+  toggle: (nodeKey: string) => void;
+}
+
 /** What the Groups table knows beyond the groups when it lists one factory. */
 export interface FactoryColumns {
   remote: ReadonlyMap<string, Remote>;
@@ -42,12 +48,14 @@ function GroupRow({
   bubble,
   nested,
   factory,
+  selection,
 }: {
   node: PlannerNode;
   findings: readonly Bottleneck[] | undefined;
   bubble: Bubble;
   nested: boolean;
   factory: FactoryColumns | undefined;
+  selection: GroupSelection | undefined;
 }) {
   const hits = nodeFindings(node, findings).length;
   const role = roleText(node.role);
@@ -85,6 +93,14 @@ function GroupRow({
           )}
         </td>
       )}
+      {selection !== undefined && (
+        <td data-label="Select">
+          <label className="inline-flex min-h-touch items-center gap-2">
+            <input type="checkbox" className="size-5" checked={selection.selected.has(node.key)} onChange={() => selection.toggle(node.key)} />
+            <span className="sr-only">Select {node.name}</span>
+          </label>
+        </td>
+      )}
     </tr>
   );
 }
@@ -93,11 +109,13 @@ function BubbleBody({
   bubble,
   findings,
   factory,
+  selection,
   columns,
 }: {
   bubble: Bubble;
   findings: readonly Bottleneck[] | undefined;
   factory: FactoryColumns | undefined;
+  selection: GroupSelection | undefined;
   columns: number;
 }) {
   // A bubble of one group is just its row; a bigger one gets a row that names it, and its groups are indented under it.
@@ -123,7 +141,7 @@ function BubbleBody({
         </tr>
       )}
       {bubble.nodes.map((node) => (
-        <GroupRow key={node.key} node={node} findings={findings} bubble={bubble} nested={nested} factory={factory} />
+        <GroupRow key={node.key} node={node} findings={findings} bubble={bubble} nested={nested} factory={factory} selection={selection} />
       ))}
     </tbody>
   );
@@ -137,14 +155,16 @@ export function GroupsTable({
   nodes,
   findings,
   factory,
+  selection,
 }: {
   nodes: readonly PlannerNode[];
   findings: readonly Bottleneck[] | undefined;
   factory?: FactoryColumns;
+  selection?: GroupSelection;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const entries = foldBubbles(bubblesOf(nodes));
-  const columns = factory === undefined ? 7 : 8;
+  const columns = (factory === undefined ? 7 : 8) + (selection === undefined ? 0 : 1);
   return (
     <table>
       <thead>
@@ -157,10 +177,11 @@ export function GroupsTable({
           <th scope="col">Loop</th>
           <th scope="col">Bottlenecks</th>
           {factory !== undefined && <th scope="col">Place and split</th>}
+          {selection !== undefined && <th scope="col">Select</th>}
         </tr>
       </thead>
       {entries.flatMap((entry) => {
-        if (entry.type === "bubble") return [<BubbleBody key={entry.bubble.key} bubble={entry.bubble} findings={findings} factory={factory} columns={columns} />];
+        if (entry.type === "bubble") return [<BubbleBody key={entry.bubble.key} bubble={entry.bubble} findings={findings} factory={factory} selection={selection} columns={columns} />];
         const shown = open.has(entry.key);
         const toggle = (
           <tbody key={entry.key}>
@@ -185,7 +206,7 @@ export function GroupsTable({
           </tbody>
         );
         return shown
-          ? [toggle, ...entry.bubbles.map((b) => <BubbleBody key={b.key} bubble={b} findings={findings} factory={factory} columns={columns} />)]
+          ? [toggle, ...entry.bubbles.map((b) => <BubbleBody key={b.key} bubble={b} findings={findings} factory={factory} selection={selection} columns={columns} />)]
           : [toggle];
       })}
     </table>

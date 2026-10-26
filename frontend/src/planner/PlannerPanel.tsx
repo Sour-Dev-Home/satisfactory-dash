@@ -5,6 +5,8 @@ import { formatTime } from "../format";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge } from "./BottleneckBadge";
 import { FactoryFacts, FactoryFlows } from "./FactoryParts";
+import { DesignateBar, DesignatedControls, SuggestionControls } from "./DesignationParts";
+import { useDesignations } from "./DesignationContext";
 import { LazySiteGraph } from "./graph/GraphLoader";
 import {
   connectionRows,
@@ -16,7 +18,7 @@ import {
   type FactoryModel,
 } from "./graph/hierarchy";
 import { useWideScreen } from "./graph/useWideScreen";
-import { ConnectionsTable, GroupsTable, type FactoryColumns } from "./PlannerTables";
+import { ConnectionsTable, GroupsTable, type FactoryColumns, type GroupSelection } from "./PlannerTables";
 import {
   factoryTitle,
   groupLabel,
@@ -71,20 +73,30 @@ function SiteCard({
   );
 }
 
+/** A designated factory is the player's own; with suggestions on, an automatic one is shown dashed, with Keep (Decision 5). */
+function FactoryStanding({ model, suggest }: { model: FactoryModel; suggest: boolean }) {
+  if (model.factory.designationId !== null) return <DesignatedControls model={model} />;
+  return suggest ? <SuggestionControls model={model} /> : null;
+}
+
 function FactoryCard({
   model,
   findings,
+  suggest,
   onOpen,
 }: {
   model: FactoryModel;
   findings: readonly Bottleneck[] | undefined;
+  suggest: boolean;
   onOpen: () => void;
 }) {
   const { factory } = model;
+  const dashed = suggest && factory.designationId === null;
   return (
-    <li className="grid content-start gap-2 rounded-card border border-line p-4">
+    <li className={`grid content-start gap-2 rounded-card border p-4 ${dashed ? "border-dashed border-muted" : "border-line"}`}>
       <h4 className="m-0 break-words">{factoryTitle(factory)}</h4>
       <FactoryFacts model={model} findings={findings} />
+      <FactoryStanding model={model} suggest={suggest} />
       <button type="button" onClick={onOpen} aria-label={`Open factory: ${factory.name}`} className="min-h-touch justify-self-start">
         Open factory
       </button>
@@ -100,16 +112,21 @@ function FactoryOverview({
   graph,
   models,
   findings,
+  suggest,
   onOpen,
   viewMode: [view, setMode],
 }: {
   graph: Graph;
   models: readonly FactoryModel[];
   findings: readonly Bottleneck[] | undefined;
+  /** "Reason factories for me", held by the page like the view. */
+  suggest: [boolean, (on: boolean) => void];
   onOpen: (key: string) => void;
   /** Held by the page, so coming back from a factory shows the same view. */
   viewMode: [ViewMode, (mode: ViewMode) => void];
 }) {
+  const [suggesting, setSuggesting] = suggest;
+  const automatic = models.some((m) => m.factory.designationId === null);
   return (
     <>
       <p className="summary">
@@ -117,13 +134,30 @@ function FactoryOverview({
         {graph.nodes.length === 1 ? "group" : "groups"}
       </p>
       <ViewToggle view={view} onPick={setMode} />
+      {automatic && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            aria-pressed={suggesting}
+            className="min-h-touch"
+            onClick={() => {
+              setSuggesting(!suggesting);
+              // The suggestions are cards for now (the canvas shows them with the lasso, PR 10b), so show the cards.
+              if (!suggesting) setMode("tables");
+            }}
+          >
+            Reason factories for me
+          </button>
+          {suggesting && <span className="text-sm text-muted">Factories you have not designated are shown dashed, as suggestions.</span>}
+        </div>
+      )}
       {view === "graph" ? (
         <LazySiteGraph graph={graph} target={{ kind: "overview", models }} findings={findings} onOpenFactory={onOpen} />
       ) : (
         <>
           <ul aria-label="Factories" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
             {models.map((m) => (
-              <FactoryCard key={m.factory.key} model={m} findings={findings} onOpen={() => onOpen(m.factory.key)} />
+              <FactoryCard key={m.factory.key} model={m} findings={findings} suggest={suggesting} onOpen={() => onOpen(m.factory.key)} />
             ))}
           </ul>
           <FactoryFlows graph={graph} models={models} />
@@ -162,12 +196,14 @@ function Detail({
   subject,
   graph,
   findings,
+  suggest,
   onBack,
 }: {
   /** What is open: one site (a backend without factories) or one factory. */
   subject: { site: PlannerSite; factory?: undefined } | { factory: FactoryModel; site?: undefined };
   graph: Graph;
   findings: readonly Bottleneck[] | undefined;
+  suggest: boolean;
   onBack: () => void;
 }) {
   const { site, factory } = subject;
@@ -194,6 +230,21 @@ function Detail({
   const count = siteFindings(nodes, findings).length;
   const [view, setMode] = useViewMode();
   const noun = factory === undefined ? "site" : "factory";
+  // The text form of the lasso (ADR-0055 Decision 5): tick groups, then "Designate selected". Owners and admins only.
+  const { canWrite, writes } = useDesignations();
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const selection: GroupSelection | undefined =
+    canWrite && writes !== null
+      ? {
+          selected: picked,
+          toggle: (key) =>
+            setPicked((prev) => {
+              const next = new Set(prev);
+              if (!next.delete(key)) next.add(key);
+              return next;
+            }),
+        }
+      : undefined;
   return (
     <div className="grid gap-3">
       <button type="button" onClick={onBack} className="min-h-touch justify-self-start">
@@ -215,6 +266,7 @@ function Detail({
       ) : (
         <div className="grid content-start gap-2">
           <FactoryFacts model={factory} findings={findings} detail />
+          <FactoryStanding model={factory} suggest={suggest} />
         </div>
       )}
 
@@ -229,7 +281,14 @@ function Detail({
         <h5 id="planner-groups-heading" className="m-0">
           Groups
         </h5>
-        {nodes.length === 0 ? <p className="m-0">This {noun} lists no machine groups.</p> : <GroupsTable nodes={nodes} findings={findings} factory={columns} />}
+        {nodes.length === 0 ? (
+          <p className="m-0">This {noun} lists no machine groups.</p>
+        ) : (
+          <>
+            {selection !== undefined && <DesignateBar nodes={nodes.filter((n) => picked.has(n.key))} onDone={() => setPicked(new Set())} />}
+            <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} />
+          </>
+        )}
       </section>
 
       <section aria-labelledby="planner-edges-heading" hidden={view !== "tables"} className="grid gap-2">
@@ -282,6 +341,7 @@ export function PlannerPanel({
   const orphanNote = `${orphans} ${orphans === 1 ? "group belongs" : "groups belong"} to no factory, so ${orphans === 1 ? "it is" : "they are"} not listed under one.`;
   const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
   const overviewMode = useViewMode();
+  const [suggesting, setSuggesting] = useState(false);
   const overviewHeading = useRef<HTMLHeadingElement>(null);
   // Back from one: focus the overview's heading, but not on the page's first render.
   const [cameBack, setCameBack] = useState(false);
@@ -309,15 +369,16 @@ export function PlannerPanel({
               : "No sites yet: no machines are connected by conveyors."}
         </p>
       ) : model !== undefined ? (
-        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} onBack={back} />
+        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} suggest={suggesting} onBack={back} />
       ) : site !== undefined ? (
-        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} onBack={back} />
+        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} suggest={suggesting} onBack={back} />
       ) : byFactory ? (
         <FactoryOverview
           graph={graph}
           models={models}
           findings={findings}
           viewMode={overviewMode}
+          suggest={[suggesting, setSuggesting]}
           onOpen={(key) => {
             setCameBack(false);
             onSelect(key);

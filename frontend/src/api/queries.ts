@@ -252,6 +252,13 @@ export const queries = {
       queryFn: ({ signal }) => apiGetQuery(signal, endpoints.bottlenecks, { limit }, serverId),
       refetchInterval: POLL_MS.factory,
     }),
+  /** ADR-0055 Decision 5: the player's named sets of buildings, with how each matches the live factory; polled with the graph. */
+  plannerDesignations: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "planner-designations"],
+      queryFn: ({ signal }) => apiGetAbortable(signal, endpoints.plannerDesignations.list, serverId),
+      refetchInterval: POLL_MS.factory,
+    }),
   /** ADR-0050: the whole factory as a coarse graph (the Planner page), polled with the factory like the bottlenecks. */
   productionGraph: (serverId: string) =>
     queryOptions({

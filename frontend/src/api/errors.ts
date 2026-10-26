@@ -17,6 +17,9 @@ export class ApiError extends Error {
   /** The servers the error is about (ADR-0047: those blocking an account deletion). Ids and names only. */
   readonly servers: NonNullable<ApiErrorResponse["error"]["servers"]> | undefined;
 
+  /** ADR-0055: the designation a `designation_overlap` write ran into. The name is untrusted text. */
+  readonly other: ApiErrorResponse["error"]["other"];
+
   constructor(status: number, body: ApiErrorResponse["error"], retryAfterSeconds?: number) {
     super(body.message);
     this.name = "ApiError";
@@ -27,6 +30,7 @@ export class ApiError extends Error {
     this.retryAfterSeconds = retryAfterSeconds;
     this.reason = body.reason;
     this.servers = body.servers;
+    this.other = body.other;
   }
 }
 
