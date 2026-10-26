@@ -56,3 +56,44 @@ The judge reports these as NOT EXERCISED and does not fail on them (owner, 2026-
   run link is the evidence.
 - **Three failed runs are left out:** the crash run (40241942772) and the first two `tick-cost-native` runs
   (40247280125, 40256047941). They are linked above as the reason for each decision.
+
+## Sprint S2: factory, rates, trains and the train routes layer
+
+Evidence for ADR-0058's Sprint S2: R2a, the factory machines; R2b, the production rates; and R3, trains and stations,
+with the `trainRoutes` layer built from them. Same folder layout, method and clean room as S1 above.
+
+Source: the mod's Sprint S2 PRs #58 (S2-A) and #59 (S2-B), merged on the mod's `main`, and PR #60, the
+switch that makes the factory and trains native by default (open when this was written). The parity run is pinned to
+https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/6e3330d
+
+The headers the S2 readers use are surveyed in the S2 header survey (dash PR #700).
+
+### The S2 runs
+
+| Run | Run id | Started (UTC) | Verdict | What it proves |
+| --- | --- | --- | --- | --- |
+| native-parity | [40403583987](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40403583987) | 2026-10-26T21:36:07Z | pass | Mod commit `6e3330d`, world `Test2` (a copy of the owner's test save), 30 minutes with the native readers on against FRM's endpoints. R0: 356 rounds within 3%. R1: 356 rounds, lists equal. R4: the posted layer equal to FRM's (608 nodes, 55 exploited). R2a factory: machine ids and static fields equal in 60 rounds, and the dynamic flags matched in 99.44% of 33,660 machine-rounds (the owner's 99% rule). R2b rates: 0 of 12,840 item-class checks outside FRM's range, and 100.0% of 33,660 building-rounds within 5%. R3 trains and stations: 60 rounds, ids, name hashes and status equal, positions within FRM's own reads. R3 trainRoutes: 2 posted layers valid against the contract and equal to FRM's (16 records) |
+| tick-cost-native | [40396146628](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40396146628) | 2026-10-26T20:42:11Z | pass | With the native readers on: no tick-rate cost (median 29.89 without the mod, 29.87 with it). Longest game-thread step: Factory read 1 ms, Trains read 0.1 ms, node scan 0.34 ms, so the 2 ms step ceiling held. Run at `ebe03f2`; the mod code is identical at `6e3330d`, which changed the judge only |
+
+### What the test world did not exercise (S2)
+
+The judge reports these as NOT EXERCISED and does not fail on them:
+
+- **R0:** a battery (`batteryCapacityMWh`, `batteryPercent`, `batteryDifferentialMW`), a tripped fuse and a merged circuit group.
+- **R1:** any online player.
+- **R3:** a parked train, and a stationary train. Every train moved, so the 1 m check that would expose a position-source
+  bias (the last vehicle, or a stale position) never ran.
+
+### Decisions taken during the sprint (S2)
+
+- **Two parity failures, both fixed (2026-10-26).** The first S2 `native-parity` run (40378567334) failed R2b rates, because
+  the Somersloop production boost was not applied to products, and R3 `trainRoutes`, because empty platforms were left out.
+  Both were fixed in the mod (`ebe03f2`).
+- **The item-class rule (owner, 2026-10-26).** A second run (40388387353) missed 2 of 12,840 rate item-class checks. The
+  owner ruled that the item-class rule holds for 99% of class-checks, like the factory flags' 1% allowance (mod `6e3330d`).
+  The passing run above is at 100.00% against that 99%.
+
+### Notes (S2)
+
+- **Two failed runs are left out:** 40378567334 and 40388387353. They are linked above as the reason for each decision;
+  their `result.json` files are not copied.
