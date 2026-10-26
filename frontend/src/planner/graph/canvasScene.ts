@@ -13,7 +13,8 @@ import {
   shareText,
   siteNodes,
 } from "../plannerText";
-import { MAX_LINE_CHARS, edgeLabel, edgeLabelLines, keepFigures, nodeBody, nodeTitle, wrapText } from "./graphModel";
+import { glyphKindOf, type GlyphKind } from "./buildingIcons";
+import { MAX_SUMMARY_CHARS, edgeLabel, edgeLabelLines, nameOr, nodeFacts, nodeSummary, nodeTitle, productSummary, withName } from "./graphModel";
 import {
   aggregateFlows,
   bubblesOf,
@@ -40,8 +41,7 @@ import {
 export const COLLAPSE_AT = 30;
 /** Words over this many characters in a factory card's title are cut (the full name is in its tooltip). */
 export const MAX_FACTORY_TITLE_CHARS = 30;
-const MAX_CHIP_LINES = 3;
-const MAX_PRODUCT_LINES = 2;
+const UNNAMED_FACTORY = "Unnamed factory";
 
 export type CardKind = "factory" | "bubble" | "group" | "fold";
 
@@ -51,14 +51,22 @@ export interface Card {
   kind: CardKind;
   /** The groups the card stands for. */
   nodeKeys: string[];
+  /** The name with its machine count ("8× Constructor"); not printed on the card, it names the card in edge tooltips. */
   title: string;
+  /** What the card prints under its icon row: one line (a factory's name and then one line). Never empty. */
   lines: string[];
-  /** How many leading `lines` are muted (the recipe, or where a factory stands). */
-  mutedLines: number;
+  /** The "×N" machine count badge, when the card stands for machines. */
+  count: number | undefined;
   /** The building class whose icon the card shows, when it stands for one class. */
   className: string | undefined;
-  /** The card's words for the tooltip and the keyboard button (the findings count is added by the canvas). */
+  /** The generic glyph for the card's kind, drawn when its class has no icon (or the icon fails to load). */
+  glyph: GlyphKind;
+  /** The card's short name (a group's "8× Constructor, Iron Plate", a factory's name). */
   label: string;
+  /** Everything the card does not print: the tooltip and the keyboard button's words (the findings count is added by the canvas). */
+  description: string;
+  /** A group's further words from the factory view (share split, where it stands, storage chips); the side panel lists them. */
+  facts: string[];
   loop: boolean;
   /** The frame the card sits in. */
   frame: string | undefined;
@@ -183,42 +191,59 @@ export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
 // Cards
 // ---------------------------------------------------------------------------------------------------------------------
 
-const blank = { upstream: undefined, frame: undefined, bubbleKey: undefined, className: undefined } as const;
+const blank = { upstream: undefined, frame: undefined, bubbleKey: undefined, className: undefined, count: undefined, facts: [] as string[] } as const;
 
-/** A group as a card: the title, recipe, outputs and loop marker the site canvas always drew. */
-export function groupCard(node: PlannerNode, extra: string[] = []): Card {
-  const { lines, recipeLines } = nodeBody(node);
+/** The "×N" badge's number: only a finite, positive count prints (a bad one from the server leaves no badge, not "×NaN"). */
+const countOf = (n: number): number | undefined => (Number.isFinite(n) && n > 0 ? n : undefined);
+
+/** The same words in a sentence each: what the tooltip and the keyboard button read (the card itself prints one line). */
+const sentences = (parts: readonly string[]): string => parts.filter((p) => p !== "").join(". ");
+
+/**
+ * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
+ * recipe, the other outputs and the loop marker are in `description` (the tooltip and the keyboard name) and the side
+ * panel; `facts` are the further words the factory view adds (the share split, where the group stands, storage chips).
+ */
+export function groupCard(node: PlannerNode, facts: string[] = []): Card {
+  const shown = withName(node);
+  const { outputs, loop } = nodeFacts(node);
   return {
     ...blank,
     key: node.key,
     kind: "group",
     nodeKeys: [node.key],
-    title: nodeTitle(node),
-    lines: [...lines, ...extra],
-    mutedLines: recipeLines,
+    title: nodeTitle(shown),
+    lines: [nodeSummary(node)],
+    count: countOf(node.count),
     className: node.className,
-    label: groupLabel(node),
+    glyph: glyphKindOf(node),
+    label: groupLabel(shown),
+    description: sentences([groupLabel(shown), ...outputs, ...(loop ? ["In a loop"] : []), ...facts]),
+    facts,
     loop: node.loop === true,
   };
 }
 
 function bubbleCard(bubble: Bubble, chips: string[]): Card {
-  const first = bubble.nodes[0];
-  const what = wrapText(first.recipe ?? first.resource?.name ?? "No recipe");
-  const products = bubble.products.slice(0, MAX_PRODUCT_LINES).flatMap((rate) => wrapText(keepFigures(outputLine(rate))));
-  const more = bubble.products.length - MAX_PRODUCT_LINES;
+  const first = withName(bubble.nodes[0]);
+  const title = bubbleTitle({ ...bubble, nodes: [first, ...bubble.nodes.slice(1)] });
   const tree = bubble.of > 1 ? ` · tree ${bubble.ordinal} of ${bubble.of}` : "";
+  const groups = plural(bubble.nodes.length, "group", "groups");
+  const loop = bubble.nodes.some((n) => n.loop === true);
   return {
     ...blank,
     key: bubble.key,
     kind: "bubble",
     nodeKeys: bubble.nodes.map((n) => n.key),
     title: nodeTitle({ name: first.name, count: bubble.machineCount }),
-    lines: [...what, ...(products.length === 0 ? ["No output data"] : products), ...(more > 0 ? [`+${more} more ${more === 1 ? "output" : "outputs"}`] : []), `${plural(bubble.nodes.length, "group", "groups")}${tree}`, ...chips],
-    mutedLines: what.length,
+    lines: [bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+    count: countOf(bubble.machineCount),
     className: first.className,
-    label: bubbleTitle(bubble),
-    loop: bubble.nodes.some((n) => n.loop === true),
+    glyph: glyphKindOf(first),
+    label: title,
+    description: sentences([title, ...(bubble.products.length === 0 ? ["No output data"] : bubble.products.map(outputLine)), `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
+    facts: chips,
+    loop,
     bubbleKey: bubble.key,
   };
 }
@@ -226,16 +251,20 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
 function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
   const nodes = entry.bubbles.flatMap((b) => b.nodes);
   const machines = nodes.reduce((sum, n) => sum + n.count, 0);
+  const first = withName(nodes[0]);
+  const text = foldText({ type: "fold", key: entry.key, bubbles: entry.bubbles });
   return {
     ...blank,
     key: entry.key,
     kind: "fold",
     nodeKeys: nodes.map((n) => n.key),
-    title: cutTo(foldText({ type: "fold", key: entry.key, bubbles: entry.bubbles }), MAX_FACTORY_TITLE_CHARS),
-    lines: [`${plural(machines, "machine", "machines")} in ${plural(nodes.length, "group", "groups")}`, "Click to show them"],
-    mutedLines: 0,
-    className: undefined,
-    label: foldText({ type: "fold", key: entry.key, bubbles: entry.bubbles }),
+    title: cutTo(text, MAX_FACTORY_TITLE_CHARS),
+    lines: [cutTo(text, MAX_SUMMARY_CHARS)],
+    count: countOf(machines),
+    className: first.className,
+    glyph: glyphKindOf(first),
+    label: text,
+    description: sentences([text, `${plural(machines, "machine", "machines")} in ${plural(nodes.length, "group", "groups")}`, "Click to show them"]),
     loop: false,
   };
 }
@@ -264,30 +293,31 @@ export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
 
 function factoryCard(model: FactoryModel): Card {
   const { factory } = model;
-  const where = wrapText(factorySitesText(model));
-  // The figures and their unit stay together on a wrap ("Iron Plate:" then "48 / 80 items/min"), as on a group's card.
-  const products = factory.products.slice(0, MAX_PRODUCT_LINES).flatMap((rate) => wrapText(keepFigures(outputLine(rate))));
-  const more = factory.products.length - MAX_PRODUCT_LINES;
-  const chips = model.destinations.slice(0, MAX_CHIP_LINES).map((d) => destinationChipText(d.destination, d.count));
-  const chipMore = model.destinations.length - MAX_CHIP_LINES;
+  const name = nameOr(factory.name, UNNAMED_FACTORY);
+  const title = cutTo(nameOr(factoryTitle(factory), UNNAMED_FACTORY), MAX_FACTORY_TITLE_CHARS);
+  // The icon is the factory's main machine: the group with the most machines (the first by key among equals).
+  const main = [...model.nodes].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))[0];
   return {
     ...blank,
     key: factory.key,
     kind: "factory",
     nodeKeys: model.nodes.map((n) => n.key),
-    title: cutTo(factoryTitle(factory), MAX_FACTORY_TITLE_CHARS),
-    lines: [
-      ...where,
+    title,
+    // The name and one product line; where it stands, the other outputs and the ends are in `description`.
+    lines: [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])],
+    count: countOf(factory.machineCount),
+    className: main?.className,
+    glyph: main === undefined ? "unknown" : glyphKindOf(main),
+    label: name,
+    description: sentences([
+      name,
+      factorySitesText(model),
       plural(factory.machineCount, "machine", "machines"),
-      ...(products.length === 0 ? ["No output data"] : products),
-      ...(more > 0 ? [`+${more} more ${more === 1 ? "output" : "outputs"}`] : []),
-      ...(factory.sharedNodeCount > 0 ? [`${plural(factory.sharedNodeCount, "shared group", "shared groups")}`] : []),
-      ...chips,
-      ...(chipMore > 0 ? [`+${chipMore} more ${chipMore === 1 ? "end" : "ends"}`] : []),
-    ],
-    mutedLines: where.length,
-    className: undefined,
-    label: factory.name,
+      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map(outputLine)),
+      ...(factory.sharedNodeCount > 0 ? [plural(factory.sharedNodeCount, "shared group", "shared groups")] : []),
+      ...model.destinations.map((d) => destinationChipText(d.destination, d.count)),
+      ...(model.nodes.some((n) => n.loop === true) ? ["In a loop"] : []),
+    ]),
     loop: model.nodes.some((n) => n.loop === true),
   };
 }
@@ -451,9 +481,9 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
   const groupWithFacts = (node: PlannerNode): Card => {
     const extra: string[] = [];
     const split = shareSplit(node);
-    if (split !== null) extra.push(...wrapText(shareText(split, factoryNames), MAX_LINE_CHARS, 3));
+    if (split !== null) extra.push(shareText(split, factoryNames));
     const away = remote.get(node.key);
-    if (away !== undefined) extra.push(...wrapText(remoteText(away), MAX_LINE_CHARS, 3));
+    if (away !== undefined) extra.push(remoteText(away));
     extra.push(...chipLines([node.key]));
     return groupCard(node, extra);
   };

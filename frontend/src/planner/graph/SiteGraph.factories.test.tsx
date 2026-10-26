@@ -44,11 +44,13 @@ const plateGraph = () => screen.findByRole("img", { name: /^Graph of Iron Plate 
 const button = (name: string | RegExp) => screen.findByRole("button", { name });
 /** The groups in the graph's keyboard list, by their accessible names. */
 const cardNames = () => within(screen.getByRole("list", { name: /in the graph$/ })).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+/** Whether a card in the keyboard list starts with these words (its name goes on with the rest of its description). */
+const hasCard = (prefix: string) => cardNames().some((n) => n?.startsWith(prefix));
 
 async function openPlate() {
   renderView();
   await overview();
-  fireEvent.click(await button("Open factory: Iron Plate factory"));
+  fireEvent.click(await button(/^Open factory: Iron Plate factory./));
   return plateGraph();
 }
 
@@ -71,10 +73,15 @@ describe("the factory overview on the canvas", () => {
     renderView();
     const svg = await overview();
     expect(svg).toHaveAccessibleName("Graph of Factories: 2 factories, 1 connection. The Tables view lists the same.");
-    expect(cardNames()).toEqual(["Open factory: Iron Plate factory", "Open factory: Iron Rod factory"]);
-    expect(within(svg).getByText("9 machines")).toBeInTheDocument();
-    expect(within(svg).getByText("1 flow to storage")).toBeInTheDocument();
-    fireEvent.click(await button("Open factory: Iron Rod factory"));
+    expect(cardNames().map((n) => n?.split(". ")[0])).toEqual(["Open factory: Iron Plate factory", "Open factory: Iron Rod factory"]);
+    // A factory card prints its name and one product line, with the main machine's count; the rest is in its tooltip and name.
+    expect(within(svg).getByText("Iron Plate factory")).toBeInTheDocument();
+    expect(within(svg).getByText("Iron Plate · 48/min")).toBeInTheDocument();
+    expect(within(svg).getByText("×9")).toBeInTheDocument();
+    expect(within(svg).queryByText("1 flow to storage")).not.toBeInTheDocument();
+    expect(cardNames()[0]).toContain("9 machines");
+    expect(cardNames()[0]).toContain("1 flow to storage");
+    fireEvent.click(await button(/^Open factory: Iron Rod factory./));
     expect(await screen.findByRole("img", { name: /^Graph of Iron Rod factory: 2 groups, 1 connection/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Iron Rod factory (+ Iron Rod)" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "All factories" }));
@@ -104,7 +111,7 @@ describe("an opened factory", () => {
     wideScreen();
   });
 
-  it("says where a remote group stands and how a shared one splits, on the card", async () => {
+  it("says where a remote group stands and how a shared one splits, in the card's tooltip and keyboard name", async () => {
     const svg = await openPlate();
     expect(within(svg).getAllByText(/60% here, 40% Iron Rod/)).toHaveLength(3);
     expect(within(svg).getAllByText(/by$|train$/).length).toBeGreaterThan(0);
@@ -129,12 +136,12 @@ describe("an opened factory", () => {
     const svg = await openPlate();
     const toggle = screen.getByRole("button", { name: "Storage detail" });
     expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(cardNames()).toContain("Storage Container");
+    expect(hasCard("Storage Container")).toBe(true);
     expect(within(svg).queryByText("1 flow to storage")).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(cardNames()).not.toContain("Storage Container");
-    expect(within(svg).getByText("1 flow to storage")).toBeInTheDocument();
+    expect(hasCard("Storage Container")).toBe(false);
+    expect(cardNames().some((n) => n?.includes("1 flow to storage"))).toBe(true);
     expect(window.localStorage.getItem(STORAGE_DETAIL_KEY)).toBe("off");
   });
 
@@ -142,25 +149,25 @@ describe("an opened factory", () => {
     window.localStorage.setItem(STORAGE_DETAIL_KEY, "off");
     await openPlate();
     expect(screen.getByRole("button", { name: "Storage detail" })).toHaveAttribute("aria-pressed", "false");
-    expect(cardNames()).not.toContain("Storage Container");
+    expect(hasCard("Storage Container")).toBe(false);
   });
 
   it("hides what only feeds a card behind a count, shows it again from the count, and Escape restores the last one", async () => {
     const svg = await openPlate();
     const hide = await button("Hide 1 group that only feeds Storage Container");
-    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(true);
     fireEvent.click(hide);
-    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(false);
     expect(svg.querySelector('[data-upstream="collapsed"]')).toHaveTextContent("+1");
     expect(window.localStorage.getItem(COLLAPSED_KEY)).not.toBeNull();
     const show = screen.getByRole("button", { name: "Show 1 group hidden behind Storage Container" });
     expect(show).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(show);
-    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Hide 1 group that only feeds Storage Container" }));
-    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(false);
     fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
-    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(true);
   });
 
   it("the minus on the card in the picture does the same", async () => {
@@ -178,7 +185,7 @@ describe("an opened factory", () => {
     cleanup();
     const again = await openPlate();
     expect(again.querySelector('[data-upstream="collapsed"]')).not.toBeNull();
-    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(false);
   });
 });
 
@@ -191,17 +198,17 @@ describe("drill-down into a bubble", () => {
   it("a factory of few groups opens with its trees expanded in frames, and the Collapse button folds one into a card", async () => {
     const svg = await openPlate();
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(1);
-    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(true);
     fireEvent.click(await button("Collapse 5× Constructor, Iron Plate, tree 1 of 2"));
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
-    expect(cardNames()).not.toContain("4× Constructor, Iron Plate");
-    const bubble = screen.getByRole("button", { name: "5× Constructor, Iron Plate, tree 1 of 2" });
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(false);
+    const bubble = screen.getByRole("button", { name: /^5× Constructor, Iron Plate, tree 1 of 2./ });
     expect(bubble).toHaveAttribute("aria-expanded", "false");
-    expect(within(svg).getByText("2 groups · tree 1 of 2")).toBeInTheDocument();
+    expect(bubble.getAttribute("aria-label")).toContain("2 groups · tree 1 of 2");
     // Choosing the bubble opens it in place again.
     fireEvent.click(bubble);
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(1);
-    expect(cardNames()).toContain("4× Constructor, Iron Plate");
+    expect(hasCard("4× Constructor, Iron Plate")).toBe(true);
   });
 
   it("Collapse all and Expand all flip every bubble", async () => {
@@ -215,8 +222,18 @@ describe("drill-down into a bubble", () => {
 
   it("opens a group inside a frame in the side panel", async () => {
     await openPlate();
-    fireEvent.click(await button("4× Constructor, Iron Plate"));
+    fireEvent.click(await button(/^4× Constructor, Iron Plate./));
     expect(await screen.findByRole("complementary", { name: /^4× Constructor, Iron Plate/ })).toBeInTheDocument();
+  });
+
+  it("lists in the panel what the card no longer prints: the recipe, the outputs and the share split", async () => {
+    const svg = await openPlate();
+    expect([...svg.querySelectorAll("text")].some((t) => /60% here/.test(t.textContent ?? ""))).toBe(false);
+    fireEvent.click((await screen.findAllByRole("button", { name: /60% here, 40% Iron Rod/ }))[0]);
+    const panel = await screen.findByRole("complementary");
+    expect(panel).toHaveTextContent(/Recipe:/);
+    expect(within(panel).getByRole("list", { name: "Outputs" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent(/60% here, 40% Iron Rod/);
   });
 });
 
@@ -274,7 +291,7 @@ describe("the transport motion", () => {
     wideScreen(false);
     renderView();
     await overview();
-    fireEvent.click(await button("Open factory: Iron Rod factory"));
+    fireEvent.click(await button(/^Open factory: Iron Rod factory./));
     await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
     expect(screen.queryByLabelText("Motion")).not.toBeInTheDocument();
   });

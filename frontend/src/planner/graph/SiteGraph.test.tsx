@@ -105,8 +105,8 @@ describe("the site graph", () => {
     const list = screen.getByRole("list", { name: "Groups in the graph" });
     const names = within(list).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
     expect(names).toHaveLength(5);
-    expect(names).toContain("8× Constructor, Iron Plate, in a loop");
-    expect(names.some((n) => n?.endsWith(", in a loop"))).toBe(true);
+    expect(names.some((n) => n?.startsWith("8× Constructor, Iron Plate. ") && n.includes("In a loop"))).toBe(true);
+    expect(names.every((n) => n !== null && n.length > 0)).toBe(true);
     // Edge words per Decision 2, drawn in the picture.
     expect(svg.textContent).toContain("Iron Ore");
     expect(svg.textContent).toContain("120 items/min");
@@ -199,12 +199,16 @@ describe("the site graph", () => {
 
   it("opens a group's machines in a side panel from the factory read, and Escape returns focus to the group", async () => {
     const svg = await openGraph();
-    const button = await groupButton(/^8× Constructor, Iron Plate, in a loop$/);
+    const button = await groupButton(/^8× Constructor, Iron Plate\..*In a loop$/);
     button.focus();
     fireEvent.click(button);
     const panel = await screen.findByRole("complementary", { name: "8× Constructor, Iron Plate" });
-    await within(panel).findByRole("list", { name: "Machines in 8× Constructor, Iron Plate" });
-    const items = within(panel).getAllByRole("listitem");
+    const machines = await within(panel).findByRole("list", { name: "Machines in 8× Constructor, Iron Plate" });
+    // What the card no longer prints is in the panel: the recipe, every output and the loop marker.
+    expect(within(panel).getByText("Iron Plate", { selector: "p" })).toBeInTheDocument();
+    expect(within(panel).getByRole("list", { name: "Outputs" })).toHaveTextContent(/^Iron Plate: /);
+    expect(within(panel).getByText("In a loop")).toBeInTheDocument();
+    const items = within(machines).getAllByRole("listitem");
     // Three of the group's eight ids are in the factory read; the rest are said to be missing.
     expect(items).toHaveLength(3);
     expect(items[1]).toHaveTextContent("Constructor");
@@ -223,7 +227,7 @@ describe("the site graph", () => {
 
   it("closes the panel with its Close button and hands focus back", async () => {
     await openGraph();
-    const button = await groupButton(/^Miner Mk\.2$/);
+    const button = await groupButton(/^Miner Mk\.2\b/);
     fireEvent.click(button);
     const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
     fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
@@ -235,7 +239,7 @@ describe("the site graph", () => {
     server.use(http.get(endpoints.bottlenecks.route, () => HttpResponse.json(findingOnConstructors)));
     // The finding sits on a machine of the constructor manifold; the factory read carries that machine.
     const svg = await openGraph();
-    const button = await groupButton(/^8× Constructor, Iron Plate, in a loop, 1 bottleneck$/);
+    const button = await groupButton(/^8× Constructor, Iron Plate\..*In a loop, 1 bottleneck$/);
     expect(svg.textContent).toContain("Bottleneck");
     fireEvent.click(button);
     const panel = await screen.findByRole("complementary");
@@ -299,16 +303,47 @@ describe("the graph's readable chrome", () => {
     const label = [...svg.querySelectorAll("text")].find((t) => t.textContent === "Iron Ore120 items/min")!;
     expect(label).toHaveClass("text-sm", "paint-stroke-first");
     expect(label.getAttribute("class")).not.toContain("[paint-order");
-    // The rate and state lines are in full colour; only the recipe line is muted.
-    expect(svg.querySelectorAll("text.fill-muted").length).toBe(5);
+    // One line of plain text under each icon row: nothing is muted any more.
+    expect(svg.querySelectorAll("text.fill-muted").length).toBe(0);
+  });
+
+  it("is icon-first: every card has a large icon or a glyph, a count and one line, and the full words in its tooltip", async () => {
+    const svg = await openGraph();
+    const cards = [...svg.querySelectorAll("[data-card]")];
+    expect(cards).toHaveLength(5);
+    for (const card of cards) {
+      expect(card.querySelectorAll("[data-icon]")).toHaveLength(1);
+      expect(card.querySelectorAll("[data-count]")).toHaveLength(1);
+      expect(card.querySelectorAll(":scope > text")).toHaveLength(1);
+      expect(card.querySelector(":scope > title")?.textContent?.length).toBeGreaterThan(20);
+    }
+    // The icon is 40 units, not the 18 of a title-row icon.
+    expect(svg.querySelector("image")).toHaveAttribute("width", "40");
+    // The recipe is in the tooltip, not printed.
+    const plates = cards.find((c) => c.querySelector("title")?.textContent?.startsWith("8× Constructor, Iron Plate"))!;
+    expect(plates.querySelector("title")?.textContent).toContain("In a loop");
+    expect(plates.textContent).toContain("×8");
+    expect(plates.querySelector(":scope > text")?.textContent).toMatch(/^Iron Plate · /);
+  });
+
+  it("draws the kind's glyph in place of an icon that is missing or fails to load, never a bare box", async () => {
+    const svg = await openGraph();
+    const images = [...svg.querySelectorAll("image")];
+    expect(images.length).toBeGreaterThan(0);
+    const before = svg.querySelectorAll('[data-icon="glyph"]').length;
+    fireEvent.error(images[0]);
+    expect(svg.querySelectorAll('[data-icon="glyph"]').length).toBe(before + 1);
+    expect(svg.querySelectorAll("image")).toHaveLength(images.length - 1);
+    for (const g of svg.querySelectorAll('[data-icon="glyph"]')) expect(g.querySelector("[data-building-glyph]")).not.toBeNull();
   });
 
   it("says how to see more only while the drawing runs past the canvas, and fades the clipped edges", async () => {
     const svg = await openGraph();
     const hint = "Drag or use the arrow keys to see more →";
     const fades = () => [...document.querySelectorAll("[data-fade]")].filter((f) => f.getAttribute("data-clipped") === "true").map((f) => f.getAttribute("data-fade"));
-    // The fit stops at the readable floor, and jsdom's 1000 x 600 stage is too narrow for the fixture's drawing there:
-    // the right edge runs past the canvas, so the hint and the fades come.
+    // The compact cards fit jsdom's 1000 x 600 stage whole; zoom in until the drawing runs past the canvas, so the hint
+    // and the fades come.
+    for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(screen.getByText(hint)).toBeInTheDocument();
     expect(fades().length).toBeGreaterThan(0);
     for (const f of document.querySelectorAll("[data-fade]")) {
@@ -317,11 +352,11 @@ describe("the graph's readable chrome", () => {
     }
     // Zoomed out to fit inside, nothing is clipped and the hint goes.
     const zoomOut = screen.getByRole("button", { name: "Zoom out" });
-    for (let i = 0; i < 5; i++) fireEvent.click(zoomOut);
+    for (let i = 0; i < 12; i++) fireEvent.click(zoomOut);
     expect(scaleOf(svg)).toBeLessThan(0.5);
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
     expect(fades()).toEqual([]);
-    for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    for (let i = 0; i < 12; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(screen.getByText(hint)).toBeInTheDocument();
     expect(fades().length).toBeGreaterThan(1);
   });

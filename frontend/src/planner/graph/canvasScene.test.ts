@@ -81,15 +81,15 @@ describe("overviewScene", () => {
     expect(scene.cards.map((c) => c.kind)).toEqual(["factory", "factory"]);
     const card = scene.cards[0];
     expect(card.title).toBe("Iron Plate factory");
-    expect(card.lines).toContain("9 machines");
-    expect(card.lines).toContain("3 shared groups");
-    // The figures stay with their unit when the line wraps.
-    const at = card.lines.indexOf("Iron Plate:");
-    expect(at).toBeGreaterThan(-1);
-    expect(card.lines[at + 1]).toMatch(/^48.\/.80.items\/min$/);
-    expect(card.lines).toContain("1 flow to storage");
+    // The card prints the name and one product line; the rest is in its tooltip and keyboard name.
+    expect(card.lines).toHaveLength(2);
+    expect(card.lines[0]).toBe("Iron Plate factory");
+    expect(card.lines[1]).toBe("Iron Plate · 48/min");
+    expect(card.count).toBe(9);
+    for (const words of ["9 machines", "3 shared groups", "1 flow to storage", "Iron Plate: 48 / 80 items/min"]) expect(card.description).toContain(words);
     expect(scene.cards[1].title).toBe("Iron Rod factory (+ Iron Rod)");
-    expect(card.mutedLines).toBeGreaterThan(0);
+    // The icon is the main machine's: the group with the most machines.
+    expect(card.className).toBeDefined();
   });
 
   it("draws the flows between factories, transport carriers kept, and none inside one", () => {
@@ -118,15 +118,19 @@ describe("factoryScene on the fixture", () => {
   it("says where a remote group stands, and how a shared group splits", () => {
     const scene = factoryScene(FIXTURE, plate, view());
     const miner = scene.cards.find((c) => c.className === "Build_MinerMk2_C")!;
-    expect(miner.lines.join(" ")).toMatch(/km|m, by train/);
-    expect(miner.lines.join(" ")).toContain("60% here");
+    // Off the card (one line), on in the tooltip and keyboard name, and in the facts the side panel lists.
+    expect(miner.lines).toHaveLength(1);
+    expect(miner.description).toMatch(/km|m, by train/);
+    expect(miner.description).toContain("60% here");
+    expect(miner.facts.join(" ")).toContain("60% here");
   });
 
   it("folds terminal storage into a chip on the group that fills it", () => {
     const off = factoryScene(FIXTURE, plate, view({ storageDetail: false }));
     expect(off.cards).toHaveLength(4);
     const constructor = off.cards.find((c) => c.label.includes("Iron Plate"))!;
-    expect(constructor.lines).toContain("1 flow to storage");
+    expect(constructor.facts).toContain("1 flow to storage");
+    expect(constructor.description).toContain("1 flow to storage");
     expect(off.flows.some((f) => f.itemName === "Iron Plate")).toBe(false);
   });
 
@@ -174,7 +178,9 @@ describe("bubbles and folds", () => {
     const card = scene.cards.find((c) => c.key === "tree|a")!;
     expect(card.kind).toBe("bubble");
     expect(card.title).toBe("6× Constructor");
-    expect(card.lines).toContain("3 groups · tree 1 of 2");
+    expect(card.count).toBe(6);
+    expect(card.lines).toEqual(["X · 3/min"]);
+    expect(card.description).toContain("3 groups · tree 1 of 2");
     expect(card.nodeKeys).toEqual(["a1", "a2", "a3"]);
     const into = scene.flows.find((f) => f.from === "tree|a" && f.to === "screw")!;
     expect(into.labelLines[1]).toBe("120 items/min");
@@ -199,6 +205,9 @@ describe("bubbles and folds", () => {
     const scene = sceneOf(big);
     const fold = scene.cards.find((c) => c.kind === "fold")!;
     expect(fold.title).toBe("9 more Iron Plate trees");
+    expect(fold.lines).toEqual(["9 more Iron Plate trees"]);
+    expect(fold.count).toBeGreaterThan(0);
+    expect(fold.description).toContain("Click to show them");
     expect(scene.foldKeys).toEqual([fold.key]);
     expect(scene.cards).toHaveLength(6);
     const opened = sceneOf(big, view({ unfolded: new Set([fold.key]) }));

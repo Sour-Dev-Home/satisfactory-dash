@@ -143,7 +143,7 @@ describe("the layout memo", () => {
     const layout = layoutScene(again, "hash-1");
     expect(layoutStats()).toMatchObject({ computed: 1, reused: 1 });
     // The words are the new ones even though the positions came from memory.
-    expect(layout.nodes.some((n) => n.lines.some((l) => /49\s\/\s80/.test(l)))).toBe(true);
+    expect(layout.nodes.some((n) => n.lines.some((l) => /49\/min/.test(l)))).toBe(true);
   });
 
   it("lays out again when the view changes the cards, or the sizes change", () => {
@@ -154,7 +154,7 @@ describe("the layout memo", () => {
     expect(layoutStats().computed).toBe(2);
     layoutScene(factoryScene(FIXTURE, models[0], EMPTY_VIEW), "h");
     expect(layoutStats().computed).toBe(3);
-    const wider = FIXTURE.nodes.map((n) => ({ ...n, name: n.name === "Smelter" ? "Smelter with a much longer name" : n.name }));
+    const wider = FIXTURE.nodes.map((n) => ({ ...n, products: n.name === "Smelter" ? n.products.map((p) => ({ ...p, name: "Iron Ingot with a much longer name" })) : n.products }));
     layoutScene(factoryScene({ ...FIXTURE, nodes: wider }, factoryModels({ ...FIXTURE, nodes: wider })[0], EMPTY_VIEW), "h");
     expect(layoutStats().computed).toBe(4);
   });

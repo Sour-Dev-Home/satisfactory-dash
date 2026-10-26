@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerEdge } from "@satisfactory-dash/shared";
 import { productionGraphTwoSites } from "@satisfactory-dash/shared/fixtures";
-import { edgeLabel, edgeLabelLines, edgeTitle, graphSummary, MAX_LINE_CHARS, MAX_TITLE_CHARS, nodeBodyLines, nodeTitle, reachFor, siteItems, wrapText } from "./graphModel";
+import { edgeLabel, edgeLabelLines, edgeTitle, graphSummary, MAX_LINE_CHARS, MAX_SUMMARY_CHARS, MAX_TITLE_CHARS, nameOr, nodeFacts, nodeSummary, nodeTitle, productSummary, reachFor, siteItems, withName, wrapText } from "./graphModel";
 
 const edge = (from: string, to: string, item: string | null, extra: Partial<PlannerEdge> = {}): PlannerEdge => ({
   from,
@@ -35,12 +35,13 @@ describe("edgeLabel (Decision 2)", () => {
 describe("node text", () => {
   const [miner, , plates, recycle] = ProductionGraphSchema.parse(productionGraphTwoSites.data).nodes;
 
-  it("titles a group with its count and lists recipe, outputs and the loop marker", () => {
+  it("titles a group with its count; the card line is the main product, the facts hold the rest", () => {
     expect(nodeTitle(plates)).toBe("8× Constructor");
     expect(nodeTitle(miner)).toBe("Miner Mk.2");
-    expect(nodeBodyLines(plates)[0]).toBe("Iron Plate");
-    expect(nodeBodyLines(plates)[1]).toMatch(/^Iron Plate:/);
-    expect(nodeBodyLines(recycle).at(-1)).toBe("In a loop");
+    expect(nodeSummary(plates)).toMatch(/^Iron Plate · /);
+    expect(nodeFacts(plates).recipe).toBe("Iron Plate");
+    expect(nodeFacts(plates).outputs[0]).toMatch(/^Iron Plate:/);
+    expect(nodeFacts(recycle).loop).toBe(true);
   });
 
   it("wraps long body text at spaces, cuts a third line, and keeps short text whole", () => {
@@ -53,10 +54,19 @@ describe("node text", () => {
     for (const l of wrapText("Reinforced Iron Plate: 5.25 / 5.25 items/min")) expect(l.length).toBeLessThanOrEqual(MAX_LINE_CHARS);
   });
 
-  it("keeps an output's figures and unit on one line", () => {
-    const lines = nodeBodyLines({ ...miner, recipe: null, products: [{ ...miner.products[0], name: "Iron Ingot", currentPerMinute: 120, maxPerMinute: 120 }] });
-    expect(lines).toContain("Iron Ingot:");
-    expect(lines.some((l) => l.replaceAll(" ", " ") === "120 / 120 items/min")).toBe(true);
+  it("prints the figures and unit after the product on the one line", () => {
+    const one = { ...miner, recipe: null, products: [{ ...miner.products[0], name: "Iron Ingot", currentPerMinute: 120, maxPerMinute: 120 }] };
+    expect(nodeSummary(one)).toBe("Iron Ingot · 120/min");
+  });
+
+  it("cuts a long summary line, and never leaves a name, a recipe or a line blank", () => {
+    const long = productSummary({ ...miner.products[0], name: "Heavy Modular Frame Extended Alternate Recipe" });
+    expect(long.length).toBeLessThanOrEqual(MAX_SUMMARY_CHARS);
+    expect(long.endsWith("…")).toBe(true);
+    expect(nameOr("  ", "x")).toBe("x");
+    expect(withName({ name: " ", className: "Build_Foo_C" }).name).toBe("Build_Foo_C");
+    expect(withName({ name: "", className: "" }).name).toBe("Unknown building");
+    expect(nodeFacts({ ...miner, recipe: "" }).recipe).toBe("No recipe");
   });
 
   it("cuts a long title with an ellipsis", () => {
@@ -65,10 +75,11 @@ describe("node text", () => {
     expect(t.endsWith("…")).toBe(true);
   });
 
-  it("says when there is no recipe or no output data, and counts outputs beyond two", () => {
-    expect(nodeBodyLines({ ...miner, recipe: null, products: [] })).toEqual(["No recipe", "No output data"]);
+  it("says when there is no recipe or no output data, and lists every output in the facts", () => {
+    expect(nodeSummary({ products: [] })).toBe("No output data");
+    expect(nodeFacts({ ...miner, recipe: null, products: [] })).toMatchObject({ recipe: "No recipe", outputs: ["No output data"] });
     const three = [miner.products[0], { ...miner.products[0], className: "B" }, { ...miner.products[0], className: "C" }];
-    expect(nodeBodyLines({ ...miner, products: three }).at(-1)).toBe("+1 more output");
+    expect(nodeFacts({ ...miner, products: three }).outputs).toHaveLength(3);
   });
 });
 

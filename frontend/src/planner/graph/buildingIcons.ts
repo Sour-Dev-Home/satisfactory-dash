@@ -1,7 +1,7 @@
 /**
  * The Planner's building icons (ADR-0053, same licence boundary as #571): the game's own UI textures, 64x64 WebP in
  * public/game-assets/buildings/ (see that folder's NOTICE.md). Keyed by FRM's building `ClassName`; a class that is not
- * here keeps the card's plain title, with no icon.
+ * here gets a generic glyph for its kind (`glyphKindOf`), never a bare box.
  */
 const ICON_DIR = "/game-assets/buildings";
 
@@ -46,6 +46,32 @@ const SLUG_BY_CLASS = new Map<string, string>([
 export function buildingIconUrl(className: string): string | undefined {
   const slug = SLUG_BY_CLASS.get(className);
   return slug === undefined ? undefined : `${ICON_DIR}/${slug}.webp`;
+}
+
+/** The kinds of generic glyph a card wears when its building class has no icon (drawn by `BuildingGlyph`). */
+export const GLYPH_KINDS = ["machines", "storage", "extractor", "station", "power", "consumer", "unknown"] as const;
+export type GlyphKind = (typeof GLYPH_KINDS)[number];
+
+/** A node's role overrides its kind where it says more (a storage that is the Sink is a consumer, a power one is power). */
+const GLYPH_BY_ROLE = new Map<string, GlyphKind>([
+  ["power", "power"],
+  ["sink", "consumer"],
+  ["depot", "storage"],
+  ["buffer", "storage"],
+  ["storage", "storage"],
+  ["export", "station"],
+]);
+const GLYPH_BY_KIND = new Map<string, GlyphKind>([
+  ["machines", "machines"],
+  ["extractor", "extractor"],
+  ["storage", "storage"],
+  ["station", "station"],
+  ["consumer", "consumer"],
+]);
+
+/** The glyph for a node with no icon of its class. Both inputs are game-server strings, so the tables are Maps; anything else is "unknown". */
+export function glyphKindOf(node: { kind: string; role?: string | undefined }): GlyphKind {
+  return (node.role === undefined ? undefined : GLYPH_BY_ROLE.get(node.role)) ?? GLYPH_BY_KIND.get(node.kind) ?? "unknown";
 }
 
 /** Every class the table maps, for the test that checks each is a real class. */
