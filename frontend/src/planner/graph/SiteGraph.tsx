@@ -497,6 +497,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const canFold = scene.bubbleKeys.length > 0;
   const suggested = (key: string) => scene.level === "overview" && suggestions !== undefined && suggestions.keys.has(key);
   const keepForm = suggestions?.keepForm;
+  // A form for a card that is no longer a suggestion (switched off, kept elsewhere, gone from a poll) is dropped for good.
+  const keepingGone = keeping !== null && !suggested(keeping);
+  useEffect(() => {
+    if (keepingGone) setKeeping(null);
+  }, [keepingGone]);
   const closeKeep = (saved: boolean) => {
     if (!saved && keeping !== null) setRefocusKeep({ key: keeping });
     setKeeping(null);
@@ -564,7 +569,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         )}
       </div>
 
-      {keeping !== null && keepForm !== undefined && keepForm(keeping, closeKeep)}
+      {keeping !== null && !keepingGone && keepForm !== undefined && keepForm(keeping, closeKeep)}
 
       {/* What a drag does now, or what to do about a drawing that runs past the canvas; the line keeps its height. */}
       <p className="m-0 h-lh text-sm text-muted">

@@ -388,6 +388,53 @@ describe("PlannerView: designating on the canvas (ADR-0055 Decision 5, PR 10b)",
     expect((seen[0].body as { members: unknown[] }).members).toHaveLength(11);
   });
 
+  it("a second finger cancels the lasso: nothing is picked and the pinch zooms", async () => {
+    serve();
+    const svg = await openRodGraph();
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const before = transformOf(svg);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: -5000, clientY: -5000 });
+    pointer("pointermove", 1, 5000, -5000);
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 2, clientX: 100, clientY: 100 });
+    expect(svg.querySelector("[data-lasso]")).toBeNull();
+    pointer("pointermove", 2, 300, 300);
+    pointer("pointermove", 1, 5000, 5000);
+    pointer("pointerup", 2, 300, 300);
+    pointer("pointerup", 1, 5000, 5000);
+    expect(svg.querySelector("[data-picked]")).toBeNull();
+    expect(transformOf(svg)).not.toBe(before);
+  });
+
+  it("a lasso with Shift adds to the picks, and one without replaces them", async () => {
+    serve();
+    const svg = await openRodGraph();
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(within(cardList()).getByRole("button", { name: /^Pick .*Constructor/ }));
+    // A lasso far from every card, without Shift: replaces the pick with nothing.
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: -9000, clientY: -9000 });
+    pointer("pointermove", 1, -8000, -9000);
+    pointer("pointermove", 1, -8000, -8000);
+    pointer("pointerup", 1, -8000, -8000);
+    expect(svg.querySelector("[data-picked]")).toBeNull();
+    fireEvent.click(within(cardList()).getByRole("button", { name: /^Pick .*Constructor/ }));
+    const one = svg.querySelectorAll("[data-picked]").length;
+    lassoAll(svg, { shiftKey: true });
+    expect(svg.querySelectorAll("[data-picked]").length).toBeGreaterThan(one);
+  });
+
+  it("an open Keep form does not come back when the suggestions are switched off and on", async () => {
+    serve();
+    renderView();
+    await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
+    const toggle = screen.getByRole("button", { name: "Reason factories for me" });
+    fireEvent.click(toggle);
+    fireEvent.click(within(screen.getByRole("list", { name: "Suggested factories" })).getByRole("button", { name: "Keep Iron Plate factory" }));
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
+  });
+
   it("a member sees the suggestions on the canvas but no Keep", async () => {
     serve();
     renderView(serversRoleViewer);
