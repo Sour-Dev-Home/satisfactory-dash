@@ -23,6 +23,9 @@ export interface RuntimeServer<TServices> extends ServerSummary {
   /** ADR-0054 D3: builds a fresh, unstarted copy of a polled server (its workers are one-shot). Used when this instance
    *  stops being the leader, so the next leadership term can start new pollers. Ignored for an agent server. */
   rebuild?: (displayName: string) => RuntimeServer<TServices>;
+  /** ADR-0054 D3.10: what a polled server was built from (`connectionSource`: address, ports, the row's last write), so a
+   *  reload from the database can tell an edited connection from an unchanged one. Holds nothing derived from a token. */
+  source?: string;
 }
 
 /**
@@ -77,6 +80,13 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
 
   has(id: string): boolean {
     return this.byId.has(id);
+  }
+
+  /** ADR-0054 D3: what a reload from the database compares, an entry's kind, connection source and name (never its
+   *  services or workers). Undefined for an unknown id. */
+  describe(id: string): Pick<RuntimeServer<TServices>, "kind" | "source" | "displayName"> | undefined {
+    const entry = this.byId.get(id);
+    return entry === undefined ? undefined : { kind: entry.kind, source: entry.source, displayName: entry.displayName };
   }
 
   get size(): number {
@@ -188,7 +198,7 @@ export class ServerRuntime<TServices> implements ServerDirectory<TServices> {
     for (const old of polled) {
       if (old.rebuild !== undefined) {
         try {
-          this.byId.set(old.id, { ...old.rebuild(old.displayName), rebuild: old.rebuild });
+          this.byId.set(old.id, { ...old.rebuild(old.displayName), rebuild: old.rebuild, source: old.source });
         } catch (err) {
           // The old entry stays: it keeps serving reads, but its pollers cannot run again until it is rebuilt by an edit.
           if (!this.options.onWorkerStartError) throw err;

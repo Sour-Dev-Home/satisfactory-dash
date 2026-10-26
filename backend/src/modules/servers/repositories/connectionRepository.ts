@@ -35,6 +35,8 @@ export interface ServerConnection {
   apiToken: string;
   /** FRM can run without a token. */
   frmToken?: string;
+  /** When the row was last written (ISO 8601); set by `listConnections` only. Any edit, the tokens included, changes it. */
+  updatedAt?: string;
 }
 
 /** The write-only view (ADR-0030): whether a token is set and its last 4 characters, never the token. */
@@ -112,13 +114,15 @@ const ConnectionRowSchema = z.object({
   api_token_enc: z.instanceof(Buffer),
   frm_token_enc: z.instanceof(Buffer).nullable(),
   key_id: z.string(),
+  // Read by the list only (ADR-0054 D3.10: it marks an edit); every write to the row sets it.
+  updated_at: z.date().optional(),
 });
 type ConnectionRow = z.output<typeof ConnectionRowSchema>;
 
 // Whole statements, never assembled from pieces (the SQL guard, ADR-0025 decision 2).
 const LIST_LIVE = `
   SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
-         c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id
+         c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id, c.updated_at
   FROM servers.server_connections c
   JOIN servers.servers s ON s.id = c.server_id
   WHERE s.deleted_at IS NULL
@@ -153,6 +157,7 @@ function openRow(ring: SecretsKeyring, row: ConnectionRow): ServerConnection {
   if (row.frm_token_enc !== null) {
     connection.frmToken = ring.open(row.key_id, row.frm_token_enc, tokenContext(row.server_id, row.connection_kind, "frm"));
   }
+  if (row.updated_at !== undefined) connection.updatedAt = row.updated_at.toISOString();
   return connection;
 }
 
