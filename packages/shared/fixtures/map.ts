@@ -1,6 +1,8 @@
 import type {
   ConveyorsWorldIngestRequest,
   ConveyorsWorldLayerResponse,
+  DroneRoutesWorldIngestRequest,
+  DroneRoutesWorldLayerResponse,
   MapLive,
   RailsWorldIngestRequest,
   RailsWorldLayerResponse,
@@ -284,6 +286,30 @@ export const trainRoutesWorldResponse = {
   count: trainRoutesSample.data.length,
   data: trainRoutesSample.data,
 } satisfies TrainRoutesWorldLayerResponse;
+
+/**
+ * ADR-0055 Decision 1: the droneRoutes layer, projected from the 2026-10-25 captures
+ * (captured-responses/frm-getDroneStation-2026-10-25-paired-battery-cargo-trimmed.json for the pair,
+ * frm-getDroneStation-2026-10-25-unpaired-trimmed.json for "FUEL 1"): positions divided by 100 and rounded, "None"
+ * read as not paired, inventories as their distinct class names. The pairing names the partner on both ports.
+ */
+export const droneRoutesSample = {
+  observedAt: "2026-10-25T15:15:00.000Z",
+  data: [
+    { id: "Build_DroneStation_C_2146556398", name: "FUEL 5", paired: "TestLand1", input: ["Desc_Battery_C"], output: [], fuel: ["Desc_Battery_C"], x: -2204, y: 503 },
+    { id: "Build_DroneStation_C_2147451055", name: "TestLand1", paired: "FUEL 5", input: [], output: [], fuel: ["Desc_Battery_C"], x: -2146, y: 510 },
+    { id: "Build_DroneStation_C_2146572476", name: "FUEL 1", paired: null, input: [], output: [], fuel: ["Desc_Battery_C"], x: -2204, y: 599 },
+  ],
+} satisfies DroneRoutesWorldIngestRequest;
+
+export const droneRoutesWorldResponse = {
+  layer: "droneRoutes",
+  hash: "sha256-droneroutes-sample",
+  observedAt: droneRoutesSample.observedAt,
+  truncated: false,
+  count: droneRoutesSample.data.length,
+  data: droneRoutesSample.data,
+} satisfies DroneRoutesWorldLayerResponse;
 
 /** A server whose conveyors layer was read and holds no conveyors (nothing built yet). An older FRM without the
  *  connection fields sends no conveyors layer at all, so it has no response of this kind. */
