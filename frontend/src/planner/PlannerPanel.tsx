@@ -284,8 +284,9 @@ function Detail({
       {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this one's, until it is closed. */}
       <ViewToggle view={view} onPick={setMode} />
 
-      {/* One bar for both views: the canvas's picks and the table's ticks are the same selection. */}
-      {selection !== undefined && nodes.length > 0 && <DesignateBar nodes={nodes.filter((n) => picked.has(n.key))} onDone={() => setPicked(new Set())} />}
+      {/* One bar for both views: the canvas's picks and the table's ticks are the same selection. Above the graph it shows
+          only once something is picked, so it does not push the canvas down for nothing. */}
+      {selection !== undefined && nodes.length > 0 && (view === "tables" || picked.size > 0) && <DesignateBar nodes={nodes.filter((n) => picked.has(n.key))} onDone={() => setPicked(new Set())} />}
 
       {view === "graph" && (
         <LazySiteGraph

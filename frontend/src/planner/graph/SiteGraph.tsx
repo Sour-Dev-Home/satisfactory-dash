@@ -32,6 +32,7 @@ import { MOTION_OPTIONS, motionOn, useCollapsedUpstream, useMotionPref, useStora
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
+import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -60,8 +61,6 @@ const ALL_ITEMS = "";
 /** A pointer that moved less than this (client pixels) between down and up was a click, not a drag. */
 const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
-const BADGE_W = 88;
-const BADGE_H = 20;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
 const PILL_HIT = 44;
@@ -347,9 +346,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       lassoRef.current = null;
       setLasso(null);
       const pick = selectionRef.current;
-      // Too short to be a shape: a click, which the card's own handler takes.
+      // Too short to be a shape: a click, which the card's own handler takes. Any drag past the slop is not a click.
+      if (travelled.current > DRAG_SLOP) dragged.current = true;
       if (e.type === "pointercancel" || pick === undefined || travelled.current <= DRAG_SLOP || drawing.points.length < MIN_LASSO_POINTS) return;
-      dragged.current = true;
       const taken = layoutRef.current.nodes.filter((n) => pickable(n.card));
       const inside = new Set(cardsInLasso(taken, drawing.points));
       const keys = new Set(drawing.add ? pick.selected : []);
@@ -498,10 +497,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const suggested = (key: string) => scene.level === "overview" && suggestions !== undefined && suggestions.keys.has(key);
   const keepForm = suggestions?.keepForm;
   // A form for a card that is no longer a suggestion (switched off, kept elsewhere, gone from a poll) is dropped for good.
+  // (React's adjust-state-during-render: it re-renders at once, before any child or effect sees the stale form.)
   const keepingGone = keeping !== null && !suggested(keeping);
-  useEffect(() => {
-    if (keepingGone) setKeeping(null);
-  }, [keepingGone]);
+  if (keepingGone) setKeeping(null);
   const closeKeep = (saved: boolean) => {
     if (!saved && keeping !== null) setRefocusKeep({ key: keeping });
     setKeeping(null);
@@ -574,7 +572,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       {/* What a drag does now, or what to do about a drawing that runs past the canvas; the line keeps its height. */}
       <p className="m-0 h-lh text-sm text-muted">
         {selectMode
-          ? "Draw round cards to pick them, or click one. Shift adds to what is picked; Escape clears it."
+          ? (
+              // One line at any width: a phone has no Shift or Escape, and one finger now draws, so two move the view.
+              <>
+                <span className="sm:hidden">Draw round cards to pick them; two fingers pan.</span>
+                <span className="hidden sm:inline">Draw round cards to pick them, or click one. Shift adds; Escape clears.</span>
+              </>
+            )
           : overflowing && "Drag or use the arrow keys to see more →"}
       </p>
 
@@ -868,6 +872,7 @@ function CardView({
   const up = card.upstream;
   const pillText = up === undefined ? "" : up.collapsed ? `+${up.count}` : "−";
   const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
+  const { tagX, showTag } = suggestionTag(suggested, finding > 0, n.width);
   return (
     <g
       transform={`translate(${n.x} ${n.y})`}
@@ -885,19 +890,21 @@ function CardView({
         height={n.height}
         rx={8}
         strokeWidth={ringed || picked ? 3 : suggested ? 2 : 1}
-        strokeDasharray={suggested && !ringed ? "6 4" : undefined}
+        // Dotted, so a suggestion never reads as an opened bubble's dashed frame.
+        strokeDasharray={suggested && !ringed ? "2 3" : undefined}
         className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : suggested ? "stroke-muted" : "stroke-line")}
       />
       {picked && <rect width={n.width} height={n.height} rx={8} className="pointer-events-none fill-info-soft" />}
       <CardIcon iconUrl={n.iconUrl} glyph={card.glyph} />
       {picked && (
-        <g aria-hidden="true" data-check="">
+        // Just outside the corner, clear of the icon chip.
+        <g aria-hidden="true" data-check="" transform={`translate(${-CHECK_R / 2} ${-CHECK_R / 2})`}>
           <circle r={CHECK_R} className="fill-info-solid stroke-surface" strokeWidth={2} />
           <path d="M-4.5 0 L-1.5 3 L4.5 -3.5" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg-strong" />
         </g>
       )}
-      {suggested && (
-        <g transform={`translate(${NODE_PAD_X} ${-BADGE_H / 2})`}>
+      {showTag && (
+        <g transform={`translate(${tagX} ${-BADGE_H / 2})`} data-suggestion-tag="">
           <rect width={BADGE_W} height={BADGE_H} rx={8} strokeWidth={1} className="fill-surface stroke-muted" />
           <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
             Suggestion
