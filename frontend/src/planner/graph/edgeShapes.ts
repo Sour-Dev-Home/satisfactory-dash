@@ -8,6 +8,11 @@ export type Rect = { x: number; y: number; width: number; height: number };
 
 /** The corner radius of every bend, in layout units (clamped per corner, see `roundedOrthogonalPath`). */
 export const CORNER_RADIUS = 10;
+/** The straight run the last leg keeps before the target, so the arrowhead (8 units, `SiteGraph`'s marker) sits on a
+ *  straight line and points along it, not on the curve. */
+export const ARROW_TAIL = 10;
+/** An arc clamped below this is drawn as a square corner instead: two tiny arcs on a short jog read as an S. */
+const MIN_ARC = CORNER_RADIUS / 2;
 
 const f1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -54,7 +59,8 @@ const along = (p: Point, u: Point, d: number): Point => ({ x: p.x + u.x * d, y: 
 
 /**
  * An SVG path for an orthogonal route with each right-angle corner drawn as a circular arc of `radius`, clamped to half
- * the shorter of its two segments so neighbouring arcs never overlap. Other corners stay sharp.
+ * the shorter of its two segments so neighbouring arcs never overlap, and on the last corner to leave `ARROW_TAIL` of
+ * straight line before the end. An arc clamped below half the radius is drawn square. Other corners stay sharp.
  */
 export function roundedOrthogonalPath(points: readonly Point[], radius = CORNER_RADIUS): string {
   const p = simplify(points);
@@ -68,7 +74,9 @@ export function roundedOrthogonalPath(points: readonly Point[], radius = CORNER_
   };
   for (let i = 1; i + 1 < p.length; i++) {
     const c = cornerAt(p, i);
-    const r = Math.min(radius, c.len1 / 2, c.len2 / 2);
+    const last = i + 2 === p.length;
+    const clamped = Math.min(radius, c.len1 / 2, last ? c.len2 - ARROW_TAIL : c.len2 / 2);
+    const r = clamped < Math.min(radius, MIN_ARC) ? 0 : clamped;
     if (!c.right || r <= 0) {
       lineTo(c.v);
       continue;

@@ -24,7 +24,18 @@ describe("roundedOrthogonalPath", () => {
   });
 
   it("clamps the radius to half the shorter neighbouring segment", () => {
-    expect(roundedOrthogonalPath([P(0, 0), P(100, 0), P(100, 6), P(200, 6)], 10)).toBe("M0 0 L97 0 A3 3 0 0 1 100 3 A3 3 0 0 0 103 6 L200 6");
+    expect(roundedOrthogonalPath([P(0, 0), P(100, 0), P(100, 16), P(200, 16)], 10)).toBe("M0 0 L92 0 A8 8 0 0 1 100 8 A8 8 0 0 0 108 16 L200 16");
+  });
+
+  it("draws a tiny jog square, not as two small arcs that read as an S", () => {
+    expect(roundedOrthogonalPath([P(0, 0), P(100, 0), P(100, 6), P(200, 6)], 10)).toBe("M0 0 L100 0 L100 6 L200 6");
+  });
+
+  it("keeps a straight tail for the arrowhead on the last leg, squaring the corner when the leg is too short", () => {
+    // A 30-unit last leg: the arc may take 20 of it, leaving the 10-unit tail; the usual 10 fits.
+    expect(roundedOrthogonalPath([P(0, 0), P(0, 50), P(30, 50)], 10)).toBe("M0 0 L0 40 A10 10 0 0 0 10 50 L30 50");
+    // A 14-unit last leg leaves room for an arc of 4, under half the radius: a square corner, the head on a straight line.
+    expect(roundedOrthogonalPath([P(0, 0), P(0, 50), P(14, 50)], 10)).toBe("M0 0 L0 50 L14 50");
   });
 
   it("ends on the route's last point along its last leg, so the arrowhead meets the card", () => {
