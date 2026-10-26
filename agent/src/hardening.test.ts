@@ -7,7 +7,7 @@ import { BackendClient, BackendError } from "./backendClient.js";
 import { EXIT_CREDENTIAL_REJECTED, EXIT_FAILED, EXIT_OK, EXIT_STORE, runCli } from "./cli.js";
 import type { CliDeps } from "./cli.js";
 import { DpapiError } from "./dpapi.js";
-import type { Dpapi } from "./dpapi.js";
+import type { SecretBox } from "./secretbox.js";
 import { clearHalted, readHalted, writeHalted } from "./halted.js";
 import { AgentStore, StoreError } from "./store.js";
 
@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const API_TOKEN = "api-token-VALUE-0123456789abcdef";
-function fakeDpapi(): Dpapi & { failProtect: boolean; failUnprotect: boolean } {
+function fakeDpapi(): SecretBox & { failProtect: boolean; failUnprotect: boolean } {
   return {
     failProtect: false,
     failUnprotect: false,
@@ -160,7 +160,7 @@ describe("the store", () => {
     expect(existsSync(path.join(dir, "store.json"))).toBe(false);
     dpapi.failProtect = true;
     await expect(store.probe()).rejects.toBeInstanceOf(DpapiError);
-    const liar: Dpapi = { protect: async () => "abcd", unprotect: async () => "something else" };
+    const liar: SecretBox = { protect: async () => "abcd", unprotect: async () => "something else" };
     await expect(AgentStore.open(dir, liar).probe()).rejects.toBeInstanceOf(StoreError);
   });
 });

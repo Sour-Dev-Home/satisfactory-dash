@@ -9,7 +9,7 @@ import type { RunAgentOptions } from "./agentRunner.js";
 import { EXIT_CREDENTIAL_REJECTED, EXIT_FAILED, EXIT_OK, EXIT_STORE, runCli } from "./cli.js";
 import type { CliDeps } from "./cli.js";
 import { DpapiError } from "./dpapi.js";
-import type { Dpapi } from "./dpapi.js";
+import type { SecretBox } from "./secretbox.js";
 import type { GameReader } from "./sampler.js";
 import { PromptAborted } from "./prompt.js";
 import type { Sleep } from "./pusher.js";
@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-function fakeDpapi(): Dpapi & { fail: boolean } {
+function fakeDpapi(): SecretBox & { fail: boolean } {
   return {
     fail: false,
     async protect(plaintext) {
@@ -50,7 +50,7 @@ function reader(overrides: Partial<GameReader> = {}): GameReader {
   };
 }
 
-function setup(over: Partial<CliDeps> & { answers?: string[]; dpapi?: Dpapi & { fail: boolean } } = {}) {
+function setup(over: Partial<CliDeps> & { answers?: string[]; dpapi?: SecretBox & { fail: boolean } } = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const questions: string[] = [];
@@ -72,7 +72,7 @@ function setup(over: Partial<CliDeps> & { answers?: string[]; dpapi?: Dpapi & { 
   };
   return { deps, out, err, questions, dpapi, all: () => [...out, ...err].join("\n") };
 }
-const store = (dpapi: Dpapi) => AgentStore.open(dir, dpapi);
+const store = (dpapi: SecretBox) => AgentStore.open(dir, dpapi);
 const fileText = () => readFileSync(path.join(dir, "store.json"), "utf8");
 
 describe("usage", () => {

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { SecretBox } from "./secretbox.js";
 
 /**
  * Windows DPAPI through PowerShell's ProtectedData (ADR-0031 PR 6): a secret at rest is encrypted for the CURRENT Windows
@@ -26,13 +27,6 @@ export class DpapiError extends Error {
     super(message);
     this.name = "DpapiError";
   }
-}
-
-export interface Dpapi {
-  /** Encrypts for the current Windows user; returns base64 of the protected bytes. */
-  protect(plaintext: string): Promise<string>;
-  /** Decrypts what `protect` returned, as the same Windows user. Throws `DpapiError` when it cannot. */
-  unprotect(blob: string): Promise<string>;
 }
 
 const SCRIPT_HEAD = "Add-Type -AssemblyName System.Security; $in = [Console]::In.ReadToEnd().Trim(); $bytes = [Convert]::FromBase64String($in); ";
@@ -89,12 +83,12 @@ async function run(script: string, input: string, kind: "protect_failed" | "unpr
   });
 }
 
-/** The real DPAPI, on Windows. Off Windows every call throws `unavailable` (the agent is a Windows app). */
-export function createDpapi(options: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; spawner?: Spawner } = {}): Dpapi {
+/** The real DPAPI, the Windows `SecretBox`: encrypts for the current Windows user. Off Windows every call throws `unavailable` (elsewhere the file box is used). */
+export function createDpapi(options: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; spawner?: Spawner } = {}): SecretBox {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
   const spawner: Spawner = options.spawner ?? ((command, args) => spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }));
-  const unavailable = () => new DpapiError("unavailable", "Windows DPAPI is only available on Windows; the agent stores its secrets with it and cannot run elsewhere.");
+  const unavailable = () => new DpapiError("unavailable", "Windows DPAPI is only available on Windows; use the file secret store elsewhere (SD_AGENT_SECRET_STORE=file).");
   return {
     async protect(plaintext) {
       if (platform !== "win32") throw unavailable();

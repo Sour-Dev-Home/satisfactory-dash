@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DpapiError } from "./dpapi.js";
-import type { Dpapi } from "./dpapi.js";
+import type { SecretBox } from "./secretbox.js";
 import { AgentStore, DEFAULT_GAME, StoreError, isAllowedGameHost, resolveDataDir } from "./store.js";
 
 /** A reversible fake with a recognisable, NON-plaintext blob, so a test can tell "stored protected" from "stored in the clear". */
-function fakeDpapi(): Dpapi & { fail: boolean } {
+function fakeDpapi(): SecretBox & { fail: boolean } {
   return {
     fail: false,
     async protect(plaintext) {
