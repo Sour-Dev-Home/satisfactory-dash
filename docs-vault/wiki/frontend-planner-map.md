@@ -33,6 +33,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   response's `topologyHash` plus a signature of the cards, flows and sizes: a poll that only moves rates reuses the
   placement, and the words are never part of the memo. When dagre throws it falls back to parallel flows merged into
   one routed edge with stacked labels, then to a plain grid.
+- Edges (ADR-0059): loops are broken first by `returnFlows` (depth-first from the sources; returns handed to dagre
+  reversed, their routes turned back after), dagre places cards and label boxes (`tight-tree` ranker), then
+  `orthogonalRoute.ts` redraws every edge in horizontal legs through columns and vertical legs in the empty gaps between
+  them, one track each, so no line crosses a card. `edgeShapes.ts` draws each bend as a rounded corner. If the router
+  throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).
