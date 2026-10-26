@@ -295,8 +295,14 @@ function factoryCard(model: FactoryModel): Card {
   const { factory } = model;
   const name = nameOr(factory.name, UNNAMED_FACTORY);
   const title = cutTo(nameOr(factoryTitle(factory), UNNAMED_FACTORY), MAX_FACTORY_TITLE_CHARS);
-  // The icon is the factory's main machine: the group with the most machines (the first by key among equals).
-  const main = [...model.nodes].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))[0];
+  // The icon is the factory's main machine: the biggest group that makes its first product, else the biggest machine
+  // group, else the biggest group (the first by key among equals). Never a consumer it feeds, such as its burners.
+  const biggest = (nodes: readonly PlannerNode[]) => [...nodes].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))[0];
+  const product = factory.products[0]?.className;
+  const main =
+    biggest(product === undefined ? [] : model.nodes.filter((n) => n.products.some((p) => p.className === product))) ??
+    biggest(model.nodes.filter((n) => n.kind === "machines")) ??
+    biggest(model.nodes);
   return {
     ...blank,
     key: factory.key,

@@ -158,12 +158,18 @@ describe("the compact metrics and label placement", () => {
     expect(labelPlacement([{ x: 5, y: 6 }], 50)).toEqual({ x: 5, y: 6 });
   });
 
-  it("lays every label of a site above its edge, not on it", () => {
-    for (const e of layoutSite(iron, graph).edges) {
-      // The label box clears the path: its centre is at least the box's half-height from every segment.
-      const dist = Math.min(...e.points.slice(1).map((p, i) => segmentDistance(e.labelX, e.labelY, e.points[i], p)));
-      expect(dist).toBeGreaterThanOrEqual(LABEL_H / 2 + LABEL_GAP - 0.01);
+  it("lays every label in the box dagre reserved for it: on its own edge, clear of every card and every other label", () => {
+    const { edges, nodes } = layoutSite(iron, graph);
+    const box = (e: (typeof edges)[number]) => ({ x: e.labelX - e.labelWidth / 2, y: e.labelY - e.labelHeight / 2, width: e.labelWidth, height: e.labelHeight });
+    const overlap = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    for (const e of edges) {
       expect(e.labelWidth).toBeGreaterThan(0);
+      // On its own line: the line passes through the label's box (the pill sits on it).
+      const dist = Math.min(...e.points.slice(1).map((p, i) => segmentDistance(e.labelX, e.labelY, e.points[i], p)));
+      expect(dist).toBeLessThanOrEqual(e.labelHeight / 2 + LABEL_GAP);
+      for (const n of nodes) expect(overlap(box(e), n)).toBe(false);
+      for (const other of edges) if (other !== e) expect(overlap(box(e), box(other))).toBe(false);
     }
   });
 

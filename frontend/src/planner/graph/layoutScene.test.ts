@@ -4,7 +4,7 @@ import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph }
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import { EMPTY_VIEW, factoryScene, overviewScene, type Scene } from "./canvasScene";
 import { factoryModels } from "./hierarchy";
-import { FRAME_HEADER_H, GLYPH_AT, GLYPH_CLEARANCE, LABEL_GAP, clearLayoutMemo, labelPlacement, layoutScene, layoutStats, pathMidpoint } from "./layoutSite";
+import { FRAME_HEADER_H, GLYPH_AT, GLYPH_CLEARANCE, GLYPH_INSET, LABEL_GAP, clearLayoutMemo, labelPlacement, layoutScene, layoutStats, pathMidpoint } from "./layoutSite";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const models = factoryModels(FIXTURE);
@@ -83,6 +83,28 @@ describe("layoutScene", () => {
     const plain = labelPlacement(flat, 50, 18);
     expect(plain.y).toBe(-(9 + LABEL_GAP));
     expect(labelPlacement(flat, 50, 18, GLYPH_CLEARANCE).y).toBe(plain.y - GLYPH_CLEARANCE);
+  });
+
+  it("stands a transport's glyph inside its own label pill, left of the words, and clear of every other label", () => {
+    const layout = layoutScene(factoryScene(FIXTURE, models[0], EMPTY_VIEW), FIXTURE.topologyHash);
+    const transports = layout.edges.filter((e) => e.flow.carrier !== "belt" && e.flow.carrier !== "pipe");
+    expect(transports.length).toBeGreaterThan(0);
+    for (const t of transports) {
+      const left = t.labelX - t.labelWidth / 2;
+      expect(t.mid.y).toBe(t.labelY);
+      expect(t.mid.x - GLYPH_CLEARANCE).toBeGreaterThanOrEqual(left);
+      // The words start after the glyph: their centre moved right by half the glyph's room.
+      expect(t.textX).toBeCloseTo(t.labelX + GLYPH_INSET / 2);
+      expect(t.mid.x + GLYPH_CLEARANCE).toBeLessThanOrEqual(left + GLYPH_INSET);
+      for (const e of layout.edges) {
+        if (e === t) continue;
+        const apartX = Math.abs(t.mid.x - e.labelX) >= e.labelWidth / 2 + GLYPH_CLEARANCE - 0.01;
+        const apartY = Math.abs(t.mid.y - e.labelY) >= e.labelHeight / 2 + GLYPH_CLEARANCE - 0.01;
+        expect(apartX || apartY).toBe(true);
+      }
+    }
+    // A plain belt's words stay centred.
+    for (const e of layout.edges.filter((x) => !transports.includes(x))) expect(e.textX).toBe(e.labelX);
   });
 
   it("stands a glyph a third along its path, clear of the label at the middle, and clamps the fraction", () => {

@@ -88,6 +88,8 @@ export interface LaidEdge {
   /** The label box's estimated width and height. */
   labelWidth: number;
   labelHeight: number;
+  /** The words' centre: the label's, or right of it by half the glyph's inset when the pill also holds a transport glyph. */
+  textX: number;
   /** The middle of the path by length, where a transport's glyph sits, and the path's length. */
   mid: { x: number; y: number };
   length: number;
@@ -145,9 +147,10 @@ const lengthOf = (points: readonly Point[]): number => {
   return total;
 };
 
-/** Where along its path (0 to 1, by length) a transport's glyph stands, and how much further each further transport of the pair. */
+/** Where along its path (0 to 1, by length) an edge's `mid` stands when no label holds a glyph (a plain belt or pipe). */
 export const GLYPH_AT = 0.3;
-export const GLYPH_SPREAD = 0.2;
+/** The room a transport's glyph takes at the left of its label pill: the glyph and the gap before the words. */
+export const GLYPH_INSET = GLYPH_SIZE + LABEL_PAD;
 
 /** The point `fraction` of the way along a path by length, halfway by default (the first point of a path with no length, the origin of an empty one). */
 export function pathMidpoint(points: readonly Point[], fraction = 0.5): Point {
@@ -213,6 +216,9 @@ interface Placement {
   paths: Point[][];
   /** How far up each flow's label stands above where its own box would (flows merged into one dagre edge stack their labels). */
   stack: number[];
+  /** Each flow's label centre in the box dagre reserved for it (clear of cards and other labels), or null when the placement
+   *  has no such box (the grid fallback), so the label goes beside the path's middle as before. */
+  labelAt: (Point | null)[];
   width: number;
   height: number;
 }
@@ -313,9 +319,16 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     frames.set(f.key, box);
   }
   const paths = drawn.map((f, i) => (g.edge(f.from, f.to, edgeOf[i]).points ?? []).map((p: Point) => ({ x: p.x, y: p.y })));
+  // The label box dagre made room for: its centre, and for merged flows each label's row in it, top down. Placing a label
+  // anywhere else (the path's middle) put it on cards, other labels and other lines.
+  const labelAt = drawn.map((f, i): Point | null => {
+    const d = g.edge(f.from, f.to, edgeOf[i]) as { x?: number; y?: number; height?: number };
+    if (d.x === undefined || d.y === undefined || !Number.isFinite(d.x) || !Number.isFinite(d.y)) return null;
+    return { x: d.x, y: d.y - (d.height ?? labels[i].height) / 2 + stack[i] + labels[i].height / 2 };
+  });
   // An empty graph comes back from dagre with width and height -Infinity.
   const { width, height } = g.graph();
-  return { centres, frames, paths, stack, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
+  return { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
 }
 
 /** Where a straight line from a card's centre towards a point leaves the card. */
@@ -354,7 +367,7 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     return [leaves(a, sizeOf.get(f.from)!, b), leaves(b, sizeOf.get(f.to)!, a)];
   });
   const rows = Math.ceil(scene.cards.length / cols);
-  return { centres, frames, paths, stack: drawn.map(() => 0), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
+  return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
 }
 
 function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
@@ -386,7 +399,11 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   const sizes = tallest === 0 ? own : own.map((s) => ({ ...s, height: tallest }));
   const known = new Set(scene.cards.map((c) => c.key));
   const flows = scene.flows.filter((f) => known.has(f.from) && known.has(f.to));
-  const labels = flows.map((f) => labelSize(f.labelLines));
+  // A transport's label also holds its mode's glyph, at the pill's left: dagre reserves room for both.
+  const labels = flows.map((f) => {
+    const s = labelSize(f.labelLines);
+    return isTransport(f) ? { ...s, width: s.width + GLYPH_INSET } : s;
+  });
   const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, flows)}`;
   let placement = memo.get(key);
   if (placement === undefined) {
@@ -413,27 +430,28 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
     const b = p.frames.get(f.key);
     return b === undefined ? [] : [{ key: f.key, bubbleKey: f.bubbleKey, title: f.title, ...b }];
   });
-  // A transport's glyph stands a third of the way along its path, clear of the labels at the middle; transports sharing a
-  // pair of cards (one path) stand further apart.
-  const seen = new Map<string, number>();
+  // A transport's glyph stands in its own label pill, at the left, so no label can cover it and parallel transports (one
+  // path, stacked labels) each keep theirs; a moving glyph travels the path instead (SiteGraph's Edge).
   const edges: LaidEdge[] = flows.map((flow, index) => {
     const points = p.paths[index];
-    const pair = `${flow.from}\u0001${flow.to}`;
-    const before = isTransport(flow) ? (seen.get(pair) ?? 0) : 0;
-    if (isTransport(flow)) seen.set(pair, before + 1);
     const { width, height } = labels[index];
-    const at = points.length > 0 ? labelPlacement(points, width, height, isTransport(flow) ? GLYPH_CLEARANCE : 0) : { x: 0, y: 0 };
+    const own = p.labelAt[index];
+    const beside = own === null && points.length > 0 ? labelPlacement(points, width, height) : { x: 0, y: 0 };
+    const labelX = own?.x ?? beside.x;
+    const labelY = own?.y ?? beside.y - p.stack[index];
+    const transport = isTransport(flow);
     return {
       index,
       flow,
       points,
       label: flow.label,
       labelLines: flow.labelLines,
-      labelX: at.x,
-      labelY: at.y - p.stack[index],
+      labelX,
+      labelY,
       labelWidth: width,
       labelHeight: height,
-      mid: pathMidpoint(points, GLYPH_AT + GLYPH_SPREAD * before),
+      textX: transport ? labelX + GLYPH_INSET / 2 : labelX,
+      mid: transport ? { x: labelX - width / 2 + LABEL_PAD / 2 + GLYPH_SIZE / 2, y: labelY } : pathMidpoint(points, GLYPH_AT),
       length: lengthOf(points),
     };
   });
