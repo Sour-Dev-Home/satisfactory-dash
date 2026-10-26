@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
 import { addMember } from "./repositories/memberRepository.js";
@@ -91,13 +90,14 @@ export async function loadDatabaseServers<TServices>(deps: {
 }
 
 /**
- * ADR-0054 D3: a digest of what a polled server connects with (address, ports, tokens), set as `RuntimeServer.source` by
- * the composition root's builder. Not the display name: a rename keeps the pollers. A SHA-256, so the entry holds no token.
+ * ADR-0054 D3.10: what a polled server was built from, set as `RuntimeServer.source` by the composition root's builder, so
+ * a reload can tell an edited connection from an unchanged one. The address, the ports and the row's `updatedAt`, which
+ * every write sets (a token edit included): nothing derived from a token. Not the display name: a rename keeps the
+ * pollers. An entry built from a connection without `updatedAt` (a fresh write on this task) differs once and is rebuilt
+ * by the next reload, before its pollers start.
  */
-export function connectionSource(c: Pick<ServerConnection, "host" | "pinnedIp" | "apiPort" | "frmPort" | "apiToken" | "frmToken">): string {
-  return createHash("sha256")
-    .update(JSON.stringify([c.host, c.pinnedIp, c.apiPort, c.frmPort, c.apiToken, c.frmToken ?? null]))
-    .digest("hex");
+export function connectionSource(c: Pick<ServerConnection, "host" | "pinnedIp" | "apiPort" | "frmPort" | "updatedAt">): string {
+  return JSON.stringify([c.host, c.pinnedIp, c.apiPort, c.frmPort, c.updatedAt ?? null]);
 }
 
 export interface ReconcileDatabaseServersResult {

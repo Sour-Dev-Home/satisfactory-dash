@@ -23,8 +23,8 @@ export interface RuntimeServer<TServices> extends ServerSummary {
   /** ADR-0054 D3: builds a fresh, unstarted copy of a polled server (its workers are one-shot). Used when this instance
    *  stops being the leader, so the next leadership term can start new pollers. Ignored for an agent server. */
   rebuild?: (displayName: string) => RuntimeServer<TServices>;
-  /** ADR-0054 D3: a digest of the connection a polled server was built from (`connectionSource`), so a reload from the
-   *  database can tell an edited connection from an unchanged one. Never the connection itself. */
+  /** ADR-0054 D3.10: what a polled server was built from (`connectionSource`: address, ports, the row's last write), so a
+   *  reload from the database can tell an edited connection from an unchanged one. Holds nothing derived from a token. */
   source?: string;
 }
 

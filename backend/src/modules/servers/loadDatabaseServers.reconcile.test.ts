@@ -15,10 +15,15 @@ const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
 const LAN_OK = { allowLan: true };
 const base = { host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678" };
 
+/** When the stored rows were last written, unless a test says otherwise; every real write sets it. */
+const WRITTEN = "2026-10-26T00:00:00.000Z";
+
 interface Stored {
   publicId: string;
   displayName?: string;
   apiToken?: string;
+  /** The row's `updated_at`: an edit (a new token too) moves it. */
+  updatedAt?: string;
   /** Sealed with another keyring: this process cannot open the row (unreadable). */
   sealedWith?: typeof ring;
   /** A stored address the policy refuses. */
@@ -36,6 +41,7 @@ async function fakeDb(polled: Stored[], agents: { publicId: string; displayName:
     rows.push({
       server_id: `uuid-${server.publicId}`, public_id: server.publicId, display_name: server.displayName ?? `Name ${server.publicId}`, connection_kind: "local",
       host, pinned_ip: pinned, api_port: apiPort, frm_port: frmPort, api_token_enc: apiEnc, frm_token_enc: frmEnc, key_id: keyId,
+      updated_at: new Date(server.updatedAt ?? WRITTEN),
     });
   }
   return {
@@ -66,8 +72,9 @@ const buildAgent = ({ publicId, displayName }: { publicId: string; displayName: 
   workers: [worker()],
   kind: "agent",
 });
-const polledEntry = (publicId: string, apiToken = base.apiToken, displayName = `Name ${publicId}`) =>
-  build({ serverId: `uuid-${publicId}`, publicId, displayName, ...base, apiToken });
+/** An entry as this task built it from the stored row (so with the row's `updatedAt`). */
+const polledEntry = (publicId: string, apiToken = base.apiToken, displayName = `Name ${publicId}`, updatedAt: string | undefined = WRITTEN) =>
+  build({ serverId: `uuid-${publicId}`, publicId, displayName, ...base, apiToken, updatedAt });
 
 /** A running runtime that is the leader (pollers run), as when the lock is taken. */
 function runningRuntime(entries: RuntimeServer<string>[]) {
@@ -107,13 +114,30 @@ describe("reconcileDatabaseServers (ADR-0054 D3)", () => {
     expect(gone.workers[0]!.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("replaces a server whose connection was edited (a new token), and stops the old pollers", async () => {
+  it("replaces a server whose connection was edited (a new token, so a new updated_at), and stops the old pollers", async () => {
     const old = polledEntry("home", "old-token-abcdefgh0000");
     const runtime = runningRuntime([old]);
-    const result = await reconcile(await fakeDb([{ publicId: "home", apiToken: "new-token-abcdefgh9999" }]), runtime);
+    const result = await reconcile(await fakeDb([{ publicId: "home", apiToken: "new-token-abcdefgh9999", updatedAt: "2026-10-26T00:00:30.000Z" }]), runtime);
     expect(result.replaced).toEqual(["home"]);
     expect(runtime.get("home")).toBe("polled:new-token-abcdefgh9999");
     expect(old.workers[0]!.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("the source holds nothing derived from a token: the same row with another token compares equal only by its write time", () => {
+    const a = connectionSource({ ...base, updatedAt: WRITTEN });
+    expect(a).not.toContain(base.apiToken);
+    expect(a).not.toContain(base.frmToken);
+    expect(connectionSource({ ...base, updatedAt: "2026-10-26T00:00:30.000Z" })).not.toBe(a);
+  });
+
+  it("rebuilds, before its pollers start, an entry this task built from its own write (no updated_at yet)", async () => {
+    // Built from the write's own input, which has no updated_at (a default parameter would fill one in, so build directly).
+    const ownWrite = build({ serverId: "uuid-home", publicId: "home", displayName: "Name home", ...base });
+    const runtime = new ServerRuntime([ownWrite], { leaderGated: true });
+    runtime.start();
+    const result = await reconcile(await fakeDb([{ publicId: "home" }]), runtime);
+    expect(result.replaced).toEqual(["home"]);
+    expect(runtime.describe("home")?.source).toBe(connectionSource({ ...base, updatedAt: WRITTEN }));
   });
 
   it("only renames a server whose name changed: its pollers keep running", async () => {
