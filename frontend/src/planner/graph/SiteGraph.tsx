@@ -786,13 +786,6 @@ function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; ma
     <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path d={path} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
-      {transport && (
-        <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
-          <TransportGlyph mode={e.flow.carrier} />
-          {moving && <animateMotion path={path} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
-        </g>
-      )}
-
       {/* On its own line, in the box the layout reserved for it: a pill the line runs under, so it stops at the words. */}
       <rect
         x={e.labelX - e.labelWidth / 2}
@@ -803,13 +796,20 @@ function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; ma
         data-label-pill=""
         className="fill-surface"
       />
-      <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
+      <text x={e.textX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
         {e.labelLines.map((line, i) => (
-          <tspan key={i} x={e.labelX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
+          <tspan key={i} x={e.textX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
             {line}
           </tspan>
         ))}
       </text>
+      {/* After the label: at rest the glyph stands inside its own pill, left of the words; moving, it travels the line. */}
+      {transport && (
+        <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
+          <TransportGlyph mode={e.flow.carrier} />
+          {moving && <animateMotion path={path} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
+        </g>
+      )}
     </g>
   );
 }
