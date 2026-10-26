@@ -1,4 +1,5 @@
-import { BrowserRouter, Route, Routes } from "react-router";
+import type { ReactNode } from "react";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import { AuthGate } from "./auth/AuthGate";
 import { LogoutButton } from "./auth/LogoutButton";
 import { CrashProbe } from "./components/CrashProbe";
@@ -7,11 +8,19 @@ import { SourceFooter } from "./components/SourceFooter";
 import { DemoBanner } from "./demo/DemoBanner";
 import { IS_DEMO } from "./demo/mode";
 import { Landing } from "./landing/Landing";
+import { PairPage } from "./selfServe/PairPage";
 import { ServerGate } from "./servers/ServerGate";
 import { Shell } from "./shell/Shell";
 import { ToApp } from "./shell/ToApp";
 import { HazardStripe } from "./ui/HazardStripe";
 import { Logo } from "./ui/Logo";
+
+/** The pair page links to /app with the server it paired in router state (never the URL); that one opens first. */
+function PairedServerGate({ children }: { children: ReactNode }) {
+  const state = useLocation().state as { selectServerId?: unknown } | null;
+  const id = typeof state?.selectServerId === "string" ? state.selectServerId : undefined;
+  return <ServerGate initialId={id}>{children}</ServerGate>;
+}
 
 function App() {
   return (
@@ -31,13 +40,22 @@ function App() {
           <ErrorBoundary label="The dashboard" actions={<LogoutButton />}>
             <CrashProbe section="app" />
             <Routes>
+              {/* ADR-0051 section 1: signed in, but outside ServerGate, since a player with no server pairs their first one here. */}
+              <Route
+                path="/app/pair"
+                element={
+                  <AuthGate>
+                    <PairPage />
+                  </AuthGate>
+                }
+              />
               <Route
                 path="/app/*"
                 element={
                   <AuthGate>
-                    <ServerGate>
+                    <PairedServerGate>
                       <Shell />
-                    </ServerGate>
+                    </PairedServerGate>
                   </AuthGate>
                 }
               />

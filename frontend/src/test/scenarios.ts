@@ -120,6 +120,7 @@ import {
   listSelfServeOff,
   listSelfServeOn,
 } from "./selfServeMocks";
+import { approved, errorPairingForbidden, errorPairingNotFound, errorPairingRateLimited, lookedUp } from "./pairingMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
 // the dev mock mode (src/test/browser.ts, MSW in the browser) and the Playwright tests
@@ -170,6 +171,9 @@ export const ROUTES = {
   removeServer: endpoints.serverManagement.remove,
   // ADR-0046: any signed-in user adds a server of their own.
   createAgentServer: endpoints.selfServe.createAgentServer,
+  // ADR-0051 section 1: the /pair page.
+  pairingLookup: endpoints.pairings.lookup,
+  pairingApprove: endpoints.pairings.approve,
   // ADR-0031: an agent server's only edits (#266 rename, #273 switch back to local).
   renameAgent: endpoints.serverManagement.renameAgent,
   switchToLocal: endpoints.serverManagement.switchToLocal,
@@ -273,6 +277,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   updateServer: ok(serverConnectionOk),
   removeServer: ok(deleteServerDone),
   createAgentServer: { status: 201, body: createdAgentServer },
+  pairingLookup: ok(lookedUp),
+  pairingApprove: ok(approved),
   renameAgent: ok(renameAgentServerResponse),
   switchToLocal: ok(serverConnectionOk),
   historyPower: ok(historyPower24h),
@@ -375,6 +381,30 @@ const plannerFactoriesTwoTrees = (() => {
         ...data.factories!.slice(1),
       ],
       sites: data.sites.map((s) => (s.nodeKeys.includes(first.key) ? { ...s, nodeKeys: [...s.nodeKeys, sibling.key, second.key] } : s)),
+    },
+  };
+})();
+
+/**
+ * ADR-0055 PR 8: the factories fixture with one transport of every mode the canvas has a glyph for (the train is the
+ * fixture's own; only the train and the Depot have readers today, so the truck and the drone are synthetic), between the
+ * Iron Plate factory's groups, so the canvas shows all four icons and the legend lists them.
+ */
+const plannerFactoriesTransports = (() => {
+  const data = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
+  const keyOf = (className: string) => data.nodes.find((n) => n.className === className)!.key;
+  const train = data.transports![0];
+  const via = (mode: string, from: string, to: string, routeName: string) => ({ ...train, mode, from, to, routeName, carriers: 1 });
+  return {
+    ...productionGraphFactories,
+    data: {
+      ...data,
+      transports: [
+        train,
+        via("truck", keyOf("Build_SmelterMk1_C"), keyOf("Build_ConstructorMk1_C"), "Plate Run"),
+        via("drone", keyOf("Build_ConstructorMk1_C"), keyOf("Build_StorageContainerMk1_C"), "Courier"),
+        via("depot", keyOf("Build_TrainStation_C"), keyOf("Build_SmelterMk1_C"), "Upload"),
+      ],
     },
   };
 })();
@@ -619,6 +649,7 @@ export const SCENARIOS = {
   // to the sink and plates into storage), and the same with a second Iron Plate tree in one of them.
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
+  "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {
@@ -630,6 +661,15 @@ export const SCENARIOS = {
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
   // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
   "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },
+  // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
+  // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
+  "basic-data": {
+    power: fail(502, errorUpstreamUnreachable),
+    powerHistory: fail(502, errorUpstreamUnreachable),
+    factory: fail(502, errorUpstreamUnreachable),
+    productionGraph: fail(502, errorUpstreamUnreachable),
+    bottlenecks: fail(502, errorUpstreamUnreachable),
+  },
   "planner-error": { productionGraph: fail(502, errorUpstreamUnreachable) },
   "settings-read-only": { settings: ok(settingsReadOnly) },
   "settings-pending": { settings: ok(settingsPending) },
@@ -720,6 +760,16 @@ export const SCENARIOS = {
     createAgentServer: { status: 429, body: errorDailyLimit, headers: { "Retry-After": "18000" } },
   },
   "self-serve-forbidden": { servers: ok(listSelfServeOn), createAgentServer: fail(403, errorSelfServeOff) },
+  // ADR-0051 section 1, the /pair page: a player who owns one server (so "One of my servers" has a choice), a code the
+  // server does not accept, a wait, and a refusal.
+  "pair": { servers: ok(serversRoleOwner) },
+  "pair-invalid": { servers: ok(serversRoleOwner), pairingLookup: fail(404, errorPairingNotFound) },
+  "pair-rate-limited": {
+    servers: ok(serversRoleOwner),
+    pairingLookup: { status: 429, body: errorPairingRateLimited, headers: { "Retry-After": "120" } },
+  },
+  "pair-forbidden": { servers: ok(serversRoleOwner), pairingLookup: fail(403, errorPairingForbidden) },
+  "pair-approve-invalid": { servers: ok(serversRoleOwner), pairingApprove: fail(404, errorPairingNotFound) },
   "self-serve-owner": { servers: ok(listOwnsEnrolled), agentStatus: ok(agentStatusEnrolled) },
   "self-serve-owner-pending": {
     servers: ok(listOwnsPending),

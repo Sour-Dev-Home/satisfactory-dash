@@ -53,6 +53,7 @@ import { LatestSnapshotWriter, loadLatestSnapshot } from "./services/latestSnaps
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
+export { createDesignationBuildings } from "./services/designationBuildings.js";
 export type { BackgroundWorker } from "./services/powerHistoryPoller.js";
 export type {
   MachineObservation,

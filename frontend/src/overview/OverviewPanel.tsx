@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ServerPlayersResponse } from "@satisfactory-dash/shared";
+import { BasicDataNotice } from "../components/BasicData";
 import { CardGrid } from "./cards/CardGrid";
 import { HealthCard, type Age, type Tick } from "./cards/HealthCard";
 import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
@@ -21,11 +22,14 @@ export function OverviewPanel({
   tick,
   age,
   power,
+  basicData = false,
   roster,
   bannerHidden = false,
   onDismiss,
   unreachable = false,
 }: {
+  /** The server gives only the game's own API data: the calm "Basic data" notice shows under the cards. */
+  basicData?: boolean;
   /** The status snapshot says the game is unreachable: the cards show its last reading, dimmed (ADR-0052). */
   unreachable?: boolean;
   overall: { health: Shown; headline: string };
@@ -81,6 +85,7 @@ export function OverviewPanel({
         <PlayersCard state={players} roster={roster} />
       </CardGrid>
       {power !== undefined && <PowerCard state={power} />}
+      {basicData && <BasicDataNotice />}
     </section>
   );
 }

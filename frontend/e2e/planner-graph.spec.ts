@@ -155,6 +155,56 @@ test.describe("the factory canvas", () => {
     await expect(overview).toBeVisible();
   });
 
+  // ADR-0055 PR 8b: the transport glyphs move by SVG animateMotion, with no inline style and no script, and stop on the Motion toggle.
+  test("shows every transport mode as a glyph, moves them, and the Motion toggle stops them and is remembered", async ({ page, mockApi }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await mockApi("planner-factories-transports");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    for (const mode of ["train", "truck", "drone", "depot"]) await expect(svg.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
+    // Only the edges in view move (on a phone most of the four lie past the fitted canvas), so at least one does.
+    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
+    await expect(svg.locator("[style]")).toHaveCount(0);
+    await expectNoAxeViolations(page, testInfo);
+
+    await page.getByLabel("Motion").selectOption("off");
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    expect(await page.evaluate(() => window.localStorage.getItem("planner.motion"))).toBe("off");
+    await page.reload();
+    const again = await openPlate(page);
+    await expect(page.getByLabel("Motion")).toHaveValue("off");
+    await expect(again.locator("animateMotion")).toHaveCount(0);
+  });
+
+  test("System follows the operator's reduced-motion setting", async ({ page, mockApi }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await mockApi("planner-factories-transports");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    await expect(page.getByLabel("Motion")).toHaveValue("system");
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(svg.locator('[data-glyph="train"]')).toHaveCount(1);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
+  });
+
+  test("hides what only feeds a card behind a count, Escape restores it, and storage folds into chips", async ({ page, mockApi }, testInfo) => {
+    await mockApi("planner-factories");
+    await page.goto("/app/planner");
+    const svg = await openPlate(page);
+    await page.getByRole("button", { name: "Hide 1 group that only feeds Storage Container" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(svg.locator('[data-upstream="collapsed"]')).toContainText("+1");
+    await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+    await page.keyboard.press("Escape");
+    await expect(svg.locator('[data-upstream="collapsed"]')).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Storage detail" }).click();
+    await expect(svg.getByText("1 flow to storage")).toBeVisible();
+    expect(await page.evaluate(() => window.localStorage.getItem("planner.storageDetail"))).toBe("off");
+    await expectNoAxeViolations(page, testInfo);
+  });
+
   test("opens a tree in place and folds it again", async ({ page, mockApi }, testInfo) => {
     await mockApi("planner-factories-trees");
     await page.goto("/app/planner");

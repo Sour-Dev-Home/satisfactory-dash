@@ -97,6 +97,23 @@ const FACTORIES_NOW = "2026-10-24T12:00:08.000Z";
 /** 8 s after the agent fixtures' last-seen time, so "Last seen 8 s ago" holds still. */
 const AGENT_NOW = "2026-09-26T12:00:13.000Z";
 
+/** Three minutes after the pairing fixture's request: "asked 3 minutes ago". */
+const PAIR_NOW = "2026-10-25T12:03:00.000Z";
+
+/** The /pair page (ADR-0051): types the code in lower case without dashes (it normalises) and continues. */
+const lookUpCode = async (page: Page) => {
+  await page.getByLabel("Pairing code").fill("ab3d7xq2k5mn");
+  await page.getByRole("button", { name: "Continue" }).click();
+};
+const lookUpAndChooseExisting = async (page: Page) => {
+  await lookUpCode(page);
+  await page.getByLabel("One of my servers").check();
+};
+const lookUpAndApprove = async (page: Page) => {
+  await lookUpCode(page);
+  await page.getByRole("button", { name: "Approve" }).click();
+};
+
 /** "Add your server" (ADR-0046): types a name and submits. */
 const addYourServer = (name: string) => async (page: Page) => {
   await page.getByLabel("Server name").fill(name);
@@ -156,6 +173,9 @@ const CASES: StateCase[] = [
   { scenario: "unreachable-last-data", shows: /Game server unreachable since/ },
   { scenario: "unreachable-last-data", name: "unreachable-last-data-power", path: "/app/power", shows: /Game server unreachable since/ },
   { scenario: "unreachable-last-data", name: "unreachable-last-data-factory", path: "/app/factory", shows: /Game server unreachable since/ },
+  // ADR-0057: a vanilla-only server; the game's own facts on the Overview, and the one notice in place of power.
+  { scenario: "basic-data", shows: /Basic data:/ },
+  { scenario: "basic-data", name: "basic-data-power", path: "/app/power", shows: /Basic data:/ },
   // 1024 px, where the Health card is at its narrowest beside Players: a long status word must never sit
   // under the tick gauge (#593).
   { scenario: "default", name: "default-narrow-desktop", shows: "Total play time on this save", width: 1024 },
@@ -269,6 +289,37 @@ const CASES: StateCase[] = [
       await openPlateFactoryGraph(page);
       await pressButton(page, "Collapse 5× Constructor, Iron Plate, tree 1 of 2");
     },
+  },
+  // PR 8b: what only feeds a card hidden behind a count, storage folded into chips, and one transport of every mode.
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-upstream-hidden",
+    path: "/app/planner",
+    shows: "+1",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await pressButton(page, "Hide 1 group that only feeds Storage Container");
+    },
+  },
+  {
+    scenario: "planner-factories",
+    name: "planner-factory-storage-folded",
+    path: "/app/planner",
+    shows: "1 flow to storage",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await openPlateFactoryGraph(page);
+      await page.getByRole("button", { name: "Storage detail" }).click();
+    },
+  },
+  {
+    scenario: "planner-factories-transports",
+    name: "planner-factory-transports",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: openPlateFactoryGraph,
   },
   {
     scenario: "planner-factories",
@@ -453,6 +504,21 @@ const CASES: StateCase[] = [
     clock: AGENT_NOW,
     act: addYourServer("Second world"),
   },
+  // The /pair page (ADR-0051 section 1): the code field, the confirmation, re-pairing one of your own, done, and each refusal.
+  { scenario: "pair", path: "/app/pair", shows: "Twelve letters and digits", clock: PAIR_NOW },
+  { scenario: "pair", name: "pair-confirm", path: "/app/pair", shows: "asked 3 minutes ago", clock: PAIR_NOW, act: lookUpCode },
+  {
+    scenario: "pair",
+    name: "pair-existing",
+    path: "/app/pair",
+    shows: /This replaces that server's credential/,
+    clock: PAIR_NOW,
+    act: lookUpAndChooseExisting,
+  },
+  { scenario: "pair", name: "pair-done", path: "/app/pair", shows: "Paired. Data arrives within a few seconds.", clock: PAIR_NOW, act: lookUpAndApprove },
+  { scenario: "pair-invalid", path: "/app/pair", shows: /That code isn't valid/, clock: PAIR_NOW, act: lookUpCode },
+  { scenario: "pair-rate-limited", path: "/app/pair", shows: /Wait about 2 minutes/, clock: PAIR_NOW, act: lookUpCode },
+  { scenario: "pair-forbidden", path: "/app/pair", shows: /isn't available to your account/, clock: PAIR_NOW, act: lookUpCode },
   { scenario: "self-serve-owner", path: "/app/settings", shows: "Your server", clock: AGENT_NOW },
   { scenario: "self-serve-owner-pending", path: "/app/settings", shows: /Create an enrolment code above to connect it/, clock: AGENT_NOW },
   {
@@ -549,7 +615,8 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
     await page.clock.setFixedTime(clock ?? LIVE_NOW);
     // Reduced motion also turns off Leaflet's zoom and fade animations, so every map screenshot is stable.
-    if (path === "/app/map") await page.emulateMedia({ reducedMotion: "reduce" });
+    // The planner canvas's transport glyphs move unless the operator asks for reduced motion, so they sit still here too.
+    if (path === "/app/map" || path === "/app/planner") await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(path);
     if (act) {
       // Sign-in states act on the login form once it's there; the rest act on their page, and

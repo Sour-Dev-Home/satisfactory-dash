@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
-import { COLLAPSE_AT, EMPTY_VIEW, canvasFlow, factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type FactoryView } from "./canvasScene";
+import { COLLAPSE_AT, EMPTY_VIEW, canvasFlow, factoryScene, flowTitle, foldStorage, overviewScene, sceneSummary, siteScene, type FactoryView } from "./canvasScene";
 import { factoryModels, type AggregateFlow, type FlowPart } from "./hierarchy";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
@@ -83,7 +83,10 @@ describe("overviewScene", () => {
     expect(card.title).toBe("Iron Plate factory");
     expect(card.lines).toContain("9 machines");
     expect(card.lines).toContain("3 shared groups");
-    expect(card.lines.some((l) => l.startsWith("Iron Plate: 48"))).toBe(true);
+    // The figures stay with their unit when the line wraps.
+    const at = card.lines.indexOf("Iron Plate:");
+    expect(at).toBeGreaterThan(-1);
+    expect(card.lines[at + 1]).toMatch(/^48.\/.80.items\/min$/);
     expect(card.lines).toContain("1 flow to storage");
     expect(scene.cards[1].title).toBe("Iron Rod factory (+ Iron Rod)");
     expect(card.mutedLines).toBeGreaterThan(0);
@@ -101,13 +104,15 @@ describe("overviewScene", () => {
 });
 
 describe("factoryScene on the fixture", () => {
-  it("is a card per group with the train as a flow that carries its mode", () => {
+  it("is a card per group with the train as a flow that carries its mode and route", () => {
     const scene = factoryScene(FIXTURE, plate, view());
     expect(scene.level).toBe("factory");
     expect(scene.cards).toHaveLength(5);
     const train = scene.flows.find((f) => f.carrier === "train")!;
-    expect(flowTitle(train, "Miner", "Main Depot")).toBe("Train: Miner to Main Depot: Iron Ore · about 120 items/min (estimated)");
+    expect(train.routeName).toBe("Ore Run");
+    expect(flowTitle(train, "Miner", "Main Depot")).toBe("Train, route Ore Run: Miner to Main Depot: Iron Ore · about 120 items/min (estimated)");
     expect(scene.noun).toBe("group");
+    expect(scene.hasStorage).toBe(true);
   });
 
   it("says where a remote group stands, and how a shared group splits", () => {
@@ -115,6 +120,27 @@ describe("factoryScene on the fixture", () => {
     const miner = scene.cards.find((c) => c.className === "Build_MinerMk2_C")!;
     expect(miner.lines.join(" ")).toMatch(/km|m, by train/);
     expect(miner.lines.join(" ")).toContain("60% here");
+  });
+
+  it("folds terminal storage into a chip on the group that fills it", () => {
+    const off = factoryScene(FIXTURE, plate, view({ storageDetail: false }));
+    expect(off.cards).toHaveLength(4);
+    const constructor = off.cards.find((c) => c.label.includes("Iron Plate"))!;
+    expect(constructor.lines).toContain("1 flow to storage");
+    expect(off.flows.some((f) => f.itemName === "Iron Plate")).toBe(false);
+  });
+
+  it("collapse upstream hides what a card post-dominates and leaves a count on it", () => {
+    const open = factoryScene(FIXTURE, plate, view());
+    const store = open.cards.find((c) => c.label === "Storage Container")!;
+    expect(store.upstream).toEqual({ count: 1, collapsed: false });
+    const closed = factoryScene(FIXTURE, plate, view({ collapsed: new Set([store.key]) }));
+    expect(closed.cards.some((c) => c.label.includes("Iron Plate"))).toBe(false);
+    expect(closed.cards.find((c) => c.key === store.key)!.upstream).toEqual({ count: 1, collapsed: true });
+  });
+
+  it("an unknown collapsed key hides nothing", () => {
+    expect(factoryScene(FIXTURE, plate, view({ collapsed: new Set(["gone"]) })).cards).toHaveLength(5);
   });
 
   it("a factory of two groups and one flow", () => {
@@ -181,6 +207,90 @@ describe("bubbles and folds", () => {
   });
 });
 
+describe("collapse upstream on generated chains", () => {
+  const chain = [
+    node("m", { collapseUnder: "a" }),
+    node("a", { collapseUnder: "b" }),
+    node("b", { collapseUnder: null }),
+    node("side", { collapseUnder: "b" }),
+  ];
+  const g = graphOf(chain, [belt("m", "a"), belt("a", "b"), belt("side", "b")]);
+
+  it("hides everything a card post-dominates, transitively", () => {
+    const scene = sceneOf(g, view({ collapsed: new Set(["b"]) }));
+    expect(scene.cards.map((c) => c.key)).toEqual(["b"]);
+    expect(scene.cards[0].upstream).toEqual({ count: 3, collapsed: true });
+    expect(scene.flows).toEqual([]);
+  });
+
+  it("hides only its own subtree", () => {
+    const scene = sceneOf(g, view({ collapsed: new Set(["a"]) }));
+    expect(scene.cards.map((c) => c.key).sort()).toEqual(["a", "b", "side"]);
+    expect(scene.flows.map((f) => `${f.from}>${f.to}`).sort()).toEqual(["a>b", "side>b"]);
+  });
+
+  it("survives a post-dominator cycle and a dangling key", () => {
+    const odd = graphOf([node("x", { collapseUnder: "y" }), node("y", { collapseUnder: "x" }), node("z", { collapseUnder: "nowhere" })]);
+    expect(() => sceneOf(odd, view({ collapsed: new Set(["x", "y", "z"]) }))).not.toThrow();
+  });
+
+  it("a card hidden by a folded storage hangs under the storage's own post-dominator", () => {
+    const withStore = graphOf(
+      [
+        node("p", { collapseUnder: "s" }),
+        node("s", { kind: "storage", role: "buffer", recipe: null, className: "Build_StorageContainerMk1_C", name: "Storage Container", collapseUnder: "q" }),
+        node("q", { collapseUnder: null }),
+      ],
+      [belt("p", "s"), belt("s", "q")],
+    );
+    const scene = sceneOf(withStore, view({ storageDetail: false, collapsed: new Set(["q"]) }));
+    expect(scene.cards.map((c) => c.key)).toEqual(["q"]);
+  });
+});
+
+describe("foldStorage", () => {
+  const store = (key: string, role: string) => node(key, { kind: "storage", role, recipe: null, className: "Build_StorageContainerMk1_C", name: "Storage Container" });
+  const nodes = [node("a"), node("b"), node("c"), store("buf", "buffer"), store("end", "storage"), store("buf2", "buffer")];
+
+  it("joins a buffer's belts, keeps the item and the carrier of the transport side", () => {
+    const parts = [belt("a", "buf"), belt("buf", "b", { itemClassName: "Desc_X_C", ratePerMinute: 30 })];
+    const { parts: out, removed } = foldStorage(nodes, parts);
+    expect(removed.has("buf")).toBe(true);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ from: "a", to: "b", ratePerMinute: 30, rate: "measured" });
+    const train = foldStorage(nodes, [belt("a", "buf", { carrier: "train", routeName: "Run" }), belt("buf", "b")]).parts[0];
+    expect(train).toMatchObject({ carrier: "train", routeName: "Run" });
+  });
+
+  it("splits a buffer's output between several sources and calls the shares estimates", () => {
+    const { parts } = foldStorage(nodes, [belt("a", "buf"), belt("c", "buf"), belt("buf", "b", { ratePerMinute: 60 })]);
+    expect(parts.map((p) => [p.from, p.ratePerMinute, p.rate])).toEqual([
+      ["a", 30, "estimated"],
+      ["c", 30, "estimated"],
+    ]);
+  });
+
+  it("joins a chain of buffers one by one, and turns terminal storage into a count", () => {
+    const { parts, removed, chips } = foldStorage(nodes, [belt("a", "buf"), belt("buf", "buf2"), belt("buf2", "b"), belt("b", "end")]);
+    expect([...removed].sort()).toEqual(["buf", "buf2", "end"]);
+    expect(parts.map((p) => `${p.from}>${p.to}`)).toEqual(["a>b"]);
+    expect(chips.get("b")).toBe(1);
+  });
+
+  it("leaves a buffer nothing feeds, drops a self-loop and ignores a station", () => {
+    const station = node("st", { kind: "station", role: "buffer", recipe: null, className: "Build_TrainStation_C", name: "Station" });
+    const { parts, removed } = foldStorage([...nodes, station], [belt("buf", "b"), belt("buf", "buf"), belt("a", "st"), belt("st", "b")]);
+    expect(removed.has("buf")).toBe(false);
+    expect(removed.has("st")).toBe(false);
+    expect(parts.some((p) => p.from === p.to)).toBe(false);
+  });
+
+  it("does not change the parts when there is nothing to fold", () => {
+    const parts = [belt("a", "b")];
+    expect(foldStorage([node("a"), node("b")], parts)).toEqual({ parts, removed: new Set(), chips: new Map() });
+  });
+});
+
 describe("flows as the canvas words them", () => {
   const flow = (extra: Partial<AggregateFlow> = {}): AggregateFlow => ({
     from: "a",
@@ -230,7 +340,7 @@ describe("siteScene", () => {
 describe("a key taken from the game is only ever a key", () => {
   it("handles prototype-ish names in keys, roles and carriers", () => {
     const g = graphOf([node("__proto__"), node("constructor", { role: "toString" }), node("hasOwnProperty")], [belt("__proto__", "constructor")]);
-    const scene = sceneOf(g, view());
+    const scene = sceneOf(g, view({ storageDetail: false }));
     expect(scene.cards).toHaveLength(3);
     expect(scene.flows).toHaveLength(1);
   });

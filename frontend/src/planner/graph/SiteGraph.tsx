@@ -1,7 +1,8 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
-import { bottleneckCountText, siteFindings } from "../plannerText";
+import { useReducedMotion } from "../../overview/reducedMotion";
+import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
 import { reachFor, siteItems } from "./graphModel";
@@ -13,12 +14,17 @@ import {
   LABEL_LINE_H,
   LINE_H,
   NODE_PAD_X,
+  PILL_H,
   TITLE_H,
+  isTransport,
   layoutScene,
   type LaidEdge,
   type LaidFrame,
   type LaidNode,
 } from "./layoutSite";
+import { MOTION_OPTIONS, motionOn, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { TransportGlyph } from "./transportGlyphs";
+import { GLYPH_MODES } from "./transportModes";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -28,6 +34,7 @@ import {
   clippedEdges,
   fitView,
   isClipped,
+  isInView,
   keyView,
   panBy,
   pinchView,
@@ -47,8 +54,16 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 const BADGE_W = 88;
 const BADGE_H = 20;
+/** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
+const PILL_MIN_W = 24;
+const PILL_HIT = 44;
 /** The Collapse button in a frame's header. */
 const COLLAPSE_W = 76;
+/** A glyph crosses its edge at this many units a second, within these bounds; at most this many edges move at once. */
+const GLYPH_SPEED = 40;
+const GLYPH_MIN_S = 4;
+const GLYPH_MAX_S = 16;
+const MAX_MOVING = 40;
 
 const edgePath = (points: readonly { x: number; y: number }[]) => points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
 
@@ -84,6 +99,18 @@ function ToolButton({ name, icon, onClick, disabled, pressed }: { name: string; 
   );
 }
 
+const subscribeVisibility = (onChange: () => void) => {
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
+};
+/** Whether the tab is showing: nothing animates in a hidden one (ADR-0055 Decision 6). */
+const usePageVisible = () =>
+  useSyncExternalStore(
+    subscribeVisibility,
+    () => document.visibilityState !== "hidden",
+    () => true,
+  );
+
 /** What the canvas shows: one site (an older backend), the factory overview, or one opened factory. */
 export type GraphTarget = { kind: "site"; site: PlannerSite } | { kind: "overview"; models: readonly FactoryModel[] } | { kind: "factory"; model: FactoryModel };
 
@@ -97,7 +124,7 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
 /**
  * ADR-0050 Decision 3 and 4, ADR-0055 Decision 6, the canvas: dagre's layout of a scene drawn as SVG. The first level is
  * the factories; an opened factory shows its bubbles (a recipe from one source tree), which open in place into their
- * groups inside a frame. Pan (drag, arrows), zoom (wheel, buttons, +
+ * groups inside a frame, and a card's upstream can be hidden behind a "+N". Pan (drag, arrows), zoom (wheel, buttons, +
  * and -), fit, an item filter that lights what carries the item upstream and downstream, and a side panel for a group's
  * machines. The picture is `role="img"`; the keyboard reaches each card through a list of real buttons beside it (an
  * image's children are presentational, so buttons inside it would be hidden from assistive tech), and the focused card is
@@ -115,11 +142,18 @@ export default function SiteGraph({
   /** A factory card was chosen on the overview. */
   onOpenFactory?: (key: string) => void;
 }) {
-  // View state of this session: which bubbles differ from their default, which folds are open.
+  // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
+  // choices: whose upstream is hidden, storage shown, motion.
   const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
+  const [collapsed, setCollapsed] = useCollapsedUpstream();
+  const [storageDetail, setStorageDetail] = useStorageDetail();
+  const [motionPref, setMotionPref] = useMotionPref();
+  const reduced = useReducedMotion();
+  const visible = usePageVisible();
+  const animate = motionOn(motionPref, reduced);
 
-  const view: FactoryView = useMemo(() => ({ flipped, unfolded }), [flipped, unfolded]);
+  const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail }), [flipped, unfolded, collapsed, storageDetail]);
   const scene: Scene = useMemo(
     () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models) : factoryScene(graph, target.model, view)),
     [target, graph, view],
@@ -131,6 +165,8 @@ export default function SiteGraph({
   const ids = useId();
   const markerId = `${ids}-arrow`;
   const panelId = `${ids}-panel`;
+  const transports = useMemo(() => layout.edges.filter((e) => isTransport(e.flow)), [layout]);
+  const modes = useMemo(() => GLYPH_MODES.filter((m) => transports.some((e) => e.flow.carrier === m)), [transports]);
 
   // The SVG's measured size is the stage (1 unit = 1 CSS px); jsdom has no ResizeObserver and keeps the fallback.
   const [stage, setStage] = useState<Stage>(FALLBACK_STAGE);
@@ -273,9 +309,18 @@ export default function SiteGraph({
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key === "Escape" && openKey !== null) {
-      close();
-      return;
+    if (event.key === "Escape") {
+      // One thing at a time: the panel, then the last card whose upstream was hidden.
+      if (openKey !== null) {
+        close();
+        return;
+      }
+      const last = [...collapsed].pop();
+      if (last !== undefined) {
+        event.preventDefault();
+        setCollapsed(toggled(collapsed, last));
+        return;
+      }
     }
     const next = keyView(viewport, event.key, fit, stage);
     if (next === null) return;
@@ -297,6 +342,10 @@ export default function SiteGraph({
   const collapseBubble = (bubbleKey: string) => {
     if (dragged.current) return;
     setFlipped(toggled(flipped, bubbleKey));
+  };
+  const toggleUpstream = (key: string) => {
+    if (dragged.current) return;
+    setCollapsed(toggled(collapsed, key));
   };
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
@@ -324,6 +373,25 @@ export default function SiteGraph({
   const tabOrder = useMemo(() => [...layout.nodes].sort((a, b) => a.x - b.x || a.y - b.y || a.key.localeCompare(b.key)), [layout]);
   const loops = useMemo(() => scene.cards.filter((c) => c.loop).length, [scene]);
 
+  // The transport glyphs that move: only those whose edge is in view, at most MAX_MOVING, and never in a hidden tab.
+  const moving = useMemo(() => {
+    const set = new Set<number>();
+    if (!animate || !visible) return set;
+    for (const e of transports) {
+      if (set.size >= MAX_MOVING) break;
+      if (e.points.length < 2) continue;
+      const xs = e.points.map((p) => p.x);
+      const ys = e.points.map((p) => p.y);
+      const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+      if (isInView(viewport, stage, box)) set.add(e.index);
+    }
+    return set;
+  }, [animate, visible, transports, viewport, stage]);
+
+  // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
+  const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
+
+  const canSwitchStorage = scene.hasStorage;
   const canFold = scene.bubbleKeys.length > 0;
 
   return (
@@ -351,15 +419,26 @@ export default function SiteGraph({
           <ToolButton name="Zoom out" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={viewport.k <= MIN_ZOOM} icon={<path d="M5 12h14" />} />
           <ToolButton name="Fit to view" onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />} />
         </div>
-        {canFold && (
+        {(canFold || canSwitchStorage) && (
           <div role="group" aria-label="Detail" className="flex gap-2">
-            <ToolButton
-              name={everyBubbleOpen ? "Collapse all" : "Expand all"}
-              onClick={() => setAllBubbles(!everyBubbleOpen)}
-              icon={everyBubbleOpen ? <path d="M8 4l4 4 4-4M8 20l4-4 4 4" /> : <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />}
-            />
+            {canFold && (
+              <ToolButton
+                name={everyBubbleOpen ? "Collapse all" : "Expand all"}
+                onClick={() => setAllBubbles(!everyBubbleOpen)}
+                icon={everyBubbleOpen ? <path d="M8 4l4 4 4-4M8 20l4-4 4 4" /> : <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />}
+              />
+            )}
+            {canSwitchStorage && (
+              <ToolButton
+                name="Storage detail"
+                pressed={storageDetail}
+                onClick={() => setStorageDetail(!storageDetail)}
+                icon={<path d="M4 7h16v4H4zM5 11v8h14v-8M10 15h4" />}
+              />
+            )}
           </div>
         )}
+        {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {reach !== null && (
           <span role="status" className="w-full text-sm text-muted sm:w-auto">
             {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
@@ -390,14 +469,14 @@ export default function SiteGraph({
             onPointerDown={onPointerDown}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
-            className="max-h-map min-h-map-min w-full cursor-grab touch-none select-none rounded-card border border-line bg-surface"
+            className="max-h-map min-h-graph-min w-full cursor-grab touch-none select-none rounded-card border border-line bg-surface"
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
             </defs>
-            <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
+            <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(animate && "animate-graph-in")}>
               {layout.frames.map((f) => (
                 <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
               ))}
@@ -405,7 +484,7 @@ export default function SiteGraph({
                 const on = reach === null || reach.edges.has(e.index);
                 const from = laidByKey.get(e.flow.from);
                 const to = laidByKey.get(e.flow.to);
-                return <Edge key={e.index} edge={e} markerId={markerId} dim={!on} from={from?.title ?? ""} to={to?.title ?? ""} />;
+                return <Edge key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} />;
               })}
               {layout.nodes.map((n) => (
                 <CardView
@@ -415,6 +494,7 @@ export default function SiteGraph({
                   ringed={openKey === n.key || focusKey === n.key}
                   dim={!lit(n.key)}
                   onActivate={() => activate(n.card)}
+                  onToggleUpstream={() => toggleUpstream(n.key)}
                 />
               ))}
             </g>
@@ -458,7 +538,7 @@ export default function SiteGraph({
               );
             })}
           </ul>
-          {layout.frames.length > 0 && (
+          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined)) && (
             <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
               {layout.frames.map((f) => (
                 <li key={f.key}>
@@ -467,6 +547,17 @@ export default function SiteGraph({
                   </button>
                 </li>
               ))}
+              {tabOrder.flatMap((n) =>
+                n.card.upstream === undefined
+                  ? []
+                  : [
+                      <li key={n.key}>
+                        <button type="button" aria-pressed={n.card.upstream.collapsed} onClick={() => setCollapsed(toggled(collapsed, n.key))} className="sr-only">
+                          {upstreamName(n.card)}
+                        </button>
+                      </li>,
+                    ],
+              )}
             </ul>
           )}
         </div>
@@ -477,7 +568,7 @@ export default function SiteGraph({
         )}
       </div>
 
-      <Legend />
+      <Legend modes={modes} />
     </div>
   );
 }
@@ -487,12 +578,43 @@ function cardButtonName(card: Card): string {
   return card.kind === "factory" ? `Open factory: ${card.label}` : card.label;
 }
 
-/** A flow: the line and its label with a halo. */
-function Edge({ edge: e, markerId, dim, from, to }: { edge: LaidEdge; markerId: string; dim: boolean; from: string; to: string }) {
+/** The hidden button's name for hiding or showing what a card post-dominates. */
+function upstreamName(card: Card): string {
+  const n = card.upstream?.count ?? 0;
+  const groups = `${n} ${n === 1 ? "group" : "groups"}`;
+  return card.upstream?.collapsed ? `Show ${groups} hidden behind ${card.label}` : `Hide ${groups} that only ${n === 1 ? "feeds" : "feed"} ${card.label}`;
+}
+
+function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref: MotionPref) => void }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span>Motion</span>
+      <select value={value} onChange={(e) => onChange(e.target.value as MotionPref)} className="min-h-touch">
+        {MOTION_OPTIONS.map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** A flow: the line, its label with a halo, and for a transport the mode's glyph on the middle (moving when it may). */
+function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string }) {
+  const path = edgePath(e.points);
+  const transport = isTransport(e.flow);
+  const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   return (
     <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
-      <path d={edgePath(e.points)} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
+      <path d={path} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
+      {transport && (
+        <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
+          <TransportGlyph mode={e.flow.carrier} />
+          {moving && <animateMotion path={path} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
+        </g>
+      )}
 
       {/* Just above the line; the halo only matters where another line crosses the words. */}
       <text x={e.labelX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
@@ -523,6 +645,8 @@ function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => v
         {title}
       </text>
       <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} className="cursor-pointer">
+        {/* An invisible target up to the touch size round the pill (the hidden "Collapse" button is the keyboard's way in). */}
+        <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
         <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />
         <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
           Collapse
@@ -538,15 +662,20 @@ function CardView({
   ringed,
   dim,
   onActivate,
+  onToggleUpstream,
 }: {
   node: LaidNode;
   finding: number;
   ringed: boolean;
   dim: boolean;
   onActivate: () => void;
+  onToggleUpstream: () => void;
 }) {
   const card = n.card;
   const stacked = card.kind === "bubble" || card.kind === "fold";
+  const up = card.upstream;
+  const pillText = up === undefined ? "" : up.collapsed ? `+${up.count}` : "−";
+  const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
   return (
     <g transform={`translate(${n.x} ${n.y})`} onClick={onActivate} data-card={card.kind} className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}>
       <title>{card.label}</title>
@@ -576,11 +705,31 @@ function CardView({
           </text>
         </g>
       )}
+      {/* Collapse upstream: a minus hides what only feeds this card, and leaves a "+N" that shows it again. The invisible
+          rect behind the pill widens its hit area towards the touch size; the hidden button is the keyboard's way in. */}
+      {up !== undefined && (
+        <g
+          transform={`translate(8 ${n.height - PILL_H / 2})`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleUpstream();
+          }}
+          data-upstream={up.collapsed ? "collapsed" : "open"}
+          className="cursor-pointer"
+        >
+          <title>{upstreamName(card)}</title>
+          <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
+          <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+          <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+            {pillText}
+          </text>
+        </g>
+      )}
     </g>
   );
 }
 
-/** The line styles, drawn as samples with the words of the tables (ADR-0050 Decision 2). */
+/** The line styles, drawn as samples with the words of the tables (ADR-0050 Decision 2), and the glyphs a transport can wear. */
 const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "measured", edge: { mixed: false, carrier: "belt", rate: "measured" } },
   { label: "about (estimated)", edge: { mixed: false, carrier: "belt", rate: "estimated" } },
@@ -589,7 +738,7 @@ const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "pipe", edge: { mixed: false, carrier: "pipe", rate: "measured" } },
 ];
 
-function Legend() {
+function Legend({ modes }: { modes: readonly string[] }) {
   return (
     <ul aria-label="Line styles" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
       {LEGEND.map(({ label, edge }) => (
@@ -598,6 +747,14 @@ function Legend() {
             <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={edgeWidth(edge.mixed)} strokeDasharray={edgeDash(edge.rate)} className={edgeClass(edge)} />
           </svg>
           <span>{label}</span>
+        </li>
+      ))}
+      {modes.map((mode) => (
+        <li key={mode} className="flex items-center gap-2">
+          <svg aria-hidden="true" viewBox="-15 -15 30 30" className="size-5 shrink-0">
+            <TransportGlyph mode={mode} />
+          </svg>
+          <span>{carrierWord(mode).toLowerCase()}</span>
         </li>
       ))}
     </ul>

@@ -39,7 +39,7 @@ export function wrapText(text: string, max = MAX_LINE_CHARS, maxLines = MAX_WRAP
 }
 
 /** "Iron Ingot: 120 / 120 items/min" with no-break spaces after the colon, so a wrap leaves the figures and their unit together. */
-function keepFigures(line: string): string {
+export function keepFigures(line: string): string {
   const at = line.indexOf(": ");
   return at < 0 ? line : line.slice(0, at + 2) + line.slice(at + 2).replaceAll(" ", " ");
 }

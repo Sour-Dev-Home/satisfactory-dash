@@ -195,6 +195,12 @@ export const QUERY_NAMES = [
   "identity.touchSession",
   "identity.updateDisplayName",
   // map
+  "map.designations.delete",
+  "map.designations.insert",
+  "map.designations.list",
+  "map.designations.lockServer",
+  "map.designations.readAll",
+  "map.designations.update",
   "map.upsertWorldLayerIfChanged",
   "map.world_layers",
   // servers

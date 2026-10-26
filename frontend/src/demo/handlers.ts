@@ -7,6 +7,7 @@ import {
 import * as alerts from "./alerts";
 import { demoNow } from "./clock";
 import { demoMetricsOverview } from "./metrics";
+import { DEMO_PAIR_CODE } from "./pairCode";
 import { del, get, patch, post, put, type Params } from "./router";
 import * as world from "./world";
 
@@ -115,6 +116,24 @@ export const demoHandlers = [
   // ADR-0046: the demo's list never says `selfServeEnabled`, so no screen offers "Add your server"; the route is
   // refused like every other server change, should something call it.
   post(endpoints.selfServe.createAgentServer.route, ({ params }) => guarded(params, NOT_SAVED)),
+  // ADR-0051 section 1: the /pair page. One made-up code pairs with the made-up factory (nothing changes, it is already
+  // there); any other code is the real API's 404, whatever the reason.
+  post(endpoints.pairings.lookup.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    return guarded(params, () =>
+      body.userCode === DEMO_PAIR_CODE
+        ? Response.json({ serverName: "Demo factory PC", agentVersion: "0.1.0", requestedAt: new Date(demoNow() - 2 * 60_000).toISOString() })
+        : error(404, "not_found", "No such pairing."),
+    );
+  }),
+  post(endpoints.pairings.approve.route, async ({ params, request }) => {
+    const body = await bodyOf(request);
+    const target = body.target as { kind?: unknown; serverId?: unknown } | undefined;
+    const ownTarget = target?.kind === "new" || (target?.kind === "existing" && target.serverId === world.DEMO_SERVER_ID);
+    return guarded(params, () =>
+      body.userCode === DEMO_PAIR_CODE && ownTarget ? Response.json({ serverId: world.DEMO_SERVER_ID }) : error(404, "not_found", "No such pairing."),
+    );
+  }),
   // ADR-0031: an agent server's rename and switch back to local are server changes too, refused alike.
   patch(endpoints.serverManagement.renameAgent.route, ({ params }) => guarded(params, NOT_SAVED)),
   post(endpoints.serverManagement.switchToLocal.route, ({ params }) => guarded(params, NOT_SAVED)),
