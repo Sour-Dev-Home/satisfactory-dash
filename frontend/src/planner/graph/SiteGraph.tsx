@@ -33,6 +33,7 @@ import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
+import { edgeCurvePath } from "./edgeCurve";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -78,7 +79,6 @@ const KEEP_W = 56;
 /** The check on a selected card's corner. */
 const CHECK_R = 10;
 
-const edgePath = (points: readonly { x: number; y: number }[]) => points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
 
 type EdgeStyle = Pick<CanvasFlow, "mixed" | "carrier" | "rate">;
 
@@ -221,6 +221,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const dragged = useRef(false);
   // Select mode (only with a selection) and the lasso being drawn, in layout units; the ref is what the window listeners see.
@@ -368,6 +369,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
+    if (event.pointerType !== "touch") {
+      // The drag moves on the window, so the browser would otherwise select the page's text the pointer passes over.
+      // Cancelling the press also cancels its focus, so the viewport takes focus itself: the keys still pan and zoom.
+      event.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      viewportRef.current?.focus({ preventScroll: true });
+    }
     if (pointers.current.size === 0) {
       dragged.current = false;
       travelled.current = 0;
@@ -586,6 +594,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}
       <div className="relative flex flex-col gap-3 lg:block">
         <div
+          ref={viewportRef}
           role="group"
           tabIndex={0}
           aria-label="Graph viewport. Plus and minus zoom, arrow keys pan, 0 fits the graph."
@@ -770,7 +779,7 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
 
 /** A flow: the line, its label with a halo, and for a transport the mode's glyph on the middle (moving when it may). */
 function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string }) {
-  const path = edgePath(e.points);
+  const path = edgeCurvePath(e.points);
   const transport = isTransport(e.flow);
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   return (

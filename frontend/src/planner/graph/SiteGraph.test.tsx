@@ -158,6 +158,18 @@ describe("the site graph", () => {
     expect(fireEvent.dragStart(svg.querySelector("text") ?? svg)).toBe(false);
   });
 
+  it("a mouse press cancels the browser's text selection, clears one already made, and focuses the viewport for the keys", async () => {
+    const svg = await openGraph();
+    const removeAllRanges = vi.fn();
+    const getSelection = vi.spyOn(window, "getSelection").mockReturnValue({ removeAllRanges } as unknown as Selection);
+    // fireEvent returns false when a handler cancelled the event.
+    expect(fireEvent.pointerDown(svg, { button: 0, pointerId: 1, pointerType: "mouse", clientX: 100, clientY: 100 })).toBe(false);
+    pointer("pointerup", 1, 100, 100);
+    expect(removeAllRanges).toHaveBeenCalled();
+    expect(screen.getByRole("group", { name: /^Graph viewport/ })).toHaveFocus();
+    getSelection.mockRestore();
+  });
+
   it("pinches with two pointers: the distance scales the view, and a lifted finger leaves a one-finger pan", async () => {
     const svg = await openGraph();
     const k0 = scaleOf(svg);

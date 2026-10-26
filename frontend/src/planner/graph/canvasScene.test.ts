@@ -92,6 +92,17 @@ describe("overviewScene", () => {
     expect(card.className).toBeDefined();
   });
 
+  it("takes the icon from the group that makes the factory's product, never a bigger consumer it feeds", () => {
+    const [first] = models;
+    const product = first.factory.products[0].className;
+    const maker = first.nodes.find((n) => n.products.some((p) => p.className === product))!;
+    // The case on the owner's save: a Solid Biofuel factory whose burners outnumber its constructor.
+    const burners: PlannerNode = { ...maker, key: "burners", kind: "consumer", className: "Build_GeneratorBiomass_C", count: maker.count + 40, products: [] };
+    const card = overviewScene(FIXTURE, [{ ...first, nodes: [...first.nodes, burners] }, ...models.slice(1)]).cards[0];
+    expect(card.className).toBe(maker.className);
+    expect(card.glyph).toBe("machines");
+  });
+
   it("draws the flows between factories, transport carriers kept, and none inside one", () => {
     const keys = new Set(scene.cards.map((c) => c.key));
     for (const f of scene.flows) {
