@@ -1,6 +1,16 @@
+import type { FactoryBuilding } from "@satisfactory-dash/shared";
 import type { ServerDirectory } from "../../servers/index.js";
 import type { DesignationBuilding } from "../../map/index.js";
 import type { TelemetryScope } from "../telemetryServices.js";
+
+/** Snapshot buildings as the designations see them; one without a finite position is left out. */
+export function toDesignationBuildings(buildings: readonly FactoryBuilding[]): DesignationBuilding[] {
+  return buildings.flatMap((b) =>
+    b.location !== undefined && Number.isFinite(b.location.xM) && Number.isFinite(b.location.yM)
+      ? [{ id: b.id, c: b.className, x: b.location.xM, y: b.location.yM }]
+      : [],
+  );
+}
 
 /**
  * ADR-0055 Decision 5: the port the map module's designation routes read buildings through (map never imports telemetry, so
@@ -14,11 +24,7 @@ export function createDesignationBuildings(directory: ServerDirectory<TelemetryS
     if (scope === undefined) return null;
     try {
       const factory = await scope.telemetry.production.getFactoryOverview();
-      return factory.buildings.flatMap((b) =>
-        b.location !== undefined && Number.isFinite(b.location.xM) && Number.isFinite(b.location.yM)
-          ? [{ id: b.id, c: b.className, x: b.location.xM, y: b.location.yM }]
-          : [],
-      );
+      return toDesignationBuildings(factory.buildings);
     } catch {
       return null;
     }
