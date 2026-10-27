@@ -727,11 +727,19 @@ describe("a group with no getFactory record is named by the building its ids car
       [ingots()],
       [edge("a", "m", "Build_StorageContainerMk1_C_1", { toKind: "storage" }), edge("b", "m", "Build_StorageContainerMk2_C_2", { toKind: "storage" })],
     );
+    // Both fed by the one smelter and feeding nothing: one group of two, whose ids disagree.
     const stores = g.nodes.filter((n) => n.kind === "storage");
-    expect(stores.length).toBeGreaterThan(0);
-    for (const s of stores) {
-      if (s.count > 1) expect(s).toMatchObject({ className: "storage", name: "Storage" });
-      else expect(s.name).toMatch(/Storage Container$/);
-    }
+    expect(stores).toHaveLength(1);
+    expect(stores[0]).toMatchObject({ count: 2, className: "storage", name: "Storage" });
+    expect(stores[0].key.startsWith("storage|")).toBe(true);
+  });
+
+  it("an extractor keeps its class (it can seed a factory, whose key comes from it), so no factory key moves", () => {
+    const edges = [edge("a", "Build_OilPump_C_3", "m2", { kind: "pipe", cap: null, fromKind: "extractor" })];
+    const refinery = machine("m2", { className: "Build_OilRefinery_C", recipe: "Plastic", ing: [["Desc_LiquidOil_C", 30]], out: [["Desc_Plastic_C", 20]] });
+    const g = buildProductionGraphWithStats([refinery], edges).graph;
+    const pump = g.nodes.find((n) => n.kind === "extractor") as PlannerNode;
+    expect(pump.className).toBe("extractor");
+    expect(g.nodes.some((n) => n.className === "Build_OilPump_C")).toBe(false);
   });
 });

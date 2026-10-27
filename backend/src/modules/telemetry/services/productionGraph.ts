@@ -111,13 +111,13 @@ const KIND_NAMES: ReadonlyMap<ConveyorNodeKind, string> = new Map([
   ["consumer", "consumer"],
 ]);
 const kindName = (k: ConveyorNodeKind): string => KIND_NAMES.get(k) ?? "other";
-/** A building-less group's name when its ids name no single building class: its conveyor kind in words. */
+/** The group kinds that take their building's class and name from their ids when no getFactory record names them. */
+const NAMED_BY_ID: ReadonlySet<string> = new Set(["storage", "station", "consumer"]);
+/** Such a group's name when its ids name no single building class: its kind in words. */
 const KIND_WORDS: ReadonlyMap<string, string> = new Map([
   ["storage", "Storage"],
   ["station", "Station"],
   ["consumer", "Sink or generator"],
-  ["extractor", "Extractor"],
-  ["machine", "Machine"],
 ]);
 
 /** Two decimals, and always a finite, non-negative number the contract accepts (a sum of huge rates can overflow). */
@@ -421,8 +421,10 @@ export function buildProductionGraphWithStats(
   // kind above, and keyed so. Now that the keys are fixed (a saved key never changes), it takes the building class its
   // ids carry ("Build_StorageContainerMk1_C_2147455285") when they all agree, and that building's name: the card then
   // shows the building's icon and name instead of "storage" or "consumer".
+  // Only the kinds that make nothing: an extractor can seed a factory, whose key comes from its seed's class
+  // (factoryReduction's `productOf`), so its class stays as it was and no saved factory key moves.
   for (const grp of groups) {
-    if (grp.units.some((u) => u.building !== null)) continue;
+    if (!NAMED_BY_ID.has(grp.kind) || grp.units.some((u) => u.building !== null)) continue;
     const classes = new Set(grp.units.map((u) => classOfId(u.id)));
     const only = classes.size === 1 ? [...classes][0] : null;
     if (only === null || only === undefined) {

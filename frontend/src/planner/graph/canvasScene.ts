@@ -29,6 +29,8 @@ import {
   nameOr,
   nodeFacts,
   nodeSummary,
+  makesNothing,
+  NO_OUTPUT_DATA,
   nodeTitle,
   productSummary,
   STALE_NODE_NOTE,
@@ -372,7 +374,9 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
     : mined !== null
       ? [extractorOutputText(mined)]
       : bubble.products.length === 0
-        ? ["No output data"]
+        ? bubble.nodes.every(makesNothing)
+          ? []
+          : [NO_OUTPUT_DATA]
         : bubble.products.map((r) => outputLine(r, states));
   return {
     ...blank,
