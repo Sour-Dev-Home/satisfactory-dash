@@ -271,6 +271,32 @@ describe("rates", () => {
       expect(unknown.edges).toEqual([expect.objectContaining({ itemClassName: null, ratePerMinute: null, rate: "unknown" })]);
     });
 
+    it("a zero-output source gives an estimated 0, never null or negative", () => {
+      const g = run([machine("p", { out: [[PLATE, 60, 0]] })], [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })]);
+      for (const e of toDataless(g)) expect(e).toMatchObject({ ratePerMinute: 0, rate: "estimated" });
+    });
+
+    it("both ends reporting and disagreeing: the destination's measured rate stands, the source estimate only fills the rest", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 60]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 10]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const toC = g.edges.filter((e) => e.itemClassName === PLATE && e.rate === "measured");
+      expect(toC).toHaveLength(1);
+      expect(toC[0].ratePerMinute).toBe(10);
+      const into = toDataless(g).filter((e) => e.itemClassName === PLATE);
+      expect(into.map((e) => e.ratePerMinute)).toEqual([25, 25]);
+      // The edges together carry exactly what the source reports; nothing is counted by both the source and destination pass.
+      expect(toC[0].ratePerMinute! + into.reduce((s, e) => s + (e.ratePerMinute ?? 0), 0)).toBe(60);
+    });
+
+    it("does not depend on the order of the edges", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] })];
+      const es = [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })];
+      const a = run(b, es);
+      const r = run(b, [...es].reverse());
+      const sig = (g: { edges: PlannerEdge[] }) => g.edges.map((e) => `${e.from}>${e.to}:${e.ratePerMinute}:${e.rate}`).sort();
+      expect(sig(r)).toEqual(sig(a));
+    });
+
     it("a fluid source's output is shared in m³/min on pipe edges", () => {
       const refinery = machine("r", { className: "Build_OilRefinery_C", recipe: "Fuel", unit: "m3/min", out: [["Desc_LiquidFuel_C", 40, 30]] });
       const gen = "Build_GeneratorFuel_C_9";
