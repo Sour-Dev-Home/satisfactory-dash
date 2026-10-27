@@ -1040,9 +1040,17 @@ export function settings(now: number, state: { autoPause: boolean; pending: bool
   return { ...envelope(now), data: { ...state, editable: true } };
 }
 
-/** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago. */
+/** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago, reading the game (#740 follow-up). */
 export function agent(now: number): AgentStatusResponse {
-  return { enrolled: true, lastSeenAt: new Date(now - 12_000).toISOString(), agentVersion: "0.1.0", connectionKind: "agent" };
+  return {
+    enrolled: true,
+    lastSeenAt: new Date(now - 12_000).toISOString(),
+    agentVersion: "0.1.0",
+    connectionKind: "agent",
+    gameReachable: true,
+    lastGameReadAt: new Date(now - 12_000).toISOString(),
+    modVersion: "0.1.0",
+  };
 }
 
 /** The demo's version policy (ADR-0057): a newer agent exists, so the demo server shows "Update available". Nothing is offered to install. */

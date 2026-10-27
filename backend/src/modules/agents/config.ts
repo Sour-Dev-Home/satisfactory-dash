@@ -78,6 +78,13 @@ export const RECENTLY_VALID_MAX = 1_000;
 /** An agent's `last_seen_at` is written at most this often per credential. */
 export const LAST_SEEN_INTERVAL_MS = 30_000;
 
+/**
+ * #740 follow-up: a reported `lastGameReadAt` further ahead of the backend's clock than this is ignored (an agent clock
+ * running ahead would otherwise pin "last game read" in the future, and it only moves forward). Clocks a few seconds apart
+ * still pass.
+ */
+export const GAME_READ_FUTURE_SKEW_MS = 60_000;
+
 /** Enrolment codes one account may create per minute (each creation drops the server's previous code). */
 export const ENROLLMENT_CODES_PER_MINUTE = 10;
 

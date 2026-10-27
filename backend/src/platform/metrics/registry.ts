@@ -106,6 +106,7 @@ export const QUERY_NAMES = [
   "agents.touchPairingPoll",
   "agents.revokeCredential",
   "agents.setAgentVersion",
+  "agents.setGameConnection",
   "agents.touchAgent",
   "agents.upsertCredential",
   // alerts

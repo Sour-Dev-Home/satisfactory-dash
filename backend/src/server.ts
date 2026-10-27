@@ -86,6 +86,7 @@ import {
   createCommandSweeper,
   createCommandsService,
   createCompatRouters,
+  createGameConnectionStore,
   createPairingApiRouters,
   createPairingService,
   createPairingSweeper,
@@ -163,6 +164,8 @@ const database = databaseConfig ? new Database(databaseConfig, logger) : undefin
 // ADR-0031 PR 5b: commands to edge agents (auto-pause today). One notifier, so a command created by a dashboard request
 // wakes the agent's long-poll; both faces of the service share it.
 const agentCommands = database ? createCommandsService({ db: database.pool, notifier: new CommandNotifier() }) : undefined;
+// #740 follow-up: each agent's latest game connection, written by the snapshot route and read by the agent status.
+const gameConnections = database ? createGameConnectionStore(database.pool) : undefined;
 // ADR-0038 M3 (#353): mapLive (trains, stations) is read-through only, one process-wide store keyed
 // by server public id (map/services/mapLiveStore.ts); world layers (rails, resourceNodes) need the
 // database, so ingest is undefined without one, same as the other database-gated services below.
@@ -618,6 +621,8 @@ export const app = createApp({
             codesPerHour: enrollmentCodesPerHour,
             // In memory, from the last snapshot the ingest recorded: fresher than last_seen_at (written at most every 30 s).
             lastHeardAt: (serverId) => directory.get(serverId)?.telemetry.observations?.snapshot().agent?.lastHeardAt,
+            // #740 follow-up: the agent's latest game connection, kept by the snapshot route below.
+            gameConnection: (serverId) => gameConnections?.get(serverId),
           }), agentCommands)
       : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
@@ -634,7 +639,7 @@ export const app = createApp({
   // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
   agentRouters: [
     ...(database && agentCommands && agentAuth
-      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered, auth: agentAuth })
+      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered, auth: agentAuth, gameConnections })
       : []),
     // ADR-0051 section 1: the agent's pairing routes, unauthenticated like enrol.
     ...(pairingService ? createPairingApiRouters(pairingService, () => serversRegistered) : []),
