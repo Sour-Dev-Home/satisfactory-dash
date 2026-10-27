@@ -568,4 +568,101 @@ describe("the floating group panel (the owner, 2026-10-27: an overlay, not a ful
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
     expect(button).toHaveFocus();
   });
+
+  it("a background click that ends a drag does not close it", async () => {
+    const svg = await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    pointer("pointermove", 1, 180, 150);
+    pointer("pointerup", 1, 180, 150);
+    fireEvent.click(svg);
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+  });
+
+  it("is exposed to screen readers: no aria-hidden on it or above it, and no role=img", async () => {
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    for (let el: Element | null = panel; el !== null; el = el.parentElement) expect(el).not.toHaveAttribute("aria-hidden", "true");
+    const overlay = document.querySelector("[data-overlay]")!;
+    expect(overlay.closest("[role=img]")).toBeNull();
+    expect(overlay.querySelector("[role=img]")).toBeNull();
+  });
+
+  it("switching to another card while open keeps one overlay, now holding that card", async () => {
+    const svg = await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    const card = [...svg.querySelectorAll("[data-node]")].find((el) => el.textContent?.includes("Storage"))!;
+    fireEvent.click(card.querySelector("rect")!);
+    await screen.findByRole("complementary");
+    expect(document.querySelectorAll("[data-overlay]")).toHaveLength(1);
+    expect(screen.getAllByRole("complementary")).toHaveLength(1);
+    expect(screen.getByRole("complementary")).not.toHaveAccessibleName("Miner Mk.2");
+  });
+
+  it("follows its content's height when a poll changes it (ResizeObserver)", async () => {
+    largeScreen();
+    contentHeight(100);
+    const observers: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          observers.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    expect(overlayBox().height).toBe(100);
+    contentHeight(260);
+    act(() => observers.forEach((cb) => cb()));
+    expect(overlayBox().height).toBe(260);
+    contentHeight(40);
+    act(() => observers.forEach((cb) => cb()));
+    expect(overlayBox().height).toBe(40);
+    vi.unstubAllGlobals();
+  });
+
+  it("moves from beside the card to the bottom when the screen narrows below lg while open", async () => {
+    let wide = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return query.includes("64rem") ? wide : true;
+      },
+      addEventListener: (_: string, l: () => void) => listeners.add(l),
+      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    }));
+    contentHeight(150);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    expect(overlayBox().fo.getAttribute("data-side")).not.toBe("bottom");
+    wide = false;
+    act(() => listeners.forEach((l) => l()));
+    expect(overlayBox().fo.getAttribute("data-side")).toBe("bottom");
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+    wide = true;
+    act(() => listeners.forEach((l) => l()));
+    expect(overlayBox().fo.getAttribute("data-side")).not.toBe("bottom");
+  });
+
+  it("every position it draws is a finite number at the zoom extremes", async () => {
+    largeScreen();
+    contentHeight(150);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    for (const name of ["Zoom in", "Zoom out"]) {
+      for (let i = 0; i < 25; i++) fireEvent.click(screen.getByRole("button", { name }));
+      const o = overlayBox();
+      expect([o.x, o.y, o.width, o.height].every(Number.isFinite)).toBe(true);
+    }
+  });
 });

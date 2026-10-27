@@ -107,3 +107,41 @@ describe("screenRect and stageBesideOverlay", () => {
     expect(stageBesideOverlay(bottom, stage, false)).toEqual({ width: stage.width, height: stage.height - 200 - OVERLAY_GAP - m });
   });
 });
+
+describe("placeOverlay, extremes", () => {
+  const finite = (p: ReturnType<typeof placeOverlay>) => [p.x, p.y, p.width, p.height, p.maxHeight].every(Number.isFinite);
+
+  it("never yields a NaN or a size under 1 px, on a stage of zero, one or a few px", () => {
+    for (const s of [{ width: 0, height: 0 }, { width: 1, height: 1 }, { width: 20, height: 20 }, { width: 100, height: 40 }]) {
+      for (const wide of [true, false]) {
+        for (const h of [0, 1, 5000]) {
+          for (const a of [null, card(-500, -500), card(s.width, s.height), card(0, 0, 4000, 4000)]) {
+            const p = placeOverlay(a, h, s, wide);
+            expect(finite(p)).toBe(true);
+            expect(p.width).toBeGreaterThanOrEqual(1);
+            expect(p.height).toBeGreaterThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+
+  it("is narrower than the panel on a canvas narrower than it, and stays inside the margins", () => {
+    const p = placeOverlay(card(10, 10, 50, 50), 100, { width: 200, height: 400 }, true);
+    expect(p.width).toBe(200 - 2 * m);
+    expect(p.x).toBe(m);
+  });
+
+  it("a card in the bottom-right corner gets the left; a stage with no room anywhere reports covers", () => {
+    const corner = placeOverlay(card(1200 - 160, 700 - 80), 200, stage, true);
+    expect(corner.side).toBe("left");
+    expect(corner.covers).toBe(false);
+    expect(placeOverlay(card(40, 40, 120, 120), 200, { width: 300, height: 300 }, true).covers).toBe(true);
+  });
+
+  it("a card bigger than the stage (zoom extreme) still yields a finite place that covers it", () => {
+    const p = placeOverlay(card(-5000, -5000, 20000, 20000), 200, stage, true);
+    expect(finite(p)).toBe(true);
+    expect(p.covers).toBe(true);
+  });
+});
