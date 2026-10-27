@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
 import { useReducedMotion } from "../../overview/reducedMotion";
@@ -25,9 +25,13 @@ import {
   isHeadingLine,
   isTransport,
   layoutScene,
+  FOCUS_CARD_H,
+  FOCUS_CARD_W,
+  FOCUS_LAYOUT_BUDGET_MS,
   type LaidEdge,
   type LaidFrame,
   type LaidNode,
+  type SiteLayout,
 } from "./layoutSite";
 import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
@@ -54,6 +58,7 @@ import {
   type ItemFocus,
 } from "./bubbleRow";
 import { BubbleButtons, ItemList } from "./ItemFocusLayer";
+import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
 import {
   MAX_ZOOM,
@@ -217,7 +222,22 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models) : factoryScene(graph, target.model, view)),
     [target, graph, view],
   );
-  const layout = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
+  // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
+  const [itemFocusOn] = useState(readItemFocus);
+  const [itemFocus, setItemFocus] = useState<ItemFocus | null>(null);
+  const overviewByKey = useMemo(() => new Map(overview.edges.map((e) => [edgeKeyOf(e.flow), e])), [overview]);
+  const focusEdge = itemFocus === null ? undefined : overviewByKey.get(itemFocus.edgeKey);
+  const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.all.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
+  // Make room (Decision 3): the focused line's box is laid out at the detail card's size. A layout over the budget is not
+  // drawn: focus then only dims. Both layouts are remembered, so moving between them costs nothing after the first time.
+  const roomFor = focus?.edgeKey ?? null;
+  const room = useMemo(
+    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H })),
+    [scene, graph.topologyHash, roomFor],
+  );
+  const layout = room !== null && room.placeMs <= FOCUS_LAYOUT_BUDGET_MS ? room : overview;
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const laidByKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
   const items = useMemo(() => siteItems(layout.flows), [layout]);
@@ -251,10 +271,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const [item, setItem] = useState(ALL_ITEMS);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
-  // Item focus (ADR-0060 build PR 3), behind its flag: the focused item, the line whose "+k" list is open, the bubble
-  // stop that holds the tab stop and the one the keyboard is on (ringed), and what the status line last said.
-  const [itemFocusOn] = useState(readItemFocus);
-  const [itemFocus, setItemFocus] = useState<ItemFocus | null>(null);
+  // Item focus's other state: the line whose "+k" list is open, the bubble stop that holds the tab stop and the one the
+  // keyboard is on (ringed), and what the status line last said.
   const [listKey, setListKey] = useState<string | null>(null);
   const [activeStop, setActiveStop] = useState<string | null>(null);
   const [keyStop, setKeyStop] = useState<BubbleStop | null>(null);
@@ -282,10 +300,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
   const activeItem = items.some((i) => i.className === item) ? item : ALL_ITEMS;
   const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.flows)), [activeItem, layout]);
-  // A focus or "+k" list whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
+  // The drawn lines by key, where they are now (the focused layout's when it makes room).
   const edgeByKey = useMemo(() => new Map(layout.edges.map((e) => [edgeKeyOf(e.flow), e])), [layout]);
-  const focusEdge = itemFocus === null ? undefined : edgeByKey.get(itemFocus.edgeKey);
-  const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.all.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
   const listEdge = itemFocusOn && listKey !== null ? edgeByKey.get(listKey) : undefined;
   // Forget what a poll took away, so a line that comes back does not reopen its list (and take the keyboard), and say so
   // when focus ended that way. Adjusting state while rendering, guarded so it settles in one extra pass.
@@ -294,6 +310,59 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setItemFocus(null);
     if (itemFocusOn) setAnnounced("Overview");
   }
+
+  // The glide between the overview and the room-making layout (ADR-0060 Decisions 3 and 4). The view moves by the focused
+  // line's shift, so its bubble stays where it was on screen (never a zoom); the cards slide from where they were, and the
+  // lines and frames cross-fade, old over new, since paths of different shapes cannot be interpolated. Each frame writes
+  // attributes through the DOM, not React state. Reduced motion (or Motion: Off) skips straight to the end.
+  const { run: runTween, cancel: cancelTween } = useTween();
+  const drawingRef = useRef<SVGGElement>(null);
+  const freshRef = useRef<SVGGElement>(null);
+  const ghostRef = useRef<SVGGElement>(null);
+  const [ghost, setGhost] = useState<{ layout: SiteLayout; dx: number; dy: number } | null>(null);
+  const roomShown = layout === room ? roomFor : null;
+  const shown = useRef({ layout, room: roomShown });
+  useLayoutEffect(() => {
+    const before = shown.current;
+    shown.current = { layout, room: roomShown };
+    // Only a change of room starts a glide: a poll or a pan does not.
+    if (before.room === roomShown || before.layout === layout) return;
+    cancelTween();
+    freshRef.current?.removeAttribute("opacity");
+    setGhost(null);
+    const anchor = roomShown ?? before.room;
+    const from = before.layout.edges.find((e) => edgeKeyOf(e.flow) === anchor);
+    const to = layout.edges.find((e) => edgeKeyOf(e.flow) === anchor);
+    if (from === undefined || to === undefined) return;
+    const dx = to.labelX - from.labelX;
+    const dy = to.labelY - from.labelY;
+    setView((v) => ({ ...v, x: v.x - dx * v.k, y: v.y - dy * v.k }));
+    const ms = animate ? tweenMs() : 0;
+    const drawing = drawingRef.current;
+    if (ms <= 0 || drawing === null) return;
+    setGhost({ layout: before.layout, dx, dy });
+    // In the new picture's frame, a card that was at p is at p + (dx, dy): it slides from there to its new place.
+    const was = new Map(before.layout.nodes.map((n) => [n.key, { x: n.x + dx, y: n.y + dy }]));
+    const now = new Map(layout.nodes.map((n) => [n.key, n]));
+    const gliding = [...drawing.querySelectorAll<SVGGElement>("[data-node]")].flatMap((el) => {
+      const end = now.get(el.getAttribute("data-node") ?? "");
+      const start = end === undefined ? undefined : was.get(end.key);
+      return end === undefined || start === undefined || Math.hypot(end.x - start.x, end.y - start.y) < 1 ? [] : [{ el, start, end }];
+    });
+    runTween(
+      ms,
+      (t) => {
+        for (const m of gliding) m.el.setAttribute("transform", `translate(${m.start.x + (m.end.x - m.start.x) * t} ${m.start.y + (m.end.y - m.start.y) * t})`);
+        freshRef.current?.setAttribute("opacity", String(t));
+        ghostRef.current?.setAttribute("opacity", String(1 - t));
+      },
+      () => {
+        for (const m of gliding) m.el.setAttribute("transform", `translate(${m.end.x} ${m.end.y})`);
+        freshRef.current?.removeAttribute("opacity");
+        setGhost(null);
+      },
+    );
+  }, [layout, roomShown, animate, runTween, cancelTween]);
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);
@@ -791,41 +860,59 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
             </defs>
-            <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(animate && "animate-graph-in")}>
-              {layout.frames.map((f) => (
-                <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
-              ))}
-              {/* Every line first, then every label: a label is never under another edge's line (2026-10-27). */}
-              {[EdgeLine, EdgeLabel].map((Layer, layer) => (
-                <g key={layer} data-edge-layer={layer === 0 ? "lines" : "labels"}>
-                  {layout.edges.map((e) => {
-                    const from = laidByKey.get(e.flow.from);
-                    const to = laidByKey.get(e.flow.to);
-                    const key = edgeKeyOf(e.flow);
-                    const focusable = itemFocusOn
-                      ? {
-                          focused: focus !== null && focus.edgeKey === key ? focus.item : null,
-                          ringed: keyStop !== null && keyStop.edgeKey === key ? keyStop.item ?? "+" : null,
-                          onBubble: (item: BubbleItem) => focusItem(key, item),
-                          onChip: () => openList(key),
-                        }
-                      : undefined;
-                    return (
-                      <Layer
-                        key={e.index}
-                        edge={e}
-                        markerId={markerId}
-                        dim={!edgeLit(e)}
-                        moving={moving.has(e.index)}
-                        from={from?.title ?? ""}
-                        to={to?.title ?? ""}
-                        detail={detail}
-                        focusable={focusable}
-                      />
-                    );
-                  })}
+            <g ref={drawingRef} key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(animate && "animate-graph-in")}>
+              {/* During a make-room glide: the old lines and frames, where they were on screen, fading out. */}
+              {ghost !== null && (
+                <g ref={ghostRef} transform={`translate(${ghost.dx} ${ghost.dy})`} aria-hidden="true" data-ghost="" className="pointer-events-none">
+                  {ghost.layout.frames.map((f) => (
+                    <Frame key={f.key} frame={f} onCollapse={() => {}} />
+                  ))}
+                  {[EdgeLine, EdgeLabel].map((Layer, layer) => (
+                    <g key={layer}>
+                      {ghost.layout.edges.map((e) => (
+                        <Layer key={e.index} edge={e} markerId={markerId} dim={false} moving={false} from="" to="" detail={detail} />
+                      ))}
+                    </g>
+                  ))}
                 </g>
-              ))}
+              )}
+              {/* The lines and frames of the picture now (faded in during a glide), then the cards over them. */}
+              <g ref={freshRef}>
+                {layout.frames.map((f) => (
+                  <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
+                ))}
+                {/* Every line first, then every label: a label is never under another edge's line (2026-10-27). */}
+                {[EdgeLine, EdgeLabel].map((Layer, layer) => (
+                  <g key={layer} data-edge-layer={layer === 0 ? "lines" : "labels"}>
+                    {layout.edges.map((e) => {
+                      const from = laidByKey.get(e.flow.from);
+                      const to = laidByKey.get(e.flow.to);
+                      const key = edgeKeyOf(e.flow);
+                      const focusable = itemFocusOn
+                        ? {
+                            focused: focus !== null && focus.edgeKey === key ? focus.item : null,
+                            ringed: keyStop !== null && keyStop.edgeKey === key ? keyStop.item ?? "+" : null,
+                            onBubble: (item: BubbleItem) => focusItem(key, item),
+                            onChip: () => openList(key),
+                          }
+                        : undefined;
+                      return (
+                        <Layer
+                          key={e.index}
+                          edge={e}
+                          markerId={markerId}
+                          dim={!edgeLit(e)}
+                          moving={moving.has(e.index)}
+                          from={from?.title ?? ""}
+                          to={to?.title ?? ""}
+                          detail={detail}
+                          focusable={focusable}
+                        />
+                      );
+                    })}
+                  </g>
+                ))}
+              </g>
               {layout.nodes.map((n) => (
                 <CardView
                   key={n.key}
@@ -1231,6 +1318,7 @@ function CardView({
       transform={`translate(${n.x} ${n.y})`}
       onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
       data-card={card.kind}
+      data-node={n.key}
       data-picked={picked || undefined}
       data-suggested={suggested || undefined}
       className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}

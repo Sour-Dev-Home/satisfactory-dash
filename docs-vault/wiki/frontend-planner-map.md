@@ -78,7 +78,20 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - A click on a drawn bubble focuses it, and a second click leaves. A click on the background leaves too, but a click on
     a card does not.
   - The status line stays mounted while the flag is on and says "Focused <item> from A to B" and "Overview".
-  - Focus never zooms (owner answer 2). Make-room, the morph and the detail card are build PRs 4 and 5.
+  - Focus never zooms (owner answer 2). The morph and the detail card are build PR 5.
+- Make room (ADR-0060 build PR 4), on focus.
+  - The layout: `layoutScene(scene, hash, { edgeKey, width, height })` reserves the focused line's label box at
+    `FOCUS_CARD_W` × `FOCUS_CARD_H`, so dagre and the router move the rest aside. The pill is still drawn at its own size.
+    Both layouts sit in the memo.
+  - The budget: past `FOCUS_LAYOUT_BUDGET_MS` (100), by `SiteLayout.placeMs`, focus only dims.
+  - The glide: on entering or leaving, the view moves by the focused line's shift, so its bubble stays put on screen.
+    The cards (`data-node`) slide from where they were. The old lines and frames are drawn as a ghost (`data-ghost`) that
+    fades out while the new ones fade in.
+  - How it runs: one `useTween` loop writes `transform` and `opacity` attributes, never `style`. It lasts
+    `--duration-slow` with the `--ease-standard` curve (`EASE_STANDARD`, which a test keeps equal to the CSS).
+  - Reduced motion or Motion: Off: no glide.
+  - Benchmark: on a synthetic site of the measured size (160 groups, 204 edges), 45-48 ms for each layout. See ADR-0060
+    Decision 3.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).
