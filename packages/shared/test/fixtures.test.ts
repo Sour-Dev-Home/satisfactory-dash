@@ -3,6 +3,7 @@ import type { z } from "zod";
 import * as fixtures from "../fixtures/index";
 import {
   DeliverySnapshotSchema,
+  MetricsChartsSectionSchema,
   MetricsOverviewSchema,
   AgentCommandsResponseSchema,
   AgentStatusResponseSchema,
@@ -131,6 +132,7 @@ const schemaByPrefix: [string, z.ZodType][] = [
   // ADR-0031 PR 3: the edge agent's fixtures. "agentEnrollmentCode" and "agentEnroll..." differ at the letter after "Enroll".
   ["deliverySnapshot", DeliverySnapshotSchema], // ADR-0056 PR 2
   ["metricsOverview", MetricsOverviewSchema],
+  ["metricsCharts", MetricsChartsSectionSchema], // ADR-0056 amendment 2026-10-26
   ["agentEnrollRequest", EnrollRequestSchema],
   ["agentEnrollResponse", EnrollResponseSchema],
   ["agentEnrollmentCode", EnrollmentCodeResponseSchema],
