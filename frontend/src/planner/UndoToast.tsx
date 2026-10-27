@@ -37,9 +37,6 @@ export function UndoToast() {
   if (changes === null) return null;
   return (
     <>
-      <div aria-live="polite" className="sr-only">
-        {changes.announcement}
-      </div>
       {shown !== null && (
         <div
           ref={box}
@@ -72,6 +69,10 @@ export function UndoToast() {
           </button>
         </div>
       )}
+      {/* After the offer, so a page's first match for the words is the one that is seen. */}
+      <div aria-live="polite" className="sr-only">
+        {changes.announcement}
+      </div>
     </>
   );
 }
