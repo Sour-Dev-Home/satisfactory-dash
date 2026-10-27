@@ -6,13 +6,14 @@ import {
   MapLiveSchema,
   MapWorldLayerResponseSchema,
   MapMarkersWorldLayerResponseSchema,
+  PowerLinesWorldLayerResponseSchema,
   RailsWorldLayerResponseSchema,
   ResourceNodesWorldLayerResponseSchema,
   worldLayerResponseSchema,
 } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
 import { transport } from "./transport";
-import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, mapMarkersWorld, railsWorld, resourceNodesWorld } from "./world";
+import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, mapMarkersWorld, powerLinesWorld, railsWorld, resourceNodesWorld } from "./world";
 
 // ADR-0038 M5: the demo answers the map's world layers from its own made-up world (world.ts), through
 // the same transport the page uses, and never touches the network.
@@ -67,6 +68,21 @@ describe("the demo's map world layers", () => {
     expect(body.data.some((m) => m.name === "")).toBe(true);
     expect(new Set(body.data.map((m) => m.color)).size).toBeGreaterThan(2);
     expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.mapMarkers).parse(mapMarkersWorld(Date.now()))).not.toThrow();
+  });
+
+  it("serves a handful of power lines that satisfy the contract, near the demo factory", async () => {
+    const res = await call(endpoints.map.worldLayer.path(DEMO_SERVER_ID, "powerLines"));
+    expect(res.status).toBe(200);
+    const body = PowerLinesWorldLayerResponseSchema.parse(await res.json());
+    expect(body.layer).toBe("powerLines");
+    expect(body.count).toBe(body.data.length);
+    expect(body.data.length).toBeGreaterThan(3);
+    expect(new Set(body.data.map((l) => l.id)).size).toBe(body.data.length);
+    // Every line touches the demo factory's neighbourhood (its smelters stand near x -1720, y -980).
+    for (const { points } of body.data) {
+      expect(points.some(([x, y]) => Math.hypot(x + 1700, y + 980) < 600)).toBe(true);
+    }
+    expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.powerLines).parse(powerLinesWorld(Date.now()))).not.toThrow();
   });
 
   it("is a 404 for a layer the demo doesn't have, and a 401 when signed out", async () => {

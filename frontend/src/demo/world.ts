@@ -24,6 +24,8 @@ import type {
   ProductionGraphResponse,
   MapMarkersLayerData,
   MapMarkersWorldLayerResponse,
+  PowerLinesLayerData,
+  PowerLinesWorldLayerResponse,
   RailsLayerData,
   RailsWorldLayerResponse,
   ResourceNodesLayerData,
@@ -946,6 +948,24 @@ const DEMO_MARKERS: MapMarkersLayerData = [
 
 export function mapMarkersWorld(now: number): MapMarkersWorldLayerResponse {
   return { ...worldEnvelope(now, "mapMarkers", DEMO_MARKERS.length), data: DEMO_MARKERS };
+}
+
+/**
+ * The demo's power lines (ADR-0038 §1, #330): a made-up run of wire from a pole west of the smelters, along the
+ * factory, out to the second circuit's building and on to the oil outpost, plus one short hop between two poles.
+ */
+const DEMO_POWER_LINES: PowerLinesLayerData = [
+  { id: "demo-power-line-1", points: [[-1770, -1015], [-1730, -1005]] },
+  { id: "demo-power-line-2", points: [[-1730, -1005], [-1700, -1008]] },
+  { id: "demo-power-line-3", points: [[-1700, -1008], [-1665, -1012]] },
+  { id: "demo-power-line-4", points: [[-1665, -1012], [-1610, -950]] },
+  { id: "demo-power-line-5", points: [[-1610, -950], [-1545, -880]] },
+  { id: "demo-power-line-6", points: [[-1545, -880], [-1290, -745]] },
+  { id: "demo-power-line-7", points: [[-1665, -1012], [-1662, -1018]] },
+];
+
+export function powerLinesWorld(now: number): PowerLinesWorldLayerResponse {
+  return { ...worldEnvelope(now, "powerLines", DEMO_POWER_LINES.length), data: DEMO_POWER_LINES };
 }
 
 /** A point `u` (0 to 1) of the way along a polyline, by length, in whole metres. */

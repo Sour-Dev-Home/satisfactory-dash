@@ -7,18 +7,33 @@ import type { ViewM } from "./MapCanvas";
  * the centimetre, divided by 100 by the mapper), the same space `project` takes.
  */
 
+/** A line on the map in whole metres: a rail segment's polyline or a power line's two ends. */
+type Line = { readonly points: readonly (readonly [number, number])[] };
+
 /** Length of a polyline in metres: the sum of its straight steps. */
-export function polylineLengthM(points: RailSegment["points"]): number {
+export function polylineLengthM(points: Line["points"]): number {
   let sum = 0;
   for (let i = 1; i < points.length; i++) sum += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
   return sum;
 }
 
+/** All the lines' lengths together, in metres (each item as received: a repeated FRM id still counts once per item). */
+export function totalLengthM(lines: readonly Line[]): number {
+  let sum = 0;
+  for (const line of lines) sum += polylineLengthM(line.points);
+  return sum;
+}
+
 /** Whether any part of a segment's bounding box lies in the view (a cheap test, not exact geometry). */
 export function railInView(view: ViewM | null, segment: RailSegment): boolean {
+  return lineInView(view, segment);
+}
+
+/** Whether any part of a line's bounding box lies in the view: a rail segment or a power line. */
+export function lineInView(view: ViewM | null, line: Line): boolean {
   if (!view) return true;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const [x, y] of segment.points) {
+  for (const [x, y] of line.points) {
     minX = Math.min(minX, x);
     maxX = Math.max(maxX, x);
     minY = Math.min(minY, y);

@@ -3,12 +3,14 @@ import {
   countByType,
   formatMetres,
   formatPoint,
+  lineInView,
   nodeInView,
   nodeKindLabel,
   nodeRadiusPx,
   polylineLengthM,
   purityLabel,
   railInView,
+  totalLengthM,
 } from "./worldGeometry";
 
 const VIEW = { minX: 0, maxX: 100, minY: 0, maxY: 100 };
@@ -94,5 +96,29 @@ describe("view edges (hunt)", () => {
   it("a zero-length segment has zero length", () => {
     expect(polylineLengthM([[5, 5], [5, 5]])).toBe(0);
     expect(formatMetres(0)).toBe("0 m");
+  });
+});
+
+describe("totalLengthM (power lines, #330)", () => {
+  it("sums every line's length, and is 0 for none", () => {
+    expect(totalLengthM([])).toBe(0);
+    expect(totalLengthM([{ points: [[0, 0], [3, 4]] }, { points: [[0, 0], [0, 10]] }])).toBe(15);
+  });
+
+  it("counts a repeated line (FRM ids can repeat) once per item, as received", () => {
+    const line = { points: [[0, 0], [6, 8]] as [[number, number], [number, number]] };
+    expect(totalLengthM([line, line])).toBe(20);
+  });
+});
+
+describe("lineInView", () => {
+  it("is in view when either end is, or when the line crosses the view with both ends outside", () => {
+    expect(lineInView(VIEW, { points: [[50, 50], [500, 500]] })).toBe(true);
+    expect(lineInView(VIEW, { points: [[-50, 50], [150, 50]] })).toBe(true);
+  });
+
+  it("is out of view when its box misses the view, and in view when there is no view yet", () => {
+    expect(lineInView(VIEW, { points: [[200, 200], [300, 300]] })).toBe(false);
+    expect(lineInView(null, { points: [[200, 200], [300, 300]] })).toBe(true);
   });
 });
