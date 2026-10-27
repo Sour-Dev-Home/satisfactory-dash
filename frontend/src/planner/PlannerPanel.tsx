@@ -202,6 +202,7 @@ function FactoryOverview({
       )}
       {canMerge && (
         <MergeBar
+          onCanvas={view === "graph"}
           graph={graph}
           picked={picked}
           onClear={() => pickNow(new Set())}
