@@ -66,7 +66,8 @@ repository, on the owner's disk.
 
 - **Position.** The bubbles sit where the label sits today: the row's centre is `labelAt`, already on a horizontal run.
 - **Box size.** `labelSize(f.labelLines)` becomes a bubble-row size:
-  - `n = min(distinct items, 3)` bubbles of diameter `BUBBLE_D` (24 layout units), 4 apart;
+  - `n = min(distinct items, 3)` bubbles of diameter `BUBBLE_D` (24 layout units, raised to 32 on 2026-10-27 after the
+    owner found the icons too small on the live site), 4 apart;
   - a "+k" chip (about 22 wide) when there are more than 3 items (owner answer 5). The chip is a button: clicking it,
     or Enter on it, opens the full list of the link's items, each of which can be focused like a bubble;
   - the short rate text under the row, which makes the box `BUBBLE_D + LABEL_LINE_H` high;
