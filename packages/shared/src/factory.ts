@@ -108,7 +108,16 @@ export const FactoryBuildingSchema = z.object({
 });
 
 export const FactorySchema = z.object({
-  buildings: z.array(FactoryBuildingSchema),
+  buildings: z.array(FactoryBuildingSchema).describe("Manufacturers: the buildings with a recipe slot"),
+  extractors: z
+    .array(FactoryBuildingSchema)
+    .optional()
+    .describe(
+      "S4-B (ADR-0058): miners, oil and water extractors and resource-well extractors, in the building shape: `recipe` null, " +
+        "`ingredients` empty, `production` the resource extracted with its current and maximum rate per minute. Kept apart " +
+        "from `buildings` so `backedUpCount` and `stateCounts` still count manufacturers only. Absent = a sender that does " +
+        "not read extractors (the FRM agent) or an older backend (ADR-0007); an empty array means none were found.",
+    ),
   backedUpCount: z.number().int().min(0).describe("Number of buildings whose state is backedUp"),
   stateCounts: z
     .record(z.string(), z.number().int().min(0))

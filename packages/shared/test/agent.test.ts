@@ -208,6 +208,23 @@ describe("agent contract: snapshots", () => {
       expect(ok({ factory: { buildings: [{ ...building, clockSpeedPercent: -5 }] } })).toBe(false);
     });
 
+    it("S4-B extractors: optional, the building shape and bounds, capped at 5000", () => {
+      const many = <T,>(item: T, n: number) => Array.from({ length: n }, () => item);
+      const extractor = { ...building, name: "Miner Mk.2", className: "Build_MinerMk2_C", recipe: null, ingredients: [] };
+      expect(ok({ factory: { buildings: [building] } })).toBe(true); // an older sender, or the FRM agent
+      expect(ok({ factory: { buildings: [building], extractors: [] } })).toBe(true);
+      expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_000) } })).toBe(true);
+      expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_001) } })).toBe(false);
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, className: long(201) }] } })).toBe(false);
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, production: [{ ...rate, currentPerMinute: -1 }] }] } })).toBe(false);
+      // A backend-derived field is dropped, as on buildings.
+      const parsed = SnapshotRequestSchema.parse({ ...full, factory: { buildings: [], extractors: [{ ...extractor, state: "producing" }] } });
+      expect(parsed.factory?.extractors?.[0]).not.toHaveProperty("state");
+      // The response carries them optionally, with no bounds.
+      expect(FactorySchema.safeParse(fixtures.factoryMixed.data).success).toBe(true);
+      expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, extractors: [{ ...extractor, state: "producing", isBackedUp: false }] }).success).toBe(true);
+    });
+
     it("the RESPONSE schemas are not bounded: only what an agent sends is", () => {
       expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, buildings: [{ ...fixtures.factoryMixed.data.buildings[0], className: long(300) }] }).success).toBe(true);
     });
