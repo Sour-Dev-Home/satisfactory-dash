@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 /**
  * Which bubbles and folds a viewer opened or closed in each factory, for the session (the owner, 2026-10-27: "Factories
@@ -76,10 +76,14 @@ export function clearFoldMemory(): void {
  * The folds of the factory (or site) `key`, remembered for the session; null (the overview, which has no folds) keeps them
  * in this component only. The canvas is keyed by what is open, so `key` is fixed for a mounted canvas.
  */
-export function useFolds(key: string | null): [Folds, (next: Folds) => void] {
+export function useFolds(key: string | null): [Folds, (patch: Partial<Folds>) => void] {
   const [folds, setState] = useState<Folds>(() => (key === null ? EMPTY : readFolds(key)));
+  // The latest folds, so two patches in one render (each changing a different half) both land.
+  const latest = useRef(folds);
   const set = useCallback(
-    (next: Folds) => {
+    (patch: Partial<Folds>) => {
+      const next = { ...latest.current, ...patch };
+      latest.current = next;
       setState(next);
       if (key !== null) writeFolds(key, next);
     },

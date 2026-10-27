@@ -222,8 +222,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
   const [folds, setFolds] = useFolds(target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : null);
   const { flipped, unfolded } = folds;
-  const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next, unfolded });
-  const setUnfolded = (next: ReadonlySet<string>) => setFolds({ flipped, unfolded: next });
+  const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next });
+  const setUnfolded = (next: ReadonlySet<string>) => setFolds({ unfolded: next });
   const [collapsed, setCollapsed] = useCollapsedUpstream();
   const [storageDetail, setStorageDetail] = useStorageDetail();
   const [motionPref, setMotionPref] = useMotionPref();
