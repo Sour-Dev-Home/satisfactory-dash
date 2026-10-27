@@ -488,6 +488,7 @@ export function PlannerPanel({
   const orphans = byFactory ? unassignedCount(graph) : 0;
   const orphanNote = `${orphans} ${orphans === 1 ? "group belongs" : "groups belong"} to no factory, so ${orphans === 1 ? "it is" : "they are"} not listed under one.`;
   const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
+  const noBeltData = graph.beltData === "unsupported" || graph.beltData === "tooLarge" || graph.beltData === "notReceived";
   const overviewMode = useViewMode();
   const [suggesting, setSuggesting] = useState(false);
   const overviewHeading = useRef<HTMLHeadingElement>(null);
@@ -549,8 +550,9 @@ export function PlannerPanel({
 
       <UndoToast />
 
-      {/* The caveats stay out of the way until looked for (the owner, 2026-10-27). */}
-      <details className="text-sm text-muted">
+      {/* The caveats stay out of the way until looked for (the owner, 2026-10-27). Without belt data they say why the
+          page is thin (update FRM, too large, not sent), so then they stay in view. */}
+      <details className="text-sm text-muted" open={noBeltData || undefined}>
         <summary className="cursor-pointer">About this data</summary>
         <ul aria-label="Planner notes" className="m-0 mt-1 grid list-none gap-1 break-words p-0">
           <li>{UNKNOWN_FLOW_NOTE}</li>
