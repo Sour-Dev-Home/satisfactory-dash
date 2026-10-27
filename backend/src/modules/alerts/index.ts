@@ -42,7 +42,7 @@ export type { DeliveryDb } from "./services/alertDeliveryWorker.js";
 export { loadAlertDeliveryMode, type AlertDeliveryMode } from "./config.js";
 export { saveDiscordDestination, getDestinationSummary } from "./repositories/deliveryRepository.js";
 /** ADR-0056 PR 4: alert quality per UTC month and kind (fired, flaps, median resolve time), for the operator metrics page. */
-export { alertQualitySummary, FLAP_MAX_SECONDS } from "./repositories/alertQualityRepository.js";
+export { alertQualitySummary, alertsFiredHourly, FLAP_MAX_SECONDS } from "./repositories/alertQualityRepository.js";
 export { sendAlertTest, type SendTestCode } from "./services/sendTest.js";
 
 /** The process-wide evaluator: start it once the database is up, stop it on shutdown. With `deliver` (ALERT_DELIVERY on)

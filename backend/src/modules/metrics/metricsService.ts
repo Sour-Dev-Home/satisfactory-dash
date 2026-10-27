@@ -10,9 +10,10 @@ import type {
   MetricsWindow,
   ServerMetricSummary,
 } from "@satisfactory-dash/shared";
-import { alertQualitySummary } from "../alerts/index.js";
+import { alertQualitySummary, alertsFiredHourly } from "../alerts/index.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
-import { readCounterSeries, readHistogramSeries } from "./metricsRepository.js";
+import { buildCharts, chartsBounds, TREND_COUNTERS, TREND_HISTOGRAMS } from "./metricsCharts.js";
+import { readCounterSeries, readHistogramSeries, readHourlyCounters, readHourlyHistograms } from "./metricsRepository.js";
 import type { CounterSeries, HistogramSeries } from "./metricsRepository.js";
 import { bucketTotal, rankOf, summarizeBuckets } from "./percentiles.js";
 
@@ -157,11 +158,17 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
     async overview(window) {
       const nowMs = now();
       const { from, to } = windowBounds(window, nowMs);
-      const [histogramSeries, counterSeries, alertMonths] = await Promise.all([
+      const lengthMs = WINDOW_MS.get(window) ?? WINDOW_MS.get("24h")!;
+      // The charts read one hourly range covering the trend and the previous window (ADR-0056 amendment, section 7).
+      const rangeFrom = new Date(chartsBounds(window, lengthMs, nowMs).rangeFrom);
+      const [histogramSeries, counterSeries, alertMonths, hourlyHistograms, hourlyCounters, fired] = await Promise.all([
         readHistogramSeries(options.db, from, to),
         readCounterSeries(options.db, from, to),
         // Not window-bound: alert quality is per calendar month over the 90-day log (ADR-0056 section 2).
         alertQualitySummary(options.db, nowMs),
+        readHourlyHistograms(options.db, rangeFrom, to, TREND_HISTOGRAMS),
+        readHourlyCounters(options.db, rangeFrom, to, TREND_COUNTERS),
+        alertsFiredHourly(options.db, rangeFrom, to),
       ]);
       const histograms = foldHistograms(histogramSeries);
       const counters = foldCounters(counterSeries);
@@ -176,6 +183,7 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
         alerts: alertMonths.length === 0 ? { available: false, reason: "no_data" } : { available: true, asOf: generatedAt, months: alertMonths },
         // PR 6b builds the delivery snapshot.
         delivery: { available: false, reason: "not_built" },
+        charts: buildCharts({ window, lengthMs, nowMs, histograms: hourlyHistograms, counters: hourlyCounters, fired }),
         links: { ...METRICS_LINKS },
       };
     },

@@ -50,6 +50,22 @@ const RowSchema = z.object({
   median_resolve_seconds: z.coerce.number().nullable(),
 });
 
+// The metrics charts' alerts-fired trend (ADR-0056 amendment 2026-10-26): fired transitions per UTC hour, all servers
+// together, over `alert_events_at_idx`. Only a count per hour leaves the query.
+const FIRED_BY_HOUR = `
+  SELECT date_trunc('hour', at) AS hour, count(*)::int AS fired
+  FROM alerts.alert_events
+  WHERE transition = 'fired' AND at >= $1::timestamptz AND at <= $2::timestamptz
+  GROUP BY 1`;
+
+const FiredRowSchema = z.object({ hour: z.coerce.date(), fired: z.number().int() });
+
+/** Fired alerts per hour in `[from, to]`, keyed by the hour's start in ms; quiet hours are absent. */
+export async function alertsFiredHourly(db: Queryable, from: Date, to: Date): Promise<Map<number, number>> {
+  const result = await timedQuery(db, "alerts.firedByHour", FIRED_BY_HOUR, [from, to]);
+  return new Map(parseRows(FiredRowSchema, result.rows, "alerts.firedByHour").map((row) => [row.hour.getTime(), row.fired]));
+}
+
 /** First instant (UTC) of the calendar month `monthsBack` months before the one holding `nowMs`. */
 export function monthStart(nowMs: number, monthsBack: number): Date {
   const now = new Date(nowMs);
