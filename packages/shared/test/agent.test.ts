@@ -208,6 +208,62 @@ describe("agent contract: snapshots", () => {
       expect(ok({ factory: { buildings: [{ ...building, clockSpeedPercent: -5 }] } })).toBe(false);
     });
 
+    it("S4-B generators: optional, bounded, capped at 5000; fuel and supplement may be null; the unit is the backend's", () => {
+      const many = <T,>(item: T, n: number) => Array.from({ length: n }, () => item);
+      const coal = { className: "Desc_Coal_C", name: "Coal", amount: 50 };
+      const generator = {
+        id: "Build_GeneratorCoal_C_1",
+        name: "Coal-Powered Generator",
+        className: "Build_GeneratorCoal_C",
+        location: { xM: 1, yM: 2, zM: 3, rotationDeg: 0 },
+        circuitGroupId: 0,
+        currentMW: 75,
+        capacityMW: 75,
+        clockSpeedPercent: 100,
+        isProducing: true,
+        fuel: coal,
+        supplement: { className: "Desc_Water_C", name: "Water", amount: 12.5 },
+      };
+      const withGens = (generators: object[]) => ({ power: { circuits: [circuit], generators } });
+      expect(ok({ power: { circuits: [circuit] } })).toBe(true); // an older sender, or the FRM agent
+      expect(ok(withGens([generator, { ...generator, name: "Geothermal Generator", fuel: null, supplement: null }]))).toBe(true);
+      expect(ok(withGens([{ ...generator, supplement: undefined }]))).toBe(true); // supplement not read
+      const { fuel: _fuel, ...noFuel } = generator;
+      expect(ok(withGens([noFuel]))).toBe(false); // fuel is null when unread, never absent
+      expect(ok(withGens(many(generator, 5_000)))).toBe(true);
+      expect(ok(withGens(many(generator, 5_001)))).toBe(false);
+      for (const field of ["id", "name", "className"]) expect(ok(withGens([{ ...generator, [field]: long(201) }])), field).toBe(false);
+      expect(ok(withGens([{ ...generator, fuel: { ...coal, name: long(201) } }]))).toBe(false);
+      for (const field of ["currentMW", "capacityMW", "clockSpeedPercent"]) expect(ok(withGens([{ ...generator, [field]: -1 }])), field).toBe(false);
+      expect(ok(withGens([{ ...generator, fuel: { ...coal, amount: -1 } }]))).toBe(false);
+      expect(ok(withGens([{ ...generator, currentMW: Number.NaN }]))).toBe(false);
+      // The unit is backend-derived: a sender's is dropped.
+      const parsed = SnapshotRequestSchema.parse({ ...full, ...withGens([{ ...generator, fuel: { ...coal, unit: "items" } }]) });
+      expect(parsed.power?.generators?.[0]?.fuel).not.toHaveProperty("unit");
+      expect(PowerSchema.safeParse({ circuits: [], hasOutage: false, generators: [{ ...generator, fuel: { ...coal, unit: "items" } }] }).success).toBe(true);
+    });
+
+    it("S4-B extractors: optional, the building shape and bounds, capped at 5000", () => {
+      const many = <T,>(item: T, n: number) => Array.from({ length: n }, () => item);
+      const extractor = { ...building, name: "Miner Mk.2", className: "Build_MinerMk2_C", recipe: null, ingredients: [] };
+      expect(ok({ factory: { buildings: [building] } })).toBe(true); // an older sender, or the FRM agent
+      expect(ok({ factory: { buildings: [building], extractors: [] } })).toBe(true);
+      expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_000) } })).toBe(true);
+      expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_001) } })).toBe(false);
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, className: long(201) }] } })).toBe(false);
+      // The raw flags are required, as on a machine: a miner stopped by a full output sends isBackedUp true.
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, isBackedUp: true, isProducing: false }] } })).toBe(true);
+      const { isBackedUp: _dropped, ...noFlag } = extractor;
+      expect(ok({ factory: { buildings: [], extractors: [noFlag] } })).toBe(false);
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, production: [{ ...rate, currentPerMinute: -1 }] }] } })).toBe(false);
+      // A backend-derived field is dropped, as on buildings.
+      const parsed = SnapshotRequestSchema.parse({ ...full, factory: { buildings: [], extractors: [{ ...extractor, state: "producing" }] } });
+      expect(parsed.factory?.extractors?.[0]).not.toHaveProperty("state");
+      // The response carries them optionally, with no bounds.
+      expect(FactorySchema.safeParse(fixtures.factoryMixed.data).success).toBe(true);
+      expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, extractors: [{ ...extractor, state: "producing", isBackedUp: false }] }).success).toBe(true);
+    });
+
     it("the RESPONSE schemas are not bounded: only what an agent sends is", () => {
       expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, buildings: [{ ...fixtures.factoryMixed.data.buildings[0], className: long(300) }] }).success).toBe(true);
     });

@@ -443,7 +443,7 @@ const plannerFactoriesTwoTrees = (() => {
 /**
  * ADR-0055 PR 10a: the factories fixture with one id per machine (its own is one per group) and a building for each at the
  * group's place, the Iron Rod factory designated "Rod works" by two machines it holds and one it no longer finds, and the
- * viewer an owner. The Iron Plate factory stays automatic, for the suggestions and the "Designate selected" form.
+ * viewer an owner. The Iron Plate factory stays automatic, for the "Designate selected" form.
  */
 const plannerDesignated = (() => {
   const base = ProductionGraphResponseSchema.parse(productionGraphFactories);
@@ -831,7 +831,7 @@ export const SCENARIOS = {
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
-  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate or suggest.
+  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate.
   "planner-designations": plannerDesignated,
   // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and
   // a replace that finds a designation changed meanwhile.

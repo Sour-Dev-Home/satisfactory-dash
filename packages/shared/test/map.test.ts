@@ -162,6 +162,18 @@ describe("mapLive", () => {
     expect(MapLiveSchema.safeParse({ trains: [], stations: Array.from({ length: MAP_LIVE_MAX_STATIONS + 1 }, () => station) }).success).toBe(false);
   });
 
+  it("S4-B: a station's transfer rates are optional, finite and never negative; absent is not 0", () => {
+    const station = fixtures.mapLiveSample.stations[0];
+    expect(MapTrainStationSchema.parse(station)).not.toHaveProperty("transferPerMinute"); // the FRM agent sends none
+    const rated = { ...station, transferPerMinute: 120, inflowPerMinute: 0, outflowPerMinute: 120 };
+    expect(MapTrainStationSchema.parse(rated)).toMatchObject({ transferPerMinute: 120, inflowPerMinute: 0, outflowPerMinute: 120 });
+    expect(MapTrainStationSchema.safeParse({ ...station, transferPerMinute: 120 }).success).toBe(true); // in and out unread
+    for (const field of ["transferPerMinute", "inflowPerMinute", "outflowPerMinute"]) {
+      expect(MapTrainStationSchema.safeParse({ ...station, [field]: -1 }).success, `${field} -1`).toBe(false);
+      expect(MapTrainStationSchema.safeParse({ ...station, [field]: Number.POSITIVE_INFINITY }).success, `${field} Infinity`).toBe(false);
+    }
+  });
+
   it("is optional in a snapshot, and is refused on an unreachable one, like every other data part", () => {
     const reachableWithMapLive = { ...fixtures.agentSnapshotRequestWithMapLive };
     expect(SnapshotRequestSchema.safeParse(reachableWithMapLive).success).toBe(true);
