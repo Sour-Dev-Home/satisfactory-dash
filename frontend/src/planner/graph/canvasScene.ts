@@ -209,7 +209,8 @@ const known = (f: Pick<CanvasFlow, "quality" | "ratePerMinute">): boolean => f.q
 export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; members: number[] }[] {
   const groups = new Map<string, number[]>();
   flows.forEach((f, i) => {
-    const key = [f.from, f.to, f.carrier, f.flow].join("\u0001");
+    // The unit too: a carrier can move items and fluid, and those never sum (hierarchy.ts keys on it as well).
+    const key = [f.from, f.to, f.carrier, f.flow, f.unit].join("\u0001");
     const list = groups.get(key);
     if (list === undefined) groups.set(key, [i]);
     else list.push(i);
@@ -219,8 +220,12 @@ export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; m
 
 function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
   const head = parts[0];
-  const names = [...new Set(parts.flatMap((p) => (p.itemName ?? p.itemClassName) === null ? [] : [(p.itemName ?? p.itemClassName)!]))];
-  const unknownItems = parts.filter((p) => p.itemName === null && p.itemClassName === null).length;
+  const nameOf = (p: CanvasFlow): string | null => {
+    const n = p.itemName ?? p.itemClassName;
+    return n === null || n === "" ? null : n;
+  };
+  const names = [...new Set(parts.flatMap((p) => nameOf(p) ?? []))];
+  const unknownItems = parts.filter((p) => nameOf(p) === null).length;
   const sure = parts.filter(known);
   const quality: FlowQuality =
     sure.length === 0

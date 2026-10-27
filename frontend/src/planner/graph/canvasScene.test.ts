@@ -410,6 +410,18 @@ describe("bundleFlows: one line per pair of cards and carrier (2026-10-27)", () 
     expect(out.map((b) => b.members)).toEqual([[0, 2], [1], [3], [4]]);
   });
 
+  it("never sums items and m3 on one carrier into one rate", () => {
+    const out = bundleFlows([link("Ore", { carrier: "train" }), link("Water", { carrier: "train", unit: "m3/min" }), link("Coal", { carrier: "train" })]);
+    expect(out.map((b) => b.members)).toEqual([[0, 2], [1]]);
+    expect(out[0].flow.labelLines).toEqual(["Ore, Coal", "60 items/min"]);
+  });
+
+  it("treats an empty item name as no known item", () => {
+    const [b] = bundleFlows([link("A"), { ...link(null), itemName: "", itemClassName: "" }]);
+    expect(b.flow.labelLines[0]).toBe("A");
+    expect(b.flow.labelLines[1]).toContain("+1 unknown");
+  });
+
   it("keeps every link in the tooltip, each with its own rate and sureness", () => {
     const [b] = bundleFlows([link("Iron Ingot"), link(null, { quality: "unknown", ratePerMinute: null })]);
     expect(flowTitle(b.flow, "A", "B")).toBe("A to B, 2 links: Iron Ingot · 30 items/min (measured); Item unknown (rate unknown)");
