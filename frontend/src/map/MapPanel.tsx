@@ -247,11 +247,11 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       )}
       <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
-        A plain grid, 500 m per square, with the rails, resource nodes and trains the server reported, nodes drawn
-        with the game's icons. Trains move with the latest reading, about every 10 seconds. Positions are
-        approximate until they're checked in game.
+        The island's coast, lakes and high ground, traced from the game's map, under a grid of 500 m squares, with the
+        rails, resource nodes and trains the server reported, nodes drawn with the game's icons. Trains move with the
+        latest reading, about every 10 seconds. Positions are approximate until they're checked in game.
       </p>
-      <p className="text-sm text-muted">Satisfactory and its icons © Coffee Stain Studios. Not affiliated.</p>
+      <p className="text-sm text-muted">Satisfactory, its map and its icons © Coffee Stain Studios. Not affiliated.</p>
 
       {visible.has(railsLayer.id) && <WorldLayerText query={rails} layer={railsLayer} />}
       {visible.has(resourceNodesLayer.id) && (
