@@ -590,11 +590,15 @@ const PLANNER_NODES = {
     kind: "extractor", className: "Build_MinerMk2_C", name: "Miner Mk.2", recipe: null, ids: ["demo-12"], states: { producing: 1 },
     at: { x: -1740, y: -985 }, site: IRON_WORKS, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 45, 120)],
   }),
-  // A second ore supply, 300 m away, joined by a train (ADR-0055): the remote part of the iron factories.
-  oreFarm: plannerNode({
-    kind: "extractor", className: "Build_MinerMk1_C", name: "Miner Mk.1", recipe: null, ids: ["demo-16", "demo-17"], states: { producing: 2 },
-    at: { x: -1990, y: -1090 }, site: ORE_FARM, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 30, 60)],
-  }),
+  // A second ore supply, 300 m away, joined by a train (ADR-0055): the remote part of the iron factories. Like a real
+  // extractor it has no output data, only the item the backend inferred from the node it stands on (#728).
+  oreFarm: {
+    ...plannerNode({
+      kind: "extractor", className: "Build_MinerMk1_C", name: "Miner Mk.1", recipe: null, ids: ["demo-16", "demo-17"], states: { producing: 2 },
+      at: { x: -1990, y: -1090 }, site: ORE_FARM,
+    }),
+    resource: { className: "Desc_OreIron_C", name: "Iron Ore" },
+  },
   farmPlatform: plannerNode({
     kind: "station", className: "Build_TrainDockingStation_C", name: "Freight Platform", recipe: null, ids: ["demo-18"], states: {},
     at: { x: -1985, y: -1085 }, site: ORE_FARM,

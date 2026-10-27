@@ -953,9 +953,14 @@ function CardView({
           </text>
         </g>
       )}
-      {/* One line (a factory's name, then one line); the recipe, the other outputs and the rest are in the tooltip and the panel. */}
+      {/* One line (a factory's name, then one line; an extractor's muted "(inferred from the node)" under it); the recipe, the other outputs and the rest are in the tooltip and the panel. */}
       {n.lines.map((line, i) => (
-        <text key={i} x={NODE_PAD_X} y={cardLineY(i)} className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : "fill-fg text-sm")}>
+        <text
+          key={i}
+          x={NODE_PAD_X}
+          y={cardLineY(i)}
+          className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : card.mutedFrom !== undefined && i >= card.mutedFrom ? "fill-muted text-sm" : "fill-fg text-sm")}
+        >
           {line}
         </text>
       ))}

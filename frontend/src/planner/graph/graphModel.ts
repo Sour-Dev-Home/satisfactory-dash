@@ -55,15 +55,65 @@ export const withName = <T extends Pick<PlannerNode, "name" | "className">>(node
 /** One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the maximum is in the tooltip. */
 export const productSummary = (rate: PlannerRate): string => cut(`${nameOr(rate.name, rate.className)} · ${formatAmount(rate.currentPerMinute)}${rate.unit === "m3/min" ? " m³" : ""}/min`, MAX_SUMMARY_CHARS);
 
-/** The one line a group's card prints: its main product and rate, else "No output data". Never empty. */
-export const nodeSummary = (node: Pick<PlannerNode, "products">): string => (node.products.length === 0 ? "No output data" : productSummary(node.products[0]));
+/** A machine whose recipe is unassigned in the game (#728 step 3). */
+export const NOT_CONFIGURED = "Not configured";
+/** An extractor whose item the backend could not match to a resource node. */
+export const RESOURCE_UNKNOWN = "Resource not identified";
+/** The muted note after an extractor's item: it is guessed from the node it stands on, and no rate is read. */
+export const INFERRED_FROM_NODE = "(inferred from the node)";
 
 /**
- * Everything a group's card no longer prints, in full and unwrapped: the recipe, every output (actual over max), a loop
- * marker. The tooltip, the keyboard name and the side panel all read these.
+ * What an extractor without output data mines (#728 step 1): the backend's `resource` (the node within 20 m), else an
+ * honest "Resource not identified". Null for anything else, or for an extractor that does have output data.
  */
-export function nodeFacts(node: PlannerNode): { recipe: string; outputs: string[]; loop: boolean } {
-  return { recipe: nameOr(node.recipe, "No recipe"), outputs: node.products.length === 0 ? ["No output data"] : node.products.map(outputLine), loop: node.loop };
+export function extractorOutput(node: Pick<PlannerNode, "kind" | "products" | "resource">): { name: string; inferred: boolean } | null {
+  if (node.kind !== "extractor" || node.products.length > 0) return null;
+  const name = nameOr(node.resource?.name, nameOr(node.resource?.className, ""));
+  return name === "" ? { name: RESOURCE_UNKNOWN, inferred: false } : { name, inferred: true };
+}
+
+/** The same for a bubble of groups: only when every group is such an extractor and they agree on the resource. */
+export function groupsExtractorOutput(nodes: readonly Pick<PlannerNode, "kind" | "products" | "resource">[]): { name: string; inferred: boolean } | null {
+  const outs = nodes.map(extractorOutput);
+  const first = outs[0];
+  if (first === undefined || first === null) return null;
+  return outs.every((o) => o !== null && o.name === first.name && o.inferred === first.inferred) ? first : null;
+}
+
+/** An extractor's output as one line of words: "Iron Ore (inferred from the node)". */
+export const extractorOutputText = (out: { name: string; inferred: boolean }): string => (out.inferred ? `${out.name} ${INFERRED_FROM_NODE}` : out.name);
+
+/** The one line a group's card prints: its main product and rate, else an extractor's resource, else "No output data". Never empty. */
+export function nodeSummary(node: Pick<PlannerNode, "products"> & Partial<Pick<PlannerNode, "kind" | "resource">>): string {
+  if (node.products.length > 0) return productSummary(node.products[0]);
+  const mined = extractorOutput({ kind: node.kind ?? "", products: node.products, resource: node.resource });
+  return mined === null ? "No output data" : cut(mined.name, MAX_SUMMARY_CHARS);
+}
+
+/**
+ * The recipe in words: the recipe, "Not configured" for a machine without one, and null where none is shown (an extractor,
+ * storage, a station, a consumer such as a sink or a generator, or a building of unknown kind).
+ */
+export function recipeText(node: Pick<PlannerNode, "kind" | "recipe">): string | null {
+  const recipe = nameOr(node.recipe, "");
+  if (recipe !== "") return recipe;
+  return node.kind === "machines" ? NOT_CONFIGURED : null;
+}
+
+const NO_RECIPE_KINDS: ReadonlySet<string> = new Set(["extractor", "storage", "station", "consumer"]);
+
+/** The Recipe cell's words where `recipeText` is null: these kinds have no recipe in the game; of any other, we can't say. */
+export const noRecipeCellText = (node: Pick<PlannerNode, "kind">): string => (NO_RECIPE_KINDS.has(node.kind) ? "Not applicable" : "Not known");
+
+/**
+ * Everything a group's card no longer prints, in full and unwrapped: the recipe (null where none applies), every output
+ * (actual over max, or an extractor's inferred resource), a loop marker. The tooltip, the keyboard name and the side
+ * panel all read these.
+ */
+export function nodeFacts(node: PlannerNode): { recipe: string | null; outputs: string[]; loop: boolean } {
+  const mined = extractorOutput(node);
+  const outputs = mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? ["No output data"] : node.products.map(outputLine);
+  return { recipe: recipeText(node), outputs, loop: node.loop };
 }
 
 /**
