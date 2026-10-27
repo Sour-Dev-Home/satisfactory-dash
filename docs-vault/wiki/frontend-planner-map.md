@@ -86,6 +86,13 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - World layers (ADR-0038 M5: `railsLayer`, `resourceNodesLayer`) are `MapLayer<T>` over their own stored list:
   `MapPanel` reads them through `queries.mapRails`/`mapResourceNodes`, only while the toggle is on, and hands the
   canvas a bound `DrawnLayer`.
+- The players' map markers and stamps (ADR-0038 §1, #330, `markersLayer`, `queries.mapMarkers`) are a world layer
+  drawn above the buildings and under the trains: a marker a pin (tip on its place), a stamp a diamond a step smaller
+  than a station's, fixed pixel sizes rebuilt on zoom. The fill is the marker's own `color` (game data, so a Leaflet
+  path option, not a token; `ColorSlot` read as RRGGBBAA, verified by the owner in game on 2026-10-27); the rim is
+  `--color-marker-edge`, so a dark one shows on the terrain. An empty name reads "Unnamed marker"/"Unnamed stamp";
+  rows are keyed `${id}:${x}:${y}` (FRM ids can repeat), with a count added only on a full repeat. The game's icon
+  (`icon`, FRM's IconID) isn't drawn: its mapping to an image is undocumented (follow-up).
 - A layer is a `MapLayer` (`layers.ts`): it gets Leaflet through its `MapContext` (never imports it at runtime),
   draws on the shared canvas renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here),
   returns its cleanup, and supplies a legend and a text `describe`.

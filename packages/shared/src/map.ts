@@ -261,7 +261,7 @@ export const MapMarkerSchema = z.object({
     .string()
     .regex(/^#[0-9a-f]{6}$/)
     .describe(
-      "#rrggbb from FRM's `ColorSlot` (8 hex digits, e.g. 6EA37BFF), read as RRGGBBAA with the alpha dropped [NEEDS VERIFICATION: byte order]; the colour players pick to tell their markers apart",
+      "#rrggbb from FRM's `ColorSlot` (8 hex digits, e.g. 6EA37BFF), read as RRGGBBAA with the alpha dropped (byte order verified by the owner in game on 2026-10-27: 6EA37BFF shows green); the colour players pick to tell their markers apart",
     ),
   x: WholeMetreSchema,
   y: WholeMetreSchema,

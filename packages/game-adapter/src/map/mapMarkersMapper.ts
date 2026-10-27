@@ -44,8 +44,8 @@ export function markerKind(raw: string | undefined): MapMarkerKind {
   return raw === "RT_Stamp" ? "stamp" : "marker";
 }
 
-/** `ColorSlot` read as RRGGBBAA, alpha dropped, lower-cased [NEEDS VERIFICATION: byte order; the capture shows
- *  `FFFFFFFF` and `6EA37BFF`, whose trailing FF fits an opaque alpha, but no doc states the order]. */
+/** `ColorSlot` read as RRGGBBAA, alpha dropped, lower-cased. The byte order was verified by the owner in game on
+ *  2026-10-27: the captured `6EA37BFF` marker shows green. */
 export function markerColor(raw: string | undefined): string {
   return raw !== undefined && /^[0-9a-fA-F]{8}$/.test(raw) ? `#${raw.slice(0, 6).toLowerCase()}` : DEFAULT_MARKER_COLOR;
 }

@@ -159,6 +159,23 @@ test("the live trains draw, read as text, and toggle", async ({ page, mockApi },
   await expectNoAxeViolations(page, testInfo);
 });
 
+// ADR-0038 §1 (#330): the players' map markers and stamps. Text and table, and the toggle removes them (whether
+// a shape is on the canvas depends on the first view, which fits the buildings, so the unit tests cover the drawing).
+test("the map markers read as text and toggle", async ({ page, mockApi }, testInfo) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("1 marker and 3 stamps on the map.")).toBeVisible();
+  const table = page.getByRole("table", { name: /Markers in view/ });
+  await expect(table).toBeVisible();
+  await page.getByRole("checkbox", { name: "Markers" }).uncheck();
+  await expect(table).toHaveCount(0);
+  await expect(page.getByText("1 marker and 3 stamps on the map.")).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Markers" }).check();
+  await expect(page.getByRole("table", { name: /Markers in view/ })).toBeVisible();
+
+  await expectNoAxeViolations(page, testInfo);
+});
+
 test.describe("the map's first view", () => {
   // Reduced motion also turns off Leaflet's zoom and fade animations, so the screenshot is stable.
   test.use({ reducedMotion: "reduce" });
