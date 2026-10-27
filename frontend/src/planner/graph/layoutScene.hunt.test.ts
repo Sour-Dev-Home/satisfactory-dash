@@ -32,6 +32,9 @@ const flow = (from: string, to: string, extra: Partial<CanvasFlow> = {}): Canvas
   rate: "measured",
   label: "X",
   labelLines: ["X"],
+  ratePerMinute: 1,
+  unit: "items/min",
+  quality: "measured",
   ...extra,
 });
 const sceneOf = (cards: Card[], flows: CanvasFlow[] = [], frames: Frame[] = []): Scene => ({
@@ -81,7 +84,8 @@ describe("layoutScene adversarial scenes", () => {
   });
 
   it("parallel flows between one pair each get a path and distinct label heights", () => {
-    const l = layoutScene(sceneOf([card("a"), card("b")], [flow("a", "b"), flow("a", "b", { labelLines: ["Y", "z"] }), flow("b", "a")]));
+    // Different carriers, so not one bundled line (2026-10-27).
+    const l = layoutScene(sceneOf([card("a"), card("b")], [flow("a", "b"), flow("a", "b", { carrier: "pipe", labelLines: ["Y", "z"] }), flow("b", "a")]));
     expect(l.edges).toHaveLength(3);
     expect(l.edges.every((e) => e.points.length > 0 && finite(e.labelX) && finite(e.labelY))).toBe(true);
   });
@@ -124,9 +128,12 @@ describe("layoutScene adversarial scenes", () => {
   });
 
   it("many flows between two cards (huge count) still lay out", () => {
-    const flows = Array.from({ length: 300 }, (_, i) => flow("a", "b", { labelLines: [`item ${i}`] }));
+    const flows = Array.from({ length: 300 }, (_, i) => flow("a", "b", { itemName: `item ${i}`, labelLines: [`item ${i}`] }));
     const l = layoutScene(sceneOf([card("a"), card("b")], flows));
-    expect(l.edges).toHaveLength(300);
+    // One bundled line with a short label; every link is still one of its parts (2026-10-27).
+    expect(l.edges).toHaveLength(1);
+    expect(l.edges[0].parts).toHaveLength(300);
+    expect(l.edges[0].labelLines).toEqual(["item 0, item 1", "+298 more", "300 items/min"]);
     expect(l.edges.every((e) => finite(e.labelX) && finite(e.labelY))).toBe(true);
   });
 

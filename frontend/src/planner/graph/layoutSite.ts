@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
-import { groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
+import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { GLYPH_SIZE } from "./transportModes";
@@ -42,6 +42,9 @@ export const LABEL_GAP = 4;
 /** Dagre's spacing, tight on purpose: a fit should show the drawing, so the ranks and rows sit close. */
 export const RANK_SEP = 40;
 export const NODE_SEP = 20;
+/** The least room between two vertical tracks in one gap (and between a track and a column): side by side, lines stay
+ *  visibly apart (8 read as one thick line on the owner's save, 2026-10-27). A gap with more tracks than fit widens. */
+export const TRACK_GAP = 12;
 /** The graph's margin, and the height of the tab on an expanded bubble's frame that holds its title and its Collapse button (half of it stands above the frame's top edge). */
 export const MARGIN = 16;
 export const FRAME_HEADER_H = 22;
@@ -74,8 +77,11 @@ export interface LaidFrame {
 }
 
 export interface LaidEdge {
-  /** Index into `SiteLayout.flows`. */
+  /** Index into `SiteLayout.flows` of the first link the line draws: unique per edge, its React key. */
   index: number;
+  /** Every link the line draws, as indexes into `SiteLayout.flows` (one, or a bundle's: see `bundleFlows`). */
+  parts: number[];
+  /** What the line draws: the link, or the bundle of links between the same two cards (with `parts` of its own). */
   flow: CanvasFlow;
   /** The path, from the source card's side to the destination's. */
   points: { x: number; y: number }[];
@@ -100,7 +106,8 @@ export interface SiteLayout {
   nodes: LaidNode[];
   frames: LaidFrame[];
   edges: LaidEdge[];
-  /** The flows the layout was given (those with both ends drawn), in the order `LaidEdge.index` refers to. */
+  /** The links the layout was given (those with both ends drawn), one per link even when a line draws several, in the
+   *  order `LaidEdge.index` and `LaidEdge.parts` refer to. The item filter walks these. */
   flows: CanvasFlow[];
   width: number;
   height: number;
@@ -427,14 +434,23 @@ function routed(
   const out = routeOrthogonal(
     {
       cards,
-      edges: drawn.map((f, i) => ({ from: f.from, to: f.to, waypoints: placed.paths[i].slice(1, -1), label: labelWaypoint(i) })),
+      edges: drawn.map((f, i) => {
+        const waypoints = placed.paths[i].slice(1, -1);
+        const label = labelWaypoint(i);
+        // Each edge runs through its own label: in the merged form the flows of a pair share one dagre route, whose label
+        // point is the middle of their stacked labels, so every line ran across the middle label (2026-10-27). Its own
+        // row's centre instead; in the separate form that is the same point.
+        const at = placed.labelAt[i];
+        if (label !== undefined && at !== null) waypoints[label] = { x: waypoints[label].x, y: at.y };
+        return { from: f.from, to: f.to, waypoints, label };
+      }),
       labels: drawn.map((_, i) => {
         const at = placed.labelAt[i];
         return at === null ? undefined : { x: at.x - labels[i].width / 2, y: at.y - labels[i].height / 2, width: labels[i].width, height: labels[i].height };
       }),
       frames: frameKeys.map((k) => placed.frames.get(k)!),
     },
-    { straighten: true },
+    { straighten: true, track: TRACK_GAP },
   );
   const centres = new Map(out.cards.map((c) => [c.key, { x: c.x + c.width / 2, y: c.y + c.height / 2 }]));
   const frames = new Map(frameKeys.map((k, i) => [k, out.frames[i]]));
@@ -510,16 +526,19 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   const sizes = tallest === 0 ? own : own.map((s) => ({ ...s, height: tallest }));
   const known = new Set(scene.cards.map((c) => c.key));
   const flows = scene.flows.filter((f) => known.has(f.from) && known.has(f.to));
+  // Links between the same two cards on the same carrier are one line with one label (2026-10-27); `parts` keeps each.
+  const bundles = bundleFlows(flows);
+  const drawn = bundles.map((b) => b.flow);
   // A transport's label also holds its mode's glyph, at the pill's left: dagre reserves room for both.
-  const labels = flows.map((f) => {
+  const labels = drawn.map((f) => {
     const s = labelSize(f.labelLines);
     return isTransport(f) ? { ...s, width: s.width + GLYPH_INSET } : s;
   });
-  const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, flows)}`;
+  const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, drawn)}`;
   let placement = memo.get(key);
   if (placement === undefined) {
     const start = performance.now();
-    placement = place(scene, sizes, flows, labels);
+    placement = place(scene, sizes, drawn, labels);
     stats.lastMs = performance.now() - start;
     stats.slowestMs = Math.max(stats.slowestMs, stats.lastMs);
     stats.computed++;
@@ -543,16 +562,17 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   });
   // A transport's glyph stands in its own label pill, at the left, so no label can cover it and parallel transports (one
   // path, stacked labels) each keep theirs; a moving glyph travels the path instead (SiteGraph's Edge).
-  const edges: LaidEdge[] = flows.map((flow, index) => {
-    const points = p.paths[index];
-    const { width, height } = labels[index];
-    const own = p.labelAt[index];
+  const edges: LaidEdge[] = drawn.map((flow, k) => {
+    const points = p.paths[k];
+    const { width, height } = labels[k];
+    const own = p.labelAt[k];
     const beside = own === null && points.length > 0 ? labelPlacement(points, width, height) : { x: 0, y: 0 };
     const labelX = own?.x ?? beside.x;
-    const labelY = own?.y ?? beside.y - p.stack[index];
+    const labelY = own?.y ?? beside.y - p.stack[k];
     const transport = isTransport(flow);
     return {
-      index,
+      index: bundles[k].members[0],
+      parts: bundles[k].members,
       flow,
       points,
       label: flow.label,

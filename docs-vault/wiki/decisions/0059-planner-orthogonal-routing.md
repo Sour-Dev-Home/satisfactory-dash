@@ -75,6 +75,16 @@ Every bend is a circular arc, radius 10 layout units, at most half the shorter a
 Each label sits in the box dagre reserved for it, on its own line, on a surface pill; a transport's glyph stands in its
 label. Feedback edges look like every other edge (owner).
 
+Amended 2026-10-27 (bundling multi-links per card pair; the owner's report of near-parallel lines with stacked labels
+between two factories, one line across a label): links between the same ordered pair of cards, on the same carrier and of
+the same kind (supply or excess), are drawn as one edge with one label (`bundleFlows` in `canvasScene.ts`): up to two item
+names, then "+k more", links of no known item folded in as "+n unknown", the rate summed by ADR-0053 Decision 3's rule.
+Nothing is dropped: the edge keeps every link (`LaidEdge.parts`), its tooltip lists each with its own rate, the item filter
+lights it when any link matches, and the Tables view still has a row per link. Links on different carriers between one
+pair stay separate lines. Every label is drawn after every line, so no line passes over a label. In the merged fallback
+each line runs through its own row of the stacked labels (before, every line of the pair crossed the middle one), and
+vertical tracks in a gap stay at least `TRACK_GAP` (12 units, was 8) apart.
+
 ### 4. Main thread, no new download
 
 Routing adds about 1-3 ms to dagre's 6-19 ms on the dense scenes and 2.5 KB gzip to the planner chunk. ADR-0050's worker

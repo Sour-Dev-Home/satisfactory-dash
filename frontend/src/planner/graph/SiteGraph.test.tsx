@@ -309,6 +309,36 @@ describe("the graph's readable chrome", () => {
     expect(legend.textContent).not.toMatch(/drag|scroll/i);
   });
 
+  it("draws every line before every label, so no line runs over another edge's label (2026-10-27)", async () => {
+    const svg = await openGraph();
+    const paths = [...svg.querySelectorAll('[data-edge-layer="lines"] path')];
+    const pills = [...svg.querySelectorAll("[data-label-pill]")];
+    expect(paths.length).toBeGreaterThan(1);
+    expect(pills).toHaveLength(paths.length);
+    for (const pill of pills) for (const path of paths) expect(path.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("draws two links between the same groups as one line, its tooltip listing each with its rate, lit by either item", async () => {
+    const data = productionGraphTwoSites.data;
+    const lime = { ...data.edges[0], itemClassName: "Desc_Stone_C", itemName: "Limestone", ratePerMinute: 30, rate: "measured" as const };
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: [...data.edges, lime] } })));
+    const svg = await openGraph();
+    const label = [...svg.querySelectorAll("text")].find((t) => t.textContent?.startsWith("Iron Ore, Limestone"))!;
+    expect(label.textContent).toBe("Iron Ore, Limestone150 items/min");
+    const title = label.closest("g")!.querySelector("title")!.textContent!;
+    expect(title).toContain("2 links: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
+    // The summary still counts every link; the lines layer draws one line fewer.
+    expect(svg.getAttribute("aria-label")).toMatch(/6 connections/);
+    expect(svg.querySelectorAll('[data-edge-layer="lines"] path')).toHaveLength(5);
+    fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Stone_C" } });
+    expect(label.closest("g")).not.toHaveClass("opacity-graph-dim");
+    // The text path keeps a row per link.
+    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    const rows = screen.getAllByRole("row").map((r) => r.textContent ?? "");
+    expect(rows.some((r) => r.includes("Limestone") && r.includes("30"))).toBe(true);
+    expect(rows.some((r) => r.includes("Iron Ore") && r.includes("120"))).toBe(true);
+  });
+
   it("draws card text at the readable sizes, and edge labels as halo text with a named class", async () => {
     const svg = await openGraph();
     expect(svg.querySelector("text.text-base.font-semibold")).not.toBeNull();

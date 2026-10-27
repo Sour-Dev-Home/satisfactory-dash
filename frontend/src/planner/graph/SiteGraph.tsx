@@ -623,12 +623,17 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               {layout.frames.map((f) => (
                 <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
               ))}
-              {layout.edges.map((e) => {
-                const on = reach === null || reach.edges.has(e.index);
-                const from = laidByKey.get(e.flow.from);
-                const to = laidByKey.get(e.flow.to);
-                return <Edge key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} />;
-              })}
+              {/* Every line first, then every label: a label is never under another edge's line (2026-10-27). */}
+              {[EdgeLine, EdgeLabel].map((Layer, layer) => (
+                <g key={layer} data-edge-layer={layer === 0 ? "lines" : "labels"}>
+                  {layout.edges.map((e) => {
+                    const on = reach === null || e.parts.some((i) => reach.edges.has(i));
+                    const from = laidByKey.get(e.flow.from);
+                    const to = laidByKey.get(e.flow.to);
+                    return <Layer key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} />;
+                  })}
+                </g>
+              ))}
               {layout.nodes.map((n) => (
                 <CardView
                   key={n.key}
@@ -777,16 +782,26 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
   );
 }
 
-/** A flow: the line, its label with a halo, and for a transport the mode's glyph on the middle (moving when it may). */
-function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string }) {
-  const path = roundedOrthogonalPath(e.points);
+type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string };
+
+/** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. */
+function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
+  return (
+    <g data-edge={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+      <title>{flowTitle(e.flow, from, to)}</title>
+      <path d={roundedOrthogonalPath(e.points)} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
+    </g>
+  );
+}
+
+/** A flow's label with a halo, and for a transport the mode's glyph (moving along the line when it may): above every line. */
+function EdgeLabel({ edge: e, dim, moving, from, to }: EdgeProps) {
   const transport = isTransport(e.flow);
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   return (
-    <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
-      <path d={path} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
-      {/* On its own line, in the box the layout reserved for it: a pill the line runs under, so it stops at the words. */}
+      {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the words. */}
       <rect
         x={e.labelX - e.labelWidth / 2}
         y={e.labelY - e.labelHeight / 2}
@@ -807,7 +822,7 @@ function Edge({ edge: e, markerId, dim, moving, from, to }: { edge: LaidEdge; ma
       {transport && (
         <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
           <TransportGlyph mode={e.flow.carrier} />
-          {moving && <animateMotion path={path} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
+          {moving && <animateMotion path={roundedOrthogonalPath(e.points)} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
         </g>
       )}
     </g>

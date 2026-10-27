@@ -28,6 +28,7 @@ import {
   type Bubble,
   type FactoryModel,
   type FlowPart,
+  type FlowQuality,
 } from "./hierarchy";
 
 /**
@@ -95,10 +96,16 @@ export interface CanvasFlow {
   mixed: boolean;
   /** How sure the rate is, for the line style: an "at least" sum counts as an estimate. */
   rate: "measured" | "estimated" | "unknown";
-  /** The label in one line (the tooltip's words), and as drawn: one to three lines. */
+  /** The label in one line (the tooltip's words), and as drawn: one to three lines (a bundle's up to four). */
   label: string;
   labelLines: string[];
   routeName?: string | undefined;
+  /** The summed rate behind the label (null when no part had a number), its unit and its quality ("at least" kept). */
+  ratePerMinute: number | null;
+  unit: "items/min" | "m3/min";
+  quality: FlowQuality;
+  /** A bundle (`bundleFlows`): the links it draws as one line, each with its own item and rate. Absent on a single link. */
+  parts?: CanvasFlow[] | undefined;
 }
 
 export type SceneLevel = "overview" | "factory" | "site";
@@ -158,6 +165,9 @@ export function canvasFlow(f: AggregateFlow): CanvasFlow {
     label: [item, ...(rateLine === null ? [] : [rateLine]), ...(f.mixed ? ["mixed"] : []), ...(f.flow === "excess" ? ["excess"] : [])].join(" · "),
     labelLines: lines,
     routeName: f.routeName,
+    ratePerMinute: f.ratePerMinute,
+    unit: f.unit,
+    quality: f.quality,
   };
 }
 
@@ -175,15 +185,92 @@ function edgeFlow(edge: PlannerEdge): CanvasFlow {
     label: edgeLabel(edge),
     labelLines: edgeLabelLines(edge),
     routeName: undefined,
+    ratePerMinute: edge.ratePerMinute,
+    unit: edge.kind === "pipe" ? "m3/min" : "items/min",
+    quality: edge.rate,
+  };
+}
+
+/** A bundle's label names this many items; the rest are "+k more" (the tooltip and the Tables view list them all). */
+export const BUNDLE_NAMES = 2;
+
+/** Whether a link's rate counts in a sum: a finite number the backend did not call unknown. */
+const known = (f: Pick<CanvasFlow, "quality" | "ratePerMinute">): boolean => f.quality !== "unknown" && f.ratePerMinute !== null && Number.isFinite(f.ratePerMinute);
+
+/**
+ * One drawn line per ordered pair of cards and carrier (2026-10-27, ADR-0059 amendment): links between the same two cards
+ * in the same direction, on the same carrier (which sets the line's colour and a transport's glyph) and of the same kind
+ * (supply or excess), become one line with one label, so they no longer run as near-parallel lines with stacked labels.
+ * The label names the items (up to `BUNDLE_NAMES`, then "+k more"), folds links of no known item into "+u unknown", and
+ * sums the rate by ADR-0053 Decision 3's rule (weakest quality wins, "at least" when a part has no number). Nothing is
+ * dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the Tables view is
+ * unchanged. Returns the drawn flows in first-seen order, each with the indexes of the links it stands for.
+ */
+export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; members: number[] }[] {
+  const groups = new Map<string, number[]>();
+  flows.forEach((f, i) => {
+    const key = [f.from, f.to, f.carrier, f.flow].join("\u0001");
+    const list = groups.get(key);
+    if (list === undefined) groups.set(key, [i]);
+    else list.push(i);
+  });
+  return [...groups.values()].map((members) => ({ flow: members.length === 1 ? flows[members[0]] : bundledFlow(members.map((i) => flows[i])), members }));
+}
+
+function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
+  const head = parts[0];
+  const names = [...new Set(parts.flatMap((p) => (p.itemName ?? p.itemClassName) === null ? [] : [(p.itemName ?? p.itemClassName)!]))];
+  const unknownItems = parts.filter((p) => p.itemName === null && p.itemClassName === null).length;
+  const sure = parts.filter(known);
+  const quality: FlowQuality =
+    sure.length === 0
+      ? "unknown"
+      : sure.length < parts.length || parts.some((p) => p.quality === "atLeast")
+        ? "atLeast"
+        : parts.every((p) => p.quality === "measured")
+          ? "measured"
+          : "estimated";
+  const ratePerMinute = sure.length === 0 ? null : sure.reduce((sum, p) => sum + p.ratePerMinute!, 0);
+  const unit = head.unit;
+  const rateLine = quality === "unknown" ? null : aggregateRateText({ quality, ratePerMinute, unit });
+  const shown = names.slice(0, BUNDLE_NAMES);
+  const more = names.length - shown.length;
+  const mixed = parts.some((p) => p.mixed);
+  const head1 = shown.length > 0 ? shown.join(", ") : `${unknownItems} items unknown`;
+  const extras = [...(more > 0 ? [`+${more} more`] : []), ...(shown.length > 0 && unknownItems > 0 ? [`+${unknownItems} unknown`] : []), ...(mixed ? ["mixed"] : [])];
+  const routes = new Set(parts.map((p) => p.routeName));
+  return {
+    from: head.from,
+    to: head.to,
+    itemClassName: null,
+    itemName: null,
+    carrier: head.carrier,
+    flow: head.flow,
+    mixed,
+    rate: quality === "measured" ? "measured" : quality === "unknown" ? "unknown" : "estimated",
+    label: [`${parts.length} links`, ...parts.map((p) => p.label)].join("; "),
+    labelLines: [head1, ...(extras.length > 0 ? [extras.join(", ")] : []), ...(rateLine === null ? [] : [rateLine]), ...(head.flow === "excess" ? ["excess"] : [])],
+    routeName: routes.size === 1 ? head.routeName : undefined,
+    ratePerMinute,
+    unit,
+    quality,
+    parts: [...parts],
   };
 }
 
 /** How sure an edge's rate is, in the tables' words. */
 export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.rate === "measured" ? "measured" : flow.rate === "estimated" ? "estimated" : "rate unknown");
 
-/** A flow's tooltip and accessible words: "Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". */
+/**
+ * A flow's tooltip and accessible words: "Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
+ * lists every link it draws, each with its own rate: "A to B, 2 links: Iron Ingot · 30 items/min (measured); Steel Pipe
+ * (rate unknown)".
+ */
 export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const by = flow.carrier === "belt" || flow.carrier === "pipe" ? "" : `${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}: `;
+  if (flow.parts !== undefined && flow.parts.length > 1) {
+    return `${by}${from} to ${to}, ${flow.parts.length} links: ${flow.parts.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}`;
+  }
   return `${by}${from} to ${to}: ${flow.label} (${flowSureness(flow)})`;
 }
 

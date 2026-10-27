@@ -36,8 +36,13 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - Edges (ADR-0059): loops are broken first by `returnFlows` (depth-first from the sources; returns handed to dagre
   reversed, their routes turned back after), dagre places cards and label boxes (`tight-tree` ranker), then
   `orthogonalRoute.ts` redraws every edge in horizontal legs through columns and vertical legs in the empty gaps between
-  them, one track each, so no line crosses a card. `edgeShapes.ts` draws each bend as a rounded corner. If the router
-  throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
+  them, one track each (at least `TRACK_GAP` apart), so no line crosses a card. `edgeShapes.ts` draws each bend as a
+  rounded corner. If the router throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
+- One line per pair of cards (ADR-0059 amendment, 2026-10-27): `layoutScene` draws the links between the same two cards,
+  in one direction, on one carrier and of one kind as one edge (`bundleFlows` in `canvasScene.ts`), labelled with up to
+  `BUNDLE_NAMES` items, "+k more", "+n unknown" and the summed rate. `SiteLayout.flows` stays one entry per link and
+  `LaidEdge.parts` indexes them: the item filter lights an edge when any part matches, the tooltip (`flowTitle`) lists
+  every link with its own rate, and the Tables view is untouched. `SiteGraph` draws all lines, then all labels.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).
