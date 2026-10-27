@@ -287,7 +287,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const dragged = useRef(false);
   // Select mode (only with a selection) and the lasso being drawn, in layout units; the ref is what the window listeners see.
   const [selecting, setSelecting] = useState(false);
-  const selectMode = selecting && selection !== undefined;
+  // Select mode: in a factory it picks groups (a click, or a lasso); on the overview it picks factories for a merge (a
+  // click or a tap, the owner 2026-10-27: Shift-click alone left a phone, and anyone not told, no way to pick).
+  const overviewPicks = factoryPicks !== undefined && scene.level === "overview";
+  const selectMode = selecting && (selection !== undefined || overviewPicks);
+  const pickingFactories = selectMode && overviewPicks;
   const [lasso, setLasso] = useState<readonly Point[] | null>(null);
   const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);
   // The suggested factory whose Keep form is open, and the hidden Keep buttons that focus returns to.
@@ -678,7 +682,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     // A drag that ends on a card is not a click on it.
     if (dragged.current) return;
     // Shift- or Ctrl-click on the overview picks a factory for a merge instead of opening it.
-    if (additive && factoryPicks !== undefined && card.kind === "factory") {
+    if ((additive || pickingFactories) && factoryPicks !== undefined && card.kind === "factory") {
       factoryPicks.replace(toggled(factoryPicks.selected, card.key));
       return;
     }
@@ -838,8 +842,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             )}
           </div>
         )}
-        {selection !== undefined && (
-          <div role="group" aria-label="Designate" className="flex gap-2">
+        {(selection !== undefined || overviewPicks) && (
+          <div role="group" aria-label={selection !== undefined ? "Designate" : "Merge"} className="flex gap-2">
             <ToolButton
               name="Select"
               pressed={selectMode}
@@ -867,7 +871,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
       {/* What a drag does now, or what to do about a drawing that runs past the canvas; the line keeps its height. */}
       <p className="m-0 h-lh text-sm text-muted">
-        {selectMode
+        {pickingFactories
+          ? (
+              <>
+                <span className="sm:hidden">Tap factories to pick them for a merge.</span>
+                <span className="hidden sm:inline">Click factories to pick them for a merge; Escape clears.</span>
+              </>
+            )
+          : selectMode
           ? (
               // One line at any width: a phone has no Shift or Escape, and one finger now draws, so two move the view.
               <>
@@ -879,10 +890,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             ? "Drag or use the arrow keys to see more →"
             : factoryPicks !== undefined &&
               scene.level === "overview" && (
-                // One line at any width: a phone has no Shift, so it points at the Tables view's ticks.
+                // One line at any width: Select works everywhere; a keyboard or mouse also has Shift.
                 <>
-                  <span className="sm:hidden">Tick factories in Tables to merge them.</span>
-                  <span className="hidden sm:inline">Shift- or Ctrl-click factories (or Shift+Enter) to pick them for a merge, or tick them in Tables.</span>
+                  <span className="sm:hidden">Turn on Select to pick factories for a merge.</span>
+                  <span className="hidden sm:inline">Turn on Select (or Shift-click) to pick factories for a merge.</span>
                 </>
               )}
       </p>
@@ -909,7 +920,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             onClick={itemFocusOn ? onCanvasClick : undefined}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
-            className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode ? "cursor-crosshair" : "cursor-grab")}
+            className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode && !pickingFactories ? "cursor-crosshair" : "cursor-grab")}
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
@@ -1006,9 +1017,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             {tabOrder.map((n) => {
               const card = n.card;
               const count = findingsOf(n.key);
-              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}${factoryPicked(card) ? ", selected" : ""}`;
-              // In Select mode a pickable card's button picks it: a toggle, not an opener.
-              const picks = selectMode && pickable(card);
+              // In Select mode a pickable card's button picks it: a toggle, not an opener (on the overview, a factory).
+              const picksFactory = pickingFactories && card.kind === "factory";
+              const picks = (selectMode && pickable(card)) || picksFactory;
+              const what = picksFactory ? card.description : cardButtonName(card);
+              const name = `${what}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}${factoryPicked(card) && !picksFactory ? ", selected" : ""}`;
               return (
                 <li key={n.key}>
                   <button
@@ -1018,7 +1031,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                       else buttons.current.delete(n.key);
                     }}
                     aria-label={picks ? `Pick ${name}` : name}
-                    aria-pressed={picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
+                    aria-pressed={picksFactory ? factoryPicked(card) : picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
                     aria-expanded={picks ? undefined : card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
                     aria-controls={!picks && card.kind === "group" && openKey === n.key ? panelId : undefined}
                     onClick={(e) => {

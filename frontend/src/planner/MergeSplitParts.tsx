@@ -42,7 +42,7 @@ export function MergeBar({
     <div role="group" aria-label="Selected factories" className="grid gap-2">
       <div className="flex flex-wrap items-center gap-3">
         <span role="status" aria-live="polite" className="text-sm">
-          {picked.length === 0 ? "No factories selected" : `${factories(picked.length)} selected`}
+          {picked.length === 0 ? "No factories selected: turn on Select above to pick some" : `${factories(picked.length)} selected`}
         </span>
         {!open && (
           <>

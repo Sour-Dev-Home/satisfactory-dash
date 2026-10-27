@@ -62,5 +62,47 @@ describe("picking factories on the overview canvas", () => {
     fireEvent.click(factoryCards(svg)[0]!, { shiftKey: true });
     expect(screen.queryByRole("group", { name: "Selected factories" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Groups", hidden: true })).toBeInTheDocument();
+    // No Select tool either: a viewer cannot merge.
+    expect(screen.queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the overview's Select tool (the owner, 2026-10-27)", () => {
+  it("says how to pick while nothing is picked, and turns a plain click or tap into a pick", async () => {
+    renderView();
+    const svg = await overview();
+    const bar = screen.getByRole("group", { name: "Selected factories" });
+    expect(within(bar).getByRole("status")).toHaveTextContent("No factories selected: turn on Select above to pick some");
+    const select = within(screen.getByRole("group", { name: "Merge" })).getByRole("button", { name: "Select" });
+    expect(select).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(select);
+    expect(select).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Click factories to pick them for a merge; Escape clears.")).toBeInTheDocument();
+    const [first, second] = factoryCards(svg);
+    fireEvent.click(first!);
+    fireEvent.click(second!);
+    expect(first).toHaveAttribute("data-picked", "true");
+    expect(within(bar).getByRole("status")).toHaveTextContent("2 factories selected");
+    // A plain click on a picked factory unpicks it; nothing opens while Select is on.
+    fireEvent.click(second!);
+    expect(within(bar).getByRole("status")).toHaveTextContent("1 factory selected");
+    expect(screen.queryByRole("heading", { name: "Groups", hidden: true })).not.toBeInTheDocument();
+    // Off again: a click opens.
+    fireEvent.click(select);
+    fireEvent.click(second!);
+    expect(await screen.findByRole("heading", { name: "Groups", hidden: true })).toBeInTheDocument();
+  });
+
+  it("makes each factory's keyboard button a pick toggle while Select is on", async () => {
+    renderView();
+    await overview();
+    fireEvent.click(within(screen.getByRole("group", { name: "Merge" })).getByRole("button", { name: "Select" }));
+    const picks = screen.getAllByRole("button", { name: /^Pick / });
+    expect(picks.length).toBeGreaterThan(1);
+    expect(picks[0]).toHaveAttribute("aria-pressed", "false");
+    expect(picks[0].getAttribute("aria-label")).not.toMatch(/Open factory/);
+    fireEvent.click(picks[0]);
+    expect(picks[0]).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status")).toHaveTextContent("1 factory selected");
   });
 });
