@@ -634,6 +634,26 @@ describe("the conveyors nudge", () => {
     await h.stop();
   });
 
+  it("a failing conveyors read keeps its 10 minute schedule: nudges never retry it every minute", async () => {
+    const h = setup();
+    h.ports.getConveyors.mockRejectedValue(new Error("FRM down"));
+    await h.start();
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    for (let t = 0; t < 19; t++) {
+      h.reader.observeFactoryBuildings([`b${t}`]);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1); // 9.5 minutes of changes, no retry
+    // The scheduled read at 10 minutes succeeds; from then on a change reads sooner again.
+    h.ports.getConveyors.mockImplementation(async () => ({ data: h.world.conveyors, dropped: 0 }));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    h.reader.observeFactoryBuildings(["z"]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(3);
+    await h.stop();
+  });
+
   it("a nudge before run() or after stop reads nothing extra and never throws", async () => {
     const h = setup();
     h.reader.observeFactoryBuildings(["a"]);

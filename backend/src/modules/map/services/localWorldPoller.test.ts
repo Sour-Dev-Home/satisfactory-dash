@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { LocalWorldPoller, observeFactoryReads } from "./localWorldPoller.js";
-import type { LocalWorldPollerPorts } from "./localWorldPoller.js";
+import type { FactoryReadPorts, LocalWorldPollerPorts } from "./localWorldPoller.js";
+import type { FactoryBuilding, Player, PowerCircuit, ServerHealth, ServerStatus } from "../../gameserver/index.js";
 
 function fakeLogger() {
   return { warn: vi.fn(), info: vi.fn(), error: vi.fn() } as unknown as import("pino").Logger;
@@ -404,6 +405,46 @@ describe("LocalWorldPoller conveyors nudge", () => {
     expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
   }));
 
+  it("a failing conveyors loop keeps its 10 minute schedule: nudges never retry it every minute", withFakeTimers(async () => {
+    const getConveyors = vi.fn().mockRejectedValue(new Error("FRM down"));
+    const { fakes, poller } = await startPoller(fakePorts({ getConveyors }));
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+    // A building change every 30 s for 9.5 minutes: without the backoff rule each would retry a minute apart.
+    for (let t = 0; t < 19; t++) {
+      poller.observeFactoryBuildings([`b${t}`]);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000); // 10 minutes: the scheduled read
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    await poller.stop();
+  }));
+
+  it("a nudge during a read that then fails does not schedule an extra read", withFakeTimers(async () => {
+    let fail!: () => void;
+    const getConveyors = vi
+      .fn()
+      .mockResolvedValueOnce(empty)
+      .mockReturnValueOnce(new Promise((_resolve, reject) => (fail = () => reject(new Error("FRM down")))))
+      .mockResolvedValue(empty);
+    const { fakes, poller } = await startPoller(fakePorts({ getConveyors }));
+    poller.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    poller.observeFactoryBuildings(["b"]); // read 2 starts and hangs
+    await vi.advanceTimersByTimeAsync(0);
+    poller.observeFactoryBuildings(["c"]); // queued after read 2
+    fail();
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    // Once a scheduled read succeeds, nudges work again.
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(3);
+    poller.observeFactoryBuildings(["d"]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(4);
+    await poller.stop();
+  }));
+
   it("a nudge after stop() reads nothing", withFakeTimers(async () => {
     const { fakes, poller } = await startPoller();
     poller.observeFactoryBuildings(["a"]);
@@ -415,51 +456,64 @@ describe("LocalWorldPoller conveyors nudge", () => {
 });
 
 describe("observeFactoryReads", () => {
+  const readPorts = (overrides: Partial<FactoryReadPorts> = {}): FactoryReadPorts => ({
+    getServerHealth: vi.fn().mockResolvedValue("health"),
+    getServerStatus: vi.fn().mockResolvedValue("status"),
+    getFactoryBuildings: vi.fn().mockResolvedValue([]),
+    getPowerCircuits: vi.fn().mockResolvedValue("circuits"),
+    getPlayers: vi.fn().mockResolvedValue("players"),
+    ...overrides,
+  });
+
   it("hands each factory read's building ids to the observer and returns the read unchanged", async () => {
-    const buildings = [{ id: "b1", name: "Constructor" }, { id: "b2", name: "Smelter" }];
-    const ports = { getFactoryBuildings: vi.fn().mockResolvedValue(buildings), getServerStatus: vi.fn().mockResolvedValue("ok") };
+    const buildings = [{ id: "b1", name: "Constructor" }, { id: "b2", name: "Smelter" }] as unknown as FactoryBuilding[];
+    const ports = readPorts({ getFactoryBuildings: vi.fn().mockResolvedValue(buildings) });
     const observe = vi.fn();
     const wrapped = observeFactoryReads(ports, observe);
     await expect(wrapped.getFactoryBuildings()).resolves.toBe(buildings);
     expect(observe).toHaveBeenCalledWith(["b1", "b2"]);
-    await expect(wrapped.getServerStatus()).resolves.toBe("ok");
+    await expect(wrapped.getServerStatus()).resolves.toBe("status");
     expect(observe).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the other methods bound to the original object", async () => {
-    class Adapter {
-      private readonly secret = "s";
-      async getFactoryBuildings() {
-        return [{ id: this.secret }];
+  it("every method telemetry calls reaches the original, this-bound, and only the factory read is observed", async () => {
+    class Adapter implements FactoryReadPorts {
+      readonly calls: string[] = [];
+      private record<R>(name: string, value: R): Promise<R> {
+        this.calls.push(name);
+        return Promise.resolve(value);
       }
-      async getServerStatus() {
-        return this.secret;
+      getServerHealth() {
+        return this.record("getServerHealth", "health" as unknown as ServerHealth);
       }
-    }
-    const wrapped = observeFactoryReads(new Adapter(), vi.fn());
-    await expect(wrapped.getServerStatus()).resolves.toBe("s");
-    await expect(wrapped.getFactoryBuildings()).resolves.toEqual([{ id: "s" }]);
-  });
-
-  it("passes getters, symbols and instanceof through to the original", () => {
-    const tag = Symbol("tag");
-    class Adapter {
-      [tag] = 7;
-      get name() {
-        return this.constructor.name;
+      getServerStatus() {
+        return this.record("getServerStatus", "status" as unknown as ServerStatus);
       }
-      async getFactoryBuildings() {
-        return [];
+      getFactoryBuildings() {
+        return this.record("getFactoryBuildings", [{ id: "f1" }] as unknown as FactoryBuilding[]);
+      }
+      getPowerCircuits() {
+        return this.record("getPowerCircuits", "circuits" as unknown as PowerCircuit[]);
+      }
+      getPlayers() {
+        return this.record("getPlayers", "players" as unknown as Player[]);
       }
     }
-    const wrapped = observeFactoryReads(new Adapter(), vi.fn());
-    expect(wrapped.name).toBe("Adapter");
-    expect((wrapped as unknown as Record<symbol, number>)[tag]).toBe(7);
-    expect(wrapped instanceof Adapter).toBe(true);
+    const adapter = new Adapter();
+    const observe = vi.fn();
+    const wrapped = observeFactoryReads(adapter, observe);
+    await expect(wrapped.getServerHealth()).resolves.toBe("health");
+    await expect(wrapped.getServerStatus()).resolves.toBe("status");
+    await expect(wrapped.getPowerCircuits()).resolves.toBe("circuits");
+    await expect(wrapped.getPlayers()).resolves.toBe("players");
+    await expect(wrapped.getFactoryBuildings()).resolves.toEqual([{ id: "f1" }]);
+    expect(adapter.calls).toEqual(["getServerHealth", "getServerStatus", "getPowerCircuits", "getPlayers", "getFactoryBuildings"]);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(observe).toHaveBeenCalledWith(["f1"]);
   });
 
   it("a throwing observer never fails the factory read; a failed read is not observed", async () => {
-    const ports = { getFactoryBuildings: vi.fn().mockResolvedValueOnce([{ id: "b1" }]).mockRejectedValueOnce(new Error("down")) };
+    const ports = readPorts({ getFactoryBuildings: vi.fn().mockResolvedValueOnce([{ id: "b1" }]).mockRejectedValueOnce(new Error("down")) });
     const observe = vi.fn(() => {
       throw new Error("boom");
     });

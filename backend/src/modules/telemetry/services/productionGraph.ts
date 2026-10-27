@@ -964,6 +964,7 @@ export function buildProductionGraphWithStats(
   });
 
   // ---- unconnected machines and notes ----
+  // At most 6 notes (the contract caps them at 8): logistics' 2 (duplicate station, unknown stop) and the 4 below, each once.
   // An id the contract cannot carry (empty, or over 128 characters) can never be named by a conveyor either, so it is left out.
   const allUnconnected = sorted.filter((b) => b.recipe !== null && !g.idToNode.has(b.id) && b.id.length >= 1 && b.id.length <= 128).map((b) => b.id);
   const unconnectedMachineIds = allUnconnected.slice(0, 20_000);

@@ -154,7 +154,8 @@ export class WorldReader {
       await this.cycle(layer, state, read);
       if (signal.aborted) return;
       const delayMs = jitteredIntervalMs(intervalMs, this.options.random);
-      if (nudgeable) await this.sleepConveyors(delayMs, sleep);
+      // A failing read keeps its regular schedule: nudges never turn it into a retry every minute (as the local poller).
+      if (nudgeable && !state.readFailing) await this.sleepConveyors(delayMs, sleep);
       else await sleep(delayMs, signal);
     }
   }

@@ -1,7 +1,22 @@
 import { createHash } from "node:crypto";
 import type { Logger } from "pino";
 import type { ConveyorsSkipReason, MapWorldLayer } from "@satisfactory-dash/shared";
-import type { MappedConveyors, MappedDroneRoutes, MappedMapMarkers, MappedPowerLines, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
+import type {
+  FactoryBuilding,
+  MappedConveyors,
+  MappedDroneRoutes,
+  MappedMapMarkers,
+  MappedPowerLines,
+  MappedRailSegments,
+  MappedResourceNodes,
+  MappedTrainRoutes,
+  MappedTrains,
+  MappedTrainStations,
+  Player,
+  PowerCircuit,
+  ServerHealth,
+  ServerStatus,
+} from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { MapLiveSink } from "./mapLiveStore.js";
 import type { WorldIngestPort } from "./worldIngestService.js";
@@ -96,12 +111,15 @@ class Loop {
 
   /**
    * Reads sooner (#728 step 6): once `minGapMs` has passed since the last read started (at once if it has), never later
-   * than the read already scheduled. A nudge during a read schedules one more after it, under the same gap.
+   * than the read already scheduled. A nudge during a read schedules one more after it, under the same gap. A loop whose
+   * last read failed ignores nudges until a scheduled read succeeds.
    */
   nudge(minGapMs: number): void {
     // Only a running loop: a nudge never starts one (ADR-0054 D3: the pollers run on the leader only, but any instance
     // serves the factory reads that nudge).
     if (!this.started || this.stopped) return;
+    // A failing read keeps its backed-off schedule (tick's finally): nudges never turn it into a retry every gap.
+    if (this.consecutiveFailures > 0) return;
     if (this.running) {
       this.nudgeAfterRun = Math.max(this.nudgeAfterRun ?? 0, minGapMs);
       return;
@@ -181,27 +199,39 @@ export class BuildingSetWatcher {
 }
 
 /**
- * The given ports with `getFactoryBuildings` reporting each successful read's building ids to `observe` (the composition
- * root feeds the local poller's nudge from the factory reads telemetry already makes). Every other member is the
- * original's, bound to it. An observer that throws never fails the read.
+ * The game-server reads telemetry makes: telemetry's `TelemetryPorts`, restated here because map never imports telemetry.
+ * server.ts hands the decorated ports to `createTelemetryServices`, so a method telemetry adds and this lacks fails the
+ * typecheck there.
  */
-export function observeFactoryReads<T extends { getFactoryBuildings(): Promise<readonly { id: string }[]> }>(ports: T, observe: (ids: string[]) => void): T {
-  const getFactoryBuildings = async () => {
-    const buildings = await ports.getFactoryBuildings();
-    try {
-      observe(buildings.map((b) => b.id));
-    } catch {
-      // The nudge is an optimisation; the factory read is what the caller asked for.
-    }
-    return buildings;
-  };
-  return new Proxy(ports, {
-    get(target, prop) {
-      if (prop === "getFactoryBuildings") return getFactoryBuildings;
-      const value: unknown = Reflect.get(target, prop, target);
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+export interface FactoryReadPorts {
+  getServerHealth(): Promise<ServerHealth>;
+  getServerStatus(): Promise<ServerStatus>;
+  getFactoryBuildings(): Promise<FactoryBuilding[]>;
+  getPowerCircuits(): Promise<PowerCircuit[]>;
+  getPlayers(): Promise<Player[]>;
+}
+
+/**
+ * A decorator over the reads telemetry makes (the composition root feeds the local poller's nudge from the factory reads
+ * telemetry already makes): `getFactoryBuildings` reports each successful read's building ids to `observe`; every other
+ * method calls the original's, on the original. An observer that throws never fails the read.
+ */
+export function observeFactoryReads(ports: FactoryReadPorts, observe: (ids: string[]) => void): FactoryReadPorts {
+  return {
+    getServerHealth: () => ports.getServerHealth(),
+    getServerStatus: () => ports.getServerStatus(),
+    getPowerCircuits: () => ports.getPowerCircuits(),
+    getPlayers: () => ports.getPlayers(),
+    getFactoryBuildings: async () => {
+      const buildings = await ports.getFactoryBuildings();
+      try {
+        observe(buildings.map((b) => b.id));
+      } catch {
+        // The nudge is an optimisation; the factory read is what the caller asked for.
+      }
+      return buildings;
     },
-  });
+  };
 }
 
 /**
