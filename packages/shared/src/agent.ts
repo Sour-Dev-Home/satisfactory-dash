@@ -85,6 +85,8 @@ export const AGENT_INPUT_MAX_PLAYERS = 256;
 const boundedString = z.string().max(AGENT_INPUT_MAX_STRING);
 /** The longest `modVersion` a snapshot sender may report (S4-A). */
 export const SENDER_VERSION_MAX = 64;
+/** The sender's version (`modVersion`), as a snapshot reports it and the agent status repeats it. */
+export const SenderVersionSchema = z.string().min(1).max(SENDER_VERSION_MAX);
 
 export const AgentPowerCircuitSchema = PowerCircuitSchema.omit({ status: true }).extend({
   productionMW: z.number().min(0),
@@ -133,12 +135,9 @@ export const SnapshotRequestSchema = z
       "When the sender last read the game successfully (its own clock, with an offset); may be older than observedAt when " +
         "the game is unreachable. Absent = never read since the sender started, or an older sender",
     ),
-    modVersion: z
-      .string()
-      .min(1)
-      .max(SENDER_VERSION_MAX)
-      .optional()
-      .describe("The sender's version, the mod's or the agent's, 1 to 64 characters. Absent = an older sender"),
+    modVersion: SenderVersionSchema.optional().describe(
+      "The sender's version, the mod's or the agent's, 1 to 64 characters. Absent = an older sender",
+    ),
     settings: z
       .strictObject({
         autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot"),
@@ -229,6 +228,17 @@ export const AgentStatusResponseSchema = z.object({
   lastSeenAt: IsoTimeSchema.nullable().describe("The agent's last request, or null when none is enrolled or it never reported"),
   agentVersion: z.string().nullable().describe("The version the agent last reported, or null"),
   connectionKind: z.string().describe("How the backend reaches this server. Known: local, agent"),
+  // #740 follow-up: the latest values of the snapshot's optional `gameReachable`, `lastGameReadAt` and `modVersion`, with the
+  // same types and bounds. Each is OPTIONAL: absent when the backend has none (no agent enrolled, an older agent that does not
+  // report it, or an older backend), so an older backend's answer still parses.
+  gameReachable: z
+    .boolean()
+    .optional()
+    .describe("The agent's latest `gameReachable`: true = it could read the game in its last snapshot. Absent = not reported"),
+  lastGameReadAt: IsoTimeSchema.optional().describe(
+    "The latest `lastGameReadAt` the agent reported: when it last read the game successfully. Only moves forward. Absent = not reported",
+  ),
+  modVersion: SenderVersionSchema.optional().describe("The latest `modVersion` the agent reported, 1 to 64 characters. Absent = not reported"),
 });
 
 /** DELETE /agent (owner/admin): the credential stops working at once. */
