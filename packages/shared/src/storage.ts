@@ -9,7 +9,8 @@ import { BuildingLocationSchema } from "./factory";
  *
  * Containers are storage containers, industrial containers, personal boxes, dimensional depot uploaders and fluid
  * buffers (pipe reservoirs). A fluid buffer has no slots: `slots` and `slotsUsed` are 0, its one item is the fluid in m³
- * and `fluidCapacityM3` is its size. Units per ADR-0006.
+ * and `fluidCapacityM3` is its size. The ONE test for a fluid buffer is `fluidCapacityM3 !== undefined`; `slots === 0` is
+ * not (a container with no slots read, such as a dimensional depot uploader, may also have 0). Units per ADR-0006.
  */
 export const STORAGE_MAX_CONTAINERS = 2_000;
 export const STORAGE_MAX_ITEMS_PER_CONTAINER = 64;
@@ -33,7 +34,7 @@ export const StorageContainerSchema = z.object({
   location: BuildingLocationSchema.optional().describe("World position in metres (ADR-0023)"),
   slots: z.number().int().min(0).describe("Inventory slots; 0 for a fluid buffer"),
   slotsUsed: z.number().int().min(0).describe("Slots holding anything; 0 for a fluid buffer"),
-  fluidCapacityM3: z.number().min(0).optional().describe("A fluid buffer's size in m³; absent for an item container"),
+  fluidCapacityM3: z.number().min(0).optional().describe("A fluid buffer's size in m³; present only on a fluid buffer, so it is the test for one (not `slots === 0`)"),
   items: z.array(StorageItemSchema).describe("One entry per item class held, merged across slots; empty when the container is empty"),
 });
 
