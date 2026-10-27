@@ -26,8 +26,11 @@ import {
   extractorOutputText,
   groupsExtractorOutput,
   isStaleNode,
+  minedRates,
+  minedSummary,
   nameOr,
   nodeFacts,
+  type MinedRate,
   nodeSummary,
   makesNothing,
   NO_OUTPUT_DATA,
@@ -338,11 +341,12 @@ const staleCardLines = (): Pick<Card, "lines" | "mutedFrom"> => ({ lines: staleN
  * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
  * recipe, the other outputs and the loop marker are in `description` (the tooltip and the keyboard name) and the side
  * panel; `facts` are the further words the factory view adds (the share split, where the group stands, storage chips).
+ * `rates` (`minedRates` of the graph's edges) gives an extractor's card its rate.
  */
-export function groupCard(node: PlannerNode, facts: string[] = []): Card {
+export function groupCard(node: PlannerNode, facts: string[] = [], rates?: ReadonlyMap<string, MinedRate | null>): Card {
   const shown = withName(node);
-  const { outputs, loop } = nodeFacts(node);
-  const summary = nodeSummary(node);
+  const { outputs, loop } = nodeFacts(node, rates);
+  const summary = nodeSummary(node, rates);
   return {
     ...blank,
     key: node.key,
@@ -360,13 +364,13 @@ export function groupCard(node: PlannerNode, facts: string[] = []): Card {
   };
 }
 
-function bubbleCard(bubble: Bubble, chips: string[]): Card {
+function bubbleCard(bubble: Bubble, chips: string[], rates: ReadonlyMap<string, MinedRate | null>): Card {
   const first = withName(bubble.nodes[0]);
   const title = bubbleTitle({ ...bubble, nodes: [first, ...bubble.nodes.slice(1)] });
   const tree = bubble.of > 1 ? ` · tree ${bubble.ordinal} of ${bubble.of}` : "";
   const groups = plural(bubble.nodes.length, "group", "groups");
   const loop = bubble.nodes.some((n) => n.loop === true);
-  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes) : null;
+  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes, rates) : null;
   const states = mergeStateCounts(bubble.nodes.map((n) => n.stateCounts));
   const stale = bubble.nodes.every(isStaleNode);
   const outputs = stale
@@ -387,7 +391,7 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
     ...(stale
       ? staleCardLines()
       : withMutedNote(
-          [mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+          [mined !== null ? minedSummary(mined) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
           mined,
           stalledNote(bubble.products[0], states),
         )),
@@ -431,10 +435,11 @@ function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
 export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
   const nodes = siteNodes(graph, site);
   const keys = new Set(nodes.map((n) => n.key));
+  const rates = minedRates(graph.edges);
   return {
     level: "site",
     name: site.name,
-    cards: nodes.map((n) => groupCard(n)),
+    cards: nodes.map((n) => groupCard(n, [], rates)),
     frames: [],
     flows: graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)).map(edgeFlow),
     bubbleKeys: [],
@@ -634,6 +639,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
 
   const factoryNames = new Map((graph.factories ?? []).map((f) => [f.key, f.name]));
   const remote = remoteInfo(graph, model);
+  const rates = minedRates(graph.edges);
   const chipLines = (keys: readonly string[]): string[] => {
     const n = keys.reduce((sum, k) => sum + (folded.chips.get(k) ?? 0), 0);
     return n === 0 ? [] : [destinationChipText("storage", n)];
@@ -645,7 +651,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     const away = remote.get(node.key);
     if (away !== undefined) extra.push(remoteText(away));
     extra.push(...chipLines([node.key]));
-    return groupCard(node, extra);
+    return groupCard(node, extra, rates);
   };
 
   const cards: Card[] = [];
@@ -660,7 +666,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     }
     bubbleKeys.push(bubble.key);
     if (!expanded(bubble.key)) {
-      cards.push(bubbleCard(bubble, chipLines(bubble.nodes.map((n) => n.key))));
+      cards.push(bubbleCard(bubble, chipLines(bubble.nodes.map((n) => n.key)), rates));
       return;
     }
     const frame = `frame|${bubble.key}`;

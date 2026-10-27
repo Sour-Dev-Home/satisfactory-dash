@@ -5,7 +5,7 @@ import { useReducedMotion } from "../../overview/reducedMotion";
 import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
-import { reachFor, siteItems } from "./graphModel";
+import { minedRates, reachFor, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
 import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
 import type { GlyphKind } from "./buildingIcons";
@@ -33,6 +33,7 @@ import {
   type LaidNode,
   type SiteLayout,
 } from "./layoutSite";
+import { useFolds } from "./foldMemory";
 import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
@@ -208,10 +209,12 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * button) picks or unpicks one card instead of opening it.
  */
 export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut }: SiteGraphProps) {
-  // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
-  // choices: whose upstream is hidden, storage shown, motion.
-  const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
-  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
+  // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
+  // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
+  const [folds, setFolds] = useFolds(target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : null);
+  const { flipped, unfolded } = folds;
+  const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next });
+  const setUnfolded = (next: ReadonlySet<string>) => setFolds({ unfolded: next });
   const [collapsed, setCollapsed] = useCollapsedUpstream();
   const [storageDetail, setStorageDetail] = useStorageDetail();
   const [motionPref, setMotionPref] = useMotionPref();
@@ -225,6 +228,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     [target, graph, view],
   );
   const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
   // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
   // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
   const [itemFocusOn] = useState(readItemFocus);
@@ -1100,6 +1104,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               id={panelId}
               node={openNode}
               facts={laidByKey.get(openNode.key)?.card.facts}
+              rates={rates}
               findings={findings}
               onClose={close}
               onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}

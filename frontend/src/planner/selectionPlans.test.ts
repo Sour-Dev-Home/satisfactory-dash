@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ProductionGraphResponseSchema, type PlannerDesignation, type ProductionGraph } from "@satisfactory-dash/shared";
+import { PLANNER_MAX_MACHINE_IDS, ProductionGraphResponseSchema, type PlannerDesignation, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import type { Place } from "./designationMatch";
 import { NEEDS_NEWER_BACKEND, TOO_FEW_TO_MERGE } from "./designationOps";
@@ -51,6 +51,22 @@ describe("mergeSources", () => {
     expect(mergeSources(apart, factoryModels(apart), [], places)).toEqual({ ok: false, reason: NOT_CONNECTED_TEXT });
   });
 
+  it("merges a suggested factory whose storage container end has no Factory-read building (count above its listed ids)", () => {
+    // The backend counts every conveyor end in `count` but lists an id only for an end a Factory-read building matches.
+    const bare: ProductionGraph = { ...graph, nodes: graph.nodes.map((n) => (n.kind === "storage" ? { ...n, count: 1, machineIds: [] } : n)) };
+    expect(bare.nodes.some((n) => n.kind === "storage")).toBe(true);
+    const result = mergeSources(bare, factoryModels(bare), [], places);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.suggested.flat().some((m) => m.id?.startsWith("Build_StorageContainer"))).toBe(false);
+  });
+
+  it("still refuses a group whose ids the graph cut at the cap", () => {
+    const at = graph.nodes.findIndex((n) => n.kind === "machines");
+    const ids = Array.from({ length: PLANNER_MAX_MACHINE_IDS }, (_, i) => `big#${i}`);
+    const big: ProductionGraph = { ...graph, nodes: graph.nodes.map((n, i) => (i === at ? { ...n, count: PLANNER_MAX_MACHINE_IDS + 1, machineIds: ids } : n)) };
+    expect(mergeSources(big, factoryModels(big), [], places)).toEqual({ ok: false, reason: "These groups are too large to designate whole." });
+  });
+
   it("waits for the machine positions of a suggestion", () => {
     expect(mergeSources(graph, models, [], undefined)).toEqual({ ok: false, reason: "Machine positions are still loading." });
   });
@@ -62,7 +78,10 @@ describe("splitMachines", () => {
     const result = splitMachines([a!, b!]);
     if (!result.ok) throw new Error(result.reason);
     expect(result.machineIds.size).toBe(a!.count + b!.count);
-    expect(splitMachines([{ ...a!, machineIds: [] }]).ok).toBe(false);
+    const cut = Array.from({ length: PLANNER_MAX_MACHINE_IDS }, (_, i) => `cut#${i}`);
+    expect(splitMachines([{ ...a!, count: PLANNER_MAX_MACHINE_IDS + 1, machineIds: cut }]).ok).toBe(false);
+    // Ends with no building (storage, a stale end) count but list no id; under the cap the group is listed whole.
+    expect(splitMachines([{ ...a!, count: a!.count + 1 }]).ok).toBe(true);
     expect(splitMachines([]).ok).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ import { splitSourceOf } from "./selectionPlans";
 import { UndoToast } from "./UndoToast";
 import { usePopOut } from "./usePopOut";
 import { LazySiteGraph } from "./graph/GraphLoader";
+import { minedRates } from "./graph/graphModel";
 import {
   connectionRows,
   factoryModels,
@@ -265,6 +266,7 @@ function Detail({
   const rows = useMemo(() => connectionRows(graph, new Set(nodes.map((n) => n.key))), [graph, nodes]);
   const byKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const factoryNames = useMemo(() => new Map((graph.factories ?? []).map((f) => [f.key, f.name])), [graph]);
+  const rates = useMemo(() => minedRates(graph.edges), [graph]);
   const owner = useMemo(() => factoryOfNode(graph), [graph]);
   const columns: FactoryColumns | undefined = useMemo(
     () => (factory === undefined ? undefined : { remote: remoteInfo(graph, factory), nameOf: factoryNames }),
@@ -394,7 +396,7 @@ function Detail({
         {nodes.length === 0 ? (
           <p className="m-0">This {noun} lists no machine groups.</p>
         ) : (
-          <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} />
+          <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} rates={rates} />
         )}
       </section>
 
