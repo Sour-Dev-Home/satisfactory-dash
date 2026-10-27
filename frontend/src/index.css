@@ -663,11 +663,12 @@
 
   /* The metrics charts' "Time: –" legend item is noise at rest (the axis has the time) and wrapped onto its own line on
      a phone: shown only while the pointer is over the chart, where it names the hovered hour (ui-reviewer). */
+  /* !important: this sits in a cascade layer and uPlot's stylesheet (.u-inline tr) is unlayered, so it would win. */
   .trend-chart .u-legend .u-series:first-child {
-    display: none;
+    display: none !important;
   }
   .trend-chart:hover .u-legend .u-series:first-child {
-    display: inline-block;
+    display: inline-block !important;
   }
 }
 
