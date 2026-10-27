@@ -77,6 +77,8 @@ import {
   TrainRoutesWorldLayerResponseSchema,
   DroneRoutesWorldIngestRequestSchema,
   DroneRoutesWorldLayerResponseSchema,
+  MapMarkersWorldIngestRequestSchema,
+  MapMarkersWorldLayerResponseSchema,
   ConveyorsWorldIngestRequestSchema,
   ConveyorsWorldLayerResponseSchema,
   RailsWorldIngestRequestSchema,
@@ -181,6 +183,9 @@ const schemaByPrefix: [string, z.ZodType][] = [
   // ADR-0055 Decision 1: the droneRoutes world layer.
   ["droneRoutesWorldResponse", DroneRoutesWorldLayerResponseSchema],
   ["droneRoutesSample", DroneRoutesWorldIngestRequestSchema],
+  // ADR-0038 §1: the mapMarkers world layer.
+  ["mapMarkersWorldResponse", MapMarkersWorldLayerResponseSchema],
+  ["mapMarkersSample", MapMarkersWorldIngestRequestSchema],
   ["command", CommandResponseSchema],
   ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],
