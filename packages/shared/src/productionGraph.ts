@@ -76,6 +76,13 @@ export const PlannerNodeSchema = z.object({
     .describe("Only when the node is shared between factories: its top design-rate shares"),
   collapseUnder: Key.nullable().optional().describe("Immediate post-dominator in its factory; null = none"),
   role: z.string().max(20).optional().describe(`Known: ${KNOWN_PLANNER_NODE_ROLES.join(", ")}`),
+  // #728 cause 11: separate from `role` (what the node does), since this is about how old its data is.
+  stale: z
+    .literal(true)
+    .optional()
+    .describe(
+      "Built only from conveyor ends that name machines the latest factory read lacks (the conveyor data is older); absent = not stale",
+    ),
 });
 
 export const PlannerEdgeSchema = z.object({
