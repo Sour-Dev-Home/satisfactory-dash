@@ -4,7 +4,7 @@ import { DataAge } from "../components/DataAge";
 import { formatTime } from "../format";
 import { cn } from "../lib/cn";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
-import { BottleneckBadge } from "./BottleneckBadge";
+import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
 import { FactoryFacts, FactoryFlows } from "./FactoryParts";
 import { useDesignationChanges } from "./designationChanges";
 import { DesignateBar, DesignatedControls, ErrorLine } from "./DesignationParts";
@@ -69,12 +69,7 @@ function SiteCard({
           ))}
         </ul>
       )}
-      {/* Without the bottlenecks read there is nothing to count, so the line is left out rather than guessed. */}
-      {findings !== undefined && (
-        <p className="m-0 text-sm">
-          <BottleneckBadge count={siteFindings(nodes, findings).length} what={site.name} />
-        </p>
-      )}
+      <BottleneckLine count={findings === undefined ? undefined : siteFindings(nodes, findings).length} what={site.name} />
       {/* The name starts with the visible words (WCAG 2.5.3, label in name), then says which site. */}
       <button type="button" onClick={onOpen} aria-label={`Open site: ${site.name}`} className="min-h-touch justify-self-start">
         Open site

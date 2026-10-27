@@ -70,11 +70,35 @@ describe("PlannerView: the site overview", () => {
     expect(await within(await card("Copper Ingot site")).findByText("No bottlenecks")).toBeInTheDocument();
   });
 
-  it("leaves the bottleneck line out while the finder's read has not answered", async () => {
+  it("holds the bottleneck line empty, a line tall, while the finder's read has not answered", async () => {
     server.use(http.get(endpoints.bottlenecks.route, () => new Promise<never>(() => {})));
     renderView();
     const iron = await card("Iron Plate site");
     expect(within(iron).queryByText(/bottleneck/i)).not.toBeInTheDocument();
+    const line = iron.querySelector("[data-bottleneck-line]");
+    expect(line).toHaveClass("min-h-lh");
+    expect(line).toBeEmptyDOMElement();
+  });
+
+  it("fills the reserved bottleneck line in place when the late read answers, so nothing below it moves", async () => {
+    // The bottlenecks read is not one the reveal waits for: it can answer after the cards are on screen (#494).
+    let answer: () => void = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    server.use(
+      http.get(endpoints.bottlenecks.route, async () => {
+        await answered;
+        return HttpResponse.json(findingOnIronSite);
+      }),
+    );
+    renderView();
+    const iron = await card("Iron Plate site");
+    const before = iron.querySelector("[data-bottleneck-line]");
+    const shape = Array.from(iron.children, (el) => el.tagName);
+    expect(before).not.toBeNull();
+    answer();
+    await within(iron).findByRole("link", { name: /1 bottleneck in Iron Plate site/ });
+    expect(iron.querySelector("[data-bottleneck-line]")).toBe(before);
+    expect(Array.from(iron.children, (el) => el.tagName)).toEqual(shape);
   });
 
   it("says how many machines are on no conveyor, and the refresh note", async () => {
