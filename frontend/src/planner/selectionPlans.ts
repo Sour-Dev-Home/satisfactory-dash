@@ -1,7 +1,7 @@
 import type { PlannerDesignation, PlannerDesignationMatch, PlannerDesignationMember, PlannerNode, ProductionGraph } from "@satisfactory-dash/shared";
 import { isStaleDesignation } from "../api/plannerWrites";
 import { factoriesConnected, partsOf } from "./connectivity";
-import { membersOf, type Place } from "./designationMatch";
+import { listedInPart, membersOf, type Place } from "./designationMatch";
 import { MERGE_MAX, TOO_FEW_TO_MERGE, TOO_MANY_TO_MERGE, mergeRequest } from "./designationOps";
 import { NOT_CONNECTED_TEXT } from "./designationText";
 import type { FactoryModel } from "./graph/hierarchy";
@@ -84,7 +84,7 @@ export type SplitMachines = { ok: true; machineIds: Set<string> } | { ok: false;
 export function splitMachines(nodes: readonly PlannerNode[]): SplitMachines {
   if (nodes.length === 0) return { ok: false, reason: "Tick groups to split them into a new factory." };
   // The graph lists at most so many ids per group; a bigger group would be split in part.
-  if (nodes.some((n) => n.machineIds.length < n.count)) return { ok: false, reason: "These groups are too large to split whole." };
+  if (nodes.some(listedInPart)) return { ok: false, reason: "These groups are too large to split whole." };
   return { ok: true, machineIds: new Set(nodes.flatMap((n) => n.machineIds)) };
 }
 

@@ -558,6 +558,18 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(only(g)).toMatchObject({ kind: "pipe", itemClassName: "Desc_Water_C", itemName: "Water", itemFrom: "resourceNode" });
   });
 
+  it("a miner sharing its destination with a machine has no known share: its link is unknown, never a guessed 0", () => {
+    const b = [smelter([[ORE, 30, 24]]), machine("m", { recipe: "Ore", out: [[ORE, 10]] })];
+    const g = buildProductionGraph(b, [edge("a", "Xm", "s", { at: [0, 0] }), edge("b", "m", "s")], [res(ORE, 4, 0)]);
+    const fromMiner = g.edges.find((e) => e.from.startsWith("extractor")) as PlannerEdge;
+    const fromMachine = g.edges.find((e) => e.from.startsWith("Build_Constructor_C")) as PlannerEdge;
+    expect(fromMiner).toMatchObject({ itemClassName: ORE, ratePerMinute: null, rate: "unknown" });
+    expect(fromMachine).toMatchObject({ itemClassName: ORE, ratePerMinute: 24, rate: "estimated" });
+    // A consumer that takes nothing still says 0 for every source.
+    const idle = buildProductionGraph([smelter([[ORE, 30, 0]]), b[1]], [edge("a", "Xm", "s", { at: [0, 0] }), edge("b", "m", "s")], [res(ORE, 4, 0)]);
+    expect(idle.edges.map((e) => e.ratePerMinute)).toEqual([0, 0]);
+  });
+
   it("storage passes on the single item flowing into it, along a chain, into a machine", () => {
     const b = [machine("m", { className: SMELTER, recipe: "Iron Ingot", out: [[INGOT, 30]] }), machine("c", { recipe: "Plate", ing: [[INGOT, 30, 25]], out: [[PLATE, 20]] })];
     const g = buildProductionGraph(b, [edge("a", "m", "T1"), edge("b", "T1", "T2"), edge("c", "T2", "T3"), edge("d", "T3", "c")]);
