@@ -36,6 +36,20 @@ async function openPlateFactoryTables(page: Page) {
   await page.getByRole("button", { name: "Tables" }).click();
 }
 
+/** ADR-0055 #727: the factory cards (Tables), both ticked for a merge. */
+async function pickBothFactories(page: Page) {
+  await page.getByRole("button", { name: "Tables" }).click();
+  await page.getByRole("checkbox", { name: "Select Rod works" }).check();
+  await page.getByRole("checkbox", { name: "Select Iron Plate factory" }).check();
+}
+
+/** Both ticked, then merged under the proposed name. */
+async function mergeBothFactories(page: Page) {
+  await pickBothFactories(page);
+  await page.getByRole("button", { name: "Merge into one" }).click();
+  await page.getByRole("button", { name: "Merge", exact: true }).click();
+}
+
 /** A visually hidden button (the canvas's keyboard way into a card), reached as a keyboard user does. */
 async function pressButton(page: Page, name: string | RegExp) {
   await page.getByRole("button", { name }).focus();
@@ -419,6 +433,58 @@ const CASES: StateCase[] = [
       await openPlateFactoryTables(page);
       await page.getByRole("checkbox", { name: "Select Smelter" }).check();
       await page.getByRole("button", { name: "Designate selected" }).click();
+    },
+  },
+  // ADR-0055 #727: merge and split. Two factories picked (Merge offered), the same with nothing between them (Merge
+  // disabled with its reason), a merge done (the undo offer), a stale merge, and the split bar inside a designated factory.
+  {
+    scenario: "planner-merge-split",
+    name: "planner-merge-bar",
+    path: "/app/planner",
+    shows: "2 factories selected",
+    clock: FACTORIES_NOW,
+    act: pickBothFactories,
+  },
+  {
+    scenario: "planner-merge-apart",
+    name: "planner-merge-disabled",
+    path: "/app/planner",
+    shows: "These factories are not connected by any belt, pipe or transport",
+    clock: FACTORIES_NOW,
+    act: pickBothFactories,
+  },
+  {
+    scenario: "planner-merge-split",
+    name: "planner-merge-undo",
+    path: "/app/planner",
+    shows: "Merged 2 factories into Iron Plate factory.",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await mergeBothFactories(page);
+      // The undo offer is sticky to the viewport's foot. At 390 px it sticks mid-page, and a full-page screenshot of
+      // a stuck element never settles. At the page's end it sits in its own place, as on desktop.
+      await page.getByText("Merged 2 factories into Iron Plate factory.").first().waitFor();
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
+    },
+  },
+  {
+    scenario: "planner-merge-stale",
+    name: "planner-merge-stale",
+    path: "/app/planner",
+    shows: "Changed by someone else; select again.",
+    clock: FACTORIES_NOW,
+    act: mergeBothFactories,
+  },
+  {
+    scenario: "planner-merge-split",
+    name: "planner-split-bar",
+    path: "/app/planner",
+    shows: "1 group, 2 machines selected",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await pressButton(page, "Open factory: Rod works");
+      await page.getByRole("button", { name: "Tables" }).click();
+      await page.getByRole("checkbox", { name: "Select Constructor" }).check();
     },
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },

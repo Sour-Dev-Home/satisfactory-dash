@@ -1,34 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { PlannerNode } from "@satisfactory-dash/shared";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
+import { useDesignationChanges } from "./designationChanges";
 import { useDesignations } from "./DesignationContext";
 import { membersOf } from "./designationMatch";
+import { dissolveRequest } from "./designationOps";
+import { useRun } from "./useRun";
 import { ALL_MISSING_TEXT, PlanProblem, claimedText, designationErrorText, missingText, nameProblem } from "./designationText";
 import type { FactoryModel } from "./graph/hierarchy";
 
 const textOf = (error: unknown) => (error instanceof PlanProblem ? error.message : designationErrorText(error));
 
-/** Runs one write at a time for its own control and keeps that control's error, so a failure shows beside what failed. */
-function useRun() {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const run = async (action: () => Promise<unknown>): Promise<boolean> => {
-    setBusy(true);
-    setError(null);
-    try {
-      await action();
-      return true;
-    } catch (e) {
-      setError(e);
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
-  return { busy, error, run };
-}
-
-function ErrorLine({ error }: { error: unknown }) {
+export function ErrorLine({ error }: { error: unknown }) {
   return error == null ? null : (
     <p role="alert" className="m-0 text-sm">
       {textOf(error)}
@@ -40,16 +23,19 @@ function ErrorLine({ error }: { error: unknown }) {
  * The name dialog (ADR-0055 Decision 5): a small form shown in place, never a modal that traps the page. The field takes
  * focus, Enter saves, Escape cancels. `onSave` throws to say why it could not; the form stays open with the reason.
  */
-function NameForm({
+export function NameForm({
   label,
   initial,
   save,
+  note,
   onSave,
   onClose,
 }: {
   label: string;
   initial: string;
   save: string;
+  /** A line under the field about what saving will do. */
+  note?: string | null | undefined;
   onSave: (name: string) => Promise<unknown>;
   onClose: (saved: boolean) => void;
 }) {
@@ -88,6 +74,7 @@ function NameForm({
           {problem}
         </p>
       )}
+      {note != null && <p className="m-0 text-sm text-muted">{note}</p>}
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={busy} className="min-h-touch">
@@ -134,7 +121,15 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
     queueMicrotask(() => trigger.current?.focus());
   };
   const { busy, error, run } = useRun();
+  const changes = useDesignationChanges();
   if (designation === undefined || match === undefined) return <DesignatedMarker />;
+  // ADR-0055 Decision 12: with revisions (a backend that has replace) Remove is Dissolve, with an undo offer after it.
+  const dissolving = designation.revision !== undefined && changes !== null ? dissolveRequest(designation) : null;
+  const dissolve =
+    dissolving === null || !dissolving.ok || changes === null
+      ? null
+      : () => changes.apply(dissolving, { message: `Dissolved ${designation.name}. Its machines are suggestions again.`, undoLabel: "Undo" });
+  const verb = dissolve === null ? "Remove" : "Dissolve";
 
   const gone = missing?.get(designation.id);
   const allGone = match.matched === 0 && match.missing > 0;
@@ -182,23 +177,29 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
                 </button>
               )}
               {confirming ? (
-                <span role="group" aria-label={`Confirm remove ${factory.name}`} className="flex flex-wrap items-center gap-2 text-sm">
-                  Remove this designation?
+                <span role="group" aria-label={`Confirm ${verb.toLowerCase()} ${factory.name}`} className="flex flex-wrap items-center gap-2 text-sm">
+                  {dissolve === null ? "Remove this designation?" : "Dissolve this factory? Its machines go back to suggestions."}
                   <button
                     type="button"
                     disabled={busy}
                     className={`${DANGER_BUTTON} min-h-touch`}
-                    onClick={() => void run(() => writes.remove.mutateAsync(designation.id)).then((done) => done && closeConfirm())}
+                    onClick={() =>
+                      void run(() => (dissolve === null ? writes.remove.mutateAsync(designation.id) : dissolve())).then((done) => {
+                        // A dissolve hands the focus to the undo offer; the confirm goes with the factory.
+                        if (done && dissolve === null) closeConfirm();
+                        else if (done) setConfirming(false);
+                      })
+                    }
                   >
-                    Remove
+                    {verb}
                   </button>
                   <button ref={cancel} type="button" disabled={busy} onClick={() => closeConfirm()} className="min-h-touch">
                     Cancel
                   </button>
                 </span>
               ) : (
-                <button ref={trigger} type="button" disabled={busy} onClick={openConfirm} aria-label={`Remove ${factory.name}`} className={`${DANGER_BUTTON_QUIET} min-h-touch`}>
-                  Remove
+                <button ref={trigger} type="button" disabled={busy} onClick={openConfirm} aria-label={`${verb} ${factory.name}`} className={`${DANGER_BUTTON_QUIET} min-h-touch`}>
+                  {verb}
                 </button>
               )}
             </div>

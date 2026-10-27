@@ -1,6 +1,12 @@
 import { PLANNER_DESIGNATIONS_MAX_PER_SERVER, PlannerDesignationNameSchema } from "@satisfactory-dash/shared";
 import { ApiError } from "../api/errors";
+import { isStaleDesignation } from "../api/plannerWrites";
 import { describeError } from "../components/ErrorNotice";
+
+/** ADR-0055 Decision 11: a replace found one of the designations changed meanwhile; the page re-reads and drops the selection. */
+export const STALE_TEXT = "Changed by someone else; select again.";
+/** ADR-0055 Decision 12: Merge stays disabled for a selection that is not one connected piece. */
+export const NOT_CONNECTED_TEXT = "These factories are not connected by any belt, pipe or transport";
 
 /** Whether a role may designate factories (ADR-0055 Decision 5: owner and admin; the backend's guard is the real control). */
 export function canDesignate(role: string | undefined): boolean {
@@ -19,6 +25,8 @@ export function designationErrorText(error: unknown): string {
   if (error instanceof ApiError && error.code === "designation_cap") {
     return `You can have up to ${PLANNER_DESIGNATIONS_MAX_PER_SERVER} designated factories`;
   }
+  if (isStaleDesignation(error)) return STALE_TEXT;
+  if (error instanceof ApiError && error.status === 400) return "The server refused this change as invalid. Reload the page and try again.";
   return describeError(error);
 }
 

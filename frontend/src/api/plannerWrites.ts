@@ -1,7 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { endpoints, type CreatePlannerDesignationRequest, type UpdatePlannerDesignationRequest } from "@satisfactory-dash/shared";
+import {
+  endpoints,
+  type CreatePlannerDesignationRequest,
+  type ReplacePlannerDesignationsRequest,
+  type UpdatePlannerDesignationRequest,
+} from "@satisfactory-dash/shared";
 import { apiSend } from "./client";
+import { ApiError } from "./errors";
 import { queries } from "./queries";
+
+/** A replace whose `expect` named a designation someone else changed or removed meanwhile (409 `designation_stale`). */
+export const isStaleDesignation = (error: unknown): boolean => error instanceof ApiError && error.code === "designation_stale";
 
 /**
  * The Planner designation writes (ADR-0055 PR 10a). The backend is the real control (a viewer's write answers 403, and an
@@ -29,7 +38,14 @@ export function usePlannerDesignationWrites(serverId: string) {
     mutationFn: (id: string) => apiSend(endpoints.plannerDesignations.remove, undefined, serverId, id),
     onSuccess: refresh,
   });
-  return { create, update, remove };
+  // ADR-0055 Decision 11 (#727): merge, split, pop-out, dissolve and undo. No optimistic patch, like the writes above. A
+  // `designation_stale` answer means the page's copy is old, so both reads are fetched again before the caller says so.
+  const replace = useMutation({
+    mutationFn: (body: ReplacePlannerDesignationsRequest) => apiSend(endpoints.plannerDesignations.replace, body, serverId),
+    onSuccess: refresh,
+    onError: (error) => (isStaleDesignation(error) ? refresh() : undefined),
+  });
+  return { create, update, remove, replace };
 }
 
 export type PlannerDesignationWrites = ReturnType<typeof usePlannerDesignationWrites>;

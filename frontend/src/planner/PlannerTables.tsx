@@ -26,6 +26,9 @@ import {
 export interface GroupSelection {
   selected: ReadonlySet<string>;
   toggle: (nodeKey: string) => void;
+  /** ADR-0055 Decision 12: in a designated factory that can be split, a row's "Pop out" moves the group into its own. */
+  popOut?: ((node: PlannerNode) => void) | undefined;
+  popOutBusy?: boolean;
 }
 
 /** What the Groups table knows beyond the groups when it lists one factory. */
@@ -115,6 +118,17 @@ function GroupRow({
             <input type="checkbox" className="size-5" checked={selection.selected.has(node.key)} onChange={() => selection.toggle(node.key)} />
             <span className="sr-only">Select {node.name}</span>
           </label>
+          {selection.popOut !== undefined && (
+            <button
+              type="button"
+              disabled={selection.popOutBusy === true}
+              aria-label={`Pop out ${groupLabel(node)}`}
+              onClick={() => selection.popOut?.(node)}
+              className="ms-2 min-h-touch"
+            >
+              Pop out
+            </button>
+          )}
         </td>
       )}
     </tr>

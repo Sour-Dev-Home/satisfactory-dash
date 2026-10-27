@@ -248,6 +248,47 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   await expect(page.getByRole("form", { name: "Name the designated factory" })).toHaveCount(0);
 });
 
+// ADR-0055 #727: merge two factories and split them back, by keyboard alone, under the production CSP: tick both cards,
+// Merge into one, Enter on the proposed name; the undo offer takes the focus, Enter on Split back sends the inverse.
+test("an owner merges two factories and splits them back from the keyboard", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-merge-split");
+  await page.goto("/app/planner");
+  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+    await page.getByRole(role, { name, exact: typeof name === "string" }).focus();
+    await page.keyboard.press(key);
+  };
+  await press("Tables");
+  await press("Select Rod works", "checkbox", "Space");
+  await press("Select Iron Plate factory", "checkbox", "Space");
+  await expect(page.getByText("2 factories selected")).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+  await press("Merge into one");
+  // The name field takes focus with the largest factory's name proposed.
+  const field = page.getByRole("textbox", { name: "Name" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("Iron Plate factory");
+  const merged = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.press("Enter");
+  const mergeBody = (await merged).postDataJSON() as { expect: { id: string; revision: number }[]; put: { id?: string; members: unknown[] }[]; intent: string };
+  expect(mergeBody.intent).toBe("merge");
+  expect(mergeBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 2 }]);
+  expect(mergeBody.put).toHaveLength(1);
+  expect(mergeBody.put[0]!.id).toBe("6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10");
+
+  // The undo offer has the focus: Enter is Split back, with the revision the merge answered.
+  const splitBack = page.getByRole("button", { name: "Split back" });
+  await expect(splitBack).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const undone = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.press("Enter");
+  const undoBody = (await undone).postDataJSON() as { expect: { id: string; revision: number }[]; put: { id: string; createdAt: string }[]; intent: string };
+  expect(undoBody.intent).toBe("undo");
+  expect(undoBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 3 }]);
+  expect(undoBody.put).toEqual([expect.objectContaining({ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", createdAt: "2026-10-20T10:00:00.000Z" })]);
+  await expect(page.getByText("Split back: the factories are as they were.").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Production planner" })).toBeFocused();
+});
+
 // ADR-0055 PR 10b: the canvas lasso and the suggestions on the canvas, by pointer, under the production CSP.
 test("an owner lassos a factory's cards on the canvas and keeps a suggestion there", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");
