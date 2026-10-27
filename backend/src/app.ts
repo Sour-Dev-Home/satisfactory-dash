@@ -11,6 +11,8 @@ import { requestMetrics } from "./platform/metrics/requestMetrics.js";
 
 /** `/api/servers/:serverId/planner/designations`, `.../:designationId` and `.../replace` (the path below the /api mount). */
 const DESIGNATION_WRITE_PATH = /^\/servers\/[^/]+\/planner\/designations(?:\/[^/]+)?\/?$/i;
+/** `/api/internal/metrics/delivery` (ADR-0056 PR 6b): its router reads the body itself, after the secret, with a 16 KB cap. */
+const DELIVERY_INGEST_PATH = /^\/internal\/metrics\/delivery\/?$/i;
 
 export interface AppOptions {
   logger: Logger;
@@ -72,9 +74,11 @@ export function createApp({
   // /api only: the agent API parses its own bodies (a snapshot is far larger than any /api body).
   // ADR-0055 PR 9: the designation writes carry up to ~400 KB (a replace up to 1 MB, Decision 11), so they skip this 100 KB parser and the designations router
   // parses them with its own larger limit (after the session and member-write guards). Nothing else gets a bigger limit.
+  // ADR-0056 PR 6b: the delivery ingest skips it too, so an unauthenticated body is never parsed (its own cap is smaller).
   const jsonBody = express.json();
   app.use("/api", (req, res, next) => {
     if ((req.method === "POST" || req.method === "PUT") && DESIGNATION_WRITE_PATH.test(req.path)) next();
+    else if (req.method === "POST" && DELIVERY_INGEST_PATH.test(req.path)) next();
     else jsonBody(req, res, next);
   });
   for (const router of routers) {
