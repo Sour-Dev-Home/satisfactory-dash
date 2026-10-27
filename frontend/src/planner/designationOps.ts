@@ -131,7 +131,8 @@ export function splitRequest({
     (building != null && machineIds.has(building) ? chosen : kept).push(m);
   });
   if (chosen.length > 0 && kept.length === 0) return { ok: false, reason: WHOLE_FACTORY };
-  // Put entries must not share a building: a member twin of one that stays, stays.
+  // Put entries must not share a building: a selected member whose twin (the same building by the overlap rule) stays
+  // with the source is left out of the new entry; the twin that stays still names the building.
   const taken = new Buildings();
   for (const m of kept) taken.add(m);
   const moved = chosen.filter((m) => !taken.has(m));
