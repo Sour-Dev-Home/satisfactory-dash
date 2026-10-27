@@ -1,0 +1,298 @@
+{
+  "source": "FRM HTTP output, test save Test3, core run 40522552255 (satisfactory-dash-mod), 2026-10-27",
+  "endpoint": "/getExtractor",
+  "recordsInFullBody": 74,
+  "keys": [
+    "BoundingBox",
+    "ClassName",
+    "ColorSlot",
+    "ID",
+    "IsConfigured",
+    "IsPaused",
+    "IsProducing",
+    "ManuSpeed",
+    "Name",
+    "PowerInfo",
+    "PowerShards",
+    "Recipe",
+    "RecipeClassName",
+    "Somersloops",
+    "features",
+    "location",
+    "production"
+  ],
+  "records": [
+    {
+      "ID": "Build_OilPump_C_2147379744",
+      "Name": "Oil Extractor",
+      "ClassName": "Build_OilPump_C",
+      "location": {
+        "x": -43612.140625,
+        "y": -190316.359375,
+        "z": 2399.996337890625,
+        "rotation": 90,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -44012.140625,
+          "y": -190826.359375,
+          "z": 2419.996337890625
+        },
+        "max": {
+          "x": -43212.140625,
+          "y": -189526.359375,
+          "z": 4219.996337890625
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "Recipe": "Crude Oil",
+      "RecipeClassName": "Desc_LiquidOil_C",
+      "production": [
+        {
+          "Name": "Crude Oil",
+          "ClassName": "Desc_LiquidOil_C",
+          "Amount": 25.69999885559082,
+          "MaxAmount": 50,
+          "CurrentProd": 149.99998474121094,
+          "MaxProd": 149.99998474121094,
+          "ProdPercent": 100
+        }
+      ],
+      "ManuSpeed": 250,
+      "Somersloops": 0,
+      "PowerShards": 3,
+      "IsConfigured": true,
+      "IsProducing": true,
+      "IsPaused": false,
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 134.31002807617188,
+        "MaxPowerConsumed": 134.31002807617188
+      },
+      "features": {
+        "properties": {
+          "name": "Oil Extractor",
+          "type": "Oil Extractor"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -43612.140625,
+            "y": -190316.359375,
+            "z": 2399.996337890625
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_MinerMk1_C_2146999965",
+      "Name": "Miner Mk.1",
+      "ClassName": "Build_MinerMk1_C",
+      "location": {
+        "x": -47085.40234375,
+        "y": -141054.671875,
+        "z": 8100.005859375,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -47385.40234375,
+          "y": -141554.671875,
+          "z": 8100.005859375
+        },
+        "max": {
+          "x": -46785.40234375,
+          "y": -140154.671875,
+          "z": 9935.005859375
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "Recipe": "Iron Ore",
+      "RecipeClassName": "Desc_OreIron_C",
+      "production": [
+        {
+          "Name": "Iron Ore",
+          "ClassName": "Desc_OreIron_C",
+          "Amount": 100,
+          "MaxAmount": 100,
+          "CurrentProd": 18.823528289794922,
+          "MaxProd": 119.99999237060547,
+          "ProdPercent": 15.68627457213558
+        }
+      ],
+      "ManuSpeed": 100,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "IsConfigured": true,
+      "IsProducing": false,
+      "IsPaused": false,
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0.10000000149011612,
+        "MaxPowerConsumed": 5
+      },
+      "features": {
+        "properties": {
+          "name": "Miner Mk.1",
+          "type": "Miner Mk.1"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -47085.40234375,
+            "y": -141054.671875,
+            "z": 8100.005859375
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_MinerMk2_C_2147275635",
+      "Name": "Miner Mk.2",
+      "ClassName": "Build_MinerMk2_C",
+      "location": {
+        "x": -41844.60546875,
+        "y": -152412.109375,
+        "z": 9400.0087890625,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -42144.60546875,
+          "y": -152912.109375,
+          "z": 9400.0087890625
+        },
+        "max": {
+          "x": -41544.60546875,
+          "y": -151512.109375,
+          "z": 11150.0087890625
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "Recipe": "Limestone",
+      "RecipeClassName": "Desc_Stone_C",
+      "production": [
+        {
+          "Name": "Limestone",
+          "ClassName": "Desc_Stone_C",
+          "Amount": 94,
+          "MaxAmount": 100,
+          "CurrentProd": 200.47059631347656,
+          "MaxProd": 239.99998474121094,
+          "ProdPercent": 83.52942044127276
+        }
+      ],
+      "ManuSpeed": 100,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "IsConfigured": true,
+      "IsProducing": true,
+      "IsPaused": false,
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 15,
+        "MaxPowerConsumed": 15
+      },
+      "features": {
+        "properties": {
+          "name": "Miner Mk.2",
+          "type": "Miner Mk.2"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -41844.60546875,
+            "y": -152412.109375,
+            "z": 9400.0087890625
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_WaterPump_C_2147372383",
+      "Name": "Water Extractor",
+      "ClassName": "Build_WaterPump_C",
+      "location": {
+        "x": -87073.65625,
+        "y": -149400,
+        "z": -1730,
+        "rotation": 0,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -88073.65625,
+          "y": -149900,
+          "z": -2530
+        },
+        "max": {
+          "x": -86073.65625,
+          "y": -148100,
+          "z": -230
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "Recipe": "Water",
+      "RecipeClassName": "Desc_Water_C",
+      "production": [
+        {
+          "Name": "Water",
+          "ClassName": "Desc_Water_C",
+          "Amount": 1.1200000047683716,
+          "MaxAmount": 200,
+          "CurrentProd": 119.99999237060547,
+          "MaxProd": 119.99999237060547,
+          "ProdPercent": 100
+        }
+      ],
+      "ManuSpeed": 100,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "IsConfigured": true,
+      "IsProducing": true,
+      "IsPaused": false,
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 20,
+        "MaxPowerConsumed": 20
+      },
+      "features": {
+        "properties": {
+          "name": "Water Extractor",
+          "type": "Water Extractor"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -87073.65625,
+            "y": -149400,
+            "z": -1730
+          },
+          "type": "Point"
+        }
+      }
+    }
+  ]
+}

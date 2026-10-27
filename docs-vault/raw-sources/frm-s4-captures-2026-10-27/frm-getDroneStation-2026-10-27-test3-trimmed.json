@@ -1,0 +1,285 @@
+{
+  "source": "FRM HTTP output, test save Test3, core run 40522552255 (satisfactory-dash-mod), 2026-10-27",
+  "endpoint": "/getDroneStation",
+  "recordsInFullBody": 7,
+  "keys": [
+    "ActiveFuel",
+    "AvgIncRate",
+    "AvgIncStack",
+    "AvgOutRate",
+    "AvgOutStack",
+    "AvgRndTrip",
+    "AvgTotalIncRate",
+    "AvgTotalIncStack",
+    "AvgTotalOutRate",
+    "AvgTotalOutStack",
+    "AvgTripIncAmt",
+    "AvgTripOutAmt",
+    "BoundingBox",
+    "ClassName",
+    "ColorSlot",
+    "DroneStatus",
+    "EstLatestTotalIncStack",
+    "EstLatestTotalOutStack",
+    "EstTotalTransRate",
+    "FuelInfo",
+    "FuelInventory",
+    "ID",
+    "InputInventory",
+    "LatestIncStack",
+    "LatestOutStack",
+    "LatestRndTrip",
+    "LatestTripIncAmt",
+    "LatestTripOutAmt",
+    "MedianRndTrip",
+    "MedianTripIncAmt",
+    "MedianTripOutAmt",
+    "Name",
+    "OutputInventory",
+    "PairedStation",
+    "PowerInfo",
+    "features",
+    "location"
+  ],
+  "records": [
+    {
+      "ID": "Build_DroneStation_C_2146556398",
+      "Name": "Port E",
+      "ClassName": "Build_DroneStation_C",
+      "location": {
+        "x": -220400,
+        "y": 50300,
+        "z": 24800.009765625,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -221600,
+          "y": 49100,
+          "z": 24800.009765625
+        },
+        "max": {
+          "x": -219200,
+          "y": 51500,
+          "z": 26250.009765625
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "InputInventory": [
+        {
+          "Name": "Aluminum Ingot",
+          "ClassName": "Desc_AluminumIngot_C",
+          "Amount": 64,
+          "MaxAmount": 100
+        }
+      ],
+      "OutputInventory": [],
+      "FuelInventory": [
+        {
+          "Name": "Battery",
+          "ClassName": "Desc_Battery_C",
+          "Amount": 200,
+          "MaxAmount": 200
+        }
+      ],
+      "PairedStation": "Port G",
+      "DroneStatus": "Taking Off",
+      "AvgIncRate": 0,
+      "AvgIncStack": 0,
+      "AvgOutRate": 83.69662475585938,
+      "AvgOutStack": 0.7874029278755188,
+      "AvgRndTrip": "00:02:08",
+      "AvgTotalIncRate": 0,
+      "AvgTotalIncStack": 0,
+      "AvgTotalOutRate": 83.69662475585938,
+      "AvgTotalOutStack": 0.7874029278755188,
+      "AvgTripIncAmt": 0,
+      "AvgTripOutAmt": 179,
+      "EstTotalTransRate": 3.240299701690674,
+      "EstLatestTotalIncStack": 0,
+      "EstLatestTotalOutStack": 0.7874029278755188,
+      "LatestIncStack": 0,
+      "LatestOutStack": 0.7874029278755188,
+      "LatestRndTrip": 128.32058715820312,
+      "LatestTripIncAmt": 0,
+      "LatestTripOutAmt": 179,
+      "MedianRndTrip": "00:02:08",
+      "MedianTripIncAmt": 0,
+      "MedianTripOutAmt": 179,
+      "ActiveFuel": {
+        "FuelName": "Battery",
+        "SingleTripFuelCost": 8.52133846282959,
+        "EstimatedTransportRate": 3.240299701690674,
+        "EstimatedRoundTripTime": 166.6512451171875,
+        "EstimatedFuelCostRate": 3.0679657459259033
+      },
+      "FuelInfo": [
+        {
+          "FuelName": "Battery",
+          "SingleTripFuelCost": 8.52133846282959,
+          "EstimatedTransportRate": 3.240299701690674,
+          "EstimatedRoundTripTime": 166.6512451171875,
+          "EstimatedFuelCostRate": 3.0679657459259033
+        },
+        {
+          "FuelName": "Packaged Fuel",
+          "SingleTripFuelCost": 68.17070770263672,
+          "EstimatedTransportRate": 2.7138831615448,
+          "EstimatedRoundTripTime": 198.9768829345703,
+          "EstimatedFuelCostRate": 20.556371688842773
+        },
+        {
+          "FuelName": "Packaged Turbofuel",
+          "SingleTripFuelCost": 25.564016342163086,
+          "EstimatedTransportRate": 2.719205856323242,
+          "EstimatedRoundTripTime": 198.58740234375,
+          "EstimatedFuelCostRate": 7.723757743835449
+        },
+        {
+          "FuelName": "Packaged Rocket Fuel",
+          "SingleTripFuelCost": 7.1011152267456055,
+          "EstimatedTransportRate": 2.7245490550994873,
+          "EstimatedRoundTripTime": 198.19793701171875,
+          "EstimatedFuelCostRate": 2.1497039794921875
+        },
+        {
+          "FuelName": "Packaged Ionized Fuel",
+          "SingleTripFuelCost": 5.112802982330322,
+          "EstimatedTransportRate": 2.7299134731292725,
+          "EstimatedRoundTripTime": 197.8084716796875,
+          "EstimatedFuelCostRate": 1.5508344173431396
+        },
+        {
+          "FuelName": "Uranium Fuel Rod",
+          "SingleTripFuelCost": 0.0681707113981247,
+          "EstimatedTransportRate": 2.728123188018799,
+          "EstimatedRoundTripTime": 197.93829345703125,
+          "EstimatedFuelCostRate": 0.020664231851696968
+        },
+        {
+          "FuelName": "Plutonium Fuel Rod",
+          "SingleTripFuelCost": 0.03408535569906235,
+          "EstimatedTransportRate": 2.7299134731292725,
+          "EstimatedRoundTripTime": 197.8084716796875,
+          "EstimatedFuelCostRate": 0.01033889688551426
+        }
+      ],
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 100,
+        "MaxPowerConsumed": 100
+      },
+      "features": {
+        "properties": {
+          "name": "Drone Port",
+          "type": "Drone Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -220400,
+            "y": 50300,
+            "z": 24800.009765625
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_DroneStation_C_2146572476",
+      "Name": "Port A",
+      "ClassName": "Build_DroneStation_C",
+      "location": {
+        "x": -220400,
+        "y": 59900,
+        "z": 24800.013671875,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -221600,
+          "y": 58700,
+          "z": 24800.013671875
+        },
+        "max": {
+          "x": -219200,
+          "y": 61100,
+          "z": 26250.013671875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "InputInventory": [],
+      "OutputInventory": [],
+      "FuelInventory": [
+        {
+          "Name": "Battery",
+          "ClassName": "Desc_Battery_C",
+          "Amount": 200,
+          "MaxAmount": 200
+        }
+      ],
+      "PairedStation": "None",
+      "DroneStatus": "Docked",
+      "AvgIncRate": 0,
+      "AvgIncStack": 0,
+      "AvgOutRate": 0,
+      "AvgOutStack": 0,
+      "AvgRndTrip": "00:00:00",
+      "AvgTotalIncRate": 0,
+      "AvgTotalIncStack": 0,
+      "AvgTotalOutRate": 0,
+      "AvgTotalOutStack": 0,
+      "AvgTripIncAmt": 0,
+      "AvgTripOutAmt": 0,
+      "EstTotalTransRate": 0,
+      "EstLatestTotalIncStack": 0,
+      "EstLatestTotalOutStack": 0,
+      "LatestIncStack": 0,
+      "LatestOutStack": 0,
+      "LatestRndTrip": 0,
+      "LatestTripIncAmt": 0,
+      "LatestTripOutAmt": 0,
+      "MedianRndTrip": "00:00:00",
+      "MedianTripIncAmt": 0,
+      "MedianTripOutAmt": 0,
+      "ActiveFuel": {
+        "FuelName": "N/A",
+        "SingleTripFuelCost": 0,
+        "EstimatedTransportRate": 0,
+        "EstimatedRoundTripTime": 0,
+        "EstimatedFuelCostRate": 0
+      },
+      "FuelInfo": [],
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 100,
+        "MaxPowerConsumed": 100
+      },
+      "features": {
+        "properties": {
+          "name": "Drone Port",
+          "type": "Drone Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -220400,
+            "y": 59900,
+            "z": 24800.013671875
+          },
+          "type": "Point"
+        }
+      }
+    }
+  ]
+}

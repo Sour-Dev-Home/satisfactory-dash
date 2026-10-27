@@ -1,0 +1,239 @@
+{
+  "source": "FRM HTTP output, test save Test3, core run 40522552255 (satisfactory-dash-mod), 2026-10-27",
+  "endpoint": "/getTrains",
+  "recordsInFullBody": 4,
+  "keys": [
+    "ClassName",
+    "Derailed",
+    "Docking",
+    "ForwardSpeed",
+    "ID",
+    "MaxPayloadMass",
+    "Name",
+    "Path",
+    "PayloadMass",
+    "PendingDerail",
+    "PowerInfo",
+    "SelfDriving",
+    "Status",
+    "ThrottlePercent",
+    "TimeTable",
+    "TimeTableIndex",
+    "TotalMass",
+    "TrainStation",
+    "Vehicles",
+    "features",
+    "location"
+  ],
+  "records": [
+    {
+      "ID": "BP_Train_C_2147348871",
+      "Name": "Train A",
+      "ClassName": "BP_Train_C",
+      "location": {
+        "x": 137399.70556639906,
+        "y": -96800,
+        "z": 21200,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "TotalMass": 684696.25,
+      "PayloadMass": 264696.25,
+      "MaxPayloadMass": 280000,
+      "ForwardSpeed": 117.20066308593749,
+      "ThrottlePercent": 100,
+      "TrainStation": "Station B",
+      "Derailed": false,
+      "PendingDerail": false,
+      "Status": "Self-Driving",
+      "TimeTable": [
+        {
+          "StationName": "Station D"
+        },
+        {
+          "StationName": "Station B"
+        },
+        {
+          "StationName": "Station A"
+        },
+        {
+          "StationName": "Station C"
+        }
+      ],
+      "TimeTableIndex": 1,
+      "SelfDriving": "SDLE_NoError",
+      "Docking": "TDS_None",
+      "Path": "PDE_NoError",
+      "Vehicles": [
+        {
+          "Name": "Electric Locomotive",
+          "ClassName": "BP_Locomotive_C",
+          "TotalMass": 300000,
+          "PayloadMass": 0,
+          "MaxPayloadMass": 0,
+          "Inventory": []
+        },
+        {
+          "Name": "Freight Car",
+          "ClassName": "BP_FreightWagon_C",
+          "TotalMass": 86446.25,
+          "PayloadMass": 56446.25,
+          "MaxPayloadMass": 70000,
+          "Inventory": [
+            {
+              "Name": "Cable",
+              "ClassName": "Desc_Cable_C",
+              "Amount": 4851,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "Name": "Freight Car",
+          "ClassName": "BP_FreightWagon_C",
+          "TotalMass": 100000,
+          "PayloadMass": 70000,
+          "MaxPayloadMass": 70000,
+          "Inventory": [
+            {
+              "Name": "Copper Sheet",
+              "ClassName": "Desc_CopperSheet_C",
+              "Amount": 6400,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "Name": "Freight Car",
+          "ClassName": "BP_FreightWagon_C",
+          "TotalMass": 100000,
+          "PayloadMass": 70000,
+          "MaxPayloadMass": 70000,
+          "Inventory": [
+            {
+              "Name": "Silica",
+              "ClassName": "Desc_Silica_C",
+              "Amount": 6400,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "Name": "Freight Car",
+          "ClassName": "BP_FreightWagon_C",
+          "TotalMass": 98250,
+          "PayloadMass": 68250,
+          "MaxPayloadMass": 70000,
+          "Inventory": [
+            {
+              "Name": "Caterium Ingot",
+              "ClassName": "Desc_GoldIngot_C",
+              "Amount": 3100,
+              "MaxAmount": 100
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Train A",
+          "type": "Train"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 33.56505584716797,
+        "MaxPowerConsumed": 110
+      }
+    },
+    {
+      "ID": "BP_Train_C_2147247153",
+      "Name": "Train B",
+      "ClassName": "BP_Train_C",
+      "location": {
+        "x": 255377.3284593597,
+        "y": 36142.060175568025,
+        "z": 21200.013550028667,
+        "rotation": 174.38682927706304,
+        "pitch": 0.000030119291584138346
+      },
+      "TotalMass": 399693.75,
+      "PayloadMass": 69693.75,
+      "MaxPayloadMass": 70000,
+      "ForwardSpeed": 43.55972314453125,
+      "ThrottlePercent": 0,
+      "TrainStation": "Station F",
+      "Derailed": false,
+      "PendingDerail": false,
+      "Status": "Self-Driving",
+      "TimeTable": [
+        {
+          "StationName": "Station E"
+        },
+        {
+          "StationName": "Station F"
+        }
+      ],
+      "TimeTableIndex": 1,
+      "SelfDriving": "SDLE_NoError",
+      "Docking": "TDS_None",
+      "Path": "PDE_NoError",
+      "Vehicles": [
+        {
+          "Name": "Electric Locomotive",
+          "ClassName": "BP_Locomotive_C",
+          "TotalMass": 300000,
+          "PayloadMass": 0,
+          "MaxPayloadMass": 0,
+          "Inventory": []
+        },
+        {
+          "Name": "Freight Car",
+          "ClassName": "BP_FreightWagon_C",
+          "TotalMass": 99693.75,
+          "PayloadMass": 69693.75,
+          "MaxPayloadMass": 70000,
+          "Inventory": [
+            {
+              "Name": "Petroleum Coke",
+              "ClassName": "Desc_PetroleumCoke_C",
+              "Amount": 6365,
+              "MaxAmount": 200
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Train B",
+          "type": "Train"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 25.000001907348633,
+        "MaxPowerConsumed": 110
+      }
+    }
+  ]
+}

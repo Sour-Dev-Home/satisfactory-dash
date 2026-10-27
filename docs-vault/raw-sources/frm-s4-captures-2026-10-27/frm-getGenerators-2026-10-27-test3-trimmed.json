@@ -1,0 +1,555 @@
+{
+  "source": "FRM HTTP output, test save Test3, core run 40522552255 (satisfactory-dash-mod), 2026-10-27",
+  "endpoint": "/getGenerators",
+  "recordsInFullBody": 124,
+  "keys": [
+    "AvailableFuel",
+    "BaseProd",
+    "BoundingBox",
+    "CanStart",
+    "ClassName",
+    "ColorSlot",
+    "CurrentPotential",
+    "DefaultProductionCapacity",
+    "DynamicProdCapacity",
+    "DynamicProdDemandFactor",
+    "FuelAmount",
+    "FuelInventory",
+    "FuelResource",
+    "GeoMaxPower",
+    "GeoMinPower",
+    "ID",
+    "IsFullSpeed",
+    "LoadPercentage",
+    "Name",
+    "NuclearWarning",
+    "PowerInfo",
+    "PowerProductionPotential",
+    "PowerShards",
+    "ProdPowerConsumption",
+    "ProductionCapacity",
+    "RegulatedDemandProd",
+    "Somersloops",
+    "Supplement",
+    "WasteInventory",
+    "features",
+    "location"
+  ],
+  "records": [
+    {
+      "ID": "Build_GeneratorIntegratedBiomass_C_2146918492",
+      "Name": "Biomass Burner",
+      "ClassName": "Build_GeneratorIntegratedBiomass_C",
+      "location": {
+        "x": -42001.515625,
+        "y": -143610,
+        "z": 8190.01171875,
+        "rotation": 180,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -42001.515625,
+          "y": -143610,
+          "z": 8190.01171875
+        },
+        "max": {
+          "x": -42001.515625,
+          "y": -143610,
+          "z": 8190.01171875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "BaseProd": 20,
+      "DynamicProdCapacity": 0,
+      "DynamicProdDemandFactor": 0,
+      "RegulatedDemandProd": 0,
+      "IsFullSpeed": false,
+      "CanStart": false,
+      "LoadPercentage": 0,
+      "ProdPowerConsumption": 0,
+      "CurrentPotential": 100,
+      "ProductionCapacity": 20,
+      "DefaultProductionCapacity": 20,
+      "PowerProductionPotential": 20,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "FuelAmount": 0,
+      "Supplement": {
+        "Name": "N/A",
+        "ClassName": "",
+        "CurrentConsumed": 0,
+        "MaxConsumed": 0,
+        "PercentFull": 0
+      },
+      "NuclearWarning": "",
+      "FuelResource": "Geothermal",
+      "GeoMinPower": 0,
+      "GeoMaxPower": 0,
+      "AvailableFuel": [
+        {
+          "Name": "Leaves",
+          "ClassName": "Desc_Leaves_C",
+          "Amount": 15
+        },
+        {
+          "Name": "Wood",
+          "ClassName": "Desc_Wood_C",
+          "Amount": 100
+        },
+        {
+          "Name": "Mycelia",
+          "ClassName": "Desc_Mycelia_C",
+          "Amount": 20
+        },
+        {
+          "Name": "Biomass",
+          "ClassName": "Desc_GenericBiomass_C",
+          "Amount": 180
+        },
+        {
+          "Name": "Solid Biofuel",
+          "ClassName": "Desc_Biofuel_C",
+          "Amount": 450
+        },
+        {
+          "Name": "Packaged Liquid Biofuel",
+          "ClassName": "Desc_PackagedBiofuel_C",
+          "Amount": 750
+        }
+      ],
+      "WasteInventory": [],
+      "FuelInventory": [],
+      "PowerInfo": {
+        "CircuitGroupID": -1,
+        "CircuitID": -1,
+        "FuseTriggered": false,
+        "PowerConsumed": 0,
+        "MaxPowerConsumed": 0
+      },
+      "features": {
+        "properties": {
+          "name": "Biomass Burner",
+          "type": "Biomass Burner"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -42001.515625,
+            "y": -143610,
+            "z": 8190.01171875
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_GeneratorCoal_C_2147407960",
+      "Name": "Coal-Powered Generator",
+      "ClassName": "Build_GeneratorCoal_C",
+      "location": {
+        "x": -90400,
+        "y": -149600,
+        "z": -1099.9853515625,
+        "rotation": 0,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -90900,
+          "y": -150950,
+          "z": -1099.9853515625
+        },
+        "max": {
+          "x": -89900,
+          "y": -148350,
+          "z": 2100.0146484375
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "BaseProd": 75,
+      "DynamicProdCapacity": 75,
+      "DynamicProdDemandFactor": 100,
+      "RegulatedDemandProd": 75,
+      "IsFullSpeed": true,
+      "CanStart": true,
+      "LoadPercentage": 100,
+      "ProdPowerConsumption": 0,
+      "CurrentPotential": 100,
+      "ProductionCapacity": 75,
+      "DefaultProductionCapacity": 75,
+      "PowerProductionPotential": 75,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "FuelAmount": 0.9652951955795288,
+      "Supplement": {
+        "Name": "Water",
+        "ClassName": "Desc_Water_C",
+        "CurrentConsumed": 45.000003814697266,
+        "MaxConsumed": 45.000003814697266,
+        "PercentFull": 89.63654327392578
+      },
+      "NuclearWarning": "",
+      "FuelResource": "Solid",
+      "GeoMinPower": 0,
+      "GeoMaxPower": 0,
+      "AvailableFuel": [
+        {
+          "Name": "Coal",
+          "ClassName": "Desc_Coal_C",
+          "Amount": 300
+        },
+        {
+          "Name": "Compacted Coal",
+          "ClassName": "Desc_CompactedCoal_C",
+          "Amount": 630
+        },
+        {
+          "Name": "Petroleum Coke",
+          "ClassName": "Desc_PetroleumCoke_C",
+          "Amount": 180
+        }
+      ],
+      "WasteInventory": [],
+      "FuelInventory": [
+        {
+          "Name": "Coal",
+          "ClassName": "Desc_Coal_C",
+          "Amount": 26,
+          "MaxAmount": 100
+        },
+        {
+          "Name": "Water",
+          "ClassName": "Desc_Water_C",
+          "Amount": 50,
+          "MaxAmount": 50
+        }
+      ],
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0,
+        "MaxPowerConsumed": 0
+      },
+      "features": {
+        "properties": {
+          "name": "Coal-Powered Generator",
+          "type": "Coal-Powered Generator"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -90400,
+            "y": -149600,
+            "z": -1099.9853515625
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_GeneratorFuel_C_2147057018",
+      "Name": "Fuel-Powered Generator",
+      "ClassName": "Build_GeneratorFuel_C",
+      "location": {
+        "x": -41400,
+        "y": -172500,
+        "z": 4800.00732421875,
+        "rotation": 180,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -42400,
+          "y": -173500,
+          "z": 4800.00732421875
+        },
+        "max": {
+          "x": -40400,
+          "y": -171500,
+          "z": 7456.793132422627
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "BaseProd": 250,
+      "DynamicProdCapacity": 250,
+      "DynamicProdDemandFactor": 100,
+      "RegulatedDemandProd": 250,
+      "IsFullSpeed": true,
+      "CanStart": true,
+      "LoadPercentage": 100,
+      "ProdPowerConsumption": 0,
+      "CurrentPotential": 100,
+      "ProductionCapacity": 250,
+      "DefaultProductionCapacity": 250,
+      "PowerProductionPotential": 250,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "FuelAmount": 0.16252852976322174,
+      "Supplement": {
+        "Name": "N/A",
+        "ClassName": "",
+        "CurrentConsumed": 0,
+        "MaxConsumed": 0,
+        "PercentFull": 0
+      },
+      "NuclearWarning": "",
+      "FuelResource": "Liquid",
+      "GeoMinPower": 0,
+      "GeoMaxPower": 0,
+      "AvailableFuel": [
+        {
+          "Name": "Fuel",
+          "ClassName": "Desc_LiquidFuel_C",
+          "Amount": 0
+        },
+        {
+          "Name": "Turbofuel",
+          "ClassName": "Desc_LiquidTurboFuel_C",
+          "Amount": 0
+        },
+        {
+          "Name": "Liquid Biofuel",
+          "ClassName": "Desc_LiquidBiofuel_C",
+          "Amount": 0
+        },
+        {
+          "Name": "Rocket Fuel",
+          "ClassName": "Desc_RocketFuel_C",
+          "Amount": 0
+        },
+        {
+          "Name": "Ionized Fuel",
+          "ClassName": "Desc_IonizedFuel_C",
+          "Amount": 0
+        }
+      ],
+      "WasteInventory": [],
+      "FuelInventory": [
+        {
+          "Name": "Fuel",
+          "ClassName": "Desc_LiquidFuel_C",
+          "Amount": 50,
+          "MaxAmount": 50
+        }
+      ],
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0,
+        "MaxPowerConsumed": 0
+      },
+      "features": {
+        "properties": {
+          "name": "Fuel-Powered Generator",
+          "type": "Fuel-Powered Generator"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -41400,
+            "y": -172500,
+            "z": 4800.00732421875
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_GeneratorBiomass_Automated_C_2147433199",
+      "Name": "Biomass Burner",
+      "ClassName": "Build_GeneratorBiomass_Automated_C",
+      "location": {
+        "x": -33500,
+        "y": -154300,
+        "z": 8100.00048828125,
+        "rotation": 180,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -33900,
+          "y": -154700,
+          "z": 8100.00048828125
+        },
+        "max": {
+          "x": -33100,
+          "y": -153900,
+          "z": 8800.00048828125
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "BaseProd": 30,
+      "DynamicProdCapacity": 30,
+      "DynamicProdDemandFactor": 0,
+      "RegulatedDemandProd": 0,
+      "IsFullSpeed": false,
+      "CanStart": true,
+      "LoadPercentage": 0,
+      "ProdPowerConsumption": 0,
+      "CurrentPotential": 100,
+      "ProductionCapacity": 30,
+      "DefaultProductionCapacity": 30,
+      "PowerProductionPotential": 30,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "FuelAmount": 0.8443091511726379,
+      "Supplement": {
+        "Name": "N/A",
+        "ClassName": "",
+        "CurrentConsumed": 0,
+        "MaxConsumed": 0,
+        "PercentFull": 0
+      },
+      "NuclearWarning": "",
+      "FuelResource": "Solid",
+      "GeoMinPower": 0,
+      "GeoMaxPower": 0,
+      "AvailableFuel": [
+        {
+          "Name": "Leaves",
+          "ClassName": "Desc_Leaves_C",
+          "Amount": 15
+        },
+        {
+          "Name": "Wood",
+          "ClassName": "Desc_Wood_C",
+          "Amount": 100
+        },
+        {
+          "Name": "Mycelia",
+          "ClassName": "Desc_Mycelia_C",
+          "Amount": 20
+        },
+        {
+          "Name": "Biomass",
+          "ClassName": "Desc_GenericBiomass_C",
+          "Amount": 180
+        },
+        {
+          "Name": "Solid Biofuel",
+          "ClassName": "Desc_Biofuel_C",
+          "Amount": 450
+        },
+        {
+          "Name": "Packaged Liquid Biofuel",
+          "ClassName": "Desc_PackagedBiofuel_C",
+          "Amount": 750
+        }
+      ],
+      "WasteInventory": [],
+      "FuelInventory": [
+        {
+          "Name": "Solid Biofuel",
+          "ClassName": "Desc_Biofuel_C",
+          "Amount": 200,
+          "MaxAmount": 200
+        }
+      ],
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0,
+        "MaxPowerConsumed": 0
+      },
+      "features": {
+        "properties": {
+          "name": "Biomass Burner",
+          "type": "Biomass Burner"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": -33500,
+            "y": -154300,
+            "z": 8100.00048828125
+          },
+          "type": "Point"
+        }
+      }
+    },
+    {
+      "ID": "Build_GeneratorGeoThermal_C_2147230776",
+      "Name": "Geothermal Generator",
+      "ClassName": "Build_GeneratorGeoThermal_C",
+      "location": {
+        "x": 282899,
+        "y": 1745,
+        "z": 2802.410888671875,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": 281899,
+          "y": 795,
+          "z": 2802.410888671875
+        },
+        "max": {
+          "x": 283899,
+          "y": 2695,
+          "z": 6002.410888671875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "BaseProd": 0,
+      "DynamicProdCapacity": 0,
+      "DynamicProdDemandFactor": 0,
+      "RegulatedDemandProd": 0,
+      "IsFullSpeed": false,
+      "CanStart": true,
+      "LoadPercentage": 0,
+      "ProdPowerConsumption": 0,
+      "CurrentPotential": 100,
+      "ProductionCapacity": 0,
+      "DefaultProductionCapacity": 0,
+      "PowerProductionPotential": 0,
+      "Somersloops": 0,
+      "PowerShards": 0,
+      "FuelAmount": 0,
+      "Supplement": {},
+      "NuclearWarning": "",
+      "FuelResource": "Geothermal",
+      "GeoMinPower": 50,
+      "GeoMaxPower": 150,
+      "AvailableFuel": [],
+      "WasteInventory": [],
+      "FuelInventory": [],
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0,
+        "MaxPowerConsumed": 0
+      },
+      "features": {
+        "properties": {
+          "name": "Geothermal Generator",
+          "type": "Geothermal Generator"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 282899,
+            "y": 1745,
+            "z": 2802.410888671875
+          },
+          "type": "Point"
+        }
+      }
+    }
+  ]
+}
