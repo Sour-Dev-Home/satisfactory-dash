@@ -211,54 +211,6 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   );
 }
 
-/** The name form that keeps a suggested factory as a designation (its machines as members, mode `core`). */
-export function KeepForm({ model, onClose }: { model: FactoryModel; onClose: (saved: boolean) => void }) {
-  const { factory } = model;
-  const { places, writes } = useDesignations();
-  if (writes === null) return null;
-  return (
-    <NameForm
-      label={`Keep ${factory.name}`}
-      initial={factory.name.slice(0, 64)}
-      save="Keep factory"
-      onSave={(name) => {
-        const made = membersOf(model.nodes, places ?? new Map());
-        if (!made.ok) throw new PlanProblem(made.reason);
-        return writes.create.mutateAsync({ name, mode: "core", members: made.members });
-      }}
-      onClose={onClose}
-    />
-  );
-}
-
-/** An automatic factory shown as a suggestion (a dashed frame on its card): "Keep" saves it as a designation. */
-export function SuggestionControls({ model }: { model: FactoryModel }) {
-  const { factory } = model;
-  const { canWrite, writes } = useDesignations();
-  const [naming, setNaming] = useState(false);
-  const keep = useRef<HTMLButtonElement>(null);
-  return (
-    <div className="grid content-start gap-2">
-      <span className="justify-self-start text-sm text-muted">Suggestion</span>
-      {canWrite &&
-        writes !== null &&
-        (naming ? (
-          <KeepForm
-            model={model}
-            onClose={(saved) => {
-              setNaming(false);
-              if (!saved) queueMicrotask(() => keep.current?.focus());
-            }}
-          />
-        ) : (
-          <button ref={keep} type="button" onClick={() => setNaming(true)} aria-label={`Keep ${factory.name}`} className="min-h-touch justify-self-start">
-            Keep
-          </button>
-        ))}
-    </div>
-  );
-}
-
 /** "Designate selected" over the groups ticked in the table (the keyboard and narrow-screen form of the canvas lasso). */
 export function DesignateBar({ nodes, onDone }: { nodes: readonly PlannerNode[]; onDone: () => void }) {
   const { places, writes } = useDesignations();

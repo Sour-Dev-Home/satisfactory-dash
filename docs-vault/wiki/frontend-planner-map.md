@@ -24,8 +24,8 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   (toolbar button, or Shift+drag). A freehand lasso picks the group and bubble cards whose centre it encloses
   (`graph/lasso.ts`, pure), and in Select mode a click or a card's hidden button picks one card. The picks are the
   same set as the Groups table's ticks, under one `DesignateBar`, and Escape clears them. A picked card is tinted,
-  with a check mark. With "Reason factories for me" on, the overview canvas draws automatic factories dashed, with a
-  "Suggestion" tag and a Keep pill (a hidden "Keep …" button for the keyboard) that opens `KeepForm`.
+  with a check mark. The overview draws automatic factories like designated ones (no dashed outline); the "Reason
+  factories for me" suggestion mode and its Keep pill were removed (the owner, 2026-10-27).
 - Merge and split (ADR-0055 Decisions 11 and 12, #727), owners and admins on a backend with `revision`: on the overview,
   Shift- or Ctrl-click a factory card (or tick a card's Select in Tables) to pick it; `MergeBar` offers "Merge into one",
   disabled with its reason unless the picks are one connected piece by themselves (`connectivity.ts`: edges, transports,

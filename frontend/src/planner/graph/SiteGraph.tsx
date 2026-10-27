@@ -37,7 +37,7 @@ import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotio
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
-import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
+import { BADGE_H, BADGE_W } from "./cardBadges";
 import { roundedOrthogonalPath } from "./edgeShapes";
 import {
   BUBBLE_D,
@@ -101,8 +101,6 @@ const GLYPH_MAX_S = 16;
 const MAX_MOVING = 40;
 /** A lasso adds a point once the pointer is this far (stage units) from the last one. */
 const LASSO_STEP = 3;
-/** The Keep pill on a suggested factory's card. */
-const KEEP_W = 56;
 /** The check on a selected card's corner. */
 const CHECK_R = 10;
 
@@ -170,12 +168,6 @@ export interface CanvasSelection {
   replace: (nodeKeys: ReadonlySet<string>) => void;
 }
 
-/** The overview's automatic factories shown as suggestions, and the Keep form for one (owners and admins only). */
-export interface CanvasSuggestions {
-  keys: ReadonlySet<string>;
-  keepForm?: ((factoryKey: string, onClose: (saved: boolean) => void) => ReactNode) | undefined;
-}
-
 export interface SiteGraphProps {
   graph: ProductionGraph;
   target: GraphTarget;
@@ -184,7 +176,6 @@ export interface SiteGraphProps {
   onOpenFactory?: (key: string) => void;
   /** Given, the canvas has a Select mode: a lasso (or a click) picks the groups of the cards it takes. */
   selection?: CanvasSelection | undefined;
-  suggestions?: CanvasSuggestions | undefined;
   /** ADR-0055 Decision 12 (#727), the overview only: factory keys picked to merge; Shift- or Ctrl-click picks one. */
   factoryPicks?: CanvasSelection | undefined;
   /**
@@ -214,9 +205,9 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * image's children are presentational, so buttons inside it would be hidden from assistive tech), and the focused card is
  * ringed in the picture. The Tables view is the full text alternative. With a selection, Select mode (or Shift+drag)
  * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
- * button) picks or unpicks one card instead of opening it. Suggested factories are dashed, with Keep.
+ * button) picks or unpicks one card instead of opening it.
  */
-export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, suggestions, factoryPicks, onPopOut }: SiteGraphProps) {
+export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut }: SiteGraphProps) {
   // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
   // choices: whose upstream is hidden, storage shown, motion.
   const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
@@ -304,16 +295,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const pickingFactories = selectMode && overviewPicks;
   const [lasso, setLasso] = useState<readonly Point[] | null>(null);
   const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);
-  // The suggested factory whose Keep form is open, and the hidden Keep buttons that focus returns to.
-  const [keeping, setKeeping] = useState<string | null>(null);
-  const keepButtons = useRef(new Map<string, HTMLButtonElement>());
-  // A cancelled Keep form hands focus back to that factory's Keep button once the form is gone.
-  // A new object each time, so cancelling the same factory's form twice still refocuses.
-  const [refocusKeep, setRefocusKeep] = useState<{ key: string } | null>(null);
-  useEffect(() => {
-    if (refocusKeep !== null) keepButtons.current.get(refocusKeep.key)?.focus();
-  }, [refocusKeep]);
-
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
   const activeItem = items.some((i) => i.className === item) ? item : ALL_ITEMS;
   const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.flows)), [activeItem, layout]);
@@ -723,10 +704,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (dragged.current) return;
     setCollapsed(toggled(collapsed, key));
   };
-  const keepCard = (key: string) => {
-    if (dragged.current) return;
-    setKeeping(key);
-  };
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
     setView((v) => revealRect(v, n, stageRef.current));
@@ -796,17 +773,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   const canSwitchStorage = scene.hasStorage;
   const canFold = scene.bubbleKeys.length > 0;
-  const suggested = (key: string) => scene.level === "overview" && suggestions !== undefined && suggestions.keys.has(key);
   const factoryPicked = (card: Card) => card.kind === "factory" && factoryPicks !== undefined && factoryPicks.selected.has(card.key);
-  const keepForm = suggestions?.keepForm;
-  // A form for a card that is no longer a suggestion (switched off, kept elsewhere, gone from a poll) is dropped for good.
-  // (React's adjust-state-during-render: it re-renders at once, before any child or effect sees the stale form.)
-  const keepingGone = keeping !== null && !suggested(keeping);
-  if (keepingGone) setKeeping(null);
-  const closeKeep = (saved: boolean) => {
-    if (!saved && keeping !== null) setRefocusKeep({ key: keeping });
-    setKeeping(null);
-  };
 
   return (
     <div className="grid gap-3">
@@ -885,7 +852,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         )}
       </div>
 
-      {keeping !== null && !keepingGone && keepForm !== undefined && keepForm(keeping, closeKeep)}
 
       {/* What a drag does now, or what to do about a drawing that runs past the canvas; the line keeps its height. */}
       <p className="m-0 h-lh text-sm text-muted">
@@ -1005,11 +971,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   finding={findingsOf(n.key)}
                   ringed={openKey === n.key || focusKey === n.key}
                   picked={(selection !== undefined && isPicked(n.card, selection.selected)) || factoryPicked(n.card)}
-                  suggested={suggested(n.key)}
                   dim={!lit(n.key)}
                   onActivate={(additive) => activate(n.card, additive)}
                   onToggleUpstream={() => toggleUpstream(n.key)}
-                  onKeep={keepForm === undefined ? undefined : () => keepCard(n.key)}
                 />
               ))}
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
@@ -1039,7 +1003,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               const picksFactory = pickingFactories && card.kind === "factory";
               const picks = (selectMode && pickable(card)) || picksFactory;
               const what = picksFactory ? card.description : cardButtonName(card);
-              const name = `${what}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}${factoryPicked(card) && !picksFactory ? ", selected" : ""}`;
+              const name = `${what}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${factoryPicked(card) && !picksFactory ? ", selected" : ""}`;
               return (
                 <li key={n.key}>
                   <button
@@ -1064,31 +1028,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               );
             })}
           </ul>
-          {keepForm !== undefined && tabOrder.some((n) => suggested(n.key)) && (
-            <ul aria-label="Suggested factories" className="m-0 list-none p-0">
-              {tabOrder.flatMap((n) =>
-                suggested(n.key)
-                  ? [
-                      <li key={n.key}>
-                        <button
-                          type="button"
-                          ref={(el) => {
-                            if (el) keepButtons.current.set(n.key, el);
-                            else keepButtons.current.delete(n.key);
-                          }}
-                          onClick={() => setKeeping(n.key)}
-                          onFocus={() => focusNode(n)}
-                          onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
-                          className="sr-only"
-                        >
-                          {`Keep ${n.card.label}`}
-                        </button>
-                      </li>,
-                    ]
-                  : [],
-              )}
-            </ul>
-          )}
           {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined)) && (
             <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
               {layout.frames.map((f) => (
@@ -1392,31 +1331,25 @@ function CardView({
   finding,
   ringed,
   picked,
-  suggested,
   dim,
   onActivate,
   onToggleUpstream,
-  onKeep,
 }: {
   node: LaidNode;
   finding: number;
   ringed: boolean;
   /** Picked to designate: tinted, with a check on its corner (not colour alone). */
   picked: boolean;
-  /** An automatic factory shown as a suggestion: a dashed outline, a "Suggestion" tag and Keep. */
-  suggested: boolean;
   dim: boolean;
   /** `additive`: Shift, Ctrl or Cmd was held (a pick on the overview, not an open). */
   onActivate: (additive: boolean) => void;
   onToggleUpstream: () => void;
-  onKeep: (() => void) | undefined;
 }) {
   const card = n.card;
   const stacked = card.kind === "bubble" || card.kind === "fold";
   const up = card.upstream;
   const pillText = up === undefined ? "" : up.collapsed ? `+${up.count}` : "−";
   const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
-  const { tagX, showTag } = suggestionTag(suggested, finding > 0, n.width);
   return (
     <g
       transform={`translate(${n.x} ${n.y})`}
@@ -1424,20 +1357,17 @@ function CardView({
       data-card={card.kind}
       data-node={n.key}
       data-picked={picked || undefined}
-      data-suggested={suggested || undefined}
       className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
     >
-      <title>{suggested ? `${card.description} (suggestion)` : card.description}</title>
+      <title>{card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
       {stacked && <rect x={5} y={5} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
       <rect
         width={n.width}
         height={n.height}
         rx={8}
-        strokeWidth={ringed || picked ? 3 : suggested ? 2 : 1}
-        // Dotted, so a suggestion never reads as an opened bubble's dashed frame.
-        strokeDasharray={suggested && !ringed ? "2 3" : undefined}
-        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : suggested ? "stroke-muted" : "stroke-line")}
+        strokeWidth={ringed || picked ? 3 : 1}
+        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-line")}
       />
       {picked && <rect width={n.width} height={n.height} rx={8} className="pointer-events-none fill-info-soft" />}
       <CardIcon iconUrl={n.iconUrl} glyph={card.glyph} />
@@ -1446,14 +1376,6 @@ function CardView({
         <g aria-hidden="true" data-check="" transform={`translate(${-CHECK_R / 2} ${-CHECK_R / 2})`}>
           <circle r={CHECK_R} className="fill-info-solid stroke-surface" strokeWidth={2} />
           <path d="M-4.5 0 L-1.5 3 L4.5 -3.5" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg-strong" />
-        </g>
-      )}
-      {showTag && (
-        <g transform={`translate(${tagX} ${-BADGE_H / 2})`} data-suggestion-tag="">
-          <rect width={BADGE_W} height={BADGE_H} rx={8} strokeWidth={1} className="fill-surface stroke-muted" />
-          <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
-            Suggestion
-          </text>
         </g>
       )}
       {card.count !== undefined && (
@@ -1500,26 +1422,6 @@ function CardView({
           <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
           <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
             {pillText}
-          </text>
-        </g>
-      )}
-      {/* Keep a suggestion: a pill at the bottom-right, its hit area up to the touch size; the hidden "Keep" button is the
-          keyboard's way in. */}
-      {suggested && onKeep !== undefined && (
-        <g
-          transform={`translate(${n.width - KEEP_W - 8} ${n.height - PILL_H / 2})`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onKeep();
-          }}
-          data-keep=""
-          className="cursor-pointer"
-        >
-          <title>{`Keep ${card.label}`}</title>
-          <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(KEEP_W + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-          <rect width={KEEP_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-info" />
-          <text x={KEEP_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
-            Keep
           </text>
         </g>
       )}

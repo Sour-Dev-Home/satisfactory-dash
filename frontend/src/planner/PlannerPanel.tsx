@@ -7,7 +7,7 @@ import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge } from "./BottleneckBadge";
 import { FactoryFacts, FactoryFlows } from "./FactoryParts";
 import { useDesignationChanges } from "./designationChanges";
-import { DesignateBar, DesignatedControls, ErrorLine, KeepForm, SuggestionControls } from "./DesignationParts";
+import { DesignateBar, DesignatedControls, ErrorLine } from "./DesignationParts";
 import { useDesignations } from "./DesignationContext";
 import { STALE_TEXT } from "./designationText";
 import { MergeBar, SplitBar } from "./MergeSplitParts";
@@ -15,7 +15,6 @@ import { splitSourceOf } from "./selectionPlans";
 import { UndoToast } from "./UndoToast";
 import { usePopOut } from "./usePopOut";
 import { LazySiteGraph } from "./graph/GraphLoader";
-import type { CanvasSuggestions } from "./graph/SiteGraph";
 import {
   connectionRows,
   factoryModels,
@@ -83,36 +82,32 @@ function SiteCard({
   );
 }
 
-/** A designated factory is the player's own; with suggestions on, an automatic one is shown dashed, with Keep (Decision 5). */
-function FactoryStanding({ model, suggest }: { model: FactoryModel; suggest: boolean }) {
-  if (model.factory.designationId !== null) return <DesignatedControls model={model} />;
-  return suggest ? <SuggestionControls model={model} /> : null;
+/** A designated factory is the player's own (Decision 5); an automatic one has no controls of its own. */
+function FactoryStanding({ model }: { model: FactoryModel }) {
+  return model.factory.designationId !== null ? <DesignatedControls model={model} /> : null;
 }
 
 function FactoryCard({
   model,
   findings,
-  suggest,
   onOpen,
   pick,
 }: {
   model: FactoryModel;
   findings: readonly Bottleneck[] | undefined;
-  suggest: boolean;
   onOpen: () => void;
   /** Owners and admins: the card's tick for a merge (the keyboard and narrow-screen form of Shift-click). */
   pick?: { checked: boolean; toggle: () => void } | undefined;
 }) {
   const { factory } = model;
-  const dashed = suggest && factory.designationId === null;
   return (
     <li
       data-picked={pick?.checked === true || undefined}
-      className={cn("grid content-start gap-2 rounded-card border p-4", dashed ? "border-dashed border-muted" : "border-line", pick?.checked === true && "border-info bg-info-soft")}
+      className={cn("grid content-start gap-2 rounded-card border border-line p-4", pick?.checked === true && "border-info bg-info-soft")}
     >
       <h4 className="m-0 break-words">{factoryTitle(factory)}</h4>
       <FactoryFacts model={model} findings={findings} />
-      <FactoryStanding model={model} suggest={suggest} />
+      <FactoryStanding model={model} />
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={onOpen} aria-label={`Open factory: ${factory.name}`} className="min-h-touch justify-self-start">
           Open factory
@@ -136,35 +131,17 @@ function FactoryOverview({
   graph,
   models,
   findings,
-  suggest,
   onOpen,
   viewMode: [view, setMode],
 }: {
   graph: Graph;
   models: readonly FactoryModel[];
   findings: readonly Bottleneck[] | undefined;
-  /** "Reason factories for me", held by the page like the view. */
-  suggest: [boolean, (on: boolean) => void];
   onOpen: (key: string) => void;
   /** Held by the page, so coming back from a factory shows the same view. */
   viewMode: [ViewMode, (mode: ViewMode) => void];
 }) {
-  const [suggesting, setSuggesting] = suggest;
-  const automatic = models.some((m) => m.factory.designationId === null);
   const { canWrite, writes } = useDesignations();
-  const suggestions: CanvasSuggestions | undefined = useMemo(() => {
-    if (!suggesting) return undefined;
-    const byKey = new Map(models.map((m) => [m.factory.key, m]));
-    const keys = new Set(models.filter((m) => m.factory.designationId === null).map((m) => m.factory.key));
-    const keepForm =
-      canWrite && writes !== null
-        ? (key: string, onClose: (saved: boolean) => void) => {
-            const model = byKey.get(key);
-            return model === undefined ? null : <KeepForm key={key} model={model} onClose={onClose} />;
-          }
-        : undefined;
-    return { keys, keepForm };
-  }, [suggesting, models, canWrite, writes]);
   // ADR-0055 Decision 12: factories picked to merge (canvas Shift- or Ctrl-click, or the cards' ticks). A pick a poll took
   // away is dropped from what the bar sees.
   const changes = useDesignationChanges();
@@ -187,19 +164,6 @@ function FactoryOverview({
         {graph.nodes.length === 1 ? "group" : "groups"}
       </p>
       <ViewToggle view={view} onPick={setMode} />
-      {automatic && (
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            aria-pressed={suggesting}
-            className="min-h-touch"
-            onClick={() => setSuggesting(!suggesting)}
-          >
-            Reason factories for me
-          </button>
-          {suggesting && <span className="text-sm text-muted">Factories you have not designated are shown dashed, as suggestions.</span>}
-        </div>
-      )}
       {canMerge && (
         <MergeBar
           onCanvas={view === "graph"}
@@ -223,7 +187,6 @@ function FactoryOverview({
           target={{ kind: "overview", models }}
           findings={findings}
           onOpenFactory={onOpen}
-          suggestions={suggestions}
           factoryPicks={factoryPicks}
         />
       ) : (
@@ -234,7 +197,6 @@ function FactoryOverview({
                 key={m.factory.key}
                 model={m}
                 findings={findings}
-                suggest={suggesting}
                 onOpen={() => onOpen(m.factory.key)}
                 pick={
                   factoryPicks === undefined
@@ -287,14 +249,12 @@ function Detail({
   subject,
   graph,
   findings,
-  suggest,
   onBack,
 }: {
   /** What is open: one site (a backend without factories) or one factory. */
   subject: { site: PlannerSite; factory?: undefined } | { factory: FactoryModel; site?: undefined };
   graph: Graph;
   findings: readonly Bottleneck[] | undefined;
-  suggest: boolean;
   onBack: () => void;
 }) {
   const { site, factory } = subject;
@@ -375,7 +335,7 @@ function Detail({
       ) : (
         <div className="grid content-start gap-2">
           <FactoryFacts model={factory} findings={findings} detail />
-          <FactoryStanding model={factory} suggest={suggest} />
+          <FactoryStanding model={factory} />
         </div>
       )}
 
@@ -490,7 +450,6 @@ export function PlannerPanel({
   const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
   const noBeltData = graph.beltData === "unsupported" || graph.beltData === "tooLarge" || graph.beltData === "notReceived";
   const overviewMode = useViewMode();
-  const [suggesting, setSuggesting] = useState(false);
   const overviewHeading = useRef<HTMLHeadingElement>(null);
   // Back from one (the button or the browser's Back): focus the overview's heading, but not on the page's first render.
   const wasOpen = useRef(open);
@@ -516,18 +475,11 @@ export function PlannerPanel({
               : "No sites yet: no machines are connected by conveyors."}
         </p>
       ) : model !== undefined ? (
-        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} suggest={suggesting} onBack={back} />
+        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} onBack={back} />
       ) : site !== undefined ? (
-        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} suggest={suggesting} onBack={back} />
+        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} onBack={back} />
       ) : byFactory ? (
-        <FactoryOverview
-          graph={graph}
-          models={models}
-          findings={findings}
-          viewMode={overviewMode}
-          suggest={[suggesting, setSuggesting]}
-          onOpen={onSelect}
-        />
+        <FactoryOverview graph={graph} models={models} findings={findings} viewMode={overviewMode} onOpen={onSelect} />
       ) : (
         <>
           <p className="summary">
