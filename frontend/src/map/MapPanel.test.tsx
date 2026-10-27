@@ -66,6 +66,15 @@ describe("MapPanel", () => {
     expect(screen.getByText(/^5 buildings on the map:/)).toHaveTextContent(/2 backed up\./);
   });
 
+  it("captions the map with every world layer, in draw order, in today's wording, and keeps the credit line", async () => {
+    mount();
+    await screen.findByTestId("map-canvas");
+    expect(screen.getByText(/^The island's coast/)).toHaveTextContent(
+      "under a grid of 500 m squares, with the rails, resource nodes, power lines, belts and pipes, drone ports, players' markers and trains the server reported, nodes drawn with the game's icons.",
+    );
+    expect(screen.getByText("Satisfactory, its map and its icons © Coffee Stain Studios. Not affiliated.")).toBeInTheDocument();
+  });
+
   it("lists only the buildings in view, and follows the view", async () => {
     const first = buildings[0].location!;
     canvas.view = { minX: first.xM - 1, maxX: first.xM + 1, minY: first.yM - 1, maxY: first.yM + 1 };

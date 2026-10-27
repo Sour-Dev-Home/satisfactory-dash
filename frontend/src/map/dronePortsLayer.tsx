@@ -17,7 +17,8 @@ export const DRONE_EDGE_PX = 1.5;
  * path rather than track or wire.
  */
 export const DRONE_PORT_HALF_PX = 5;
-export const DRONE_ROUTE_WEIGHT_PX = 1.5;
+/** 2 px, not a 1.5 px hairline: a dashed 1.5 px line all but vanished over the terrain on a phone. */
+export const DRONE_ROUTE_WEIGHT_PX = 2;
 /** Dash and gap in pixels (Leaflet's dashArray is in screen pixels on the canvas renderer). */
 export const DRONE_ROUTE_DASH = "6 4";
 

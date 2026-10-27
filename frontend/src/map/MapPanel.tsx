@@ -21,6 +21,8 @@ import { conveyorsLayer } from "./conveyorsLayer";
 import { placeConveyors, type BuildingPlace } from "./conveyors";
 import { itemLabels, labelFor } from "../factory/itemLabels";
 import { MapFilterPanel } from "./MapFilterPanel";
+import { captionLayers } from "./caption";
+import { ScrollRegion } from "../ui/ScrollRegion";
 import { buildingCounts, filterBuildings, filterNodes, typeEntries, useMapFilters } from "./mapFilters";
 import {
   ConveyorsTable,
@@ -62,6 +64,12 @@ const LAYERS = [
   markersLayer,
   trainsLayer,
 ] as const;
+
+/**
+ * The world layers as the caption under the map names them, from LAYERS itself (caption.ts), so a new layer joins the
+ * sentence. The buildings are the factory the whole map is about, not something laid over it, so they aren't listed.
+ */
+const WORLD_CAPTION = captionLayers(LAYERS.filter((l) => l.id !== buildingsLayer.id));
 
 /** Binds a layer to its data, which is all the canvas needs to draw it. */
 const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, draw: (ctx) => layer.draw(ctx, data) });
@@ -328,10 +336,10 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       )}
       <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
-        The island's coast, lakes and high ground, traced from the game's map, under a grid of 500 m squares, with the
-        rails, resource nodes, power lines, belts and pipes, drone ports, players' markers and trains the server reported, nodes drawn with the game's icons.
-        Belts and pipes are drawn straight between their ends. Trains move with the latest reading, about every 10 seconds. Positions are approximate
-        until they're checked in game.
+        The island's coast, lakes and high ground, traced from the game's map, under a grid of 500 m squares, with the{" "}
+        {WORLD_CAPTION} the server reported, nodes drawn with the game's icons. Belts and pipes are drawn straight between
+        their ends. Trains move with the latest reading, about every 10 seconds. Positions are approximate until they're
+        checked in game.
       </p>
       <p className="text-sm text-muted">Satisfactory, its map and its icons © Coffee Stain Studios. Not affiliated.</p>
 
@@ -372,8 +380,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           {listed.length === 0 ? (
             <p className="text-sm text-muted">{shown.length === 0 && allPlaced.length > 0 ? EMPTY_FILTERED : EMPTY_VIEW}</p>
           ) : (
-            // Focusable, so keyboard users can scroll it (axe scrollable-region-focusable).
-            <div tabIndex={0} role="region" aria-labelledby="map-list-heading" className="max-h-80 overflow-auto">
+            <ScrollRegion labelledBy="map-list-heading">
               <table aria-labelledby="map-list-heading" className="w-full text-sm">
                 <thead>
                   <tr>
@@ -399,7 +406,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           )}
         </div>
       )}

@@ -149,6 +149,8 @@
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
+  /* How far a capped table's scroll region fades in from its bottom edge while rows are cut (ui/ScrollRegion). */
+  --spacing-scroll-fade: 2.5rem;
   /* The command bar (#351): its width, and its result list's height before it scrolls. */
   --spacing-palette: 36rem;
   --spacing-palette-list: 24rem;
@@ -496,6 +498,11 @@
 }
 @utility nav-fade-both {
   mask-image: linear-gradient(to right, transparent, black var(--spacing-nav-fade), black calc(100% - var(--spacing-nav-fade)), transparent);
+}
+
+/* A capped table's scroll region fades out at the bottom while rows are cut below (ui/ScrollRegion); static, no motion. */
+@utility scroll-fade-bottom {
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--spacing-scroll-fade)), transparent);
 }
 
 /* The existing views' classes, in B2's style until each view is restyled. */
