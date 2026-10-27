@@ -28,6 +28,10 @@ import type {
   MapMarkersWorldLayerResponse,
   PowerLinesLayerData,
   PowerLinesWorldLayerResponse,
+  ConveyorKind,
+  ConveyorNodeKind,
+  ConveyorsLayerData,
+  ConveyorsWorldLayerResponse,
   RailsLayerData,
   RailsWorldLayerResponse,
   ResourceNodesLayerData,
@@ -968,6 +972,58 @@ const DEMO_POWER_LINES: PowerLinesLayerData = [
 
 export function powerLinesWorld(now: number): PowerLinesWorldLayerResponse {
   return { ...worldEnvelope(now, "powerLines", DEMO_POWER_LINES.length), data: DEMO_POWER_LINES };
+}
+
+/** One demo conveyor; `at` is end 0, as the layer gives it. */
+const conveyor = (
+  id: string,
+  kind: ConveyorKind,
+  from: [string, ConveyorNodeKind] | null,
+  to: [string, ConveyorNodeKind] | null,
+  [x, y]: [number, number],
+  tier = kind === "pipe" ? "Pipeline Mk.1" : kind === "lift" ? "Conveyor Lift Mk.1" : "Conveyor Belt Mk.1",
+  capacityPerMinute: number | null = kind === "pipe" ? null : 60,
+): ConveyorsLayerData[number] => ({
+  id,
+  kind,
+  from: from?.[0] ?? null,
+  fromKind: from?.[1] ?? null,
+  to: to?.[0] ?? null,
+  toKind: to?.[1] ?? null,
+  capacityPerMinute,
+  tier,
+  at: { x, y },
+});
+const M = (n: number): [string, ConveyorNodeKind] => [`demo-${n}`, "machine"];
+
+/**
+ * The demo's belts, lifts and pipes (#330), joining the demo factory's own machines (`buildings` above, ids demo-N) the
+ * way their recipes feed each other: a miner's belt into a splitter for the two smelters, ingots to the plate and rod
+ * constructors, rods to the screws, plates and screws to the two plate assemblers, a belt up a lift to the rotor
+ * assembler, and an oil pump's pipe through a junction to the refinery, whose residue pipe ends open (drawn as a dot).
+ */
+const DEMO_CONVEYORS: ConveyorsLayerData = [
+  conveyor("demo-belt-1", "belt", ["demo-miner-1", "extractor"], ["demo-splitter-1", "splitter"], [-1765, -985], "Conveyor Belt Mk.2", 120),
+  conveyor("demo-belt-2", "belt", ["demo-splitter-1", "splitter"], M(1), [-1745, -982]),
+  conveyor("demo-belt-3", "belt", ["demo-splitter-1", "splitter"], M(2), [-1745, -988]),
+  conveyor("demo-belt-4", "belt", M(1), M(3), [-1716, -980]),
+  conveyor("demo-belt-5", "belt", M(2), M(4), [-1716, -990]),
+  conveyor("demo-belt-6", "belt", M(4), M(5), [-1697, -990]),
+  conveyor("demo-belt-7", "belt", M(3), M(6), [-1697, -980]),
+  conveyor("demo-belt-8", "belt", M(5), M(6), [-1687, -990]),
+  conveyor("demo-belt-9", "belt", M(6), M(8), [-1671, -986]),
+  conveyor("demo-belt-10", "belt", M(4), ["demo-lift-1", "conveyor"], [-1700, -994]),
+  conveyor("demo-lift-1", "lift", ["demo-belt-10", "conveyor"], ["demo-belt-11", "conveyor"], [-1694, -996]),
+  conveyor("demo-belt-11", "belt", ["demo-lift-1", "conveyor"], M(7), [-1694, -996]),
+  conveyor("demo-belt-12", "belt", M(3), M(10), [-1697, -978]),
+  conveyor("demo-belt-13", "belt", M(5), M(10), [-1687, -986]),
+  conveyor("demo-pipe-1", "pipe", ["demo-oil-pump-1", "extractor"], ["demo-junction-1", "junction"], [-1580, -845]),
+  conveyor("demo-pipe-2", "pipe", ["demo-junction-1", "junction"], M(9), [-1560, -858]),
+  conveyor("demo-pipe-3", "pipe", M(9), null, [-1535, -874]),
+];
+
+export function conveyorsWorld(now: number): ConveyorsWorldLayerResponse {
+  return { ...worldEnvelope(now, "conveyors", DEMO_CONVEYORS.length), data: DEMO_CONVEYORS };
 }
 
 /**

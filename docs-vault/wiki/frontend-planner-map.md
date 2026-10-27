@@ -103,6 +103,18 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   rails and nodes and under the buildings as ONE non-interactive Leaflet multi-polyline (a sub-path per line, so 20,000
   lines are still one canvas path), a 1.5 px `--color-map-power-line` copper hairline. Text: "N power lines on the map,
   M m of wire in all." plus a "Power lines in view" table keyed `${id}:${index}` (FRM ids can repeat).
+- The belts, lifts and pipes (#330, `conveyorsLayer`, `queries.mapConveyors`, the ADR-0048 amendment's `conveyors` world
+  layer, toggle "Belts and pipes") are off by default (thousands of edges on a big save; read only once on). The layer is a
+  connection graph: each edge has only end 0's position (`at`) and the ids at its ends, no spline. `conveyors.ts`
+  (`placeConveyors`, pure) finds end 1 as the `at` of the conveyor joined to it (only when that one's `from` names this
+  one), else the factory building under that id (same ids as getFactory; MapPanel keys the places by their JSON, so a poll
+  that moves nothing doesn't redraw), else the nearest conveyor leaving the same splitter, merger or junction. Unplaced
+  ends and every lift (it runs straight up or down) are dots. Drawn over the power lines and under the buildings as three
+  non-interactive multi-polylines (pipes 2.5 px `--color-map-pipe`, belts 2 px `--color-map-belt`, lifts 6 px dots), the
+  tokens pointing at the planner's own pipe (`--color-info`) and belt (`--color-muted`) colours. Text: "N belts, M pipes,
+  K lifts on the map, L m of belt and P m of pipe in all, drawn straight between their ends." plus how many are dots, and
+  "Belts, lifts and pipes in view" (Kind, Tier, Length, From, To; ends in words, never ids), 500 rows max, keyed id +
+  index.
 - The drone ports (ADR-0055 Decision 1, #330, `dronePortsLayer`, `queries.mapDroneRoutes`, the `droneRoutes` world
   layer) are on by default (a save has a handful of ports, capped at 2,000) and in the Map page's reveal. Drawn over the
   buildings and under the markers: each port a fixed-size 10 px square in `--color-map-drone` (azure) with a canvas rim,

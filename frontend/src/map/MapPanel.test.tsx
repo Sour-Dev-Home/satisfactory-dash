@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
+  conveyorsWorldResponse,
+  conveyorsWorldResponseEmpty,
   droneRoutesWorldResponse,
   errorUpstreamUnreachable,
   factoryMixed,
@@ -19,6 +21,7 @@ import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "../
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "../test/mapMarkersResponses";
 import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "../test/powerLinesResponses";
 import { droneRoutesWorldResponseAmbiguous, droneRoutesWorldResponseEmpty, droneRoutesWorldResponseTruncated } from "../test/droneRoutesResponses";
+import { conveyorsWorldResponseTruncated } from "../test/conveyorsResponses";
 import { server } from "../test/server";
 import { renderWithClient } from "../test/render";
 import type { DrawnLayer, ViewM } from "./MapCanvas";
@@ -43,6 +46,7 @@ const nodesRoute = endpoints.map.worldLayer.route.replace(":layer", "resourceNod
 const markersRoute = endpoints.map.worldLayer.route.replace(":layer", "mapMarkers");
 const powerLinesRoute = endpoints.map.worldLayer.route.replace(":layer", "powerLines");
 const dronesRoute = endpoints.map.worldLayer.route.replace(":layer", "droneRoutes");
+const conveyorsRoute = endpoints.map.worldLayer.route.replace(":layer", "conveyors");
 const ids = () => canvas.layers.map((l) => l.id);
 const mount = (snapshot: FactoryResponse = factoryMixed) => renderWithClient(<MapPanel snapshot={snapshot} serverId="default" />);
 
@@ -597,6 +601,127 @@ describe("MapPanel power lines (#330)", () => {
     await screen.findByRole("table", { name: /Power lines in view \(3\)/ });
     expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
     spy.mockRestore();
+  });
+});
+
+describe("MapPanel belts and pipes (#330)", () => {
+  const toggle = () => screen.getByRole("checkbox", { name: "Belts and pipes" });
+  const turnOn = () => fireEvent.click(toggle());
+  const SAMPLE_TEXT =
+    "7 belts, 2 pipes, 2 lifts on the map, 30 m of belt and 0 m of pipe in all, drawn straight between their ends. 7 with an end the map can't place are drawn as a dot.";
+
+  it("starts off: unchecked, not drawn, and never asked for", async () => {
+    const asked = vi.fn();
+    server.use(
+      http.get(conveyorsRoute, () => {
+        asked();
+        return HttpResponse.json(conveyorsWorldResponse);
+      }),
+    );
+    mount();
+    await waitFor(() => expect(ids()).toContain("trains"));
+    expect(toggle()).not.toBeChecked();
+    expect(ids()).not.toContain("conveyors");
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("once on, draws just above the power lines and under the buildings", async () => {
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Power lines" }));
+    await waitFor(() =>
+      expect(ids()).toEqual(["rails", "resourceNodes", "powerLines", "conveyors", "buildings", "droneRoutes", "mapMarkers", "trains"]),
+    );
+  });
+
+  it("says what is on the map, captions its legend, and lists them in view", async () => {
+    canvas.view = null;
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText(SAMPLE_TEXT)).toBeInTheDocument();
+    expect(screen.getAllByText("Belts and pipes", { selector: "p" })).toHaveLength(1);
+    expect(screen.getByText("Far end not placed")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: /Belts, lifts and pipes in view \(11\)/ });
+    // The miner's belt ends at the splitter, placed by the belt that leaves it; the splitter has no name in the factory.
+    const row = within(table).getAllByRole("row")[5];
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Belt", "Conveyor Belt Mk.1", "8 m", "Extractor", "Splitter"]);
+  });
+
+  it("places an end at the building the factory placed under its id, and names it", async () => {
+    const [target] = buildings;
+    const edge = { ...conveyorsWorldResponse.data[0], to: target.id, toKind: "machine" as const, at: { x: target.location!.xM, y: target.location!.yM + 40 } };
+    server.use(http.get(conveyorsRoute, () => HttpResponse.json({ ...conveyorsWorldResponse, count: 1, data: [edge] })));
+    canvas.view = null;
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText(/^1 belt, 0 pipes, 0 lifts on the map, 40 m of belt and 0 m of pipe in all/)).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: /Belts, lifts and pipes in view \(1\)/ });
+    expect(within(table).getByText(target.name)).toBeInTheDocument();
+  });
+
+  it("drops the layer, its legend, text and table when toggled off again", async () => {
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    await screen.findByRole("table", { name: /Belts, lifts and pipes in view/ });
+    turnOn();
+    expect(ids()).not.toContain("conveyors");
+    expect(screen.queryByRole("table", { name: /Belts, lifts and pipes in view/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/belts?, \d+ pipes?, \d+ lifts? on the map/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Far end not placed")).not.toBeInTheDocument();
+  });
+
+  it("says when none are reported yet, with no legend row", async () => {
+    server.use(http.get(conveyorsRoute, () => HttpResponse.json(conveyorsWorldResponseEmpty)));
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText("No belts, lifts or pipes reported yet.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Belts, lifts and pipes in view (0)" })).toBeInTheDocument();
+    expect(screen.queryByText("Far end not placed")).not.toBeInTheDocument();
+  });
+
+  it("says when the server cut the layer to its limit", async () => {
+    server.use(http.get(conveyorsRoute, () => HttpResponse.json(conveyorsWorldResponseTruncated)));
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText(/30 m of belt and 0 m of pipe shown/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing part of the belts and pipes: the server cut this layer to its size limit/)).toBeInTheDocument();
+  });
+
+  it("shows a failed read as an error with Retry, and keeps the rest of the map", async () => {
+    let failing = true;
+    server.use(
+      http.get(conveyorsRoute, () =>
+        failing ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 }) : HttpResponse.json(conveyorsWorldResponse),
+      ),
+    );
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText("Belts and pipes couldn't load: game server unreachable.")).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText(SAMPLE_TEXT)).toBeInTheDocument();
+  });
+
+  it("does not redraw the conveyors when a factory poll keeps every building where it was", async () => {
+    const { rerender, client } = mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    await waitFor(() => expect(ids()).toContain("conveyors"));
+    const before = canvas.layers.find((l) => l.id === "conveyors")!.draw;
+    rerender(
+      <QueryClientProvider client={client}>
+        <MapPanel snapshot={structuredClone(factoryMixed)} serverId="default" />
+      </QueryClientProvider>,
+    );
+    expect(canvas.layers.find((l) => l.id === "conveyors")!.draw).toBe(before);
   });
 });
 

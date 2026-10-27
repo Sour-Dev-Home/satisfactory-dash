@@ -87,6 +87,8 @@ import {
   mapMarkersWorldResponse,
   powerLinesWorldResponse,
   droneRoutesWorldResponse,
+  conveyorsWorldResponse,
+  conveyorsWorldResponseEmpty,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -116,6 +118,7 @@ import {
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "./mapMarkersResponses";
 import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "./powerLinesResponses";
+import { conveyorsWorldResponseTruncated } from "./conveyorsResponses";
 import { droneRoutesWorldResponseAmbiguous, droneRoutesWorldResponseEmpty, droneRoutesWorldResponseTruncated } from "./droneRoutesResponses";
 import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
@@ -181,6 +184,8 @@ export const ROUTES = {
   mapPowerLines: endpoints.map.worldLayer,
   // ADR-0055 Decision 1 (#330): the drone ports and their pairings, the same endpoint (on by default).
   mapDroneRoutes: endpoints.map.worldLayer,
+  // #330: the belts, lifts and pipes, the same endpoint (off by default on the page, so asked for once toggled on).
+  mapConveyors: endpoints.map.worldLayer,
   // ADR-0038 M6: the live trains and stations (its own endpoint).
   mapLive: endpoints.map.live,
   settings: endpoints.settings.get,
@@ -254,6 +259,7 @@ export const WORLD_LAYER_ROUTES = {
   mapMarkers: "mapMarkers",
   mapPowerLines: "powerLines",
   mapDroneRoutes: "droneRoutes",
+  mapConveyors: "conveyors",
 } as const;
 
 /** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
@@ -304,6 +310,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   mapMarkers: ok(mapMarkersWorldResponse),
   mapPowerLines: ok(powerLinesWorldResponse),
   mapDroneRoutes: ok(droneRoutesWorldResponse),
+  mapConveyors: ok(conveyorsWorldResponse),
   mapLive: ok(mapLiveResponse),
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
@@ -650,6 +657,7 @@ export const SCENARIOS = {
     mapMarkers: slow(BASE.mapMarkers),
     mapPowerLines: slow(BASE.mapPowerLines),
     mapDroneRoutes: slow(BASE.mapDroneRoutes),
+    mapConveyors: slow(BASE.mapConveyors),
     mapLive: slow(BASE.mapLive),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
@@ -726,6 +734,11 @@ export const SCENARIOS = {
   "map-power-lines-empty": { mapPowerLines: ok(powerLinesWorldResponseEmpty) },
   "map-power-lines-truncated": { mapPowerLines: ok(powerLinesWorldResponseTruncated) },
   "map-power-lines-error": { mapPowerLines: fail(502, errorUpstreamUnreachable) },
+  // #330, the belts, lifts and pipes (off by default, so their states act on the toggle): none reported yet, cut to the
+  // layer's cap, and the read failing. The default scenario has the captured sample.
+  "map-conveyors-empty": { mapConveyors: ok(conveyorsWorldResponseEmpty) },
+  "map-conveyors-truncated": { mapConveyors: ok(conveyorsWorldResponseTruncated) },
+  "map-conveyors-error": { mapConveyors: fail(502, errorUpstreamUnreachable) },
   // ADR-0055 Decision 1 (#330), the drone ports (on by default, so empty and failing are in map-world-empty and
   // map-world-error): cut to the layer's cap, and a pairing that names two ports. The default scenario has the captured
   // pair and an unpaired port.

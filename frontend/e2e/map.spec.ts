@@ -218,6 +218,34 @@ test("the power lines are off by default, then read as text and toggle", async (
   await expect(page.getByRole("heading", { name: /Power lines in view/ })).toHaveCount(0);
 });
 
+// #330: the belts, lifts and pipes are off by default (thousands on a big save) and asked for only once toggled on. On,
+// they draw three more canvas paths under the buildings (the CSP gate: no violation, no unmocked call) and read as text.
+test("the belts and pipes are off by default, then draw and read as text, and toggle", async ({ page, mockApi }, testInfo) => {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/map/world/conveyors")) asked.push(request.url());
+  });
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("1 marker and 3 stamps on the map.")).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: "Belts and pipes" });
+  await expect(toggle).not.toBeChecked();
+  expect(asked, "conveyors asked for while off").toEqual([]);
+
+  await toggle.check();
+  const summary = page.getByText(/^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt and 0 m of pipe in all, drawn straight between their ends\./);
+  await expect(summary).toBeVisible();
+  await expect(page.getByText("Far end not placed")).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: /Belts, lifts and pipes in view/ }).or(page.getByRole("heading", { name: "Belts, lifts and pipes in view (0)" })),
+  ).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
+  await toggle.uncheck();
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Belts, lifts and pipes in view/ })).toHaveCount(0);
+});
+
 test.describe("the map's first view", () => {
   // Reduced motion also turns off Leaflet's zoom and fade animations, so the screenshot is stable.
   test.use({ reducedMotion: "reduce" });

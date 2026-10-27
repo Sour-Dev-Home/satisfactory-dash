@@ -180,6 +180,7 @@ export const demoHandlers = [
       if (params.layer === "mapMarkers") return Response.json(world.mapMarkersWorld(demoNow()));
       if (params.layer === "powerLines") return Response.json(world.powerLinesWorld(demoNow()));
       if (params.layer === "droneRoutes") return Response.json(world.droneRoutesWorld(demoNow()));
+      if (params.layer === "conveyors") return Response.json(world.conveyorsWorld(demoNow()));
       return error(404, "not_found", "Unknown map layer");
     }),
   ),
