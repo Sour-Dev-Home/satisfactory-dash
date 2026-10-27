@@ -63,6 +63,10 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - Leaflet with CRS.Simple, in a lazy chunk (`MapCanvas.tsx`) that only the Map page loads.
 - `projection.ts` is the one world-to-map mapping (`[lat, lng] = [-yM, xM]`; bounds cited from
   `docs-vault/raw-sources/world-coordinates.md`).
+- Under the grid, `terrain.ts` draws the traced terrain (ADR-0023 decision 4 amendment): `terrain/terrain.json`,
+  made by `scripts/map-terrain.mjs` from the game's map texture, loaded as its own chunk and drawn in the tile pane
+  so it stays under every layer. Colours are `--color-terrain-*` tokens; `TERRAIN_ENABLED` is the takedown switch;
+  `terrain/NOTICE.md` the licence boundary and the rebuild steps.
 - Base maps are configs (a neutral grid). The base stays data-derived, but #571 reversed #330's "no game art" for
   resource nodes: `resourceIcons.ts` maps FRM's `Name` to the game's icon in `public/game-assets/` (NOTICE.md: not
   AGPL), and an unknown type keeps the circle.

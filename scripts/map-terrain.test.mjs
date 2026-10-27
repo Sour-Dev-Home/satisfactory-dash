@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync } from "node:zlib";
-import { classify, decodePng, majority, ringArea, sampleColors, simplifyRing, traceRings, traceTerrain } from "./map-terrain.mjs";
+import { classify, decodePng, majority, ringArea, sampleColors, simplifyRing, stitch, traceRings, traceTerrain } from "./map-terrain.mjs";
 
 /** A PNG of RGB pixels (`pixel(x, y)` returns [r, g, b]); each row filtered with `filter` (0 none, 2 up). */
 function png(width, height, pixel, filter = 0) {
@@ -115,6 +115,40 @@ test("traceTerrain: land and each class traced in world metres inside the bounds
       assert.ok(Number.isInteger(ring[i]) && Number.isInteger(ring[i + 1]));
     }
   }
+});
+
+test("stitch joins tiles row by row, and refuses tiles of different sizes", () => {
+  const tile = (rgb) => decodePng(png(2, 2, () => rgb));
+  const image = stitch([tile([1, 0, 0]), tile([2, 0, 0]), tile([3, 0, 0]), tile([4, 0, 0])], 2);
+  assert.deepEqual([image.width, image.height], [4, 4]);
+  const red = (x, y) => image.rgba[(y * 4 + x) * 4];
+  assert.deepEqual([red(0, 0), red(3, 0), red(0, 3), red(3, 3)], [1, 2, 3, 4]);
+  assert.throws(() => stitch([tile([0, 0, 0]), decodePng(png(3, 2, () => [0, 0, 0]))], 2), /not 2x2/);
+});
+
+test("land: false keeps a class out of the land; draw: false gives it no tint", () => {
+  // Left half void, right half sea, a grass island and a shallows patch in the sea.
+  const image = decodePng(
+    png(20, 10, (x, y) => {
+      if (x < 10) return [0, 0, 0];
+      if (x >= 12 && x < 16 && y >= 2 && y < 8) return [60, 140, 60];
+      if (x >= 17 && x < 19 && y >= 2 && y < 8) return [80, 160, 180];
+      return [20, 40, 120];
+    }),
+  );
+  const terrain = traceTerrain(image, {
+    boundsM: { minX: 0, maxX: 200, minY: 0, maxY: 100 },
+    smoothRadius: 0,
+    minAreaPx: 4,
+    classes: [
+      { id: "sea", land: false, draw: false, colors: [[20, 40, 120]] },
+      { id: "void", land: false, draw: false, colors: [[0, 0, 0]] },
+      { id: "shallows", land: false, draw: true, colors: [[80, 160, 180]] },
+      { id: "grass", draw: false, colors: [[60, 140, 60]] },
+    ],
+  });
+  assert.equal(terrain.land.length, 1, "only the island is land: not the void, not the shallows");
+  assert.deepEqual(terrain.classes.map((c) => [c.id, c.rings.length]), [["shallows", 1]]);
 });
 
 test("sampleColors lists the most common colours first", () => {

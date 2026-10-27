@@ -4,12 +4,13 @@
 // texture never enters the repo. Dependency-free: Node's zlib decodes the PNG (8-bit RGB or RGBA, not interlaced;
 // downscale with `npx sharp-cli@6.1.0 ... resize 1024` first, which writes that format).
 //
-//   node scripts/map-terrain.mjs sample <map.png>                    the most common colours, to fill the palette
-//   node scripts/map-terrain.mjs trace <map.png> <palette.json> <out.json>
+//   node scripts/map-terrain.mjs sample <tile.png...> [--cols N]      the most common colours, to fill the palette
+//   node scripts/map-terrain.mjs trace <palette.json> <out.json> <tile.png...> [--cols N]
 //
-// palette.json: { "boundsM": {minX,maxX,minY,maxY}, "classes": [{ "id": "water", "colors": [[r,g,b], ...] }, ...],
-//   "smoothRadius": 2, "minAreaPx": 40, "tolerancePx": 0.8 }. The first class is the background (water): it is not
-//   traced; the land is everything else, and each other class is traced on its own.
+// Tiles go row by row (the game's SlicedMap/Map_<col>-<row>: 0-0, 1-0, 0-1, 1-1). palette.json: { "boundsM":
+//   {minX,maxX,minY,maxY}, "classes": [{ "id", "colors": [[r,g,b], ...], "land"?, "draw"? }, ...], "smoothRadius",
+//   "minAreaPx", "tolerancePx" }. By default the first class is the undrawn background and every other class is land
+//   with a tint; `land: false` and `draw: false` say otherwise (shallows: tinted, not land; the void: neither).
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -230,7 +231,26 @@ export function chaikin(ring) {
   return out;
 }
 
-/** Traces every class but the background; returns the terrain file's content, in whole metres. */
+/** Joins equal-sized tiles, given row by row, into one image. */
+export function stitch(tiles, cols) {
+  const { width: tw, height: th } = tiles[0];
+  const rows = Math.ceil(tiles.length / cols);
+  const width = tw * cols;
+  const height = th * rows;
+  const rgba = new Uint8Array(width * height * 4);
+  tiles.forEach((tile, i) => {
+    if (tile.width !== tw || tile.height !== th) throw new Error(`tile ${i} is ${tile.width}x${tile.height}, not ${tw}x${th}`);
+    const ox = (i % cols) * tw;
+    const oy = Math.floor(i / cols) * th;
+    for (let y = 0; y < th; y++) rgba.set(tile.rgba.subarray(y * tw * 4, (y + 1) * tw * 4), ((oy + y) * width + ox) * 4);
+  });
+  return { width, height, rgba };
+}
+
+/**
+ * Traces the land and each drawn class; returns the terrain file's content, in whole metres. A class with
+ * `land: false` (the sea, shallows, the void past the world's edge) is not land; one with `draw: false` gets no tint.
+ */
 export function traceTerrain(image, palette) {
   const { width, height } = image;
   const { classes, boundsM, smoothRadius = 2, minAreaPx = 40, tolerancePx = 0.8 } = palette;
@@ -238,20 +258,25 @@ export function traceTerrain(image, palette) {
   const sx = (boundsM.maxX - boundsM.minX) / width;
   const sy = (boundsM.maxY - boundsM.minY) / height;
   const toWorld = ([x, y]) => [Math.round(boundsM.minX + x * sx), Math.round(boundsM.minY + y * sy)];
-  const shapes = (test) => {
+  // One round of corner cutting, then a second, finer simplify drops the points it added along straight runs.
+  const shapes = (test, minArea = minAreaPx) => {
     const mask = new Uint8Array(width * height);
     for (let i = 0; i < mask.length; i++) mask[i] = test(labels[i]) ? 1 : 0;
     return traceRings(mask, width, height)
-      .filter((r) => ringArea(r) >= minAreaPx)
-      .map((r) => chaikin(chaikin(simplifyRing(r, tolerancePx))).map(toWorld))
+      .filter((r) => ringArea(r) >= minArea)
+      .map((r) => simplifyRing(chaikin(simplifyRing(r, tolerancePx)), tolerancePx / 3).map(toWorld))
       .map((r) => r.filter((p, i) => i === 0 || p[0] !== r[i - 1][0] || p[1] !== r[i - 1][1]))
       .filter((r) => r.length >= 3)
       .map((r) => r.flat());
   };
+  const isLand = classes.map((c, k) => (c.land ?? k !== 0) === true);
   return {
     boundsM,
-    land: shapes((k) => k !== 0),
-    classes: classes.slice(1).map((c, i) => ({ id: c.id, rings: shapes((k) => k === i + 1) })),
+    land: shapes((k) => isLand[k]),
+    classes: classes
+      .map((c, k) => ({ c, k }))
+      .filter(({ c, k }) => c.draw ?? k !== 0)
+      .map(({ c, k }) => ({ id: c.id, rings: shapes((l) => l === k, c.minAreaPx) })),
   };
 }
 
@@ -271,17 +296,25 @@ export function sampleColors({ rgba }, top = 24) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const [cmd, png, paletteFile, outFile] = process.argv.slice(2);
-  if (cmd === "sample" && png) {
-    for (const { rgb, share } of sampleColors(decodePng(readFileSync(png)))) console.log(`[${rgb.join(", ")}]  ${(share * 100).toFixed(1)}%`);
-  } else if (cmd === "trace" && png && paletteFile && outFile) {
-    const terrain = traceTerrain(decodePng(readFileSync(png)), JSON.parse(readFileSync(paletteFile, "utf8")));
+  const [cmd, ...args] = process.argv.slice(2);
+  // Tiles row by row; `--cols N` (default: a square grid) when there are several.
+  const load = (files) => {
+    const at = files.indexOf("--cols");
+    const cols = at >= 0 ? Number(files.splice(at, 2)[1]) : Math.round(Math.sqrt(files.length));
+    const tiles = files.map((f) => decodePng(readFileSync(f)));
+    return tiles.length === 1 ? tiles[0] : stitch(tiles, cols);
+  };
+  if (cmd === "sample" && args.length > 0) {
+    for (const { rgb, share } of sampleColors(load(args))) console.log(`[${rgb.join(", ")}]  ${(share * 100).toFixed(1)}%`);
+  } else if (cmd === "trace" && args.length >= 3) {
+    const [paletteFile, outFile, ...files] = args;
+    const terrain = traceTerrain(load(files), JSON.parse(readFileSync(paletteFile, "utf8")));
     const text = JSON.stringify(terrain);
     writeFileSync(outFile, text + "\n");
     const points = terrain.land.reduce((n, r) => n + r.length / 2, 0) + terrain.classes.reduce((n, c) => n + c.rings.reduce((m, r) => m + r.length / 2, 0), 0);
     console.log(`wrote ${outFile}: ${(text.length / 1024).toFixed(0)} kB, ${points} points, ${terrain.land.length} land rings`);
   } else {
-    console.error("usage: map-terrain.mjs sample <map.png> | trace <map.png> <palette.json> <out.json>");
+    console.error("usage: map-terrain.mjs sample <tile.png...> [--cols N] | trace <palette.json> <out.json> <tile.png...> [--cols N]");
     process.exit(2);
   }
 }
