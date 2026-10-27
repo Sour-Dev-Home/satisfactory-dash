@@ -12,9 +12,40 @@ import {
   BottlenecksQuerySchema,
   BottlenecksResponseSchema,
   BottlenecksSchema,
+  BottleneckNoteSchema,
+  KNOWN_BOTTLENECK_NOTE_CODES,
   KNOWN_BOTTLENECK_STEP_KINDS,
   endpoints,
 } from "../src/index";
+
+// Maintained by hand (shared never imports backend): every note `code` the backend emits, from
+// backend/src/modules/telemetry/services/{bottleneckFinder,productionGraph,logisticsEdges}.ts. A new backend note
+// adds its code here and to KNOWN_BOTTLENECK_NOTE_CODES with a one-line meaning.
+const BACKEND_EMITTED_NOTE_CODES = [
+  "connectionsRefresh",
+  "updateFrm",
+  "beltDataTooLarge",
+  "beltDataNotReceived",
+  "unmatchedLinks",
+  "graphTruncated",
+  "duplicateStationName",
+  "unknownTimetableStop",
+];
+
+describe("KNOWN_BOTTLENECK_NOTE_CODES", () => {
+  it("names exactly the note codes the backend emits", () => {
+    expect([...KNOWN_BOTTLENECK_NOTE_CODES].sort()).toEqual([...BACKEND_EMITTED_NOTE_CODES].sort());
+  });
+
+  it("has no duplicates, and every code fits the schema", () => {
+    expect(new Set(KNOWN_BOTTLENECK_NOTE_CODES).size).toBe(KNOWN_BOTTLENECK_NOTE_CODES.length);
+    for (const code of KNOWN_BOTTLENECK_NOTE_CODES) expect(BottleneckNoteSchema.safeParse({ code, text: "x" }).success).toBe(true);
+  });
+
+  it("keeps `code` a free string, so an unknown code still parses", () => {
+    expect(BottleneckNoteSchema.safeParse({ code: "someFutureNote", text: "x" }).success).toBe(true);
+  });
+});
 
 // ADR-0048 and its amendment, Decision 4.
 const finding = fixtures.bottlenecksBeltLevel.data.findings[0]!;
