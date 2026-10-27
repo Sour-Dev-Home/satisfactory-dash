@@ -306,6 +306,20 @@ export const droneRoutesSample = {
   ],
 } satisfies DroneRoutesWorldIngestRequest;
 
+/**
+ * S4-A: the same ports as a native reader (the mod) would send them, with the partner's id in `pairedId`. FRM gives only
+ * the name, so `droneRoutesSample` above has no `pairedId`; this one shows both shapes the contract accepts: an id for
+ * each side of the pair, and null for the unpaired port.
+ */
+export const droneRoutesSampleWithPairedId = {
+  observedAt: droneRoutesSample.observedAt,
+  data: [
+    { ...droneRoutesSample.data[0], pairedId: droneRoutesSample.data[1].id },
+    { ...droneRoutesSample.data[1], pairedId: droneRoutesSample.data[0].id },
+    { ...droneRoutesSample.data[2], pairedId: null },
+  ],
+} satisfies DroneRoutesWorldIngestRequest;
+
 export const droneRoutesWorldResponse = {
   layer: "droneRoutes",
   hash: "sha256-droneroutes-sample",

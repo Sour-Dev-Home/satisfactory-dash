@@ -194,7 +194,7 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["trainRoutesSample", TrainRoutesWorldIngestRequestSchema],
   // ADR-0055 Decision 1: the droneRoutes world layer.
   ["droneRoutesWorldResponse", DroneRoutesWorldLayerResponseSchema],
-  ["droneRoutesSample", DroneRoutesWorldIngestRequestSchema],
+  ["droneRoutesSample", DroneRoutesWorldIngestRequestSchema], // also droneRoutesSampleWithPairedId (S4-A)
   // ADR-0038 §1: the mapMarkers world layer.
   ["mapMarkersWorldResponse", MapMarkersWorldLayerResponseSchema],
   ["mapMarkersSample", MapMarkersWorldIngestRequestSchema],
