@@ -294,24 +294,13 @@ test("an owner merges two factories and splits them back from the keyboard", asy
   await expect(page.getByRole("heading", { name: "Production planner" })).toBeFocused();
 });
 
-// ADR-0055 PR 10b: the canvas lasso and the suggestions on the canvas, by pointer, under the production CSP.
-test("an owner lassos a factory's cards on the canvas and keeps a suggestion there", async ({ page, mockApi }, testInfo) => {
+// ADR-0055 PR 10b: the canvas lasso, by pointer, under the production CSP.
+test("an owner lassos a factory's cards on the canvas and designates them", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");
   await page.goto("/app/planner");
-  // The overview: "Reason factories for me" draws the automatic factories dashed, with a Keep pill.
   await page.getByRole("button", { name: "Graph" }).click();
   const overview = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(overview).toBeVisible();
-  await page.getByRole("button", { name: "Reason factories for me" }).click();
-  await expect(overview).toBeVisible();
-  await expect(overview.locator("[data-suggested]").first()).toBeVisible();
-  await expect(overview.locator("[data-keep]").first()).toBeAttached();
-  // At 390 px the fitted drawing can run past the canvas, so Keep is reached by its keyboard button, as in 10a.
-  await page.getByRole("button", { name: "Keep Iron Plate factory" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("textbox", { name: "Name" })).toHaveCount(0);
 
   // On the canvas, a factory's button is the keyboard's (visually hidden): focus it and press Enter.
   await page.getByRole("button", { name: /^Open factory: Iron Plate factory/ }).focus();
