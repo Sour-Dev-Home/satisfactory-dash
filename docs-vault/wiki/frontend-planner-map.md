@@ -19,7 +19,19 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - A card's "+N" pill hides what only feeds it (the backend's `collapseUnder` tree), and the Storage detail toggle folds
   buffers and terminal storage into chips.
 - A transport wears its mode's glyph (`transportGlyphs.tsx`, tokens only, moved by SVG `animateMotion`). It never moves
-  in a hidden tab or past 40 edges, and never at all under System with reduced motion.
+  in a hidden tab or past 40 edges, and never at all under System with reduced motion. Moving, it rides
+  `motionPathAround` (`edgeShapes.ts`): the route minus its own label box grown by the halo, a moveto jumping the gap, so
+  it never crosses the item bubbles; it is drawn under the bubble row as a backstop. At rest it stands in the pill's left
+  `GLYPH_INSET` (the halo plus a gap), clear of the bubbles and the rate text.
+- A group card of more than one machine with ids opens into its machines (Expand pill at its bottom right, and a hidden
+  button in "Open and close parts of the graph"). Opened, the card is a dashed frame with its title and Collapse in a
+  header and a grid of machine cards (`machineSlot`, `machineFrameSize` in `layoutSite.ts`; at most `MACHINES_MAX` (48),
+  then a "+k more" card that opens the group panel). It stays one card to dagre, so the group's lines join the frame (the
+  game reads belts per group; `MACHINES_FRAME_NOTE` says so in its words). A machine card's words are `machineCards.ts`:
+  the Factory read's building by id (name, state and clock, first output), or for a machine that read lacks (a generator,
+  a storage) its group's fuel or product and "State not read". Each machine is a hidden button after its group's; a click
+  opens the group panel marking it (`aria-current`), Escape closes the panel back to it, then folds the group back to its
+  card. Remembered per factory in `foldMemory`'s `machines`; Collapse all clears them, Expand all leaves them.
 - Designations (ADR-0055 Decision 5) on the canvas: for owners and admins an opened factory's canvas has Select mode
   (toolbar button, or Shift+drag). A freehand lasso picks the group and bubble cards whose centre it encloses
   (`graph/lasso.ts`, pure), and in Select mode a click or a card's hidden button picks one card. The picks are the
