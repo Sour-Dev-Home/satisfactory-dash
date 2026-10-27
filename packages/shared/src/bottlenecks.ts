@@ -136,7 +136,9 @@ export const BOTTLENECK_BELT_DATA_MODES = ["present", "stale", "unsupported", "t
  *  - `unmatchedLinks` (production graph): some links carry items their destination does not use (mixed belt, filter, overflow).
  *  - `graphTruncated` (production graph): the factory passed the graph's caps; the smallest sites, groups and links were left out.
  *  - `duplicateStationName` (production graph): two train stations share a name, so no train route is drawn through it.
- *  - `unknownTimetableStop` (production graph): a timetable names a station that does not exist; no route is drawn through it. */
+ *  - `unknownTimetableStop` (production graph): a timetable names a station that does not exist; no route is drawn through it.
+ *  - `staleConveyorEnds` (production graph): machines on the conveyor data are missing from the latest factory read; the
+ *    conveyor data is older and refreshes within 10 minutes (sooner once the building set changes). */
 export const KNOWN_BOTTLENECK_NOTE_CODES = [
   "connectionsRefresh",
   "updateFrm",
@@ -146,6 +148,7 @@ export const KNOWN_BOTTLENECK_NOTE_CODES = [
   "graphTruncated",
   "duplicateStationName",
   "unknownTimetableStop",
+  "staleConveyorEnds",
 ] as const;
 export type KnownBottleneckNoteCode = (typeof KNOWN_BOTTLENECK_NOTE_CODES)[number];
 
