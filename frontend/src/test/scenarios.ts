@@ -2,8 +2,10 @@ import { endpoints, ownValue, ProductionGraphResponseSchema, type Command } from
 import {
   errorForbidden,
   errorServiceUnavailable,
+  metricsChartsDay,
   metricsOverviewAvailable,
   metricsOverviewUnavailable,
+  metricsOverviewWithCharts,
   agentEnrollmentCodeResponse,
   agentRevokeResponse,
   agentStatusEnrolled,
@@ -281,7 +283,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapLive: ok(mapLiveResponse),
-  metrics: ok(metricsOverviewAvailable),
+  metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
   setAutoPause: ok(settingsEditable),
   managedServers: ok(managedServersAllStates),
@@ -515,7 +517,8 @@ const operatorSingle = ok({ ...serversSingle, canManageServers: true });
 
 /**
  * ADR-0056: the metrics page with every table filled: all four latency groups, both counter groups, the worst servers,
- * and an alert month per kind. Built from the shared metrics fixture's own rows, so a contract change shows here.
+ * and an alert month per kind, plus the day's charts (amendment 2026-10-26). Built from the shared metrics fixtures' own
+ * rows, so a contract change shows here.
  */
 const metricsFull = (() => {
   const base = metricsOverviewAvailable;
@@ -524,6 +527,7 @@ const metricsFull = (() => {
   return {
     ...base,
     window: "24h" as const,
+    charts: metricsChartsDay,
     system: {
       ...base.system,
       histograms: [
@@ -753,6 +757,8 @@ export const SCENARIOS = {
   // ADR-0056: the operator's metrics page: every table filled, each section's reason for having no data, a 429, and a failing read.
   "metrics": { servers: operatorSingle, metrics: ok(metricsFull) },
   "metrics-unavailable": { servers: operatorSingle, metrics: ok(metricsOverviewUnavailable) },
+  // An older backend that sends no `charts` (amendment 2026-10-26): "Charts not available yet", the Details still render.
+  "metrics-no-charts": { servers: operatorSingle, metrics: ok({ ...metricsFull, charts: undefined }) },
   "metrics-rate-limited": { servers: operatorSingle, metrics: { status: 429, body: errorRateLimited, headers: { "Retry-After": "60" } } },
   "metrics-error": { servers: operatorSingle, metrics: fail(503, errorServiceUnavailable) },
   // A signed-in user who isn't the operator: the page behaves as an unknown one.

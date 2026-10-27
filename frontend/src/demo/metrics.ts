@@ -1,4 +1,10 @@
-import type { MetricsOverview, MetricsWindow } from "@satisfactory-dash/shared";
+import {
+  METRICS_TREND_OVER_MS,
+  metricsTrendPoints,
+  type MetricsOverview,
+  type MetricsTrend,
+  type MetricsWindow,
+} from "@satisfactory-dash/shared";
 
 /**
  * The demo's metrics (ADR-0056 PR 5): made-up numbers for the operator-only metrics page, shown with a "Sample data"
@@ -70,14 +76,96 @@ const ALERT_ROWS: ReadonlyArray<[back: number, kind: string, fired: number, flap
   [0, "power_outage", 1, 0, 600],
 ];
 
+/**
+ * The demo's hourly trend (ADR-0056 amendment 2026-10-26): a day (or, for 7d, a week) of a small, healthy site with a
+ * daily rhythm (busy evenings, quiet nights), one bad hour 9 hours ago (a burst of 5xx answers, a p99 above the last
+ * bucket, slow polls and a fired alert), and in the week a one-hour gap 3 days back, when the backend was redeployed.
+ * Deterministic: the same clock draws the same chart.
+ */
+function demoTrend(now: number, points: number): MetricsTrend {
+  const from = Math.floor(now / HOUR_MS) * HOUR_MS - (points - 1) * HOUR_MS;
+  const hours = Array.from({ length: points }, (_, i) => i);
+  const hourOfDay = (i: number) => new Date(from + i * HOUR_MS).getUTCHours();
+  /** 0 at 04:00 UTC, 1 at 20:00: the site's daily rhythm. */
+  const busy = (i: number) => (1 - Math.cos(((hourOfDay(i) - 4) / 24) * 2 * Math.PI)) / 2;
+  const bad = (i: number) => i === points - 10;
+  const gap = (i: number) => points > 25 && i === points - 73;
+  const known = <T,>(i: number, v: T): T | null => (gap(i) ? null : v);
+  const step = (i: number, quiet: number, peak: number) => known(i, busy(i) > 0.6 ? peak : quiet);
+  return {
+    from: iso(from),
+    points,
+    requests: {
+      c2xx: hours.map((i) => known(i, Math.round(240 + busy(i) * 420 + (i % 5) * 7))),
+      c3xx: hours.map((i) => known(i, 4 + (i % 4))),
+      c4xx: hours.map((i) => known(i, (i % 6) + (busy(i) > 0.5 ? 3 : 0))),
+      c5xx: hours.map((i) => known(i, bad(i) ? 14 : i % 37 === 11 ? 1 : 0)),
+    },
+    requestMs: {
+      p50: hours.map((i) => step(i, 5, 10)),
+      p95: hours.map((i) => (bad(i) ? 500 : step(i, 50, 100))),
+      p99: hours.map((i) => (bad(i) ? METRICS_TREND_OVER_MS : step(i, 200, 500))),
+    },
+    upstreamP95Ms: {
+      vanilla: hours.map((i) => (bad(i) ? 2000 : step(i, 100, 200))),
+      frm: hours.map((i) => (bad(i) ? 1000 : step(i, 50, 100))),
+    },
+    dbP95Ms: hours.map((i) => step(i, 10, 20)),
+    pollLagP95Ms: hours.map((i) => (bad(i) ? 5000 : step(i, 2000, 2000))),
+    agentLagP95Ms: hours.map((i) => (bad(i) ? 5000 : step(i, 1000, 2000))),
+    agentRefused: hours.map((i) => (i % 29 === 7 ? 2 : 0)),
+    signupRefused: hours.map((i) => (i % 53 === 20 ? 1 : 0)),
+    historyRowsDropped: hours.map(() => 0),
+    alertEventsDropped: hours.map(() => 0),
+    pushDropped: hours.map((i) => (bad(i) ? 1 : 0)),
+    alertsFired: hours.map((i) => (bad(i) || i % 41 === 30 ? 1 : 0)),
+  };
+}
+
+/** The headline per window: the trend's last `hours` summed, against a slightly quieter window before it. */
+function demoHeadline(trend: MetricsTrend, hours: number, window: MetricsWindow) {
+  const last = <T,>(series: readonly T[]) => series.slice(-hours);
+  const sum = (series: readonly (number | null)[]) => last(series).reduce<number>((a, v) => a + (v ?? 0), 0);
+  const requests = sum(trend.requests.c2xx) + sum(trend.requests.c3xx) + sum(trend.requests.c4xx) + sum(trend.requests.c5xx);
+  const refusedAndDropped = [trend.agentRefused, trend.signupRefused, trend.historyRowsDropped, trend.alertEventsDropped, trend.pushDropped].reduce(
+    (a, s) => a + sum(s),
+    0,
+  );
+  const lastHour = window === "1h";
+  return {
+    current: {
+      hours,
+      requests,
+      serverErrors: sum(trend.requests.c5xx),
+      requestP95Ms: lastHour ? 50 : 100,
+      pollLagP95Ms: 2000,
+      agentLagP95Ms: lastHour ? 1000 : 2000,
+      alertsFired: sum(trend.alertsFired),
+      refusedAndDropped,
+    },
+    previous: {
+      hours,
+      requests: Math.round(requests * 0.93),
+      serverErrors: lastHour ? 0 : 3,
+      requestP95Ms: lastHour ? 100 : 50,
+      pollLagP95Ms: 2000,
+      agentLagP95Ms: 1000,
+      alertsFired: lastHour ? 0 : 1,
+      refusedAndDropped: lastHour ? 0 : 2,
+    },
+  };
+}
+
 /** What `GET /api/admin/metrics?window=` answers in the demo, as the operator sees it. */
 export function demoMetricsOverview(now: number, window: MetricsWindow): MetricsOverview {
   const hours = WINDOW_HOURS.get(window) ?? 24;
   const generatedAt = iso(now);
   const deliveryAt = iso(now - 6 * HOUR_MS);
+  const trend = demoTrend(now, metricsTrendPoints(window));
   return {
     generatedAt,
     window,
+    charts: { available: true, asOf: generatedAt, headline: demoHeadline(trend, hours, window), trend },
     system: {
       available: true,
       asOf: generatedAt,

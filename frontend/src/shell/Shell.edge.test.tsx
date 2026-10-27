@@ -60,14 +60,15 @@ describe("tabs", () => {
       expect(within(nav).getByRole("link", { name: label })).toBeInTheDocument();
     }
     expect(within(nav).queryByRole("link", { name: "Servers" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Metrics" })).not.toBeInTheDocument();
   });
 
-  it("renders a seventh Servers tab for an operator, after the standard six", async () => {
+  it("renders the operator's Servers and Metrics tabs after the standard six", async () => {
     server.use(http.get(endpoints.servers.route, () => HttpResponse.json({ ...serversSingle, canManageServers: true })));
     renderWithClient(<App />);
     const nav = await screen.findByRole("navigation", { name: "Main" });
     const links = await within(nav).findAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["Overview", "Power", "Factory", "Planner", "Map", "Settings", "Servers"]);
+    expect(links.map((link) => link.textContent)).toEqual(["Overview", "Power", "Factory", "Planner", "Map", "Settings", "Servers", "Metrics"]);
   });
 });
 

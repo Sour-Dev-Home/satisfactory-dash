@@ -18,7 +18,7 @@ contract needs to grow, not that this module should special-case a backend detai
   routing framework.
 - Routing (ADR-0016 item 4, ADR-0021): React Router in declarative mode (`BrowserRouter` in
   `App.tsx`). The signed-in app lives under `/app/*` (`src/shell/Shell.tsx`: tabs Overview,
-  Power, Factory, Planner, Map, Settings, plus Servers for the operator only: ADR-0030, `src/serverManagement/`,
+  Power, Factory, Planner, Map, Settings, plus Servers and Metrics for the operator only: ADR-0030, `src/serverManagement/`,
   shown when the server list says `canManageServers`; tokens are write-only there, never prefilled or
   shown beyond their last 4). `/` is the static landing page (`src/landing/`, main site only;
   the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
@@ -83,7 +83,8 @@ contract needs to grow, not that this module should special-case a backend detai
   (`@dagrejs/dagre` and Leaflet are imported nowhere else), styled by tokens only (no `style=`, no raw values, motion
   by token and off under reduced motion), every canvas has a keyboard and text path to its data, tooltips are built
   from text nodes (names come from the game server), and `e2e/planner-graph.spec.ts` and `e2e/map.spec.ts` are their
-  CSP gates. The metrics page is the operator's: routed only when `canManageServers`, never a tab outside the demo.
+  CSP gates (the metrics charts' is `e2e/metrics-charts.spec.ts`; uPlot loads only in `power/PowerChart.tsx` and
+  `metrics/TrendChart.tsx`). The metrics page is the operator's: routed, and a tab after Servers, only when `canManageServers`.
 - `VITE_API_URL` (see `.env.example`) is the backend origin in production and empty in
   development, where Vite proxies `/api` to the local backend. Never hardcode
   `localhost:3001` in `src/`.

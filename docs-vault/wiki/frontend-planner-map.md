@@ -50,9 +50,22 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 
 ## Metrics (ADR-0056, `src/metrics/`, `/app/metrics`)
 
-- The operator's page, never a tab in the real app, even for the operator. `METRICS_TAB` in `shell/tabs.ts` shows only
-  when `IS_DEMO`, so demo visitors find it.
-- The doors are the command bar's operator-only "Metrics" entry and `MetricsLink` on the Servers page.
+- The operator's page. Since the ADR-0056 amendment (2026-10-26) `METRICS_TAB` in `shell/tabs.ts` is a tab after Servers
+  whenever `canManageServers`, in the real app and the demo. The command bar's operator-only "Metrics" entry and
+  `MetricsLink` on the Servers page stay.
+- Chart-led (golden signals / RED, Grafana's stat row then trends then detail): `MetricsCharts.tsx` draws the headline
+  row (seven tiles from `charts.headline`, each with an aria-hidden SVG sparkline) and the trend figures; the numbers and
+  words are pure in `metricsTrend.ts`. Counts compare per hour (`hours`) as a percent; percentiles compare as the bucket
+  step ("≤ 200 ms, was ≤ 100 ms"); a zero or missing baseline is "No comparison"; a worse change says "worse" with an
+  icon, never colour alone.
+- Every trend chart is `TrendChart.tsx`, one lazy uPlot chunk (CSP gate `e2e/metrics-charts.spec.ts`). Timings draw on a
+  fixed log scale from 1 ms; the over value (`METRICS_TREND_OVER_MS`) sits on a shaded "> 5 s" band, never as 10 s. A
+  null hour is a gap. Requests stack with 5xx on the baseline in `--color-bad`; other series use `--color-series-1..5`
+  (fixed order) and p50/p95/p99 the `--color-ramp-1..3` steps, all validated against `--color-surface` (see the comment
+  in `index.css`). Each figure has a one-line text summary; the slot height is a token, so the chunk moves nothing.
+- The old tables are folded `<details>` ("System details", "Alert quality details"...) under the matching charts: the
+  accessible text path. A section's reason for having no data is never folded. Without `charts` (an older backend, or a
+  reason) the headline row says "Charts not available yet" and the Details still render.
 - `Shell` routes it only when `canManageServers`, so anyone else gets the unknown-page redirect. A 403 from the read
   redirects the same way, a 429 is a calm retry note, and a 401 stays central.
 - No polling (Refresh, 60 s stale time). Percentiles are shown as the bucket upper bounds they are (`metricsText.ts`).

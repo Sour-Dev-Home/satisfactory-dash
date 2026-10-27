@@ -10,23 +10,23 @@ import { server } from "../test/server";
 import { pageQueries } from "../shell/pageQueries";
 import { visibleTabs } from "../shell/tabs";
 
-// ADR-0056 section 3: the metrics page is the operator's, and in the real app it is not in the nav, even for them. The
-// command bar and the Servers page are its doors; anyone else typing the URL gets the unknown-page redirect.
+// ADR-0056 section 3, amended 2026-10-26: the metrics page is the operator's, and the operator sees it as a tab after
+// Servers (plus the command bar and the Servers page link). Anyone else never sees it, and typing the URL gets the
+// unknown-page redirect.
 
 const listServers = (body: ServerListResponse) => server.use(http.get(endpoints.servers.route, () => HttpResponse.json(body)));
 const operator = { ...serversSingle, canManageServers: true };
 
 describe("the metrics page's visibility", () => {
-  it("is never a tab in the real app, for the operator or anyone else", () => {
-    expect(visibleTabs(true).map((t) => t.label)).not.toContain("Metrics");
-    expect(visibleTabs(false).map((t) => t.label)).not.toContain("Metrics");
-  });
-
-  it("is a tab in the demo build, for the operator only", () => {
-    expect(visibleTabs(true, true, true).map((t) => t.label)).toEqual([
+  it("is a tab after Servers for the operator, in the real app too", () => {
+    expect(visibleTabs(true).map((t) => t.label)).toEqual([
       "Overview", "Power", "Factory", "Planner", "Map", "Settings", "Servers", "Metrics",
     ]);
-    expect(visibleTabs(false, true, true).map((t) => t.label)).not.toContain("Metrics");
+  });
+
+  it("is never a tab for anyone else", () => {
+    expect(visibleTabs(false).map((t) => t.label)).not.toContain("Metrics");
+    expect(visibleTabs(false, false).map((t) => t.label)).not.toContain("Metrics");
   });
 
   it("is a command for the operator only", () => {
@@ -42,12 +42,29 @@ describe("the metrics page's visibility", () => {
 });
 
 describe("reaching /app/metrics", () => {
-  it("opens for the operator, who sees no Metrics tab", async () => {
+  it("opens for the operator, with the Metrics tab current", async () => {
     listServers(operator);
     window.history.pushState(null, "", "/app/metrics");
     renderWithClient(<App />);
     expect(await screen.findByRole("region", { name: "System" }, { timeout: 3_000 })).toBeInTheDocument();
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    expect(nav.getByRole("link", { name: "Metrics" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("is reached from the operator's Metrics tab", async () => {
+    listServers(operator);
+    renderWithClient(<App />);
+    const nav = within(await screen.findByRole("navigation", { name: "Main" }, { timeout: 3_000 }));
+    fireEvent.click(await nav.findByRole("link", { name: "Metrics" }, { timeout: 3_000 }));
+    expect(await screen.findByRole("region", { name: "At a glance" }, { timeout: 3_000 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/app/metrics");
+  });
+
+  it("shows no Metrics tab to a member", async () => {
+    listServers(serversMemberCannotManage);
+    renderWithClient(<App />);
+    const nav = within(await screen.findByRole("navigation", { name: "Main" }, { timeout: 3_000 }));
+    await nav.findByRole("link", { name: "Settings" });
     expect(nav.queryByRole("link", { name: "Metrics" })).not.toBeInTheDocument();
   });
 

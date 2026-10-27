@@ -63,7 +63,7 @@ test.describe("on a phone", () => {
     await mockApi("servers-manage");
     await page.goto("/app");
     const nav = page.getByRole("navigation", { name: "Main" });
-    for (const tab of ["Power", "Factory", "Map", "Settings", "Servers", "Overview"]) {
+    for (const tab of ["Power", "Factory", "Map", "Settings", "Servers", "Metrics", "Overview"]) {
       await nav.getByRole("link", { name: tab }).click();
       await expect(nav.getByRole("link", { name: tab })).toHaveAttribute("aria-current", "page");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

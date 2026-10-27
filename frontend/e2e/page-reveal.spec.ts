@@ -33,7 +33,7 @@ const PAGES: readonly PageCase[] = [
   { name: "Map", path: "/app/map", ready: "Buildings in view" },
   { name: "Settings", path: "/app/settings", ready: /Auto-pause when no players/ },
   // ADR-0056: operator only, so it needs the operator's server list.
-  { name: "Metrics", path: "/app/metrics", ready: /Timings are bucket upper bounds/, scenarios: { slow: "metrics-slow", fast: "metrics" } },
+  { name: "Metrics", path: "/app/metrics", ready: "Requests per hour, by status class", scenarios: { slow: "metrics-slow", fast: "metrics" } },
 ];
 
 interface Probe {

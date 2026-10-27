@@ -169,6 +169,20 @@ const UNAVAILABLE: ReadonlyMap<string, string> = new Map([
   ["delivery:not_configured", "The daily delivery feed isn't set up on this backend."],
 ]);
 
+const CHARTS_UNAVAILABLE: ReadonlyMap<MetricsUnavailableReason, string> = new Map([
+  ["not_built", "Charts not available yet: this backend doesn't draw them yet. The details below still have every number."],
+  ["no_data", "Charts not available yet: nothing has been recorded in this window. The numbers are saved once a minute."],
+  ["not_configured", "Charts not available yet: they are switched off on this backend."],
+]);
+
+/**
+ * Why the headline and trend charts are missing (ADR-0056 amendment): `null` is an older backend that sends no
+ * `charts` at all. The folded details still render either way.
+ */
+export function chartsUnavailableText(reason: MetricsUnavailableReason | null): string {
+  return (reason && CHARTS_UNAVAILABLE.get(reason)) ?? "Charts not available yet. The details below still have every number.";
+}
+
 /** Why a section has nothing to show, in words (ADR-0056 section 2). */
 export function unavailableText(section: MetricsSectionName, reason: MetricsUnavailableReason): string {
   return UNAVAILABLE.get(`${section}:${reason}`) ?? "There is nothing to show here.";
