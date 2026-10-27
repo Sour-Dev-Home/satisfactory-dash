@@ -73,6 +73,8 @@ import {
   UpdatePlannerDesignationRequestSchema,
   DeletePlannerDesignationResponseSchema,
   DesignationOverlapErrorSchema,
+  ReplacePlannerDesignationsRequestSchema,
+  ReplacePlannerDesignationsResponseSchema,
   TrainRoutesWorldIngestRequestSchema,
   TrainRoutesWorldLayerResponseSchema,
   DroneRoutesWorldIngestRequestSchema,
@@ -182,6 +184,11 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["plannerDesignationUpdateRequest", UpdatePlannerDesignationRequestSchema],
   ["plannerDesignationDeleteResponse", DeletePlannerDesignationResponseSchema],
   ["plannerDesignationOverlapError", DesignationOverlapErrorSchema],
+  // ADR-0055 amendment 2026-10-27 (#727): replace. "plannerDesignationListRevised" is caught by "plannerDesignationList"
+  // above, which is its schema; none of these three is a prefix of another listed name.
+  ["plannerDesignationReplaceRequest", ReplacePlannerDesignationsRequestSchema],
+  ["plannerDesignationReplaceResponse", ReplacePlannerDesignationsResponseSchema],
+  ["plannerDesignationStaleError", ApiErrorResponseSchema],
   // ADR-0055 Decision 1: the trainRoutes world layer.
   ["trainRoutesWorldResponse", TrainRoutesWorldLayerResponseSchema],
   ["trainRoutesSample", TrainRoutesWorldIngestRequestSchema],
