@@ -202,10 +202,15 @@ owner chose it over an Overview card or an Account-menu entry). Designed with th
 - `trend` is a fixed, server-folded set of hourly series on one shared axis (`from` on the hour, `points`, a one-hour
   step): requests by status class, request p50/p95/p99, game-server call p95 per upstream (vanilla, frm), DB query p95,
   poll lag p95, agent ingest lag p95, five refused/dropped counters, and alerts fired. No per-route or per-server series,
-  which keeps a full 7d trend under 32 kB (the contract test checks the worst case).
+  which keeps a full 7d trend at about 15 kB with typical numbers (the contract test holds a full week of realistic
+  values under 32 kB; counts are not capped, so very large ones would add a few kB, not change the order).
 - Percentiles stay bucket upper bounds. In a trend `null` means "no data that hour" and `METRICS_TREND_OVER_MS` (10000)
   means "above 5 s". Counters are 0 for a quiet hour; request counts are `null`, so an outage shows as a gap.
 - The trend always covers at least a day (25 points), so the `1h` window still has a usable chart; `7d` has 169.
+  The count is fixed per window (`metricsTrendPoints`): the last point is the current, partial hour, and
+  `from = floor_hour(now) - (points - 1) hours`, even when `now` falls exactly on the hour.
+- The headline is computed from the window's own summed buckets, so it need not equal a sum over the trend's hours
+  (the window starts mid-hour; the trend starts on the hour). Tests do not assert equality between them.
 - `headline` has `current` and `previous` (the same-length window before it): requests, 5xx answers, request p95, poll
   lag p95, agent lag p95, alerts fired, refused and dropped. Percentiles come from summed buckets on the server (hourly
   percentiles cannot be merged). The page shows a percent change for counts and the bucket step for percentiles.

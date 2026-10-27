@@ -203,7 +203,8 @@ export const metricsTrendPoints = (window: MetricsWindow) => (window === "7d" ? 
 
 const TrendMsSchema = z
   .number()
-  .refine((v) => v === METRICS_TREND_OVER_MS || (v >= 0 && v <= METRICS_LAST_BUCKET_MS), "a bucket bound or the over value")
+  // A range, like `BucketBoundSchema`: the backend emits bucket bounds, the contract only checks they are in range.
+  .refine((v) => v === METRICS_TREND_OVER_MS || (v >= 0 && v <= METRICS_LAST_BUCKET_MS), "0 to the last bucket, or the over value")
   .nullable();
 const CountSchema = z.number().int().nonnegative();
 const countSeries = z.array(CountSchema).max(METRICS_TREND_MAX_POINTS);
