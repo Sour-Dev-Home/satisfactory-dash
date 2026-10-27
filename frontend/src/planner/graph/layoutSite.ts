@@ -2,7 +2,7 @@ import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
-import { BUBBLE_D, bubbleRow, bubblesWidth, type BubbleRow } from "./bubbleRow";
+import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { GLYPH_SIZE } from "./transportModes";
 
@@ -114,7 +114,22 @@ export interface SiteLayout {
   flows: CanvasFlow[];
   width: number;
   height: number;
+  /** How long dagre and the router took for this placement (remembered with it: a memo hit reports the first run's). */
+  placeMs: number;
 }
+
+/** Make room for a focused line (ADR-0060 Decision 3): its label box is reserved at this size. */
+export interface LayoutFocus {
+  edgeKey: string;
+  width: number;
+  height: number;
+}
+
+/** The detail card's size in layout units, which a focused line's label box makes room for (ADR-0060 Decision 3). */
+export const FOCUS_CARD_W = 220;
+export const FOCUS_CARD_H = 200;
+/** Past this, a focused layout is too slow to make room: focus dims only (ADR-0060 Decision 3's guard). */
+export const FOCUS_LAYOUT_BUDGET_MS = 100;
 
 type CardSize = Pick<LaidNode, "width" | "height" | "title" | "lines" | "iconUrl">;
 
@@ -239,7 +254,12 @@ interface Placement {
   labelAt: (Point | null)[];
   width: number;
   height: number;
+  /** How long placing took, kept with the placement so a memo hit still knows whether it was too slow (ADR-0060 D3). */
+  ms: number;
 }
+
+/** What the placers return; `layoutScene` adds how long they took. */
+type Placed = Omit<Placement, "ms">;
 
 const MEMO_LIMIT = 12;
 const memo = new Map<string, Placement>();
@@ -330,7 +350,7 @@ export function returnFlows(cardKeys: readonly string[], flows: readonly { from:
  * handling cannot route (it throws "Not possible to find intersection inside of the rectangle" on some parallel edges that
  * skip a rank).
  */
-function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean): Placement {
+function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean): Placed {
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
   const nodesep = scene.frames.length > 0 ? NODE_SEP + FRAME_HEADER_H / 2 : NODE_SEP;
   // Loops are broken here (`returnFlows`), so dagre gets a graph without cycles. `tight-tree` gave the fewest crossings
@@ -409,7 +429,7 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   });
   // An empty graph comes back from dagre with width and height -Infinity.
   const { width, height } = g.graph();
-  const placed: Placement = { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
+  const placed: Placed = { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
   try {
     return routed(scene, sizes, drawn, labels, placed, (i) => {
       const d = edgeAt(i);
@@ -433,9 +453,9 @@ function routed(
   sizes: readonly CardSize[],
   drawn: readonly CanvasFlow[],
   labels: readonly LabelBox[],
-  placed: Placement,
+  placed: Placed,
   labelWaypoint: (flow: number) => number | undefined,
-): Placement {
+): Placed {
   const cards = scene.cards.map((c, i) => {
     const centre = placed.centres.get(c.key)!;
     return { key: c.key, x: centre.x - sizes[i].width / 2, y: centre.y - sizes[i].height / 2, width: sizes[i].width, height: sizes[i].height };
@@ -481,7 +501,7 @@ function leaves(centre: Point, size: LabelBox, toward: Point): Point {
  * The last resort when dagre throws twice: the cards in rows of equal cells, each flow a straight line, each frame the box
  * round its cards. Plain, but a picture instead of a crash.
  */
-function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[]): Placement {
+function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[]): Placed {
   const cols = Math.max(1, Math.ceil(Math.sqrt(scene.cards.length)));
   const cellW = Math.max(NODE_MIN_W, ...sizes.map((s) => s.width)) + RANK_SEP;
   const cellH = Math.max(0, ...sizes.map((s) => s.height)) + NODE_SEP + FRAME_HEADER_H;
@@ -507,7 +527,7 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
 }
 
-function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
+function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placed {
   // Separate first: each flow gets its own label box and, from the router, its own track (ADR-0059 measured this form).
   // Merged (one dagre edge per pair of cards, labels stacked in its box) is the fallback for shapes dagre cannot route.
   for (const merged of [false, true]) {
@@ -528,8 +548,12 @@ function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasF
  * Dagre is the cost (Decision 3's worker trigger is 100 ms on a real site), so the placement is remembered: the key is the
  * response's `topologyHash` (when the backend sent one) plus a signature of the cards, flows and sizes, which a poll that
  * only moves rates does not change. Text is never part of the memo: the laid nodes carry the scene's current words.
+ *
+ * With `focus` (ADR-0060 Decision 3, make room), the focused line's label box is reserved at the detail card's size, so
+ * dagre and the router move the rest aside; the pill itself is still drawn at its own size, centred in that box. The box
+ * size is in the memo key, so the focused layout is remembered too and closing returns to the overview's at no cost.
  */
-export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
+export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutFocus): SiteLayout {
   const own = scene.cards.map(cardSize);
   // The overview's factory cards are peers: one height, so the row reads evenly.
   const tallest = scene.level === "overview" ? Math.max(0, ...own.map((s) => s.height)) : 0;
@@ -541,16 +565,19 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   const drawn = bundles.map((b) => b.flow);
   // Each label is a bubble row; a transport's also holds its mode's glyph, at the pill's left: dagre reserves room for both.
   const rows = drawn.map(bubbleRow);
-  const labels = drawn.map((f, k) => {
+  const pills = drawn.map((f, k) => {
     const s = bubbleRowSize(rows[k]);
     return isTransport(f) ? { ...s, width: s.width + GLYPH_INSET } : s;
   });
+  const labels =
+    focus === undefined ? pills : drawn.map((f, k) => (edgeKeyOf(f) === focus.edgeKey ? { width: Math.max(pills[k].width, focus.width), height: Math.max(pills[k].height, focus.height) } : pills[k]));
   const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, drawn)}`;
   let placement = memo.get(key);
   if (placement === undefined) {
     const start = performance.now();
-    placement = place(scene, sizes, drawn, labels);
+    const placed = place(scene, sizes, drawn, labels);
     stats.lastMs = performance.now() - start;
+    placement = { ...placed, ms: stats.lastMs };
     stats.slowestMs = Math.max(stats.slowestMs, stats.lastMs);
     stats.computed++;
     memo.set(key, placement);
@@ -575,9 +602,10 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   // path, stacked labels) each keep theirs; a moving glyph travels the path instead (SiteGraph's Edge).
   const edges: LaidEdge[] = drawn.map((flow, k) => {
     const points = p.paths[k];
-    const { width, height } = labels[k];
+    // The pill is drawn at its own size, centred in the box reserved for it (larger only for a focused line).
+    const { width, height } = pills[k];
     const own = p.labelAt[k];
-    const beside = own === null && points.length > 0 ? labelPlacement(points, width, height) : { x: 0, y: 0 };
+    const beside = own === null && points.length > 0 ? labelPlacement(points, labels[k].width, labels[k].height) : { x: 0, y: 0 };
     const labelX = own?.x ?? beside.x;
     const labelY = own?.y ?? beside.y - p.stack[k];
     const transport = isTransport(flow);
@@ -598,7 +626,7 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
       length: lengthOf(points),
     };
   });
-  return { nodes, frames, edges, flows, width: p.width, height: p.height };
+  return { nodes, frames, edges, flows, width: p.width, height: p.height, placeMs: p.ms };
 }
 
 /** One site's picture, as ADR-0050 drew it: a card per group and a line per connection. */

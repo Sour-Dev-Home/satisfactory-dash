@@ -116,6 +116,14 @@ repository, on the owner's disk.
   change; a user who wants the card bigger zooms by hand.
 - **Cost guard.**
   - PR 4 benchmarks the focused `layoutScene` on the 385-machine fixture and records the number here.
+    - **Measured (build PR 4, 2026-10-27).**
+      - No fixture of the real site is committed: its data is the owner's save. So the benchmark
+        (`layoutScene.focus.test.ts`) uses a synthetic site of the same size, 160 groups and 204 edges.
+      - On the owner's PC, under Vitest, the overview lays out in 45-48 ms and the focused layout in 45-48 ms, with no
+        router failures. That is under the 100 ms budget, so the worker step is not pulled in.
+      - The guard compares each placement's own time (`SiteLayout.placeMs`, kept in the memo with the placement), so a
+        cached layout still reports the time of its first run.
+      - A real-site number is still worth taking once the mod or the demo has a world of that size.
   - Past 100 ms (`stats.lastMs`, `layoutSite.ts:540-543`), focus degrades to dim plus a card overlaid on the bubble,
     with no make-room.
   - The worker step of ADR-0050 Decision 3 is pulled in only if that benchmark fails.

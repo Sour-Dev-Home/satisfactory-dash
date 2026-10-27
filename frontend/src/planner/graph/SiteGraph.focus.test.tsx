@@ -1,13 +1,14 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import { productionGraphTwoSites, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
+import { clearLayoutMemo } from "./layoutSite";
 import { ITEM_FOCUS_KEY } from "./plannerPrefs";
 
 // ADR-0060 build PR 3: focusing a link's item bubble, behind the `planner.itemFocus` flag (off by default).
@@ -165,5 +166,65 @@ describe("item focus, flag on", () => {
     expect(dimmed(svg, "[data-card]")).toBe(0);
     // Focus that a poll ended is said, as one left by Escape is.
     expect(screen.getByRole("status")).toHaveTextContent("Overview");
+  });
+});
+
+describe("make room (ADR-0060 build PR 4), flag on", () => {
+  /** The view's transform, and where a bubble's centre lands on the stage under it. */
+  const viewOf = (svg: HTMLElement) => {
+    const [, x, y, k] = /translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)/.exec(svg.querySelector(":scope > g")!.getAttribute("transform")!)!.map(Number);
+    return { x, y, k };
+  };
+  const onStage = (svg: HTMLElement, selector: string) => {
+    const circle = svg.querySelector(`${selector} circle`)!;
+    const v = viewOf(svg);
+    return { x: v.x + Number(circle.getAttribute("cx")) * v.k, y: v.y + Number(circle.getAttribute("cy")) * v.k };
+  };
+  const cards = (svg: HTMLElement) => Object.fromEntries([...svg.querySelectorAll("[data-node]")].map((g) => [g.getAttribute("data-node"), g.getAttribute("transform")]));
+  const iron = '[data-bubble="Desc_OreIron_C"]';
+
+  it("moves the cards aside for the focused line, keeping its bubble where it was on screen and the zoom as it was", async () => {
+    const svg = await openGraph({ flag: true });
+    const before = { cards: cards(svg), at: onStage(svg, iron), k: viewOf(svg).k };
+    fireEvent.click(svg.querySelector(iron)!);
+    expect(svg.querySelector(`${iron}[data-focused]`)).not.toBeNull();
+    expect(cards(svg)).not.toEqual(before.cards);
+    expect(viewOf(svg).k).toBe(before.k);
+    const at = onStage(svg, iron);
+    expect(at.x).toBeCloseTo(before.at.x, 6);
+    expect(at.y).toBeCloseTo(before.at.y, 6);
+  });
+
+  it("puts every card back where it was on leaving, keeping the bubble in place and the zoom", async () => {
+    const svg = await openGraph({ flag: true });
+    const before = cards(svg);
+    const k = viewOf(svg).k;
+    fireEvent.click(svg.querySelector(iron)!);
+    const focused = onStage(svg, iron);
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    expect(svg.querySelector("[data-focused]")).toBeNull();
+    expect(cards(svg)).toEqual(before);
+    expect(viewOf(svg).k).toBe(k);
+    const at = onStage(svg, iron);
+    expect(at.x).toBeCloseTo(focused.x, 6);
+    expect(at.y).toBeCloseTo(focused.y, 6);
+  });
+
+  it("only dims when the room-making layout would take over the budget: no card moves", async () => {
+    const svg = await openGraph({ flag: true });
+    const before = cards(svg);
+    // Every reading of the clock is 150 ms after the last: the next layout dagre runs takes "150 ms". The memo is module
+    // state, so an earlier test's focused layout (and its real time) is forgotten first.
+    clearLayoutMemo();
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => (now += 150));
+    try {
+      fireEvent.click(svg.querySelector(iron)!);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(svg.querySelector(`${iron}[data-focused]`)).not.toBeNull();
+    expect(dimmed(svg, "[data-card]")).toBeGreaterThan(0);
+    expect(cards(svg)).toEqual(before);
   });
 });
