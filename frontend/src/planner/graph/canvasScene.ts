@@ -25,11 +25,14 @@ import {
   extractorOutput,
   extractorOutputText,
   groupsExtractorOutput,
+  isStaleNode,
   nameOr,
   nodeFacts,
   nodeSummary,
   nodeTitle,
   productSummary,
+  STALE_NODE_NOTE,
+  staleNodeLines,
   stalledNote,
   withName,
 } from "./graphModel";
@@ -322,6 +325,13 @@ const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, sta
   return note === null ? { lines } : { lines: [...lines, note], mutedFrom: lines.length };
 };
 
+/** The glyph of a card for several groups: the clock only when every group is stale, else the first group's own glyph. */
+const glyphOfGroups = (nodes: readonly PlannerNode[], first: PlannerNode): GlyphKind =>
+  glyphKindOf(nodes.every(isStaleNode) ? first : { kind: first.kind, ...(first.role === undefined ? {} : { role: first.role }) });
+
+/** A card built from stale conveyor data (#728 cause 11): only the muted note, wrapped to the card's line limits. */
+const staleCardLines = (): Pick<Card, "lines" | "mutedFrom"> => ({ lines: staleNodeLines(), mutedFrom: 0 });
+
 /**
  * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
  * recipe, the other outputs and the loop marker are in `description` (the tooltip and the keyboard name) and the side
@@ -336,7 +346,7 @@ export function groupCard(node: PlannerNode, facts: string[] = []): Card {
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    ...withMutedNote([nodeSummary(node)], extractorOutput(node), stalledNote(node.products[0], node.stateCounts)),
+    ...(isStaleNode(node) ? staleCardLines() : withMutedNote([nodeSummary(node)], extractorOutput(node), stalledNote(node.products[0], node.stateCounts))),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -355,21 +365,30 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
   const loop = bubble.nodes.some((n) => n.loop === true);
   const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes) : null;
   const states = mergeStateCounts(bubble.nodes.map((n) => n.stateCounts));
-  const outputs = mined !== null ? [extractorOutputText(mined)] : bubble.products.length === 0 ? ["No output data"] : bubble.products.map((r) => outputLine(r, states));
+  const stale = bubble.nodes.every(isStaleNode);
+  const outputs = stale
+    ? [STALE_NODE_NOTE]
+    : mined !== null
+      ? [extractorOutputText(mined)]
+      : bubble.products.length === 0
+        ? ["No output data"]
+        : bubble.products.map((r) => outputLine(r, states));
   return {
     ...blank,
     key: bubble.key,
     kind: "bubble",
     nodeKeys: bubble.nodes.map((n) => n.key),
     title: nodeTitle({ name: first.name, count: bubble.machineCount }),
-    ...withMutedNote(
-      [mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
-      mined,
-      stalledNote(bubble.products[0], states),
-    ),
+    ...(stale
+      ? staleCardLines()
+      : withMutedNote(
+          [mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+          mined,
+          stalledNote(bubble.products[0], states),
+        )),
     count: countOf(bubble.machineCount),
     className: first.className,
-    glyph: glyphKindOf(first),
+    glyph: glyphOfGroups(bubble.nodes, first),
     label: title,
     description: sentences([title, ...outputs, `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
     facts: chips,
@@ -392,7 +411,7 @@ function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
     lines: [cutTo(text, MAX_SUMMARY_CHARS)],
     count: countOf(machines),
     className: first.className,
-    glyph: glyphKindOf(first),
+    glyph: glyphOfGroups(nodes, first),
     label: text,
     description: sentences([text, `${plural(machines, "machine", "machines")} in ${plural(nodes.length, "group", "groups")}`, "Click to show them"]),
     loop: false,
@@ -443,7 +462,7 @@ function factoryCard(model: FactoryModel): Card {
     ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledNote(factory.products[0], model.stateCounts)),
     count: countOf(factory.machineCount),
     className: main?.className,
-    glyph: main === undefined ? "unknown" : glyphKindOf(main),
+    glyph: main === undefined ? "unknown" : glyphOfGroups(model.nodes, main),
     label: name,
     description: sentences([
       name,

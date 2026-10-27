@@ -911,6 +911,8 @@ export function buildProductionGraphWithStats(
         loop: grp.loop,
         treeKey: treeKeys[grp.idx],
         ...(grp.kind === "extractor" ? { resource: res && { className: res.className.slice(0, 200), name: res.name.slice(0, 200) } } : {}),
+        // #728 cause 11: built only from the machine ends the staleConveyorEnds note counts (no factory building matched).
+        ...(grp.units.every((u) => u.building === null && g.kind[u.node] === "machine") ? { stale: true as const } : {}),
       };
     })
     .sort((a, b) => byString(a.key, b.key));

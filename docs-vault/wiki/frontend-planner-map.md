@@ -34,6 +34,9 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
   (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
   `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).
+- A node with `stale: true` (#728 cause 11: built only from conveyor ends that name machines the latest factory read
+  lacks) wears the clock glyph and prints only the muted `STALE_NODE_NOTE` (`graphModel.ts`), wrapped to the card's line
+  limits; the tooltip, the side panel and the Tables view say the whole sentence.
 - The viewer's choices are `plannerPrefs.ts` (localStorage in try/catch, validated; the page works without it).
 - The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and
   the only place `@dagrejs/dagre` is imported.
