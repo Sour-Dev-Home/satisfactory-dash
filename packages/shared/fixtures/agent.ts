@@ -126,6 +126,22 @@ export const agentStatusNotEnrolled = {
 } satisfies AgentStatusResponse;
 /** Enrolled but never heard from yet (or not since the backend restarted): `online` is false, not absent. */
 export const agentStatusEnrolledSilent = { enrolled: true, online: false, lastSeenAt: null, agentVersion: null, connectionKind: "agent" } satisfies AgentStatusResponse;
+/** #740 follow-up: an agent that reports its game connection, and could read the game in its last snapshot. */
+export const agentStatusGameReachable = {
+  ...agentStatusEnrolled,
+  gameReachable: true,
+  lastGameReadAt: "2026-09-26T12:00:04.000Z",
+  modVersion: "1.4.2",
+} satisfies AgentStatusResponse;
+/** The agent is online but could not read the game; its last successful read is older than its last snapshot. */
+export const agentStatusGameUnreachable = {
+  ...agentStatusEnrolled,
+  gameReachable: false,
+  lastGameReadAt: "2026-09-26T11:48:05.000Z",
+  modVersion: "1.4.2",
+} satisfies AgentStatusResponse;
+/** The agent could not read the game and has not read it since it started: no `lastGameReadAt`. */
+export const agentStatusGameNeverRead = { ...agentStatusEnrolled, gameReachable: false, modVersion: "1.4.2" } satisfies AgentStatusResponse;
 /** DELETE /api/servers/:serverId/agent */
 export const agentRevokeResponse = { revoked: true } as const;
 

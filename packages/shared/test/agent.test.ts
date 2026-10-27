@@ -21,6 +21,7 @@ import {
   FactorySchema,
   KnownErrorCode,
   PowerSchema,
+  SENDER_VERSION_MAX,
   SetAutoPauseParamsSchema,
   SetAutoPauseResponseSchema,
   SnapshotRequestSchema,
@@ -347,6 +348,40 @@ describe("agent contract: what the user sees", () => {
     expect(AgentStatusResponseSchema.parse(fixtures.agentStatusNotEnrolled)).not.toHaveProperty("online");
     for (const bad of ["yes", 1, null]) expect(AgentStatusResponseSchema.safeParse({ ...fixtures.agentStatusEnrolled, online: bad }).success, String(bad)).toBe(false);
     expect(AGENT_OFFLINE_DEFAULT_SECONDS).toBe(120);
+  });
+
+  it("the game connection fields (#740 follow-up) are optional, so every older answer still parses, and absent when not reported", () => {
+    for (const old of [fixtures.agentStatusEnrolled, fixtures.agentStatusNotEnrolled, fixtures.agentStatusEnrolledSilent]) {
+      const parsed = AgentStatusResponseSchema.parse(old);
+      for (const key of ["gameReachable", "lastGameReadAt", "modVersion"]) expect(parsed).not.toHaveProperty(key);
+    }
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusGameReachable)).toMatchObject({
+      gameReachable: true,
+      lastGameReadAt: "2026-09-26T12:00:04.000Z",
+      modVersion: "1.4.2",
+    });
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusGameUnreachable).gameReachable).toBe(false);
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusGameNeverRead)).not.toHaveProperty("lastGameReadAt");
+  });
+
+  it("the game connection fields reuse the snapshot's types and bounds", () => {
+    const base = fixtures.agentStatusGameReachable;
+    const ok = (patch: Record<string, unknown>) => AgentStatusResponseSchema.safeParse({ ...base, ...patch }).success;
+    expect(ok({ modVersion: "v".repeat(SENDER_VERSION_MAX) })).toBe(true);
+    expect(ok({ lastGameReadAt: "2026-09-26T13:00:04+01:00" })).toBe(true);
+    for (const bad of [
+      { gameReachable: "yes" },
+      { gameReachable: null },
+      { lastGameReadAt: "yesterday" },
+      { lastGameReadAt: null },
+      { modVersion: "" },
+      { modVersion: "v".repeat(SENDER_VERSION_MAX + 1) },
+      { modVersion: null },
+    ]) {
+      expect(ok(bad), JSON.stringify(bad)).toBe(false);
+      // The same value is rejected by the snapshot it came from, so the backend can always repeat what it accepted.
+      expect(SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestFull, ...bad }).success, JSON.stringify(bad)).toBe(false);
+    }
   });
 
   it("kinds, types and statuses are plain strings, so a newer backend never breaks an older frontend", () => {
