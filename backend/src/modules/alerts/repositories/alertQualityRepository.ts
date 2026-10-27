@@ -53,7 +53,7 @@ const RowSchema = z.object({
 // The metrics charts' alerts-fired trend (ADR-0056 amendment 2026-10-26): fired transitions per UTC hour, all servers
 // together, over `alert_events_at_idx`. Only a count per hour leaves the query.
 const FIRED_BY_HOUR = `
-  SELECT date_trunc('hour', at) AS hour, count(*)::int AS fired
+  SELECT date_trunc('hour', at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS hour, count(*)::int AS fired
   FROM alerts.alert_events
   WHERE transition = 'fired' AND at >= $1::timestamptz AND at <= $2::timestamptz
   GROUP BY 1`;

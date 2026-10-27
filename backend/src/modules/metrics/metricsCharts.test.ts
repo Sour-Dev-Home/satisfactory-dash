@@ -111,6 +111,27 @@ describe("buildCharts", () => {
     expect(out.headline.current).toMatchObject({ requests: null, serverErrors: null, requestP95Ms: null });
   });
 
+  it("drops a section the contract refuses to no_data instead of throwing", () => {
+    const bad = at(2, Number.NaN);
+    expect(build([hist(0, "http.server.request.duration", bad, { statusClass: "2xx" })])).toEqual({ available: false, reason: "no_data" });
+  });
+
+  it("keeps the last point as the current partial hour and counts a full hour when now is on the hour", () => {
+    const out = buildCharts({
+      window: "1h",
+      lengthMs: H,
+      nowMs: THIS_HOUR,
+      histograms: [hist(0, "satis.poller.lag", at(1))],
+      counters: [],
+      fired: new Map([[THIS_HOUR, 2]]),
+    });
+    const section = available(out);
+    expect(section.trend.alertsFired.at(-1)).toBe(2);
+    expect(section.trend.pollLagP95Ms.at(-1)).toBe(2);
+    expect(section.headline.current.hours).toBe(1);
+    expect(section.headline.current.alertsFired).toBe(2);
+  });
+
   it("builds a full week within the contract", () => {
     const histograms = Array.from({ length: 169 }, (_, i) => hist(i, "http.server.request.duration", at(i % 13, 10 + i), { statusClass: "2xx" }));
     const out = available(build(histograms, [], new Map(), "7d"));

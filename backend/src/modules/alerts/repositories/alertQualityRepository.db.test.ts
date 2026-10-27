@@ -159,6 +159,14 @@ describe.skipIf(!available)("alert quality summary over alerts.alert_events", ()
       [Date.parse("2026-10-10T08:00:00Z"), 2],
       [Date.parse("2026-10-10T10:00:00Z"), 1],
     ]);
+    // A session on a half-hour offset still buckets by UTC hour (date_trunc on a timestamptz follows the session zone).
+    const offset = new pg.Pool({ connectionString: db.appUrl, max: 1, options: "-c TimeZone=Asia/Kolkata" });
+    try {
+      const again = await alertsFiredHourly(offset, new Date("2026-10-10T06:00:00Z"), new Date("2026-10-10T10:30:00Z"));
+      expect([...again].sort(([a], [b]) => a - b)).toEqual([...fired].sort(([a], [b]) => a - b));
+    } finally {
+      await offset.end();
+    }
   });
 });
 
