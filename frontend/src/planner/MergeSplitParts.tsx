@@ -21,11 +21,14 @@ export function MergeBar({
   picked,
   onClear,
   onStale,
+  onCanvas = true,
 }: {
   graph: ProductionGraph;
   picked: readonly FactoryModel[];
   onClear: () => void;
   onStale: () => void;
+  /** The graph view is showing, where Select picks; in the Tables view the ticks do. */
+  onCanvas?: boolean;
 }) {
   const { designations, places } = useDesignations();
   const changes = useDesignationChanges();
@@ -42,7 +45,7 @@ export function MergeBar({
     <div role="group" aria-label="Selected factories" className="grid gap-2">
       <div className="flex flex-wrap items-center gap-3">
         <span role="status" aria-live="polite" className="text-sm">
-          {picked.length === 0 ? "No factories selected: turn on Select above to pick some" : `${factories(picked.length)} selected`}
+          {picked.length === 0 ? `No factories selected: ${onCanvas ? "turn on Select above to pick some" : "tick some below"}` : `${factories(picked.length)} selected`}
         </span>
         {!open && (
           <>

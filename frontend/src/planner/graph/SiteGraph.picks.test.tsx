@@ -106,3 +106,45 @@ describe("the overview's Select tool (the owner, 2026-10-27)", () => {
     expect(within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status")).toHaveTextContent("1 factory selected");
   });
 });
+
+describe("the overview's Select tool: edges", () => {
+  const selectOn = () => fireEvent.click(within(screen.getByRole("group", { name: "Merge" })).getByRole("button", { name: "Select" }));
+  const pointer = (type: string, clientX: number, clientY: number) => fireEvent(window, Object.assign(new MouseEvent(type, { clientX, clientY }), { pointerId: 1 }));
+  const status = () => within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status");
+
+  it("the end of a drag is not a pick, and a click on the background picks nothing", async () => {
+    renderView();
+    const svg = await overview();
+    selectOn();
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    pointer("pointermove", 200, 160);
+    pointer("pointerup", 200, 160);
+    // The click that follows a drag ending on a card.
+    fireEvent.click(factoryCards(svg)[0]!);
+    expect(factoryCards(svg)[0]).not.toHaveAttribute("data-picked", "true");
+    expect(status()).toHaveTextContent("No factories selected");
+    fireEvent.click(svg);
+    expect(status()).toHaveTextContent("No factories selected");
+  });
+
+  it("Escape clears the picks and leaves Select on", async () => {
+    renderView();
+    const svg = await overview();
+    selectOn();
+    fireEvent.click(factoryCards(svg)[0]!);
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    expect(status()).toHaveTextContent("No factories selected");
+    expect(screen.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("Shift-click still picks with Select on, and the Tables view's idle bar points at the ticks, not at a Select that is not there", async () => {
+    renderView();
+    const svg = await overview();
+    selectOn();
+    fireEvent.click(factoryCards(svg)[0]!, { shiftKey: true });
+    expect(factoryCards(svg)[0]).toHaveAttribute("data-picked", "true");
+    fireEvent.click(factoryCards(svg)[0]!, { shiftKey: true });
+    fireEvent.click(within(screen.getByRole("group", { name: "View" })).getByRole("button", { name: "Tables" }));
+    expect(status()).toHaveTextContent("No factories selected: tick some below");
+  });
+});
