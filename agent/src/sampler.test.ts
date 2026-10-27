@@ -107,6 +107,17 @@ describe("the sender's view of its game connection (S4-A, R7)", () => {
     expect(back).toMatchObject({ gameReachable: true, lastGameReadAt: "2026-09-26T12:00:15.000Z" });
   });
 
+  it("a failure before any success omits lastGameReadAt; a status that cannot be conformed does not count as a read", async () => {
+    let bad = true;
+    const { sampler } = setup({ readStatus: vi.fn(async () => (bad ? ({ nonsense: 1 } as never) : { ...statusRunning.data })) });
+    const first = await sampler.sample(T0);
+    expect(first).toMatchObject({ gameReachable: false, reachable: false });
+    expect("lastGameReadAt" in first).toBe(false);
+    expect(valid(first)).toBe(true);
+    bad = false;
+    expect(await sampler.sample(T0 + 5_000)).toMatchObject({ gameReachable: true, lastGameReadAt: "2026-09-26T12:00:05.000Z" });
+  });
+
   it("a part failing while the status read works leaves the game reachable", async () => {
     const { sampler } = setup({ readPower: vi.fn(async () => Promise.reject(unreachable())) });
     expect(await sampler.sample(T0)).toMatchObject({ gameReachable: true, lastGameReadAt: "2026-09-26T12:00:00.000Z" });
