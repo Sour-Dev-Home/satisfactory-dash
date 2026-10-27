@@ -66,6 +66,24 @@ export function percentChange(current: number | null, previous: number | null, h
 }
 
 /**
+ * A rate (0 to 1) against the one before, in percentage points: "Up 0.2 points". A relative percent overstates a change
+ * on a tiny base ("Up 184%" for 0.1% to 0.3%; ui-reviewer), and a 0% window before is still a fair comparison here.
+ */
+export function pointsChange(current: number | null, previous: number | null, higherIsWorse: boolean | null): Change {
+  if (current === null || previous === null) return NO_COMPARISON;
+  const points = Math.round((current - previous) * 1000) / 10;
+  if (points === 0) return { text: "About the same", direction: "same", tone: "neutral", relative: true };
+  const direction = points > 0 ? "up" : "down";
+  const size = Math.abs(points);
+  return {
+    text: `${direction === "up" ? "Up" : "Down"} ${countText(size)} ${size === 1 ? "point" : "points"}`,
+    direction,
+    tone: tone(direction, higherIsWorse),
+    relative: true,
+  };
+}
+
+/**
  * A percentile against the one before, as the bucket step it is: "≤ 200 ms, was ≤ 100 ms". Higher is always worse.
  * "No comparison" when either window had no data.
  */
@@ -156,7 +174,7 @@ export function headlineTiles(charts: ChartsData): HeadlineTile[] {
       id: "errors",
       label: "Error rate (5xx)",
       value: errorRate(current) === null ? "No data" : rateText(errorRate(current)),
-      change: percentChange(errorRate(current), errorRate(previous), true),
+      change: pointsChange(errorRate(current), errorRate(previous), true),
       spark: errorRateSeries(trend.requests),
       sparkLog: false,
     },
@@ -275,6 +293,8 @@ export interface ChartSeries {
   color: string;
   values: (number | null)[];
   drawn: (number | null)[];
+  /** A dashed line, so series of one hue differ by more than lightness. */
+  dashed?: boolean;
 }
 
 export interface TrendChartSpec {
@@ -347,7 +367,7 @@ export function systemChartSpecs(trend: MetricsTrend): TrendChartSpec[] {
       unit: "ms",
       bars: false,
       series: [
-        line("p50", "--color-ramp-1", trend.requestMs.p50, "ms"),
+        { ...line("p50", "--color-ramp-1", trend.requestMs.p50, "ms"), dashed: true },
         line("p95", "--color-ramp-2", trend.requestMs.p95, "ms"),
         line("p99", "--color-ramp-3", trend.requestMs.p99, "ms"),
       ],

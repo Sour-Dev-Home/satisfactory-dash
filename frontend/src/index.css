@@ -74,16 +74,17 @@
   /* The metrics page's trend charts (ADR-0056 amendment): five categorical series hues in fixed order (blue, orange,
      aqua, violet, magenta; never cycled, a sixth series folds), and a one-hue ramp for p50/p95/p99 (dim to bright).
      Validated with the dataviz skill's validate_palette.js against --color-surface: every adjacent pair CVD ΔE >= 9.4,
-     normal-vision ΔE >= 19.7, all >= 3:1; the ramp is monotone with its dim end at 2.4:1. Status colours stay reserved:
+     normal-vision ΔE >= 19.7, all >= 3:1; the ramp is monotone with its dim end at 3.2:1 (and p50 is also dashed, so the
+     three lines differ by more than lightness; ui-reviewer). Status colours stay reserved:
      a 5xx answer is --color-bad, the one problem series. Lines and fills only; text never wears these. */
   --color-series-1: #3987e5;
   --color-series-2: #d95926;
   --color-series-3: #199e70;
   --color-series-4: #9085e9;
   --color-series-5: #d55181;
-  --color-ramp-1: #1c5cab;
-  --color-ramp-2: #3987e5;
-  --color-ramp-3: #86b6ef;
+  --color-ramp-1: #3470c2;
+  --color-ramp-2: #4f95ea;
+  --color-ramp-3: #9cc4f2;
 
   /* Self-hosted (the CSP is font-src 'self'); the @font-face rules follow this block. Each falls
      back to a size-adjusted local Arial first, so text barely moves when the font arrives. */
@@ -658,6 +659,15 @@
     border: 0;
     color: var(--color-fg);
     font-size: 13px;
+  }
+
+  /* The metrics charts' "Time: –" legend item is noise at rest (the axis has the time) and wrapped onto its own line on
+     a phone: shown only while the pointer is over the chart, where it names the hovered hour (ui-reviewer). */
+  .trend-chart .u-legend .u-series:first-child {
+    display: none;
+  }
+  .trend-chart:hover .u-legend .u-series:first-child {
+    display: inline-block;
   }
 }
 

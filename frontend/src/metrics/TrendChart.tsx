@@ -64,7 +64,14 @@ export function TrendChart({ spec, times }: { spec: TrendChartSpec; times: reado
       const color = token(s.color);
       return bars
         ? { label: s.label, stroke: color, fill: color, width: 0, paths: bars, points: { show: false }, value: legendValue }
-        : { label: s.label, stroke: color, width: 2, points: { show: false, filter: isolatedPoints, size: 8 }, value: legendValue };
+        : {
+            label: s.label,
+            stroke: color,
+            width: 2,
+            ...(s.dashed ? { dash: [6, 4] } : {}),
+            points: { show: false, filter: isolatedPoints, size: 8 },
+            value: legendValue,
+          };
     });
     const u = new uPlot(
       {

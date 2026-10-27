@@ -76,7 +76,8 @@ function Sparkline({ tile }: { tile: HeadlineTile }) {
 
 function Tile({ tile, window }: { tile: HeadlineTile; window: MetricsWindow }) {
   return (
-    <li data-tile={tile.id} className="grid content-start gap-1 rounded-card border border-line bg-surface p-3">
+    // On a phone (two columns) the seventh tile would sit alone: it spans the row instead.
+    <li data-tile={tile.id} className="grid content-start gap-1 rounded-card border border-line bg-surface p-3 max-sm:last:col-span-2">
       <p className="mb-0 text-sm text-muted">{tile.label}</p>
       <p className="mb-0 text-xl font-semibold text-fg-strong">{tile.value}</p>
       <ChangeLine change={tile.change} window={window} />

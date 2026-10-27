@@ -8,6 +8,7 @@ import {
   errorRateSeries,
   headlineTiles,
   percentChange,
+  pointsChange,
   previousWords,
   sparklinePath,
   stackSeries,
@@ -66,6 +67,16 @@ describe("bucketChange", () => {
   });
 });
 
+describe("pointsChange", () => {
+  it("states a rate's change in percentage points, compares with a 0% window, and says about the same under 0.05", () => {
+    expect(pointsChange(0.003, 0, true)).toMatchObject({ text: "Up 0.3 points", tone: "worse" });
+    expect(pointsChange(0.01, 0.02, true)).toMatchObject({ text: "Down 1 point", tone: "better" });
+    expect(pointsChange(0.0102, 0.01, true)).toMatchObject({ text: "About the same", tone: "neutral" });
+    expect(pointsChange(null, 0.01, true).text).toBe("No comparison");
+    expect(pointsChange(0.01, null, true).text).toBe("No comparison");
+  });
+});
+
 describe("edge cases", () => {
   it("never prints Infinity or NaN, and keeps a drop to zero finite", () => {
     expect(percentChange(0, 100, true)).toMatchObject({ text: "Down 100%", tone: "better" });
@@ -100,7 +111,8 @@ describe("headlineTiles", () => {
 
   it("shows the 5xx error rate, worse when it rises", () => {
     expect(tiles.get("errors")?.value).toBe("0.3%");
-    expect(tiles.get("errors")?.change).toMatchObject({ text: "Up 184%", tone: "worse" });
+    // In percentage points, not a percent of a percent (0.1% to 0.3% is "Up 0.2 points", not "Up 184%").
+    expect(tiles.get("errors")?.change).toMatchObject({ text: "Up 0.2 points", tone: "worse" });
   });
 
   it("shows percentiles as buckets, and their change as the bucket step", () => {
