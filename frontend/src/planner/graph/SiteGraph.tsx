@@ -24,6 +24,7 @@ import {
   countBadgeWidth,
   isHeadingLine,
   isTransport,
+  labelBox,
   layoutScene,
   FOCUS_CARD_H,
   FOCUS_CARD_W,
@@ -36,10 +37,10 @@ import {
 import { useFolds } from "./foldMemory";
 import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
-import { GLYPH_MODES } from "./transportModes";
+import { GLYPH_HALO_RADIUS, GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
-import { roundedOrthogonalPath } from "./edgeShapes";
+import { motionPathAround, roundedOrthogonalPath } from "./edgeShapes";
 import {
   BUBBLE_D,
   BUBBLE_ICON,
@@ -1174,6 +1175,8 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgePr
   // The same geometry the detail card's morph starts from (`bubbleCentre`).
   const { left, cy } = bubbleRowOrigin(e);
   const at = bubbleOffsets(row);
+  // A route that lies wholly in its own label box leaves nothing to ride: the glyph then stays at rest.
+  const glide = transport && moving ? motionPathAround(e.points, labelBox(e), GLYPH_HALO_RADIUS + 1) : null;
   return (
     <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
@@ -1187,6 +1190,14 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgePr
         data-label-pill=""
         className="fill-surface"
       />
+      {/* Under the bubble row: at rest the glyph stands inside its own pill, left of the bubbles; moving, it travels the line
+          but jumps the label box (`motionPathAround`), and being under the row is the backstop. */}
+      {transport && (
+        <g transform={glide === null ? `translate(${e.mid.x} ${e.mid.y})` : undefined} data-moving={glide !== null}>
+          <TransportGlyph mode={e.flow.carrier} />
+          {glide !== null && <animateMotion path={glide} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
+        </g>
+      )}
       {row.items.map((item, i) => (
         <ItemBubble
           key={item.key}
@@ -1220,13 +1231,6 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgePr
         <text x={e.textX} y={top + BUBBLE_D + LABEL_LINE_H / 2} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
           {row.rateText}
         </text>
-      )}
-      {/* After the label: at rest the glyph stands inside its own pill, left of the words; moving, it travels the line. */}
-      {transport && (
-        <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
-          <TransportGlyph mode={e.flow.carrier} />
-          {moving && <animateMotion path={roundedOrthogonalPath(e.points)} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
-        </g>
       )}
     </g>
   );

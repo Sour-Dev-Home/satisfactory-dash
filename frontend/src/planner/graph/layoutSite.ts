@@ -4,7 +4,7 @@ import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Fra
 import { buildingIconUrl } from "./buildingIcons";
 import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
 import { routeOrthogonal } from "./orthogonalRoute";
-import { GLYPH_SIZE } from "./transportModes";
+import { GLYPH_HALO_RADIUS, GLYPH_SIZE } from "./transportModes";
 
 // Sizes are SVG user units, tied to the canvas's text classes (a factory's name and the "×N" badge `text-base` 16 px
 // semibold, body lines and edge labels `text-sm` 14 px). A card is icon-first: the building's icon at the top-left with
@@ -182,8 +182,18 @@ const lengthOf = (points: readonly Point[]): number => {
 
 /** Where along its path (0 to 1, by length) an edge's `mid` stands when no label holds a glyph (a plain belt or pipe). */
 export const GLYPH_AT = 0.3;
-/** The room a transport's glyph takes at the left of its label pill: the glyph and the gap before the words. */
-export const GLYPH_INSET = GLYPH_SIZE + LABEL_PAD;
+/** The room a transport's glyph takes at the left of its label pill: the glyph's halo (wider than its 24-unit box) and the
+ *  gap before the bubbles, so the glyph at rest never touches them. */
+export const GLYPH_INSET = 2 * GLYPH_HALO_RADIUS + LABEL_PAD;
+/** A line's label pill as a box (the size it is drawn at, centred where the layout put it). */
+export const labelBox = (e: Pick<LaidEdge, "labelX" | "labelY" | "labelWidth" | "labelHeight">) => ({
+  x: e.labelX - e.labelWidth / 2,
+  y: e.labelY - e.labelHeight / 2,
+  width: e.labelWidth,
+  height: e.labelHeight,
+});
+/** Where a transport's glyph stands at rest: inside its pill, at the left, its halo `LABEL_PAD / 2` from the pill's edge. */
+export const glyphRestCentre = (labelX: number, labelY: number, pillWidth: number): Point => ({ x: labelX - pillWidth / 2 + LABEL_PAD / 2 + GLYPH_HALO_RADIUS, y: labelY });
 
 /** The point `fraction` of the way along a path by length, halfway by default (the first point of a path with no length, the origin of an empty one). */
 export function pathMidpoint(points: readonly Point[], fraction = 0.5): Point {
@@ -622,7 +632,7 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
       labelWidth: width,
       labelHeight: height,
       textX: transport ? labelX + GLYPH_INSET / 2 : labelX,
-      mid: transport ? { x: labelX - width / 2 + LABEL_PAD / 2 + GLYPH_SIZE / 2, y: labelY } : pathMidpoint(points, GLYPH_AT),
+      mid: transport ? glyphRestCentre(labelX, labelY, width) : pathMidpoint(points, GLYPH_AT),
       length: lengthOf(points),
     };
   });
