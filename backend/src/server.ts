@@ -94,7 +94,7 @@ import {
 } from "./modules/agents/index.js";
 import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
 import { createMetricsRouter, createMetricsService } from "./modules/metrics/index.js";
-import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
+import { MapLiveStore, LocalWorldPoller, WorldIngestService, observeFactoryReads, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
@@ -180,11 +180,6 @@ function buildPolledServer(id: string, displayName: string, untimedConfig: Satis
   // ADR-0032: every call to the game server reports how long it took, so a request's time splits into app and upstream.
   const config: SatisfactoryServerConfig = { ...untimedConfig, onUpstreamCall: recordUpstreamCall };
   const connection = createGameServerConnection(config);
-  const telemetry = createTelemetryServices(connection, resolveUnit, {
-    logger: logger.child({ worker: "power-history", serverId: id }),
-    // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
-    history: database ? { db: database.pool, serverPublicId: id } : undefined,
-  });
   // ADR-0038 M3: a LOCAL server has no edge agent, so the backend reads its own world layers and
   // mapLive directly (`connection` satisfies LocalWorldPollerPorts structurally: getRails,
   // getResourceNodes, getTrains, getTrainStations). Needs the database (world layers are stored).
@@ -196,6 +191,14 @@ function buildPolledServer(id: string, displayName: string, untimedConfig: Satis
         mapLive: mapLiveStore.sinkFor(id),
       })
     : undefined;
+  // #728 step 6: every factory read telemetry makes (the 30 s history poll, the live reads) tells the map poller the
+  // building set, so a changed set reads conveyors sooner instead of up to 10 minutes later.
+  const telemetryPorts = mapPoller ? observeFactoryReads(connection, (ids) => mapPoller.observeFactoryBuildings(ids)) : connection;
+  const telemetry = createTelemetryServices(telemetryPorts, resolveUnit, {
+    logger: logger.child({ worker: "power-history", serverId: id }),
+    // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
+    history: database ? { db: database.pool, serverPublicId: id } : undefined,
+  });
   return {
     id,
     displayName,

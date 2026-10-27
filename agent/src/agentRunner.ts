@@ -81,11 +81,16 @@ export async function runAgent(options: RunAgentOptions): Promise<RunOutcome> {
     random: options.random,
   });
 
+  const world = options.world === undefined ? undefined : new WorldReader({ ports: options.world, client: options.client, logger, onAuthRejected: authRejected, now, sleep, random: options.random });
+
   const sampleLoop = async () => {
     while (!stop.signal.aborted) {
       const startedAt = now();
       try {
-        pusher.enqueue(await sampler.sample(startedAt));
+        const snapshot = await sampler.sample(startedAt);
+        // #728 step 6: a changed building set reads conveyors sooner (the reader rate-limits it; an unchanged set is a no-op).
+        if (snapshot.factory !== undefined) world?.observeFactoryBuildings(snapshot.factory.buildings.map((b) => b.id));
+        pusher.enqueue(snapshot);
       } catch {
         // The sampler reports its own failures; anything that still escapes must not end the agent.
         logger.error("sample_failed", { code: "internal_error" });
@@ -95,8 +100,6 @@ export async function runAgent(options: RunAgentOptions): Promise<RunOutcome> {
       await sleep(Math.max(250, period - spent), stop.signal);
     }
   };
-
-  const world = options.world === undefined ? undefined : new WorldReader({ ports: options.world, client: options.client, logger, onAuthRejected: authRejected, now, sleep, random: options.random });
 
   logger.info("agent_started", { statusSeconds: cadence.statusSeconds });
   try {

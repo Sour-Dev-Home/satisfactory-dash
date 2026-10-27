@@ -303,6 +303,9 @@ export function buildProductionGraphWithStats(
   wcc.forEach((members, wi) => members.forEach((n) => (wccOf[n] = wi)));
 
   const unitOf = new Map<number, Unit>();
+  // #728 cause 11: a machine end no factory building matches. getFactory returns every machine, so the conveyor read
+  // (every 10 minutes) is older than the factory read (every 30 s): the machine was rebuilt or removed since.
+  let staleMachineEnds = 0;
   for (let n = 0; n < nodeCount; n++) {
     if (!TERMINAL_KINDS.has(g.kind[n])) continue;
     const ids = idsOf.get(n);
@@ -310,6 +313,7 @@ export function buildProductionGraphWithStats(
     ids.sort(byString);
     const found = ids.find((id) => byId.has(id));
     const building = found === undefined ? null : (byId.get(found) as FactoryBuilding);
+    if (building === null && g.kind[n] === "machine") staleMachineEnds++;
     // A building the snapshot lacks has no position of its own: borrow the nearest conveyor's end 0.
     const near = g.out[n][0] ?? g.in[n][0];
     unitOf.set(n, { node: n, id: found ?? ids[0], building, pos: positionOf(building) ?? (near ? { x: near.edge.at.x, y: near.edge.at.y } : null) });
@@ -969,6 +973,13 @@ export function buildProductionGraphWithStats(
     notes.push({
       code: "connectionsRefresh",
       text: `Connections refresh every ${CONNECTIONS_REFRESH_MINUTES} minutes, so a belt built or rebuilt since may not show yet.`,
+    });
+  }
+  if (staleMachineEnds > 0) {
+    const [count, be] = staleMachineEnds === 1 ? ["1 machine", "is"] : [`${staleMachineEnds} machines`, "are"];
+    notes.push({
+      code: "staleConveyorEnds",
+      text: `${count} on the conveyor data ${be} missing from the latest factory read: conveyor data is older than the factory read and refreshes within ${CONNECTIONS_REFRESH_MINUTES} minutes.`,
     });
   }
   if (unmatched > 0) {

@@ -314,6 +314,30 @@ describe("stale, unconnected and missing belt data", () => {
     expect(run(b, "notReceived")).toMatchObject({ nodes: [], sites: [], beltData: "notReceived", notes: [{ code: "beltDataNotReceived" }] });
     expect(run(b, [])).toMatchObject({ beltData: "stale", unconnectedMachineIds: ["a"] });
   });
+
+  // #728 cause 11: a conveyor end naming a machine the latest factory read no longer has (a rebuilt or removed machine).
+  it("says so in one note when conveyor ends name machines the factory read lacks, counting each machine once", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "gone1", "use"), edge("e2", "gone1", "use"), edge("e3", "gone2", "use")]);
+    expect(g.nodes.some((n) => n.kind === "other")).toBe(true);
+    const stale = g.notes.filter((n) => n.code === "staleConveyorEnds");
+    expect(stale).toHaveLength(1);
+    expect(stale[0].text).toBe("2 machines on the conveyor data are missing from the latest factory read: conveyor data is older than the factory read and refreshes within 10 minutes.");
+    expect(ProductionGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it("uses the singular for one stale machine end", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "gone1", "use")]);
+    expect(g.notes.find((n) => n.code === "staleConveyorEnds")?.text).toMatch(/^1 machine on the conveyor data is missing from the latest factory read:/);
+  });
+
+  it("no stale-ends note when every machine end matches, nor for storage or unknown-class ends (never in the factory read)", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    expect(run(b, [edge("e1", "T1", "use"), edge("e2", "Mod_1", "use", { fromKind: "other" })]).notes.map((n) => n.code)).not.toContain("staleConveyorEnds");
+    const { b: mb, e } = manifold(2);
+    expect(run(mb, e).notes.map((n) => n.code)).not.toContain("staleConveyorEnds");
+  });
 });
 
 describe("contract and determinism", () => {

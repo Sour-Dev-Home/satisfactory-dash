@@ -57,7 +57,7 @@ function setup(options: { random?: () => number } = {}) {
   };
   const sentFor = (layer: MapWorldLayer) => sent.filter((s) => s.layer === layer);
   const warnings = (event: string) => lines.filter((l) => l.event === event);
-  return { world, ports, client, sent, sentFor, lines, warnings, onAuthRejected, start, running: () => running, stop };
+  return { world, ports, client, sent, sentFor, lines, warnings, onAuthRejected, reader, start, running: () => running, stop };
 }
 
 beforeEach(() => {
@@ -547,5 +547,104 @@ describe("the powerLines layer", () => {
     await h.start();
     expect(h.warnings("world_layer_items_dropped").map((l) => l.fields)).toContainEqual({ layer: "powerLines", dropped: 3 });
     await h.stop();
+  });
+});
+
+/** #728 cause 11 (step 6): a changed factory building set reads conveyors sooner, at most once a minute. */
+describe("the conveyors nudge", () => {
+  it("an unchanged building set (in any order) never reads conveyors early", async () => {
+    const h = setup();
+    await h.start();
+    for (let t = 0; t < 18; t++) {
+      h.reader.observeFactoryBuildings(t % 2 === 0 ? ["a", "b", "c"] : ["c", "a", "b"]);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1); // 9 minutes in: only the start read
+    expect(h.ports.getRails).toHaveBeenCalledTimes(1);
+    await h.stop();
+  });
+
+  it("the first observation is a baseline, not a change", async () => {
+    const h = setup();
+    await h.start();
+    await vi.advanceTimersByTimeAsync(120_000);
+    h.reader.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    await h.stop();
+  });
+
+  it("a changed set reads conveyors at once when the last read is over a minute old, only conveyors, and restarts the schedule", async () => {
+    const h = setup();
+    await h.start();
+    h.reader.observeFactoryBuildings(["a", "b"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    h.world.conveyors = [edge("b2")];
+    h.reader.observeFactoryBuildings(["a", "b", "c"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    expect(h.sentFor("conveyors")).toHaveLength(2); // the new graph was sent
+    expect(h.ports.getRails).toHaveBeenCalledTimes(1);
+    expect(h.ports.getTrainRoutes).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(600_000 - 1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(3);
+    await h.stop();
+  });
+
+  it("is rate-limited: within a minute of the last read it waits for the minute, and changes in between make one read", async () => {
+    const h = setup();
+    await h.start();
+    h.reader.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    h.reader.observeFactoryBuildings(["a", "b"]);
+    await vi.advanceTimersByTimeAsync(20_000);
+    h.reader.observeFactoryBuildings(["a", "b", "c"]);
+    await vi.advanceTimersByTimeAsync(30_000 - 1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    h.reader.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(60_000 - 1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(3);
+    await h.stop();
+  });
+
+  it("a change during an in-flight conveyors read reads again a minute after that read started", async () => {
+    const h = setup();
+    let finish!: () => void;
+    await h.start();
+    h.reader.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    h.ports.getConveyors.mockImplementationOnce(() => new Promise((resolve) => (finish = () => resolve({ data: h.world.conveyors, dropped: 0 }))));
+    h.reader.observeFactoryBuildings(["b"]); // read 2 starts at 120 s and hangs
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    h.reader.observeFactoryBuildings(["c"]); // read 2 may have missed this one
+    await vi.advanceTimersByTimeAsync(5_000);
+    finish();
+    await vi.advanceTimersByTimeAsync(50_000 - 1);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1); // 180 s
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(3);
+    await h.stop();
+  });
+
+  it("a nudge before run() or after stop reads nothing extra and never throws", async () => {
+    const h = setup();
+    h.reader.observeFactoryBuildings(["a"]);
+    h.reader.observeFactoryBuildings(["b"]);
+    await h.start();
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
+    await h.stop();
+    h.reader.observeFactoryBuildings(["c"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(h.ports.getConveyors).toHaveBeenCalledTimes(1);
   });
 });

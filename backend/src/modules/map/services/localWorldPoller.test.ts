@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LocalWorldPoller } from "./localWorldPoller.js";
+import { LocalWorldPoller, observeFactoryReads } from "./localWorldPoller.js";
 import type { LocalWorldPollerPorts } from "./localWorldPoller.js";
 
 function fakeLogger() {
@@ -268,5 +268,164 @@ describe("LocalWorldPoller", () => {
     resolveRead();
     await stopped;
     expect(ports.getRails).toHaveBeenCalledTimes(1); // stop() didn't let another read start
+  });
+});
+
+/** #728 cause 11: a changed factory building set reads conveyors sooner, at most once a minute (step 6). */
+describe("LocalWorldPoller conveyors nudge", () => {
+  const startPoller = async (fakes = fakePorts()) => {
+    const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
+    const poller = new LocalWorldPoller(fakes, { logger: fakeLogger(), serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    return { fakes, poller };
+  };
+  const withFakeTimers = (fn: () => Promise<void>) => async () => {
+    vi.useFakeTimers();
+    try {
+      await fn();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  it("an unchanged building set (in any order) never reads conveyors early", withFakeTimers(async () => {
+    const { fakes, poller } = await startPoller();
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+    for (let t = 0; t < 18; t++) {
+      poller.observeFactoryBuildings(t % 2 === 0 ? ["a", "b", "c"] : ["c", "a", "b"]);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1); // 9 minutes in: still only the start read
+    expect(fakes.getRails).toHaveBeenCalledTimes(1);
+    await poller.stop();
+  }));
+
+  it("the first observation is a baseline, not a change", withFakeTimers(async () => {
+    const { fakes, poller } = await startPoller();
+    await vi.advanceTimersByTimeAsync(120_000);
+    poller.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+    await poller.stop();
+  }));
+
+  it("a changed building set reads conveyors at once when the last read is over a minute old, and only conveyors", withFakeTimers(async () => {
+    const { fakes, poller } = await startPoller();
+    poller.observeFactoryBuildings(["a", "b"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    poller.observeFactoryBuildings(["a", "b", "c"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    expect(fakes.getRails).toHaveBeenCalledTimes(1);
+    expect(fakes.getTrainRoutes).toHaveBeenCalledTimes(1);
+    // The regular schedule restarts from the nudged read: the next one is 10 minutes after it, not after the start read.
+    await vi.advanceTimersByTimeAsync(600_000 - 1);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(3);
+    await poller.stop();
+  }));
+
+  it("is rate-limited: within a minute of the last read it waits for the minute, and changes in between make one read", withFakeTimers(async () => {
+    const { fakes, poller } = await startPoller();
+    poller.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    poller.observeFactoryBuildings(["a", "b"]);
+    await vi.advanceTimersByTimeAsync(20_000);
+    poller.observeFactoryBuildings(["a", "b", "c"]);
+    await vi.advanceTimersByTimeAsync(30_000 - 1); // 59.999 s after the start read
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    // A change right after the nudged read waits a full minute again.
+    poller.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(60_000 - 1);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(3);
+    await poller.stop();
+  }));
+
+  it("a change during an in-flight conveyors read reads again a minute after that read started", withFakeTimers(async () => {
+    let finish!: () => void;
+    const getConveyors = vi
+      .fn()
+      .mockResolvedValueOnce(empty)
+      .mockReturnValueOnce(new Promise((resolve) => (finish = () => resolve(empty))))
+      .mockResolvedValue(empty);
+    const { fakes, poller } = await startPoller(fakePorts({ getConveyors }));
+    poller.observeFactoryBuildings(["a"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    poller.observeFactoryBuildings(["b"]); // read 2 starts at 120 s and hangs
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    poller.observeFactoryBuildings(["c"]); // it may have missed this one
+    await vi.advanceTimersByTimeAsync(5_000);
+    finish();
+    await vi.advanceTimersByTimeAsync(50_000 - 1);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1); // 180 s: a minute after read 2 started
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(3);
+    await poller.stop();
+  }));
+
+  it("a nudge before start() never starts the poller (a non-leader instance still serves factory reads)", withFakeTimers(async () => {
+    const fakes = fakePorts();
+    const poller = new LocalWorldPoller(fakes, { logger: fakeLogger(), serverPublicId: "srv-1", ingest: { ingest: vi.fn() }, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
+    poller.observeFactoryBuildings(["a"]);
+    poller.observeFactoryBuildings(["b"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fakes.getConveyors).not.toHaveBeenCalled();
+    await poller.stop();
+  }));
+
+  it("a nudge after stop() reads nothing", withFakeTimers(async () => {
+    const { fakes, poller } = await startPoller();
+    poller.observeFactoryBuildings(["a"]);
+    await poller.stop();
+    poller.observeFactoryBuildings(["b"]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+  }));
+});
+
+describe("observeFactoryReads", () => {
+  it("hands each factory read's building ids to the observer and returns the read unchanged", async () => {
+    const buildings = [{ id: "b1", name: "Constructor" }, { id: "b2", name: "Smelter" }];
+    const ports = { getFactoryBuildings: vi.fn().mockResolvedValue(buildings), getServerStatus: vi.fn().mockResolvedValue("ok") };
+    const observe = vi.fn();
+    const wrapped = observeFactoryReads(ports, observe);
+    await expect(wrapped.getFactoryBuildings()).resolves.toBe(buildings);
+    expect(observe).toHaveBeenCalledWith(["b1", "b2"]);
+    await expect(wrapped.getServerStatus()).resolves.toBe("ok");
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the other methods bound to the original object", async () => {
+    class Adapter {
+      private readonly secret = "s";
+      async getFactoryBuildings() {
+        return [{ id: this.secret }];
+      }
+      async getServerStatus() {
+        return this.secret;
+      }
+    }
+    const wrapped = observeFactoryReads(new Adapter(), vi.fn());
+    await expect(wrapped.getServerStatus()).resolves.toBe("s");
+    await expect(wrapped.getFactoryBuildings()).resolves.toEqual([{ id: "s" }]);
+  });
+
+  it("a throwing observer never fails the factory read; a failed read is not observed", async () => {
+    const ports = { getFactoryBuildings: vi.fn().mockResolvedValueOnce([{ id: "b1" }]).mockRejectedValueOnce(new Error("down")) };
+    const observe = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const wrapped = observeFactoryReads(ports, observe);
+    await expect(wrapped.getFactoryBuildings()).resolves.toEqual([{ id: "b1" }]);
+    await expect(wrapped.getFactoryBuildings()).rejects.toThrow("down");
+    expect(observe).toHaveBeenCalledTimes(1);
   });
 });
