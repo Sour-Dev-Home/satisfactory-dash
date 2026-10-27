@@ -295,7 +295,8 @@ const CASES: StateCase[] = [
     scenario: "planner-stalled",
     name: "planner-stalled-panel",
     path: "/app/planner",
-    shows: /Iron Plate: 0 of 160 items\/min · backed up/,
+    // Anchored: the canvas's hidden <title> holds the same words after the group's name, and comes first.
+    shows: /^Iron Plate: 0 of 160 items\/min · backed up$/,
     clock: PLANNER_NOW,
     act: async (page) => {
       await openIronGraph(page);
