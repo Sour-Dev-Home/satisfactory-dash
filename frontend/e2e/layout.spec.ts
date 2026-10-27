@@ -59,7 +59,7 @@ test("the header and tabs stay put across every tab, scrolling or not", async ({
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("all six tabs are reachable and the page never scrolls sideways", async ({ page, mockApi }) => {
+  test("every tab, the operator's two included, is reachable and the page never scrolls sideways", async ({ page, mockApi }) => {
     await mockApi("servers-manage");
     await page.goto("/app");
     const nav = page.getByRole("navigation", { name: "Main" });
@@ -83,7 +83,7 @@ test.describe("on a phone", () => {
       await nav.waitFor();
       const overBy = await nav.evaluate((el) => el.scrollWidth - el.clientWidth);
       const overflows = overBy > 1;
-      // The six standard tabs fit whole (no scrolling, no fade: the old cut-off "SET"); the operator's seventh scrolls.
+      // The six standard tabs fit whole (no scrolling, no fade: the old cut-off "SET"); the operator's two extra tabs scroll.
       expect(overflows, scenario === "default" ? `the standard tabs fit at 390 px (over by ${overBy}px)` : "the extra tab overflows, so the check is real").toBe(
         scenario !== "default",
       );
@@ -92,7 +92,8 @@ test.describe("on a phone", () => {
         el.scrollLeft = el.scrollWidth;
       });
       const last = nav.getByRole("link").last();
-      await expect(last).toHaveText(scenario === "default" ? /^settings$/i : /^servers$/i);
+      // The operator's last tab is Metrics (ADR-0056 amendment 2026-10-26), after Servers.
+      await expect(last).toHaveText(scenario === "default" ? /^settings$/i : /^metrics$/i);
       await expect.poll(() => nav.evaluate((el) => Math.round(el.scrollLeft + el.clientWidth - el.scrollWidth))).toBe(0);
       const box = await last.boundingBox();
       const navBox = await nav.boundingBox();
