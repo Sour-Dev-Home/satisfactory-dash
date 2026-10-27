@@ -17,10 +17,11 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.getByRole("button", { name: "Graph" }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
-  // dagre has laid out the cards, and the edge words are drawn.
-  // An edge label is two <tspan> lines, item then rate (the <title> tooltip keeps the one-line form).
-  await expect(svg.locator("tspan", { hasText: /^Iron Ore$/ }).first()).toBeVisible();
-  await expect(svg.locator("tspan", { hasText: /^120 items\/min$/ }).first()).toBeVisible();
+  // dagre has laid out the cards, and the edge labels are drawn: the item as its icon bubble over the rate (ADR-0060;
+  // the <title> tooltip keeps the words).
+  const ironOre = svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first();
+  await expect(ironOre.locator('[data-bubble] image[href$="-32.webp"], [data-bubble] image[href$="-64.webp"]')).toBeVisible();
+  await expect(ironOre.locator(":scope > text", { hasText: /^120 items\/min$/ })).toBeVisible();
 
   // Wheel zoom about the pointer, then drag to pan.
   const box = (await svg.boundingBox())!;
@@ -315,7 +316,9 @@ test("an owner lassos a factory's cards on the canvas and keeps a suggestion the
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
   await expect(svg).toBeVisible();
   await page.getByRole("button", { name: "Select" }).click();
-  // A lasso just inside the canvas's border encloses every card the fit shows.
+  // A lasso just inside the canvas's border encloses every card the fit shows. Focusing the factory's button may have
+  // scrolled the page, so bring the canvas's top into view first: a press above the viewport reaches nothing.
+  await svg.evaluate((el) => el.scrollIntoView({ block: "start" }));
   const box = (await svg.boundingBox())!;
   const at = (fx: number, fy: number) => ({ x: box.x + 4 + fx * (box.width - 8), y: box.y + 4 + fy * (box.height - 8) });
   const corners = [at(0, 0), at(1, 0), at(1, 1), at(0, 1)];

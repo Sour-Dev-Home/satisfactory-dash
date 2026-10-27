@@ -53,10 +53,18 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   them, one track each (at least `TRACK_GAP` apart), so no line crosses a card. `edgeShapes.ts` draws each bend as a
   rounded corner. If the router throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
 - One line per pair of cards (ADR-0059 amendment, 2026-10-27): `layoutScene` draws the links between the same two cards,
-  in one direction, on one carrier and of one kind as one edge (`bundleFlows` in `canvasScene.ts`), labelled with up to
-  `BUNDLE_NAMES` items, "+k more", "+n unknown" and the summed rate. `SiteLayout.flows` stays one entry per link and
-  `LaidEdge.parts` indexes them: the item filter lights an edge when any part matches, the tooltip (`flowTitle`) lists
-  every link with its own rate, and the Tables view is untouched. `SiteGraph` draws all lines, then all labels.
+  in one direction, on one carrier and of one kind as one edge (`bundleFlows` in `canvasScene.ts`). `SiteLayout.flows`
+  stays one entry per link and `LaidEdge.parts` indexes them: the item filter lights an edge when any part matches, the
+  tooltip (`flowTitle`) lists every link with its own rate, and the Tables view is untouched. `SiteGraph` draws all
+  lines, then all labels.
+- Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
+  (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
+  text ("mixed", "excess" beside it) under the row; links of no known item share one "?" bubble. The box dagre reserves
+  is `bubbleRowSize` (plus `GLYPH_INSET` for a transport), so the router keeps it clear as it did the words. A bubble
+  draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
+  it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
+  the words for text views and tests; the item names are in the edge's `<title>` and the Tables view. No interaction yet
+  (focus mode is build PR 3, behind a flag).
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).
