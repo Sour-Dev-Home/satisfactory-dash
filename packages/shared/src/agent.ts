@@ -83,6 +83,8 @@ export const AGENT_INPUT_MAX_CIRCUITS = 1_000;
 export const AGENT_INPUT_MAX_RATES_PER_BUILDING = 16;
 export const AGENT_INPUT_MAX_PLAYERS = 256;
 const boundedString = z.string().max(AGENT_INPUT_MAX_STRING);
+/** The longest `modVersion` a snapshot sender may report (S4-A). */
+export const SENDER_VERSION_MAX = 64;
 
 export const AgentPowerCircuitSchema = PowerCircuitSchema.omit({ status: true }).extend({
   productionMW: z.number().min(0),
@@ -120,6 +122,23 @@ export const SnapshotRequestSchema = z
     observedAt: IsoTimeSchema.describe("When the agent read the game (its own clock, with an offset)"),
     reachable: z.boolean().describe("false = the game server or FRM could not be reached; no parts follow"),
     paused: z.boolean().nullable().describe("The game's pause state, or null when unknown"),
+    // S4-A (R7): the sender's own view of its game connection, for the server "test connection" once the FRM half of it
+    // is gone. All three are OPTIONAL so every older sender stays valid. They sit beside `reachable`, not inside
+    // `status`, because `status` is absent whenever the game is unreachable, which is exactly when these matter.
+    gameReachable: z
+      .boolean()
+      .optional()
+      .describe("true = the sender could read the game this cycle; false = it could not. Absent = an older sender that does not report it"),
+    lastGameReadAt: IsoTimeSchema.optional().describe(
+      "When the sender last read the game successfully (its own clock, with an offset); may be older than observedAt when " +
+        "the game is unreachable. Absent = never read since the sender started, or an older sender",
+    ),
+    modVersion: z
+      .string()
+      .min(1)
+      .max(SENDER_VERSION_MAX)
+      .optional()
+      .describe("The sender's version, the mod's or the agent's, 1 to 64 characters. Absent = an older sender"),
     settings: z
       .strictObject({
         autoPause: z.boolean().describe("The game's auto-pause setting, read in this snapshot"),
