@@ -1,5 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
+  droneRoutesWorldResponse,
   errorUpstreamUnreachable,
   factoryMixed,
   factoryOldBackend,
@@ -16,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "../test/mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "../test/mapMarkersResponses";
 import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "../test/powerLinesResponses";
+import { droneRoutesWorldResponseAmbiguous, droneRoutesWorldResponseEmpty, droneRoutesWorldResponseTruncated } from "../test/droneRoutesResponses";
 import { server } from "../test/server";
 import { renderWithClient } from "../test/render";
 import type { DrawnLayer, ViewM } from "./MapCanvas";
@@ -39,6 +42,7 @@ const liveRoute = endpoints.map.live.route;
 const nodesRoute = endpoints.map.worldLayer.route.replace(":layer", "resourceNodes");
 const markersRoute = endpoints.map.worldLayer.route.replace(":layer", "mapMarkers");
 const powerLinesRoute = endpoints.map.worldLayer.route.replace(":layer", "powerLines");
+const dronesRoute = endpoints.map.worldLayer.route.replace(":layer", "droneRoutes");
 const ids = () => canvas.layers.map((l) => l.id);
 const mount = (snapshot: FactoryResponse = factoryMixed) => renderWithClient(<MapPanel snapshot={snapshot} serverId="default" />);
 
@@ -95,9 +99,9 @@ describe("MapPanel", () => {
 });
 
 describe("MapPanel world layers (ADR-0038 M5)", () => {
-  it("draws rails, then resource nodes, then buildings, then markers, once the world data arrives", async () => {
+  it("draws rails, then resource nodes, then buildings, then drone ports, then markers, once the world data arrives", async () => {
     mount();
-    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "mapMarkers", "trains"]));
+    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "droneRoutes", "mapMarkers", "trains"]));
   });
 
   it("describes both layers in text and lists them in view", async () => {
@@ -125,7 +129,7 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
     mount();
     await screen.findByRole("table", { name: /Resource nodes in view/ });
     fireEvent.click(screen.getByRole("checkbox", { name: "Resource nodes" }));
-    expect(ids()).toEqual(["rails", "buildings", "mapMarkers", "trains"]);
+    expect(ids()).toEqual(["rails", "buildings", "droneRoutes", "mapMarkers", "trains"]);
     expect(screen.queryByRole("table", { name: /Resource nodes in view/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/resource nodes on the map/)).not.toBeInTheDocument();
     expect(screen.queryByText("In use (filled)")).not.toBeInTheDocument();
@@ -363,6 +367,112 @@ describe("MapPanel map markers (#330)", () => {
   });
 });
 
+describe("MapPanel drone ports (#330)", () => {
+  it("is on by default and draws over the buildings, under the markers and trains", async () => {
+    mount();
+    expect(screen.getByRole("checkbox", { name: "Drone ports" })).toBeChecked();
+    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "droneRoutes", "mapMarkers", "trains"]));
+  });
+
+  it("says how many ports and routes, captions its legend, and lists the ports in view", async () => {
+    canvas.view = null;
+    mount();
+    expect(await screen.findByText("3 drone ports, 1 route on the map.")).toBeInTheDocument();
+    expect(screen.getAllByText("Drone ports", { selector: "p" })).toHaveLength(1);
+    expect(screen.getByText("Drone route")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: /Drone ports in view \(3\)/ });
+    const row = within(table).getAllByRole("row")[1];
+    expect(within(row).getAllByRole("cell").map((c) => [c.getAttribute("data-label"), c.textContent])).toEqual([
+      ["Port", "FUEL 5"],
+      ["Paired with", "TestLand1"],
+      ["Sends", "Battery"],
+      ["Position (m)", "x -2,204, y 503"],
+    ]);
+  });
+
+  it("follows the view in its table", async () => {
+    const p = droneRoutesWorldResponse.data[1];
+    canvas.view = { minX: p.x - 1, maxX: p.x + 1, minY: p.y - 1, maxY: p.y + 1 };
+    mount();
+    const table = await screen.findByRole("table", { name: /Drone ports in view \(1\)/ });
+    expect(within(table).getByText(p.name)).toBeInTheDocument();
+    canvas.view = null;
+  });
+
+  it("counts a pairing that names two ports, and draws no route for it", async () => {
+    server.use(http.get(dronesRoute, () => HttpResponse.json(droneRoutesWorldResponseAmbiguous)));
+    mount();
+    expect(await screen.findByText("3 drone ports, 1 route on the map. 1 pairing couldn't be matched to one port.")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: /Drone ports in view/ });
+    expect(within(table).getByText("TestLand1 (not matched to one port)")).toBeInTheDocument();
+  });
+
+  it("drops the layer, its legend, text and table when toggled off, and asks for it no more", async () => {
+    const asked = vi.fn();
+    server.use(
+      http.get(dronesRoute, () => {
+        asked();
+        return HttpResponse.json(droneRoutesWorldResponse);
+      }),
+    );
+    mount();
+    await screen.findByRole("table", { name: /Drone ports in view/ });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Drone ports" }));
+    expect(ids()).not.toContain("droneRoutes");
+    expect(screen.queryByRole("table", { name: /Drone ports in view/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/drone ports, \d+ routes? on the map/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Drone route")).not.toBeInTheDocument();
+    expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when no ports are built yet, with no legend row", async () => {
+    server.use(http.get(dronesRoute, () => HttpResponse.json(droneRoutesWorldResponseEmpty)));
+    mount();
+    expect(await screen.findByText("No drone ports built yet.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Drone ports in view (0)" })).toBeInTheDocument();
+    expect(screen.queryByText("Drone route")).not.toBeInTheDocument();
+  });
+
+  it("says when the server cut the layer to its limit", async () => {
+    server.use(http.get(dronesRoute, () => HttpResponse.json(droneRoutesWorldResponseTruncated)));
+    mount();
+    expect(await screen.findByText(/Showing part of the drone ports: the server cut this layer to its size limit/)).toBeInTheDocument();
+  });
+
+  it("shows a failed read as an error with Retry, and keeps the rest of the map", async () => {
+    let failing = true;
+    server.use(
+      http.get(dronesRoute, () =>
+        failing ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 }) : HttpResponse.json(droneRoutesWorldResponse),
+      ),
+    );
+    mount();
+    expect(await screen.findByText("Drone ports couldn't load: game server unreachable.")).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("3 drone ports, 1 route on the map.")).toBeInTheDocument();
+  });
+
+  it("refuses another layer's response as a contract error", async () => {
+    server.use(http.get(dronesRoute, () => HttpResponse.json(railsWorldResponse)));
+    mount();
+    expect(await screen.findByText(/Drone ports couldn't load/)).toBeInTheDocument();
+  });
+
+  it("does not redraw the ports when a factory poll brings the same items", async () => {
+    const { rerender, client } = mount();
+    await waitFor(() => expect(ids()).toContain("droneRoutes"));
+    const before = canvas.layers.find((l) => l.id === "droneRoutes")!.draw;
+    rerender(
+      <QueryClientProvider client={client}>
+        <MapPanel snapshot={structuredClone(factoryMixed)} serverId="default" />
+      </QueryClientProvider>,
+    );
+    expect(canvas.layers.find((l) => l.id === "droneRoutes")!.draw).toBe(before);
+  });
+});
+
 describe("MapPanel power lines (#330)", () => {
   const turnOn = () => fireEvent.click(screen.getByRole("checkbox", { name: "Power lines" }));
 
@@ -386,7 +496,7 @@ describe("MapPanel power lines (#330)", () => {
     mount();
     await screen.findByTestId("map-canvas");
     turnOn();
-    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "powerLines", "buildings", "mapMarkers", "trains"]));
+    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "powerLines", "buildings", "droneRoutes", "mapMarkers", "trains"]));
   });
 
   it("says how many lines and how much wire, captions its legend, and lists the lines in view", async () => {
@@ -538,7 +648,7 @@ describe("MapPanel live trains (ADR-0038 M6)", () => {
     mount();
     await screen.findByRole("table", { name: /Trains in view/ });
     fireEvent.click(screen.getByRole("checkbox", { name: "Trains" }));
-    expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "mapMarkers"]);
+    expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "droneRoutes", "mapMarkers"]);
     expect(screen.queryByRole("table", { name: /Trains in view/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: /Train stations in view/ })).not.toBeInTheDocument();
     expect(screen.queryByText("1 train and 2 stations on the map.")).not.toBeInTheDocument();

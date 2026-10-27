@@ -28,6 +28,7 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
         queries.factory(serverId),
         queries.mapRails(serverId),
         queries.mapResourceNodes(serverId),
+        queries.mapDroneRoutes(serverId),
         queries.mapMarkers(serverId),
         queries.mapLive(serverId),
       ].map(asPageQuery);

@@ -8,11 +8,13 @@ import {
 } from "@tanstack/react-query";
 import {
   BOTTLENECKS_DEFAULT_LIMIT,
+  DroneRoutesLayerDataSchema,
   endpoints,
   MapMarkersLayerDataSchema,
   PowerLinesLayerDataSchema,
   RailsLayerDataSchema,
   ResourceNodesLayerDataSchema,
+  type DroneRoutesLayerData,
   type HistoryRange,
   type MapMarkersLayerData,
   type MapWorldLayer,
@@ -302,6 +304,14 @@ export const queries = {
       queryKey: ["servers", serverId, "map", "world", "powerLines"],
       queryFn: ({ signal }): Promise<WorldLayerRead<PowerLinesLayerData>> =>
         readWorldLayer(signal, serverId, "powerLines", PowerLinesLayerDataSchema),
+      refetchInterval: POLL_MS.mapWorld,
+    }),
+  /** ADR-0055 Decision 1 (#330): the drone ports with their pairing and cargo, read the same way (on by default). */
+  mapDroneRoutes: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "map", "world", "droneRoutes"],
+      queryFn: ({ signal }): Promise<WorldLayerRead<DroneRoutesLayerData>> =>
+        readWorldLayer(signal, serverId, "droneRoutes", DroneRoutesLayerDataSchema),
       refetchInterval: POLL_MS.mapWorld,
     }),
   /** ADR-0038 M6: the map's live trains and stations. Off with the Trains toggle (`enabled: false`), so a hidden layer costs no request. */

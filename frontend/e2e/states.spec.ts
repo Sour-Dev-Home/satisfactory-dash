@@ -170,6 +170,10 @@ const CASES: StateCase[] = [
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
   // The players' map markers (#330) are empty and failing in the two cases above; here, cut to the layer's cap.
   { scenario: "map-markers-truncated", path: "/app/map", shows: /Showing part of the markers/ },
+  // The drone ports (#330) are on by default, so empty and failing are in map-world-empty and -error; here, cut to the
+  // layer's cap, and a pairing that names two ports (no route drawn, counted in the text).
+  { scenario: "map-drone-ports-truncated", path: "/app/map", shows: /Showing part of the drone ports/ },
+  { scenario: "map-drone-ports-ambiguous", path: "/app/map", shows: /1 pairing couldn't be matched to one port/ },
   // The power lines (#330) are off by default, so each of their states turns them on: drawn, none built yet, cut to the
   // layer's cap, and the read failing.
   { scenario: "default", name: "map-power-lines", path: "/app/map", shows: "2 power lines on the map, 243 m of wire in all.", act: showPowerLines },
