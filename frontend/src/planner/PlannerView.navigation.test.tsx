@@ -94,6 +94,28 @@ describe("going one level up", () => {
   });
 });
 
+describe("edge cases in the address", () => {
+  it("a stale key shows the overview, and opening a factory then replaces the key rather than adding a second", async () => {
+    renderView("/app/planner?open=gone");
+    const svg = await overview();
+    expect(screen.queryByRole("heading", { name: "Groups", hidden: true })).not.toBeInTheDocument();
+    fireEvent.click(svg.querySelector<SVGGElement>('[data-card="factory"]')!);
+    await groupsHeading();
+    expect(address()).not.toContain("gone");
+    expect(address()!.match(/open=/g)).toHaveLength(1);
+  });
+
+  it("a key with reserved characters round-trips through the address", async () => {
+    const key = "a&b=c#d e";
+    const factories = productionGraphFactories.data.factories!;
+    const data = { ...productionGraphFactories.data, factories: [{ ...factories[0]!, key }, ...factories.slice(1)] };
+    renderView(`/app/planner?open=${encodeURIComponent(key)}`);
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphFactories, data })));
+    await groupsHeading();
+    expect(address()).toBe("/app/planner?open=a%26b%3Dc%23d%20e");
+  });
+});
+
 describe("the toolbar's icons", () => {
   it("zoom, fit and Select are icons at every width, named for assistive tech and titled for a pointer", async () => {
     renderView();
