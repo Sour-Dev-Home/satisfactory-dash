@@ -68,7 +68,7 @@ export const INFERRED_FROM_NODE = "(inferred from the node)";
  */
 export function extractorOutput(node: Pick<PlannerNode, "kind" | "products" | "resource">): { name: string; inferred: boolean } | null {
   if (node.kind !== "extractor" || node.products.length > 0) return null;
-  const name = nameOr(node.resource?.name, nameOr(node.resource?.className, ""));
+  const name = nameOr(node.resource?.name, nameOr(node.resource?.className, "")).trim();
   return name === "" ? { name: RESOURCE_UNKNOWN, inferred: false } : { name, inferred: true };
 }
 

@@ -9,7 +9,7 @@ import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { groupCard } from "./graph/canvasScene";
-import { extractorOutput, nodeFacts, nodeSummary } from "./graph/graphModel";
+import { extractorOutput, groupsExtractorOutput, nodeFacts, nodeSummary } from "./graph/graphModel";
 import { GroupPanel } from "./graph/GroupPanel";
 import { GroupsTable } from "./PlannerTables";
 
@@ -151,5 +151,20 @@ describe("side panel", () => {
     const about = panel(unassigned);
     expect(within(about).getByText("Not configured")).toBeInTheDocument();
     expect(within(about).queryByText("No recipe")).toBeNull();
+  });
+});
+
+describe("edge cases (hunt)", () => {
+  it("a whitespace-only recipe on a machine reads Not configured; padded names are trimmed so extractors still agree", () => {
+    expect(nodeFacts({ ...unassigned, recipe: "   " }).recipe).toBe("Not configured");
+    expect(extractorOutput(node({ resource: { className: "Desc_OreIron_C", name: " Iron Ore " } }))).toEqual({ name: "Iron Ore", inferred: true });
+    expect(extractorOutput(node({ resource: { className: "  ", name: "  " } }))).toEqual({ name: "Resource not identified", inferred: false });
+  });
+  it("extractors with mixed or partly missing resources claim no single resource", () => {
+    const water = node({ resource: { className: "Desc_Water_C", name: "Water" } });
+    expect(groupsExtractorOutput([miner, water])).toBeNull();
+    expect(groupsExtractorOutput([miner, unknownMiner])).toBeNull();
+    expect(groupsExtractorOutput([miner, unassigned])).toBeNull();
+    expect(groupsExtractorOutput([])).toBeNull();
   });
 });
