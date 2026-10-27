@@ -10,7 +10,7 @@ import type {
 } from "@satisfactory-dash/shared";
 import { sectionNotes } from "../factory/bottlenecks";
 import { machineState } from "../factory/machineState";
-import { formatPerMinute, formatRate } from "../format";
+import { formatAmount, formatPerMinute, formatRate, unitLabel } from "../format";
 import type { AggregateFlow, Bubble, BubbleEntry, ConnectionRow, FactoryModel, Remote, ShareSplit } from "./graph/hierarchy";
 
 /** The Factory page's Bottlenecks section: a finding has no anchor of its own, so the link goes to the section. */
@@ -27,10 +27,57 @@ export function stateCountsText(counts: Record<string, number>): string {
   return parts.length > 0 ? parts.join(", ") : "No machine states";
 }
 
-/** One product as "Iron Plate: 72 / 160 items/min" (actual over max, ADR-0015 unit when the backend sent one). */
-export function outputLine(rate: PlannerRate): string {
-  return `${rate.name}: ${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit)}`;
+/**
+ * Whether a rate prints as 0 (#728 step 2). FRM's CurrentProd "decreases if an ingredient is unavailable"
+ * (docs-vault/raw-sources/frm-getFactory.md, E3), so a 0 says "0 of <max>" and the machines' state, never a bare 0.
+ */
+export const isZeroRate = (rate: Pick<PlannerRate, "currentPerMinute">): boolean => formatAmount(rate.currentPerMinute) === formatAmount(0);
+
+/** What a 0 rate says when there are no machine states to name. */
+export const NOT_PRODUCING = "not producing";
+
+/** Several groups' state counts summed (a bubble's), keyed safely: the states are the backend's strings. */
+export function mergeStateCounts(list: readonly Record<string, number>[]): Record<string, number> {
+  const merged = Object.create(null) as Record<string, number>;
+  for (const counts of list) for (const [state, n] of Object.entries(counts)) merged[state] = (merged[state] ?? 0) + n;
+  return merged;
 }
+
+/**
+ * The state of a group whose rate reads 0, lower case for "· backed up": the one state all its machines are in ("backed
+ * up", "underfed", "paused", a state this build doesn't know as the backend's word), else "not producing".
+ */
+export function stalledStateText(counts: Record<string, number>): string {
+  const present = Object.entries(counts).filter(([, n]) => n > 0);
+  if (present.length !== 1 || present[0][0] === "producing") return NOT_PRODUCING;
+  const [state] = present[0];
+  return machineState(state)?.label.toLowerCase() ?? state;
+}
+
+/** A rate that reads 0 as "0 of 30 items/min", or "0 items/min" when the max is 0 too. */
+const zeroRateText = (rate: Pick<PlannerRate, "maxPerMinute" | "unit">): string =>
+  isZeroRate({ currentPerMinute: rate.maxPerMinute }) ? `${formatAmount(0)} ${unitLabel(rate.unit)}` : `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)} ${unitLabel(rate.unit)}`;
+
+/**
+ * One product as "Iron Plate: 72 / 160 items/min" (actual over max, ADR-0015 unit when the backend sent one). A 0 reads
+ * "Iron Ingot: 0 of 30 items/min · backed up": the state from `stateCounts` when given (a single machine's line, whose
+ * state is printed beside it, passes none).
+ */
+export function outputLine(rate: Pick<PlannerRate, "name" | "currentPerMinute" | "maxPerMinute" | "unit">, stateCounts?: Record<string, number>): string {
+  if (!isZeroRate(rate)) return `${rate.name}: ${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit)}`;
+  const state = stateCounts === undefined ? "" : ` · ${stalledStateText(stateCounts)}`;
+  return `${rate.name}: ${zeroRateText(rate)}${state}`;
+}
+
+/**
+ * The step 5 sentence (#728): why a flow's item or rate can be unknown. The legend, the Tables view and an unknown
+ * flow's tooltip say it in these words.
+ */
+export const UNKNOWN_FLOW_NOTE = "The game doesn't report what's on a belt or how fast it moves; items and rates are inferred where possible.";
+
+/** A flow whose item or rate the data could not give: the ones `UNKNOWN_FLOW_NOTE` explains. */
+export const hasUnknown = (f: { itemName: string | null; itemClassName: string | null; rate: string }): boolean =>
+  (f.itemName ?? f.itemClassName ?? "") === "" || f.rate === "unknown";
 
 /** A group as a player names it: "8× Constructor, Iron Plate" (a single machine has no count). */
 export function groupLabel(node: Pick<PlannerNode, "name" | "count" | "recipe">): string {

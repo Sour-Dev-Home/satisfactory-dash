@@ -12,6 +12,7 @@ import {
   foldText,
   groupLabel,
   itemFromText,
+  mergeStateCounts,
   nodeFindings,
   outputLine,
   rateText,
@@ -51,7 +52,7 @@ function Outputs({ node }: { node: PlannerNode }) {
   if (node.products.length === 0) return <span className="text-muted">No output data</span>;
   return node.products.map((rate) => (
     <span key={rate.className} className="block break-words">
-      {outputLine(rate)}
+      {outputLine(rate, node.stateCounts)}
     </span>
   ));
 }
@@ -151,7 +152,7 @@ function BubbleBody({
             ) : (
               bubble.products.map((rate) => (
                 <span key={rate.className} className="block">
-                  {outputLine(rate)}
+                  {outputLine(rate, mergeStateCounts(bubble.nodes.map((n) => n.stateCounts)))}
                 </span>
               ))
             )}

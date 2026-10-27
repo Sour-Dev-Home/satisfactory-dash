@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
 import { useReducedMotion } from "../../overview/reducedMotion";
-import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
+import { bottleneckCountText, carrierWord, siteFindings, UNKNOWN_FLOW_NOTE } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
 import { reachFor, siteItems } from "./graphModel";
@@ -1025,7 +1025,17 @@ const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "pipe", edge: { mixed: false, carrier: "pipe", rate: "measured" } },
 ];
 
+/** The samples, then one line on why an item or a rate can be unknown (#728 step 5). */
 function Legend({ modes }: { modes: readonly string[] }) {
+  return (
+    <div className="grid gap-1">
+      <LegendSamples modes={modes} />
+      <p className="m-0 text-sm text-muted">{UNKNOWN_FLOW_NOTE}</p>
+    </div>
+  );
+}
+
+function LegendSamples({ modes }: { modes: readonly string[] }) {
   return (
     <ul aria-label="Line styles" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
       {LEGEND.map(({ label, edge }) => (

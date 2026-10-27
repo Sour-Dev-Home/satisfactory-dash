@@ -1,6 +1,7 @@
 import type { FactoryBuilding, PlannerNode } from "@satisfactory-dash/shared";
 import { machineState } from "../../factory/machineState";
-import { formatPercent, formatRate } from "../../format";
+import { formatPercent } from "../../format";
+import { outputLine } from "../plannerText";
 
 /** One machine of a group, as the side panel lists it. */
 export interface PanelMachine {
@@ -43,7 +44,8 @@ export function joinMachines(node: Pick<PlannerNode, "machineIds">, buildings: r
       name: b.name,
       state: machineState(b.state)?.label ?? null,
       clock: clockText(b.clockSpeedPercent),
-      outputs: b.production.map((r) => `${r.name}: ${formatRate(r.currentPerMinute, r.maxPerMinute, r.unit)}`),
+      // The planner's words (a 0 reads "0 of <max>", #728 step 2); the machine's state is its own line beside this one.
+      outputs: b.production.map((r) => outputLine(r)),
     });
   }
   return { machines, missing };
