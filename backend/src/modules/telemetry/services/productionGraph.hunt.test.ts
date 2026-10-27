@@ -257,7 +257,9 @@ describe("rate honesty", () => {
     parses(g);
     check(g);
     const toD = g.edges.filter((x) => x.to.includes("|D|"));
-    expect(toD.every((x) => x.rate === "unknown" && x.ratePerMinute === null)).toBe(true);
+    // The sources report no output, so the one-end estimate (2026-10-27) gives D zero from each, never NaN.
+    expect(toD.length).toBeGreaterThan(0);
+    expect(toD.every((x) => x.rate === "estimated" && x.ratePerMinute === 0)).toBe(true);
   });
   it("seeded fuzz keeps every invariant, parses and is order independent", () => {
     let seed = 12345;

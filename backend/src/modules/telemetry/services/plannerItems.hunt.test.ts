@@ -229,10 +229,10 @@ describe("pipes are undirected", () => {
 });
 
 describe("multi-product sources, rates, excess", () => {
-  it("a two-product machine into storage: one edge per item, mixed, rate unknown (never a number)", () => {
+  it("a two-product machine into storage: one edge per item, mixed, each estimated at its product's output", () => {
     const g = buildProductionGraph([machine("m", { out: [[INGOT, 30, 20], [PLATE, 10, 5]] })], [edge("a", "m", "T1")]);
-    expect(g.edges.map((x) => x.itemClassName).sort()).toEqual([INGOT, PLATE]);
-    for (const x of g.edges) expect(x).toMatchObject({ mixed: true, ratePerMinute: null, rate: "unknown", itemFrom: "recipe" });
+    expect(g.edges.map((x) => [x.itemClassName, x.ratePerMinute]).sort()).toEqual([[INGOT, 20], [PLATE, 5]]);
+    for (const x of g.edges) expect(x).toMatchObject({ mixed: true, rate: "estimated", itemFrom: "recipe" });
   });
   it("storage with two items into a one-item consumer: estimated at best, mixed; into storage: null", () => {
     const b = [machine("m", { out: [[INGOT, 30, 20], [PLATE, 10, 5]] }), consumes("c1", [[PLATE, 8, 4]])];
@@ -271,20 +271,22 @@ describe("multi-product sources, rates, excess", () => {
     expect(low.ratePerMinute).toBe(0);
     expect(low.rate).toBe("estimated");
   });
-  it("two excess destinations of the same item: no rate on either", () => {
+  it("two excess destinations of the same item: the leftover shared evenly, estimated", () => {
     const b = [machine("p", { out: [[INGOT, 60, 60]] }), consumes("c1", [[INGOT, 60, 30]])];
     const g = buildProductionGraph(b, [edge("a", "p", "S1"), edge("b", "S1", "c1"), edge("c", "S1", "T1"), edge("d", "S1", "N1")]);
     const ex = g.edges.filter((x) => x.flow === "excess");
     expect(ex.length).toBeGreaterThan(0);
-    for (const x of ex) expect(x.ratePerMinute).toBeNull();
+    const share = 30 / ex.length;
+    for (const x of ex) expect(x).toMatchObject({ ratePerMinute: share, rate: "estimated" });
   });
-  it("a multi-product source's split edges get no excess rate even when they classify as excess", () => {
+  it("a multi-product source's split edges: each item's output less what its other edges carry, estimated", () => {
     const b = [machine("p", { out: [[INGOT, 60, 60], [PLATE, 5, 5]] }), consumes("c1", [[INGOT, 60, 30]])];
     const g = buildProductionGraph(b, [edge("a", "p", "S1"), edge("b", "S1", "c1"), edge("c", "S1", "T1")]);
-    for (const x of g.edges.filter((y) => nodeKind(g, y.to).kind === "storage")) {
-      expect(x.ratePerMinute).toBeNull();
-      expect(x.rate).toBe("unknown");
-    }
+    const intoStorage = g.edges.filter((y) => nodeKind(g, y.to).kind === "storage");
+    expect(intoStorage.map((x) => [x.itemClassName, x.ratePerMinute, x.rate]).sort()).toEqual([
+      [INGOT, 30, "estimated"],
+      [PLATE, 5, "estimated"],
+    ]);
   });
 });
 
