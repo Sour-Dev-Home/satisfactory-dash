@@ -49,6 +49,11 @@ reads), sent only when the data changed.
     only two captured); `color` is `ColorSlot` read as RRGGBBAA without the alpha (byte order verified by the owner in game on 2026-10-27: `6EA37BFF` shows green), kept
     because players tell their markers apart by it. No z, `Category` (empty on every item), `Scale` or
     `CompassViewDistance` (the game's own HUD drawing). Names are player text: members only, not logged by the ingest or serve paths (by convention: the logger has no redaction for world-layer data).
+  - power lines: amended 2026-10-27 (the `powerLines` contract, #330), from the 2026-09-27 `getCables` capture (each
+    item a straight line, `location0` to `location1`, no spline): `{id, points: [[x, y], [x, y]]}`, cap 20,000 (843
+    lines in the captured save; about 1.5 MB projected at the cap, inside the 2 MB layer cap). `id` is FRM's `ID`. No z,
+    `Length`, `ColorSlot`, `Name` or `ClassName`. No circuit id: the capture has none [NEEDS VERIFICATION: whether a
+    newer FRM adds one], so lines are not coloured by circuit.
   - Classification stays in the backend (ADR-0031 rule). Projection and rounding aren't
     classification.
 - **Every layer's fields are captured into `raw-sources/` before its schema is written** (the

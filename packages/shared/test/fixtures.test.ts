@@ -79,6 +79,8 @@ import {
   DroneRoutesWorldLayerResponseSchema,
   MapMarkersWorldIngestRequestSchema,
   MapMarkersWorldLayerResponseSchema,
+  PowerLinesWorldIngestRequestSchema,
+  PowerLinesWorldLayerResponseSchema,
   ConveyorsWorldIngestRequestSchema,
   ConveyorsWorldLayerResponseSchema,
   RailsWorldIngestRequestSchema,
@@ -102,6 +104,9 @@ import type { PowerCircuitStatus } from "../src/index";
 const schemaByPrefix: [string, z.ZodType][] = [
   // "powerHistory" must come before "power": the first matching prefix wins.
   ["powerHistory", PowerHistoryResponseSchema],
+  // ADR-0038 §1: the powerLines world layer (before "power", which would otherwise shadow it).
+  ["powerLinesWorldResponse", PowerLinesWorldLayerResponseSchema],
+  ["powerLinesSample", PowerLinesWorldIngestRequestSchema],
   ["power", PowerResponseSchema],
   // ADR-0027: stored history, one fixture per source (1-minute and hourly rollups) plus the transitions.
   ["historyPower", HistoryPowerResponseSchema],

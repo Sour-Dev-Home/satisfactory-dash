@@ -10,6 +10,7 @@ import type {
   EnrollResponse,
   MapMarkersWorldIngestRequest,
   MapWorldLayer,
+  PowerLinesWorldIngestRequest,
   RailsWorldIngestRequest,
   ResourceNodesWorldIngestRequest,
   SnapshotRequest,
@@ -66,6 +67,8 @@ export interface WorldIngestBodies {
   droneRoutes: DroneRoutesWorldIngestRequest;
   // ADR-0038 §1 (#330).
   mapMarkers: MapMarkersWorldIngestRequest;
+  // ADR-0038 §1 (#330): in the contract now; the agent reads and sends it from the power lines layer PR.
+  powerLines: PowerLinesWorldIngestRequest;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
