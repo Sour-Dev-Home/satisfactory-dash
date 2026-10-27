@@ -77,6 +77,9 @@ export const KnownErrorCode = z.enum([
   // `error.other` = { id, name } of that designation); creating beyond the per-server cap of 50 (409).
   "designation_overlap",
   "designation_cap",
+  // ADR-0055 amendment 2026-10-27, Decision 11 (additive): a replace whose `expect` names a designation that is gone or at
+  // another revision (409): someone else changed it meanwhile; the client refetches and asks to select again.
+  "designation_stale",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;

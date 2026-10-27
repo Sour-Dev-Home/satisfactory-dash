@@ -1,10 +1,14 @@
 import type { ReactNode } from "react";
-import type { MapMarker, MapTrain, MapTrainStation, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { ConveyorKind, DronePort, MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import { ScrollRegion } from "../ui/ScrollRegion";
 import type { ViewM } from "./MapCanvas";
+import { conveyorInView, conveyorKindText, conveyorLengthText, endText, type BuildingPlace, type PlacedConveyor } from "./conveyors";
+import { cargoText, dronePortKeys, dronePortName, pairedWithText, resolvePairings } from "./dronePorts";
 import { markerKeys, markerKindLabel, markerName } from "./markersLayer";
 import {
   formatMetres,
   formatPoint,
+  lineInView,
   nodeInView,
   nodeKindLabel,
   pointInView,
@@ -31,9 +35,7 @@ function ViewTable({ id, title, count, empty, children }: { id: string; title: s
       {count === 0 ? (
         <p className="text-sm text-muted">{empty}</p>
       ) : (
-        <div tabIndex={0} role="region" aria-labelledby={id} className="max-h-80 overflow-auto">
-          {children}
-        </div>
+        <ScrollRegion labelledBy={id}>{children}</ScrollRegion>
       )}
     </div>
   );
@@ -98,6 +100,149 @@ export function RailsTable({ segments, view }: { segments: readonly RailSegment[
           ))}
         </tbody>
       </table>
+    </ViewTable>
+  );
+}
+
+/**
+ * The power lines in view (ADR-0038 §1, #330), the rails' table for wires. FRM ids can repeat, so the index backs the
+ * key up. Hundreds of rows at most once zoomed out: the region scrolls, and panning in narrows it.
+ */
+export const POWER_LINE_ROWS_MAX = 500;
+
+export function PowerLinesTable({ lines, view }: { lines: readonly PowerLine[]; view: ViewM | null }) {
+  const listed = lines.map((line, i) => ({ line, key: `${line.id}:${i}` })).filter(({ line }) => lineInView(view, line));
+  return (
+    <ViewTable id="map-power-lines-heading" title="Power lines in view" count={listed.length} empty={lines.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-power-lines-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Line</th>
+            <th scope="col">Length</th>
+            <th scope="col">From (m)</th>
+            <th scope="col">To (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.slice(0, POWER_LINE_ROWS_MAX).map(({ line, key }) => (
+            <tr key={key}>
+              <td data-label="Line">{line.id}</td>
+              <td data-label="Length">{formatMetres(polylineLengthM(line.points))}</td>
+              <td data-label="From (m)">{formatPoint(line.points[0])}</td>
+              <td data-label="To (m)">{formatPoint(line.points[1])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {listed.length > POWER_LINE_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {POWER_LINE_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
+    </ViewTable>
+  );
+}
+
+/**
+ * The drone ports in view (ADR-0055 Decision 1, #330): who each is paired with and what it sends (its input cargo, by
+ * item name). Keyed by id and place (ids can repeat); capped like the power lines, though a save rarely has many.
+ */
+export const DRONE_PORT_ROWS_MAX = 500;
+
+export function DronePortsTable({
+  ports,
+  view,
+  itemName,
+}: {
+  ports: readonly DronePort[];
+  view: ViewM | null;
+  itemName: (className: string) => string;
+}) {
+  const { partner } = resolvePairings(ports);
+  const keys = dronePortKeys(ports);
+  const listed = ports.map((p, i) => ({ p, i, key: keys[i] })).filter(({ p }) => pointInView(view, p));
+  return (
+    <ViewTable id="map-drone-ports-heading" title="Drone ports in view" count={listed.length} empty={ports.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-drone-ports-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Port</th>
+            <th scope="col">Paired with</th>
+            <th scope="col">Sends</th>
+            <th scope="col">Position (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.slice(0, DRONE_PORT_ROWS_MAX).map(({ p, i, key }) => {
+            const other = partner[i];
+            return (
+              <tr key={key}>
+                <td data-label="Port">{dronePortName(p)}</td>
+                <td data-label="Paired with">{pairedWithText(p, other === null ? null : ports[other])}</td>
+                <td data-label="Sends">{cargoText(p.input, itemName)}</td>
+                <td data-label="Position (m)">{formatPoint([p.x, p.y])}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {listed.length > DRONE_PORT_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {DRONE_PORT_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
+    </ViewTable>
+  );
+}
+
+/**
+ * The belts, lifts and pipes in view (#330): what each is, how long (straight-line), and what sits at each end in words
+ * (the factory's name for a building it placed, else the end's kind). Keyed id and index (FRM ids can repeat); capped
+ * like the power lines, since a big save has thousands.
+ */
+export const CONVEYOR_ROWS_MAX = 500;
+
+export function ConveyorsTable({
+  list,
+  view,
+  buildings,
+}: {
+  list: readonly PlacedConveyor[];
+  view: ViewM | null;
+  buildings: ReadonlyMap<string, BuildingPlace>;
+}) {
+  const kinds = new Map<string, ConveyorKind>();
+  for (const c of list) if (!kinds.has(c.edge.id)) kinds.set(c.edge.id, c.edge.kind);
+  const listed = list.filter((c) => conveyorInView(view, c));
+  return (
+    <ViewTable id="map-conveyors-heading" title="Belts, lifts and pipes in view" count={listed.length} empty={list.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-conveyors-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Kind</th>
+            <th scope="col">Tier</th>
+            <th scope="col">Length</th>
+            <th scope="col">From</th>
+            <th scope="col">To</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.slice(0, CONVEYOR_ROWS_MAX).map((c) => (
+            <tr key={c.key}>
+              <td data-label="Kind">{conveyorKindText(c.edge.kind)}</td>
+              <td data-label="Tier">{c.edge.tier}</td>
+              <td data-label="Length">{conveyorLengthText(c)}</td>
+              <td data-label="From">{endText(c.edge.from, c.edge.fromKind, buildings, kinds)}</td>
+              <td data-label="To">{endText(c.edge.to, c.edge.toKind, buildings, kinds)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {listed.length > CONVEYOR_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {CONVEYOR_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
     </ViewTable>
   );
 }

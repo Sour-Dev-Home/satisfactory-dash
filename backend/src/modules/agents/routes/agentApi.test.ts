@@ -421,6 +421,39 @@ describe("POST /agent/v1/snapshots", () => {
     await postSnapshot(app, { ...agentSnapshotRequestFull, agentVersion: "0.2.0" });
     expect(database.versions).toEqual(["0.1.0", "0.2.0"]);
   });
+
+  describe("the game connection (#740 follow-up)", () => {
+    const reported = { gameReachable: false, lastGameReadAt: "2026-09-26T11:48:05.000Z", modVersion: "1.4.2" };
+
+    it("hands every accepted snapshot to the store, an unreachable one too, with the backend's receive time", async () => {
+      const observe = vi.fn();
+      const { app } = build({ gameConnections: { observe }, now: () => 5_000_000 });
+      expect((await postSnapshot(app, { ...agentSnapshotRequestFull, gameReachable: true, modVersion: "1.4.2" })).status).toBe(200);
+      expect((await postSnapshot(app, { ...agentSnapshotRequestUnreachable, ...reported })).status).toBe(200);
+      expect(observe).toHaveBeenCalledTimes(2);
+      expect(observe.mock.calls[0]![0]).toMatchObject({ publicId: "alpha" });
+      expect(observe.mock.calls[0]![1]).toMatchObject({ gameReachable: true, modVersion: "1.4.2" });
+      expect(observe.mock.calls[1]![1]).toMatchObject({ reachable: false, ...reported });
+      expect(observe.mock.calls[1]![2]).toBe(5_000_000);
+    });
+
+    it("an older agent's snapshot (none of the fields) is still handed over, so the store knows it did not say", async () => {
+      const observe = vi.fn();
+      const { app } = build({ gameConnections: { observe } });
+      await postSnapshot(app);
+      expect(observe.mock.calls[0]![1]).not.toHaveProperty("gameReachable");
+    });
+
+    it("records nothing for a refused snapshot (invalid body, a field over its bound, not ready)", async () => {
+      const observe = vi.fn();
+      const { app } = build({ gameConnections: { observe } });
+      expect((await postSnapshot(app, { ...agentSnapshotRequestFull, modVersion: "v".repeat(65) })).status).toBe(400);
+      expect((await postSnapshot(app, { ...agentSnapshotRequestFull, gameReachable: "yes" })).status).toBe(400);
+      const notReady = build({ gameConnections: { observe }, isReady: () => false });
+      expect((await postSnapshot(notReady.app, { ...agentSnapshotRequestFull, ...reported, gameReachable: true })).status).toBe(503);
+      expect(observe).not.toHaveBeenCalled();
+    });
+  });
 });
 
 const COMMAND = { id: "6f1c0a52-9b1e-4c53-8a52-0d5d7e2f3a11", type: "set_auto_pause", params: { enabled: false }, expiresAt: "2026-09-26T12:01:00.000Z" };

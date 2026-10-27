@@ -208,6 +208,9 @@ export const TrainRoutesLayerDataSchema = z.array(TrainRouteRecordSchema).max(TR
 // pairing on both ports as the partner's name, not its id (raw-sources/captured-responses/
 // frm-getDroneStation-2026-10-25-paired-*.json, added by PR #659), so `paired` is a name and may match more than one port. Item classes
 // only, no amounts or trip rates, so the hash is stable between reads (the rates move on every trip).
+// `pairedId` (S4-A): a native reader that sees the pairing itself (the mod) can send the partner's id; FRM gives only the
+// name, so the FRM mapper leaves it out. It is optional, so senders that only know the name stay valid, and null when the
+// port is unpaired or the pairing can't be resolved to exactly one port. `paired` (the name) is kept either way.
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** Sanity cap on drone ports in one layer, as `MAP_LIVE_MAX_STATIONS`. */
@@ -217,6 +220,12 @@ export const DronePortSchema = z.object({
   id: boundedString,
   name: boundedString.describe("The port's in-game name, player-chosen; game text, rendered as text only. May repeat across ports."),
   paired: boundedString.nullable().describe("The paired port's name as the game reports it; null when the port is not paired. Names may repeat, so a name matching more than one port is ambiguous"),
+  pairedId: boundedString
+    .nullable()
+    .optional()
+    .describe(
+      "The paired port's id, when the sender knows it (a native reader; FRM reports only the name). Null when the port is not paired or the pairing can't be resolved to exactly one port; absent when the sender doesn't report it",
+    ),
   input: ItemClassNames.describe("Distinct item classes in the port's input inventory: the cargo it sends to its pair"),
   output: ItemClassNames.describe("Distinct item classes in the port's output inventory: the cargo it received"),
   fuel: ItemClassNames.describe("Distinct item classes in the port's fuel inventory: consumed by the drone, not carried"),
@@ -437,13 +446,25 @@ export const MapTrainSchema = z.object({
   status: boundedString.describe("FRM's own Status field, passed through (e.g. Self-Driving, Manual)"),
 });
 
+/** A station's live transfer rate (S4-B): solid items per minute over its freight platforms, summed. Fluid freight
+ *  platforms are NOT counted (their flow is m³, ADR-0006); a fluid rate would be its own optional field later. Rates are
+ *  live, so they live here, never in the hash-stable trainRoutes layer. */
+const StationRateSchema = z.number().min(0).optional();
+
 /** From getTrainStation: a station's position and label, for the map to place a marker (docking
- *  platform detail, cargo and power are not the map's concern). */
+ *  platform detail, cargo and power are not the map's concern), plus its live transfer rates (S4-B). */
 export const MapTrainStationSchema = z.object({
-  id: boundedString,
+  id: boundedString.describe("The same id as the station's trainRoutes record, so the two join"),
   name: boundedString.describe("The station's in-game name, player-chosen"),
   x: WholeMetreSchema,
   y: WholeMetreSchema,
+  // S4-B (ADR-0058): OPTIONAL, the mod sends them; the Node agent is frozen on FRM (Decision 5). Units are the mod's,
+  // from the game headers: solid items per minute; fluid platforms excluded. Absent = not read, which is not 0.
+  transferPerMinute: StationRateSchema.describe(
+    "Solid items moved per minute at the station, loading plus unloading, over its item freight platforms (fluid platforms excluded)",
+  ),
+  inflowPerMinute: StationRateSchema.describe("Items per minute unloaded from trains into the station; absent when the game does not expose it"),
+  outflowPerMinute: StationRateSchema.describe("Items per minute loaded from the station onto trains; absent when the game does not expose it"),
 });
 
 export const MapLiveSchema = z.object({

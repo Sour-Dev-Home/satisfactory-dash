@@ -317,6 +317,19 @@ export const RawFrmMapMarkerSchema = z.object({
 });
 
 /**
+ * getCables for the powerLines layer (ADR-0038 §1, #330; captured-responses/frm-getCables-2026-09-27-trimmed.json;
+ * frm-read-api.md lists it as not game-thread). Each captured item is one power line with two ends, `location0` and
+ * `location1`, in centimetres, and no spline. Both ends must be present; `ID` is caught to `undefined` so the mapper
+ * derives one. z is not required, the map is 2-D. `Name`, `ClassName`, `location`, `BoundingBox`, `ColorSlot`, `Length`
+ * and `features` are not read.
+ */
+export const RawFrmCableSchema = z.object({
+  ID: z.string().optional().catch(undefined),
+  location0: z.object({ x: z.number(), y: z.number() }),
+  location1: z.object({ x: z.number(), y: z.number() }),
+});
+
+/**
  * ADR-0038 M3: GET /getTrainStation (docs-vault/raw-sources/captured-responses/
  * frm-getTrainStation-2026-09-27-full.json). The docking platforms (`CargoInventory`), bounding
  * box and power are not the map's concern.

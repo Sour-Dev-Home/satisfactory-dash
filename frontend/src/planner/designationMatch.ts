@@ -1,6 +1,7 @@
 import {
   PLANNER_DESIGNATION_MATCH_RADIUS_METRES,
   PLANNER_DESIGNATION_MAX_MEMBERS,
+  PLANNER_MAX_MACHINE_IDS,
   type FactoryBuilding,
   type PlannerDesignation,
   type PlannerDesignationMember,
@@ -27,6 +28,16 @@ export function placesOf(buildings: readonly FactoryBuilding[]): Map<string, Pla
   return places;
 }
 
+/**
+ * Whether the graph listed only some of a group's machines: it cuts the ids at PLANNER_MAX_MACHINE_IDS. `count` alone can't
+ * say so, because it also counts conveyor ends no Factory-read building matches (storage, stations, sinks, a stale end).
+ * Those have no id to list and are never designation members (the backend designates machine buildings only and
+ * attributes everything else around them), so a group short of ids under the cap is listed whole.
+ */
+export function listedInPart(node: PlannerNode): boolean {
+  return node.machineIds.length >= PLANNER_MAX_MACHINE_IDS && node.machineIds.length < node.count;
+}
+
 export type MembersResult = { ok: true; members: PlannerDesignationMember[] } | { ok: false; reason: string };
 
 /**
@@ -39,7 +50,7 @@ export function membersOf(nodes: readonly PlannerNode[], places: ReadonlyMap<str
   let listed = 0;
   for (const node of nodes) {
     // The graph lists at most so many ids per group; a bigger group would be designated in part.
-    if (node.machineIds.length < node.count) return { ok: false, reason: "These groups are too large to designate whole." };
+    if (listedInPart(node)) return { ok: false, reason: "These groups are too large to designate whole." };
     for (const id of node.machineIds) {
       if (seen.has(id)) continue;
       seen.add(id);

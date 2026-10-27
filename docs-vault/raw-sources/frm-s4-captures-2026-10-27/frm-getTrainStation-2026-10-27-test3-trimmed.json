@@ -1,0 +1,943 @@
+{
+  "source": "FRM HTTP output, test save Test3, core run 40522552255 (satisfactory-dash-mod), 2026-10-27",
+  "endpoint": "/getTrainStation",
+  "recordsInFullBody": 12,
+  "rateSampleAt": "2026-10-27T14:42:53.922Z",
+  "keys": [
+    "BoundingBox",
+    "CargoInventory",
+    "ClassName",
+    "ColorSlot",
+    "ID",
+    "InflowRate",
+    "Name",
+    "OutflowRate",
+    "PowerInfo",
+    "TransferRate",
+    "features",
+    "location"
+  ],
+  "records": [
+    {
+      "ID": "Build_TrainStation_C_2147361209",
+      "Name": "Station A",
+      "ClassName": "Build_TrainStation_C",
+      "location": {
+        "x": 66800,
+        "y": -88700,
+        "z": 21200.013671875,
+        "rotation": 0,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": 66000,
+          "y": -90400,
+          "z": 21200.013671875
+        },
+        "max": {
+          "x": 67600,
+          "y": -87000,
+          "z": 23300.013671875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "TransferRate": 2.059305191040039,
+      "InflowRate": 0,
+      "OutflowRate": 0,
+      "CargoInventory": [
+        {
+          "ID": "Build_TrainDockingStation_C_2147355090",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 66800,
+            "y": -90300,
+            "z": 21200.013671875,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 66000,
+              "y": -92000,
+              "z": 21200.013671875
+            },
+            "max": {
+              "x": 67600,
+              "y": -88600,
+              "z": 23200.013671875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 1.4980778694152832,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Loading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Cable",
+              "ClassName": "Desc_Cable_C",
+              "Amount": 303,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "ID": "Build_TrainDockingStation_C_2147351876",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 66800,
+            "y": -91900,
+            "z": 21200.013671875,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 66000,
+              "y": -93600,
+              "z": 21200.013671875
+            },
+            "max": {
+              "x": 67600,
+              "y": -90200,
+              "z": 23200.013671875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 0.5612273216247559,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Loading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Copper Sheet",
+              "ClassName": "Desc_CopperSheet_C",
+              "Amount": 9600,
+              "MaxAmount": 200
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Station A",
+          "type": "Train Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0.10000000149011612,
+        "MaxPowerConsumed": 50
+      }
+    },
+    {
+      "ID": "Build_TrainStation_C_2147063028",
+      "Name": "Station B",
+      "ClassName": "Build_TrainStation_C",
+      "location": {
+        "x": 64000,
+        "y": -128000,
+        "z": 21200.013671875,
+        "rotation": 0,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": 63200,
+          "y": -129700,
+          "z": 21200.013671875
+        },
+        "max": {
+          "x": 64800,
+          "y": -126300,
+          "z": 23300.013671875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "TransferRate": 0.5278719663619995,
+      "InflowRate": 0,
+      "OutflowRate": 0,
+      "CargoInventory": [
+        {
+          "ID": "Build_TrainPlatformEmpty_02_C_2147059449",
+          "Name": "Empty Platform With Catwalk",
+          "ClassName": "Build_TrainPlatformEmpty_02_C",
+          "location": {
+            "x": 64000,
+            "y": -129600,
+            "z": 21200.013671875,
+            "rotation": 180,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 63200,
+              "y": -131300,
+              "z": 21200.013671875
+            },
+            "max": {
+              "x": 64800,
+              "y": -127900,
+              "z": 22100.013671875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": -1,
+            "CircuitID": -1,
+            "FuseTriggered": false,
+            "PowerConsumed": 0,
+            "MaxPowerConsumed": 0
+          },
+          "TransferRate": 0,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Empty Platform",
+          "LoadingStatus": "Empty Platform",
+          "DockingStatus": "Empty Platform",
+          "Inventory": []
+        },
+        {
+          "ID": "Build_TrainPlatformEmpty_02_C_2147057944",
+          "Name": "Empty Platform With Catwalk",
+          "ClassName": "Build_TrainPlatformEmpty_02_C",
+          "location": {
+            "x": 64000,
+            "y": -131200,
+            "z": 21200.013671875,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 63200,
+              "y": -132900,
+              "z": 21200.013671875
+            },
+            "max": {
+              "x": 64800,
+              "y": -129500,
+              "z": 22100.013671875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": -1,
+            "CircuitID": -1,
+            "FuseTriggered": false,
+            "PowerConsumed": 0,
+            "MaxPowerConsumed": 0
+          },
+          "TransferRate": 0,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Empty Platform",
+          "LoadingStatus": "Empty Platform",
+          "DockingStatus": "Empty Platform",
+          "Inventory": []
+        },
+        {
+          "ID": "Build_TrainDockingStation_C_2147056223",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 64000,
+            "y": -132800,
+            "z": 21200.013671875,
+            "rotation": 180,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 63200,
+              "y": -134500,
+              "z": 21200.013671875
+            },
+            "max": {
+              "x": 64800,
+              "y": -131100,
+              "z": 23200.013671875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 0.5278719663619995,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Loading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Silica",
+              "ClassName": "Desc_Silica_C",
+              "Amount": 9600,
+              "MaxAmount": 200
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Station B",
+          "type": "Train Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0.10000000149011612,
+        "MaxPowerConsumed": 50
+      }
+    },
+    {
+      "ID": "Build_TrainStation_C_2146904323",
+      "Name": "Station C",
+      "ClassName": "Build_TrainStation_C",
+      "location": {
+        "x": 109700,
+        "y": -82100,
+        "z": 21200.01171875,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": 108900,
+          "y": -83800,
+          "z": 21200.01171875
+        },
+        "max": {
+          "x": 110500,
+          "y": -80400,
+          "z": 23300.01171875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "TransferRate": 0.5473265051841736,
+      "InflowRate": 0,
+      "OutflowRate": 0,
+      "CargoInventory": [
+        {
+          "ID": "Build_TrainPlatformEmpty_02_C_2146902887",
+          "Name": "Empty Platform With Catwalk",
+          "ClassName": "Build_TrainPlatformEmpty_02_C",
+          "location": {
+            "x": 108100,
+            "y": -82100,
+            "z": 21200.01171875,
+            "rotation": 90,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 107300,
+              "y": -83800,
+              "z": 21200.01171875
+            },
+            "max": {
+              "x": 108900,
+              "y": -80400,
+              "z": 22100.01171875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": -1,
+            "CircuitID": -1,
+            "FuseTriggered": false,
+            "PowerConsumed": 0,
+            "MaxPowerConsumed": 0
+          },
+          "TransferRate": 0,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Empty Platform",
+          "LoadingStatus": "Empty Platform",
+          "DockingStatus": "Empty Platform",
+          "Inventory": []
+        },
+        {
+          "ID": "Build_TrainPlatformEmpty_02_C_2146900923",
+          "Name": "Empty Platform With Catwalk",
+          "ClassName": "Build_TrainPlatformEmpty_02_C",
+          "location": {
+            "x": 106500,
+            "y": -82100,
+            "z": 21200.01171875,
+            "rotation": 270,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 105700,
+              "y": -83800,
+              "z": 21200.01171875
+            },
+            "max": {
+              "x": 107300,
+              "y": -80400,
+              "z": 22100.01171875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": -1,
+            "CircuitID": -1,
+            "FuseTriggered": false,
+            "PowerConsumed": 0,
+            "MaxPowerConsumed": 0
+          },
+          "TransferRate": 0,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Empty Platform",
+          "LoadingStatus": "Empty Platform",
+          "DockingStatus": "Empty Platform",
+          "Inventory": []
+        },
+        {
+          "ID": "Build_TrainPlatformEmpty_02_C_2146899996",
+          "Name": "Empty Platform With Catwalk",
+          "ClassName": "Build_TrainPlatformEmpty_02_C",
+          "location": {
+            "x": 104900,
+            "y": -82100,
+            "z": 21200.01171875,
+            "rotation": 90,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 104100,
+              "y": -83800,
+              "z": 21200.01171875
+            },
+            "max": {
+              "x": 105700,
+              "y": -80400,
+              "z": 22100.01171875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": -1,
+            "CircuitID": -1,
+            "FuseTriggered": false,
+            "PowerConsumed": 0,
+            "MaxPowerConsumed": 0
+          },
+          "TransferRate": 0,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Empty Platform",
+          "LoadingStatus": "Empty Platform",
+          "DockingStatus": "Empty Platform",
+          "Inventory": []
+        },
+        {
+          "ID": "Build_TrainDockingStation_C_2146898376",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 103300,
+            "y": -82100,
+            "z": 21200.01171875,
+            "rotation": 270,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 102500,
+              "y": -83800,
+              "z": 21200.01171875
+            },
+            "max": {
+              "x": 104100,
+              "y": -80400,
+              "z": 23200.01171875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 0.5473265051841736,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Loading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Caterium Ingot",
+              "ClassName": "Desc_GoldIngot_C",
+              "Amount": 4800,
+              "MaxAmount": 100
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Station C",
+          "type": "Train Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0.10000000149011612,
+        "MaxPowerConsumed": 50
+      }
+    },
+    {
+      "ID": "Build_TrainStation_C_2145872140",
+      "Name": "Station D",
+      "ClassName": "Build_TrainStation_C",
+      "location": {
+        "x": 175200,
+        "y": -90500,
+        "z": 21200.015625,
+        "rotation": 180,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": 174400,
+          "y": -92200,
+          "z": 21200.015625
+        },
+        "max": {
+          "x": 176000,
+          "y": -88800,
+          "z": 23300.015625
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "TransferRate": 3.02988600730896,
+      "InflowRate": 0,
+      "OutflowRate": 0,
+      "CargoInventory": [
+        {
+          "ID": "Build_TrainDockingStation_C_2146776000",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 175200,
+            "y": -88900,
+            "z": 21200.015625,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 174400,
+              "y": -90600,
+              "z": 21200.015625
+            },
+            "max": {
+              "x": 176000,
+              "y": -87200,
+              "z": 23200.015625
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 1.4998383522033691,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Unloading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Cable",
+              "ClassName": "Desc_Cable_C",
+              "Amount": 9446,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "ID": "Build_TrainDockingStation_C_2146774160",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 175200,
+            "y": -87300,
+            "z": 21200.015625,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 174400,
+              "y": -89000,
+              "z": 21200.015625
+            },
+            "max": {
+              "x": 176000,
+              "y": -85600,
+              "z": 23200.015625
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 0.5716109275817871,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Unloading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Copper Sheet",
+              "ClassName": "Desc_CopperSheet_C",
+              "Amount": 9409,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "ID": "Build_TrainDockingStation_C_2146772893",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 175200,
+            "y": -85700,
+            "z": 21200.015625,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 174400,
+              "y": -87400,
+              "z": 21200.015625
+            },
+            "max": {
+              "x": 176000,
+              "y": -84000,
+              "z": 23200.015625
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 0.5132233500480652,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Unloading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Silica",
+              "ClassName": "Desc_Silica_C",
+              "Amount": 9597,
+              "MaxAmount": 200
+            }
+          ]
+        },
+        {
+          "ID": "Build_TrainDockingStation_C_2146770506",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 175200,
+            "y": -84100,
+            "z": 21200.015625,
+            "rotation": 0,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 174400,
+              "y": -85800,
+              "z": 21200.015625
+            },
+            "max": {
+              "x": 176000,
+              "y": -82400,
+              "z": 23200.015625
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 0.4452134072780609,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Unloading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Caterium Ingot",
+              "ClassName": "Desc_GoldIngot_C",
+              "Amount": 4734,
+              "MaxAmount": 100
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Station D",
+          "type": "Train Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0.10000000149011612,
+        "MaxPowerConsumed": 50
+      }
+    },
+    {
+      "ID": "Build_TrainStation_C_2147450749",
+      "Name": "Station E",
+      "ClassName": "Build_TrainStation_C",
+      "location": {
+        "x": 192500,
+        "y": -74200,
+        "z": 21200.013671875,
+        "rotation": 270,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": 191700,
+          "y": -75900,
+          "z": 21200.013671875
+        },
+        "max": {
+          "x": 193300,
+          "y": -72500,
+          "z": 23300.013671875
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "TransferRate": 1.1485698223114014,
+      "InflowRate": 0,
+      "OutflowRate": 0,
+      "CargoInventory": [
+        {
+          "ID": "Build_TrainDockingStation_C_2147442170",
+          "Name": "Freight Platform",
+          "ClassName": "Build_TrainDockingStation_C",
+          "location": {
+            "x": 190900,
+            "y": -74200,
+            "z": 21200.013671875,
+            "rotation": 270,
+            "pitch": 0
+          },
+          "BoundingBox": {
+            "min": {
+              "x": 190100,
+              "y": -75900,
+              "z": 21200.013671875
+            },
+            "max": {
+              "x": 191700,
+              "y": -72500,
+              "z": 23200.013671875
+            }
+          },
+          "ColorSlot": {
+            "PrimaryColor": "FA954900",
+            "SecondaryColor": "5F668C00"
+          },
+          "PowerInfo": {
+            "CircuitGroupID": 0,
+            "CircuitID": 6,
+            "FuseTriggered": false,
+            "PowerConsumed": 0.10000000149011612,
+            "MaxPowerConsumed": 50
+          },
+          "TransferRate": 1.1485698223114014,
+          "InflowRate": 0,
+          "OutflowRate": 0,
+          "LoadingMode": "Loading",
+          "LoadingStatus": "Idle",
+          "DockingStatus": "None",
+          "Inventory": [
+            {
+              "Name": "Petroleum Coke",
+              "ClassName": "Desc_PetroleumCoke_C",
+              "Amount": 9600,
+              "MaxAmount": 200
+            }
+          ]
+        }
+      ],
+      "features": {
+        "properties": {
+          "name": "Station E",
+          "type": "Train Station"
+        },
+        "geometry": {
+          "coordinates": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "type": "Point"
+        }
+      },
+      "PowerInfo": {
+        "CircuitGroupID": 0,
+        "CircuitID": 6,
+        "FuseTriggered": false,
+        "PowerConsumed": 0.10000000149011612,
+        "MaxPowerConsumed": 50
+      }
+    }
+  ]
+}

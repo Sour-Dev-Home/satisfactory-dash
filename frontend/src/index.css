@@ -55,6 +55,22 @@
   /* The players' map markers and stamps (ADR-0038 §1, #330) are filled with the colour the player picked (data, not a
      token); this light rim keeps a dark one visible on the dark terrain and the canvas. */
   --color-marker-edge: #fbf8f2;
+  /* The power lines (ADR-0038 §1, #330): a thin copper wire, the one warm line on the map, so it stays apart from the
+     steel rails, the violet nodes, the teal trains and the pink stations. 5.2:1 on the peaks, 6:1
+     on the land and 6.9:1 on the canvas; it sits under the buildings, whose state colours are filled chips, not lines. */
+  --color-map-power-line: #d9915f;
+  /* The belts, lifts and pipes (#330): the planner's own edge colours (planner/graph/SiteGraph.tsx draws a belt in
+     --color-muted and a pipe in --color-info), so the map and the planner agree. A belt's grey is thinner and darker
+     than the rails' steel, a pipe's pale blue is solid and wider where the drone routes are a dashed azure.
+     The belt grey: 7.4:1 on the canvas, 6.7:1 on the surface, 6.5:1 on the land, 5.6:1 on the peaks, 4.4:1 on the grid
+     lines and 3.6:1 on the coast. The pipe blue: 9.3:1 on the canvas, 8.4:1 on the surface, 8.1:1 on the land, 7:1 on
+     the peaks, 5.4:1 on the grid lines and 4.5:1 on the coast. */
+  --color-map-belt: var(--color-muted);
+  --color-map-pipe: var(--color-info);
+  /* The drone ports and their routes (ADR-0055 Decision 1, #330): a clear azure, the one saturated blue on the map, apart
+     from the pale "paused" blue (--color-info), the teal trains and the violet nodes; the square shape and dashed route
+     tell it apart as well. 6.5:1 on the canvas, 4.9:1 on the peaks, 3.8:1 on the grid lines and 3.1:1 on the coast. */
+  --color-map-drone: #6b9bff;
   /* The terrain base map (ADR-0023 amendment, #571): the sea is the canvas colour; the land a step above it, and its
      three height bands one quiet step apart, all under the grid lines (--color-map-grid) so the grid still reads over
      land. The coast a thin line, the shallows a dark blue. Backdrop only: every layer above clears them. */
@@ -133,6 +149,9 @@
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
+  /* How tall the fade over a capped table's bottom edge is while rows are cut (ui/ScrollRegion): under a row's
+     height, so the last row shown stays readable. */
+  --spacing-scroll-fade: 1.5rem;
   /* The command bar (#351): its width, and its result list's height before it scrolls. */
   --spacing-palette: 36rem;
   --spacing-palette-list: 24rem;
@@ -358,10 +377,12 @@
     transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease-standard);
   }
-  button:hover:not(:disabled) {
+  button:hover:not(:disabled, [aria-disabled="true"]) {
     border-color: var(--color-muted);
   }
-  button:disabled {
+  /* aria-disabled keeps a button focusable, so its reason (aria-describedby) is still read (#727's Merge). */
+  button:disabled,
+  button[aria-disabled="true"] {
     opacity: 0.6;
     cursor: not-allowed;
   }

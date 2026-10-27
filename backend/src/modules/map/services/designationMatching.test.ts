@@ -34,7 +34,7 @@ describe("findOverlap", () => {
 describe("matchDesignations", () => {
   it("with no snapshot every member is missing and nothing throws", () => {
     const d = designation("d1", "A", [member("b1", "S", 1, 1), member(null, "S", 2, 2)]);
-    expect(matchDesignations([d], null)).toEqual([{ designationId: "d1", matched: 0, missing: 2, buildingIds: [] }]);
+    expect(matchDesignations([d], null)).toEqual([{ designationId: "d1", matched: 0, missing: 2, buildingIds: [], memberBuildingIds: [null, null] }]);
     expect(matchDesignations([], null)).toEqual([]);
   });
 
@@ -94,5 +94,34 @@ describe("matchDesignations", () => {
     const a = building("a", "S", 1, 0);
     const b = building("b", "S", -1, 0);
     expect(matchDesignations([d], [a, b])[0]?.buildingIds).toEqual(matchDesignations([d], [b, a])[0]?.buildingIds);
+  });
+});
+
+describe("matchDesignations memberBuildingIds (ADR-0055 Decision 12)", () => {
+  it("is aligned to members: one entry per member, null where none matched, non-null count = matched", () => {
+    // Older holds b1 by id; the newer names b1 too (claimed), one by exact position, one by radius, one nowhere.
+    const older = designation("d1", "Older", [member("b1", "S", 1, 1)]);
+    const newer = designation("d2", "Newer", [
+      member(null, "S", 90, 90), // nowhere
+      member("b1", "S", 1, 1), // held by the older one
+      member(null, "S", 10, 10), // exact position: b2
+      member("gone", "S", 21, 20), // stale id, nearest within the radius: b3
+    ]);
+    const buildings = [building("b1", "S", 1, 1), building("b2", "S", 10, 10), building("b3", "S", 20, 20)];
+    const [o, n] = matchDesignations([older, newer], buildings);
+    expect(o?.memberBuildingIds).toEqual(["b1"]);
+    expect(n?.memberBuildingIds).toEqual([null, null, "b2", "b3"]);
+    for (const [d, match] of [[older, o], [newer, n]] as const) {
+      expect(match?.memberBuildingIds).toHaveLength(d.members.length);
+      expect(match?.memberBuildingIds.filter((id) => id !== null)).toHaveLength(match?.matched ?? -1);
+      expect(match?.memberBuildingIds.filter((id) => id !== null)).toEqual(match?.buildingIds);
+    }
+  });
+
+  it("does not depend on the order buildings arrive in, and stays aligned however members are ordered", () => {
+    const d = designation("d1", "A", [member(null, "S", 5, 5), member("x", "S", 1, 1), member(null, "T", 3, 3)]);
+    const buildings = [building("x", "S", 1, 1), building("s5", "S", 5, 5), building("t3", "T", 3, 3)];
+    expect(matchDesignations([d], buildings)[0]?.memberBuildingIds).toEqual(["s5", "x", "t3"]);
+    expect(matchDesignations([d], [...buildings].reverse())[0]?.memberBuildingIds).toEqual(["s5", "x", "t3"]);
   });
 });

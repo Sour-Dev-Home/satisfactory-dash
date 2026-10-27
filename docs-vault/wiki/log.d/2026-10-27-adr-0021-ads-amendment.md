@@ -1,0 +1,7 @@
+- 2026-10-27 — ADR-0021 amended (owner, 2026-10-27): the site runs ads at release. The owner accepts the unread-EULA risk, citing Coffee Stain's inaction against monetized tools such as Satisfactory Calculator, and finds donations not effective. The risk acceptance is recorded in LEGAL.md.
+  - **Where:** on the public pages and in a fixed set of slots in the app. App slots never go over game data, and never on login, error, pairing, account or settings screens.
+  - **How:** each app slot is a sandboxed iframe served from a separate origin. `script-src` stays `'self'` and only `frame-src` gains that origin.
+  - **Network:** a privacy-first one, with no cookies or profiling and so no consent banner (to be verified per network). No user, server or game data reaches it.
+  - **Layout:** each slot reserves fixed space, so there is no layout shift.
+  - **Off switch:** a build-time flag removes every slot.
+  - **Wording updates:** the privacy page, terms and the game-asset NOTICE wording ("non-commercial") change in the build PRs. Five build PRs are listed. Docs only.

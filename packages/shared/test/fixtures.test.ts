@@ -73,6 +73,8 @@ import {
   UpdatePlannerDesignationRequestSchema,
   DeletePlannerDesignationResponseSchema,
   DesignationOverlapErrorSchema,
+  ReplacePlannerDesignationsRequestSchema,
+  ReplacePlannerDesignationsResponseSchema,
   TrainRoutesWorldIngestRequestSchema,
   TrainRoutesWorldLayerResponseSchema,
   DroneRoutesWorldIngestRequestSchema,
@@ -182,12 +184,17 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["plannerDesignationUpdateRequest", UpdatePlannerDesignationRequestSchema],
   ["plannerDesignationDeleteResponse", DeletePlannerDesignationResponseSchema],
   ["plannerDesignationOverlapError", DesignationOverlapErrorSchema],
+  // ADR-0055 amendment 2026-10-27 (#727): replace. "plannerDesignationListRevised" is caught by "plannerDesignationList"
+  // above, which is its schema; none of these three is a prefix of another listed name.
+  ["plannerDesignationReplaceRequest", ReplacePlannerDesignationsRequestSchema],
+  ["plannerDesignationReplaceResponse", ReplacePlannerDesignationsResponseSchema],
+  ["plannerDesignationStaleError", ApiErrorResponseSchema],
   // ADR-0055 Decision 1: the trainRoutes world layer.
   ["trainRoutesWorldResponse", TrainRoutesWorldLayerResponseSchema],
   ["trainRoutesSample", TrainRoutesWorldIngestRequestSchema],
   // ADR-0055 Decision 1: the droneRoutes world layer.
   ["droneRoutesWorldResponse", DroneRoutesWorldLayerResponseSchema],
-  ["droneRoutesSample", DroneRoutesWorldIngestRequestSchema],
+  ["droneRoutesSample", DroneRoutesWorldIngestRequestSchema], // also droneRoutesSampleWithPairedId (S4-A)
   // ADR-0038 §1: the mapMarkers world layer.
   ["mapMarkersWorldResponse", MapMarkersWorldLayerResponseSchema],
   ["mapMarkersSample", MapMarkersWorldIngestRequestSchema],
@@ -552,7 +559,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
     // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
-    expect(all.length).toBe(73); // + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050), + the 4 plannerDesignations endpoints (ADR-0055)
+    expect(all.length).toBe(74); // + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050), + the 5 plannerDesignations endpoints (ADR-0055, replace in its 2026-10-27 amendment)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;

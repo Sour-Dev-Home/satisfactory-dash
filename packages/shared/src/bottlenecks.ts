@@ -126,11 +126,30 @@ export const BottleneckSchema = z.object({
  */
 export const BOTTLENECK_BELT_DATA_MODES = ["present", "stale", "unsupported", "tooLarge", "notReceived"] as const;
 
-/** The section's notes. `connectionsRefresh`: "connections refresh every 10 minutes" (owner answer 4, shown whenever the
- *  belt level ran). `updateFrm`: "item-level results only; update FRM to 1.5.4 or newer for belt detail" (owner answer
- *  3, with `beltData: "unsupported"`). `beltDataTooLarge`: the item-level fallback for `tooLarge`. `beltDataNotReceived`:
- *  the agent has not sent belt data yet and may need updating (with `beltData: "notReceived"`). */
-export const KNOWN_BOTTLENECK_NOTE_CODES = ["connectionsRefresh", "updateFrm", "beltDataTooLarge", "beltDataNotReceived"] as const;
+/** Every note code the backend emits, on the bottlenecks section and the planner's production graph (which reuses this
+ *  note shape). The list documents; it does not restrict: `code` stays a free string, so a new note never breaks a parse.
+ *  - `connectionsRefresh`: "connections refresh every 10 minutes" (owner answer 4; bottlenecks whenever the belt level
+ *    ran, the production graph when `beltData` is `stale`).
+ *  - `updateFrm`: item level only / no graph; update FRM to 1.5.4 or newer for belt detail (`beltData: "unsupported"`).
+ *  - `beltDataTooLarge`: the belt and pipe data passed the world-layer cap (`beltData: "tooLarge"`).
+ *  - `beltDataNotReceived`: the agent has not sent belt data yet and may need updating (`beltData: "notReceived"`).
+ *  - `unmatchedLinks` (production graph): some links carry items their destination does not use (mixed belt, filter, overflow).
+ *  - `graphTruncated` (production graph): the factory passed the graph's caps; the smallest sites, groups and links were left out.
+ *  - `duplicateStationName` (production graph): two train stations share a name, so no train route is drawn through it.
+ *  - `unknownTimetableStop` (production graph): a timetable names a station that does not exist; no route is drawn through it.
+ *  - `staleConveyorEnds` (production graph): machines on the conveyor data are missing from the latest factory read; the
+ *    conveyor data is older and refreshes within 10 minutes (sooner once the building set changes). */
+export const KNOWN_BOTTLENECK_NOTE_CODES = [
+  "connectionsRefresh",
+  "updateFrm",
+  "beltDataTooLarge",
+  "beltDataNotReceived",
+  "unmatchedLinks",
+  "graphTruncated",
+  "duplicateStationName",
+  "unknownTimetableStop",
+  "staleConveyorEnds",
+] as const;
 export type KnownBottleneckNoteCode = (typeof KNOWN_BOTTLENECK_NOTE_CODES)[number];
 
 export const BottleneckNoteSchema = z.object({

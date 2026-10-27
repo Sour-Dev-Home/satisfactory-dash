@@ -86,6 +86,7 @@ import {
   createCommandSweeper,
   createCommandsService,
   createCompatRouters,
+  createGameConnectionStore,
   createPairingApiRouters,
   createPairingService,
   createPairingSweeper,
@@ -93,8 +94,14 @@ import {
   loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
 import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
-import { createMetricsRouter, createMetricsService } from "./modules/metrics/index.js";
-import { MapLiveStore, LocalWorldPoller, WorldIngestService, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
+import {
+  createDeliveryIngestRouter,
+  createMetricsRouter,
+  createMetricsService,
+  insertDeliverySnapshot,
+  loadDeliveryIngestConfig,
+} from "./modules/metrics/index.js";
+import { MapLiveStore, LocalWorldPoller, WorldIngestService, observeFactoryReads, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
@@ -137,6 +144,8 @@ function orExit<T>(load: () => T): T {
 const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
 // ADR-0046 C7 (#527): a bad value stops the backend at startup, like PORT.
 const enrollmentCodesPerHour = orExit(() => loadEnrollmentCodesPerHour(process.env));
+// ADR-0056 PR 6b: the delivery ingest's secret hash. Unset = the ingest is off (404); a malformed value stops startup.
+const deliveryIngestConfig = orExit(() => loadDeliveryIngestConfig(process.env));
 
 // A servers file replaces the single-server variables; naming any that are still set (names
 // only, never values) keeps a half-migrated .env from being confusing.
@@ -163,6 +172,8 @@ const database = databaseConfig ? new Database(databaseConfig, logger) : undefin
 // ADR-0031 PR 5b: commands to edge agents (auto-pause today). One notifier, so a command created by a dashboard request
 // wakes the agent's long-poll; both faces of the service share it.
 const agentCommands = database ? createCommandsService({ db: database.pool, notifier: new CommandNotifier() }) : undefined;
+// #740 follow-up: each agent's latest game connection, written by the snapshot route and read by the agent status.
+const gameConnections = database ? createGameConnectionStore(database.pool) : undefined;
 // ADR-0038 M3 (#353): mapLive (trains, stations) is read-through only, one process-wide store keyed
 // by server public id (map/services/mapLiveStore.ts); world layers (rails, resourceNodes) need the
 // database, so ingest is undefined without one, same as the other database-gated services below.
@@ -180,11 +191,6 @@ function buildPolledServer(id: string, displayName: string, untimedConfig: Satis
   // ADR-0032: every call to the game server reports how long it took, so a request's time splits into app and upstream.
   const config: SatisfactoryServerConfig = { ...untimedConfig, onUpstreamCall: recordUpstreamCall };
   const connection = createGameServerConnection(config);
-  const telemetry = createTelemetryServices(connection, resolveUnit, {
-    logger: logger.child({ worker: "power-history", serverId: id }),
-    // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
-    history: database ? { db: database.pool, serverPublicId: id } : undefined,
-  });
   // ADR-0038 M3: a LOCAL server has no edge agent, so the backend reads its own world layers and
   // mapLive directly (`connection` satisfies LocalWorldPollerPorts structurally: getRails,
   // getResourceNodes, getTrains, getTrainStations). Needs the database (world layers are stored).
@@ -196,6 +202,14 @@ function buildPolledServer(id: string, displayName: string, untimedConfig: Satis
         mapLive: mapLiveStore.sinkFor(id),
       })
     : undefined;
+  // #728 step 6: every factory read telemetry makes (the 30 s history poll, the live reads) tells the map poller the
+  // building set, so a changed set reads conveyors sooner instead of up to 10 minutes later.
+  const telemetryPorts = mapPoller ? observeFactoryReads(connection, (ids) => mapPoller.observeFactoryBuildings(ids)) : connection;
+  const telemetry = createTelemetryServices(telemetryPorts, resolveUnit, {
+    logger: logger.child({ worker: "power-history", serverId: id }),
+    // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
+    history: database ? { db: database.pool, serverPublicId: id } : undefined,
+  });
   return {
     id,
     displayName,
@@ -551,6 +565,12 @@ export const app = createApp({
     healthRouter,
     createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered && connectionsReadable : true)),
     identity.authRouter,
+    // ADR-0056 PR 6b: POST /api/internal/metrics/delivery, before the session guard (a bearer secret, not a session).
+    // Always mounted, so "off" (no secret hash or no database) is a 404, not the guard's 401.
+    createDeliveryIngestRouter({
+      config: deliveryIngestConfig,
+      store: database ? (snapshot) => insertDeliverySnapshot(database.pool, snapshot) : undefined,
+    }),
   ],
   sessionGuard: identity.sessionGuard,
   protectedRouters: [
@@ -597,7 +617,7 @@ export const app = createApp({
     // ADR-0056 PR 3: GET /api/admin/metrics, operator only (the same gate as the server management routes); database only.
     ...(database
       ? [
-          createMetricsRouter(createMetricsService({ db: database.pool }), {
+          createMetricsRouter(createMetricsService({ db: database.pool, deliveryConfigured: deliveryIngestConfig !== undefined }), {
             isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
             isReady: () => serversRegistered,
           }),
@@ -615,6 +635,8 @@ export const app = createApp({
             codesPerHour: enrollmentCodesPerHour,
             // In memory, from the last snapshot the ingest recorded: fresher than last_seen_at (written at most every 30 s).
             lastHeardAt: (serverId) => directory.get(serverId)?.telemetry.observations?.snapshot().agent?.lastHeardAt,
+            // #740 follow-up: the agent's latest game connection, kept by the snapshot route below.
+            gameConnection: (serverId) => gameConnections?.get(serverId),
           }), agentCommands)
       : []),
     ...(managementRouters ? [managementRouters.scoped] : []),
@@ -631,7 +653,7 @@ export const app = createApp({
   // ADR-0031 PR 5a: the agent's own API at /agent/v1, outside /api: its own credential, no session.
   agentRouters: [
     ...(database && agentCommands && agentAuth
-      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered, auth: agentAuth })
+      ? createAgentApiRouters({ db: database.pool, logger: logger.child({ module: "agents" }), commands: agentCommands, directory, attachAgentRuntime, isReady: () => serversRegistered, auth: agentAuth, gameConnections })
       : []),
     // ADR-0051 section 1: the agent's pairing routes, unauthenticated like enrol.
     ...(pairingService ? createPairingApiRouters(pairingService, () => serversRegistered) : []),

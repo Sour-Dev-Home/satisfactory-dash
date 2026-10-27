@@ -1,7 +1,8 @@
 import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
-import { groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
+import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
+import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { GLYPH_SIZE } from "./transportModes";
 
@@ -42,6 +43,9 @@ export const LABEL_GAP = 4;
 /** Dagre's spacing, tight on purpose: a fit should show the drawing, so the ranks and rows sit close. */
 export const RANK_SEP = 40;
 export const NODE_SEP = 20;
+/** The least room between two vertical tracks in one gap (and between a track and a column): side by side, lines stay
+ *  visibly apart (8 read as one thick line on the owner's save, 2026-10-27). A gap with more tracks than fit widens. */
+export const TRACK_GAP = 12;
 /** The graph's margin, and the height of the tab on an expanded bubble's frame that holds its title and its Collapse button (half of it stands above the frame's top edge). */
 export const MARGIN = 16;
 export const FRAME_HEADER_H = 22;
@@ -74,15 +78,20 @@ export interface LaidFrame {
 }
 
 export interface LaidEdge {
-  /** Index into `SiteLayout.flows`. */
+  /** Index into `SiteLayout.flows` of the first link the line draws: unique per edge, its React key. */
   index: number;
+  /** Every link the line draws, as indexes into `SiteLayout.flows` (one, or a bundle's: see `bundleFlows`). */
+  parts: number[];
+  /** What the line draws: the link, or the bundle of links between the same two cards (with `parts` of its own). */
   flow: CanvasFlow;
   /** The path, from the source card's side to the destination's. */
   points: { x: number; y: number }[];
   /** The label in one line (the tooltip's words). */
   label: string;
-  /** The label as drawn: one to three lines. */
+  /** The label in words: one to three lines (the canvas draws `bubbles`; these stay for text views and tests). */
   labelLines: string[];
+  /** What the label box draws (ADR-0060 Decision 1): an icon bubble per item (up to three, then "+k"), and the rate text. */
+  bubbles: BubbleRow;
   /** The label's centre: just above the middle of the path (see `labelPlacement`). */
   labelX: number;
   labelY: number;
@@ -100,11 +109,27 @@ export interface SiteLayout {
   nodes: LaidNode[];
   frames: LaidFrame[];
   edges: LaidEdge[];
-  /** The flows the layout was given (those with both ends drawn), in the order `LaidEdge.index` refers to. */
+  /** The links the layout was given (those with both ends drawn), one per link even when a line draws several, in the
+   *  order `LaidEdge.index` and `LaidEdge.parts` refer to. The item filter walks these. */
   flows: CanvasFlow[];
   width: number;
   height: number;
+  /** How long dagre and the router took for this placement (remembered with it: a memo hit reports the first run's). */
+  placeMs: number;
 }
+
+/** Make room for a focused line (ADR-0060 Decision 3): its label box is reserved at this size. */
+export interface LayoutFocus {
+  edgeKey: string;
+  width: number;
+  height: number;
+}
+
+/** The detail card's size in layout units, which a focused line's label box makes room for (ADR-0060 Decision 3). */
+export const FOCUS_CARD_W = 220;
+export const FOCUS_CARD_H = 200;
+/** Past this, a focused layout is too slow to make room: focus dims only (ADR-0060 Decision 3's guard). */
+export const FOCUS_LAYOUT_BUDGET_MS = 100;
 
 type CardSize = Pick<LaidNode, "width" | "height" | "title" | "lines" | "iconUrl">;
 
@@ -138,6 +163,13 @@ export const labelWidth = (text: string) => Math.ceil(text.length * CHAR_W_BODY 
 export const labelSize = (lines: readonly string[]) => ({
   width: Math.max(0, ...lines.map(labelWidth)),
   height: lines.length * LABEL_LINE_H + LABEL_PAD,
+});
+
+/** The box dagre reserves for a line's bubble row (ADR-0060 Decision 1): as wide as the bubbles or the rate text, as tall
+ *  as a bubble plus the text's line. */
+export const bubbleRowSize = (row: BubbleRow) => ({
+  width: Math.max(bubblesWidth(row) + LABEL_PAD, row.rateText === null ? 0 : labelWidth(row.rateText)),
+  height: BUBBLE_D + (row.rateText === null ? 0 : LABEL_LINE_H) + LABEL_PAD,
 });
 
 type Point = { x: number; y: number };
@@ -222,7 +254,12 @@ interface Placement {
   labelAt: (Point | null)[];
   width: number;
   height: number;
+  /** How long placing took, kept with the placement so a memo hit still knows whether it was too slow (ADR-0060 D3). */
+  ms: number;
 }
+
+/** What the placers return; `layoutScene` adds how long they took. */
+type Placed = Omit<Placement, "ms">;
 
 const MEMO_LIMIT = 12;
 const memo = new Map<string, Placement>();
@@ -313,7 +350,7 @@ export function returnFlows(cardKeys: readonly string[], flows: readonly { from:
  * handling cannot route (it throws "Not possible to find intersection inside of the rectangle" on some parallel edges that
  * skip a rank).
  */
-function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean): Placement {
+function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean): Placed {
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
   const nodesep = scene.frames.length > 0 ? NODE_SEP + FRAME_HEADER_H / 2 : NODE_SEP;
   // Loops are broken here (`returnFlows`), so dagre gets a graph without cycles. `tight-tree` gave the fewest crossings
@@ -392,7 +429,7 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   });
   // An empty graph comes back from dagre with width and height -Infinity.
   const { width, height } = g.graph();
-  const placed: Placement = { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
+  const placed: Placed = { centres, frames, paths, stack, labelAt, width: Number.isFinite(width) ? width : 0, height: Number.isFinite(height) ? height : 0 };
   try {
     return routed(scene, sizes, drawn, labels, placed, (i) => {
       const d = edgeAt(i);
@@ -416,9 +453,9 @@ function routed(
   sizes: readonly CardSize[],
   drawn: readonly CanvasFlow[],
   labels: readonly LabelBox[],
-  placed: Placement,
+  placed: Placed,
   labelWaypoint: (flow: number) => number | undefined,
-): Placement {
+): Placed {
   const cards = scene.cards.map((c, i) => {
     const centre = placed.centres.get(c.key)!;
     return { key: c.key, x: centre.x - sizes[i].width / 2, y: centre.y - sizes[i].height / 2, width: sizes[i].width, height: sizes[i].height };
@@ -427,14 +464,23 @@ function routed(
   const out = routeOrthogonal(
     {
       cards,
-      edges: drawn.map((f, i) => ({ from: f.from, to: f.to, waypoints: placed.paths[i].slice(1, -1), label: labelWaypoint(i) })),
+      edges: drawn.map((f, i) => {
+        const waypoints = placed.paths[i].slice(1, -1);
+        const label = labelWaypoint(i);
+        // Each edge runs through its own label: in the merged form the flows of a pair share one dagre route, whose label
+        // point is the middle of their stacked labels, so every line ran across the middle label (2026-10-27). Its own
+        // row's centre instead; in the separate form that is the same point.
+        const at = placed.labelAt[i];
+        if (label !== undefined && at !== null) waypoints[label] = { x: waypoints[label].x, y: at.y };
+        return { from: f.from, to: f.to, waypoints, label };
+      }),
       labels: drawn.map((_, i) => {
         const at = placed.labelAt[i];
         return at === null ? undefined : { x: at.x - labels[i].width / 2, y: at.y - labels[i].height / 2, width: labels[i].width, height: labels[i].height };
       }),
       frames: frameKeys.map((k) => placed.frames.get(k)!),
     },
-    { straighten: true },
+    { straighten: true, track: TRACK_GAP },
   );
   const centres = new Map(out.cards.map((c) => [c.key, { x: c.x + c.width / 2, y: c.y + c.height / 2 }]));
   const frames = new Map(frameKeys.map((k, i) => [k, out.frames[i]]));
@@ -455,7 +501,7 @@ function leaves(centre: Point, size: LabelBox, toward: Point): Point {
  * The last resort when dagre throws twice: the cards in rows of equal cells, each flow a straight line, each frame the box
  * round its cards. Plain, but a picture instead of a crash.
  */
-function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[]): Placement {
+function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[]): Placed {
   const cols = Math.max(1, Math.ceil(Math.sqrt(scene.cards.length)));
   const cellW = Math.max(NODE_MIN_W, ...sizes.map((s) => s.width)) + RANK_SEP;
   const cellH = Math.max(0, ...sizes.map((s) => s.height)) + NODE_SEP + FRAME_HEADER_H;
@@ -481,7 +527,7 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
 }
 
-function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placement {
+function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placed {
   // Separate first: each flow gets its own label box and, from the router, its own track (ADR-0059 measured this form).
   // Merged (one dagre edge per pair of cards, labels stacked in its box) is the fallback for shapes dagre cannot route.
   for (const merged of [false, true]) {
@@ -502,25 +548,36 @@ function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasF
  * Dagre is the cost (Decision 3's worker trigger is 100 ms on a real site), so the placement is remembered: the key is the
  * response's `topologyHash` (when the backend sent one) plus a signature of the cards, flows and sizes, which a poll that
  * only moves rates does not change. Text is never part of the memo: the laid nodes carry the scene's current words.
+ *
+ * With `focus` (ADR-0060 Decision 3, make room), the focused line's label box is reserved at the detail card's size, so
+ * dagre and the router move the rest aside; the pill itself is still drawn at its own size, centred in that box. The box
+ * size is in the memo key, so the focused layout is remembered too and closing returns to the overview's at no cost.
  */
-export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
+export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutFocus): SiteLayout {
   const own = scene.cards.map(cardSize);
   // The overview's factory cards are peers: one height, so the row reads evenly.
   const tallest = scene.level === "overview" ? Math.max(0, ...own.map((s) => s.height)) : 0;
   const sizes = tallest === 0 ? own : own.map((s) => ({ ...s, height: tallest }));
   const known = new Set(scene.cards.map((c) => c.key));
   const flows = scene.flows.filter((f) => known.has(f.from) && known.has(f.to));
-  // A transport's label also holds its mode's glyph, at the pill's left: dagre reserves room for both.
-  const labels = flows.map((f) => {
-    const s = labelSize(f.labelLines);
+  // Links between the same two cards on the same carrier are one line with one label (2026-10-27); `parts` keeps each.
+  const bundles = bundleFlows(flows);
+  const drawn = bundles.map((b) => b.flow);
+  // Each label is a bubble row; a transport's also holds its mode's glyph, at the pill's left: dagre reserves room for both.
+  const rows = drawn.map(bubbleRow);
+  const pills = drawn.map((f, k) => {
+    const s = bubbleRowSize(rows[k]);
     return isTransport(f) ? { ...s, width: s.width + GLYPH_INSET } : s;
   });
-  const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, flows)}`;
+  const labels =
+    focus === undefined ? pills : drawn.map((f, k) => (edgeKeyOf(f) === focus.edgeKey ? { width: Math.max(pills[k].width, focus.width), height: Math.max(pills[k].height, focus.height) } : pills[k]));
+  const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, drawn)}`;
   let placement = memo.get(key);
   if (placement === undefined) {
     const start = performance.now();
-    placement = place(scene, sizes, flows, labels);
+    const placed = place(scene, sizes, drawn, labels);
     stats.lastMs = performance.now() - start;
+    placement = { ...placed, ms: stats.lastMs };
     stats.slowestMs = Math.max(stats.slowestMs, stats.lastMs);
     stats.computed++;
     memo.set(key, placement);
@@ -543,20 +600,23 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   });
   // A transport's glyph stands in its own label pill, at the left, so no label can cover it and parallel transports (one
   // path, stacked labels) each keep theirs; a moving glyph travels the path instead (SiteGraph's Edge).
-  const edges: LaidEdge[] = flows.map((flow, index) => {
-    const points = p.paths[index];
-    const { width, height } = labels[index];
-    const own = p.labelAt[index];
-    const beside = own === null && points.length > 0 ? labelPlacement(points, width, height) : { x: 0, y: 0 };
+  const edges: LaidEdge[] = drawn.map((flow, k) => {
+    const points = p.paths[k];
+    // The pill is drawn at its own size, centred in the box reserved for it (larger only for a focused line).
+    const { width, height } = pills[k];
+    const own = p.labelAt[k];
+    const beside = own === null && points.length > 0 ? labelPlacement(points, labels[k].width, labels[k].height) : { x: 0, y: 0 };
     const labelX = own?.x ?? beside.x;
-    const labelY = own?.y ?? beside.y - p.stack[index];
+    const labelY = own?.y ?? beside.y - p.stack[k];
     const transport = isTransport(flow);
     return {
-      index,
+      index: bundles[k].members[0],
+      parts: bundles[k].members,
       flow,
       points,
       label: flow.label,
       labelLines: flow.labelLines,
+      bubbles: rows[k],
       labelX,
       labelY,
       labelWidth: width,
@@ -566,7 +626,7 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
       length: lengthOf(points),
     };
   });
-  return { nodes, frames, edges, flows, width: p.width, height: p.height };
+  return { nodes, frames, edges, flows, width: p.width, height: p.height, placeMs: p.ms };
 }
 
 /** One site's picture, as ADR-0050 drew it: a card per group and a line per connection. */

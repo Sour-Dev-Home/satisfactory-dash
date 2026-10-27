@@ -21,6 +21,14 @@ const SHAPES: Record<GlyphKind, ReactNode> = {
   station: <path d="M-9 8h18M-5 8V-8h10v16M-5 -2h10M-1 3h2" />,
   power: <path d="M2 -10l-8 12h6l-2 8 8-12h-6z" />,
   consumer: <path d="M-9 -8h18l-7 9v8h-4v-8z" />,
+  // A clock: built from conveyor data older than the factory read (#728 cause 11).
+  stale: (
+    <>
+      <circle r={9} />
+      {/* Hands, and ticks at 12, 3, 6 and 9, so it never reads as the unknown glyph's circle at chip size. */}
+      <path d="M0 -5v5l4 2.5M0 -9v2M9 0h-2M0 9v-2M-9 0h2" />
+    </>
+  ),
   unknown: (
     <>
       <circle r={9} />

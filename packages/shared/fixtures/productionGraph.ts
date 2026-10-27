@@ -1,4 +1,4 @@
-import type { ProductionGraphResponse } from "../src/index";
+import type { PlannerNode, PlannerSite, ProductionGraphResponse } from "../src/index";
 
 /**
  * ADR-0050: production-graph responses. SYNTHETIC: no capture records a planner graph (the service is PR 3). Two sites:
@@ -171,6 +171,36 @@ export const productionGraphTwoSites = {
   },
 } satisfies ProductionGraphResponse;
 
+const PLATE_MANIFOLD = "Build_ConstructorMk1_C|Iron Plate|1250|-400";
+const PLATE_RECYCLE = "Build_ConstructorMk1_C|Iron Plate Recycle|1260|-420";
+
+/**
+ * #728: the iron line with its storage full. The 8x Constructor manifold is backed up and reads 0 of 160 Iron Plate,
+ * the recycler it feeds is underfed at 0 of 10 Iron Ingot, and the belts between them carry nothing.
+ */
+export const productionGraphStalled = {
+  ...productionGraphTwoSites,
+  data: {
+    ...productionGraphTwoSites.data,
+    // Widened to the contract's types: the literal's inferred element union has `underfed?: undefined`.
+    nodes: (productionGraphTwoSites.data.nodes as readonly PlannerNode[]).map((n): PlannerNode =>
+      n.key === PLATE_MANIFOLD
+        ? { ...n, stateCounts: { backedUp: 8 }, products: [rate("Desc_IronPlate_C", "Iron Plate", 0, 160)], ingredients: [rate("Desc_IronIngot_C", "Iron Ingot", 0, 240)] }
+        : n.key === PLATE_RECYCLE
+          ? { ...n, stateCounts: { underfed: 1 }, products: [rate("Desc_IronIngot_C", "Iron Ingot", 0, 10)], ingredients: [rate("Desc_IronPlate_C", "Iron Plate", 0, 6)] }
+          : n,
+    ),
+    edges: productionGraphTwoSites.data.edges.map((e) =>
+      e.to === PLATE_MANIFOLD || e.from === PLATE_MANIFOLD ? { ...e, ratePerMinute: e.rate === "unknown" ? null : 0 } : e,
+    ),
+    sites: (productionGraphTwoSites.data.sites as readonly PlannerSite[]).map((s): PlannerSite =>
+      s.nodeKeys.includes(PLATE_MANIFOLD)
+        ? { ...s, stateCounts: { producing: 5, backedUp: 8, underfed: 1 }, topOutputs: [rate("Desc_IronPlate_C", "Iron Plate", 0, 160)] }
+        : s,
+    ),
+  },
+} satisfies ProductionGraphResponse;
+
 /** An empty factory, or one the conveyors layer hasn't been read for yet. */
 export const productionGraphEmpty = {
   serverId: "default",
@@ -309,5 +339,38 @@ export const productionGraphFactories = {
     ],
     topologyHash: "sha256-planner-factories-sample",
     logistics: "partial",
+  },
+} satisfies ProductionGraphResponse;
+
+/**
+ * #728 cause 11: the factories fixture right after a rebuild. The conveyor data (read every 10 minutes) still names a
+ * machine the latest factory read (every 30 s) lacks, so its node has no building: kind "other", its class the conveyor
+ * end's kind, no machine ids, and `stale: true`, with the backend's `staleConveyorEnds` note.
+ */
+const STALE_END = "machine||1200|100";
+export const productionGraphStaleEnd = {
+  ...productionGraphFactories,
+  data: {
+    ...productionGraphFactories.data,
+    nodes: [
+      ...(productionGraphFactories.data.nodes as readonly PlannerNode[]),
+      { ...node(STALE_END, "other", "machine", "machine", null, MAIN, { x: 1200, y: 100 }, { factoryKey: ROD, stale: true }), machineIds: [] },
+    ],
+    edges: [
+      ...productionGraphFactories.data.edges,
+      { from: STALE_END, to: ROD_CON, kind: "belt", itemClassName: null, itemName: null, ratePerMinute: null, rate: "unknown", mixed: false, capacityPerMinute: null, conveyorCount: 3 },
+    ],
+    sites: (productionGraphFactories.data.sites as readonly PlannerSite[]).map((s): PlannerSite =>
+      s.key === MAIN ? { ...s, machineCount: s.machineCount + 1, nodeKeys: [...s.nodeKeys, STALE_END] } : s,
+    ),
+    factories: productionGraphFactories.data.factories.map((f) => (f.key === ROD ? { ...f, nodeKeys: [...f.nodeKeys, STALE_END] } : f)),
+    notes: [
+      CONNECTIONS_REFRESH,
+      {
+        code: "staleConveyorEnds",
+        text: "1 machine on the conveyor data is missing from the latest factory read: conveyor data is older than the factory read and refreshes within 10 minutes.",
+      },
+    ],
+    topologyHash: "sha256-planner-stale-end-sample",
   },
 } satisfies ProductionGraphResponse;

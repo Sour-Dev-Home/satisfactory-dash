@@ -26,6 +26,17 @@ describe("ProductionGraph fixtures (ADR-0050)", () => {
   it("both fixtures parse", () => {
     expect(ProductionGraphResponseSchema.safeParse(fixtures.productionGraphTwoSites).success).toBe(true);
     expect(ProductionGraphResponseSchema.safeParse(fixtures.productionGraphEmpty).success).toBe(true);
+    expect(ProductionGraphResponseSchema.safeParse(fixtures.productionGraphStalled).success).toBe(true);
+  });
+
+  it("the stalled fixture's manifold is all backed up at 0 of its max, and its site counts every machine (#728)", () => {
+    const stalled = fixtures.productionGraphStalled.data;
+    const manifold = stalled.nodes.find((n) => n.key === node.key)!;
+    expect(manifold.stateCounts).toEqual({ backedUp: manifold.count });
+    expect(manifold.products[0]).toMatchObject({ currentPerMinute: 0, maxPerMinute: 160 });
+    const site = stalled.sites.find((s) => s.key === node.siteKey)!;
+    const machines = stalled.nodes.filter((n) => n.siteKey === site.key && n.kind !== "storage").reduce((t, n) => t + n.count, 0);
+    expect(Object.values(site.stateCounts).reduce((t, n) => t + n, 0)).toBe(machines);
   });
 
   it("are internally consistent: every edge and site names a node, every node a site", () => {
@@ -141,6 +152,22 @@ describe("logical-factory and transport fields (ADR-0053 Decision 5, ADR-0055 De
     expect(parse(PlannerNodeSchema, { ...richNode, shares: Array(PLANNER_MAX_SHARES + 1).fill(share) })).toBe(false);
     for (const bad of [-0.1, 1.1, Number.NaN, Number.POSITIVE_INFINITY]) expect(parse(PlannerShareSchema, { ...share, share: bad }), String(bad)).toBe(false);
     expect(parse(PlannerShareSchema, { factoryKey: "", share: 0.5 })).toBe(false);
+  });
+
+  it("stale (#728 cause 11): only true or absent, and old payloads without it still parse", () => {
+    const stale = fixtures.productionGraphStaleEnd;
+    expect(ProductionGraphResponseSchema.safeParse(stale).success).toBe(true);
+    const flagged = stale.data.nodes.filter((n) => (n as { stale?: true }).stale === true);
+    expect(flagged.map((n) => n.kind)).toEqual(["other"]);
+    expect(flagged[0]!.machineIds).toEqual([]);
+    expect(stale.data.notes.map((n) => n.code)).toContain("staleConveyorEnds");
+    const keys = new Set(stale.data.nodes.map((n) => n.key));
+    for (const e of stale.data.edges) expect(keys.has(e.from) && keys.has(e.to)).toBe(true);
+    for (const f of stale.data.factories) for (const k of f.nodeKeys) expect(keys.has(k), k).toBe(true);
+    expect(rich.nodes.some((n) => "stale" in n)).toBe(false);
+    expect(parse(PlannerNodeSchema, richNode)).toBe(true);
+    expect(parse(PlannerNodeSchema, { ...richNode, stale: true })).toBe(true);
+    for (const bad of [false, "true", 1, null]) expect(parse(PlannerNodeSchema, { ...richNode, stale: bad }), String(bad)).toBe(false);
   });
 
   it("collapseUnder is a key or null; treeKey and resource follow ADR-0053", () => {

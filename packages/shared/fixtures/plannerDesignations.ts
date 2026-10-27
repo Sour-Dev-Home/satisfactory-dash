@@ -55,6 +55,79 @@ export const plannerDesignationUpdateRequest = { name: "Iron annex (east)" };
 /** DELETE. */
 export const plannerDesignationDeleteResponse = { deleted: true as const };
 
+/**
+ * ADR-0055 amendment 2026-10-27 (#727): GET from a backend that has `revision` and `memberBuildingIds`. The Iron line's
+ * member without an id matched by position; the Iron annex's first member is held by the Iron line (claimed, so null) and
+ * its last no longer exists (null): matched 1, missing 2.
+ */
+export const plannerDesignationListRevised = {
+  designations: [
+    { ...plannerDesignationIronLine, revision: 2 },
+    { ...plannerDesignationIronAnnex, revision: 1 },
+  ],
+  matches: [
+    {
+      designationId: IRON_LINE_ID,
+      matched: 3,
+      missing: 0,
+      memberBuildingIds: ["Build_SmelterMk1_C_2147001", "Build_ConstructorMk1_C_2147002", "Build_ConstructorMk1_C_2147003"],
+    },
+    {
+      designationId: IRON_ANNEX_ID,
+      matched: 1,
+      missing: 2,
+      claimedBy: { id: IRON_LINE_ID, name: "Iron line", count: 1 },
+      memberBuildingIds: [null, "Build_AssemblerMk1_C_2147099", null],
+    },
+  ],
+};
+
+/** Members of the merge: the Iron line's, then the Iron annex's it did not already hold. */
+const MERGED_MEMBERS = [...plannerDesignationIronLine.members, ...plannerDesignationIronAnnex.members.slice(1)];
+
+/** POST .../replace: merge the two, keeping the older one's id and createdAt (Decision 12). */
+export const plannerDesignationReplaceRequestMerge = {
+  expect: [
+    { id: IRON_LINE_ID, revision: 2 },
+    { id: IRON_ANNEX_ID, revision: 1 },
+  ],
+  put: [{ id: IRON_LINE_ID, name: "Iron line", members: MERGED_MEMBERS }],
+  intent: "merge",
+};
+
+/** 200 for the merge: the Iron line updated in place (revision + 1), the Iron annex removed. */
+export const plannerDesignationReplaceResponse = {
+  designations: [{ ...plannerDesignationIronLine, members: MERGED_MEMBERS, updatedAt: "2026-10-27T12:00:00.000Z", revision: 3 }],
+  removedIds: [IRON_ANNEX_ID],
+};
+
+/**
+ * POST .../replace: "Split back", the inverse of the merge, restoring both with their ids and createdAt. Put entries may
+ * not share a building, so the annex comes back without the building the line also names.
+ */
+export const plannerDesignationReplaceRequestUndo = {
+  expect: [{ id: IRON_LINE_ID, revision: 3 }],
+  put: [
+    { id: IRON_LINE_ID, name: "Iron line", members: plannerDesignationIronLine.members, createdAt: plannerDesignationIronLine.createdAt },
+    {
+      id: IRON_ANNEX_ID,
+      name: "Iron annex",
+      members: plannerDesignationIronAnnex.members.slice(1),
+      createdAt: plannerDesignationIronAnnex.createdAt,
+    },
+  ],
+  intent: "undo",
+};
+
+/** 409 when a replace's `expect` names a designation someone else changed or removed meanwhile. */
+export const plannerDesignationStaleError = {
+  error: {
+    code: "designation_stale" as const,
+    message: "One of these factories was changed by someone else. Select again.",
+    requestId: "req-designation-stale-1",
+  },
+};
+
 /** 409 when a write names a building another designation holds. */
 export const plannerDesignationOverlapError = {
   error: {

@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { BOTTLENECKS_DEFAULT_LIMIT } from "@satisfactory-dash/shared";
 import { usePlannerDesignationWrites } from "../api/plannerWrites";
 import { queries } from "../api/queries";
@@ -7,10 +8,41 @@ import { useSettledQuery } from "../api/settled";
 import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable } from "../ui/Skeleton";
+import { DesignationChangeContext, useDesignationChangeRunner } from "./designationChanges";
 import { DesignationContext, type DesignationState } from "./DesignationContext";
 import { missingMembers, placesOf } from "./designationMatch";
 import { canDesignate } from "./designationText";
 import { PlannerPanel, PlannerSkeleton } from "./PlannerPanel";
+
+/** The query parameter that names the opened factory (or site). */
+export const OPEN_PARAM = "open";
+
+/**
+ * The opened factory's (or site's) key, kept in the address (the owner, 2026-10-27: going one level up should be easy).
+ * Opening one is a history entry, so the browser's Back, a mouse's back button, Alt+Left or a phone's back swipe return
+ * to the overview. Closing steps back through that entry when this page made it; a link straight to a factory has none,
+ * so closing replaces the address instead of leaving the page.
+ */
+function useOpened(): [string | null, (key: string | null) => void] {
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const opened = params.get(OPEN_PARAM);
+  const pushedHere = (location.state as { plannerOpened?: boolean } | null)?.plannerOpened === true;
+  const select = (key: string | null) => {
+    if (key === null && pushedHere) {
+      void navigate(-1);
+      return;
+    }
+    // Other parameters (dev:mock's scenario) and the fragment are kept, as on the Factory page.
+    const next = new URLSearchParams(params);
+    if (key === null) next.delete(OPEN_PARAM);
+    else next.set(OPEN_PARAM, key);
+    const search = next.size > 0 ? `?${next}` : "";
+    void navigate({ search, hash: location.hash }, key === null ? { replace: true } : { state: { plannerOpened: true } });
+  };
+  return [opened, select];
+}
 
 /**
  * Container for the Planner page (ADR-0050, text form): the production graph, polled with the factory, plus the Factory
@@ -36,20 +68,24 @@ export function PlannerView() {
     () => ({ canWrite: canDesignate(server.role), designations: designations.data, places, missing, writes }),
     [server.role, designations.data, places, missing, writes],
   );
+  // ADR-0055 Decision 12: merge, split, pop-out, dissolve and their undo, for the roles that may write.
+  const changes = useDesignationChangeRunner(canDesignate(server.role) ? writes.replace.mutateAsync : null);
   // A site's key is its position, so it holds across polls; a site that goes away falls back to the overview.
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useOpened();
   return (
     <Loadable pending={firstLoad} skeleton={<PlannerSkeleton />}>
       {query.data ? (
         <DesignationContext.Provider value={state}>
-          <PlannerPanel
-            snapshot={query.data}
-            findings={bottlenecks.data?.data.findings}
-            findingsTruncated={bottlenecks.data?.data.truncated === true}
-            refetchFailed={query.isRefetchError}
-            selected={selected}
-            onSelect={setSelected}
-          />
+          <DesignationChangeContext.Provider value={changes}>
+            <PlannerPanel
+              snapshot={query.data}
+              findings={bottlenecks.data?.data.findings}
+              findingsTruncated={bottlenecks.data?.data.truncated === true}
+              refetchFailed={query.isRefetchError}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </DesignationChangeContext.Provider>
         </DesignationContext.Provider>
       ) : (
         error != null && <PanelError error={error} title="Production planner" />

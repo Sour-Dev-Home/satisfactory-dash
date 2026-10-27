@@ -9,6 +9,7 @@ import { runAgent } from "./agentRunner.js";
 import type { RunAgentOptions } from "./agentRunner.js";
 import { BackendError } from "./backendClient.js";
 import { silentLogger } from "./logger.js";
+import { WorldReader } from "./worldReader.js";
 import type { WorldClient, WorldPorts } from "./worldReader.js";
 
 /**
@@ -58,9 +59,14 @@ describe("the whole agent", () => {
     const unreachable = h.snapshots.filter((snapshot) => !snapshot.reachable);
     expect(unreachable.length).toBeGreaterThan(0);
     for (const snapshot of unreachable) {
-      expect(Object.keys(snapshot).sort()).toEqual(["agentVersion", "observedAt", "paused", "reachable"]);
+      // Down from the start: no successful read yet, so no `lastGameReadAt`.
+      expect(Object.keys(snapshot).sort()).toEqual(["agentVersion", "gameReachable", "modVersion", "observedAt", "paused", "reachable"]);
       expect(snapshot.paused).toBeNull();
+      expect(snapshot.gameReachable).toBe(false);
+      expect(SnapshotRequestSchema.safeParse(snapshot).success).toBe(true);
     }
+    const recovered = h.snapshots.find((snapshot) => snapshot.reachable);
+    expect(recovered).toMatchObject({ gameReachable: true, lastGameReadAt: recovered!.observedAt, modVersion: recovered!.agentVersion });
     // The first reachable one after the outage is a fresh start: every part is due, including the setting.
     expect(h.snapshots.find((snapshot) => snapshot.reachable)).toMatchObject({ reachable: true, settings: { autoPause: true } });
   });
@@ -156,6 +162,7 @@ describe("the world reader inside the agent (ADR-0038 M4)", () => {
       getTrainRoutes: vi.fn<WorldPorts["getTrainRoutes"]>(async () => ({ data: [], dropped: 0 })),
       getDroneRoutes: vi.fn<WorldPorts["getDroneRoutes"]>(async () => ({ data: [], dropped: 0 })),
       getMapMarkers: vi.fn<WorldPorts["getMapMarkers"]>(async () => ({ data: [], dropped: 0 })),
+      getPowerLines: vi.fn<WorldPorts["getPowerLines"]>(async () => ({ data: [], dropped: 0 })),
     };
     const posted: MapWorldLayer[] = [];
     const client: RunAgentOptions["client"] & WorldClient = {
@@ -210,6 +217,37 @@ describe("the world reader inside the agent (ADR-0038 M4)", () => {
     expect(await h.running).toBe("stopped");
     expect(h.world.getRails).not.toHaveBeenCalled();
     expect(h.posted).toEqual([]);
+  });
+
+  it("#728 step 6: each sampled factory's building ids reach the world reader (the conveyors nudge)", async () => {
+    const observe = vi.spyOn(WorldReader.prototype, "observeFactoryBuildings");
+    try {
+      const h = worldRun();
+      await h.until(() => observe.mock.calls.length >= 1);
+      h.stop();
+      expect(await h.running).toBe("stopped");
+      const ids = (agentSnapshotRequestFull.factory as AgentFactory).buildings.map((b) => b.id);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(observe).toHaveBeenCalledWith(ids);
+    } finally {
+      observe.mockRestore();
+    }
+  });
+
+  it("#728 step 6: a throwing nudge never costs the snapshot or ends the sample loop", async () => {
+    const observe = vi.spyOn(WorldReader.prototype, "observeFactoryBuildings").mockImplementation(() => {
+      throw new Error("boom");
+    });
+    try {
+      const h = worldRun();
+      await h.until(() => (h.client.postSnapshot as ReturnType<typeof vi.fn>).mock.calls.length >= 2);
+      h.stop();
+      expect(await h.running).toBe("stopped");
+      expect(observe).toHaveBeenCalled();
+      expect((h.client.postSnapshot as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      observe.mockRestore();
+    }
   });
 
   it("a 401 on a world send stops the whole agent with auth_rejected", async () => {

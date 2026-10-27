@@ -8,13 +8,39 @@ import {
   factoryTitle,
   foldText,
   groupLabel,
+  hasUnknown,
+  mergeStateCounts,
   outputLine,
   remoteText,
   shareText,
   siteNodes,
+  UNKNOWN_FLOW_NOTE,
 } from "../plannerText";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
-import { MAX_SUMMARY_CHARS, edgeLabel, edgeLabelLines, nameOr, nodeFacts, nodeSummary, nodeTitle, productSummary, withName } from "./graphModel";
+import {
+  INFERRED_FROM_NODE,
+  MAX_SUMMARY_CHARS,
+  edgeLabel,
+  edgeLabelLines,
+  extractorOutput,
+  extractorOutputText,
+  groupsExtractorOutput,
+  isStaleNode,
+  minedRates,
+  minedSummary,
+  nameOr,
+  nodeFacts,
+  type MinedRate,
+  nodeSummary,
+  makesNothing,
+  NO_OUTPUT_DATA,
+  nodeTitle,
+  productSummary,
+  STALE_NODE_NOTE,
+  staleNodeLines,
+  stalledNote,
+  withName,
+} from "./graphModel";
 import {
   aggregateFlows,
   bubblesOf,
@@ -28,6 +54,7 @@ import {
   type Bubble,
   type FactoryModel,
   type FlowPart,
+  type FlowQuality,
 } from "./hierarchy";
 
 /**
@@ -55,6 +82,8 @@ export interface Card {
   title: string;
   /** What the card prints under its icon row: one line (a factory's name and then one line). Never empty. */
   lines: string[];
+  /** Lines from this index on are a muted note (an extractor's "(inferred from the node)"); absent = none. */
+  mutedFrom?: number;
   /** The "×N" machine count badge, when the card stands for machines. */
   count: number | undefined;
   /** The building class whose icon the card shows, when it stands for one class. */
@@ -95,10 +124,16 @@ export interface CanvasFlow {
   mixed: boolean;
   /** How sure the rate is, for the line style: an "at least" sum counts as an estimate. */
   rate: "measured" | "estimated" | "unknown";
-  /** The label in one line (the tooltip's words), and as drawn: one to three lines. */
+  /** The label in one line (the tooltip's words), and as drawn: one to three lines (a bundle's up to four). */
   label: string;
   labelLines: string[];
   routeName?: string | undefined;
+  /** The summed rate behind the label (null when no part had a number), its unit and its quality ("at least" kept). */
+  ratePerMinute: number | null;
+  unit: "items/min" | "m3/min";
+  quality: FlowQuality;
+  /** A bundle (`bundleFlows`): the links it draws as one line, each with its own item and rate. Absent on a single link. */
+  parts?: CanvasFlow[] | undefined;
 }
 
 export type SceneLevel = "overview" | "factory" | "site";
@@ -158,6 +193,9 @@ export function canvasFlow(f: AggregateFlow): CanvasFlow {
     label: [item, ...(rateLine === null ? [] : [rateLine]), ...(f.mixed ? ["mixed"] : []), ...(f.flow === "excess" ? ["excess"] : [])].join(" · "),
     labelLines: lines,
     routeName: f.routeName,
+    ratePerMinute: f.ratePerMinute,
+    unit: f.unit,
+    quality: f.quality,
   };
 }
 
@@ -175,16 +213,100 @@ function edgeFlow(edge: PlannerEdge): CanvasFlow {
     label: edgeLabel(edge),
     labelLines: edgeLabelLines(edge),
     routeName: undefined,
+    ratePerMinute: edge.ratePerMinute,
+    unit: edge.kind === "pipe" ? "m3/min" : "items/min",
+    quality: edge.rate,
+  };
+}
+
+/** A bundle's label names this many items; the rest are "+k more" (the tooltip and the Tables view list them all). */
+export const BUNDLE_NAMES = 2;
+
+/** Whether a link's rate counts in a sum: a finite number the backend did not call unknown. */
+const known = (f: Pick<CanvasFlow, "quality" | "ratePerMinute">): boolean => f.quality !== "unknown" && f.ratePerMinute !== null && Number.isFinite(f.ratePerMinute);
+
+/**
+ * One drawn line per ordered pair of cards and carrier (2026-10-27, ADR-0059 amendment): links between the same two cards
+ * in the same direction, on the same carrier (which sets the line's colour and a transport's glyph) and of the same kind
+ * (supply or excess), become one line with one label, so they no longer run as near-parallel lines with stacked labels.
+ * The label names the items (up to `BUNDLE_NAMES`, then "+k more"), folds links of no known item into "+u unknown", and
+ * sums the rate by ADR-0053 Decision 3's rule (weakest quality wins, "at least" when a part has no number). Nothing is
+ * dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the Tables view is
+ * unchanged. Returns the drawn flows in first-seen order, each with the indexes of the links it stands for.
+ */
+export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; members: number[] }[] {
+  const groups = new Map<string, number[]>();
+  flows.forEach((f, i) => {
+    // The unit too: a carrier can move items and fluid, and those never sum (hierarchy.ts keys on it as well).
+    const key = [f.from, f.to, f.carrier, f.flow, f.unit].join("\u0001");
+    const list = groups.get(key);
+    if (list === undefined) groups.set(key, [i]);
+    else list.push(i);
+  });
+  return [...groups.values()].map((members) => ({ flow: members.length === 1 ? flows[members[0]] : bundledFlow(members.map((i) => flows[i])), members }));
+}
+
+function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
+  const head = parts[0];
+  const nameOf = (p: CanvasFlow): string | null => {
+    const n = p.itemName ?? p.itemClassName;
+    return n === null || n === "" ? null : n;
+  };
+  const names = [...new Set(parts.flatMap((p) => nameOf(p) ?? []))];
+  const unknownItems = parts.filter((p) => nameOf(p) === null).length;
+  const sure = parts.filter(known);
+  const quality: FlowQuality =
+    sure.length === 0
+      ? "unknown"
+      : sure.length < parts.length || parts.some((p) => p.quality === "atLeast")
+        ? "atLeast"
+        : parts.every((p) => p.quality === "measured")
+          ? "measured"
+          : "estimated";
+  const ratePerMinute = sure.length === 0 ? null : sure.reduce((sum, p) => sum + p.ratePerMinute!, 0);
+  const unit = head.unit;
+  const rateLine = quality === "unknown" ? null : aggregateRateText({ quality, ratePerMinute, unit });
+  const shown = names.slice(0, BUNDLE_NAMES);
+  const more = names.length - shown.length;
+  const mixed = parts.some((p) => p.mixed);
+  const head1 = shown.length > 0 ? shown.join(", ") : `${unknownItems} items unknown`;
+  const extras = [...(more > 0 ? [`+${more} more`] : []), ...(shown.length > 0 && unknownItems > 0 ? [`+${unknownItems} unknown`] : []), ...(mixed ? ["mixed"] : [])];
+  const routes = new Set(parts.map((p) => p.routeName));
+  return {
+    from: head.from,
+    to: head.to,
+    itemClassName: null,
+    itemName: null,
+    carrier: head.carrier,
+    flow: head.flow,
+    mixed,
+    rate: quality === "measured" ? "measured" : quality === "unknown" ? "unknown" : "estimated",
+    label: [`${parts.length} links`, ...parts.map((p) => p.label)].join("; "),
+    labelLines: [head1, ...(extras.length > 0 ? [extras.join(", ")] : []), ...(rateLine === null ? [] : [rateLine]), ...(head.flow === "excess" ? ["excess"] : [])],
+    routeName: routes.size === 1 ? head.routeName : undefined,
+    ratePerMinute,
+    unit,
+    quality,
+    parts: [...parts],
   };
 }
 
 /** How sure an edge's rate is, in the tables' words. */
 export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.rate === "measured" ? "measured" : flow.rate === "estimated" ? "estimated" : "rate unknown");
 
-/** A flow's tooltip and accessible words: "Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". */
+/**
+ * A flow's tooltip and accessible words: "Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
+ * lists every link it draws, each with its own rate: "A to B, 2 links: Iron Ingot · 30 items/min (measured); Steel Pipe
+ * (rate unknown)".
+ */
 export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const by = flow.carrier === "belt" || flow.carrier === "pipe" ? "" : `${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}: `;
-  return `${by}${from} to ${to}: ${flow.label} (${flowSureness(flow)})`;
+  const bundle = flow.parts !== undefined && flow.parts.length > 1 ? flow.parts : null;
+  const why = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
+  if (bundle !== null) {
+    return `${by}${from} to ${to}, ${bundle.length} links: ${bundle.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}${why}`;
+  }
+  return `${by}${from} to ${to}: ${flow.label} (${flowSureness(flow)})${why}`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -200,20 +322,38 @@ const countOf = (n: number): number | undefined => (Number.isFinite(n) && n > 0 
 const sentences = (parts: readonly string[]): string => parts.filter((p) => p !== "").join(". ");
 
 /**
+ * A card's lines, plus a muted note under them (#728): "(inferred from the node)" under an extractor's guessed resource,
+ * or the machines' state under a product that reads 0. An extractor guesses only when it has no product, so never both.
+ */
+const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, stalled: string | null = null): Pick<Card, "lines" | "mutedFrom"> => {
+  const note = mined?.inferred === true ? INFERRED_FROM_NODE : stalled;
+  return note === null ? { lines } : { lines: [...lines, note], mutedFrom: lines.length };
+};
+
+/** The glyph of a card for several groups: the clock only when every group is stale, else the first group's own glyph. */
+const glyphOfGroups = (nodes: readonly PlannerNode[], first: PlannerNode): GlyphKind =>
+  glyphKindOf(nodes.every(isStaleNode) ? first : { kind: first.kind, ...(first.role === undefined ? {} : { role: first.role }) });
+
+/** A card built from stale conveyor data (#728 cause 11): only the muted note, wrapped to the card's line limits. */
+const staleCardLines = (): Pick<Card, "lines" | "mutedFrom"> => ({ lines: staleNodeLines(), mutedFrom: 0 });
+
+/**
  * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
  * recipe, the other outputs and the loop marker are in `description` (the tooltip and the keyboard name) and the side
  * panel; `facts` are the further words the factory view adds (the share split, where the group stands, storage chips).
+ * `rates` (`minedRates` of the graph's edges) gives an extractor's card its rate.
  */
-export function groupCard(node: PlannerNode, facts: string[] = []): Card {
+export function groupCard(node: PlannerNode, facts: string[] = [], rates?: ReadonlyMap<string, MinedRate | null>): Card {
   const shown = withName(node);
-  const { outputs, loop } = nodeFacts(node);
+  const { outputs, loop } = nodeFacts(node, rates);
+  const summary = nodeSummary(node, rates);
   return {
     ...blank,
     key: node.key,
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    lines: [nodeSummary(node)],
+    ...(isStaleNode(node) ? staleCardLines() : withMutedNote(summary === null ? [] : [summary], extractorOutput(node), stalledNote(node.products[0], node.stateCounts))),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -224,24 +364,42 @@ export function groupCard(node: PlannerNode, facts: string[] = []): Card {
   };
 }
 
-function bubbleCard(bubble: Bubble, chips: string[]): Card {
+function bubbleCard(bubble: Bubble, chips: string[], rates: ReadonlyMap<string, MinedRate | null>): Card {
   const first = withName(bubble.nodes[0]);
   const title = bubbleTitle({ ...bubble, nodes: [first, ...bubble.nodes.slice(1)] });
   const tree = bubble.of > 1 ? ` · tree ${bubble.ordinal} of ${bubble.of}` : "";
   const groups = plural(bubble.nodes.length, "group", "groups");
   const loop = bubble.nodes.some((n) => n.loop === true);
+  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes, rates) : null;
+  const states = mergeStateCounts(bubble.nodes.map((n) => n.stateCounts));
+  const stale = bubble.nodes.every(isStaleNode);
+  const outputs = stale
+    ? [STALE_NODE_NOTE]
+    : mined !== null
+      ? [extractorOutputText(mined)]
+      : bubble.products.length === 0
+        ? bubble.nodes.every(makesNothing)
+          ? []
+          : [NO_OUTPUT_DATA]
+        : bubble.products.map((r) => outputLine(r, states));
   return {
     ...blank,
     key: bubble.key,
     kind: "bubble",
     nodeKeys: bubble.nodes.map((n) => n.key),
     title: nodeTitle({ name: first.name, count: bubble.machineCount }),
-    lines: [bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+    ...(stale
+      ? staleCardLines()
+      : withMutedNote(
+          [mined !== null ? minedSummary(mined) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+          mined,
+          stalledNote(bubble.products[0], states),
+        )),
     count: countOf(bubble.machineCount),
     className: first.className,
-    glyph: glyphKindOf(first),
+    glyph: glyphOfGroups(bubble.nodes, first),
     label: title,
-    description: sentences([title, ...(bubble.products.length === 0 ? ["No output data"] : bubble.products.map(outputLine)), `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
+    description: sentences([title, ...outputs, `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
     facts: chips,
     loop,
     bubbleKey: bubble.key,
@@ -262,7 +420,7 @@ function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
     lines: [cutTo(text, MAX_SUMMARY_CHARS)],
     count: countOf(machines),
     className: first.className,
-    glyph: glyphKindOf(first),
+    glyph: glyphOfGroups(nodes, first),
     label: text,
     description: sentences([text, `${plural(machines, "machine", "machines")} in ${plural(nodes.length, "group", "groups")}`, "Click to show them"]),
     loop: false,
@@ -277,10 +435,11 @@ function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
 export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
   const nodes = siteNodes(graph, site);
   const keys = new Set(nodes.map((n) => n.key));
+  const rates = minedRates(graph.edges);
   return {
     level: "site",
     name: site.name,
-    cards: nodes.map((n) => groupCard(n)),
+    cards: nodes.map((n) => groupCard(n, [], rates)),
     frames: [],
     flows: graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)).map(edgeFlow),
     bubbleKeys: [],
@@ -310,16 +469,16 @@ function factoryCard(model: FactoryModel): Card {
     nodeKeys: model.nodes.map((n) => n.key),
     title,
     // The name and one product line; where it stands, the other outputs and the ends are in `description`.
-    lines: [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])],
+    ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledNote(factory.products[0], model.stateCounts)),
     count: countOf(factory.machineCount),
     className: main?.className,
-    glyph: main === undefined ? "unknown" : glyphKindOf(main),
+    glyph: main === undefined ? "unknown" : glyphOfGroups(model.nodes, main),
     label: name,
     description: sentences([
       name,
       factorySitesText(model),
       plural(factory.machineCount, "machine", "machines"),
-      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map(outputLine)),
+      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map((r) => outputLine(r, model.stateCounts))),
       ...(factory.sharedNodeCount > 0 ? [plural(factory.sharedNodeCount, "shared group", "shared groups")] : []),
       ...model.destinations.map((d) => destinationChipText(d.destination, d.count)),
       ...(model.nodes.some((n) => n.loop === true) ? ["In a loop"] : []),
@@ -480,6 +639,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
 
   const factoryNames = new Map((graph.factories ?? []).map((f) => [f.key, f.name]));
   const remote = remoteInfo(graph, model);
+  const rates = minedRates(graph.edges);
   const chipLines = (keys: readonly string[]): string[] => {
     const n = keys.reduce((sum, k) => sum + (folded.chips.get(k) ?? 0), 0);
     return n === 0 ? [] : [destinationChipText("storage", n)];
@@ -491,7 +651,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     const away = remote.get(node.key);
     if (away !== undefined) extra.push(remoteText(away));
     extra.push(...chipLines([node.key]));
-    return groupCard(node, extra);
+    return groupCard(node, extra, rates);
   };
 
   const cards: Card[] = [];
@@ -506,7 +666,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     }
     bubbleKeys.push(bubble.key);
     if (!expanded(bubble.key)) {
-      cards.push(bubbleCard(bubble, chipLines(bubble.nodes.map((n) => n.key))));
+      cards.push(bubbleCard(bubble, chipLines(bubble.nodes.map((n) => n.key)), rates));
       return;
     }
     const frame = `frame|${bubble.key}`;

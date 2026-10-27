@@ -144,7 +144,8 @@ describe("layoutScene", () => {
     const scene = factoryScene(g, factoryModels(g)[0], EMPTY_VIEW);
     const a = layoutScene(scene, "x");
     clearLayoutMemo();
-    expect(layoutScene(scene, "x")).toEqual(a);
+    // The same picture; only how long dagre took (`placeMs`) differs between runs.
+    expect({ ...layoutScene(scene, "x"), placeMs: 0 }).toEqual({ ...a, placeMs: 0 });
     for (const p of a.nodes) for (const q of a.nodes) if (p !== q) expect(overlap(p, q)).toBe(false);
   });
 
@@ -212,7 +213,8 @@ describe("when dagre cannot route a shape", () => {
     const g = generatedFactory(40, 4);
     const scene = factoryScene(g, factoryModels(g)[0], EMPTY_VIEW);
     const layout = layoutScene(scene, g.topologyHash);
-    expect(layout.edges).toHaveLength(scene.flows.length);
+    // Links between one pair on one carrier are one line (2026-10-27): every link is a part of exactly one line.
+    expect(layout.edges.flatMap((e) => e.parts).sort((a, b) => a - b)).toEqual(scene.flows.map((_, i) => i));
     const seen = new Set<string>();
     for (const e of layout.edges) {
       expect(e.points.length).toBeGreaterThanOrEqual(2);

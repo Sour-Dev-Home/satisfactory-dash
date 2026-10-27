@@ -4,9 +4,11 @@ import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { queries } from "../../api/queries";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { BottleneckBadge } from "../BottleneckBadge";
+import { ErrorLine } from "../DesignationParts";
+import { useRun } from "../useRun";
 import { groupLabel, nodeFindings, stateCountsText } from "../plannerText";
 import { buildingIconUrl } from "./buildingIcons";
-import { nodeFacts, withName } from "./graphModel";
+import { nodeFacts, withName, type MinedRate } from "./graphModel";
 import { joinMachines } from "./panelJoin";
 
 /** Machines listed at most; a group can hold a thousand and the page is not the place to scroll them all. */
@@ -21,18 +23,29 @@ export function GroupPanel({
   id,
   node,
   facts = [],
+  rates,
   findings,
   onClose,
+  onPopOut,
 }: {
   id: string;
   node: PlannerNode;
+  /** `minedRates` of the graph's edges: an extractor's rate. */
+  rates?: ReadonlyMap<string, MinedRate | null>;
   /** The factory view's further words for the group: its share split, where it stands, its storage chips. */
   facts?: readonly string[];
   findings: readonly Bottleneck[] | undefined;
   onClose: () => void;
+  /**
+   * ADR-0055 Decision 12: moves this group out into its own factory (a designated factory that can be split). A rejection
+   * is shown here, beside the button, since this is where the action was taken.
+   */
+  onPopOut?: (() => Promise<void>) | undefined;
 }) {
   const server = useSelectedServer();
-  const factory = useQuery(queries.factory(server.id));  const heading = useRef<HTMLHeadingElement>(null);
+  const factory = useQuery(queries.factory(server.id));
+  const pop = useRun();
+  const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), [node.key]);
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -43,7 +56,7 @@ export function GroupPanel({
   const joined = factory.data ? joinMachines(node, factory.data.data.buildings) : null;
   const shown = joined?.machines.slice(0, PANEL_MAX_MACHINES) ?? [];
   const icon = buildingIconUrl(node.className);
-  const { recipe, outputs, loop } = nodeFacts(node);
+  const { recipe, outputs, loop } = nodeFacts(node, rates);
   const label = groupLabel(withName(node));
 
   return (
@@ -70,15 +83,20 @@ export function GroupPanel({
       </p>
       {/* What the card no longer prints: the recipe, every output, the loop marker and the factory view's further words. */}
       <section aria-label={`About ${label}`} className="grid gap-1 text-sm">
-        <p className="m-0">
-          <span className="text-muted">Recipe: </span>
-          {recipe}
-        </p>
-        <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
-          {outputs.map((o) => (
-            <li key={o}>{o}</li>
-          ))}
-        </ul>
+        {recipe !== null && (
+          <p className="m-0">
+            <span className="text-muted">Recipe: </span>
+            {recipe}
+          </p>
+        )}
+        {/* None for a group that makes nothing (storage, a station, a consumer): no empty list for a screen reader. */}
+        {outputs.length > 0 && (
+          <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
+            {outputs.map((o) => (
+              <li key={o}>{o}</li>
+            ))}
+          </ul>
+        )}
         {loop && <p className="m-0">In a loop</p>}
         {facts.map((f) => (
           <p key={f} className="m-0">
@@ -86,6 +104,20 @@ export function GroupPanel({
           </p>
         ))}
       </section>
+      {onPopOut !== undefined && (
+        <>
+          <button
+            type="button"
+            disabled={pop.busy}
+            onClick={() => void pop.run(onPopOut)}
+            aria-label={`Pop out ${label}`}
+            className="min-h-touch justify-self-start"
+          >
+            Pop out
+          </button>
+          <ErrorLine error={pop.error} />
+        </>
+      )}
       {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
       {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}
       {joined && (

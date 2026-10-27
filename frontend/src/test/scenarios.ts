@@ -1,4 +1,4 @@
-import { endpoints, ownValue, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, PlannerDesignationsResponseSchema, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
 import {
   errorForbidden,
   errorServiceUnavailable,
@@ -10,6 +10,8 @@ import {
   agentRevokeResponse,
   agentStatusEnrolled,
   agentStatusEnrolledSilent,
+  agentStatusGameReachable,
+  agentStatusGameUnreachable,
   agentStatusNotEnrolled,
   alertDeleteDestinationResponse,
   alertDeleteRuleResponse,
@@ -63,9 +65,13 @@ import {
   managedServersAllStates,
   productionGraphEmpty,
   productionGraphFactories,
+  productionGraphStaleEnd,
+  productionGraphStalled,
   productionGraphTwoSites,
   plannerDesignationDeleteResponse,
   plannerDesignationIronLine,
+  plannerDesignationReplaceResponse,
+  plannerDesignationStaleError,
   managedServersWithAgent,
   renameAgentServerResponse,
   managedServersEmpty,
@@ -84,6 +90,10 @@ import {
   powerStale,
   powerUnreachable,
   mapMarkersWorldResponse,
+  powerLinesWorldResponse,
+  droneRoutesWorldResponse,
+  conveyorsWorldResponse,
+  conveyorsWorldResponseEmpty,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -112,6 +122,9 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "./mapMarkersResponses";
+import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "./powerLinesResponses";
+import { conveyorsWorldResponseTruncated } from "./conveyorsResponses";
+import { droneRoutesWorldResponseAmbiguous, droneRoutesWorldResponseEmpty, droneRoutesWorldResponseTruncated } from "./droneRoutesResponses";
 import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
   createdAgentServer,
@@ -164,6 +177,8 @@ export const ROUTES = {
   plannerDesignationCreate: endpoints.plannerDesignations.create,
   plannerDesignationUpdate: endpoints.plannerDesignations.update,
   plannerDesignationRemove: endpoints.plannerDesignations.remove,
+  // ADR-0055 Decision 11 (#727): merge, split, pop-out, dissolve and undo in one write.
+  plannerDesignationReplace: endpoints.plannerDesignations.replace,
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
@@ -172,6 +187,12 @@ export const ROUTES = {
   mapResourceNodes: endpoints.map.worldLayer,
   // ADR-0038 §1 (#330): the players' map markers and stamps, the same endpoint.
   mapMarkers: endpoints.map.worldLayer,
+  // ADR-0038 §1 (#330): the power lines, the same endpoint (off by default on the page, so asked for once toggled on).
+  mapPowerLines: endpoints.map.worldLayer,
+  // ADR-0055 Decision 1 (#330): the drone ports and their pairings, the same endpoint (on by default).
+  mapDroneRoutes: endpoints.map.worldLayer,
+  // #330: the belts, lifts and pipes, the same endpoint (off by default on the page, so asked for once toggled on).
+  mapConveyors: endpoints.map.worldLayer,
   // ADR-0038 M6: the live trains and stations (its own endpoint).
   mapLive: endpoints.map.live,
   settings: endpoints.settings.get,
@@ -239,7 +260,14 @@ export function routeFor<K extends RouteKey>(key: K): (typeof ROUTES)[K] {
 }
 
 /** The routes that share an endpoint with another and are told apart by the last path segment. */
-export const WORLD_LAYER_ROUTES = { mapRails: "rails", mapResourceNodes: "resourceNodes", mapMarkers: "mapMarkers" } as const;
+export const WORLD_LAYER_ROUTES = {
+  mapRails: "rails",
+  mapResourceNodes: "resourceNodes",
+  mapMarkers: "mapMarkers",
+  mapPowerLines: "powerLines",
+  mapDroneRoutes: "droneRoutes",
+  mapConveyors: "conveyors",
+} as const;
 
 /** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
 export function routePattern(key: RouteKey): string {
@@ -284,9 +312,13 @@ const BASE: Record<RouteKey, MockResponse> = {
   plannerDesignationCreate: { status: 201, body: plannerDesignationIronLine },
   plannerDesignationUpdate: ok(plannerDesignationIronLine),
   plannerDesignationRemove: ok(plannerDesignationDeleteResponse),
+  plannerDesignationReplace: ok(plannerDesignationReplaceResponse),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapMarkers: ok(mapMarkersWorldResponse),
+  mapPowerLines: ok(powerLinesWorldResponse),
+  mapDroneRoutes: ok(droneRoutesWorldResponse),
+  mapConveyors: ok(conveyorsWorldResponse),
   mapLive: ok(mapLiveResponse),
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
@@ -411,7 +443,7 @@ const plannerFactoriesTwoTrees = (() => {
 /**
  * ADR-0055 PR 10a: the factories fixture with one id per machine (its own is one per group) and a building for each at the
  * group's place, the Iron Rod factory designated "Rod works" by two machines it holds and one it no longer finds, and the
- * viewer an owner. The Iron Plate factory stays automatic, for the suggestions and the "Designate selected" form.
+ * viewer an owner. The Iron Plate factory stays automatic, for the "Designate selected" form.
  */
 const plannerDesignated = (() => {
   const base = ProductionGraphResponseSchema.parse(productionGraphFactories);
@@ -445,6 +477,41 @@ const plannerDesignated = (() => {
         { id, name: "Rod works", mode: "core", members: [...live, gone], createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-22T18:30:00.000Z" },
       ],
       matches: [{ designationId: id, matched: live.length, missing: 1 }],
+    }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
+
+/**
+ * ADR-0055 Decisions 11 and 12 (#727): the designated scenario from a backend with revisions and member-to-building ids,
+ * so merge, split, pop-out and dissolve are offered. The replace answers the merge (Rod works kept in place, revision 3);
+ * the same answer comes back for the undo, which is all a static mock can do.
+ */
+const plannerMergeSplit = (() => {
+  const list = PlannerDesignationsResponseSchema.parse(plannerDesignated.plannerDesignations.body);
+  const designation = list.designations[0]!;
+  const match = list.matches[0]!;
+  const liveIds = designation.members.slice(0, match.matched).map((m) => m.id);
+  return {
+    ...plannerDesignated,
+    plannerDesignations: ok({
+      designations: [{ ...designation, revision: 2 }],
+      matches: [{ ...match, memberBuildingIds: [...liveIds, null] }],
+    }),
+    plannerDesignationReplace: ok({
+      designations: [{ ...designation, name: "Iron works", updatedAt: "2026-10-24T12:00:00.000Z", revision: 3 }],
+      removedIds: [],
+    }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
+
+/** The same, with nothing between the two factories (no belt, pipe, transport or shared group): Merge stays disabled. */
+const plannerMergeApart = (() => {
+  const graph = ProductionGraphResponseSchema.parse(plannerMergeSplit.productionGraph.body);
+  return {
+    ...plannerMergeSplit,
+    productionGraph: ok({
+      ...graph,
+      data: { ...graph.data, edges: [], transports: [], nodes: graph.data.nodes.map((n) => ({ ...n, shares: undefined })) },
     }),
   } satisfies Partial<Record<RouteKey, MockResponse>>;
 })();
@@ -491,6 +558,23 @@ const factoryWithPlannerManifold = {
     })),
     backedUpCount: 0,
     stateCounts: { producing: 6, underfed: 2 },
+  },
+};
+
+/** The same manifold with its storage full (#728): every constructor backed up at 0 of 20 Iron Plate. */
+const factoryStalledManifold = {
+  ...factoryWithPlannerManifold,
+  data: {
+    ...factoryWithPlannerManifold.data,
+    buildings: factoryWithPlannerManifold.data.buildings.map((b) => ({
+      ...b,
+      state: "backedUp",
+      isBackedUp: true,
+      clockSpeedPercent: 100,
+      production: b.production.map((r) => ({ ...r, currentPerMinute: 0, maxPerMinute: 20, percent: 0 })),
+    })),
+    backedUpCount: 8,
+    stateCounts: { backedUp: 8 },
   },
 };
 
@@ -614,6 +698,9 @@ export const SCENARIOS = {
     mapRails: slow(BASE.mapRails),
     mapResourceNodes: slow(BASE.mapResourceNodes),
     mapMarkers: slow(BASE.mapMarkers),
+    mapPowerLines: slow(BASE.mapPowerLines),
+    mapDroneRoutes: slow(BASE.mapDroneRoutes),
+    mapConveyors: slow(BASE.mapConveyors),
     mapLive: slow(BASE.mapLive),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
@@ -674,15 +761,32 @@ export const SCENARIOS = {
     mapRails: ok(railsWorldResponseEmpty),
     mapResourceNodes: ok(resourceNodesWorldResponseEmpty),
     mapMarkers: ok(mapMarkersWorldResponseEmpty),
+    mapDroneRoutes: ok(droneRoutesWorldResponseEmpty),
   },
   "map-world-truncated": { mapRails: ok(railsWorldResponseTruncated) },
   "map-world-error": {
     mapRails: fail(502, errorUpstreamUnreachable),
     mapResourceNodes: fail(502, errorUpstreamUnreachable),
     mapMarkers: fail(502, errorUpstreamUnreachable),
+    mapDroneRoutes: fail(502, errorUpstreamUnreachable),
   },
   // ADR-0038 §1 (#330), the players' markers: the layer cut to its cap (empty and failing are in the two above).
   "map-markers-truncated": { mapMarkers: ok(mapMarkersWorldResponseTruncated) },
+  // ADR-0038 §1 (#330), the power lines (off by default, so their states act on the toggle): none built yet, cut to the
+  // layer's cap, and the read failing. The default scenario has the two captured lines.
+  "map-power-lines-empty": { mapPowerLines: ok(powerLinesWorldResponseEmpty) },
+  "map-power-lines-truncated": { mapPowerLines: ok(powerLinesWorldResponseTruncated) },
+  "map-power-lines-error": { mapPowerLines: fail(502, errorUpstreamUnreachable) },
+  // #330, the belts, lifts and pipes (off by default, so their states act on the toggle): none reported yet, cut to the
+  // layer's cap, and the read failing. The default scenario has the captured sample.
+  "map-conveyors-empty": { mapConveyors: ok(conveyorsWorldResponseEmpty) },
+  "map-conveyors-truncated": { mapConveyors: ok(conveyorsWorldResponseTruncated) },
+  "map-conveyors-error": { mapConveyors: fail(502, errorUpstreamUnreachable) },
+  // ADR-0055 Decision 1 (#330), the drone ports (on by default, so empty and failing are in map-world-empty and
+  // map-world-error): cut to the layer's cap, and a pairing that names two ports. The default scenario has the captured
+  // pair and an unpaired port.
+  "map-drone-ports-truncated": { mapDroneRoutes: ok(droneRoutesWorldResponseTruncated) },
+  "map-drone-ports-ambiguous": { mapDroneRoutes: ok(droneRoutesWorldResponseAmbiguous) },
   // ADR-0038 M6, the live trains: none built yet, the game unreachable (last known positions), or the read failing.
   "map-live-empty": { mapLive: ok(mapLiveResponseEmpty) },
   "map-live-stale": { mapLive: ok(mapLiveResponseStale) },
@@ -727,8 +831,13 @@ export const SCENARIOS = {
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
-  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate or suggest.
+  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate.
   "planner-designations": plannerDesignated,
+  // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and
+  // a replace that finds a designation changed meanwhile.
+  "planner-merge-split": plannerMergeSplit,
+  "planner-merge-apart": plannerMergeApart,
+  "planner-merge-stale": { ...plannerMergeSplit, plannerDesignationReplace: fail(409, plannerDesignationStaleError) },
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {
@@ -740,6 +849,12 @@ export const SCENARIOS = {
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
   // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
   "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },
+  // #728 step 2: a stalled group. The manifold is backed up at "0 of 160", its card says so in a muted line, and so does
+  // its side panel; the recycler it feeds is underfed at 0.
+  "planner-stalled": { productionGraph: ok(productionGraphStalled), factory: ok(factoryStalledManifold) },
+  // #728 cause 11: a conveyor end names a machine the latest factory read lacks. Its card in the Iron Rod factory says the
+  // conveyor data is older (muted, a clock glyph), never an unknown card.
+  "planner-stale-end": { productionGraph: ok(productionGraphStaleEnd) },
   // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
   // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
   "basic-data": {
@@ -827,6 +942,13 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // #740 follow-up: the agent's own view of the game. Reading it (the dash agent sends its version twice), and not
+  // reaching it for 12 minutes (that one keeps the fixture's differing versions, so it also shows "· sender 1.4.2").
+  "agent-game-reachable-owner": {
+    servers: ok(serversRoleOwner),
+    agentStatus: ok({ ...agentStatusGameReachable, agentVersion: agentStatusGameReachable.modVersion }),
+  },
+  "agent-game-unreachable-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusGameUnreachable) },
   // ADR-0057 Decision 7: the version banners. An agent behind the newest release; the mod behind it (applies at the next
   // restart); a version older than minSupported; a mod inside an advisory's range; and an agent below minSafe with no advisory.
   "update-agent": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.3.5+ec24244.20261025")), compat: ok(compatPolicy) },

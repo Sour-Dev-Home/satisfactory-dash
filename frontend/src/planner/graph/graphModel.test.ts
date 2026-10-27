@@ -66,7 +66,7 @@ describe("node text", () => {
     expect(nameOr("  ", "x")).toBe("x");
     expect(withName({ name: " ", className: "Build_Foo_C" }).name).toBe("Build_Foo_C");
     expect(withName({ name: "", className: "" }).name).toBe("Unknown building");
-    expect(nodeFacts({ ...miner, recipe: "" }).recipe).toBe("No recipe");
+    expect(nodeFacts({ ...plates, recipe: "" }).recipe).toBe("Not configured");
   });
 
   it("cuts a long title with an ellipsis", () => {
@@ -77,7 +77,7 @@ describe("node text", () => {
 
   it("says when there is no recipe or no output data, and lists every output in the facts", () => {
     expect(nodeSummary({ products: [] })).toBe("No output data");
-    expect(nodeFacts({ ...miner, recipe: null, products: [] })).toMatchObject({ recipe: "No recipe", outputs: ["No output data"] });
+    expect(nodeFacts({ ...plates, recipe: null, products: [] })).toMatchObject({ recipe: "Not configured", outputs: ["No output data"] });
     const three = [miner.products[0], { ...miner.products[0], className: "B" }, { ...miner.products[0], className: "C" }];
     expect(nodeFacts({ ...miner, products: three }).outputs).toHaveLength(3);
   });

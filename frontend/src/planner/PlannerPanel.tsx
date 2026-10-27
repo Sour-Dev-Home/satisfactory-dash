@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
 import { DataAge } from "../components/DataAge";
 import { formatTime } from "../format";
+import { cn } from "../lib/cn";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge } from "./BottleneckBadge";
 import { FactoryFacts, FactoryFlows } from "./FactoryParts";
-import { DesignateBar, DesignatedControls, KeepForm, SuggestionControls } from "./DesignationParts";
+import { useDesignationChanges } from "./designationChanges";
+import { DesignateBar, DesignatedControls, ErrorLine } from "./DesignationParts";
 import { useDesignations } from "./DesignationContext";
+import { STALE_TEXT } from "./designationText";
+import { MergeBar, SplitBar } from "./MergeSplitParts";
+import { splitSourceOf } from "./selectionPlans";
+import { UndoToast } from "./UndoToast";
+import { usePopOut } from "./usePopOut";
 import { LazySiteGraph } from "./graph/GraphLoader";
-import type { CanvasSuggestions } from "./graph/SiteGraph";
+import { minedRates } from "./graph/graphModel";
 import {
   connectionRows,
   factoryModels,
@@ -23,12 +30,14 @@ import { ConnectionsTable, GroupsTable, type FactoryColumns, type GroupSelection
 import {
   factoryTitle,
   groupLabel,
+  hasUnknown,
   outputLine,
   plannerNotes,
   siteFindings,
   siteNodes,
   stateCountsText,
   totalMachines,
+  UNKNOWN_FLOW_NOTE,
 } from "./plannerText";
 
 type Graph = ProductionGraphResponse["data"];
@@ -55,7 +64,7 @@ function SiteCard({
         <ul aria-label={`Top outputs of ${site.name}`} className="m-0 grid list-none gap-0.5 p-0 text-sm">
           {site.topOutputs.map((rate) => (
             <li key={rate.className} className="break-words">
-              {outputLine(rate)}
+              {outputLine(rate, site.stateCounts)}
             </li>
           ))}
         </ul>
@@ -74,33 +83,43 @@ function SiteCard({
   );
 }
 
-/** A designated factory is the player's own; with suggestions on, an automatic one is shown dashed, with Keep (Decision 5). */
-function FactoryStanding({ model, suggest }: { model: FactoryModel; suggest: boolean }) {
-  if (model.factory.designationId !== null) return <DesignatedControls model={model} />;
-  return suggest ? <SuggestionControls model={model} /> : null;
+/** A designated factory is the player's own (Decision 5); an automatic one has no controls of its own. */
+function FactoryStanding({ model }: { model: FactoryModel }) {
+  return model.factory.designationId !== null ? <DesignatedControls model={model} /> : null;
 }
 
 function FactoryCard({
   model,
   findings,
-  suggest,
   onOpen,
+  pick,
 }: {
   model: FactoryModel;
   findings: readonly Bottleneck[] | undefined;
-  suggest: boolean;
   onOpen: () => void;
+  /** Owners and admins: the card's tick for a merge (the keyboard and narrow-screen form of Shift-click). */
+  pick?: { checked: boolean; toggle: () => void } | undefined;
 }) {
   const { factory } = model;
-  const dashed = suggest && factory.designationId === null;
   return (
-    <li className={`grid content-start gap-2 rounded-card border p-4 ${dashed ? "border-dashed border-muted" : "border-line"}`}>
+    <li
+      data-picked={pick?.checked === true || undefined}
+      className={cn("grid content-start gap-2 rounded-card border border-line p-4", pick?.checked === true && "border-info bg-info-soft")}
+    >
       <h4 className="m-0 break-words">{factoryTitle(factory)}</h4>
       <FactoryFacts model={model} findings={findings} />
-      <FactoryStanding model={model} suggest={suggest} />
-      <button type="button" onClick={onOpen} aria-label={`Open factory: ${factory.name}`} className="min-h-touch justify-self-start">
-        Open factory
-      </button>
+      <FactoryStanding model={model} />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={onOpen} aria-label={`Open factory: ${factory.name}`} className="min-h-touch justify-self-start">
+          Open factory
+        </button>
+        {pick !== undefined && (
+          <label className="inline-flex min-h-touch items-center gap-2 text-sm">
+            <input type="checkbox" className="size-5" aria-label={`Select ${factory.name}`} checked={pick.checked} onChange={pick.toggle} />
+            Select
+          </label>
+        )}
+      </div>
     </li>
   );
 }
@@ -113,35 +132,32 @@ function FactoryOverview({
   graph,
   models,
   findings,
-  suggest,
   onOpen,
   viewMode: [view, setMode],
 }: {
   graph: Graph;
   models: readonly FactoryModel[];
   findings: readonly Bottleneck[] | undefined;
-  /** "Reason factories for me", held by the page like the view. */
-  suggest: [boolean, (on: boolean) => void];
   onOpen: (key: string) => void;
   /** Held by the page, so coming back from a factory shows the same view. */
   viewMode: [ViewMode, (mode: ViewMode) => void];
 }) {
-  const [suggesting, setSuggesting] = suggest;
-  const automatic = models.some((m) => m.factory.designationId === null);
   const { canWrite, writes } = useDesignations();
-  const suggestions: CanvasSuggestions | undefined = useMemo(() => {
-    if (!suggesting) return undefined;
-    const byKey = new Map(models.map((m) => [m.factory.key, m]));
-    const keys = new Set(models.filter((m) => m.factory.designationId === null).map((m) => m.factory.key));
-    const keepForm =
-      canWrite && writes !== null
-        ? (key: string, onClose: (saved: boolean) => void) => {
-            const model = byKey.get(key);
-            return model === undefined ? null : <KeepForm key={key} model={model} onClose={onClose} />;
-          }
-        : undefined;
-    return { keys, keepForm };
-  }, [suggesting, models, canWrite, writes]);
+  // ADR-0055 Decision 12: factories picked to merge (canvas Shift- or Ctrl-click, or the cards' ticks). A pick a poll took
+  // away is dropped from what the bar sees.
+  const changes = useDesignationChanges();
+  const canMerge = canWrite && writes !== null && changes !== null;
+  const [picks, setPicks] = useState<ReadonlySet<string>>(new Set());
+  const [notice, setNotice] = useState<string | null>(null);
+  const picked = useMemo(() => models.filter((m) => picks.has(m.factory.key)), [models, picks]);
+  const pickNow = useCallback((next: ReadonlySet<string>) => {
+    setNotice(null);
+    setPicks(next);
+  }, []);
+  const factoryPicks = useMemo(
+    () => (canMerge ? { selected: new Set(picked.map((m) => m.factory.key)), replace: pickNow } : undefined),
+    [canMerge, picked, pickNow],
+  );
   return (
     <>
       <p className="summary">
@@ -149,26 +165,53 @@ function FactoryOverview({
         {graph.nodes.length === 1 ? "group" : "groups"}
       </p>
       <ViewToggle view={view} onPick={setMode} />
-      {automatic && (
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            aria-pressed={suggesting}
-            className="min-h-touch"
-            onClick={() => setSuggesting(!suggesting)}
-          >
-            Reason factories for me
-          </button>
-          {suggesting && <span className="text-sm text-muted">Factories you have not designated are shown dashed, as suggestions.</span>}
-        </div>
+      {canMerge && (
+        <MergeBar
+          onCanvas={view === "graph"}
+          graph={graph}
+          picked={picked}
+          onClear={() => pickNow(new Set())}
+          onStale={() => {
+            setPicks(new Set());
+            setNotice(STALE_TEXT);
+          }}
+        />
+      )}
+      {notice !== null && (
+        <p role="alert" className="m-0 text-sm">
+          {notice}
+        </p>
       )}
       {view === "graph" ? (
-        <LazySiteGraph graph={graph} target={{ kind: "overview", models }} findings={findings} onOpenFactory={onOpen} suggestions={suggestions} />
+        <LazySiteGraph
+          graph={graph}
+          target={{ kind: "overview", models }}
+          findings={findings}
+          onOpenFactory={onOpen}
+          factoryPicks={factoryPicks}
+        />
       ) : (
         <>
           <ul aria-label="Factories" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
             {models.map((m) => (
-              <FactoryCard key={m.factory.key} model={m} findings={findings} suggest={suggesting} onOpen={() => onOpen(m.factory.key)} />
+              <FactoryCard
+                key={m.factory.key}
+                model={m}
+                findings={findings}
+                onOpen={() => onOpen(m.factory.key)}
+                pick={
+                  factoryPicks === undefined
+                    ? undefined
+                    : {
+                        checked: factoryPicks.selected.has(m.factory.key),
+                        toggle: () => {
+                          const next = new Set(factoryPicks.selected);
+                          if (!next.delete(m.factory.key)) next.add(m.factory.key);
+                          pickNow(next);
+                        },
+                      }
+                }
+              />
             ))}
           </ul>
           <FactoryFlows graph={graph} models={models} />
@@ -207,14 +250,12 @@ function Detail({
   subject,
   graph,
   findings,
-  suggest,
   onBack,
 }: {
   /** What is open: one site (a backend without factories) or one factory. */
   subject: { site: PlannerSite; factory?: undefined } | { factory: FactoryModel; site?: undefined };
   graph: Graph;
   findings: readonly Bottleneck[] | undefined;
-  suggest: boolean;
   onBack: () => void;
 }) {
   const { site, factory } = subject;
@@ -225,6 +266,7 @@ function Detail({
   const rows = useMemo(() => connectionRows(graph, new Set(nodes.map((n) => n.key))), [graph, nodes]);
   const byKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const factoryNames = useMemo(() => new Map((graph.factories ?? []).map((f) => [f.key, f.name])), [graph]);
+  const rates = useMemo(() => minedRates(graph.edges), [graph]);
   const owner = useMemo(() => factoryOfNode(graph), [graph]);
   const columns: FactoryColumns | undefined = useMemo(
     () => (factory === undefined ? undefined : { remote: remoteInfo(graph, factory), nameOf: factoryNames }),
@@ -242,23 +284,41 @@ function Detail({
   const [view, setMode] = useViewMode();
   const noun = factory === undefined ? "site" : "factory";
   // The text form of the lasso (ADR-0055 Decision 5): tick groups, then "Designate selected". Owners and admins only.
-  const { canWrite, writes } = useDesignations();
+  const { canWrite, writes, designations } = useDesignations();
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  // ADR-0055 Decision 12: a designated factory on a backend with revisions splits (and pops out) instead of designating.
+  const changes = useDesignationChanges();
+  const source = canWrite && writes !== null && changes !== null && factory !== undefined ? splitSourceOf(factory, designations) : null;
+  const [notice, setNotice] = useState<string | null>(null);
+  const onStale = () => {
+    setPicked(new Set());
+    setNotice(STALE_TEXT);
+  };
+  const pop = usePopOut(source, onStale);
   const selection: GroupSelection | undefined =
     canWrite && writes !== null
       ? {
           selected: picked,
-          toggle: (key) =>
+          toggle: (key) => {
+            setNotice(null);
             setPicked((prev) => {
               const next = new Set(prev);
               if (!next.delete(key)) next.add(key);
               return next;
-            }),
+            });
+          },
+          popOut: pop.popOut,
+          popOutBusy: pop.busy,
         }
       : undefined;
+  const pickedNodes = nodes.filter((n) => picked.has(n.key));
   return (
     <div className="grid gap-3">
-      <button type="button" onClick={onBack} className="min-h-touch justify-self-start">
+      {/* One level up; the browser's Back does the same, since opening one is a history entry (PlannerView). */}
+      <button type="button" onClick={onBack} className="inline-flex min-h-touch items-center gap-1 justify-self-start">
+        <svg viewBox="0 0 24 24" aria-hidden className="size-5" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
         {factory === undefined ? "All sites" : "All factories"}
       </button>
       <h4 ref={heading} tabIndex={-1} id="planner-site-heading" className="m-0 break-words">
@@ -277,7 +337,7 @@ function Detail({
       ) : (
         <div className="grid content-start gap-2">
           <FactoryFacts model={factory} findings={findings} detail />
-          <FactoryStanding model={factory} suggest={suggest} />
+          <FactoryStanding model={factory} />
         </div>
       )}
 
@@ -286,14 +346,46 @@ function Detail({
 
       {/* One bar for both views: the canvas's picks and the table's ticks are the same selection. Above the graph it shows
           only once something is picked, so it does not push the canvas down for nothing. */}
-      {selection !== undefined && nodes.length > 0 && (view === "tables" || picked.size > 0) && <DesignateBar nodes={nodes.filter((n) => picked.has(n.key))} onDone={() => setPicked(new Set())} />}
+      {selection !== undefined &&
+        nodes.length > 0 &&
+        (view === "tables" || picked.size > 0) &&
+        (source !== null && factory !== undefined ? (
+          <SplitBar graph={graph} model={factory} source={source} nodes={pickedNodes} onDone={() => setPicked(new Set())} onStale={onStale} />
+        ) : (
+          <DesignateBar nodes={pickedNodes} onDone={() => setPicked(new Set())} />
+        ))}
+      {notice !== null && (
+        <p role="alert" className="m-0 text-sm">
+          {notice}
+        </p>
+      )}
+      <ErrorLine error={pop.error} />
 
       {view === "graph" && (
         <LazySiteGraph
           graph={graph}
           target={factory === undefined ? { kind: "site", site } : { kind: "factory", model: factory }}
           findings={findings}
-          selection={selection === undefined ? undefined : { selected: picked, replace: setPicked }}
+          selection={
+            selection === undefined
+              ? undefined
+              : {
+                  selected: picked,
+                  replace: (next) => {
+                    setNotice(null);
+                    setPicked(next);
+                  },
+                }
+          }
+          onPopOut={
+            pop.write === undefined
+              ? undefined
+              : async (key) => {
+                  const node = byKey.get(key);
+                  // The panel runs this and shows a failure itself, beside its Pop out.
+                  if (node !== undefined) await pop.write?.(node);
+                }
+          }
         />
       )}
 
@@ -304,7 +396,7 @@ function Detail({
         {nodes.length === 0 ? (
           <p className="m-0">This {noun} lists no machine groups.</p>
         ) : (
-          <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} />
+          <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} rates={rates} />
         )}
       </section>
 
@@ -321,6 +413,7 @@ function Detail({
           A rate with no word is measured. &quot;About&quot; is estimated from how machines share a belt. &quot;Unknown&quot; means the
           data cannot say.
         </p>
+        {rows.some(hasUnknown) && <p className="m-0 text-sm text-muted">{UNKNOWN_FLOW_NOTE}</p>}
       </section>
     </div>
   );
@@ -357,18 +450,16 @@ export function PlannerPanel({
   const orphans = byFactory ? unassignedCount(graph) : 0;
   const orphanNote = `${orphans} ${orphans === 1 ? "group belongs" : "groups belong"} to no factory, so ${orphans === 1 ? "it is" : "they are"} not listed under one.`;
   const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
+  const noBeltData = graph.beltData === "unsupported" || graph.beltData === "tooLarge" || graph.beltData === "notReceived";
   const overviewMode = useViewMode();
-  const [suggesting, setSuggesting] = useState(false);
   const overviewHeading = useRef<HTMLHeadingElement>(null);
-  // Back from one: focus the overview's heading, but not on the page's first render.
-  const [cameBack, setCameBack] = useState(false);
+  // Back from one (the button or the browser's Back): focus the overview's heading, but not on the page's first render.
+  const wasOpen = useRef(open);
   useEffect(() => {
-    if (cameBack && !open) overviewHeading.current?.focus();
-  }, [cameBack, open]);
-  const back = () => {
-    setCameBack(true);
-    onSelect(null);
-  };
+    if (wasOpen.current && !open) overviewHeading.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
+  const back = () => onSelect(null);
 
   return (
     <section aria-labelledby="planner-heading" className="panel content-start">
@@ -386,21 +477,11 @@ export function PlannerPanel({
               : "No sites yet: no machines are connected by conveyors."}
         </p>
       ) : model !== undefined ? (
-        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} suggest={suggesting} onBack={back} />
+        <Detail key={model.factory.key} subject={{ factory: model }} graph={graph} findings={findings} onBack={back} />
       ) : site !== undefined ? (
-        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} suggest={suggesting} onBack={back} />
+        <Detail key={site.key} subject={{ site }} graph={graph} findings={findings} onBack={back} />
       ) : byFactory ? (
-        <FactoryOverview
-          graph={graph}
-          models={models}
-          findings={findings}
-          viewMode={overviewMode}
-          suggest={[suggesting, setSuggesting]}
-          onOpen={(key) => {
-            setCameBack(false);
-            onSelect(key);
-          }}
-        />
+        <FactoryOverview graph={graph} models={models} findings={findings} viewMode={overviewMode} onOpen={onSelect} />
       ) : (
         <>
           <p className="summary">
@@ -414,24 +495,27 @@ export function PlannerPanel({
                 site={s}
                 graph={graph}
                 findings={findings}
-                onOpen={() => {
-                  setCameBack(false);
-                  onSelect(s.key);
-                }}
+                onOpen={() => onSelect(s.key)}
               />
             ))}
           </ul>
         </>
       )}
 
-      {(notes.length > 0 || findingsTruncated) && (
-        <ul aria-label="Planner notes" className="m-0 grid list-none gap-1 break-words p-0 text-sm text-muted">
+      <UndoToast />
+
+      {/* The caveats stay out of the way until looked for (the owner, 2026-10-27). Without belt data they say why the
+          page is thin (update FRM, too large, not sent), so then they stay in view. */}
+      <details className="text-sm text-muted" open={noBeltData || undefined}>
+        <summary className="cursor-pointer">About this data</summary>
+        <ul aria-label="Planner notes" className="m-0 mt-1 grid list-none gap-1 break-words p-0">
+          <li>{UNKNOWN_FLOW_NOTE}</li>
           {notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
           {findingsTruncated && <li>Bottleneck counts cover the Factory page&apos;s top findings only.</li>}
         </ul>
-      )}
+      </details>
 
       <p className="as-of">
         <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />

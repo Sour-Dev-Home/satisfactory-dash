@@ -11,7 +11,7 @@ const card = (key: string, frame?: string): Card => ({
 });
 const flow = (from: string, to: string, carrier = "belt", n = 1): CanvasFlow => ({
   from, to, itemClassName: "i", itemName: "Item", carrier, flow: "supply", mixed: false, rate: "measured",
-  label: `Item ${n}`, labelLines: Array.from({ length: n }, (_, i) => `Item line ${i}`),
+  label: `Item ${n}`, labelLines: Array.from({ length: n }, (_, i) => `Item line ${i}`), ratePerMinute: 1, unit: "items/min", quality: "measured",
 });
 const scene = (cards: Card[], flows: CanvasFlow[], frames: Frame[] = []): Scene => ({
   level: "site", name: "t", cards, frames, flows, bubbleKeys: [], foldKeys: [], hasStorage: false, openByDefault: true, noun: "groups",

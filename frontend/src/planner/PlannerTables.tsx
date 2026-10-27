@@ -1,6 +1,20 @@
 import { useState } from "react";
 import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { BottleneckBadge } from "./BottleneckBadge";
+import {
+  extractorOutput,
+  groupsExtractorOutput,
+  INFERRED_FROM_NODE,
+  isStaleNode,
+  makesNothing,
+  minedLine,
+  NO_OUTPUT_DATA,
+  noRecipeCellText,
+  recipeText,
+  STALE_NODE_NOTE,
+  type MinedOutput,
+  type MinedRate,
+} from "./graph/graphModel";
 import { bubblesOf, foldBubbles, shareSplit, type Bubble, type ConnectionRow, type Remote } from "./graph/hierarchy";
 import {
   bubbleTitle,
@@ -11,6 +25,7 @@ import {
   foldText,
   groupLabel,
   itemFromText,
+  mergeStateCounts,
   nodeFindings,
   outputLine,
   rateText,
@@ -24,6 +39,9 @@ import {
 export interface GroupSelection {
   selected: ReadonlySet<string>;
   toggle: (nodeKey: string) => void;
+  /** ADR-0055 Decision 12: in a designated factory that can be split, a row's "Pop out" moves the group into its own. */
+  popOut?: ((node: PlannerNode) => void) | undefined;
+  popOutBusy?: boolean;
 }
 
 /** What the Groups table knows beyond the groups when it lists one factory. */
@@ -33,11 +51,33 @@ export interface FactoryColumns {
   nameOf: ReadonlyMap<string, string>;
 }
 
-function Outputs({ node }: { node: PlannerNode }) {
-  if (node.products.length === 0) return <span className="text-muted">No output data</span>;
+type Rates = ReadonlyMap<string, MinedRate | null> | undefined;
+
+/**
+ * An extractor's guessed resource and the rate its links carry ("rate not read" without one), then the muted "(inferred
+ * from the node)"; or the honest "Resource not identified".
+ */
+function Mined({ mined }: { mined: MinedOutput }) {
+  if (!mined.inferred) return <span className={mined.rate === null ? "text-muted" : "break-words"}>{minedLine(mined)}</span>;
+  return (
+    <>
+      <span className="block break-words">{minedLine(mined)}</span>
+      <span className="block text-sm text-muted">{INFERRED_FROM_NODE}</span>
+    </>
+  );
+}
+
+/** #728 cause 11: a group built from conveyor data older than the factory read says so, muted, in place of its outputs. */
+const StaleNote = () => <span className="block break-words text-muted">{STALE_NODE_NOTE}</span>;
+
+function Outputs({ node, rates }: { node: PlannerNode; rates: Rates }) {
+  if (isStaleNode(node)) return <StaleNote />;
+  const mined = extractorOutput(node, rates);
+  if (mined !== null) return <Mined mined={mined} />;
+  if (node.products.length === 0) return makesNothing(node) ? null : <span className="text-muted">{NO_OUTPUT_DATA}</span>;
   return node.products.map((rate) => (
     <span key={rate.className} className="block break-words">
-      {outputLine(rate)}
+      {outputLine(rate, node.stateCounts)}
     </span>
   ));
 }
@@ -49,6 +89,7 @@ function GroupRow({
   nested,
   factory,
   selection,
+  rates,
 }: {
   node: PlannerNode;
   findings: readonly Bottleneck[] | undefined;
@@ -56,6 +97,7 @@ function GroupRow({
   nested: boolean;
   factory: FactoryColumns | undefined;
   selection: GroupSelection | undefined;
+  rates: Rates;
 }) {
   const hits = nodeFindings(node, findings).length;
   const role = roleText(node.role);
@@ -63,6 +105,7 @@ function GroupRow({
   const tree = !nested && bubble.of > 1 ? `tree ${bubble.ordinal} of ${bubble.of}` : null;
   const remote = factory?.remote.get(node.key);
   const split = factory === undefined ? null : shareSplit(node);
+  const recipe = recipeText(node);
   return (
     <tr>
       <th scope="row" className={nested ? "break-words ps-6" : "break-words"}>
@@ -71,10 +114,10 @@ function GroupRow({
       </th>
       <td data-label="Count">{node.count}</td>
       <td data-label="Recipe" className="break-words">
-        {node.recipe ?? "No recipe"}
+        {recipe ?? <span className="text-muted">{noRecipeCellText(node)}</span>}
       </td>
       <td data-label="Output">
-        <Outputs node={node} />
+        <Outputs node={node} rates={rates} />
       </td>
       <td data-label="States">{stateCountsText(node.stateCounts)}</td>
       <td data-label="Loop">{node.loop ? "In a loop" : "No"}</td>
@@ -99,6 +142,17 @@ function GroupRow({
             <input type="checkbox" className="size-5" checked={selection.selected.has(node.key)} onChange={() => selection.toggle(node.key)} />
             <span className="sr-only">Select {node.name}</span>
           </label>
+          {selection.popOut !== undefined && (
+            <button
+              type="button"
+              disabled={selection.popOutBusy === true}
+              aria-label={`Pop out ${groupLabel(node)}`}
+              onClick={() => selection.popOut?.(node)}
+              className="ms-2 min-h-touch"
+            >
+              Pop out
+            </button>
+          )}
         </td>
       )}
     </tr>
@@ -111,15 +165,18 @@ function BubbleBody({
   factory,
   selection,
   columns,
+  rates,
 }: {
   bubble: Bubble;
   findings: readonly Bottleneck[] | undefined;
   factory: FactoryColumns | undefined;
   selection: GroupSelection | undefined;
   columns: number;
+  rates: Rates;
 }) {
   // A bubble of one group is just its row; a bigger one gets a row that names it, and its groups are indented under it.
   const nested = bubble.nodes.length > 1;
+  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes, rates) : null;
   return (
     <tbody>
       {nested && (
@@ -128,12 +185,16 @@ function BubbleBody({
             {bubbleTitle(bubble)}
           </th>
           <td colSpan={columns - 1} className="break-words">
-            {bubble.products.length === 0 ? (
-              <span className="text-muted">No output data</span>
+            {bubble.nodes.every(isStaleNode) ? (
+              <StaleNote />
+            ) : mined !== null ? (
+              <Mined mined={mined} />
+            ) : bubble.products.length === 0 ? (
+              bubble.nodes.every(makesNothing) ? null : <span className="text-muted">{NO_OUTPUT_DATA}</span>
             ) : (
               bubble.products.map((rate) => (
                 <span key={rate.className} className="block">
-                  {outputLine(rate)}
+                  {outputLine(rate, mergeStateCounts(bubble.nodes.map((n) => n.stateCounts)))}
                 </span>
               ))
             )}
@@ -141,7 +202,7 @@ function BubbleBody({
         </tr>
       )}
       {bubble.nodes.map((node) => (
-        <GroupRow key={node.key} node={node} findings={findings} bubble={bubble} nested={nested} factory={factory} selection={selection} />
+        <GroupRow key={node.key} node={node} findings={findings} bubble={bubble} nested={nested} factory={factory} selection={selection} rates={rates} />
       ))}
     </tbody>
   );
@@ -156,11 +217,14 @@ export function GroupsTable({
   findings,
   factory,
   selection,
+  rates,
 }: {
   nodes: readonly PlannerNode[];
   findings: readonly Bottleneck[] | undefined;
   factory?: FactoryColumns;
   selection?: GroupSelection;
+  /** `minedRates` of the graph's edges: an extractor's rate. */
+  rates?: ReadonlyMap<string, MinedRate | null>;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const entries = foldBubbles(bubblesOf(nodes));
@@ -181,7 +245,7 @@ export function GroupsTable({
         </tr>
       </thead>
       {entries.flatMap((entry) => {
-        if (entry.type === "bubble") return [<BubbleBody key={entry.bubble.key} bubble={entry.bubble} findings={findings} factory={factory} selection={selection} columns={columns} />];
+        if (entry.type === "bubble") return [<BubbleBody key={entry.bubble.key} bubble={entry.bubble} findings={findings} factory={factory} selection={selection} columns={columns} rates={rates} />];
         const shown = open.has(entry.key);
         const toggle = (
           <tbody key={entry.key}>
@@ -206,7 +270,7 @@ export function GroupsTable({
           </tbody>
         );
         return shown
-          ? [toggle, ...entry.bubbles.map((b) => <BubbleBody key={b.key} bubble={b} findings={findings} factory={factory} selection={selection} columns={columns} />)]
+          ? [toggle, ...entry.bubbles.map((b) => <BubbleBody key={b.key} bubble={b} findings={findings} factory={factory} selection={selection} columns={columns} rates={rates} />)]
           : [toggle];
       })}
     </table>

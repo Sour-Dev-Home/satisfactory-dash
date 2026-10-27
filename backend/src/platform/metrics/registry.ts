@@ -106,6 +106,7 @@ export const QUERY_NAMES = [
   "agents.touchPairingPoll",
   "agents.revokeCredential",
   "agents.setAgentVersion",
+  "agents.setGameConnection",
   "agents.touchAgent",
   "agents.upsertCredential",
   // alerts
@@ -197,7 +198,9 @@ export const QUERY_NAMES = [
   "identity.updateDisplayName",
   // map
   "map.designations.delete",
+  "map.designations.deleteMany",
   "map.designations.insert",
+  "map.designations.insertRestoring",
   "map.designations.list",
   "map.designations.lockServer",
   "map.designations.readAll",
@@ -284,7 +287,10 @@ export const QUERY_NAMES = [
   "metrics.counterTotals",
   "metrics.histogramBuckets",
   "metrics.histogramHourly",
+  "metrics.insertDeliverySnapshot",
+  "metrics.latestDeliverySnapshot",
   "metrics.mergeBucketCountsInDb",
+  "metrics.pruneDeliverySnapshots",
   "metrics.purgeExpiredSeries",
   "retention.expiredEnrollmentCodes",
   "retention.finishedOutbox",

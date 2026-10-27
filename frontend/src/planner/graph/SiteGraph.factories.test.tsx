@@ -220,18 +220,35 @@ describe("drill-down into a bubble", () => {
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(1);
   });
 
+  it("remembers Collapse all for the factory across a visit to All factories and the Tables view (the owner, 2026-10-27)", async () => {
+    await openPlate();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    fireEvent.click(screen.getByRole("button", { name: "All factories" }));
+    await overview();
+    fireEvent.click(await button(/^Open factory: Iron Plate factory./));
+    let svg = await plateGraph();
+    expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
+    // Tables and back to the graph remounts the canvas; the choice holds there too.
+    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    svg = await plateGraph();
+    expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
+  });
+
   it("opens a group inside a frame in the side panel", async () => {
     await openPlate();
     fireEvent.click(await button(/^4× Constructor, Iron Plate./));
     expect(await screen.findByRole("complementary", { name: /^4× Constructor, Iron Plate/ })).toBeInTheDocument();
   });
 
-  it("lists in the panel what the card no longer prints: the recipe, the outputs and the share split", async () => {
+  it("lists in the panel what the card no longer prints: the outputs and the share split (a miner has no recipe line)", async () => {
     const svg = await openPlate();
     expect([...svg.querySelectorAll("text")].some((t) => /60% here/.test(t.textContent ?? ""))).toBe(false);
     fireEvent.click((await screen.findAllByRole("button", { name: /60% here, 40% Iron Rod/ }))[0]);
     const panel = await screen.findByRole("complementary");
-    expect(panel).toHaveTextContent(/Recipe:/);
+    expect(panel).toHaveTextContent(/^Miner Mk\.2/);
+    expect(panel).not.toHaveTextContent(/Recipe:/);
     expect(within(panel).getByRole("list", { name: "Outputs" })).toBeInTheDocument();
     expect(panel).toHaveTextContent(/60% here, 40% Iron Rod/);
   });

@@ -15,9 +15,27 @@ import { railsLayer } from "./railsLayer";
 import { trainsLayer } from "./trainsLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
 import { markersLayer } from "./markersLayer";
+import { powerLinesLayer } from "./powerLinesLayer";
+import { dronePortsLayer, drawDronePorts } from "./dronePortsLayer";
+import { conveyorsLayer } from "./conveyorsLayer";
+import { placeConveyors, type BuildingPlace } from "./conveyors";
+import { itemLabels, labelFor } from "../factory/itemLabels";
 import { MapFilterPanel } from "./MapFilterPanel";
+import { captionLayers } from "./caption";
+import { ScrollRegion } from "../ui/ScrollRegion";
 import { buildingCounts, filterBuildings, filterNodes, typeEntries, useMapFilters } from "./mapFilters";
-import { EMPTY_FILTERED, EMPTY_VIEW, MarkersTable, RailsTable, ResourceNodesTable, StationsTable, TrainsTable } from "./WorldTables";
+import {
+  ConveyorsTable,
+  DronePortsTable,
+  EMPTY_FILTERED,
+  EMPTY_VIEW,
+  MarkersTable,
+  PowerLinesTable,
+  RailsTable,
+  ResourceNodesTable,
+  StationsTable,
+  TrainsTable,
+} from "./WorldTables";
 
 // Leaflet (about 40 kB gzip) is only needed here: a separate chunk, loaded with this page.
 // React.lazy caches a failed import for good, so on failure swap in a fresh lazy component
@@ -31,11 +49,27 @@ let MapCanvas = lazy(loadCanvas);
 
 /**
  * The layers in draw order, bottom first (ADR-0023 decision 5; ADR-0038 M5): the rails and the resource
- * nodes are the data-derived base map, the buildings sit on top, the players' markers (#330) above them (they
- * point at things), and the live trains (M6) on top of all: they are the layer that redraws every poll, so the
- * canvas redraws only it.
+ * nodes are the data-derived base map, the power lines (#330) are thin wires over it, the belts, lifts and pipes (#330)
+ * just above the wires and under the buildings they join, the buildings sit on top, the drone ports and their routes
+ * (#330) over the buildings (a route crosses them), the players' markers (#330) above them (they point at things), and
+ * the live trains (M6) on top of all: they are the layer that redraws every poll, so the canvas redraws only it.
  */
-const LAYERS = [railsLayer, resourceNodesLayer, buildingsLayer, markersLayer, trainsLayer] as const;
+const LAYERS = [
+  railsLayer,
+  resourceNodesLayer,
+  powerLinesLayer,
+  conveyorsLayer,
+  buildingsLayer,
+  dronePortsLayer,
+  markersLayer,
+  trainsLayer,
+] as const;
+
+/**
+ * The world layers as the caption under the map names them, from LAYERS itself (caption.ts), so a new layer joins the
+ * sentence. The buildings are the factory the whole map is about, not something laid over it, so they aren't listed.
+ */
+const WORLD_CAPTION = captionLayers(LAYERS.filter((l) => l.id !== buildingsLayer.id));
 
 /** Binds a layer to its data, which is all the canvas needs to draw it. */
 const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, draw: (ctx) => layer.draw(ctx, data) });
@@ -156,15 +190,24 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   // A world layer is fetched only while its toggle is on (ADR-0038 §2).
   const rails = useQuery({ ...queries.mapRails(serverId), enabled: visible.has(railsLayer.id) });
   const nodes = useQuery({ ...queries.mapResourceNodes(serverId), enabled: visible.has(resourceNodesLayer.id) });
+  const powerLines = useQuery({ ...queries.mapPowerLines(serverId), enabled: visible.has(powerLinesLayer.id) });
+  const conveyors = useQuery({ ...queries.mapConveyors(serverId), enabled: visible.has(conveyorsLayer.id) });
+  const drones = useQuery({ ...queries.mapDroneRoutes(serverId), enabled: visible.has(dronePortsLayer.id) });
   const markers = useQuery({ ...queries.mapMarkers(serverId), enabled: visible.has(markersLayer.id) });
   const live = useQuery({ ...queries.mapLive(serverId), enabled: visible.has(trainsLayer.id) });
   const railsData = visible.has(railsLayer.id) ? rails.data : undefined;
   const nodesData = visible.has(resourceNodesLayer.id) ? nodes.data : undefined;
+  const powerLinesData = visible.has(powerLinesLayer.id) ? powerLines.data : undefined;
+  const conveyorsData = visible.has(conveyorsLayer.id) ? conveyors.data : undefined;
+  const dronesData = visible.has(dronePortsLayer.id) ? drones.data : undefined;
   const markersData = visible.has(markersLayer.id) ? markers.data : undefined;
   const liveData = visible.has(trainsLayer.id) ? live.data : undefined;
   const failed = [
     { on: visible.has(railsLayer.id), label: railsLayer.label, query: rails },
     { on: visible.has(resourceNodesLayer.id), label: resourceNodesLayer.label, query: nodes },
+    { on: visible.has(powerLinesLayer.id), label: powerLinesLayer.label, query: powerLines },
+    { on: visible.has(conveyorsLayer.id), label: conveyorsLayer.label, query: conveyors },
+    { on: visible.has(dronePortsLayer.id), label: dronePortsLayer.label, query: drones },
     { on: visible.has(markersLayer.id), label: markersLayer.label, query: markers },
     { on: visible.has(trainsLayer.id), label: trainsLayer.label, query: live },
   ]
@@ -182,7 +225,37 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   // `draw` changed (and those above them), so a train poll never redraws the rails, nodes or buildings.
   const railsBound = useMemo(() => (railsData ? bind(railsLayer, railsData.data) : null), [railsData]);
   const nodesBound = useMemo(() => (shownNodes ? bind(resourceNodesLayer, shownNodes) : null), [shownNodes]);
+  const powerLinesBound = useMemo(() => (powerLinesData ? bind(powerLinesLayer, powerLinesData.data) : null), [powerLinesData]);
+  // A conveyor's far end may be a building the factory placed (conveyors.ts). Keyed by the places themselves, not the
+  // snapshot, so a factory poll that moves nothing never re-places or redraws thousands of conveyors. Every building,
+  // not the filtered ones: a filter hides a building, it doesn't move the belt into it.
+  // Only while the layer has data: with it off, a poll must not stringify every building for nothing.
+  const hasConveyors = conveyorsData !== undefined;
+  const placesKey = useMemo(
+    () =>
+      hasConveyors
+        ? JSON.stringify(placed(snapshot.data.buildings).map((b) => [b.id, { x: b.location.xM, y: b.location.yM, name: b.name }]))
+        : "[]",
+    [snapshot, hasConveyors],
+  );
+  const places = useMemo(() => new Map<string, BuildingPlace>(JSON.parse(placesKey) as [string, BuildingPlace][]), [placesKey]);
+  const placedConveyors = useMemo(() => (conveyorsData ? placeConveyors(conveyorsData.data, places) : undefined), [conveyorsData, places]);
+  const conveyorsBound = useMemo(() => (placedConveyors ? bind(conveyorsLayer, placedConveyors) : null), [placedConveyors]);
   const buildingsBound = useMemo(() => bind(buildingsLayer, filteredFactory), [filteredFactory]);
+  // Drone cargo is a class name; the live factory's items give it its in-game name where a machine reports it.
+  // Keyed by the names themselves, not the snapshot: a factory poll with the same items never redraws the ports.
+  const namesKey = useMemo(
+    () => JSON.stringify([...itemLabels(snapshot.data.buildings)].map(([className, label]) => [className, label.name])),
+    [snapshot],
+  );
+  const itemName = useMemo(() => {
+    const names = new Map<string, string>(JSON.parse(namesKey) as [string, string][]);
+    return (className: string) => names.get(className) ?? labelFor(new Map(), className).name;
+  }, [namesKey]);
+  const dronesBound = useMemo<DrawnLayer | null>(
+    () => (dronesData ? { id: dronePortsLayer.id, draw: (ctx) => drawDronePorts(ctx, dronesData.data, itemName) } : null),
+    [dronesData, itemName],
+  );
   const markersBound = useMemo(() => (markersData ? bind(markersLayer, markersData.data) : null), [markersData]);
   const liveBound = useMemo(() => (liveData ? bind(trainsLayer, liveData.data) : null), [liveData]);
   // In LAYERS order; a new array alone doesn't redraw anything.
@@ -190,11 +263,14 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
     const list: DrawnLayer[] = [];
     if (railsBound) list.push(railsBound);
     if (nodesBound) list.push(nodesBound);
+    if (powerLinesBound) list.push(powerLinesBound);
+    if (conveyorsBound) list.push(conveyorsBound);
     if (visible.has(buildingsLayer.id)) list.push(buildingsBound);
+    if (dronesBound) list.push(dronesBound);
     if (markersBound) list.push(markersBound);
     if (liveBound) list.push(liveBound);
     return list;
-  }, [visible, railsBound, nodesBound, buildingsBound, markersBound, liveBound]);
+  }, [visible, railsBound, nodesBound, powerLinesBound, conveyorsBound, buildingsBound, dronesBound, markersBound, liveBound]);
   // First view: the factory itself, not the whole 7.5 km world. Computed once: later polls
   // never move the view.
   const [fitTo] = useState<ViewM | undefined>(() => {
@@ -246,18 +322,24 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       {nodesData && nodesData.data.length > 0 && (
         <LegendRow label={resourceNodesLayer.label}>{resourceNodesLayer.legend()}</LegendRow>
       )}
+      {powerLinesData && powerLinesData.data.length > 0 && (
+        <LegendRow label={powerLinesLayer.label}>{powerLinesLayer.legend()}</LegendRow>
+      )}
+      {placedConveyors && placedConveyors.length > 0 && <LegendRow label={conveyorsLayer.label}>{conveyorsLayer.legend()}</LegendRow>}
       {visible.has(buildingsLayer.id) && shown.length > 0 && (
         <LegendRow label={buildingsLayer.label}>{buildingsLayer.legend()}</LegendRow>
       )}
+      {dronesData && dronesData.data.length > 0 && <LegendRow label={dronePortsLayer.label}>{dronePortsLayer.legend()}</LegendRow>}
       {markersData && markersData.data.length > 0 && <LegendRow label={markersLayer.label}>{markersLayer.legend()}</LegendRow>}
       {liveData && (liveData.data.trains.length > 0 || liveData.data.stations.length > 0) && (
         <LegendRow label={trainsLayer.label}>{trainsLayer.legend()}</LegendRow>
       )}
       <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
-        The island's coast, lakes and high ground, traced from the game's map, under a grid of 500 m squares, with the
-        rails, resource nodes, players' markers and trains the server reported, nodes drawn with the game's icons. Trains move with the
-        latest reading, about every 10 seconds. Positions are approximate until they're checked in game.
+        The island's coast, lakes and high ground, traced from the game's map, under a grid of 500 m squares, with the{" "}
+        {WORLD_CAPTION} the server reported, nodes drawn with the game's icons. Belts and pipes are drawn straight between
+        their ends. Trains move with the latest reading, about every 10 seconds. Positions are approximate until they're
+        checked in game.
       </p>
       <p className="text-sm text-muted">Satisfactory, its map and its icons © Coffee Stain Studios. Not affiliated.</p>
 
@@ -269,6 +351,19 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           filtered={allNodes && shownNodes ? { data: shownNodes, shown: shownNodes.length, total: allNodes.length } : undefined}
         />
       )}
+      {visible.has(powerLinesLayer.id) && <WorldLayerText query={powerLines} layer={powerLinesLayer} />}
+      {/* The text speaks of the placed conveyors (their lengths need the far ends), so it gets them, not the raw edges. */}
+      {visible.has(conveyorsLayer.id) && (
+        <WorldLayerText
+          query={{
+            isError: conveyors.isError,
+            isPending: conveyors.isPending,
+            data: conveyorsData && placedConveyors ? { data: placedConveyors, truncated: conveyorsData.truncated } : undefined,
+          }}
+          layer={conveyorsLayer}
+        />
+      )}
+      {visible.has(dronePortsLayer.id) && <WorldLayerText query={drones} layer={dronePortsLayer} />}
       {visible.has(markersLayer.id) && <WorldLayerText query={markers} layer={markersLayer} />}
       {visible.has(trainsLayer.id) && <WorldLayerText query={live} layer={trainsLayer} />}
       {liveData?.stale && (
@@ -285,8 +380,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
           {listed.length === 0 ? (
             <p className="text-sm text-muted">{shown.length === 0 && allPlaced.length > 0 ? EMPTY_FILTERED : EMPTY_VIEW}</p>
           ) : (
-            // Focusable, so keyboard users can scroll it (axe scrollable-region-focusable).
-            <div tabIndex={0} role="region" aria-labelledby="map-list-heading" className="max-h-80 overflow-auto">
+            <ScrollRegion labelledBy="map-list-heading">
               <table aria-labelledby="map-list-heading" className="w-full text-sm">
                 <thead>
                   <tr>
@@ -312,7 +406,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           )}
         </div>
       )}
@@ -320,6 +414,9 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       {/* After the buildings' list, so a world layer arriving never pushes it down. */}
       {railsData && <RailsTable segments={railsData.data} view={view} />}
       {allNodes && shownNodes && <ResourceNodesTable nodes={shownNodes} view={view} hidden={allNodes.length - shownNodes.length} />}
+      {powerLinesData && <PowerLinesTable lines={powerLinesData.data} view={view} />}
+      {placedConveyors && <ConveyorsTable list={placedConveyors} view={view} buildings={places} />}
+      {dronesData && <DronePortsTable ports={dronesData.data} view={view} itemName={itemName} />}
       {markersData && <MarkersTable markers={markersData.data} view={view} />}
       {liveData && <TrainsTable trains={liveData.data.trains} view={view} />}
       {liveData && <StationsTable stations={liveData.data.stations} view={view} />}

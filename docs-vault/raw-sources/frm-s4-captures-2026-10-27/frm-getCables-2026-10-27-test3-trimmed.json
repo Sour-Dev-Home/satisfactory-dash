@@ -1,0 +1,199 @@
+{
+  "source": "FRM HTTP output, test save Test3, core run 40522552255 (satisfactory-dash-mod), 2026-10-27",
+  "endpoint": "/getCables",
+  "recordsInFullBody": 1498,
+  "keys": [
+    "BoundingBox",
+    "ClassName",
+    "ColorSlot",
+    "ID",
+    "Length",
+    "Name",
+    "features",
+    "location",
+    "location0",
+    "location1"
+  ],
+  "records": [
+    {
+      "ID": "Build_PowerLine_C_2147417735",
+      "Name": "Power Line",
+      "ClassName": "Build_PowerLine_C",
+      "location": {
+        "x": -30262.5859375,
+        "y": -138864.40625,
+        "z": 10645.8876953125,
+        "rotation": 52.48460663237711,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -30262.5859375,
+          "y": -138864.40625,
+          "z": 10645.8876953125
+        },
+        "max": {
+          "x": -30262.5859375,
+          "y": -138864.40625,
+          "z": 10645.8876953125
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "location0": {
+        "x": -33651.28125,
+        "y": -136878.140625,
+        "z": 10815.22265625
+      },
+      "location1": {
+        "x": -30262.5859375,
+        "y": -138864.40625,
+        "z": 10645.8876953125
+      },
+      "Length": 3931.562255859375,
+      "features": {
+        "properties": {
+          "name": "Power Line",
+          "type": "Power Line"
+        },
+        "geometry": {
+          "coordinates": [
+            [
+              -33651.28125,
+              -136878.140625,
+              10815.22265625
+            ],
+            [
+              -30262.5859375,
+              -138864.40625,
+              10645.8876953125
+            ]
+          ],
+          "type": "LineString"
+        }
+      }
+    },
+    {
+      "ID": "Build_PowerLine_C_2147270964",
+      "Name": "Power Line",
+      "ClassName": "Build_PowerLine_C",
+      "location": {
+        "x": -44004.35546875,
+        "y": -128792.328125,
+        "z": 8710.7021484375,
+        "rotation": 201.89035960480282,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -44004.35546875,
+          "y": -128792.328125,
+          "z": 8710.7021484375
+        },
+        "max": {
+          "x": -44004.35546875,
+          "y": -128792.328125,
+          "z": 8710.7021484375
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "location0": {
+        "x": -40543.671875,
+        "y": -135249.96875,
+        "z": 8731.46826171875
+      },
+      "location1": {
+        "x": -44004.35546875,
+        "y": -128792.328125,
+        "z": 8710.70263671875
+      },
+      "Length": 7326.51904296875,
+      "features": {
+        "properties": {
+          "name": "Power Line",
+          "type": "Power Line"
+        },
+        "geometry": {
+          "coordinates": [
+            [
+              -40543.671875,
+              -135249.96875,
+              8731.46826171875
+            ],
+            [
+              -44004.35546875,
+              -128792.328125,
+              8710.70263671875
+            ]
+          ],
+          "type": "LineString"
+        }
+      }
+    },
+    {
+      "ID": "Build_PowerLine_C_2147270021",
+      "Name": "Power Line",
+      "ClassName": "Build_PowerLine_C",
+      "location": {
+        "x": -45756.3125,
+        "y": -120635.578125,
+        "z": 8187.087890625,
+        "rotation": 213.27253042830762,
+        "pitch": 0
+      },
+      "BoundingBox": {
+        "min": {
+          "x": -45756.3125,
+          "y": -120635.578125,
+          "z": 8187.087890625
+        },
+        "max": {
+          "x": -45756.3125,
+          "y": -120635.578125,
+          "z": 8187.087890625
+        }
+      },
+      "ColorSlot": {
+        "PrimaryColor": "FA954900",
+        "SecondaryColor": "5F668C00"
+      },
+      "location0": {
+        "x": -44004.35546875,
+        "y": -128792.328125,
+        "z": 8710.70263671875
+      },
+      "location1": {
+        "x": -45756.3125,
+        "y": -120635.578125,
+        "z": 8187.087890625
+      },
+      "Length": 8359.1923828125,
+      "features": {
+        "properties": {
+          "name": "Power Line",
+          "type": "Power Line"
+        },
+        "geometry": {
+          "coordinates": [
+            [
+              -44004.35546875,
+              -128792.328125,
+              8710.70263671875
+            ],
+            [
+              -45756.3125,
+              -120635.578125,
+              8187.087890625
+            ]
+          ],
+          "type": "LineString"
+        }
+      }
+    }
+  ]
+}

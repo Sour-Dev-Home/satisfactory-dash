@@ -146,25 +146,52 @@ export async function setAgentVersion(db: Queryable, serverUuid: string, agentVe
   await timedQuery(db, "agents.setAgentVersion", SET_VERSION, [serverUuid, agentVersion]);
 }
 
+// #740 follow-up: the agent's latest view of its game connection. `last_game_read_at` only moves forward (GREATEST ignores
+// a NULL on either side); the other two take the snapshot's value, NULL when it did not say.
+const SET_GAME_CONNECTION = `
+  UPDATE agents.agent_credentials
+  SET game_reachable = $2, last_game_read_at = GREATEST(last_game_read_at, $3), mod_version = $4
+  WHERE server_id = $1 AND revoked_at IS NULL`;
+
+export interface GameConnectionValues {
+  gameReachable: boolean | null;
+  lastGameReadAt: Date | null;
+  modVersion: string | null;
+}
+
+export async function setGameConnection(db: Queryable, serverUuid: string, values: GameConnectionValues): Promise<void> {
+  await timedQuery(db, "agents.setGameConnection", SET_GAME_CONNECTION, [serverUuid, values.gameReachable, values.lastGameReadAt, values.modVersion]);
+}
+
 const AGENT_STATUS = `
   SELECT s.connection_kind AS connection_kind, c.server_id IS NOT NULL AND c.revoked_at IS NULL AS enrolled,
-         c.last_seen_at AS last_seen_at, c.agent_version AS agent_version
+         c.last_seen_at AS last_seen_at, c.agent_version AS agent_version,
+         c.game_reachable AS game_reachable, c.last_game_read_at AS last_game_read_at, c.mod_version AS mod_version
   FROM servers.servers s
   LEFT JOIN agents.agent_credentials c ON c.server_id = s.id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL`;
 
-export interface AgentStatusRow {
+export interface AgentStatusRow extends GameConnectionValues {
   connectionKind: string;
   enrolled: boolean;
   lastSeenAt: Date | null;
   agentVersion: string | null;
 }
 
-/** Undefined for an unknown or removed server. A revoked credential reads as "not enrolled", without a version or time. */
+/** Undefined for an unknown or removed server. A revoked credential reads as "not enrolled", without a version, time or game connection. */
 export async function getAgentStatus(db: Queryable, publicId: string): Promise<AgentStatusRow | undefined> {
   const result = await timedQuery(db, "agents.getAgentStatus", AGENT_STATUS, [publicId]);
   const row = parseFirst(
-    z.object({ connection_kind: z.string(), enrolled: z.boolean(), last_seen_at: z.date().nullable(), agent_version: z.string().nullable() }),
+    z.object({
+      connection_kind: z.string(),
+      enrolled: z.boolean(),
+      last_seen_at: z.date().nullable(),
+      agent_version: z.string().nullable(),
+      // The query always selects them; the default only spares callers' fake rows (commandsService reads this status too).
+      game_reachable: z.boolean().nullable().default(null),
+      last_game_read_at: z.date().nullable().default(null),
+      mod_version: z.string().nullable().default(null),
+    }),
     result.rows,
     "agents.getAgentStatus",
   );
@@ -174,6 +201,9 @@ export async function getAgentStatus(db: Queryable, publicId: string): Promise<A
     enrolled: row.enrolled,
     lastSeenAt: row.enrolled ? row.last_seen_at : null,
     agentVersion: row.enrolled ? row.agent_version : null,
+    gameReachable: row.enrolled ? row.game_reachable : null,
+    lastGameReadAt: row.enrolled ? row.last_game_read_at : null,
+    modVersion: row.enrolled ? row.mod_version : null,
   };
 }
 

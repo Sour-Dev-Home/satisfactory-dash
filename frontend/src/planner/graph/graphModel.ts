@@ -1,6 +1,6 @@
 import type { PlannerEdge, PlannerNode, PlannerRate } from "@satisfactory-dash/shared";
-import { formatAmount } from "../../format";
-import { edgeRateText, outputLine } from "../plannerText";
+import { formatAmount, formatPerMinute } from "../../format";
+import { edgeRateText, hasMax, isZeroRate, outputLine, rateText, stalledStateText } from "../plannerText";
 
 // What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
 
@@ -52,18 +52,179 @@ export const nameOr = (name: string | null | undefined, fallback: string): strin
 /** A node whose name came blank gets its class name, else "Unknown building", so no title, label or heading is ever empty. */
 export const withName = <T extends Pick<PlannerNode, "name" | "className">>(node: T): T => (node.name.trim() === "" ? { ...node, name: nameOr(node.className, UNKNOWN_BUILDING) } : node);
 
-/** One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the maximum is in the tooltip. */
-export const productSummary = (rate: PlannerRate): string => cut(`${nameOr(rate.name, rate.className)} · ${formatAmount(rate.currentPerMinute)}${rate.unit === "m3/min" ? " m³" : ""}/min`, MAX_SUMMARY_CHARS);
-
-/** The one line a group's card prints: its main product and rate, else "No output data". Never empty. */
-export const nodeSummary = (node: Pick<PlannerNode, "products">): string => (node.products.length === 0 ? "No output data" : productSummary(node.products[0]));
+/**
+ * One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the
+ * maximum is in the tooltip. A rate that reads 0 shows its maximum, "Iron Ingot · 0 of 30/min" (#728 step 2).
+ */
+export function productSummary(rate: PlannerRate): string {
+  const per = `${rate.unit === "m3/min" ? " m³" : ""}/min`;
+  const zero = isZeroRate(rate);
+  const amount = zero && hasMax(rate) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)}` : formatAmount(rate.currentPerMinute);
+  const name = nameOr(rate.name, rate.className);
+  const tail = ` · ${amount}${per}`;
+  // A 0 is only honest with its maximum: a long name gives way, the tail is never the part cut off.
+  return zero ? `${cut(name, Math.max(1, MAX_SUMMARY_CHARS - tail.length))}${tail}` : cut(`${name}${tail}`, MAX_SUMMARY_CHARS);
+}
 
 /**
- * Everything a group's card no longer prints, in full and unwrapped: the recipe, every output (actual over max), a loop
- * marker. The tooltip, the keyboard name and the side panel all read these.
+ * The muted line under a card whose main product reads 0: its machines' state, "Backed up" or "Not producing" (#728
+ * step 2). Null for a running card, or one with no product.
  */
-export function nodeFacts(node: PlannerNode): { recipe: string; outputs: string[]; loop: boolean } {
-  return { recipe: nameOr(node.recipe, "No recipe"), outputs: node.products.length === 0 ? ["No output data"] : node.products.map(outputLine), loop: node.loop };
+export function stalledNote(rate: PlannerRate | undefined, stateCounts: Record<string, number>): string | null {
+  if (rate === undefined || !isZeroRate(rate)) return null;
+  const text = stalledStateText(stateCounts);
+  return cut(`${text.charAt(0).toUpperCase()}${text.slice(1)}`, MAX_SUMMARY_CHARS);
+}
+
+/** A machine whose recipe is unassigned in the game (#728 step 3). */
+export const NOT_CONFIGURED = "Not configured";
+/** An extractor whose item the backend could not match to a resource node. */
+export const RESOURCE_UNKNOWN = "Resource not identified";
+/** The muted note after an extractor's item: it is guessed from the node it stands on, and no rate is read. */
+export const INFERRED_FROM_NODE = "(inferred from the node)";
+
+/**
+ * #728 cause 11: a node built only from conveyor ends that name machines the latest factory read lacks (the backend's
+ * `stale`). The conveyor data is read every 10 minutes (the backend's CONNECTIONS_REFRESH_MINUTES), the factory every 30 s.
+ */
+export const STALE_NODE_NOTE = "Conveyor data older than the factory read · refreshes within 10 minutes";
+export const isStaleNode = (node: Pick<PlannerNode, "stale">): boolean => node.stale === true;
+/** The card's muted lines for such a node, within the card's line limits (the full words are in the tooltip and tables). */
+export const staleNodeLines = (): string[] => wrapText(STALE_NODE_NOTE);
+
+/**
+ * An extractor's rate: what its links carry away, summed. getFactory lists no extractor (ADR-0050, "Ends only"), so its
+ * own output is never read; the links' rates are the backend's, read at what the extractor feeds.
+ */
+export interface MinedRate {
+  perMinute: number;
+  /** A pipe carries m³/min, a belt items/min (ADR-0015). */
+  unit: "items/min" | "m3/min";
+  /** Every link's rate was measured; else the sum is an estimate. */
+  measured: boolean;
+}
+
+/** Node key to the summed rate of the links leaving it; null when one link has no number or they mix belts and pipes. */
+export function minedRates(edges: readonly PlannerEdge[]): Map<string, MinedRate | null> {
+  const rates = new Map<string, MinedRate | null>();
+  for (const e of edges) {
+    const was = rates.get(e.from);
+    if (was === null) continue;
+    const unit = e.kind === "pipe" ? "m3/min" : "items/min";
+    if (e.ratePerMinute === null || (was !== undefined && was.unit !== unit)) {
+      rates.set(e.from, null);
+      continue;
+    }
+    rates.set(e.from, { perMinute: (was?.perMinute ?? 0) + e.ratePerMinute, unit, measured: (was?.measured ?? true) && e.rate === "measured" });
+  }
+  return rates;
+}
+
+/** An extractor's output: its resource (or "Resource not identified"), whether that was inferred, and its rate if known. */
+export interface MinedOutput {
+  name: string;
+  inferred: boolean;
+  rate: MinedRate | null;
+}
+
+/** The words where an extractor's rate is unknown: its links carry no number the backend could give. */
+export const RATE_NOT_READ = "rate not read";
+
+type ExtractorFields = Pick<PlannerNode, "kind" | "products" | "resource"> & Partial<Pick<PlannerNode, "key">>;
+
+/**
+ * What an extractor without output data mines (#728 step 1): the backend's `resource` (the node within 20 m), else an
+ * honest "Resource not identified", with the rate its links carry (`minedRates`) when known. Null for anything else, or
+ * for an extractor that does have output data.
+ */
+export function extractorOutput(node: ExtractorFields, rates?: ReadonlyMap<string, MinedRate | null>): MinedOutput | null {
+  if (node.kind !== "extractor" || node.products.length > 0) return null;
+  const name = nameOr(node.resource?.name, nameOr(node.resource?.className, "")).trim();
+  const rate = node.key === undefined ? null : (rates?.get(node.key) ?? null);
+  return name === "" ? { name: RESOURCE_UNKNOWN, inferred: false, rate } : { name, inferred: true, rate };
+}
+
+/** The same for a bubble of groups: only when every group is such an extractor and they agree on the resource; the rates sum. */
+export function groupsExtractorOutput(nodes: readonly ExtractorFields[], rates?: ReadonlyMap<string, MinedRate | null>): MinedOutput | null {
+  const outs = nodes.map((n) => extractorOutput(n, rates));
+  const first = outs[0];
+  if (first === undefined || first === null) return null;
+  if (!outs.every((o) => o !== null && o.name === first.name && o.inferred === first.inferred)) return null;
+  let rate: MinedRate | null = first.rate;
+  for (const o of outs.slice(1)) {
+    const r = (o as MinedOutput).rate;
+    rate = rate === null || r === null || r.unit !== rate.unit ? null : { perMinute: rate.perMinute + r.perMinute, unit: rate.unit, measured: rate.measured && r.measured };
+  }
+  return { ...first, rate };
+}
+
+/** An extractor's rate in words, "about 120 m³/min", or "rate not read"; null for an unidentified resource with no rate. */
+const minedRateText = (out: MinedOutput): string | null =>
+  out.rate !== null ? rateText(out.rate.measured ? "measured" : "estimated", out.rate.perMinute, out.rate.unit) : out.inferred ? RATE_NOT_READ : null;
+
+/** An extractor's resource and rate in words: "Iron Ore: about 120 items/min", "Water: rate not read". */
+export function minedLine(out: MinedOutput): string {
+  const rate = minedRateText(out);
+  return rate === null ? out.name : `${out.name}: ${rate}`;
+}
+
+/** An extractor's output as one line of words: "Iron Ore: about 120 items/min (inferred from the node)". */
+export const extractorOutputText = (out: MinedOutput): string => (out.inferred ? `${minedLine(out)} ${INFERRED_FROM_NODE}` : minedLine(out));
+
+/**
+ * An extractor's card line, "Water · 120 m³/min", or "Water · rate not read" when its links carry no number, cut to
+ * `MAX_SUMMARY_CHARS` with the name giving way. "Resource not identified" with no rate stays as it is.
+ */
+export function minedSummary(out: MinedOutput): string {
+  if (out.rate === null && !out.inferred) return cut(out.name, MAX_SUMMARY_CHARS);
+  const tail = ` · ${out.rate === null ? RATE_NOT_READ : formatPerMinute(out.rate.perMinute, out.rate.unit)}`;
+  return `${cut(out.name, Math.max(1, MAX_SUMMARY_CHARS - tail.length))}${tail}`;
+}
+
+/** The one line a group's card prints: its main product and rate, else an extractor's resource and rate, else "No output data". */
+export function nodeSummary(node: Pick<PlannerNode, "products"> & Partial<Pick<PlannerNode, "key" | "kind" | "resource">>, rates?: ReadonlyMap<string, MinedRate | null>): string | null {
+  if (node.products.length > 0) return productSummary(node.products[0]);
+  const mined = extractorOutput({ key: node.key, kind: node.kind ?? "", products: node.products, resource: node.resource }, rates);
+  if (mined !== null) return minedSummary(mined);
+  return makesNothing(node) ? null : NO_OUTPUT_DATA;
+}
+
+/** What a group that should make something, but whose outputs the game did not report, says. */
+export const NO_OUTPUT_DATA = "No output data";
+
+/**
+ * A group that makes nothing by its nature: storage, a station, or a consumer (a sink, a generator). With no products it
+ * has no output line at all (the owner, 2026-10-27): its building's icon says what it is, where "No output data" read
+ * as a fault. A machine or a building of unknown kind with no products keeps the note: there it is a real gap.
+ */
+export const makesNothing = (node: Partial<Pick<PlannerNode, "kind">>): boolean => node.kind === "storage" || node.kind === "station" || node.kind === "consumer";
+
+/**
+ * The recipe in words: the recipe, "Not configured" for a machine without one, and null where none is shown (an extractor,
+ * storage, a station, a consumer such as a sink or a generator, or a building of unknown kind).
+ */
+export function recipeText(node: Pick<PlannerNode, "kind" | "recipe">): string | null {
+  const recipe = nameOr(node.recipe, "");
+  if (recipe !== "") return recipe;
+  return node.kind === "machines" ? NOT_CONFIGURED : null;
+}
+
+const NO_RECIPE_KINDS: ReadonlySet<string> = new Set(["extractor", "storage", "station", "consumer"]);
+
+/** The Recipe cell's words where `recipeText` is null: these kinds have no recipe in the game; of any other, we can't say. */
+export const noRecipeCellText = (node: Pick<PlannerNode, "kind">): string => (NO_RECIPE_KINDS.has(node.kind) ? "Not applicable" : "Not known");
+
+/**
+ * Everything a group's card no longer prints, in full and unwrapped: the recipe (null where none applies), every output
+ * (actual over max, or an extractor's inferred resource), a loop marker. The tooltip, the keyboard name and the side
+ * panel all read these.
+ */
+export function nodeFacts(node: PlannerNode, rates?: ReadonlyMap<string, MinedRate | null>): { recipe: string | null; outputs: string[]; loop: boolean } {
+  if (isStaleNode(node)) return { recipe: recipeText(node), outputs: [STALE_NODE_NOTE], loop: node.loop };
+  const mined = extractorOutput(node, rates);
+  const outputs =
+    mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? (makesNothing(node) ? [] : [NO_OUTPUT_DATA]) : node.products.map((r) => outputLine(r, node.stateCounts));
+  return { recipe: recipeText(node), outputs, loop: node.loop };
 }
 
 /**

@@ -24,8 +24,22 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   (toolbar button, or Shift+drag). A freehand lasso picks the group and bubble cards whose centre it encloses
   (`graph/lasso.ts`, pure), and in Select mode a click or a card's hidden button picks one card. The picks are the
   same set as the Groups table's ticks, under one `DesignateBar`, and Escape clears them. A picked card is tinted,
-  with a check mark. With "Reason factories for me" on, the overview canvas draws automatic factories dashed, with a
-  "Suggestion" tag and a Keep pill (a hidden "Keep …" button for the keyboard) that opens `KeepForm`.
+  with a check mark. The overview draws automatic factories like designated ones (no dashed outline); the "Reason
+  factories for me" suggestion mode and its Keep pill were removed (the owner, 2026-10-27).
+- Merge and split (ADR-0055 Decisions 11 and 12, #727), owners and admins on a backend with `revision`: on the overview,
+  Shift- or Ctrl-click a factory card (or tick a card's Select in Tables) to pick it; `MergeBar` offers "Merge into one",
+  disabled with its reason unless the picks are one connected piece by themselves (`connectivity.ts`: edges, transports,
+  shared nodes, undirected) and within the caps (`selectionPlans.ts`). `MergeBar` stands idle ("No factories selected")
+  before the first pick, so a pick never pushes the canvas down, and its count is one live region that stays mounted
+  while the name form opens below it (as in `SplitBar`). In an opened designated factory the picks feed
+  `SplitBar` instead of `DesignateBar`; a Groups row and the group panel have "Pop out" (a panel's failure shows in the
+  panel, a row's on the page: `usePopOut`'s `write` and `popOut`); Remove is Dissolve. Every change
+  is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
+  (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
+  `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).
+- A node with `stale: true` (#728 cause 11: built only from conveyor ends that name machines the latest factory read
+  lacks) wears the clock glyph and prints only the muted `STALE_NODE_NOTE` (`graphModel.ts`), wrapped to the card's line
+  limits; the tooltip, the side panel and the Tables view say the whole sentence.
 - The viewer's choices are `plannerPrefs.ts` (localStorage in try/catch, validated; the page works without it).
 - The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and
   the only place `@dagrejs/dagre` is imported.
@@ -36,8 +50,63 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - Edges (ADR-0059): loops are broken first by `returnFlows` (depth-first from the sources; returns handed to dagre
   reversed, their routes turned back after), dagre places cards and label boxes (`tight-tree` ranker), then
   `orthogonalRoute.ts` redraws every edge in horizontal legs through columns and vertical legs in the empty gaps between
-  them, one track each, so no line crosses a card. `edgeShapes.ts` draws each bend as a rounded corner. If the router
-  throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
+  them, one track each (at least `TRACK_GAP` apart), so no line crosses a card. `edgeShapes.ts` draws each bend as a
+  rounded corner. If the router throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
+- One line per pair of cards (ADR-0059 amendment, 2026-10-27): `layoutScene` draws the links between the same two cards,
+  in one direction, on one carrier and of one kind as one edge (`bundleFlows` in `canvasScene.ts`). `SiteLayout.flows`
+  stays one entry per link and `LaidEdge.parts` indexes them: the item filter lights an edge when any part matches, the
+  tooltip (`flowTitle`) lists every link with its own rate, and the Tables view is untouched. `SiteGraph` draws all
+  lines, then all labels.
+- Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
+  (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
+  text ("mixed", "excess" beside it) under the row; links of no known item share one "?" bubble. The box dagre reserves
+  is `bubbleRowSize` (plus `GLYPH_INSET` for a transport), so the router keeps it clear as it did the words. A bubble
+  draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
+  it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
+  the words for text views and tests; the item names are in the edge's `<title>` and the Tables view.
+- Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
+  control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
+  - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears
+    when the line or the item leaves the graph.
+  - Hop-1 dimming: only the focused line and its two cards stay lit, and the item filter's dimming waits until focus ends.
+  - `ItemFocusLayer.tsx` holds the `sr-only` bubble buttons, one tab stop for all of them (a roving tabindex). Arrow
+    keys, Home and End move between them, in the cards' tab order (`bubbleStops`). They are named by `bubbleName`.
+  - The "+k" chip's button opens `ItemList`, the line's full item list, in the group panel's place. Each item in it can be
+    focused.
+  - Escape works in this order: the list, then focus (back to the bubble's button, or the chip's when the item has no
+    bubble), then the existing chain.
+  - A click on a drawn bubble focuses it, and a second click leaves. A click on the background leaves too, but a click on
+    a card does not.
+  - The status line stays mounted while the flag is on and says "Focused <item> from A to B" and "Overview".
+  - Focus never zooms (owner answer 2).
+- Detail card (ADR-0060 build PR 5), `ItemCard.tsx` and the pure `itemCardText.ts`.
+  - On focus, the bubble morphs into a `FOCUS_CARD_W` × `FOCUS_CARD_H` card centred on the line's label, in the box that
+    make-room reserved (or over the bubble when focus only dims).
+  - The morph: one `<rect>` tweened from a circle to `CARD_RX` corners. The icon grows to the 128 px file, and the words
+    fade in over the last 40%.
+  - Closing (Escape, the drawn ×, its hidden button, a background click, or focusing another item) runs the morph
+    backwards, then removes the card. React renders the end state, so with no motion only the state changes.
+  - The words come from `CanvasFlow` only:
+    - the name, or "Item unknown" with the raw class (never an invented name);
+    - the rate as the label words it;
+    - from and to, the transport and route, and how many other items share the line.
+  - Each line is cut by the character-width estimate; the full words are in its `<title>` and in an `sr-only` group in
+    the DOM layer, with "Close <item> card" and "Show the whole path of <item>" buttons.
+  - "Show the whole path" sets the item filter and leaves focus (owner answer 1). An unknown item has none.
+  - `bubbleRowOrigin` and `bubbleCentre` are the bubble row's geometry, which `EdgeLabel` and the morph share.
+- Make room (ADR-0060 build PR 4), on focus.
+  - The layout: `layoutScene(scene, hash, { edgeKey, width, height })` reserves the focused line's label box at
+    `FOCUS_CARD_W` × `FOCUS_CARD_H`, so dagre and the router move the rest aside. The pill is still drawn at its own size.
+    Both layouts sit in the memo.
+  - The budget: past `FOCUS_LAYOUT_BUDGET_MS` (100), by `SiteLayout.placeMs`, focus only dims.
+  - The glide: on entering or leaving, the view moves by the focused line's shift, so its bubble stays put on screen.
+    The cards (`data-node`) slide from where they were. The old lines and frames are drawn as a ghost (`data-ghost`) that
+    fades out while the new ones fade in.
+  - How it runs: one `useTween` loop writes `transform` and `opacity` attributes, never `style`. It lasts
+    `--duration-slow` with the `--ease-standard` curve (`EASE_STANDARD`, which a test keeps equal to the CSS).
+  - Reduced motion or Motion: Off: no glide.
+  - Benchmark: on a synthetic site of the measured size (160 groups, 204 edges), 45-48 ms for each layout. See ADR-0060
+    Decision 3.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).
@@ -93,11 +162,46 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   `--color-marker-edge`, so a dark one shows on the terrain. An empty name reads "Unnamed marker"/"Unnamed stamp";
   rows are keyed `${id}:${x}:${y}` (FRM ids can repeat), with a count added only on a full repeat. The game's icon
   (`icon`, FRM's IconID) isn't drawn: its mapping to an image is undocumented (follow-up).
+- The power lines (ADR-0038 §1, #330, `powerLinesLayer`, `queries.mapPowerLines`) are a world layer off by default (a
+  factory's wiring is dense where the buildings and markers sit, and the read is asked for only once on). Drawn over the
+  rails and nodes and under the buildings as ONE non-interactive Leaflet multi-polyline (a sub-path per line, so 20,000
+  lines are still one canvas path), a 1.5 px `--color-map-power-line` copper hairline. Text: "N power lines on the map,
+  M m of wire in all." plus a "Power lines in view" table keyed `${id}:${index}` (FRM ids can repeat).
+- The belts, lifts and pipes (#330, `conveyorsLayer`, `queries.mapConveyors`, the ADR-0048 amendment's `conveyors` world
+  layer, toggle "Belts and pipes") are off by default (thousands of edges on a big save; read only once on). The layer is a
+  connection graph: each edge has only end 0's position (`at`) and the ids at its ends, no spline. `conveyors.ts`
+  (`placeConveyors`, pure) finds end 1 as the `at` of the conveyor joined to it (only when that one's `from` names this
+  one), else the factory building under that id (same ids as getFactory; MapPanel keys the places by their JSON, so a poll
+  that moves nothing doesn't redraw), else the nearest conveyor leaving the same splitter, merger or junction. Unplaced
+  ends and every lift (it runs straight up or down) are dots. Drawn over the power lines and under the buildings as three
+  non-interactive multi-polylines (pipes 2.5 px `--color-map-pipe`, belts 2 px `--color-map-belt`, lifts 6 px dots), the
+  tokens pointing at the planner's own pipe (`--color-info`) and belt (`--color-muted`) colours. Text: "N belts, M pipes,
+  K lifts on the map, L m of belt and P m of pipe measured, drawn straight between their ends." (only placed ends have a
+  length; a kind with none placed says "pipe length unknown", "shown" when the layer was cut) plus how many are dots, and
+  "Belts, lifts and pipes in view" (Kind, Tier, Length, From, To; ends in words, never ids), 500 rows max, keyed id +
+  index.
+- The drone ports (ADR-0055 Decision 1, #330, `dronePortsLayer`, `queries.mapDroneRoutes`, the `droneRoutes` world
+  layer) are on by default (a save has a handful of ports, capped at 2,000) and in the Map page's reveal. Drawn over the
+  buildings and under the markers: each port a fixed-size 10 px square in `--color-map-drone` (azure) with a canvas rim,
+  tooltip from text nodes (name, "Paired with", "Carries:" input cargo), and ONE dashed non-interactive multi-polyline
+  for the routes. Pairing (`dronePorts.ts`, `resolvePairings`): by `pairedId` when it's a string, else by name only when
+  the name matches exactly one other port; an explicit null `pairedId` on a paired port is the sender's "couldn't
+  resolve" and isn't looked up by name; self-pairings never match. Unmatched pairings draw no route and are counted:
+  "N drone ports, M routes on the map. K pairings couldn't be matched to one port." Cargo names come from the live
+  factory's items (`factory/itemLabels.ts`), else the class name made readable; MapPanel keys that by the names, so a
+  factory poll doesn't redraw the ports. "Drone ports in view" table (Port, Paired with, Sends, Position), 500 rows max,
+  keyed id + place (`dronePortKeys`).
 - A layer is a `MapLayer` (`layers.ts`): it gets Leaflet through its `MapContext` (never imports it at runtime),
   draws on the shared canvas renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here),
   returns its cleanup, and supplies a legend and a text `describe`.
 - Tooltip content is built from text nodes, never an HTML string (names come from the game server).
-- Every layer's data is also shown as text (the buildings-in-view table).
+- Every layer's data is also shown as text (the buildings-in-view table). Each "in view" table sits in a
+  `ui/ScrollRegion` (focusable, labelled, `max-h-80`): while rows are cut below it fades its bottom edge (an
+  `aria-hidden` overlay into `--color-surface`, `--spacing-scroll-fade` tall; not a mask, which would clip the focus
+  ring) and shows a muted "Scroll for more" line, measured by
+  `lib/useScrollCue` (ResizeObserver plus scroll); nothing when the rows fit.
+- The caption under the map lists the world layers from `LAYERS` (`caption.ts`: each layer's lower-case label, or its
+  `caption` noun, e.g. "players' markers"), so a new layer joins it with no hand edit; the buildings aren't listed.
 - The live trains layer (ADR-0038 M6, `trainsLayer`) polls `queries.mapLive` every 10 s. `MapCanvas` redraws only from
   the first layer whose bound `draw` changed upward (`MapPanel` binds each layer once per change of its own data).
 - A layer that animates times it by a motion token (`--duration-glide`), which reduced motion zeroes.

@@ -4,6 +4,8 @@ import type {
   AgentStatusResponse,
   BottlenecksResponse,
   CompatResponse,
+  DroneRoutesLayerData,
+  DroneRoutesWorldLayerResponse,
   EnrollmentCodeResponseSchema,
   FactoryBuilding,
   FactoryResponse,
@@ -24,6 +26,12 @@ import type {
   ProductionGraphResponse,
   MapMarkersLayerData,
   MapMarkersWorldLayerResponse,
+  PowerLinesLayerData,
+  PowerLinesWorldLayerResponse,
+  ConveyorKind,
+  ConveyorNodeKind,
+  ConveyorsLayerData,
+  ConveyorsWorldLayerResponse,
   RailsLayerData,
   RailsWorldLayerResponse,
   ResourceNodesLayerData,
@@ -590,11 +598,15 @@ const PLANNER_NODES = {
     kind: "extractor", className: "Build_MinerMk2_C", name: "Miner Mk.2", recipe: null, ids: ["demo-12"], states: { producing: 1 },
     at: { x: -1740, y: -985 }, site: IRON_WORKS, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 45, 120)],
   }),
-  // A second ore supply, 300 m away, joined by a train (ADR-0055): the remote part of the iron factories.
-  oreFarm: plannerNode({
-    kind: "extractor", className: "Build_MinerMk1_C", name: "Miner Mk.1", recipe: null, ids: ["demo-16", "demo-17"], states: { producing: 2 },
-    at: { x: -1990, y: -1090 }, site: ORE_FARM, products: [plannerRate("Desc_OreIron_C", "Iron Ore", 30, 60)],
-  }),
+  // A second ore supply, 300 m away, joined by a train (ADR-0055): the remote part of the iron factories. Like a real
+  // extractor it has no output data, only the item the backend inferred from the node it stands on (#728).
+  oreFarm: {
+    ...plannerNode({
+      kind: "extractor", className: "Build_MinerMk1_C", name: "Miner Mk.1", recipe: null, ids: ["demo-16", "demo-17"], states: { producing: 2 },
+      at: { x: -1990, y: -1090 }, site: ORE_FARM,
+    }),
+    resource: { className: "Desc_OreIron_C", name: "Iron Ore" },
+  },
   farmPlatform: plannerNode({
     kind: "station", className: "Build_TrainDockingStation_C", name: "Freight Platform", recipe: null, ids: ["demo-18"], states: {},
     at: { x: -1985, y: -1085 }, site: ORE_FARM,
@@ -944,6 +956,96 @@ export function mapMarkersWorld(now: number): MapMarkersWorldLayerResponse {
   return { ...worldEnvelope(now, "mapMarkers", DEMO_MARKERS.length), data: DEMO_MARKERS };
 }
 
+/**
+ * The demo's power lines (ADR-0038 §1, #330): a made-up run of wire from a pole west of the smelters, along the
+ * factory, out to the second circuit's building and on to the oil outpost, plus one short hop between two poles.
+ */
+const DEMO_POWER_LINES: PowerLinesLayerData = [
+  { id: "demo-power-line-1", points: [[-1770, -1015], [-1730, -1005]] },
+  { id: "demo-power-line-2", points: [[-1730, -1005], [-1700, -1008]] },
+  { id: "demo-power-line-3", points: [[-1700, -1008], [-1665, -1012]] },
+  { id: "demo-power-line-4", points: [[-1665, -1012], [-1610, -950]] },
+  { id: "demo-power-line-5", points: [[-1610, -950], [-1545, -880]] },
+  { id: "demo-power-line-6", points: [[-1545, -880], [-1290, -745]] },
+  { id: "demo-power-line-7", points: [[-1665, -1012], [-1662, -1018]] },
+];
+
+export function powerLinesWorld(now: number): PowerLinesWorldLayerResponse {
+  return { ...worldEnvelope(now, "powerLines", DEMO_POWER_LINES.length), data: DEMO_POWER_LINES };
+}
+
+/** One demo conveyor; `at` is end 0, as the layer gives it. */
+const conveyor = (
+  id: string,
+  kind: ConveyorKind,
+  from: [string, ConveyorNodeKind] | null,
+  to: [string, ConveyorNodeKind] | null,
+  [x, y]: [number, number],
+  tier = kind === "pipe" ? "Pipeline Mk.1" : kind === "lift" ? "Conveyor Lift Mk.1" : "Conveyor Belt Mk.1",
+  capacityPerMinute: number | null = kind === "pipe" ? null : 60,
+): ConveyorsLayerData[number] => ({
+  id,
+  kind,
+  from: from?.[0] ?? null,
+  fromKind: from?.[1] ?? null,
+  to: to?.[0] ?? null,
+  toKind: to?.[1] ?? null,
+  capacityPerMinute,
+  tier,
+  at: { x, y },
+});
+const M = (n: number): [string, ConveyorNodeKind] => [`demo-${n}`, "machine"];
+
+/**
+ * The demo's belts, lifts and pipes (#330), joining the demo factory's own machines (`buildings` above, ids demo-N) the
+ * way their recipes feed each other: a miner's belt into a splitter for the two smelters, ingots to the plate and rod
+ * constructors, rods to the screws, plates and screws to the two plate assemblers, a belt up a lift to the rotor
+ * assembler, and an oil pump's pipe through a junction to the refinery, whose residue pipe ends open (drawn as a dot).
+ */
+const DEMO_CONVEYORS: ConveyorsLayerData = [
+  conveyor("demo-belt-1", "belt", ["demo-miner-1", "extractor"], ["demo-splitter-1", "splitter"], [-1765, -985], "Conveyor Belt Mk.2", 120),
+  conveyor("demo-belt-2", "belt", ["demo-splitter-1", "splitter"], M(1), [-1745, -982]),
+  conveyor("demo-belt-3", "belt", ["demo-splitter-1", "splitter"], M(2), [-1745, -988]),
+  conveyor("demo-belt-4", "belt", M(1), M(3), [-1716, -980]),
+  conveyor("demo-belt-5", "belt", M(2), M(4), [-1716, -990]),
+  conveyor("demo-belt-6", "belt", M(4), M(5), [-1697, -990]),
+  conveyor("demo-belt-7", "belt", M(3), M(6), [-1697, -980]),
+  conveyor("demo-belt-8", "belt", M(5), M(6), [-1687, -990]),
+  conveyor("demo-belt-9", "belt", M(6), M(8), [-1671, -986]),
+  conveyor("demo-belt-10", "belt", M(4), ["demo-lift-1", "conveyor"], [-1700, -994]),
+  conveyor("demo-lift-1", "lift", ["demo-belt-10", "conveyor"], ["demo-belt-11", "conveyor"], [-1694, -996]),
+  conveyor("demo-belt-11", "belt", ["demo-lift-1", "conveyor"], M(7), [-1694, -996]),
+  conveyor("demo-belt-12", "belt", M(3), M(10), [-1697, -978]),
+  conveyor("demo-belt-13", "belt", M(5), M(10), [-1687, -986]),
+  conveyor("demo-pipe-1", "pipe", ["demo-oil-pump-1", "extractor"], ["demo-junction-1", "junction"], [-1580, -845]),
+  conveyor("demo-pipe-2", "pipe", ["demo-junction-1", "junction"], M(9), [-1560, -858]),
+  conveyor("demo-pipe-3", "pipe", M(9), null, [-1535, -874]),
+];
+
+export function conveyorsWorld(now: number): ConveyorsWorldLayerResponse {
+  return { ...worldEnvelope(now, "conveyors", DEMO_CONVEYORS.length), data: DEMO_CONVEYORS };
+}
+
+/**
+ * The demo's drone ports (ADR-0055 Decision 1, #330): a pad beside the iron works flying plates and rods out to the oil
+ * outpost, whose pad sends plastic back, and a pad at the ore farm not paired yet. Paired by name, as FRM reports it.
+ */
+const DEMO_DRONE_PORTS: DroneRoutesLayerData = [
+  {
+    id: "demo-drone-port-1", name: "Iron Works Pad", paired: "Oil Outpost Pad",
+    input: ["Desc_IronPlate_C", "Desc_IronRod_C"], output: ["Desc_Plastic_C"], fuel: ["Desc_Battery_C"], x: -1760, y: -960,
+  },
+  {
+    id: "demo-drone-port-2", name: "Oil Outpost Pad", paired: "Iron Works Pad",
+    input: ["Desc_Plastic_C"], output: ["Desc_IronPlate_C", "Desc_IronRod_C"], fuel: ["Desc_Battery_C"], x: -1305, y: -770,
+  },
+  { id: "demo-drone-port-3", name: "Ore Farm Pad", paired: null, input: [], output: [], fuel: [], x: -1960, y: -1060 },
+];
+
+export function droneRoutesWorld(now: number): DroneRoutesWorldLayerResponse {
+  return { ...worldEnvelope(now, "droneRoutes", DEMO_DRONE_PORTS.length), data: DEMO_DRONE_PORTS };
+}
+
 /** A point `u` (0 to 1) of the way along a polyline, by length, in whole metres. */
 function pointAlong(points: readonly [number, number][], u: number): [number, number] {
   const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
@@ -994,9 +1096,17 @@ export function settings(now: number, state: { autoPause: boolean; pending: bool
   return { ...envelope(now), data: { ...state, editable: true } };
 }
 
-/** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago. */
+/** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago, reading the game (#740 follow-up). */
 export function agent(now: number): AgentStatusResponse {
-  return { enrolled: true, lastSeenAt: new Date(now - 12_000).toISOString(), agentVersion: "0.1.0", connectionKind: "agent" };
+  return {
+    enrolled: true,
+    lastSeenAt: new Date(now - 12_000).toISOString(),
+    agentVersion: "0.1.0",
+    connectionKind: "agent",
+    gameReachable: true,
+    lastGameReadAt: new Date(now - 12_000).toISOString(),
+    modVersion: "0.1.0",
+  };
 }
 
 /** The demo's version policy (ADR-0057): a newer agent exists, so the demo server shows "Update available". Nothing is offered to install. */

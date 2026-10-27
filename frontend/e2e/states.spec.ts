@@ -36,6 +36,20 @@ async function openPlateFactoryTables(page: Page) {
   await page.getByRole("button", { name: "Tables" }).click();
 }
 
+/** ADR-0055 #727: the factory cards (Tables), both ticked for a merge. */
+async function pickBothFactories(page: Page) {
+  await page.getByRole("button", { name: "Tables" }).click();
+  await page.getByRole("checkbox", { name: "Select Rod works" }).check();
+  await page.getByRole("checkbox", { name: "Select Iron Plate factory" }).check();
+}
+
+/** Both ticked, then merged under the proposed name. */
+async function mergeBothFactories(page: Page) {
+  await pickBothFactories(page);
+  await page.getByRole("button", { name: "Merge into one" }).click();
+  await page.getByRole("button", { name: "Merge", exact: true }).click();
+}
+
 /** A visually hidden button (the canvas's keyboard way into a card), reached as a keyboard user does. */
 async function pressButton(page: Page, name: string | RegExp) {
   await page.getByRole("button", { name }).focus();
@@ -170,6 +184,22 @@ const CASES: StateCase[] = [
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
   // The players' map markers (#330) are empty and failing in the two cases above; here, cut to the layer's cap.
   { scenario: "map-markers-truncated", path: "/app/map", shows: /Showing part of the markers/ },
+  // The drone ports (#330) are on by default, so empty and failing are in map-world-empty and -error; here, cut to the
+  // layer's cap, and a pairing that names two ports (no route drawn, counted in the text).
+  { scenario: "map-drone-ports-truncated", path: "/app/map", shows: /Showing part of the drone ports/ },
+  { scenario: "map-drone-ports-ambiguous", path: "/app/map", shows: /1 pairing couldn't be matched to one port/ },
+  // The power lines (#330) are off by default, so each of their states turns them on: drawn, none built yet, cut to the
+  // layer's cap, and the read failing.
+  { scenario: "default", name: "map-power-lines", path: "/app/map", shows: "2 power lines on the map, 243 m of wire in all.", act: showPowerLines },
+  { scenario: "map-power-lines-empty", path: "/app/map", shows: "No power lines built yet.", act: showPowerLines },
+  { scenario: "map-power-lines-truncated", path: "/app/map", shows: /Showing part of the power lines/, act: showPowerLines },
+  { scenario: "map-power-lines-error", path: "/app/map", shows: /Power lines couldn't load/, act: showPowerLines },
+  // The belts, lifts and pipes (#330) are off by default too: drawn (the captured sample), none reported yet, cut to the
+  // layer's cap, and the read failing.
+  { scenario: "default", name: "map-conveyors", path: "/app/map", shows: /^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt/, act: showConveyors },
+  { scenario: "map-conveyors-empty", path: "/app/map", shows: "No belts, lifts or pipes reported yet.", act: showConveyors },
+  { scenario: "map-conveyors-truncated", path: "/app/map", shows: /Showing part of the belts and pipes/, act: showConveyors },
+  { scenario: "map-conveyors-error", path: "/app/map", shows: /Belts and pipes couldn't load/, act: showConveyors },
   // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
   { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
   { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },
@@ -282,6 +312,35 @@ const CASES: StateCase[] = [
       await page.keyboard.press("Enter");
     },
   },
+  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line, and its side
+  // panel "0 of 160 items/min · backed up".
+  { scenario: "planner-stalled", name: "planner-stalled-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
+  {
+    scenario: "planner-stalled",
+    name: "planner-stalled-panel",
+    path: "/app/planner",
+    // Anchored: the canvas's hidden <title> holds the same words after the group's name, and comes first.
+    shows: /^Iron Plate: 0 of 160 items\/min · backed up$/,
+    clock: PLANNER_NOW,
+    act: async (page) => {
+      await openIronGraph(page);
+      await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
+      await page.keyboard.press("Enter");
+    },
+  },
+  // #728 cause 11: a card built from conveyor data older than the factory read says so (muted, a clock glyph).
+  {
+    scenario: "planner-stale-end",
+    name: "planner-stale-end-graph",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await pressButton(page, "Open factory: Iron Rod factory");
+      await page.getByRole("button", { name: "Graph" }).click();
+      await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
+    },
+  },
   // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
   // The overview is the canvas from 640 px and the cards with the flows table below (ADR-0055 PR 8).
   { scenario: "planner-factories", path: "/app/planner", shows: /^(Flows between factories|Zoom in)$/, clock: FACTORIES_NOW },
@@ -371,14 +430,6 @@ const CASES: StateCase[] = [
   },
   {
     scenario: "planner-designations",
-    name: "planner-suggestions",
-    path: "/app/planner",
-    shows: "Suggestion",
-    clock: FACTORIES_NOW,
-    act: (page) => page.getByRole("button", { name: "Reason factories for me" }).click(),
-  },
-  {
-    scenario: "planner-designations",
     name: "planner-designate-form",
     path: "/app/planner",
     shows: "Designate",
@@ -387,6 +438,58 @@ const CASES: StateCase[] = [
       await openPlateFactoryTables(page);
       await page.getByRole("checkbox", { name: "Select Smelter" }).check();
       await page.getByRole("button", { name: "Designate selected" }).click();
+    },
+  },
+  // ADR-0055 #727: merge and split. Two factories picked (Merge offered), the same with nothing between them (Merge
+  // disabled with its reason), a merge done (the undo offer), a stale merge, and the split bar inside a designated factory.
+  {
+    scenario: "planner-merge-split",
+    name: "planner-merge-bar",
+    path: "/app/planner",
+    shows: "2 factories selected",
+    clock: FACTORIES_NOW,
+    act: pickBothFactories,
+  },
+  {
+    scenario: "planner-merge-apart",
+    name: "planner-merge-disabled",
+    path: "/app/planner",
+    shows: "These factories are not connected by any belt, pipe or transport",
+    clock: FACTORIES_NOW,
+    act: pickBothFactories,
+  },
+  {
+    scenario: "planner-merge-split",
+    name: "planner-merge-undo",
+    path: "/app/planner",
+    shows: "Merged 2 factories into Iron Plate factory.",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await mergeBothFactories(page);
+      // The undo offer is sticky to the viewport's foot. At 390 px it sticks mid-page, and a full-page screenshot of
+      // a stuck element never settles. At the page's end it sits in its own place, as on desktop.
+      await page.getByText("Merged 2 factories into Iron Plate factory.").first().waitFor();
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
+    },
+  },
+  {
+    scenario: "planner-merge-stale",
+    name: "planner-merge-stale",
+    path: "/app/planner",
+    shows: "Changed by someone else; select again.",
+    clock: FACTORIES_NOW,
+    act: mergeBothFactories,
+  },
+  {
+    scenario: "planner-merge-split",
+    name: "planner-split-bar",
+    path: "/app/planner",
+    shows: "1 group, 2 machines selected",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await pressButton(page, "Open factory: Rod works");
+      await page.getByRole("button", { name: "Tables" }).click();
+      await page.getByRole("checkbox", { name: "Select Constructor" }).check();
     },
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
@@ -527,6 +630,9 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // #740 follow-up: the agent's own view of the game, with the same clock (its last read 9 s ago, or 12 m ago).
+  { scenario: "agent-game-reachable-owner", path: "/app/settings", shows: "last read 9 s ago", clock: AGENT_NOW },
+  { scenario: "agent-game-unreachable-owner", path: "/app/settings", shows: "Not reachable", clock: AGENT_NOW },
   // ADR-0057 Decision 7: the version banners in the shell (an update, an unsupported version, a security advisory from the
   // policy's range and from minSafe) and the line on the Servers page.
   { scenario: "update-agent", path: "/app/settings", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },
@@ -649,6 +755,14 @@ async function filterTheMap(page: Page) {
   await page.getByRole("checkbox", { name: /^Coal/ }).uncheck();
   await page.getByRole("radio", { name: "In use only" }).check();
   await page.getByRole("checkbox", { name: /^Paused/ }).uncheck();
+}
+
+async function showPowerLines(page: Page) {
+  await page.getByRole("checkbox", { name: "Power lines" }).check();
+}
+
+async function showConveyors(page: Page) {
+  await page.getByRole("checkbox", { name: "Belts and pipes" }).check();
 }
 
 async function openAddForm(page: Page) {

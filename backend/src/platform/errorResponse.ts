@@ -81,6 +81,8 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   // ADR-0055 PR 9: Planner designations.
   designation_overlap: 409,
   designation_cap: 409,
+  // ADR-0055 amendment 2026-10-27 (Decision 11): a replace whose expected revision is gone or changed.
+  designation_stale: 409,
   // ADR-0047: account deletion and leaving a server. 403, not 401, so the client does not read it as "signed out".
   would_orphan: 409,
   reauth_required: 403,

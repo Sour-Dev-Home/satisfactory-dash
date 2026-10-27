@@ -17,10 +17,11 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.getByRole("button", { name: "Graph" }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
-  // dagre has laid out the cards, and the edge words are drawn.
-  // An edge label is two <tspan> lines, item then rate (the <title> tooltip keeps the one-line form).
-  await expect(svg.locator("tspan", { hasText: /^Iron Ore$/ }).first()).toBeVisible();
-  await expect(svg.locator("tspan", { hasText: /^120 items\/min$/ }).first()).toBeVisible();
+  // dagre has laid out the cards, and the edge labels are drawn: the item as its icon bubble over the rate (ADR-0060;
+  // the <title> tooltip keeps the words).
+  const ironOre = svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first();
+  await expect(ironOre.locator('[data-bubble] image[href$="-32.webp"], [data-bubble] image[href$="-64.webp"]')).toBeVisible();
+  await expect(ironOre.locator(":scope > text", { hasText: /^120 items\/min$/ })).toBeVisible();
 
   // Wheel zoom about the pointer, then drag to pan.
   const box = (await svg.boundingBox())!;
@@ -170,8 +171,12 @@ test.describe("the factory canvas", () => {
     await page.getByLabel("Motion").selectOption("off");
     await expect(svg.locator("animateMotion")).toHaveCount(0);
     expect(await page.evaluate(() => window.localStorage.getItem("planner.motion"))).toBe("off");
+    // The opened factory is in the address (?open=), so a reload comes back to it.
     await page.reload();
-    const again = await openPlate(page);
+    await expect(page).toHaveURL(/[?&]open=/);
+    await page.getByRole("button", { name: "Graph" }).click();
+    const again = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
+    await expect(again).toBeVisible();
     await expect(page.getByLabel("Motion")).toHaveValue("off");
     await expect(again.locator("animateMotion")).toHaveCount(0);
   });
@@ -248,24 +253,54 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   await expect(page.getByRole("form", { name: "Name the designated factory" })).toHaveCount(0);
 });
 
-// ADR-0055 PR 10b: the canvas lasso and the suggestions on the canvas, by pointer, under the production CSP.
-test("an owner lassos a factory's cards on the canvas and keeps a suggestion there", async ({ page, mockApi }, testInfo) => {
+// ADR-0055 #727: merge two factories and split them back, by keyboard alone, under the production CSP: tick both cards,
+// Merge into one, Enter on the proposed name; the undo offer takes the focus, Enter on Split back sends the inverse.
+test("an owner merges two factories and splits them back from the keyboard", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-merge-split");
+  await page.goto("/app/planner");
+  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+    await page.getByRole(role, { name, exact: typeof name === "string" }).focus();
+    await page.keyboard.press(key);
+  };
+  await press("Tables");
+  await press("Select Rod works", "checkbox", "Space");
+  await press("Select Iron Plate factory", "checkbox", "Space");
+  await expect(page.getByText("2 factories selected")).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+  await press("Merge into one");
+  // The name field takes focus with the largest factory's name proposed.
+  const field = page.getByRole("textbox", { name: "Name" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("Iron Plate factory");
+  const merged = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.press("Enter");
+  const mergeBody = (await merged).postDataJSON() as { expect: { id: string; revision: number }[]; put: { id?: string; members: unknown[] }[]; intent: string };
+  expect(mergeBody.intent).toBe("merge");
+  expect(mergeBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 2 }]);
+  expect(mergeBody.put).toHaveLength(1);
+  expect(mergeBody.put[0]!.id).toBe("6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10");
+
+  // The undo offer has the focus: Enter is Split back, with the revision the merge answered.
+  const splitBack = page.getByRole("button", { name: "Split back" });
+  await expect(splitBack).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const undone = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.press("Enter");
+  const undoBody = (await undone).postDataJSON() as { expect: { id: string; revision: number }[]; put: { id: string; createdAt: string }[]; intent: string };
+  expect(undoBody.intent).toBe("undo");
+  expect(undoBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 3 }]);
+  expect(undoBody.put).toEqual([expect.objectContaining({ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", createdAt: "2026-10-20T10:00:00.000Z" })]);
+  await expect(page.getByText("Split back: the factories are as they were.").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Production planner" })).toBeFocused();
+});
+
+// ADR-0055 PR 10b: the canvas lasso, by pointer, under the production CSP.
+test("an owner lassos a factory's cards on the canvas and designates them", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");
   await page.goto("/app/planner");
-  // The overview: "Reason factories for me" draws the automatic factories dashed, with a Keep pill.
   await page.getByRole("button", { name: "Graph" }).click();
   const overview = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(overview).toBeVisible();
-  await page.getByRole("button", { name: "Reason factories for me" }).click();
-  await expect(overview).toBeVisible();
-  await expect(overview.locator("[data-suggested]").first()).toBeVisible();
-  await expect(overview.locator("[data-keep]").first()).toBeAttached();
-  // At 390 px the fitted drawing can run past the canvas, so Keep is reached by its keyboard button, as in 10a.
-  await page.getByRole("button", { name: "Keep Iron Plate factory" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("textbox", { name: "Name" })).toHaveCount(0);
 
   // On the canvas, a factory's button is the keyboard's (visually hidden): focus it and press Enter.
   await page.getByRole("button", { name: /^Open factory: Iron Plate factory/ }).focus();
@@ -274,7 +309,9 @@ test("an owner lassos a factory's cards on the canvas and keeps a suggestion the
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
   await expect(svg).toBeVisible();
   await page.getByRole("button", { name: "Select" }).click();
-  // A lasso just inside the canvas's border encloses every card the fit shows.
+  // A lasso just inside the canvas's border encloses every card the fit shows. Focusing the factory's button may have
+  // scrolled the page, so bring the canvas's top into view first: a press above the viewport reaches nothing.
+  await svg.evaluate((el) => el.scrollIntoView({ block: "start" }));
   const box = (await svg.boundingBox())!;
   const at = (fx: number, fy: number) => ({ x: box.x + 4 + fx * (box.width - 8), y: box.y + 4 + fy * (box.height - 8) });
   const corners = [at(0, 0), at(1, 0), at(1, 1), at(0, 1)];
@@ -298,4 +335,42 @@ test("an owner lassos a factory's cards on the canvas and keeps a suggestion the
   const body = (await sent).postDataJSON() as { name: string; mode: string; members: unknown[] };
   expect(body).toMatchObject({ name: "Plate works", mode: "core" });
   expect(body.members.length).toBeGreaterThan(0);
+});
+
+test("with the item-focus flag on, the keyboard focuses a link's item and Escape leaves it (ADR-0060 build PR 3)", async ({ page, mockApi }, testInfo) => {
+  // The flag is off by default and has no control: the owner turns it on in this browser for the review (build PR 6).
+  await page.addInitScript(() => window.localStorage.setItem("planner.itemFocus", "on"));
+  await mockApi("planner-group-panel");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
+  await expect(svg).toBeVisible();
+  // One tab stop for every bubble; the arrow keys move between them, not the view.
+  const bubbles = page.getByRole("list", { name: "Items on the lines" }).getByRole("button");
+  await expect(bubbles.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+  const before = await transformOf(svg);
+  await bubbles.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(bubbles.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(bubbles.first()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(bubbles.first()).toHaveAttribute("aria-expanded", "true");
+  await expect(svg.locator("[data-focused]")).toHaveCount(1);
+  await expect(page.getByRole("status")).toContainText("Focused");
+  // The bubble has become its detail card (build PR 5), with its 128 px icon from our own origin (the CSP's img-src).
+  const card = svg.locator("[data-item-card]");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator('image[href$="-128.webp"]')).toHaveCount(1);
+  await expect(page.getByRole("group", { name: / card$/ }).getByRole("button", { name: /^Close / })).toBeAttached();
+  await expectNoAxeViolations(page, testInfo);
+  await page.keyboard.press("Escape");
+  await expect(svg.locator("[data-focused]")).toHaveCount(0);
+  await expect(card).toHaveCount(0);
+  await expect(bubbles.first()).toBeFocused();
+  await expect(page.getByRole("status")).toContainText("Overview");
+  // Focus does not zoom (owner answer 2); reaching a bubble may only pan it into view.
+  expect(/scale\(([\d.e-]+)\)/.exec(await transformOf(svg))?.[1]).toBe(/scale\(([\d.e-]+)\)/.exec(before)?.[1]);
+  await expect(svg.locator("[style]")).toHaveCount(0);
 });

@@ -214,11 +214,97 @@ describe("rates", () => {
     expect(rates).toEqual({ [SMELTER]: [15, "estimated"], Build_FoundryMk1_C: [45, "estimated"] });
   });
 
-  it("is unknown when a source's output is split and the destination reports no use", () => {
+  it("shares a source's output evenly, estimated, when it is split and the destinations report no use", () => {
     const b = [machine("p", { out: [[PLATE, 60, 50]] }), machine("q", { recipe: "Q", ing: [] }), machine("r", { recipe: "R" })];
     const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "q"), edge("c", "S1", "r")]);
     expect(g.edges.length).toBe(2);
-    for (const e of g.edges) expect(e).toMatchObject({ ratePerMinute: null, rate: "unknown" });
+    for (const e of g.edges) expect(e).toMatchObject({ ratePerMinute: 25, rate: "estimated" });
+  });
+
+  describe("one-end estimate (owner, 2026-10-27)", () => {
+    const res = (x: number, y: number): ResourceNode => ({ type: "Iron Ore", className: ORE, purity: "normal", nodeType: "node", x, y, exploited: true });
+    // Storage and a sink: two destinations that report no use (two storages would group into one node).
+    const SINK = "Build_ResourceSink_C_7";
+    const toDataless = (g: { edges: PlannerEdge[]; nodes: PlannerNode[] }) =>
+      g.edges.filter((e) => g.nodes.find((n) => n.key === e.to)?.ingredients.length === 0).sort((a, b) => a.to.localeCompare(b.to));
+
+    it("a source with two rate-less destinations (storage and a sink) shares its output evenly", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })]);
+      const into = toDataless(g);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ itemClassName: PLATE, ratePerMinute: 25, rate: "estimated" });
+    });
+
+    it("storage beside a measured consumer takes what is left, the measured edge untouched", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 20]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const [toC] = edgeBetween(g, node(g, "Build_Constructor_C", "Recipe"), node(g, "Build_Constructor_C", "C"));
+      expect(toC).toMatchObject({ ratePerMinute: 20, rate: "measured" });
+      const into = toDataless(g).filter((e) => e.from === toC.from);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ ratePerMinute: 15, rate: "estimated" });
+    });
+
+    it("never below zero when measured edges already take more than the source reports", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 10]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 30]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const into = toDataless(g).filter((e) => e.itemClassName === PLATE);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ ratePerMinute: 0, rate: "estimated" });
+      expect(g.edges.every((e) => e.ratePerMinute === null || e.ratePerMinute >= 0)).toBe(true);
+    });
+
+    it("destination-only data: two data-less sources (a miner and a station) share the destination's use", () => {
+      const smelt = machine("s", { className: SMELTER, recipe: "Iron Ingot", ing: [[ORE, 60, 40]], out: [[INGOT, 40]] });
+      const e = [edge("a", "Xm", "G1", { at: [0, 0] }), edge("b", "St_1", "G1", { fromKind: "station" }), edge("c", "G1", "s")];
+      const g = buildProductionGraph([smelt], e, [res(2, 0)]);
+      const into = g.edges.filter((e) => e.to === node(g, SMELTER).key);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ itemClassName: ORE, ratePerMinute: 20, rate: "estimated" });
+    });
+
+    it("no data on either end stays null, and so does an unknown item", () => {
+      const known = buildProductionGraph([], [edge("a", "Xm", "T1", { at: [0, 0] })], [res(3, 0)]);
+      expect(known.edges).toEqual([expect.objectContaining({ itemClassName: ORE, ratePerMinute: null, rate: "unknown" })]);
+      const unknown = buildProductionGraph([], [edge("a", "Xm", "T1", { at: [0, 0] })]);
+      expect(unknown.edges).toEqual([expect.objectContaining({ itemClassName: null, ratePerMinute: null, rate: "unknown" })]);
+    });
+
+    it("a zero-output source gives an estimated 0, never null or negative", () => {
+      const g = run([machine("p", { out: [[PLATE, 60, 0]] })], [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })]);
+      for (const e of toDataless(g)) expect(e).toMatchObject({ ratePerMinute: 0, rate: "estimated" });
+    });
+
+    it("both ends reporting and disagreeing: the destination's measured rate stands, the source estimate only fills the rest", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 60]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 10]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const toC = g.edges.filter((e) => e.itemClassName === PLATE && e.rate === "measured");
+      expect(toC).toHaveLength(1);
+      expect(toC[0].ratePerMinute).toBe(10);
+      const into = toDataless(g).filter((e) => e.itemClassName === PLATE);
+      expect(into.map((e) => e.ratePerMinute)).toEqual([25, 25]);
+      // The edges together carry exactly what the source reports; nothing is counted by both the source and destination pass.
+      expect(toC[0].ratePerMinute! + into.reduce((s, e) => s + (e.ratePerMinute ?? 0), 0)).toBe(60);
+    });
+
+    it("does not depend on the order of the edges", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] })];
+      const es = [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })];
+      const a = run(b, es);
+      const r = run(b, [...es].reverse());
+      const sig = (g: { edges: PlannerEdge[] }) => g.edges.map((e) => `${e.from}>${e.to}:${e.ratePerMinute}:${e.rate}`).sort();
+      expect(sig(r)).toEqual(sig(a));
+    });
+
+    it("a fluid source's output is shared in m³/min on pipe edges", () => {
+      const refinery = machine("r", { className: "Build_OilRefinery_C", recipe: "Fuel", unit: "m3/min", out: [["Desc_LiquidFuel_C", 40, 30]] });
+      const gen = "Build_GeneratorFuel_C_9";
+      const g = run([refinery], [edge("p1", "r", "T1", { kind: "pipe", cap: null }), edge("p2", "r", gen, { kind: "pipe", cap: null, toKind: "consumer" })]);
+      const into = toDataless(g);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ kind: "pipe", itemClassName: "Desc_LiquidFuel_C", ratePerMinute: 15, rate: "estimated" });
+    });
   });
 
   it("reports a capacity only for an unbranched chain", () => {
@@ -313,6 +399,52 @@ describe("stale, unconnected and missing belt data", () => {
     expect(run(b, "tooLarge")).toMatchObject({ nodes: [], beltData: "tooLarge", notes: [{ code: "beltDataTooLarge" }] });
     expect(run(b, "notReceived")).toMatchObject({ nodes: [], sites: [], beltData: "notReceived", notes: [{ code: "beltDataNotReceived" }] });
     expect(run(b, [])).toMatchObject({ beltData: "stale", unconnectedMachineIds: ["a"] });
+  });
+
+  // #728 cause 11: a conveyor end naming a machine the latest factory read no longer has (a rebuilt or removed machine).
+  it("says so in one note when conveyor ends name machines the factory read lacks, counting each machine once", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "gone1", "use"), edge("e2", "gone1", "use"), edge("e3", "gone2", "use")]);
+    expect(g.nodes.some((n) => n.kind === "other")).toBe(true);
+    const stale = g.notes.filter((n) => n.code === "staleConveyorEnds");
+    expect(stale).toHaveLength(1);
+    expect(stale[0].text).toBe("2 machines on the conveyor data are missing from the latest factory read: conveyor data is older than the factory read and refreshes within 10 minutes.");
+    expect(ProductionGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it("marks the nodes behind that note stale, and no other node (#728 cause 11)", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "gone1", "use"), edge("e2", "gone2", "use")]);
+    const stale = g.nodes.filter((n) => n.stale === true);
+    expect(stale.length).toBeGreaterThan(0);
+    expect(stale.reduce((t, n) => t + n.count, 0)).toBe(2);
+    for (const n of stale) expect(n).toMatchObject({ kind: "other", machineIds: [] });
+    const fresh = g.nodes.filter((n) => n.stale !== true);
+    expect(fresh.map((n) => n.machineIds)).toEqual([["use"]]);
+    expect(fresh.every((n) => !("stale" in n))).toBe(true);
+    expect(ProductionGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it("never marks storage, unknown-class or matched ends stale", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "T1", "use"), edge("e2", "Mod_1", "use", { fromKind: "other" })]);
+    expect(g.nodes.length).toBeGreaterThan(1);
+    expect(g.nodes.some((n) => "stale" in n)).toBe(false);
+    const { b: mb, e } = manifold(2);
+    expect(run(mb, e).nodes.some((n) => "stale" in n)).toBe(false);
+  });
+
+  it("uses the singular for one stale machine end", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "gone1", "use")]);
+    expect(g.notes.find((n) => n.code === "staleConveyorEnds")?.text).toMatch(/^1 machine on the conveyor data is missing from the latest factory read:/);
+  });
+
+  it("no stale-ends note when every machine end matches, nor for storage or unknown-class ends (never in the factory read)", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    expect(run(b, [edge("e1", "T1", "use"), edge("e2", "Mod_1", "use", { fromKind: "other" })]).notes.map((n) => n.code)).not.toContain("staleConveyorEnds");
+    const { b: mb, e } = manifold(2);
+    expect(run(mb, e).notes.map((n) => n.code)).not.toContain("staleConveyorEnds");
   });
 });
 
@@ -426,6 +558,18 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(only(g)).toMatchObject({ kind: "pipe", itemClassName: "Desc_Water_C", itemName: "Water", itemFrom: "resourceNode" });
   });
 
+  it("a miner sharing its destination with a machine has no known share: its link is unknown, never a guessed 0", () => {
+    const b = [smelter([[ORE, 30, 24]]), machine("m", { recipe: "Ore", out: [[ORE, 10]] })];
+    const g = buildProductionGraph(b, [edge("a", "Xm", "s", { at: [0, 0] }), edge("b", "m", "s")], [res(ORE, 4, 0)]);
+    const fromMiner = g.edges.find((e) => e.from.startsWith("extractor")) as PlannerEdge;
+    const fromMachine = g.edges.find((e) => e.from.startsWith("Build_Constructor_C")) as PlannerEdge;
+    expect(fromMiner).toMatchObject({ itemClassName: ORE, ratePerMinute: null, rate: "unknown" });
+    expect(fromMachine).toMatchObject({ itemClassName: ORE, ratePerMinute: 24, rate: "estimated" });
+    // A consumer that takes nothing still says 0 for every source.
+    const idle = buildProductionGraph([smelter([[ORE, 30, 0]]), b[1]], [edge("a", "Xm", "s", { at: [0, 0] }), edge("b", "m", "s")], [res(ORE, 4, 0)]);
+    expect(idle.edges.map((e) => e.ratePerMinute)).toEqual([0, 0]);
+  });
+
   it("storage passes on the single item flowing into it, along a chain, into a machine", () => {
     const b = [machine("m", { className: SMELTER, recipe: "Iron Ingot", out: [[INGOT, 30]] }), machine("c", { recipe: "Plate", ing: [[INGOT, 30, 25]], out: [[PLATE, 20]] })];
     const g = buildProductionGraph(b, [edge("a", "m", "T1"), edge("b", "T1", "T2"), edge("c", "T2", "T3"), edge("d", "T3", "c")]);
@@ -448,14 +592,14 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(g.edges).toHaveLength(2);
   });
 
-  it("a machine with two products into storage: one mixed edge per item, rate unknown; the storage's next belt stays unknown", () => {
+  it("a machine with two products into storage: one mixed edge per item at its output, estimated; the next belt stays unknown", () => {
     const b = [machine("r", { recipe: "Two", out: [[PLATE, 20, 20], [WIRE, 30, 30]] })];
     const g = buildProductionGraph(b, [edge("a", "r", "T1"), edge("b", "T1", "T2")]);
     const intoT1 = g.edges.filter((e) => e.from.startsWith("Build_Constructor_C"));
-    expect(intoT1.map((e) => e.itemClassName).sort()).toEqual([PLATE, WIRE]);
-    for (const e of intoT1) expect(e).toMatchObject({ mixed: true, rate: "unknown", ratePerMinute: null, itemFrom: "recipe" });
+    expect(intoT1.map((e) => [e.itemClassName, e.ratePerMinute]).sort()).toEqual([[PLATE, 20], [WIRE, 30]]);
+    for (const e of intoT1) expect(e).toMatchObject({ mixed: true, rate: "estimated", itemFrom: "recipe" });
     const onward = g.edges.filter((e) => e.from.startsWith("storage"));
-    expect(onward).toEqual([expect.objectContaining({ itemClassName: null })]);
+    expect(onward).toEqual([expect.objectContaining({ itemClassName: null, ratePerMinute: null, rate: "unknown" })]);
   });
 
   it("a storage holding two items feeds a machine the one it uses, mixed and never measured", () => {
@@ -504,14 +648,15 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(only(st)).toMatchObject({ itemClassName: ORE, itemFrom: "downstream" });
   });
 
-  it("the unknowable stays unknown: a modded source, an unloading station into storage, a sushi split", () => {
+  it("the unknowable stays unknown: a modded source, an unloading station into storage; a sushi split is estimated per item", () => {
     expect(only(buildProductionGraph([smelter()], [edge("a", "Mod_1", "s", { fromKind: "other" })])).itemClassName).toBeNull();
     expect(only(buildProductionGraph([], [edge("a", "St_1", "T1", { fromKind: "station" })])).itemClassName).toBeNull();
     // Two products through a (smart) splitter to storage and a sink: each may get either, never one guessed item.
     const b = [machine("r", { recipe: "Two", out: [[PLATE, 20], [WIRE, 30]] })];
     const g = buildProductionGraph(b, [edge("a", "r", "S1"), edge("b", "S1", "T1"), edge("c", "S1", "Sink_1", { toKind: "consumer" })]);
     expect(g.edges).toHaveLength(4);
-    for (const x of g.edges) expect(x).toMatchObject({ mixed: true, rate: "unknown" });
+    // Each item's output shared evenly between the two ends (one-end estimate, 2026-10-27): an overstatement the owner accepted.
+    for (const x of g.edges) expect(x).toMatchObject({ mixed: true, rate: "estimated", ratePerMinute: x.itemClassName === PLATE ? 10 : 15 });
   });
 
   it("is byte-identical with the resource nodes in any order", () => {
@@ -646,5 +791,54 @@ describe("production graph: designations (ADR-0055 Decision 5)", () => {
     const g = buildProductionGraphWithStats(b, e, [], null, des([["gone1", D1, "Gone"], ["gone2", D1, "Gone"]])).graph;
     expect(g.factories?.some((f) => f.designationId === D1)).toBe(false);
     expect(JSON.stringify(g)).toBe(base);
+  });
+});
+
+describe("a group with no getFactory record is named by the building its ids carry (the owner, 2026-10-27)", () => {
+  // FRM ids are the building's class and a number (docs-vault/raw-sources/captured-responses/frm-getBelts-2026-10-21-connections-trimmed.json).
+  const ingots = () => machine("m", { className: SMELTER, recipe: "Iron Ingot", out: [[INGOT, 30]] });
+
+  it("a storage container: its class and the game's name, and the same key as before", () => {
+    const g = run([ingots()], [edge("a", "m", "Build_StorageContainerMk1_C_2147455285", { toKind: "storage" })]);
+    const store = g.nodes.find((n) => n.kind === "storage") as PlannerNode;
+    expect(store).toMatchObject({ className: "Build_StorageContainerMk1_C", name: "Storage Container" });
+    // Keys are what saved state refers to (collapsed cards, designations): they still start with the kind.
+    expect(store.key.startsWith("storage|")).toBe(true);
+    expect(ProductionGraphSchema.parse(g)).toBeTruthy();
+  });
+
+  it("a sink and a generator: their classes, so the factories read them as a sink and as power", () => {
+    // Each fed by its own machine: buildings of one kind with the same neighbours are one group.
+    const fuel = machine("f", { className: "Build_OilRefinery_C", recipe: "Fuel", out: [["Desc_LiquidFuel_C", 40]], at: [400, 400] });
+    const g = run(
+      [ingots(), fuel],
+      [edge("a", "m", "Build_ResourceSink_C_7", { toKind: "consumer" }), edge("b", "f", "Build_GeneratorFuel_C_9", { kind: "pipe", cap: null, toKind: "consumer", at: [400, 400] })],
+    );
+    const sink = g.nodes.find((n) => n.className === "Build_ResourceSink_C") as PlannerNode;
+    const gen = g.nodes.find((n) => n.className === "Build_GeneratorFuel_C") as PlannerNode;
+    expect(sink).toMatchObject({ kind: "consumer", name: "Resource Sink", role: "sink" });
+    expect(gen).toMatchObject({ kind: "consumer", name: "Fuel-Powered Generator", role: "power" });
+    expect(g.nodes.some((n) => n.name === "consumer" || n.name === "storage")).toBe(false);
+  });
+
+  it("ids that name no single class keep the kind as the class, and read as the kind in words", () => {
+    const g = run(
+      [ingots()],
+      [edge("a", "m", "Build_StorageContainerMk1_C_1", { toKind: "storage" }), edge("b", "m", "Build_StorageContainerMk2_C_2", { toKind: "storage" })],
+    );
+    // Both fed by the one smelter and feeding nothing: one group of two, whose ids disagree.
+    const stores = g.nodes.filter((n) => n.kind === "storage");
+    expect(stores).toHaveLength(1);
+    expect(stores[0]).toMatchObject({ count: 2, className: "storage", name: "Storage" });
+    expect(stores[0].key.startsWith("storage|")).toBe(true);
+  });
+
+  it("an extractor keeps its class (it can seed a factory, whose key comes from it), so no factory key moves", () => {
+    const edges = [edge("a", "Build_OilPump_C_3", "m2", { kind: "pipe", cap: null, fromKind: "extractor" })];
+    const refinery = machine("m2", { className: "Build_OilRefinery_C", recipe: "Plastic", ing: [["Desc_LiquidOil_C", 30]], out: [["Desc_Plastic_C", 20]] });
+    const g = buildProductionGraphWithStats([refinery], edges).graph;
+    const pump = g.nodes.find((n) => n.kind === "extractor") as PlannerNode;
+    expect(pump.className).toBe("extractor");
+    expect(g.nodes.some((n) => n.className === "Build_OilPump_C")).toBe(false);
   });
 });

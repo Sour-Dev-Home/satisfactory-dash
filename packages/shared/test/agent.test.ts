@@ -21,6 +21,7 @@ import {
   FactorySchema,
   KnownErrorCode,
   PowerSchema,
+  SENDER_VERSION_MAX,
   SetAutoPauseParamsSchema,
   SetAutoPauseResponseSchema,
   SnapshotRequestSchema,
@@ -207,6 +208,62 @@ describe("agent contract: snapshots", () => {
       expect(ok({ factory: { buildings: [{ ...building, clockSpeedPercent: -5 }] } })).toBe(false);
     });
 
+    it("S4-B generators: optional, bounded, capped at 5000; fuel and supplement may be null; the unit is the backend's", () => {
+      const many = <T,>(item: T, n: number) => Array.from({ length: n }, () => item);
+      const coal = { className: "Desc_Coal_C", name: "Coal", amount: 50 };
+      const generator = {
+        id: "Build_GeneratorCoal_C_1",
+        name: "Coal-Powered Generator",
+        className: "Build_GeneratorCoal_C",
+        location: { xM: 1, yM: 2, zM: 3, rotationDeg: 0 },
+        circuitGroupId: 0,
+        currentMW: 75,
+        capacityMW: 75,
+        clockSpeedPercent: 100,
+        isProducing: true,
+        fuel: coal,
+        supplement: { className: "Desc_Water_C", name: "Water", amount: 12.5 },
+      };
+      const withGens = (generators: object[]) => ({ power: { circuits: [circuit], generators } });
+      expect(ok({ power: { circuits: [circuit] } })).toBe(true); // an older sender, or the FRM agent
+      expect(ok(withGens([generator, { ...generator, name: "Geothermal Generator", fuel: null, supplement: null }]))).toBe(true);
+      expect(ok(withGens([{ ...generator, supplement: undefined }]))).toBe(true); // supplement not read
+      const { fuel: _fuel, ...noFuel } = generator;
+      expect(ok(withGens([noFuel]))).toBe(false); // fuel is null when unread, never absent
+      expect(ok(withGens(many(generator, 5_000)))).toBe(true);
+      expect(ok(withGens(many(generator, 5_001)))).toBe(false);
+      for (const field of ["id", "name", "className"]) expect(ok(withGens([{ ...generator, [field]: long(201) }])), field).toBe(false);
+      expect(ok(withGens([{ ...generator, fuel: { ...coal, name: long(201) } }]))).toBe(false);
+      for (const field of ["currentMW", "capacityMW", "clockSpeedPercent"]) expect(ok(withGens([{ ...generator, [field]: -1 }])), field).toBe(false);
+      expect(ok(withGens([{ ...generator, fuel: { ...coal, amount: -1 } }]))).toBe(false);
+      expect(ok(withGens([{ ...generator, currentMW: Number.NaN }]))).toBe(false);
+      // The unit is backend-derived: a sender's is dropped.
+      const parsed = SnapshotRequestSchema.parse({ ...full, ...withGens([{ ...generator, fuel: { ...coal, unit: "items" } }]) });
+      expect(parsed.power?.generators?.[0]?.fuel).not.toHaveProperty("unit");
+      expect(PowerSchema.safeParse({ circuits: [], hasOutage: false, generators: [{ ...generator, fuel: { ...coal, unit: "items" } }] }).success).toBe(true);
+    });
+
+    it("S4-B extractors: optional, the building shape and bounds, capped at 5000", () => {
+      const many = <T,>(item: T, n: number) => Array.from({ length: n }, () => item);
+      const extractor = { ...building, name: "Miner Mk.2", className: "Build_MinerMk2_C", recipe: null, ingredients: [] };
+      expect(ok({ factory: { buildings: [building] } })).toBe(true); // an older sender, or the FRM agent
+      expect(ok({ factory: { buildings: [building], extractors: [] } })).toBe(true);
+      expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_000) } })).toBe(true);
+      expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_001) } })).toBe(false);
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, className: long(201) }] } })).toBe(false);
+      // The raw flags are required, as on a machine: a miner stopped by a full output sends isBackedUp true.
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, isBackedUp: true, isProducing: false }] } })).toBe(true);
+      const { isBackedUp: _dropped, ...noFlag } = extractor;
+      expect(ok({ factory: { buildings: [], extractors: [noFlag] } })).toBe(false);
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, production: [{ ...rate, currentPerMinute: -1 }] }] } })).toBe(false);
+      // A backend-derived field is dropped, as on buildings.
+      const parsed = SnapshotRequestSchema.parse({ ...full, factory: { buildings: [], extractors: [{ ...extractor, state: "producing" }] } });
+      expect(parsed.factory?.extractors?.[0]).not.toHaveProperty("state");
+      // The response carries them optionally, with no bounds.
+      expect(FactorySchema.safeParse(fixtures.factoryMixed.data).success).toBe(true);
+      expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, extractors: [{ ...extractor, state: "producing", isBackedUp: false }] }).success).toBe(true);
+    });
+
     it("the RESPONSE schemas are not bounded: only what an agent sends is", () => {
       expect(FactorySchema.safeParse({ ...fixtures.factoryMixed.data, buildings: [{ ...fixtures.factoryMixed.data.buildings[0], className: long(300) }] }).success).toBe(true);
     });
@@ -236,6 +293,54 @@ describe("agent contract: snapshots", () => {
       false,
       false,
     ]);
+  });
+
+  describe("reachability fields (S4-A, R7): gameReachable, lastGameReadAt, modVersion", () => {
+    const parse = (base: object, part: object) => SnapshotRequestSchema.safeParse({ ...base, ...part });
+    const reach = { gameReachable: true, lastGameReadAt: "2026-10-27T12:00:00Z", modVersion: "1.2.3" };
+
+    it("an older sender's body, without any of them, still parses and gains none", () => {
+      for (const snapshot of [fixtures.agentSnapshotRequestFull, fixtures.agentSnapshotRequestPartial, fixtures.agentSnapshotRequestUnreachable]) {
+        const parsed = SnapshotRequestSchema.safeParse(snapshot);
+        expect(parsed.success).toBe(true);
+        expect(parsed.data).not.toHaveProperty("gameReachable");
+        expect(parsed.data).not.toHaveProperty("lastGameReadAt");
+        expect(parsed.data).not.toHaveProperty("modVersion");
+      }
+    });
+
+    it("they parse on a reachable and an unreachable snapshot, and round-trip unchanged", () => {
+      expect(SnapshotRequestSchema.parse({ ...fixtures.agentSnapshotRequestFull, ...reach })).toMatchObject(reach);
+      const down = { gameReachable: false, lastGameReadAt: "2026-10-27T11:58:00.500+02:00", modVersion: "agent-0.9.0" };
+      expect(SnapshotRequestSchema.parse({ ...fixtures.agentSnapshotRequestUnreachable, ...down })).toMatchObject(down);
+      for (const one of [{ gameReachable: false }, { lastGameReadAt: reach.lastGameReadAt }, { modVersion: "x" }]) {
+        expect(parse(fixtures.agentSnapshotRequestPartial, one).success, JSON.stringify(one)).toBe(true);
+      }
+    });
+
+    it("gameReachable is a boolean, never a string or null", () => {
+      for (const gameReachable of ["true", 1, null]) {
+        expect(parse(fixtures.agentSnapshotRequestPartial, { gameReachable }).success, String(gameReachable)).toBe(false);
+      }
+    });
+
+    it("modVersion is 1 to 64 characters", () => {
+      const ok = (modVersion: unknown) => parse(fixtures.agentSnapshotRequestPartial, { modVersion }).success;
+      expect([ok("a"), ok("v".repeat(64)), ok(""), ok("v".repeat(65)), ok(3), ok(null)]).toEqual([true, true, false, false, false, false]);
+    });
+
+    it("lastGameReadAt is an ISO datetime with an offset or Z, nothing else", () => {
+      const at = (lastGameReadAt: unknown) => parse(fixtures.agentSnapshotRequestPartial, { lastGameReadAt }).success;
+      expect([
+        at("2026-10-27T12:00:00Z"),
+        at("2026-10-27T12:00:00.123-05:30"),
+        at("2026-10-27T12:00:00"),
+        at("2026-10-27"),
+        at("yesterday"),
+        at(1761566400000),
+        at(null),
+      ]).toEqual([true, true, false, false, false, false, false]);
+    });
   });
 
   it("the snapshot fixtures carry nothing about the machine", () => {
@@ -299,6 +404,40 @@ describe("agent contract: what the user sees", () => {
     expect(AgentStatusResponseSchema.parse(fixtures.agentStatusNotEnrolled)).not.toHaveProperty("online");
     for (const bad of ["yes", 1, null]) expect(AgentStatusResponseSchema.safeParse({ ...fixtures.agentStatusEnrolled, online: bad }).success, String(bad)).toBe(false);
     expect(AGENT_OFFLINE_DEFAULT_SECONDS).toBe(120);
+  });
+
+  it("the game connection fields (#740 follow-up) are optional, so every older answer still parses, and absent when not reported", () => {
+    for (const old of [fixtures.agentStatusEnrolled, fixtures.agentStatusNotEnrolled, fixtures.agentStatusEnrolledSilent]) {
+      const parsed = AgentStatusResponseSchema.parse(old);
+      for (const key of ["gameReachable", "lastGameReadAt", "modVersion"]) expect(parsed).not.toHaveProperty(key);
+    }
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusGameReachable)).toMatchObject({
+      gameReachable: true,
+      lastGameReadAt: "2026-09-26T12:00:04.000Z",
+      modVersion: "1.4.2",
+    });
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusGameUnreachable).gameReachable).toBe(false);
+    expect(AgentStatusResponseSchema.parse(fixtures.agentStatusGameNeverRead)).not.toHaveProperty("lastGameReadAt");
+  });
+
+  it("the game connection fields reuse the snapshot's types and bounds", () => {
+    const base = fixtures.agentStatusGameReachable;
+    const ok = (patch: Record<string, unknown>) => AgentStatusResponseSchema.safeParse({ ...base, ...patch }).success;
+    expect(ok({ modVersion: "v".repeat(SENDER_VERSION_MAX) })).toBe(true);
+    expect(ok({ lastGameReadAt: "2026-09-26T13:00:04+01:00" })).toBe(true);
+    for (const bad of [
+      { gameReachable: "yes" },
+      { gameReachable: null },
+      { lastGameReadAt: "yesterday" },
+      { lastGameReadAt: null },
+      { modVersion: "" },
+      { modVersion: "v".repeat(SENDER_VERSION_MAX + 1) },
+      { modVersion: null },
+    ]) {
+      expect(ok(bad), JSON.stringify(bad)).toBe(false);
+      // The same value is rejected by the snapshot it came from, so the backend can always repeat what it accepted.
+      expect(SnapshotRequestSchema.safeParse({ ...fixtures.agentSnapshotRequestFull, ...bad }).success, JSON.stringify(bad)).toBe(false);
+    }
   });
 
   it("kinds, types and statuses are plain strings, so a newer backend never breaks an older frontend", () => {

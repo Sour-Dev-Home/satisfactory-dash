@@ -1,18 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ConveyorsWorldLayerResponseSchema,
   endpoints,
   MAP_WORLD_LAYER_DATA_SCHEMAS,
   MapLiveResponseSchema,
   MapLiveSchema,
   MapWorldLayerResponseSchema,
   MapMarkersWorldLayerResponseSchema,
+  PowerLinesWorldLayerResponseSchema,
+  DroneRoutesWorldLayerResponseSchema,
   RailsWorldLayerResponseSchema,
   ResourceNodesWorldLayerResponseSchema,
   worldLayerResponseSchema,
 } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
 import { transport } from "./transport";
-import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, mapMarkersWorld, railsWorld, resourceNodesWorld } from "./world";
+import {
+  conveyorsWorld,
+  DEMO_EPOCH,
+  DEMO_SERVER_ID,
+  droneRoutesWorld,
+  factory,
+  mapLive,
+  mapMarkersWorld,
+  powerLinesWorld,
+  railsWorld,
+  resourceNodesWorld,
+} from "./world";
+import { resolvePairings } from "../map/dronePorts";
+import { placeConveyors } from "../map/conveyors";
 
 // ADR-0038 M5: the demo answers the map's world layers from its own made-up world (world.ts), through
 // the same transport the page uses, and never touches the network.
@@ -67,6 +83,55 @@ describe("the demo's map world layers", () => {
     expect(body.data.some((m) => m.name === "")).toBe(true);
     expect(new Set(body.data.map((m) => m.color)).size).toBeGreaterThan(2);
     expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.mapMarkers).parse(mapMarkersWorld(Date.now()))).not.toThrow();
+  });
+
+  it("serves a few drone ports that satisfy the contract, near the demo factory, one pair matched by name", async () => {
+    const res = await call(endpoints.map.worldLayer.path(DEMO_SERVER_ID, "droneRoutes"));
+    expect(res.status).toBe(200);
+    const body = DroneRoutesWorldLayerResponseSchema.parse(await res.json());
+    expect(body.layer).toBe("droneRoutes");
+    expect(body.count).toBe(body.data.length);
+    expect(body.data.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(body.data.map((p) => p.id)).size).toBe(body.data.length);
+    for (const p of body.data) expect(Math.hypot(p.x + 1700, p.y + 980) < 600).toBe(true);
+    const { routes, unmatched } = resolvePairings(body.data);
+    expect(routes).toHaveLength(1);
+    expect(unmatched).toBe(0);
+    expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.droneRoutes).parse(droneRoutesWorld(Date.now()))).not.toThrow();
+  });
+
+  it("serves a handful of power lines that satisfy the contract, near the demo factory", async () => {
+    const res = await call(endpoints.map.worldLayer.path(DEMO_SERVER_ID, "powerLines"));
+    expect(res.status).toBe(200);
+    const body = PowerLinesWorldLayerResponseSchema.parse(await res.json());
+    expect(body.layer).toBe("powerLines");
+    expect(body.count).toBe(body.data.length);
+    expect(body.data.length).toBeGreaterThan(3);
+    expect(new Set(body.data.map((l) => l.id)).size).toBe(body.data.length);
+    // Every line touches the demo factory's neighbourhood (its smelters stand near x -1720, y -980).
+    for (const { points } of body.data) {
+      expect(points.some(([x, y]) => Math.hypot(x + 1700, y + 980) < 600)).toBe(true);
+    }
+    expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.powerLines).parse(powerLinesWorld(Date.now()))).not.toThrow();
+  });
+
+  it("serves belts, lifts and pipes that satisfy the contract and run between the demo factory's own machines", async () => {
+    const res = await call(endpoints.map.worldLayer.path(DEMO_SERVER_ID, "conveyors"));
+    expect(res.status).toBe(200);
+    const body = ConveyorsWorldLayerResponseSchema.parse(await res.json());
+    expect(body.layer).toBe("conveyors");
+    expect(body.count).toBe(body.data.length);
+    expect(new Set(body.data.map((c) => c.kind))).toEqual(new Set(["belt", "lift", "pipe"]));
+    expect(new Set(body.data.map((c) => c.id)).size).toBe(body.data.length);
+    // The ends name the demo factory's machines, so the map places them; all but the one open pipe end get a far end.
+    const machines = factory(Date.now()).data.buildings;
+    const places = new Map(machines.map((b) => [b.id, { x: b.location!.xM, y: b.location!.yM, name: b.name }]));
+    const named = new Set(body.data.flatMap((c) => [c.from, c.to]).filter((id) => id !== null && places.has(id)));
+    expect(named.size).toBeGreaterThanOrEqual(8);
+    const placedList = placeConveyors(body.data, places);
+    const unplaced = placedList.filter((c) => c.edge.kind !== "lift" && c.to === null);
+    expect(unplaced.map((c) => c.edge.kind)).toEqual(["pipe"]);
+    expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.conveyors).parse(conveyorsWorld(Date.now()))).not.toThrow();
   });
 
   it("is a 404 for a layer the demo doesn't have, and a 401 when signed out", async () => {

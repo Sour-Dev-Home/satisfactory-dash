@@ -33,6 +33,7 @@ import {
   type Filter,
 } from "./connectionGraph.js";
 import { reduceFactories, type ReductionStats } from "./factoryReduction.js";
+import { buildingName, classOfId } from "./buildingNames.js";
 import { buildLogisticsEdges } from "./logisticsEdges.js";
 import { DEPOT_CLASS, classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
 import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plannerItems.js";
@@ -110,6 +111,14 @@ const KIND_NAMES: ReadonlyMap<ConveyorNodeKind, string> = new Map([
   ["consumer", "consumer"],
 ]);
 const kindName = (k: ConveyorNodeKind): string => KIND_NAMES.get(k) ?? "other";
+/** The group kinds that take their building's class and name from their ids when no getFactory record names them. */
+const NAMED_BY_ID: ReadonlySet<string> = new Set(["storage", "station", "consumer"]);
+/** Such a group's name when its ids name no single building class: its kind in words. */
+const KIND_WORDS: ReadonlyMap<string, string> = new Map([
+  ["storage", "Storage"],
+  ["station", "Station"],
+  ["consumer", "Sink or generator"],
+]);
 
 /** Two decimals, and always a finite, non-negative number the contract accepts (a sum of huge rates can overflow). */
 const r2 = (n: number): number => {
@@ -303,6 +312,9 @@ export function buildProductionGraphWithStats(
   wcc.forEach((members, wi) => members.forEach((n) => (wccOf[n] = wi)));
 
   const unitOf = new Map<number, Unit>();
+  // #728 cause 11: a machine end no factory building matches. getFactory returns every machine, so the conveyor read
+  // (every 10 minutes) is older than the factory read (every 30 s): the machine was rebuilt or removed since.
+  let staleMachineEnds = 0;
   for (let n = 0; n < nodeCount; n++) {
     if (!TERMINAL_KINDS.has(g.kind[n])) continue;
     const ids = idsOf.get(n);
@@ -310,6 +322,7 @@ export function buildProductionGraphWithStats(
     ids.sort(byString);
     const found = ids.find((id) => byId.has(id));
     const building = found === undefined ? null : (byId.get(found) as FactoryBuilding);
+    if (building === null && g.kind[n] === "machine") staleMachineEnds++;
     // A building the snapshot lacks has no position of its own: borrow the nearest conveyor's end 0.
     const near = g.out[n][0] ?? g.in[n][0];
     unitOf.set(n, { node: n, id: found ?? ids[0], building, pos: positionOf(building) ?? (near ? { x: near.edge.at.x, y: near.edge.at.y } : null) });
@@ -403,6 +416,24 @@ export function buildProductionGraphWithStats(
     const seen = (keyCount.get(base) ?? 0) + 1;
     keyCount.set(base, seen);
     grp.key = seen === 1 ? base : `${base}#${seen}`;
+  }
+  // A group with no getFactory record (storage, a generator, the sink, a station) was named and classed by its conveyor
+  // kind above, and keyed so. Now that the keys are fixed (a saved key never changes), it takes the building class its
+  // ids carry ("Build_StorageContainerMk1_C_2147455285") when they all agree, and that building's name: the card then
+  // shows the building's icon and name instead of "storage" or "consumer".
+  // Only the kinds that make nothing: an extractor can seed a factory, whose key comes from its seed's class
+  // (factoryReduction's `productOf`), so its class stays as it was and no saved factory key moves.
+  for (const grp of groups) {
+    if (!NAMED_BY_ID.has(grp.kind) || grp.units.some((u) => u.building !== null)) continue;
+    const classes = new Set(grp.units.map((u) => classOfId(u.id)));
+    const only = classes.size === 1 ? [...classes][0] : null;
+    if (only === null || only === undefined) {
+      // Ids that do not agree (or are not FRM's): the kind stays the class, and the name is the kind in words.
+      grp.name = KIND_WORDS.get(grp.className) ?? grp.name;
+      continue;
+    }
+    grp.className = only;
+    grp.name = buildingName(only);
   }
 
   // ---- links ----
@@ -679,12 +710,14 @@ export function buildProductionGraphWithStats(
         } else {
           let total = 0;
           for (const o of sources) total += groups[o.s].prod.get(item)?.cur ?? 0;
-          const mine = groups[c.s].prod.get(item)?.cur ?? 0;
-          if (total > 0) {
-            ratePerMinute = (consumed.cur * mine) / total;
-            rate = "estimated";
-          } else if (consumed.cur === 0) {
+          // A source with no output data for the item (an extractor, which getFactory never lists) has no known share:
+          // its link stays unknown rather than reading 0. The planner's extractor cards sum these links.
+          const mine = groups[c.s].prod.get(item)?.cur;
+          if (consumed.cur === 0) {
             ratePerMinute = 0;
+            rate = "estimated";
+          } else if (mine !== undefined && total > 0) {
+            ratePerMinute = (consumed.cur * mine) / total;
             rate = "estimated";
           }
         }
@@ -723,6 +756,43 @@ export function buildProductionGraphWithStats(
     for (const j of sup) used += rates[j].ratePerMinute as number;
     rates[i] = { ratePerMinute: Math.max(0, out.cur - used), rate: "estimated" };
   });
+  // One-end estimate (owner, 2026-10-27): an edge with a known item and still no rate takes it from whichever end's recipe
+  // rate is known. First the source's output of the item, less what its other edges for the item already carry, shared
+  // evenly among its rate-less ones; then, for what is left, the destination's use less what its other incoming edges
+  // carry. Always estimated, never below zero, never over a rate already set; an overflowing belt is overstated.
+  // `nothingLeftIsUnknown` (the destination pass): when the destination uses some of the item but its other sources
+  // already carry all of it, the rest share nothing anyone knows, so they stay unknown rather than a guessed 0 (#777).
+  // A source that reports making 0 still says 0, as does a destination that uses none.
+  const oneEnd = (keyOf: (c: Cand) => string, total: (c: Cand) => number | undefined, nothingLeftIsUnknown = false): void => {
+    const byKey = new Map<string, number[]>();
+    candList.forEach((c, i) => {
+      if (c.item === null) return;
+      const k = keyOf(c);
+      const list = byKey.get(k);
+      if (list) list.push(i);
+      else byKey.set(k, [i]);
+    });
+    for (const list of byKey.values()) {
+      const open = list.filter((i) => rates[i].ratePerMinute === null);
+      if (open.length === 0) continue;
+      const whole = total(candList[open[0]]);
+      if (whole === undefined) continue;
+      let used = 0;
+      for (const i of list) used += rates[i].ratePerMinute ?? 0;
+      if (nothingLeftIsUnknown && whole > 0 && whole - used <= 0) continue;
+      const share = Math.max(0, whole - used) / open.length;
+      for (const i of open) rates[i] = { ratePerMinute: share, rate: "estimated" };
+    }
+  };
+  oneEnd(
+    (c) => `${c.s}|${c.item?.className}`,
+    (c) => groups[c.s].prod.get(c.item?.className ?? "")?.cur,
+  );
+  oneEnd(
+    (c) => `${c.d}|${c.item?.className}`,
+    (c) => groups[c.d].ing.get(c.item?.className ?? "")?.cur,
+    true,
+  );
 
   const outEdges: PlannerEdge[] = [];
   candList.forEach((c, i) => {
@@ -907,6 +977,8 @@ export function buildProductionGraphWithStats(
         loop: grp.loop,
         treeKey: treeKeys[grp.idx],
         ...(grp.kind === "extractor" ? { resource: res && { className: res.className.slice(0, 200), name: res.name.slice(0, 200) } } : {}),
+        // #728 cause 11: built only from the machine ends the staleConveyorEnds note counts (no factory building matched).
+        ...(grp.units.every((u) => u.building === null && g.kind[u.node] === "machine") ? { stale: true as const } : {}),
       };
     })
     .sort((a, b) => byString(a.key, b.key));
@@ -960,6 +1032,7 @@ export function buildProductionGraphWithStats(
   });
 
   // ---- unconnected machines and notes ----
+  // At most 6 notes (the contract caps them at 8): logistics' 2 (duplicate station, unknown stop) and the 4 below, each once.
   // An id the contract cannot carry (empty, or over 128 characters) can never be named by a conveyor either, so it is left out.
   const allUnconnected = sorted.filter((b) => b.recipe !== null && !g.idToNode.has(b.id) && b.id.length >= 1 && b.id.length <= 128).map((b) => b.id);
   const unconnectedMachineIds = allUnconnected.slice(0, 20_000);
@@ -969,6 +1042,13 @@ export function buildProductionGraphWithStats(
     notes.push({
       code: "connectionsRefresh",
       text: `Connections refresh every ${CONNECTIONS_REFRESH_MINUTES} minutes, so a belt built or rebuilt since may not show yet.`,
+    });
+  }
+  if (staleMachineEnds > 0) {
+    const [count, be] = staleMachineEnds === 1 ? ["1 machine", "is"] : [`${staleMachineEnds} machines`, "are"];
+    notes.push({
+      code: "staleConveyorEnds",
+      text: `${count} on the conveyor data ${be} missing from the latest factory read: conveyor data is older than the factory read and refreshes within ${CONNECTIONS_REFRESH_MINUTES} minutes.`,
     });
   }
   if (unmatched > 0) {

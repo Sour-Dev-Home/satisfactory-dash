@@ -176,6 +176,76 @@ test("the map markers read as text and toggle", async ({ page, mockApi }, testIn
   await expectNoAxeViolations(page, testInfo);
 });
 
+// ADR-0055 Decision 1 (#330): the drone ports, on by default. Text and table, and the toggle removes them and stops the
+// read (whether a square is on the canvas depends on the first view, which fits the buildings; the unit tests cover it).
+test("the drone ports read as text and toggle", async ({ page, mockApi }, testInfo) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("3 drone ports, 1 route on the map.")).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: "Drone ports" });
+  await expect(toggle).toBeChecked();
+  await expect(page.getByRole("table", { name: /Drone ports in view/ }).or(page.getByRole("heading", { name: "Drone ports in view (0)" }))).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
+  await toggle.uncheck();
+  await expect(page.getByText("3 drone ports, 1 route on the map.")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Drone ports in view/ })).toHaveCount(0);
+  await toggle.check();
+  await expect(page.getByText("3 drone ports, 1 route on the map.")).toBeVisible();
+});
+
+// ADR-0038 §1 (#330): the power lines are off by default and asked for only once toggled on. On, they read as a count
+// and a table (the canvas pixels depend on the first view, which fits the buildings; the unit tests cover the path).
+test("the power lines are off by default, then read as text and toggle", async ({ page, mockApi }, testInfo) => {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/map/world/powerLines")) asked.push(request.url());
+  });
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("1 marker and 3 stamps on the map.")).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: "Power lines" });
+  await expect(toggle).not.toBeChecked();
+  expect(asked, "power lines asked for while off").toEqual([]);
+
+  await toggle.check();
+  await expect(page.getByText("2 power lines on the map, 243 m of wire in all.")).toBeVisible();
+  await expect(page.getByRole("table", { name: /Power lines in view/ }).or(page.getByRole("heading", { name: "Power lines in view (0)" }))).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
+  await toggle.uncheck();
+  await expect(page.getByText(/power lines on the map/)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Power lines in view/ })).toHaveCount(0);
+});
+
+// #330: the belts, lifts and pipes are off by default (thousands on a big save) and asked for only once toggled on. On,
+// they draw three more canvas paths under the buildings (the CSP gate: no violation, no unmocked call) and read as text.
+test("the belts and pipes are off by default, then draw and read as text, and toggle", async ({ page, mockApi }, testInfo) => {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/map/world/conveyors")) asked.push(request.url());
+  });
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("1 marker and 3 stamps on the map.")).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: "Belts and pipes" });
+  await expect(toggle).not.toBeChecked();
+  expect(asked, "conveyors asked for while off").toEqual([]);
+
+  await toggle.check();
+  const summary = page.getByText(/^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt measured, pipe length unknown, drawn straight between their ends\./);
+  await expect(summary).toBeVisible();
+  await expect(page.getByText("Belt or pipe, far end not placed")).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: /Belts, lifts and pipes in view/ }).or(page.getByRole("heading", { name: "Belts, lifts and pipes in view (0)" })),
+  ).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
+  await toggle.uncheck();
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Belts, lifts and pipes in view/ })).toHaveCount(0);
+});
+
 test.describe("the map's first view", () => {
   // Reduced motion also turns off Leaflet's zoom and fade animations, so the screenshot is stable.
   test.use({ reducedMotion: "reduce" });
@@ -211,8 +281,12 @@ for (const motion of ["no-preference", "reduce"] as const) {
 
 // #434: Leaflet's panes (z-index 200-800) must stay inside the map's own stacking context, or
 // they paint over the header's popovers (--z-popover) and the grid shows through the alerts panel.
+// The popover hangs from the bell and scrolls with the page, so how far it reaches over the map
+// depends on its height, not on scrolling: the "alerts" scenario (a firing alert and a page of
+// events) makes it tall enough to cover the map's top at 390 px, whatever the toggle rows above
+// the map add. Every default-on layer (drone ports included) is drawn under it.
 test("the alerts popover paints above every map layer", async ({ page, mockApi }) => {
-  await mockApi("default");
+  await mockApi("alerts");
   await page.goto("/app/map");
   const map = page.getByRole("application", { name: /Factory map/ });
   await expect(map).toBeVisible();
