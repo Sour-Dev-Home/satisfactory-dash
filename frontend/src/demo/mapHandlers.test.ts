@@ -5,13 +5,14 @@ import {
   MapLiveResponseSchema,
   MapLiveSchema,
   MapWorldLayerResponseSchema,
+  MapMarkersWorldLayerResponseSchema,
   RailsWorldLayerResponseSchema,
   ResourceNodesWorldLayerResponseSchema,
   worldLayerResponseSchema,
 } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
 import { transport } from "./transport";
-import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, railsWorld, resourceNodesWorld } from "./world";
+import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, mapMarkersWorld, railsWorld, resourceNodesWorld } from "./world";
 
 // ADR-0038 M5: the demo answers the map's world layers from its own made-up world (world.ts), through
 // the same transport the page uses, and never touches the network.
@@ -54,6 +55,18 @@ describe("the demo's map world layers", () => {
     expect(new Set(body.data.map((n) => n.purity)).size).toBe(3);
     expect(body.data.some((n) => n.exploited)).toBe(true);
     expect(body.data.some((n) => !n.exploited)).toBe(true);
+  });
+
+  it("serves map markers and stamps that satisfy the contract, some named, one not, in more than one colour", async () => {
+    const res = await call(endpoints.map.worldLayer.path(DEMO_SERVER_ID, "mapMarkers"));
+    expect(res.status).toBe(200);
+    const body = MapMarkersWorldLayerResponseSchema.parse(await res.json());
+    expect(body.layer).toBe("mapMarkers");
+    expect(body.count).toBe(body.data.length);
+    expect(new Set(body.data.map((m) => m.kind))).toEqual(new Set(["marker", "stamp"]));
+    expect(body.data.some((m) => m.name === "")).toBe(true);
+    expect(new Set(body.data.map((m) => m.color)).size).toBeGreaterThan(2);
+    expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.mapMarkers).parse(mapMarkersWorld(Date.now()))).not.toThrow();
   });
 
   it("is a 404 for a layer the demo doesn't have, and a 401 when signed out", async () => {

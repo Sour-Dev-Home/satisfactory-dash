@@ -83,6 +83,7 @@ import {
   powerOutage,
   powerStale,
   powerUnreachable,
+  mapMarkersWorldResponse,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -110,6 +111,7 @@ import {
   testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
+import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "./mapMarkersResponses";
 import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
   createdAgentServer,
@@ -168,6 +170,8 @@ export const ROUTES = {
   // ADR-0056: the operator's metrics page (the window is a query string, which doesn't change the route).
   metrics: endpoints.metrics.overview,
   mapResourceNodes: endpoints.map.worldLayer,
+  // ADR-0038 §1 (#330): the players' map markers and stamps, the same endpoint.
+  mapMarkers: endpoints.map.worldLayer,
   // ADR-0038 M6: the live trains and stations (its own endpoint).
   mapLive: endpoints.map.live,
   settings: endpoints.settings.get,
@@ -235,7 +239,7 @@ export function routeFor<K extends RouteKey>(key: K): (typeof ROUTES)[K] {
 }
 
 /** The routes that share an endpoint with another and are told apart by the last path segment. */
-export const WORLD_LAYER_ROUTES = { mapRails: "rails", mapResourceNodes: "resourceNodes" } as const;
+export const WORLD_LAYER_ROUTES = { mapRails: "rails", mapResourceNodes: "resourceNodes", mapMarkers: "mapMarkers" } as const;
 
 /** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
 export function routePattern(key: RouteKey): string {
@@ -282,6 +286,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   plannerDesignationRemove: ok(plannerDesignationDeleteResponse),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
+  mapMarkers: ok(mapMarkersWorldResponse),
   mapLive: ok(mapLiveResponse),
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
@@ -608,6 +613,7 @@ export const SCENARIOS = {
     productionGraph: slow(BASE.productionGraph),
     mapRails: slow(BASE.mapRails),
     mapResourceNodes: slow(BASE.mapResourceNodes),
+    mapMarkers: slow(BASE.mapMarkers),
     mapLive: slow(BASE.mapLive),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
@@ -664,9 +670,19 @@ export const SCENARIOS = {
   "battery-discharging": { power: ok(powerDischarging) },
   "unknown-units": { factory: ok(factoryUnknownItem) },
   // ADR-0038 M5, the map's world layers: nothing read yet, a layer cut to its cap, or the read failing.
-  "map-world-empty": { mapRails: ok(railsWorldResponseEmpty), mapResourceNodes: ok(resourceNodesWorldResponseEmpty) },
+  "map-world-empty": {
+    mapRails: ok(railsWorldResponseEmpty),
+    mapResourceNodes: ok(resourceNodesWorldResponseEmpty),
+    mapMarkers: ok(mapMarkersWorldResponseEmpty),
+  },
   "map-world-truncated": { mapRails: ok(railsWorldResponseTruncated) },
-  "map-world-error": { mapRails: fail(502, errorUpstreamUnreachable), mapResourceNodes: fail(502, errorUpstreamUnreachable) },
+  "map-world-error": {
+    mapRails: fail(502, errorUpstreamUnreachable),
+    mapResourceNodes: fail(502, errorUpstreamUnreachable),
+    mapMarkers: fail(502, errorUpstreamUnreachable),
+  },
+  // ADR-0038 §1 (#330), the players' markers: the layer cut to its cap (empty and failing are in the two above).
+  "map-markers-truncated": { mapMarkers: ok(mapMarkersWorldResponseTruncated) },
   // ADR-0038 M6, the live trains: none built yet, the game unreachable (last known positions), or the read failing.
   "map-live-empty": { mapLive: ok(mapLiveResponseEmpty) },
   "map-live-stale": { mapLive: ok(mapLiveResponseStale) },

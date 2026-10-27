@@ -12,6 +12,7 @@ import {
   bottlenecksBeltLevel,
   deleteServerDone,
   factoryMixed,
+  mapMarkersWorldResponse,
   productionGraphTwoSites,
   railsWorldResponse,
   resourceNodesWorldResponse,
@@ -73,6 +74,7 @@ export const handlers = [
   // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
   http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
   http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),
+  http.get(endpoints.map.worldLayer.route.replace(":layer", "mapMarkers"), () => HttpResponse.json(mapMarkersWorldResponse)),
   http.get(endpoints.map.live.route, () => HttpResponse.json(mapLiveResponse)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
