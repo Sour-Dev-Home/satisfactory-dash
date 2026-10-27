@@ -35,7 +35,9 @@ const OPTION_ROW = "flex min-h-touch w-full items-center gap-2";
 
 function Group({ legend, actions, children }: { legend: string; actions?: ReactNode; children: ReactNode }) {
   return (
-    <fieldset className="grid gap-1">
+    // content-start: the row stretches every group to the tallest one (a long resource type list), and without it
+    // a short group's legend, All/None and options spread out over that height.
+    <fieldset className="grid content-start gap-1">
       <legend className="mb-1 font-medium text-fg">{legend}</legend>
       {actions}
       {children}
