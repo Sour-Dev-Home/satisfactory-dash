@@ -149,6 +149,9 @@
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
+  /* How tall the fade over a capped table's bottom edge is while rows are cut (ui/ScrollRegion): under a row's
+     height, so the last row shown stays readable. */
+  --spacing-scroll-fade: 1.5rem;
   /* The command bar (#351): its width, and its result list's height before it scrolls. */
   --spacing-palette: 36rem;
   --spacing-palette-list: 24rem;

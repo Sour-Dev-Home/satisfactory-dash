@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ConveyorKind, DronePort, MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import { ScrollRegion } from "../ui/ScrollRegion";
 import type { ViewM } from "./MapCanvas";
 import { conveyorInView, conveyorKindText, conveyorLengthText, endText, type BuildingPlace, type PlacedConveyor } from "./conveyors";
 import { cargoText, dronePortKeys, dronePortName, pairedWithText, resolvePairings } from "./dronePorts";
@@ -34,9 +35,7 @@ function ViewTable({ id, title, count, empty, children }: { id: string; title: s
       {count === 0 ? (
         <p className="text-sm text-muted">{empty}</p>
       ) : (
-        <div tabIndex={0} role="region" aria-labelledby={id} className="max-h-80 overflow-auto">
-          {children}
-        </div>
+        <ScrollRegion labelledBy={id}>{children}</ScrollRegion>
       )}
     </div>
   );
