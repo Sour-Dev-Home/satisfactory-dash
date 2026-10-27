@@ -1,8 +1,24 @@
 # ADR-0060: Item-icon bubbles and focus mode on planner links (amends ADR-0050 and ADR-0059)
 
-Status: **Proposed** (2026-10-27, #726). The owner accepts or amends it; until then nothing here is built. Decision
-notes from an independent `architecture-advisor` review of the planner code on `main` after #732. Paths below are
-relative to `frontend/src/planner/graph/` unless they say otherwise.
+Status: **Accepted** (owner, 2026-10-27, #726), with the owner's answers below. Proposed the same day from an
+independent `architecture-advisor` review of the planner code on `main` after #732. Paths below are relative to
+`frontend/src/planner/graph/` unless they say otherwise.
+
+## Owner answers (2026-10-27)
+
+The owner answered the six open questions of the proposal on 2026-10-27:
+
+1. **Dim rule.** Focus dims everything except the clicked link and its two cards (hop-1, the recommended option).
+   "Show the whole path" is a button on the detail card.
+2. **Zoom.** Focus does **not** zoom.
+3. **Unknown items.** A "?" bubble (unknown item) **is** focusable, and opens an "Item unknown" card.
+4. **Icon sizes.** Add a 128 px icon used only by the detail card, in addition to the 32 and 64 px icons.
+5. **Bubble limit.** At most 3 bubbles per line, then a "+k" chip. Clicking the chip opens the full list of the
+   link's items.
+6. **Feature flag.** The interaction ships behind a feature flag, off by default, until the owner reviews it on the
+   demo.
+
+The decisions below already include these answers.
 
 ## Context
 
@@ -51,7 +67,8 @@ repository, on the owner's disk.
 - **Position.** The bubbles sit where the label sits today: the row's centre is `labelAt`, already on a horizontal run.
 - **Box size.** `labelSize(f.labelLines)` becomes a bubble-row size:
   - `n = min(distinct items, 3)` bubbles of diameter `BUBBLE_D` (24 layout units), 4 apart;
-  - a "+k" chip (about 22 wide) when there are more than 3 items;
+  - a "+k" chip (about 22 wide) when there are more than 3 items (owner answer 5). The chip is a button: clicking it,
+    or Enter on it, opens the full list of the link's items, each of which can be focused like a bubble;
   - the short rate text under the row, which makes the box `BUBBLE_D + LABEL_LINE_H` high;
   - transports keep `GLYPH_INSET`, with the glyph at the row's left.
 - **Which items.** The row shows the distinct `itemClassName`s across `parts`, ordered by summed rate (descending),
@@ -65,6 +82,7 @@ repository, on the owner's disk.
 
 ### 2. Focus state and the dim rule: hop-1
 
+- **Owner's choice** (answer 1): hop-1, with the whole path as a button on the card.
 - **What stays lit:** the focused link, its two cards, and the other bubbles on that link (the focused one marked).
 - **Everything else** is drawn at `--opacity-graph-dim` through the existing `dim` props. No new token.
 - **State.** `focus: { edgeKey, item } | null` in `SiteGraph`.
@@ -73,7 +91,12 @@ repository, on the owner's disk.
 - Rejected: dimming to the item's whole supply path (`reachFor`, `graphModel.ts:186-206`). That is already what the item
   filter does (`SiteGraph.tsx:244`), so two gestures would share one look with two meanings. On a big site it would also
   light every other link carrying that item.
-- The detail card can offer **"Show this item's path"**, which sets the existing item filter, at no new cost.
+- The detail card has a **"Show the whole path"** button, which sets the existing item filter, at no new cost.
+- **Unknown items** (answer 3). A "?" bubble is focusable like any other. Its card says "Item unknown", with the raw
+  class name when there is one, and never invents a name.
+- **Feature flag** (answer 6). Focus, make-room and the morph sit behind a planner preference flag in
+  `plannerPrefs.ts`, **off by default**. Bubbles without interaction (build PR 2) are not flagged. The flag is removed
+  only after the owner reviews the interaction on the demo (build PR 6).
 
 ### 3. Make room: re-layout with the focused box enlarged, animated
 
@@ -89,8 +112,8 @@ repository, on the owner's disk.
 - **Stability.** dagre is not stable, so the new layout is translated (a viewport offset) until the focused bubble sits
   where it was on screen. What the user is looking at stays put, while other cards may shift; moving them is the point
   of making room.
-- **Zoom.** If zoom is below a readable floor (about 0.6), the viewport also animates to centre the card, using the
-  existing `viewport.ts` helpers. Whether to do this is open question 2.
+- **No zoom** (owner answer 2). Focus never changes the zoom level. The viewport offset above is the only viewport
+  change; a user who wants the card bigger zooms by hand.
 - **Cost guard.**
   - PR 4 benchmarks the focused `layoutScene` on the 385-machine fixture and records the number here.
   - Past 100 ms (`stats.lastMs`, `layoutSite.ts:540-543`), focus degrades to dim plus a card overlaid on the bubble,
@@ -104,7 +127,8 @@ repository, on the owner's disk.
 - **Shape.** One `<rect>` in one `<g>`, with no circle swap.
   - The tween `t` drives the rect's x, y, width, height and `rx`: `rx` goes from `D/2` (a circle) to the card radius,
     and the box from the bubble to the card.
-  - The icon is an SVG `<image href>` that grows from bubble size to the card's top.
+  - The icon is an SVG `<image href>` that grows from bubble size to the card's top. The card's end state uses the
+    128 px icon (owner answer 4); bubbles use the 32 or 64 px one.
   - The detail text is `<tspan>` lines, fading in over `t` from 0.6 to 1. They are truncated with the existing
     character-width estimate, and the full text goes in `<title>`.
 - **Driver.** A small `useTween` hook running one `requestAnimationFrame` loop.
@@ -146,21 +170,22 @@ repository, on the owner's disk.
 - **Script.** `scripts/dev/build-item-icons.mjs`, committed.
   - It takes the source directory as `--src <dir>`. The script and the docs refer only to "the owner's FModel export",
     and no local path is committed.
-  - It runs the same `sharp-cli@6.1.0` as the buildings to write `frontend/public/game-assets/items/<slug>-32.webp` and
-    `<slug>-64.webp` (quality 85).
+  - It runs the same `sharp-cli@6.1.0` as the buildings to write `frontend/public/game-assets/items/<slug>-32.webp`,
+    `<slug>-64.webp` and `<slug>-128.webp` (quality 85). The 128 px file is for the detail card only (owner answer 4).
   - The slug is the icon name in kebab case.
 - **Notice.** `game-assets/NOTICE.md` covers `items/` with the buildings' terms and the new rebuild command.
 - **Map.** `itemIcons.ts` holds a `Map<string, string>` keyed by the item class name (`Desc_X_C`, which is what
-  `CanvasFlow.itemClassName` carries; `IconDesc_X_256` maps to `Desc_X_C`). It exports `itemIconUrl(className, 32 | 64)`,
-  which returns `undefined` on a miss.
+  `CanvasFlow.itemClassName` carries; `IconDesc_X_256` maps to `Desc_X_C`). It exports
+  `itemIconUrl(className, 32 | 64 | 128)`, which returns `undefined` on a miss.
 - **Test** (`itemIcons.test.ts`, modelled on `buildingIcons.test.ts`):
-  - every slug has both files;
+  - every slug has all three files;
   - every file is mapped;
   - the item classes in the captured responses under `docs-vault/raw-sources/` resolve;
   - a miss gives the text fallback.
 - **Missing icon.** The bubble shows the item name's initials on a neutral disc, or "?" with no name, and is never
   blank. An unknown item's card says "Item unknown" and never invents a name.
-- **Weight.** About 0.3-0.5 MB of WebP in `public/`, loaded on demand and not in the JS bundle.
+- **Weight.** About 0.3-0.5 MB of WebP in `public/` for the 32 and 64 px files, plus about 0.4 MB for the 128 px ones.
+  All are loaded on demand and none is in the JS bundle; a 128 px file loads only when a card opens.
 
 ### 7. Performance budget
 
@@ -181,11 +206,11 @@ None. `packages/shared` does not change. Everything shown is already in `CanvasF
 
 | # | PR | Files | Proof |
 |---|---|---|---|
-| 1 | Item icons | `scripts/dev/build-item-icons.mjs`, `frontend/public/game-assets/items/*`, `game-assets/NOTICE.md`, `itemIcons.ts`, `itemIcons.test.ts` | Every slug has both files, no orphans, captured classes resolve |
+| 1 | Item icons | `scripts/dev/build-item-icons.mjs`, `frontend/public/game-assets/items/*` (`<slug>-32.webp`, `-64.webp`, `-128.webp`), `game-assets/NOTICE.md`, `itemIcons.ts`, `itemIcons.test.ts` | Every slug has all three files, no orphans, captured classes resolve |
 | 2 | Bubbles on lines, no interaction | `layoutSite.ts` (bubble-row box), `SiteGraph.tsx` (`EdgeLabel` draws bubbles, level of detail, fallback), `layoutSite.test.ts`, `layoutRouting.hunt.test.ts`, `SiteGraph.test.tsx`, `docs-vault/wiki/frontend-planner-map.md` | No overlaps with bubble boxes; baselines regenerated; `ui-reviewer`, `test-hunter` |
-| 3 | Focus, no make-room | `SiteGraph.tsx` (focus state, hop-1 dim, `sr-only` bubble buttons with roving tabindex, Escape, live region), `plannerPrefs.ts` (feature flag) | Keyboard flow, axe, focus return |
+| 3 | Focus, no make-room | `SiteGraph.tsx` (focus state, hop-1 dim, `sr-only` bubble buttons with roving tabindex, the "+k" chip's full list, focusable "?" bubbles, Escape, live region), `plannerPrefs.ts` (feature flag, off by default) | Keyboard flow, axe, focus return; nothing changes with the flag off |
 | 4 | Make room | `layoutSite.ts` (`layoutScene({ focus })`, memo), `useTween.ts`, `viewport.ts` (compensation), the over-100 ms degrade | 385-machine focused-layout benchmark recorded here; stability of the focused bubble; memo hit on close |
-| 5 | Morph and detail card | `SiteGraph.tsx` (rect morph, card content from `parts`, close control), easing constant test | End state; `t` jumps when the duration token is 0 |
+| 5 | Morph and detail card | `SiteGraph.tsx` (rect morph, card content from `parts` with the 128 px icon, "Show the whole path" button, "Item unknown" card, close control), easing constant test | End state; `t` jumps when the duration token is 0 |
 | 6 | Demo and review | demo data, e2e (keyboard path, CSP, axe, no layout shift during the morph), screenshots | `ui-reviewer`; the owner reviews the demo, then the flag is removed |
 
 ## Consequences
@@ -195,7 +220,9 @@ None. `packages/shared` does not change. Everything shown is already in `CanvasF
   cached layout per focus.
 - Cards other than the focused one may jump during make-room, because dagre is not stable. Only the focused bubble is
   held still.
-- 140 more game-art files ship under the existing NOTICE terms, and they are removed on request like the buildings.
+- About 140 items' art ships in three sizes (some 420 files) under the existing NOTICE terms, and it is removed on
+  request like the buildings.
+- Until the owner's review, users see bubbles but not the focus interaction (the flag is off by default).
 - A new `useTween` hook and JS easing constant must track the CSS tokens. A test enforces that.
 
 ## Revisit when
@@ -205,14 +232,5 @@ None. `packages/shared` does not change. Everything shown is already in `CanvasF
   (Decision 3's degrade) by default.
 - Belt tier and capacity reach `CanvasFlow`. Then the card shows them.
 - Bundles of more than 3 items turn out common. Then revisit the limit or the "+k" chip's behaviour.
-
-## Open questions for the owner
-
-1. Dim to hop-1 (this link and its two cards), or to the item's whole path? Recommended: hop-1, with the path as a
-   button on the card.
-2. Should focus also zoom so the card is readable on a big site?
-3. Should a "?" bubble (unknown item) be focusable? Recommended: yes, with a card saying "Item unknown" and the raw class
-   name if there is one.
-4. Is a 64 px image enough for the card, or add a 128 px WebP for the card only (about +0.4 MB)?
-5. Is the limit of 3 bubbles per line right?
-6. Keep the interaction behind a feature flag until your review? (Default: yes.)
+- Cards on a big site are unreadable at the zoom the user is at when focusing. Then reconsider zoom on focus, which
+  the owner declined (answer 2).
