@@ -82,7 +82,8 @@ describe("GET /api/admin/metrics", () => {
       asOf: body.generatedAt,
       months: [{ month: "2026-10", kind: "power_outage", fired: 4, flaps: 1, medianResolveSeconds: 612.5 }],
     });
-    expect(body.delivery).toEqual({ available: false, reason: "not_built" });
+    // The ingest secret is not configured here (metricsService.test.ts covers the configured cases).
+    expect(body.delivery).toEqual({ available: false, reason: "not_configured" });
   });
 
   it.each(["1h", "24h", "7d"] as const)("accepts window=%s", async (window) => {

@@ -93,7 +93,13 @@ import {
   loadEnrollmentCodesPerHour,
 } from "./modules/agents/index.js";
 import { createAccountDeletion, createAccountRouter, createIdentityModule } from "./modules/identity/index.js";
-import { createMetricsRouter, createMetricsService } from "./modules/metrics/index.js";
+import {
+  createDeliveryIngestRouter,
+  createMetricsRouter,
+  createMetricsService,
+  insertDeliverySnapshot,
+  loadDeliveryIngestConfig,
+} from "./modules/metrics/index.js";
 import { MapLiveStore, LocalWorldPoller, WorldIngestService, observeFactoryReads, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
@@ -137,6 +143,8 @@ function orExit<T>(load: () => T): T {
 const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
 // ADR-0046 C7 (#527): a bad value stops the backend at startup, like PORT.
 const enrollmentCodesPerHour = orExit(() => loadEnrollmentCodesPerHour(process.env));
+// ADR-0056 PR 6b: the delivery ingest's secret hash. Unset = the ingest is off (404); a malformed value stops startup.
+const deliveryIngestConfig = orExit(() => loadDeliveryIngestConfig(process.env));
 
 // A servers file replaces the single-server variables; naming any that are still set (names
 // only, never values) keeps a half-migrated .env from being confusing.
@@ -554,6 +562,12 @@ export const app = createApp({
     healthRouter,
     createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered && connectionsReadable : true)),
     identity.authRouter,
+    // ADR-0056 PR 6b: POST /api/internal/metrics/delivery, before the session guard (a bearer secret, not a session).
+    // Always mounted, so "off" (no secret hash or no database) is a 404, not the guard's 401.
+    createDeliveryIngestRouter({
+      config: deliveryIngestConfig,
+      store: database ? (snapshot) => insertDeliverySnapshot(database.pool, snapshot) : undefined,
+    }),
   ],
   sessionGuard: identity.sessionGuard,
   protectedRouters: [
@@ -600,7 +614,7 @@ export const app = createApp({
     // ADR-0056 PR 3: GET /api/admin/metrics, operator only (the same gate as the server management routes); database only.
     ...(database
       ? [
-          createMetricsRouter(createMetricsService({ db: database.pool }), {
+          createMetricsRouter(createMetricsService({ db: database.pool, deliveryConfigured: deliveryIngestConfig !== undefined }), {
             isOperator: (userId) => operatorUserId !== undefined && operatorUserId === userId,
             isReady: () => serversRegistered,
           }),
