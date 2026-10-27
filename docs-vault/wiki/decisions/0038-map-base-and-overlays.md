@@ -48,7 +48,7 @@ reads), sent only when the data changed.
     x, y}`, cap 1,000. `id` is FRM's `ID` (a stable key); `kind` is `MapMarkerType` (`RT_Stamp`, `RT_MapMarker`, the
     only two captured); `color` is `ColorSlot` read as RRGGBBAA without the alpha [NEEDS VERIFICATION: byte order], kept
     because players tell their markers apart by it. No z, `Category` (empty on every item), `Scale` or
-    `CompassViewDistance` (the game's own HUD drawing). Names are player text: members only, never logged.
+    `CompassViewDistance` (the game's own HUD drawing). Names are player text: members only, not logged by the ingest or serve paths (by convention: the logger has no redaction for world-layer data).
   - Classification stays in the backend (ADR-0031 rule). Projection and rounding aren't
     classification.
 - **Every layer's fields are captured into `raw-sources/` before its schema is written** (the

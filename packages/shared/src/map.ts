@@ -232,7 +232,8 @@ export const DroneRoutesLayerDataSchema = z.array(DronePortSchema).max(DRONE_ROU
 // Dropped from FRM's item: z (the map is 2-D), `Category` ("" on every captured item), `Scale` and
 // `CompassViewDistance` (how the game's own HUD draws the marker, not where or what it is).
 // Names are player-written text: shown only to the server's members (every map route is members-only, as station
-// names are), rendered as text, and never logged.
+// names are), rendered as text, and not logged by the ingest or serve paths (they never echo a body or its schema
+// issues; the logger has no redaction for world-layer data, so keep it that way).
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** Sanity cap on markers in one layer: the captured save has 4. Over it, the ingest truncates (conform, don't reject). */
@@ -253,7 +254,7 @@ export const MapMarkerSchema = z.object({
   name: z
     .string()
     .max(MAP_MARKER_NAME_MAX_CHARS)
-    .describe("Player-written label, trimmed and cut to 60 characters by the mapper; may be empty. Members only, text only, never logged"),
+    .describe("Player-written label, trimmed and cut to 60 characters by the mapper; may be empty. Members only, text only, not logged by the ingest or serve paths"),
   kind: MapMarkerKindSchema,
   icon: z.number().int().min(0).max(1_000_000).describe("FRM's `IconID`, the game's icon number (660 and 349 in the capture)"),
   color: z
