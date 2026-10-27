@@ -78,16 +78,20 @@ describe("placeOverlay, wide", () => {
 });
 
 describe("placeOverlay, below lg", () => {
-  it("lies across the bottom of the canvas, at most half its height", () => {
+  it("sits on the bottom of the canvas, centred and capped at the token's width, at most half its height", () => {
     const p = placeOverlay(card(100, 100), 200, stage, false);
-    expect(p).toMatchObject({ side: "bottom", x: m, width: stage.width - 2 * m, height: 200, y: stage.height - m - 200, covers: false });
+    expect(p).toMatchObject({ side: "bottom", x: (stage.width - OVERLAY_W) / 2, width: OVERLAY_W, height: 200, y: stage.height - m - 200, covers: false });
+    // A phone's canvas, narrower than the cap: the width less the margins, from the left margin.
+    expect(placeOverlay(null, 200, { width: 360, height: 500 }, false)).toMatchObject({ x: m, width: 360 - 2 * m });
     const tall = placeOverlay(card(100, 100), 5000, stage, false);
     expect(tall.height).toBe(stage.height / 2);
     expect(tall.y + tall.height).toBe(stage.height - m);
   });
 
   it("says it covers a card in the bottom half", () => {
-    expect(placeOverlay(card(100, 600), 200, stage, false).covers).toBe(true);
+    expect(placeOverlay(card(500, 600), 200, stage, false).covers).toBe(true);
+    // Beside the centred card, even low down, it is clear.
+    expect(placeOverlay(card(100, 600), 200, stage, false).covers).toBe(false);
   });
 });
 

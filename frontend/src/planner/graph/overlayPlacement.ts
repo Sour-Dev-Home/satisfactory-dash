@@ -50,13 +50,14 @@ const overlaps = (a: ScreenRect, b: ScreenRect) =>
 
 /**
  * Wide (from lg): beside `anchor`, its right side first, then its left, then below, then above, always clamped inside the
- * stage; with no anchor, the top-right corner. Narrow: across the bottom, at most about half the canvas tall. `height` is
+ * stage; with no anchor, the top-right corner. Narrow: centred on the bottom, at most about half the canvas tall. `height` is
  * the content's measured height (0 when not measured yet: then the most it may take).
  */
 export function placeOverlay(anchor: ScreenRect | null, height: number, stage: Stage, wide: boolean): OverlayPlace {
   const m = OVERLAY_MARGIN;
   const room = Math.max(1, stage.width - 2 * m);
-  const width = wide ? Math.min(OVERLAY_W, room) : room;
+  // Capped at every width: below lg a wide canvas (a tablet) gets the card centred, not a banner across it.
+  const width = Math.min(OVERLAY_W, room);
   const maxHeight = Math.max(1, wide ? stage.height - 2 * m : Math.floor(stage.height / 2));
   const h = height > 0 ? Math.min(height, maxHeight) : maxHeight;
   const maxX = Math.max(m, stage.width - m - width);
@@ -66,7 +67,7 @@ export function placeOverlay(anchor: ScreenRect | null, height: number, stage: S
     const covers = anchor !== null && overlaps({ left: at.x, top: at.y, width, height: h }, anchor);
     return { ...at, width, height: h, maxHeight, side, covers };
   };
-  if (!wide) return place(m, maxY, "bottom");
+  if (!wide) return place((stage.width - width) / 2, maxY, "bottom");
   if (anchor === null) return place(maxX, m, "right");
   const right = anchor.left + anchor.width;
   const bottom = anchor.top + anchor.height;

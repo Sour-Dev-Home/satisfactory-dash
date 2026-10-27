@@ -111,7 +111,9 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   full-height drawer from lg and stacked below). As tall as its content, up to the canvas less `OVERLAY_MARGIN`, then it
   scrolls inside; at most `--spacing-graph-panel` wide (`OVERLAY_W`, a test keeps them equal). From lg it stands beside the
   clicked card (or the line's label): right, else left, else below, else above, clamped inside the canvas
-  (`overlayPlacement.ts`, pure). Below lg it lies across the canvas's bottom, at most half its height. It is placed from the
+  (`overlayPlacement.ts`, pure). Below lg it sits centred on the canvas's bottom, at most half its height. The heading
+  and Close stay put (`data-overlay-header`) while the body (`data-overlay-body`) scrolls; scrolled, the header draws a
+  rule, and a fade marks more below. It is placed from the
   view on every render, so it follows a pan or zoom. If it opens over the card, the view moves once to clear it. Placed
   CSP-safely: an overlay `<svg>` over the canvas with a `<foreignObject>` at x, y, width and height attributes. It closes
   with Close, Escape or a background click; the click leaves focus on the viewport, the other two hand it back to the card.

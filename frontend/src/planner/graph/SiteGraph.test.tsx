@@ -462,10 +462,10 @@ describe("the floating group panel (the owner, 2026-10-27: an overlay, not a ful
     expect(o.width).toBe(352);
     expect(["right", "left", "below", "above"]).toContain(o.fo.getAttribute("data-side"));
     expect(covers(o, cardRect(svg, "Miner Mk.2"))).toBe(false);
-    // No fixed full height: the frame fills the foreignObject, which is the content's height.
+    // No fixed full height: the frame and the panel fill the foreignObject, which is the content's height (above).
     const frame = o.fo.firstElementChild!;
     expect(frame.className).not.toMatch(/inset-y-0|h-screen|min-h/);
-    expect(panel.className).not.toMatch(/h-full|inset-y-0/);
+    expect(panel.className).not.toMatch(/inset-y-0|h-screen|min-h/);
     // The CSP forbids inline styles: nothing in the overlay carries one.
     const overlay = document.querySelector("[data-overlay]")!;
     expect([overlay, ...overlay.querySelectorAll("*")].every((el) => el.getAttribute("style") === null)).toBe(true);
@@ -480,7 +480,36 @@ describe("the floating group panel (the owner, 2026-10-27: an overlay, not a ful
     const o = overlayBox();
     // jsdom's stage is 1000 x 600; the margin is 12 px each side.
     expect(o.height).toBe(600 - 24);
-    expect(o.fo.firstElementChild).toHaveClass("overflow-y-auto");
+  });
+
+  it("keeps the heading and Close outside the part that scrolls, and marks the scroll", async () => {
+    contentHeight(100);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    const o = overlayBox();
+    // The shadow is not clipped to the foreignObject's box, and the frame's edge reads over the lines without it.
+    expect(o.fo).toHaveClass("overflow-visible");
+    const frame = o.fo.firstElementChild as HTMLElement;
+    expect(frame).toHaveClass("border-info-edge", "overflow-hidden");
+    const header = panel.querySelector("[data-overlay-header]")!;
+    const body = panel.querySelector("[data-overlay-body]") as HTMLElement;
+    expect(body).toHaveClass("overflow-y-auto");
+    expect(body.contains(header)).toBe(false);
+    expect(within(header as HTMLElement).getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole("heading", { name: "Miner Mk.2" })).toBeInTheDocument();
+    expect(body.contains(within(panel).getByText(/^\d+ machines? · /))).toBe(true);
+    // Not scrolled, nothing below: no rule under the header, no fade.
+    expect(frame).not.toHaveAttribute("data-scrolled");
+    expect(frame.querySelector("[data-overlay-more]")).toBeNull();
+    // More below the cap: the fade shows; scrolled down, the header draws its rule (group-data-scrolled).
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
+    fireEvent.scroll(body);
+    expect(frame.querySelector("[data-overlay-more]")).toHaveClass("opacity-100");
+    vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockReturnValue(50);
+    fireEvent.scroll(body);
+    expect(frame).toHaveAttribute("data-scrolled", "true");
+    expect(header).toHaveClass("group-data-scrolled:border-line");
   });
 
   it("follows the card when the view pans", async () => {
@@ -506,7 +535,9 @@ describe("the floating group panel (the owner, 2026-10-27: an overlay, not a ful
     // Unmeasured in jsdom, it takes the most it may: half the 600 px stage, its bottom 12 px above the canvas's.
     expect(o.height).toBe(300);
     expect(o.y + o.height).toBe(600 - 12);
-    expect(o.width).toBe(1000 - 24);
+    // Capped at the token's width, centred on the 1000 px stage (not a banner across it).
+    expect(o.width).toBe(352);
+    expect(o.x).toBe((1000 - 352) / 2);
     // Inside the canvas's box: the overlay svg sits over the viewport, in the same positioned wrapper.
     const overlay = document.querySelector("[data-overlay]")!;
     expect(overlay).toHaveClass("absolute", "inset-0");

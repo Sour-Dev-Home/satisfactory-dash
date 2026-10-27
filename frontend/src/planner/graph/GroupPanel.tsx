@@ -17,7 +17,8 @@ export const PANEL_MAX_MACHINES = 100;
 /**
  * The side panel of ADR-0050 Decision 4: one group's machines (name, state, clock, actual over max), joined from the
  * Factory page's own read by the group's `machineIds` (the same cache entry), and the group's bottleneck badge with its
- * link to the Factory page. Focus moves in on open; Escape or Close hands it back through `onClose`.
+ * link to the Factory page. Focus moves in on open; Escape or Close hands it back through `onClose`. Shown in the canvas's
+ * floating card (CanvasOverlay): the heading and Close stay put while the rest scrolls under them.
  */
 export function GroupPanel({
   id,
@@ -60,8 +61,8 @@ export function GroupPanel({
   const label = groupLabel(withName(node));
 
   return (
-    <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="grid content-start gap-2 p-4">
-      <div className="flex items-start justify-between gap-2">
+    <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="flex h-full flex-col">
+      <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-2 group-data-scrolled:border-line">
         <div className="flex min-w-0 items-center gap-2">
           {icon !== undefined && <img src={icon} alt="" width={64} height={64} className="size-building-icon shrink-0 rounded-card bg-icon-chip" />}
           <h5 id={`${id}-heading`} ref={heading} tabIndex={-1} className="m-0 break-words">
@@ -72,84 +73,88 @@ export function GroupPanel({
           Close
         </button>
       </div>
-      <p className="m-0 text-sm">
-        {node.count} {node.count === 1 ? "machine" : "machines"} · {stateCountsText(node.stateCounts)}
-        {findings !== undefined && (
-          <>
-            {" · "}
-            <BottleneckBadge count={nodeFindings(node, findings).length} what={label} />
-          </>
-        )}
-      </p>
-      {/* What the card no longer prints: the recipe, every output, the loop marker and the factory view's further words. */}
-      <section aria-label={`About ${label}`} className="grid gap-1 text-sm">
-        {recipe !== null && (
-          <p className="m-0">
-            <span className="text-muted">Recipe: </span>
-            {recipe}
+      <div data-overlay-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="grid content-start gap-2 px-4 pt-2 pb-4">
+          <p className="m-0 text-sm">
+            {node.count} {node.count === 1 ? "machine" : "machines"} · {stateCountsText(node.stateCounts)}
+            {findings !== undefined && (
+              <>
+                {" · "}
+                <BottleneckBadge count={nodeFindings(node, findings).length} what={label} />
+              </>
+            )}
           </p>
-        )}
-        {/* None for a group that makes nothing (storage, a station, a consumer): no empty list for a screen reader. */}
-        {outputs.length > 0 && (
-          <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
-            {outputs.map((o) => (
-              <li key={o}>{o}</li>
+          {/* What the card no longer prints: the recipe, every output, the loop marker and the factory view's further words. */}
+          <section aria-label={`About ${label}`} className="grid gap-1 text-sm">
+            {recipe !== null && (
+              <p className="m-0">
+                <span className="text-muted">Recipe: </span>
+                {recipe}
+              </p>
+            )}
+            {/* None for a group that makes nothing (storage, a station, a consumer): no empty list for a screen reader. */}
+            {outputs.length > 0 && (
+              <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
+                {outputs.map((o) => (
+                  <li key={o}>{o}</li>
+                ))}
+              </ul>
+            )}
+            {loop && <p className="m-0">In a loop</p>}
+            {facts.map((f) => (
+              <p key={f} className="m-0">
+                {f}
+              </p>
             ))}
-          </ul>
-        )}
-        {loop && <p className="m-0">In a loop</p>}
-        {facts.map((f) => (
-          <p key={f} className="m-0">
-            {f}
-          </p>
-        ))}
-      </section>
-      {onPopOut !== undefined && (
-        <>
-          <button
-            type="button"
-            disabled={pop.busy}
-            onClick={() => void pop.run(onPopOut)}
-            aria-label={`Pop out ${label}`}
-            className="min-h-touch justify-self-start"
-          >
-            Pop out
-          </button>
-          <ErrorLine error={pop.error} />
-        </>
-      )}
-      {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
-      {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}
-      {joined && (
-        <>
-          <ul aria-label={`Machines in ${label}`} className="m-0 grid list-none gap-2 p-0">
-            {shown.map((m) => (
-              <li key={m.id} className="grid gap-0.5 break-words border-b border-line pb-2 text-sm">
-                <span className="font-semibold">{m.name}</span>
-                <span>
-                  {m.state ?? "No state"}
-                  {m.clock !== null && <span className="text-muted"> · {m.clock}</span>}
-                </span>
-                {m.outputs.length === 0 ? (
-                  <span className="text-muted">No output data</span>
-                ) : (
-                  m.outputs.map((o) => <span key={o}>{o}</span>)
-                )}
-              </li>
-            ))}
-          </ul>
-          {joined.machines.length > shown.length && (
-            <p className="m-0 text-sm text-muted">
-              {joined.machines.length - shown.length} more {joined.machines.length - shown.length === 1 ? "machine is" : "machines are"} not listed here.
-            </p>
+          </section>
+          {onPopOut !== undefined && (
+            <>
+              <button
+                type="button"
+                disabled={pop.busy}
+                onClick={() => void pop.run(onPopOut)}
+                aria-label={`Pop out ${label}`}
+                className="min-h-touch justify-self-start"
+              >
+                Pop out
+              </button>
+              <ErrorLine error={pop.error} />
+            </>
           )}
-          {joined.missing > 0 && (
-            <p className="m-0 text-sm text-muted">
-              {joined.missing} {joined.missing === 1 ? "machine is" : "machines are"} not in the latest factory read.
-            </p>
+          {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
+          {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}
+          {joined && (
+            <>
+              <ul aria-label={`Machines in ${label}`} className="m-0 grid list-none gap-2 p-0">
+                {shown.map((m) => (
+                  <li key={m.id} className="grid gap-0.5 break-words border-b border-line pb-2 text-sm">
+                    <span className="font-semibold">{m.name}</span>
+                    <span>
+                      {m.state ?? "No state"}
+                      {m.clock !== null && <span className="text-muted"> · {m.clock}</span>}
+                    </span>
+                    {m.outputs.length === 0 ? (
+                      <span className="text-muted">No output data</span>
+                    ) : (
+                      m.outputs.map((o) => <span key={o}>{o}</span>)
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {joined.machines.length > shown.length && (
+                <p className="m-0 text-sm text-muted">
+                  {joined.machines.length - shown.length} more {joined.machines.length - shown.length === 1 ? "machine is" : "machines are"} not listed here.
+                </p>
+              )}
+              {joined.missing > 0 && (
+                <p className="m-0 text-sm text-muted">
+                  {joined.missing} {joined.missing === 1 ? "machine is" : "machines are"} not in the latest factory read.
+                </p>
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </aside>
   );
 }

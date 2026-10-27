@@ -123,35 +123,38 @@ export function ItemList({
         e.preventDefault();
         onClose();
       }}
-      className="flex flex-col gap-3 p-4"
+      className="flex h-full flex-col"
     >
-      <div className="flex items-start justify-between gap-2">
+      {/* The header stays put while the list scrolls under it (CanvasOverlay), so Close is always in reach. */}
+      <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-3 group-data-scrolled:border-line">
         <h3 id={headingId} className="m-0 text-base font-semibold">{`${items.length} items from ${from} to ${to}`}</h3>
         <button type="button" onClick={onClose} className="min-h-touch">
           Close
         </button>
       </div>
-      <ul className="m-0 flex list-none flex-col gap-1 p-0">
-        {items.map((item, i) => {
-          const on = focus !== null && focus.item === item.key;
-          return (
-            <li key={item.key}>
-              <button
-                ref={i === 0 ? first : undefined}
-                type="button"
-                aria-label={bubbleName(item, flow.unit, from, to)}
-                aria-pressed={on}
-                onClick={() => onFocusItem(item)}
-                className={cn("flex min-h-touch w-full items-center gap-2 rounded-md px-2 text-left", on && "bg-surface-2")}
-              >
-                <ListIcon item={item} />
-                <span className="min-w-0 flex-1">{item.name ?? "Item unknown"}</span>
-                <span className="text-sm text-muted">{itemRateText(item, flow.unit)}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <div data-overlay-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <ul className="m-0 flex list-none flex-col gap-1 px-4 pt-0 pb-4">
+          {items.map((item, i) => {
+            const on = focus !== null && focus.item === item.key;
+            return (
+              <li key={item.key}>
+                <button
+                  ref={i === 0 ? first : undefined}
+                  type="button"
+                  aria-label={bubbleName(item, flow.unit, from, to)}
+                  aria-pressed={on}
+                  onClick={() => onFocusItem(item)}
+                  className={cn("flex min-h-touch w-full items-center gap-2 rounded-md px-2 text-left", on && "bg-surface-2")}
+                >
+                  <ListIcon item={item} />
+                  <span className="min-w-0 flex-1">{item.name ?? "Item unknown"}</span>
+                  <span className="text-sm text-muted">{itemRateText(item, flow.unit)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </section>
   );
 }
