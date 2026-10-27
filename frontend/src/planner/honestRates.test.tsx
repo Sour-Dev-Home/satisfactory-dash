@@ -205,3 +205,30 @@ describe("canvas legend", () => {
     expect(within(samples.parentElement!).getByText(UNKNOWN_FLOW_NOTE)).toHaveClass("text-muted");
   });
 });
+
+describe("honest rates: hunted edges", () => {
+  it("keeps 'of <max>' on a card when the name is long, cutting the name instead", () => {
+    const line = productSummary({ ...ingot(0, 1234), name: "Heavy Modular Frame" });
+    expect(line.length).toBeLessThanOrEqual(26);
+    expect(line.endsWith(" · 0 of 1,234/min")).toBe(true);
+    expect(line).toContain("…");
+  });
+  it("keeps the fluid unit on a long-named zero card", () => {
+    expect(productSummary({ ...ingot(0, 1234, "m3/min"), name: "Heavy Modular Frame" }).endsWith(" · 0 of 1,234 m³/min")).toBe(true);
+  });
+  it("treats a NaN or null maximum as none", () => {
+    expect(outputLine(ingot(0, Number.NaN))).toBe("Iron Ingot: 0 items/min");
+    expect(outputLine(ingot(0, null as unknown as number))).toBe("Iron Ingot: 0 items/min");
+    expect(productSummary(ingot(0, Number.NaN))).toBe("Iron Ingot · 0/min");
+  });
+  it("cuts a long unknown backend state on the card's muted line", () => {
+    const card = groupCard(smelter({ stateCounts: { "a very long state word from a newer backend": 2 } }));
+    expect(card.lines[card.mutedFrom ?? 0].length).toBeLessThanOrEqual(26);
+  });
+  it("sums __proto__ and constructor states without touching prototypes", () => {
+    const merged = mergeStateCounts([JSON.parse('{"__proto__":2,"constructor":1}'), JSON.parse('{"__proto__":1}')]);
+    expect(Object.getPrototypeOf(merged)).toBeNull();
+    expect(merged["__proto__"]).toBe(3);
+    expect(merged["constructor"]).toBe(1);
+  });
+});

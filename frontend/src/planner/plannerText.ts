@@ -33,6 +33,9 @@ export function stateCountsText(counts: Record<string, number>): string {
  */
 export const isZeroRate = (rate: Pick<PlannerRate, "currentPerMinute">): boolean => formatAmount(rate.currentPerMinute) === formatAmount(0);
 
+/** Whether a rate has a maximum worth naming: a finite one that does not itself round to 0 (null or NaN from a bad payload has none). */
+export const hasMax = (rate: Pick<PlannerRate, "maxPerMinute">): boolean => Number.isFinite(rate.maxPerMinute) && !isZeroRate({ currentPerMinute: rate.maxPerMinute });
+
 /** What a 0 rate says when there are no machine states to name. */
 export const NOT_PRODUCING = "not producing";
 
@@ -56,7 +59,7 @@ export function stalledStateText(counts: Record<string, number>): string {
 
 /** A rate that reads 0 as "0 of 30 items/min", or "0 items/min" when the max is 0 too. */
 const zeroRateText = (rate: Pick<PlannerRate, "maxPerMinute" | "unit">): string =>
-  isZeroRate({ currentPerMinute: rate.maxPerMinute }) ? `${formatAmount(0)} ${unitLabel(rate.unit)}` : `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)} ${unitLabel(rate.unit)}`;
+  hasMax(rate) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)} ${unitLabel(rate.unit)}` : `${formatAmount(0)} ${unitLabel(rate.unit)}`;
 
 /**
  * One product as "Iron Plate: 72 / 160 items/min" (actual over max, ADR-0015 unit when the backend sent one). A 0 reads

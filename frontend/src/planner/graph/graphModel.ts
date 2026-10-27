@@ -1,6 +1,6 @@
 import type { PlannerEdge, PlannerNode, PlannerRate } from "@satisfactory-dash/shared";
 import { formatAmount } from "../../format";
-import { edgeRateText, isZeroRate, outputLine, stalledStateText } from "../plannerText";
+import { edgeRateText, hasMax, isZeroRate, outputLine, stalledStateText } from "../plannerText";
 
 // What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
 
@@ -58,8 +58,12 @@ export const withName = <T extends Pick<PlannerNode, "name" | "className">>(node
  */
 export function productSummary(rate: PlannerRate): string {
   const per = `${rate.unit === "m3/min" ? " m³" : ""}/min`;
-  const amount = isZeroRate(rate) && !isZeroRate({ currentPerMinute: rate.maxPerMinute }) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)}` : formatAmount(rate.currentPerMinute);
-  return cut(`${nameOr(rate.name, rate.className)} · ${amount}${per}`, MAX_SUMMARY_CHARS);
+  const zero = isZeroRate(rate);
+  const amount = zero && hasMax(rate) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)}` : formatAmount(rate.currentPerMinute);
+  const name = nameOr(rate.name, rate.className);
+  const tail = ` · ${amount}${per}`;
+  // A 0 is only honest with its maximum: a long name gives way, the tail is never the part cut off.
+  return zero ? `${cut(name, Math.max(1, MAX_SUMMARY_CHARS - tail.length))}${tail}` : cut(`${name}${tail}`, MAX_SUMMARY_CHARS);
 }
 
 /**
@@ -69,7 +73,7 @@ export function productSummary(rate: PlannerRate): string {
 export function stalledNote(rate: PlannerRate | undefined, stateCounts: Record<string, number>): string | null {
   if (rate === undefined || !isZeroRate(rate)) return null;
   const text = stalledStateText(stateCounts);
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+  return cut(`${text.charAt(0).toUpperCase()}${text.slice(1)}`, MAX_SUMMARY_CHARS);
 }
 
 /** A machine whose recipe is unassigned in the game (#728 step 3). */
