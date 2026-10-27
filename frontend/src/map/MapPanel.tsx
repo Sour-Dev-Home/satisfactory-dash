@@ -16,9 +16,12 @@ import { trainsLayer } from "./trainsLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
 import { markersLayer } from "./markersLayer";
 import { powerLinesLayer } from "./powerLinesLayer";
+import { dronePortsLayer, drawDronePorts } from "./dronePortsLayer";
+import { itemLabels, labelFor } from "../factory/itemLabels";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { buildingCounts, filterBuildings, filterNodes, typeEntries, useMapFilters } from "./mapFilters";
 import {
+  DronePortsTable,
   EMPTY_FILTERED,
   EMPTY_VIEW,
   MarkersTable,
@@ -42,10 +45,11 @@ let MapCanvas = lazy(loadCanvas);
 /**
  * The layers in draw order, bottom first (ADR-0023 decision 5; ADR-0038 M5): the rails and the resource
  * nodes are the data-derived base map, the power lines (#330) are thin wires over it and under the buildings they
- * feed, the buildings sit on top, the players' markers (#330) above them (they point at things), and the live
- * trains (M6) on top of all: they are the layer that redraws every poll, so the canvas redraws only it.
+ * feed, the buildings sit on top, the drone ports and their routes (#330) over the buildings (a route crosses them), the
+ * players' markers (#330) above them (they point at things), and the live trains (M6) on top of all: they are the layer
+ * that redraws every poll, so the canvas redraws only it.
  */
-const LAYERS = [railsLayer, resourceNodesLayer, powerLinesLayer, buildingsLayer, markersLayer, trainsLayer] as const;
+const LAYERS = [railsLayer, resourceNodesLayer, powerLinesLayer, buildingsLayer, dronePortsLayer, markersLayer, trainsLayer] as const;
 
 /** Binds a layer to its data, which is all the canvas needs to draw it. */
 const bind = <T,>(layer: MapLayer<T>, data: T): DrawnLayer => ({ id: layer.id, draw: (ctx) => layer.draw(ctx, data) });
@@ -167,17 +171,20 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   const rails = useQuery({ ...queries.mapRails(serverId), enabled: visible.has(railsLayer.id) });
   const nodes = useQuery({ ...queries.mapResourceNodes(serverId), enabled: visible.has(resourceNodesLayer.id) });
   const powerLines = useQuery({ ...queries.mapPowerLines(serverId), enabled: visible.has(powerLinesLayer.id) });
+  const drones = useQuery({ ...queries.mapDroneRoutes(serverId), enabled: visible.has(dronePortsLayer.id) });
   const markers = useQuery({ ...queries.mapMarkers(serverId), enabled: visible.has(markersLayer.id) });
   const live = useQuery({ ...queries.mapLive(serverId), enabled: visible.has(trainsLayer.id) });
   const railsData = visible.has(railsLayer.id) ? rails.data : undefined;
   const nodesData = visible.has(resourceNodesLayer.id) ? nodes.data : undefined;
   const powerLinesData = visible.has(powerLinesLayer.id) ? powerLines.data : undefined;
+  const dronesData = visible.has(dronePortsLayer.id) ? drones.data : undefined;
   const markersData = visible.has(markersLayer.id) ? markers.data : undefined;
   const liveData = visible.has(trainsLayer.id) ? live.data : undefined;
   const failed = [
     { on: visible.has(railsLayer.id), label: railsLayer.label, query: rails },
     { on: visible.has(resourceNodesLayer.id), label: resourceNodesLayer.label, query: nodes },
     { on: visible.has(powerLinesLayer.id), label: powerLinesLayer.label, query: powerLines },
+    { on: visible.has(dronePortsLayer.id), label: dronePortsLayer.label, query: drones },
     { on: visible.has(markersLayer.id), label: markersLayer.label, query: markers },
     { on: visible.has(trainsLayer.id), label: trainsLayer.label, query: live },
   ]
@@ -197,6 +204,20 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   const nodesBound = useMemo(() => (shownNodes ? bind(resourceNodesLayer, shownNodes) : null), [shownNodes]);
   const powerLinesBound = useMemo(() => (powerLinesData ? bind(powerLinesLayer, powerLinesData.data) : null), [powerLinesData]);
   const buildingsBound = useMemo(() => bind(buildingsLayer, filteredFactory), [filteredFactory]);
+  // Drone cargo is a class name; the live factory's items give it its in-game name where a machine reports it.
+  // Keyed by the names themselves, not the snapshot: a factory poll with the same items never redraws the ports.
+  const namesKey = useMemo(
+    () => JSON.stringify([...itemLabels(snapshot.data.buildings)].map(([className, label]) => [className, label.name])),
+    [snapshot],
+  );
+  const itemName = useMemo(() => {
+    const names = new Map<string, string>(JSON.parse(namesKey) as [string, string][]);
+    return (className: string) => names.get(className) ?? labelFor(new Map(), className).name;
+  }, [namesKey]);
+  const dronesBound = useMemo<DrawnLayer | null>(
+    () => (dronesData ? { id: dronePortsLayer.id, draw: (ctx) => drawDronePorts(ctx, dronesData.data, itemName) } : null),
+    [dronesData, itemName],
+  );
   const markersBound = useMemo(() => (markersData ? bind(markersLayer, markersData.data) : null), [markersData]);
   const liveBound = useMemo(() => (liveData ? bind(trainsLayer, liveData.data) : null), [liveData]);
   // In LAYERS order; a new array alone doesn't redraw anything.
@@ -206,10 +227,11 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
     if (nodesBound) list.push(nodesBound);
     if (powerLinesBound) list.push(powerLinesBound);
     if (visible.has(buildingsLayer.id)) list.push(buildingsBound);
+    if (dronesBound) list.push(dronesBound);
     if (markersBound) list.push(markersBound);
     if (liveBound) list.push(liveBound);
     return list;
-  }, [visible, railsBound, nodesBound, powerLinesBound, buildingsBound, markersBound, liveBound]);
+  }, [visible, railsBound, nodesBound, powerLinesBound, buildingsBound, dronesBound, markersBound, liveBound]);
   // First view: the factory itself, not the whole 7.5 km world. Computed once: later polls
   // never move the view.
   const [fitTo] = useState<ViewM | undefined>(() => {
@@ -267,6 +289,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       {visible.has(buildingsLayer.id) && shown.length > 0 && (
         <LegendRow label={buildingsLayer.label}>{buildingsLayer.legend()}</LegendRow>
       )}
+      {dronesData && dronesData.data.length > 0 && <LegendRow label={dronePortsLayer.label}>{dronePortsLayer.legend()}</LegendRow>}
       {markersData && markersData.data.length > 0 && <LegendRow label={markersLayer.label}>{markersLayer.legend()}</LegendRow>}
       {liveData && (liveData.data.trains.length > 0 || liveData.data.stations.length > 0) && (
         <LegendRow label={trainsLayer.label}>{trainsLayer.legend()}</LegendRow>
@@ -274,7 +297,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       <WorldErrors failed={failed} />
       <p className="text-sm text-muted">
         The island's coast, lakes and high ground, traced from the game's map, under a grid of 500 m squares, with the
-        rails, resource nodes, power lines, players' markers and trains the server reported, nodes drawn with the game's icons. Trains move with the
+        rails, resource nodes, power lines, drone ports, players' markers and trains the server reported, nodes drawn with the game's icons. Trains move with the
         latest reading, about every 10 seconds. Positions are approximate until they're checked in game.
       </p>
       <p className="text-sm text-muted">Satisfactory, its map and its icons © Coffee Stain Studios. Not affiliated.</p>
@@ -288,6 +311,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
         />
       )}
       {visible.has(powerLinesLayer.id) && <WorldLayerText query={powerLines} layer={powerLinesLayer} />}
+      {visible.has(dronePortsLayer.id) && <WorldLayerText query={drones} layer={dronePortsLayer} />}
       {visible.has(markersLayer.id) && <WorldLayerText query={markers} layer={markersLayer} />}
       {visible.has(trainsLayer.id) && <WorldLayerText query={live} layer={trainsLayer} />}
       {liveData?.stale && (
@@ -340,6 +364,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
       {railsData && <RailsTable segments={railsData.data} view={view} />}
       {allNodes && shownNodes && <ResourceNodesTable nodes={shownNodes} view={view} hidden={allNodes.length - shownNodes.length} />}
       {powerLinesData && <PowerLinesTable lines={powerLinesData.data} view={view} />}
+      {dronesData && <DronePortsTable ports={dronesData.data} view={view} itemName={itemName} />}
       {markersData && <MarkersTable markers={markersData.data} view={view} />}
       {liveData && <TrainsTable trains={liveData.data.trains} view={view} />}
       {liveData && <StationsTable stations={liveData.data.stations} view={view} />}

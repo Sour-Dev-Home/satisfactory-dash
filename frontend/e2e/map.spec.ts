@@ -176,6 +176,24 @@ test("the map markers read as text and toggle", async ({ page, mockApi }, testIn
   await expectNoAxeViolations(page, testInfo);
 });
 
+// ADR-0055 Decision 1 (#330): the drone ports, on by default. Text and table, and the toggle removes them and stops the
+// read (whether a square is on the canvas depends on the first view, which fits the buildings; the unit tests cover it).
+test("the drone ports read as text and toggle", async ({ page, mockApi }, testInfo) => {
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("3 drone ports, 1 route on the map.")).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: "Drone ports" });
+  await expect(toggle).toBeChecked();
+  await expect(page.getByRole("table", { name: /Drone ports in view/ }).or(page.getByRole("heading", { name: "Drone ports in view (0)" }))).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
+  await toggle.uncheck();
+  await expect(page.getByText("3 drone ports, 1 route on the map.")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Drone ports in view/ })).toHaveCount(0);
+  await toggle.check();
+  await expect(page.getByText("3 drone ports, 1 route on the map.")).toBeVisible();
+});
+
 // ADR-0038 §1 (#330): the power lines are off by default and asked for only once toggled on. On, they read as a count
 // and a table (the canvas pixels depend on the first view, which fits the buildings; the unit tests cover the path).
 test("the power lines are off by default, then read as text and toggle", async ({ page, mockApi }, testInfo) => {

@@ -85,6 +85,7 @@ import {
   powerUnreachable,
   mapMarkersWorldResponse,
   powerLinesWorldResponse,
+  droneRoutesWorldResponse,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -114,6 +115,7 @@ import {
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "./mapMarkersResponses";
 import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "./powerLinesResponses";
+import { droneRoutesWorldResponseAmbiguous, droneRoutesWorldResponseEmpty, droneRoutesWorldResponseTruncated } from "./droneRoutesResponses";
 import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
   createdAgentServer,
@@ -176,6 +178,8 @@ export const ROUTES = {
   mapMarkers: endpoints.map.worldLayer,
   // ADR-0038 §1 (#330): the power lines, the same endpoint (off by default on the page, so asked for once toggled on).
   mapPowerLines: endpoints.map.worldLayer,
+  // ADR-0055 Decision 1 (#330): the drone ports and their pairings, the same endpoint (on by default).
+  mapDroneRoutes: endpoints.map.worldLayer,
   // ADR-0038 M6: the live trains and stations (its own endpoint).
   mapLive: endpoints.map.live,
   settings: endpoints.settings.get,
@@ -248,6 +252,7 @@ export const WORLD_LAYER_ROUTES = {
   mapResourceNodes: "resourceNodes",
   mapMarkers: "mapMarkers",
   mapPowerLines: "powerLines",
+  mapDroneRoutes: "droneRoutes",
 } as const;
 
 /** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
@@ -297,6 +302,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapMarkers: ok(mapMarkersWorldResponse),
   mapPowerLines: ok(powerLinesWorldResponse),
+  mapDroneRoutes: ok(droneRoutesWorldResponse),
   mapLive: ok(mapLiveResponse),
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
@@ -625,6 +631,7 @@ export const SCENARIOS = {
     mapResourceNodes: slow(BASE.mapResourceNodes),
     mapMarkers: slow(BASE.mapMarkers),
     mapPowerLines: slow(BASE.mapPowerLines),
+    mapDroneRoutes: slow(BASE.mapDroneRoutes),
     mapLive: slow(BASE.mapLive),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
@@ -685,12 +692,14 @@ export const SCENARIOS = {
     mapRails: ok(railsWorldResponseEmpty),
     mapResourceNodes: ok(resourceNodesWorldResponseEmpty),
     mapMarkers: ok(mapMarkersWorldResponseEmpty),
+    mapDroneRoutes: ok(droneRoutesWorldResponseEmpty),
   },
   "map-world-truncated": { mapRails: ok(railsWorldResponseTruncated) },
   "map-world-error": {
     mapRails: fail(502, errorUpstreamUnreachable),
     mapResourceNodes: fail(502, errorUpstreamUnreachable),
     mapMarkers: fail(502, errorUpstreamUnreachable),
+    mapDroneRoutes: fail(502, errorUpstreamUnreachable),
   },
   // ADR-0038 §1 (#330), the players' markers: the layer cut to its cap (empty and failing are in the two above).
   "map-markers-truncated": { mapMarkers: ok(mapMarkersWorldResponseTruncated) },
@@ -699,6 +708,11 @@ export const SCENARIOS = {
   "map-power-lines-empty": { mapPowerLines: ok(powerLinesWorldResponseEmpty) },
   "map-power-lines-truncated": { mapPowerLines: ok(powerLinesWorldResponseTruncated) },
   "map-power-lines-error": { mapPowerLines: fail(502, errorUpstreamUnreachable) },
+  // ADR-0055 Decision 1 (#330), the drone ports (on by default, so empty and failing are in map-world-empty and
+  // map-world-error): cut to the layer's cap, and a pairing that names two ports. The default scenario has the captured
+  // pair and an unpaired port.
+  "map-drone-ports-truncated": { mapDroneRoutes: ok(droneRoutesWorldResponseTruncated) },
+  "map-drone-ports-ambiguous": { mapDroneRoutes: ok(droneRoutesWorldResponseAmbiguous) },
   // ADR-0038 M6, the live trains: none built yet, the game unreachable (last known positions), or the read failing.
   "map-live-empty": { mapLive: ok(mapLiveResponseEmpty) },
   "map-live-stale": { mapLive: ok(mapLiveResponseStale) },

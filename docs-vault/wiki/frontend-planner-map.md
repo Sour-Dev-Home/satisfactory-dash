@@ -103,6 +103,17 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   rails and nodes and under the buildings as ONE non-interactive Leaflet multi-polyline (a sub-path per line, so 20,000
   lines are still one canvas path), a 1.5 px `--color-map-power-line` copper hairline. Text: "N power lines on the map,
   M m of wire in all." plus a "Power lines in view" table keyed `${id}:${index}` (FRM ids can repeat).
+- The drone ports (ADR-0055 Decision 1, #330, `dronePortsLayer`, `queries.mapDroneRoutes`, the `droneRoutes` world
+  layer) are on by default (a save has a handful of ports, capped at 2,000) and in the Map page's reveal. Drawn over the
+  buildings and under the markers: each port a fixed-size 10 px square in `--color-map-drone` (azure) with a canvas rim,
+  tooltip from text nodes (name, "Paired with", "Carries:" input cargo), and ONE dashed non-interactive multi-polyline
+  for the routes. Pairing (`dronePorts.ts`, `resolvePairings`): by `pairedId` when it's a string, else by name only when
+  the name matches exactly one other port; an explicit null `pairedId` on a paired port is the sender's "couldn't
+  resolve" and isn't looked up by name; self-pairings never match. Unmatched pairings draw no route and are counted:
+  "N drone ports, M routes on the map. K pairings couldn't be matched to one port." Cargo names come from the live
+  factory's items (`factory/itemLabels.ts`), else the class name made readable; MapPanel keys that by the names, so a
+  factory poll doesn't redraw the ports. "Drone ports in view" table (Port, Paired with, Sends, Position), 500 rows max,
+  keyed id + place (`dronePortKeys`).
 - A layer is a `MapLayer` (`layers.ts`): it gets Leaflet through its `MapContext` (never imports it at runtime),
   draws on the shared canvas renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here),
   returns its cleanup, and supplies a legend and a text `describe`.

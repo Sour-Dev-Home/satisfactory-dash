@@ -4,6 +4,8 @@ import type {
   AgentStatusResponse,
   BottlenecksResponse,
   CompatResponse,
+  DroneRoutesLayerData,
+  DroneRoutesWorldLayerResponse,
   EnrollmentCodeResponseSchema,
   FactoryBuilding,
   FactoryResponse,
@@ -966,6 +968,26 @@ const DEMO_POWER_LINES: PowerLinesLayerData = [
 
 export function powerLinesWorld(now: number): PowerLinesWorldLayerResponse {
   return { ...worldEnvelope(now, "powerLines", DEMO_POWER_LINES.length), data: DEMO_POWER_LINES };
+}
+
+/**
+ * The demo's drone ports (ADR-0055 Decision 1, #330): a pad beside the iron works flying plates and rods out to the oil
+ * outpost, whose pad sends plastic back, and a pad at the ore farm not paired yet. Paired by name, as FRM reports it.
+ */
+const DEMO_DRONE_PORTS: DroneRoutesLayerData = [
+  {
+    id: "demo-drone-port-1", name: "Iron Works Pad", paired: "Oil Outpost Pad",
+    input: ["Desc_IronPlate_C", "Desc_IronRod_C"], output: ["Desc_Plastic_C"], fuel: ["Desc_Battery_C"], x: -1760, y: -960,
+  },
+  {
+    id: "demo-drone-port-2", name: "Oil Outpost Pad", paired: "Iron Works Pad",
+    input: ["Desc_Plastic_C"], output: ["Desc_IronPlate_C", "Desc_IronRod_C"], fuel: ["Desc_Battery_C"], x: -1305, y: -770,
+  },
+  { id: "demo-drone-port-3", name: "Ore Farm Pad", paired: null, input: [], output: [], fuel: [], x: -1960, y: -1060 },
+];
+
+export function droneRoutesWorld(now: number): DroneRoutesWorldLayerResponse {
+  return { ...worldEnvelope(now, "droneRoutes", DEMO_DRONE_PORTS.length), data: DEMO_DRONE_PORTS };
 }
 
 /** A point `u` (0 to 1) of the way along a polyline, by length, in whole metres. */

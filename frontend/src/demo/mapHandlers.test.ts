@@ -7,13 +7,15 @@ import {
   MapWorldLayerResponseSchema,
   MapMarkersWorldLayerResponseSchema,
   PowerLinesWorldLayerResponseSchema,
+  DroneRoutesWorldLayerResponseSchema,
   RailsWorldLayerResponseSchema,
   ResourceNodesWorldLayerResponseSchema,
   worldLayerResponseSchema,
 } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
 import { transport } from "./transport";
-import { DEMO_EPOCH, DEMO_SERVER_ID, mapLive, mapMarkersWorld, powerLinesWorld, railsWorld, resourceNodesWorld } from "./world";
+import { DEMO_EPOCH, DEMO_SERVER_ID, droneRoutesWorld, mapLive, mapMarkersWorld, powerLinesWorld, railsWorld, resourceNodesWorld } from "./world";
+import { resolvePairings } from "../map/dronePorts";
 
 // ADR-0038 M5: the demo answers the map's world layers from its own made-up world (world.ts), through
 // the same transport the page uses, and never touches the network.
@@ -68,6 +70,21 @@ describe("the demo's map world layers", () => {
     expect(body.data.some((m) => m.name === "")).toBe(true);
     expect(new Set(body.data.map((m) => m.color)).size).toBeGreaterThan(2);
     expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.mapMarkers).parse(mapMarkersWorld(Date.now()))).not.toThrow();
+  });
+
+  it("serves a few drone ports that satisfy the contract, near the demo factory, one pair matched by name", async () => {
+    const res = await call(endpoints.map.worldLayer.path(DEMO_SERVER_ID, "droneRoutes"));
+    expect(res.status).toBe(200);
+    const body = DroneRoutesWorldLayerResponseSchema.parse(await res.json());
+    expect(body.layer).toBe("droneRoutes");
+    expect(body.count).toBe(body.data.length);
+    expect(body.data.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(body.data.map((p) => p.id)).size).toBe(body.data.length);
+    for (const p of body.data) expect(Math.hypot(p.x + 1700, p.y + 980) < 600).toBe(true);
+    const { routes, unmatched } = resolvePairings(body.data);
+    expect(routes).toHaveLength(1);
+    expect(unmatched).toBe(0);
+    expect(() => worldLayerResponseSchema(MAP_WORLD_LAYER_DATA_SCHEMAS.droneRoutes).parse(droneRoutesWorld(Date.now()))).not.toThrow();
   });
 
   it("serves a handful of power lines that satisfy the contract, near the demo factory", async () => {

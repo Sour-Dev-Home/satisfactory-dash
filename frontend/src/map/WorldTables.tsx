@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import type { MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { DronePort, MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
 import type { ViewM } from "./MapCanvas";
+import { cargoText, dronePortKeys, dronePortName, pairedWithText, resolvePairings } from "./dronePorts";
 import { markerKeys, markerKindLabel, markerName } from "./markersLayer";
 import {
   formatMetres,
@@ -136,6 +137,58 @@ export function PowerLinesTable({ lines, view }: { lines: readonly PowerLine[]; 
       {listed.length > POWER_LINE_ROWS_MAX && (
         <p className="text-sm text-muted">
           Showing the first {POWER_LINE_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
+    </ViewTable>
+  );
+}
+
+/**
+ * The drone ports in view (ADR-0055 Decision 1, #330): who each is paired with and what it sends (its input cargo, by
+ * item name). Keyed by id and place (ids can repeat); capped like the power lines, though a save rarely has many.
+ */
+export const DRONE_PORT_ROWS_MAX = 500;
+
+export function DronePortsTable({
+  ports,
+  view,
+  itemName,
+}: {
+  ports: readonly DronePort[];
+  view: ViewM | null;
+  itemName: (className: string) => string;
+}) {
+  const { partner } = resolvePairings(ports);
+  const keys = dronePortKeys(ports);
+  const listed = ports.map((p, i) => ({ p, i, key: keys[i] })).filter(({ p }) => pointInView(view, p));
+  return (
+    <ViewTable id="map-drone-ports-heading" title="Drone ports in view" count={listed.length} empty={ports.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-drone-ports-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Port</th>
+            <th scope="col">Paired with</th>
+            <th scope="col">Sends</th>
+            <th scope="col">Position (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.slice(0, DRONE_PORT_ROWS_MAX).map(({ p, i, key }) => {
+            const other = partner[i];
+            return (
+              <tr key={key}>
+                <td data-label="Port">{dronePortName(p)}</td>
+                <td data-label="Paired with">{pairedWithText(p, other === null ? null : ports[other])}</td>
+                <td data-label="Sends">{cargoText(p.input, itemName)}</td>
+                <td data-label="Position (m)">{formatPoint([p.x, p.y])}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {listed.length > DRONE_PORT_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {DRONE_PORT_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
         </p>
       )}
     </ViewTable>
