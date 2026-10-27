@@ -168,6 +168,7 @@ test.describe("demo build", () => {
       expect(files).toContain(join(dir, "game-assets", "NOTICE.md"));
       expect(files).toContain(join(dir, "game-assets", "resources", "iron-ore.webp"));
       expect(files).toContain(join(dir, "game-assets", "buildings", "constructor.webp"));
+      for (const size of [32, 64, 128]) expect(files).toContain(join(dir, "game-assets", "items", `iron-plates-${size}.webp`));
     }
   });
 

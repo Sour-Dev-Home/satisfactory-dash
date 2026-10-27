@@ -92,10 +92,12 @@ test("inputs outside a workspace select the workspaces that read them", () => {
   assert.deepEqual(pick("frontend/src/index.css").workspaces, ["frontend", "server-manager"]);
   assert.deepEqual(pick("docs-vault/raw-sources/captured-responses/x.json").workspaces, [
     "packages/game-adapter",
+    "frontend",
     "backend",
     "agent",
     "server-manager",
   ]);
+  assert.ok(pick("backend/src/modules/telemetry/itemForms.generated.json").workspaces.includes("frontend"));
   assert.deepEqual(pick("LICENSE").workspaces, ["frontend"]);
   const load = outputs(pick("scripts/load-report.mjs"));
   assert.equal(load.load, true);
