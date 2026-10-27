@@ -194,6 +194,12 @@ const CASES: StateCase[] = [
   { scenario: "map-power-lines-empty", path: "/app/map", shows: "No power lines built yet.", act: showPowerLines },
   { scenario: "map-power-lines-truncated", path: "/app/map", shows: /Showing part of the power lines/, act: showPowerLines },
   { scenario: "map-power-lines-error", path: "/app/map", shows: /Power lines couldn't load/, act: showPowerLines },
+  // The belts, lifts and pipes (#330) are off by default too: drawn (the captured sample), none reported yet, cut to the
+  // layer's cap, and the read failing.
+  { scenario: "default", name: "map-conveyors", path: "/app/map", shows: /^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt/, act: showConveyors },
+  { scenario: "map-conveyors-empty", path: "/app/map", shows: "No belts, lifts or pipes reported yet.", act: showConveyors },
+  { scenario: "map-conveyors-truncated", path: "/app/map", shows: /Showing part of the belts and pipes/, act: showConveyors },
+  { scenario: "map-conveyors-error", path: "/app/map", shows: /Belts and pipes couldn't load/, act: showConveyors },
   // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
   { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
   { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },
@@ -745,6 +751,10 @@ async function filterTheMap(page: Page) {
 
 async function showPowerLines(page: Page) {
   await page.getByRole("checkbox", { name: "Power lines" }).check();
+}
+
+async function showConveyors(page: Page) {
+  await page.getByRole("checkbox", { name: "Belts and pipes" }).check();
 }
 
 async function openAddForm(page: Page) {

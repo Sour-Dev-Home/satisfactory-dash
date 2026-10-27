@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import type { DronePort, MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { ConveyorKind, DronePort, MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
 import type { ViewM } from "./MapCanvas";
+import { conveyorInView, conveyorKindText, conveyorLengthText, endText, type BuildingPlace, type PlacedConveyor } from "./conveyors";
 import { cargoText, dronePortKeys, dronePortName, pairedWithText, resolvePairings } from "./dronePorts";
 import { markerKeys, markerKindLabel, markerName } from "./markersLayer";
 import {
@@ -189,6 +190,58 @@ export function DronePortsTable({
       {listed.length > DRONE_PORT_ROWS_MAX && (
         <p className="text-sm text-muted">
           Showing the first {DRONE_PORT_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
+    </ViewTable>
+  );
+}
+
+/**
+ * The belts, lifts and pipes in view (#330): what each is, how long (straight-line), and what sits at each end in words
+ * (the factory's name for a building it placed, else the end's kind). Keyed id and index (FRM ids can repeat); capped
+ * like the power lines, since a big save has thousands.
+ */
+export const CONVEYOR_ROWS_MAX = 500;
+
+export function ConveyorsTable({
+  list,
+  view,
+  buildings,
+}: {
+  list: readonly PlacedConveyor[];
+  view: ViewM | null;
+  buildings: ReadonlyMap<string, BuildingPlace>;
+}) {
+  const kinds = new Map<string, ConveyorKind>();
+  for (const c of list) if (!kinds.has(c.edge.id)) kinds.set(c.edge.id, c.edge.kind);
+  const listed = list.filter((c) => conveyorInView(view, c));
+  return (
+    <ViewTable id="map-conveyors-heading" title="Belts, lifts and pipes in view" count={listed.length} empty={list.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-conveyors-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Kind</th>
+            <th scope="col">Tier</th>
+            <th scope="col">Length</th>
+            <th scope="col">From</th>
+            <th scope="col">To</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.slice(0, CONVEYOR_ROWS_MAX).map((c) => (
+            <tr key={c.key}>
+              <td data-label="Kind">{conveyorKindText(c.edge.kind)}</td>
+              <td data-label="Tier">{c.edge.tier}</td>
+              <td data-label="Length">{conveyorLengthText(c)}</td>
+              <td data-label="From">{endText(c.edge.from, c.edge.fromKind, buildings, kinds)}</td>
+              <td data-label="To">{endText(c.edge.to, c.edge.toKind, buildings, kinds)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {listed.length > CONVEYOR_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {CONVEYOR_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
         </p>
       )}
     </ViewTable>

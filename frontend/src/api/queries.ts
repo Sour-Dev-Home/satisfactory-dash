@@ -8,12 +8,14 @@ import {
 } from "@tanstack/react-query";
 import {
   BOTTLENECKS_DEFAULT_LIMIT,
+  ConveyorsLayerDataSchema,
   DroneRoutesLayerDataSchema,
   endpoints,
   MapMarkersLayerDataSchema,
   PowerLinesLayerDataSchema,
   RailsLayerDataSchema,
   ResourceNodesLayerDataSchema,
+  type ConveyorsLayerData,
   type DroneRoutesLayerData,
   type HistoryRange,
   type MapMarkersLayerData,
@@ -304,6 +306,15 @@ export const queries = {
       queryKey: ["servers", serverId, "map", "world", "powerLines"],
       queryFn: ({ signal }): Promise<WorldLayerRead<PowerLinesLayerData>> =>
         readWorldLayer(signal, serverId, "powerLines", PowerLinesLayerDataSchema),
+      refetchInterval: POLL_MS.mapWorld,
+    }),
+  /** #330 (ADR-0048 amendment's layer): every belt, lift and pipe as an edge, read the same way (off by default, so
+   *  asked for only once on; a big save has thousands). */
+  mapConveyors: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "map", "world", "conveyors"],
+      queryFn: ({ signal }): Promise<WorldLayerRead<ConveyorsLayerData>> =>
+        readWorldLayer(signal, serverId, "conveyors", ConveyorsLayerDataSchema),
       refetchInterval: POLL_MS.mapWorld,
     }),
   /** ADR-0055 Decision 1 (#330): the drone ports with their pairing and cargo, read the same way (on by default). */
