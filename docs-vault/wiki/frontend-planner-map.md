@@ -66,7 +66,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   the words for text views and tests; the item names are in the edge's `<title>` and the Tables view.
 - Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
   control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
-  - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier and kind, so a poll that reorders edges keeps it). It clears
+  - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears
     when the line or the item leaves the graph.
   - Hop-1 dimming: only the focused line and its two cards stay lit, and the item filter's dimming waits until focus ends.
   - `ItemFocusLayer.tsx` holds the `sr-only` bubble buttons, one tab stop for all of them (a roving tabindex). Arrow
