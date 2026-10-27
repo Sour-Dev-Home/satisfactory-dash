@@ -1,6 +1,6 @@
 import type { PlannerEdge, PlannerNode, PlannerRate } from "@satisfactory-dash/shared";
 import { formatAmount } from "../../format";
-import { edgeRateText, outputLine } from "../plannerText";
+import { edgeRateText, hasMax, isZeroRate, outputLine, stalledStateText } from "../plannerText";
 
 // What a node card says and what an edge label says. One place, so the layout sizes exactly the text the canvas draws.
 
@@ -52,8 +52,29 @@ export const nameOr = (name: string | null | undefined, fallback: string): strin
 /** A node whose name came blank gets its class name, else "Unknown building", so no title, label or heading is ever empty. */
 export const withName = <T extends Pick<PlannerNode, "name" | "className">>(node: T): T => (node.name.trim() === "" ? { ...node, name: nameOr(node.className, UNKNOWN_BUILDING) } : node);
 
-/** One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the maximum is in the tooltip. */
-export const productSummary = (rate: PlannerRate): string => cut(`${nameOr(rate.name, rate.className)} · ${formatAmount(rate.currentPerMinute)}${rate.unit === "m3/min" ? " m³" : ""}/min`, MAX_SUMMARY_CHARS);
+/**
+ * One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the
+ * maximum is in the tooltip. A rate that reads 0 shows its maximum, "Iron Ingot · 0 of 30/min" (#728 step 2).
+ */
+export function productSummary(rate: PlannerRate): string {
+  const per = `${rate.unit === "m3/min" ? " m³" : ""}/min`;
+  const zero = isZeroRate(rate);
+  const amount = zero && hasMax(rate) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)}` : formatAmount(rate.currentPerMinute);
+  const name = nameOr(rate.name, rate.className);
+  const tail = ` · ${amount}${per}`;
+  // A 0 is only honest with its maximum: a long name gives way, the tail is never the part cut off.
+  return zero ? `${cut(name, Math.max(1, MAX_SUMMARY_CHARS - tail.length))}${tail}` : cut(`${name}${tail}`, MAX_SUMMARY_CHARS);
+}
+
+/**
+ * The muted line under a card whose main product reads 0: its machines' state, "Backed up" or "Not producing" (#728
+ * step 2). Null for a running card, or one with no product.
+ */
+export function stalledNote(rate: PlannerRate | undefined, stateCounts: Record<string, number>): string | null {
+  if (rate === undefined || !isZeroRate(rate)) return null;
+  const text = stalledStateText(stateCounts);
+  return cut(`${text.charAt(0).toUpperCase()}${text.slice(1)}`, MAX_SUMMARY_CHARS);
+}
 
 /** A machine whose recipe is unassigned in the game (#728 step 3). */
 export const NOT_CONFIGURED = "Not configured";
@@ -112,7 +133,7 @@ export const noRecipeCellText = (node: Pick<PlannerNode, "kind">): string => (NO
  */
 export function nodeFacts(node: PlannerNode): { recipe: string | null; outputs: string[]; loop: boolean } {
   const mined = extractorOutput(node);
-  const outputs = mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? ["No output data"] : node.products.map(outputLine);
+  const outputs = mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? ["No output data"] : node.products.map((r) => outputLine(r, node.stateCounts));
   return { recipe: recipeText(node), outputs, loop: node.loop };
 }
 

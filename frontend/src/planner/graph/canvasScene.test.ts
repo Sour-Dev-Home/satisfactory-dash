@@ -424,7 +424,10 @@ describe("bundleFlows: one line per pair of cards and carrier (2026-10-27)", () 
 
   it("keeps every link in the tooltip, each with its own rate and sureness", () => {
     const [b] = bundleFlows([link("Iron Ingot"), link(null, { quality: "unknown", ratePerMinute: null })]);
-    expect(flowTitle(b.flow, "A", "B")).toBe("A to B, 2 links: Iron Ingot · 30 items/min (measured); Item unknown (rate unknown)");
+    // An unknown link adds why (#728 step 5).
+    expect(flowTitle(b.flow, "A", "B")).toBe(
+      "A to B, 2 links: Iron Ingot · 30 items/min (measured); Item unknown (rate unknown). The game doesn't report what's on a belt or how fast it moves; items and rates are inferred where possible.",
+    );
     const trains = bundleFlows([link("Ore", { carrier: "train", routeName: "North" }), link("Coal", { carrier: "train", routeName: "South" })])[0].flow;
     expect(flowTitle(trains, "A", "B")).toBe("Train: A to B, 2 links: route North, Ore · 30 items/min (measured); route South, Coal · 30 items/min (measured)");
   });

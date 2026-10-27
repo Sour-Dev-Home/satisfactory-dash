@@ -48,7 +48,7 @@ export function FactoryFacts({
         <ul aria-label={`Products of ${factory.name}`} className="m-0 grid list-none gap-0.5 p-0 text-sm">
           {factory.products.map((rate) => (
             <li key={rate.className} className="break-words">
-              {outputLine(rate)}
+              {outputLine(rate, model.stateCounts)}
             </li>
           ))}
         </ul>

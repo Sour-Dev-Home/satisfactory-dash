@@ -8,10 +8,13 @@ import {
   factoryTitle,
   foldText,
   groupLabel,
+  hasUnknown,
+  mergeStateCounts,
   outputLine,
   remoteText,
   shareText,
   siteNodes,
+  UNKNOWN_FLOW_NOTE,
 } from "../plannerText";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
 import {
@@ -27,6 +30,7 @@ import {
   nodeSummary,
   nodeTitle,
   productSummary,
+  stalledNote,
   withName,
 } from "./graphModel";
 import {
@@ -289,10 +293,12 @@ export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.ra
  */
 export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const by = flow.carrier === "belt" || flow.carrier === "pipe" ? "" : `${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}: `;
-  if (flow.parts !== undefined && flow.parts.length > 1) {
-    return `${by}${from} to ${to}, ${flow.parts.length} links: ${flow.parts.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}`;
+  const bundle = flow.parts !== undefined && flow.parts.length > 1 ? flow.parts : null;
+  const why = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
+  if (bundle !== null) {
+    return `${by}${from} to ${to}, ${bundle.length} links: ${bundle.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}${why}`;
   }
-  return `${by}${from} to ${to}: ${flow.label} (${flowSureness(flow)})`;
+  return `${by}${from} to ${to}: ${flow.label} (${flowSureness(flow)})${why}`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -307,9 +313,14 @@ const countOf = (n: number): number | undefined => (Number.isFinite(n) && n > 0 
 /** The same words in a sentence each: what the tooltip and the keyboard button read (the card itself prints one line). */
 const sentences = (parts: readonly string[]): string => parts.filter((p) => p !== "").join(". ");
 
-/** A card's lines, plus the muted "(inferred from the node)" under an extractor's guessed resource (#728). */
-const withInferredNote = (lines: string[], mined: { inferred: boolean } | null): Pick<Card, "lines" | "mutedFrom"> =>
-  mined?.inferred === true ? { lines: [...lines, INFERRED_FROM_NODE], mutedFrom: lines.length } : { lines };
+/**
+ * A card's lines, plus a muted note under them (#728): "(inferred from the node)" under an extractor's guessed resource,
+ * or the machines' state under a product that reads 0. An extractor guesses only when it has no product, so never both.
+ */
+const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, stalled: string | null = null): Pick<Card, "lines" | "mutedFrom"> => {
+  const note = mined?.inferred === true ? INFERRED_FROM_NODE : stalled;
+  return note === null ? { lines } : { lines: [...lines, note], mutedFrom: lines.length };
+};
 
 /**
  * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
@@ -325,7 +336,7 @@ export function groupCard(node: PlannerNode, facts: string[] = []): Card {
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    ...withInferredNote([nodeSummary(node)], extractorOutput(node)),
+    ...withMutedNote([nodeSummary(node)], extractorOutput(node), stalledNote(node.products[0], node.stateCounts)),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -343,14 +354,19 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
   const groups = plural(bubble.nodes.length, "group", "groups");
   const loop = bubble.nodes.some((n) => n.loop === true);
   const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes) : null;
-  const outputs = mined !== null ? [extractorOutputText(mined)] : bubble.products.length === 0 ? ["No output data"] : bubble.products.map(outputLine);
+  const states = mergeStateCounts(bubble.nodes.map((n) => n.stateCounts));
+  const outputs = mined !== null ? [extractorOutputText(mined)] : bubble.products.length === 0 ? ["No output data"] : bubble.products.map((r) => outputLine(r, states));
   return {
     ...blank,
     key: bubble.key,
     kind: "bubble",
     nodeKeys: bubble.nodes.map((n) => n.key),
     title: nodeTitle({ name: first.name, count: bubble.machineCount }),
-    ...withInferredNote([mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])], mined),
+    ...withMutedNote(
+      [mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+      mined,
+      stalledNote(bubble.products[0], states),
+    ),
     count: countOf(bubble.machineCount),
     className: first.className,
     glyph: glyphKindOf(first),
@@ -424,7 +440,7 @@ function factoryCard(model: FactoryModel): Card {
     nodeKeys: model.nodes.map((n) => n.key),
     title,
     // The name and one product line; where it stands, the other outputs and the ends are in `description`.
-    lines: [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])],
+    ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledNote(factory.products[0], model.stateCounts)),
     count: countOf(factory.machineCount),
     className: main?.className,
     glyph: main === undefined ? "unknown" : glyphKindOf(main),
@@ -433,7 +449,7 @@ function factoryCard(model: FactoryModel): Card {
       name,
       factorySitesText(model),
       plural(factory.machineCount, "machine", "machines"),
-      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map(outputLine)),
+      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map((r) => outputLine(r, model.stateCounts))),
       ...(factory.sharedNodeCount > 0 ? [plural(factory.sharedNodeCount, "shared group", "shared groups")] : []),
       ...model.destinations.map((d) => destinationChipText(d.destination, d.count)),
       ...(model.nodes.some((n) => n.loop === true) ? ["In a loop"] : []),
