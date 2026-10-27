@@ -81,7 +81,14 @@ export function TrendChart({ spec, times }: { spec: TrendChartSpec; times: reado
         axes: [
           axis(),
           ms
-            ? { ...axis(), size: 64, splits: () => MS_SPLITS, values: (_u, ticks) => ticks.map(msTick) }
+            ? {
+                ...axis(),
+                size: 64,
+                splits: () => MS_SPLITS,
+                // Every split labelled: uPlot's log filter would thin them by passing null, which read "null ms".
+                filter: (_u, splits) => splits,
+                values: (_u, ticks) => ticks.map((v) => (v == null ? "" : msTick(v))),
+              }
             : { ...axis(), size: 64, incrs: COUNT_INCRS, values: (_u, ticks) => ticks.map((v) => countText(v)) },
         ],
         cursor: { drag: { x: false, y: false } },
