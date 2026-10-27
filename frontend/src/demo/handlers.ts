@@ -1,11 +1,16 @@
 import {
+  CreatePlannerDesignationRequestSchema,
   endpoints,
+  ReplacePlannerDesignationsRequestSchema,
+  UpdatePlannerDesignationRequestSchema,
   type SessionResponse,
   type SetAutoPauseRequest,
   type TestConnectionResponse,
 } from "@satisfactory-dash/shared";
 import * as alerts from "./alerts";
 import { demoNow } from "./clock";
+import { applyCreate, applyRemove, applyReplace, applyUpdate, type StoredDesignation, type WriteFailure } from "./designationStore";
+import { demoDesignations, demoDesignationsResponse, resetDemoDesignations, setDemoDesignations, withDemoDesignations } from "./designations";
 import { demoMetricsOverview } from "./metrics";
 import { DEMO_PAIR_CODE } from "./pairCode";
 import { del, get, patch, post, put, type Params } from "./router";
@@ -29,6 +34,7 @@ const state = { signedIn: false, autoPause: false, pendingUntil: 0 };
 export function resetDemoState(): void {
   Object.assign(state, { signedIn: false, autoPause: false, pendingUntil: 0 });
   alerts.resetDemoAlerts();
+  resetDemoDesignations();
 }
 
 const error = (status: number, code: string, message: string, reason?: string) =>
@@ -52,7 +58,17 @@ const LAN_REFUSED = () => error(422, "lan_requires_cert_pinning", "Only loopback
 // Server management (ADR-0030) in the demo: the screens work and the connection test is simulated
 // (nothing is contacted), but nothing is saved, and a LAN server is refused like the real backend.
 const NOT_SAVED = () => error(403, "forbidden", "The demo doesn't change servers.");
-const NO_DESIGNATIONS = () => error(403, "forbidden", "The demo doesn't save designated factories.");
+const BAD_DESIGNATION = () => error(400, "bad_request", "Invalid request");
+const newDemoId = () => crypto.randomUUID();
+
+/** A designation write's answer: the success (and the new list kept), or the backend's error envelope for its failure. */
+function written(out: { ok: true; next: StoredDesignation[] } | WriteFailure, success: () => Response): Response {
+  if (!out.ok) {
+    return Response.json({ error: { code: out.code, message: out.message, requestId: "demo", ...(out.other === undefined ? {} : { other: out.other }) } }, { status: out.status });
+  }
+  setDemoDesignations(out.next);
+  return success();
+}
 const TEST_PASSED: TestConnectionResponse = { ok: true, api: { ok: true }, frm: { ok: true } };
 
 async function bodyOf(request: Request): Promise<Record<string, unknown>> {
@@ -166,12 +182,40 @@ export const demoHandlers = [
   // ADR-0048 (#349): the bottleneck finder, a made-up answer for the demo factory.
   get(endpoints.bottlenecks.route, ({ params }) => guarded(params, () => Response.json(world.bottlenecks(demoNow())))),
   // ADR-0050: the production planner, a made-up two-site world over the demo factory's machines.
-  get(endpoints.productionGraph.route, ({ params }) => guarded(params, () => Response.json(world.productionGraph(demoNow())))),
-  // ADR-0055 PR 10a: the planner's designations. One is made up (the plastic line); like server changes, none is saved.
-  get(endpoints.plannerDesignations.list.route, ({ params }) => guarded(params, () => Response.json(world.plannerDesignations()))),
-  post(endpoints.plannerDesignations.create.route, ({ params }) => guarded(params, NO_DESIGNATIONS)),
-  put(endpoints.plannerDesignations.update.route, ({ params }) => guarded(params, NO_DESIGNATIONS)),
-  del(endpoints.plannerDesignations.remove.route, ({ params }) => guarded(params, NO_DESIGNATIONS)),
+  get(endpoints.productionGraph.route, ({ params }) => guarded(params, () => Response.json(withDemoDesignations(world.productionGraph(demoNow()))))),
+  // ADR-0055 PR 10a and #727: the planner's designations. One is made up (the plastic line); the writes change them in
+  // memory for this visit (a reload starts over), so merge, split, pop-out, dissolve and undo show on the planner.
+  get(endpoints.plannerDesignations.list.route, ({ params }) => guarded(params, () => Response.json(demoDesignationsResponse()))),
+  post(endpoints.plannerDesignations.create.route, async ({ params, request }) => {
+    const body = CreatePlannerDesignationRequestSchema.safeParse(await bodyOf(request));
+    return guarded(params, () => {
+      if (!body.success) return BAD_DESIGNATION();
+      const out = applyCreate(demoDesignations(), body.data, demoNow(), newDemoId);
+      return written(out, () => Response.json(out.ok ? out.designation : null, { status: 201 }));
+    });
+  }),
+  put(endpoints.plannerDesignations.update.route, async ({ params, request }) => {
+    const body = UpdatePlannerDesignationRequestSchema.safeParse(await bodyOf(request));
+    return guarded(params, () => {
+      if (!body.success) return BAD_DESIGNATION();
+      const out = applyUpdate(demoDesignations(), String(params.designationId), body.data, demoNow());
+      return written(out, () => Response.json(out.ok ? out.designation : null));
+    });
+  }),
+  del(endpoints.plannerDesignations.remove.route, ({ params }) =>
+    guarded(params, () => {
+      const out = applyRemove(demoDesignations(), String(params.designationId));
+      return written(out, () => Response.json({ deleted: true }));
+    }),
+  ),
+  post(endpoints.plannerDesignations.replace.route, async ({ params, request }) => {
+    const body = ReplacePlannerDesignationsRequestSchema.safeParse(await bodyOf(request));
+    return guarded(params, () => {
+      if (!body.success) return BAD_DESIGNATION();
+      const out = applyReplace(demoDesignations(), body.data, demoNow(), newDemoId);
+      return written(out, () => Response.json(out.ok ? out.response : null));
+    });
+  }),
   // ADR-0038 M5: the map's world layers, one made-up reading each. An unknown layer is a 404 like the real route.
   get(endpoints.map.worldLayer.route, ({ params }) =>
     guarded(params, () => {

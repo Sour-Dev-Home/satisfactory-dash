@@ -8,6 +8,7 @@ import {
   type ReplacePlannerDesignationsRequest,
   type ReplacePlannerDesignationsResponse,
 } from "@satisfactory-dash/shared";
+import { Buildings } from "./buildingOverlap";
 import { nameProblem } from "./designationText";
 
 /**
@@ -37,33 +38,6 @@ const tooManyMachines = (n: number) => `A factory can hold up to ${PLANNER_DESIG
 
 type Revised = PlannerDesignation & { revision: number };
 const hasRevision = (d: PlannerDesignation): d is Revised => d.revision !== undefined;
-
-/**
- * The buildings already taken, by the contract's write-overlap rule: the same building id, or the same (class, x, y) when
- * a side has no id. Keys are game strings, so Sets of strings only.
- */
-class Buildings {
-  private readonly ids = new Set<string>();
-  private readonly keysWithoutId = new Set<string>();
-  private readonly allKeys = new Set<string>();
-  private static key = (m: PlannerDesignationMember) => `${m.c}\u0000${m.x}\u0000${m.y}`;
-  has(m: PlannerDesignationMember): boolean {
-    const key = Buildings.key(m);
-    return m.id !== null ? this.ids.has(m.id) || this.keysWithoutId.has(key) : this.allKeys.has(key);
-  }
-  add(m: PlannerDesignationMember): void {
-    if (m.id !== null) this.ids.add(m.id);
-    else this.keysWithoutId.add(Buildings.key(m));
-    this.allKeys.add(Buildings.key(m));
-  }
-}
-
-/** The first member of `members` that is the same building as one in `others` (the write-overlap rule), if any. */
-export function sharedBuilding(members: readonly PlannerDesignationMember[], others: readonly PlannerDesignationMember[]): PlannerDesignationMember | undefined {
-  const taken = new Buildings();
-  for (const m of others) taken.add(m);
-  return members.find((m) => taken.has(m));
-}
 
 /** The request as the contract checks it; a builder never hands out one the schema would refuse. */
 function checked(request: ReplacePlannerDesignationsRequest, preImage: PlannerDesignation[]): OpResult {

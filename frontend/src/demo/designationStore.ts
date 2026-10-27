@@ -5,7 +5,7 @@ import {
   type ReplacePlannerDesignationsRequest,
   type ReplacePlannerDesignationsResponse,
 } from "@satisfactory-dash/shared";
-import { sharedBuilding } from "../planner/designationOps";
+import { sharedBuilding } from "../planner/buildingOverlap";
 
 /**
  * The demo's designations, kept in memory for the page's life (ADR-0026: no network, nothing saved). The writes follow
