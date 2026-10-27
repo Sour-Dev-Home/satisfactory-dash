@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PlannerNode, ProductionGraph } from "@satisfactory-dash/shared";
 import { COLLAPSE_AT, EMPTY_VIEW, factoryScene, overviewScene, siteScene, type Card, type FactoryView, type Scene } from "./canvasScene";
 import { GLYPH_KINDS, buildingIconUrl, glyphKindOf } from "./buildingIcons";
+import { makesNothing } from "./graphModel";
 import { factoryModels } from "./hierarchy";
 import { layoutScene } from "./layoutSite";
 
@@ -63,8 +64,12 @@ const ODD: Partial<PlannerNode>[] = [
 
 const visibleText = (c: Card): string[] => c.lines.filter((l) => l.trim() !== "");
 
-function expectReadableAndSeen(card: Card) {
-  expect(visibleText(card), `${card.kind} ${card.key} prints a line`).not.toHaveLength(0);
+/**
+ * Readable, and never a bare box. A group that makes nothing by nature (storage, a station, a consumer) and reports no
+ * products prints no line: its picture says what it is (the owner, 2026-10-27). Every other card prints one.
+ */
+function expectReadableAndSeen(card: Card, lineless: ReadonlySet<string> = new Set()) {
+  if (!(card.kind === "group" && card.nodeKeys.every((k) => lineless.has(k)))) expect(visibleText(card), `${card.kind} ${card.key} prints a line`).not.toHaveLength(0);
   expect(card.lines.every((l) => l.trim() !== ""), `${card.kind} ${card.key} has no blank line`).toBe(true);
   expect(card.label.trim(), `${card.kind} ${card.key} has a label`).not.toBe("");
   expect(card.description.trim(), `${card.kind} ${card.key} has a description`).not.toBe("");
@@ -96,9 +101,10 @@ describe("no card is empty", () => {
     const nodes = [node("a", odd), node("b"), node("c", odd)];
     const g = graphOf(nodes);
     const scenes = [factoryScene(g, factoryModels(g)[0], view()), siteScene(g.sites[0], g), overviewScene(g, factoryModels(g))];
+    const lineless = new Set(nodes.filter((n) => makesNothing(n) && n.products.length === 0).map((n) => n.key));
     for (const scene of scenes) {
       expect(scene.cards.length).toBeGreaterThan(0);
-      for (const card of scene.cards) expectReadableAndSeen(card);
+      for (const card of scene.cards) expectReadableAndSeen(card, lineless);
       expectLaidOut(scene);
     }
   });
