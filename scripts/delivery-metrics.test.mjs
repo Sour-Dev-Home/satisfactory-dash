@@ -162,6 +162,19 @@ test("flake: cancelled attempts are not failures, and cancelled or running runs 
   assert.deepEqual(flakeStats([timedOutThenGreen]), { runs: 1, flaky: 1 });
 });
 
+test("flake: runs without a SHA stand alone and never pair up; an empty list is zero", () => {
+  const failed = ciRun({ headSha: undefined, conclusion: "failure", startedAt: "2026-09-26T00:00:00Z" });
+  const green = ciRun({ headSha: undefined, startedAt: "2026-09-26T01:00:00Z" });
+  assert.deepEqual(flakeStats([failed, green]), { runs: 2, flaky: 0 });
+  assert.deepEqual(flakeStats([]), { runs: 0, flaky: 0 });
+});
+
+test("bounce: a check that failed exactly at the merge instant did not happen before it", () => {
+  const prs = [normalizePr(node({ commits: { nodes: [{ commit: { oid: SHA_B } }] } }))];
+  assert.deepEqual(bounceStats(prs, new Map([[SHA_B, ["2026-09-26T04:00:00Z"]]])), { merged: 1, bounced: 0 });
+  assert.deepEqual(bounceStats(prs, new Map([[SHA_B, ["2026-09-26T03:59:59Z"]]])), { merged: 1, bounced: 1 });
+});
+
 test("flake rate in the report covers only runs created in the window", () => {
   const rerun = (createdAt) => ciRun({ attempt: 2, createdAt, startedAt: createdAt }, "e2e.yml", [attempt(1, "failure", "2026-01-01T00:00:00Z")]);
   const r = report([], { ciRuns: [rerun("2026-09-26T00:00:00Z"), rerun("2026-01-02T00:00:00Z"), ciRun({ headSha: SHA_B }), ciRun({ headSha: SHA_C })] });
