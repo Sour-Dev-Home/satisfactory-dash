@@ -22,6 +22,7 @@ export type {
   MappedConveyors,
   MappedDroneRoutes,
   MappedMapMarkers,
+  MappedPowerLines,
   MappedRailSegments,
   MappedResourceNodes,
   MappedTrainRoutes,

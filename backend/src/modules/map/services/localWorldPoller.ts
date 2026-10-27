@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { ConveyorsSkipReason, MapWorldLayer } from "@satisfactory-dash/shared";
-import type { MappedConveyors, MappedDroneRoutes, MappedMapMarkers, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
+import type { MappedConveyors, MappedDroneRoutes, MappedMapMarkers, MappedPowerLines, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import type { MapLiveSink } from "./mapLiveStore.js";
 import type { WorldIngestPort } from "./worldIngestService.js";
@@ -12,6 +12,7 @@ export interface LocalWorldPollerPorts {
   getTrainRoutes(): Promise<MappedTrainRoutes>;
   getDroneRoutes(): Promise<MappedDroneRoutes>;
   getMapMarkers(): Promise<MappedMapMarkers>;
+  getPowerLines(): Promise<MappedPowerLines>;
   getTrains(): Promise<MappedTrains>;
   getTrainStations(): Promise<MappedTrainStations>;
 }
@@ -33,6 +34,8 @@ export interface LocalWorldPollerOptions {
   droneRoutesIntervalSeconds?: number;
   /** Map markers (ADR-0038 §1, #330): every 10 min, jittered, the world tier; getMapMarkers is not game-thread. */
   mapMarkersIntervalSeconds?: number;
+  /** Power lines (ADR-0038 §1, #330): every 10 min, jittered, the world tier; getCables is not game-thread. */
+  powerLinesIntervalSeconds?: number;
   /** mapLive (trains, stations): at the factory cadence (30 s, matching FACTORY_HISTORY_INTERVAL_SECONDS). */
   mapLiveIntervalSeconds?: number;
   /** A read that takes longer than this is abandoned and counted as failed, per cadence. */
@@ -47,6 +50,7 @@ const DEFAULT_CONVEYORS_INTERVAL_SECONDS = 600;
 const DEFAULT_TRAIN_ROUTES_INTERVAL_SECONDS = 600;
 const DEFAULT_DRONE_ROUTES_INTERVAL_SECONDS = 600;
 const DEFAULT_MAP_MARKERS_INTERVAL_SECONDS = 600;
+const DEFAULT_POWER_LINES_INTERVAL_SECONDS = 600;
 const DEFAULT_RESOURCE_NODES_INTERVAL_SECONDS = 1800;
 const DEFAULT_MAP_LIVE_INTERVAL_SECONDS = 30;
 const DEFAULT_POLL_TIMEOUT_MS = 30_000;
@@ -174,6 +178,7 @@ export class LocalWorldPoller {
       new Loop("trainRoutes", (options.trainRoutesIntervalSeconds ?? DEFAULT_TRAIN_ROUTES_INTERVAL_SECONDS) * 1000, async () => ingestLayer("trainRoutes", await ports.getTrainRoutes()), shared),
       new Loop("droneRoutes", (options.droneRoutesIntervalSeconds ?? DEFAULT_DRONE_ROUTES_INTERVAL_SECONDS) * 1000, async () => ingestLayer("droneRoutes", await ports.getDroneRoutes()), shared),
       new Loop("mapMarkers", (options.mapMarkersIntervalSeconds ?? DEFAULT_MAP_MARKERS_INTERVAL_SECONDS) * 1000, async () => ingestLayer("mapMarkers", await ports.getMapMarkers()), shared),
+      new Loop("powerLines", (options.powerLinesIntervalSeconds ?? DEFAULT_POWER_LINES_INTERVAL_SECONDS) * 1000, async () => ingestLayer("powerLines", await ports.getPowerLines()), shared),
       new Loop(
         "mapLive",
         (options.mapLiveIntervalSeconds ?? DEFAULT_MAP_LIVE_INTERVAL_SECONDS) * 1000,

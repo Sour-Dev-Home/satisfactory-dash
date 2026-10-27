@@ -156,6 +156,7 @@ describe("the world reader inside the agent (ADR-0038 M4)", () => {
       getTrainRoutes: vi.fn<WorldPorts["getTrainRoutes"]>(async () => ({ data: [], dropped: 0 })),
       getDroneRoutes: vi.fn<WorldPorts["getDroneRoutes"]>(async () => ({ data: [], dropped: 0 })),
       getMapMarkers: vi.fn<WorldPorts["getMapMarkers"]>(async () => ({ data: [], dropped: 0 })),
+      getPowerLines: vi.fn<WorldPorts["getPowerLines"]>(async () => ({ data: [], dropped: 0 })),
     };
     const posted: MapWorldLayer[] = [];
     const client: RunAgentOptions["client"] & WorldClient = {
