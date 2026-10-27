@@ -20,6 +20,8 @@ import {
   pushOptInRequest,
   plannerDesignationCreateRequest,
   plannerDesignationIronLine,
+  plannerDesignationReplaceRequestMerge,
+  plannerDesignationReplaceResponse,
   plannerDesignationUpdateRequest,
   alertStatusQuiet,
   alertUpdateRuleRequest,
@@ -217,6 +219,7 @@ const designationStandIn: DesignationStore = {
   create: async () => ({ kind: "created", designation: plannerDesignationIronLine }),
   update: async () => ({ kind: "updated", designation: plannerDesignationIronLine }),
   remove: async () => true,
+  replace: async () => ({ kind: "replaced", ...plannerDesignationReplaceResponse }),
 };
 
 function buildApp(options: { isReady?: () => boolean } = {}) {
@@ -262,6 +265,7 @@ const ALERT_BODIES: Record<string, unknown> = {
   "push.optIn.put": pushOptInRequest,
   "plannerDesignations.create": plannerDesignationCreateRequest,
   "plannerDesignations.update": plannerDesignationUpdateRequest,
+  "plannerDesignations.replace": plannerDesignationReplaceRequestMerge,
 };
 const bodyFor = (name: string): unknown =>
   Object.hasOwn(ALERT_BODIES, name) ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
@@ -302,6 +306,15 @@ describe("the shared contract has server-scoped endpoints to generate from", () 
       "GET /agent",
       "POST /agent/enrollment-codes",
     ]);
+  });
+
+  it("a viewer's replace is 403 before its body is parsed, even a malformed or wrong-shaped one (ADR-0055 Decision 11)", async () => {
+    const app = buildApp();
+    const url = urlFor("/api/servers/:serverId/planner/designations/replace", "alpha");
+    const bad = await request(app).post(url).set("x-test-user", VIEWER).set("Content-Type", "application/json").send("{not json");
+    expect(bad.status).toBe(403);
+    const wrongShape = await request(app).post(url).set("x-test-user", VIEWER).set("Content-Type", "application/json").send(JSON.stringify({ nope: 1 }));
+    expect(wrongShape.status).toBe(403);
   });
 
   it("covers the command status endpoint (ADR-0031 PR 5b), and nothing in the contract is left out", () => {

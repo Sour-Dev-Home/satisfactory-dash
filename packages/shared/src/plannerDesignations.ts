@@ -30,7 +30,7 @@ import { z } from "zod";
  * write, `POST .../planner/designations/replace`: resulting set = existing, minus the `expect` ids, plus the `put` entries,
  * in one transaction. Every `expect` entry must exist at that `revision`, else 409 `designation_stale`. A `put` entry whose
  * `id` is in `expect` updates that designation in place (kept id and `createdAt`, revision + 1); every other `put` entry is
- * inserted, keeping a given `id` (not present anywhere after the removal, else 409) and `createdAt` (the route refuses one
+ * inserted, keeping a given `id` (not present anywhere after the removal, else 409 `designation_stale`) and `createdAt` (the route refuses one
  * in the future, 400: a schema cannot know the time). An `expect` entry no `put` names is deleted; an empty `put` is a
  * dissolve. The schema refuses (400 `bad_request`) put entries that share a building (the OVERLAP rule below, a client
  * bug), a repeated id within `expect` or within `put`, and more than PLANNER_DESIGNATIONS_REPLACE_MAX_TOTAL_MEMBERS
@@ -38,8 +38,6 @@ import { z } from "zod";
  * resulting count above PLANNER_DESIGNATIONS_MAX_PER_SERVER is its 409 `designation_cap`. `intent` is an audit hint only.
  * `revision` (on every designation) and `memberBuildingIds` (on every match) are optional: absent = an older backend.
  * A replace response's designations always carry `revision`.
- * The `endpoints.plannerDesignations.replace` entry lands with the backend route (Build PR 2): every shared
- * server-scoped endpoint must have a mounted route (backend serverAuthorization.test.ts).
  */
 
 export const PLANNER_DESIGNATIONS_MAX_PER_SERVER = 50;

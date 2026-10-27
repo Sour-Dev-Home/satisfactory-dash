@@ -20,6 +20,10 @@ import { findOverlap } from "../services/designationMatching.js";
  * RACES. Every write takes the server row `FOR NO KEY UPDATE` first, so two writes to one server's designations run one
  * after the other: the cap check and the overlap check each see the other's commit. (Foreign keys only take FOR KEY SHARE
  * on that row, which this does not block.)
+ *
+ * REPLACE (ADR-0055 amendment 2026-10-27, Decision 11): merge, split, dissolve and undo in one transaction under the same
+ * lock. It checks every precondition (revisions, overlap with the designations outside `expect`, the cap on the resulting
+ * set) against the locked rows before it writes anything, so a refusal changes nothing. Every write bumps `revision`.
  */
 
 /** The port the routes use. The database implementation is below; tests use a stand-in. */
@@ -30,11 +34,33 @@ export interface DesignationStore {
   update(serverId: string, designationId: string, input: { userId: string; name?: string; members?: PlannerDesignationMember[] }): Promise<UpdateOutcome>;
   /** False when there is no such designation on this server. */
   remove(serverId: string, designationId: string, userId: string): Promise<boolean>;
+  /** ADR-0055 Decision 11: resulting set = existing, minus the `expect` ids, plus the `put` entries; all or nothing. */
+  replace(serverId: string, input: ReplaceInput): Promise<ReplaceOutcome>;
+}
+
+export interface ReplaceInput {
+  userId: string;
+  expect: readonly { id: string; revision: number }[];
+  put: readonly { id?: string; name: string; members: PlannerDesignationMember[]; createdAt?: string }[];
+  /** An audit hint only; behaviour never depends on it. */
+  intent?: string;
 }
 
 export type OverlapOutcome = { kind: "overlap"; other: { id: string; name: string } };
 export type CreateOutcome = { kind: "created"; designation: PlannerDesignation } | { kind: "cap" } | { kind: "no_server" } | OverlapOutcome;
 export type UpdateOutcome = { kind: "updated"; designation: PlannerDesignation } | { kind: "not_found" } | { kind: "no_server" } | OverlapOutcome;
+/** A replace's designations always carry `revision` (the contract requires it on the response). */
+export type RevisedDesignation = PlannerDesignation & { revision: number };
+export type ReplaceOutcome =
+  | { kind: "replaced"; designations: RevisedDesignation[]; removedIds: string[] }
+  | { kind: "no_server" }
+  /** An `expect` entry is gone or at another revision, or an inserted `id` still exists: the client's view is old. The ids
+   *  are for the caller's tests and logs; the error envelope does not carry them. */
+  | { kind: "stale"; ids: string[] }
+  /** A `put` entry's `createdAt` is in the future (400: a client bug, the schema cannot know the time). */
+  | { kind: "created_in_future" }
+  | { kind: "cap" }
+  | OverlapOutcome;
 
 const RowSchema = z.object({
   id: z.string(),
@@ -43,16 +69,25 @@ const RowSchema = z.object({
   members: z.array(PlannerDesignationMemberSchema),
   created_at: z.union([z.string(), z.date()]),
   updated_at: z.union([z.string(), z.date()]),
+  revision: z.number().int(),
 });
 
 const iso = (value: string | Date): string => (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
 
-function toDesignation(row: z.output<typeof RowSchema>): PlannerDesignation {
-  return { id: row.id, name: row.name, mode: row.mode, members: row.members, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at) };
+function toDesignation(row: z.output<typeof RowSchema>): RevisedDesignation {
+  return {
+    id: row.id,
+    name: row.name,
+    mode: row.mode,
+    members: row.members,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+    revision: row.revision,
+  };
 }
 
 const SELECT_ALL = `
-  SELECT d.id, d.name, d.mode, d.members, d.created_at, d.updated_at
+  SELECT d.id, d.name, d.mode, d.members, d.created_at, d.updated_at, d.revision
   FROM map.factory_designations d
   JOIN servers.servers s ON s.id = d.server_id
   WHERE s.public_id = $1 AND s.deleted_at IS NULL
@@ -64,26 +99,40 @@ const LOCK_SERVER = `
   FOR NO KEY UPDATE`;
 
 const SELECT_FOR_SERVER = `
-  SELECT id, name, mode, members, created_at, updated_at
+  SELECT id, name, mode, members, created_at, updated_at, revision
   FROM map.factory_designations
   WHERE server_id = $1
   ORDER BY created_at, id`;
 
+// `created_at` in whole milliseconds, the precision the API returns, so an undo that sends it back restores it exactly
+// (and so the matching order, which sorts by it). Rows written before this keep their microseconds.
 const INSERT = `
-  INSERT INTO map.factory_designations (server_id, name, mode, members)
-  VALUES ($1, $2, $3, $4::jsonb)
-  RETURNING id, name, mode, members, created_at, updated_at`;
+  INSERT INTO map.factory_designations (server_id, name, mode, members, created_at)
+  VALUES ($1, $2, $3, $4::jsonb, date_trunc('milliseconds', now()))
+  RETURNING id, name, mode, members, created_at, updated_at, revision`;
 
+// Every write to a row bumps its revision (Decision 11), the single update and a replace's update in place alike.
 const UPDATE = `
   UPDATE map.factory_designations
-  SET name = $3, members = $4::jsonb, updated_at = now()
+  SET name = $3, members = $4::jsonb, updated_at = now(), revision = revision + 1
   WHERE server_id = $1 AND id = $2
-  RETURNING id, name, mode, members, created_at, updated_at`;
+  RETURNING id, name, mode, members, created_at, updated_at, revision`;
 
 const DELETE = `
   DELETE FROM map.factory_designations
   WHERE server_id = $1 AND id = $2
   RETURNING id`;
+
+const DELETE_MANY = `
+  DELETE FROM map.factory_designations
+  WHERE server_id = $1 AND id = ANY($2::uuid[])
+  RETURNING id`;
+
+/** A replace's insert: an undo restores the original id and creation time (so the matching priority), else new ones. */
+const INSERT_RESTORING = `
+  INSERT INTO map.factory_designations (server_id, id, name, mode, members, created_at)
+  VALUES ($1, COALESCE($2::uuid, gen_random_uuid()), $3, 'core', $4::jsonb, COALESCE($5::timestamptz, date_trunc('milliseconds', now())))
+  RETURNING id, name, mode, members, created_at, updated_at, revision`;
 
 type Tx = Parameters<Parameters<typeof withTransaction>[1]>[0];
 
@@ -92,7 +141,7 @@ async function lockServer(client: Tx, publicId: string): Promise<string | undefi
   return parseFirst(z.object({ id: z.string() }), result.rows, "map.designations.lockServer")?.id;
 }
 
-async function readAll(client: Tx, serverUuid: string): Promise<PlannerDesignation[]> {
+async function readAll(client: Tx, serverUuid: string): Promise<RevisedDesignation[]> {
   const result = await timedQuery(client, "map.designations.readAll", SELECT_FOR_SERVER, [serverUuid]);
   return parseRows(RowSchema, result.rows, "map.designations.readAll").map(toDesignation);
 }
@@ -155,6 +204,69 @@ export function createDbDesignationStore(db: Queryable & Parameters<typeof withT
         await recordAuditEvent(client, { action: "planner.designation_deleted", actorUserId: userId, serverId: serverUuid, detail: { designationId } });
         return true;
       }),
+
+    replace: (serverId, input) => {
+      // The schema cannot know the time; a restored creation time from the future would jump the matching priority queue.
+      const now = Date.now();
+      if (input.put.some((p) => p.createdAt !== undefined && Date.parse(p.createdAt) > now)) return Promise.resolve({ kind: "created_in_future" });
+      return withTransaction(db, async (client): Promise<ReplaceOutcome> => {
+        const serverUuid = await lockServer(client, serverId);
+        if (serverUuid === undefined) return { kind: "no_server" };
+        const existing = await readAll(client, serverUuid);
+        const byId = new Map(existing.map((d) => [d.id, d] as const));
+        const expectIds = new Set(input.expect.map((e) => e.id));
+
+        // Preconditions: every expected designation is still there at the revision the client read, and no inserted id is
+        // still taken (it is not expected, so it survives the removal). Either means the client's view is old.
+        const stale = input.expect.filter((e) => byId.get(e.id)?.revision !== e.revision).map((e) => e.id);
+        for (const p of input.put) if (p.id !== undefined && !expectIds.has(p.id) && byId.has(p.id)) stale.push(p.id);
+        if (stale.length > 0) return { kind: "stale", ids: stale };
+
+        // The resulting set = the designations outside `expect` plus the put entries (which the schema keeps disjoint).
+        const outside = existing.filter((d) => !expectIds.has(d.id));
+        for (const p of input.put) {
+          const other = findOverlap(p.members, outside);
+          if (other !== undefined) return { kind: "overlap", other };
+        }
+        if (outside.length + input.put.length > PLANNER_DESIGNATIONS_MAX_PER_SERVER) return { kind: "cap" };
+
+        const putIds = new Set(input.put.flatMap((p) => (p.id === undefined ? [] : [p.id])));
+        const removedIds = input.expect.filter((e) => !putIds.has(e.id)).map((e) => e.id);
+        if (removedIds.length > 0) await timedQuery(client, "map.designations.deleteMany", DELETE_MANY, [serverUuid, removedIds]);
+
+        const designations: RevisedDesignation[] = [];
+        const updatedIds: string[] = [];
+        const addedIds: string[] = [];
+        for (const p of input.put) {
+          const members = JSON.stringify(p.members);
+          if (p.id !== undefined && expectIds.has(p.id)) {
+            // In place: kept id and createdAt, revision + 1 (a createdAt sent for it is ignored).
+            const updated = await timedQuery(client, "map.designations.update", UPDATE, [serverUuid, p.id, p.name, members]);
+            designations.push(toDesignation(parseFirst(RowSchema, updated.rows, "map.designations.update") ?? failInsert()));
+            updatedIds.push(p.id);
+          } else {
+            const inserted = await timedQuery(client, "map.designations.insertRestoring", INSERT_RESTORING, [serverUuid, p.id ?? null, p.name, members, p.createdAt ?? null]);
+            const designation = toDesignation(parseFirst(RowSchema, inserted.rows, "map.designations.insertRestoring") ?? failInsert());
+            designations.push(designation);
+            addedIds.push(designation.id);
+          }
+        }
+        // One event per call, ids and counts only (never a name), as Decision 5.
+        await recordAuditEvent(client, {
+          action: "planner.designations_replaced",
+          actorUserId: input.userId,
+          serverId: serverUuid,
+          detail: {
+            ...(input.intent !== undefined && { intent: input.intent }),
+            removedIds,
+            updatedIds,
+            addedIds,
+            members: input.put.reduce((sum, p) => sum + p.members.length, 0),
+          },
+        });
+        return { kind: "replaced", designations, removedIds };
+      });
+    },
   };
 }
 

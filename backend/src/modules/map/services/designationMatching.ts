@@ -32,6 +32,9 @@ export interface DesignationMatch {
   claimedBy?: { id: string; name: string; count: number };
   /** The live buildings this designation holds (it kept them), in member order. For the reduction; not in the API. */
   buildingIds: string[];
+  /** ADR-0055 Decision 12: per member, aligned to `members`, the live building it holds or null (not found, or taken by an
+   *  older designation). Its non-null entries are `buildingIds`, so their count is `matched`. In the API. */
+  memberBuildingIds: (string | null)[];
 }
 
 // Strings from outside never index a plain object: Maps only.
@@ -176,7 +179,8 @@ export function matchDesignations(designations: readonly MatchableDesignation[],
   }
 
   return designations.map((d, di): DesignationMatch => {
-    const buildingIds = found[di]!.filter((id): id is string => id !== undefined);
+    const memberBuildingIds = found[di]!.map((id) => id ?? null);
+    const buildingIds = memberBuildingIds.filter((id): id is string => id !== null);
     let claimedBy: DesignationMatch["claimedBy"];
     for (const [ownerId, count] of lostTo[di]!) {
       const owner = byId.get(ownerId);
@@ -188,6 +192,7 @@ export function matchDesignations(designations: readonly MatchableDesignation[],
       missing: d.members.length - buildingIds.length,
       ...(claimedBy !== undefined && { claimedBy }),
       buildingIds,
+      memberBuildingIds,
     };
   });
 }

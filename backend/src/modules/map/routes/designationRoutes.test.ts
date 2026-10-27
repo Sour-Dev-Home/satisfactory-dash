@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import { DesignationOverlapErrorSchema, PLANNER_DESIGNATIONS_MAX_PER_SERVER, PlannerDesignationsResponseSchema, endpoints } from "@satisfactory-dash/shared";
+import { DesignationOverlapErrorSchema, PLANNER_DESIGNATIONS_MAX_PER_SERVER, PlannerDesignationsResponseSchema, ReplacePlannerDesignationsResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import type { PlannerDesignation } from "@satisfactory-dash/shared";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
@@ -24,7 +24,7 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
       const other = findOverlap(input.members, rows);
       if (other) return { kind: "overlap", other };
       const at = stamp();
-      const designation: PlannerDesignation = { id: randomUUID(), name: input.name, mode: input.mode, members: input.members, createdAt: at, updatedAt: at };
+      const designation: PlannerDesignation = { id: randomUUID(), name: input.name, mode: input.mode, members: input.members, createdAt: at, updatedAt: at, revision: 1 };
       rows.push(designation);
       return { kind: "created", designation };
     },
@@ -35,7 +35,7 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
         const other = findOverlap(input.members, rows.filter((d) => d.id !== id));
         if (other) return { kind: "overlap", other };
       }
-      Object.assign(current, { name: input.name ?? current.name, members: input.members ?? current.members, updatedAt: stamp() });
+      Object.assign(current, { name: input.name ?? current.name, members: input.members ?? current.members, updatedAt: stamp(), revision: (current.revision ?? 1) + 1 });
       return { kind: "updated", designation: current };
     },
     remove: async (_server, id) => {
@@ -43,6 +43,32 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
       if (at < 0) return false;
       rows.splice(at, 1);
       return true;
+    },
+    // The database store's replace rules, in memory (its own tests are designationRepository.db.test.ts).
+    replace: async (_server, input) => {
+      if (input.put.some((p) => p.createdAt !== undefined && Date.parse(p.createdAt) > Date.now())) return { kind: "created_in_future" };
+      const expectIds = new Set(input.expect.map((e) => e.id));
+      const stale = input.expect.filter((e) => rows.find((d) => d.id === e.id)?.revision !== e.revision);
+      const taken = input.put.filter((p) => p.id !== undefined && !expectIds.has(p.id) && rows.some((d) => d.id === p.id));
+      if (stale.length + taken.length > 0) return { kind: "stale", ids: [...stale.map((e) => e.id), ...taken.map((p) => p.id!)] };
+      const outside = rows.filter((d) => !expectIds.has(d.id));
+      for (const p of input.put) {
+        const other = findOverlap(p.members, outside);
+        if (other) return { kind: "overlap", other };
+      }
+      if (outside.length + input.put.length > PLANNER_DESIGNATIONS_MAX_PER_SERVER) return { kind: "cap" };
+      const putIds = new Set(input.put.map((p) => p.id));
+      const removedIds = input.expect.filter((e) => !putIds.has(e.id)).map((e) => e.id);
+      const written = input.put.map((p) => {
+        const current = p.id !== undefined && expectIds.has(p.id) ? rows.find((d) => d.id === p.id) : undefined;
+        const at = stamp();
+        return current
+          ? { ...current, name: p.name, members: p.members, updatedAt: at, revision: (current.revision ?? 1) + 1 }
+          : { id: p.id ?? randomUUID(), name: p.name, mode: "core" as const, members: p.members, createdAt: p.createdAt ?? at, updatedAt: at, revision: 1 };
+      });
+      const kept = rows.filter((d) => !expectIds.has(d.id));
+      rows.splice(0, rows.length, ...[...kept, ...written].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
+      return { kind: "replaced", designations: written, removedIds };
     },
   };
 }
@@ -75,8 +101,8 @@ describe("designation routes", () => {
     const parsed = PlannerDesignationsResponseSchema.parse(list.body);
     expect(parsed.designations.map((d) => d.name)).toEqual(["First", "Second"]);
     expect(parsed.matches).toEqual([
-      { designationId: first.body.id, matched: 1, missing: 0 },
-      { designationId: second.body.id, matched: 0, missing: 1 },
+      { designationId: first.body.id, matched: 1, missing: 0, memberBuildingIds: ["b1"] },
+      { designationId: second.body.id, matched: 0, missing: 1, memberBuildingIds: [null] },
     ]);
 
     const renamed = await request(app).put(endpoints.plannerDesignations.update.path("default", first.body.id)).send({ name: "Renamed" });
@@ -204,5 +230,129 @@ describe("designation routes", () => {
     const noDb = build({ noDb: true }).app;
     expect((await request(noDb).get(path)).status).toBe(503);
     expect((await request(noDb).post(path).send(body("A"))).status).toBe(503);
+  });
+});
+
+describe("designation replace route (ADR-0055 Decision 11)", () => {
+  const replacePath = endpoints.plannerDesignations.replace.path("default");
+  const create = async (app: ReturnType<typeof build>["app"], name: string, members: ReturnType<typeof m>[]) =>
+    (await request(app).post(path).send(body(name, members))).body as PlannerDesignation;
+
+  it("is POST .../planner/designations/replace", () => {
+    expect(endpoints.plannerDesignations.replace).toMatchObject({ method: "POST", route: "/api/servers/:serverId/planner/designations/replace" });
+    expect(replacePath).toBe("/api/servers/default/planner/designations/replace");
+  });
+
+  it("merges in place (kept id and createdAt, revision + 1), then a split back restores the originals", async () => {
+    const { app } = build();
+    const a = await create(app, "Alpha", [m("a1", "S", 1, 1)]);
+    const b = await create(app, "Beta", [m("b1", "S", 2, 2), m(null, "S", 3, 3)]);
+    const merged = await request(app)
+      .post(replacePath)
+      .send({ expect: [{ id: a.id, revision: 1 }, { id: b.id, revision: 1 }], put: [{ id: a.id, name: "Alpha", members: [...a.members, ...b.members] }], intent: "merge" });
+    expect(merged.status).toBe(200);
+    const parsed = ReplacePlannerDesignationsResponseSchema.parse(merged.body);
+    expect(parsed.removedIds).toEqual([b.id]);
+    expect(parsed.designations).toHaveLength(1);
+    expect(parsed.designations[0]).toMatchObject({ id: a.id, createdAt: a.createdAt, revision: 2, members: [...a.members, ...b.members] });
+
+    const undo = await request(app)
+      .post(replacePath)
+      .send({ expect: [{ id: a.id, revision: 2 }], put: [{ id: a.id, name: a.name, members: a.members }, { id: b.id, name: b.name, members: b.members, createdAt: b.createdAt }], intent: "undo" });
+    expect(undo.status).toBe(200);
+    expect(undo.body.removedIds).toEqual([]);
+    const list = PlannerDesignationsResponseSchema.parse((await request(app).get(path)).body);
+    expect(list.designations.map((d) => ({ id: d.id, members: d.members, createdAt: d.createdAt }))).toEqual(
+      [a, b].map((d) => ({ id: d.id, members: d.members, createdAt: d.createdAt })),
+    );
+  });
+
+  it("dissolves with an empty put", async () => {
+    const { app } = build();
+    const a = await create(app, "Alpha", [m("a1", "S", 1, 1)]);
+    const res = await request(app).post(replacePath).send({ expect: [{ id: a.id, revision: 1 }], put: [], intent: "dissolve" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ designations: [], removedIds: [a.id] });
+  });
+
+  it("409 designation_stale for a moved revision, an unknown expected id, or an inserted id that still exists", async () => {
+    const { app } = build();
+    const a = await create(app, "Alpha", [m("a1", "S", 1, 1)]);
+    const b = await create(app, "Beta", [m("b1", "S", 2, 2)]);
+    await request(app).put(endpoints.plannerDesignations.update.path("default", a.id)).send({ name: "Renamed" });
+    const cases = [
+      { expect: [{ id: a.id, revision: 1 }], put: [] },
+      { expect: [{ id: randomUUID(), revision: 1 }], put: [] },
+      { expect: [], put: [{ id: b.id, name: "Copy", members: [m("c1", "S", 9, 9)] }] },
+    ];
+    for (const payload of cases) {
+      const res = await request(app).post(replacePath).send(payload);
+      expect([res.status, res.body.error.code]).toEqual([409, "designation_stale"]);
+    }
+    expect((await request(app).get(path)).body.designations).toHaveLength(2);
+  });
+
+  it("409 designation_overlap names a designation outside expect; one inside expect is no overlap", async () => {
+    const { app } = build();
+    const a = await create(app, "Alpha", [m("a1", "S", 1, 1)]);
+    const b = await create(app, "Beta", [m("b1", "S", 2, 2)]);
+    const clash = await request(app).post(replacePath).send({ expect: [{ id: a.id, revision: 1 }], put: [{ id: a.id, name: "Alpha", members: [m("b1", "S", 2, 2)] }] });
+    expect(clash.status).toBe(409);
+    expect(DesignationOverlapErrorSchema.parse(clash.body).error.other).toEqual({ id: b.id, name: "Beta" });
+    const fine = await request(app).post(replacePath).send({ expect: [{ id: a.id, revision: 1 }, { id: b.id, revision: 1 }], put: [{ name: "Both", members: [m("a1", "S", 1, 1), m("b1", "S", 2, 2)] }] });
+    expect(fine.status).toBe(200);
+  });
+
+  it("409 designation_cap when the resulting set would pass the limit (a split at the cap)", async () => {
+    const { app } = build();
+    const all: PlannerDesignation[] = [];
+    for (let i = 0; i < PLANNER_DESIGNATIONS_MAX_PER_SERVER; i++) all.push(await create(app, `D${i}`, [m(`b${i}`, "S", i, i), m(`c${i}`, "S", i, i + 500)]));
+    const d0 = all[0]!;
+    const split = await request(app)
+      .post(replacePath)
+      .send({ expect: [{ id: d0.id, revision: 1 }], put: [{ id: d0.id, name: "D0", members: [d0.members[0]] }, { name: "New", members: [d0.members[1]] }] });
+    expect([split.status, split.body.error.code]).toEqual([409, "designation_cap"]);
+    // Merging two at the cap lowers the count: fine.
+    const d1 = all[1]!;
+    const merge = await request(app).post(replacePath).send({ expect: [{ id: d0.id, revision: 1 }, { id: d1.id, revision: 1 }], put: [{ id: d0.id, name: "D0", members: [...d0.members, ...d1.members] }] });
+    expect(merge.status).toBe(200);
+  });
+
+  it("400 bad_request for a bad body, a createdAt in the future, or put entries sharing a building", async () => {
+    const { app } = build();
+    const a = await create(app, "Alpha", [m("a1", "S", 1, 1)]);
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const bad = [
+      { expect: [], put: [] },
+      { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)] }], intent: "Merge" },
+      { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)] }], extra: 1 },
+      { expect: [{ id: "not-a-uuid", revision: 1 }], put: [] },
+      { expect: [{ id: a.id, revision: 0 }], put: [] },
+      { expect: [{ id: a.id, revision: 1 }, { id: a.id, revision: 1 }], put: [] },
+      { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)] }, { name: "Y", members: [m("x1", "S", 5, 5)] }] },
+      { expect: [], put: [{ id: randomUUID(), name: "X", members: [m("x1", "S", 5, 5)], createdAt: future }] },
+    ];
+    for (const payload of bad) {
+      const res = await request(app).post(replacePath).send(payload);
+      expect([res.status, res.body.error.code], JSON.stringify(payload).slice(0, 120)).toEqual([400, "bad_request"]);
+    }
+    expect((await request(app).get(path)).body.designations).toHaveLength(1);
+  });
+
+  it("takes 2000 members (past the 512 KB designation limit) and refuses a body over 1 MB with 413", async () => {
+    const { app } = build();
+    const many = (prefix: string) => Array.from({ length: 1000 }, (_, i) => m(`${prefix}-${i}-${"x".repeat(120)}`, `Build_${"X".repeat(150)}_C`, i, prefix === "p" ? i : -i - 1));
+    const payload = { expect: [], put: [{ name: "P", members: many("p") }, { name: "Q", members: many("q") }] };
+    expect(JSON.stringify(payload).length).toBeGreaterThan(600_000);
+    const ok = await request(app).post(replacePath).send(payload);
+    expect(ok.status).toBe(200);
+    const big = await request(app).post(replacePath).send({ ...payload, pad: "x".repeat(1_100_000) });
+    expect([big.status, big.body.error.code]).toEqual([413, "payload_too_large"]);
+  });
+
+  it("without a database it is 503, and an unknown server 404", async () => {
+    const payload = { expect: [{ id: randomUUID(), revision: 1 }], put: [] };
+    expect((await request(build({ noDb: true }).app).post(replacePath).send(payload)).status).toBe(503);
+    expect((await request(build().app).post(endpoints.plannerDesignations.replace.path("nope")).send(payload)).status).toBe(404);
   });
 });

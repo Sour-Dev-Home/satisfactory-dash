@@ -16,7 +16,7 @@ export { LocalWorldPoller } from "./services/localWorldPoller.js";
 export type { LocalWorldPollerPorts, LocalWorldPollerOptions } from "./services/localWorldPoller.js";
 export { getLatestWorldLayer, upsertWorldLayerIfChanged, skipReasonOf } from "./repositories/worldLayerRepository.js";
 export type { WorldLayerRow } from "./repositories/worldLayerRepository.js";
-export { createDesignationRoutes, DESIGNATION_BODY_LIMIT } from "./routes/designationRoutes.js";
+export { createDesignationRoutes, DESIGNATION_BODY_LIMIT, DESIGNATION_REPLACE_BODY_LIMIT } from "./routes/designationRoutes.js";
 export type { DesignationRoutesDeps } from "./routes/designationRoutes.js";
 export { createDbDesignationStore } from "./repositories/designationRepository.js";
 export type { DesignationStore, CreateOutcome, UpdateOutcome } from "./repositories/designationRepository.js";
