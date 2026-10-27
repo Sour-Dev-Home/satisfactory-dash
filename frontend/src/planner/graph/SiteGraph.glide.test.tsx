@@ -8,6 +8,9 @@ import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
+import { BUBBLE_D } from "./bubbleRow";
+import { CARD_RX } from "./itemCardText";
+import { FOCUS_CARD_H, FOCUS_CARD_W } from "./layoutSite";
 import { ITEM_FOCUS_KEY } from "./plannerPrefs";
 
 // jsdom loads no stylesheet, so the motion token reads as 0 and focus jumps; here the glide lasts 200 ms (ADR-0060 D4).
@@ -120,6 +123,74 @@ describe("the make-room glide", () => {
     expect(svg.querySelector("[data-focused]")).not.toBeNull();
     expect(cards(svg)).toEqual(expected);
     expect(svg.querySelector("[data-ghost]")).toBeNull();
+  });
+
+  it("morphs the bubble into the card: one rect from a circle to the card, the words fading in at the end; closing runs it back", async () => {
+    const svg = await openGraph();
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    const card = svg.querySelector("[data-item-card]")!;
+    const box = card.querySelector(":scope > rect")!;
+    const words = box.nextElementSibling!.nextElementSibling!;
+    // t = 0: the bubble.
+    expect(box).toHaveAttribute("width", String(BUBBLE_D));
+    expect(box).toHaveAttribute("height", String(BUBBLE_D));
+    expect(box).toHaveAttribute("rx", String(BUBBLE_D / 2));
+    expect(words).toHaveAttribute("opacity", "0");
+    act(() => vi.advanceTimersByTime(100));
+    const w = Number(box.getAttribute("width"));
+    expect(w).toBeGreaterThan(BUBBLE_D);
+    expect(w).toBeLessThan(FOCUS_CARD_W);
+    act(() => vi.advanceTimersByTime(200));
+    // t = 1: the card, its words shown.
+    expect(box).toHaveAttribute("width", String(FOCUS_CARD_W));
+    expect(box).toHaveAttribute("height", String(FOCUS_CARD_H));
+    expect(box).toHaveAttribute("rx", String(CARD_RX));
+    expect(words).not.toHaveAttribute("opacity");
+    // Closing: the card shrinks back to its bubble, then goes.
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    const closing = svg.querySelector("[data-item-card][data-closing]")!;
+    expect(closing).not.toBeNull();
+    act(() => vi.advanceTimersByTime(100));
+    expect(Number(closing.querySelector(":scope > rect")!.getAttribute("width"))).toBeLessThan(FOCUS_CARD_W);
+    act(() => vi.advanceTimersByTime(200));
+    expect(svg.querySelector("[data-item-card]")).toBeNull();
+    expect(svg.querySelectorAll("[style]")).toHaveLength(0);
+  });
+
+  it("drops a closing card whose line a poll took away, so it does not reappear when the line comes back", async () => {
+    const svg = await openGraph();
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    const data = productionGraphTwoSites.data;
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    expect(svg.querySelector("[data-item-card][data-closing]")).not.toBeNull();
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: data.edges.filter((e) => e.itemClassName !== "Desc_OreIron_C") } })));
+    // React Query notifies on a later tick; the timers faked here are only the frame ones, so a real wait is fine.
+    const poll = () => act(async () => { await client.invalidateQueries(); await new Promise((r) => setTimeout(r, 50)); });
+    await poll();
+    expect(svg.querySelector("[data-item-card]")).toBeNull();
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(productionGraphTwoSites)));
+    await poll();
+    expect(svg.querySelector("[data-item-card]")).toBeNull();
+  });
+
+  it("re-focusing the item while its card closes leaves one open card, and no closing one", async () => {
+    const svg = await openGraph();
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    act(() => vi.advanceTimersByTime(50));
+    fireEvent.click(svg.querySelector(ore)!);
+    expect(svg.querySelectorAll("[data-item-card]")).toHaveLength(1);
+    expect(svg.querySelector("[data-item-card][data-closing]")).toBeNull();
+    act(() => vi.advanceTimersByTime(300));
+    expect(svg.querySelectorAll("[data-item-card]")).toHaveLength(1);
   });
 
   it("jumps with Motion set to Off: no ghost, no fade, the cards at once where they end", async () => {

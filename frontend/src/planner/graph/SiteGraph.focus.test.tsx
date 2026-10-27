@@ -8,7 +8,7 @@ import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
-import { clearLayoutMemo } from "./layoutSite";
+import { FOCUS_CARD_H, FOCUS_CARD_W, clearLayoutMemo } from "./layoutSite";
 import { ITEM_FOCUS_KEY } from "./plannerPrefs";
 
 // ADR-0060 build PR 3: focusing a link's item bubble, behind the `planner.itemFocus` flag (off by default).
@@ -226,5 +226,77 @@ describe("make room (ADR-0060 build PR 4), flag on", () => {
     expect(svg.querySelector(`${iron}[data-focused]`)).not.toBeNull();
     expect(dimmed(svg, "[data-card]")).toBeGreaterThan(0);
     expect(cards(svg)).toEqual(before);
+  });
+});
+
+describe("the detail card (ADR-0060 build PR 5), flag on", () => {
+  const iron = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+  const cardEl = (svg: HTMLElement) => svg.querySelector("[data-item-card]");
+
+  it("opens on focus: the item's 128 px icon, its name, its rate and ends, at the card's size, over the cards", async () => {
+    const svg = await openGraph({ flag: true });
+    fireEvent.click(svg.querySelector(iron)!);
+    const card = cardEl(svg)!;
+    expect(card).toHaveAttribute("data-item-card", "Desc_OreIron_C");
+    expect(card.querySelector("image")?.getAttribute("href")).toMatch(/\/items\/iron-new-128\.webp$/);
+    const box = card.querySelector(":scope > rect")!;
+    expect(box).toHaveAttribute("width", String(FOCUS_CARD_W));
+    expect(box).toHaveAttribute("height", String(FOCUS_CARD_H));
+    expect(card.textContent).toContain("Iron Ore");
+    expect(card.textContent).toContain("120 items/min");
+    expect(card.textContent).toMatch(/From .+To /);
+    // Drawn after every card, so no card covers it.
+    const lastCard = [...svg.querySelectorAll("[data-card]")].at(-1)!;
+    expect(lastCard.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The keyboard's copy: the card's words and its controls, in the DOM layer.
+    const group = screen.getByRole("group", { name: "Iron Ore card" });
+    expect(group).toHaveTextContent(/Iron Ore\. 120 items\/min\. From .+\. To .+/);
+  });
+
+  it("closes from its drawn close control and from the keyboard's button, back to the bubble's button", async () => {
+    const svg = await openGraph({ flag: true });
+    fireEvent.click(svg.querySelector(iron)!);
+    fireEvent.click(cardEl(svg)!.querySelector("[data-card-close]")!);
+    expect(svg.querySelector("[data-focused]")).toBeNull();
+    expect(cardEl(svg)).toBeNull();
+    const bubble = ironOreButton();
+    act(() => bubble.focus());
+    fireEvent.click(bubble);
+    fireEvent.click(screen.getByRole("button", { name: "Close Iron Ore card" }));
+    expect(cardEl(svg)).toBeNull();
+    expect(bubble).toHaveFocus();
+  });
+
+  it("keeps focus on a click inside the card; leaves it on the background", async () => {
+    const svg = await openGraph({ flag: true });
+    fireEvent.click(svg.querySelector(iron)!);
+    fireEvent.click(cardEl(svg)!.querySelector(":scope > rect")!);
+    expect(cardEl(svg)).not.toBeNull();
+    fireEvent.click(svg);
+    expect(cardEl(svg)).toBeNull();
+  });
+
+  it("shows the whole path: the item filter takes over from focus", async () => {
+    const svg = await openGraph({ flag: true });
+    fireEvent.click(svg.querySelector(iron)!);
+    fireEvent.click(cardEl(svg)!.querySelector("[data-show-path]")!);
+    expect(cardEl(svg)).toBeNull();
+    expect(svg.querySelector("[data-focused]")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Item" })).toHaveValue("Desc_OreIron_C");
+    expect(screen.getByRole("status")).toHaveTextContent("carry or feed this item");
+  });
+
+  it("says 'Item unknown' for a '?' bubble, never a made-up name, and offers no path to show", async () => {
+    const unknown = { ...data.edges[0], itemClassName: null, itemName: null, ratePerMinute: null, rate: "unknown" as const };
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: [...data.edges, unknown] } })));
+    const svg = await openGraph({ flag: true });
+    fireEvent.click(svg.querySelector('[data-edge-layer="labels"] [data-bubble="unknown"]')!);
+    const card = cardEl(svg)!;
+    expect(card).toHaveAttribute("data-item-card", "unknown");
+    expect(card.textContent).toContain("Item unknown");
+    expect(card.textContent).toContain("Not reported by the game");
+    expect(card.querySelector("[data-show-path]")).toBeNull();
+    expect(screen.getByRole("group", { name: "Item unknown card" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Show the whole path/ })).toBeNull();
   });
 });

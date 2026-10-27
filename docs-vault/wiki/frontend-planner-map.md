@@ -78,7 +78,22 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - A click on a drawn bubble focuses it, and a second click leaves. A click on the background leaves too, but a click on
     a card does not.
   - The status line stays mounted while the flag is on and says "Focused <item> from A to B" and "Overview".
-  - Focus never zooms (owner answer 2). The morph and the detail card are build PR 5.
+  - Focus never zooms (owner answer 2).
+- Detail card (ADR-0060 build PR 5), `ItemCard.tsx` and the pure `itemCardText.ts`.
+  - On focus, the bubble morphs into a `FOCUS_CARD_W` × `FOCUS_CARD_H` card centred on the line's label, in the box that
+    make-room reserved (or over the bubble when focus only dims).
+  - The morph: one `<rect>` tweened from a circle to `CARD_RX` corners. The icon grows to the 128 px file, and the words
+    fade in over the last 40%.
+  - Closing (Escape, the drawn ×, its hidden button, a background click, or focusing another item) runs the morph
+    backwards, then removes the card. React renders the end state, so with no motion only the state changes.
+  - The words come from `CanvasFlow` only:
+    - the name, or "Item unknown" with the raw class (never an invented name);
+    - the rate as the label words it;
+    - from and to, the transport and route, and how many other items share the line.
+  - Each line is cut by the character-width estimate; the full words are in its `<title>` and in an `sr-only` group in
+    the DOM layer, with "Close <item> card" and "Show the whole path of <item>" buttons.
+  - "Show the whole path" sets the item filter and leaves focus (owner answer 1). An unknown item has none.
+  - `bubbleRowOrigin` and `bubbleCentre` are the bubble row's geometry, which `EdgeLabel` and the morph share.
 - Make room (ADR-0060 build PR 4), on focus.
   - The layout: `layoutScene(scene, hash, { edgeKey, width, height })` reserves the focused line's label box at
     `FOCUS_CARD_W` × `FOCUS_CARD_H`, so dagre and the router move the rest aside. The pill is still drawn at its own size.
