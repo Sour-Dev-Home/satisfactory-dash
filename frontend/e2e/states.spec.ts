@@ -449,7 +449,13 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: "Merged 2 factories into Iron Plate factory.",
     clock: FACTORIES_NOW,
-    act: mergeBothFactories,
+    act: async (page) => {
+      await mergeBothFactories(page);
+      // The undo offer is sticky to the viewport's foot. At 390 px it sticks mid-page, and a full-page screenshot of
+      // a stuck element never settles. At the page's end it sits in its own place, as on desktop.
+      await page.getByText("Merged 2 factories into Iron Plate factory.").first().waitFor();
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
+    },
   },
   {
     scenario: "planner-merge-stale",
