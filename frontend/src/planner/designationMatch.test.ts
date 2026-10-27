@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLANNER_MAX_MACHINE_IDS, type FactoryBuilding, type PlannerDesignation, type PlannerNode } from "@satisfactory-dash/shared";
-import { membersOf, missingMembers, placesOf } from "./designationMatch";
+import { listedInPart, membersOf, missingMembers, placesOf } from "./designationMatch";
 
 const building = (id: string, className: string, xM: number, yM: number) =>
   ({ id, className, location: { xM, yM, zM: 0, rotationDeg: 0 } }) as unknown as FactoryBuilding;
@@ -27,6 +27,11 @@ describe("membersOf", () => {
     expect(membersOf([group(cut, PLANNER_MAX_MACHINE_IDS + 1)], places)).toEqual({ ok: false, reason: "These groups are too large to designate whole." });
     // Below the cap a short list is whole: the rest are ends with no building (storage, a stale end), never members.
     expect(membersOf([group(["a"], 5)], places)).toEqual({ ok: true, members: [{ id: "a", c: "C", x: 2, y: -2 }] });
+    // Exactly at the cap with every machine listed is whole; a count short of the ids is not a cut either.
+    const full = Array.from({ length: PLANNER_MAX_MACHINE_IDS }, (_, i) => `m${i}`);
+    expect(listedInPart(group(full, PLANNER_MAX_MACHINE_IDS))).toBe(false);
+    expect(listedInPart(group(full, PLANNER_MAX_MACHINE_IDS + 1))).toBe(true);
+    expect(listedInPart(group(full.slice(1), PLANNER_MAX_MACHINE_IDS + 5))).toBe(false);
     expect(membersOf([group(["c"])], places)).toMatchObject({ ok: false, reason: "The positions of these machines aren't known yet." });
   });
 });

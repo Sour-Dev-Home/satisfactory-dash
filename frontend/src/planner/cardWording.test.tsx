@@ -205,6 +205,31 @@ describe("extractor rates from their links", () => {
     });
     expect(groupsExtractorOutput([miner, twin], minedRates([link("k", "belt", 60)]))?.rate).toBeNull();
   });
+
+  it("a bubble mixing a belt extractor and a pipe extractor of one resource has no summed rate; estimated taints the sum", () => {
+    const twin = node({ key: "k2", resource: IRON });
+    expect(groupsExtractorOutput([miner, twin], minedRates([link("k", "belt", 60), link("k2", "pipe", 30)]))?.rate).toBeNull();
+    expect(groupsExtractorOutput([miner, twin], minedRates([link("k", "belt", 60), link("k2", "belt", 30, "estimated")]))?.rate?.measured).toBe(false);
+  });
+
+  it("a bubble holding an extractor that has output data is not an extractor output", () => {
+    const withData = node({ key: "k2", resource: IRON, products: [{ className: "Desc_OreIron_C", name: "Iron Ore", unit: "items/min", currentPerMinute: 60, maxPerMinute: 60 }] });
+    expect(groupsExtractorOutput([miner, withData], minedRates([link("k", "belt", 60)]))).toBeNull();
+  });
+
+  it("a zero rate reads '0 items/min', not 'rate not read'; an extractor with no outgoing links is 'rate not read'", () => {
+    expect(nodeSummary(miner, minedRates([link("k", "belt", 0)]))).toBe("Iron Ore · 0 items/min");
+    expect(minedRates([]).get("k")).toBeUndefined();
+    expect(nodeSummary(miner, minedRates([link("other", "belt", 5)]))).toBe("Iron Ore · rate not read");
+  });
+
+  it("a very long resource name is cut to the summary limit with the rate kept whole", () => {
+    const long = node({ resource: { className: "Desc_X_C", name: "An Extremely Long Resource Name Indeed" } });
+    const text = nodeSummary(long, minedRates([link("k", "belt", 12345.6)])) ?? "";
+    expect(text.endsWith(" · 12,345.6 items/min")).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(26);
+    expect(text).toContain("…");
+  });
 });
 
 describe("edge cases (hunt)", () => {
