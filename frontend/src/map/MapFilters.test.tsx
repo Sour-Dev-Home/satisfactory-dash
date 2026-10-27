@@ -191,6 +191,14 @@ describe("map filters", () => {
     expect(screen.queryByText("Filters")).not.toBeInTheDocument();
   });
 
+  it("packs each group's rows to the top, so a short group isn't spread over a long one's height", async () => {
+    await mount();
+    openFilters();
+    for (const name of ["Resource types", "Resource nodes in use or free", "Building states"]) {
+      expect(screen.getByRole("group", { name })).toHaveClass("content-start");
+    }
+  });
+
   it("gives every checkbox and radio a full-width row at least a touch target tall, and the summary too", async () => {
     await mount();
     openFilters();
