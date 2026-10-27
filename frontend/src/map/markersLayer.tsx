@@ -13,9 +13,21 @@ export const MARKER_EDGE_PX = 1.5;
  * whose tip sits on the marker's place, so it stands above the resource nodes and buildings it points at.
  */
 export const STAMP_RADIUS_PX = 5;
-export const PIN_HEAD_RADIUS_PX = 5;
+/** A head of 6 (ui-reviewer): at 5 the pin read as part of the resource-node clusters it often sits beside. */
+export const PIN_HEAD_RADIUS_PX = 6;
 /** From the pin's tip (the marker's place) to the centre of its head. */
-export const PIN_HEAD_OFFSET_PX = 9;
+export const PIN_HEAD_OFFSET_PX = 11;
+/** The rim for a light fill: the light rim would vanish into a white or pale marker (ui-reviewer), so it goes dark. */
+export const MARKER_EDGE_ON_LIGHT_TOKEN = "--color-canvas";
+
+/** Whether a #rrggbb fill is light enough that the light rim would merge into it (relative luminance, WCAG). */
+export function isLightFill(hex: string): boolean {
+  const channel = (i: number) => {
+    const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2) > 0.5;
+}
 const PIN_ARC_STEPS = 12;
 
 /** "Marker" or "Stamp": the kind in words. */
@@ -106,13 +118,14 @@ export const markersLayer: MapLayer<MapMarker[]> = {
   draw({ L, map, project, renderer, color }, markers) {
     const group = L.layerGroup();
     const edge = color(MARKER_EDGE_TOKEN);
+    const edgeOnLight = color(MARKER_EDGE_ON_LIGHT_TOKEN);
     const shapes: { polygon: Leaflet.Polygon; at: MapPoint; offsets: [number, number][] }[] = [];
     for (const marker of markers) {
       const at = project(marker.x, marker.y);
       const offsets = glyphOffsets(marker.kind);
       const polygon = L.polygon(shapeAround(map, at, offsets), {
         renderer,
-        color: edge,
+        color: isLightFill(marker.color) ? edgeOnLight : edge,
         weight: MARKER_EDGE_PX,
         lineJoin: "round",
         // The player's own colour, a runtime value from the game (the contract's #rrggbb), so a path option and no

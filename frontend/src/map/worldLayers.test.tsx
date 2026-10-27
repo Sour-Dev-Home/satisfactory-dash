@@ -6,7 +6,7 @@ import type { MapContext } from "./layers";
 import { GRID_BASE_MAP, project } from "./projection";
 import { railsLayer, RAIL_WEIGHT_PX } from "./railsLayer";
 import type { MapMarker, RailSegment } from "@satisfactory-dash/shared";
-import { MARKER_EDGE_PX, markerKeys, markersLayer, PIN_HEAD_OFFSET_PX, PIN_HEAD_RADIUS_PX, STAMP_RADIUS_PX } from "./markersLayer";
+import { isLightFill, MARKER_EDGE_PX, markerKeys, markersLayer, PIN_HEAD_OFFSET_PX, PIN_HEAD_RADIUS_PX, STAMP_RADIUS_PX } from "./markersLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
 import { nodeRadiusPx } from "./worldGeometry";
 
@@ -30,6 +30,7 @@ beforeEach(() => {
     ["--color-rail", "RAIL"],
     ["--color-node", "NODE"],
     ["--color-marker-edge", "EDGE"],
+    ["--color-canvas", "DARK"],
   ]);
   ctx = {
     L,
@@ -234,15 +235,22 @@ describe("markersLayer (#330)", () => {
     });
   };
 
-  it("draws one shape per marker, in the player's colour with the token rim, and removes them on cleanup", () => {
+  it("tells a light fill from a dark one, so the rim can stay visible", () => {
+    expect(["#ffffff", "#fbf8f2", "#f2e8a0"].map(isLightFill)).toEqual([true, true, true]);
+    expect(["#6ea37b", "#1d1d1f", "#3470c2", "#d95926"].map(isLightFill)).toEqual([false, false, false, false]);
+  });
+
+  it("draws one shape per marker, in the player's colour with the token rim (dark on a light fill), and removes them on cleanup", () => {
     const markers = mapMarkersWorldResponse.data;
     const cleanup = markersLayer.draw(ctx, markers);
     const shapes = polygons();
     expect(shapes).toHaveLength(markers.length);
+    // The capture's three stamps are white (the light rim would vanish into them); its one marker is green.
+    expect(markers.some((m) => isLightFill(m.color)) && markers.some((m) => !isLightFill(m.color))).toBe(true);
     shapes.forEach((s, i) => {
       expect(s.options.fillColor).toBe(markers[i].color);
       expect(s.options.fillOpacity).toBe(1);
-      expect(s.options.color).toBe("EDGE");
+      expect(s.options.color).toBe(isLightFill(markers[i].color) ? "DARK" : "EDGE");
       expect(s.options.weight).toBe(MARKER_EDGE_PX);
     });
     cleanup();
