@@ -69,13 +69,15 @@ jobs:
           esac
           # The secret goes to curl through a config file on stdin (printf is a builtin, so it is never in a process's
           # argv). Its charset is checked first, so it can't break out of the config's quoted value. Never echoed.
+          # No --retry: the ingest stores every accepted POST as a new row, so a retry after a timeout could store the
+          # snapshot twice; the next daily run is the retry.
           if ! [[ "$INGEST_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
             echo "::error::METRICS_INGEST_SECRET must be 32 to 256 letters, digits, '-' or '_'"
             exit 1
           fi
           code=0
           status=$(printf 'header = "Authorization: Bearer %s"\n' "$INGEST_SECRET" | curl --config - \
-            --silent --show-error --proto '=https' --max-time 30 --retry 2 --retry-delay 15 \
+            --silent --show-error --proto '=https' --max-time 30 \
             --header 'Content-Type: application/json' --data-binary "@$RUNNER_TEMP/delivery/delivery-metrics.json" \
             --output /dev/null --write-out '%{http_code}' "$INGEST_URL") || code=$?
           if [ "$code" -ne 0 ]; then
