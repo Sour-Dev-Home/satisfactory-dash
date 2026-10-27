@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
 import { useReducedMotion } from "../../overview/reducedMotion";
@@ -322,14 +322,25 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const [ghost, setGhost] = useState<{ layout: SiteLayout; dx: number; dy: number } | null>(null);
   const roomShown = layout === room ? roomFor : null;
   const shown = useRef({ layout, room: roomShown });
+  // React only rewrites a card's transform when its prop changes, so after the glide's own writes every card is put back
+  // where the picture *now* has it: a glide cut short leaves no card mid-way, and a poll that moved cards during a glide
+  // is not undone by the glide's end (which knew only the layout it started for).
+  const settle = useCallback(() => {
+    const now = new Map(shown.current.layout.nodes.map((n) => [n.key, n]));
+    for (const el of drawingRef.current?.querySelectorAll<SVGGElement>("[data-node]") ?? []) {
+      const n = now.get(el.getAttribute("data-node") ?? "");
+      if (n !== undefined) el.setAttribute("transform", `translate(${n.x} ${n.y})`);
+    }
+    freshRef.current?.removeAttribute("opacity");
+    setGhost(null);
+  }, []);
   useLayoutEffect(() => {
     const before = shown.current;
     shown.current = { layout, room: roomShown };
     // Only a change of room starts a glide: a poll or a pan does not.
     if (before.room === roomShown || before.layout === layout) return;
     cancelTween();
-    freshRef.current?.removeAttribute("opacity");
-    setGhost(null);
+    settle();
     const anchor = roomShown ?? before.room;
     const from = before.layout.edges.find((e) => edgeKeyOf(e.flow) === anchor);
     const to = layout.edges.find((e) => edgeKeyOf(e.flow) === anchor);
@@ -356,13 +367,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         freshRef.current?.setAttribute("opacity", String(t));
         ghostRef.current?.setAttribute("opacity", String(1 - t));
       },
-      () => {
-        for (const m of gliding) m.el.setAttribute("transform", `translate(${m.end.x} ${m.end.y})`);
-        freshRef.current?.removeAttribute("opacity");
-        setGhost(null);
-      },
+      settle,
     );
-  }, [layout, roomShown, animate, runTween, cancelTween]);
+  }, [layout, roomShown, animate, runTween, cancelTween, settle]);
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);

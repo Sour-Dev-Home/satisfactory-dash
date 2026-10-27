@@ -1,9 +1,12 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { endpoints } from "@satisfactory-dash/shared";
+import { productionGraphTwoSites, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
+import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
 import { ITEM_FOCUS_KEY } from "./plannerPrefs";
 
@@ -16,14 +19,16 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+let client: ReturnType<typeof renderWithClient>["client"];
+
 async function openGraph() {
-  renderWithClient(
+  ({ client } = renderWithClient(
     <MemoryRouter>
       <ServerContext value={serversSingle.servers[0]}>
         <PlannerView />
       </ServerContext>
     </MemoryRouter>,
-  );
+  ));
   fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
   fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
   return screen.findByRole("img", { name: /^Graph of Iron Plate site/ }, { timeout: 3_000 });
@@ -57,6 +62,64 @@ describe("the make-room glide", () => {
     expect(end).not.toEqual(halfway);
     // Attributes only, never a style attribute (the CSP and the e2e guard).
     expect(svg.querySelectorAll("[style]")).toHaveLength(0);
+  });
+
+  it("lands where an uninterrupted glide would when a second focus change cuts the first short, with nothing left over", async () => {
+    const plate = '[data-edge-layer="labels"] [data-bubble="Desc_IronPlate_C"]';
+    const ore = '[data-bubble="Desc_OreIron_C"]';
+    // Reference: let the first glide finish, then focus the second line.
+    let svg = await openGraph();
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(svg.querySelector(plate)!);
+    act(() => vi.advanceTimersByTime(300));
+    const expected = cards(svg);
+    cleanup();
+    vi.useRealTimers();
+    // Interrupted: the second click arrives halfway through the first glide.
+    svg = await openGraph();
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(100));
+    fireEvent.click(svg.querySelector(plate)!);
+    act(() => vi.advanceTimersByTime(300));
+    expect(cards(svg)).toEqual(expected);
+    expect(svg.querySelector("[data-ghost]")).toBeNull();
+    expect(svg.querySelector('[data-edge-layer="lines"]')!.parentElement).not.toHaveAttribute("opacity");
+  });
+
+  it("ends where the picture now is when a poll changes the cards mid-glide, not where the glide was heading", async () => {
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    // The poll turns the plate line round: the same cards and the same number of lines (so nothing remounts), but a new
+    // topology, so dagre places the cards again and React rewrites their transforms while the glide still runs.
+    const polled = {
+      ...productionGraphTwoSites,
+      data: { ...productionGraphTwoSites.data, edges: productionGraphTwoSites.data.edges.map((e) => (e.itemClassName === "Desc_IronPlate_C" ? { ...e, from: e.to, to: e.from } : e)) },
+    };
+    // Reference: the polled data from the start, focused with no glide.
+    window.localStorage.setItem("planner.motion", "off");
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(polled)));
+    let svg = await openGraph();
+    fireEvent.click(svg.querySelector(ore)!);
+    const expected = cards(svg);
+    cleanup();
+    server.resetHandlers();
+    window.localStorage.setItem("planner.motion", "on");
+    // The poll lands 100 ms into a 200 ms glide.
+    svg = await openGraph();
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(100));
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(polled)));
+    // Only animation frames and the clock are fake, so the refetch runs on real timers while the glide waits.
+    await act(() => client.invalidateQueries());
+    // React Query tells its subscribers on a later tick.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+    act(() => vi.advanceTimersByTime(300));
+    expect(svg.querySelector("[data-focused]")).not.toBeNull();
+    expect(cards(svg)).toEqual(expected);
+    expect(svg.querySelector("[data-ghost]")).toBeNull();
   });
 
   it("jumps with Motion set to Off: no ghost, no fade, the cards at once where they end", async () => {
