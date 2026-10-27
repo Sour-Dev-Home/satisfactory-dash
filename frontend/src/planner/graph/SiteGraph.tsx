@@ -862,7 +862,7 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail }: EdgeProps) {
         className="fill-surface"
       />
       {row.items.map((item, i) => (
-        <ItemBubble key={item.className ?? item.name ?? ""} item={item} cx={left + at.bubbles[i]} cy={cy} detail={detail} />
+        <ItemBubble key={item.className !== null ? `c:${item.className}` : `n:${item.name ?? ""}`} item={item} cx={left + at.bubbles[i]} cy={cy} detail={detail} />
       ))}
       {at.chip !== null && (
         <g data-bubble-more={row.more}>

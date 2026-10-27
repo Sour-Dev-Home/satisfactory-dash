@@ -53,7 +53,8 @@ export function bubbleItems(flow: CanvasFlow): BubbleItem[] {
   for (const p of flow.parts ?? [flow]) {
     const name = p.itemName === null || p.itemName === "" ? null : p.itemName;
     const className = p.itemClassName === null || p.itemClassName === "" ? null : p.itemClassName;
-    const key = className ?? name ?? "";
+    // Prefixed, so a class "X" and a classless item named "X" stay two items.
+    const key = className !== null ? `c:${className}` : `n:${name ?? ""}`;
     const seen = byKey.get(key);
     if (seen === undefined) byKey.set(key, { className, name, text: itemIconText(name ?? undefined), rate: rateOf(p) });
     else seen.rate += rateOf(p);

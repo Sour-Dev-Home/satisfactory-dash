@@ -48,6 +48,26 @@ describe("bubbleItems", () => {
     const items = bubbleItems(bundle(flow("Desc_A_C", "Alpha", Number.NaN, { quality: "measured" }), flow("Desc_B_C", "Beta", 1)));
     expect(items.map((i) => i.rate)).toEqual([1, 0]);
   });
+
+  it("counts an Infinity rate as 0 too", () => {
+    const items = bubbleItems(bundle(flow("Desc_A_C", "Alpha", Infinity), flow("Desc_B_C", "Beta", 1)));
+    expect(items.map((i) => i.rate)).toEqual([1, 0]);
+  });
+
+  it("keeps a class and a classless item that share a string as two items", () => {
+    const items = bubbleItems(bundle(flow("Ore", "Y", 5), flow(null, "Ore", 3)));
+    expect(items.map((i) => [i.className, i.name])).toEqual([["Ore", "Y"], [null, "Ore"]]);
+  });
+
+  it("merges one class under two names into one bubble, keeping the first name", () => {
+    const items = bubbleItems(bundle(flow("Desc_A_C", "Alpha", 1), flow("Desc_A_C", "Other", 2)));
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ name: "Alpha", rate: 3 });
+  });
+
+  it("treats an empty class name like null", () => {
+    expect(bubbleItems(bundle(flow("", "Alpha", 1), flow(null, "Alpha", 1)))).toHaveLength(1);
+  });
 });
 
 describe("bubbleRow", () => {
