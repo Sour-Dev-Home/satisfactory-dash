@@ -313,4 +313,9 @@ describe("markersLayer (#330)", () => {
     const a = marker();
     expect(markerKeys([a, marker({ x: 11 }), a])).toEqual(["m1:10:-20", "m1:11:-20", "m1:10:-20:1"]);
   });
+
+  it("keeps keys unique when an id with colons imitates a suffixed key", () => {
+    const list = [marker({ id: "a", x: 1, y: 2 }), marker({ id: "a", x: 1, y: 2 }), marker({ id: "a:1", x: 2, y: 1 })];
+    expect(new Set(markerKeys(list)).size).toBe(3);
+  });
 });

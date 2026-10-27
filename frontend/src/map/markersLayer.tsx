@@ -30,11 +30,16 @@ export const markerName = (m: MapMarker) => (m.name.trim() === "" ? `Unnamed ${m
  */
 export function markerKeys(markers: readonly MapMarker[]): string[] {
   const seen = new Map<string, number>();
+  const used = new Set<string>();
   return markers.map((m) => {
     const base = `${m.id}:${m.x}:${m.y}`;
-    const n = seen.get(base) ?? 0;
+    let n = seen.get(base) ?? 0;
+    let key = n === 0 ? base : `${base}:${n}`;
+    // An id may hold colons, so a suffixed key can equal another marker's base: keep counting until it is free.
+    while (used.has(key)) key = `${base}:${++n}`;
     seen.set(base, n + 1);
-    return n === 0 ? base : `${base}:${n}`;
+    used.add(key);
+    return key;
   });
 }
 
