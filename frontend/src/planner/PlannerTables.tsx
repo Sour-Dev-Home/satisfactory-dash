@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { BottleneckBadge } from "./BottleneckBadge";
-import { extractorOutput, groupsExtractorOutput, INFERRED_FROM_NODE, isStaleNode, noRecipeCellText, recipeText, STALE_NODE_NOTE } from "./graph/graphModel";
+import { extractorOutput, groupsExtractorOutput, INFERRED_FROM_NODE, isStaleNode, makesNothing, NO_OUTPUT_DATA, noRecipeCellText, recipeText, STALE_NODE_NOTE } from "./graph/graphModel";
 import { bubblesOf, foldBubbles, shareSplit, type Bubble, type ConnectionRow, type Remote } from "./graph/hierarchy";
 import {
   bubbleTitle,
@@ -56,7 +56,7 @@ function Outputs({ node }: { node: PlannerNode }) {
   if (isStaleNode(node)) return <StaleNote />;
   const mined = extractorOutput(node);
   if (mined !== null) return <Mined mined={mined} />;
-  if (node.products.length === 0) return <span className="text-muted">No output data</span>;
+  if (node.products.length === 0) return makesNothing(node) ? null : <span className="text-muted">{NO_OUTPUT_DATA}</span>;
   return node.products.map((rate) => (
     <span key={rate.className} className="block break-words">
       {outputLine(rate, node.stateCounts)}
@@ -168,7 +168,7 @@ function BubbleBody({
             ) : mined !== null ? (
               <Mined mined={mined} />
             ) : bubble.products.length === 0 ? (
-              <span className="text-muted">No output data</span>
+              bubble.nodes.every(makesNothing) ? null : <span className="text-muted">{NO_OUTPUT_DATA}</span>
             ) : (
               bubble.products.map((rate) => (
                 <span key={rate.className} className="block">

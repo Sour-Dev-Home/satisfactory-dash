@@ -33,6 +33,7 @@ import {
   type Filter,
 } from "./connectionGraph.js";
 import { reduceFactories, type ReductionStats } from "./factoryReduction.js";
+import { buildingName, classOfId } from "./buildingNames.js";
 import { buildLogisticsEdges } from "./logisticsEdges.js";
 import { DEPOT_CLASS, classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
 import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plannerItems.js";
@@ -110,6 +111,14 @@ const KIND_NAMES: ReadonlyMap<ConveyorNodeKind, string> = new Map([
   ["consumer", "consumer"],
 ]);
 const kindName = (k: ConveyorNodeKind): string => KIND_NAMES.get(k) ?? "other";
+/** The group kinds that take their building's class and name from their ids when no getFactory record names them. */
+const NAMED_BY_ID: ReadonlySet<string> = new Set(["storage", "station", "consumer"]);
+/** Such a group's name when its ids name no single building class: its kind in words. */
+const KIND_WORDS: ReadonlyMap<string, string> = new Map([
+  ["storage", "Storage"],
+  ["station", "Station"],
+  ["consumer", "Sink or generator"],
+]);
 
 /** Two decimals, and always a finite, non-negative number the contract accepts (a sum of huge rates can overflow). */
 const r2 = (n: number): number => {
@@ -407,6 +416,24 @@ export function buildProductionGraphWithStats(
     const seen = (keyCount.get(base) ?? 0) + 1;
     keyCount.set(base, seen);
     grp.key = seen === 1 ? base : `${base}#${seen}`;
+  }
+  // A group with no getFactory record (storage, a generator, the sink, a station) was named and classed by its conveyor
+  // kind above, and keyed so. Now that the keys are fixed (a saved key never changes), it takes the building class its
+  // ids carry ("Build_StorageContainerMk1_C_2147455285") when they all agree, and that building's name: the card then
+  // shows the building's icon and name instead of "storage" or "consumer".
+  // Only the kinds that make nothing: an extractor can seed a factory, whose key comes from its seed's class
+  // (factoryReduction's `productOf`), so its class stays as it was and no saved factory key moves.
+  for (const grp of groups) {
+    if (!NAMED_BY_ID.has(grp.kind) || grp.units.some((u) => u.building !== null)) continue;
+    const classes = new Set(grp.units.map((u) => classOfId(u.id)));
+    const only = classes.size === 1 ? [...classes][0] : null;
+    if (only === null || only === undefined) {
+      // Ids that do not agree (or are not FRM's): the kind stays the class, and the name is the kind in words.
+      grp.name = KIND_WORDS.get(grp.className) ?? grp.name;
+      continue;
+    }
+    grp.className = only;
+    grp.name = buildingName(only);
   }
 
   // ---- links ----

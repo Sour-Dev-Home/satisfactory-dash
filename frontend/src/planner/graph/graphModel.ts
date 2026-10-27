@@ -114,11 +114,22 @@ export function groupsExtractorOutput(nodes: readonly Pick<PlannerNode, "kind" |
 export const extractorOutputText = (out: { name: string; inferred: boolean }): string => (out.inferred ? `${out.name} ${INFERRED_FROM_NODE}` : out.name);
 
 /** The one line a group's card prints: its main product and rate, else an extractor's resource, else "No output data". Never empty. */
-export function nodeSummary(node: Pick<PlannerNode, "products"> & Partial<Pick<PlannerNode, "kind" | "resource">>): string {
+export function nodeSummary(node: Pick<PlannerNode, "products"> & Partial<Pick<PlannerNode, "kind" | "resource">>): string | null {
   if (node.products.length > 0) return productSummary(node.products[0]);
   const mined = extractorOutput({ kind: node.kind ?? "", products: node.products, resource: node.resource });
-  return mined === null ? "No output data" : cut(mined.name, MAX_SUMMARY_CHARS);
+  if (mined !== null) return cut(mined.name, MAX_SUMMARY_CHARS);
+  return makesNothing(node) ? null : NO_OUTPUT_DATA;
 }
+
+/** What a group that should make something, but whose outputs the game did not report, says. */
+export const NO_OUTPUT_DATA = "No output data";
+
+/**
+ * A group that makes nothing by its nature: storage, a station, or a consumer (a sink, a generator). With no products it
+ * has no output line at all (the owner, 2026-10-27): its building's icon says what it is, where "No output data" read
+ * as a fault. A machine or a building of unknown kind with no products keeps the note: there it is a real gap.
+ */
+export const makesNothing = (node: Partial<Pick<PlannerNode, "kind">>): boolean => node.kind === "storage" || node.kind === "station" || node.kind === "consumer";
 
 /**
  * The recipe in words: the recipe, "Not configured" for a machine without one, and null where none is shown (an extractor,
@@ -143,7 +154,8 @@ export const noRecipeCellText = (node: Pick<PlannerNode, "kind">): string => (NO
 export function nodeFacts(node: PlannerNode): { recipe: string | null; outputs: string[]; loop: boolean } {
   if (isStaleNode(node)) return { recipe: recipeText(node), outputs: [STALE_NODE_NOTE], loop: node.loop };
   const mined = extractorOutput(node);
-  const outputs = mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? ["No output data"] : node.products.map((r) => outputLine(r, node.stateCounts));
+  const outputs =
+    mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? (makesNothing(node) ? [] : [NO_OUTPUT_DATA]) : node.products.map((r) => outputLine(r, node.stateCounts));
   return { recipe: recipeText(node), outputs, loop: node.loop };
 }
 

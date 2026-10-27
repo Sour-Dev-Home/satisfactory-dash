@@ -694,3 +694,52 @@ describe("production graph: designations (ADR-0055 Decision 5)", () => {
     expect(JSON.stringify(g)).toBe(base);
   });
 });
+
+describe("a group with no getFactory record is named by the building its ids carry (the owner, 2026-10-27)", () => {
+  // FRM ids are the building's class and a number (docs-vault/raw-sources/captured-responses/frm-getBelts-2026-10-21-connections-trimmed.json).
+  const ingots = () => machine("m", { className: SMELTER, recipe: "Iron Ingot", out: [[INGOT, 30]] });
+
+  it("a storage container: its class and the game's name, and the same key as before", () => {
+    const g = run([ingots()], [edge("a", "m", "Build_StorageContainerMk1_C_2147455285", { toKind: "storage" })]);
+    const store = g.nodes.find((n) => n.kind === "storage") as PlannerNode;
+    expect(store).toMatchObject({ className: "Build_StorageContainerMk1_C", name: "Storage Container" });
+    // Keys are what saved state refers to (collapsed cards, designations): they still start with the kind.
+    expect(store.key.startsWith("storage|")).toBe(true);
+    expect(ProductionGraphSchema.parse(g)).toBeTruthy();
+  });
+
+  it("a sink and a generator: their classes, so the factories read them as a sink and as power", () => {
+    // Each fed by its own machine: buildings of one kind with the same neighbours are one group.
+    const fuel = machine("f", { className: "Build_OilRefinery_C", recipe: "Fuel", out: [["Desc_LiquidFuel_C", 40]], at: [400, 400] });
+    const g = run(
+      [ingots(), fuel],
+      [edge("a", "m", "Build_ResourceSink_C_7", { toKind: "consumer" }), edge("b", "f", "Build_GeneratorFuel_C_9", { kind: "pipe", cap: null, toKind: "consumer", at: [400, 400] })],
+    );
+    const sink = g.nodes.find((n) => n.className === "Build_ResourceSink_C") as PlannerNode;
+    const gen = g.nodes.find((n) => n.className === "Build_GeneratorFuel_C") as PlannerNode;
+    expect(sink).toMatchObject({ kind: "consumer", name: "Resource Sink", role: "sink" });
+    expect(gen).toMatchObject({ kind: "consumer", name: "Fuel-Powered Generator", role: "power" });
+    expect(g.nodes.some((n) => n.name === "consumer" || n.name === "storage")).toBe(false);
+  });
+
+  it("ids that name no single class keep the kind as the class, and read as the kind in words", () => {
+    const g = run(
+      [ingots()],
+      [edge("a", "m", "Build_StorageContainerMk1_C_1", { toKind: "storage" }), edge("b", "m", "Build_StorageContainerMk2_C_2", { toKind: "storage" })],
+    );
+    // Both fed by the one smelter and feeding nothing: one group of two, whose ids disagree.
+    const stores = g.nodes.filter((n) => n.kind === "storage");
+    expect(stores).toHaveLength(1);
+    expect(stores[0]).toMatchObject({ count: 2, className: "storage", name: "Storage" });
+    expect(stores[0].key.startsWith("storage|")).toBe(true);
+  });
+
+  it("an extractor keeps its class (it can seed a factory, whose key comes from it), so no factory key moves", () => {
+    const edges = [edge("a", "Build_OilPump_C_3", "m2", { kind: "pipe", cap: null, fromKind: "extractor" })];
+    const refinery = machine("m2", { className: "Build_OilRefinery_C", recipe: "Plastic", ing: [["Desc_LiquidOil_C", 30]], out: [["Desc_Plastic_C", 20]] });
+    const g = buildProductionGraphWithStats([refinery], edges).graph;
+    const pump = g.nodes.find((n) => n.kind === "extractor") as PlannerNode;
+    expect(pump.className).toBe("extractor");
+    expect(g.nodes.some((n) => n.className === "Build_OilPump_C")).toBe(false);
+  });
+});

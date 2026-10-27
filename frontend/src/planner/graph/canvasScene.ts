@@ -29,6 +29,8 @@ import {
   nameOr,
   nodeFacts,
   nodeSummary,
+  makesNothing,
+  NO_OUTPUT_DATA,
   nodeTitle,
   productSummary,
   STALE_NODE_NOTE,
@@ -340,13 +342,14 @@ const staleCardLines = (): Pick<Card, "lines" | "mutedFrom"> => ({ lines: staleN
 export function groupCard(node: PlannerNode, facts: string[] = []): Card {
   const shown = withName(node);
   const { outputs, loop } = nodeFacts(node);
+  const summary = nodeSummary(node);
   return {
     ...blank,
     key: node.key,
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    ...(isStaleNode(node) ? staleCardLines() : withMutedNote([nodeSummary(node)], extractorOutput(node), stalledNote(node.products[0], node.stateCounts))),
+    ...(isStaleNode(node) ? staleCardLines() : withMutedNote(summary === null ? [] : [summary], extractorOutput(node), stalledNote(node.products[0], node.stateCounts))),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -371,7 +374,9 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
     : mined !== null
       ? [extractorOutputText(mined)]
       : bubble.products.length === 0
-        ? ["No output data"]
+        ? bubble.nodes.every(makesNothing)
+          ? []
+          : [NO_OUTPUT_DATA]
         : bubble.products.map((r) => outputLine(r, states));
   return {
     ...blank,

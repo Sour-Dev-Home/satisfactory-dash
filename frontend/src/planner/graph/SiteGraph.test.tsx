@@ -362,8 +362,11 @@ describe("the graph's readable chrome", () => {
     for (const card of cards) {
       expect(card.querySelectorAll("[data-icon]")).toHaveLength(1);
       expect(card.querySelectorAll("[data-count]")).toHaveLength(1);
-      expect(card.querySelectorAll(":scope > text")).toHaveLength(1);
-      expect(card.querySelector(":scope > title")?.textContent?.length).toBeGreaterThan(20);
+      // One line, except storage, which makes nothing: its icon says what it is (the owner, 2026-10-27).
+      const storage = /^(storage|Build_Storage)/i.test(card.getAttribute("data-node") ?? "");
+      expect(card.querySelectorAll(":scope > text")).toHaveLength(storage ? 0 : 1);
+      // Storage's tooltip is its name alone ("2× Storage", with no output words); every other card's says more.
+      expect(card.querySelector(":scope > title")?.textContent?.length).toBeGreaterThan(storage ? 0 : 20);
     }
     // The icon is 40 units, not the 18 of a title-row icon.
     expect(svg.querySelector("[data-card] image")).toHaveAttribute("width", "40");
