@@ -212,7 +212,8 @@ describe("when dagre cannot route a shape", () => {
     const g = generatedFactory(40, 4);
     const scene = factoryScene(g, factoryModels(g)[0], EMPTY_VIEW);
     const layout = layoutScene(scene, g.topologyHash);
-    expect(layout.edges).toHaveLength(scene.flows.length);
+    // Links between one pair on one carrier are one line (2026-10-27): every link is a part of exactly one line.
+    expect(layout.edges.flatMap((e) => e.parts).sort((a, b) => a - b)).toEqual(scene.flows.map((_, i) => i));
     const seen = new Set<string>();
     for (const e of layout.edges) {
       expect(e.points.length).toBeGreaterThanOrEqual(2);

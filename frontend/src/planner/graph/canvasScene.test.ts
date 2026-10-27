@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
-import { COLLAPSE_AT, EMPTY_VIEW, canvasFlow, factoryScene, flowTitle, foldStorage, overviewScene, sceneSummary, siteScene, type FactoryView } from "./canvasScene";
+import { BUNDLE_NAMES, COLLAPSE_AT, EMPTY_VIEW, bundleFlows, canvasFlow, factoryScene, flowTitle, foldStorage, overviewScene, sceneSummary, siteScene, type FactoryView } from "./canvasScene";
 import { factoryModels, type AggregateFlow, type FlowPart } from "./hierarchy";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
@@ -363,5 +363,69 @@ describe("a key taken from the game is only ever a key", () => {
     const scene = sceneOf(g, view({ storageDetail: false }));
     expect(scene.cards).toHaveLength(3);
     expect(scene.flows).toHaveLength(1);
+  });
+});
+
+describe("bundleFlows: one line per pair of cards and carrier (2026-10-27)", () => {
+  const link = (itemName: string | null, extra: Partial<AggregateFlow> = {}) =>
+    canvasFlow({ from: "a", to: "b", itemClassName: itemName === null ? null : `Desc_${itemName}_C`, itemName, carrier: "belt", flow: "supply", unit: "items/min", mixed: false, parts: 1, ratePerMinute: 30, quality: "measured", ...extra });
+
+  it("leaves a lone link as it is", () => {
+    const one = link("Iron");
+    expect(bundleFlows([one])).toEqual([{ flow: one, members: [0] }]);
+  });
+
+  it("names the known items, folds links of no known item into '+n unknown', and sums the rate as 'at least' when one has none", () => {
+    const [b] = bundleFlows([link(null, { quality: "unknown", ratePerMinute: null }), link("Iron Ingot"), link("Steel Pipe", { ratePerMinute: 12.5 })]);
+    expect(b.members).toEqual([0, 1, 2]);
+    expect(b.flow.labelLines).toEqual(["Iron Ingot, Steel Pipe", "+1 unknown", "at least 42.5 items/min"]);
+    expect(b.flow.quality).toBe("atLeast");
+    expect(b.flow.rate).toBe("estimated");
+    expect(b.flow.parts).toHaveLength(3);
+  });
+
+  it("sums measured links as measured, and an estimated one makes it 'about'", () => {
+    expect(bundleFlows([link("A"), link("B", { ratePerMinute: 10 })])[0].flow.labelLines).toEqual(["A, B", "40 items/min"]);
+    const about = bundleFlows([link("A"), link("B", { quality: "estimated" })])[0].flow;
+    expect(about.labelLines[1]).toBe("about 60 items/min");
+    expect(about.rate).toBe("estimated");
+  });
+
+  it("names at most BUNDLE_NAMES items, the rest '+k more', and with no rate at all prints none", () => {
+    const flows = ["A", "B", "C", "D"].map((n) => link(n, { quality: "unknown", ratePerMinute: null }));
+    const [b] = bundleFlows([...flows, link(null, { quality: "unknown", ratePerMinute: null })]);
+    expect(BUNDLE_NAMES).toBe(2);
+    expect(b.flow.labelLines).toEqual(["A, B", "+2 more, +1 unknown"]);
+    expect(b.flow.rate).toBe("unknown");
+  });
+
+  it("words links of no known item alone as a count, and a mixed one as mixed", () => {
+    const site = [link("A"), link("B", { mixed: true })];
+    expect(bundleFlows(site)[0].flow.labelLines).toEqual(["A, B", "mixed", "60 items/min"]);
+    expect(bundleFlows([link(null), link(null)])[0].flow.labelLines[0]).toBe("2 items unknown");
+  });
+
+  it("keeps other carriers, kinds and directions apart, in first-seen order", () => {
+    const out = bundleFlows([link("A"), link("W", { carrier: "pipe", unit: "m3/min" }), link("B"), link("X", { flow: "excess" }), link("C", { from: "b", to: "a" })]);
+    expect(out.map((b) => b.members)).toEqual([[0, 2], [1], [3], [4]]);
+  });
+
+  it("never sums items and m3 on one carrier into one rate", () => {
+    const out = bundleFlows([link("Ore", { carrier: "train" }), link("Water", { carrier: "train", unit: "m3/min" }), link("Coal", { carrier: "train" })]);
+    expect(out.map((b) => b.members)).toEqual([[0, 2], [1]]);
+    expect(out[0].flow.labelLines).toEqual(["Ore, Coal", "60 items/min"]);
+  });
+
+  it("treats an empty item name as no known item", () => {
+    const [b] = bundleFlows([link("A"), { ...link(null), itemName: "", itemClassName: "" }]);
+    expect(b.flow.labelLines[0]).toBe("A");
+    expect(b.flow.labelLines[1]).toContain("+1 unknown");
+  });
+
+  it("keeps every link in the tooltip, each with its own rate and sureness", () => {
+    const [b] = bundleFlows([link("Iron Ingot"), link(null, { quality: "unknown", ratePerMinute: null })]);
+    expect(flowTitle(b.flow, "A", "B")).toBe("A to B, 2 links: Iron Ingot · 30 items/min (measured); Item unknown (rate unknown)");
+    const trains = bundleFlows([link("Ore", { carrier: "train", routeName: "North" }), link("Coal", { carrier: "train", routeName: "South" })])[0].flow;
+    expect(flowTitle(trains, "A", "B")).toBe("Train: A to B, 2 links: route North, Ore · 30 items/min (measured); route South, Coal · 30 items/min (measured)");
   });
 });
