@@ -3,7 +3,7 @@ import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../../test-support/testDb.js";
 import { upsertConfiguredServer } from "../../servers/repositories/serverRepository.js";
-import { alertQualitySummary, monthStart } from "./alertQualityRepository.js";
+import { alertQualitySummary, alertsFiredHourly, monthStart } from "./alertQualityRepository.js";
 
 const available = dbTestsAvailable();
 const NOW = Date.parse("2026-10-25T12:00:00Z");
@@ -146,6 +146,27 @@ describe.skipIf(!available)("alert quality summary over alerts.alert_events", ()
     const [row] = await alertQualitySummary(pool, NOW);
     expect(Object.keys(row).sort()).toEqual(["fired", "flaps", "kind", "medianResolveSeconds", "month"]);
     expect(JSON.stringify(row)).not.toContain("secret-subject");
+  });
+
+  it("counts fired alerts per UTC hour across servers, only fired, only in the range", async () => {
+    await event(serverA, "power_outage", "c1", "fired", "2026-10-10T08:05:00Z");
+    await event(serverB, "stopped_machines", "all", "fired", "2026-10-10T08:55:00Z");
+    await event(serverA, "power_outage", "c1", "resolved", "2026-10-10T08:20:00Z");
+    await event(serverA, "power_outage", "c2", "fired", "2026-10-10T10:00:00Z");
+    await event(serverA, "power_outage", "c3", "fired", "2026-10-10T05:00:00Z");
+    const fired = await alertsFiredHourly(pool, new Date("2026-10-10T06:00:00Z"), new Date("2026-10-10T10:30:00Z"));
+    expect([...fired].sort(([a], [b]) => a - b)).toEqual([
+      [Date.parse("2026-10-10T08:00:00Z"), 2],
+      [Date.parse("2026-10-10T10:00:00Z"), 1],
+    ]);
+    // A session on a half-hour offset still buckets by UTC hour (date_trunc on a timestamptz follows the session zone).
+    const offset = new pg.Pool({ connectionString: db.appUrl, max: 1, options: "-c TimeZone=Asia/Kolkata" });
+    try {
+      const again = await alertsFiredHourly(offset, new Date("2026-10-10T06:00:00Z"), new Date("2026-10-10T10:30:00Z"));
+      expect([...again].sort(([a], [b]) => a - b)).toEqual([...fired].sort(([a], [b]) => a - b));
+    } finally {
+      await offset.end();
+    }
   });
 });
 

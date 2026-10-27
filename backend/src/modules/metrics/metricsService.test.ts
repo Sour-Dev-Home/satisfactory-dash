@@ -68,8 +68,12 @@ describe("worstServers", () => {
 });
 
 describe("createMetricsService", () => {
-  const fakeDb = (histRows: unknown[], counterRows: unknown[], alertRows: unknown[] = []) => ({
-    query: async (sql: string) => ({ rows: sql.includes("alert_events") ? alertRows : sql.includes("unnest") ? histRows : counterRows }),
+  // The charts' hourly reads answer `hourlyRows` (empty by default); metricsCharts.test.ts covers the folding.
+  const hourly = (sql: string) => sql.includes("array_agg") || sql.includes("GROUP BY hour, metric") || sql.includes("date_trunc");
+  const fakeDb = (histRows: unknown[], counterRows: unknown[], alertRows: unknown[] = [], hourlyRows: (sql: string) => unknown[] = () => []) => ({
+    query: async (sql: string) => ({
+      rows: hourly(sql) ? hourlyRows(sql) : sql.includes("alert_events") ? alertRows : sql.includes("unnest") ? histRows : counterRows,
+    }),
   });
   const now = () => Date.parse("2026-10-25T10:30:00Z");
 
@@ -115,6 +119,31 @@ describe("createMetricsService", () => {
   it("says no_data when nothing was recorded in the window", async () => {
     const out = await createMetricsService({ db: fakeDb([], []), now }).overview("1h");
     expect(out.system).toEqual({ available: false, reason: "no_data" });
+    expect(out.charts).toEqual({ available: false, reason: "no_data" });
     expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
+  });
+
+  it("fills the charts from the hourly reads, over the trend and the previous window, for every window", async () => {
+    const queries: { sql: string; params: unknown[] }[] = [];
+    const hour = (iso: string) => new Date(iso);
+    const hourlyRows = (sql: string) =>
+      sql.includes("array_agg")
+        ? [{ hour: hour("2026-10-25T10:00:00Z"), metric: "http.server.request.duration", status_class: "5xx", api: "", buckets: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }]
+        : sql.includes("date_trunc")
+          ? [{ hour: hour("2026-10-25T09:00:00Z"), fired: 2 }]
+          : [{ hour: hour("2026-10-25T08:00:00Z"), metric: "satis.agent.refused", total: "3" }];
+    for (const window of ["1h", "24h", "7d"] as const) {
+      const base = fakeDb([], [], [], hourlyRows);
+      const db = { query: async (sql: string, params: unknown[] = []) => (queries.push({ sql, params }), base.query(sql)) };
+      const out = await createMetricsService({ db, now }).overview(window);
+      expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
+      if (!out.charts?.available) throw new Error(`charts should be available for ${window}`);
+      expect(out.charts.trend.points).toBe(window === "7d" ? 169 : 25);
+      expect(out.charts.trend.requests.c5xx.at(-1)).toBe(1);
+      expect(out.charts.headline.current.serverErrors).toBe(1);
+    }
+    // The hourly range reaches back over the previous window: 2 x 7 days for 7d.
+    const weekly = queries.filter((q) => q.sql.includes("array_agg")).at(-1)!;
+    expect((weekly.params[0] as Date).toISOString()).toBe("2026-10-11T10:00:00.000Z");
   });
 });

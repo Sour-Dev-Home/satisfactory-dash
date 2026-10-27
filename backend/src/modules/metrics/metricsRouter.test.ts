@@ -23,8 +23,12 @@ const guard: RequestHandler = (req, res, next) => {
   next();
 };
 
+// The charts' hourly reads (array_agg, GROUP BY hour, date_trunc) answer empty here; metricsCharts.test.ts covers them.
+const hourly = (sql: string) => sql.includes("array_agg") || sql.includes("GROUP BY hour, metric") || sql.includes("date_trunc");
 const rows = (histRows: unknown[], counterRows: unknown[], alertRows: unknown[] = []) => ({
-  query: vi.fn(async (sql: string) => ({ rows: sql.includes("alert_events") ? alertRows : sql.includes("unnest") ? histRows : counterRows })),
+  query: vi.fn(async (sql: string) => ({
+    rows: hourly(sql) ? [] : sql.includes("alert_events") ? alertRows : sql.includes("unnest") ? histRows : counterRows,
+  })),
 });
 
 function build(service: MetricsService, options: { isReady?: () => boolean; limiter?: UserRateLimiter } = {}) {

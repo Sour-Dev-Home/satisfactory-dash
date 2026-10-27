@@ -55,7 +55,8 @@ describe("metrics service gaps (fresh-eyes pass)", () => {
   it("a stored row with a non-string label value loses that label, it is not coerced", async () => {
     const db = {
       query: async (sql: string) => ({
-        rows: sql.includes("unnest") ? [{ metric: "m.n", labels: { route: "/a", extra: 5 }, ord: 1, n: 2 }] : [],
+        // The charts' hourly read (array_agg) answers empty; this test is about the window's totals.
+        rows: sql.includes("unnest") && !sql.includes("array_agg") ? [{ metric: "m.n", labels: { route: "/a", extra: 5 }, ord: 1, n: 2 }] : [],
       }),
     };
     const out = await createMetricsService({ db, now: () => Date.parse("2026-10-25T10:30:00Z") }).overview("1h");
@@ -66,7 +67,7 @@ describe("metrics service gaps (fresh-eyes pass)", () => {
   it("ignores bucket ordinals beyond 13", async () => {
     const db = {
       query: async (sql: string) => ({
-        rows: sql.includes("unnest")
+        rows: sql.includes("unnest") && !sql.includes("array_agg")
           ? [
               { metric: "m.o", labels: {}, ord: 13, n: 2 },
               { metric: "m.o", labels: {}, ord: 14, n: 99 },

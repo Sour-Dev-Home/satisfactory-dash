@@ -5,7 +5,8 @@ import type { TestDatabase } from "../../../test-support/testDb.js";
 import { addSeriesDelta } from "../../platform/metrics/seriesHourlyRepository.js";
 import { emptyBucketCounts } from "../../platform/metrics/histogramBuckets.js";
 import { createMetricsService } from "./metricsService.js";
-import { readCounterSeries, readHistogramSeries } from "./metricsRepository.js";
+import { MetricsOverviewSchema } from "@satisfactory-dash/shared";
+import { readCounterSeries, readHistogramSeries, readHourlyCounters, readHourlyHistograms } from "./metricsRepository.js";
 
 const available = dbTestsAvailable();
 const HOUR_MS = 60 * 60 * 1000;
@@ -66,6 +67,47 @@ describe.skipIf(!available)("metrics read path over metrics.series_hourly", () =
     const counters = await readCounterSeries(app, from, new Date(NOW));
     expect(counters).toHaveLength(1);
     expect(counters[0].total).toBe(5);
+  });
+
+  const record = (hourStartMs: number, metric: string, labels: Record<string, string>, at: Record<number, number>) =>
+    addSeriesDelta(app, { hourStartMs, metric, labels, count: Object.values(at).reduce((a, b) => a + b, 0), sum: 1, bucketCounts: buckets(at) });
+
+  it("reads the charts' hourly histograms folded to status_class and api, one ordered array per hour", async () => {
+    await record(hourAgo(0), "http.server.request.duration", { server: "a1", route: "/api/a", status_class: "2xx" }, { 1: 2 });
+    await record(hourAgo(0), "http.server.request.duration", { server: "b2", route: "/api/b", status_class: "2xx" }, { 1: 1, 12: 1 });
+    await record(hourAgo(0), "http.server.request.duration", { route: "/api/a", status_class: "5xx" }, { 3: 1 });
+    await record(hourAgo(1), "http.server.upstream.duration", { server: "a1", api: "frm" }, { 4: 5 });
+    await record(hourAgo(0), "satis.poller.cycle.duration", { server: "a1", group: "fast" }, { 0: 9 });
+    const rows = await readHourlyHistograms(app, new Date(hourAgo(5)), new Date(NOW), ["http.server.request.duration", "http.server.upstream.duration"]);
+    const key = (r: (typeof rows)[number]) => `${r.hourMs}|${r.metric}|${r.statusClass}|${r.api}`;
+    const byKey = new Map(rows.map((r) => [key(r), r.buckets]));
+    expect(rows).toHaveLength(3);
+    expect(byKey.get(`${hourAgo(0)}|http.server.request.duration|2xx|`)).toEqual(buckets({ 1: 3, 12: 1 }));
+    expect(byKey.get(`${hourAgo(0)}|http.server.request.duration|5xx|`)).toEqual(buckets({ 3: 1 }));
+    expect(byKey.get(`${hourAgo(1)}|http.server.upstream.duration||frm`)).toEqual(buckets({ 4: 5 }));
+  });
+
+  it("reads the charts' hourly counters summed across servers and labels, only the asked metrics", async () => {
+    await count(hourAgo(0), { server: "a1", status: "401" }, 2);
+    await count(hourAgo(0), { server: "b2", status: "403" }, 3);
+    await count(hourAgo(3), { server: "a1", status: "401" }, 1);
+    const rows = await readHourlyCounters(app, new Date(hourAgo(5)), new Date(NOW), ["satis.agent.refused"]);
+    expect(rows.sort((a, b) => a.hourMs - b.hourMs)).toEqual([
+      { hourMs: hourAgo(3), metric: "satis.agent.refused", total: 1 },
+      { hourMs: hourAgo(0), metric: "satis.agent.refused", total: 5 },
+    ]);
+    expect(await readHourlyCounters(app, new Date(hourAgo(5)), new Date(NOW), ["satis.signup.refused"])).toEqual([]);
+  });
+
+  it("serves contract-valid charts end to end, with the previous window's numbers", async () => {
+    await record(hourAgo(0), "http.server.request.duration", { route: "/api/a", status_class: "2xx" }, { 2: 4 });
+    await record(hourAgo(30), "http.server.request.duration", { route: "/api/a", status_class: "5xx" }, { 2: 1 });
+    const out = await createMetricsService({ db: app, now: () => NOW }).overview("24h");
+    expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
+    if (!out.charts?.available) throw new Error("expected charts");
+    expect(out.charts.trend.requests.c2xx.at(-1)).toBe(4);
+    expect(out.charts.headline.current).toMatchObject({ requests: 4, serverErrors: 0 });
+    expect(out.charts.headline.previous).toMatchObject({ requests: 1, serverErrors: 1 });
   });
 
   it("builds the overview end to end, folded, with the worst server by public id", async () => {
