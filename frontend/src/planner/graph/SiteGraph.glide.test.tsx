@@ -8,6 +8,9 @@ import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
+import { BUBBLE_D } from "./bubbleRow";
+import { CARD_RX } from "./itemCardText";
+import { FOCUS_CARD_H, FOCUS_CARD_W } from "./layoutSite";
 import { ITEM_FOCUS_KEY } from "./plannerPrefs";
 
 // jsdom loads no stylesheet, so the motion token reads as 0 and focus jumps; here the glide lasts 200 ms (ADR-0060 D4).
@@ -120,6 +123,40 @@ describe("the make-room glide", () => {
     expect(svg.querySelector("[data-focused]")).not.toBeNull();
     expect(cards(svg)).toEqual(expected);
     expect(svg.querySelector("[data-ghost]")).toBeNull();
+  });
+
+  it("morphs the bubble into the card: one rect from a circle to the card, the words fading in at the end; closing runs it back", async () => {
+    const svg = await openGraph();
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    const card = svg.querySelector("[data-item-card]")!;
+    const box = card.querySelector(":scope > rect")!;
+    const words = box.nextElementSibling!.nextElementSibling!;
+    // t = 0: the bubble.
+    expect(box).toHaveAttribute("width", String(BUBBLE_D));
+    expect(box).toHaveAttribute("height", String(BUBBLE_D));
+    expect(box).toHaveAttribute("rx", String(BUBBLE_D / 2));
+    expect(words).toHaveAttribute("opacity", "0");
+    act(() => vi.advanceTimersByTime(100));
+    const w = Number(box.getAttribute("width"));
+    expect(w).toBeGreaterThan(BUBBLE_D);
+    expect(w).toBeLessThan(FOCUS_CARD_W);
+    act(() => vi.advanceTimersByTime(200));
+    // t = 1: the card, its words shown.
+    expect(box).toHaveAttribute("width", String(FOCUS_CARD_W));
+    expect(box).toHaveAttribute("height", String(FOCUS_CARD_H));
+    expect(box).toHaveAttribute("rx", String(CARD_RX));
+    expect(words).not.toHaveAttribute("opacity");
+    // Closing: the card shrinks back to its bubble, then goes.
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    const closing = svg.querySelector("[data-item-card][data-closing]")!;
+    expect(closing).not.toBeNull();
+    act(() => vi.advanceTimersByTime(100));
+    expect(Number(closing.querySelector(":scope > rect")!.getAttribute("width"))).toBeLessThan(FOCUS_CARD_W);
+    act(() => vi.advanceTimersByTime(200));
+    expect(svg.querySelector("[data-item-card]")).toBeNull();
+    expect(svg.querySelectorAll("[style]")).toHaveLength(0);
   });
 
   it("jumps with Motion set to Off: no ghost, no fade, the cards at once where they end", async () => {

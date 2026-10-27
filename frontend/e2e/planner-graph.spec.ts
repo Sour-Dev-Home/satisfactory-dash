@@ -366,9 +366,15 @@ test("with the item-focus flag on, the keyboard focuses a link's item and Escape
   await expect(bubbles.first()).toHaveAttribute("aria-expanded", "true");
   await expect(svg.locator("[data-focused]")).toHaveCount(1);
   await expect(page.getByRole("status")).toContainText("Focused");
+  // The bubble has become its detail card (build PR 5), with its 128 px icon from our own origin (the CSP's img-src).
+  const card = svg.locator("[data-item-card]");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator('image[href$="-128.webp"]')).toHaveCount(1);
+  await expect(page.getByRole("group", { name: / card$/ }).getByRole("button", { name: /^Close / })).toBeAttached();
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Escape");
   await expect(svg.locator("[data-focused]")).toHaveCount(0);
+  await expect(card).toHaveCount(0);
   await expect(bubbles.first()).toBeFocused();
   await expect(page.getByRole("status")).toContainText("Overview");
   // Focus does not zoom (owner answer 2); reaching a bubble may only pan it into view.

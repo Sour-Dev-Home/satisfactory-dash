@@ -48,7 +48,6 @@ import {
   bubbleName,
   bubbleOffsets,
   bubbleStops,
-  bubblesWidth,
   chipName,
   edgeKeyOf,
   stopId,
@@ -58,6 +57,8 @@ import {
   type ItemFocus,
 } from "./bubbleRow";
 import { BubbleButtons, ItemList } from "./ItemFocusLayer";
+import { ItemCard } from "./ItemCard";
+import { bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
 import {
@@ -277,6 +278,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const [activeStop, setActiveStop] = useState<string | null>(null);
   const [keyStop, setKeyStop] = useState<BubbleStop | null>(null);
   const [announced, setAnnounced] = useState("");
+  // The card of a focus just left, while it shrinks back to its bubble.
+  const [closingCard, setClosingCard] = useState<ItemFocus | null>(null);
   const bubbleButtons = useRef(new Map<string, HTMLButtonElement>());
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -536,10 +539,51 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   };
   const leaveFocus = () => {
     if (focus === null) return;
+    // The card runs its morph backwards to the bubble, then goes (at once with no motion).
+    setClosingCard(focus);
     setItemFocus(null);
     setAnnounced("Overview");
     bubbleButtons.current.get(itemStop(focus))?.focus();
   };
+  // "Show the whole path" (owner answer 1): the item filter lights the item's supply path, which focus's dimming would hide.
+  const showPath = (className: string) => {
+    if (dragged.current) return;
+    setItem(className);
+    leaveFocus();
+  };
+  // A focus's detail card (Decision 4): where its line is now, the item, its words, the bubble it grows from, and whether
+  // its supply path can be shown (an item the filter knows; never for an unknown item).
+  const cardOf = (f: ItemFocus) => {
+    const edge = edgeByKey.get(f.edgeKey);
+    const item = edge?.bubbles.all.find((i) => i.key === f.item);
+    if (edge === undefined || item === undefined) return null;
+    const text = itemCardText(item, edge.flow, edge.bubbles.all.length - 1, titleOf(edge.flow.from), titleOf(edge.flow.to));
+    const path = item.className !== null && items.some((i) => i.className === item.className) ? item.className : null;
+    return { edge, item, text, from: bubbleCentre(edge, item.key), path };
+  };
+  const cardMs = animate ? tweenMs() : 0;
+  const card = (f: ItemFocus, closing: boolean) => {
+    const c = cardOf(f);
+    if (c === null) return null;
+    return (
+      <ItemCard
+        key={`${closing ? "closing" : "open"}|${f.edgeKey}|${f.item}`}
+        item={c.item}
+        text={c.text}
+        cx={c.edge.labelX}
+        cy={c.edge.labelY}
+        from={c.from}
+        ms={cardMs}
+        closing={closing}
+        onClosed={() => setClosingCard(null)}
+        onClose={() => {
+          if (!dragged.current) leaveFocus();
+        }}
+        onShowPath={c.path === null ? undefined : () => showPath(c.path!)}
+      />
+    );
+  };
+  const openCard = focus === null ? null : cardOf(focus);
   const focusItem = (edgeKey: string, item: BubbleItem) => {
     if (dragged.current) return;
     if (focus !== null && focus.edgeKey === edgeKey && focus.item === item.key) {
@@ -547,6 +591,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       return;
     }
     const e = edgeByKey.get(edgeKey);
+    // Moving focus straight to another item shrinks the old card away while the new one grows (and drops any still closing).
+    setClosingCard(focus);
     setItemFocus({ edgeKey, item: item.key });
     setAnnounced(`Focused ${item.name ?? "Item unknown"} from ${titleOf(e?.flow.from ?? "")} to ${titleOf(e?.flow.to ?? "")}`);
   };
@@ -578,7 +624,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // A press on the canvas's background (not a bubble, a chip or a card) leaves focus; the end of a drag is not a press.
   const onCanvasClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (focus === null || dragged.current) return;
-    if (event.target instanceof Element && event.target.closest("[data-bubble], [data-bubble-more], [data-card]") !== null) return;
+    if (event.target instanceof Element && event.target.closest("[data-bubble], [data-bubble-more], [data-card], [data-item-card]") !== null) return;
     leaveFocus();
   };
 
@@ -934,6 +980,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   onKeep={keepForm === undefined ? undefined : () => keepCard(n.key)}
                 />
               ))}
+              {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
+              {closingCard !== null && card(closingCard, true)}
+              {focus !== null && card(focus, false)}
               {lasso !== null && (
                 <path d={lassoPath(lasso)} data-lasso="" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" className="pointer-events-none fill-info-soft stroke-info" />
               )}
@@ -1038,6 +1087,20 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             onActivate={activateStop}
             onFocusStop={focusStop}
           />
+          {/* The open card for the keyboard and screen readers: its words, then its two controls (Decision 5). */}
+          {openCard !== null && (
+            <div role="group" aria-label={`${openCard.item.name ?? "Item unknown"} card`} className="sr-only">
+              <p>{openCard.text.full}</p>
+              <button type="button" onClick={leaveFocus}>
+                {`Close ${openCard.item.name ?? "Item unknown"} card`}
+              </button>
+              {openCard.path !== null && (
+                <button type="button" onClick={() => showPath(openCard.path!)}>
+                  {`Show the whole path of ${openCard.item.name ?? "Item unknown"}`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {listEdge !== undefined && listKey !== null && (
           <div className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
@@ -1130,8 +1193,8 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgePr
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   const row = e.bubbles;
   const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
-  const left = e.textX - bubblesWidth(row) / 2;
-  const cy = top + BUBBLE_D / 2;
+  // The same geometry the detail card's morph starts from (`bubbleCentre`).
+  const { left, cy } = bubbleRowOrigin(e);
   const at = bubbleOffsets(row);
   return (
     <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
