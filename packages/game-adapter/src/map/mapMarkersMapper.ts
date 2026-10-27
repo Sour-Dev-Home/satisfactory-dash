@@ -24,10 +24,14 @@ export interface MappedMapMarkers {
   dropped: number;
 }
 
-/** Trim, then cut to the contract's 60 characters counted in UTF-16 code units, as zod's `.max` counts them; a cut that
- *  would end on the first half of a surrogate pair drops that half too, so the name never holds a lone surrogate. */
+/** A surrogate half with no partner, anywhere in the string. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** Make well-formed (a lone surrogate already in FRM's name becomes U+FFFD: Postgres jsonb would refuse the whole layer
+ *  over one), trim, then cut to the contract's 60 characters counted in UTF-16 code units, as zod's `.max` counts them;
+ *  a cut that would end on the first half of a surrogate pair drops that half too. */
 export function markerName(raw: string | undefined): string {
-  const trimmed = (raw ?? "").trim();
+  const trimmed = (raw ?? "").replace(LONE_SURROGATE, "�").trim();
   if (trimmed.length <= MAP_MARKER_NAME_MAX_CHARS) return trimmed;
   const cut = trimmed.slice(0, MAP_MARKER_NAME_MAX_CHARS);
   const last = cut.charCodeAt(cut.length - 1);

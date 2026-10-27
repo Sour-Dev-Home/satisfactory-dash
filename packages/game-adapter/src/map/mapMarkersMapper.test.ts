@@ -56,6 +56,13 @@ describe("markerName", () => {
     expect(markerName(` ${"a".repeat(60)} `)).toBe("a".repeat(60));
   });
 
+  it("repairs a lone surrogate already in FRM's name, so the stored layer is valid JSON text for Postgres", () => {
+    expect(markerName("Rock\uD83D")).toBe("Rock�");
+    expect(markerName("\uDE00Rock")).toBe("�Rock");
+    expect(markerName("a\uD83Db\u{1F600}")).toBe("a�b\u{1F600}");
+    expect(() => JSON.parse(JSON.stringify(markerName("x\uDC00y")))).not.toThrow();
+  });
+
   it("never splits a surrogate pair, and the result always passes the contract's .max", () => {
     const emoji = "\u{1F600}"; // two UTF-16 code units
     // 59 letters then an emoji: the cut at 60 would land between its halves, so the emoji goes whole.
@@ -155,5 +162,34 @@ describe("mapMapMarkers drops", () => {
     expect(dropped).toBe(3);
     expect(data.at(-1)!.id).toBe(`m${String(MAP_MARKERS_MAX_ITEMS - 1).padStart(5, "0")}`);
     expect(MapMarkersLayerDataSchema.safeParse(data).success).toBe(true);
+  });
+
+  it("keeps duplicate FRM ids as separate markers, in an order that does not depend on FRM's", () => {
+    const a = marker({ ID: "dup", Name: "A", location: { x: 100, y: 0 } });
+    const b = marker({ ID: "dup", Name: "B", location: { x: 200, y: 0 } });
+    const fwd = mapMapMarkers([a, b]);
+    expect(fwd.data).toHaveLength(2);
+    expect(mapMapMarkers([b, a])).toEqual(fwd);
+  });
+
+  it("fuzz: any odd input maps to a layer that parses, with a shuffle-stable result", () => {
+    const names: unknown[] = ["", "   ", "\u{1F600}".repeat(40), "a".repeat(5000), "x\uD83D", "\uDE00y", " \t\n ", 5, null, "​"];
+    const ids: unknown[] = [undefined, "", "i".repeat(201), "i".repeat(200), 7, "derived-x", "  "];
+    const colors: unknown[] = [undefined, "FFFFFFFF", "ffffff", "6ea37bff", "GGGGGGGG", "FFFFFFFFF", 12, "#FFFFFFFF"];
+    const locs: unknown[] = [{ x: 0, y: 0 }, { x: 1e300, y: 0 }, { x: "1", y: 0 }, null, undefined, { x: -1e12, y: 5 }, { x: 1.5e8, y: 0 }];
+    const icons: unknown[] = [undefined, -1, 0.5, 1_000_001, 349, "349", null];
+    const raw: unknown[] = [];
+    let n = 0;
+    for (const name of names) {
+      for (const ID of ids) {
+        const i = n++;
+        raw.push(marker({ Name: name, ID, ColorSlot: colors[i % colors.length], location: locs[i % locs.length], IconID: icons[i % icons.length], MapMarkerType: i % 3 ? "RT_Stamp" : 9 }));
+      }
+    }
+    raw.push(null, 3, "x", []);
+    const out = mapMapMarkers(raw);
+    expect(MapMarkersLayerDataSchema.safeParse(out.data).success).toBe(true);
+    expect(out.data.length + out.dropped).toBe(raw.length);
+    expect(mapMapMarkers([...raw].reverse())).toEqual(out);
   });
 });
