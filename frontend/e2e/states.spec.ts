@@ -288,6 +288,22 @@ const CASES: StateCase[] = [
       await page.keyboard.press("Enter");
     },
   },
+  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line, and its side
+  // panel "0 of 160 items/min · backed up".
+  { scenario: "planner-stalled", name: "planner-stalled-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
+  {
+    scenario: "planner-stalled",
+    name: "planner-stalled-panel",
+    path: "/app/planner",
+    // Anchored: the canvas's hidden <title> holds the same words after the group's name, and comes first.
+    shows: /^Iron Plate: 0 of 160 items\/min · backed up$/,
+    clock: PLANNER_NOW,
+    act: async (page) => {
+      await openIronGraph(page);
+      await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
+      await page.keyboard.press("Enter");
+    },
+  },
   // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
   // The overview is the canvas from 640 px and the cards with the flows table below (ADR-0055 PR 8).
   { scenario: "planner-factories", path: "/app/planner", shows: /^(Flows between factories|Zoom in)$/, clock: FACTORIES_NOW },

@@ -63,6 +63,7 @@ import {
   managedServersAllStates,
   productionGraphEmpty,
   productionGraphFactories,
+  productionGraphStalled,
   productionGraphTwoSites,
   plannerDesignationDeleteResponse,
   plannerDesignationIronLine,
@@ -504,6 +505,23 @@ const factoryWithPlannerManifold = {
   },
 };
 
+/** The same manifold with its storage full (#728): every constructor backed up at 0 of 20 Iron Plate. */
+const factoryStalledManifold = {
+  ...factoryWithPlannerManifold,
+  data: {
+    ...factoryWithPlannerManifold.data,
+    buildings: factoryWithPlannerManifold.data.buildings.map((b) => ({
+      ...b,
+      state: "backedUp",
+      isBackedUp: true,
+      clockSpeedPercent: 100,
+      production: b.production.map((r) => ({ ...r, currentPerMinute: 0, maxPerMinute: 20, percent: 0 })),
+    })),
+    backedUpCount: 8,
+    stateCounts: { backedUp: 8 },
+  },
+};
+
 /** The factory's bottleneck finding moved onto a machine the planner fixture has (its constructor manifold, Iron Plate). */
 const bottlenecksOnPlannerSite = {
   ...bottlenecksBeltLevel,
@@ -756,6 +774,9 @@ export const SCENARIOS = {
   "planner-bottlenecks": { bottlenecks: ok(bottlenecksOnPlannerSite) },
   // ADR-0050 task 6, the graph's group panel: the manifold's machines are in the factory read, and one has a finding.
   "planner-group-panel": { factory: ok(factoryWithPlannerManifold), bottlenecks: ok(bottlenecksOnPlannerSite) },
+  // #728 step 2: a stalled group. The manifold is backed up at "0 of 160", its card says so in a muted line, and so does
+  // its side panel; the recycler it feeds is underfed at 0.
+  "planner-stalled": { productionGraph: ok(productionGraphStalled), factory: ok(factoryStalledManifold) },
   // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
   // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
   "basic-data": {
