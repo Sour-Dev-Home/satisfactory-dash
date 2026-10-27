@@ -171,8 +171,12 @@ test.describe("the factory canvas", () => {
     await page.getByLabel("Motion").selectOption("off");
     await expect(svg.locator("animateMotion")).toHaveCount(0);
     expect(await page.evaluate(() => window.localStorage.getItem("planner.motion"))).toBe("off");
+    // The opened factory is in the address (?open=), so a reload comes back to it.
     await page.reload();
-    const again = await openPlate(page);
+    await expect(page).toHaveURL(/[?&]open=/);
+    await page.getByRole("button", { name: "Graph" }).click();
+    const again = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
+    await expect(again).toBeVisible();
     await expect(page.getByLabel("Motion")).toHaveValue("off");
     await expect(again.locator("animateMotion")).toHaveCount(0);
   });

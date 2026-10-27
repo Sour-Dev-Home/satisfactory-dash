@@ -172,7 +172,8 @@ describe("Tables view (the text path)", () => {
     );
     const tablesButton = screen.queryByRole("button", { name: "Tables" });
     if (tablesButton !== null) fireEvent.click(tablesButton);
-    expect(screen.queryByText(UNKNOWN_FLOW_NOTE)).toBeNull();
+    // The page's "About this data" always has it; the connections table only when one is unknown.
+    expect(within(screen.getByRole("region", { name: "Connections" })).queryByText(UNKNOWN_FLOW_NOTE)).toBeNull();
   });
 });
 
@@ -190,7 +191,7 @@ describe("side panel", () => {
 });
 
 describe("canvas legend", () => {
-  it("has one line on what 'Item unknown' and 'unknown' mean", async () => {
+  it("keeps the line on what 'Item unknown' and 'unknown' mean under About this data, not under the samples", async () => {
     server.use(http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)));
     renderWithClient(
       <MemoryRouter>
@@ -202,7 +203,10 @@ describe("canvas legend", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
     fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
     const samples = await screen.findByRole("list", { name: "Line styles" }, { timeout: 3_000 });
-    expect(within(samples.parentElement!).getByText(UNKNOWN_FLOW_NOTE)).toHaveClass("text-muted");
+    expect(within(samples.parentElement!).queryByText(UNKNOWN_FLOW_NOTE)).toBeNull();
+    const about = screen.getByText("About this data").closest("details")!;
+    expect(about).not.toHaveAttribute("open");
+    expect(within(within(about).getByRole("list", { name: "Planner notes", hidden: true })).getByText(UNKNOWN_FLOW_NOTE)).toBeInTheDocument();
   });
 });
 

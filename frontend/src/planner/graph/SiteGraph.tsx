@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
 import { useReducedMotion } from "../../overview/reducedMotion";
-import { bottleneckCountText, carrierWord, siteFindings, UNKNOWN_FLOW_NOTE } from "../plannerText";
+import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
 import { reachFor, siteItems } from "./graphModel";
@@ -127,14 +127,24 @@ const FADES = [
 
 const ICON_PROPS = { viewBox: "0 0 24 24", "aria-hidden": true, className: "size-5", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-/** A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. */
-function ToolButton({ name, icon, onClick, disabled, pressed }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
+/**
+ * A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. `iconOnly` keeps the
+ * icon at every width, with the name as its tooltip (the owner, 2026-10-27: zoom, fit and Select read as the usual icons).
+ */
+function ToolButton({ name, icon, onClick, disabled, pressed, iconOnly }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean; iconOnly?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} className="inline-flex min-h-touch min-w-touch items-center justify-center">
-      <svg {...ICON_PROPS} className="size-5 sm:hidden">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={pressed}
+      title={iconOnly ? name : undefined}
+      className="inline-flex min-h-touch min-w-touch items-center justify-center"
+    >
+      <svg {...ICON_PROPS} className={iconOnly ? "size-5" : "size-5 sm:hidden"}>
         {icon}
       </svg>
-      <span className="sr-only sm:not-sr-only">{name}</span>
+      <span className={iconOnly ? "sr-only" : "sr-only sm:not-sr-only"}>{name}</span>
     </button>
   );
 }
@@ -816,12 +826,19 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         <div role="group" aria-label="Zoom" className="flex gap-2">
           <ToolButton
             name="Zoom in"
+            iconOnly
             onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP, stage))}
             disabled={viewport.k >= MAX_ZOOM}
-            icon={<path d="M12 5v14M5 12h14" />}
+            icon={<path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20M10.5 8v5M8 10.5h5" />}
           />
-          <ToolButton name="Zoom out" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={viewport.k <= MIN_ZOOM} icon={<path d="M5 12h14" />} />
-          <ToolButton name="Fit to view" onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />} />
+          <ToolButton
+            name="Zoom out"
+            iconOnly
+            onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))}
+            disabled={viewport.k <= MIN_ZOOM}
+            icon={<path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20M8 10.5h5" />}
+          />
+          <ToolButton name="Fit to view" iconOnly onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" />} />
         </div>
         {(canFold || canSwitchStorage) && (
           <div role="group" aria-label="Detail" className="flex gap-2">
@@ -846,9 +863,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           <div role="group" aria-label={selection !== undefined ? "Designate" : "Merge"} className="flex gap-2">
             <ToolButton
               name="Select"
+              iconOnly
               pressed={selectMode}
               onClick={() => setSelecting(!selecting)}
-              icon={<path d="M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5zM7 13l-1 5 3-2" />}
+              icon={<path d="M5 3l5.5 16 2.3-6.7L19.5 10zM13 12.5l6 6" />}
             />
           </div>
         )}
@@ -1518,14 +1536,9 @@ const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "pipe", edge: { mixed: false, carrier: "pipe", rate: "measured" } },
 ];
 
-/** The samples, then one line on why an item or a rate can be unknown (#728 step 5). */
+/** The samples. Why an item or a rate can be unknown (#728 step 5) is under the page's "About this data" (PlannerPanel). */
 function Legend({ modes }: { modes: readonly string[] }) {
-  return (
-    <div className="grid gap-1">
-      <LegendSamples modes={modes} />
-      <p className="m-0 text-sm text-muted">{UNKNOWN_FLOW_NOTE}</p>
-    </div>
-  );
+  return <LegendSamples modes={modes} />;
 }
 
 function LegendSamples({ modes }: { modes: readonly string[] }) {
