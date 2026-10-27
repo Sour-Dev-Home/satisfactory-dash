@@ -33,6 +33,7 @@ import {
   type LaidNode,
   type SiteLayout,
 } from "./layoutSite";
+import { useFolds } from "./foldMemory";
 import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
@@ -217,10 +218,12 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * button) picks or unpicks one card instead of opening it. Suggested factories are dashed, with Keep.
  */
 export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, suggestions, factoryPicks, onPopOut }: SiteGraphProps) {
-  // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
-  // choices: whose upstream is hidden, storage shown, motion.
-  const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
-  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
+  // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
+  // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
+  const [folds, setFolds] = useFolds(target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : null);
+  const { flipped, unfolded } = folds;
+  const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next, unfolded });
+  const setUnfolded = (next: ReadonlySet<string>) => setFolds({ flipped, unfolded: next });
   const [collapsed, setCollapsed] = useCollapsedUpstream();
   const [storageDetail, setStorageDetail] = useStorageDetail();
   const [motionPref, setMotionPref] = useMotionPref();

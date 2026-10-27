@@ -220,6 +220,22 @@ describe("drill-down into a bubble", () => {
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(1);
   });
 
+  it("remembers Collapse all for the factory across a visit to All factories and the Tables view (the owner, 2026-10-27)", async () => {
+    await openPlate();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    fireEvent.click(screen.getByRole("button", { name: "All factories" }));
+    await overview();
+    fireEvent.click(await button(/^Open factory: Iron Plate factory./));
+    let svg = await plateGraph();
+    expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
+    // Tables and back to the graph remounts the canvas; the choice holds there too.
+    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    svg = await plateGraph();
+    expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
+  });
+
   it("opens a group inside a frame in the side panel", async () => {
     await openPlate();
     fireEvent.click(await button(/^4× Constructor, Iron Plate./));

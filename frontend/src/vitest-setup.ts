@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
+import { clearFoldMemory } from "./planner/graph/foldMemory";
 import { server } from "./test/server";
 
 // jsdom has no canvas, so uPlot can't draw here. Tests see a stub that records what the
@@ -44,5 +45,9 @@ afterAll(() => server.close());
 beforeEach(() => window.history.replaceState(null, "", "/app"));
 
 // Remembered UI choices (the map's filters) live in localStorage, which jsdom keeps for the whole file:
-// every test starts like a first visit.
-beforeEach(() => window.localStorage.clear());
+// every test starts like a first visit. The planner's fold memory (sessionStorage and a module copy) too.
+beforeEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  clearFoldMemory();
+});
