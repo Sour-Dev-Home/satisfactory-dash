@@ -446,8 +446,9 @@ export const MapTrainSchema = z.object({
   status: boundedString.describe("FRM's own Status field, passed through (e.g. Self-Driving, Manual)"),
 });
 
-/** A station's live transfer rate (S4-B): items per minute, all its platforms summed. Rates are live, so they live here,
- *  never in the hash-stable trainRoutes layer. */
+/** A station's live transfer rate (S4-B): solid items per minute over its freight platforms, summed. Fluid freight
+ *  platforms are NOT counted (their flow is m³, ADR-0006); a fluid rate would be its own optional field later. Rates are
+ *  live, so they live here, never in the hash-stable trainRoutes layer. */
 const StationRateSchema = z.number().min(0).optional();
 
 /** From getTrainStation: a station's position and label, for the map to place a marker (docking
@@ -458,8 +459,10 @@ export const MapTrainStationSchema = z.object({
   x: WholeMetreSchema,
   y: WholeMetreSchema,
   // S4-B (ADR-0058): OPTIONAL, the mod sends them; the Node agent is frozen on FRM (Decision 5). Units are the mod's,
-  // from the game headers: items per minute. Absent = not read, which is not 0.
-  transferPerMinute: StationRateSchema.describe("Items moved per minute at the station, loading plus unloading, all platforms summed"),
+  // from the game headers: solid items per minute; fluid platforms excluded. Absent = not read, which is not 0.
+  transferPerMinute: StationRateSchema.describe(
+    "Solid items moved per minute at the station, loading plus unloading, over its item freight platforms (fluid platforms excluded)",
+  ),
   inflowPerMinute: StationRateSchema.describe("Items per minute unloaded from trains into the station; absent when the game does not expose it"),
   outflowPerMinute: StationRateSchema.describe("Items per minute loaded from the station onto trains; absent when the game does not expose it"),
 });
