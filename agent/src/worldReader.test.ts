@@ -528,6 +528,19 @@ describe("the powerLines layer", () => {
     await h.stop();
   });
 
+  it("a failing getCables read warns once and leaves every other layer's loop running", async () => {
+    const h = setup();
+    h.ports.getPowerLines.mockRejectedValue(new Error("boom"));
+    await h.start();
+    await vi.advanceTimersByTimeAsync(1_400_000);
+    expect(h.sentFor("powerLines")).toHaveLength(0);
+    expect(h.warnings("world_read_failed").filter((l) => l.fields.layer === "powerLines")).toHaveLength(1);
+    expect(h.sentFor("rails")).toHaveLength(1);
+    expect(h.sentFor("mapMarkers")).toHaveLength(1);
+    expect(h.ports.getPowerLines.mock.calls.length).toBeGreaterThan(1);
+    await h.stop();
+  });
+
   it("logs a dropped count", async () => {
     const h = setup();
     h.world.powerLinesDropped = 3;
