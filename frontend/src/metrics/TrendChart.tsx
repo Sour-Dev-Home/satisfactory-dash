@@ -17,6 +17,7 @@ import { trendCountText, trendMsText, type TrendChartSpec } from "./metricsTrend
  */
 
 const HEIGHT = 180;
+const HALF_HOUR_S = 1800;
 const MS_SPLITS = [1, 10, 100, 1000, METRICS_TREND_OVER_MS];
 const COUNT_INCRS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000];
 
@@ -70,7 +71,8 @@ export function TrendChart({ spec, times }: { spec: TrendChartSpec; times: reado
         width: el.clientWidth || 600,
         height: HEIGHT,
         scales: {
-          x: { time: true },
+          // Bars get half an hour of room at each end, so the first and last hours aren't cut in half.
+          x: current.current.bars ? { time: true, range: (_u, min, max) => [(min ?? 0) - HALF_HOUR_S, (max ?? 0) + HALF_HOUR_S] } : { time: true },
           y: ms
             ? { distr: 3, log: 10, range: () => [1, METRICS_TREND_OVER_MS] }
             : { range: (_u, _min, max) => [0, Math.max(1, max ?? 0)] },
