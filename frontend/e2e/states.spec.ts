@@ -430,14 +430,6 @@ const CASES: StateCase[] = [
   },
   {
     scenario: "planner-designations",
-    name: "planner-suggestions",
-    path: "/app/planner",
-    shows: "Suggestion",
-    clock: FACTORIES_NOW,
-    act: (page) => page.getByRole("button", { name: "Reason factories for me" }).click(),
-  },
-  {
-    scenario: "planner-designations",
     name: "planner-designate-form",
     path: "/app/planner",
     shows: "Designate",

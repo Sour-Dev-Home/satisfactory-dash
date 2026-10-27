@@ -282,7 +282,7 @@ describe("splitting a designated factory", () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]!.body).toEqual({ expect: [{ id: DESIGNATION, revision: 2 }], put: [], intent: "dissolve" });
     expect(await screen.findByRole("button", { name: "Undo" })).toBeInTheDocument();
-    expect(screen.getByText("Dissolved Rod works. Its machines are suggestions again.", { selector: "#planner-undo-message" })).toBeInTheDocument();
+    expect(screen.getByText("Dissolved Rod works. Its machines are grouped automatically again.", { selector: "#planner-undo-message" })).toBeInTheDocument();
   });
 
   it("keeps Remove and Designate selected on an older backend without revisions", async () => {
