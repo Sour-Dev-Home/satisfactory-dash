@@ -6,6 +6,8 @@ const size = (el: HTMLElement, props: Record<string, number>) => {
   for (const [key, value] of Object.entries(props)) Object.defineProperty(el, key, { configurable: true, writable: true, value });
 };
 
+const fade = (region: HTMLElement) => region.parentElement!.querySelector("[data-scroll-fade]");
+
 function mount() {
   render(
     <>
@@ -29,7 +31,7 @@ describe("ScrollRegion", () => {
     const region = mount();
     expect(region).toHaveAttribute("tabindex", "0");
     expect(region).toHaveClass("max-h-80", "overflow-auto");
-    expect(region).not.toHaveClass("scroll-fade-bottom");
+    expect(fade(region)).toBeNull();
     expect(screen.queryByText(SCROLL_MORE)).toBeNull();
   });
 
@@ -37,13 +39,15 @@ describe("ScrollRegion", () => {
     const region = mount();
     size(region, { clientHeight: 320, scrollHeight: 900, scrollTop: 0 });
     fireEvent.scroll(region);
-    expect(region).toHaveClass("scroll-fade-bottom");
+    // The fade is an overlay beside the region, never a mask on it (a mask would clip its focus ring).
+    expect(fade(region)).toHaveAttribute("aria-hidden", "true");
+    expect(region.getAttribute("class")).not.toMatch(/mask|fade/);
     const cue = screen.getByText(SCROLL_MORE);
     expect(cue).toBeVisible();
     expect(cue).not.toHaveClass("invisible");
     region.scrollTop = 580;
     fireEvent.scroll(region);
-    expect(region).not.toHaveClass("scroll-fade-bottom");
+    expect(fade(region)).toBeNull();
     // Its line keeps its place (no jump at the end of the scroll), just hidden.
     expect(screen.getByText(SCROLL_MORE)).toHaveClass("invisible");
   });

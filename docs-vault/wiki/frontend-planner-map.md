@@ -140,8 +140,9 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   returns its cleanup, and supplies a legend and a text `describe`.
 - Tooltip content is built from text nodes, never an HTML string (names come from the game server).
 - Every layer's data is also shown as text (the buildings-in-view table). Each "in view" table sits in a
-  `ui/ScrollRegion` (focusable, labelled, `max-h-80`): while rows are cut below it fades its bottom edge
-  (`scroll-fade-bottom`, `--spacing-scroll-fade`) and shows a muted "Scroll for more" line, measured by
+  `ui/ScrollRegion` (focusable, labelled, `max-h-80`): while rows are cut below it fades its bottom edge (an
+  `aria-hidden` overlay into `--color-surface`, `--spacing-scroll-fade` tall; not a mask, which would clip the focus
+  ring) and shows a muted "Scroll for more" line, measured by
   `lib/useScrollCue` (ResizeObserver plus scroll); nothing when the rows fit.
 - The caption under the map lists the world layers from `LAYERS` (`caption.ts`: each layer's lower-case label, or its
   `caption` noun, e.g. "players' markers"), so a new layer joins it with no hand edit; the buildings aren't listed.
