@@ -1,4 +1,4 @@
-import { mapMarkersWorldResponse, railsWorldResponse, resourceNodesWorldResponse } from "@satisfactory-dash/shared/fixtures";
+import { mapMarkersWorldResponse, powerLinesWorldResponse, railsWorldResponse, resourceNodesWorldResponse } from "@satisfactory-dash/shared/fixtures";
 import { render, screen, within } from "@testing-library/react";
 import * as L from "leaflet";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { railsLayer, RAIL_WEIGHT_PX } from "./railsLayer";
 import type { MapMarker, RailSegment } from "@satisfactory-dash/shared";
 import { isLightFill, MARKER_EDGE_PX, markerKeys, markersLayer, PIN_HEAD_OFFSET_PX, PIN_HEAD_RADIUS_PX, STAMP_RADIUS_PX } from "./markersLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
+import { POWER_LINE_WEIGHT_PX, powerLinesLayer } from "./powerLinesLayer";
 import { nodeRadiusPx } from "./worldGeometry";
 
 // Leaflet runs for real here; only the 2D context is a no-op (jsdom has none). The tests read the
@@ -31,6 +32,7 @@ beforeEach(() => {
     ["--color-node", "NODE"],
     ["--color-marker-edge", "EDGE"],
     ["--color-canvas", "DARK"],
+    ["--color-map-power-line", "WIRE"],
   ]);
   ctx = {
     L,
@@ -325,5 +327,63 @@ describe("markersLayer (#330)", () => {
   it("keeps keys unique when an id with colons imitates a suffixed key", () => {
     const list = [marker({ id: "a", x: 1, y: 2 }), marker({ id: "a", x: 1, y: 2 }), marker({ id: "a:1", x: 2, y: 1 })];
     expect(new Set(markerKeys(list)).size).toBe(3);
+  });
+});
+
+describe("powerLinesLayer (#330)", () => {
+  it("draws every line as one Leaflet path, projected, thin, in the power-line token, and removes it on cleanup", () => {
+    const cleanup = powerLinesLayer.draw(ctx, powerLinesWorldResponse.data);
+    const drawn = paths();
+    expect(drawn).toHaveLength(1);
+    const line = drawn[0] as L.Polyline;
+    expect(line).toBeInstanceOf(L.Polyline);
+    // One sub-path per power line, each its two ends.
+    const parts = line.getLatLngs() as L.LatLng[][];
+    expect(parts).toHaveLength(powerLinesWorldResponse.data.length);
+    const [[x0, y0], [x1, y1]] = powerLinesWorldResponse.data[1].points;
+    expect(parts[1]).toHaveLength(2);
+    expect(parts[1][0]).toMatchObject({ lat: project(GRID_BASE_MAP, x0, y0)[0], lng: project(GRID_BASE_MAP, x0, y0)[1] });
+    expect(parts[1][1]).toMatchObject({ lat: project(GRID_BASE_MAP, x1, y1)[0], lng: project(GRID_BASE_MAP, x1, y1)[1] });
+    expect(line.options.color).toBe("WIRE");
+    expect(line.options.weight).toBe(POWER_LINE_WEIGHT_PX);
+    expect(POWER_LINE_WEIGHT_PX).toBeLessThan(RAIL_WEIGHT_PX);
+    // Not interactive: a wire never takes the hover from the building or marker under the pointer.
+    expect(line.options.interactive).toBe(false);
+    cleanup();
+    expect(paths()).toHaveLength(0);
+  });
+
+  it("stays one path for thousands of lines", () => {
+    const many = Array.from({ length: 5_000 }, (_, i) => ({ id: `Build_PowerLine_C_${i}`, points: [[i, 0], [i, 10]] as [[number, number], [number, number]] }));
+    powerLinesLayer.draw(ctx, many);
+    expect(paths()).toHaveLength(1);
+    expect((paths()[0] as L.Polyline).getLatLngs()).toHaveLength(5_000);
+  });
+
+  it("draws nothing for an empty layer", () => {
+    powerLinesLayer.draw(ctx, [])();
+    expect(paths()).toHaveLength(0);
+  });
+
+  it("describes the layer in text, with the wire's total length", () => {
+    expect(powerLinesLayer.describe([])).toBe("No power lines built yet.");
+    expect(powerLinesLayer.describe([{ id: "a", points: [[0, 0], [3, 4]] }])).toBe("1 power line on the map, 5 m of wire in all.");
+    expect(
+      powerLinesLayer.describe([
+        { id: "a", points: [[0, 0], [3, 4]] },
+        { id: "a", points: [[0, 0], [0, 1_000]] },
+      ]),
+    ).toBe("2 power lines on the map, 1,005 m of wire in all.");
+  });
+
+  it("says 'shown', not 'in all', when the layer was cut", () => {
+    expect(powerLinesLayer.describe([{ id: "a", points: [[0, 0], [3, 4]] }], { truncated: true })).toBe(
+      "1 power line on the map, 5 m of wire shown.",
+    );
+  });
+
+  it("has a legend row that names the line", () => {
+    render(<>{powerLinesLayer.legend()}</>);
+    expect(screen.getByText("Power line")).toBeInTheDocument();
   });
 });

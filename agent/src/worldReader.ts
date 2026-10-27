@@ -26,6 +26,8 @@ export const MAP_MARKERS_INTERVAL_MS = 600_000;
 export const POWER_LINES_INTERVAL_MS = 600_000;
 /** Resource nodes: every 30 min. `getResourceNode` runs on the game thread, so it is read least often. */
 export const RESOURCE_NODES_INTERVAL_MS = 1_800_000;
+/** #728 step 6: a changed factory building set reads conveyors at most this often (3 FRM reads, about 0.3 s). */
+export const CONVEYORS_NUDGE_MIN_GAP_MS = 60_000;
 /** ±10%, as the local poller: agents that started together do not read their games in the same tick. */
 export const WORLD_JITTER_FRACTION = 0.1;
 
@@ -96,8 +98,28 @@ interface LayerState {
  */
 export class WorldReader {
   private readonly stop = new AbortController();
+  /** #728 step 6: the hash of the last factory building id set seen, and the conveyors loop's nudge state. */
+  private buildingSetHash: string | undefined;
+  private conveyorsNudged = false;
+  private conveyorsWake: AbortController | undefined;
+  private conveyorsLastReadAt = 0;
 
   constructor(private readonly options: WorldReaderOptions) {}
+
+  /**
+   * #728 cause 11: the factory's building ids from a snapshot the agent read anyway (every 30 s). Conveyor ends name
+   * buildings by id and a rebuilt belt or machine gets a new id, so when the set differs from the last one the conveyors
+   * layer is read sooner: at once, or CONVEYORS_NUDGE_MIN_GAP_MS after its last read started. The first set is a baseline;
+   * an unchanged set changes nothing.
+   */
+  observeFactoryBuildings(ids: Iterable<string>): void {
+    const hash = createHash("sha256").update([...ids].sort().join("\n")).digest("hex");
+    const before = this.buildingSetHash;
+    this.buildingSetHash = hash;
+    if (before === undefined || before === hash) return;
+    this.conveyorsNudged = true;
+    this.conveyorsWake?.abort();
+  }
 
   async run(signal: AbortSignal): Promise<void> {
     const { ports } = this.options;
@@ -108,7 +130,7 @@ export class WorldReader {
       await Promise.all([
         this.loop("rails", RAILS_INTERVAL_MS, () => ports.getRails()),
         this.loop("resourceNodes", RESOURCE_NODES_INTERVAL_MS, () => ports.getResourceNodes()),
-        this.loop("conveyors", CONVEYORS_INTERVAL_MS, () => ports.getConveyors()),
+        this.loop("conveyors", CONVEYORS_INTERVAL_MS, () => ports.getConveyors(), true),
         this.loop("trainRoutes", TRAIN_ROUTES_INTERVAL_MS, () => ports.getTrainRoutes()),
         this.loop("droneRoutes", DRONE_ROUTES_INTERVAL_MS, () => ports.getDroneRoutes()),
         this.loop("mapMarkers", MAP_MARKERS_INTERVAL_MS, () => ports.getMapMarkers()),
@@ -119,15 +141,43 @@ export class WorldReader {
     }
   }
 
-  private async loop(layer: MapWorldLayer, intervalMs: number, read: () => Promise<WorldRead>): Promise<void> {
+  private async loop(layer: MapWorldLayer, intervalMs: number, read: () => Promise<WorldRead>, nudgeable = false): Promise<void> {
     const sleep = this.options.sleep ?? abortableSleep;
     const state: LayerState = { sentHash: undefined, readFailing: false, overCap: false, skipped: undefined, skipSent: undefined, refused: false };
     const { signal } = this.stop;
     while (!signal.aborted) {
+      if (nudgeable) {
+        // A nudge from here on may postdate this read, so it is kept; one from before is answered by it.
+        this.conveyorsNudged = false;
+        this.conveyorsLastReadAt = (this.options.now ?? Date.now)();
+      }
       await this.cycle(layer, state, read);
       if (signal.aborted) return;
-      await sleep(jitteredIntervalMs(intervalMs, this.options.random), signal);
+      const delayMs = jitteredIntervalMs(intervalMs, this.options.random);
+      // A failing read keeps its regular schedule: nudges never turn it into a retry every minute (as the local poller).
+      if (nudgeable && !state.readFailing) await this.sleepConveyors(delayMs, sleep);
+      else await sleep(delayMs, signal);
     }
+  }
+
+  /** The conveyors loop's sleep: `delayMs`, cut short by a nudge, which then waits out the minute since the last read began. */
+  private async sleepConveyors(delayMs: number, sleep: Sleep): Promise<void> {
+    const { signal } = this.stop;
+    if (!this.conveyorsNudged) {
+      const wake = new AbortController();
+      const onStop = () => wake.abort();
+      signal.addEventListener("abort", onStop, { once: true });
+      this.conveyorsWake = wake;
+      try {
+        await sleep(delayMs, wake.signal);
+      } finally {
+        this.conveyorsWake = undefined;
+        signal.removeEventListener("abort", onStop);
+      }
+      if (signal.aborted || !this.conveyorsNudged) return;
+    }
+    const gapMs = this.conveyorsLastReadAt + CONVEYORS_NUDGE_MIN_GAP_MS - (this.options.now ?? Date.now)();
+    if (gapMs > 0) await sleep(gapMs, signal);
   }
 
   private async cycle(layer: MapWorldLayer, state: LayerState, read: () => Promise<WorldRead>): Promise<void> {

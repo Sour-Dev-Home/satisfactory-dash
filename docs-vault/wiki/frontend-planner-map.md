@@ -106,6 +106,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   `--color-marker-edge`, so a dark one shows on the terrain. An empty name reads "Unnamed marker"/"Unnamed stamp";
   rows are keyed `${id}:${x}:${y}` (FRM ids can repeat), with a count added only on a full repeat. The game's icon
   (`icon`, FRM's IconID) isn't drawn: its mapping to an image is undocumented (follow-up).
+- The power lines (ADR-0038 §1, #330, `powerLinesLayer`, `queries.mapPowerLines`) are a world layer off by default (a
+  factory's wiring is dense where the buildings and markers sit, and the read is asked for only once on). Drawn over the
+  rails and nodes and under the buildings as ONE non-interactive Leaflet multi-polyline (a sub-path per line, so 20,000
+  lines are still one canvas path), a 1.5 px `--color-map-power-line` copper hairline. Text: "N power lines on the map,
+  M m of wire in all." plus a "Power lines in view" table keyed `${id}:${index}` (FRM ids can repeat).
 - A layer is a `MapLayer` (`layers.ts`): it gets Leaflet through its `MapContext` (never imports it at runtime),
   draws on the shared canvas renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here),
   returns its cleanup, and supplies a legend and a text `describe`.

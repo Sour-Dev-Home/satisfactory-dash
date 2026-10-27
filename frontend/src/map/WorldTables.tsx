@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
-import type { MapMarker, MapTrain, MapTrainStation, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { MapMarker, MapTrain, MapTrainStation, PowerLine, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
 import type { ViewM } from "./MapCanvas";
 import { markerKeys, markerKindLabel, markerName } from "./markersLayer";
 import {
   formatMetres,
   formatPoint,
+  lineInView,
   nodeInView,
   nodeKindLabel,
   pointInView,
@@ -98,6 +99,45 @@ export function RailsTable({ segments, view }: { segments: readonly RailSegment[
           ))}
         </tbody>
       </table>
+    </ViewTable>
+  );
+}
+
+/**
+ * The power lines in view (ADR-0038 §1, #330), the rails' table for wires. FRM ids can repeat, so the index backs the
+ * key up. Hundreds of rows at most once zoomed out: the region scrolls, and panning in narrows it.
+ */
+export const POWER_LINE_ROWS_MAX = 500;
+
+export function PowerLinesTable({ lines, view }: { lines: readonly PowerLine[]; view: ViewM | null }) {
+  const listed = lines.map((line, i) => ({ line, key: `${line.id}:${i}` })).filter(({ line }) => lineInView(view, line));
+  return (
+    <ViewTable id="map-power-lines-heading" title="Power lines in view" count={listed.length} empty={lines.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-power-lines-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Line</th>
+            <th scope="col">Length</th>
+            <th scope="col">From (m)</th>
+            <th scope="col">To (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.slice(0, POWER_LINE_ROWS_MAX).map(({ line, key }) => (
+            <tr key={key}>
+              <td data-label="Line">{line.id}</td>
+              <td data-label="Length">{formatMetres(polylineLengthM(line.points))}</td>
+              <td data-label="From (m)">{formatPoint(line.points[0])}</td>
+              <td data-label="To (m)">{formatPoint(line.points[1])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {listed.length > POWER_LINE_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {POWER_LINE_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
     </ViewTable>
   );
 }

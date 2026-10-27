@@ -184,6 +184,12 @@ const CASES: StateCase[] = [
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
   // The players' map markers (#330) are empty and failing in the two cases above; here, cut to the layer's cap.
   { scenario: "map-markers-truncated", path: "/app/map", shows: /Showing part of the markers/ },
+  // The power lines (#330) are off by default, so each of their states turns them on: drawn, none built yet, cut to the
+  // layer's cap, and the read failing.
+  { scenario: "default", name: "map-power-lines", path: "/app/map", shows: "2 power lines on the map, 243 m of wire in all.", act: showPowerLines },
+  { scenario: "map-power-lines-empty", path: "/app/map", shows: "No power lines built yet.", act: showPowerLines },
+  { scenario: "map-power-lines-truncated", path: "/app/map", shows: /Showing part of the power lines/, act: showPowerLines },
+  { scenario: "map-power-lines-error", path: "/app/map", shows: /Power lines couldn't load/, act: showPowerLines },
   // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
   { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
   { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },
@@ -292,6 +298,22 @@ const CASES: StateCase[] = [
     act: async (page) => {
       await openIronGraph(page);
       // The group's button is visually hidden (the keyboard's way in): reach it as a keyboard user does.
+      await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
+      await page.keyboard.press("Enter");
+    },
+  },
+  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line, and its side
+  // panel "0 of 160 items/min · backed up".
+  { scenario: "planner-stalled", name: "planner-stalled-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
+  {
+    scenario: "planner-stalled",
+    name: "planner-stalled-panel",
+    path: "/app/planner",
+    // Anchored: the canvas's hidden <title> holds the same words after the group's name, and comes first.
+    shows: /^Iron Plate: 0 of 160 items\/min · backed up$/,
+    clock: PLANNER_NOW,
+    act: async (page) => {
+      await openIronGraph(page);
       await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
       await page.keyboard.press("Enter");
     },
@@ -709,6 +731,10 @@ async function filterTheMap(page: Page) {
   await page.getByRole("checkbox", { name: /^Coal/ }).uncheck();
   await page.getByRole("radio", { name: "In use only" }).check();
   await page.getByRole("checkbox", { name: /^Paused/ }).uncheck();
+}
+
+async function showPowerLines(page: Page) {
+  await page.getByRole("checkbox", { name: "Power lines" }).check();
 }
 
 async function openAddForm(page: Page) {

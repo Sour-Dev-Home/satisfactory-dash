@@ -30,12 +30,14 @@ import { ConnectionsTable, GroupsTable, type FactoryColumns, type GroupSelection
 import {
   factoryTitle,
   groupLabel,
+  hasUnknown,
   outputLine,
   plannerNotes,
   siteFindings,
   siteNodes,
   stateCountsText,
   totalMachines,
+  UNKNOWN_FLOW_NOTE,
 } from "./plannerText";
 
 type Graph = ProductionGraphResponse["data"];
@@ -62,7 +64,7 @@ function SiteCard({
         <ul aria-label={`Top outputs of ${site.name}`} className="m-0 grid list-none gap-0.5 p-0 text-sm">
           {site.topOutputs.map((rate) => (
             <li key={rate.className} className="break-words">
-              {outputLine(rate)}
+              {outputLine(rate, site.stateCounts)}
             </li>
           ))}
         </ul>
@@ -443,6 +445,7 @@ function Detail({
           A rate with no word is measured. &quot;About&quot; is estimated from how machines share a belt. &quot;Unknown&quot; means the
           data cannot say.
         </p>
+        {rows.some(hasUnknown) && <p className="m-0 text-sm text-muted">{UNKNOWN_FLOW_NOTE}</p>}
       </section>
     </div>
   );

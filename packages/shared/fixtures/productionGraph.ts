@@ -1,4 +1,4 @@
-import type { ProductionGraphResponse } from "../src/index";
+import type { PlannerNode, PlannerSite, ProductionGraphResponse } from "../src/index";
 
 /**
  * ADR-0050: production-graph responses. SYNTHETIC: no capture records a planner graph (the service is PR 3). Two sites:
@@ -168,6 +168,36 @@ export const productionGraphTwoSites = {
     beltData: "stale",
     connectionsRefreshMinutes: 10,
     notes: [CONNECTIONS_REFRESH],
+  },
+} satisfies ProductionGraphResponse;
+
+const PLATE_MANIFOLD = "Build_ConstructorMk1_C|Iron Plate|1250|-400";
+const PLATE_RECYCLE = "Build_ConstructorMk1_C|Iron Plate Recycle|1260|-420";
+
+/**
+ * #728: the iron line with its storage full. The 8x Constructor manifold is backed up and reads 0 of 160 Iron Plate,
+ * the recycler it feeds is underfed at 0 of 10 Iron Ingot, and the belts between them carry nothing.
+ */
+export const productionGraphStalled = {
+  ...productionGraphTwoSites,
+  data: {
+    ...productionGraphTwoSites.data,
+    // Widened to the contract's types: the literal's inferred element union has `underfed?: undefined`.
+    nodes: (productionGraphTwoSites.data.nodes as readonly PlannerNode[]).map((n): PlannerNode =>
+      n.key === PLATE_MANIFOLD
+        ? { ...n, stateCounts: { backedUp: 8 }, products: [rate("Desc_IronPlate_C", "Iron Plate", 0, 160)], ingredients: [rate("Desc_IronIngot_C", "Iron Ingot", 0, 240)] }
+        : n.key === PLATE_RECYCLE
+          ? { ...n, stateCounts: { underfed: 1 }, products: [rate("Desc_IronIngot_C", "Iron Ingot", 0, 10)], ingredients: [rate("Desc_IronPlate_C", "Iron Plate", 0, 6)] }
+          : n,
+    ),
+    edges: productionGraphTwoSites.data.edges.map((e) =>
+      e.to === PLATE_MANIFOLD || e.from === PLATE_MANIFOLD ? { ...e, ratePerMinute: e.rate === "unknown" ? null : 0 } : e,
+    ),
+    sites: (productionGraphTwoSites.data.sites as readonly PlannerSite[]).map((s): PlannerSite =>
+      s.nodeKeys.includes(PLATE_MANIFOLD)
+        ? { ...s, stateCounts: { producing: 5, backedUp: 8, underfed: 1 }, topOutputs: [rate("Desc_IronPlate_C", "Iron Plate", 0, 160)] }
+        : s,
+    ),
   },
 } satisfies ProductionGraphResponse;
 

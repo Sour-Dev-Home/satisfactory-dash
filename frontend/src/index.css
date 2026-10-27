@@ -55,6 +55,10 @@
   /* The players' map markers and stamps (ADR-0038 §1, #330) are filled with the colour the player picked (data, not a
      token); this light rim keeps a dark one visible on the dark terrain and the canvas. */
   --color-marker-edge: #fbf8f2;
+  /* The power lines (ADR-0038 §1, #330): a thin copper wire, the one warm line on the map, so it stays apart from the
+     steel rails, the violet nodes, the teal trains and the pink stations (no belts are drawn). 5.2:1 on the peaks, 6:1
+     on the land and 6.9:1 on the canvas; it sits under the buildings, whose state colours are filled chips, not lines. */
+  --color-map-power-line: #d9915f;
   /* The terrain base map (ADR-0023 amendment, #571): the sea is the canvas colour; the land a step above it, and its
      three height bands one quiet step apart, all under the grid lines (--color-map-grid) so the grid still reads over
      land. The coast a thin line, the shallows a dark blue. Backdrop only: every layer above clears them. */

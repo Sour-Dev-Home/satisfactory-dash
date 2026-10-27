@@ -176,6 +176,30 @@ test("the map markers read as text and toggle", async ({ page, mockApi }, testIn
   await expectNoAxeViolations(page, testInfo);
 });
 
+// ADR-0038 §1 (#330): the power lines are off by default and asked for only once toggled on. On, they read as a count
+// and a table (the canvas pixels depend on the first view, which fits the buildings; the unit tests cover the path).
+test("the power lines are off by default, then read as text and toggle", async ({ page, mockApi }, testInfo) => {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/map/world/powerLines")) asked.push(request.url());
+  });
+  await mockApi("default");
+  await page.goto("/app/map");
+  await expect(page.getByText("1 marker and 3 stamps on the map.")).toBeVisible();
+  const toggle = page.getByRole("checkbox", { name: "Power lines" });
+  await expect(toggle).not.toBeChecked();
+  expect(asked, "power lines asked for while off").toEqual([]);
+
+  await toggle.check();
+  await expect(page.getByText("2 power lines on the map, 243 m of wire in all.")).toBeVisible();
+  await expect(page.getByRole("table", { name: /Power lines in view/ }).or(page.getByRole("heading", { name: "Power lines in view (0)" }))).toBeVisible();
+  await expectNoAxeViolations(page, testInfo);
+
+  await toggle.uncheck();
+  await expect(page.getByText(/power lines on the map/)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Power lines in view/ })).toHaveCount(0);
+});
+
 test.describe("the map's first view", () => {
   // Reduced motion also turns off Leaflet's zoom and fade animations, so the screenshot is stable.
   test.use({ reducedMotion: "reduce" });

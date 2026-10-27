@@ -4,6 +4,7 @@ import {
   factoryMixed,
   factoryOldBackend,
   mapMarkersWorldResponse,
+  powerLinesWorldResponse,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -14,6 +15,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "../test/mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "../test/mapMarkersResponses";
+import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "../test/powerLinesResponses";
 import { server } from "../test/server";
 import { renderWithClient } from "../test/render";
 import type { DrawnLayer, ViewM } from "./MapCanvas";
@@ -36,6 +38,7 @@ const railsRoute = endpoints.map.worldLayer.route.replace(":layer", "rails");
 const liveRoute = endpoints.map.live.route;
 const nodesRoute = endpoints.map.worldLayer.route.replace(":layer", "resourceNodes");
 const markersRoute = endpoints.map.worldLayer.route.replace(":layer", "mapMarkers");
+const powerLinesRoute = endpoints.map.worldLayer.route.replace(":layer", "powerLines");
 const ids = () => canvas.layers.map((l) => l.id);
 const mount = (snapshot: FactoryResponse = factoryMixed) => renderWithClient(<MapPanel snapshot={snapshot} serverId="default" />);
 
@@ -355,6 +358,133 @@ describe("MapPanel map markers (#330)", () => {
     );
     mount();
     await screen.findByRole("table", { name: /Markers in view \(3\)/ });
+    expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    spy.mockRestore();
+  });
+});
+
+describe("MapPanel power lines (#330)", () => {
+  const turnOn = () => fireEvent.click(screen.getByRole("checkbox", { name: "Power lines" }));
+
+  it("starts off: unchecked, not drawn, and never asked for", async () => {
+    const asked = vi.fn();
+    server.use(
+      http.get(powerLinesRoute, () => {
+        asked();
+        return HttpResponse.json(powerLinesWorldResponse);
+      }),
+    );
+    mount();
+    await waitFor(() => expect(ids()).toContain("trains"));
+    expect(screen.getByRole("checkbox", { name: "Power lines" })).not.toBeChecked();
+    expect(ids()).not.toContain("powerLines");
+    expect(screen.queryByText(/power lines? on the map/)).not.toBeInTheDocument();
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("once on, draws above the resource nodes and under the buildings, markers and trains", async () => {
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "powerLines", "buildings", "mapMarkers", "trains"]));
+  });
+
+  it("says how many lines and how much wire, captions its legend, and lists the lines in view", async () => {
+    canvas.view = null;
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText("2 power lines on the map, 243 m of wire in all.")).toBeInTheDocument();
+    expect(screen.getAllByText("Power lines", { selector: "p" })).toHaveLength(1);
+    expect(screen.getByText("Power line")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: /Power lines in view \(2\)/ });
+    const [, long] = powerLinesWorldResponse.data;
+    const row = within(table).getByText(long.id).closest("tr")!;
+    expect(within(row).getAllByRole("cell").map((c) => [c.getAttribute("data-label"), c.textContent])).toEqual([
+      ["Line", long.id],
+      ["Length", "240 m"],
+      ["From (m)", "x -520, y -1,463"],
+      ["To (m)", "x -423, y -1,683"],
+    ]);
+  });
+
+  it("follows the view in its table", async () => {
+    const [short] = powerLinesWorldResponse.data;
+    const [x, y] = short.points[0];
+    canvas.view = { minX: x - 5, maxX: x + 5, minY: y - 5, maxY: y + 5 };
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    const table = await screen.findByRole("table", { name: /Power lines in view \(1\)/ });
+    expect(within(table).getByText(short.id)).toBeInTheDocument();
+    canvas.view = null;
+  });
+
+  it("drops the layer, its legend, text and table when toggled off again, and asks for it no more", async () => {
+    const asked = vi.fn();
+    server.use(
+      http.get(powerLinesRoute, () => {
+        asked();
+        return HttpResponse.json(powerLinesWorldResponse);
+      }),
+    );
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    await screen.findByRole("table", { name: /Power lines in view/ });
+    turnOn();
+    expect(ids()).not.toContain("powerLines");
+    expect(screen.queryByRole("table", { name: /Power lines in view/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/power lines on the map/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Power line")).not.toBeInTheDocument();
+    expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when no lines are built yet, with no legend row", async () => {
+    server.use(http.get(powerLinesRoute, () => HttpResponse.json(powerLinesWorldResponseEmpty)));
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText("No power lines built yet.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Power lines in view (0)" })).toBeInTheDocument();
+    expect(screen.queryByText("Power line")).not.toBeInTheDocument();
+  });
+
+  it("says when the server cut the layer to its limit", async () => {
+    server.use(http.get(powerLinesRoute, () => HttpResponse.json(powerLinesWorldResponseTruncated)));
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText("2 power lines on the map, 243 m of wire shown.")).toBeInTheDocument();
+    expect(screen.getByText(/Showing part of the power lines: the server cut this layer to its size limit/)).toBeInTheDocument();
+  });
+
+  it("shows a failed read as an error with Retry, and keeps the rest of the map", async () => {
+    let failing = true;
+    server.use(
+      http.get(powerLinesRoute, () =>
+        failing ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 }) : HttpResponse.json(powerLinesWorldResponse),
+      ),
+    );
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    expect(await screen.findByText("Power lines couldn't load: game server unreachable.")).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("2 power lines on the map, 243 m of wire in all.")).toBeInTheDocument();
+  });
+
+  it("does not warn about duplicate keys when two lines share an id, or repeat outright", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [line] = powerLinesWorldResponse.data;
+    const moved = { ...line, points: [[0, 0], [10, 0]] as [[number, number], [number, number]] };
+    server.use(http.get(powerLinesRoute, () => HttpResponse.json({ ...powerLinesWorldResponse, count: 3, data: [line, moved, line] })));
+    mount();
+    await screen.findByTestId("map-canvas");
+    turnOn();
+    await screen.findByRole("table", { name: /Power lines in view \(3\)/ });
     expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
     spy.mockRestore();
   });
