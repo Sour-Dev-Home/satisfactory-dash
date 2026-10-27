@@ -2,6 +2,7 @@ import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
+import { BUBBLE_D, bubbleRow, bubblesWidth, type BubbleRow } from "./bubbleRow";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { GLYPH_SIZE } from "./transportModes";
 
@@ -87,8 +88,10 @@ export interface LaidEdge {
   points: { x: number; y: number }[];
   /** The label in one line (the tooltip's words). */
   label: string;
-  /** The label as drawn: one to three lines. */
+  /** The label in words: one to three lines (the canvas draws `bubbles`; these stay for text views and tests). */
   labelLines: string[];
+  /** What the label box draws (ADR-0060 Decision 1): an icon bubble per item (up to three, then "+k"), and the rate text. */
+  bubbles: BubbleRow;
   /** The label's centre: just above the middle of the path (see `labelPlacement`). */
   labelX: number;
   labelY: number;
@@ -145,6 +148,13 @@ export const labelWidth = (text: string) => Math.ceil(text.length * CHAR_W_BODY 
 export const labelSize = (lines: readonly string[]) => ({
   width: Math.max(0, ...lines.map(labelWidth)),
   height: lines.length * LABEL_LINE_H + LABEL_PAD,
+});
+
+/** The box dagre reserves for a line's bubble row (ADR-0060 Decision 1): as wide as the bubbles or the rate text, as tall
+ *  as a bubble plus the text's line. */
+export const bubbleRowSize = (row: BubbleRow) => ({
+  width: Math.max(bubblesWidth(row) + LABEL_PAD, row.rateText === null ? 0 : labelWidth(row.rateText)),
+  height: BUBBLE_D + (row.rateText === null ? 0 : LABEL_LINE_H) + LABEL_PAD,
 });
 
 type Point = { x: number; y: number };
@@ -529,9 +539,10 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
   // Links between the same two cards on the same carrier are one line with one label (2026-10-27); `parts` keeps each.
   const bundles = bundleFlows(flows);
   const drawn = bundles.map((b) => b.flow);
-  // A transport's label also holds its mode's glyph, at the pill's left: dagre reserves room for both.
-  const labels = drawn.map((f) => {
-    const s = labelSize(f.labelLines);
+  // Each label is a bubble row; a transport's also holds its mode's glyph, at the pill's left: dagre reserves room for both.
+  const rows = drawn.map(bubbleRow);
+  const labels = drawn.map((f, k) => {
+    const s = bubbleRowSize(rows[k]);
     return isTransport(f) ? { ...s, width: s.width + GLYPH_INSET } : s;
   });
   const key = `${topologyHash ?? ""}|${scene.level}|${signature(scene, sizes, labels, drawn)}`;
@@ -577,6 +588,7 @@ export function layoutScene(scene: Scene, topologyHash?: string): SiteLayout {
       points,
       label: flow.label,
       labelLines: flow.labelLines,
+      bubbles: rows[k],
       labelX,
       labelY,
       labelWidth: width,

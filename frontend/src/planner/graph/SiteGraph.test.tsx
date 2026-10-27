@@ -323,15 +323,17 @@ describe("the graph's readable chrome", () => {
     const lime = { ...data.edges[0], itemClassName: "Desc_Stone_C", itemName: "Limestone", ratePerMinute: 30, rate: "measured" as const };
     server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: [...data.edges, lime] } })));
     const svg = await openGraph();
-    const label = [...svg.querySelectorAll("text")].find((t) => t.textContent?.startsWith("Iron Ore, Limestone"))!;
-    expect(label.textContent).toBe("Iron Ore, Limestone150 items/min");
-    const title = label.closest("g")!.querySelector("title")!.textContent!;
+    // One bubble per item, the faster first, over the summed rate (ADR-0060 Decision 1).
+    const label = [...svg.querySelectorAll("[data-edge-label]")].find((g) => g.querySelectorAll("[data-bubble]").length === 2)!;
+    expect([...label.querySelectorAll("[data-bubble]")].map((b) => b.getAttribute("data-bubble"))).toEqual(["Desc_OreIron_C", "Desc_Stone_C"]);
+    expect(label.querySelector(":scope > text")?.textContent).toBe("150 items/min");
+    const title = label.querySelector("title")!.textContent!;
     expect(title).toContain("2 links: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
     // The summary still counts every link; the lines layer draws one line fewer.
     expect(svg.getAttribute("aria-label")).toMatch(/6 connections/);
     expect(svg.querySelectorAll('[data-edge-layer="lines"] path')).toHaveLength(5);
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Stone_C" } });
-    expect(label.closest("g")).not.toHaveClass("opacity-graph-dim");
+    expect(label).not.toHaveClass("opacity-graph-dim");
     // The text path keeps a row per link.
     fireEvent.click(screen.getByRole("button", { name: "Tables" }));
     const rows = screen.getAllByRole("row").map((r) => r.textContent ?? "");
@@ -339,11 +341,15 @@ describe("the graph's readable chrome", () => {
     expect(rows.some((r) => r.includes("Iron Ore") && r.includes("120"))).toBe(true);
   });
 
-  it("draws card text at the readable sizes, and edge labels as halo text with a named class", async () => {
+  it("draws card text at the readable sizes, and edge labels as an item bubble over halo rate text with a named class", async () => {
     const svg = await openGraph();
     expect(svg.querySelector("text.text-base.font-semibold")).not.toBeNull();
-    const label = [...svg.querySelectorAll("text")].find((t) => t.textContent === "Iron Ore120 items/min")!;
+    const label = [...svg.querySelectorAll("[data-edge-label] > text")].find((t) => t.textContent === "120 items/min")!;
     expect(label).toHaveClass("text-sm", "paint-stroke-first");
+    // The item is its icon, and its name is in the tooltip, not printed.
+    const row = label.closest("[data-edge-label]")!;
+    expect(row.querySelector('[data-bubble="Desc_OreIron_C"] image')?.getAttribute("href")).toMatch(/\/items\/iron-new-32\.webp$/);
+    expect(row.querySelector("title")?.textContent).toContain("Iron Ore");
     expect(label.getAttribute("class")).not.toContain("[paint-order");
     // One line of plain text under each icon row: nothing is muted any more.
     expect(svg.querySelectorAll("text.fill-muted").length).toBe(0);
@@ -360,7 +366,7 @@ describe("the graph's readable chrome", () => {
       expect(card.querySelector(":scope > title")?.textContent?.length).toBeGreaterThan(20);
     }
     // The icon is 40 units, not the 18 of a title-row icon.
-    expect(svg.querySelector("image")).toHaveAttribute("width", "40");
+    expect(svg.querySelector("[data-card] image")).toHaveAttribute("width", "40");
     // The recipe is in the tooltip, not printed.
     const plates = cards.find((c) => c.querySelector("title")?.textContent?.startsWith("8× Constructor, Iron Plate"))!;
     expect(plates.querySelector("title")?.textContent).toContain("In a loop");
@@ -370,13 +376,23 @@ describe("the graph's readable chrome", () => {
 
   it("draws the kind's glyph in place of an icon that is missing or fails to load, never a bare box", async () => {
     const svg = await openGraph();
-    const images = [...svg.querySelectorAll("image")];
+    const images = [...svg.querySelectorAll("[data-card] image")];
     expect(images.length).toBeGreaterThan(0);
     const before = svg.querySelectorAll('[data-icon="glyph"]').length;
     fireEvent.error(images[0]);
     expect(svg.querySelectorAll('[data-icon="glyph"]').length).toBe(before + 1);
-    expect(svg.querySelectorAll("image")).toHaveLength(images.length - 1);
+    expect(svg.querySelectorAll("[data-card] image")).toHaveLength(images.length - 1);
     for (const g of svg.querySelectorAll('[data-icon="glyph"]')) expect(g.querySelector("[data-building-glyph]")).not.toBeNull();
+  });
+
+  it("draws an item bubble's initials when its icon fails to load, never a blank disc (ADR-0060)", async () => {
+    const svg = await openGraph();
+    const bubble = svg.querySelector('[data-bubble="Desc_OreIron_C"]')!;
+    expect(bubble).toHaveAttribute("data-icon", "image");
+    fireEvent.error(bubble.querySelector("image")!);
+    expect(bubble).toHaveAttribute("data-icon", "text");
+    expect(bubble.querySelector("image")).toBeNull();
+    expect(bubble.querySelector("text")?.textContent).toBe("IO");
   });
 
   it("says how to see more only while the drawing runs past the canvas, and fades the clipped edges", async () => {

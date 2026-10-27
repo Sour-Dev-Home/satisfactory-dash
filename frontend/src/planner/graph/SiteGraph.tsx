@@ -17,6 +17,7 @@ import {
   FRAME_HEADER_H,
   ICON_TOP,
   LABEL_LINE_H,
+  LABEL_PAD,
   NODE_PAD_X,
   PILL_H,
   cardLineY,
@@ -34,6 +35,8 @@ import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
 import { roundedOrthogonalPath } from "./edgeShapes";
+import { BUBBLE_D, BUBBLE_ICON, CHIP_H, CHIP_W, bubbleDetail, bubbleOffsets, bubblesWidth, type BubbleDetail, type BubbleItem } from "./bubbleRow";
+import { itemIconUrl } from "./itemIcons";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -213,6 +216,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // Until the user pans or zooms the view is the fit, so it follows the measured size; after that it is theirs.
   const [moved, setMoved] = useState<View | null>(null);
   const viewport = moved ?? fit;
+  // One object per detail step, so a zoom inside a step does not change any bubble's props.
+  const { full, iconSize } = bubbleDetail(viewport.k, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+  const detail = useMemo((): BubbleDetail => ({ full, iconSize }), [full, iconSize]);
   const viewRef = useRef(viewport);
   const stageRef = useRef(stage);
   const layoutRef = useRef(layout);
@@ -657,7 +663,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                     const on = reach === null || e.parts.some((i) => reach.edges.has(i));
                     const from = laidByKey.get(e.flow.from);
                     const to = laidByKey.get(e.flow.to);
-                    return <Layer key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} />;
+                    return <Layer key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} detail={detail} />;
                   })}
                 </g>
               ))}
@@ -817,7 +823,7 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
   );
 }
 
-type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string };
+type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string; detail: BubbleDetail };
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. */
 function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
@@ -829,36 +835,80 @@ function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
   );
 }
 
-/** A flow's label with a halo, and for a transport the mode's glyph (moving along the line when it may): above every line. */
-function EdgeLabel({ edge: e, dim, moving, from, to }: EdgeProps) {
+/**
+ * A flow's label with a halo: a bubble per item it carries (its icon, up to three, then a "+k" chip) over the short rate
+ * text (ADR-0060 Decision 1), and for a transport the mode's glyph (moving along the line when it may). Above every line.
+ * The words for each item stay in the `<title>` and the Tables view.
+ */
+function EdgeLabel({ edge: e, dim, moving, from, to, detail }: EdgeProps) {
   const transport = isTransport(e.flow);
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
+  const row = e.bubbles;
+  const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
+  const left = e.textX - bubblesWidth(row) / 2;
+  const cy = top + BUBBLE_D / 2;
+  const at = bubbleOffsets(row);
   return (
     <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
-      {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the words. */}
+      {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the bubbles. */}
       <rect
         x={e.labelX - e.labelWidth / 2}
         y={e.labelY - e.labelHeight / 2}
         width={e.labelWidth}
         height={e.labelHeight}
-        rx={e.labelHeight / 2}
+        rx={Math.min(e.labelHeight, e.labelWidth) / 2}
         data-label-pill=""
         className="fill-surface"
       />
-      <text x={e.textX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
-        {e.labelLines.map((line, i) => (
-          <tspan key={i} x={e.textX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
-            {line}
-          </tspan>
-        ))}
-      </text>
+      {row.items.map((item, i) => (
+        <ItemBubble key={item.className ?? item.name ?? ""} item={item} cx={left + at.bubbles[i]} cy={cy} detail={detail} />
+      ))}
+      {at.chip !== null && (
+        <g data-bubble-more={row.more}>
+          <rect x={left + at.chip - CHIP_W / 2} y={cy - CHIP_H / 2} width={CHIP_W} height={CHIP_H} rx={CHIP_H / 2} className="fill-icon-chip stroke-line" />
+          {detail.full && (
+            <text x={left + at.chip} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-fg text-xs">
+              {`+${row.more}`}
+            </text>
+          )}
+        </g>
+      )}
+      {detail.full && row.rateText !== null && (
+        <text x={e.textX} y={top + BUBBLE_D + LABEL_LINE_H / 2} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
+          {row.rateText}
+        </text>
+      )}
       {/* After the label: at rest the glyph stands inside its own pill, left of the words; moving, it travels the line. */}
       {transport && (
         <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
           <TransportGlyph mode={e.flow.carrier} />
           {moving && <animateMotion path={roundedOrthogonalPath(e.points)} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
         </g>
+      )}
+    </g>
+  );
+}
+
+/**
+ * One item's bubble on a line: its icon on a disc, or, when its class has none (or the file fails to load), the item name's
+ * initials, or "?" for an unknown item. Never blank. Below `BUBBLE_DETAIL_ZOOM` only the disc.
+ */
+function ItemBubble({ item, cx, cy, detail }: { item: BubbleItem; cx: number; cy: number; detail: BubbleDetail }) {
+  const url = item.className === null ? undefined : itemIconUrl(item.className, detail.iconSize);
+  const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
+  const picture = detail.full && url !== undefined && url !== failedUrl;
+  return (
+    <g aria-hidden="true" data-bubble={item.className ?? "unknown"} data-icon={!detail.full ? "disc" : picture ? "image" : "text"}>
+      <circle cx={cx} cy={cy} r={BUBBLE_D / 2} className="fill-icon-chip stroke-line" />
+      {picture ? (
+        <image href={url} x={cx - BUBBLE_ICON / 2} y={cy - BUBBLE_ICON / 2} width={BUBBLE_ICON} height={BUBBLE_ICON} onError={() => setFailedUrl(url)} />
+      ) : (
+        detail.full && (
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-fg text-xs">
+            {item.text}
+          </text>
+        )
       )}
     </g>
   );
