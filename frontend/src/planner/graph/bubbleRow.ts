@@ -59,8 +59,8 @@ function summedQuality(parts: readonly CanvasFlow[]): FlowQuality {
   return parts.every((p) => p.quality === "measured") ? "measured" : "estimated";
 }
 
-/** A line's identity across polls (ADR-0060 Decision 2): its ends, carrier and kind, which `bundleFlows` groups by. */
-export const edgeKeyOf = (flow: Pick<CanvasFlow, "from" | "to" | "carrier" | "flow">): string => [flow.from, flow.to, flow.carrier, flow.flow].join("|");
+/** A line's identity across polls (ADR-0060 Decision 2): its ends, carrier, kind and unit, which `bundleFlows` groups by. */
+export const edgeKeyOf = (flow: Pick<CanvasFlow, "from" | "to" | "carrier" | "flow" | "unit">): string => [flow.from, flow.to, flow.carrier, flow.flow, flow.unit].join("|");
 
 /** An item's rate in words, for its button and its list row: "about 120 items/min", or "rate unknown". */
 export function itemRateText(item: Pick<BubbleItem, "rate" | "quality">, unit: CanvasFlow["unit"]): string {

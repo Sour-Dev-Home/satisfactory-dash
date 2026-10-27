@@ -20,16 +20,18 @@ const data = productionGraphTwoSites.data;
 const extra = (className: string, itemName: string, ratePerMinute: number) => ({ ...data.edges[0], itemClassName: className, itemName, ratePerMinute, rate: "measured" as const });
 const withFourItems = { ...productionGraphTwoSites, data: { ...data, edges: [...data.edges, extra("Desc_Stone_C", "Limestone", 30), extra("Desc_Coal_C", "Coal", 20), extra("Desc_Sulfur_C", "Sulfur", 10)] } };
 
+let client: ReturnType<typeof renderWithClient>["client"];
+
 async function openGraph({ flag, fourItems = false }: { flag: boolean; fourItems?: boolean }) {
   if (flag) window.localStorage.setItem(ITEM_FOCUS_KEY, "on");
   if (fourItems) server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(withFourItems)));
-  renderWithClient(
+  ({ client } = renderWithClient(
     <MemoryRouter>
       <ServerContext value={serversSingle.servers[0]}>
         <PlannerView />
       </ServerContext>
     </MemoryRouter>,
-  );
+  ));
   fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
   fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
   return screen.findByRole("img", { name: /^Graph of Iron Plate site/ }, { timeout: 3_000 });
@@ -139,5 +141,29 @@ describe("item focus, flag on", () => {
     expect(svg.querySelector("[data-focused]")).toBeNull();
     expect(dimmed(svg, "[data-card]")).toBe(0);
     expect(chip).toHaveFocus();
+  });
+
+  it("keeps the arrow keys inside the bubble buttons: the viewport never sees them", async () => {
+    await openGraph({ flag: true });
+    const buttons = within(bubbleList()!).getAllByRole("button");
+    act(() => buttons[0].focus());
+    for (const key of ["ArrowRight", "ArrowDown", "Home", "End"]) expect(fireEvent.keyDown(buttons[0], { key })).toBe(false);
+    expect(fireEvent.keyDown(buttons[0], { key: "ArrowLeft", ctrlKey: true })).toBe(true);
+  });
+
+  it("survives a poll that reorders the edges, and clears when its line leaves the graph", async () => {
+    const svg = await openGraph({ flag: true });
+    fireEvent.click(ironOreButton());
+    expect(svg.querySelector("[data-focused]")).not.toBeNull();
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: [...data.edges].reverse() } })));
+    await act(() => client.invalidateQueries());
+    expect(svg.querySelector('[data-focused][data-bubble="Desc_OreIron_C"]')).not.toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(/Focused Iron Ore/);
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: data.edges.filter((e) => e.itemClassName !== "Desc_OreIron_C") } })));
+    await act(() => client.invalidateQueries());
+    expect(svg.querySelector("[data-focused]")).toBeNull();
+    expect(dimmed(svg, "[data-card]")).toBe(0);
+    // Focus that a poll ended is said, as one left by Escape is.
+    expect(screen.getByRole("status")).toHaveTextContent("Overview");
   });
 });

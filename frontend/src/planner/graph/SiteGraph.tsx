@@ -287,6 +287,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const focusEdge = itemFocus === null ? undefined : edgeByKey.get(itemFocus.edgeKey);
   const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.all.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
   const listEdge = itemFocusOn && listKey !== null ? edgeByKey.get(listKey) : undefined;
+  // Forget what a poll took away, so a line that comes back does not reopen its list (and take the keyboard), and say so
+  // when focus ended that way. Adjusting state while rendering, guarded so it settles in one extra pass.
+  if (listKey !== null && listEdge === undefined) setListKey(null);
+  if (itemFocus !== null && focus === null) {
+    setItemFocus(null);
+    if (itemFocusOn) setAnnounced("Overview");
+  }
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);

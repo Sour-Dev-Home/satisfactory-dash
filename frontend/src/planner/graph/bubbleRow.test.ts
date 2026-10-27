@@ -148,8 +148,17 @@ describe("item focus helpers (ADR-0060 build PR 3)", () => {
   });
 
   it("keys a line by its ends, carrier and kind, so a reorder keeps it", () => {
-    expect(edgeKeyOf(flow("Desc_A_C", "A", 1))).toBe("a|b|belt|supply");
-    expect(edgeKeyOf(flow("Desc_A_C", "A", 1, { carrier: "truck", flow: "excess" }))).toBe("a|b|truck|excess");
+    expect(edgeKeyOf(flow("Desc_A_C", "A", 1))).toBe("a|b|belt|supply|items/min");
+    expect(edgeKeyOf(flow("Desc_A_C", "A", 1, { carrier: "truck", flow: "excess" }))).toBe("a|b|truck|excess|items/min");
+  });
+
+  it("keeps an items line and a fluid line between the same cards, carrier and kind apart (as bundleFlows does)", () => {
+    const items = flow("Desc_A_C", "A", 1);
+    const fluid = flow("Desc_W_C", "Water", 1, { unit: "m3/min" });
+    expect(bundleFlows([items, fluid])).toHaveLength(2);
+    expect(edgeKeyOf(items)).not.toBe(edgeKeyOf(fluid));
+    const ids = bubbleStops([items, fluid].map((f) => ({ flow: f, bubbles: bubbleRow(f) })), ["a", "b"]).map((s) => s.id);
+    expect(new Set(ids).size).toBe(2);
   });
 
   it("orders the stops by the cards' tab order, each line's bubbles then its chip", () => {
@@ -159,12 +168,12 @@ describe("item focus helpers (ADR-0060 build PR 3)", () => {
     };
     const stops = bubbleStops([line("c", "a", 1), line("a", "b", 4), line("a", "c", 1)], ["a", "b", "c"]);
     expect(stops.map((s) => s.id)).toEqual([
-      stopId("a|b|belt|supply", "c:Desc_0_C"),
-      stopId("a|b|belt|supply", "c:Desc_1_C"),
-      stopId("a|b|belt|supply", "c:Desc_2_C"),
-      stopId("a|b|belt|supply", null),
-      stopId("a|c|belt|supply", "c:Desc_0_C"),
-      stopId("c|a|belt|supply", "c:Desc_0_C"),
+      stopId("a|b|belt|supply|items/min", "c:Desc_0_C"),
+      stopId("a|b|belt|supply|items/min", "c:Desc_1_C"),
+      stopId("a|b|belt|supply|items/min", "c:Desc_2_C"),
+      stopId("a|b|belt|supply|items/min", null),
+      stopId("a|c|belt|supply|items/min", "c:Desc_0_C"),
+      stopId("c|a|belt|supply|items/min", "c:Desc_0_C"),
     ]);
   });
 
