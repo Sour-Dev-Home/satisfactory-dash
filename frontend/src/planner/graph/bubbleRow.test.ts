@@ -103,7 +103,11 @@ describe("bubbleDetail", () => {
   it("draws plain discs below zoom 0.4, and the 64 px icon once a 32 px one would stretch", () => {
     expect(bubbleDetail(0.39, 1)).toEqual({ full: false, iconSize: 32 });
     expect(bubbleDetail(0.4, 1)).toEqual({ full: true, iconSize: 32 });
-    expect(bubbleDetail(1, 1)).toEqual({ full: true, iconSize: 32 });
+    // The 36 px icon passes 32 screen px just under zoom 0.89 (32 / 36).
+    expect(bubbleDetail(0.88, 1)).toEqual({ full: true, iconSize: 32 });
+    expect(bubbleDetail(0.89, 1)).toEqual({ full: true, iconSize: 64 });
+    expect(bubbleDetail(1, 1)).toEqual({ full: true, iconSize: 64 });
+    expect(bubbleDetail(0.5, 2)).toEqual({ full: true, iconSize: 64 });
     expect(bubbleDetail(1, 2)).toEqual({ full: true, iconSize: 64 });
     expect(bubbleDetail(1.7, 1)).toEqual({ full: true, iconSize: 64 });
   });
