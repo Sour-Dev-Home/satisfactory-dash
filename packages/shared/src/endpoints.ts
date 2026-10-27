@@ -23,6 +23,8 @@ import {
   DeletePlannerDesignationResponseSchema,
   PlannerDesignationSchema,
   PlannerDesignationsResponseSchema,
+  ReplacePlannerDesignationsRequestSchema,
+  ReplacePlannerDesignationsResponseSchema,
   UpdatePlannerDesignationRequestSchema,
 } from "./plannerDesignations";
 import { PowerResponseSchema } from "./power";
@@ -173,6 +175,15 @@ export const endpoints = {
       route: "/api/servers/:serverId/planner/designations/:designationId",
       path: (serverId: string, designationId: string) => `${scoped("planner/designations")(serverId)}/${encodeURIComponent(designationId)}`,
       response: DeletePlannerDesignationResponseSchema,
+    },
+    // ADR-0055 Decision 11: merge, split, pop-out, dissolve and undo in one write. 200. 409 designation_stale,
+    // designation_overlap (with `error.other`) or designation_cap; 400 bad_request (also a createdAt in the future).
+    replace: {
+      method: "POST",
+      route: "/api/servers/:serverId/planner/designations/replace",
+      path: scoped("planner/designations/replace"),
+      request: ReplacePlannerDesignationsRequestSchema,
+      response: ReplacePlannerDesignationsResponseSchema,
     },
   },
   power: {

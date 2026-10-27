@@ -9,7 +9,7 @@ import { createCrossSiteGuard, requireJsonBody, securityHeaders } from "./platfo
 import { createMetricsAggregator, type MetricsAggregator } from "./platform/metrics/aggregator.js";
 import { requestMetrics } from "./platform/metrics/requestMetrics.js";
 
-/** `/api/servers/:serverId/planner/designations` and `.../:designationId` (the path below the /api mount). */
+/** `/api/servers/:serverId/planner/designations`, `.../:designationId` and `.../replace` (the path below the /api mount). */
 const DESIGNATION_WRITE_PATH = /^\/servers\/[^/]+\/planner\/designations(?:\/[^/]+)?\/?$/i;
 
 export interface AppOptions {
@@ -70,7 +70,7 @@ export function createApp({
   app.use("/api", createCrossSiteGuard(allowedOrigins));
   app.use("/api", requireJsonBody);
   // /api only: the agent API parses its own bodies (a snapshot is far larger than any /api body).
-  // ADR-0055 PR 9: the designation writes carry up to ~400 KB, so they skip this 100 KB parser and the designations router
+  // ADR-0055 PR 9: the designation writes carry up to ~400 KB (a replace up to 1 MB, Decision 11), so they skip this 100 KB parser and the designations router
   // parses them with its own larger limit (after the session and member-write guards). Nothing else gets a bigger limit.
   const jsonBody = express.json();
   app.use("/api", (req, res, next) => {

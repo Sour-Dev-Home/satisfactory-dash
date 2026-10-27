@@ -197,7 +197,9 @@ export const QUERY_NAMES = [
   "identity.updateDisplayName",
   // map
   "map.designations.delete",
+  "map.designations.deleteMany",
   "map.designations.insert",
+  "map.designations.insertRestoring",
   "map.designations.list",
   "map.designations.lockServer",
   "map.designations.readAll",

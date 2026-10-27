@@ -5,6 +5,8 @@ import {
   DeletePlannerDesignationResponseSchema,
   PlannerDesignationSchema,
   PlannerDesignationsResponseSchema,
+  ReplacePlannerDesignationsRequestSchema,
+  ReplacePlannerDesignationsResponseSchema,
   UpdatePlannerDesignationRequestSchema,
   endpoints,
 } from "@satisfactory-dash/shared";
@@ -23,6 +25,9 @@ import type { DesignationBuilding } from "../services/designationMatching.js";
  * so the larger limit applies only here, and only after the session and the member-write guard have run.
  */
 export const DESIGNATION_BODY_LIMIT = "512kb";
+/** A replace carries at most 2000 members across its `put` entries (ADR-0055 Decision 11): twice the above, so 1 MB. Same
+ *  rule: parsed by this router only, after the session and the member-write guard. */
+export const DESIGNATION_REPLACE_BODY_LIMIT = "1mb";
 
 export interface DesignationRoutesDeps {
   store: DesignationStore;
@@ -40,6 +45,7 @@ const DesignationIdSchema = z.uuid();
 export function createDesignationRoutes(directory: ServerDirectory<unknown>, deps?: DesignationRoutesDeps): Router {
   const router = Router();
   const parseLarge = express.json({ limit: DESIGNATION_BODY_LIMIT });
+  const parseReplace = express.json({ limit: DESIGNATION_REPLACE_BODY_LIMIT });
 
   const userIdOf = (res: express.Response): string => {
     const id: unknown = res.locals.user?.id;
@@ -63,6 +69,7 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     if (!deps) throw new ServiceUnavailableError();
     const designations = await deps.store.list(serverId);
     const buildings = designations.length === 0 ? null : await deps.buildings(serverId);
+    // `buildingIds` is the reduction's; the API gets the same ids aligned to members (Decision 12), for splitting.
     const matches = matchDesignations(designations, buildings).map(({ buildingIds: _kept, ...match }) => match);
     sendValidated(res, PlannerDesignationsResponseSchema, { designations, matches });
   });
@@ -79,6 +86,27 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     }
     res.status(201);
     sendValidated(res, PlannerDesignationSchema, outcome.designation);
+  });
+
+  // Registered before PUT/DELETE .../:designationId for clarity; they never collide (POST is only this and the create).
+  router.post(routePath(endpoints.plannerDesignations.replace.route), parseReplace, async (req, res) => {
+    const { serverId } = resolveServer(directory, req);
+    if (!deps) throw new ServiceUnavailableError();
+    const body = parseBody(ReplacePlannerDesignationsRequestSchema, req.body);
+    const outcome = await deps.store.replace(serverId, {
+      userId: userIdOf(res),
+      expect: body.expect,
+      put: body.put,
+      ...(body.intent !== undefined && { intent: body.intent }),
+    });
+    if (outcome.kind === "no_server") throw new ServerNotFoundError();
+    if (outcome.kind === "created_in_future") throw new BadRequestError("A creation time is in the future");
+    if (outcome.kind === "stale") throw new ApiFailure("designation_stale", "One of these designations was changed by someone else");
+    if (outcome.kind === "cap") throw new ApiFailure("designation_cap", "The result would have more designations than allowed");
+    if (outcome.kind === "overlap") {
+      throw new ApiFailure("designation_overlap", "A building is already in another designation", undefined, undefined, outcome.other);
+    }
+    sendValidated(res, ReplacePlannerDesignationsResponseSchema, { designations: outcome.designations, removedIds: outcome.removedIds });
   });
 
   router.put(routePath(endpoints.plannerDesignations.update.route), parseLarge, async (req, res) => {
