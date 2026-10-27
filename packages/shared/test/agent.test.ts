@@ -216,6 +216,10 @@ describe("agent contract: snapshots", () => {
       expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_000) } })).toBe(true);
       expect(ok({ factory: { buildings: [], extractors: many(extractor, 5_001) } })).toBe(false);
       expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, className: long(201) }] } })).toBe(false);
+      // The raw flags are required, as on a machine: a miner stopped by a full output sends isBackedUp true.
+      expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, isBackedUp: true, isProducing: false }] } })).toBe(true);
+      const { isBackedUp: _dropped, ...noFlag } = extractor;
+      expect(ok({ factory: { buildings: [], extractors: [noFlag] } })).toBe(false);
       expect(ok({ factory: { buildings: [], extractors: [{ ...extractor, production: [{ ...rate, currentPerMinute: -1 }] }] } })).toBe(false);
       // A backend-derived field is dropped, as on buildings.
       const parsed = SnapshotRequestSchema.parse({ ...full, factory: { buildings: [], extractors: [{ ...extractor, state: "producing" }] } });

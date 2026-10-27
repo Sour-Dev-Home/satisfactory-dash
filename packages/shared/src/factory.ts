@@ -115,7 +115,9 @@ export const FactorySchema = z.object({
     .describe(
       "S4-B (ADR-0058): miners, oil and water extractors and resource-well extractors, in the building shape: `recipe` null, " +
         "`ingredients` empty, `production` the resource extracted with its current and maximum rate per minute. Kept apart " +
-        "from `buildings` so `backedUpCount` and `stateCounts` still count manufacturers only. Absent = a sender that does " +
+        "from `buildings` so `backedUpCount` and `stateCounts` still count manufacturers only. A backend that derives `state` " +
+        "for them must not use the manufacturer rule (which reads a null recipe as idle); it derives it from the rate " +
+        "percent or leaves it out. Absent = a sender that does " +
         "not read extractors (the FRM agent) or an older backend (ADR-0007); an empty array means none were found.",
     ),
   backedUpCount: z.number().int().min(0).describe("Number of buildings whose state is backedUp"),

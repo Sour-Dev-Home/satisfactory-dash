@@ -116,7 +116,11 @@ export const AgentFactorySchema = z.object({
     .array(AgentFactoryBuildingSchema)
     .max(AGENT_INPUT_MAX_EXTRACTORS)
     .optional()
-    .describe("Extractors as buildings: `recipe` null, `ingredients` [] or absent, `production` the resource they extract"),
+    .describe(
+      "Extractors as buildings: `recipe` null, `ingredients` [] or absent, `production` the resource they extract. The " +
+        "required flags are the same raw facts as a machine's: `isBackedUp` true only when the output slot is full (a " +
+        "miner that stops for a full output), else false; `isPaused` and `isProducing` as read.",
+    ),
 });
 /** Status and players as the live routes return them, with the same string and list bounds. */
 export const AgentStatusSchema = StatusSchema.extend({ sessionName: boundedString });
