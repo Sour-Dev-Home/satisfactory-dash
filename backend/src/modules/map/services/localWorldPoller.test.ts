@@ -381,6 +381,29 @@ describe("LocalWorldPoller conveyors nudge", () => {
     await poller.stop();
   }));
 
+  it("stop() with a nudged read pending cancels it (a leader that lost leadership reads nothing more)", withFakeTimers(async () => {
+    const { fakes, poller } = await startPoller();
+    await vi.advanceTimersByTimeAsync(30_000);
+    poller.observeFactoryBuildings(["a"]);
+    poller.observeFactoryBuildings(["b"]); // read due at 60 s
+    await poller.stop();
+    await vi.advanceTimersByTimeAsync(700_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+  }));
+
+  it("a change queued during an in-flight read does not restart the loop after stop()", withFakeTimers(async () => {
+    let finish!: () => void;
+    const getConveyors = vi.fn().mockReturnValueOnce(new Promise((resolve) => (finish = () => resolve(empty)))).mockResolvedValue(empty);
+    const { fakes, poller } = await startPoller(fakePorts({ getConveyors }));
+    poller.observeFactoryBuildings(["a"]);
+    poller.observeFactoryBuildings(["b"]);
+    const stopping = poller.stop();
+    finish();
+    await stopping;
+    await vi.advanceTimersByTimeAsync(700_000);
+    expect(fakes.getConveyors).toHaveBeenCalledTimes(1);
+  }));
+
   it("a nudge after stop() reads nothing", withFakeTimers(async () => {
     const { fakes, poller } = await startPoller();
     poller.observeFactoryBuildings(["a"]);
@@ -416,6 +439,23 @@ describe("observeFactoryReads", () => {
     const wrapped = observeFactoryReads(new Adapter(), vi.fn());
     await expect(wrapped.getServerStatus()).resolves.toBe("s");
     await expect(wrapped.getFactoryBuildings()).resolves.toEqual([{ id: "s" }]);
+  });
+
+  it("passes getters, symbols and instanceof through to the original", () => {
+    const tag = Symbol("tag");
+    class Adapter {
+      [tag] = 7;
+      get name() {
+        return this.constructor.name;
+      }
+      async getFactoryBuildings() {
+        return [];
+      }
+    }
+    const wrapped = observeFactoryReads(new Adapter(), vi.fn());
+    expect(wrapped.name).toBe("Adapter");
+    expect((wrapped as unknown as Record<symbol, number>)[tag]).toBe(7);
+    expect(wrapped instanceof Adapter).toBe(true);
   });
 
   it("a throwing observer never fails the factory read; a failed read is not observed", async () => {

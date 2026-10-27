@@ -89,8 +89,12 @@ export async function runAgent(options: RunAgentOptions): Promise<RunOutcome> {
       try {
         const snapshot = await sampler.sample(startedAt);
         // #728 step 6: a changed building set reads conveyors sooner (the reader rate-limits it; an unchanged set is a no-op).
-        if (snapshot.factory !== undefined) world?.observeFactoryBuildings(snapshot.factory.buildings.map((b) => b.id));
         pusher.enqueue(snapshot);
+        try {
+          if (snapshot.factory !== undefined) world?.observeFactoryBuildings(snapshot.factory.buildings.map((b) => b.id));
+        } catch {
+          // The nudge is an optimisation; it must never cost the snapshot or the sample loop.
+        }
       } catch {
         // The sampler reports its own failures; anything that still escapes must not end the agent.
         logger.error("sample_failed", { code: "internal_error" });

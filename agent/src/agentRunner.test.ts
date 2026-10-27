@@ -229,6 +229,22 @@ describe("the world reader inside the agent (ADR-0038 M4)", () => {
     }
   });
 
+  it("#728 step 6: a throwing nudge never costs the snapshot or ends the sample loop", async () => {
+    const observe = vi.spyOn(WorldReader.prototype, "observeFactoryBuildings").mockImplementation(() => {
+      throw new Error("boom");
+    });
+    try {
+      const h = worldRun();
+      await h.until(() => (h.client.postSnapshot as ReturnType<typeof vi.fn>).mock.calls.length >= 2);
+      h.stop();
+      expect(await h.running).toBe("stopped");
+      expect(observe).toHaveBeenCalled();
+      expect((h.client.postSnapshot as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      observe.mockRestore();
+    }
+  });
+
   it("a 401 on a world send stops the whole agent with auth_rejected", async () => {
     const h = worldRun({ postWorldLayer: async () => Promise.reject(new BackendError("auth_rejected", "401", { status: 401 })) });
     expect(await h.running).toBe("auth_rejected");
