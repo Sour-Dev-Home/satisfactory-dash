@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAP_WORLD_LAYER_MAX_BYTES, RailsWorldIngestRequestSchema, ResourceNodesWorldIngestRequestSchema } from "@satisfactory-dash/shared";
-import type { ConveyorEdge, DronePort, MapWorldLayer, RailSegment, ResourceNode, TrainRouteRecord } from "@satisfactory-dash/shared";
+import type { ConveyorEdge, DronePort, MapMarker, MapWorldLayer, RailSegment, ResourceNode, TrainRouteRecord } from "@satisfactory-dash/shared";
 import { BackendError } from "./backendClient.js";
 import type { AgentLogger, LogFields } from "./logger.js";
-import { CONVEYORS_INTERVAL_MS, DRONE_ROUTES_INTERVAL_MS, RAILS_INTERVAL_MS, RESOURCE_NODES_INTERVAL_MS, TRAIN_ROUTES_INTERVAL_MS, WORLD_JITTER_FRACTION, WorldReader, jitteredIntervalMs } from "./worldReader.js";
+import { CONVEYORS_INTERVAL_MS, DRONE_ROUTES_INTERVAL_MS, MAP_MARKERS_INTERVAL_MS, RAILS_INTERVAL_MS, RESOURCE_NODES_INTERVAL_MS, TRAIN_ROUTES_INTERVAL_MS, WORLD_JITTER_FRACTION, WorldReader, jitteredIntervalMs } from "./worldReader.js";
 import type { WorldClient, WorldPorts } from "./worldReader.js";
 
 /** Fake timers drive the reader's sleeps; a fake adapter stands in for the game and a fake client for the backend. */
@@ -13,15 +13,17 @@ const edge = (id: string): ConveyorEdge => ({ id, kind: "belt", from: "a", fromK
 const node = (x: number): ResourceNode => ({ id: `n${x}`, type: "Desc_OreIron_C", purity: "normal", position: [x, 0] }) as unknown as ResourceNode;
 const station = (id: string): TrainRouteRecord => ({ recordType: "station", id, name: "A ", platforms: [{ id: "p1", mode: "load", items: ["Desc_Silica_C"] }] });
 const port = (id: string): DronePort => ({ id, name: "FUEL 5", paired: "TestLand1", input: ["Desc_Battery_C"], output: [], fuel: ["Desc_Battery_C"], x: -2204, y: 503 });
+const mark = (id: string): MapMarker => ({ id, name: "Motor and Automated wiring", kind: "marker", icon: 349, color: "#6ea37b", x: 610, y: -638 });
 
 function setup(options: { random?: () => number } = {}) {
-  const world = { rails: [rail(1)], resourceNodes: [node(1)], conveyors: [edge("b1")], trainRoutes: [station("s1")], droneRoutes: [port("d1")] };
+  const world = { rails: [rail(1)], resourceNodes: [node(1)], conveyors: [edge("b1")], trainRoutes: [station("s1")], droneRoutes: [port("d1")], mapMarkers: [mark("m1")], mapMarkersDropped: 0 };
   const ports = {
     getRails: vi.fn<WorldPorts["getRails"]>(async () => ({ data: world.rails, dropped: 0 })),
     getResourceNodes: vi.fn<WorldPorts["getResourceNodes"]>(async () => ({ data: world.resourceNodes, dropped: 0 })),
     getConveyors: vi.fn<WorldPorts["getConveyors"]>(async () => ({ data: world.conveyors, dropped: 0 })),
     getTrainRoutes: vi.fn<WorldPorts["getTrainRoutes"]>(async () => ({ data: world.trainRoutes, dropped: 0 })),
     getDroneRoutes: vi.fn<WorldPorts["getDroneRoutes"]>(async () => ({ data: world.droneRoutes, dropped: 0 })),
+    getMapMarkers: vi.fn<WorldPorts["getMapMarkers"]>(async () => ({ data: world.mapMarkers, dropped: world.mapMarkersDropped })),
   };
   const sent: { layer: MapWorldLayer; body: { observedAt: string; data?: unknown[]; skipped?: string } }[] = [];
   const client = {
@@ -458,6 +460,42 @@ describe("the droneRoutes layer", () => {
     h.world.droneRoutes = [{ ...port("d1"), paired: null }];
     await vi.advanceTimersByTimeAsync(660_000);
     expect(h.sentFor("droneRoutes")).toHaveLength(2);
+    await h.stop();
+  });
+});
+
+// ADR-0038 §1 (#330): the mapMarkers layer, the same pipeline and tier (getMapMarkers is not game-thread).
+describe("the mapMarkers layer", () => {
+  it("is read on start and every 10 minutes, jittered like rails", async () => {
+    expect(MAP_MARKERS_INTERVAL_MS).toBe(RAILS_INTERVAL_MS);
+    const h = setup({ random: () => 0 });
+    await h.start();
+    expect(h.ports.getMapMarkers).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(540_000);
+    expect(h.ports.getMapMarkers).toHaveBeenCalledTimes(2);
+    await h.stop();
+  });
+
+  it("sends the first read, nothing for an equal hash, and again when a marker changes", async () => {
+    const h = setup();
+    await h.start();
+    expect(h.sentFor("mapMarkers")).toHaveLength(1);
+    expect(h.sentFor("mapMarkers")[0]!.body).toEqual({ observedAt: "2026-10-14T12:00:00.000Z", data: [mark("m1")] });
+    h.world.mapMarkers = h.world.mapMarkers.map((m) => ({ ...m }));
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("mapMarkers")).toHaveLength(1);
+    h.world.mapMarkers = [{ ...mark("m1"), color: "#ffffff" }];
+    await vi.advanceTimersByTimeAsync(660_000);
+    expect(h.sentFor("mapMarkers")).toHaveLength(2);
+    await h.stop();
+  });
+
+  it("logs a dropped count, never a marker's name", async () => {
+    const h = setup();
+    h.world.mapMarkersDropped = 2;
+    await h.start();
+    expect(h.warnings("world_layer_items_dropped").map((l) => l.fields)).toContainEqual({ layer: "mapMarkers", dropped: 2 });
+    expect(JSON.stringify(h.lines)).not.toContain(mark("m1").name);
     await h.stop();
   });
 });
