@@ -132,7 +132,8 @@ export function ItemList({
           Close
         </button>
       </div>
-      <div data-overlay-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {/* Focusable, so a keyboard can scroll it (axe scrollable-region-focusable). */}
+      <div data-overlay-body="" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <ul className="m-0 flex list-none flex-col gap-1 px-4 pt-0 pb-4">
           {items.map((item, i) => {
             const on = focus !== null && focus.item === item.key;

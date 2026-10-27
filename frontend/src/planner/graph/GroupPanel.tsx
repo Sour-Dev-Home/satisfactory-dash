@@ -73,7 +73,8 @@ export function GroupPanel({
           Close
         </button>
       </div>
-      <div data-overlay-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {/* Focusable, so a keyboard can scroll it when it holds no control (axe scrollable-region-focusable). */}
+      <div data-overlay-body="" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="grid content-start gap-2 px-4 pt-2 pb-4">
           <p className="m-0 text-sm">
             {node.count} {node.count === 1 ? "machine" : "machines"} · {stateCountsText(node.stateCounts)}
