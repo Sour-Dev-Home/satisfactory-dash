@@ -21,6 +21,7 @@ export type {
   SessionInfo,
   MappedConveyors,
   MappedDroneRoutes,
+  MappedMapMarkers,
   MappedRailSegments,
   MappedResourceNodes,
   MappedTrainRoutes,

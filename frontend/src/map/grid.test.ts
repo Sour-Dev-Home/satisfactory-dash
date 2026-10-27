@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("drawGrid (the neutral base map, ADR-0023 decision 4)", () => {
-  it("draws quiet lines in surface-2 every grid step and the world border in the line colour", () => {
+  it("draws quiet lines in the map-grid colour every grid step and the world border in the line colour", () => {
     const renderer = L.canvas();
     drawGrid(L, map, renderer, GRID_BASE_MAP, (token) => `color(${token})`);
     const lines: L.Polyline[] = [];
@@ -46,7 +46,7 @@ describe("drawGrid (the neutral base map, ADR-0023 decision 4)", () => {
     expect(lines).toHaveLength(count(minX, maxX) + count(minY, maxY));
     for (const line of lines) {
       const { color, opacity, interactive } = line.options;
-      expect({ color, opacity, interactive }).toEqual({ color: "color(--color-surface-2)", opacity: 1, interactive: false });
+      expect({ color, opacity, interactive }).toEqual({ color: "color(--color-map-grid)", opacity: 1, interactive: false });
       // Identity, not deep equality: a renderer's object graph is the whole map.
       expect(line.options.renderer).toBe(renderer);
     }

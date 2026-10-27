@@ -12,6 +12,7 @@ import {
   bottlenecksBeltLevel,
   deleteServerDone,
   factoryMixed,
+  mapMarkersWorldResponse,
   productionGraphTwoSites,
   railsWorldResponse,
   resourceNodesWorldResponse,
@@ -20,7 +21,7 @@ import {
   historyPower24h,
   historyTransitions24h,
   managedServersAllStates,
-  metricsOverviewAvailable,
+  metricsOverviewWithCharts,
   playersUnavailable,
   powerHistoryNormal,
   powerOk,
@@ -73,13 +74,14 @@ export const handlers = [
   // ADR-0038 M5: one handler per world layer (the endpoint's `:layer` is filled in).
   http.get(endpoints.map.worldLayer.route.replace(":layer", "rails"), () => HttpResponse.json(railsWorldResponse)),
   http.get(endpoints.map.worldLayer.route.replace(":layer", "resourceNodes"), () => HttpResponse.json(resourceNodesWorldResponse)),
+  http.get(endpoints.map.worldLayer.route.replace(":layer", "mapMarkers"), () => HttpResponse.json(mapMarkersWorldResponse)),
   http.get(endpoints.map.live.route, () => HttpResponse.json(mapLiveResponse)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).
   http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersAllStates)),
   // ADR-0056: the operator's metrics page (whatever `?window=` asks).
-  http.get(endpoints.metrics.overview.route, () => HttpResponse.json(metricsOverviewAvailable)),
+  http.get(endpoints.metrics.overview.route, () => HttpResponse.json(metricsOverviewWithCharts)),
   http.post(endpoints.serverManagement.testConnection.route, () => HttpResponse.json(testConnectionPassed)),
   http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionPassed)),
   http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),

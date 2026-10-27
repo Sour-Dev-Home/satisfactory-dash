@@ -46,7 +46,11 @@ On the 12-factory overview: dagre today 198 crossings and 11 edges through cards
 
 dagre keeps ranking, ordering, positions and label boxes (`frontend/src/planner/graph/layoutSite.ts`), with:
 
-- `acyclicer` left at dagre's default, its depth-first feedback arc set, not `"greedy"`;
+- loops broken by our own depth-first search before dagre (`returnFlows` in `layoutSite.ts`), not `"greedy"`. Amended in
+  build PR 1 (2026-10-26): dagre's default depth-first search starts from the first card listed, so on a card list that
+  begins inside a loop it reversed a forward flow and left the return pointing on; ours starts from the sources (cards no
+  flow enters), as ELK's `DEPTH_FIRST` does, then from any card not yet reached. Dagre gets the returns reversed and no
+  cycles; their routes are turned back round after layout;
 - `ranker: "tight-tree"` (fewer crossings than `network-simplex` in the tuning runs: 423 to 394 summed over all scenes).
 
 A new pure module, `frontend/src/planner/graph/orthogonalRoute.ts` (`routeOrthogonal`), turns dagre's routes into

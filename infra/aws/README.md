@@ -78,8 +78,9 @@ window afterwards, or remove `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_
   listens on `127.0.0.1:3001` and cloudflared reaches it at `http://127.0.0.1:3001`, starting only
   once the backend's `node -e` probe of `/api/health/ready` passes. No port mapping, no load
   balancer, no inbound rule; the public IP is for egress (no NAT gateway).
-- **Deploys and rollback.** One task at a time (ADR-0010 assumes one backend), so a deploy stops the
-  old task and starts the new one: a short outage. A new task that never turns healthy trips the
+- **Deploys and rollback.** One task, overlapped during a deploy (ADR-0054 D3, 100% / 200%): the new task
+  starts and turns healthy before the old one stops, so the tunnel keeps a connector and there is no
+  outage; timer-driven workers run on the advisory-lock leader only. A new task that never turns healthy trips the
   deployment circuit breaker, which rolls back to the last good task definition; the apply then fails,
   and `terraform.tfvars` still names the bad digest, so put the good one back.
 - **Credentials.** The execution role reads exactly the parameters the task injects (all under

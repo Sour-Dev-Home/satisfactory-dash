@@ -184,6 +184,7 @@ describe("SatisfactoryServerAdapter", () => {
     ["getBelts", (a: SatisfactoryServerAdapter) => a.getConveyors()],
     ["getTrainStation", (a: SatisfactoryServerAdapter) => a.getTrainRoutes()],
     ["getDroneStation", (a: SatisfactoryServerAdapter) => a.getDroneRoutes()],
+    ["getMapMarkers", (a: SatisfactoryServerAdapter) => a.getMapMarkers()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -329,6 +330,18 @@ describe("SatisfactoryServerAdapter", () => {
     const result = await adapter.getDroneRoutes();
     expect(get.mock.calls.map((call) => call[0])).toEqual(["getDroneStation"]);
     expect(result).toEqual({ dropped: 0, data: [{ id: "d1", name: "Hub", paired: "Far", input: ["Desc_Battery_C"], output: [], fuel: [], x: 10, y: -20 }] });
+  });
+
+  it("reads getMapMarkers and maps it to the mapMarkers layer", async () => {
+    const body = [
+      { ID: "m1", Name: " Base ", location: { x: 1000, y: -2000, z: 5 }, MapMarkerType: "RT_MapMarker", IconID: 349, ColorSlot: "6EA37BFF" },
+      { ID: "m2", Name: "No position", MapMarkerType: "RT_Stamp", IconID: 660, ColorSlot: "FFFFFFFF" },
+    ];
+    const get = vi.fn(async (_endpoint: string) => body as never);
+    const { adapter } = buildAdapter({ frm: { get } });
+    const result = await adapter.getMapMarkers();
+    expect(get.mock.calls.map((call) => call[0])).toEqual(["getMapMarkers"]);
+    expect(result).toEqual({ dropped: 1, data: [{ id: "m1", name: "Base", kind: "marker", icon: 349, color: "#6ea37b", x: 10, y: -20 }] });
   });
 
   it("getConveyors from an FRM without the connection fields resolves to skip unsupportedFrm, not an error", async () => {

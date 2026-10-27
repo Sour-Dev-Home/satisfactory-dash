@@ -16,6 +16,9 @@ const SEEN = [
 const NOT_YET_SEEN = [
   "Build_Blender_C", "Build_Converter_C", "Build_DroneStation_C", "Build_GeneratorGeoThermal_C", "Build_GeneratorNuclear_C",
   "Build_MinerMk3_C", "Build_QuantumEncoder_C", "Build_TruckStation_C",
+  // The blueprint assets in the SML project's Content folder (docs-vault/raw-sources/factorygame-building-blueprints-2026-10-26.md).
+  "Build_GeneratorBiomass_C", "Build_TrainDockingStationLiquid_C", "Build_IndustrialTank_C", "Build_FrackingSmasher_C",
+  "Build_FrackingExtractor_C", "Build_AlienPowerBuilding_C", "Build_PowerStorageMk1_C",
 ];
 
 const DIR = join(import.meta.dirname, "..", "..", "..", "public", "game-assets", "buildings");

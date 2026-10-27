@@ -13,4 +13,6 @@ export { mapTrainRoutes } from "./trainRoutesMapper.js";
 export type { MappedTrainRoutes, RawTrainRouteResponses } from "./trainRoutesMapper.js";
 export { mapDroneRoutes } from "./droneRoutesMapper.js";
 export type { MappedDroneRoutes } from "./droneRoutesMapper.js";
+export { mapMapMarkers } from "./mapMarkersMapper.js";
+export type { MappedMapMarkers } from "./mapMarkersMapper.js";
 export { mapNodeType } from "./nodeType.js";

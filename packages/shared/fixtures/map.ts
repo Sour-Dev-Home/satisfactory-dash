@@ -4,6 +4,10 @@ import type {
   DroneRoutesWorldIngestRequest,
   DroneRoutesWorldLayerResponse,
   MapLive,
+  MapMarkersWorldIngestRequest,
+  MapMarkersWorldLayerResponse,
+  PowerLinesWorldIngestRequest,
+  PowerLinesWorldLayerResponse,
   RailsWorldIngestRequest,
   RailsWorldLayerResponse,
   ResourceNodesWorldIngestRequest,
@@ -310,6 +314,52 @@ export const droneRoutesWorldResponse = {
   count: droneRoutesSample.data.length,
   data: droneRoutesSample.data,
 } satisfies DroneRoutesWorldLayerResponse;
+
+/**
+ * ADR-0038 §1: the mapMarkers layer, projected from the full 2026-09-27 capture
+ * (captured-responses/frm-getMapMarkers-2026-09-27-full.json): positions divided by 100 and rounded, z dropped,
+ * "RT_Stamp" as stamp and "RT_MapMarker" as marker, `ColorSlot` read as RRGGBBAA with the alpha dropped.
+ */
+export const mapMarkersSample = {
+  observedAt: "2026-09-27T04:54:27.000Z",
+  data: [
+    { id: "3FABC3BA4894F83587A186A66C530DAC", name: "Rock", kind: "stamp", icon: 660, color: "#ffffff", x: -125, y: -1132 },
+    { id: "8446AA8B4B8D38C16C21DDA27FD7B2B0", name: "Rock", kind: "stamp", icon: 660, color: "#ffffff", x: -1113, y: -1400 },
+    { id: "3FDAAE9E49D0ABD9997BDD806D7AF9E3", name: "Rock", kind: "stamp", icon: 660, color: "#ffffff", x: 784, y: -2169 },
+    { id: "288AB0A74EF4A44EB0B6CEBEDA184F9B", name: "Motor and Automated wiring", kind: "marker", icon: 349, color: "#6ea37b", x: 610, y: -638 },
+  ],
+} satisfies MapMarkersWorldIngestRequest;
+
+export const mapMarkersWorldResponse = {
+  layer: "mapMarkers",
+  hash: "sha256-mapmarkers-sample",
+  observedAt: mapMarkersSample.observedAt,
+  truncated: false,
+  count: mapMarkersSample.data.length,
+  data: mapMarkersSample.data,
+} satisfies MapMarkersWorldLayerResponse;
+
+/**
+ * ADR-0038 §1: the powerLines layer, projected from both items of the 2026-09-27 capture
+ * (captured-responses/frm-getCables-2026-09-27-trimmed.json: the shortest line, 207 cm, and the longest, 25,701 cm):
+ * `location0` and `location1` divided by 100 and rounded (Math.round, so -1803.5 -> -1803), z dropped.
+ */
+export const powerLinesSample = {
+  observedAt: "2026-09-27T19:23:44.000Z",
+  data: [
+    { id: "Build_PowerLine_C_2147223283", points: [[-1803, -1064], [-1804, -1066]] },
+    { id: "Build_PowerLine_C_2146912007", points: [[-520, -1463], [-423, -1683]] },
+  ],
+} satisfies PowerLinesWorldIngestRequest;
+
+export const powerLinesWorldResponse = {
+  layer: "powerLines",
+  hash: "sha256-powerlines-sample",
+  observedAt: powerLinesSample.observedAt,
+  truncated: false,
+  count: powerLinesSample.data.length,
+  data: powerLinesSample.data,
+} satisfies PowerLinesWorldLayerResponse;
 
 /** A server whose conveyors layer was read and holds no conveyors (nothing built yet). An older FRM without the
  *  connection fields sends no conveyors layer at all, so it has no response of this kind. */

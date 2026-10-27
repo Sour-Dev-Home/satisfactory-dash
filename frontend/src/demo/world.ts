@@ -22,6 +22,8 @@ import type {
   PlannerDesignationsResponse,
   PowerResponse,
   ProductionGraphResponse,
+  MapMarkersLayerData,
+  MapMarkersWorldLayerResponse,
   RailsLayerData,
   RailsWorldLayerResponse,
   ResourceNodesLayerData,
@@ -920,6 +922,26 @@ export function railsWorld(now: number): RailsWorldLayerResponse {
 
 export function resourceNodesWorld(now: number): ResourceNodesWorldLayerResponse {
   return { ...worldEnvelope(now, "resourceNodes", DEMO_NODES.length), data: DEMO_NODES };
+}
+
+/**
+ * The demo players' map markers and stamps (ADR-0038 §1, #330): made-up notes round the demo factory, in the
+ * colours players pick, one left unnamed as players do. Icons are game numbers the map doesn't draw yet.
+ * The colours are game data, not design values: written as the game's own `ColorSlot` (RRGGBBAA) and turned into the
+ * contract's "#rrggbb" the way the mapper does (alpha dropped).
+ */
+const colorSlot = (slot: string) => `#${slot.slice(0, 6).toLowerCase()}`;
+const DEMO_MARKERS: MapMarkersLayerData = [
+  { id: "demo-marker-hub", name: "HUB", kind: "marker", icon: 1, color: colorSlot("F2A541FF"), x: -1700, y: -980 },
+  { id: "demo-marker-steel", name: "Steel line (planned)", kind: "marker", icon: 2, color: colorSlot("4A90D9FF"), x: -1180, y: -1060 },
+  { id: "demo-marker-oil", name: "Oil outpost", kind: "marker", icon: 3, color: colorSlot("1D1D1FFF"), x: -1270, y: -730 },
+  { id: "demo-stamp-caves", name: "Caves: spiders", kind: "stamp", icon: 4, color: colorSlot("D64545FF"), x: -2120, y: -1180 },
+  { id: "demo-stamp-slugs", name: "Power slugs", kind: "stamp", icon: 5, color: colorSlot("9B6DD6FF"), x: -1440, y: -760 },
+  { id: "demo-stamp-blank", name: "", kind: "stamp", icon: 4, color: colorSlot("FFFFFFFF"), x: -1960, y: -820 },
+];
+
+export function mapMarkersWorld(now: number): MapMarkersWorldLayerResponse {
+  return { ...worldEnvelope(now, "mapMarkers", DEMO_MARKERS.length), data: DEMO_MARKERS };
 }
 
 /** A point `u` (0 to 1) of the way along a polyline, by length, in whole metres. */

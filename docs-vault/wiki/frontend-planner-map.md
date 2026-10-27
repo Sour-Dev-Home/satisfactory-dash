@@ -33,6 +33,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   response's `topologyHash` plus a signature of the cards, flows and sizes: a poll that only moves rates reuses the
   placement, and the words are never part of the memo. When dagre throws it falls back to parallel flows merged into
   one routed edge with stacked labels, then to a plain grid.
+- Edges (ADR-0059): loops are broken first by `returnFlows` (depth-first from the sources; returns handed to dagre
+  reversed, their routes turned back after), dagre places cards and label boxes (`tight-tree` ranker), then
+  `orthogonalRoute.ts` redraws every edge in horizontal legs through columns and vertical legs in the empty gaps between
+  them, one track each, so no line crosses a card. `edgeShapes.ts` draws each bend as a rounded corner. If the router
+  throws, dagre's own routes are drawn and `layoutStats().routerFailures` counts it.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).
@@ -45,9 +50,22 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 
 ## Metrics (ADR-0056, `src/metrics/`, `/app/metrics`)
 
-- The operator's page, never a tab in the real app, even for the operator. `METRICS_TAB` in `shell/tabs.ts` shows only
-  when `IS_DEMO`, so demo visitors find it.
-- The doors are the command bar's operator-only "Metrics" entry and `MetricsLink` on the Servers page.
+- The operator's page. Since the ADR-0056 amendment (2026-10-26) `METRICS_TAB` in `shell/tabs.ts` is a tab after Servers
+  whenever `canManageServers`, in the real app and the demo. The command bar's operator-only "Metrics" entry and
+  `MetricsLink` on the Servers page stay.
+- Chart-led (golden signals / RED, Grafana's stat row then trends then detail): `MetricsCharts.tsx` draws the headline
+  row (seven tiles from `charts.headline`, each with an aria-hidden SVG sparkline) and the trend figures; the numbers and
+  words are pure in `metricsTrend.ts`. Counts compare per hour (`hours`) as a percent; percentiles compare as the bucket
+  step ("≤ 200 ms, was ≤ 100 ms"); a zero or missing baseline is "No comparison"; a worse change says "worse" with an
+  icon, never colour alone.
+- Every trend chart is `TrendChart.tsx`, one lazy uPlot chunk (CSP gate `e2e/metrics-charts.spec.ts`). Timings draw on a
+  fixed log scale from 1 ms; the over value (`METRICS_TREND_OVER_MS`) sits on a shaded "> 5 s" band, never as 10 s. A
+  null hour is a gap. Requests stack with 5xx on the baseline in `--color-bad`; other series use `--color-series-1..5`
+  (fixed order) and p50/p95/p99 the `--color-ramp-1..3` steps, all validated against `--color-surface` (see the comment
+  in `index.css`). Each figure has a one-line text summary; the slot height is a token, so the chunk moves nothing.
+- The old tables are folded `<details>` ("System details", "Alert quality details"...) under the matching charts: the
+  accessible text path. A section's reason for having no data is never folded. Without `charts` (an older backend, or a
+  reason) the headline row says "Charts not available yet" and the Details still render.
 - `Shell` routes it only when `canManageServers`, so anyone else gets the unknown-page redirect. A 403 from the read
   redirects the same way, a 429 is a calm retry note, and a 401 stays central.
 - No polling (Refresh, 60 s stale time). Percentiles are shown as the bucket upper bounds they are (`metricsText.ts`).
@@ -58,12 +76,23 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - Leaflet with CRS.Simple, in a lazy chunk (`MapCanvas.tsx`) that only the Map page loads.
 - `projection.ts` is the one world-to-map mapping (`[lat, lng] = [-yM, xM]`; bounds cited from
   `docs-vault/raw-sources/world-coordinates.md`).
+- Under the grid, `terrain.ts` draws the traced terrain (ADR-0023 decision 4 amendment): `terrain/terrain.json`,
+  made by `scripts/map-terrain.mjs` from the game's map texture, loaded as its own chunk and drawn in the tile pane
+  so it stays under every layer. Colours are `--color-terrain-*` tokens; `TERRAIN_ENABLED` is the takedown switch;
+  `terrain/NOTICE.md` the licence boundary and the rebuild steps.
 - Base maps are configs (a neutral grid). The base stays data-derived, but #571 reversed #330's "no game art" for
   resource nodes: `resourceIcons.ts` maps FRM's `Name` to the game's icon in `public/game-assets/` (NOTICE.md: not
   AGPL), and an unknown type keeps the circle.
 - World layers (ADR-0038 M5: `railsLayer`, `resourceNodesLayer`) are `MapLayer<T>` over their own stored list:
   `MapPanel` reads them through `queries.mapRails`/`mapResourceNodes`, only while the toggle is on, and hands the
   canvas a bound `DrawnLayer`.
+- The players' map markers and stamps (ADR-0038 §1, #330, `markersLayer`, `queries.mapMarkers`) are a world layer
+  drawn above the buildings and under the trains: a marker a pin (tip on its place), a stamp a diamond a step smaller
+  than a station's, fixed pixel sizes rebuilt on zoom. The fill is the marker's own `color` (game data, so a Leaflet
+  path option, not a token; `ColorSlot` read as RRGGBBAA, verified by the owner in game on 2026-10-27); the rim is
+  `--color-marker-edge`, so a dark one shows on the terrain. An empty name reads "Unnamed marker"/"Unnamed stamp";
+  rows are keyed `${id}:${x}:${y}` (FRM ids can repeat), with a count added only on a full repeat. The game's icon
+  (`icon`, FRM's IconID) isn't drawn: its mapping to an image is undocumented (follow-up).
 - A layer is a `MapLayer` (`layers.ts`): it gets Leaflet through its `MapContext` (never imports it at runtime),
   draws on the shared canvas renderer (the node icons are DOM `L.marker`s, since a canvas draws no images here),
   returns its cleanup, and supplies a legend and a text `describe`.

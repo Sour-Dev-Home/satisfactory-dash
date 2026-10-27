@@ -54,9 +54,9 @@ describe("the Planner tab", () => {
 });
 
 describe("the tab list", () => {
-  it("sits after Factory, with the operator's Servers last", () => {
+  it("sits after Factory, with the operator's Servers and Metrics last", () => {
     expect(visibleTabs(false).map((t) => t.label)).toEqual(["Overview", "Power", "Factory", "Planner", "Map", "Settings"]);
-    expect(visibleTabs(true).at(-1)?.label).toBe("Servers");
+    expect(visibleTabs(true).slice(-2).map((t) => t.label)).toEqual(["Servers", "Metrics"]);
   });
 
   it("can still be built without the Planner", () => {

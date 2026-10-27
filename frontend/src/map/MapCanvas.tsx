@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import type { MapContext } from "./layers";
 import { drawGrid } from "./grid";
 import { mapBounds, project, unproject, type BaseMapConfig } from "./projection";
+import { drawTerrain, TERRAIN_ENABLED } from "./terrain";
 
 /** The world rectangle in view, in metres. */
 export interface ViewM {
@@ -23,7 +24,7 @@ export interface DrawnLayer {
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 /**
- * The map core (ADR-0023): Leaflet with CRS.Simple, a canvas renderer, the grid base map, and
+ * The map core (ADR-0023): Leaflet with CRS.Simple, a canvas renderer, the terrain and grid base map, and
  * the visible layers drawn through the MapLayer contract. A lazy chunk, loaded with the Map
  * page only. Leaflet styles through the CSSOM and its CSS is a static file, so the strict CSP
  * (style-src 'self') holds; e2e/map.spec.ts proves it for pan, zoom, hover and layer toggles.
@@ -72,6 +73,21 @@ export default function MapCanvas({
     drawGrid(L, map, renderer, config, token);
     map.fitBounds(target, { maxZoom: 1 });
 
+    // The terrain (ADR-0023 amendment): its own chunk, drawn in the tile pane so it stays under the grid and every
+    // layer whenever it lands. A map gone before it loads draws nothing.
+    let live = true;
+    let removeTerrain = () => {};
+    if (TERRAIN_ENABLED) {
+      void import("./terrain/terrain.json")
+        .then(({ default: terrain }) => {
+          if (!live) return;
+          const below = L.canvas({ pane: "tilePane", padding: 0.5 });
+          removeTerrain = drawTerrain(L, map, below, config, token, terrain);
+        })
+        // The terrain is a backdrop: a chunk that fails to load leaves the plain grid, not an unhandled rejection.
+        .catch(() => {});
+    }
+
     const report = () => {
       const bounds = map.getBounds();
       const a = unproject(config, [bounds.getSouth(), bounds.getWest()]);
@@ -90,6 +106,8 @@ export default function MapCanvas({
     resize.observe(el);
     setCtx({ L, map, renderer, color: token, token, project: (x, y) => project(config, x, y) });
     return () => {
+      live = false;
+      removeTerrain();
       resize.disconnect();
       map.remove();
       setCtx(null);

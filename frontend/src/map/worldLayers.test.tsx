@@ -1,11 +1,12 @@
-import { railsWorldResponse, resourceNodesWorldResponse } from "@satisfactory-dash/shared/fixtures";
+import { mapMarkersWorldResponse, railsWorldResponse, resourceNodesWorldResponse } from "@satisfactory-dash/shared/fixtures";
 import { render, screen, within } from "@testing-library/react";
 import * as L from "leaflet";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MapContext } from "./layers";
 import { GRID_BASE_MAP, project } from "./projection";
 import { railsLayer, RAIL_WEIGHT_PX } from "./railsLayer";
-import type { RailSegment } from "@satisfactory-dash/shared";
+import type { MapMarker, RailSegment } from "@satisfactory-dash/shared";
+import { isLightFill, MARKER_EDGE_PX, markerKeys, markersLayer, PIN_HEAD_OFFSET_PX, PIN_HEAD_RADIUS_PX, STAMP_RADIUS_PX } from "./markersLayer";
 import { resourceNodesLayer } from "./resourceNodesLayer";
 import { nodeRadiusPx } from "./worldGeometry";
 
@@ -28,6 +29,8 @@ beforeEach(() => {
   const colors = new Map([
     ["--color-rail", "RAIL"],
     ["--color-node", "NODE"],
+    ["--color-marker-edge", "EDGE"],
+    ["--color-canvas", "DARK"],
   ]);
   ctx = {
     L,
@@ -208,5 +211,119 @@ describe("count strings (hunt)", () => {
     expect(paths<L.CircleMarker>()[0].getRadius()).toBe(nodeRadiusPx("normal"));
     cleanup();
     expect(paths()).toHaveLength(0);
+  });
+});
+
+describe("markersLayer (#330)", () => {
+  const marker = (over: Partial<MapMarker> = {}): MapMarker => ({
+    id: "m1",
+    name: "Base",
+    kind: "marker",
+    icon: 349,
+    color: "#6ea37b",
+    x: 10,
+    y: -20,
+    ...over,
+  });
+  const polygons = () => paths().filter((p): p is L.Polygon => p instanceof L.Polygon);
+  /** A polygon's corners in screen pixels, relative to the point it marks. */
+  const offsetsFrom = (polygon: L.Polygon, m: MapMarker) => {
+    const centre = map.latLngToLayerPoint(project(GRID_BASE_MAP, m.x, m.y));
+    return (polygon.getLatLngs()[0] as L.LatLng[]).map((ll) => {
+      const p = map.latLngToLayerPoint(ll);
+      return [Math.round(p.x - centre.x), Math.round(p.y - centre.y)];
+    });
+  };
+
+  it("tells a light fill from a dark one, so the rim can stay visible", () => {
+    expect(["#ffffff", "#fbf8f2", "#f2e8a0"].map(isLightFill)).toEqual([true, true, true]);
+    expect(["#6ea37b", "#1d1d1f", "#3470c2", "#d95926"].map(isLightFill)).toEqual([false, false, false, false]);
+  });
+
+  it("draws one shape per marker, in the player's colour with the token rim (dark on a light fill), and removes them on cleanup", () => {
+    const markers = mapMarkersWorldResponse.data;
+    const cleanup = markersLayer.draw(ctx, markers);
+    const shapes = polygons();
+    expect(shapes).toHaveLength(markers.length);
+    // The capture's three stamps are white (the light rim would vanish into them); its one marker is green.
+    expect(markers.some((m) => isLightFill(m.color)) && markers.some((m) => !isLightFill(m.color))).toBe(true);
+    shapes.forEach((s, i) => {
+      expect(s.options.fillColor).toBe(markers[i].color);
+      expect(s.options.fillOpacity).toBe(1);
+      expect(s.options.color).toBe(isLightFill(markers[i].color) ? "DARK" : "EDGE");
+      expect(s.options.weight).toBe(MARKER_EDGE_PX);
+    });
+    cleanup();
+    expect(paths()).toHaveLength(0);
+  });
+
+  it("draws a stamp as a diamond round its place and a marker as a pin with its tip on its place", () => {
+    const stamp = marker({ kind: "stamp" });
+    const pin = marker({ id: "m2" });
+    markersLayer.draw(ctx, [stamp, pin]);
+    const [diamond, teardrop] = polygons();
+    expect(offsetsFrom(diamond, stamp)).toEqual([
+      [0, -STAMP_RADIUS_PX],
+      [STAMP_RADIUS_PX, 0],
+      [0, STAMP_RADIUS_PX],
+      [-STAMP_RADIUS_PX, 0],
+    ]);
+    const pinPoints = offsetsFrom(teardrop, pin);
+    expect(pinPoints[0]).toEqual([0, 0]);
+    // Everything else sits above the tip, up to the head's top.
+    expect(Math.min(...pinPoints.map(([, y]) => y))).toBe(-(PIN_HEAD_OFFSET_PX + PIN_HEAD_RADIUS_PX));
+    expect(Math.max(...pinPoints.slice(1).map(([, y]) => y))).toBeLessThan(0);
+  });
+
+  it("keeps the shapes the same size on screen when the zoom changes, and stops following it after cleanup", async () => {
+    const stamp = marker({ kind: "stamp" });
+    const cleanup = markersLayer.draw(ctx, [stamp]);
+    map.setZoom(2, { animate: false });
+    expect(offsetsFrom(polygons()[0], stamp)[1]).toEqual([STAMP_RADIUS_PX, 0]);
+    await new Promise((resolve) => setTimeout(resolve, 60)); // let Leaflet's own repaint run while the map is alive
+    const off = vi.spyOn(map, "off");
+    cleanup();
+    expect(off).toHaveBeenCalledWith("zoomend", expect.any(Function));
+  });
+
+  it("builds the tooltip from text nodes: the name, the kind and the place", () => {
+    const evil = "<img src=x onerror=alert(1)>";
+    markersLayer.draw(ctx, [marker({ name: evil })]);
+    const el = (polygons()[0].getTooltip()!.getContent() as () => HTMLElement)();
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.textContent).toBe(`${evil}Markerx 10, y -20`);
+  });
+
+  it("names an unnamed marker or stamp by its kind", () => {
+    markersLayer.draw(ctx, [marker({ name: "" }), marker({ id: "s", name: "  ", kind: "stamp" })]);
+    expect(tooltipText(polygons()[0])).toContain("Unnamed marker");
+    expect(tooltipText(polygons()[1])).toBe("Unnamed stampStampx 10, y -20");
+  });
+
+  it("draws nothing for an empty layer", () => {
+    markersLayer.draw(ctx, [])();
+    expect(paths()).toHaveLength(0);
+  });
+
+  it("describes the layer in text: markers and stamps", () => {
+    expect(markersLayer.describe([])).toBe("No map markers or stamps placed yet.");
+    expect(markersLayer.describe(mapMarkersWorldResponse.data)).toBe("1 marker and 3 stamps on the map.");
+    expect(markersLayer.describe([marker(), marker({ id: "b" })])).toBe("2 markers and 0 stamps on the map.");
+  });
+
+  it("has a legend naming each shape", () => {
+    render(<>{markersLayer.legend()}</>);
+    expect(screen.getByText("Marker (pin)")).toBeInTheDocument();
+    expect(screen.getByText("Stamp (diamond)")).toBeInTheDocument();
+  });
+
+  it("keys markers by id and place, and still apart when even those repeat", () => {
+    const a = marker();
+    expect(markerKeys([a, marker({ x: 11 }), a])).toEqual(["m1:10:-20", "m1:11:-20", "m1:10:-20:1"]);
+  });
+
+  it("keeps keys unique when an id with colons imitates a suffixed key", () => {
+    const list = [marker({ id: "a", x: 1, y: 2 }), marker({ id: "a", x: 1, y: 2 }), marker({ id: "a:1", x: 2, y: 1 })];
+    expect(new Set(markerKeys(list)).size).toBe(3);
   });
 });

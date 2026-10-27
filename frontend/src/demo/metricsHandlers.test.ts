@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { endpoints, METRICS_WINDOWS, MetricsOverviewSchema } from "@satisfactory-dash/shared";
+import { endpoints, METRICS_TREND_OVER_MS, METRICS_WINDOWS, MetricsOverviewSchema, metricsTrendPoints } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
 import { demoMetricsOverview } from "./metrics";
 import { transport } from "./transport";
@@ -63,6 +63,22 @@ describe("the demo's metrics world", () => {
     if (!hour.system.available || !week.system.available) throw new Error("the demo system section has data");
     expect(week.system.histograms[0].count).toBeGreaterThan(hour.system.histograms[0].count);
     expect(week.system.histograms[0].p95Ms).toBe(hour.system.histograms[0].p95Ms);
+  });
+
+  it("has charts for every window that the contract accepts: a day of hours, a week for 7d, one bad hour", () => {
+    for (const window of METRICS_WINDOWS) {
+      const overview = MetricsOverviewSchema.parse(demoMetricsOverview(NOW, window));
+      const charts = overview.charts;
+      if (!charts?.available) throw new Error("the demo has charts");
+      expect(charts.trend.points).toBe(metricsTrendPoints(window));
+      // The trend ends in the current hour, on the hour.
+      expect(Date.parse(charts.trend.from) + (charts.trend.points - 1) * 3_600_000).toBe(Date.parse("2026-10-25T12:00:00Z"));
+      expect(charts.trend.requestMs.p99).toContain(METRICS_TREND_OVER_MS);
+      expect(charts.trend.requests.c5xx.some((n) => (n ?? 0) > 1)).toBe(true);
+    }
+    const week = demoMetricsOverview(NOW, "7d").charts;
+    if (!week?.available) throw new Error("the demo has charts");
+    expect(week.trend.requests.c2xx).toContain(null);
   });
 
   it("covers the last three calendar months, across a year boundary too", () => {

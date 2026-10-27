@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MappedConveyors, MappedDroneRoutes, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes } from "@satisfactory-dash/game-adapter";
+import type { MappedConveyors, MappedDroneRoutes, MappedMapMarkers, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes } from "@satisfactory-dash/game-adapter";
 import { MAP_WORLD_LAYER_MAX_BYTES } from "@satisfactory-dash/shared";
 import type { ConveyorsSkipReason, MapWorldLayer, WorldIngestResponse } from "@satisfactory-dash/shared";
 import { backoffDelayMs } from "./backoff.js";
@@ -18,6 +18,9 @@ export const CONVEYORS_INTERVAL_MS = 600_000;
 export const TRAIN_ROUTES_INTERVAL_MS = 600_000;
 /** Drone routes (ADR-0055 PR 12a): every 10 min, the world tier; a port's pairing changes only when the player edits it. */
 export const DRONE_ROUTES_INTERVAL_MS = 600_000;
+/** Map markers (ADR-0038 §1, #330): every 10 min, the world tier ADR-0038 D3 puts markers in. getMapMarkers is not a
+ *  game-thread endpoint, and markers change only when a player places or edits one, so an unchanged read sends nothing. */
+export const MAP_MARKERS_INTERVAL_MS = 600_000;
 /** Resource nodes: every 30 min. `getResourceNode` runs on the game thread, so it is read least often. */
 export const RESOURCE_NODES_INTERVAL_MS = 1_800_000;
 /** ±10%, as the local poller: agents that started together do not read their games in the same tick. */
@@ -30,6 +33,7 @@ export interface WorldPorts {
   getConveyors(): Promise<MappedConveyors>;
   getTrainRoutes(): Promise<MappedTrainRoutes>;
   getDroneRoutes(): Promise<MappedDroneRoutes>;
+  getMapMarkers(): Promise<MappedMapMarkers>;
 }
 
 export interface WorldClient {
@@ -103,6 +107,7 @@ export class WorldReader {
         this.loop("conveyors", CONVEYORS_INTERVAL_MS, () => ports.getConveyors()),
         this.loop("trainRoutes", TRAIN_ROUTES_INTERVAL_MS, () => ports.getTrainRoutes()),
         this.loop("droneRoutes", DRONE_ROUTES_INTERVAL_MS, () => ports.getDroneRoutes()),
+        this.loop("mapMarkers", MAP_MARKERS_INTERVAL_MS, () => ports.getMapMarkers()),
       ]);
     } finally {
       signal.removeEventListener("abort", stopFromOutside);

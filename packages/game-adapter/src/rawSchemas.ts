@@ -302,6 +302,21 @@ export const RawFrmDronePortSchema = z.object({
 });
 
 /**
+ * getMapMarkers for the mapMarkers layer (ADR-0038 §1, #330; captured-responses/frm-getMapMarkers-2026-09-27-full.json;
+ * frm-read-api.md lists it as not game-thread). Only the position must be present: every other field is caught to
+ * `undefined` so the mapper decides (an odd id gets a derived one, an odd name is empty, an odd colour is the default, an
+ * odd icon drops the item). z is not required, the map is 2-D. `Category`, `Scale` and `CompassViewDistance` are not read.
+ */
+export const RawFrmMapMarkerSchema = z.object({
+  ID: z.string().optional().catch(undefined),
+  Name: z.string().optional().catch(undefined),
+  location: z.object({ x: z.number(), y: z.number() }),
+  MapMarkerType: z.string().optional().catch(undefined),
+  IconID: z.number().optional().catch(undefined),
+  ColorSlot: z.string().optional().catch(undefined),
+});
+
+/**
  * ADR-0038 M3: GET /getTrainStation (docs-vault/raw-sources/captured-responses/
  * frm-getTrainStation-2026-09-27-full.json). The docking platforms (`CargoInventory`), bounding
  * box and power are not the map's concern.

@@ -435,3 +435,123 @@ admin only.
 - **Drones and trucks:** no save has them; infer from the game's own class and property names, marked
   `[NEEDS VERIFICATION]` (Decision 1). Trains are checked on the owner's save.
 - **Ground truth:** no hand-labelled factories; validation is by invariants and the measured statistics (Decision 4).
+
+## Amendment 2026-10-27: merge and split factories (#727)
+
+Owner decisions (2026-10-27, on #727): merging several factories is allowed for **connected factories only**, for now
+(Merge stays disabled for a disconnected selection, with the reason shown); and factories must also come **apart**:
+split, pop out a node, dissolve, and "Split back" after a merge. This extends Decision 5 (designations) and Decision 6's
+"a folded side product can be popped out into its own card" to any node. Additive on ADR-0007; nothing in Decisions 1 to 10
+changes.
+
+### Decision 11: one replace operation for every change of the designation set
+
+Merge, split, pop-out, dissolve and undo are one write: **replace a set of designations with another set, in one
+transaction.** Resulting set = existing, minus the `expect` ids, plus the `put` entries.
+
+- **Endpoint:** `POST /api/servers/:serverId/planner/designations/replace`. The existing POST, PUT and DELETE stay for
+  single create, edit and delete; PUT also bumps `revision` (below). The new route lives beside them in
+  `map/routes/designationRoutes.ts` and uses the same `DesignationStore` port (a new `replace` method).
+- **Request** (`packages/shared/src/plannerDesignations.ts`):
+  `{ expect: [{ id: uuid, revision: int }] (0..10), put: [{ id?: uuid, name, members, createdAt?: iso }] (0..10),
+  intent?: string (max 20; known: merge | split | pop_out | dissolve | undo) }`.
+  - Every `expect` entry must exist at that revision, else 409 `designation_stale` (a new error code, additive).
+  - A `put` entry whose `id` is in `expect` **updates that designation in place** (kept id, kept `createdAt`, revision + 1).
+    Every other `put` entry is inserted; it may carry an `id` (not present anywhere after the removal) and a `createdAt`
+    (not in the future) so an undo restores the originals exactly: ids, creation order and so the matching priority of
+    Decision 5. Every `expect` entry not named by a `put` is deleted. An empty `put` is a dissolve.
+  - `members` keep the existing `MembersSchema` (1..1000, an id appears once). The `put` entries must not share a building
+    (400 `bad_request`: a client bug). A building held by a designation **outside** `expect` is the existing 409
+    `designation_overlap` naming it. The resulting count above 50 is 409 `designation_cap`. Total members across `put` are
+    at most 2,000; the route's body limit for this path is `1mb` (set where `DESIGNATION_BODY_LIMIT` is, parsed only after
+    the session and member-write guard, as the other designation writes).
+  - `intent` is a hint for the audit event only; behaviour never depends on it.
+- **Response:** `{ designations: PlannerDesignation[] (the written ones, with revision), removedIds: uuid[] }`.
+- **Atomic and serialized:** the transaction takes the server row `FOR NO KEY UPDATE` first, then reads, checks revisions,
+  overlap and cap on the resulting set, then deletes, updates and inserts. All or nothing; two replaces on one server run
+  one after the other (the lock comment in `designationRepository.ts` applies unchanged).
+- **Authorization:** unchanged, owner and admin only, through the existing member-write guard (`servers/serverAccess.ts`);
+  viewers see designations and get 403 `forbidden` on this route. No new role and no per-designation owner.
+- **Concurrency token:** `revision integer NOT NULL DEFAULT 1` on `map.factory_designations` (expand-only migration,
+  ADR-0049; `updated_at` is not usable, the API truncates it to milliseconds). It is returned on every designation
+  (`revision`, optional in the schema: absent = an older backend) and bumped by every write to that row. A stale selection
+  (someone else renamed, merged or deleted one of the designations meanwhile) therefore gets 409 `designation_stale`; the
+  client refetches, drops the selection and says "Changed by someone else; select again". A designation someone **added**
+  meanwhile that claims the same machines is caught by `designation_overlap`; nothing else can conflict.
+- **Audit:** one event `planner.designations_replaced` per call (not one per row), detail ids and counts only, never a name,
+  as Decision 5: `{ intent, removedIds, updatedIds, addedIds, members }`. No user id in the table.
+
+### Decision 12: the operations, built by the client from what it already shows
+
+- **Merge** (2 to 10 factories selected, designated or suggested): `expect` = the designated ones, `put` = one entry with
+  the union of their members, plus the machines of any selected suggestion (a suggestion is never stored: its machines are
+  free buildings, and once designated they leave the automatic reduction, Decision 5). The result keeps the **oldest**
+  source's `id` and `createdAt` (so matching priority is stable) and a name the dialog proposes from the largest source.
+  Blocked in the client above 1000 total members, naming the number; the server refuses it the same way (400).
+- **Split** (select machines or cards inside an opened factory, "Split into a new factory"): `expect` = the source, `put` =
+  the source kept under its id with the unselected members, plus a new entry with the selected members. Members that the
+  matcher cannot find any more stay with the source ("N machines no longer found" stays where it was).
+- **Pop a node out:** a split whose selection is one node (a card or a machine group), named after the node. Popping out
+  the whole factory is a rename, not an operation. An automatic (suggested) factory has nothing to split: "Keep" it
+  (Decision 5), popped or not, is the existing create.
+- **Dissolve:** `expect` = the designation, empty `put`. Its machines return to the automatic reduction, so they appear in a
+  suggestion again. An undo toast follows.
+- **Split back** (undo of a merge, and the undo of any of the above): the client holds the pre-image (the designations as it
+  read them) and sends the inverse: `expect` = the ids and revisions the response returned, `put` = the originals with
+  their `id`, `createdAt` and members in their original order, `intent: "undo"`. Undo lives in client memory for the
+  toast (about 10 seconds) and the session; it is not stored on the server. If someone changed any of them meanwhile the
+  undo gets `designation_stale` and says so; it never overwrites. Merge then Split back is the identity on ids, members,
+  order and `createdAt` (tested).
+- **Which members belong to which machine:** the client needs this to split a stored designation. The matcher already
+  computes, per designation, the live building each member was matched to
+  (`map/routes/designationRoutes.ts` drops it today). `PlannerDesignationMatch` gains optional
+  `memberBuildingIds: (string | null)[]` (aligned to `members`, null = not found, at most 1000 per designation). The client
+  intersects it with the selected nodes' `machineIds` instead of re-implementing Decision 5's three passes.
+- **Connected, checked on the client only:** two or more factories are connected when, ignoring direction, they form one
+  component in the factory graph of the latest production-graph response: an edge or a transport (`transports`,
+  Decision 9) between their `nodeKeys`, or a node shared between them (`shares`). Suggested factories count as nodes of that
+  graph. The server does not enforce it: it would have to recompute the whole production graph on a write, and connectedness
+  is not an invariant of the data (a lasso can already designate disconnected machines, and a split can leave unconnected
+  parts: each becomes its own factory and the dialog says so). Lifting the owner's "for now" is therefore a frontend change
+  with no contract change. A selection that is not connected disables Merge with "These factories are not connected by any
+  belt, pipe or transport".
+- **Not chosen:** separate merge/split/dissolve endpoints (each would need its own atomicity, stale and undo rules); a
+  server-side undo log or history table (persistent state for a 10-second need); `If-Match` ETags (the request carries many
+  independent preconditions); server-side connectivity (above); letting the server resolve a split from building ids at
+  write time (the user could write what they did not see; the client sends explicit members and the revision proves the
+  base).
+
+### Consequences
+
+- Additive: `PlannerDesignationSchema.revision` (optional), `PlannerDesignationMatchSchema.memberBuildingIds` (optional), the
+  replace request/response schemas and endpoint, the `designation_stale` code. An older frontend ignores the new fields; an
+  older backend lacks them and the UI hides split and undo (merge of whole designations still works through PUT and DELETE
+  when `revision` is absent, without the stale check).
+- One migration: `ADD COLUMN revision integer NOT NULL DEFAULT 1`, expand-only. Rollback leaves a harmless column.
+- Cost: a replace reads and rewrites at most 10 designations of at most 1000 members; one transaction under the existing
+  server lock.
+- Testing: stale revision, overlap with an outside designation, cap on the resulting set, in-place update keeps
+  `createdAt`, restore keeps priority order, merge then split back is the identity, two concurrent replaces serialize, a
+  viewer gets 403.
+- The contract PR confirms an older frontend shows a generic error for the new `designation_stale` code rather than failing
+  to parse the error envelope.
+
+### Revisit when
+
+- A real case needs merging disconnected factories (lift the client gate).
+- More than ten factories are merged at once, or one factory exceeds 1000 machines (raise the caps with the data).
+- Undo must survive a reload or be shared between sessions (then a server-side history, its own ADR).
+
+### Build PRs (each from `main`, merged in order, not stacked)
+
+1. **Contract:** `packages/shared/src/plannerDesignations.ts` (revision, memberBuildingIds, replace schemas, caps),
+   `endpoints.ts` (`plannerDesignations.replace`), `errors.ts` (`designation_stale`), fixtures and tests (old payloads
+   without `revision` still parse).
+2. **Backend:** migration adding `revision` (plus `latestMigration.ts`), `designationRepository.ts` (`revision`, bump on
+   update, `replace`), `designationRoutes.ts` (the route, `1mb` limit, keep the member-to-building ids),
+   `designationMatching.ts` (aligned `memberBuildingIds`), `errorResponse.ts` (409 for `designation_stale`), db and route
+   tests, the viewer case in `serverAuthorization.test.ts`; test-hunter and security-reviewer.
+3. **Frontend:** a pure `connectivity.ts` and `designationOps.ts` (merge, split, pop-out, dissolve, undo requests, with the
+   round-trip identity tests), the replace hook with `designation_stale` handling, the selection UI (Merge with its
+   disabled reason, Split into a new factory, pop-out, Dissolve, the undo toast with "Split back"), demo data, an e2e
+   keyboard path; ui-reviewer.

@@ -81,13 +81,18 @@ test("every screen works offline: enter, overview, power, factory, settings, log
   await expect(page.getByRole("alert")).toContainText("The demo doesn't change servers.");
   await expectNoAxeViolations(page, testInfo);
 
-  // The operator's metrics page (ADR-0056): a visible tab in the demo only, with its made-up numbers labelled as such.
+  // The operator's metrics page (ADR-0056): the operator's tab, with its made-up numbers labelled as such, the headline
+  // tiles, and the tables folded under the charts.
   await nav.getByRole("link", { name: "Metrics" }).click();
   await expect(page).toHaveURL(/\/app\/metrics/);
   await expect(page.getByText(/Sample data: made-up numbers/)).toBeVisible();
   await expect(page.getByRole("region", { name: "System" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Alert quality" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "At a glance" }).getByText("Requests per hour")).toBeVisible();
+  await page.getByText("System details: every timing and counter").click();
+  await expect(page.getByText(/Timings are bucket upper bounds/)).toBeVisible();
   await page.getByRole("button", { name: "7 d" }).click();
+  await expect(page.getByText("Hourly trend, last 7 days").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "7 d" })).toHaveAttribute("aria-pressed", "true");
   await expectNoAxeViolations(page, testInfo);
 

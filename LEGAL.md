@@ -68,6 +68,11 @@ removed on request. `frontend/public/game-assets/NOTICE.md` states the boundary.
 bundle Satisfactory assets" working rule below for those icons only; it does not settle the EULA question
 above, and any monetization decision must revisit it.
 
+**Map terrain (#571, 2026-10-26):** the Map page's base draws shapes traced from the game's own world map texture
+(`frontend/src/map/terrain/`, see its NOTICE.md). The texture is not in the repo; the derived shapes have the same
+standing as the icons above: © Coffee Stain Studios' map, fan content, not AGPL, removed on request
+(`TERRAIN_ENABLED`).
+
 ## The game mod (ADR-0039)
 
 **This is a reading of the licence texts for planning, not legal advice.** It records what the texts say so the

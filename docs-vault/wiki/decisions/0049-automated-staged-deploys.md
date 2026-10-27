@@ -236,6 +236,8 @@ out. A staging frontend at its own hostname is deferred (frontend out of scope).
   reach, and should stay there.
 - Expect the same short outage as today on every rollout and rollback (stop before start, `runbooks/aws.md:118-119`).
   `ecs-no-running-task` (3 minutes without CPU data, `alarms.tf:21-39`) may mail once if a start is slow.
+  **Amended by ADR-0054 D3 (PR 3):** the rollout now overlaps (100% / 200%): the old task serves until the new one is
+  healthy, so a rollout or rollback should cost no outage.
 
 ### D6. Migration safety: expand, release, then contract
 - Every release's migrations are **expand-only**: the running (old) backend works on the new schema while the migration

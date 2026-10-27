@@ -49,6 +49,17 @@ positions, with switchable layers (factory status, power, later belts and trains
    image and served as our own static assets (Workers static assets, or R2 if file-count/size limits
    bite [NEEDS VERIFICATION: current Workers asset limits]). Never hotlinked. Until the image is
    settled, v1 ships with a neutral coordinate grid, and the map is fully functional without art.
+   *Amended 2026-10-26 (#571, owner): not an image but traced shapes. The game's world map texture
+   (`Interface/UI/Assets/MapTest/SlicedMap`, four tiles, exported by the owner with FModel) is traced once, offline,
+   by `scripts/map-terrain.mjs` into polygons in world metres: the land, the shallows and two height bands (upland,
+   peaks; the lowland is the land colour), about 22,000 points, 89 kB gzipped, its own lazy chunk. The Map page draws
+   them in our tokens (`--color-terrain-*`) under the grid, so the base reads as a quiet chart in the dashboard's
+   style, not the game's picture. The texture never enters the repo; the shapes are derived from Coffee Stain's map,
+   so they sit behind the same boundary as the icons (`frontend/src/map/terrain/NOTICE.md`) with a takedown switch
+   (`TERRAIN_ENABLED`). The texture covers the 7,500 m square above: the captured nodes and buildings land on the
+   traced land (28 of 30; shifting by 100 to 250 m in any direction never does better). Tints are height bands,
+   because that is what the texture's colours carry; named biomes would need hand-drawn regions.
+   The owner's check on their own save is still to come.*
 5. **Layer plug-in contract (frontend, map core):**
    ```ts
    interface MapLayer<T> {
@@ -84,7 +95,8 @@ positions, with switchable layers (factory status, power, later belts and trains
 6. Base map tiles + calibration, once the owner settles the image.
 
 ## Consequences
-- The map works on any save with zero game art. Art is an isolated, swappable asset.
+- The map works on any save with zero game art. Art is an isolated, swappable asset. (Since 2026-10-26 the base
+  draws shapes traced from the game's map, decision 4; `TERRAIN_ENABLED = false` brings back the bare grid.)
 - A new runtime dependency (Leaflet), accepted at PR approval by the owner.
 
 ## Revisit when

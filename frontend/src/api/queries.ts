@@ -9,9 +9,11 @@ import {
 import {
   BOTTLENECKS_DEFAULT_LIMIT,
   endpoints,
+  MapMarkersLayerDataSchema,
   RailsLayerDataSchema,
   ResourceNodesLayerDataSchema,
   type HistoryRange,
+  type MapMarkersLayerData,
   type MapWorldLayer,
   type MetricsWindow,
   type RailsLayerData,
@@ -282,6 +284,14 @@ export const queries = {
       queryKey: ["servers", serverId, "map", "world", "resourceNodes"],
       queryFn: ({ signal }): Promise<WorldLayerRead<ResourceNodesLayerData>> =>
         readWorldLayer(signal, serverId, "resourceNodes", ResourceNodesLayerDataSchema),
+      refetchInterval: POLL_MS.mapWorld,
+    }),
+  /** ADR-0038 §1 (#330): the players' map markers and stamps, read the same way. */
+  mapMarkers: (serverId: string) =>
+    queryOptions({
+      queryKey: ["servers", serverId, "map", "world", "mapMarkers"],
+      queryFn: ({ signal }): Promise<WorldLayerRead<MapMarkersLayerData>> =>
+        readWorldLayer(signal, serverId, "mapMarkers", MapMarkersLayerDataSchema),
       refetchInterval: POLL_MS.mapWorld,
     }),
   /** ADR-0038 M6: the map's live trains and stations. Off with the Trains toggle (`enabled: false`), so a hidden layer costs no request. */

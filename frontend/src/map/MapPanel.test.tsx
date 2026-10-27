@@ -3,6 +3,7 @@ import {
   errorUpstreamUnreachable,
   factoryMixed,
   factoryOldBackend,
+  mapMarkersWorldResponse,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -12,6 +13,7 @@ import { endpoints, type FactoryResponse } from "@satisfactory-dash/shared";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "../test/mapLiveResponses";
+import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "../test/mapMarkersResponses";
 import { server } from "../test/server";
 import { renderWithClient } from "../test/render";
 import type { DrawnLayer, ViewM } from "./MapCanvas";
@@ -33,6 +35,7 @@ const buildings = factoryMixed.data.buildings;
 const railsRoute = endpoints.map.worldLayer.route.replace(":layer", "rails");
 const liveRoute = endpoints.map.live.route;
 const nodesRoute = endpoints.map.worldLayer.route.replace(":layer", "resourceNodes");
+const markersRoute = endpoints.map.worldLayer.route.replace(":layer", "mapMarkers");
 const ids = () => canvas.layers.map((l) => l.id);
 const mount = (snapshot: FactoryResponse = factoryMixed) => renderWithClient(<MapPanel snapshot={snapshot} serverId="default" />);
 
@@ -89,9 +92,9 @@ describe("MapPanel", () => {
 });
 
 describe("MapPanel world layers (ADR-0038 M5)", () => {
-  it("draws rails, then resource nodes, then buildings, once the world data arrives", async () => {
+  it("draws rails, then resource nodes, then buildings, then markers, once the world data arrives", async () => {
     mount();
-    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "trains"]));
+    await waitFor(() => expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "mapMarkers", "trains"]));
   });
 
   it("describes both layers in text and lists them in view", async () => {
@@ -119,7 +122,7 @@ describe("MapPanel world layers (ADR-0038 M5)", () => {
     mount();
     await screen.findByRole("table", { name: /Resource nodes in view/ });
     fireEvent.click(screen.getByRole("checkbox", { name: "Resource nodes" }));
-    expect(ids()).toEqual(["rails", "buildings", "trains"]);
+    expect(ids()).toEqual(["rails", "buildings", "mapMarkers", "trains"]);
     expect(screen.queryByRole("table", { name: /Resource nodes in view/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/resource nodes on the map/)).not.toBeInTheDocument();
     expect(screen.queryByText("In use (filled)")).not.toBeInTheDocument();
@@ -258,6 +261,105 @@ describe("MapPanel world tables (hunt)", () => {
   });
 });
 
+describe("MapPanel map markers (#330)", () => {
+  it("says what the layer holds, captions its legend and lists the markers in view by name, kind and place", async () => {
+    canvas.view = null;
+    mount();
+    expect(await screen.findByText("1 marker and 3 stamps on the map.")).toBeInTheDocument();
+    expect(screen.getAllByText("Markers", { selector: "p" })).toHaveLength(1);
+    const table = await screen.findByRole("table", { name: /Markers in view \(4\)/ });
+    const first = mapMarkersWorldResponse.data[3];
+    const row = within(table).getByText(first.name).closest("tr")!;
+    expect(within(row).getAllByRole("cell").map((c) => [c.getAttribute("data-label"), c.textContent])).toEqual([
+      ["Name", first.name],
+      ["Kind", "Marker"],
+      ["Position (m)", "x 610, y -638"],
+    ]);
+  });
+
+  it("follows the view in its table", async () => {
+    const m = mapMarkersWorldResponse.data[3];
+    canvas.view = { minX: m.x - 1, maxX: m.x + 1, minY: m.y - 1, maxY: m.y + 1 };
+    mount();
+    const table = await screen.findByRole("table", { name: /Markers in view \(1\)/ });
+    expect(within(table).getByText(m.name)).toBeInTheDocument();
+    canvas.view = null;
+  });
+
+  it("names an unnamed one by its kind in the table", async () => {
+    const [stamp] = mapMarkersWorldResponse.data;
+    server.use(http.get(markersRoute, () => HttpResponse.json({ ...mapMarkersWorldResponse, count: 1, data: [{ ...stamp, name: "" }] })));
+    mount();
+    const table = await screen.findByRole("table", { name: /Markers in view \(1\)/ });
+    expect(within(table).getByText("Unnamed stamp")).toBeInTheDocument();
+  });
+
+  it("drops the layer, its legend, text and table when toggled off, and asks for it no more", async () => {
+    const asked = vi.fn();
+    server.use(
+      http.get(markersRoute, () => {
+        asked();
+        return HttpResponse.json(mapMarkersWorldResponse);
+      }),
+    );
+    mount();
+    await screen.findByRole("table", { name: /Markers in view/ });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Markers" }));
+    expect(ids()).not.toContain("mapMarkers");
+    expect(screen.queryByRole("table", { name: /Markers in view/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/stamps on the map/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Marker (pin)")).not.toBeInTheDocument();
+    expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when no markers are placed yet, with no legend row", async () => {
+    server.use(http.get(markersRoute, () => HttpResponse.json(mapMarkersWorldResponseEmpty)));
+    mount();
+    expect(await screen.findByText("No map markers or stamps placed yet.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Markers in view (0)" })).toBeInTheDocument();
+    expect(screen.queryByText("Marker (pin)")).not.toBeInTheDocument();
+  });
+
+  it("says when the server cut the layer to its limit", async () => {
+    server.use(http.get(markersRoute, () => HttpResponse.json(mapMarkersWorldResponseTruncated)));
+    mount();
+    expect(await screen.findByText(/Showing part of the markers: the server cut this layer to its size limit/)).toBeInTheDocument();
+  });
+
+  it("shows a failed read as an error with Retry, and keeps the rest of the map", async () => {
+    let failing = true;
+    server.use(
+      http.get(markersRoute, () =>
+        failing ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 }) : HttpResponse.json(mapMarkersWorldResponse),
+      ),
+    );
+    mount();
+    expect(await screen.findByText("Markers couldn't load: game server unreachable.")).toBeInTheDocument();
+    expect(await screen.findByText(/^1 rail segment on the map/)).toBeInTheDocument();
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("1 marker and 3 stamps on the map.")).toBeInTheDocument();
+  });
+
+  it("refuses another layer's response as a contract error", async () => {
+    server.use(http.get(markersRoute, () => HttpResponse.json(railsWorldResponse)));
+    mount();
+    expect(await screen.findByText(/Markers couldn't load/)).toBeInTheDocument();
+  });
+
+  it("does not warn about duplicate keys when two markers share an id, or repeat outright", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const m = mapMarkersWorldResponse.data[0];
+    server.use(
+      http.get(markersRoute, () => HttpResponse.json({ ...mapMarkersWorldResponse, count: 3, data: [m, { ...m, x: m.x + 5 }, m] })),
+    );
+    mount();
+    await screen.findByRole("table", { name: /Markers in view \(3\)/ });
+    expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    spy.mockRestore();
+  });
+});
+
 describe("MapPanel live trains (ADR-0038 M6)", () => {
   afterEach(() => {
     canvas.view = null;
@@ -306,7 +408,7 @@ describe("MapPanel live trains (ADR-0038 M6)", () => {
     mount();
     await screen.findByRole("table", { name: /Trains in view/ });
     fireEvent.click(screen.getByRole("checkbox", { name: "Trains" }));
-    expect(ids()).toEqual(["rails", "resourceNodes", "buildings"]);
+    expect(ids()).toEqual(["rails", "resourceNodes", "buildings", "mapMarkers"]);
     expect(screen.queryByRole("table", { name: /Trains in view/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: /Train stations in view/ })).not.toBeInTheDocument();
     expect(screen.queryByText("1 train and 2 stations on the map.")).not.toBeInTheDocument();

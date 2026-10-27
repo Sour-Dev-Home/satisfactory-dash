@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import type { MapTrain, MapTrainStation, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
+import type { MapMarker, MapTrain, MapTrainStation, RailSegment, ResourceNode } from "@satisfactory-dash/shared";
 import type { ViewM } from "./MapCanvas";
+import { markerKeys, markerKindLabel, markerName } from "./markersLayer";
 import {
   formatMetres,
   formatPoint,
@@ -121,6 +122,34 @@ export function TrainsTable({ trains, view }: { trains: readonly MapTrain[]; vie
               <td data-label="Train">{t.name}</td>
               <td data-label="Status">{t.status}</td>
               <td data-label="Position (m)">{formatPoint([t.x, t.y])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ViewTable>
+  );
+}
+
+/** The players' map markers and stamps in view (ADR-0038 §1, #330): names are player-written, shown as text. */
+export function MarkersTable({ markers, view }: { markers: readonly MapMarker[]; view: ViewM | null }) {
+  const keys = markerKeys(markers);
+  const listed = markers.map((m, i) => ({ m, key: keys[i] })).filter(({ m }) => pointInView(view, m));
+  return (
+    <ViewTable id="map-markers-heading" title="Markers in view" count={listed.length} empty={markers.length === 0 ? EMPTY_LAYER : EMPTY_VIEW}>
+      <table aria-labelledby="map-markers-heading" className="w-full text-sm">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Position (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {listed.map(({ m, key }) => (
+            <tr key={key}>
+              <td data-label="Name">{markerName(m)}</td>
+              <td data-label="Kind">{markerKindLabel(m.kind)}</td>
+              <td data-label="Position (m)">{formatPoint([m.x, m.y])}</td>
             </tr>
           ))}
         </tbody>

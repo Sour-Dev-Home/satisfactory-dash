@@ -18,7 +18,17 @@ async function skeletonsShown(page: Page) {
   await expect(page.locator('[data-loading="shown"]').first()).toBeVisible();
 }
 
-const openIronSite = (page: Page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+/** Opens every folded Details on the metrics page, as a keyboard user would, one summary at a time. */
+async function openAllDetails(page: Page) {
+  const summaries = page.locator("[data-details] > summary");
+  await expect(summaries.first()).toBeVisible();
+  for (const summary of await summaries.all()) {
+    await summary.focus();
+    await page.keyboard.press("Enter");
+  }
+}
+
+const openIronSite =(page: Page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
 
 /** The Iron Plate factory (ADR-0055) on its tables, whichever view the screen opens on. */
 async function openPlateFactoryTables(page: Page) {
@@ -158,6 +168,8 @@ const CASES: StateCase[] = [
   { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
   { scenario: "map-world-truncated", path: "/app/map", shows: /Showing part of the rails/ },
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
+  // The players' map markers (#330) are empty and failing in the two cases above; here, cut to the layer's cap.
+  { scenario: "map-markers-truncated", path: "/app/map", shows: /Showing part of the markers/ },
   // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
   { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
   { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },
@@ -427,7 +439,11 @@ const CASES: StateCase[] = [
   { scenario: "servers-first", shows: "No game servers yet. Add the first one; for now it has to run on this machine." },
   // The operator's metrics page (ADR-0056): every table filled, each section's reason for having no data, a 429, a
   // failing read, the loading skeleton, and a user who isn't the operator (the unknown-page redirect lands on the Overview).
-  { scenario: "metrics", path: "/app/metrics", shows: /Timings are bucket upper bounds/ },
+  // Chart-led since the 2026-10-26 amendment: the headline tiles and trends, then every folded Details opened (the text
+  // path, axe-checked), and an older backend without charts.
+  { scenario: "metrics", path: "/app/metrics", shows: "Requests per hour, by status class" },
+  { scenario: "metrics", name: "metrics-details", path: "/app/metrics", shows: /Timings are bucket upper bounds/, act: openAllDetails },
+  { scenario: "metrics-no-charts", path: "/app/metrics", shows: /Charts not available yet/ },
   { scenario: "metrics-unavailable", path: "/app/metrics", shows: "The daily delivery feed isn't set up on this backend." },
   { scenario: "metrics-rate-limited", path: "/app/metrics", shows: /asked for too often/ },
   { scenario: "metrics-error", path: "/app/metrics", shows: "Retry" },
