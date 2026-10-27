@@ -55,12 +55,12 @@
   /* The terrain base map (ADR-0023 amendment, #571): the sea is the canvas colour; the land a step above it, and its
      three height bands one quiet step apart, all under the grid lines (--color-map-grid) so the grid still reads over
      land. The coast a thin line, the shallows a dark blue. Backdrop only: every layer above clears them. */
-  --color-terrain-land: #1f2327; /* also the lowland band, which is not traced on its own */
-  --color-terrain-upland: #23282c;
-  --color-terrain-peaks: #282d32;
+  --color-terrain-land: #20252a; /* also the lowland band, which is not traced on its own */
+  --color-terrain-upland: #24292e;
+  --color-terrain-peaks: #2a3036;
   --color-terrain-shallows: #19272f;
-  --color-terrain-coast: #3a434c;
-  --color-map-grid: #30363c;
+  --color-terrain-coast: #444e58;
+  --color-map-grid: #3a4148;
   /* The backing chip behind a building icon: the game's icons are dark glyphs that vanish on the dark card. */
   --color-icon-chip: #c4ccd6;
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
