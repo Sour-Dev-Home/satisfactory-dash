@@ -26,6 +26,14 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   same set as the Groups table's ticks, under one `DesignateBar`, and Escape clears them. A picked card is tinted,
   with a check mark. With "Reason factories for me" on, the overview canvas draws automatic factories dashed, with a
   "Suggestion" tag and a Keep pill (a hidden "Keep …" button for the keyboard) that opens `KeepForm`.
+- Merge and split (ADR-0055 Decisions 11 and 12, #727), owners and admins on a backend with `revision`: on the overview,
+  Shift- or Ctrl-click a factory card (or tick a card's Select in Tables) to pick it; `MergeBar` offers "Merge into one",
+  disabled with its reason unless the picks are one connected piece by themselves (`connectivity.ts`: edges, transports,
+  shared nodes, undirected) and within the caps (`selectionPlans.ts`). In an opened designated factory the picks feed
+  `SplitBar` instead of `DesignateBar`; a Groups row and the group panel have "Pop out"; Remove is Dissolve. Every change
+  is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
+  (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
+  `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).
 - The viewer's choices are `plannerPrefs.ts` (localStorage in try/catch, validated; the page works without it).
 - The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and
   the only place `@dagrejs/dagre` is imported.
