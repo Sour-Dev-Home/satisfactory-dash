@@ -228,6 +228,8 @@ describe("agent contract: snapshots", () => {
       expect(ok({ power: { circuits: [circuit] } })).toBe(true); // an older sender, or the FRM agent
       expect(ok(withGens([generator, { ...generator, name: "Geothermal Generator", fuel: null, supplement: null }]))).toBe(true);
       expect(ok(withGens([{ ...generator, supplement: undefined }]))).toBe(true); // supplement not read
+      const { fuel: _fuel, ...noFuel } = generator;
+      expect(ok(withGens([noFuel]))).toBe(false); // fuel is null when unread, never absent
       expect(ok(withGens(many(generator, 5_000)))).toBe(true);
       expect(ok(withGens(many(generator, 5_001)))).toBe(false);
       for (const field of ["id", "name", "className"]) expect(ok(withGens([{ ...generator, [field]: long(201) }])), field).toBe(false);

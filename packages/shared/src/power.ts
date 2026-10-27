@@ -57,7 +57,12 @@ export const GeneratorItemSchema = z.object({
 
 /** One generator (S4-B, ADR-0058): what it makes now and what it burns. Units per ADR-0006. */
 export const PowerGeneratorSchema = z.object({
-  id: z.string().describe("Opaque id, unique within one response; the same id space as factory buildings. Don't persist it."),
+  id: z
+    .string()
+    .describe(
+      "Opaque id, unique within this list; the same id space as factory buildings, so a consumer that joins lists keys " +
+        "by list and id, never by id alone. Don't persist it.",
+    ),
   name: z.string().describe("Building display name, e.g. \"Coal-Powered Generator\""),
   className: z.string().describe("Building class name"),
   location: BuildingLocationSchema.optional().describe("World position in metres (ADR-0023)"),
@@ -66,7 +71,10 @@ export const PowerGeneratorSchema = z.object({
   capacityMW: z.number().min(0).describe("What it can produce at its current clock speed, MW"),
   clockSpeedPercent: z.number().min(0).optional().describe("Configured clock speed in percent; 100 = default"),
   isProducing: z.boolean().describe("Instantaneous flag: producing power this tick"),
-  fuel: GeneratorItemSchema.nullable().describe("The item in the fuel slot; null when empty or when it takes no fuel (geothermal)"),
+  fuel: GeneratorItemSchema.nullable().describe(
+    "The item in the fuel slot; null when empty, when it takes no fuel (geothermal), or when the slot could not be read. " +
+      "Required: a sender sends null, never leaves it out (a missing fuel refuses the whole power part)",
+  ),
   supplement: GeneratorItemSchema.nullable()
     .optional()
     .describe("The supplement (water for coal and nuclear); null when it takes none or holds none; absent = not read"),
