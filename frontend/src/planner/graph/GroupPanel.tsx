@@ -23,6 +23,7 @@ export function GroupPanel({
   facts = [],
   findings,
   onClose,
+  onPopOut,
 }: {
   id: string;
   node: PlannerNode;
@@ -30,6 +31,8 @@ export function GroupPanel({
   facts?: readonly string[];
   findings: readonly Bottleneck[] | undefined;
   onClose: () => void;
+  /** ADR-0055 Decision 12: moves this group out into its own factory (a designated factory that can be split). */
+  onPopOut?: (() => void) | undefined;
 }) {
   const server = useSelectedServer();
   const factory = useQuery(queries.factory(server.id));  const heading = useRef<HTMLHeadingElement>(null);
@@ -88,6 +91,11 @@ export function GroupPanel({
           </p>
         ))}
       </section>
+      {onPopOut !== undefined && (
+        <button type="button" onClick={onPopOut} aria-label={`Pop out ${label}`} className="min-h-touch justify-self-start">
+          Pop out
+        </button>
+      )}
       {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
       {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}
       {joined && (

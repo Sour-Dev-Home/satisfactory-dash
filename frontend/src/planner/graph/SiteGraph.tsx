@@ -148,6 +148,10 @@ export interface SiteGraphProps {
   /** Given, the canvas has a Select mode: a lasso (or a click) picks the groups of the cards it takes. */
   selection?: CanvasSelection | undefined;
   suggestions?: CanvasSuggestions | undefined;
+  /** ADR-0055 Decision 12 (#727), the overview only: factory keys picked to merge; Shift- or Ctrl-click picks one. */
+  factoryPicks?: CanvasSelection | undefined;
+  /** In an opened factory that can be split: the group panel's "Pop out" moves that group into its own factory. */
+  onPopOut?: ((nodeKey: string) => void) | undefined;
 }
 
 /** Whether a card can be picked: it stands for groups that are drawn (a fold's are hidden, a factory is not a group). */
@@ -172,7 +176,7 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
  * button) picks or unpicks one card instead of opening it. Suggested factories are dashed, with Keep.
  */
-export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, suggestions }: SiteGraphProps) {
+export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, suggestions, factoryPicks, onPopOut }: SiteGraphProps) {
   // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
   // choices: whose upstream is hidden, storage shown, motion.
   const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
@@ -413,6 +417,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         selection.replace(new Set());
         return;
       }
+      if (factoryPicks !== undefined && factoryPicks.selected.size > 0) {
+        event.preventDefault();
+        factoryPicks.replace(new Set());
+        return;
+      }
       const last = [...collapsed].pop();
       if (last !== undefined) {
         event.preventDefault();
@@ -427,9 +436,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   };
 
   // What a card does when chosen: a factory opens, a bubble opens in place, a fold shows its trees, a group opens its panel.
-  const activate = (card: Card) => {
+  const activate = (card: Card, additive = false) => {
     // A drag that ends on a card is not a click on it.
     if (dragged.current) return;
+    // Shift- or Ctrl-click on the overview picks a factory for a merge instead of opening it.
+    if (additive && factoryPicks !== undefined && card.kind === "factory") {
+      factoryPicks.replace(toggled(factoryPicks.selected, card.key));
+      return;
+    }
     if (selectMode && selection !== undefined && pickable(card)) {
       const next = new Set(selection.selected);
       const on = isPicked(card, selection.selected);
@@ -504,6 +518,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const canSwitchStorage = scene.hasStorage;
   const canFold = scene.bubbleKeys.length > 0;
   const suggested = (key: string) => scene.level === "overview" && suggestions !== undefined && suggestions.keys.has(key);
+  const factoryPicked = (card: Card) => card.kind === "factory" && factoryPicks !== undefined && factoryPicks.selected.has(card.key);
   const keepForm = suggestions?.keepForm;
   // A form for a card that is no longer a suggestion (switched off, kept elsewhere, gone from a poll) is dropped for good.
   // (React's adjust-state-during-render: it re-renders at once, before any child or effect sees the stale form.)
@@ -588,7 +603,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                 <span className="hidden sm:inline">Draw round cards to pick them, or click one. Shift adds; Escape clears.</span>
               </>
             )
-          : overflowing && "Drag or use the arrow keys to see more →"}
+          : overflowing
+            ? "Drag or use the arrow keys to see more →"
+            : factoryPicks !== undefined && scene.level === "overview" && <span className="hidden sm:inline">Shift- or Ctrl-click factories to pick them for a merge.</span>}
       </p>
 
       {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}
@@ -640,10 +657,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   node={n}
                   finding={findingsOf(n.key)}
                   ringed={openKey === n.key || focusKey === n.key}
-                  picked={selection !== undefined && isPicked(n.card, selection.selected)}
+                  picked={(selection !== undefined && isPicked(n.card, selection.selected)) || factoryPicked(n.card)}
                   suggested={suggested(n.key)}
                   dim={!lit(n.key)}
-                  onActivate={() => activate(n.card)}
+                  onActivate={(additive) => activate(n.card, additive)}
                   onToggleUpstream={() => toggleUpstream(n.key)}
                   onKeep={keepForm === undefined ? undefined : () => keepCard(n.key)}
                 />
@@ -668,7 +685,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             {tabOrder.map((n) => {
               const card = n.card;
               const count = findingsOf(n.key);
-              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}`;
+              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}${factoryPicked(card) ? ", selected" : ""}`;
               // In Select mode a pickable card's button picks it: a toggle, not an opener.
               const picks = selectMode && pickable(card);
               return (
@@ -683,9 +700,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                     aria-pressed={picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
                     aria-expanded={picks ? undefined : card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
                     aria-controls={!picks && card.kind === "group" && openKey === n.key ? panelId : undefined}
-                    onClick={() => {
+                    onClick={(e) => {
                       dragged.current = false;
-                      activate(card);
+                      activate(card, e.shiftKey || e.ctrlKey || e.metaKey);
                     }}
                     onFocus={() => focusNode(n)}
                     onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
@@ -745,7 +762,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         </div>
         {openNode && (
           <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
-            <GroupPanel key={openNode.key} id={panelId} node={openNode} facts={laidByKey.get(openNode.key)?.card.facts} findings={findings} onClose={close} />
+            <GroupPanel
+              key={openNode.key}
+              id={panelId}
+              node={openNode}
+              facts={laidByKey.get(openNode.key)?.card.facts}
+              findings={findings}
+              onClose={close}
+              onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
+            />
           </div>
         )}
       </div>
@@ -897,7 +922,8 @@ function CardView({
   /** An automatic factory shown as a suggestion: a dashed outline, a "Suggestion" tag and Keep. */
   suggested: boolean;
   dim: boolean;
-  onActivate: () => void;
+  /** `additive`: Shift, Ctrl or Cmd was held (a pick on the overview, not an open). */
+  onActivate: (additive: boolean) => void;
   onToggleUpstream: () => void;
   onKeep: (() => void) | undefined;
 }) {
@@ -910,7 +936,7 @@ function CardView({
   return (
     <g
       transform={`translate(${n.x} ${n.y})`}
-      onClick={onActivate}
+      onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
       data-card={card.kind}
       data-picked={picked || undefined}
       data-suggested={suggested || undefined}
