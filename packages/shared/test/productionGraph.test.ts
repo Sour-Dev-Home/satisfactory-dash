@@ -154,6 +154,22 @@ describe("logical-factory and transport fields (ADR-0053 Decision 5, ADR-0055 De
     expect(parse(PlannerShareSchema, { factoryKey: "", share: 0.5 })).toBe(false);
   });
 
+  it("stale (#728 cause 11): only true or absent, and old payloads without it still parse", () => {
+    const stale = fixtures.productionGraphStaleEnd;
+    expect(ProductionGraphResponseSchema.safeParse(stale).success).toBe(true);
+    const flagged = stale.data.nodes.filter((n) => (n as { stale?: true }).stale === true);
+    expect(flagged.map((n) => n.kind)).toEqual(["other"]);
+    expect(flagged[0]!.machineIds).toEqual([]);
+    expect(stale.data.notes.map((n) => n.code)).toContain("staleConveyorEnds");
+    const keys = new Set(stale.data.nodes.map((n) => n.key));
+    for (const e of stale.data.edges) expect(keys.has(e.from) && keys.has(e.to)).toBe(true);
+    for (const f of stale.data.factories) for (const k of f.nodeKeys) expect(keys.has(k), k).toBe(true);
+    expect(rich.nodes.some((n) => "stale" in n)).toBe(false);
+    expect(parse(PlannerNodeSchema, richNode)).toBe(true);
+    expect(parse(PlannerNodeSchema, { ...richNode, stale: true })).toBe(true);
+    for (const bad of [false, "true", 1, null]) expect(parse(PlannerNodeSchema, { ...richNode, stale: bad }), String(bad)).toBe(false);
+  });
+
   it("collapseUnder is a key or null; treeKey and resource follow ADR-0053", () => {
     expect(parse(PlannerNodeSchema, { ...richNode, collapseUnder: null })).toBe(true);
     expect(parse(PlannerNodeSchema, { ...richNode, collapseUnder: "" })).toBe(false);
