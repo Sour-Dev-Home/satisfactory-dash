@@ -71,6 +71,20 @@
   --color-warn-on-soft: #f0d08a;
   --color-info-edge: rgb(156 192 226 / 0.35);
   --color-info-on-soft: #c3dbf0;
+  /* The metrics page's trend charts (ADR-0056 amendment): five categorical series hues in fixed order (blue, orange,
+     aqua, violet, magenta; never cycled, a sixth series folds), and a one-hue ramp for p50/p95/p99 (dim to bright).
+     Validated with the dataviz skill's validate_palette.js against --color-surface: every adjacent pair CVD ΔE >= 9.4,
+     normal-vision ΔE >= 19.7, all >= 3:1; the ramp is monotone with its dim end at 3.2:1 (and p50 is also dashed, so the
+     three lines differ by more than lightness; ui-reviewer). Status colours stay reserved:
+     a 5xx answer is --color-bad, the one problem series. Lines and fills only; text never wears these. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #9085e9;
+  --color-series-5: #d55181;
+  --color-ramp-1: #3470c2;
+  --color-ramp-2: #4f95ea;
+  --color-ramp-3: #9cc4f2;
 
   /* Self-hosted (the CSP is font-src 'self'); the @font-face rules follow this block. Each falls
      back to a size-adjusted local Arial first, so text barely moves when the font arrives. */
@@ -93,6 +107,10 @@
   /* History chart placeholders, the measured chart heights: phone width wraps the legend. */
   --spacing-chart-slot: 250px;
   --spacing-chart-slot-phone: 279px;
+  /* The metrics trend charts' slots (a 180 px plot plus its legend; the legend wraps at phone width), held by the
+     placeholder and the chart alike so the lazy chunk never moves the page. */
+  --spacing-trend-slot: 216px;
+  --spacing-trend-slot-phone: 268px;
   /* Resource-node icons by purity, the ring round an in-use one, and how faded a free one is (#571). */
   --spacing-node-icon-impure: 16px;
   --spacing-node-icon-normal: 22px;
@@ -636,11 +654,21 @@
   }
 
   /* uPlot's legend is a table: keep the base table borders and padding off it. */
-  .power-chart .u-legend :is(th, td) {
+  :is(.power-chart, .trend-chart) .u-legend :is(th, td) {
     padding: 2px 6px;
     border: 0;
     color: var(--color-fg);
     font-size: 13px;
+  }
+
+  /* The metrics charts' "Time: –" legend item is noise at rest (the axis has the time) and wrapped onto its own line on
+     a phone: shown only while the pointer is over the chart, where it names the hovered hour (ui-reviewer). */
+  /* !important: this sits in a cascade layer and uPlot's stylesheet (.u-inline tr) is unlayered, so it would win. */
+  .trend-chart .u-legend .u-series:first-child {
+    display: none !important;
+  }
+  .trend-chart:hover .u-legend .u-series:first-child {
+    display: inline-block !important;
   }
 }
 

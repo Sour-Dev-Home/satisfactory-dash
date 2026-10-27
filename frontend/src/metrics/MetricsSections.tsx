@@ -7,6 +7,8 @@ import type {
   ServerMetricSummary,
 } from "@satisfactory-dash/shared";
 import { formatTime } from "../format";
+import { HeadlineRow, TrendGroup } from "./MetricsCharts";
+import { alertsChartSpec, chartsData, systemChartSpecs, trendCaption } from "./metricsTrend";
 import {
   alertKindText,
   countText,
@@ -26,19 +28,55 @@ import {
 
 /**
  * The metrics page's sections (ADR-0056 section 1), each a `.panel`: they show data or say why there is none
- * (not built, nothing recorded, switched off). Presentational: schema types in, markup out. Tables, not charts: every
- * number is text, and a percentile is the bucket bound it is ("≤ 200 ms").
+ * (not built, nothing recorded, switched off). Presentational: schema types in, markup out. Since the chart-led
+ * amendment (2026-10-26) a panel's tables are folded "Details" under its charts: the accessible text path, where every
+ * number is text and a percentile is the bucket bound it is ("≤ 200 ms"). A reason for having no data is never folded.
  */
 
-/** A section's frame: heading, an optional "as of" line, and the body. */
-function Panel({ title, asOf, intro, children }: { title: string; asOf?: string; intro?: ReactNode; children: ReactNode }) {
+/**
+ * A section's frame: heading, its charts, then the body. With `fold`, the "as of" line, intro and body sit in a closed
+ * `<details>` whose summary is `fold`.
+ */
+function Panel({
+  title,
+  asOf,
+  intro,
+  charts,
+  fold,
+  children,
+}: {
+  title: string;
+  asOf?: string;
+  intro?: ReactNode;
+  charts?: ReactNode;
+  fold?: string;
+  children: ReactNode;
+}) {
   const id = useId();
-  return (
-    <section aria-labelledby={id} className="panel">
-      <h3 id={id}>{title}</h3>
+  const body = (
+    <>
       {asOf && <p className="mb-0 text-sm text-muted">As of {formatTime(asOf)}.</p>}
       {intro}
       {children}
+    </>
+  );
+  return (
+    <section aria-labelledby={id} className="panel">
+      <h3 id={id}>{title}</h3>
+      {charts}
+      {fold ? (
+        <details data-details="" className="group">
+          <summary className="flex min-h-touch cursor-pointer items-center gap-2 text-fg">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="disclosure-chevron size-chevron flex-none group-open:rotate-90">
+              <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            {fold}
+          </summary>
+          <div className="grid gap-3 pt-2">{body}</div>
+        </details>
+      ) : (
+        body
+      )}
     </section>
   );
 }
@@ -144,11 +182,11 @@ function ServerRows({ id, rows }: { id: string; rows: readonly ServerMetricSumma
   );
 }
 
-export function SystemSection({ system }: { system: MetricsOverview["system"] }) {
+export function SystemSection({ system, charts }: { system: MetricsOverview["system"]; charts?: ReactNode }) {
   const id = useId();
   if (!system.available) {
     return (
-      <Panel title="System">
+      <Panel title="System" charts={charts}>
         <Unavailable section="system" reason={system.reason} />
       </Panel>
     );
@@ -159,6 +197,8 @@ export function SystemSection({ system }: { system: MetricsOverview["system"] })
   return (
     <Panel
       title="System"
+      charts={charts}
+      fold="System details: every timing and counter"
       asOf={system.asOf}
       intro={
         <p className="mb-0 text-sm text-muted">
@@ -196,11 +236,11 @@ export function SystemSection({ system }: { system: MetricsOverview["system"] })
   );
 }
 
-export function AlertsSection({ alerts }: { alerts: MetricsOverview["alerts"] }) {
+export function AlertsSection({ alerts, charts }: { alerts: MetricsOverview["alerts"]; charts?: ReactNode }) {
   const id = useId();
   if (!alerts.available) {
     return (
-      <Panel title="Alert quality">
+      <Panel title="Alert quality" charts={charts}>
         <Unavailable section="alerts" reason={alerts.reason} />
       </Panel>
     );
@@ -209,6 +249,8 @@ export function AlertsSection({ alerts }: { alerts: MetricsOverview["alerts"] })
   return (
     <Panel
       title="Alert quality"
+      charts={charts}
+      fold="Alert quality details: by month and kind"
       asOf={alerts.asOf}
       intro={
         <p className="mb-0 text-sm text-muted">
@@ -298,6 +340,7 @@ export function DeliverySection({ delivery }: { delivery: MetricsOverview["deliv
   return (
     <Panel
       title="Delivery and CI"
+      fold="Delivery details: throughput, lead time and build health"
       asOf={delivery.asOf}
       intro={<p className="mb-0 text-sm text-muted">The last {delivery.snapshot.window.days} days of the repository, counted once a day.</p>}
     >
@@ -310,7 +353,7 @@ export function DeliverySection({ delivery }: { delivery: MetricsOverview["deliv
 /** Where the numbers this page doesn't hold live: the public status page and the probe's runs. */
 export function LinksSection({ links }: { links: MetricsOverview["links"] }) {
   return (
-    <Panel title="Elsewhere">
+    <Panel title="Elsewhere" fold="Links: uptime and the latency probe">
       <ul className="mb-0 grid gap-2 pl-5">
         <li>
           <a href={links.statusPage} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-touch items-center">
@@ -327,12 +370,24 @@ export function LinksSection({ links }: { links: MetricsOverview["links"] }) {
   );
 }
 
-/** All the sections in page order. */
+/**
+ * All the sections in page order (Grafana's stat row, then trends, then detail): the headline row, the System charts
+ * over their folded tables, the alerts chart over alert quality, then delivery and the links.
+ */
 export function MetricsSections({ overview }: { overview: MetricsOverview }) {
+  const charts = chartsData(overview);
+  const caption = charts ? trendCaption(charts.trend) : "";
   return (
     <>
-      <SystemSection system={overview.system} />
-      <AlertsSection alerts={overview.alerts} />
+      <HeadlineRow overview={overview} />
+      <SystemSection
+        system={overview.system}
+        charts={charts && <TrendGroup trend={charts.trend} specs={systemChartSpecs(charts.trend)} caption={caption} />}
+      />
+      <AlertsSection
+        alerts={overview.alerts}
+        charts={charts && <TrendGroup trend={charts.trend} specs={[alertsChartSpec(charts.trend)]} caption={caption} />}
+      />
       <DeliverySection delivery={overview.delivery} />
       <LinksSection links={overview.links} />
     </>

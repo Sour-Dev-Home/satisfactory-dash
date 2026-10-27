@@ -1,5 +1,3 @@
-import { IS_DEMO } from "../demo/mode";
-
 /** One tab of the signed-in app's main nav. */
 export interface Tab {
   to: string;
@@ -28,26 +26,19 @@ const AFTER_PLANNER: Tab[] = [
 export const SERVERS_TAB: Tab = { to: "/app/servers", label: "Servers" };
 
 /**
- * ADR-0056: the operator's metrics page. In the real app it is never a tab, even for the operator (the owner's "not
- * easily reachable"): the command bar and the Servers page link to it. Only the demo build shows it, so visitors find it
- * (Q1). The route and the command are separate (Shell, paletteCommands).
+ * ADR-0056 (amended 2026-10-26, the owner's pick over an Overview card or an Account-menu entry): the operator's
+ * metrics page is a tab after Servers, for the operator only, in the real app and the demo alike. The command-bar entry
+ * and the Servers-page link stay. Hiding it is UX; the backend answers 403 to anyone else, and the shell routes it only
+ * for the operator (Shell, paletteCommands).
  */
 export const METRICS_TAB: Tab = { to: "/app/metrics", label: "Metrics" };
 
-/**
- * The tabs a user sees, in order. `plannerInNav` and `metricsInNav` are parameters only so tests can show the other
- * navs; `metricsInNav` is the demo build, and the tab is still the operator's.
- */
-export function visibleTabs(
-  canManageServers: boolean,
-  plannerInNav: boolean = PLANNER_IN_NAV,
-  metricsInNav: boolean = IS_DEMO,
-): Tab[] {
+/** The tabs a user sees, in order. `plannerInNav` is a parameter only so tests can show the other nav. */
+export function visibleTabs(canManageServers: boolean, plannerInNav: boolean = PLANNER_IN_NAV): Tab[] {
   return [
     ...BEFORE_PLANNER,
     ...(plannerInNav ? [PLANNER_TAB] : []),
     ...AFTER_PLANNER,
-    ...(canManageServers ? [SERVERS_TAB] : []),
-    ...(canManageServers && metricsInNav ? [METRICS_TAB] : []),
+    ...(canManageServers ? [SERVERS_TAB, METRICS_TAB] : []),
   ];
 }

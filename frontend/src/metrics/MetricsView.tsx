@@ -18,7 +18,8 @@ function MetricsSkeleton() {
   return (
     <div className="grid gap-4">
       <SkeletonStatus>Loading metrics…</SkeletonStatus>
-      <PanelSkeleton label="Loading system metrics" rows={5} rowClass="h-24" />
+      <PanelSkeleton label="Loading the headline numbers" rows={2} rowClass="h-24" />
+      <PanelSkeleton label="Loading system metrics" rows={5} rowClass="h-trend-slot-phone sm:h-trend-slot" />
       <PanelSkeleton label="Loading alert quality" rows={3} />
       <PanelSkeleton label="Loading delivery figures" rows={4} />
     </div>
@@ -31,9 +32,10 @@ function isRateLimited(error: unknown): error is ApiError {
 }
 
 /**
- * ADR-0056 section 3: the operator's metrics page, `/app/metrics`. Out of the nav in the real app (the command bar and
- * the Servers page link to it); the shell only routes it for the operator, and a 403 from the backend sends anyone else
- * to the same redirect as an unknown page. A 401 is handled centrally (`createQueryClient`), never here.
+ * ADR-0056 section 3 (amended 2026-10-26): the operator's metrics page, `/app/metrics`, chart-led: the headline stat
+ * row, the hourly trends, then the tables folded as Details. The operator reaches it from its nav tab, the command bar
+ * and the Servers page; the shell only routes it for the operator, and a 403 from the backend sends anyone else to the
+ * same redirect as an unknown page. A 401 is handled centrally (`createQueryClient`), never here.
  */
 export function MetricsView() {
   const [range, setRange] = useState<MetricsWindow>(DEFAULT_METRICS_WINDOW);

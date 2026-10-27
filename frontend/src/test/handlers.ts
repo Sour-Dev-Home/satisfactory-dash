@@ -20,7 +20,7 @@ import {
   historyPower24h,
   historyTransitions24h,
   managedServersAllStates,
-  metricsOverviewAvailable,
+  metricsOverviewWithCharts,
   playersUnavailable,
   powerHistoryNormal,
   powerOk,
@@ -79,7 +79,7 @@ export const handlers = [
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).
   http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersAllStates)),
   // ADR-0056: the operator's metrics page (whatever `?window=` asks).
-  http.get(endpoints.metrics.overview.route, () => HttpResponse.json(metricsOverviewAvailable)),
+  http.get(endpoints.metrics.overview.route, () => HttpResponse.json(metricsOverviewWithCharts)),
   http.post(endpoints.serverManagement.testConnection.route, () => HttpResponse.json(testConnectionPassed)),
   http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionPassed)),
   http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
