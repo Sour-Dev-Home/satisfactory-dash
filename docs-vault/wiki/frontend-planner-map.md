@@ -63,8 +63,22 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   is `bubbleRowSize` (plus `GLYPH_INSET` for a transport), so the router keeps it clear as it did the words. A bubble
   draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
   it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
-  the words for text views and tests; the item names are in the edge's `<title>` and the Tables view. No interaction yet
-  (focus mode is build PR 3, behind a flag).
+  the words for text views and tests; the item names are in the edge's `<title>` and the Tables view.
+- Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
+  control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
+  - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears
+    when the line or the item leaves the graph.
+  - Hop-1 dimming: only the focused line and its two cards stay lit, and the item filter's dimming waits until focus ends.
+  - `ItemFocusLayer.tsx` holds the `sr-only` bubble buttons, one tab stop for all of them (a roving tabindex). Arrow
+    keys, Home and End move between them, in the cards' tab order (`bubbleStops`). They are named by `bubbleName`.
+  - The "+k" chip's button opens `ItemList`, the line's full item list, in the group panel's place. Each item in it can be
+    focused.
+  - Escape works in this order: the list, then focus (back to the bubble's button, or the chip's when the item has no
+    bubble), then the existing chain.
+  - A click on a drawn bubble focuses it, and a second click leaves. A click on the background leaves too, but a click on
+    a card does not.
+  - The status line stays mounted while the flag is on and says "Focused <item> from A to B" and "Overview".
+  - Focus never zooms (owner answer 2). Make-room, the morph and the detail card are build PRs 4 and 5.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).

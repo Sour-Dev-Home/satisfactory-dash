@@ -343,3 +343,35 @@ test("an owner lassos a factory's cards on the canvas and keeps a suggestion the
   expect(body).toMatchObject({ name: "Plate works", mode: "core" });
   expect(body.members.length).toBeGreaterThan(0);
 });
+
+test("with the item-focus flag on, the keyboard focuses a link's item and Escape leaves it (ADR-0060 build PR 3)", async ({ page, mockApi }, testInfo) => {
+  // The flag is off by default and has no control: the owner turns it on in this browser for the review (build PR 6).
+  await page.addInitScript(() => window.localStorage.setItem("planner.itemFocus", "on"));
+  await mockApi("planner-group-panel");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
+  await expect(svg).toBeVisible();
+  // One tab stop for every bubble; the arrow keys move between them, not the view.
+  const bubbles = page.getByRole("list", { name: "Items on the lines" }).getByRole("button");
+  await expect(bubbles.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+  const before = await transformOf(svg);
+  await bubbles.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(bubbles.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(bubbles.first()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(bubbles.first()).toHaveAttribute("aria-expanded", "true");
+  await expect(svg.locator("[data-focused]")).toHaveCount(1);
+  await expect(page.getByRole("status")).toContainText("Focused");
+  await expectNoAxeViolations(page, testInfo);
+  await page.keyboard.press("Escape");
+  await expect(svg.locator("[data-focused]")).toHaveCount(0);
+  await expect(bubbles.first()).toBeFocused();
+  await expect(page.getByRole("status")).toContainText("Overview");
+  // Focus does not zoom (owner answer 2); reaching a bubble may only pan it into view.
+  expect(/scale\(([\d.e-]+)\)/.exec(await transformOf(svg))?.[1]).toBe(/scale\(([\d.e-]+)\)/.exec(before)?.[1]);
+  await expect(svg.locator("[style]")).toHaveCount(0);
+});
