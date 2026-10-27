@@ -128,7 +128,7 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   const dissolve =
     dissolving === null || !dissolving.ok || changes === null
       ? null
-      : () => changes.apply(dissolving, { message: `Dissolved ${designation.name}. Its machines are suggestions again.`, undoLabel: "Undo" });
+      : () => changes.apply(dissolving, { message: `Dissolved ${designation.name}. Its machines are grouped automatically again.`, undoLabel: "Undo" });
   const verb = dissolve === null ? "Remove" : "Dissolve";
 
   const gone = missing?.get(designation.id);
@@ -178,7 +178,7 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
               )}
               {confirming ? (
                 <span role="group" aria-label={`Confirm ${verb.toLowerCase()} ${factory.name}`} className="flex flex-wrap items-center gap-2 text-sm">
-                  {dissolve === null ? "Remove this designation?" : "Dissolve this factory? Its machines go back to suggestions."}
+                  {dissolve === null ? "Remove this designation?" : "Dissolve this factory? Its machines go back to automatic factories."}
                   <button
                     type="button"
                     disabled={busy}
@@ -207,54 +207,6 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
           <ErrorLine error={error} />
         </>
       )}
-    </div>
-  );
-}
-
-/** The name form that keeps a suggested factory as a designation (its machines as members, mode `core`). */
-export function KeepForm({ model, onClose }: { model: FactoryModel; onClose: (saved: boolean) => void }) {
-  const { factory } = model;
-  const { places, writes } = useDesignations();
-  if (writes === null) return null;
-  return (
-    <NameForm
-      label={`Keep ${factory.name}`}
-      initial={factory.name.slice(0, 64)}
-      save="Keep factory"
-      onSave={(name) => {
-        const made = membersOf(model.nodes, places ?? new Map());
-        if (!made.ok) throw new PlanProblem(made.reason);
-        return writes.create.mutateAsync({ name, mode: "core", members: made.members });
-      }}
-      onClose={onClose}
-    />
-  );
-}
-
-/** An automatic factory shown as a suggestion (a dashed frame on its card): "Keep" saves it as a designation. */
-export function SuggestionControls({ model }: { model: FactoryModel }) {
-  const { factory } = model;
-  const { canWrite, writes } = useDesignations();
-  const [naming, setNaming] = useState(false);
-  const keep = useRef<HTMLButtonElement>(null);
-  return (
-    <div className="grid content-start gap-2">
-      <span className="justify-self-start text-sm text-muted">Suggestion</span>
-      {canWrite &&
-        writes !== null &&
-        (naming ? (
-          <KeepForm
-            model={model}
-            onClose={(saved) => {
-              setNaming(false);
-              if (!saved) queueMicrotask(() => keep.current?.focus());
-            }}
-          />
-        ) : (
-          <button ref={keep} type="button" onClick={() => setNaming(true)} aria-label={`Keep ${factory.name}`} className="min-h-touch justify-self-start">
-            Keep
-          </button>
-        ))}
     </div>
   );
 }
