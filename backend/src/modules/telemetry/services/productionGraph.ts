@@ -760,7 +760,10 @@ export function buildProductionGraphWithStats(
   // rate is known. First the source's output of the item, less what its other edges for the item already carry, shared
   // evenly among its rate-less ones; then, for what is left, the destination's use less what its other incoming edges
   // carry. Always estimated, never below zero, never over a rate already set; an overflowing belt is overstated.
-  const oneEnd = (keyOf: (c: Cand) => string, total: (c: Cand) => number | undefined): void => {
+  // `nothingLeftIsUnknown` (the destination pass): when the destination uses some of the item but its other sources
+  // already carry all of it, the rest share nothing anyone knows, so they stay unknown rather than a guessed 0 (#777).
+  // A source that reports making 0 still says 0, as does a destination that uses none.
+  const oneEnd = (keyOf: (c: Cand) => string, total: (c: Cand) => number | undefined, nothingLeftIsUnknown = false): void => {
     const byKey = new Map<string, number[]>();
     candList.forEach((c, i) => {
       if (c.item === null) return;
@@ -776,6 +779,7 @@ export function buildProductionGraphWithStats(
       if (whole === undefined) continue;
       let used = 0;
       for (const i of list) used += rates[i].ratePerMinute ?? 0;
+      if (nothingLeftIsUnknown && whole > 0 && whole - used <= 0) continue;
       const share = Math.max(0, whole - used) / open.length;
       for (const i of open) rates[i] = { ratePerMinute: share, rate: "estimated" };
     }
@@ -787,6 +791,7 @@ export function buildProductionGraphWithStats(
   oneEnd(
     (c) => `${c.d}|${c.item?.className}`,
     (c) => groups[c.d].ing.get(c.item?.className ?? "")?.cur,
+    true,
   );
 
   const outEdges: PlannerEdge[] = [];
