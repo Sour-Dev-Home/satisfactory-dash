@@ -86,11 +86,14 @@ export function GroupPanel({
             {recipe}
           </p>
         )}
-        <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
-          {outputs.map((o) => (
-            <li key={o}>{o}</li>
-          ))}
-        </ul>
+        {/* None for a group that makes nothing (storage, a station, a consumer): no empty list for a screen reader. */}
+        {outputs.length > 0 && (
+          <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
+            {outputs.map((o) => (
+              <li key={o}>{o}</li>
+            ))}
+          </ul>
+        )}
         {loop && <p className="m-0">In a loop</p>}
         {facts.map((f) => (
           <p key={f} className="m-0">
