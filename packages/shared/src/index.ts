@@ -7,6 +7,7 @@ export * from "./serverManagement";
 export * from "./status";
 export * from "./factory";
 export * from "./power";
+export * from "./storage";
 export * from "./players";
 export * from "./powerHistory";
 export * from "./history";

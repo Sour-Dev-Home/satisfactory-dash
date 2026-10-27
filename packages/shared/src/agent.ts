@@ -6,6 +6,7 @@ import { FactoryBuildingSchema, ProductionRateSchema } from "./factory";
 import { PlayerSchema, ServerPlayersResponseSchema } from "./players";
 import { SettingsResponseSchema } from "./settings";
 import { MapLiveSchema } from "./map";
+import { STORAGE_MAX_CONTAINERS, STORAGE_MAX_ITEMS_PER_CONTAINER, StorageContainerSchema, StorageItemSchema } from "./storage";
 
 /**
  * ADR-0031 PR 3: the edge agent's protocol and the user-facing side of it (enrolment, agent status, commands). The agent
@@ -107,6 +108,24 @@ export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: tr
   ingredients: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING).optional(),
 });
 export const AgentFactorySchema = z.object({ buildings: z.array(AgentFactoryBuildingSchema).max(AGENT_INPUT_MAX_BUILDINGS) });
+/**
+ * Storage contents (S4-B), the agent-input form of `StorageSchema`: bounded strings, at most 2,000 containers and 64 item
+ * classes each, and no backend-derived `unit`. At the caps a body would pass the snapshot's byte limit
+ * (`SNAPSHOT_MAX_BYTES`, backend config), which binds first; a real save is far below both.
+ */
+const AgentStorageItemSchema = StorageItemSchema.omit({ unit: true }).extend({ className: boundedString, name: boundedString });
+export const AgentStorageSchema = z.object({
+  containers: z
+    .array(
+      StorageContainerSchema.extend({
+        id: boundedString,
+        name: boundedString,
+        className: boundedString,
+        items: z.array(AgentStorageItemSchema).max(STORAGE_MAX_ITEMS_PER_CONTAINER),
+      }),
+    )
+    .max(STORAGE_MAX_CONTAINERS),
+});
 /** Status and players as the live routes return them, with the same string and list bounds. */
 export const AgentStatusSchema = StatusSchema.extend({ sessionName: boundedString });
 export const AgentPlayersSchema = ServerPlayersResponseSchema.extend({
@@ -159,6 +178,8 @@ export const SnapshotRequestSchema = z
     // unlike the slow-changing world layers (rails, resourceNodes), which go through their own
     // ingest route (map.ts) rather than the snapshot.
     mapLive: MapLiveSchema.optional(),
+    // S4-B: storage contents. OPTIONAL: the mod sends it; the Node agent is frozen on FRM (ADR-0058 Decision 5).
+    storage: AgentStorageSchema.optional(),
   })
   .refine(
     (snapshot) => snapshot.reachable || (snapshot.status === undefined &&
@@ -166,7 +187,8 @@ export const SnapshotRequestSchema = z
         snapshot.factory === undefined &&
         snapshot.players === undefined &&
         snapshot.settings === undefined &&
-        snapshot.mapLive === undefined),
+        snapshot.mapLive === undefined &&
+        snapshot.storage === undefined),
     "An unreachable game sends no data parts",
   );
 /** 200. The backend answers every snapshot with the current cadence and whether a command is waiting. */
