@@ -28,6 +28,7 @@ describe("matchRoute", () => {
     expect(matchRoute("GET", "/api/servers/default/map/world/rails")).toBe("mapRails");
     expect(matchRoute("GET", "/api/servers/default/map/world/resourceNodes")).toBe("mapResourceNodes");
     expect(matchRoute("GET", "/api/servers/default/map/world/mapMarkers")).toBe("mapMarkers");
+    expect(matchRoute("GET", "/api/servers/default/map/world/powerLines")).toBe("mapPowerLines");
     expect(matchRoute("GET", "/api/servers/default/map/world/belts")).toBeUndefined();
   });
 
