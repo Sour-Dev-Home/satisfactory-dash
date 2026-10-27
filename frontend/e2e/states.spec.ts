@@ -168,6 +168,8 @@ const CASES: StateCase[] = [
   { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
   { scenario: "map-world-truncated", path: "/app/map", shows: /Showing part of the rails/ },
   { scenario: "map-world-error", path: "/app/map", shows: "Retry" },
+  // The players' map markers (#330) are empty and failing in the two cases above; here, cut to the layer's cap.
+  { scenario: "map-markers-truncated", path: "/app/map", shows: /Showing part of the markers/ },
   // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
   { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
   { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },

@@ -24,9 +24,10 @@ describe("matchRoute", () => {
     }
   });
 
-  it("tells the two world layers apart by the path's layer, and refuses an unknown layer", () => {
+  it("tells the world layers apart by the path's layer, and refuses an unknown layer", () => {
     expect(matchRoute("GET", "/api/servers/default/map/world/rails")).toBe("mapRails");
     expect(matchRoute("GET", "/api/servers/default/map/world/resourceNodes")).toBe("mapResourceNodes");
+    expect(matchRoute("GET", "/api/servers/default/map/world/mapMarkers")).toBe("mapMarkers");
     expect(matchRoute("GET", "/api/servers/default/map/world/belts")).toBeUndefined();
   });
 
