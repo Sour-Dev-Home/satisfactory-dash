@@ -74,6 +74,8 @@ export interface SamplerOptions {
  *  - the status is read on every call (it says whether the game is reachable and paused), and the other parts only when due
  *    by their own cadence (`powerSeconds`, `factorySeconds`), so a snapshot carries the parts that were due;
  *  - a game that cannot be reached sends `reachable: false`, `paused: null` and NO parts and NO `settings`;
+ *  - every snapshot carries `gameReachable` (= `reachable`), `modVersion` (= `agentVersion`) and, once the game has been
+ *    read at least once, `lastGameReadAt` (S4-A, R7; the rule is spelled out in `sample`);
  *  - `settings.autoPause` is read on each status cadence and sent ONLY when the game is reachable and the read worked;
  *    a failed read is left out (never a stale or guessed value) and logged once per change, not per call;
  *  - a part that fails while the game is otherwise reachable is left out and logged as a code, never with its message;
@@ -90,14 +92,24 @@ export class Sampler {
   private lastAutoPause = -Infinity;
   private failing = new Set<string>();
   private lastAdjustedLogAt = -Infinity;
+  /** The observedAt of the last pass whose status read worked, or null before the first one. */
+  private lastGameReadAt: string | null = null;
 
   constructor(private readonly options: SamplerOptions) {}
 
   async sample(nowMs: number): Promise<SnapshotRequest> {
     const { reader, logger } = this.options;
     const cadence = this.options.cadence();
-    const base = { agentVersion: this.options.agentVersion ?? AGENT_VERSION, observedAt: new Date(nowMs).toISOString() };
+    const agentVersion = this.options.agentVersion ?? AGENT_VERSION;
+    const observedAt = new Date(nowMs).toISOString();
+    // `modVersion` is the SENDER's version (the mod's or, here, the agent's): the same string as `agentVersion`, which is
+    // at most 32 characters, inside the contract's 64.
+    const base = { agentVersion, observedAt, modVersion: agentVersion };
 
+    // S4-A (R7): `gameReachable` follows `reachable` exactly. It is true when this pass's status read worked, which
+    // includes a PAUSED game (a paused game still answers; `paused` says the rest). A part failing while the status read
+    // works does not make the game unreachable. `lastGameReadAt` is the observedAt of the last pass whose status read
+    // worked: kept across failed passes, and left out until the first success since the agent started.
     let status: Status;
     try {
       status = conformStatus(await reader.readStatus());
@@ -105,8 +117,10 @@ export class Sampler {
     } catch (err) {
       this.failed("status", err);
       // The game or its path failed: the whole pass is "unreachable", and the parts wait for the next pass.
-      return { ...base, reachable: false, paused: null };
+      const lastRead = this.lastGameReadAt === null ? {} : { lastGameReadAt: this.lastGameReadAt };
+      return { ...base, ...lastRead, reachable: false, paused: null, gameReachable: false };
     }
+    this.lastGameReadAt = observedAt;
 
     const powerDue = isDue(nowMs, this.lastPower, cadence.powerSeconds);
     const factoryDue = isDue(nowMs, this.lastFactory, cadence.factorySeconds);
@@ -127,7 +141,7 @@ export class Sampler {
     ]);
 
     let adjusted = 0;
-    const snapshot: SnapshotRequest = { ...base, reachable: true, paused: status.gamePaused, status };
+    const snapshot: SnapshotRequest = { ...base, lastGameReadAt: observedAt, reachable: true, paused: status.gamePaused, gameReachable: true, status };
     if (power !== undefined) {
       const conformed = conformPower(power);
       adjusted += conformed.adjusted;
