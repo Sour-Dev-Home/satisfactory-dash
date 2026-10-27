@@ -7,6 +7,7 @@ import { useSettledQuery } from "../api/settled";
 import { PanelError } from "../components/PanelError";
 import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable } from "../ui/Skeleton";
+import { DesignationChangeContext, useDesignationChangeRunner } from "./designationChanges";
 import { DesignationContext, type DesignationState } from "./DesignationContext";
 import { missingMembers, placesOf } from "./designationMatch";
 import { canDesignate } from "./designationText";
@@ -36,20 +37,24 @@ export function PlannerView() {
     () => ({ canWrite: canDesignate(server.role), designations: designations.data, places, missing, writes }),
     [server.role, designations.data, places, missing, writes],
   );
+  // ADR-0055 Decision 12: merge, split, pop-out, dissolve and their undo, for the roles that may write.
+  const changes = useDesignationChangeRunner(canDesignate(server.role) ? writes.replace.mutateAsync : null);
   // A site's key is its position, so it holds across polls; a site that goes away falls back to the overview.
   const [selected, setSelected] = useState<string | null>(null);
   return (
     <Loadable pending={firstLoad} skeleton={<PlannerSkeleton />}>
       {query.data ? (
         <DesignationContext.Provider value={state}>
-          <PlannerPanel
-            snapshot={query.data}
-            findings={bottlenecks.data?.data.findings}
-            findingsTruncated={bottlenecks.data?.data.truncated === true}
-            refetchFailed={query.isRefetchError}
-            selected={selected}
-            onSelect={setSelected}
-          />
+          <DesignationChangeContext.Provider value={changes}>
+            <PlannerPanel
+              snapshot={query.data}
+              findings={bottlenecks.data?.data.findings}
+              findingsTruncated={bottlenecks.data?.data.truncated === true}
+              refetchFailed={query.isRefetchError}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </DesignationChangeContext.Provider>
         </DesignationContext.Provider>
       ) : (
         error != null && <PanelError error={error} title="Production planner" />

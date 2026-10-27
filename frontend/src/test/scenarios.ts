@@ -1,4 +1,4 @@
-import { endpoints, ownValue, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, PlannerDesignationsResponseSchema, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
 import {
   errorForbidden,
   errorServiceUnavailable,
@@ -67,6 +67,8 @@ import {
   productionGraphTwoSites,
   plannerDesignationDeleteResponse,
   plannerDesignationIronLine,
+  plannerDesignationReplaceResponse,
+  plannerDesignationStaleError,
   managedServersWithAgent,
   renameAgentServerResponse,
   managedServersEmpty,
@@ -169,6 +171,8 @@ export const ROUTES = {
   plannerDesignationCreate: endpoints.plannerDesignations.create,
   plannerDesignationUpdate: endpoints.plannerDesignations.update,
   plannerDesignationRemove: endpoints.plannerDesignations.remove,
+  // ADR-0055 Decision 11 (#727): merge, split, pop-out, dissolve and undo in one write.
+  plannerDesignationReplace: endpoints.plannerDesignations.replace,
   // ADR-0038 M5: the two world layers share one endpoint and tell apart by the path's `:layer`
   // (WORLD_LAYER_ROUTES below).
   mapRails: endpoints.map.worldLayer,
@@ -299,6 +303,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   plannerDesignationCreate: { status: 201, body: plannerDesignationIronLine },
   plannerDesignationUpdate: ok(plannerDesignationIronLine),
   plannerDesignationRemove: ok(plannerDesignationDeleteResponse),
+  plannerDesignationReplace: ok(plannerDesignationReplaceResponse),
   mapRails: ok(railsWorldResponse),
   mapResourceNodes: ok(resourceNodesWorldResponse),
   mapMarkers: ok(mapMarkersWorldResponse),
@@ -462,6 +467,41 @@ const plannerDesignated = (() => {
         { id, name: "Rod works", mode: "core", members: [...live, gone], createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-22T18:30:00.000Z" },
       ],
       matches: [{ designationId: id, matched: live.length, missing: 1 }],
+    }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
+
+/**
+ * ADR-0055 Decisions 11 and 12 (#727): the designated scenario from a backend with revisions and member-to-building ids,
+ * so merge, split, pop-out and dissolve are offered. The replace answers the merge (Rod works kept in place, revision 3);
+ * the same answer comes back for the undo, which is all a static mock can do.
+ */
+const plannerMergeSplit = (() => {
+  const list = PlannerDesignationsResponseSchema.parse(plannerDesignated.plannerDesignations.body);
+  const designation = list.designations[0]!;
+  const match = list.matches[0]!;
+  const liveIds = designation.members.slice(0, match.matched).map((m) => m.id);
+  return {
+    ...plannerDesignated,
+    plannerDesignations: ok({
+      designations: [{ ...designation, revision: 2 }],
+      matches: [{ ...match, memberBuildingIds: [...liveIds, null] }],
+    }),
+    plannerDesignationReplace: ok({
+      designations: [{ ...designation, name: "Iron works", updatedAt: "2026-10-24T12:00:00.000Z", revision: 3 }],
+      removedIds: [],
+    }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
+
+/** The same, with nothing between the two factories (no belt, pipe, transport or shared group): Merge stays disabled. */
+const plannerMergeApart = (() => {
+  const graph = ProductionGraphResponseSchema.parse(plannerMergeSplit.productionGraph.body);
+  return {
+    ...plannerMergeSplit,
+    productionGraph: ok({
+      ...graph,
+      data: { ...graph.data, edges: [], transports: [], nodes: graph.data.nodes.map((n) => ({ ...n, shares: undefined })) },
     }),
   } satisfies Partial<Record<RouteKey, MockResponse>>;
 })();
@@ -777,6 +817,11 @@ export const SCENARIOS = {
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
   // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate or suggest.
   "planner-designations": plannerDesignated,
+  // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and
+  // a replace that finds a designation changed meanwhile.
+  "planner-merge-split": plannerMergeSplit,
+  "planner-merge-apart": plannerMergeApart,
+  "planner-merge-stale": { ...plannerMergeSplit, plannerDesignationReplace: fail(409, plannerDesignationStaleError) },
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {

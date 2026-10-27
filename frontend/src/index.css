@@ -366,10 +366,12 @@
     transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease-standard);
   }
-  button:hover:not(:disabled) {
+  button:hover:not(:disabled, [aria-disabled="true"]) {
     border-color: var(--color-muted);
   }
-  button:disabled {
+  /* aria-disabled keeps a button focusable, so its reason (aria-describedby) is still read (#727's Merge). */
+  button:disabled,
+  button[aria-disabled="true"] {
     opacity: 0.6;
     cursor: not-allowed;
   }
