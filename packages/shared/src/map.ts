@@ -446,13 +446,22 @@ export const MapTrainSchema = z.object({
   status: boundedString.describe("FRM's own Status field, passed through (e.g. Self-Driving, Manual)"),
 });
 
+/** A station's live transfer rate (S4-B): items per minute, all its platforms summed. Rates are live, so they live here,
+ *  never in the hash-stable trainRoutes layer. */
+const StationRateSchema = z.number().min(0).optional();
+
 /** From getTrainStation: a station's position and label, for the map to place a marker (docking
- *  platform detail, cargo and power are not the map's concern). */
+ *  platform detail, cargo and power are not the map's concern), plus its live transfer rates (S4-B). */
 export const MapTrainStationSchema = z.object({
-  id: boundedString,
+  id: boundedString.describe("The same id as the station's trainRoutes record, so the two join"),
   name: boundedString.describe("The station's in-game name, player-chosen"),
   x: WholeMetreSchema,
   y: WholeMetreSchema,
+  // S4-B (ADR-0058): OPTIONAL, the mod sends them; the Node agent is frozen on FRM (Decision 5). Units are the mod's,
+  // from the game headers: items per minute. Absent = not read, which is not 0.
+  transferPerMinute: StationRateSchema.describe("Items moved per minute at the station, loading plus unloading, all platforms summed"),
+  inflowPerMinute: StationRateSchema.describe("Items per minute unloaded from trains into the station; absent when the game does not expose it"),
+  outflowPerMinute: StationRateSchema.describe("Items per minute loaded from the station onto trains; absent when the game does not expose it"),
 });
 
 export const MapLiveSchema = z.object({
