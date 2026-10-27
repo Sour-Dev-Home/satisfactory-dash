@@ -238,6 +238,54 @@ describe("agent contract: snapshots", () => {
     ]);
   });
 
+  describe("reachability fields (S4-A, R7): gameReachable, lastGameReadAt, modVersion", () => {
+    const parse = (base: object, part: object) => SnapshotRequestSchema.safeParse({ ...base, ...part });
+    const reach = { gameReachable: true, lastGameReadAt: "2026-10-27T12:00:00Z", modVersion: "1.2.3" };
+
+    it("an older sender's body, without any of them, still parses and gains none", () => {
+      for (const snapshot of [fixtures.agentSnapshotRequestFull, fixtures.agentSnapshotRequestPartial, fixtures.agentSnapshotRequestUnreachable]) {
+        const parsed = SnapshotRequestSchema.safeParse(snapshot);
+        expect(parsed.success).toBe(true);
+        expect(parsed.data).not.toHaveProperty("gameReachable");
+        expect(parsed.data).not.toHaveProperty("lastGameReadAt");
+        expect(parsed.data).not.toHaveProperty("modVersion");
+      }
+    });
+
+    it("they parse on a reachable and an unreachable snapshot, and round-trip unchanged", () => {
+      expect(SnapshotRequestSchema.parse({ ...fixtures.agentSnapshotRequestFull, ...reach })).toMatchObject(reach);
+      const down = { gameReachable: false, lastGameReadAt: "2026-10-27T11:58:00.500+02:00", modVersion: "agent-0.9.0" };
+      expect(SnapshotRequestSchema.parse({ ...fixtures.agentSnapshotRequestUnreachable, ...down })).toMatchObject(down);
+      for (const one of [{ gameReachable: false }, { lastGameReadAt: reach.lastGameReadAt }, { modVersion: "x" }]) {
+        expect(parse(fixtures.agentSnapshotRequestPartial, one).success, JSON.stringify(one)).toBe(true);
+      }
+    });
+
+    it("gameReachable is a boolean, never a string or null", () => {
+      for (const gameReachable of ["true", 1, null]) {
+        expect(parse(fixtures.agentSnapshotRequestPartial, { gameReachable }).success, String(gameReachable)).toBe(false);
+      }
+    });
+
+    it("modVersion is 1 to 64 characters", () => {
+      const ok = (modVersion: unknown) => parse(fixtures.agentSnapshotRequestPartial, { modVersion }).success;
+      expect([ok("a"), ok("v".repeat(64)), ok(""), ok("v".repeat(65)), ok(3), ok(null)]).toEqual([true, true, false, false, false, false]);
+    });
+
+    it("lastGameReadAt is an ISO datetime with an offset or Z, nothing else", () => {
+      const at = (lastGameReadAt: unknown) => parse(fixtures.agentSnapshotRequestPartial, { lastGameReadAt }).success;
+      expect([
+        at("2026-10-27T12:00:00Z"),
+        at("2026-10-27T12:00:00.123-05:30"),
+        at("2026-10-27T12:00:00"),
+        at("2026-10-27"),
+        at("yesterday"),
+        at(1761566400000),
+        at(null),
+      ]).toEqual([true, true, false, false, false, false, false]);
+    });
+  });
+
   it("the snapshot fixtures carry nothing about the machine", () => {
     const text = JSON.stringify([fixtures.agentSnapshotRequestFull, fixtures.agentSnapshotRequestUnreachable, fixtures.agentEnrollRequest]);
     expect(text).not.toMatch(/hostname|\bhost\b|machine|username|C:\\\\|C:\/|\/home\/|\/Users\//i);
