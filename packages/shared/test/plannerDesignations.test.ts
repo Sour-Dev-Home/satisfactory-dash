@@ -147,15 +147,6 @@ describe("planner designations: endpoints", () => {
     expect(endpoints.plannerDesignations.update).toMatchObject({ method: "PUT", route: "/api/servers/:serverId/planner/designations/:designationId" });
     expect(endpoints.plannerDesignations.remove).toMatchObject({ method: "DELETE", route: "/api/servers/:serverId/planner/designations/:designationId" });
   });
-  it("serves replace beside the other designation writes", () => {
-    expect(endpoints.plannerDesignations.replace).toMatchObject({
-      method: "POST",
-      route: "/api/servers/:serverId/planner/designations/replace",
-      request: ReplacePlannerDesignationsRequestSchema,
-      response: ReplacePlannerDesignationsResponseSchema,
-    });
-    expect(endpoints.plannerDesignations.replace.path("a b")).toBe("/api/servers/a%20b/planner/designations/replace");
-  });
   it("builds and encodes paths", () => {
     expect(endpoints.plannerDesignations.list.path("a b")).toBe("/api/servers/a%20b/planner/designations");
     expect(endpoints.plannerDesignations.update.path("default", id)).toBe(`/api/servers/default/planner/designations/${id}`);

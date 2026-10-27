@@ -23,8 +23,6 @@ import {
   DeletePlannerDesignationResponseSchema,
   PlannerDesignationSchema,
   PlannerDesignationsResponseSchema,
-  ReplacePlannerDesignationsRequestSchema,
-  ReplacePlannerDesignationsResponseSchema,
   UpdatePlannerDesignationRequestSchema,
 } from "./plannerDesignations";
 import { PowerResponseSchema } from "./power";
@@ -175,16 +173,6 @@ export const endpoints = {
       route: "/api/servers/:serverId/planner/designations/:designationId",
       path: (serverId: string, designationId: string) => `${scoped("planner/designations")(serverId)}/${encodeURIComponent(designationId)}`,
       response: DeletePlannerDesignationResponseSchema,
-    },
-    // ADR-0055 Decision 11 (amendment 2026-10-27): merge, split, pop-out, dissolve and undo as one transaction. 200.
-    // 409 designation_stale (an `expect` entry changed or is gone), designation_overlap (with `error.other`, a building
-    // held outside `expect`) or designation_cap (the resulting set); 400 bad_request for put entries sharing a building.
-    replace: {
-      method: "POST",
-      route: "/api/servers/:serverId/planner/designations/replace",
-      path: scoped("planner/designations/replace"),
-      request: ReplacePlannerDesignationsRequestSchema,
-      response: ReplacePlannerDesignationsResponseSchema,
     },
   },
   power: {

@@ -38,6 +38,8 @@ import { z } from "zod";
  * resulting count above PLANNER_DESIGNATIONS_MAX_PER_SERVER is its 409 `designation_cap`. `intent` is an audit hint only.
  * `revision` (on every designation) and `memberBuildingIds` (on every match) are optional: absent = an older backend.
  * A replace response's designations always carry `revision`.
+ * The `endpoints.plannerDesignations.replace` entry lands with the backend route (Build PR 2): every shared
+ * server-scoped endpoint must have a mounted route (backend serverAuthorization.test.ts).
  */
 
 export const PLANNER_DESIGNATIONS_MAX_PER_SERVER = 50;
