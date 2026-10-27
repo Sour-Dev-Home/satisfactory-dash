@@ -253,8 +253,12 @@ for (const motion of ["no-preference", "reduce"] as const) {
 
 // #434: Leaflet's panes (z-index 200-800) must stay inside the map's own stacking context, or
 // they paint over the header's popovers (--z-popover) and the grid shows through the alerts panel.
+// The popover hangs from the bell and scrolls with the page, so how far it reaches over the map
+// depends on its height, not on scrolling: the "alerts" scenario (a firing alert and a page of
+// events) makes it tall enough to cover the map's top at 390 px, whatever the toggle rows above
+// the map add. Every default-on layer (drone ports included) is drawn under it.
 test("the alerts popover paints above every map layer", async ({ page, mockApi }) => {
-  await mockApi("default");
+  await mockApi("alerts");
   await page.goto("/app/map");
   const map = page.getByRole("application", { name: /Factory map/ });
   await expect(map).toBeVisible();
