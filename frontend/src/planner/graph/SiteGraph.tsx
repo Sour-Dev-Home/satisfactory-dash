@@ -150,8 +150,11 @@ export interface SiteGraphProps {
   suggestions?: CanvasSuggestions | undefined;
   /** ADR-0055 Decision 12 (#727), the overview only: factory keys picked to merge; Shift- or Ctrl-click picks one. */
   factoryPicks?: CanvasSelection | undefined;
-  /** In an opened factory that can be split: the group panel's "Pop out" moves that group into its own factory. */
-  onPopOut?: ((nodeKey: string) => void) | undefined;
+  /**
+   * In an opened factory that can be split: the group panel's "Pop out" moves that group into its own factory. It rejects
+   * when the write fails, and the panel shows why.
+   */
+  onPopOut?: ((nodeKey: string) => Promise<void>) | undefined;
 }
 
 /** Whether a card can be picked: it stands for groups that are drawn (a fold's are hidden, a factory is not a group). */

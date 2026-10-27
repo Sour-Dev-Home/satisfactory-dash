@@ -4,6 +4,8 @@ import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { queries } from "../../api/queries";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { BottleneckBadge } from "../BottleneckBadge";
+import { ErrorLine } from "../DesignationParts";
+import { useRun } from "../useRun";
 import { groupLabel, nodeFindings, stateCountsText } from "../plannerText";
 import { buildingIconUrl } from "./buildingIcons";
 import { nodeFacts, withName } from "./graphModel";
@@ -31,11 +33,16 @@ export function GroupPanel({
   facts?: readonly string[];
   findings: readonly Bottleneck[] | undefined;
   onClose: () => void;
-  /** ADR-0055 Decision 12: moves this group out into its own factory (a designated factory that can be split). */
-  onPopOut?: (() => void) | undefined;
+  /**
+   * ADR-0055 Decision 12: moves this group out into its own factory (a designated factory that can be split). A rejection
+   * is shown here, beside the button, since this is where the action was taken.
+   */
+  onPopOut?: (() => Promise<void>) | undefined;
 }) {
   const server = useSelectedServer();
-  const factory = useQuery(queries.factory(server.id));  const heading = useRef<HTMLHeadingElement>(null);
+  const factory = useQuery(queries.factory(server.id));
+  const pop = useRun();
+  const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), [node.key]);
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -92,9 +99,18 @@ export function GroupPanel({
         ))}
       </section>
       {onPopOut !== undefined && (
-        <button type="button" onClick={onPopOut} aria-label={`Pop out ${label}`} className="min-h-touch justify-self-start">
-          Pop out
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={pop.busy}
+            onClick={() => void pop.run(onPopOut)}
+            aria-label={`Pop out ${label}`}
+            className="min-h-touch justify-self-start"
+          >
+            Pop out
+          </button>
+          <ErrorLine error={pop.error} />
+        </>
       )}
       {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
       {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}

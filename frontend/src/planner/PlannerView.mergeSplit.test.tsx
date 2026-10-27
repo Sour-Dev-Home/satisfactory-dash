@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, ProductionGraphResponseSchema, type PlannerDesignationMember } from "@satisfactory-dash/shared";
 import { plannerDesignationStaleError, productionGraphFactories, serversRoleOwner, serversRoleViewer } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
@@ -152,7 +152,7 @@ describe("merging factories", () => {
     const splitBack = await screen.findByRole("button", { name: "Split back" });
     await waitFor(() => expect(splitBack).toHaveFocus());
     expect(screen.getByText("Merged 2 factories into Iron works.", { selector: "#planner-undo-message" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Selected factories" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status")).toHaveTextContent("No factories selected");
 
     fireEvent.click(splitBack);
     await waitFor(() => expect(sent).toHaveLength(2));
@@ -200,7 +200,7 @@ describe("merging factories", () => {
     fireEvent.click(screen.getByRole("button", { name: "Merge" }));
     expect(await screen.findByText(STALE_TEXT)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Select Rod works" })).not.toBeChecked();
-    expect(screen.queryByRole("group", { name: "Selected factories" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status")).toHaveTextContent("No factories selected");
     await waitFor(() => expect(listReads).toBeGreaterThan(before));
   });
 
@@ -292,5 +292,94 @@ describe("splitting a designated factory", () => {
     expect(screen.getByRole("button", { name: "Remove Rod works" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Designate selected" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Pop out/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("the selection bars and the pop-out's errors (#753 review)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const wideScreen = () =>
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), addEventListener: () => {}, removeEventListener: () => {} }));
+  const failing = () => HttpResponse.json({ error: { code: "internal_error", message: "The write failed." } }, { status: 500 });
+
+  it("reserves the merge bar before anything is picked, so a pick does not move the canvas", async () => {
+    wideScreen();
+    serve();
+    renderView();
+    const svg = await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
+    // Owned and writable: the bar is there before the first pick, idle.
+    const bar = screen.getByRole("group", { name: "Selected factories" });
+    expect(within(bar).getByRole("status")).toHaveTextContent("No factories selected");
+    expect(within(bar).getByRole("button", { name: "Merge into one" })).toHaveAttribute("aria-disabled", "true");
+    expect(within(bar).getByRole("button", { name: "Clear selection" })).toBeDisabled();
+    // What stands above the canvas is the same elements before and after a pick: nothing is inserted to push it down.
+    const page = bar.parentElement!;
+    let canvas: Element = svg;
+    while (canvas.parentElement !== page) canvas = canvas.parentElement!;
+    const above = () => [...page.children].slice(0, [...page.children].indexOf(canvas));
+    const before = above();
+    fireEvent.click(svg.querySelector<SVGGElement>('[data-card="factory"]')!, { shiftKey: true });
+    expect(within(bar).getByRole("status")).toHaveTextContent("1 factory selected");
+    const after = above();
+    expect(after).toHaveLength(before.length);
+    after.forEach((el, i) => expect(el).toBe(before[i]));
+  });
+
+  it("keeps one polite live region for the count while the name form opens and closes", async () => {
+    serve();
+    renderView();
+    await settled();
+    tick("Select Rod works");
+    tick("Select Iron Plate factory");
+    const count = within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status");
+    expect(count).toHaveAttribute("aria-live", "polite");
+    fireEvent.click(screen.getByRole("button", { name: "Merge into one" }));
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    expect(count).toBeInTheDocument();
+    expect(count).toHaveTextContent("2 factories selected");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(count).toBeInTheDocument();
+    tick("Select Rod works");
+    expect(count).toHaveTextContent("1 factory selected");
+  });
+
+  it("keeps the split bar's count mounted while its name form is open", async () => {
+    serve();
+    renderView();
+    await openRodWorks();
+    tick("Select Constructor");
+    const count = within(screen.getByRole("group", { name: "Split" })).getByRole("status");
+    fireEvent.click(screen.getByRole("button", { name: "Split into a new factory" }));
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    expect(count).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(count).toBeInTheDocument();
+  });
+
+  it("shows a failed pop-out from the group panel in the panel, not on the page", async () => {
+    wideScreen();
+    serve({ replace: failing });
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: /^Open factory: Rod works/ }, { timeout: 3_000 }));
+    await screen.findByRole("img", { name: /^Graph of Rod works/ }, { timeout: 3_000 });
+    const cards = screen.getByRole("list", { name: "Cards in the graph" });
+    fireEvent.click(within(cards).getAllByRole("button", { name: /Constructor/ })[0]!);
+    const panel = await screen.findByRole("complementary");
+    fireEvent.click(within(panel).getByRole("button", { name: /^Pop out/ }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const alert = await within(panel).findByRole("alert");
+    expect(alert.textContent).not.toBe("");
+    // The page says nothing of it: every alert on the page is the panel's.
+    for (const a of screen.getAllByRole("alert")) expect(panel).toContainElement(a);
+  });
+
+  it("still shows a failed pop-out from a table row on the page", async () => {
+    serve({ replace: failing });
+    renderView();
+    await openRodWorks();
+    fireEvent.click(screen.getByRole("button", { name: "Pop out 2× Constructor, Iron Rod" }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(await screen.findByRole("alert")).not.toHaveTextContent(/^$/);
   });
 });
