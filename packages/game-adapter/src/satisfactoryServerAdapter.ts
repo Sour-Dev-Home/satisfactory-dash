@@ -27,8 +27,8 @@ import type {
   Player,
   SessionInfo,
 } from "./domain.js";
-import { mapConveyors, mapDroneRoutes, mapMapMarkers, mapRailSegments, mapResourceNodes, mapTrainRoutes, mapTrains, mapTrainStations } from "./map/index.js";
-import type { MappedConveyors, MappedDroneRoutes, MappedMapMarkers, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
+import { mapConveyors, mapDroneRoutes, mapMapMarkers, mapPowerLines, mapRailSegments, mapResourceNodes, mapTrainRoutes, mapTrains, mapTrainStations } from "./map/index.js";
+import type { MappedConveyors, MappedDroneRoutes, MappedMapMarkers, MappedPowerLines, MappedRailSegments, MappedResourceNodes, MappedTrainRoutes, MappedTrains, MappedTrainStations } from "./map/index.js";
 import { UpstreamError } from "./errors.js";
 import { totalPowerProductionMW } from "./totalPowerProduction.js";
 
@@ -327,5 +327,13 @@ export class SatisfactoryServerAdapter {
   async getMapMarkers(): Promise<MappedMapMarkers> {
     const markers = parseUpstream("getMapMarkers", z.array(z.unknown()), await this.frmApi.get<unknown>("getMapMarkers"));
     return mapMapMarkers(markers);
+  }
+
+  /** ADR-0038 §1 (#330): the `powerLines` world layer, every power line as its two ends (map/powerLinesMapper.ts). A
+   *  line without two usable ends is dropped (`dropped`), not the layer. Read every 10 min on the world tier: getCables
+   *  is not a game-thread endpoint (raw-sources/frm-read-api.md), so ADR-0038 D3's 30-min rule does not apply. */
+  async getPowerLines(): Promise<MappedPowerLines> {
+    const cables = parseUpstream("getCables", z.array(z.unknown()), await this.frmApi.get<unknown>("getCables"));
+    return mapPowerLines(cables);
   }
 }

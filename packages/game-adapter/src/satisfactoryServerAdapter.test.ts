@@ -185,6 +185,7 @@ describe("SatisfactoryServerAdapter", () => {
     ["getTrainStation", (a: SatisfactoryServerAdapter) => a.getTrainRoutes()],
     ["getDroneStation", (a: SatisfactoryServerAdapter) => a.getDroneRoutes()],
     ["getMapMarkers", (a: SatisfactoryServerAdapter) => a.getMapMarkers()],
+    ["getCables", (a: SatisfactoryServerAdapter) => a.getPowerLines()],
   ] as const)("rejects a non-array %s body as an invalid response", async (endpoint, call) => {
     for (const body of [null, {}, "nope"]) {
       const { adapter } = buildAdapter({ frm: { get: vi.fn().mockResolvedValue(body) } });
@@ -342,6 +343,18 @@ describe("SatisfactoryServerAdapter", () => {
     const result = await adapter.getMapMarkers();
     expect(get.mock.calls.map((call) => call[0])).toEqual(["getMapMarkers"]);
     expect(result).toEqual({ dropped: 1, data: [{ id: "m1", name: "Base", kind: "marker", icon: 349, color: "#6ea37b", x: 10, y: -20 }] });
+  });
+
+  it("reads getCables and maps it to the powerLines layer", async () => {
+    const body = [
+      { ID: "Build_PowerLine_C_1", location0: { x: 1000, y: -2000, z: 5 }, location1: { x: 3000, y: 4000, z: 9 }, Length: 2000 },
+      { ID: "Build_PowerLine_C_2", location0: { x: 0, y: 0, z: 0 } },
+    ];
+    const get = vi.fn(async (_endpoint: string) => body as never);
+    const { adapter } = buildAdapter({ frm: { get } });
+    const result = await adapter.getPowerLines();
+    expect(get.mock.calls.map((call) => call[0])).toEqual(["getCables"]);
+    expect(result).toEqual({ dropped: 1, data: [{ id: "Build_PowerLine_C_1", points: [[10, -20], [30, 40]] }] });
   });
 
   it("getConveyors from an FRM without the connection fields resolves to skip unsupportedFrm, not an error", async () => {

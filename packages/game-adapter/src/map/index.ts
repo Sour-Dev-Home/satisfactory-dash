@@ -15,4 +15,6 @@ export { mapDroneRoutes } from "./droneRoutesMapper.js";
 export type { MappedDroneRoutes } from "./droneRoutesMapper.js";
 export { mapMapMarkers } from "./mapMarkersMapper.js";
 export type { MappedMapMarkers } from "./mapMarkersMapper.js";
+export { mapPowerLines } from "./powerLinesMapper.js";
+export type { MappedPowerLines } from "./powerLinesMapper.js";
 export { mapNodeType } from "./nodeType.js";

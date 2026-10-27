@@ -16,6 +16,7 @@ function fakePorts(overrides: Partial<LocalWorldPollerPorts> = {}): LocalWorldPo
     getTrainRoutes: vi.fn().mockResolvedValue(empty),
     getDroneRoutes: vi.fn().mockResolvedValue(empty),
     getMapMarkers: vi.fn().mockResolvedValue(empty),
+    getPowerLines: vi.fn().mockResolvedValue(empty),
     getTrains: vi.fn().mockResolvedValue(empty),
     getTrainStations: vi.fn().mockResolvedValue(empty),
     ...overrides,
@@ -36,7 +37,7 @@ describe("LocalWorldPoller", () => {
     await poller.stop();
   });
 
-  it("ingests rails/resourceNodes/conveyors/trainRoutes/droneRoutes/mapMarkers under their own layer name", async () => {
+  it("ingests rails/resourceNodes/conveyors/trainRoutes/droneRoutes/mapMarkers/powerLines under their own layer name", async () => {
     const ports = fakePorts({
       getRails: vi.fn().mockResolvedValue({ data: [{ id: "r1" }], dropped: 0 }),
       getResourceNodes: vi.fn().mockResolvedValue({ data: [{ type: "Iron Ore" }], dropped: 0 }),
@@ -45,9 +46,9 @@ describe("LocalWorldPoller", () => {
     const mapLive = { record: vi.fn() };
     const poller = new LocalWorldPoller(ports, { logger: fakeLogger(), serverPublicId: "srv-1", ingest, mapLive, jitter: () => 0.5 });
     poller.start();
-    await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalledTimes(6));
+    await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalledTimes(7));
     const layers = ingest.ingest.mock.calls.map((call) => call[1]);
-    expect(layers.sort()).toEqual(["conveyors", "droneRoutes", "mapMarkers", "rails", "resourceNodes", "trainRoutes"]);
+    expect(layers.sort()).toEqual(["conveyors", "droneRoutes", "mapMarkers", "powerLines", "rails", "resourceNodes", "trainRoutes"]);
     await poller.stop();
   });
 
@@ -130,6 +131,55 @@ describe("LocalWorldPoller", () => {
     }
   });
 
+  it("ingests the powerLines layer as read and warns with a dropped count", async () => {
+    const lines = [{ id: "Build_PowerLine_C_2147223283", points: [[-1803, -1064], [-1804, -1066]] }];
+    const fakes = fakePorts({ getPowerLines: vi.fn().mockResolvedValue({ data: lines, dropped: 2 }) });
+    const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
+    const logger = fakeLogger();
+    const poller = new LocalWorldPoller(fakes, { logger, serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
+    poller.start();
+    await vi.waitFor(() => expect(ingest.ingest).toHaveBeenCalledWith("srv-1", "powerLines", { observedAt: expect.any(String), data: lines }));
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ layer: "powerLines", dropped: 2 }), expect.any(String));
+    await poller.stop();
+  });
+
+  it("reads powerLines on its own interval option, 10 min by default", async () => {
+    vi.useFakeTimers();
+    try {
+      const fakes = fakePorts();
+      const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
+      const poller = new LocalWorldPoller(fakes, { logger: fakeLogger(), serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
+      poller.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fakes.getPowerLines).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(599_000);
+      expect(fakes.getPowerLines).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fakes.getPowerLines).toHaveBeenCalledTimes(2);
+      await poller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("honours powerLinesIntervalSeconds", async () => {
+    vi.useFakeTimers();
+    try {
+      const fakes = fakePorts();
+      const ingest = { ingest: vi.fn().mockResolvedValue({ accepted: true, unchanged: false }) };
+      const poller = new LocalWorldPoller(fakes, { logger: fakeLogger(), serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5, powerLinesIntervalSeconds: 60 });
+      poller.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fakes.getPowerLines).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(fakes.getPowerLines).toHaveBeenCalledTimes(2);
+      expect(fakes.getMapMarkers).toHaveBeenCalledTimes(1);
+      await poller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ingests the trainRoutes layer as read, on the 10 min world tier, and warns on dropped records", async () => {
     const records = [{ recordType: "station", id: "s1", name: "A ", platforms: [] }];
     const ports = fakePorts({ getTrainRoutes: vi.fn().mockResolvedValue({ data: records, dropped: 1 }) });
@@ -184,7 +234,7 @@ describe("LocalWorldPoller", () => {
     const poller = new LocalWorldPoller(ports, { logger, serverPublicId: "srv-1", ingest, mapLive: { record: vi.fn() }, jitter: () => 0.5 });
     poller.start();
     await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ loop: "conveyors" }), expect.any(String)));
-    await vi.waitFor(() => expect(ingest.ingest.mock.calls.map((call) => call[1]).sort()).toEqual(["droneRoutes", "mapMarkers", "rails", "resourceNodes", "trainRoutes"]));
+    await vi.waitFor(() => expect(ingest.ingest.mock.calls.map((call) => call[1]).sort()).toEqual(["droneRoutes", "mapMarkers", "powerLines", "rails", "resourceNodes", "trainRoutes"]));
     await poller.stop();
   });
 
