@@ -2,7 +2,9 @@
 
 Status: accepted (project owner), 2026-09-24: no ads now; the path for later is reserved as below. **Amended 2026-10-27
 (owner): ads at release, privacy-first and isolated, on public pages and in fixed slots in the app; see "Amendment,
-2026-10-27" at the end, which overrides the Decision below where they differ.**
+2026-10-27" at the end, which overrides the Decision below where they differ.** **Amended again 2026-10-27 (owner):
+AdSense with a consent banner, in the app via a crawler account; see "Amendment 2" at the end, which overrides
+amendment 1 where they differ (its network pick, Decision 2 and Decision 5).**
 
 ## Context
 The owner asked whether the site can run ads. Relevant facts:
@@ -112,3 +114,75 @@ The owner asked whether the site can run ads. Relevant facts:
 - Coffee Stain publishes terms, or contacts the project, about commercial use.
 - The chosen network starts setting cookies or identifiers (Decision 5).
 - Revenue data shows the slots are not worth their space, or a richer network is wanted (a consent banner decision).
+
+## Amendment 2, 2026-10-27 (later the same day): AdSense with a consent banner, in the app via a crawler account
+
+### Why it changed
+The network research (build step 1, [`ad-network-comparison.md`](../ad-network-comparison.md)) found that both privacy-first
+networks are invite-only and developer-focused, and EthicalAds asks for about 50,000 pageviews a month (EA E1-E3, CA E1-E2
+there). This site has no traffic data, so neither is likely to accept it at launch. AdSense states no traffic minimum
+([`ad-network-adsense-2026-10-27.md`](../../raw-sources/ad-network-adsense-2026-10-27.md) E5), but sets cookies even for
+non-personalised ads (E1).
+
+### Owner's decisions (2026-10-27), verbatim picks
+- (a) **"AdSense with a consent banner"**. This **reverses** amendment 1's network pick ("privacy-first, no tracking") and its
+  Decision 5 ("no consent banner").
+- (b) **"Also in the app, via a crawler account"**. The AdSense script runs in the signed-in app, and Google's crawler gets a
+  login that sees only a demo-like server.
+
+### Decision (replaces amendment 1 where they differ)
+1. **Consent.** EEA, UK and Swiss visitors get a consent banner from Google's own CMP ("Privacy & messaging", formerly Funding
+   Choices). AdSense requires a Google-certified CMP integrated with IAB TCF for these visitors (AdSense help 13554116, cited in
+   this ADR's Context; that page is not in the capture). Whether Google's own CMP meets that for this site is
+   [NEEDS VERIFICATION] and settled in build step 1.
+2. **Ads load only after consent where consent is required.** Elsewhere the site follows the capture: cookies for frequency
+   capping and reporting need consent where the law requires it (E1), and limited ads still use invalid-traffic cookies and
+   local storage, with the EU user consent policy still applying (E2). Whether limited ads are turned on is decided in build
+   step 2 from those rules.
+3. **In the app, the script runs in the app page itself.** AdSense needs the real page to evaluate content (E3), so the
+   iframe isolation of amendment 1 Decision 2 is **reversed**, and so is ADR-0016 item 8 for `script-src`: the app's CSP
+   allows Google's ad domains. **This is a security posture change, made by the owner.** The domain list is
+   [NEEDS VERIFICATION] and captured in build step 1. `security-reviewer` is required on every PR that changes the CSP or
+   loads the script. Ad code is still not bundled; it loads from Google at runtime behind the off switch. Clicks are left to
+   Google's code (E3 bans altering them).
+4. **What Google's script can see.** A third-party script in the page can read the page: in the app that includes server,
+   factory and player names and anything else on screen. Amendment 1 Decision 3 ("no user data reaches the network") and
+   the first paragraph of the original Consequences **no longer hold for the app**. The privacy page must say so plainly.
+5. **Crawler account.** A dedicated account with the viewer role, attached only to a demo-data server: the demo world of
+   ADR-0026 served through the real API, or a fixed fake server [NEEDS VERIFICATION: ADR-0026's demo is frontend-only and
+   never reaches the API, so which one is decided in build step 3]. Its credentials go into AdSense's "login-protected pages"
+   setting. It never sees real user data. Its secret lives only in the owner's AdSense settings and in SSM, never in the repo.
+6. **Slots.** Amendment 1 Decision 4 stays: fixed reserved space, never over game data, never on login, error, pairing,
+   account or settings screens, never in a modal, empty on failure. AdSense also bans ads on screens without publisher
+   content (this ADR's Context). AdSense's own limits on the number and placement of ads also apply [NEEDS VERIFICATION].
+7. **The off switch stays** (amendment 1 Decision 7): it removes the script, the CMP and every slot.
+8. **Intellectual property.** Google's policies forbid content that "infringes copyright", handled by DMCA notices (E7).
+   Coffee Stain's icons and map next to ads are a risk under that policy as well as the EULA one. It is the owner's accepted
+   risk, and it could cost the AdSense account, not just a takedown of the assets.
+
+### What changes elsewhere (in the build PRs, not here)
+- **Privacy page and terms** are rewritten: cookies and local storage, Google's role (processor or controller
+  [NEEDS VERIFICATION]), consent and how to withdraw it, opting out, and what Google's script can read (Decision 4). The
+  privacy page's "no analytics or tracking scripts" no longer holds once ads ship.
+- **LEGAL.md's privacy section** changes to match.
+- **NOTICE wording** for the game assets changes as amendment 1 already planned.
+
+### Build plan (replaces amendment 1's; each PR from `main`, no stacking)
+| # | PR | Proof |
+|---|---|---|
+| 1 | Capture the AdSense CSP domains and the CMP setup docs to `raw-sources/` | The captures; owner confirms the account |
+| 2 | CMP and consent gate: no ad request before consent where required | e2e: no ad request without consent (EEA simulated); `security-reviewer` |
+| 3 | Crawler account and demo-data server; secret in SSM | `security-reviewer`; the account sees no real server |
+| 4 | Slots per Decision 6, the CSP change, the off switch | `security-reviewer`; e2e: no CSP violation, no layout shift, axe; `ui-reviewer` |
+| 5 | Public pages' slots and their path-scoped CSP | e2e on `/` |
+| 6 | Privacy page, terms, NOTICE and LEGAL.md wording | Owner reviews the text |
+
+### Consequences of amendment 2
+- Ads can run from launch (no traffic minimum, E5), at the cost of a consent banner, a looser app CSP and a third party that
+  can read what users see.
+- The crawler account is one more credential to guard and rotate.
+- The AdSense account itself becomes a single point of failure for the revenue (Decision 8).
+
+### Revisit when
+- An invite-only privacy-first network accepts the site: move back to amendment 1's privacy-first design.
+- AdSense rejects the site, limits its ad serving, or disables the account.
