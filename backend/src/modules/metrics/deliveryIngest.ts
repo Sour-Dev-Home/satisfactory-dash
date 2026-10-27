@@ -15,7 +15,8 @@ import { UserRateLimiter } from "../../platform/userRateLimiter.js";
  *
  * - The backend holds no GitHub token and not even the secret: only `METRICS_INGEST_SECRET_SHA256`, the hex SHA-256 of
  *   the bearer secret. A request's `Authorization: Bearer <secret>` is hashed and compared with `timingSafeEqual`.
- * - Unset means the feature is off: the route answers the same 404 as an unknown /api path, so it says nothing.
+ * - Unset means the feature is off: the route answers the same 404 as an unknown /api path (ADR-0056). Off versus on
+ *   is observable (404 versus 401), which is accepted: the route is public in the repo, and only the secret matters.
  * - 401 for a missing, malformed or wrong secret (one message for all), 413 over 16 KB, 400 for a body the shared
  *   strict schema refuses, 429 past the limits. Its only power is adding one snapshot row.
  * - The secret and the header are never logged: the request logger redacts `authorization`, and nothing here logs.
