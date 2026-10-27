@@ -34,49 +34,56 @@ export function MergeBar({
   const reasonId = useId();
   const sources = useMemo(() => mergeSources(graph, picked, designations?.designations, places), [graph, picked, designations, places]);
   if (changes === null) return null;
-  if (naming && sources.ok) {
-    return (
-      <NameForm
-        label="Name the merged factory"
-        initial={proposedMergeName(sources.names)}
-        save="Merge"
-        onSave={(name) =>
-          staleAware(() => {
-            const built = mergeRequest({ designations: sources.designations, suggested: sources.suggested, name });
-            if (!built.ok) throw new PlanProblem(built.reason);
-            return changes.apply(built, { message: `Merged ${factories(picked.length)} into ${name}.`, undoLabel: "Split back" });
-          }, onStale)
-        }
-        onClose={(saved) => {
-          setNaming(false);
-          if (saved) onClear();
-          else queueMicrotask(() => opener.current?.focus());
-        }}
-      />
-    );
-  }
+  const open = naming && sources.ok;
+  // The bar stands from the first render, idle with nothing picked, so a pick fills it in place instead of pushing the
+  // canvas down (no layout shift). Its count is one polite live region, mounted for the bar's life: the name form opens
+  // below it, never in its place, so no announcement is dropped by a remount.
   return (
-    <div role="group" aria-label="Selected factories" className="flex flex-wrap items-center gap-3">
-      <span role="status" className="text-sm">
-        {factories(picked.length)} selected
-      </span>
-      <button
-        ref={opener}
-        type="button"
-        aria-disabled={!sources.ok}
-        aria-describedby={sources.ok ? undefined : reasonId}
-        onClick={() => sources.ok && setNaming(true)}
-        className="min-h-touch"
-      >
-        Merge into one
-      </button>
-      <button type="button" onClick={onClear} className="min-h-touch">
-        Clear selection
-      </button>
-      {!sources.ok && (
-        <span id={reasonId} className="w-full text-sm text-muted sm:w-auto">
-          {sources.reason}
+    <div role="group" aria-label="Selected factories" className="grid gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span role="status" aria-live="polite" className="text-sm">
+          {picked.length === 0 ? "No factories selected" : `${factories(picked.length)} selected`}
         </span>
+        {!open && (
+          <>
+            <button
+              ref={opener}
+              type="button"
+              aria-disabled={!sources.ok}
+              aria-describedby={sources.ok ? undefined : reasonId}
+              onClick={() => sources.ok && setNaming(true)}
+              className="min-h-touch"
+            >
+              Merge into one
+            </button>
+            <button type="button" disabled={picked.length === 0} onClick={onClear} className="min-h-touch">
+              Clear selection
+            </button>
+            {/* Kept a line tall when there is no reason, so the reason coming and going does not move what is below. */}
+            <span id={reasonId} className="min-h-5 w-full text-sm text-muted sm:w-auto">
+              {sources.ok ? null : sources.reason}
+            </span>
+          </>
+        )}
+      </div>
+      {open && (
+        <NameForm
+          label="Name the merged factory"
+          initial={proposedMergeName(sources.names)}
+          save="Merge"
+          onSave={(name) =>
+            staleAware(() => {
+              const built = mergeRequest({ designations: sources.designations, suggested: sources.suggested, name });
+              if (!built.ok) throw new PlanProblem(built.reason);
+              return changes.apply(built, { message: `Merged ${factories(picked.length)} into ${name}.`, undoLabel: "Split back" });
+            }, onStale)
+          }
+          onClose={(saved) => {
+            setNaming(false);
+            if (saved) onClear();
+            else queueMicrotask(() => opener.current?.focus());
+          }}
+        />
       )}
     </div>
   );
@@ -109,44 +116,50 @@ export function SplitBar({
   const note = useMemo(() => splitPartsNote(graph, model, new Set(nodes.map((n) => n.key))), [graph, model, nodes]);
   if (changes === null) return null;
   const one = nodes.length === 1 ? nodes[0] : undefined;
-  return naming ? (
-    <NameForm
-      label="Name the new factory"
-      initial={one === undefined ? "" : popOutName(one)}
-      save="Split"
-      note={note}
-      onSave={(name) =>
-        staleAware(() => {
-          const picked = splitMachines(nodes);
-          if (!picked.ok) throw new PlanProblem(picked.reason);
-          const built = splitRequest({
-            source: source.designation,
-            memberBuildingIds: source.match.memberBuildingIds,
-            machineIds: picked.machineIds,
-            name,
-            intent: one === undefined ? "split" : "pop_out",
-          });
-          if (!built.ok) throw new PlanProblem(built.reason);
-          const moved = built.request.put[1]?.members.length ?? 0;
-          return changes.apply(built, { message: `Split ${machines(moved)} out of ${source.designation.name} into ${name}.`, undoLabel: "Undo" });
-        }, onStale)
-      }
-      onClose={(saved) => {
-        setNaming(false);
-        if (saved) onDone();
-        else queueMicrotask(() => opener.current?.focus());
-      }}
-    />
-  ) : (
-    <div role="group" aria-label="Split" className="flex flex-wrap items-center gap-3">
-      <button ref={opener} type="button" disabled={nodes.length === 0} onClick={() => setNaming(true)} className="min-h-touch">
-        Split into a new factory
-      </button>
-      <span role="status" className="text-sm text-muted">
-        {nodes.length === 0
-          ? "Tick groups to split them into a new factory."
-          : `${nodes.length} ${nodes.length === 1 ? "group" : "groups"}, ${machines(count)} selected`}
-      </span>
+  // As in the merge bar: the count stays one mounted live region while the name form is open below it.
+  return (
+    <div role="group" aria-label="Split" className="grid gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        {!naming && (
+          <button ref={opener} type="button" disabled={nodes.length === 0} onClick={() => setNaming(true)} className="min-h-touch">
+            Split into a new factory
+          </button>
+        )}
+        <span role="status" aria-live="polite" className="text-sm text-muted">
+          {nodes.length === 0
+            ? "Tick groups to split them into a new factory."
+            : `${nodes.length} ${nodes.length === 1 ? "group" : "groups"}, ${machines(count)} selected`}
+        </span>
+      </div>
+      {naming && (
+        <NameForm
+          label="Name the new factory"
+          initial={one === undefined ? "" : popOutName(one)}
+          save="Split"
+          note={note}
+          onSave={(name) =>
+            staleAware(() => {
+              const picked = splitMachines(nodes);
+              if (!picked.ok) throw new PlanProblem(picked.reason);
+              const built = splitRequest({
+                source: source.designation,
+                memberBuildingIds: source.match.memberBuildingIds,
+                machineIds: picked.machineIds,
+                name,
+                intent: one === undefined ? "split" : "pop_out",
+              });
+              if (!built.ok) throw new PlanProblem(built.reason);
+              const moved = built.request.put[1]?.members.length ?? 0;
+              return changes.apply(built, { message: `Split ${machines(moved)} out of ${source.designation.name} into ${name}.`, undoLabel: "Undo" });
+            }, onStale)
+          }
+          onClose={(saved) => {
+            setNaming(false);
+            if (saved) onDone();
+            else queueMicrotask(() => opener.current?.focus());
+          }}
+        />
+      )}
     </div>
   );
 }

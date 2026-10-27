@@ -51,7 +51,7 @@ describe("picking factories on the overview canvas", () => {
     fireEvent.click(second!, { shiftKey: true });
     expect(within(bar).getByRole("status")).toHaveTextContent("1 factory selected");
     fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
-    expect(screen.queryByRole("group", { name: "Selected factories" })).not.toBeInTheDocument();
+    expect(within(bar).getByRole("status")).toHaveTextContent("No factories selected");
     fireEvent.click(first!);
     expect(await screen.findByRole("heading", { name: "Groups", hidden: true })).toBeInTheDocument();
   });
