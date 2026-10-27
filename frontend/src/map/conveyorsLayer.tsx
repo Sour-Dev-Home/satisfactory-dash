@@ -17,6 +17,8 @@ export const PIPE_TOKEN = "--color-map-pipe";
 export const BELT_WEIGHT_PX = 2;
 export const PIPE_WEIGHT_PX = 2.5;
 export const LIFT_DOT_PX = 6;
+/** The legend's not-placed dots' radius: half the lift's, so the pair never reads as a lift. */
+const UNPLACED_SWATCH_R = 1.5;
 
 /** Draw order, bottom first: pipes under belts (a belt often runs over a pipe), lifts on top as dots. */
 const ORDER: readonly { kind: ConveyorKind; token: string; weight: number }[] = [
@@ -61,13 +63,20 @@ export const conveyorsLayer: MapLayer<PlacedConveyor[]> = {
   defaultVisible: false,
   draw: drawConveyors,
 
-  // The same strokes as drawn.
+  // The same strokes as drawn. The not-placed swatch is a belt dot and a pipe dot side by side, a little larger than on
+  // the map, so it doesn't read as the single, bigger lift dot.
   legend: () => (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
       {legendRow(<line x1="3" y1="4" x2="21" y2="4" className="stroke-map-belt" strokeWidth={BELT_WEIGHT_PX} strokeLinecap="round" />, "Belt")}
       {legendRow(<line x1="3" y1="4" x2="21" y2="4" className="stroke-map-pipe" strokeWidth={PIPE_WEIGHT_PX} strokeLinecap="round" />, "Pipe")}
-      {legendRow(<circle cx="12" cy="4" r={LIFT_DOT_PX / 2} className="fill-map-belt" />, "Lift")}
-      {legendRow(<circle cx="12" cy="4" r={BELT_WEIGHT_PX / 2} className="fill-map-belt" />, "Far end not placed")}
+      {legendRow(<circle cx="12" cy="4" r={LIFT_DOT_PX / 2} className="fill-map-belt" />, "Lift (vertical)")}
+      {legendRow(
+        <>
+          <circle cx="8" cy="4" r={UNPLACED_SWATCH_R} className="fill-map-belt" />
+          <circle cx="16" cy="4" r={UNPLACED_SWATCH_R} className="fill-map-pipe" />
+        </>,
+        "Belt or pipe, far end not placed",
+      )}
     </ul>
   ),
 

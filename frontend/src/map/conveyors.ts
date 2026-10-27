@@ -78,21 +78,40 @@ export function placeConveyors(edges: readonly ConveyorEdge[], buildings: Readon
   });
 }
 
-/** The layer as text: a count per kind and the belt and pipe in all, plus how many are only a dot. */
+/**
+ * The layer as text: a count per kind, the belt and pipe the map could measure, plus how many are only a dot. Only the
+ * placed ones have a length, so it says "measured" (never "in all"), and a kind with nothing placed says its length is
+ * unknown rather than "0 m".
+ */
 export function conveyorsSummary(list: readonly PlacedConveyor[], options?: DescribeOptions): string {
   if (list.length === 0) return "No belts, lifts or pipes reported yet.";
   const count = { belt: 0, lift: 0, pipe: 0 };
   const metres = { belt: 0, lift: 0, pipe: 0 };
+  const measured = { belt: 0, lift: 0, pipe: 0 };
   let unplaced = 0;
   for (const c of list) {
     count[c.edge.kind]++;
-    if (c.lengthM !== null) metres[c.edge.kind] += c.lengthM;
-    else if (c.edge.kind !== "lift") unplaced++;
+    if (c.lengthM !== null) {
+      metres[c.edge.kind] += c.lengthM;
+      measured[c.edge.kind]++;
+    } else if (c.edge.kind !== "lift") unplaced++;
   }
   const kinds = `${countOf(count.belt, "belt", "belts")}, ${countOf(count.pipe, "pipe", "pipes")}, ${countOf(count.lift, "lift", "lifts")}`;
-  const lengths = `${formatMetres(metres.belt)} of belt and ${formatMetres(metres.pipe)} of pipe ${options?.truncated ? "shown" : "in all"}`;
-  const dots = unplaced === 0 ? "" : ` ${unplaced} with an end the map can't place ${unplaced === 1 ? "is" : "are"} drawn as a dot.`;
-  return `${kinds} on the map, ${lengths}, drawn straight between their ends.${dots}`;
+  const verb = options?.truncated ? "shown" : "measured";
+  // Only the kinds on the map get a length clause: no "pipe length unknown" when there is no pipe.
+  const present = (["belt", "pipe"] as const).filter((k) => count[k] > 0);
+  const known = present.filter((k) => measured[k] > 0);
+  const unknown = present.filter((k) => measured[k] === 0).map((k) => `${k} length unknown`);
+  const lengths = [
+    ...(known.length === 0 ? [] : [`${known.map((k) => `${formatMetres(metres[k])} of ${k}`).join(" and ")} ${verb}`]),
+    ...unknown,
+  ].join(", ");
+  const drawn = lengths === "" ? "." : `, ${lengths}, drawn straight between their ends.`;
+  const dots =
+    unplaced === 0
+      ? ""
+      : ` ${countOf(unplaced, "belt or pipe", "belts and pipes")} with an end the map can't place ${unplaced === 1 ? "is" : "are"} drawn as a dot.`;
+  return `${kinds} on the map${drawn}${dots}`;
 }
 
 const KIND_TEXT: Record<ConveyorKind, string> = { belt: "Belt", lift: "Lift", pipe: "Pipe" };

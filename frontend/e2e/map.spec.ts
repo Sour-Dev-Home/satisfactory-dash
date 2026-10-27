@@ -233,9 +233,9 @@ test("the belts and pipes are off by default, then draw and read as text, and to
   expect(asked, "conveyors asked for while off").toEqual([]);
 
   await toggle.check();
-  const summary = page.getByText(/^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt and 0 m of pipe in all, drawn straight between their ends\./);
+  const summary = page.getByText(/^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt measured, pipe length unknown, drawn straight between their ends\./);
   await expect(summary).toBeVisible();
-  await expect(page.getByText("Far end not placed")).toBeVisible();
+  await expect(page.getByText("Belt or pipe, far end not placed")).toBeVisible();
   await expect(
     page.getByRole("table", { name: /Belts, lifts and pipes in view/ }).or(page.getByRole("heading", { name: "Belts, lifts and pipes in view (0)" })),
   ).toBeVisible();

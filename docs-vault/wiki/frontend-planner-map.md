@@ -112,7 +112,8 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   ends and every lift (it runs straight up or down) are dots. Drawn over the power lines and under the buildings as three
   non-interactive multi-polylines (pipes 2.5 px `--color-map-pipe`, belts 2 px `--color-map-belt`, lifts 6 px dots), the
   tokens pointing at the planner's own pipe (`--color-info`) and belt (`--color-muted`) colours. Text: "N belts, M pipes,
-  K lifts on the map, L m of belt and P m of pipe in all, drawn straight between their ends." plus how many are dots, and
+  K lifts on the map, L m of belt and P m of pipe measured, drawn straight between their ends." (only placed ends have a
+  length; a kind with none placed says "pipe length unknown", "shown" when the layer was cut) plus how many are dots, and
   "Belts, lifts and pipes in view" (Kind, Tier, Length, From, To; ends in words, never ids), 500 rows max, keyed id +
   index.
 - The drone ports (ADR-0055 Decision 1, #330, `dronePortsLayer`, `queries.mapDroneRoutes`, the `droneRoutes` world

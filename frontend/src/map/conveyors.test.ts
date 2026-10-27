@@ -91,16 +91,39 @@ describe("conveyorsSummary", () => {
       places([["M", { x: 0, y: 4, name: "Refinery" }]]),
     );
     expect(conveyorsSummary(list)).toBe(
-      "2 belts, 1 pipe, 1 lift on the map, 8 m of belt and 996 m of pipe in all, drawn straight between their ends.",
+      "2 belts, 1 pipe, 1 lift on the map, 8 m of belt and 996 m of pipe measured, drawn straight between their ends.",
+    );
+    expect(conveyorsSummary(list, { truncated: true })).toContain("8 m of belt and 996 m of pipe shown,");
+  });
+
+  it("says a kind's length is unknown when none of it is placed, and counts the ones drawn as a dot", () => {
+    const list = placeConveyors([edge({ id: "A" }), edge({ id: "B", kind: "pipe", capacityPerMinute: null })], NONE);
+    expect(conveyorsSummary(list, { truncated: true })).toBe(
+      "1 belt, 1 pipe, 0 lifts on the map, belt length unknown, pipe length unknown, drawn straight between their ends. 2 belts and pipes with an end the map can't place are drawn as a dot.",
+    );
+    expect(conveyorsSummary(list.slice(0, 1))).toBe(
+      "1 belt, 0 pipes, 0 lifts on the map, belt length unknown, drawn straight between their ends. 1 belt or pipe with an end the map can't place is drawn as a dot.",
     );
   });
 
-  it("says 'shown' when the layer was cut, and counts the ones drawn as a dot", () => {
-    const list = placeConveyors([edge({ id: "A" }), edge({ id: "B", kind: "pipe", capacityPerMinute: null })], NONE);
-    expect(conveyorsSummary(list, { truncated: true })).toBe(
-      "1 belt, 1 pipe, 0 lifts on the map, 0 m of belt and 0 m of pipe shown, drawn straight between their ends. 2 with an end the map can't place are drawn as a dot.",
+  it("measures one kind and leaves the other unknown, with 'shown' when cut", () => {
+    const list = placeConveyors(
+      [
+        edge({ id: "A", to: "M", toKind: "machine", at: { x: 0, y: 0 } }),
+        edge({ id: "B", at: { x: 9, y: 9 } }),
+        edge({ id: "P", kind: "pipe", capacityPerMinute: null }),
+      ],
+      places([["M", { x: 3, y: 4, name: "Refinery" }]]),
     );
-    expect(conveyorsSummary(list.slice(0, 1))).toMatch(/1 with an end the map can't place is drawn as a dot\.$/);
+    expect(conveyorsSummary(list)).toBe(
+      "2 belts, 1 pipe, 0 lifts on the map, 5 m of belt measured, pipe length unknown, drawn straight between their ends. 2 belts and pipes with an end the map can't place are drawn as a dot.",
+    );
+    expect(conveyorsSummary(list, { truncated: true })).toContain("5 m of belt shown, pipe length unknown,");
+  });
+
+  it("gives no length clause when only lifts are on the map", () => {
+    const list = placeConveyors([edge({ id: "L", kind: "lift" })], NONE);
+    expect(conveyorsSummary(list)).toBe("0 belts, 0 pipes, 1 lift on the map.");
   });
 });
 
@@ -165,6 +188,6 @@ describe("placeConveyors (hunt)", () => {
     const lift = edge({ id: "T", kind: "lift", to: "M", toKind: "machine" });
     const [p] = placeConveyors([lift], places([["M", { x: 90, y: 0, name: "m" }]]));
     expect(p.lengthM).toBeNull();
-    expect(conveyorsSummary([p])).toContain("0 m of belt");
+    expect(conveyorsSummary([p])).toBe("0 belts, 0 pipes, 1 lift on the map.");
   });
 });

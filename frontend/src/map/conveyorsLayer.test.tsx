@@ -123,14 +123,27 @@ describe("conveyorsLayer (#330)", () => {
 
   it("describes the layer through the summary", () => {
     expect(conveyorsLayer.describe([])).toBe("No belts, lifts or pipes reported yet.");
-    expect(conveyorsLayer.describe(sample())).toMatch(/^2 belts, 1 pipe, 1 lift on the map, 100 m of belt and 91 m of pipe in all/);
+    expect(conveyorsLayer.describe(sample())).toMatch(/^2 belts, 1 pipe, 1 lift on the map, 100 m of belt and 91 m of pipe measured,/);
   });
 
   it("has a legend row per kind", () => {
     render(<>{conveyorsLayer.legend()}</>);
     expect(screen.getByText("Belt")).toBeInTheDocument();
     expect(screen.getByText("Pipe")).toBeInTheDocument();
-    expect(screen.getByText("Lift")).toBeInTheDocument();
-    expect(screen.getByText(/Far end not placed/)).toBeInTheDocument();
+    expect(screen.getByText("Lift (vertical)")).toBeInTheDocument();
+    expect(screen.getByText("Belt or pipe, far end not placed")).toBeInTheDocument();
+  });
+
+  it("draws the not-placed swatch as a belt dot and a pipe dot, smaller than the lift's", () => {
+    const { container } = render(<>{conveyorsLayer.legend()}</>);
+    const row = screen.getByText("Belt or pipe, far end not placed").closest("li");
+    const dots = [...(row?.querySelectorAll("circle") ?? [])];
+    expect(dots.map((c) => c.getAttribute("class"))).toEqual(["fill-map-belt", "fill-map-pipe"]);
+    const lift = screen.getByText("Lift (vertical)").closest("li")?.querySelector("circle");
+    for (const d of dots) {
+      expect(Number(d.getAttribute("r"))).toBeGreaterThanOrEqual(1.5);
+      expect(Number(d.getAttribute("r"))).toBeLessThan(Number(lift?.getAttribute("r")));
+    }
+    expect(container.querySelectorAll("li")).toHaveLength(4);
   });
 });

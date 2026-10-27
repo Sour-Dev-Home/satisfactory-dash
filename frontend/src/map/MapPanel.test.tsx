@@ -608,7 +608,7 @@ describe("MapPanel belts and pipes (#330)", () => {
   const toggle = () => screen.getByRole("checkbox", { name: "Belts and pipes" });
   const turnOn = () => fireEvent.click(toggle());
   const SAMPLE_TEXT =
-    "7 belts, 2 pipes, 2 lifts on the map, 30 m of belt and 0 m of pipe in all, drawn straight between their ends. 7 with an end the map can't place are drawn as a dot.";
+    "7 belts, 2 pipes, 2 lifts on the map, 30 m of belt measured, pipe length unknown, drawn straight between their ends. 7 belts and pipes with an end the map can't place are drawn as a dot.";
 
   it("starts off: unchecked, not drawn, and never asked for", async () => {
     const asked = vi.fn();
@@ -642,7 +642,7 @@ describe("MapPanel belts and pipes (#330)", () => {
     turnOn();
     expect(await screen.findByText(SAMPLE_TEXT)).toBeInTheDocument();
     expect(screen.getAllByText("Belts and pipes", { selector: "p" })).toHaveLength(1);
-    expect(screen.getByText("Far end not placed")).toBeInTheDocument();
+    expect(screen.getByText("Belt or pipe, far end not placed")).toBeInTheDocument();
     const table = await screen.findByRole("table", { name: /Belts, lifts and pipes in view \(11\)/ });
     // The miner's belt ends at the splitter, placed by the belt that leaves it; the splitter has no name in the factory.
     const row = within(table).getAllByRole("row")[5];
@@ -657,7 +657,7 @@ describe("MapPanel belts and pipes (#330)", () => {
     mount();
     await screen.findByTestId("map-canvas");
     turnOn();
-    expect(await screen.findByText(/^1 belt, 0 pipes, 0 lifts on the map, 40 m of belt and 0 m of pipe in all/)).toBeInTheDocument();
+    expect(await screen.findByText(/^1 belt, 0 pipes, 0 lifts on the map, 40 m of belt measured, drawn straight/)).toBeInTheDocument();
     const table = await screen.findByRole("table", { name: /Belts, lifts and pipes in view \(1\)/ });
     expect(within(table).getByText(target.name)).toBeInTheDocument();
   });
@@ -671,7 +671,7 @@ describe("MapPanel belts and pipes (#330)", () => {
     expect(ids()).not.toContain("conveyors");
     expect(screen.queryByRole("table", { name: /Belts, lifts and pipes in view/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/belts?, \d+ pipes?, \d+ lifts? on the map/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Far end not placed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Belt or pipe, far end not placed")).not.toBeInTheDocument();
   });
 
   it("says when none are reported yet, with no legend row", async () => {
@@ -681,7 +681,7 @@ describe("MapPanel belts and pipes (#330)", () => {
     turnOn();
     expect(await screen.findByText("No belts, lifts or pipes reported yet.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Belts, lifts and pipes in view (0)" })).toBeInTheDocument();
-    expect(screen.queryByText("Far end not placed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Belt or pipe, far end not placed")).not.toBeInTheDocument();
   });
 
   it("says when the server cut the layer to its limit", async () => {
@@ -689,7 +689,7 @@ describe("MapPanel belts and pipes (#330)", () => {
     mount();
     await screen.findByTestId("map-canvas");
     turnOn();
-    expect(await screen.findByText(/30 m of belt and 0 m of pipe shown/)).toBeInTheDocument();
+    expect(await screen.findByText(/30 m of belt shown, pipe length unknown,/)).toBeInTheDocument();
     expect(screen.getByText(/Showing part of the belts and pipes: the server cut this layer to its size limit/)).toBeInTheDocument();
   });
 

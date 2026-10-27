@@ -61,7 +61,10 @@
   --color-map-power-line: #d9915f;
   /* The belts, lifts and pipes (#330): the planner's own edge colours (planner/graph/SiteGraph.tsx draws a belt in
      --color-muted and a pipe in --color-info), so the map and the planner agree. A belt's grey is thinner and darker
-     than the rails' steel, a pipe's pale blue is solid and wider where the drone routes are a dashed azure. */
+     than the rails' steel, a pipe's pale blue is solid and wider where the drone routes are a dashed azure.
+     The belt grey: 7.4:1 on the canvas, 6.7:1 on the surface, 6.5:1 on the land, 5.6:1 on the peaks, 4.4:1 on the grid
+     lines and 3.6:1 on the coast. The pipe blue: 9.3:1 on the canvas, 8.4:1 on the surface, 8.1:1 on the land, 7:1 on
+     the peaks, 5.4:1 on the grid lines and 4.5:1 on the coast. */
   --color-map-belt: var(--color-muted);
   --color-map-pipe: var(--color-info);
   /* The drone ports and their routes (ADR-0055 Decision 1, #330): a clear azure, the one saturated blue on the map, apart
