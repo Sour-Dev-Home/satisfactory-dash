@@ -58,9 +58,14 @@ describe("the whole agent", () => {
     const unreachable = h.snapshots.filter((snapshot) => !snapshot.reachable);
     expect(unreachable.length).toBeGreaterThan(0);
     for (const snapshot of unreachable) {
-      expect(Object.keys(snapshot).sort()).toEqual(["agentVersion", "observedAt", "paused", "reachable"]);
+      // Down from the start: no successful read yet, so no `lastGameReadAt`.
+      expect(Object.keys(snapshot).sort()).toEqual(["agentVersion", "gameReachable", "modVersion", "observedAt", "paused", "reachable"]);
       expect(snapshot.paused).toBeNull();
+      expect(snapshot.gameReachable).toBe(false);
+      expect(SnapshotRequestSchema.safeParse(snapshot).success).toBe(true);
     }
+    const recovered = h.snapshots.find((snapshot) => snapshot.reachable);
+    expect(recovered).toMatchObject({ gameReachable: true, lastGameReadAt: recovered!.observedAt, modVersion: recovered!.agentVersion });
     // The first reachable one after the outage is a fresh start: every part is due, including the setting.
     expect(h.snapshots.find((snapshot) => snapshot.reachable)).toMatchObject({ reachable: true, settings: { autoPause: true } });
   });

@@ -39,7 +39,9 @@ describe("which parts a snapshot carries", () => {
     const { sampler } = setup();
     const snapshot = await sampler.sample(T0);
     expect(snapshot).toMatchObject({ reachable: true, paused: statusRunning.data.gamePaused, settings: { autoPause: true }, agentVersion: "0.1.0", observedAt: "2026-09-26T12:00:00.000Z" });
-    expect(Object.keys(snapshot).sort()).toEqual(["agentVersion", "factory", "observedAt", "paused", "players", "power", "reachable", "settings", "status"]);
+    expect(Object.keys(snapshot).sort()).toEqual([
+      "agentVersion", "factory", "gameReachable", "lastGameReadAt", "modVersion", "observedAt", "paused", "players", "power", "reachable", "settings", "status",
+    ]);
     expect(valid(snapshot)).toBe(true);
   });
 
@@ -47,9 +49,10 @@ describe("which parts a snapshot carries", () => {
     const { sampler, reader } = setup();
     await sampler.sample(T0);
     const two = await sampler.sample(T0 + 2_000);
-    expect(Object.keys(two).sort()).toEqual(["agentVersion", "observedAt", "paused", "players", "reachable", "status"]);
+    const sender = ["agentVersion", "gameReachable", "lastGameReadAt", "modVersion", "observedAt"];
+    expect(Object.keys(two).sort()).toEqual([...sender, "paused", "players", "reachable", "status"]);
     const five = await sampler.sample(T0 + 5_000);
-    expect(Object.keys(five).sort()).toEqual(["agentVersion", "observedAt", "paused", "players", "power", "reachable", "settings", "status"]);
+    expect(Object.keys(five).sort()).toEqual([...sender, "paused", "players", "power", "reachable", "settings", "status"]);
     const thirty = await sampler.sample(T0 + 30_000);
     expect(thirty.factory).toBeDefined();
     expect(reader.readFactory).toHaveBeenCalledTimes(2);
@@ -73,11 +76,64 @@ describe("which parts a snapshot carries", () => {
   });
 });
 
+describe("the sender's view of its game connection (S4-A, R7)", () => {
+  it("the first successful read sends gameReachable true, lastGameReadAt = observedAt and modVersion = the agent's version", async () => {
+    const { sampler } = setup();
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot).toMatchObject({ gameReachable: true, lastGameReadAt: "2026-09-26T12:00:00.000Z", modVersion: "0.1.0" });
+    expect(snapshot.modVersion).toBe(snapshot.agentVersion);
+    expect(valid(snapshot)).toBe(true);
+  });
+
+  it("a paused game is still reachable: gameReachable true and the read time moves on", async () => {
+    const { sampler } = setup({ readStatus: vi.fn(async () => ({ ...statusRunning.data, gamePaused: true })) });
+    await sampler.sample(T0);
+    const snapshot = await sampler.sample(T0 + 5_000);
+    expect(snapshot).toMatchObject({ reachable: true, paused: true, gameReachable: true, lastGameReadAt: "2026-09-26T12:00:05.000Z" });
+  });
+
+  it("a failed cycle sends gameReachable false and KEEPS the last successful read time; the next success moves it on", async () => {
+    let fail = false;
+    const { sampler } = setup({ readStatus: vi.fn(async () => (fail ? Promise.reject(unreachable()) : { ...statusRunning.data })) });
+    await sampler.sample(T0);
+    fail = true;
+    const down = await sampler.sample(T0 + 5_000);
+    expect(down).toMatchObject({ reachable: false, gameReachable: false, lastGameReadAt: "2026-09-26T12:00:00.000Z", modVersion: "0.1.0" });
+    expect(valid(down)).toBe(true);
+    const stillDown = await sampler.sample(T0 + 10_000);
+    expect(stillDown.lastGameReadAt).toBe("2026-09-26T12:00:00.000Z");
+    fail = false;
+    const back = await sampler.sample(T0 + 15_000);
+    expect(back).toMatchObject({ gameReachable: true, lastGameReadAt: "2026-09-26T12:00:15.000Z" });
+  });
+
+  it("a part failing while the status read works leaves the game reachable", async () => {
+    const { sampler } = setup({ readPower: vi.fn(async () => Promise.reject(unreachable())) });
+    expect(await sampler.sample(T0)).toMatchObject({ gameReachable: true, lastGameReadAt: "2026-09-26T12:00:00.000Z" });
+  });
+
+  it("an injected agentVersion is also the modVersion", async () => {
+    const { reader } = setup();
+    const logger: AgentLogger = { info: () => undefined, warn: () => undefined, error: () => undefined, addSecret: () => undefined };
+    const sampler = new Sampler({ reader: reader as unknown as GameReader, cadence: () => CADENCE, logger, agentVersion: "0.2.0+abc1234.20261027" });
+    const snapshot = await sampler.sample(T0);
+    expect(snapshot).toMatchObject({ agentVersion: "0.2.0+abc1234.20261027", modVersion: "0.2.0+abc1234.20261027" });
+    expect(valid(snapshot)).toBe(true);
+  });
+});
+
 describe("an unreachable game", () => {
   it("sends `reachable: false`, `paused: null`, NO parts and NO settings, and reads nothing else", async () => {
     const { sampler, reader } = setup({ readStatus: vi.fn(async () => Promise.reject(unreachable())) });
     const snapshot = await sampler.sample(T0);
-    expect(snapshot).toEqual({ agentVersion: "0.1.0", observedAt: "2026-09-26T12:00:00.000Z", reachable: false, paused: null });
+    expect(snapshot).toEqual({
+      agentVersion: "0.1.0",
+      observedAt: "2026-09-26T12:00:00.000Z",
+      reachable: false,
+      paused: null,
+      gameReachable: false,
+      modVersion: "0.1.0",
+    });
     expect(valid(snapshot)).toBe(true);
     for (const method of ["readPower", "readFactory", "readPlayers", "readAutoPause"] as const) expect(reader[method]).not.toHaveBeenCalled();
   });
