@@ -17,6 +17,7 @@ import {
   PLANNER_DESIGNATIONS_REPLACE_MAX_PUT,
   PLANNER_DESIGNATIONS_REPLACE_MAX_TOTAL_MEMBERS,
   PLANNER_DESIGNATION_REVISION_MAX,
+  PLANNER_DESIGNATION_MATCH_RADIUS_METRES,
   KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS,
   endpoints,
 } from "../src/index";
@@ -248,6 +249,21 @@ describe("planner designations: replace request", () => {
     expect(parse({ expect: [], put: [put({ members: [m("b-1", 3)] }), put({ members: [m("b-2", 3)] })] }).success).toBe(true);
     expect(parse({ expect: [], put: [put({ members: [m(null, 3)] }), put({ members: [m(null, 4)] })] }).success).toBe(true);
   });
+  it("accepts the split back of originals whose members would match one live building by position but differ in stored key", () => {
+    // Two stored designations can hold members the matcher resolves to the same live building (within
+    // PLANNER_DESIGNATION_MATCH_RADIUS_METRES), as long as their stored keys differ. The put check compares stored keys
+    // only, so restoring both together passes. That is why the undo pre-image must be the stored `members`, never
+    // matcher-resolved building ids: resolving them could collapse two originals onto one building and refuse the undo.
+    const originals = (a: ReturnType<typeof m>, b: ReturnType<typeof m>) => ({
+      expect: [{ id: uuid(9), revision: 1 }],
+      put: [put({ id: uuid(1), members: [a] }), put({ id: uuid(2), name: "Annex", members: [b] })],
+      intent: "undo",
+    });
+    expect(PLANNER_DESIGNATION_MATCH_RADIUS_METRES).toBe(2);
+    expect(parse(originals(m("b-1", 3), m("b-2", 4))).success).toBe(true);
+    expect(parse(originals(m(null, 3), m(null, 4))).success).toBe(true);
+    expect(parse(originals(m(null, 3), m(null, 3 + PLANNER_DESIGNATION_MATCH_RADIUS_METRES))).success).toBe(true);
+  });
   it("names the offending put entry in the issue path", () => {
     const result = parse({ expect: [], put: [put({ members: [m("b-1")] }), put({ members: [m("b-2")] }), put({ members: [m("b-1", 2)] })] });
     expect(result.success).toBe(false);
@@ -290,6 +306,13 @@ describe("planner designations: replace response and the stale error", () => {
     expect(parsed.designations[0]?.revision).toBe(3);
     expect(parsed.removedIds).toEqual([fixtures.plannerDesignationIronAnnex.id]);
     expect(ReplacePlannerDesignationsResponseSchema.safeParse({ ...parsed, removedIds: ["nope"] }).success).toBe(false);
+  });
+  it("a response entry without revision is refused, while revision stays optional on a listed designation", () => {
+    const [written] = fixtures.plannerDesignationReplaceResponse.designations;
+    const { revision: _revision, ...withoutRevision } = written!;
+    const response = { ...fixtures.plannerDesignationReplaceResponse, designations: [withoutRevision] };
+    expect(ReplacePlannerDesignationsResponseSchema.safeParse(response).success).toBe(false);
+    expect(PlannerDesignationSchema.safeParse(withoutRevision).success).toBe(true);
   });
   it("merge then split back is the identity on ids, members, order and createdAt (the fixtures)", () => {
     const undo = ReplacePlannerDesignationsRequestSchema.parse(fixtures.plannerDesignationReplaceRequestUndo);

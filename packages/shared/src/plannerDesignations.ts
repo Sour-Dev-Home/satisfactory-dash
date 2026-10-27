@@ -36,7 +36,7 @@ import { z } from "zod";
  * bug), a repeated id within `expect` or within `put`, and more than PLANNER_DESIGNATIONS_REPLACE_MAX_TOTAL_MEMBERS
  * members across `put`. A building held by a designation OUTSIDE `expect` is the route's 409 `designation_overlap`; a
  * resulting count above PLANNER_DESIGNATIONS_MAX_PER_SERVER is its 409 `designation_cap`. `intent` is an audit hint only.
- * `revision` (on every designation) and `memberBuildingIds` (on every match) are optional: absent = an older backend.
+ * `revision` (on every designation) and `memberBuildingIds` (on every match) are optional: absent = an older backend. A replace response's designations always carry `revision`.
  */
 
 export const PLANNER_DESIGNATIONS_MAX_PER_SERVER = 50;
@@ -217,8 +217,16 @@ export const ReplacePlannerDesignationsRequestSchema = z
     });
   });
 
+/**
+ * A written designation in a replace response: `revision` is REQUIRED here (undo's `expect` needs it, and only a
+ * backend that has revisions serves replace). It stays optional on PlannerDesignationSchema everywhere else.
+ */
+export const ReplacedPlannerDesignationSchema = PlannerDesignationSchema.extend({
+  revision: PlannerDesignationRevisionSchema.describe("Concurrency token; always present on a replace's result"),
+});
+
 export const ReplacePlannerDesignationsResponseSchema = z.object({
-  designations: z.array(PlannerDesignationSchema).max(PLANNER_DESIGNATIONS_REPLACE_MAX_PUT).describe("The written ones, with revision"),
+  designations: z.array(ReplacedPlannerDesignationSchema).max(PLANNER_DESIGNATIONS_REPLACE_MAX_PUT).describe("The written ones, with revision"),
   removedIds: z.array(z.uuid()).max(PLANNER_DESIGNATIONS_REPLACE_MAX_EXPECT),
 });
 
