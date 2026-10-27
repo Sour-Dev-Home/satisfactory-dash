@@ -70,10 +70,12 @@ export function GroupPanel({
       </p>
       {/* What the card no longer prints: the recipe, every output, the loop marker and the factory view's further words. */}
       <section aria-label={`About ${label}`} className="grid gap-1 text-sm">
-        <p className="m-0">
-          <span className="text-muted">Recipe: </span>
-          {recipe}
-        </p>
+        {recipe !== null && (
+          <p className="m-0">
+            <span className="text-muted">Recipe: </span>
+            {recipe}
+          </p>
+        )}
         <ul aria-label="Outputs" className="m-0 grid list-none gap-0.5 p-0">
           {outputs.map((o) => (
             <li key={o}>{o}</li>

@@ -14,7 +14,21 @@ import {
   siteNodes,
 } from "../plannerText";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
-import { MAX_SUMMARY_CHARS, edgeLabel, edgeLabelLines, nameOr, nodeFacts, nodeSummary, nodeTitle, productSummary, withName } from "./graphModel";
+import {
+  INFERRED_FROM_NODE,
+  MAX_SUMMARY_CHARS,
+  edgeLabel,
+  edgeLabelLines,
+  extractorOutput,
+  extractorOutputText,
+  groupsExtractorOutput,
+  nameOr,
+  nodeFacts,
+  nodeSummary,
+  nodeTitle,
+  productSummary,
+  withName,
+} from "./graphModel";
 import {
   aggregateFlows,
   bubblesOf,
@@ -56,6 +70,8 @@ export interface Card {
   title: string;
   /** What the card prints under its icon row: one line (a factory's name and then one line). Never empty. */
   lines: string[];
+  /** Lines from this index on are a muted note (an extractor's "(inferred from the node)"); absent = none. */
+  mutedFrom?: number;
   /** The "×N" machine count badge, when the card stands for machines. */
   count: number | undefined;
   /** The building class whose icon the card shows, when it stands for one class. */
@@ -291,6 +307,10 @@ const countOf = (n: number): number | undefined => (Number.isFinite(n) && n > 0 
 /** The same words in a sentence each: what the tooltip and the keyboard button read (the card itself prints one line). */
 const sentences = (parts: readonly string[]): string => parts.filter((p) => p !== "").join(". ");
 
+/** A card's lines, plus the muted "(inferred from the node)" under an extractor's guessed resource (#728). */
+const withInferredNote = (lines: string[], mined: { inferred: boolean } | null): Pick<Card, "lines" | "mutedFrom"> =>
+  mined?.inferred === true ? { lines: [...lines, INFERRED_FROM_NODE], mutedFrom: lines.length } : { lines };
+
 /**
  * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
  * recipe, the other outputs and the loop marker are in `description` (the tooltip and the keyboard name) and the side
@@ -305,7 +325,7 @@ export function groupCard(node: PlannerNode, facts: string[] = []): Card {
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    lines: [nodeSummary(node)],
+    ...withInferredNote([nodeSummary(node)], extractorOutput(node)),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -322,18 +342,20 @@ function bubbleCard(bubble: Bubble, chips: string[]): Card {
   const tree = bubble.of > 1 ? ` · tree ${bubble.ordinal} of ${bubble.of}` : "";
   const groups = plural(bubble.nodes.length, "group", "groups");
   const loop = bubble.nodes.some((n) => n.loop === true);
+  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes) : null;
+  const outputs = mined !== null ? [extractorOutputText(mined)] : bubble.products.length === 0 ? ["No output data"] : bubble.products.map(outputLine);
   return {
     ...blank,
     key: bubble.key,
     kind: "bubble",
     nodeKeys: bubble.nodes.map((n) => n.key),
     title: nodeTitle({ name: first.name, count: bubble.machineCount }),
-    lines: [bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+    ...withInferredNote([mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])], mined),
     count: countOf(bubble.machineCount),
     className: first.className,
     glyph: glyphKindOf(first),
     label: title,
-    description: sentences([title, ...(bubble.products.length === 0 ? ["No output data"] : bubble.products.map(outputLine)), `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
+    description: sentences([title, ...outputs, `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
     facts: chips,
     loop,
     bubbleKey: bubble.key,

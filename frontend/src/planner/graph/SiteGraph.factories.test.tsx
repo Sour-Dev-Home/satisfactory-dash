@@ -226,12 +226,13 @@ describe("drill-down into a bubble", () => {
     expect(await screen.findByRole("complementary", { name: /^4× Constructor, Iron Plate/ })).toBeInTheDocument();
   });
 
-  it("lists in the panel what the card no longer prints: the recipe, the outputs and the share split", async () => {
+  it("lists in the panel what the card no longer prints: the outputs and the share split (a miner has no recipe line)", async () => {
     const svg = await openPlate();
     expect([...svg.querySelectorAll("text")].some((t) => /60% here/.test(t.textContent ?? ""))).toBe(false);
     fireEvent.click((await screen.findAllByRole("button", { name: /60% here, 40% Iron Rod/ }))[0]);
     const panel = await screen.findByRole("complementary");
-    expect(panel).toHaveTextContent(/Recipe:/);
+    expect(panel).toHaveTextContent(/^Miner Mk\.2/);
+    expect(panel).not.toHaveTextContent(/Recipe:/);
     expect(within(panel).getByRole("list", { name: "Outputs" })).toBeInTheDocument();
     expect(panel).toHaveTextContent(/60% here, 40% Iron Rod/);
   });

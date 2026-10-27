@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { BottleneckBadge } from "./BottleneckBadge";
+import { extractorOutput, groupsExtractorOutput, INFERRED_FROM_NODE, noRecipeCellText, recipeText } from "./graph/graphModel";
 import { bubblesOf, foldBubbles, shareSplit, type Bubble, type ConnectionRow, type Remote } from "./graph/hierarchy";
 import {
   bubbleTitle,
@@ -33,7 +34,20 @@ export interface FactoryColumns {
   nameOf: ReadonlyMap<string, string>;
 }
 
+/** An extractor's guessed resource, then the muted "(inferred from the node)"; or the honest "Resource not identified". */
+function Mined({ mined }: { mined: { name: string; inferred: boolean } }) {
+  if (!mined.inferred) return <span className="text-muted">{mined.name}</span>;
+  return (
+    <>
+      <span className="block break-words">{mined.name}</span>
+      <span className="block text-sm text-muted">{INFERRED_FROM_NODE}</span>
+    </>
+  );
+}
+
 function Outputs({ node }: { node: PlannerNode }) {
+  const mined = extractorOutput(node);
+  if (mined !== null) return <Mined mined={mined} />;
   if (node.products.length === 0) return <span className="text-muted">No output data</span>;
   return node.products.map((rate) => (
     <span key={rate.className} className="block break-words">
@@ -63,6 +77,7 @@ function GroupRow({
   const tree = !nested && bubble.of > 1 ? `tree ${bubble.ordinal} of ${bubble.of}` : null;
   const remote = factory?.remote.get(node.key);
   const split = factory === undefined ? null : shareSplit(node);
+  const recipe = recipeText(node);
   return (
     <tr>
       <th scope="row" className={nested ? "break-words ps-6" : "break-words"}>
@@ -71,7 +86,7 @@ function GroupRow({
       </th>
       <td data-label="Count">{node.count}</td>
       <td data-label="Recipe" className="break-words">
-        {node.recipe ?? "No recipe"}
+        {recipe ?? <span className="text-muted">{noRecipeCellText(node)}</span>}
       </td>
       <td data-label="Output">
         <Outputs node={node} />
@@ -120,6 +135,7 @@ function BubbleBody({
 }) {
   // A bubble of one group is just its row; a bigger one gets a row that names it, and its groups are indented under it.
   const nested = bubble.nodes.length > 1;
+  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes) : null;
   return (
     <tbody>
       {nested && (
@@ -128,7 +144,9 @@ function BubbleBody({
             {bubbleTitle(bubble)}
           </th>
           <td colSpan={columns - 1} className="break-words">
-            {bubble.products.length === 0 ? (
+            {mined !== null ? (
+              <Mined mined={mined} />
+            ) : bubble.products.length === 0 ? (
               <span className="text-muted">No output data</span>
             ) : (
               bubble.products.map((rate) => (
