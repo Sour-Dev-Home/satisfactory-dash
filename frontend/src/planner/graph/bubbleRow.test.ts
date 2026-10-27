@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { BUBBLE_D, BUBBLE_GAP, CHIP_W, bubbleDetail, bubbleItems, bubbleOffsets, bubbleRow, bubblesWidth } from "./bubbleRow";
+import {
+  BUBBLE_D,
+  BUBBLE_GAP,
+  CHIP_W,
+  bubbleDetail,
+  bubbleItems,
+  bubbleName,
+  bubbleOffsets,
+  bubbleRow,
+  bubbleStops,
+  bubblesWidth,
+  chipName,
+  edgeKeyOf,
+  itemRateText,
+  stopId,
+} from "./bubbleRow";
 import { bundleFlows, type CanvasFlow } from "./canvasScene";
 import { LABEL_LINE_H, LABEL_PAD, bubbleRowSize, labelWidth } from "./layoutSite";
 
@@ -24,7 +39,7 @@ const bundle = (...parts: CanvasFlow[]): CanvasFlow => bundleFlows(parts)[0].flo
 
 describe("bubbleItems", () => {
   it("is the link's own item when the line draws one link", () => {
-    expect(bubbleItems(flow("Desc_IronPlate_C", "Iron Plate", 30))).toEqual([{ className: "Desc_IronPlate_C", name: "Iron Plate", text: "IP", rate: 30 }]);
+    expect(bubbleItems(flow("Desc_IronPlate_C", "Iron Plate", 30))).toEqual([{ key: "c:Desc_IronPlate_C", className: "Desc_IronPlate_C", name: "Iron Plate", text: "IP", rate: 30, quality: "measured" }]);
   });
 
   it("lists each distinct item once, by summed rate (highest first), then by name", () => {
@@ -39,8 +54,8 @@ describe("bubbleItems", () => {
   it("folds links of no known item into one '?' bubble, ordered after named ones at the same rate", () => {
     const items = bubbleItems(bundle(flow(null, null, null), flow("Desc_A_C", "Alpha", null), flow(null, "", null)));
     expect(items).toEqual([
-      { className: "Desc_A_C", name: "Alpha", text: "A", rate: 0 },
-      { className: null, name: null, text: "?", rate: 0 },
+      { key: "c:Desc_A_C", className: "Desc_A_C", name: "Alpha", text: "A", rate: 0, quality: "unknown" },
+      { key: "n:", className: null, name: null, text: "?", rate: 0, quality: "unknown" },
     ]);
   });
 
@@ -111,5 +126,54 @@ describe("the row's geometry", () => {
     const row = bubbleRow(flow("Desc_A_C", "A", 123.4));
     expect(bubbleRowSize(row)).toEqual({ width: Math.max(BUBBLE_D + LABEL_PAD, labelWidth(row.rateText!)), height: BUBBLE_D + LABEL_LINE_H + LABEL_PAD });
     expect(bubbleRowSize({ ...row, rateText: null })).toEqual({ width: BUBBLE_D + LABEL_PAD, height: BUBBLE_D + LABEL_PAD });
+  });
+});
+
+describe("item focus helpers (ADR-0060 build PR 3)", () => {
+  it("rates each item by the weakest of its parts: 'at least' when one has no number", () => {
+    const items = bubbleItems(bundle(flow("Desc_A_C", "A", 10), flow("Desc_A_C", "A", null), flow("Desc_B_C", "B", 5, { quality: "estimated", rate: "estimated" })));
+    expect(items.map((i) => [i.key, i.rate, i.quality])).toEqual([
+      ["c:Desc_A_C", 10, "atLeast"],
+      ["c:Desc_B_C", 5, "estimated"],
+    ]);
+    expect(itemRateText(items[0], "items/min")).toBe("at least 10 items/min");
+    expect(itemRateText(items[1], "items/min")).toBe("about 5 items/min");
+    expect(itemRateText({ rate: 0, quality: "unknown" }, "items/min")).toBe("rate unknown");
+  });
+
+  it("keeps every item in `all` and the first three in `items`", () => {
+    const row = bubbleRow(bundle(...["A", "B", "C", "D"].map((n, i) => flow(`Desc_${n}_C`, n, 10 - i))));
+    expect(row.all.map((i) => i.name)).toEqual(["A", "B", "C", "D"]);
+    expect(row.items).toEqual(row.all.slice(0, 3));
+  });
+
+  it("keys a line by its ends, carrier and kind, so a reorder keeps it", () => {
+    expect(edgeKeyOf(flow("Desc_A_C", "A", 1))).toBe("a|b|belt|supply");
+    expect(edgeKeyOf(flow("Desc_A_C", "A", 1, { carrier: "truck", flow: "excess" }))).toBe("a|b|truck|excess");
+  });
+
+  it("orders the stops by the cards' tab order, each line's bubbles then its chip", () => {
+    const line = (from: string, to: string, n: number) => {
+      const f = bundle(...Array.from({ length: n }, (_, i) => flow(`Desc_${i}_C`, `I${i}`, 10 - i, { from, to })));
+      return { flow: f, bubbles: bubbleRow(f) };
+    };
+    const stops = bubbleStops([line("c", "a", 1), line("a", "b", 4), line("a", "c", 1)], ["a", "b", "c"]);
+    expect(stops.map((s) => s.id)).toEqual([
+      stopId("a|b|belt|supply", "c:Desc_0_C"),
+      stopId("a|b|belt|supply", "c:Desc_1_C"),
+      stopId("a|b|belt|supply", "c:Desc_2_C"),
+      stopId("a|b|belt|supply", null),
+      stopId("a|c|belt|supply", "c:Desc_0_C"),
+      stopId("c|a|belt|supply", "c:Desc_0_C"),
+    ]);
+  });
+
+  it("names a bubble by its item, rate and ends, an unknown one 'Item unknown', and the chip by its count", () => {
+    const [plate] = bubbleItems(flow("Desc_IronPlate_C", "Iron Plate", 30));
+    expect(bubbleName(plate, "items/min", "Smelters", "Constructors")).toBe("Iron Plate, 30 items/min, from Smelters to Constructors");
+    const [unknown] = bubbleItems(flow(null, null, null));
+    expect(bubbleName(unknown, "items/min", "A", "B")).toBe("Item unknown, rate unknown, from A to B");
+    expect(chipName(1, "A", "B")).toBe("1 more item from A to B");
+    expect(chipName(4, "A", "B")).toBe("4 more items from A to B");
   });
 });

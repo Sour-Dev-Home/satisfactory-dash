@@ -50,6 +50,15 @@ export function readMotion(): MotionPref {
 
 export const writeMotion = (pref: MotionPref): void => write(MOTION_KEY, pref);
 
+/**
+ * The item-focus feature flag (ADR-0060 Decision 2, owner answer 6): focusing a link's item bubble, with keyboard and
+ * pointer, ships off until the owner reviews it on the demo (build PR 6), which then removes this flag. Only "on" turns it
+ * on; there is no control for it in the UI.
+ */
+export const ITEM_FOCUS_KEY = "planner.itemFocus";
+
+export const readItemFocus = (): boolean => read(ITEM_FOCUS_KEY) === "on";
+
 export const COLLAPSED_KEY = "planner.collapsed";
 /** At most this many collapsed cards are kept, each key at most this long: a hand-edited value cannot grow without bound. */
 export const MAX_COLLAPSED = 200;

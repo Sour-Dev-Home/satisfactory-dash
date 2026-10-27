@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../../lib/cn";
 import { useReducedMotion } from "../../overview/reducedMotion";
@@ -29,13 +29,31 @@ import {
   type LaidFrame,
   type LaidNode,
 } from "./layoutSite";
-import { MOTION_OPTIONS, motionOn, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
 import { roundedOrthogonalPath } from "./edgeShapes";
-import { BUBBLE_D, BUBBLE_ICON, CHIP_H, CHIP_W, bubbleDetail, bubbleOffsets, bubblesWidth, type BubbleDetail, type BubbleItem } from "./bubbleRow";
+import {
+  BUBBLE_D,
+  BUBBLE_ICON,
+  CHIP_H,
+  CHIP_W,
+  bubbleDetail,
+  bubbleName,
+  bubbleOffsets,
+  bubbleStops,
+  bubblesWidth,
+  chipName,
+  edgeKeyOf,
+  stopId,
+  type BubbleDetail,
+  type BubbleItem,
+  type BubbleStop,
+  type ItemFocus,
+} from "./bubbleRow";
+import { BubbleButtons, ItemList } from "./ItemFocusLayer";
 import { itemIconUrl } from "./itemIcons";
 import {
   MAX_ZOOM,
@@ -233,6 +251,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const [item, setItem] = useState(ALL_ITEMS);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  // Item focus (ADR-0060 build PR 3), behind its flag: the focused item, the line whose "+k" list is open, the bubble
+  // stop that holds the tab stop and the one the keyboard is on (ringed), and what the status line last said.
+  const [itemFocusOn] = useState(readItemFocus);
+  const [itemFocus, setItemFocus] = useState<ItemFocus | null>(null);
+  const [listKey, setListKey] = useState<string | null>(null);
+  const [activeStop, setActiveStop] = useState<string | null>(null);
+  const [keyStop, setKeyStop] = useState<BubbleStop | null>(null);
+  const [announced, setAnnounced] = useState("");
+  const bubbleButtons = useRef(new Map<string, HTMLButtonElement>());
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
@@ -255,6 +282,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
   const activeItem = items.some((i) => i.className === item) ? item : ALL_ITEMS;
   const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.flows)), [activeItem, layout]);
+  // A focus or "+k" list whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
+  const edgeByKey = useMemo(() => new Map(layout.edges.map((e) => [edgeKeyOf(e.flow), e])), [layout]);
+  const focusEdge = itemFocus === null ? undefined : edgeByKey.get(itemFocus.edgeKey);
+  const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.all.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
+  const listEdge = itemFocusOn && listKey !== null ? edgeByKey.get(listKey) : undefined;
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);
@@ -413,10 +445,75 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (key !== null) buttons.current.get(key)?.focus();
   };
 
+  // Item focus (ADR-0060 Decisions 2 and 5). A focused item outside the first three is reached through its line's chip.
+  const titleOf = (key: string) => laidByKey.get(key)?.title ?? "";
+  const itemStop = (f: ItemFocus): string => {
+    const e = edgeByKey.get(f.edgeKey);
+    return e !== undefined && e.bubbles.items.some((i) => i.key === f.item) ? stopId(f.edgeKey, f.item) : stopId(f.edgeKey, null);
+  };
+  const leaveFocus = () => {
+    if (focus === null) return;
+    setItemFocus(null);
+    setAnnounced("Overview");
+    bubbleButtons.current.get(itemStop(focus))?.focus();
+  };
+  const focusItem = (edgeKey: string, item: BubbleItem) => {
+    if (dragged.current) return;
+    if (focus !== null && focus.edgeKey === edgeKey && focus.item === item.key) {
+      leaveFocus();
+      return;
+    }
+    const e = edgeByKey.get(edgeKey);
+    setItemFocus({ edgeKey, item: item.key });
+    setAnnounced(`Focused ${item.name ?? "Item unknown"} from ${titleOf(e?.flow.from ?? "")} to ${titleOf(e?.flow.to ?? "")}`);
+  };
+  const closeList = () => {
+    const key = listKey;
+    setListKey(null);
+    if (key !== null) bubbleButtons.current.get(stopId(key, null))?.focus();
+  };
+  const openList = (edgeKey: string) => {
+    if (dragged.current) return;
+    if (listKey === edgeKey) {
+      closeList();
+      return;
+    }
+    // The list takes the group panel's place beside the canvas.
+    setOpenKey(null);
+    setListKey(edgeKey);
+  };
+  const activateStop = (stop: BubbleStop) => {
+    // A key press, not the end of a drag.
+    dragged.current = false;
+    if (stop.item === null) {
+      openList(stop.edgeKey);
+      return;
+    }
+    const item = edgeByKey.get(stop.edgeKey)?.bubbles.all.find((i) => i.key === stop.item);
+    if (item !== undefined) focusItem(stop.edgeKey, item);
+  };
+  // A press on the canvas's background (not a bubble, a chip or a card) leaves focus; the end of a drag is not a press.
+  const onCanvasClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (focus === null || dragged.current) return;
+    if (event.target instanceof Element && event.target.closest("[data-bubble], [data-bubble-more], [data-card]") !== null) return;
+    leaveFocus();
+  };
+
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Escape") {
-      // One thing at a time: the panel, then what is picked, then the last card whose upstream was hidden.
+      // One thing at a time: a "+k" list, the focused item, the panel, then what is picked, then the last card whose
+      // upstream was hidden.
+      if (listEdge !== undefined) {
+        event.preventDefault();
+        closeList();
+        return;
+      }
+      if (focus !== null) {
+        event.preventDefault();
+        leaveFocus();
+        return;
+      }
       if (openKey !== null) {
         close();
         return;
@@ -466,7 +563,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       setFlipped(toggled(flipped, card.bubbleKey));
       revealFrame.current = card.bubbleKey;
     } else if (card.kind === "fold") setUnfolded(toggled(unfolded, card.key));
-    else setOpenKey(card.key);
+    else {
+      // The group panel takes the "+k" list's place beside the canvas.
+      setListKey(null);
+      setOpenKey(card.key);
+    }
   };
   const collapseBubble = (bubbleKey: string) => {
     if (dragged.current) return;
@@ -491,7 +592,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setFlipped(open === scene.openByDefault ? new Set() : new Set(scene.bubbleKeys));
   };
 
-  const lit = (key: string) => reach === null || reach.nodes.has(key);
+  // Focus is hop-1 (owner answer 1): only the focused line and its two cards stay lit; otherwise the item filter decides.
+  const lit = (key: string) => (focus !== null && focusEdge !== undefined ? key === focusEdge.flow.from || key === focusEdge.flow.to : reach === null || reach.nodes.has(key));
+  const edgeLit = (e: LaidEdge) => (focus !== null ? edgeKeyOf(e.flow) === focus.edgeKey : reach === null || e.parts.some((i) => reach.edges.has(i)));
   const findingsByCard = useMemo(() => {
     const counts = new Map<string, number>();
     if (findings === undefined) return counts;
@@ -504,6 +607,27 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const findingsOf = (key: string) => findingsByCard.get(key) ?? 0;
   // Tab order follows the picture: left to right, then top to bottom.
   const tabOrder = useMemo(() => [...layout.nodes].sort((a, b) => a.x - b.x || a.y - b.y || a.key.localeCompare(b.key)), [layout]);
+  const stops = useMemo(() => (itemFocusOn ? bubbleStops(layout.edges, tabOrder.map((n) => n.key)) : []), [itemFocusOn, layout, tabOrder]);
+  const stopNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const s of stops) {
+      const e = edgeByKey.get(s.edgeKey);
+      if (e === undefined) continue;
+      const from = laidByKey.get(e.flow.from)?.title ?? "";
+      const to = laidByKey.get(e.flow.to)?.title ?? "";
+      const item = s.item === null ? undefined : e.bubbles.all.find((i) => i.key === s.item);
+      names.set(s.id, item === undefined ? chipName(e.bubbles.more, from, to) : bubbleName(item, e.flow.unit, from, to));
+    }
+    return names;
+  }, [stops, edgeByKey, laidByKey]);
+  // The keyboard reaching a bubble brings its label into view, as a card's button does for its card.
+  const focusStop = (stop: BubbleStop | null) => {
+    setKeyStop(stop);
+    if (stop === null) return;
+    setActiveStop(stop.id);
+    const e = edgeByKey.get(stop.edgeKey);
+    if (e !== undefined) setView((v) => revealRect(v, { x: e.labelX - e.labelWidth / 2, y: e.labelY - e.labelHeight / 2, width: e.labelWidth, height: e.labelHeight }, stageRef.current));
+  };
   const loops = useMemo(() => scene.cards.filter((c) => c.loop).length, [scene]);
 
   // The transport glyphs that move: only those whose edge is in view, at most MAX_MOVING, and never in a hidden tab.
@@ -593,9 +717,16 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           </div>
         )}
         {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
-        {reach !== null && (
-          <span role="status" className="w-full text-sm text-muted sm:w-auto">
-            {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
+        {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
+            also says what focus did; the item filter's words show, focus's are for screen readers. */}
+        {(reach !== null || itemFocusOn) && (
+          <span role="status" className={reach === null ? "sr-only" : "w-full text-sm text-muted sm:w-auto"}>
+            {reach !== null && (
+              <>
+                {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
+              </>
+            )}
+            {itemFocusOn && announced !== "" && <span className="sr-only">{` ${announced}`}</span>}
           </span>
         )}
       </div>
@@ -643,6 +774,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
+            onClick={itemFocusOn ? onCanvasClick : undefined}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
             className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode ? "cursor-crosshair" : "cursor-grab")}
@@ -660,10 +792,30 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               {[EdgeLine, EdgeLabel].map((Layer, layer) => (
                 <g key={layer} data-edge-layer={layer === 0 ? "lines" : "labels"}>
                   {layout.edges.map((e) => {
-                    const on = reach === null || e.parts.some((i) => reach.edges.has(i));
                     const from = laidByKey.get(e.flow.from);
                     const to = laidByKey.get(e.flow.to);
-                    return <Layer key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} detail={detail} />;
+                    const key = edgeKeyOf(e.flow);
+                    const focusable = itemFocusOn
+                      ? {
+                          focused: focus !== null && focus.edgeKey === key ? focus.item : null,
+                          ringed: keyStop !== null && keyStop.edgeKey === key ? keyStop.item ?? "+" : null,
+                          onBubble: (item: BubbleItem) => focusItem(key, item),
+                          onChip: () => openList(key),
+                        }
+                      : undefined;
+                    return (
+                      <Layer
+                        key={e.index}
+                        edge={e}
+                        markerId={markerId}
+                        dim={!edgeLit(e)}
+                        moving={moving.has(e.index)}
+                        from={from?.title ?? ""}
+                        to={to?.title ?? ""}
+                        detail={detail}
+                        focusable={focusable}
+                      />
+                    );
                   })}
                 </g>
               ))}
@@ -775,7 +927,35 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               )}
             </ul>
           )}
+          <BubbleButtons
+            stops={stops}
+            names={stopNames}
+            active={activeStop}
+            focus={focus}
+            listOpen={listEdge === undefined ? null : listKey}
+            buttons={bubbleButtons}
+            onActivate={activateStop}
+            onFocusStop={focusStop}
+          />
         </div>
+        {listEdge !== undefined && listKey !== null && (
+          <div className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
+            <ItemList
+              key={listKey}
+              id={`${panelId}-items`}
+              flow={listEdge.flow}
+              items={listEdge.bubbles.all}
+              from={titleOf(listEdge.flow.from)}
+              to={titleOf(listEdge.flow.to)}
+              focus={focus}
+              onFocusItem={(item) => {
+                dragged.current = false;
+                focusItem(listKey, item);
+              }}
+              onClose={closeList}
+            />
+          </div>
+        )}
         {openNode && (
           <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
             <GroupPanel
@@ -823,7 +1003,11 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
   );
 }
 
-type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string; detail: BubbleDetail };
+/** A label's part in item focus (behind its flag): the focused item's key, the stop the keyboard is on ("+" the chip), and
+ *  what a click on a bubble or the chip does. Absent with the flag off: the bubbles are then only a picture. */
+type Focusable = { focused: string | null; ringed: string | null; onBubble: (item: BubbleItem) => void; onChip: () => void };
+
+type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string; detail: BubbleDetail; focusable?: Focusable | undefined };
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. */
 function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
@@ -840,7 +1024,7 @@ function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
  * text (ADR-0060 Decision 1), and for a transport the mode's glyph (moving along the line when it may). Above every line.
  * The words for each item stay in the `<title>` and the Tables view.
  */
-function EdgeLabel({ edge: e, dim, moving, from, to, detail }: EdgeProps) {
+function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgeProps) {
   const transport = isTransport(e.flow);
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   const row = e.bubbles;
@@ -862,11 +1046,27 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail }: EdgeProps) {
         className="fill-surface"
       />
       {row.items.map((item, i) => (
-        <ItemBubble key={item.className !== null ? `c:${item.className}` : `n:${item.name ?? ""}`} item={item} cx={left + at.bubbles[i]} cy={cy} detail={detail} />
+        <ItemBubble
+          key={item.key}
+          item={item}
+          cx={left + at.bubbles[i]}
+          cy={cy}
+          detail={detail}
+          focused={focusable?.focused === item.key}
+          ringed={focusable?.ringed === item.key}
+          onClick={focusable === undefined ? undefined : () => focusable.onBubble(item)}
+        />
       ))}
       {at.chip !== null && (
-        <g data-bubble-more={row.more}>
-          <rect x={left + at.chip - CHIP_W / 2} y={cy - CHIP_H / 2} width={CHIP_W} height={CHIP_H} rx={CHIP_H / 2} className="fill-icon-chip stroke-line" />
+        <g data-bubble-more={row.more} onClick={focusable?.onChip} className={cn(focusable !== undefined && "cursor-pointer")}>
+          <rect
+            x={left + at.chip - CHIP_W / 2}
+            y={cy - CHIP_H / 2}
+            width={CHIP_W}
+            height={CHIP_H}
+            rx={CHIP_H / 2}
+            className={cn("fill-icon-chip", focusable?.ringed === "+" ? "stroke-accent" : "stroke-line")}
+          />
           {detail.full && (
             <text x={left + at.chip} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
               {`+${row.more}`}
@@ -894,13 +1094,39 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail }: EdgeProps) {
  * One item's bubble on a line: its icon on a disc, or, when its class has none (or the file fails to load), the item name's
  * initials, or "?" for an unknown item. Never blank. Below `BUBBLE_DETAIL_ZOOM` only the disc.
  */
-function ItemBubble({ item, cx, cy, detail }: { item: BubbleItem; cx: number; cy: number; detail: BubbleDetail }) {
+function ItemBubble({
+  item,
+  cx,
+  cy,
+  detail,
+  focused = false,
+  ringed = false,
+  onClick,
+}: {
+  item: BubbleItem;
+  cx: number;
+  cy: number;
+  detail: BubbleDetail;
+  /** The item in focus mode: a thick accent ring. */
+  focused?: boolean;
+  /** The keyboard is on its button: the accent ring. */
+  ringed?: boolean;
+  /** Focus it (item focus on); a picture only otherwise. */
+  onClick?: (() => void) | undefined;
+}) {
   const url = item.className === null ? undefined : itemIconUrl(item.className, detail.iconSize);
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   const picture = detail.full && url !== undefined && url !== failedUrl;
   return (
-    <g aria-hidden="true" data-bubble={item.className ?? "unknown"} data-icon={!detail.full ? "disc" : picture ? "image" : "text"}>
-      <circle cx={cx} cy={cy} r={BUBBLE_D / 2} className="fill-icon-chip stroke-line" />
+    <g
+      aria-hidden="true"
+      data-bubble={item.className ?? "unknown"}
+      data-icon={!detail.full ? "disc" : picture ? "image" : "text"}
+      data-focused={focused || undefined}
+      onClick={onClick}
+      className={cn(onClick !== undefined && "cursor-pointer")}
+    >
+      <circle cx={cx} cy={cy} r={BUBBLE_D / 2} strokeWidth={focused ? 3 : 1} className={cn("fill-icon-chip", focused || ringed ? "stroke-accent" : "stroke-line")} />
       {picture ? (
         <image href={url} x={cx - BUBBLE_ICON / 2} y={cy - BUBBLE_ICON / 2} width={BUBBLE_ICON} height={BUBBLE_ICON} onError={() => setFailedUrl(url)} />
       ) : (
