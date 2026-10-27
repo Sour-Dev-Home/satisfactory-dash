@@ -352,7 +352,11 @@ function Detail({
   const pickedNodes = nodes.filter((n) => picked.has(n.key));
   return (
     <div className="grid gap-3">
-      <button type="button" onClick={onBack} className="min-h-touch justify-self-start">
+      {/* One level up; the browser's Back does the same, since opening one is a history entry (PlannerView). */}
+      <button type="button" onClick={onBack} className="inline-flex min-h-touch items-center gap-1 justify-self-start">
+        <svg viewBox="0 0 24 24" aria-hidden className="size-5" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
         {factory === undefined ? "All sites" : "All factories"}
       </button>
       <h4 ref={heading} tabIndex={-1} id="planner-site-heading" className="m-0 break-words">
@@ -484,18 +488,17 @@ export function PlannerPanel({
   const orphans = byFactory ? unassignedCount(graph) : 0;
   const orphanNote = `${orphans} ${orphans === 1 ? "group belongs" : "groups belong"} to no factory, so ${orphans === 1 ? "it is" : "they are"} not listed under one.`;
   const notes = orphans > 0 ? [orphanNote, ...plannerNotes(graph)] : plannerNotes(graph);
+  const noBeltData = graph.beltData === "unsupported" || graph.beltData === "tooLarge" || graph.beltData === "notReceived";
   const overviewMode = useViewMode();
   const [suggesting, setSuggesting] = useState(false);
   const overviewHeading = useRef<HTMLHeadingElement>(null);
-  // Back from one: focus the overview's heading, but not on the page's first render.
-  const [cameBack, setCameBack] = useState(false);
+  // Back from one (the button or the browser's Back): focus the overview's heading, but not on the page's first render.
+  const wasOpen = useRef(open);
   useEffect(() => {
-    if (cameBack && !open) overviewHeading.current?.focus();
-  }, [cameBack, open]);
-  const back = () => {
-    setCameBack(true);
-    onSelect(null);
-  };
+    if (wasOpen.current && !open) overviewHeading.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
+  const back = () => onSelect(null);
 
   return (
     <section aria-labelledby="planner-heading" className="panel content-start">
@@ -523,10 +526,7 @@ export function PlannerPanel({
           findings={findings}
           viewMode={overviewMode}
           suggest={[suggesting, setSuggesting]}
-          onOpen={(key) => {
-            setCameBack(false);
-            onSelect(key);
-          }}
+          onOpen={onSelect}
         />
       ) : (
         <>
@@ -541,10 +541,7 @@ export function PlannerPanel({
                 site={s}
                 graph={graph}
                 findings={findings}
-                onOpen={() => {
-                  setCameBack(false);
-                  onSelect(s.key);
-                }}
+                onOpen={() => onSelect(s.key)}
               />
             ))}
           </ul>
@@ -553,14 +550,18 @@ export function PlannerPanel({
 
       <UndoToast />
 
-      {(notes.length > 0 || findingsTruncated) && (
-        <ul aria-label="Planner notes" className="m-0 grid list-none gap-1 break-words p-0 text-sm text-muted">
+      {/* The caveats stay out of the way until looked for (the owner, 2026-10-27). Without belt data they say why the
+          page is thin (update FRM, too large, not sent), so then they stay in view. */}
+      <details className="text-sm text-muted" open={noBeltData || undefined}>
+        <summary className="cursor-pointer">About this data</summary>
+        <ul aria-label="Planner notes" className="m-0 mt-1 grid list-none gap-1 break-words p-0">
+          <li>{UNKNOWN_FLOW_NOTE}</li>
           {notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
           {findingsTruncated && <li>Bottleneck counts cover the Factory page&apos;s top findings only.</li>}
         </ul>
-      )}
+      </details>
 
       <p className="as-of">
         <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
