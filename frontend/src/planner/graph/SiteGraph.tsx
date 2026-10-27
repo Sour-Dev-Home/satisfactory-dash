@@ -266,8 +266,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const factoryRead = useQuery(queries.factory(server.id));
   const buildings = useMemo((): FactoryBuilding[] | undefined => {
     const data = factoryRead.data?.data;
-    return data === undefined ? undefined : [...data.buildings, ...(data.extractors ?? [])];
-  }, [factoryRead.data]);
+    // A read that failed with nothing cached is "not read", not "still reading": the cards then say so instead of waiting for ever.
+    if (data === undefined) return factoryRead.isError ? [] : undefined;
+    return [...data.buildings, ...(data.extractors ?? [])];
+  }, [factoryRead.data, factoryRead.isError]);
   const machineWords = useMemo(() => {
     const words = new Map<string, MachineCardText[]>();
     for (const c of scene.cards) {
@@ -276,7 +278,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     }
     return words;
   }, [scene, nodeByKey, buildings]);
-  const items =useMemo(() => siteItems(layout.flows), [layout]);
+  const items = useMemo(() => siteItems(layout.flows), [layout]);
   const ids = useId();
   const markerId = `${ids}-arrow`;
   const panelId = `${ids}-panel`;

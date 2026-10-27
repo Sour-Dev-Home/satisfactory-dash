@@ -9,7 +9,7 @@ import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
 import { MACHINES_FRAME_NOTE } from "./canvasScene";
-import { clearFoldMemory } from "./foldMemory";
+import { FOLDS_KEY, clearFoldMemory } from "./foldMemory";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -144,6 +144,33 @@ describe("a group card opened into its machines", () => {
     const svg = await screen.findByRole("img", { name: /^Graph of Iron Plate factory/ }, { timeout: 3_000 });
     expect(svg.querySelector("[data-machines-open]")).not.toBeNull();
     expect(machineList()).not.toBeNull();
+  });
+
+  it("says the state was not read, not that it is still reading, when the Factory read fails", async () => {
+    server.use(http.get(endpoints.factory.route, () => HttpResponse.json({ error: "down" }, { status: 500 })));
+    const svg = await openPlate();
+    fireEvent.click(expandButton());
+    const frame = svg.querySelector(`[data-node="${CSS.escape(SMELTER.key)}"]`)! as HTMLElement;
+    expect(await within(frame).findAllByText("State not read", {}, { timeout: 5_000 })).toHaveLength(3);
+    expect(within(frame).queryByText("Reading machines…")).toBeNull();
+  });
+
+  it("ignores a remembered group that is no longer in the factory, and a stored entry from before machines existed", async () => {
+    window.sessionStorage.clear();
+    clearFoldMemory();
+    await openPlate();
+    fireEvent.click(expandButton());
+    fireEvent.click(screen.getByRole("button", { name: "All factories" }));
+    await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
+    const stored = JSON.parse(window.sessionStorage.getItem(FOLDS_KEY) ?? "[]") as [string, { machines?: string[] }][];
+    expect(stored.length).toBeGreaterThan(0);
+    for (const [, folds] of stored) folds.machines = ["no-such-group"];
+    window.sessionStorage.setItem(FOLDS_KEY, JSON.stringify(stored));
+    clearFoldMemory();
+    fireEvent.click(await screen.findByRole("button", { name: /^Open factory: Iron Plate factory./ }));
+    const svg = await screen.findByRole("img", { name: /^Graph of Iron Plate factory/ }, { timeout: 3_000 });
+    expect(svg.querySelector("[data-machines-open]")).toBeNull();
+    expect(expandButton()).toHaveAttribute("aria-expanded", "false");
   });
 
   it("offers no Expand on a group of one machine", async () => {
