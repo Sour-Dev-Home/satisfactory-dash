@@ -36,6 +36,7 @@ import type { AgentIdentity } from "../services/agentAuth.js";
 import { rateLimitKey } from "../services/clientKey.js";
 import type { AgentCommandsService } from "../services/commandsService.js";
 import type { EnrollmentService } from "../services/enrollmentService.js";
+import type { GameConnectionStore } from "../services/gameConnection.js";
 
 /** The statuses `satis.agent.refused` counts (#514): a malformed request, a bad credential, an oversized or wrongly typed
  *  body, a rate limit. */
@@ -58,6 +59,8 @@ export interface AgentApiDeps {
   attachAgentRuntime: (publicId: string) => Promise<void>;
   /** Records a changed agent version for the status route (best effort). */
   recordVersion: (serverUuid: string, agentVersion: string) => Promise<void>;
+  /** #740 follow-up: keeps each accepted snapshot's `gameReachable`, `lastGameReadAt` and `modVersion` for the status route. */
+  gameConnections?: Pick<GameConnectionStore, "observe">;
   cadence: () => Cadence;
   /** False until the database servers are loaded: snapshots are answered 503 (the agent retries) rather than dropped. */
   isReady?: () => boolean;
@@ -220,6 +223,8 @@ export function createAgentApiRouter(deps: AgentApiDeps): Router {
         versions.set(agent.serverUuid, snapshot.data.agentVersion);
         void deps.recordVersion(agent.serverUuid, snapshot.data.agentVersion).catch(() => versions.delete(agent.serverUuid));
       }
+      // Here, not in the telemetry ingest (which stops early for an unreachable game): an unreachable snapshot is when it matters.
+      deps.gameConnections?.observe(agent, snapshot.data, receivedAtMs);
       // `commandsPending` tells the agent to call GET /commands now (a hint: its long-poll would find the command too).
       sendValidated(res, SnapshotResponseSchema, { cadence: deps.cadence(), commandsPending: await deps.commands.hasPending(agent.serverUuid) });
     },

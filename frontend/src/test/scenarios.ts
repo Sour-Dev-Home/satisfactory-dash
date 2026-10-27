@@ -10,6 +10,8 @@ import {
   agentRevokeResponse,
   agentStatusEnrolled,
   agentStatusEnrolledSilent,
+  agentStatusGameReachable,
+  agentStatusGameUnreachable,
   agentStatusNotEnrolled,
   alertDeleteDestinationResponse,
   alertDeleteRuleResponse,
@@ -936,6 +938,13 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // #740 follow-up: the agent's own view of the game. Reading it (the dash agent sends its version twice), and not
+  // reaching it for 12 minutes (that one keeps the fixture's differing versions, so it also shows "· sender 1.4.2").
+  "agent-game-reachable-owner": {
+    servers: ok(serversRoleOwner),
+    agentStatus: ok({ ...agentStatusGameReachable, agentVersion: agentStatusGameReachable.modVersion }),
+  },
+  "agent-game-unreachable-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusGameUnreachable) },
   // ADR-0057 Decision 7: the version banners. An agent behind the newest release; the mod behind it (applies at the next
   // restart); a version older than minSupported; a mod inside an advisory's range; and an agent below minSafe with no advisory.
   "update-agent": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.3.5+ec24244.20261025")), compat: ok(compatPolicy) },

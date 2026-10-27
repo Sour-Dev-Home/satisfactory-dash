@@ -625,6 +625,9 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // #740 follow-up: the agent's own view of the game, with the same clock (its last read 9 s ago, or 12 m ago).
+  { scenario: "agent-game-reachable-owner", path: "/app/settings", shows: "last read 9 s ago", clock: AGENT_NOW },
+  { scenario: "agent-game-unreachable-owner", path: "/app/settings", shows: "Not reachable", clock: AGENT_NOW },
   // ADR-0057 Decision 7: the version banners in the shell (an update, an unsupported version, a security advisory from the
   // policy's range and from minSafe) and the line on the Servers page.
   { scenario: "update-agent", path: "/app/settings", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },

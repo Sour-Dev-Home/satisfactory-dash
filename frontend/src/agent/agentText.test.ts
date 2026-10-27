@@ -1,5 +1,61 @@
 import { describe, expect, it } from "vitest";
-import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText, versionText } from "./agentText";
+import { agentBackendUrl, agentVersionLine, canCreateCode, canRevoke, connectionText, gameConnectionView, lastSeenText, versionText } from "./agentText";
+
+describe("gameConnectionView (#740 follow-up)", () => {
+  const NOW = Date.parse("2026-10-27T12:00:00.000Z");
+  const ago = (ms: number) => new Date(NOW - ms).toISOString();
+  const enrolled = { enrolled: true, online: true } as const;
+
+  it("is nothing without an agent, or when the agent (or an older backend) reports neither field", () => {
+    expect(gameConnectionView({ enrolled: false, gameReachable: true, lastGameReadAt: ago(0) }, NOW)).toBeNull();
+    expect(gameConnectionView(enrolled, NOW)).toBeNull();
+  });
+
+  it("reachable: ok, with the last read", () => {
+    expect(gameConnectionView({ ...enrolled, gameReachable: true, lastGameReadAt: ago(8_000) }, NOW)).toEqual({ tone: "ok", label: "Reachable", lastRead: "last read 8 s ago" });
+    expect(gameConnectionView({ ...enrolled, gameReachable: true, lastGameReadAt: ago(500) }, NOW)?.lastRead).toBe("last read just now");
+  });
+
+  it("not reachable: warn, with how long ago it last read, or that it never has since starting", () => {
+    expect(gameConnectionView({ ...enrolled, gameReachable: false, lastGameReadAt: ago(12 * 60_000) }, NOW)).toEqual({ tone: "warn", label: "Not reachable", lastRead: "last read 12 m ago" });
+    expect(gameConnectionView({ ...enrolled, gameReachable: false }, NOW)).toEqual({ tone: "warn", label: "Not reachable", lastRead: "not read since the agent started" });
+  });
+
+  it("unknown while the agent is offline (its last word may be stale), still with the last read", () => {
+    expect(gameConnectionView({ enrolled: true, online: false, gameReachable: true, lastGameReadAt: ago(3_600_000) }, NOW)).toEqual({
+      tone: "unknown",
+      label: "Unknown while the agent is offline",
+      lastRead: "last read 1 h 0 m ago",
+    });
+  });
+
+  it("an older backend without `online` is taken at the agent's word", () => {
+    expect(gameConnectionView({ enrolled: true, gameReachable: false }, NOW)?.tone).toBe("warn");
+  });
+
+  it("a last read with no reachability (an older agent after a newer one) shows the last read only", () => {
+    expect(gameConnectionView({ ...enrolled, lastGameReadAt: ago(8_000) }, NOW)).toEqual({ tone: "unknown", label: "Reachability not reported", lastRead: "last read 8 s ago" });
+  });
+
+  it("a time from the future counts as now, and an unreadable one says so", () => {
+    expect(gameConnectionView({ ...enrolled, gameReachable: true, lastGameReadAt: ago(-30_000) }, NOW)?.lastRead).toBe("last read just now");
+    expect(gameConnectionView({ ...enrolled, gameReachable: true, lastGameReadAt: "not a time" }, NOW)?.lastRead).toBe("last read at an unknown time");
+  });
+});
+
+describe("agentVersionLine", () => {
+  it("shows the agent's version once when the sender reports the same, or nothing", () => {
+    expect(agentVersionLine("1.4.2", "1.4.2")).toBe("1.4.2");
+    expect(agentVersionLine("1.4.2", undefined)).toBe("1.4.2");
+    expect(agentVersionLine("0.1.0+abc1234.20261024", "0.1.0+abc1234.20261024")).toBe("0.1.0 (build abc1234, 2026-10-24)");
+  });
+
+  it("adds the sender's version when it differs, and falls back to it when the agent's is missing", () => {
+    expect(agentVersionLine("1.4.2", "0.9.1")).toBe("1.4.2 · sender 0.9.1");
+    expect(agentVersionLine(null, "0.9.1")).toBe("0.9.1");
+    expect(agentVersionLine(null, undefined)).toBe("Not reported yet");
+  });
+});
 
 describe("versionText", () => {
   it("spells out the build of a stamped version", () => {
