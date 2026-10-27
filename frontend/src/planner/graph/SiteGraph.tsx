@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import { useQuery } from "@tanstack/react-query";
+import type { Bottleneck, FactoryBuilding, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import { queries } from "../../api/queries";
 import { cn } from "../../lib/cn";
+import { useSelectedServer } from "../../servers/ServerContext";
 import { useReducedMotion } from "../../overview/reducedMotion";
 import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
@@ -13,8 +16,16 @@ import {
   BUILDING_ICON_GAP,
   BUILDING_ICON_SIZE,
   CHAR_W_BODY,
+  COLLAPSE_W,
   COUNT_BADGE_H,
+  EXPAND_W,
   FRAME_HEADER_H,
+  MACHINE_CARD_H,
+  MACHINE_CARD_W,
+  NODE_PAD_Y,
+  machineLineY,
+  machineSlot,
+  machineSlots,
   ICON_TOP,
   LABEL_LINE_H,
   LABEL_PAD,
@@ -35,6 +46,7 @@ import {
   type SiteLayout,
 } from "./layoutSite";
 import { useFolds } from "./foldMemory";
+import { machineCardKey, machineCards, type MachineCardText } from "./machineCards";
 import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_HALO_RADIUS, GLYPH_MODES } from "./transportModes";
@@ -94,8 +106,6 @@ const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
 const PILL_HIT = 44;
-/** The Collapse button in a frame's header. */
-const COLLAPSE_W = 76;
 /** A glyph crosses its edge at this many units a second, within these bounds; at most this many edges move at once. */
 const GLYPH_SPEED = 40;
 const GLYPH_MIN_S = 4;
@@ -105,6 +115,7 @@ const MAX_MOVING = 40;
 const LASSO_STEP = 3;
 /** The check on a selected card's corner. */
 const CHECK_R = 10;
+const NONE_OPEN: ReadonlySet<string> = new Set();
 
 
 type EdgeStyle = Pick<CanvasFlow, "mixed" | "carrier" | "rate">;
@@ -214,8 +225,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
   const [folds, setFolds] = useFolds(target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : null);
   const { flipped, unfolded } = folds;
+  const machinesOpen = folds.machines ?? NONE_OPEN;
   const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next });
   const setUnfolded = (next: ReadonlySet<string>) => setFolds({ unfolded: next });
+  const setMachinesOpen = (next: ReadonlySet<string>) => setFolds({ machines: next });
   const [collapsed, setCollapsed] = useCollapsedUpstream();
   const [storageDetail, setStorageDetail] = useStorageDetail();
   const [motionPref, setMotionPref] = useMotionPref();
@@ -223,7 +236,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const visible = usePageVisible();
   const animate = motionOn(motionPref, reduced);
 
-  const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail }), [flipped, unfolded, collapsed, storageDetail]);
+  const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail, machinesOpen }), [flipped, unfolded, collapsed, storageDetail, machinesOpen]);
   const scene: Scene = useMemo(
     () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models) : factoryScene(graph, target.model, view)),
     [target, graph, view],
@@ -247,7 +260,23 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const layout = room !== null && room.placeMs <= FOCUS_LAYOUT_BUDGET_MS ? room : overview;
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const laidByKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
-  const items = useMemo(() => siteItems(layout.flows), [layout]);
+  // An opened group's machine cards: their words come from the Factory read (the page's own, the same cache entry the group
+  // panel uses) joined by id, and from the group for a machine that read does not hold.
+  const server = useSelectedServer();
+  const factoryRead = useQuery(queries.factory(server.id));
+  const buildings = useMemo((): FactoryBuilding[] | undefined => {
+    const data = factoryRead.data?.data;
+    return data === undefined ? undefined : [...data.buildings, ...(data.extractors ?? [])];
+  }, [factoryRead.data]);
+  const machineWords = useMemo(() => {
+    const words = new Map<string, MachineCardText[]>();
+    for (const c of scene.cards) {
+      const node = nodeByKey.get(c.key);
+      if (c.machines?.open === true && node !== undefined) words.set(c.key, machineCards(node, c.machines, buildings));
+    }
+    return words;
+  }, [scene, nodeByKey, buildings]);
+  const items =useMemo(() => siteItems(layout.flows), [layout]);
   const ids = useId();
   const markerId = `${ids}-arrow`;
   const panelId = `${ids}-panel`;
@@ -277,7 +306,20 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const setView = (change: View | ((v: View) => View)) => setMoved(typeof change === "function" ? change(viewRef.current) : change);
   const [item, setItem] = useState(ALL_ITEMS);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // The machine card (`machineCardKey`) whose click opened the group panel: the panel marks it, and closing returns there.
+  const [openMachine, setOpenMachine] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  const machineButtons = useRef(new Map<string, HTMLButtonElement>());
+  // Where the keyboard goes once an opened or closed group has been drawn: its first machine's button, or its own.
+  const focusAfter = useRef<string | null>(null);
+  useEffect(() => {
+    const key = focusAfter.current;
+    if (key === null) return;
+    const el = machineButtons.current.get(key) ?? buttons.current.get(key);
+    if (el === undefined) return;
+    focusAfter.current = null;
+    el.focus();
+  });
   // Item focus's other state: the line whose "+k" list is open, the bubble stop that holds the tab stop and the one the
   // keyboard is on (ringed), and what the status line last said.
   const [listKey, setListKey] = useState<string | null>(null);
@@ -527,8 +569,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   const close = () => {
     const key = openKey;
+    const machine = openMachine;
     setOpenKey(null);
-    if (key !== null) buttons.current.get(key)?.focus();
+    setOpenMachine(null);
+    if (key !== null) ((machine === null ? undefined : machineButtons.current.get(machine)) ?? buttons.current.get(key))?.focus();
   };
 
   // Item focus (ADR-0060 Decisions 2 and 5). A focused item outside the first three is reached through its line's chip.
@@ -650,6 +694,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         close();
         return;
       }
+      // On an opened group's machine: fold the group back, and the keyboard returns to its card (as a bubble's Escape
+      // returns to its button).
+      const machineOf = event.target instanceof HTMLElement ? event.target.dataset.machineOf : undefined;
+      if (machineOf !== undefined && machinesOpen.has(machineOf)) {
+        event.preventDefault();
+        setMachinesOpen(toggled(machinesOpen, machineOf));
+        focusAfter.current = machineOf;
+        return;
+      }
       if (selection !== undefined && selection.selected.size > 0) {
         event.preventDefault();
         selection.replace(new Set());
@@ -699,7 +752,31 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       // The group panel takes the "+k" list's place beside the canvas.
       setListKey(null);
       setOpenKey(card.key);
+      setOpenMachine(null);
     }
+  };
+  /** A machine card chosen: the group's panel, marking that machine (in Select mode, the group is picked as a whole). */
+  const activateMachine = (card: Card, machine: MachineCardText) => {
+    if (dragged.current) return;
+    if (selectMode && selection !== undefined) {
+      activate(card);
+      return;
+    }
+    setListKey(null);
+    setOpenKey(card.key);
+    setOpenMachine(machine.key);
+  };
+  /** Opens a group into its machines or folds it back; from the keyboard, focus goes to its first machine or its card. */
+  const toggleMachines = (card: Card, fromKeyboard = false) => {
+    if (dragged.current || card.machines === undefined) return;
+    const opening = !machinesOpen.has(card.key);
+    setMachinesOpen(toggled(machinesOpen, card.key));
+    if (fromKeyboard) focusAfter.current = opening ? machineCardKey(card.key, card.machines.ids[0] ?? null) : card.key;
+  };
+  const focusMachine = (n: LaidNode, key: string, i: number) => {
+    setFocusKey(key);
+    const at = machineSlot(i, n.card.machines === undefined ? 1 : machineSlots(n.card.machines));
+    setView((v) => revealRect(v, { x: n.x + at.x, y: n.y + at.y, width: MACHINE_CARD_W, height: MACHINE_CARD_H }, stageRef.current));
   };
   const collapseBubble = (bubbleKey: string) => {
     if (dragged.current) return;
@@ -714,10 +791,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setView((v) => revealRect(v, n, stageRef.current));
   };
   /** "Collapse all" when most are open, "Expand all" otherwise: each flips every bubble to the other state. */
-  const everyBubbleOpen = scene.bubbleKeys.length > 0 && scene.cards.every((c) => c.kind !== "bubble");
+  // A group opened into its machines also makes it "Collapse all", which folds those back too; "Expand all" opens the bubbles
+  // only (every group's machines at once would be a wall of cards).
+  const anyMachinesOpen = scene.cards.some((c) => c.machines?.open === true);
+  const everyBubbleOpen = (scene.bubbleKeys.length > 0 && scene.cards.every((c) => c.kind !== "bubble")) || anyMachinesOpen;
   const setAllBubbles = (open: boolean) => {
     // A bubble is open by default in a small factory, collapsed in a big one: `flipped` holds what differs from that.
-    setFlipped(open === scene.openByDefault ? new Set() : new Set(scene.bubbleKeys));
+    const bubbles = open === scene.openByDefault ? new Set<string>() : new Set(scene.bubbleKeys);
+    setFolds(open ? { flipped: bubbles } : { flipped: bubbles, machines: new Set() });
   };
 
   // Focus is hop-1 (owner answer 1): only the focused line and its two cards stay lit; otherwise the item filter decides.
@@ -777,7 +858,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
 
   const canSwitchStorage = scene.hasStorage;
-  const canFold = scene.bubbleKeys.length > 0;
+  const canFold = scene.bubbleKeys.length > 0 || anyMachinesOpen;
   const factoryPicked = (card: Card) => card.kind === "factory" && factoryPicks !== undefined && factoryPicks.selected.has(card.key);
 
   return (
@@ -979,6 +1060,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   dim={!lit(n.key)}
                   onActivate={(additive) => activate(n.card, additive)}
                   onToggleUpstream={() => toggleUpstream(n.key)}
+                  machines={machineWords.get(n.key)}
+                  ringedMachine={focusKey ?? (openKey === n.key ? openMachine : null)}
+                  onMachine={(m) => activateMachine(n.card, m)}
+                  onToggleMachines={() => toggleMachines(n.card)}
                 />
               ))}
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
@@ -1029,11 +1114,37 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                     onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
                     className="sr-only"
                   />
+                  {/* An opened group's machines, right after its own button: each a real button (Escape folds them back). */}
+                  {machineWords.has(n.key) && (
+                    <ul aria-label={`Machines in ${card.label}`} className="m-0 list-none p-0">
+                      {machineWords.get(n.key)!.map((m, i) => (
+                        <li key={m.key}>
+                          <button
+                            type="button"
+                            data-machine-of={n.key}
+                            ref={(el) => {
+                              if (el) machineButtons.current.set(m.key, el);
+                              else machineButtons.current.delete(m.key);
+                            }}
+                            aria-label={m.full}
+                            aria-current={openKey === n.key && openMachine === m.key ? "true" : undefined}
+                            onClick={() => {
+                              dragged.current = false;
+                              activateMachine(card, m);
+                            }}
+                            onFocus={() => focusMachine(n, m.key, i)}
+                            onBlur={() => setFocusKey((k) => (k === m.key ? null : k))}
+                            className="sr-only"
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
           </ul>
-          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined)) && (
+          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined || n.card.machines !== undefined)) && (
             <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
               {layout.frames.map((f) => (
                 <li key={f.key}>
@@ -1049,6 +1160,25 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                       <li key={n.key}>
                         <button type="button" aria-pressed={n.card.upstream.collapsed} onClick={() => setCollapsed(toggled(collapsed, n.key))} className="sr-only">
                           {upstreamName(n.card)}
+                        </button>
+                      </li>,
+                    ],
+              )}
+              {tabOrder.flatMap((n) =>
+                n.card.machines === undefined
+                  ? []
+                  : [
+                      <li key={`machines|${n.key}`}>
+                        <button
+                          type="button"
+                          aria-expanded={n.card.machines.open}
+                          onClick={() => {
+                            dragged.current = false;
+                            toggleMachines(n.card, true);
+                          }}
+                          className="sr-only"
+                        >
+                          {machinesToggleName(n.card)}
                         </button>
                       </li>,
                     ],
@@ -1107,6 +1237,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               facts={laidByKey.get(openNode.key)?.card.facts}
               rates={rates}
               findings={findings}
+              machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
               onClose={close}
               onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
             />
@@ -1122,6 +1253,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 /** A card's keyboard name: what it is, and for a factory that choosing it opens it. */
 function cardButtonName(card: Card): string {
   return card.kind === "factory" ? `Open factory: ${card.description}` : card.description;
+}
+
+/** The words of a group's Expand control (the drawn pill's tooltip and the hidden button). */
+function machinesToggleName(card: Card): string {
+  const n = card.count ?? 0;
+  return card.machines?.open === true ? `Collapse the machines of ${card.label}` : `Expand ${card.label} into its ${n} machines`;
 }
 
 /** The hidden button's name for hiding or showing what a card post-dominates. */
@@ -1343,6 +1480,10 @@ function CardView({
   dim,
   onActivate,
   onToggleUpstream,
+  machines,
+  ringedMachine,
+  onMachine,
+  onToggleMachines,
 }: {
   node: LaidNode;
   finding: number;
@@ -1353,12 +1494,32 @@ function CardView({
   /** `additive`: Shift, Ctrl or Cmd was held (a pick on the overview, not an open). */
   onActivate: (additive: boolean) => void;
   onToggleUpstream: () => void;
+  /** An opened group's machine cards (their words); absent while the group is closed. */
+  machines: readonly MachineCardText[] | undefined;
+  /** The machine card the keyboard (or the open panel) is on. */
+  ringedMachine: string | null;
+  onMachine: (machine: MachineCardText) => void;
+  onToggleMachines: () => void;
 }) {
   const card = n.card;
+  if (card.machines?.open === true && machines !== undefined) {
+    return (
+      <MachinesFrame
+        node={n}
+        words={machines}
+        finding={finding}
+        ringed={ringed}
+        ringedMachine={ringedMachine}
+        picked={picked}
+        dim={dim}
+        onActivate={onActivate}
+        onToggleUpstream={onToggleUpstream}
+        onMachine={onMachine}
+        onCollapse={onToggleMachines}
+      />
+    );
+  }
   const stacked = card.kind === "bubble" || card.kind === "fold";
-  const up = card.upstream;
-  const pillText = up === undefined ? "" : up.collapsed ? `+${up.count}` : "−";
-  const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
   return (
     <g
       transform={`translate(${n.x} ${n.y})`}
@@ -1414,26 +1575,174 @@ function CardView({
           </text>
         </g>
       )}
-      {/* Collapse upstream: a minus hides what only feeds this card, and leaves a "+N" that shows it again. The invisible
-          rect behind the pill widens its hit area towards the touch size; the hidden button is the keyboard's way in. */}
-      {up !== undefined && (
+      <UpstreamPill node={n} onToggle={onToggleUpstream} />
+      {/* A group of several machines opens into them: the pill at the bottom right (the hidden "Expand" button is the
+          keyboard's way in). */}
+      {card.machines !== undefined && (
         <g
-          transform={`translate(8 ${n.height - PILL_H / 2})`}
+          transform={`translate(${n.width - EXPAND_W - 8} ${n.height - PILL_H / 2})`}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleUpstream();
+            onToggleMachines();
           }}
-          data-upstream={up.collapsed ? "collapsed" : "open"}
+          data-machines-expand=""
           className="cursor-pointer"
         >
-          <title>{upstreamName(card)}</title>
-          <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-          <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
-          <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
-            {pillText}
+          <title>{machinesToggleName(card)}</title>
+          <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+          <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+            Expand
           </text>
         </g>
       )}
+    </g>
+  );
+}
+
+/** Collapse upstream: a minus hides what only feeds this card, and leaves a "+N" that shows it again. The invisible rect
+ *  behind the pill widens its hit area towards the touch size; the hidden button is the keyboard's way in. */
+function UpstreamPill({ node: n, onToggle }: { node: LaidNode; onToggle: () => void }) {
+  const up = n.card.upstream;
+  if (up === undefined) return null;
+  const pillText = up.collapsed ? `+${up.count}` : "−";
+  const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
+  return (
+    <g
+      transform={`translate(8 ${n.height - PILL_H / 2})`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      data-upstream={up.collapsed ? "collapsed" : "open"}
+      className="cursor-pointer"
+    >
+      <title>{upstreamName(n.card)}</title>
+      <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
+      <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+      <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+        {pillText}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * A group opened into its machines: a dashed frame (the group's lines join it, since the game reads belts per group) with
+ * the title and a Collapse pill in its header, and one small card per machine (name, state, output or fuel), then "+k
+ * more". A click on a machine opens the group's panel marking it; the hidden buttons are the keyboard's way in.
+ */
+function MachinesFrame({
+  node: n,
+  words,
+  finding,
+  ringed,
+  ringedMachine,
+  picked,
+  dim,
+  onActivate,
+  onToggleUpstream,
+  onMachine,
+  onCollapse,
+}: {
+  node: LaidNode;
+  words: readonly MachineCardText[];
+  finding: number;
+  ringed: boolean;
+  ringedMachine: string | null;
+  picked: boolean;
+  dim: boolean;
+  onActivate: (additive: boolean) => void;
+  onToggleUpstream: () => void;
+  onMachine: (machine: MachineCardText) => void;
+  onCollapse: () => void;
+}) {
+  const card = n.card;
+  const slots = words.length;
+  const badge = finding > 0 ? BADGE_W + NODE_PAD_X : 0;
+  const room = Math.max(4, Math.floor((n.width - 3 * NODE_PAD_X - COLLAPSE_W - badge) / CHAR_W_BODY));
+  const title = card.title.length > room ? `${card.title.slice(0, room - 1)}…` : card.title;
+  const headY = NODE_PAD_Y + FRAME_HEADER_H / 2;
+  return (
+    <g
+      transform={`translate(${n.x} ${n.y})`}
+      onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
+      data-card={card.kind}
+      data-node={n.key}
+      data-machines-open=""
+      data-picked={picked || undefined}
+      className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
+    >
+      <title>{card.description}</title>
+      <rect
+        width={n.width}
+        height={n.height}
+        rx={10}
+        strokeWidth={ringed || picked ? 3 : 1}
+        strokeDasharray="6 4"
+        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-line")}
+      />
+      {picked && <rect width={n.width} height={n.height} rx={10} className="pointer-events-none fill-info-soft" />}
+      {picked && (
+        <g aria-hidden="true" data-check="" transform={`translate(${-CHECK_R / 2} ${-CHECK_R / 2})`}>
+          <circle r={CHECK_R} className="fill-info-solid stroke-surface" strokeWidth={2} />
+          <path d="M-4.5 0 L-1.5 3 L4.5 -3.5" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg-strong" />
+        </g>
+      )}
+      <text x={NODE_PAD_X} y={headY} dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
+        {title}
+      </text>
+      {finding > 0 && (
+        <g transform={`translate(${n.width - 2 * NODE_PAD_X - COLLAPSE_W - BADGE_W} ${headY - BADGE_H / 2})`}>
+          <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />
+          <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
+            Bottleneck
+          </text>
+        </g>
+      )}
+      <g
+        transform={`translate(${n.width - COLLAPSE_W - NODE_PAD_X} ${NODE_PAD_Y})`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onCollapse();
+        }}
+        data-machines-collapse=""
+        className="cursor-pointer"
+      >
+        <title>{machinesToggleName(card)}</title>
+        <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
+        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />
+        <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
+          Collapse
+        </text>
+      </g>
+      {words.map((m, i) => {
+        const at = machineSlot(i, slots);
+        const on = ringedMachine === m.key;
+        return (
+          <g
+            key={m.key}
+            transform={`translate(${at.x} ${at.y})`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMachine(m);
+            }}
+            data-machine={m.id ?? "more"}
+            className="cursor-pointer"
+          >
+            <title>{m.full}</title>
+            <rect width={MACHINE_CARD_W} height={MACHINE_CARD_H} rx={6} strokeWidth={on ? 3 : 1} className={cn("fill-surface-2", on ? "stroke-accent" : "stroke-line")} />
+            {m.lines.map((line, k) =>
+              line === "" ? null : (
+                <text key={k} x={NODE_PAD_X} y={machineLineY(k)} className={cn("text-sm", k === 0 ? "fill-fg-strong" : k === 1 && m.mutedState ? "fill-muted" : "fill-fg")}>
+                  {line}
+                </text>
+              ),
+            )}
+          </g>
+        );
+      })}
+      <UpstreamPill node={n} onToggle={onToggleUpstream} />
     </g>
   );
 }

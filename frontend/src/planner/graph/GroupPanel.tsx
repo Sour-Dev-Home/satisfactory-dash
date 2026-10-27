@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { queries } from "../../api/queries";
+import { cn } from "../../lib/cn";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { BottleneckBadge } from "../BottleneckBadge";
 import { ErrorLine } from "../DesignationParts";
@@ -27,9 +28,12 @@ export function GroupPanel({
   findings,
   onClose,
   onPopOut,
+  machineId,
 }: {
   id: string;
   node: PlannerNode;
+  /** The machine whose card on the canvas opened the panel: its entry is marked. */
+  machineId?: string | undefined;
   /** `minedRates` of the graph's edges: an extractor's rate. */
   rates?: ReadonlyMap<string, MinedRate | null>;
   /** The factory view's further words for the group: its share split, where it stands, its storage chips. */
@@ -124,7 +128,11 @@ export function GroupPanel({
         <>
           <ul aria-label={`Machines in ${label}`} className="m-0 grid list-none gap-2 p-0">
             {shown.map((m) => (
-              <li key={m.id} className="grid gap-0.5 break-words border-b border-line pb-2 text-sm">
+              <li
+                key={m.id}
+                aria-current={m.id === machineId ? "true" : undefined}
+                className={cn("grid gap-0.5 break-words border-b pb-2 text-sm", m.id === machineId ? "border-accent" : "border-line")}
+              >
                 <span className="font-semibold">{m.name}</span>
                 <span>
                   {m.state ?? "No state"}
