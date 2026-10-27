@@ -30,6 +30,7 @@ const BACKEND_EMITTED_NOTE_CODES = [
   "graphTruncated",
   "duplicateStationName",
   "unknownTimetableStop",
+  "staleConveyorEnds",
 ];
 
 describe("KNOWN_BOTTLENECK_NOTE_CODES", () => {
