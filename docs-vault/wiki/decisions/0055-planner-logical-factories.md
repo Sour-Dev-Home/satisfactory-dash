@@ -555,3 +555,19 @@ transaction.** Resulting set = existing, minus the `expect` ids, plus the `put` 
    round-trip identity tests), the replace hook with `designation_stale` handling, the selection UI (Merge with its
    disabled reason, Split into a new factory, pop-out, Dissolve, the undo toast with "Split back"), demo data, an e2e
    keyboard path; ui-reviewer.
+
+### Clarifications 2026-10-27, from building PR 3
+
+- **A split that leaves unconnected parts:** Decision 12 says each unconnected part "becomes its own factory". It does
+  not. The reduction keys a designated factory by its designation id
+  (`backend/src/modules/telemetry/services/factoryReduction.ts`), so one designation is always one factory, connected or
+  not. A split therefore gives exactly two factories, the source's remaining members and the new entry, and the dialog
+  says "Not all of these machines are connected … Each side still stays one factory." Splitting a designation into its
+  connected parts automatically would be a backend change to the reduction, its own decision.
+- **Connected, stricter:** the picked factories must form one connected piece by themselves. A path through a factory
+  that is not picked does not count, so a merge never produces a factory that is not itself connected.
+- **Older backend (no `revision`):** the client offers no merge, split, pop-out or dissolve. The old Remove and
+  "Designate selected" stay. The Consequences' fallback (merge of whole designations through PUT and DELETE) was not
+  built.
+- **Undo:** held for the undo toast's life (10 seconds, held while the toast is focused or hovered), not for the whole
+  session.
