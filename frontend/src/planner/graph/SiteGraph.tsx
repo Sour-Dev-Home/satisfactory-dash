@@ -868,7 +868,7 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail }: EdgeProps) {
         <g data-bubble-more={row.more}>
           <rect x={left + at.chip - CHIP_W / 2} y={cy - CHIP_H / 2} width={CHIP_W} height={CHIP_H} rx={CHIP_H / 2} className="fill-icon-chip stroke-line" />
           {detail.full && (
-            <text x={left + at.chip} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-fg text-xs">
+            <text x={left + at.chip} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
               {`+${row.more}`}
             </text>
           )}
@@ -905,7 +905,7 @@ function ItemBubble({ item, cx, cy, detail }: { item: BubbleItem; cx: number; cy
         <image href={url} x={cx - BUBBLE_ICON / 2} y={cy - BUBBLE_ICON / 2} width={BUBBLE_ICON} height={BUBBLE_ICON} onError={() => setFailedUrl(url)} />
       ) : (
         detail.full && (
-          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-fg text-xs">
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
             {item.text}
           </text>
         )
