@@ -1,0 +1,90 @@
+name: Delivery metrics
+
+# ADR-0056 section 4 (D1 refined, Q3) and PR 6d: once a day, build the 30-day delivery and CI-health snapshot with
+# scripts/delivery-metrics.mjs (aggregates only: no login, title, branch or SHA) and POST it to the backend's
+# `POST /api/internal/metrics/delivery` (PR 6b) with `Authorization: Bearer <secret>`.
+#
+# The secret lives only in the owner-created GitHub environment `metrics-ingest`, limited to `main`, with the
+# variable METRICS_INGEST_URL (the full ingest URL). The backend holds only its SHA-256 (infra/aws, PR 6c).
+# Triggers are schedule and manual dispatch only: no pull_request trigger, so no PR can reach the secret, and the job
+# runs only for `main`. The GitHub token is read-only (the script's `gh` calls: pull requests, workflow runs and
+# attempts, check runs, branch rules) and is never given to the POST step.
+#
+# Outcomes: no secret yet (the environment is not set up) is a notice and a green run. An unreachable backend, a 5xx
+# or a 429 is a warning and a green run (ADR-0056: a soft failure when the endpoint is down; the next day retries). Any
+# other non-2xx (400, 401, 404, 413) means a wrong secret, URL or payload, and fails the run.
+
+on:
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: delivery-metrics
+  cancel-in-progress: false
+
+jobs:
+  push:
+    # Never on a fork, and never for another ref: a dispatch from a branch is skipped rather than refused by the
+    # environment's branch rule.
+    if: github.repository == 'Sour-Dev-Home/satisfactory-dash' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: metrics-ingest
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - name: Build the snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/delivery-metrics.mjs --days 30 --out "$RUNNER_TEMP/delivery"
+          # Aggregates only, so the job summary may show them.
+          cat "$RUNNER_TEMP/delivery/delivery-metrics.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Push the snapshot
+        env:
+          INGEST_URL: ${{ vars.METRICS_INGEST_URL }}
+          INGEST_SECRET: ${{ secrets.METRICS_INGEST_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${INGEST_SECRET:-}" ]; then
+            echo "::notice::METRICS_INGEST_SECRET is not set in the metrics-ingest environment; snapshot built, nothing pushed"
+            exit 0
+          fi
+          case "${INGEST_URL:-}" in
+            https://*) ;;
+            *) echo "::error::METRICS_INGEST_URL must be the https ingest URL"; exit 1 ;;
+          esac
+          # The secret goes to curl through a config file on stdin (printf is a builtin, so it is never in a process's
+          # argv). Its charset is checked first, so it can't break out of the config's quoted value. Never echoed.
+          if ! [[ "$INGEST_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
+            echo "::error::METRICS_INGEST_SECRET must be 32 to 256 letters, digits, '-' or '_'"
+            exit 1
+          fi
+          code=0
+          status=$(printf 'header = "Authorization: Bearer %s"\n' "$INGEST_SECRET" | curl --config - \
+            --silent --show-error --proto '=https' --max-time 30 --retry 2 --retry-delay 15 \
+            --header 'Content-Type: application/json' --data-binary "@$RUNNER_TEMP/delivery/delivery-metrics.json" \
+            --output /dev/null --write-out '%{http_code}' "$INGEST_URL") || code=$?
+          if [ "$code" -ne 0 ]; then
+            echo "::warning::the ingest was not reachable (curl exit $code); nothing pushed, the next run retries"
+            exit 0
+          fi
+          echo "Ingest answered $status" >> "$GITHUB_STEP_SUMMARY"
+          case "$status" in
+            2??) echo "Snapshot pushed ($status)" ;;
+            429|5??) echo "::warning::the ingest answered $status; nothing stored, the next run retries"; exit 0 ;;
+            *) echo "::error::the ingest refused the snapshot with $status (401: secret, 404: hash unset or wrong URL, 400 or 413: payload)"; exit 1 ;;
+          esac
