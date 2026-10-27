@@ -1682,7 +1682,8 @@ function MachinesFrame({
         rx={10}
         strokeWidth={ringed || picked ? 3 : 1}
         strokeDasharray="6 4"
-        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-line")}
+        // A stronger edge than a bubble frame's (stroke-line), so an opened group reads apart from an opened bubble.
+        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-muted")}
       />
       {picked && <rect width={n.width} height={n.height} rx={10} className="pointer-events-none fill-info-soft" />}
       {picked && (
@@ -1713,8 +1714,9 @@ function MachinesFrame({
       >
         <title>{machinesToggleName(card)}</title>
         <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
-        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />
-        <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
+        {/* Styled as its Expand pill (and the upstream pill): one control in two states. */}
+        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+        <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
           Collapse
         </text>
       </g>
@@ -1733,7 +1735,15 @@ function MachinesFrame({
             className="cursor-pointer"
           >
             <title>{m.full}</title>
-            <rect width={MACHINE_CARD_W} height={MACHINE_CARD_H} rx={6} strokeWidth={on ? 3 : 1} className={cn("fill-surface-2", on ? "stroke-accent" : "stroke-line")} />
+            {/* The "+k more" card is an action (it opens the panel), so it is dashed on the frame's own fill, not a machine. */}
+            <rect
+              width={MACHINE_CARD_W}
+              height={MACHINE_CARD_H}
+              rx={6}
+              strokeWidth={on ? 3 : 1}
+              strokeDasharray={m.id === null ? "6 4" : undefined}
+              className={cn(m.id === null ? "fill-surface" : "fill-surface-2", on ? "stroke-accent" : "stroke-muted")}
+            />
             {m.lines.map((line, k) =>
               line === "" ? null : (
                 <text key={k} x={NODE_PAD_X} y={machineLineY(k)} className={cn("text-sm", k === 0 ? "fill-fg-strong" : k === 1 && m.mutedState ? "fill-muted" : "fill-fg")}>
