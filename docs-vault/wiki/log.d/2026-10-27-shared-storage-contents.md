@@ -1,0 +1,9 @@
+- 2026-10-27 — Contract (ADR-0058 Sprint S4-B, item 4 of 4, storage contents): a new `packages/shared/src/storage.ts` (`StorageSchema`, `StorageResponseSchema`) and an optional `storage` part on the agent snapshot (`AgentStorageSchema`).
+  - **Shape:** each container has id, name, className, optional location (metres), `slots`, `slotsUsed` and `items`. Items are merged per item class within the container: className, name, `amount`, optional `stackMax`.
+  - **Fluid buffers (pipe reservoirs)** are included: `slots` and `slotsUsed` are 0, the fluid is the one item in m³, and `fluidCapacityM3` is the buffer's size.
+  - **Caps:** at most `STORAGE_MAX_CONTAINERS` (2,000) containers and `STORAGE_MAX_ITEMS_PER_CONTAINER` (64) item classes each. Strings are at most 200 characters, and numbers are finite and never negative. At the caps the snapshot's byte limit (`SNAPSHOT_MAX_BYTES`) binds first.
+  - **Units:** the response adds an optional backend-derived `unit` (`items` or `m3`) per item. A sender's `unit` is dropped.
+  - **Snapshot rules:** it is a data part, so an unreachable snapshot may not carry it. No totals list: the backend can sum.
+  - **Who sends it:** only the mod. The Node agent is frozen on FRM (ADR-0058 Decision 5).
+  - **Provenance:** designed from the mod's request and the getStorageInv capture in `raw-sources/frm-s4-captures-2026-10-27/`.
+  - Tests in `packages/shared/test/storage.test.ts`. Additive (ADR-0007). No route yet.
