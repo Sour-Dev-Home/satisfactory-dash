@@ -72,13 +72,15 @@ export const EnrollResponseSchema = z.object({
  *
  * INPUT BOUNDS (the contract every agent is held to, ADR-0031): strings are at most 200 characters, matching the history
  * tables' CHECKs (an over-long class name would otherwise fail a whole batch insert); arrays are capped well above a real
- * factory (buildings 20,000, circuits 1,000, rates per building 16, players 256); numbers are finite (zod refuses NaN and
+ * factory (buildings 20,000, extractors 5,000, circuits 1,000, rates per building 16, players 256); numbers are finite (zod refuses NaN and
  * Infinity) and a reading that cannot be negative is `>= 0` (MW, rates, clock speed; battery percent 0-100). A body that
  * breaks a bound is REFUSED (400), never clamped by the backend: the agent clamps float noise (such as a battery at
  * 100.0000001) before it sends. The response schemas have no such bounds.
  */
 export const AGENT_INPUT_MAX_STRING = 200;
 export const AGENT_INPUT_MAX_BUILDINGS = 20_000;
+/** Extractors (miners, oil and water extractors, resource-well extractors), S4-B: well above a map's resource nodes. */
+export const AGENT_INPUT_MAX_EXTRACTORS = 5_000;
 export const AGENT_INPUT_MAX_CIRCUITS = 1_000;
 export const AGENT_INPUT_MAX_RATES_PER_BUILDING = 16;
 export const AGENT_INPUT_MAX_PLAYERS = 256;
@@ -106,7 +108,20 @@ export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: tr
   production: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING),
   ingredients: z.array(AgentProductionRateSchema).max(AGENT_INPUT_MAX_RATES_PER_BUILDING).optional(),
 });
-export const AgentFactorySchema = z.object({ buildings: z.array(AgentFactoryBuildingSchema).max(AGENT_INPUT_MAX_BUILDINGS) });
+export const AgentFactorySchema = z.object({
+  buildings: z.array(AgentFactoryBuildingSchema).max(AGENT_INPUT_MAX_BUILDINGS),
+  // S4-B: the extractors in the same building shape, so their output rates reach the backend. OPTIONAL: the Node agent is
+  // frozen on FRM (ADR-0058 Decision 5) and never sends it; the mod does.
+  extractors: z
+    .array(AgentFactoryBuildingSchema)
+    .max(AGENT_INPUT_MAX_EXTRACTORS)
+    .optional()
+    .describe(
+      "Extractors as buildings: `recipe` null, `ingredients` [] or absent, `production` the resource they extract. The " +
+        "required flags are the same raw facts as a machine's: `isBackedUp` true only when the output slot is full (a " +
+        "miner that stops for a full output), else false; `isPaused` and `isProducing` as read.",
+    ),
+});
 /** Status and players as the live routes return them, with the same string and list bounds. */
 export const AgentStatusSchema = StatusSchema.extend({ sessionName: boundedString });
 export const AgentPlayersSchema = ServerPlayersResponseSchema.extend({
