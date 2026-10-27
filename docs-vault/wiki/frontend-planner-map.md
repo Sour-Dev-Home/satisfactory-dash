@@ -29,8 +29,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - Merge and split (ADR-0055 Decisions 11 and 12, #727), owners and admins on a backend with `revision`: on the overview,
   Shift- or Ctrl-click a factory card (or tick a card's Select in Tables) to pick it; `MergeBar` offers "Merge into one",
   disabled with its reason unless the picks are one connected piece by themselves (`connectivity.ts`: edges, transports,
-  shared nodes, undirected) and within the caps (`selectionPlans.ts`). In an opened designated factory the picks feed
-  `SplitBar` instead of `DesignateBar`; a Groups row and the group panel have "Pop out"; Remove is Dissolve. Every change
+  shared nodes, undirected) and within the caps (`selectionPlans.ts`). `MergeBar` stands idle ("No factories selected")
+  before the first pick, so a pick never pushes the canvas down, and its count is one live region that stays mounted
+  while the name form opens below it (as in `SplitBar`). In an opened designated factory the picks feed
+  `SplitBar` instead of `DesignateBar`; a Groups row and the group panel have "Pop out" (a panel's failure shows in the
+  panel, a row's on the page: `usePopOut`'s `write` and `popOut`); Remove is Dissolve. Every change
   is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
   (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
   `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).

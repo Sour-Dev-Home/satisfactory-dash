@@ -200,7 +200,7 @@ function FactoryOverview({
           {suggesting && <span className="text-sm text-muted">Factories you have not designated are shown dashed, as suggestions.</span>}
         </div>
       )}
-      {canMerge && picked.length > 0 && (
+      {canMerge && (
         <MergeBar
           graph={graph}
           picked={picked}
@@ -411,11 +411,12 @@ function Detail({
                 }
           }
           onPopOut={
-            pop.popOut === undefined
+            pop.write === undefined
               ? undefined
-              : (key) => {
+              : async (key) => {
                   const node = byKey.get(key);
-                  if (node !== undefined) pop.popOut?.(node);
+                  // The panel runs this and shows a failure itself, beside its Pop out.
+                  if (node !== undefined) await pop.write?.(node);
                 }
           }
         />
