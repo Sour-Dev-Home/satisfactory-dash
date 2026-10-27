@@ -20,6 +20,9 @@ locals {
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "BOOTSTRAP_OWNER_EMAIL",
+    # ADR-0056 PR 6c: the hex SHA-256 of the delivery metrics ingest secret (only the hash; the secret itself is
+    # in the GitHub `metrics-ingest` environment). Optional: unset, the ingest route answers 404.
+    "METRICS_INGEST_SECRET_SHA256",
     # The db-init task's role passwords (DB_BACKUP_PASSWORD creates satis_backup), and the URLs the
     # db-migrate and restore tasks (satis_migrator) and the backup task (satis_backup) connect with (ops.tf)
     "DB_MIGRATOR_PASSWORD",
