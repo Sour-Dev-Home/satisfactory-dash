@@ -301,6 +301,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const load = (files) => {
     const at = files.indexOf("--cols");
     const cols = at >= 0 ? Number(files.splice(at, 2)[1]) : Math.round(Math.sqrt(files.length));
+    if (!Number.isInteger(cols) || cols < 1) throw new Error("--cols needs a whole number of at least 1");
+    if (files.length === 0) throw new Error("no tile files given");
     const tiles = files.map((f) => decodePng(readFileSync(f)));
     return tiles.length === 1 ? tiles[0] : stitch(tiles, cols);
   };

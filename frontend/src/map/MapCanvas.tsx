@@ -78,11 +78,14 @@ export default function MapCanvas({
     let live = true;
     let removeTerrain = () => {};
     if (TERRAIN_ENABLED) {
-      void import("./terrain/terrain.json").then(({ default: terrain }) => {
-        if (!live) return;
-        const below = L.canvas({ pane: "tilePane", padding: 0.5 });
-        removeTerrain = drawTerrain(L, map, below, config, token, terrain);
-      });
+      void import("./terrain/terrain.json")
+        .then(({ default: terrain }) => {
+          if (!live) return;
+          const below = L.canvas({ pane: "tilePane", padding: 0.5 });
+          removeTerrain = drawTerrain(L, map, below, config, token, terrain);
+        })
+        // The terrain is a backdrop: a chunk that fails to load leaves the plain grid, not an unhandled rejection.
+        .catch(() => {});
     }
 
     const report = () => {

@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import { classify, decodePng, majority, ringArea, sampleColors, simplifyRing, stitch, traceRings, traceTerrain } from "./map-terrain.mjs";
 
@@ -157,4 +159,119 @@ test("sampleColors lists the most common colours first", () => {
   assert.deepEqual(first.rgb, [8, 8, 200]);
   assert.equal(first.share, 0.75);
   assert.equal(second.share, 0.25);
+});
+
+/** A PNG with any colour type/depth/interlace and per-row filter, encoded independently of the decoder. */
+function pngRaw(width, height, rgbaPixel, { channels = 3, filters = [0], depth = 8, color = channels === 4 ? 6 : 2, interlace = 0 } = {}) {
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    return Buffer.concat([len, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  [ihdr[8], ihdr[9], ihdr[12]] = [depth, color, interlace];
+  const stride = width * channels;
+  const rows = [];
+  let prev = new Uint8Array(stride);
+  for (let y = 0; y < height; y++) {
+    const line = new Uint8Array(stride);
+    for (let x = 0; x < width; x++) line.set(rgbaPixel(x, y).slice(0, channels), x * channels);
+    const f = filters[y % filters.length];
+    const out = line.map((v, i) => {
+      const a = i >= channels ? line[i - channels] : 0;
+      const b = prev[i];
+      const c = i >= channels ? prev[i - channels] : 0;
+      let pred = 0;
+      if (f === 1) pred = a;
+      else if (f === 2) pred = b;
+      else if (f === 3) pred = (a + b) >> 1;
+      else if (f === 4) {
+        const p = a + b - c;
+        const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
+        pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      return (v - pred) & 255;
+    });
+    rows.push(Buffer.from([f]), Buffer.from(out));
+    prev = line;
+  }
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(Buffer.concat(rows))),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+test("decodes every filter (Sub, Up, Average, Paeth), in RGB and RGBA, mixed row by row", () => {
+  const px = (x, y) => [(x * 37 + y * 11) & 255, (x * 91 + y * 5 + 200) & 255, (x * y * 13 + 250) & 255, (x * 53 + y * 29 + 17) & 255];
+  for (const channels of [3, 4]) {
+    const { width, height, rgba } = decodePng(pngRaw(7, 6, px, { channels, filters: [1, 2, 3, 4, 0] }));
+    assert.deepEqual([width, height], [7, 6]);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const want = px(x, y);
+        if (channels === 3) want[3] = 255;
+        assert.deepEqual([...rgba.subarray((y * width + x) * 4, (y * width + x) * 4 + 4)], want, `${channels}ch pixel ${x},${y}`);
+      }
+    }
+  }
+});
+
+test("refuses 16-bit, palette, greyscale and interlaced PNGs", () => {
+  const px = () => [1, 2, 3, 4];
+  assert.throws(() => decodePng(pngRaw(2, 2, px, { depth: 16 })), /unsupported PNG/);
+  assert.throws(() => decodePng(pngRaw(2, 2, px, { color: 3, channels: 1 })), /unsupported PNG/);
+  assert.throws(() => decodePng(pngRaw(2, 2, px, { color: 0, channels: 1 })), /unsupported PNG/);
+  assert.throws(() => decodePng(pngRaw(2, 2, px, { interlace: 1 })), /unsupported PNG/);
+});
+
+test("traceRings on random masks: every edge used once, rings closed, signed areas add up to the pixel count", () => {
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const signed = (r) => r.reduce((s, [x0, y0], i) => s + x0 * r[(i + 1) % r.length][1] - r[(i + 1) % r.length][0] * y0, 0) / 2;
+  for (let n = 0; n < 300; n++) {
+    const w = 1 + Math.floor(rnd() * 9);
+    const h = 1 + Math.floor(rnd() * 9);
+    const density = rnd();
+    const m = Uint8Array.from({ length: w * h }, () => (rnd() < density ? 1 : 0));
+    const rings = traceRings(m, w, h);
+    const ones = m.reduce((s, v) => s + v, 0);
+    const total = rings.reduce((s, r) => s + signed(r), 0);
+    assert.ok(Math.abs(Math.abs(total) - ones) < 1e-9, `area, mask ${[...m].join("")} ${w}x${h}`);
+    const seen = new Set();
+    for (const r of rings) {
+      assert.ok(r.length >= 4);
+      r.forEach(([x0, y0], i) => {
+        const [x1, y1] = r[(i + 1) % r.length];
+        assert.equal(Math.abs(x1 - x0) + Math.abs(y1 - y0), 1);
+        const k = `${x0},${y0}>${x1},${y1}`;
+        assert.ok(!seen.has(k), `edge twice ${k}`);
+        seen.add(k);
+      });
+    }
+  }
+});
+
+test("the CLI refuses a bad --cols and a missing tile list instead of stitching NaN", () => {
+  const script = fileURLToPath(new URL("./map-terrain.mjs", import.meta.url));
+  for (const args of [["sample", "x.png", "--cols"], ["sample", "x.png", "--cols", "abc"], ["sample", "--cols", "2"]]) {
+    const r = spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+    assert.notEqual(r.status, 0, args.join(" "));
+    assert.match(r.stderr, /--cols needs|no tile files/);
+  }
+});
+
+test("a checkerboard (every pixel a diagonal touch) traces one ring per pixel", () => {
+  const rings = traceRings(mask(4, ["#.#.", ".#.#", "#.#.", ".#.#"]), 4, 4);
+  assert.equal(rings.length, 8);
+  assert.ok(rings.every((r) => r.length === 4 && ringArea(r) === 1));
+});
+
+test("simplifyRing keeps a square's corners and drops the points along its sides", () => {
+  const square = [[0, 0], [5, 0], [10, 0], [10, 5], [10, 10], [5, 10], [0, 10], [0, 5]];
+  const out = simplifyRing(square, 0.1);
+  assert.deepEqual(out.map((p) => p.join()).sort(), ["0,0", "0,10", "10,0", "10,10"]);
 });
