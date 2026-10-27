@@ -128,7 +128,7 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   const dissolve =
     dissolving === null || !dissolving.ok || changes === null
       ? null
-      : () => changes.apply(dissolving, { message: `Dissolved ${designation.name}. Its machines are suggestions again.`, undoLabel: "Undo" });
+      : () => changes.apply(dissolving, { message: `Dissolved ${designation.name}. Its machines are grouped automatically again.`, undoLabel: "Undo" });
   const verb = dissolve === null ? "Remove" : "Dissolve";
 
   const gone = missing?.get(designation.id);
@@ -178,7 +178,7 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
               )}
               {confirming ? (
                 <span role="group" aria-label={`Confirm ${verb.toLowerCase()} ${factory.name}`} className="flex flex-wrap items-center gap-2 text-sm">
-                  {dissolve === null ? "Remove this designation?" : "Dissolve this factory? Its machines go back to suggestions."}
+                  {dissolve === null ? "Remove this designation?" : "Dissolve this factory? Its machines go back to automatic factories."}
                   <button
                     type="button"
                     disabled={busy}
