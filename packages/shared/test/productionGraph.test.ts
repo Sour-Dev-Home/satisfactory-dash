@@ -26,6 +26,17 @@ describe("ProductionGraph fixtures (ADR-0050)", () => {
   it("both fixtures parse", () => {
     expect(ProductionGraphResponseSchema.safeParse(fixtures.productionGraphTwoSites).success).toBe(true);
     expect(ProductionGraphResponseSchema.safeParse(fixtures.productionGraphEmpty).success).toBe(true);
+    expect(ProductionGraphResponseSchema.safeParse(fixtures.productionGraphStalled).success).toBe(true);
+  });
+
+  it("the stalled fixture's manifold is all backed up at 0 of its max, and its site counts every machine (#728)", () => {
+    const stalled = fixtures.productionGraphStalled.data;
+    const manifold = stalled.nodes.find((n) => n.key === node.key)!;
+    expect(manifold.stateCounts).toEqual({ backedUp: manifold.count });
+    expect(manifold.products[0]).toMatchObject({ currentPerMinute: 0, maxPerMinute: 160 });
+    const site = stalled.sites.find((s) => s.key === node.siteKey)!;
+    const machines = stalled.nodes.filter((n) => n.siteKey === site.key && n.kind !== "storage").reduce((t, n) => t + n.count, 0);
+    expect(Object.values(site.stateCounts).reduce((t, n) => t + n, 0)).toBe(machines);
   });
 
   it("are internally consistent: every edge and site names a node, every node a site", () => {
