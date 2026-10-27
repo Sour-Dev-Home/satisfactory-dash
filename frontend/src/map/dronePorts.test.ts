@@ -37,6 +37,34 @@ describe("resolvePairings", () => {
     expect(resolvePairings(ports).partner).toEqual([1, 0, null]);
   });
 
+  it("keeps each side's own route when A names B by id and B names a different port by name", () => {
+    const ports = [
+      port({ id: "a", name: "A", paired: "B", pairedId: "b" }),
+      port({ id: "b", name: "B", paired: "C" }),
+      port({ id: "c", name: "C", paired: "B" }),
+    ];
+    const r = resolvePairings(ports);
+    expect(r.partner).toEqual([1, 2, 1]);
+    expect(r.routes).toEqual([[0, 1], [1, 2]]);
+    expect(r.unmatched).toBe(0);
+  });
+
+  it("counts an unmatched pairing once per port, and a mutual one-sided miss on both", () => {
+    const ports = [port({ id: "a", name: "X", paired: "X" }), port({ id: "b", name: "X", paired: "X" })];
+    const r = resolvePairings(ports);
+    expect(r.routes).toEqual([]);
+    expect(r.unmatched).toBe(2);
+  });
+
+  it("is safe with __proto__ and constructor as names and ids", () => {
+    const ports = [
+      port({ id: "__proto__", name: "constructor", paired: "__proto__", pairedId: "constructor" }),
+      port({ id: "constructor", name: "__proto__", paired: "constructor", pairedId: "__proto__" }),
+    ];
+    expect(resolvePairings(ports).routes).toEqual([[0, 1]]);
+    expect(dronePortKeys(ports)).toHaveLength(2);
+  });
+
   it("leaves a name that matches more than one port unmatched, and counts it", () => {
     const ports = [
       port({ id: "a", name: "Hub", paired: "Twin" }),
