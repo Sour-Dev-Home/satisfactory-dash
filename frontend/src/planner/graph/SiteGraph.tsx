@@ -5,7 +5,7 @@ import { useReducedMotion } from "../../overview/reducedMotion";
 import { bottleneckCountText, carrierWord, siteFindings, UNKNOWN_FLOW_NOTE } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
-import { reachFor, siteItems } from "./graphModel";
+import { minedRates, reachFor, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
 import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
 import type { GlyphKind } from "./buildingIcons";
@@ -224,6 +224,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     [target, graph, view],
   );
   const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
   // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
   // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
   const [itemFocusOn] = useState(readItemFocus);
@@ -1143,6 +1144,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               id={panelId}
               node={openNode}
               facts={laidByKey.get(openNode.key)?.card.facts}
+              rates={rates}
               findings={findings}
               onClose={close}
               onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}

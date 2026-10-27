@@ -710,12 +710,14 @@ export function buildProductionGraphWithStats(
         } else {
           let total = 0;
           for (const o of sources) total += groups[o.s].prod.get(item)?.cur ?? 0;
-          const mine = groups[c.s].prod.get(item)?.cur ?? 0;
-          if (total > 0) {
-            ratePerMinute = (consumed.cur * mine) / total;
-            rate = "estimated";
-          } else if (consumed.cur === 0) {
+          // A source with no output data for the item (an extractor, which getFactory never lists) has no known share:
+          // its link stays unknown rather than reading 0. The planner's extractor cards sum these links.
+          const mine = groups[c.s].prod.get(item)?.cur;
+          if (consumed.cur === 0) {
             ratePerMinute = 0;
+            rate = "estimated";
+          } else if (mine !== undefined && total > 0) {
+            ratePerMinute = (consumed.cur * mine) / total;
             rate = "estimated";
           }
         }

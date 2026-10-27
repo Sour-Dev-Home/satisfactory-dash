@@ -8,7 +8,7 @@ import { ErrorLine } from "../DesignationParts";
 import { useRun } from "../useRun";
 import { groupLabel, nodeFindings, stateCountsText } from "../plannerText";
 import { buildingIconUrl } from "./buildingIcons";
-import { nodeFacts, withName } from "./graphModel";
+import { nodeFacts, withName, type MinedRate } from "./graphModel";
 import { joinMachines } from "./panelJoin";
 
 /** Machines listed at most; a group can hold a thousand and the page is not the place to scroll them all. */
@@ -23,12 +23,15 @@ export function GroupPanel({
   id,
   node,
   facts = [],
+  rates,
   findings,
   onClose,
   onPopOut,
 }: {
   id: string;
   node: PlannerNode;
+  /** `minedRates` of the graph's edges: an extractor's rate. */
+  rates?: ReadonlyMap<string, MinedRate | null>;
   /** The factory view's further words for the group: its share split, where it stands, its storage chips. */
   facts?: readonly string[];
   findings: readonly Bottleneck[] | undefined;
@@ -53,7 +56,7 @@ export function GroupPanel({
   const joined = factory.data ? joinMachines(node, factory.data.data.buildings) : null;
   const shown = joined?.machines.slice(0, PANEL_MAX_MACHINES) ?? [];
   const icon = buildingIconUrl(node.className);
-  const { recipe, outputs, loop } = nodeFacts(node);
+  const { recipe, outputs, loop } = nodeFacts(node, rates);
   const label = groupLabel(withName(node));
 
   return (
