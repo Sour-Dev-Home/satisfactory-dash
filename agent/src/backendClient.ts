@@ -8,6 +8,7 @@ import type {
   ConveyorsWorldIngestRequest,
   DroneRoutesWorldIngestRequest,
   EnrollResponse,
+  MapMarkersWorldIngestRequest,
   MapWorldLayer,
   RailsWorldIngestRequest,
   ResourceNodesWorldIngestRequest,
@@ -63,6 +64,8 @@ export interface WorldIngestBodies {
   trainRoutes: TrainRoutesWorldIngestRequest;
   // ADR-0055 PR 12a.
   droneRoutes: DroneRoutesWorldIngestRequest;
+  // ADR-0038 §1 (#330): in the contract now; the agent reads and sends it from the markers layer PR.
+  mapMarkers: MapMarkersWorldIngestRequest;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;

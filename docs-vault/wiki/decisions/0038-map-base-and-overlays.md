@@ -43,7 +43,12 @@ reads), sent only when the data changed.
   existing mappers are. Each layer keeps only what it draws:
   - rails and paths: polylines, with coordinates rounded to whole metres;
   - nodes: `{type, purity, x, y, exploited}`;
-  - markers: `{name ≤ 60 chars, icon, x, y}`.
+  - markers: `{name ≤ 60 chars, icon, x, y}`. Amended 2026-10-26 (the `mapMarkers` contract, #330), from the full
+    2026-09-27 `getMapMarkers` capture: `{id, name ≤ 60 chars (may be empty), kind: stamp | marker, icon, color: #rrggbb,
+    x, y}`, cap 1,000. `id` is FRM's `ID` (a stable key); `kind` is `MapMarkerType` (`RT_Stamp`, `RT_MapMarker`, the
+    only two captured); `color` is `ColorSlot` read as RRGGBBAA without the alpha [NEEDS VERIFICATION: byte order], kept
+    because players tell their markers apart by it. No z, `Category` (empty on every item), `Scale` or
+    `CompassViewDistance` (the game's own HUD drawing). Names are player text: members only, never logged.
   - Classification stays in the backend (ADR-0031 rule). Projection and rounding aren't
     classification.
 - **Every layer's fields are captured into `raw-sources/` before its schema is written** (the
