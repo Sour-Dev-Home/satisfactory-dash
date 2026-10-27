@@ -84,6 +84,15 @@ export const RESOURCE_UNKNOWN = "Resource not identified";
 export const INFERRED_FROM_NODE = "(inferred from the node)";
 
 /**
+ * #728 cause 11: a node built only from conveyor ends that name machines the latest factory read lacks (the backend's
+ * `stale`). The conveyor data is read every 10 minutes (the backend's CONNECTIONS_REFRESH_MINUTES), the factory every 30 s.
+ */
+export const STALE_NODE_NOTE = "Conveyor data older than the factory read · refreshes within 10 minutes";
+export const isStaleNode = (node: Pick<PlannerNode, "stale">): boolean => node.stale === true;
+/** The card's muted lines for such a node, within the card's line limits (the full words are in the tooltip and tables). */
+export const staleNodeLines = (): string[] => wrapText(STALE_NODE_NOTE);
+
+/**
  * What an extractor without output data mines (#728 step 1): the backend's `resource` (the node within 20 m), else an
  * honest "Resource not identified". Null for anything else, or for an extractor that does have output data.
  */
@@ -132,6 +141,7 @@ export const noRecipeCellText = (node: Pick<PlannerNode, "kind">): string => (NO
  * panel all read these.
  */
 export function nodeFacts(node: PlannerNode): { recipe: string | null; outputs: string[]; loop: boolean } {
+  if (isStaleNode(node)) return { recipe: recipeText(node), outputs: [STALE_NODE_NOTE], loop: node.loop };
   const mined = extractorOutput(node);
   const outputs = mined !== null ? [extractorOutputText(mined)] : node.products.length === 0 ? ["No output data"] : node.products.map((r) => outputLine(r, node.stateCounts));
   return { recipe: recipeText(node), outputs, loop: node.loop };

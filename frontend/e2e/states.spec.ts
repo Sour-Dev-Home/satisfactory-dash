@@ -328,6 +328,19 @@ const CASES: StateCase[] = [
       await page.keyboard.press("Enter");
     },
   },
+  // #728 cause 11: a card built from conveyor data older than the factory read says so (muted, a clock glyph).
+  {
+    scenario: "planner-stale-end",
+    name: "planner-stale-end-graph",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await pressButton(page, "Open factory: Iron Rod factory");
+      await page.getByRole("button", { name: "Graph" }).click();
+      await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
+    },
+  },
   // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
   // The overview is the canvas from 640 px and the cards with the flows table below (ADR-0055 PR 8).
   { scenario: "planner-factories", path: "/app/planner", shows: /^(Flows between factories|Zoom in)$/, clock: FACTORIES_NOW },

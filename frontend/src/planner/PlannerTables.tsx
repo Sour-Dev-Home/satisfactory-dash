@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { BottleneckBadge } from "./BottleneckBadge";
-import { extractorOutput, groupsExtractorOutput, INFERRED_FROM_NODE, noRecipeCellText, recipeText } from "./graph/graphModel";
+import { extractorOutput, groupsExtractorOutput, INFERRED_FROM_NODE, isStaleNode, noRecipeCellText, recipeText, STALE_NODE_NOTE } from "./graph/graphModel";
 import { bubblesOf, foldBubbles, shareSplit, type Bubble, type ConnectionRow, type Remote } from "./graph/hierarchy";
 import {
   bubbleTitle,
@@ -49,7 +49,11 @@ function Mined({ mined }: { mined: { name: string; inferred: boolean } }) {
   );
 }
 
+/** #728 cause 11: a group built from conveyor data older than the factory read says so, muted, in place of its outputs. */
+const StaleNote = () => <span className="block break-words text-muted">{STALE_NODE_NOTE}</span>;
+
 function Outputs({ node }: { node: PlannerNode }) {
+  if (isStaleNode(node)) return <StaleNote />;
   const mined = extractorOutput(node);
   if (mined !== null) return <Mined mined={mined} />;
   if (node.products.length === 0) return <span className="text-muted">No output data</span>;
@@ -159,7 +163,9 @@ function BubbleBody({
             {bubbleTitle(bubble)}
           </th>
           <td colSpan={columns - 1} className="break-words">
-            {mined !== null ? (
+            {bubble.nodes.every(isStaleNode) ? (
+              <StaleNote />
+            ) : mined !== null ? (
               <Mined mined={mined} />
             ) : bubble.products.length === 0 ? (
               <span className="text-muted">No output data</span>

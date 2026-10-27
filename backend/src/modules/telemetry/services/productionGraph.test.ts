@@ -326,6 +326,28 @@ describe("stale, unconnected and missing belt data", () => {
     expect(ProductionGraphSchema.safeParse(g).success).toBe(true);
   });
 
+  it("marks the nodes behind that note stale, and no other node (#728 cause 11)", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "gone1", "use"), edge("e2", "gone2", "use")]);
+    const stale = g.nodes.filter((n) => n.stale === true);
+    expect(stale.length).toBeGreaterThan(0);
+    expect(stale.reduce((t, n) => t + n.count, 0)).toBe(2);
+    for (const n of stale) expect(n).toMatchObject({ kind: "other", machineIds: [] });
+    const fresh = g.nodes.filter((n) => n.stale !== true);
+    expect(fresh.map((n) => n.machineIds)).toEqual([["use"]]);
+    expect(fresh.every((n) => !("stale" in n))).toBe(true);
+    expect(ProductionGraphSchema.safeParse(g).success).toBe(true);
+  });
+
+  it("never marks storage, unknown-class or matched ends stale", () => {
+    const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
+    const g = run(b, [edge("e1", "T1", "use"), edge("e2", "Mod_1", "use", { fromKind: "other" })]);
+    expect(g.nodes.length).toBeGreaterThan(1);
+    expect(g.nodes.some((n) => "stale" in n)).toBe(false);
+    const { b: mb, e } = manifold(2);
+    expect(run(mb, e).nodes.some((n) => "stale" in n)).toBe(false);
+  });
+
   it("uses the singular for one stale machine end", () => {
     const b = [machine("use", { recipe: "Plate", ing: [[INGOT, 30]], out: [[PLATE, 20]] })];
     const g = run(b, [edge("e1", "gone1", "use")]);

@@ -65,6 +65,7 @@ import {
   managedServersAllStates,
   productionGraphEmpty,
   productionGraphFactories,
+  productionGraphStaleEnd,
   productionGraphStalled,
   productionGraphTwoSites,
   plannerDesignationDeleteResponse,
@@ -851,6 +852,9 @@ export const SCENARIOS = {
   // #728 step 2: a stalled group. The manifold is backed up at "0 of 160", its card says so in a muted line, and so does
   // its side panel; the recycler it feeds is underfed at 0.
   "planner-stalled": { productionGraph: ok(productionGraphStalled), factory: ok(factoryStalledManifold) },
+  // #728 cause 11: a conveyor end names a machine the latest factory read lacks. Its card in the Iron Rod factory says the
+  // conveyor data is older (muted, a clock glyph), never an unknown card.
+  "planner-stale-end": { productionGraph: ok(productionGraphStaleEnd) },
   // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
   // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
   "basic-data": {
