@@ -221,9 +221,14 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
   // A conveyor's far end may be a building the factory placed (conveyors.ts). Keyed by the places themselves, not the
   // snapshot, so a factory poll that moves nothing never re-places or redraws thousands of conveyors. Every building,
   // not the filtered ones: a filter hides a building, it doesn't move the belt into it.
+  // Only while the layer has data: with it off, a poll must not stringify every building for nothing.
+  const hasConveyors = conveyorsData !== undefined;
   const placesKey = useMemo(
-    () => JSON.stringify(placed(snapshot.data.buildings).map((b) => [b.id, { x: b.location.xM, y: b.location.yM, name: b.name }])),
-    [snapshot],
+    () =>
+      hasConveyors
+        ? JSON.stringify(placed(snapshot.data.buildings).map((b) => [b.id, { x: b.location.xM, y: b.location.yM, name: b.name }]))
+        : "[]",
+    [snapshot, hasConveyors],
   );
   const places = useMemo(() => new Map<string, BuildingPlace>(JSON.parse(placesKey) as [string, BuildingPlace][]), [placesKey]);
   const placedConveyors = useMemo(() => (conveyorsData ? placeConveyors(conveyorsData.data, places) : undefined), [conveyorsData, places]);

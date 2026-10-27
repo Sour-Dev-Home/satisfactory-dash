@@ -40,10 +40,13 @@ const distance = (a: Point, b: Point) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 
 /** Places every conveyor's far end (see the module comment). `buildings` is a Map: its keys are game ids. */
 export function placeConveyors(edges: readonly ConveyorEdge[], buildings: ReadonlyMap<string, BuildingPlace>): PlacedConveyor[] {
-  const byId = new Map<string, ConveyorEdge>();
+  // Ids can repeat, so every conveyor under an id is kept and the one that names this end back is the join.
+  const byId = new Map<string, ConveyorEdge[]>();
   const leaving = new Map<string, ConveyorEdge[]>();
   for (const e of edges) {
-    if (!byId.has(e.id)) byId.set(e.id, e);
+    const same = byId.get(e.id);
+    if (same) same.push(e);
+    else byId.set(e.id, [e]);
     if (e.from === null) continue;
     const list = leaving.get(e.from);
     if (list) list.push(e);
@@ -53,7 +56,10 @@ export function placeConveyors(edges: readonly ConveyorEdge[], buildings: Readon
   const farEnd = (e: ConveyorEdge, from: Point): Point | null => {
     if (e.kind === "lift" || e.to === null) return null;
     const next = byId.get(e.to);
-    if (next) return next.from === e.id ? pointOf(next.at) : null;
+    if (next) {
+      const joined = next.find((n) => n.from === e.id);
+      return joined ? pointOf(joined.at) : null;
+    }
     const building = buildings.get(e.to);
     if (building) return [building.x, building.y];
     let best: Point | null = null;

@@ -143,3 +143,28 @@ describe("conveyorLengthText and conveyorInView", () => {
     expect(conveyorInView(null, lift)).toBe(true);
   });
 });
+
+describe("placeConveyors (hunt)", () => {
+  it("finds the joined conveyor among several sharing an id (FRM ids can repeat)", () => {
+    const a = edge({ id: "A", to: "B", toKind: "conveyor", at: { x: 0, y: 0 } });
+    const otherB = edge({ id: "B", from: "Z", fromKind: "conveyor", at: { x: 500, y: 500 } });
+    const b = edge({ id: "B", from: "A", fromKind: "conveyor", at: { x: 30, y: 40 } });
+    expect(placeConveyors([a, otherB, b], NONE)[0].to).toEqual([30, 40]);
+  });
+
+  it("treats ids like __proto__ as plain keys", () => {
+    const a = edge({ id: "A", to: "__proto__", toKind: "splitter", at: { x: 0, y: 0 } });
+    const b = edge({ id: "B", from: "__proto__", fromKind: "splitter", at: { x: 3, y: 4 } });
+    expect(placeConveyors([a, b], NONE)[0].to).toEqual([3, 4]);
+    expect(placeConveyors([edge({ id: "C", to: "__proto__", toKind: "machine" })], NONE)[0].to).toBeNull();
+  });
+
+  it("a self-join places at its own start and a lift never counts metres", () => {
+    const loop = edge({ id: "L", from: "L", fromKind: "conveyor", to: "L", toKind: "conveyor", at: { x: 5, y: 5 } });
+    expect(placeConveyors([loop], NONE)[0].lengthM).toBe(0);
+    const lift = edge({ id: "T", kind: "lift", to: "M", toKind: "machine" });
+    const [p] = placeConveyors([lift], places([["M", { x: 90, y: 0, name: "m" }]]));
+    expect(p.lengthM).toBeNull();
+    expect(conveyorsSummary([p])).toContain("0 m of belt");
+  });
+});
