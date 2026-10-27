@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MetricsOverviewSchema, METRICS_WORST_SERVERS_PER_METRIC } from "@satisfactory-dash/shared";
+import { deliverySnapshotSample } from "@satisfactory-dash/shared/fixtures";
 import { createMetricsService, foldCounters, foldHistograms, windowBounds, worstServers } from "./metricsService.js";
 import type { CounterSeries, HistogramSeries } from "./metricsRepository.js";
 
@@ -91,7 +92,7 @@ describe("createMetricsService", () => {
     expect(out.window).toBe("24h");
     expect(out.generatedAt).toBe("2026-10-25T10:30:00.000Z");
     expect(out.alerts).toEqual({ available: false, reason: "no_data" });
-    expect(out.delivery).toEqual({ available: false, reason: "not_built" });
+    expect(out.delivery).toEqual({ available: false, reason: "not_configured" });
     if (!out.system.available) throw new Error("system should be available");
     expect(out.system.histograms.find((h) => h.metric === "http.server.request.duration")).toMatchObject({ count: 5, p50Ms: 5, p99Ms: null });
     expect(out.system.counters).toEqual([{ metric: "satis.agent.refused", labels: { status: "401" }, total: 7 }]);
@@ -121,6 +122,39 @@ describe("createMetricsService", () => {
     expect(out.system).toEqual({ available: false, reason: "no_data" });
     expect(out.charts).toEqual({ available: false, reason: "no_data" });
     expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
+  });
+
+  describe("delivery section (ADR-0056 PR 6b)", () => {
+    const deliveryDb = (deliveryRows: unknown[]) => {
+      const base = fakeDb([], []);
+      const query = vi.fn(async (sql: string) => (sql.includes("delivery_snapshots") ? { rows: deliveryRows } : base.query(sql)));
+      return { query };
+    };
+    const reads = (db: ReturnType<typeof deliveryDb>) => db.query.mock.calls.filter(([sql]) => sql.includes("delivery_snapshots")).length;
+
+    it("is not_configured, with no read, when the ingest is off", async () => {
+      const db = deliveryDb([{ body: deliverySnapshotSample }]);
+      const out = await createMetricsService({ db, now }).overview("24h");
+      expect(out.delivery).toEqual({ available: false, reason: "not_configured" });
+      expect(reads(db)).toBe(0);
+    });
+
+    it("is no_data when the ingest is on but no snapshot has arrived", async () => {
+      const out = await createMetricsService({ db: deliveryDb([]), now, deliveryConfigured: true }).overview("24h");
+      expect(out.delivery).toEqual({ available: false, reason: "no_data" });
+      expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
+    });
+
+    it("serves the newest snapshot, as of when the script measured it", async () => {
+      const out = await createMetricsService({ db: deliveryDb([{ body: deliverySnapshotSample }]), now, deliveryConfigured: true }).overview("7d");
+      expect(out.delivery).toEqual({ available: true, asOf: deliverySnapshotSample.generatedAt, snapshot: deliverySnapshotSample });
+      expect(MetricsOverviewSchema.parse(out)).toBeTruthy();
+    });
+
+    it("is no_data, not a failed page, when the stored body no longer fits the contract", async () => {
+      const out = await createMetricsService({ db: deliveryDb([{ body: { ...deliverySnapshotSample, login: "someone" } }]), now, deliveryConfigured: true }).overview("24h");
+      expect(out.delivery).toEqual({ available: false, reason: "no_data" });
+    });
   });
 
   it("fills the charts from the hourly reads, over the trend and the previous window, for every window", async () => {

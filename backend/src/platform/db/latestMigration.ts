@@ -3,4 +3,4 @@
  * the build so startup can check the schema without reading the file system. Update it together
  * with every new migration: latestMigration.test.ts fails when the two disagree.
  */
-export const LATEST_MIGRATION = "1792108800000_planner_designation_revision";
+export const LATEST_MIGRATION = "1792195200000_delivery_snapshots";

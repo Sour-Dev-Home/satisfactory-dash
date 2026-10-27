@@ -12,6 +12,7 @@ import type {
 } from "@satisfactory-dash/shared";
 import { alertQualitySummary, alertsFiredHourly } from "../alerts/index.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
+import { latestDeliverySnapshot } from "./deliveryRepository.js";
 import { buildCharts, chartsBounds, TREND_COUNTERS, TREND_HISTOGRAMS } from "./metricsCharts.js";
 import { readCounterSeries, readHistogramSeries, readHourlyCounters, readHourlyHistograms } from "./metricsRepository.js";
 import type { CounterSeries, HistogramSeries } from "./metricsRepository.js";
@@ -41,6 +42,18 @@ export interface MetricsService {
 export interface MetricsServiceOptions {
   db: Queryable;
   now?: () => number;
+  /** True when the delivery ingest is on (`METRICS_INGEST_SECRET_SHA256` set). Off, the delivery section says
+   *  `not_configured` and nothing is read; on, it serves the newest stored snapshot, or `no_data` before the first. */
+  deliveryConfigured?: boolean;
+}
+
+type DeliverySection = MetricsOverview["delivery"];
+
+async function deliverySection(db: Queryable, configured: boolean): Promise<DeliverySection> {
+  if (!configured) return { available: false, reason: "not_configured" };
+  const snapshot = await latestDeliverySnapshot(db);
+  // asOf is when the script measured, not when the push arrived: the numbers describe that moment.
+  return snapshot === undefined ? { available: false, reason: "no_data" } : { available: true, asOf: snapshot.generatedAt, snapshot };
 }
 
 /** Rows are hourly: the window starts at the hour that holds `now - length` and ends at the current (partial) hour. */
@@ -161,7 +174,7 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
       const lengthMs = WINDOW_MS.get(window) ?? WINDOW_MS.get("24h")!;
       // The charts read one hourly range covering the trend and the previous window (ADR-0056 amendment, section 7).
       const rangeFrom = new Date(chartsBounds(window, lengthMs, nowMs).rangeFrom);
-      const [histogramSeries, counterSeries, alertMonths, hourlyHistograms, hourlyCounters, fired] = await Promise.all([
+      const [histogramSeries, counterSeries, alertMonths, hourlyHistograms, hourlyCounters, fired, delivery] = await Promise.all([
         readHistogramSeries(options.db, from, to),
         readCounterSeries(options.db, from, to),
         // Not window-bound: alert quality is per calendar month over the 90-day log (ADR-0056 section 2).
@@ -169,6 +182,7 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
         readHourlyHistograms(options.db, rangeFrom, to, TREND_HISTOGRAMS),
         readHourlyCounters(options.db, rangeFrom, to, TREND_COUNTERS),
         alertsFiredHourly(options.db, rangeFrom, to),
+        deliverySection(options.db, options.deliveryConfigured ?? false),
       ]);
       const histograms = foldHistograms(histogramSeries);
       const counters = foldCounters(counterSeries);
@@ -181,8 +195,7 @@ export function createMetricsService(options: MetricsServiceOptions): MetricsSer
             ? { available: false, reason: "no_data" }
             : { available: true, asOf: generatedAt, histograms, counters, servers: worstServers(histogramSeries, counterSeries) },
         alerts: alertMonths.length === 0 ? { available: false, reason: "no_data" } : { available: true, asOf: generatedAt, months: alertMonths },
-        // PR 6b builds the delivery snapshot.
-        delivery: { available: false, reason: "not_built" },
+        delivery,
         charts: buildCharts({ window, lengthMs, nowMs, histograms: hourlyHistograms, counters: hourlyCounters, fired }),
         links: { ...METRICS_LINKS },
       };
