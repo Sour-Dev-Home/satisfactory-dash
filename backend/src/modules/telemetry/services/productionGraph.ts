@@ -754,6 +754,38 @@ export function buildProductionGraphWithStats(
     for (const j of sup) used += rates[j].ratePerMinute as number;
     rates[i] = { ratePerMinute: Math.max(0, out.cur - used), rate: "estimated" };
   });
+  // One-end estimate (owner, 2026-10-27): an edge with a known item and still no rate takes it from whichever end's recipe
+  // rate is known. First the source's output of the item, less what its other edges for the item already carry, shared
+  // evenly among its rate-less ones; then, for what is left, the destination's use less what its other incoming edges
+  // carry. Always estimated, never below zero, never over a rate already set; an overflowing belt is overstated.
+  const oneEnd = (keyOf: (c: Cand) => string, total: (c: Cand) => number | undefined): void => {
+    const byKey = new Map<string, number[]>();
+    candList.forEach((c, i) => {
+      if (c.item === null) return;
+      const k = keyOf(c);
+      const list = byKey.get(k);
+      if (list) list.push(i);
+      else byKey.set(k, [i]);
+    });
+    for (const list of byKey.values()) {
+      const open = list.filter((i) => rates[i].ratePerMinute === null);
+      if (open.length === 0) continue;
+      const whole = total(candList[open[0]]);
+      if (whole === undefined) continue;
+      let used = 0;
+      for (const i of list) used += rates[i].ratePerMinute ?? 0;
+      const share = Math.max(0, whole - used) / open.length;
+      for (const i of open) rates[i] = { ratePerMinute: share, rate: "estimated" };
+    }
+  };
+  oneEnd(
+    (c) => `${c.s}|${c.item?.className}`,
+    (c) => groups[c.s].prod.get(c.item?.className ?? "")?.cur,
+  );
+  oneEnd(
+    (c) => `${c.d}|${c.item?.className}`,
+    (c) => groups[c.d].ing.get(c.item?.className ?? "")?.cur,
+  );
 
   const outEdges: PlannerEdge[] = [];
   candList.forEach((c, i) => {

@@ -214,11 +214,97 @@ describe("rates", () => {
     expect(rates).toEqual({ [SMELTER]: [15, "estimated"], Build_FoundryMk1_C: [45, "estimated"] });
   });
 
-  it("is unknown when a source's output is split and the destination reports no use", () => {
+  it("shares a source's output evenly, estimated, when it is split and the destinations report no use", () => {
     const b = [machine("p", { out: [[PLATE, 60, 50]] }), machine("q", { recipe: "Q", ing: [] }), machine("r", { recipe: "R" })];
     const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "q"), edge("c", "S1", "r")]);
     expect(g.edges.length).toBe(2);
-    for (const e of g.edges) expect(e).toMatchObject({ ratePerMinute: null, rate: "unknown" });
+    for (const e of g.edges) expect(e).toMatchObject({ ratePerMinute: 25, rate: "estimated" });
+  });
+
+  describe("one-end estimate (owner, 2026-10-27)", () => {
+    const res = (x: number, y: number): ResourceNode => ({ type: "Iron Ore", className: ORE, purity: "normal", nodeType: "node", x, y, exploited: true });
+    // Storage and a sink: two destinations that report no use (two storages would group into one node).
+    const SINK = "Build_ResourceSink_C_7";
+    const toDataless = (g: { edges: PlannerEdge[]; nodes: PlannerNode[] }) =>
+      g.edges.filter((e) => g.nodes.find((n) => n.key === e.to)?.ingredients.length === 0).sort((a, b) => a.to.localeCompare(b.to));
+
+    it("a source with two rate-less destinations (storage and a sink) shares its output evenly", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })]);
+      const into = toDataless(g);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ itemClassName: PLATE, ratePerMinute: 25, rate: "estimated" });
+    });
+
+    it("storage beside a measured consumer takes what is left, the measured edge untouched", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 20]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const [toC] = edgeBetween(g, node(g, "Build_Constructor_C", "Recipe"), node(g, "Build_Constructor_C", "C"));
+      expect(toC).toMatchObject({ ratePerMinute: 20, rate: "measured" });
+      const into = toDataless(g).filter((e) => e.from === toC.from);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ ratePerMinute: 15, rate: "estimated" });
+    });
+
+    it("never below zero when measured edges already take more than the source reports", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 10]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 30]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const into = toDataless(g).filter((e) => e.itemClassName === PLATE);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ ratePerMinute: 0, rate: "estimated" });
+      expect(g.edges.every((e) => e.ratePerMinute === null || e.ratePerMinute >= 0)).toBe(true);
+    });
+
+    it("destination-only data: two data-less sources (a miner and a station) share the destination's use", () => {
+      const smelt = machine("s", { className: SMELTER, recipe: "Iron Ingot", ing: [[ORE, 60, 40]], out: [[INGOT, 40]] });
+      const e = [edge("a", "Xm", "G1", { at: [0, 0] }), edge("b", "St_1", "G1", { fromKind: "station" }), edge("c", "G1", "s")];
+      const g = buildProductionGraph([smelt], e, [res(2, 0)]);
+      const into = g.edges.filter((e) => e.to === node(g, SMELTER).key);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ itemClassName: ORE, ratePerMinute: 20, rate: "estimated" });
+    });
+
+    it("no data on either end stays null, and so does an unknown item", () => {
+      const known = buildProductionGraph([], [edge("a", "Xm", "T1", { at: [0, 0] })], [res(3, 0)]);
+      expect(known.edges).toEqual([expect.objectContaining({ itemClassName: ORE, ratePerMinute: null, rate: "unknown" })]);
+      const unknown = buildProductionGraph([], [edge("a", "Xm", "T1", { at: [0, 0] })]);
+      expect(unknown.edges).toEqual([expect.objectContaining({ itemClassName: null, ratePerMinute: null, rate: "unknown" })]);
+    });
+
+    it("a zero-output source gives an estimated 0, never null or negative", () => {
+      const g = run([machine("p", { out: [[PLATE, 60, 0]] })], [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })]);
+      for (const e of toDataless(g)) expect(e).toMatchObject({ ratePerMinute: 0, rate: "estimated" });
+    });
+
+    it("both ends reporting and disagreeing: the destination's measured rate stands, the source estimate only fills the rest", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 60]] }), machine("c", { recipe: "C", ing: [[PLATE, 30, 10]], out: [[WIRE, 10]] })];
+      const g = run(b, [edge("a", "p", "S1"), edge("b", "S1", "c"), edge("c1", "S1", "T1"), edge("d", "S1", SINK, { toKind: "consumer" })]);
+      const toC = g.edges.filter((e) => e.itemClassName === PLATE && e.rate === "measured");
+      expect(toC).toHaveLength(1);
+      expect(toC[0].ratePerMinute).toBe(10);
+      const into = toDataless(g).filter((e) => e.itemClassName === PLATE);
+      expect(into.map((e) => e.ratePerMinute)).toEqual([25, 25]);
+      // The edges together carry exactly what the source reports; nothing is counted by both the source and destination pass.
+      expect(toC[0].ratePerMinute! + into.reduce((s, e) => s + (e.ratePerMinute ?? 0), 0)).toBe(60);
+    });
+
+    it("does not depend on the order of the edges", () => {
+      const b = [machine("p", { out: [[PLATE, 60, 50]] })];
+      const es = [edge("a", "p", "S1"), edge("b", "S1", "T1"), edge("c", "S1", SINK, { toKind: "consumer" })];
+      const a = run(b, es);
+      const r = run(b, [...es].reverse());
+      const sig = (g: { edges: PlannerEdge[] }) => g.edges.map((e) => `${e.from}>${e.to}:${e.ratePerMinute}:${e.rate}`).sort();
+      expect(sig(r)).toEqual(sig(a));
+    });
+
+    it("a fluid source's output is shared in m³/min on pipe edges", () => {
+      const refinery = machine("r", { className: "Build_OilRefinery_C", recipe: "Fuel", unit: "m3/min", out: [["Desc_LiquidFuel_C", 40, 30]] });
+      const gen = "Build_GeneratorFuel_C_9";
+      const g = run([refinery], [edge("p1", "r", "T1", { kind: "pipe", cap: null }), edge("p2", "r", gen, { kind: "pipe", cap: null, toKind: "consumer" })]);
+      const into = toDataless(g);
+      expect(into).toHaveLength(2);
+      for (const e of into) expect(e).toMatchObject({ kind: "pipe", itemClassName: "Desc_LiquidFuel_C", ratePerMinute: 15, rate: "estimated" });
+    });
   });
 
   it("reports a capacity only for an unbranched chain", () => {
@@ -494,14 +580,14 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(g.edges).toHaveLength(2);
   });
 
-  it("a machine with two products into storage: one mixed edge per item, rate unknown; the storage's next belt stays unknown", () => {
+  it("a machine with two products into storage: one mixed edge per item at its output, estimated; the next belt stays unknown", () => {
     const b = [machine("r", { recipe: "Two", out: [[PLATE, 20, 20], [WIRE, 30, 30]] })];
     const g = buildProductionGraph(b, [edge("a", "r", "T1"), edge("b", "T1", "T2")]);
     const intoT1 = g.edges.filter((e) => e.from.startsWith("Build_Constructor_C"));
-    expect(intoT1.map((e) => e.itemClassName).sort()).toEqual([PLATE, WIRE]);
-    for (const e of intoT1) expect(e).toMatchObject({ mixed: true, rate: "unknown", ratePerMinute: null, itemFrom: "recipe" });
+    expect(intoT1.map((e) => [e.itemClassName, e.ratePerMinute]).sort()).toEqual([[PLATE, 20], [WIRE, 30]]);
+    for (const e of intoT1) expect(e).toMatchObject({ mixed: true, rate: "estimated", itemFrom: "recipe" });
     const onward = g.edges.filter((e) => e.from.startsWith("storage"));
-    expect(onward).toEqual([expect.objectContaining({ itemClassName: null })]);
+    expect(onward).toEqual([expect.objectContaining({ itemClassName: null, ratePerMinute: null, rate: "unknown" })]);
   });
 
   it("a storage holding two items feeds a machine the one it uses, mixed and never measured", () => {
@@ -550,14 +636,15 @@ describe("item inference (ADR-0053 Decision 4, ADR-0055 PR 4)", () => {
     expect(only(st)).toMatchObject({ itemClassName: ORE, itemFrom: "downstream" });
   });
 
-  it("the unknowable stays unknown: a modded source, an unloading station into storage, a sushi split", () => {
+  it("the unknowable stays unknown: a modded source, an unloading station into storage; a sushi split is estimated per item", () => {
     expect(only(buildProductionGraph([smelter()], [edge("a", "Mod_1", "s", { fromKind: "other" })])).itemClassName).toBeNull();
     expect(only(buildProductionGraph([], [edge("a", "St_1", "T1", { fromKind: "station" })])).itemClassName).toBeNull();
     // Two products through a (smart) splitter to storage and a sink: each may get either, never one guessed item.
     const b = [machine("r", { recipe: "Two", out: [[PLATE, 20], [WIRE, 30]] })];
     const g = buildProductionGraph(b, [edge("a", "r", "S1"), edge("b", "S1", "T1"), edge("c", "S1", "Sink_1", { toKind: "consumer" })]);
     expect(g.edges).toHaveLength(4);
-    for (const x of g.edges) expect(x).toMatchObject({ mixed: true, rate: "unknown" });
+    // Each item's output shared evenly between the two ends (one-end estimate, 2026-10-27): an overstatement the owner accepted.
+    for (const x of g.edges) expect(x).toMatchObject({ mixed: true, rate: "estimated", ratePerMinute: x.itemClassName === PLATE ? 10 : 15 });
   });
 
   it("is byte-identical with the resource nodes in any order", () => {
