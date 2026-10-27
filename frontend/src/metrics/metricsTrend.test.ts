@@ -66,6 +66,29 @@ describe("bucketChange", () => {
   });
 });
 
+describe("edge cases", () => {
+  it("never prints Infinity or NaN, and keeps a drop to zero finite", () => {
+    expect(percentChange(0, 100, true)).toMatchObject({ text: "Down 100%", tone: "better" });
+    for (const c of [percentChange(5, 0, true), percentChange(0, 0, true), percentChange(null, null, null)]) {
+      expect(c.text).toBe("No comparison");
+    }
+  });
+
+  it("the over value on both sides is the same, and over to a real bucket is better", () => {
+    expect(bucketChange(METRICS_TREND_OVER_MS, METRICS_TREND_OVER_MS).text).toBe("Same as before");
+    expect(bucketChange(5000, METRICS_TREND_OVER_MS)).toMatchObject({ text: "≤ 5 s, was > 5 s", tone: "better" });
+  });
+
+  it("stacks a partly-null hour as zero for the missing series, and a lone-null hour stays a gap", () => {
+    expect(stackSeries([[1, null, null], [2, 3, null]])).toEqual([[1, 0, null], [3, 3, null]]);
+  });
+
+  it("draws a series of only over values as a flat line, and only gaps as nothing", () => {
+    expect(sparklinePath([METRICS_TREND_OVER_MS, METRICS_TREND_OVER_MS], true)).toMatch(/^M0 12L100 12$/);
+    expect(sparklinePath([null, null], false)).toBe("");
+  });
+});
+
 describe("headlineTiles", () => {
   // The fixture: 4210 requests in 24.5 h (12 of them 5xx), against 3980 in 24 h (4 of them 5xx).
   const tiles = new Map(headlineTiles(metricsChartsDay).map((t) => [t.id, t]));
@@ -107,6 +130,15 @@ describe("headlineTiles", () => {
     });
     expect(quiet.find((t) => t.id === "requests")?.value).toBe("No data");
     expect(quiet.find((t) => t.id === "errors")?.value).toBe("No data");
+  });
+
+  it("never rounds a quiet window's requests to 0, and an unknown 5xx count is no data, not 0%", () => {
+    const tiles = headlineTiles({
+      ...metricsChartsDay,
+      headline: { ...metricsChartsDay.headline, current: { ...metricsChartsDay.headline.current, hours: 24, requests: 6, serverErrors: null } },
+    });
+    expect(tiles.find((t) => t.id === "requests")?.value).toBe("0.3");
+    expect(tiles.find((t) => t.id === "errors")?.value).toBe("No data");
   });
 });
 

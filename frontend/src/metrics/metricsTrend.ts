@@ -117,7 +117,11 @@ export function errorRateSeries(requests: MetricsTrend["requests"]): (number | n
 
 const refusedSeries = (t: MetricsTrend): Series[] => [t.agentRefused, t.signupRefused, t.historyRowsDropped, t.alertEventsDropped, t.pushDropped];
 
-const errorRate = (h: MetricsHeadline) => (h.requests === null || h.requests === 0 ? null : (h.serverErrors ?? 0) / h.requests);
+// An unknown 5xx count is no data, never a 0% error rate.
+const errorRate = (h: MetricsHeadline) =>
+  h.requests === null || h.requests === 0 || h.serverErrors === null ? null : h.serverErrors / h.requests;
+/** A per-hour rate: one decimal under 10, so a quiet window never reads as 0 while requests exist. */
+const rateCount = (rate: number) => countText(rate < 10 ? Math.round(rate * 10) / 10 : Math.round(rate));
 const perHour = (n: number | null, h: MetricsHeadline) => (n === null ? null : n / h.hours);
 
 /** One headline tile: what, the number, its change on the window before, and the trend behind it. */
@@ -143,7 +147,7 @@ export function headlineTiles(charts: ChartsData): HeadlineTile[] {
     {
       id: "requests",
       label: "Requests per hour",
-      value: requestRate === null ? "No data" : countText(Math.round(requestRate)),
+      value: requestRate === null ? "No data" : rateCount(requestRate),
       change: percentChange(requestRate, perHour(previous.requests, previous), null),
       spark: sumSeries([trend.requests.c2xx, trend.requests.c3xx, trend.requests.c4xx, trend.requests.c5xx]),
       sparkLog: false,
