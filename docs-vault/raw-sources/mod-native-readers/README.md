@@ -97,3 +97,54 @@ The judge reports these as NOT EXERCISED and does not fail on them:
 
 - **Two failed runs are left out:** 40378567334 and 40388387353. They are linked above as the reason for each decision;
   their `result.json` files are not copied.
+
+## Sprint S3: rails and conveyors
+
+Evidence for ADR-0058's Sprint S3: R5, the rail tracks (`getTrainRails` was the last FRM read the mod made), and R6, the
+conveyors layer (belts, lifts and pipes as a graph; the bridge never sent it). Same folder layout, method and clean room as
+S1 above.
+
+Source: the mod's Sprint S3 PRs #61 (S3-A), #63 (S3-B), #64 (S3-C) and #65 (S3-D), and PR #66, the switch that makes rails
+and conveyors native by default, all merged on the mod's `main` (`d94db1e`). With the switch every reader is native by
+default, and a host on the defaults needs FRM for nothing. The parity run is pinned to
+https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/f02e1ee
+
+The headers the S3 readers use are surveyed in the S3 header survey (dash PR #715).
+
+### The S3 runs
+
+| Run | Run id | Started (UTC) | Verdict | What it proves |
+| --- | --- | --- | --- | --- |
+| native-parity | [40447299909](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40447299909) | 2026-10-27T04:01:12Z | pass | Mod commit `f02e1ee`, world `Test3` (a copy of the owner's larger test save), 30 minutes with every native reader on against FRM's endpoints. All ten readers pass. R0: 355 rounds within 3%. R1: 355 rounds, lists equal. R4: the posted layer equal to FRM's (608 nodes, 55 exploited). R2a factory: 59 rounds, dynamic flags matched in 99.46% of 33,099 machine-rounds. R2b rates: 2 of 12,626 item-class checks outside FRM's range (99.98%, the rule is 99%). R3 trains and stations: 59 rounds, equal, positions within FRM's own reads. R3 trainRoutes: 2 posted layers equal to FRM's apart from reported cargo (16 records). R5 rails: 320 tracks, ids equal, farthest point 1.08 m mod to FRM (a track end, under the end rule below) and 0.54 m FRM to mod. R6 conveyors: 4,877 edges, ids, kind, ends, end kinds, tier and capacity equal, `at` within 1 m; 149 open ends agreed with FRM |
+| tick-cost-native | [40442596123](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40442596123) | 2026-10-27T03:23:58Z | pass | With every native reader on, on `Test3`: no tick-rate cost (median 29.87 without the mod, 29.82 with it); working set 7.3 MB above the baseline at the end (limit 100). Longest game-thread step: Logistics read (rails and conveyors) 1.01 ms, Factory read 1 ms, Trains read 0.12 ms, node scan 0.35 ms, so the 2 ms step ceiling held. Run at `6f92ee0`; `f02e1ee` changed the judges and the train-routes mapping of a Parked train only (no new game read) |
+| s3-census | [40437494703](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40437494703) | 2026-10-27T02:17:24Z | pass | What the capacity and end-kind rules rest on, measured on `Test3` (13,236 buildables): belt and lift capacity is speed / 2 for Mk.1-Mk.4 (Mk.5 is present, 144 belts and 5 lifts, and was judged by the parity run's capacity equality); pipe capacity is the flow limit x 60 for Mk.1 (300) and Mk.2 (600); 6 of 9,593 ends differ from the kind table, all `Build_Valve_C` (reported); drone ports: 12 edges end at one, 1 starts at one |
+
+### What the test world did not exercise (S3)
+
+The judge reports these as NOT EXERCISED and does not fail on them:
+
+- **R0:** a battery, a tripped fuse and a merged circuit group (as in S1 and S2).
+- **R1:** any online player.
+- **R5:** a track over 999 m (the point clamp), and a track the contract cannot hold.
+- **R6:** a hypertube filtered by FRM.
+
+`Test3` does exercise the S2 gaps: it has a Parked train and a stationary train.
+
+### Decisions taken during the sprint (S3)
+
+- **The rules (owner, 2026-10-27).** Rails: the same track ids, and every point of each track within 1 m of the other side's
+  line, measured against FRM's unrounded values. Conveyors: the exact graph, with `at` within 1 m. An open end both sides
+  agree on passes; one they disagree on fails.
+- **One parity failure, fixed (2026-10-27).** The first S3 `native-parity` run (40439238142, at `6f92ee0`) failed two readers:
+  - **rails:** one track end was 1.08 m from FRM's line, because FRM's line stops short of the track's end (its last segment
+    was about 0.75 m). The owner ruled that a track's two end points pass within 1 m plus FRM's own end segment; the mod caps
+    that extra at 1 m, so a two-point track cannot wave through a far-off end (mod `d29c66c`, `f02e1ee`).
+  - **trainRoutes:** FRM lists a Parked train with no stops, and one station's cargo drifted between reads. The owner ruled
+    that cargo-only differences are reported and never fail (`68be831`), and the mod now sends no stops for a Parked train,
+    as FRM does (`35f4be7`).
+
+### Notes (S3)
+
+- **Two failed runs are left out:** 40439238142 (linked above as the reason for both rulings) and 40433998294, a census
+  dispatched outside the backend wrapper, which stopped before the game started because the backend's host file was missing. Their
+  `result.json` files are not copied.
