@@ -4,6 +4,7 @@ Status: **Accepted** (owner, 2026-10-25: Q1 to Q5 all yes; see "Owner's answers"
 architect, 2026-10-25, for #281 (which absorbed #331's ADR-0037 step 6). Amends ADR-0036
 Decisions 1, 2, 4, 5, 6 and 7 and its build order. It keeps the owner's decisions D1 to D4 of 2026-09-26 as they
 are; the questions at the end are the only new choices.
+Amended 2026-10-26 (chart-led page, operator nav tab; see "Amendment 2026-10-26" at the end).
 
 The owner's direction (2026-09-26): a full page for metrics, not easily reachable by ordinary users, operator only,
 and shown in the public demo with fixture data. Owner priority (2026-10-20): next after the self-serve chain. It gives
@@ -186,3 +187,49 @@ later.
   is ready; sessions never touch environments or secrets (ADR-0049).
 - **Q4** Yes: "flaps" are shown, labelled as a stand-in for false alarms, until D4.
 - **Q5** Yes: PR 2 starts now.
+
+## Amendment 2026-10-26: a chart-led page, with an operator nav tab
+
+Owner decisions, 2026-10-26: (1) the metrics page becomes chart-led, modelled on Google SRE's four golden signals and
+the RED method, Grafana's dashboard practice (a headline stat row, then trends, then detail) and DORA's Four Keys
+dashboard, drawn with uPlot (already a frontend dependency, used by `power/PowerChart.tsx`). The existing tables stay as
+folded "Details", the accessible text path. (2) The page gets a visible "Metrics" nav tab for the operator only (the
+owner chose it over an Overview card or an Account-menu entry). Designed with the architecture advisor.
+
+### Amends section 2 (contract; additive, ADR-0007)
+- `MetricsOverview` gains an optional `charts` section (`Section<{ headline, trend }>`), optional so a frontend that
+  meets an older backend during a deploy still parses.
+- `trend` is a fixed, server-folded set of hourly series on one shared axis (`from` on the hour, `points`, a one-hour
+  step): requests by status class, request p50/p95/p99, game-server call p95 per upstream (vanilla, frm), DB query p95,
+  poll lag p95, agent ingest lag p95, five refused/dropped counters, and alerts fired. No per-route or per-server series,
+  which keeps a full 7d trend under 32 kB (the contract test checks the worst case).
+- Percentiles stay bucket upper bounds. In a trend `null` means "no data that hour" and `METRICS_TREND_OVER_MS` (10000)
+  means "above 5 s". Counters are 0 for a quiet hour; request counts are `null`, so an outage shows as a gap.
+- The trend always covers at least a day (25 points), so the `1h` window still has a usable chart; `7d` has 169.
+- `headline` has `current` and `previous` (the same-length window before it): requests, 5xx answers, request p95, poll
+  lag p95, agent lag p95, alerts fired, refused and dropped. Percentiles come from summed buckets on the server (hourly
+  percentiles cannot be merged). The page shows a percent change for counts and the bucket step for percentiles.
+- The existing `histograms`, `counters`, `servers`, `alerts` and `delivery` fields are unchanged.
+
+### Amends section 3 (access)
+- The "not in `visibleTabs`" rule is replaced: the operator sees a "Metrics" tab (`/app/metrics`) when
+  `canManageServers` is true, like the Servers tab. The command-bar entry and the Servers-page link stay.
+- Non-operators never see the tab or the command, are redirected as for an unknown page, and the server still answers
+  403. The server is the control; the tab is a convenience. The demo already shows the tab (Q1).
+
+### Amends section 7 (cost)
+- One new query, `metrics.seriesHourly`, over the same primary-key range on `hour` (filtered to the trend's metrics,
+  grouped by hour with the folded labels removed), and one small query, `metrics.alertsFiredHourly`, on
+  `alert_events_at_idx`. The range is at most twice the window (the older half is the headline's baseline): at most
+  about 50k rows read and about 3.7k returned. The trigger is unchanged and covers these queries too: a query p95 over
+  100 ms, or the endpoint p95 over 300 ms.
+
+### Build order (each its own PR from main; named A1 to A3 to keep clear of the PR numbers above)
+
+| # | What | Where | Tests |
+|---|---|---|---|
+| A1 | Contract: the `charts` section, trend and headline schemas, fixtures for a day and a full week | `packages/shared/` | fixtures parse; series lengths equal `points`; p50 <= p95 <= p99 per hour; `from` off the hour refused; the week fixture at most 32 kB; an overview without `charts` still parses |
+| A2 | Backend: `metrics.seriesHourly` and `metrics.alertsFiredHourly`, trend and headline folding, `QUERY_NAMES`; settles how an unknown `status_class` folds | `backend/src/modules/metrics/` | db test: hourly grouping, null versus zero, the previous half, the open bucket gives 10000; supertest still 401 / 403 / 200; `timedQueryCallSites` |
+| A3 | Page: headline tiles, trend charts (uPlot, lazy), folded Details, the operator "Metrics" tab, demo data | `frontend/` | tab only for the operator; non-operator redirected; CLS/INP budgets (ADR-0032); axe on the Details path; ui-reviewer; build-output spec |
+
+A1 merges first; A2 fills `charts`; A3 draws it, and shows "Charts not available yet" while `charts` is absent.

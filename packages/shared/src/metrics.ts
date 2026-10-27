@@ -11,6 +11,8 @@ import { z } from "zod";
  * - Per-server labels are folded away in `histograms`/`counters` (all servers combined); `servers` carries the worst
  *   few per metric, by public id only, never a display name, owner or member.
  * - A newer backend only adds fields; these response objects are not strict, so an older frontend still parses them.
+ * - `charts` (ADR-0056 amendment 2026-10-26, PR A1): hourly trends and headline numbers for the chart-led page;
+ *   optional, so the newer frontend still parses an older backend.
  */
 
 /** The largest finite bucket bound the registry records, in ms; `null` percentiles mean "above this". */
@@ -186,14 +188,117 @@ export type DeliverySnapshot = z.infer<typeof DeliverySnapshotSchema>;
 
 export const MetricsDeliverySectionSchema = section({ snapshot: DeliverySnapshotSchema });
 
-export const MetricsOverviewSchema = z.object({
-  generatedAt: IsoTimeSchema,
-  window: MetricsWindowSchema,
-  system: MetricsSystemSectionSchema,
-  alerts: MetricsAlertsSectionSchema,
-  delivery: MetricsDeliverySectionSchema,
-  links: z.object({ statusPage: z.httpUrl(), probeRuns: z.httpUrl() }),
+/**
+ * Charts (ADR-0056 amendment 2026-10-26): a fixed set of hourly trends, folded across servers, routes, groups and
+ * queries, on one axis (`from`, on the hour, then `points` hours), plus the headline numbers for the window and the
+ * same-length window before it. In a trend a percentile is a bucket upper bound, `METRICS_TREND_OVER_MS` for "above
+ * the last bucket", and `null` for an hour with no data (charts draw a gap). Counters are 0 for a quiet hour; request
+ * counts are `null` for an hour with no row, so a backend outage shows as a gap, not as zero traffic.
+ */
+export const METRICS_TREND_OVER_MS = 2 * METRICS_LAST_BUCKET_MS;
+/** 7 days of hours plus the partial current one. */
+export const METRICS_TREND_MAX_POINTS = 169;
+/** The trend's length per window: at least a day, so the 1h window still has a usable chart. */
+export const metricsTrendPoints = (window: MetricsWindow) => (window === "7d" ? METRICS_TREND_MAX_POINTS : 25);
+
+const TrendMsSchema = z
+  .number()
+  .refine((v) => v === METRICS_TREND_OVER_MS || (v >= 0 && v <= METRICS_LAST_BUCKET_MS), "a bucket bound or the over value")
+  .nullable();
+const CountSchema = z.number().int().nonnegative();
+const countSeries = z.array(CountSchema).max(METRICS_TREND_MAX_POINTS);
+const requestSeries = z.array(CountSchema.nullable()).max(METRICS_TREND_MAX_POINTS);
+const msSeries = z.array(TrendMsSchema).max(METRICS_TREND_MAX_POINTS);
+
+export const MetricsTrendSchema = z
+  .object({
+    from: IsoTimeSchema.refine((v) => {
+      const d = new Date(v);
+      return d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0;
+    }, "on the hour"),
+    points: z.number().int().min(1).max(METRICS_TREND_MAX_POINTS),
+    requests: z.object({ c2xx: requestSeries, c3xx: requestSeries, c4xx: requestSeries, c5xx: requestSeries }),
+    requestMs: z.object({ p50: msSeries, p95: msSeries, p99: msSeries }),
+    upstreamP95Ms: z.object({ vanilla: msSeries, frm: msSeries }),
+    dbP95Ms: msSeries,
+    pollLagP95Ms: msSeries,
+    agentLagP95Ms: msSeries,
+    agentRefused: countSeries,
+    signupRefused: countSeries,
+    historyRowsDropped: countSeries,
+    alertEventsDropped: countSeries,
+    pushDropped: countSeries,
+    alertsFired: countSeries,
+  })
+  .superRefine((t, ctx) => {
+    const series: [string, readonly unknown[]][] = [
+      ...Object.entries(t.requests).map(([k, v]) => [`requests.${k}`, v] as [string, readonly unknown[]]),
+      ...Object.entries(t.requestMs).map(([k, v]) => [`requestMs.${k}`, v] as [string, readonly unknown[]]),
+      ...Object.entries(t.upstreamP95Ms).map(([k, v]) => [`upstreamP95Ms.${k}`, v] as [string, readonly unknown[]]),
+      ["dbP95Ms", t.dbP95Ms],
+      ["pollLagP95Ms", t.pollLagP95Ms],
+      ["agentLagP95Ms", t.agentLagP95Ms],
+      ["agentRefused", t.agentRefused],
+      ["signupRefused", t.signupRefused],
+      ["historyRowsDropped", t.historyRowsDropped],
+      ["alertEventsDropped", t.alertEventsDropped],
+      ["pushDropped", t.pushDropped],
+      ["alertsFired", t.alertsFired],
+    ];
+    for (const [name, values] of series) {
+      if (values.length !== t.points) ctx.addIssue({ code: "custom", message: `${name} has ${values.length} points, not ${t.points}` });
+    }
+    // Per hour, p50 <= p95 <= p99 where both are known (the over value is the largest number, so it ranks last).
+    const ordered = (x: number | null, y: number | null) => x === null || y === null || x <= y;
+    for (let i = 0; i < t.points; i++) {
+      const [a, b, c] = [t.requestMs.p50[i] ?? null, t.requestMs.p95[i] ?? null, t.requestMs.p99[i] ?? null];
+      if (!ordered(a, b) || !ordered(b, c) || !ordered(a, c)) {
+        ctx.addIssue({ code: "custom", message: `${ORDER_MESSAGE} at point ${i}` });
+        break;
+      }
+    }
+  });
+export type MetricsTrend = z.infer<typeof MetricsTrendSchema>;
+
+/** One window's headline numbers. Percentiles come from the window's summed buckets (hourly ones cannot be merged). */
+export const MetricsHeadlineSchema = z
+  .object({
+    /** Hours the window covers (fractional for the partial current hour), so per-hour rates are exact. */
+    hours: z.number().positive(),
+    requests: CountSchema.nullable(),
+    /** 5xx answers: the error-rate numerator. 4xx is client behaviour and only shows in the trend. */
+    serverErrors: CountSchema.nullable(),
+    requestP95Ms: TrendMsSchema,
+    pollLagP95Ms: TrendMsSchema,
+    agentLagP95Ms: TrendMsSchema,
+    alertsFired: CountSchema,
+    /** The five refused/dropped counters summed. */
+    refusedAndDropped: CountSchema,
+  })
+  .refine((v) => v.requests === null || (v.serverErrors ?? 0) <= v.requests, "serverErrors <= requests");
+export type MetricsHeadline = z.infer<typeof MetricsHeadlineSchema>;
+
+export const MetricsChartsSectionSchema = section({
+  headline: z.object({ current: MetricsHeadlineSchema, previous: MetricsHeadlineSchema }),
+  trend: MetricsTrendSchema,
 });
+export type MetricsChartsSection = z.infer<typeof MetricsChartsSectionSchema>;
+
+export const MetricsOverviewSchema = z
+  .object({
+    generatedAt: IsoTimeSchema,
+    window: MetricsWindowSchema,
+    system: MetricsSystemSectionSchema,
+    alerts: MetricsAlertsSectionSchema,
+    delivery: MetricsDeliverySectionSchema,
+    /** Optional: a frontend that meets an older backend during a deploy still parses (ADR-0007). */
+    charts: MetricsChartsSectionSchema.optional(),
+    links: z.object({ statusPage: z.httpUrl(), probeRuns: z.httpUrl() }),
+  })
+  .refine(
+    (v) => !v.charts?.available || v.charts.trend.points === metricsTrendPoints(v.window),
+    "the trend's length matches the window",
+  );
 export type MetricsOverview = z.infer<typeof MetricsOverviewSchema>;
 
 /** POST /api/internal/metrics/delivery: the ingest acknowledgement (the body is a `DeliverySnapshot`). */
