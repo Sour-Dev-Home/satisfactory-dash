@@ -26,20 +26,52 @@ export function totalLengthM(lines: readonly Line[]): number {
 
 /** Whether any part of a segment's bounding box lies in the view (a cheap test, not exact geometry). */
 export function railInView(view: ViewM | null, segment: RailSegment): boolean {
-  return lineInView(view, segment);
-}
-
-/** Whether any part of a line's bounding box lies in the view: a rail segment or a power line. */
-export function lineInView(view: ViewM | null, line: Line): boolean {
   if (!view) return true;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const [x, y] of line.points) {
+  for (const [x, y] of segment.points) {
     minX = Math.min(minX, x);
     maxX = Math.max(maxX, x);
     minY = Math.min(minY, y);
     maxY = Math.max(maxY, y);
   }
   return maxX >= view.minX && minX <= view.maxX && maxY >= view.minY && minY <= view.maxY;
+}
+
+/** Whether the straight step a-b touches the view (Liang-Barsky clipping; the edge counts). */
+function stepInView(view: ViewM, a: readonly [number, number], b: readonly [number, number]): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const edges: [number, number][] = [
+    [-dx, a[0] - view.minX],
+    [dx, view.maxX - a[0]],
+    [-dy, a[1] - view.minY],
+    [dy, view.maxY - a[1]],
+  ];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else {
+      const r = q / p;
+      if (p < 0) t0 = Math.max(t0, r);
+      else t1 = Math.min(t1, r);
+      if (t0 > t1) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether any part of a line is in the view, exact step by step: a long diagonal wire whose bounding box overlaps
+ * the view but which passes beside it is out; one crossing the view with both ends outside is in.
+ */
+export function lineInView(view: ViewM | null, line: Line): boolean {
+  if (!view) return true;
+  const { points } = line;
+  if (points.length === 1) return stepInView(view, points[0], points[0]);
+  for (let i = 1; i < points.length; i++) if (stepInView(view, points[i - 1], points[i])) return true;
+  return false;
 }
 
 export function nodeInView(view: ViewM | null, node: ResourceNode): boolean {
@@ -58,7 +90,8 @@ export const nodeRadiusPx = (purity: string) => ownValue(PURITY_RADIUS_PX, purit
 
 /** "1,234 m": whole metres with a thousands separator; the map's own unit, never converted. */
 export const formatMetres = (m: number) => `${Math.round(m).toLocaleString("en-US")} m`;
-export const formatPoint = ([x, y]: readonly [number, number]) => `x ${x.toLocaleString("en-US")}, y ${y.toLocaleString("en-US")}`;
+// `+ 0` turns a -0 coordinate into 0, which would otherwise print as "-0".
+export const formatPoint = ([x, y]: readonly [number, number]) => `x ${(x + 0).toLocaleString("en-US")}, y ${(y + 0).toLocaleString("en-US")}`;
 
 /** Resource names with their counts, most common first (a Map: names come from the game). */
 export function countByType(nodes: readonly ResourceNode[]): [string, number][] {

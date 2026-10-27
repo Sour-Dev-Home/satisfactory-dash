@@ -117,6 +117,20 @@ describe("lineInView", () => {
     expect(lineInView(VIEW, { points: [[-50, 50], [150, 50]] })).toBe(true);
   });
 
+  it("is out when a diagonal passes beside the view though its bounding box overlaps it", () => {
+    expect(lineInView(VIEW, { points: [[-100, 350], [350, -100]] })).toBe(false);
+    expect(lineInView(VIEW, { points: [[-100, 100], [100, -100]] })).toBe(true);
+  });
+
+  it("handles a degenerate line (same point twice) and a point on the edge", () => {
+    expect(lineInView(VIEW, { points: [[100, 100], [100, 100]] })).toBe(true);
+    expect(lineInView(VIEW, { points: [[101, 50], [101, 50]] })).toBe(false);
+  });
+
+  it("prints a -0 coordinate as 0", () => {
+    expect(formatPoint([-0, 5])).toBe("x 0, y 5");
+  });
+
   it("is out of view when its box misses the view, and in view when there is no view yet", () => {
     expect(lineInView(VIEW, { points: [[200, 200], [300, 300]] })).toBe(false);
     expect(lineInView(null, { points: [[200, 200], [300, 300]] })).toBe(true);

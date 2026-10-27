@@ -107,6 +107,8 @@ export function RailsTable({ segments, view }: { segments: readonly RailSegment[
  * The power lines in view (ADR-0038 §1, #330), the rails' table for wires. FRM ids can repeat, so the index backs the
  * key up. Hundreds of rows at most once zoomed out: the region scrolls, and panning in narrows it.
  */
+export const POWER_LINE_ROWS_MAX = 500;
+
 export function PowerLinesTable({ lines, view }: { lines: readonly PowerLine[]; view: ViewM | null }) {
   const listed = lines.map((line, i) => ({ line, key: `${line.id}:${i}` })).filter(({ line }) => lineInView(view, line));
   return (
@@ -121,7 +123,7 @@ export function PowerLinesTable({ lines, view }: { lines: readonly PowerLine[]; 
           </tr>
         </thead>
         <tbody>
-          {listed.map(({ line, key }) => (
+          {listed.slice(0, POWER_LINE_ROWS_MAX).map(({ line, key }) => (
             <tr key={key}>
               <td data-label="Line">{line.id}</td>
               <td data-label="Length">{formatMetres(polylineLengthM(line.points))}</td>
@@ -131,6 +133,11 @@ export function PowerLinesTable({ lines, view }: { lines: readonly PowerLine[]; 
           ))}
         </tbody>
       </table>
+      {listed.length > POWER_LINE_ROWS_MAX && (
+        <p className="text-sm text-muted">
+          Showing the first {POWER_LINE_ROWS_MAX} of {listed.length.toLocaleString("en-US")}. Zoom in to list the rest.
+        </p>
+      )}
     </ViewTable>
   );
 }
