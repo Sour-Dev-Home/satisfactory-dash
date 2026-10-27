@@ -52,6 +52,42 @@ describe("droneRoutes world layer (ADR-0055 Decision 1)", () => {
   });
 });
 
+describe("droneRoutes pairedId (S4-A: a native reader can send the partner's id)", () => {
+  const [nativeHome, nativePartner, nativeUnpaired] = fixtures.droneRoutesSampleWithPairedId.data;
+
+  it("an FRM-shaped port without pairedId still parses, and parsing doesn't add the key", () => {
+    expect(home).not.toHaveProperty("pairedId");
+    const parsed = DronePortSchema.parse(home);
+    expect(parsed).not.toHaveProperty("pairedId");
+    expect(parsed).toEqual(home);
+  });
+
+  it("the native fixture names the partner's id on both ports and null on the unpaired one", () => {
+    expect(DroneRoutesWorldIngestRequestSchema.safeParse(fixtures.droneRoutesSampleWithPairedId).success).toBe(true);
+    expect(nativeHome!.pairedId).toBe(nativePartner!.id);
+    expect(nativePartner!.pairedId).toBe(nativeHome!.id);
+    expect(nativeUnpaired!.pairedId).toBeNull();
+    expect(nativeHome!.paired).toBe(nativePartner!.name);
+  });
+
+  it("accepts null and a string, and is bounded like id", () => {
+    expect(DronePortSchema.safeParse({ ...home, pairedId: null }).success).toBe(true);
+    expect(DronePortSchema.safeParse({ ...home, pairedId: "Build_DroneStation_C_1" }).success).toBe(true);
+    expect(DronePortSchema.safeParse({ ...home, pairedId: "n".repeat(200) }).success).toBe(true);
+    expect(DronePortSchema.safeParse({ ...home, pairedId: "n".repeat(201) }).success).toBe(false);
+    expect(DronePortSchema.safeParse({ ...home, id: "n".repeat(200) }).success).toBe(true);
+    expect(DronePortSchema.safeParse({ ...home, id: "n".repeat(201) }).success).toBe(false);
+    // Same bound as id, including its (lack of a) minimum.
+    expect(DronePortSchema.safeParse({ ...home, pairedId: "" }).success).toBe(DronePortSchema.safeParse({ ...home, id: "" }).success);
+  });
+
+  it("refuses a non-string pairedId", () => {
+    for (const bad of [5, true, {}, ["Build_DroneStation_C_1"]]) {
+      expect(DronePortSchema.safeParse({ ...home, pairedId: bad }).success).toBe(false);
+    }
+  });
+});
+
 describe("droneRoutes item schema as the ingest uses it (per-item re-validation)", () => {
   it("drops junk items without throwing", () => {
     const { paired: _paired, ...noPaired } = home!;
