@@ -107,6 +107,14 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - Reduced motion or Motion: Off: no glide.
   - Benchmark: on a synthetic site of the measured size (160 groups, 204 edges), 45-48 ms for each layout. See ADR-0060
     Decision 3.
+- The group panel and the "+k" list are one floating, non-modal card (`CanvasOverlay.tsx`, the owner 2026-10-27; it was a
+  full-height drawer from lg and stacked below). As tall as its content, up to the canvas less `OVERLAY_MARGIN`, then it
+  scrolls inside; at most `--spacing-graph-panel` wide (`OVERLAY_W`, a test keeps them equal). From lg it stands beside the
+  clicked card (or the line's label): right, else left, else below, else above, clamped inside the canvas
+  (`overlayPlacement.ts`, pure). Below lg it lies across the canvas's bottom, at most half its height. It is placed from the
+  view on every render, so it follows a pan or zoom. If it opens over the card, the view moves once to clear it. Placed
+  CSP-safely: an overlay `<svg>` over the canvas with a `<foreignObject>` at x, y, width and height attributes. It closes
+  with Close, Escape or a background click; the click leaves focus on the viewport, the other two hand it back to the card.
 - The canvas is SVG styled by token classes and attributes only (no `style=`), `role="img"` with a counts label. The
   keyboard reaches each card through a list of visually hidden buttons beside it (an image's children are
   presentational).

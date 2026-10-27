@@ -126,6 +126,8 @@ describe("item focus, flag on", () => {
     fireEvent.click(chip);
     expect(chip).toHaveAttribute("aria-expanded", "true");
     const list = screen.getByRole("region", { name: /^4 items from / });
+    // It floats over the canvas in the group panel's place (CanvasOverlay), not in a drawer or stacked under it.
+    expect(list.closest("[data-overlay] foreignObject")).not.toBeNull();
     const rows = within(list).getAllByRole("button", { pressed: false });
     expect(rows.map((r) => r.getAttribute("aria-label")?.split(",")[0])).toEqual(["Iron Ore", "Limestone", "Coal", "Sulfur"]);
     expect(rows[0]).toHaveFocus();

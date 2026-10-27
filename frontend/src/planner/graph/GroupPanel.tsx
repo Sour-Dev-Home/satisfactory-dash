@@ -60,7 +60,7 @@ export function GroupPanel({
   const label = groupLabel(withName(node));
 
   return (
-    <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="grid content-start gap-2 rounded-card border border-line p-4">
+    <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="grid content-start gap-2 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {icon !== undefined && <img src={icon} alt="" width={64} height={64} className="size-building-icon shrink-0 rounded-card bg-icon-chip" />}
