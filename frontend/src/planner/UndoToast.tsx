@@ -64,7 +64,15 @@ export function UndoToast() {
               {shown.undo.label}
             </button>
           )}
-          <button type="button" onClick={changes.dismiss} className="min-h-touch">
+          <button
+            type="button"
+            onClick={() => {
+              // The focus is in the offer that goes away: hand it to the planner's heading, not the page's top.
+              changes.dismiss();
+              document.getElementById("planner-heading")?.focus();
+            }}
+            className="min-h-touch"
+          >
             Dismiss
           </button>
         </div>

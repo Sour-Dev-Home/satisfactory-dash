@@ -605,7 +605,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             )
           : overflowing
             ? "Drag or use the arrow keys to see more →"
-            : factoryPicks !== undefined && scene.level === "overview" && <span className="hidden sm:inline">Shift- or Ctrl-click factories to pick them for a merge.</span>}
+            : factoryPicks !== undefined &&
+              scene.level === "overview" && (
+                // One line at any width: a phone has no Shift, so it points at the Tables view's ticks.
+                <>
+                  <span className="sm:hidden">Tick factories in Tables to merge them.</span>
+                  <span className="hidden sm:inline">Shift- or Ctrl-click factories (or Shift+Enter) to pick them for a merge, or tick them in Tables.</span>
+                </>
+              )}
       </p>
 
       {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}

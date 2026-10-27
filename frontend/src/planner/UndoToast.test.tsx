@@ -67,7 +67,9 @@ describe("UndoToast", () => {
     const { changes } = setup({ key: 2, message: "Split back: the factories are as they were." });
     expect(screen.queryByRole("button", { name: /Split back|Undo/ })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Production planner" })).toHaveFocus();
+    act(() => screen.getByRole("button", { name: "Dismiss" }).focus());
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(changes.dismiss).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Production planner" })).toHaveFocus();
   });
 });
