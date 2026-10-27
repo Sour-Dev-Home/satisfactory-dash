@@ -45,3 +45,24 @@ test("the real table parses to as many slugs as it has rows", () => {
   const rows = src.slice(src.indexOf("const SLUG_BY_CLASS")).split("]);")[0].match(/^\s+\["/gm) ?? [];
   assert.equal(slugsFromTable(src).length, rows.length);
 });
+
+test("pickSources keeps a lone 512 px texture and rejects two at the same size", () => {
+  const one = pickSources([{ name: "Oil_512.png", path: "a/Oil_512.png" }]);
+  assert.equal(one.bySlug.get("oil").size, 512);
+  assert.equal(one.errors.length, 0);
+  const two = pickSources([
+    { name: "Oil_512.png", path: "a/Oil_512.png" },
+    { name: "IconDesc_Oil_512.png", path: "b/IconDesc_Oil_512.png" },
+  ]);
+  assert.equal(two.errors.length, 1);
+  const late512 = pickSources([
+    { name: "Oil_256.png", path: "a/Oil_256.png" },
+    { name: "IconDesc_Oil_512.png", path: "b/IconDesc_Oil_512.png" },
+  ]);
+  assert.equal(late512.bySlug.get("oil").size, 256);
+  assert.equal(late512.errors.length, 0);
+});
+
+test("slugsFromTable throws on a table with no rows", () => {
+  assert.throws(() => slugsFromTable("const SLUG_BY_CLASS = new Map([\n]);"), /empty/);
+});

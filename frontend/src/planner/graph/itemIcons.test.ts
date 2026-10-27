@@ -93,6 +93,10 @@ describe("itemIconText (the fallback when there is no icon)", () => {
     expect(itemIconText("🍓 Berry")).toBe("B");
   });
 
+  it("keeps one letter per word when upper-casing widens it", () => {
+    expect(itemIconText("ßa ßb")).toBe("SS");
+  });
+
   it("is '?' with no usable name, never blank", () => {
     expect(itemIconText(undefined)).toBe("?");
     expect(itemIconText("")).toBe("?");

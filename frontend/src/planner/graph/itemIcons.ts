@@ -185,8 +185,9 @@ export function itemIconText(itemName: string | undefined): string {
     .map(initialOf)
     .filter((c): c is string => c !== undefined)
     .slice(0, 2)
-    .join("")
-    .toUpperCase();
+    // Upper-casing can widen one letter ("ß" is "SS"); keep one letter per word so the bubble text stays short.
+    .map((c) => [...c.toUpperCase()][0])
+    .join("");
   return initials === "" ? "?" : initials;
 }
 
