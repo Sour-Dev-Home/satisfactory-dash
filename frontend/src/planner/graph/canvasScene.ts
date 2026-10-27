@@ -103,6 +103,36 @@ export interface Card {
   upstream?: { count: number; collapsed: boolean } | undefined;
   /** Which bubble this card opens or collapses (a bubble card, or a group inside a frame). */
   bubbleKey: string | undefined;
+  /** A group of several machines whose ids the graph lists: it can open into a frame of one small card per machine. */
+  machines?: CardMachines | undefined;
+}
+
+/** An expandable group's machines (`groupMachines`). */
+export interface CardMachines {
+  /** Whether the card is opened into its machines now. */
+  open: boolean;
+  /** The machines it shows a card for: the group's distinct ids, at most `MACHINES_MAX`. */
+  ids: string[];
+  /** Machines past those (the cap, or ones the graph has no id for): one "+k more" card, which opens the side panel. */
+  more: number;
+}
+
+/** An opened group shows at most this many machine cards, then "+k more": the frame stays small enough to draw and to lay
+ *  out within ADR-0060 Decision 3's 100 ms (the frame is one card to dagre, its machines a grid inside it). */
+export const MACHINES_MAX = 48;
+
+/** What an opened group's frame adds to its words: the game reads belts per group, so the lines join the frame. */
+export const MACHINES_FRAME_NOTE = "The game reports belts per group, not per machine, so the lines join the frame, not a machine";
+
+/**
+ * Whether a group can open into its machines, and what it would show: more than one machine, and at least one id to show.
+ * Undefined otherwise.
+ */
+export function groupMachines(node: Pick<PlannerNode, "count" | "machineIds">, open: boolean): CardMachines | undefined {
+  const ids = [...new Set(node.machineIds)];
+  if (!(node.count > 1) || ids.length === 0) return undefined;
+  const shown = ids.slice(0, MACHINES_MAX);
+  return { open, ids: shown, more: Math.max(0, node.count - shown.length) };
 }
 
 export interface Frame {
@@ -164,9 +194,11 @@ export interface FactoryView {
   /** Cards whose upstream is hidden. */
   collapsed: ReadonlySet<string>;
   storageDetail: boolean;
+  /** Group cards opened into their machines (absent = none). */
+  machinesOpen?: ReadonlySet<string> | undefined;
 }
 
-export const EMPTY_VIEW: FactoryView = { flipped: new Set(), unfolded: new Set(), collapsed: new Set(), storageDetail: true };
+export const EMPTY_VIEW: FactoryView = { flipped: new Set(), unfolded: new Set(), collapsed: new Set(), storageDetail: true, machinesOpen: new Set() };
 
 const cutTo = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -651,7 +683,11 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     const away = remote.get(node.key);
     if (away !== undefined) extra.push(remoteText(away));
     extra.push(...chipLines([node.key]));
-    return groupCard(node, extra, rates);
+    const card = groupCard(node, extra, rates);
+    const machines = groupMachines(node, view.machinesOpen?.has(node.key) === true);
+    if (machines === undefined) return card;
+    const opened = machines.open ? [`Opened into ${plural(machines.ids.length, "machine card", "machine cards")}${machines.more > 0 ? ` and ${machines.more} more` : ""}`, MACHINES_FRAME_NOTE] : [];
+    return { ...card, machines, description: sentences([card.description, ...opened]) };
   };
 
   const cards: Card[] = [];

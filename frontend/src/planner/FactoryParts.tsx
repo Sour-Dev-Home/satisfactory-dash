@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Bottleneck, ProductionGraph } from "@satisfactory-dash/shared";
-import { BottleneckBadge } from "./BottleneckBadge";
+import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
 import { aggregateFlows, flowParts, factoryOfNode, type FactoryModel } from "./graph/hierarchy";
 import {
   aggregateRateText,
@@ -67,11 +67,7 @@ export function FactoryFacts({
           ))}
         </ul>
       )}
-      {!detail && findings !== undefined && (
-        <p className="m-0 text-sm">
-          <BottleneckBadge count={siteFindings(model.nodes, findings).length} what={factory.name} />
-        </p>
-      )}
+      {!detail && <BottleneckLine count={findings === undefined ? undefined : siteFindings(model.nodes, findings).length} what={factory.name} />}
     </>
   );
 }

@@ -3,7 +3,7 @@ import { http, HttpResponse, type JsonBodyType } from "msw";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { endpoints, ProductionGraphResponseSchema } from "@satisfactory-dash/shared";
-import { productionGraphFactories, productionGraphTwoSites, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { bottlenecksEmpty, productionGraphFactories, productionGraphTwoSites, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -45,6 +45,27 @@ describe("PlannerView: the factory overview (ADR-0055)", () => {
     expect(screen.getByText(/2 factories · 13 machines in 7 groups/)).toBeInTheDocument();
     // The factory level replaces the site cards.
     expect(screen.queryByRole("list", { name: "Sites" })).not.toBeInTheDocument();
+  });
+
+  it("reserves a factory card's bottleneck line before the late bottlenecks read answers, then fills it in place", async () => {
+    // Not a read the reveal waits for: answering after the cards were drawn, a new line pushed every card, the notes and
+    // the footer down on a phone (the Planner's page-reveal layout shift).
+    let answer: () => void = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    server.use(
+      http.get(endpoints.bottlenecks.route, async () => {
+        await answered;
+        return HttpResponse.json(bottlenecksEmpty);
+      }),
+    );
+    renderView();
+    const plate = await card("Iron Plate factory");
+    const line = plate.querySelector("[data-bottleneck-line]");
+    expect(line).toHaveClass("min-h-lh");
+    expect(line).toBeEmptyDOMElement();
+    answer();
+    expect(await within(plate).findByText("No bottlenecks")).toBeInTheDocument();
+    expect(plate.querySelector("[data-bottleneck-line]")).toBe(line);
   });
 
   it("lists the flows between factories as a table with headers, the carrier and the flow class", async () => {

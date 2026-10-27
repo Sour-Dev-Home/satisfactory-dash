@@ -49,6 +49,17 @@ describe("fold memory", () => {
     expect(readFolds("b").unfolded.size).toBe(0);
   });
 
+  it("remembers the groups opened into their machines, and reads an entry from before that field as none", () => {
+    writeFolds("a", { ...folds([]), machines: new Set(["g1"]) });
+    clearFoldMemory();
+    expect([...(readFolds("a").machines ?? [])]).toEqual(["g1"]);
+    window.sessionStorage.setItem(FOLDS_KEY, JSON.stringify([["old", { flipped: ["b1"], unfolded: [] }], ["bad", { flipped: [], unfolded: [], machines: [3, "ok", null] }]]));
+    clearFoldMemory();
+    expect(readFolds("old").machines?.size).toBe(0);
+    expect([...readFolds("old").flipped]).toEqual(["b1"]);
+    expect([...(readFolds("bad").machines ?? [])]).toEqual(["ok"]);
+  });
+
   it("holds the choices in memory when sessionStorage throws", () => {
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("blocked");

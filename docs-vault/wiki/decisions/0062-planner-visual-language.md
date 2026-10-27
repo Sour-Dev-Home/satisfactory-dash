@@ -4,7 +4,8 @@ Status: **Accepted** (owner, 2026-10-27), with the owner's answers below. Propos
 `architecture-advisor` review of `main`. Amends ADR-0050 Decision 4 (the text form) and ADR-0053. Paths are relative to
 `frontend/src/` unless they say otherwise. The owner's words: "Instead of '1 flow to storage' ... use an animation or other design
 language", "Instead of text 'backed up' use some kind of design language element ... (and be toggleable)", "Tables seems
-unhelpful", "The factory tab feels difficult to use and is a bit unwieldy to look at".
+unhelpful", "The factory tab feels difficult to use and is a bit unwieldy to look at". **Amended 2026-10-27 (accepted, owner):
+every line shows its rate; see "Amendment, 2026-10-27" at the end.**
 
 ## Owner answers (2026-10-27)
 
@@ -140,3 +141,60 @@ Proposals 2 and 3 come after build PRs 1 and 4 below.
 - The owner finds symbols harder to read than words (flip `planner.stateStyle`'s default).
 - Animated caps on 100+ cards cost frames (animate only the hovered or focused card).
 - Belt capacity reaches `CanvasFlow` (ADR-0060 Revisit): a cap could then show fullness, not just rate.
+
+## Amendment, 2026-10-27: every line shows its rate
+
+Status: **Accepted** (owner, 2026-10-27), with the owner's answers below. The owner's words: "one feature I eventually want is
+all the lines moving based on their belt speed (or actually speed) and thickness + color also based on it. Vehicle/alternative
+transport uses a different line style."
+
+### Owner answers (2026-10-27)
+1. **Colour:** "Speed + thickness only". Colour keeps its meaning of carrier and kind: pipe is info, a mixed belt is warn, an
+   unknown line is the unknown style, stalled is bad or warn (Decision 2). Rate never changes colour.
+2. **Moving lines:** "Lines in view, capped". The cap is set after a measurement on a factory of 200+ edges
+   **[NEEDS MEASUREMENT]**.
+3. **Transports:** "Double line".
+
+### Decisions
+1. **Marching dashes on every line with a rate.** Each edge with a measured or estimated rate that is not stalled has its
+   dashes march (a `stroke-dashoffset` animation set by CSS class; no per-edge JS, no `style=`) at one of three speed steps.
+   This narrows Decision 1's "Rejected: dots moving along the real routed lines": dashes by class, only on lines in view and
+   under the cap, not dots on every edge.
+   - An **unknown** rate is static and dotted. A **stalled** line is static and ends in a stop bar (Decision 2). An "at least"
+     rate counts as **estimated** (dashed, and it moves at its step).
+2. **One step function, shared.** `rateStep(ratePerMinute, unit)` returns slow, mid or fast. The destination caps (Decision 1)
+   use the same function, so a line and its cap agree. It has fixed thresholds per unit (items/min and m³/min), and steps are
+   never compared across units: a fast pipe and a fast belt are each fast for their own unit. The threshold values are set in
+   build PR 1 [NEEDS VERIFICATION: no values chosen yet].
+3. **Motion tokens.** `--duration-flow-slow`, `--duration-flow-mid` and `--duration-flow-fast` are defined once, by whichever
+   PR lands first (this one or the caps PR; they do not exist yet). They are zeroed under reduced motion like the other motion
+   tokens, and the Motion control's Off stops them.
+4. **Width means rate.** Line width has three steps, 2, 3 and 4, from the same `rateStep`. A mixed belt keeps its warn colour
+   and gets a thin inner stroke instead of extra width, so width only ever means rate.
+5. **"Speed" is throughput, not belt tier.** The step comes from items (or m³) per minute. Belt tier and fullness are
+   [NEEDS VERIFICATION] until capacity reaches `CanvasFlow` (ADR-0060 Revisit); the legend says the speed is the rate, not
+   the belt.
+6. **Transports draw a double line.** Train, truck, drone and Depot edges draw two parallel strokes and do not march; their
+   glyph moves along the line instead. The glyph's motion path skips the item bubble's label box (the bubble work in flight
+   in branch `feat/planner-expand-machines`).
+7. **Legend and text path.** The legend gains the speed and width rows and the double line. Each line's `<title>` and
+   aria text add the step word ("about 120 items/min, fast"), so motion and width are never the only carriers.
+8. **No layout change.** No dagre or router change; width and dashes are drawn on the existing routes. No contract change.
+
+### Build plan (each PR from `main`, no stacking)
+| # | PR | Proof |
+|---|---|---|
+| 1 | `rateStep`, per-unit thresholds, the flow tokens (if not yet added) | Unit tests per unit and edge values; reduced motion zeroes the tokens |
+| 2 | Width steps and the mixed belt's inner stroke | Baselines; contrast holds |
+| 3 | Marching dashes, the in-view cap, the measurement on a 200+ edge factory | Frame-time measurement recorded; unknown and stalled static; Motion Off |
+| 4 | The transport double line and moving glyph | Baselines; glyph skips the bubble label |
+| 5 | Legend rows and the step word in `<title>` and aria | Axe; `ui-reviewer` |
+
+### Consequences
+- The graph reads rate at a glance by speed and width, with colour left free for carrier and state.
+- Animation cost is bounded by the view and the cap, not the factory's size, once the cap is measured.
+- Lines and caps share one step function, so they cannot disagree.
+
+### Revisit when
+- The measurement shows the cap is too low to be useful (fall back to animating only the hovered or selected path).
+- Belt capacity reaches `CanvasFlow`: width or a fill could then show fullness against the belt tier.

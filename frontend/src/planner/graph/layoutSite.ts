@@ -4,7 +4,7 @@ import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Fra
 import { buildingIconUrl } from "./buildingIcons";
 import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
 import { routeOrthogonal } from "./orthogonalRoute";
-import { GLYPH_SIZE } from "./transportModes";
+import { GLYPH_HALO_RADIUS, GLYPH_SIZE } from "./transportModes";
 
 // Sizes are SVG user units, tied to the canvas's text classes (a factory's name and the "×N" badge `text-base` 16 px
 // semibold, body lines and edge labels `text-sm` 14 px). A card is icon-first: the building's icon at the top-left with
@@ -136,18 +136,67 @@ type CardSize = Pick<LaidNode, "width" | "height" | "title" | "lines" | "iconUrl
 /** Whether a line is drawn as a heading (`text-base`, semibold): a factory card's name. */
 export const isHeadingLine = (card: Pick<Card, "kind">, i: number): boolean => card.kind === "factory" && i === 0;
 
-/** A card's size: as wide as its icon row or its longest line, as tall as the icon row and its lines. */
+/** A card's size: as wide as its icon row or its longest line, as tall as the icon row and its lines. A group opened into
+ *  its machines is the frame round their grid (`machineFrameSize`). */
 export function cardSize(card: Card): CardSize {
   const iconUrl = card.className === undefined ? undefined : buildingIconUrl(card.className);
+  const reserve = card.upstream === undefined ? 0 : PILL_RESERVE;
+  if (card.machines?.open === true) {
+    const frame = machineFrameSize(machineSlots(card.machines), card.title.length);
+    return { title: card.title, lines: card.lines, iconUrl, width: frame.width, height: frame.height + reserve };
+  }
   const row = BUILDING_ICON_SIZE + (card.count === undefined ? 0 : BUILDING_ICON_GAP + countBadgeWidth(card.count));
   const text = Math.max(row, ...card.lines.map((l, i) => l.length * (isHeadingLine(card, i) ? CHAR_W_TITLE : CHAR_W_BODY)));
+  // A card that can open into its machines keeps room for its Expand pill (at the bottom right) beside the upstream one.
+  const expandable = card.machines !== undefined;
   return {
     title: card.title,
     lines: card.lines,
     iconUrl,
-    width: Math.max(NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
-    // A card with an upstream pill makes room below its text for the pill's upper half.
-    height: Math.ceil(LINES_TOP + card.lines.length * LINE_H + NODE_PAD_Y + (card.upstream === undefined ? 0 : PILL_RESERVE)),
+    width: Math.max(expandable ? EXPANDABLE_MIN_W : NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
+    // A card with an upstream (or Expand) pill makes room below its text for the pill's upper half.
+    height: Math.ceil(LINES_TOP + card.lines.length * LINE_H + NODE_PAD_Y + (reserve > 0 || expandable ? PILL_RESERVE : 0)),
+  };
+}
+
+// ---- a group opened into its machines --------------------------------------------------------------------------------
+
+/** The Collapse pill in a frame's header (an opened bubble's, an opened group's), and the Expand pill on a group card. */
+export const COLLAPSE_W = 76;
+export const EXPAND_W = 68;
+/** A group card that can open is at least this wide: its upstream pill, the Expand pill and the gaps round them. */
+export const EXPANDABLE_MIN_W = 8 + 48 + 8 + EXPAND_W + 8;
+/** One machine's card in an opened group: three `text-sm` lines (its name, its state, its output or fuel). */
+export const MACHINE_CARD_W = 192;
+export const MACHINE_LINES = 3;
+export const MACHINE_CARD_H = 2 * NODE_PAD_Y + MACHINE_LINES * LINE_H;
+export const MACHINE_GAP = 8;
+/** The opened group's header strip, inside its frame: the title on the left, Collapse on the right. */
+export const MACHINE_HEADER_H = FRAME_HEADER_H + 2 * NODE_PAD_Y;
+/** The characters a machine card's line holds before it is cut (the full words are in its button and tooltip). */
+export const MACHINE_LINE_CHARS = Math.floor((MACHINE_CARD_W - 2 * NODE_PAD_X) / CHAR_W_BODY);
+
+/** The baseline of a machine card's line `i`. */
+export const machineLineY = (i: number): number => NODE_PAD_Y + LINE_H * (i + 1) - BASELINE_UP;
+/** How many cards an opened group draws: one per shown machine, and the "+k more" card when there are more. */
+export const machineSlots = (m: { ids: readonly string[]; more: number }): number => m.ids.length + (m.more > 0 ? 1 : 0);
+/** The grid's columns: near square, so a frame of eight is three by three, of 49 seven by seven. */
+export const machineColumns = (n: number): number => Math.max(1, Math.ceil(Math.sqrt(n)));
+
+/** The top-left of machine card `i` in its frame, relative to the frame's corner. */
+export function machineSlot(i: number, n: number): Point {
+  const cols = machineColumns(n);
+  return { x: NODE_PAD_X + (i % cols) * (MACHINE_CARD_W + MACHINE_GAP), y: MACHINE_HEADER_H + Math.floor(i / cols) * (MACHINE_CARD_H + MACHINE_GAP) };
+}
+
+/** The frame round `n` machine cards: the grid with padding, under the header, and at least as wide as the title and Collapse. */
+export function machineFrameSize(n: number, titleChars: number): { width: number; height: number } {
+  const cols = machineColumns(n);
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const grid = cols * MACHINE_CARD_W + (cols - 1) * MACHINE_GAP;
+  return {
+    width: Math.ceil(Math.max(grid + 2 * NODE_PAD_X, titleChars * CHAR_W_BODY + COLLAPSE_W + 3 * NODE_PAD_X)),
+    height: MACHINE_HEADER_H + rows * MACHINE_CARD_H + (rows - 1) * MACHINE_GAP + NODE_PAD_X,
   };
 }
 
@@ -182,8 +231,18 @@ const lengthOf = (points: readonly Point[]): number => {
 
 /** Where along its path (0 to 1, by length) an edge's `mid` stands when no label holds a glyph (a plain belt or pipe). */
 export const GLYPH_AT = 0.3;
-/** The room a transport's glyph takes at the left of its label pill: the glyph and the gap before the words. */
-export const GLYPH_INSET = GLYPH_SIZE + LABEL_PAD;
+/** The room a transport's glyph takes at the left of its label pill: the glyph's halo (wider than its 24-unit box) and the
+ *  gap before the bubbles, so the glyph at rest never touches them. */
+export const GLYPH_INSET = 2 * GLYPH_HALO_RADIUS + LABEL_PAD;
+/** A line's label pill as a box (the size it is drawn at, centred where the layout put it). */
+export const labelBox = (e: Pick<LaidEdge, "labelX" | "labelY" | "labelWidth" | "labelHeight">) => ({
+  x: e.labelX - e.labelWidth / 2,
+  y: e.labelY - e.labelHeight / 2,
+  width: e.labelWidth,
+  height: e.labelHeight,
+});
+/** Where a transport's glyph stands at rest: inside its pill, at the left, its halo `LABEL_PAD / 2` from the pill's edge. */
+export const glyphRestCentre = (labelX: number, labelY: number, pillWidth: number): Point => ({ x: labelX - pillWidth / 2 + LABEL_PAD / 2 + GLYPH_HALO_RADIUS, y: labelY });
 
 /** The point `fraction` of the way along a path by length, halfway by default (the first point of a path with no length, the origin of an empty one). */
 export function pathMidpoint(points: readonly Point[], fraction = 0.5): Point {
@@ -622,7 +681,7 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
       labelWidth: width,
       labelHeight: height,
       textX: transport ? labelX + GLYPH_INSET / 2 : labelX,
-      mid: transport ? { x: labelX - width / 2 + LABEL_PAD / 2 + GLYPH_SIZE / 2, y: labelY } : pathMidpoint(points, GLYPH_AT),
+      mid: transport ? glyphRestCentre(labelX, labelY, width) : pathMidpoint(points, GLYPH_AT),
       length: lengthOf(points),
     };
   });
