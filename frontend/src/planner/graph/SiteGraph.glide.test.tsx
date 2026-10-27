@@ -159,6 +159,40 @@ describe("the make-room glide", () => {
     expect(svg.querySelectorAll("[style]")).toHaveLength(0);
   });
 
+  it("drops a closing card whose line a poll took away, so it does not reappear when the line comes back", async () => {
+    const svg = await openGraph();
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    const data = productionGraphTwoSites.data;
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    expect(svg.querySelector("[data-item-card][data-closing]")).not.toBeNull();
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: data.edges.filter((e) => e.itemClassName !== "Desc_OreIron_C") } })));
+    // React Query notifies on a later tick; the timers faked here are only the frame ones, so a real wait is fine.
+    const poll = () => act(async () => { await client.invalidateQueries(); await new Promise((r) => setTimeout(r, 50)); });
+    await poll();
+    expect(svg.querySelector("[data-item-card]")).toBeNull();
+    server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(productionGraphTwoSites)));
+    await poll();
+    expect(svg.querySelector("[data-item-card]")).toBeNull();
+  });
+
+  it("re-focusing the item while its card closes leaves one open card, and no closing one", async () => {
+    const svg = await openGraph();
+    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    fireEvent.click(svg.querySelector(ore)!);
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    act(() => vi.advanceTimersByTime(50));
+    fireEvent.click(svg.querySelector(ore)!);
+    expect(svg.querySelectorAll("[data-item-card]")).toHaveLength(1);
+    expect(svg.querySelector("[data-item-card][data-closing]")).toBeNull();
+    act(() => vi.advanceTimersByTime(300));
+    expect(svg.querySelectorAll("[data-item-card]")).toHaveLength(1);
+  });
+
   it("jumps with Motion set to Off: no ghost, no fade, the cards at once where they end", async () => {
     window.localStorage.setItem("planner.motion", "off");
     const svg = await openGraph();

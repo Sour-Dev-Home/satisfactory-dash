@@ -562,6 +562,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     return { edge, item, text, from: bubbleCentre(edge, item.key), path };
   };
   const cardMs = animate ? tweenMs() : 0;
+  // A closing card whose line (or item) a poll took away has nothing to shrink to, and its tween never ends: forget it, so it
+  // does not come back when the line does.
+  if (closingCard !== null && cardOf(closingCard) === null) setClosingCard(null);
   const card = (f: ItemFocus, closing: boolean) => {
     const c = cardOf(f);
     if (c === null) return null;
