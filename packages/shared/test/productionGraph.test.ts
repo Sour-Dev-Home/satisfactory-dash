@@ -198,6 +198,15 @@ describe("logical-factory and transport fields (ADR-0053 Decision 5, ADR-0055 De
     expect(parse(PlannerFactorySchema, { ...factory, machineCount: -1 })).toBe(false);
   });
 
+  it("ADR-0061: parentDesignationId is optional (older payloads parse), null or a uuid", () => {
+    expect("parentDesignationId" in factory).toBe(false);
+    expect(parse(ProductionGraphResponseSchema, fixtures.productionGraphFactories)).toBe(true);
+    expect(parse(PlannerFactorySchema, { ...factory, parentDesignationId: null })).toBe(true);
+    expect(parse(PlannerFactorySchema, { ...factory, parentDesignationId: "3d9b7c42-1e6a-4f85-8b20-5a4c1e7d9f63" })).toBe(true);
+    expect(parse(PlannerFactorySchema, { ...factory, parentDesignationId: "not-a-uuid" })).toBe(false);
+    expect(parse(PlannerFactorySchema, { ...factory, parentDesignationId: "" })).toBe(false);
+  });
+
   it("caps the graph's factories and transports", () => {
     expect(parse(ProductionGraphSchema, { ...rich, factories: Array(PLANNER_MAX_FACTORIES).fill(factory) })).toBe(true);
     expect(parse(ProductionGraphSchema, { ...rich, factories: Array(PLANNER_MAX_FACTORIES + 1).fill(factory) })).toBe(false);
