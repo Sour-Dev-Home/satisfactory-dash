@@ -8,7 +8,7 @@ import { createLogger } from "../../../platform/logger.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
 import { createDesignationRoutes } from "./designationRoutes.js";
 import type { DesignationStore } from "../repositories/designationRepository.js";
-import { checkHierarchy, emptiedAncestors } from "../services/designationHierarchy.js";
+import { checkHierarchy, emptiedAncestors, untouchedBreaches } from "../services/designationHierarchy.js";
 import type { HierarchyNode } from "../services/designationHierarchy.js";
 import { findOverlap } from "../services/designationMatching.js";
 import type { DesignationBuilding } from "../services/designationMatching.js";
@@ -28,7 +28,7 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
       const other = findOverlap(input.members, rows);
       if (other) return { kind: "overlap", other };
       const parentId = input.parentId ?? null;
-      const breach = checkHierarchy([...rows.map(nodeOf), { id: "", parentId, memberCount: input.members.length }]);
+      const breach = checkHierarchy([...rows.map(nodeOf), { id: "", parentId, memberCount: input.members.length }], untouchedBreaches(rows.map(nodeOf), []));
       if (breach) return breach;
       const at = stamp();
       const designation: PlannerDesignation = { id: randomUUID(), name: input.name, mode: input.mode, members: input.members, createdAt: at, updatedAt: at, revision: 1, parentId };
@@ -71,7 +71,8 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
         const parentId = current && p.parentId === undefined ? (current.parentId ?? null) : (p.parentId ?? null);
         return { p, current, parentId, id: p.id ?? `new:${index}` };
       });
-      const breach = checkHierarchy([...outside.map(nodeOf), ...planned.map((w) => ({ id: w.id, parentId: w.parentId, memberCount: w.p.members.length }))]);
+      const after = [...outside.map(nodeOf), ...planned.map((w) => ({ id: w.id, parentId: w.parentId, memberCount: w.p.members.length }))];
+      const breach = checkHierarchy(after, untouchedBreaches(rows.map(nodeOf), planned.map((w) => w.id)));
       if (breach) return breach;
       const putIds = new Set(input.put.map((p) => p.id));
       const removedIds = input.expect.filter((e) => !putIds.has(e.id)).map((e) => e.id);

@@ -10,7 +10,7 @@ import { parseFirst, parseRows } from "../../../platform/db/rows.js";
 import { timedQuery } from "../../../platform/db/timedQuery.js";
 import { withTransaction } from "../../../platform/db/transaction.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
-import { checkHierarchy, emptiedAncestors, parentsFirst } from "../services/designationHierarchy.js";
+import { checkHierarchy, emptiedAncestors, parentsFirst, untouchedBreaches } from "../services/designationHierarchy.js";
 import type { HierarchyBreach, HierarchyNode } from "../services/designationHierarchy.js";
 import { findOverlap } from "../services/designationMatching.js";
 
@@ -207,7 +207,8 @@ export function createDbDesignationStore(db: Queryable & Parameters<typeof withT
         if (other !== undefined) return { kind: "overlap", other };
         // ADR-0061: the new one has no children, so an empty one is `shape`; "" stands in for its id (never a uuid).
         const parentId = input.parentId ?? null;
-        const breach = checkHierarchy([...existing.map(nodeOf), { id: "", parentId, memberCount: input.members.length }]);
+        const before = existing.map(nodeOf);
+        const breach = checkHierarchy([...before, { id: "", parentId, memberCount: input.members.length }], untouchedBreaches(before, []));
         if (breach !== undefined) return breach;
         const inserted = await timedQuery(client, "map.designations.insert", INSERT, [serverUuid, input.name, input.mode, JSON.stringify(input.members), parentId]);
         const designation = toDesignation(parseFirst(RowSchema, inserted.rows, "map.designations.insert") ?? failInsert());
@@ -303,7 +304,8 @@ export function createDbDesignationStore(db: Queryable & Parameters<typeof withT
           const parentId = current !== undefined && p.parentId === undefined ? current.parentId : (p.parentId ?? null);
           return { put: p, index, inPlace: current !== undefined, id: p.id ?? `new:${index}`, parentId };
         });
-        const breach = checkHierarchy([...outside.map(nodeOf), ...planned.map((w) => ({ id: w.id, parentId: w.parentId, memberCount: w.put.members.length }))]);
+        const after = [...outside.map(nodeOf), ...planned.map((w) => ({ id: w.id, parentId: w.parentId, memberCount: w.put.members.length }))];
+        const breach = checkHierarchy(after, untouchedBreaches(existing.map(nodeOf), planned.map((w) => w.id)));
         if (breach !== undefined) return breach;
 
         const putIds = new Set(input.put.flatMap((p) => (p.id === undefined ? [] : [p.id])));

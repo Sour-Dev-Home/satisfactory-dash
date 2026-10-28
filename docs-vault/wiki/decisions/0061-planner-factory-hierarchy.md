@@ -103,6 +103,8 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
   **replace** does neither for the client: one that would leave a parent empty is 409 `designation_shape`, and one that
   removes a parent while a designation outside `expect` still names it is 409 `designation_stale` (the client missed a child).
   The write order (inserts parents first, then updates in place, then deletes) keeps the `ON DELETE RESTRICT` key whole.
+  Re-parenting is a write to each child (revision + 1), so a client holding the old revision gets `designation_stale` and
+  re-reads. An empty childless parent the previous build left (it ignores `parent_id`) never blocks an unrelated write.
 
 ### 7. Persistent state and the flag
 

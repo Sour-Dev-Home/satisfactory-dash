@@ -128,7 +128,7 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
       throw new ApiFailure("designation_overlap", "A building is already in another designation", undefined, undefined, outcome.other);
     }
     refuseHierarchy(outcome);
-    sendValidated(res, ReplacePlannerDesignationsResponseSchema,{ designations: outcome.designations, removedIds: outcome.removedIds });
+    sendValidated(res, ReplacePlannerDesignationsResponseSchema, { designations: outcome.designations, removedIds: outcome.removedIds });
   });
 
   router.put(routePath(endpoints.plannerDesignations.update.route), parseLarge, async (req, res) => {

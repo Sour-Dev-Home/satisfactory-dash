@@ -11,7 +11,10 @@ import { PLANNER_DESIGNATION_MAX_DEPTH } from "@satisfactory-dash/shared";
  *           pushes a whole subtree past the limit;
  *   shape   a designation has no members and no children.
  *
- * Every write keeps these true, so a breach in the set can only be this write's.
+ * Every write of this build keeps these true, but the previous build (no `parent_id`) can leave a parent with no members
+ * and no children (it deletes a leaf child), so `tolerated` names shape breaches that were there BEFORE the write and that
+ * the write does not touch: they never block an unrelated write (ADR-0049 D6, roll forward after a rollback). The
+ * previous build never sets a parent, so it cannot leave a cycle, a too-deep nesting or a missing parent.
  */
 export interface HierarchyNode {
   id: string;
@@ -21,7 +24,7 @@ export interface HierarchyNode {
 
 export type HierarchyBreach = { kind: "stale"; ids: string[] } | { kind: "cycle" } | { kind: "depth" } | { kind: "shape" };
 
-export function checkHierarchy(nodes: readonly HierarchyNode[]): HierarchyBreach | undefined {
+export function checkHierarchy(nodes: readonly HierarchyNode[], tolerated: ReadonlySet<string> = new Set()): HierarchyBreach | undefined {
   const byId = new Map(nodes.map((n) => [n.id, n] as const));
   const missing = nodes.flatMap((n) => (n.parentId !== null && !byId.has(n.parentId) ? [n.parentId] : []));
   if (missing.length > 0) return { kind: "stale", ids: [...new Set(missing)] };
@@ -43,9 +46,21 @@ export function checkHierarchy(nodes: readonly HierarchyNode[]): HierarchyBreach
   }
   if ([...depth.values()].some((d) => d > PLANNER_DESIGNATION_MAX_DEPTH)) return { kind: "depth" };
 
-  const parents = new Set(nodes.flatMap((n) => (n.parentId === null ? [] : [n.parentId])));
-  if (nodes.some((n) => n.memberCount === 0 && !parents.has(n.id))) return { kind: "shape" };
+  if ([...shapeBreaches(nodes)].some((id) => !tolerated.has(id))) return { kind: "shape" };
   return undefined;
+}
+
+/** The designations with no members and no children (ADR-0061 Decision 1 does not allow them). */
+export function shapeBreaches(nodes: readonly HierarchyNode[]): Set<string> {
+  const parents = new Set(nodes.flatMap((n) => (n.parentId === null ? [] : [n.parentId])));
+  return new Set(nodes.filter((n) => n.memberCount === 0 && !parents.has(n.id)).map((n) => n.id));
+}
+
+/** The shape breaches already in `before` that a write naming `written` (its put ids) leaves alone: tolerated. */
+export function untouchedBreaches(before: readonly HierarchyNode[], written: Iterable<string>): Set<string> {
+  const out = shapeBreaches(before);
+  for (const id of written) out.delete(id);
+  return out;
 }
 
 /**

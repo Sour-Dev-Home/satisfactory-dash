@@ -5,7 +5,9 @@
 -- cycles and "members or children" are the route's checks (ADR-0061 Contracts 3 and 4), under the server row lock.
 --
 -- Additive (ADR-0049 D6): a nullable column, so every existing row is top level, and a constraint no existing row can
--- breach (every parent_id is null). The previous build ignores the column, so a rollback shows nested designations flat.
+-- breach (every parent_id is null). The previous build ignores the column, so a rollback shows nested designations flat,
+-- and its DELETE (or replace) of a designation that has children fails on this key (a 500) until rolled forward; deleting
+-- a child is fine. A parent it leaves with no members and no children blocks no later write of this build.
 
 ALTER TABLE map.factory_designations ADD COLUMN parent_id uuid;
 

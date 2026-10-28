@@ -242,6 +242,85 @@ describe.skipIf(!available)("map.factory_designations against a real Postgres", 
       expect((await store().list(server)).map((d) => d.name).sort()).toEqual(["C1", "C2", "G"]);
     });
 
+    it("undo of an ungroup restores the parent's id before the children are moved under it, and swapping two rows' parents is no cycle", async () => {
+      const server = await newServer();
+      const a = await created(server, "A");
+      const b = await created(server, "B");
+      const area = randomUUID();
+      const undo = await replace(server, {
+        expect: [{ id: a.id, revision: 1 }, { id: b.id, revision: 1 }],
+        put: [{ id: b.id, name: "B", members: b.members, parentId: area }, { id: a.id, name: "A", members: a.members, parentId: area }, { id: area, name: "Area", members: [], createdAt: "2026-01-01T00:00:00.000Z" }],
+        intent: "undo",
+      });
+      expect(undo).toMatchObject({ kind: "replaced" });
+      expect(await tree(server)).toEqual(new Map([["A", area], ["B", area], ["Area", null]]));
+      // A becomes the parent of B while B leaves A's level: a swap of places, with a member-owning parent each way.
+      const swap = await replace(server, {
+        expect: [{ id: a.id, revision: 2 }, { id: b.id, revision: 2 }],
+        put: [{ id: a.id, name: "A", members: a.members, parentId: b.id }, { id: b.id, name: "B", members: b.members }],
+      });
+      expect(swap).toMatchObject({ kind: "replaced" });
+      expect(await tree(server)).toEqual(new Map([["A", b.id], ["B", area], ["Area", null]]));
+    });
+
+    it("DELETE of the last leaf under a chain of empty parents deletes the whole chain; a nested parent's children keep their depth", async () => {
+      const server = await newServer();
+      const top = randomUUID();
+      const mid = randomUUID();
+      const leaf = await created(server, "Leaf");
+      const set = await replace(server, {
+        expect: [{ id: leaf.id, revision: 1 }],
+        put: [{ id: top, name: "Top", members: [] }, { id: mid, name: "Mid", members: [], parentId: top }, { id: leaf.id, name: "Leaf", members: leaf.members, parentId: mid }],
+      });
+      expect(set).toMatchObject({ kind: "replaced" });
+      expect(await store().remove(server, leaf.id, user)).toBe(true);
+      expect(await store().list(server)).toEqual([]);
+    });
+
+    it("PUT keeps the parent and the children, and a parent's new members may not take a descendant's building", async () => {
+      const server = await newServer();
+      const p = await created(server, "P");
+      const c = await created(server, "C", p.id);
+      const renamed = await store().update(server, c.id, { userId: user, name: "C2", members: [m("fresh", "S", 40, 40)] });
+      expect(renamed).toMatchObject({ kind: "updated", designation: { name: "C2", parentId: p.id } });
+      expect(await store().update(server, p.id, { userId: user, members: [m("fresh", "S", 40, 40)] })).toMatchObject({ kind: "overlap", other: { id: c.id } });
+      expect(await tree(server)).toEqual(new Map([["P", null], ["C2", p.id]]));
+    });
+
+    it("a replace that moves two rows at once into a chain is valid as a result, and two moves that only close a cycle together are refused", async () => {
+      const server = await newServer();
+      const a = await created(server, "A");
+      const b = await created(server, "B");
+      const c = await created(server, "C");
+      const ok = await replace(server, {
+        expect: [{ id: b.id, revision: 1 }, { id: c.id, revision: 1 }],
+        put: [{ id: b.id, name: "B", members: b.members, parentId: a.id }, { id: c.id, name: "C", members: c.members, parentId: b.id }],
+      });
+      expect(ok).toMatchObject({ kind: "replaced" });
+      const d = await created(server, "D");
+      const tooDeep = await replace(server, {
+        expect: [{ id: a.id, revision: 1 }, { id: d.id, revision: 1 }],
+        put: [{ id: a.id, name: "A", members: a.members, parentId: d.id }, { id: d.id, name: "D", members: d.members, parentId: c.id }],
+      });
+      expect(tooDeep).toEqual({ kind: "cycle" });
+      expect(await tree(server)).toEqual(new Map([["A", null], ["B", a.id], ["C", b.id], ["D", null]]));
+    });
+
+    it("roll forward after a rollback: an empty childless parent the previous build left blocks no unrelated write", async () => {
+      const server = await newServer();
+      const p = await created(server, "P");
+      const c = await created(server, "C", p.id);
+      // The previous build ignores parent_id: its DELETE of the leaf leaves P with no members and no children.
+      await admin.query("UPDATE map.factory_designations SET members = '[]'::jsonb WHERE id = $1", [p.id]);
+      await admin.query("DELETE FROM map.factory_designations WHERE id = $1", [c.id]);
+      expect((await created(server, "Unrelated")).name).toBe("Unrelated");
+      const u = (await store().list(server)).find((d) => d.name === "Unrelated")!;
+      expect((await replace(server, { expect: [{ id: u.id, revision: 1 }], put: [{ id: u.id, name: "U2", members: u.members }] })).kind).toBe("replaced");
+      // A write that keeps P empty is still refused; DELETE still removes it.
+      expect(await replace(server, { expect: [{ id: p.id, revision: p.revision }], put: [{ id: p.id, name: "P2", members: [] }] })).toEqual({ kind: "shape" });
+      expect(await store().remove(server, p.id, user)).toBe(true);
+    });
+
     it("a server delete takes its nested designations with it (the restrict never blocks it)", async () => {
       const server = await newServer();
       const p = await created(server, "P");

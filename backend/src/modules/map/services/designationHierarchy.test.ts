@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLANNER_DESIGNATION_MAX_DEPTH } from "@satisfactory-dash/shared";
-import { checkHierarchy, emptiedAncestors, parentsFirst } from "./designationHierarchy.js";
+import { checkHierarchy, emptiedAncestors, parentsFirst, untouchedBreaches } from "./designationHierarchy.js";
 import type { HierarchyNode } from "./designationHierarchy.js";
 
 const n = (id: string, parentId: string | null = null, memberCount = 1): HierarchyNode => ({ id, parentId, memberCount });
@@ -34,6 +34,17 @@ describe("checkHierarchy (ADR-0061 Decision 1)", () => {
     expect(checkHierarchy([n("p", null, 0)])).toEqual({ kind: "shape" });
     // A parent with members and children is allowed (owner answer 2).
     expect(checkHierarchy([n("p", null, 3), n("c", "p")])).toBeUndefined();
+  });
+
+  it("shape: a breach left by the previous build blocks no unrelated write, but a write that keeps it is refused", () => {
+    // The previous build (no parent_id) deleted P's only child, leaving P empty and childless.
+    const before = [n("p", null, 0), n("a")];
+    expect(untouchedBreaches(before, [])).toEqual(new Set(["p"]));
+    expect(checkHierarchy([...before, n("new")], untouchedBreaches(before, ["new"]))).toBeUndefined();
+    // A put in place on P that still leaves it empty is this write's breach.
+    expect(checkHierarchy(before, untouchedBreaches(before, ["p"]))).toEqual({ kind: "shape" });
+    // A new breach is refused even when an old one is tolerated.
+    expect(checkHierarchy([...before, n("e", null, 0)], untouchedBreaches(before, ["e"]))).toEqual({ kind: "shape" });
   });
 
   it("checks in order: stale before cycle before depth before shape", () => {
