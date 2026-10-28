@@ -32,6 +32,7 @@ import {
   LABEL_PAD,
   NODE_PAD_X,
   PILL_H,
+  PILL_HIT,
   cardLineMid,
   cardLineY,
   countBadgeWidth,
@@ -116,7 +117,8 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
-const PILL_HIT = 44;
+/** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
+const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
 /** A glyph crosses its edge at this many units a second, within these bounds; at most this many edges move at once. */
 const GLYPH_SPEED = 40;
 const GLYPH_MIN_S = 4;
@@ -211,21 +213,47 @@ const ICON_PROPS = { viewBox: "0 0 24 24", "aria-hidden": true, className: "size
  * A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. `iconOnly` keeps the
  * icon at every width, with the name as its tooltip (the owner, 2026-10-27: zoom, fit and Select read as the usual icons).
  */
-function ToolButton({ name, icon, onClick, disabled, pressed, iconOnly }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean; iconOnly?: boolean }) {
+/** `description`: why the button is as it is (a disabled one's reason), as its tooltip and its accessible description. */
+function ToolButton({
+  name,
+  icon,
+  onClick,
+  disabled,
+  pressed,
+  iconOnly,
+  description,
+}: {
+  name: string;
+  icon: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  pressed?: boolean;
+  iconOnly?: boolean;
+  description?: string | undefined;
+}) {
+  const describedBy = useId();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={pressed}
-      title={iconOnly ? name : undefined}
-      className="inline-flex min-h-touch min-w-touch items-center justify-center"
-    >
-      <svg {...ICON_PROPS} className={iconOnly ? "size-5" : "size-5 sm:hidden"}>
-        {icon}
-      </svg>
-      <span className={iconOnly ? "sr-only" : "sr-only sm:not-sr-only"}>{name}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-pressed={pressed}
+        aria-describedby={description === undefined ? undefined : describedBy}
+        title={description ?? (iconOnly ? name : undefined)}
+        className="inline-flex min-h-touch min-w-touch items-center justify-center"
+      >
+        <svg {...ICON_PROPS} className={iconOnly ? "size-5" : "size-5 sm:hidden"}>
+          {icon}
+        </svg>
+        <span className={iconOnly ? "sr-only" : "sr-only sm:not-sr-only"}>{name}</span>
+      </button>
+      {description !== undefined && (
+        <span id={describedBy} className="sr-only">
+          {description}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -950,11 +978,19 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
    * focus goes to the frame's first part, and back to the card on collapse. The cards glide from where they were.
    */
   const expandBlowUp = (card: Card, fromKeyboard = false) => {
-    if (dragged.current || card.blowUp === undefined || !card.blowUp.fits) return;
+    if (dragged.current || card.blowUp === undefined) return;
+    // Past the cap the pill and its button say "open it": they open the factory, as the card's own click does.
+    if (!card.blowUp.fits) {
+      if (card.kind === "factory") onOpenFactory?.(card.key);
+      return;
+    }
     blowGlide.current = { layout, key: card.key };
     setExpanded(new Set([...expanded, card.key]));
     revealFrame.current = card.key;
-    if (fromKeyboard) focusFrame.current = card.key;
+    // From the mouse too when the keyboard was on the canvas (the card's own button goes with the card): into the frame.
+    const active = document.activeElement;
+    const viewportEl = viewportRef.current;
+    if (fromKeyboard || (viewportEl !== null && active !== null && active !== viewportEl && viewportEl.contains(active))) focusFrame.current = card.key;
   };
   const collapseBlowUp = (key: string, fromKeyboard = false) => {
     if (dragged.current) return;
@@ -1079,6 +1115,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // blows up what fits under the cap (disabled when nothing does).
   const anyBlownUp = scene.frames.some((f) => f.expands !== undefined);
   const canBlowUp = blowUpTree !== undefined && (anyBlownUp || scene.cards.some((c) => c.blowUp !== undefined));
+  const anyFits = scene.cards.some((c) => c.blowUp?.fits === true);
   const setAllBlownUp = () => {
     if (blowUpTree === undefined || target.kind !== "overview") return;
     blowGlide.current = { layout, key: "" };
@@ -1125,7 +1162,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               <ToolButton
                 name={anyBlownUp ? "Collapse all" : "Expand all"}
                 onClick={setAllBlownUp}
-                disabled={!anyBlownUp && !scene.cards.some((c) => c.blowUp?.fits === true)}
+                disabled={!anyBlownUp && !anyFits}
+                description={!anyBlownUp && !anyFits ? NOTHING_FITS : undefined}
                 icon={anyBlownUp ? <path d="M8 4l4 4 4-4M8 20l4-4 4 4" /> : <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />}
               />
             )}
@@ -1447,8 +1485,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                       <li key={`blow-up|${n.key}`}>
                         <button
                           type="button"
-                          aria-expanded={false}
-                          aria-disabled={n.card.blowUp.fits ? undefined : true}
+                          // Past the cap it opens the factory, as its name says, so it neither expands nor is disabled.
+                          aria-expanded={n.card.blowUp.fits ? false : undefined}
                           onClick={() => {
                             dragged.current = false;
                             expandBlowUp(n.card, true);
@@ -2105,8 +2143,8 @@ function CardView({
           </text>
         </g>
       )}
-      {/* ADR-0061 Decision 5: a factory card blows up in place, by the same pill. Past the cap it is drawn disabled and its
-          tooltip says to open the factory instead (the hidden button says the same). */}
+      {/* ADR-0061 Decision 5: a factory card blows up in place, by the same pill. Past the cap it is drawn disabled, its
+          tooltip says to open the factory instead, and a click does that (the hidden button says and does the same). */}
       {card.blowUp !== undefined && (
         <g
           transform={`translate(${n.width - EXPAND_W - 8} ${n.height - PILL_H / 2})`}
@@ -2115,7 +2153,7 @@ function CardView({
             onBlowUp();
           }}
           data-blow-up={card.blowUp.fits ? "" : "disabled"}
-          className={card.blowUp.fits ? "cursor-pointer" : "cursor-not-allowed"}
+          className="cursor-pointer"
         >
           <title>{blowUpName(card)}</title>
           <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />

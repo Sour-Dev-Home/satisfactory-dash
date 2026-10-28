@@ -107,6 +107,12 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
 
     120 cards two deep is about 180 ms, so by the rule above **`EXPAND_MAX_CARDS` is 60** (61 cards two deep is 95 ms, at
     the edge). `layoutScene.blowUp.test.ts` re-measures the first four rows on every run and warns past 100 ms.
+    Re-measured after the ui-review's nested-frame fix (a nested frame's top now `NESTED_FRAME_RISE` = 44 px below its
+    parent's, so the two Collapse pills' touch targets do not meet): no change beyond noise. The same day, same machine,
+    before and after: Expand all at the cap 57-64 ms and 53-56 ms, one factory of 59 groups (no nesting) 37-40 and 36-37,
+    parents blown up 7 and 6-8; both lower than the table above, so the machine's run-to-run spread, not the fix.
+  - *Past the cap.* The disabled Expand pill and its hidden button open the factory, as the tooltip says (ui-review,
+    2026-10-28: a click that did nothing was a dead target). The toolbar's Expand all, disabled when nothing fits, says why.
   - *Flag.* All of blow-up, a plain factory into its groups too, ships behind `planner.nesting` (Decision 7): the Decision
     describes both kinds as one control, and it has not been through the owner's demo review (build PR 6) yet. With the flag
     off the overview is drawn exactly as before (no pill, no extra card height), so no screenshot changes.

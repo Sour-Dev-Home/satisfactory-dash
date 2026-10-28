@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type PlannerDesignation, type ProductionGraph } from "@satisfactory-dash/shared";
 import { serversRoleOwner } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../../servers/ServerContext";
-import { AUTO_KEY, P, T, designated, treeGraphResponse, treeWorld, wideTreeWorld } from "../../test/plannerTree";
+import { AUTO_KEY, P, T, designated, treeGraphResponse, treeId, treeWorld, wideTreeWorld } from "../../test/plannerTree";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
@@ -134,19 +134,87 @@ describe("blowing up a card on the overview canvas", () => {
     await waitFor(async () => expect(frames(await canvas())).toEqual([MAIN]));
   });
 
-  it("past the cap, the control is disabled and says to open the factory instead", async () => {
-    // One area of two factories of 35 groups: with one blown up (36 cards), the other (70) would pass the cap of 60.
-    const world = wideTreeWorld(1, 2, 35);
-    renderView(world);
+  // One area of two factories of 35 groups: with one blown up (36 cards), the other (70) would pass the cap of 60.
+  const AREA = designated(treeId(100));
+  const LINE_1 = designated(treeId(102));
+  const pastTheCap = async () => {
+    renderView(wideTreeWorld(1, 2, 35));
     fireEvent.click(await blowUpButton("Area 0"));
     fireEvent.click(await blowUpButton("Area 0 line 0"));
-    const other = await screen.findByRole("button", { name: new RegExp(`^Expand Area 0 line 1 in place: ${TOO_LARGE_TO_EXPAND}`) });
-    expect(other).toHaveAttribute("aria-disabled", "true");
+    return screen.findByRole("button", { name: new RegExp(`^Expand Area 0 line 1 in place: ${TOO_LARGE_TO_EXPAND}`) });
+  };
+  const openedLine1 = `/app/planner?open=${encodeURIComponent(AREA)}&open=${encodeURIComponent(LINE_1)}`;
+
+  it("past the cap, the hidden button says to open the factory instead, and opening it does that", async () => {
+    const other = await pastTheCap();
+    // It opens rather than expands, so it is neither disabled nor collapsed.
+    expect(other).not.toHaveAttribute("aria-disabled");
+    expect(other).not.toHaveAttribute("aria-expanded");
     const svg = await canvas();
-    const before = frames(svg);
-    fireEvent.click(other);
-    expect(frames(svg)).toEqual(before);
     expect(svg.querySelector('[data-blow-up="disabled"] title')?.textContent).toMatch(TOO_LARGE_TO_EXPAND);
+    fireEvent.click(other);
+    await waitFor(() => expect(screen.getByRole("status", { name: "Address" }).textContent).toBe(openedLine1));
+  });
+
+  it("past the cap, the disabled pill opens the factory (its tooltip's words), at its place in the tree", async () => {
+    await pastTheCap();
+    const svg = await canvas();
+    const pill = await waitFor(() => {
+      const el = svg.querySelector(`[data-node="${LINE_1}"] [data-blow-up="disabled"]`);
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const before = frames(svg);
+    fireEvent.click(pill);
+    await waitFor(() => expect(screen.getByRole("status", { name: "Address" }).textContent).toBe(openedLine1));
+    expect(before).not.toContain(LINE_1);
+  });
+
+  it("toolbar Expand all is disabled with its reason when nothing here fits under the cap", async () => {
+    // An area holding one factory of 70 groups. At the top the area fits (one part), so Expand all needs no reason.
+    renderView(wideTreeWorld(1, 1, 70));
+    await canvas();
+    const top = await within(await screen.findByRole("group", { name: "Detail" })).findByRole("button", { name: "Expand all" });
+    expect(top).toBeEnabled();
+    expect(top).not.toHaveAttribute("title");
+    expect(top).not.toHaveAccessibleDescription();
+    // Inside the area the only card is the factory of 70, past the cap: disabled, and it says why.
+    fireEvent.click(await screen.findByRole("button", { name: /^Open factory: Area 0\b/ }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "Address" }).textContent).toContain("open="));
+    const inside = await waitFor(() => {
+      const b = within(screen.getByRole("group", { name: "Detail" })).getByRole("button", { name: "Expand all" });
+      expect(b).toBeDisabled();
+      return b;
+    });
+    expect(inside).toHaveAccessibleDescription(/^Nothing here fits under the cap/);
+    expect(inside.getAttribute("title")).toMatch(/^Nothing here fits under the cap/);
+    // Never beside the bubbles' own Expand all / Collapse all in the same group.
+    expect(within(screen.getByRole("group", { name: "Detail" })).getAllByRole("button", { name: /^(Expand|Collapse) all$/ })).toHaveLength(1);
+  });
+
+  it("blowing up by mouse keeps the keyboard: focus on the card's hidden button moves into the frame", async () => {
+    renderView();
+    const svg = await canvas();
+    const own = await screen.findByRole("button", { name: /^Open factory: Main base/ });
+    own.focus();
+    const pill = await waitFor(() => {
+      const el = svg.querySelector(`[data-node="${MAIN}"] [data-blow-up]`);
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.click(pill);
+    await waitFor(() => expect(frames(svg)).toEqual([MAIN]));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Open factory: Smelters\..*In Main base/ })).toHaveFocus());
+  });
+
+  it("blowing up by mouse with the keyboard elsewhere leaves focus alone", async () => {
+    renderView();
+    const svg = await canvas();
+    const item = screen.getByRole("combobox", { name: "Item" });
+    item.focus();
+    fireEvent.click(await waitFor(() => svg.querySelector(`[data-node="${MAIN}"] [data-blow-up]`)!));
+    await waitFor(() => expect(frames(svg)).toEqual([MAIN]));
+    expect(item).toHaveFocus();
   });
 
   it("with the flag off, nothing blows up", async () => {

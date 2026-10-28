@@ -69,8 +69,10 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - Blow up (build PR 4, same flag): `overviewScene(..., expanded)` replaces each expanded card by a frame of its parts (a
     parent's factories, or a factory's groups as group cards), depth first, at most `EXPAND_MAX_DEPTH` (2) frames deep and
     `EXPAND_MAX_CARDS` (60, measured: see the ADR's note) cards; flows re-aggregate at the finest card. `Card.blowUp`
-    (parts, noun, fits) draws an Expand pill (disabled past the cap: "Too large to expand here; open it"); `Frame.expands`
-    and `Frame.parent` mark a blow-up's frame, a nested dagre compound node (`roomForNestedTabs` clears both tabs). Keyboard:
+    (parts, noun, fits) draws an Expand pill (drawn disabled past the cap: "Too large to expand here; open it", and a click
+    or its hidden button opens the factory); `Frame.expands` and `Frame.parent` mark a blow-up's frame, a nested dagre
+    compound node (`roomForNestedTabs` keeps a nested top `NESTED_FRAME_RISE` below its parent's, so the tabs keep apart
+    and the Collapse pills' `PILL_HIT` targets never meet). The toolbar's Expand all, disabled, says why. Keyboard:
     hidden "Expand <name> in place ..." buttons, focus into the frame, Escape on a part collapses it; toolbar Expand all
     (`expandAllKeys`) and Collapse all. Remembered per path in `foldMemory` (`expanded`, `overviewFoldsKey`). Opening a
     card inside a frame pushes its chain (`pathBelow`). Cards glide by the make-room tween; reduced motion jumps.
