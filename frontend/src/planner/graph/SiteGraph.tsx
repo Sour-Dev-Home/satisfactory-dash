@@ -72,6 +72,9 @@ import {
 } from "./bubbleRow";
 import { BubbleButtons, ItemList } from "./ItemFocusLayer";
 import { ItemCard } from "./ItemCard";
+import { CanvasOverlay } from "./CanvasOverlay";
+import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
+import { useLargeScreen } from "./useWideScreen";
 import { bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
@@ -89,7 +92,6 @@ import {
   panBy,
   pinchView,
   revealRect,
-  stageBesidePanel,
   toStage,
   zoomAt,
   zoomCentre,
@@ -421,17 +423,33 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);
   const overflowing = isClipped(clipped);
-  const panelRef = useRef<HTMLDivElement>(null);
+  // The floating card (the group panel, or a line's "+k" list): from lg beside what was clicked, below lg across the
+  // canvas's bottom. It is placed from the view on every render, so it follows a pan or a zoom (closing on a pan would lose
+  // what the user was reading for a small move of the picture). Its content's height is measured by CanvasOverlay.
+  const wide = useLargeScreen();
+  const [overlayH, setOverlayH] = useState(0);
+  const overlayHRef = useRef(0);
+  const onOverlayHeight = useCallback((h: number) => {
+    overlayHRef.current = h;
+    setOverlayH(h);
+  }, []);
+  const openLaid = openNode === undefined ? undefined : laidByKey.get(openNode.key);
+  const overlayBox = openLaid ?? (listEdge === undefined ? undefined : labelBox(listEdge));
+  const overlayPlace = overlayBox === undefined ? null : placeOverlay(screenRect(viewport, overlayBox), overlayH, stage, wide);
 
-  // From lg the panel is a drawer over the canvas's right side: bring the opened group into the part left of it. Once,
-  // when it opens: a later layout (a refetch of any read the page shows) must not move a view the user may have panned.
+  // When it opens over what was clicked (no side had room, or below lg the card is in the bottom half), the view moves the
+  // least that brings that clear of it. Once, when it opens: a later layout (a refetch of any read the page shows) must not
+  // move a view the user may have panned.
   useEffect(() => {
-    const panel = panelRef.current;
-    const n = openKey === null ? undefined : layoutRef.current.nodes.find((node) => node.key === openKey);
-    if (!panel || !n || getComputedStyle(panel).position !== "absolute") return;
-    const visibleStage = stageBesidePanel(stageRef.current, panel.offsetWidth);
-    setView((v) => revealRect(v, n, visibleStage));
-  }, [openKey]);
+    const laid = layoutRef.current;
+    const n = openKey === null ? undefined : laid.nodes.find((node) => node.key === openKey);
+    const e = n !== undefined || listKey === null ? undefined : laid.edges.find((edge) => edgeKeyOf(edge.flow) === listKey);
+    const box = n ?? (e === undefined ? undefined : labelBox(e));
+    if (box === undefined) return;
+    const s = stageRef.current;
+    const place = placeOverlay(screenRect(viewRef.current, box), overlayHRef.current, s, wide);
+    if (place.covers) setView((v) => revealRect(v, box, stageBesideOverlay(place, s, wide)));
+  }, [openKey, listKey, wide]);
 
   // A bubble that just opened: if the user has moved the view, bring its frame into sight.
   const revealFrame = useRef<string | null>(null);
@@ -656,7 +674,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       closeList();
       return;
     }
-    // The list takes the group panel's place beside the canvas.
+    // The list takes the group panel's place over the canvas.
     setOpenKey(null);
     setListKey(edgeKey);
   };
@@ -670,11 +688,21 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     const item = edgeByKey.get(stop.edgeKey)?.bubbles.all.find((i) => i.key === stop.item);
     if (item !== undefined) focusItem(stop.edgeKey, item);
   };
-  // A press on the canvas's background (not a bubble, a chip or a card) leaves focus; the end of a drag is not a press.
+  // A press on the canvas's background (not a bubble, a chip or a card) leaves focus, or else closes the floating card;
+  // the end of a drag is not a press. The press already moved focus to the viewport, so it stays there (handing it to the
+  // card's hidden button would move the view after a click that meant to leave).
   const onCanvasClick = (event: ReactMouseEvent<SVGSVGElement>) => {
-    if (focus === null || dragged.current) return;
-    if (event.target instanceof Element && event.target.closest("[data-bubble], [data-bubble-more], [data-card], [data-item-card]") !== null) return;
-    leaveFocus();
+    if (dragged.current) return;
+    const on = (selector: string) => event.target instanceof Element && event.target.closest(selector) !== null;
+    if (on("[data-bubble], [data-bubble-more], [data-card], [data-item-card]")) return;
+    if (focus !== null) {
+      leaveFocus();
+      return;
+    }
+    if ((openKey === null && listKey === null) || on("[data-frame-collapse]")) return;
+    setOpenKey(null);
+    setListKey(null);
+    viewportRef.current?.focus({ preventScroll: true });
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -751,7 +779,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       revealFrame.current = card.bubbleKey;
     } else if (card.kind === "fold") setUnfolded(toggled(unfolded, card.key));
     else {
-      // The group panel takes the "+k" list's place beside the canvas.
+      // The group panel takes the "+k" list's place over the canvas.
       setListKey(null);
       setOpenKey(card.key);
       setOpenMachine(null);
@@ -837,7 +865,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (stop === null) return;
     setActiveStop(stop.id);
     const e = edgeByKey.get(stop.edgeKey);
-    if (e !== undefined) setView((v) => revealRect(v, { x: e.labelX - e.labelWidth / 2, y: e.labelY - e.labelHeight / 2, width: e.labelWidth, height: e.labelHeight }, stageRef.current));
+    if (e !== undefined) setView((v) => revealRect(v, labelBox(e), stageRef.current));
   };
   const loops = useMemo(() => scene.cards.filter((c) => c.loop).length, [scene]);
 
@@ -970,8 +998,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               )}
       </p>
 
-      {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}
-      <div className="relative flex flex-col gap-3 lg:block">
+      {/* The group panel and the "+k" list float over the canvas (CanvasOverlay): they never shrink it or push the page. */}
+      <div className="relative">
         <div
           ref={viewportRef}
           role="group"
@@ -989,7 +1017,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
-            onClick={itemFocusOn ? onCanvasClick : undefined}
+            onClick={onCanvasClick}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
             className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode && !pickingFactories ? "cursor-crosshair" : "cursor-grab")}
@@ -1212,8 +1240,23 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             </div>
           )}
         </div>
-        {listEdge !== undefined && listKey !== null && (
-          <div className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
+        {overlayPlace !== null && openNode !== undefined && (
+          <CanvasOverlay key={openNode.key} place={overlayPlace} onHeight={onOverlayHeight}>
+            <GroupPanel
+              key={openNode.key}
+              id={panelId}
+              node={openNode}
+              facts={openLaid?.card.facts}
+              rates={rates}
+              findings={findings}
+              machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
+              onClose={close}
+              onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
+            />
+          </CanvasOverlay>
+        )}
+        {overlayPlace !== null && openNode === undefined && listEdge !== undefined && listKey !== null && (
+          <CanvasOverlay key={`items|${listKey}`} place={overlayPlace} onHeight={onOverlayHeight}>
             <ItemList
               key={listKey}
               id={`${panelId}-items`}
@@ -1228,22 +1271,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               }}
               onClose={closeList}
             />
-          </div>
-        )}
-        {openNode && (
-          <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
-            <GroupPanel
-              key={openNode.key}
-              id={panelId}
-              node={openNode}
-              facts={laidByKey.get(openNode.key)?.card.facts}
-              rates={rates}
-              findings={findings}
-              machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
-              onClose={close}
-              onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
-            />
-          </div>
+          </CanvasOverlay>
         )}
       </div>
 
@@ -1441,7 +1469,7 @@ function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => v
       <text x={NODE_PAD_X + NODE_PAD_X / 2} y={0} dominantBaseline="central" className="fill-fg text-sm">
         {title}
       </text>
-      <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} className="cursor-pointer">
+      <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} data-frame-collapse="" className="cursor-pointer">
         {/* An invisible target up to the touch size round the pill (the hidden "Collapse" button is the keyboard's way in). */}
         <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
         <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />

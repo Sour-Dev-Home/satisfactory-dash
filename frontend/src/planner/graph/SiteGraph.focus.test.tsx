@@ -126,6 +126,8 @@ describe("item focus, flag on", () => {
     fireEvent.click(chip);
     expect(chip).toHaveAttribute("aria-expanded", "true");
     const list = screen.getByRole("region", { name: /^4 items from / });
+    // It floats over the canvas in the group panel's place (CanvasOverlay), not in a drawer or stacked under it.
+    expect(list.closest("[data-overlay] foreignObject")).not.toBeNull();
     const rows = within(list).getAllByRole("button", { pressed: false });
     expect(rows.map((r) => r.getAttribute("aria-label")?.split(",")[0])).toEqual(["Iron Ore", "Limestone", "Coal", "Sulfur"]);
     expect(rows[0]).toHaveFocus();
@@ -142,6 +144,22 @@ describe("item focus, flag on", () => {
     expect(svg.querySelector("[data-focused]")).toBeNull();
     expect(dimmed(svg, "[data-card]")).toBe(0);
     expect(chip).toHaveFocus();
+  });
+
+  it("swaps the +k list and the group panel in one overlay, and a background click closes either", async () => {
+    const svg = await openGraph({ flag: true, fourItems: true });
+    const chip = screen.getByRole("button", { name: /^1 more item from / });
+    fireEvent.click(chip);
+    expect(screen.getByRole("region", { name: /^4 items from / })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /Miner|Smelter|Constructor|Storage|Assembler/ })[0]!);
+    expect(screen.queryByRole("region", { name: /^4 items from / })).toBeNull();
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-overlay]")).toHaveLength(1);
+    fireEvent.click(chip);
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(document.querySelectorAll("[data-overlay]")).toHaveLength(1);
+    fireEvent.click(svg);
+    expect(document.querySelector("[data-overlay]")).toBeNull();
   });
 
   it("keeps the arrow keys inside the bubble buttons: the viewport never sees them", async () => {
