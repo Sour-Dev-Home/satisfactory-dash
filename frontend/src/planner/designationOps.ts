@@ -172,7 +172,7 @@ export function dissolveRequest(source: PlannerDesignation, all: readonly Planne
 export const GROUP_MAX = PLANNER_DESIGNATIONS_REPLACE_MAX_PUT - 1;
 export const TOO_FEW_TO_GROUP = "Select at least two factories to group.";
 export const TOO_MANY_TO_GROUP = `Group up to ${GROUP_MAX} factories at once.`;
-export const NOTHING_TO_MOVE = "Select the factories to move.";
+export const NOTHING_TO_MOVE = "Pick the factories to move.";
 export const ALREADY_THERE = "These factories are already there.";
 export const NOTHING_TO_UNGROUP = "There are no factories inside this one to ungroup.";
 
@@ -299,6 +299,9 @@ export function groupRequest({
   parentId: string | null;
   newId: string;
 }): OpResult {
+  // The same designation picked twice is one factory, not a group.
+  const seen = new Set<string>();
+  picks = picks.filter((p) => !("designation" in p) || (!seen.has(p.designation.id) && seen.add(p.designation.id)));
   if (picks.length < 2) return { ok: false, reason: TOO_FEW_TO_GROUP };
   if (picks.length > GROUP_MAX) return { ok: false, reason: TOO_MANY_TO_GROUP };
   const { moves, inserts } = picksToEdits(picks, newId);
@@ -362,7 +365,14 @@ export function moveTargets(all: readonly PlannerDesignation[], picks: readonly 
     .filter((d) => d.id !== from && moveRequest({ all, picks, to: d.id }).ok)
     .map((d) => ({ id: d.id, label: pathName(d) }))
     .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
-  return [...targets, ...named];
+  // Names need not be unique: a repeated path gets its place in the list, so no two choices read alike.
+  const seen = new Map<string, number>();
+  const told = named.map((t) => {
+    const n = (seen.get(t.label) ?? 0) + 1;
+    seen.set(t.label, n);
+    return n === 1 ? t : { ...t, label: `${t.label} (${n})` };
+  });
+  return [...targets, ...told];
 }
 
 /**

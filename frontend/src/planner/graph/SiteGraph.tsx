@@ -479,7 +479,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const overviewPicks = factoryPicks !== undefined && scene.level === "overview";
   const selectMode = selecting && (selection !== undefined || overviewPicks);
   const pickingFactories = selectMode && overviewPicks;
-  // ADR-0061 Decision 6: with the tree (the `planner.nesting` flag) the picks also group and move.
+  // ADR-0061 Decision 6: with the tree (the `planner.nesting` flag) the picks also group and move. `blowUp` is that flag
+  // (PlannerPanel passes `nesting` to both), so the hint follows the same switch as the bar.
   const pickFor = blowUpTree !== undefined ? "to merge, group or move" : "for a merge";
   const [lasso, setLasso] = useState<readonly Point[] | null>(null);
   const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);

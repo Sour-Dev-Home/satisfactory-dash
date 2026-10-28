@@ -106,8 +106,9 @@ export function MergeBar({
   if (!sources.ok && (hierarchy === undefined || picked.length > 0)) reasons.push({ key: "merge", label: "Merge", text: sources.reason });
   if (picked.length > 0 && grouping !== undefined && !grouping.ok) reasons.push({ key: "group", label: "Group", text: grouping.reason });
   if (picked.length > 0 && moving !== undefined && !moving.ok) reasons.push({ key: "move", label: "Move", text: moving.reason });
-  const reasonOf = (key: string) => (reasons.some((r) => r.key === key) ? `${reasonId}-${key}` : undefined);
   const idle = hierarchy !== undefined && picked.length === 0;
+  // Idle, every action is disabled for one reason: nothing is picked yet.
+  const reasonOf = (key: string) => (idle ? `${reasonId}-idle` : reasons.some((r) => r.key === key) ? `${reasonId}-${key}` : undefined);
   // The bar stands from the first render, idle with nothing picked, so a pick fills it in place instead of pushing the
   // canvas down (no layout shift). Its count is one polite live region, mounted for the bar's life: the name form opens
   // below it, never in its place, so no announcement is dropped by a remount.
@@ -163,10 +164,11 @@ export function MergeBar({
                   ? null
                   : sources.reason
                 : idle
-                  ? "Pick factories to merge, group or move them."
-                  : reasons.map((r) => (
-                      <span key={r.key} id={`${reasonId}-${r.key}`} className="block">
-                        {`${r.label}: ${r.text}`}
+                  ? <span id={`${reasonId}-idle`}>Pick factories to merge, group or move them.</span>
+                  : // One wrapping sentence per action, inline, so the line grows only as far as the words need.
+                    reasons.map((r, i) => (
+                      <span key={r.key} id={`${reasonId}-${r.key}`}>
+                        {`${i > 0 ? " " : ""}${r.label}: ${r.text}`}
                       </span>
                     ))}
             </span>
