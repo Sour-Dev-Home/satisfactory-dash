@@ -313,7 +313,8 @@ describe("the transport motion", () => {
     fireEvent.click(await button(/^Open factory: Iron Rod factory./));
     const svg = await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
     expect(svg.querySelector("[data-glyph]")).toBeNull();
-    expect(svg.querySelectorAll("[data-march]").length).toBeGreaterThan(0);
+    // The marching lines are drawn in the march layer over the canvas (ADR-0062 amendment build PR 3).
+    expect(svg.parentElement!.querySelectorAll("[data-march-layer] [data-march]").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Motion")).toHaveValue("system");
   });
 });

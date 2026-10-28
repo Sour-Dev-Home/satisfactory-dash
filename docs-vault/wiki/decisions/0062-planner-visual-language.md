@@ -263,7 +263,8 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
 - **Motion Off and reduced motion.** Motion Off (or a hidden tab) renders no class and no pulse path at all. Under
   `prefers-reduced-motion` the flow tokens are 0 and `[data-march] { animation: none !important }` stops the lines outright,
   on their still frame, rather than running a 0s cycle; this holds with the Motion control on "On" as well, like every
-  CSS motion token. The Motion control now shows whenever something can move: a transport or a line that can march (before,
+  CSS motion token. (Since the march layer fix below, reduced motion also renders no march layer at all, On or System; the
+  CSS rule stays as a backstop.) The Motion control now shows whenever something can move: a transport or a line that can march (before,
   only with a transport).
 - **The in-view cap.** `MARCH_MAX` = **60** lines. Candidates are listed once per layout (`marchCandidates`: fastest step
   first, then the layout's edge order, so the choice is deterministic and a poll that keeps the layout keeps it); each
@@ -278,8 +279,34 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   `planner-large` scenario: 160 groups and 210 lines built from the shared fixtures, the measured site's size). It records
   `requestAnimationFrame` deltas over 2 s (frames, p50, p95, max) with the lines marching at the fitted view, zoomed out so
   every line is in view, and with Motion Off, at 1440 and 390 px; it attaches them as `marching-frame-times.json` and logs
-  them. It asserts only more than 10 frames in 2 s, so CI's varying machines do not flake it.
-  **TODO (owner's box run):** record the numbers here and confirm or change `MARCH_MAX`:
+  them. It asserts more than 10 frames in 2 s, and (since the fix below) one regression bound.
+- **Measured baseline: CI headless, software raster, before the fix** (Linux headless Chromium, PR #806's merge run; p50 /
+  p95 in ms, lines marching in brackets):
+  - 1440 px: Motion Off 16.7 / 16.8; fitted (4) 83.2 / 116.7; all in view (60) 50 / 66.7.
+  - 390 px: Motion Off 16.7 / 16.7; fitted (2) 83.3 / 100; all in view (25) 33.3 / 50.1.
+  The cost did not follow the number of marching lines (4 cost more than 60): a `stroke-dashoffset` animation on any path
+  inside the canvas `<svg>` repainted the whole canvas every frame (all 210 lines, the cards, bubbles and labels), and the
+  fitted view, at a larger scale, has more to paint.
+- **The fix: a march layer** (`MarchLayer` in `SiteGraph.tsx`, 2026-10-28). The marching strokes left the canvas for a second
+  `<svg>` stacked over it in the same box, with the same viewBox, fit, (transparent) border and pan and zoom transform, so each
+  stroke lies on its line; it is `aria-hidden`, `pointer-events-none` and `will-change-transform`, which gives it its own
+  compositing layer, and it is rendered only while something marches. The animation now invalidates only that layer, which
+  holds at most `MARCH_MAX` strokes, so the per-frame cost should follow the marching lines, not the scene. The canvas draws
+  every line still, always (Motion Off or not, a still frame is unchanged). The layer draws over it, per marching line: for an
+  estimated line, a canvas-coloured cover (`stroke-surface`, the line's width plus 1, `MARCH_COVER_PAD`) that hides its still
+  dashes, then its moving dashes (a mixed one's inner dashes in step); for a measured line, its pulses as before. The cover
+  and dashes stop at the arrowhead's base (7.2 short of the end, `MARCH_TRIM`), so the canvas's arrowhead shows. The canvas
+  draws its labels and cards over its lines, and the layer is over everything, so its strokes are under a luminance mask with
+  a hole for every label pill, every card (and a bubble's or fold's pile) and the open or closing item card (`marchHoles`).
+  Visible differences while marching, none in a still frame or a screenshot (reduced motion draws no layer): a marching line
+  is drawn over every other line where they cross, and an estimated one's cover cuts a gap the line's width in the line or
+  frame border it crosses. Marching now also stops under reduced motion in script, with Motion "On" as well (its CSS already
+  stopped it), and during a make-room glide (the layer does not follow gliding cards). **Regression bound** in the e2e test
+  (desktop only): the fitted view's p95 at most twice Motion Off's p95 plus 17 ms. Frame times come in whole vsyncs, so with
+  Off at one frame (16.7) this passes at 3 frames (50) and fails at 4 (66.7); the baseline above (116.7) fails it. If the
+  layer alone does not bring it under, the next levers are a `steps()` timing (a dash offset update about 15 times a second)
+  and pausing the march while a pan or zoom runs.
+  **TODO (owner's box run, and CI's after the fix):** record the numbers here and confirm or change `MARCH_MAX`:
   - 1440 px: fitted [NEEDS MEASUREMENT], all in view [NEEDS MEASUREMENT], off [NEEDS MEASUREMENT]
   - 390 px: fitted [NEEDS MEASUREMENT], all in view [NEEDS MEASUREMENT], off [NEEDS MEASUREMENT]
   Rule for the cap: if "all in view" p95 stays within a frame (about 17 ms) of "off", the cap may rise; if it passes

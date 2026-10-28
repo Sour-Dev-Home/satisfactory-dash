@@ -403,8 +403,10 @@ const frameSummary = (deltas: number[]) => {
 // ADR-0062 amendment build PR 3: marching dashes by CSS class under the production CSP, only lines in view and at most
 // MARCH_MAX, still with Motion Off; and the measurement the cap is set from (owner answer 2, "Lines in view, capped"):
 // frame times on a 160-group, 210-line site with the lines marching (fitted, then zoomed out so every line is in view) and
-// with Motion Off. The numbers are attached and logged, not judged: CI's machines vary, so the only bound is a generous one
-// (more than 10 frames in 2 s). The baseline box's run is recorded in the ADR.
+// with Motion Off. The numbers are attached and logged. CI's machines vary, so most bounds are generous (more than 10 frames
+// in 2 s); one catches the whole-canvas repaint of PR 3's first cut (fitted p95 117 ms against 17 with Motion Off, on desktop):
+// the marching lines now draw in their own layer over the canvas (`[data-march-layer]`), so the fitted view's p95 must stay
+// within twice Motion Off's plus a frame. The baseline box's run is recorded in the ADR.
 test("marching dashes stay in view under the cap, stop with Motion Off, and record their frame times (210 lines)", async ({ page, mockApi }, testInfo) => {
   test.setTimeout(90_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -416,13 +418,21 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const lines = svg.locator('[data-edge-layer="lines"] [data-edge]');
   expect(await lines.count()).toBeGreaterThan(200);
-  const marching = lines.filter({ has: page.locator("[data-march]") });
+  const layer = page.locator("[data-march-layer]");
+  const marching = layer.locator("[data-march-edge]");
   await expect.poll(() => marching.count()).toBeGreaterThan(0);
   expect(await marching.count()).toBeLessThanOrEqual(MARCH_MAX);
-  // The dashes run as CSS animations (no script, no inline style): a marching path has one.
-  const names = await svg.locator("[data-march]").first().evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName));
+  // The dashes run as CSS animations (no script, no inline style): a marching path has one. Nothing in the canvas animates.
+  const names = await layer.locator("[data-march]").first().evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName));
   expect(names.some((n) => n.startsWith("flow-"))).toBe(true);
+  await expect(svg.locator("[data-march], [class*='animate-flow']")).toHaveCount(0);
   await expect(svg.locator("[style]")).toHaveCount(0);
+  await expect(layer.locator("[style]")).toHaveCount(0);
+  // The layer lies exactly over the canvas (same box, same pan and zoom) and is its own compositing layer.
+  const [canvasBox, layerBox] = await Promise.all([svg.boundingBox(), layer.boundingBox()]);
+  for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(layerBox![k] - canvasBox![k]), k).toBeLessThan(0.5);
+  expect(await layer.evaluate((el) => getComputedStyle(el).willChange)).toBe("transform");
+  expect(await transformOf(layer)).toBe(await transformOf(svg));
 
   const fitted = frameSummary(await frameTimes(page, 2_000));
   const fittedMarching = await marching.count();
@@ -430,12 +440,14 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   await page.getByRole("group", { name: /^Graph viewport/ }).focus();
   for (let i = 0; i < 12; i++) await page.keyboard.press("Minus");
   await expect.poll(() => marching.count()).toBeGreaterThan(0);
+  // Still over the canvas after the zoom.
+  expect(await transformOf(layer)).toBe(await transformOf(svg));
   const allInView = frameSummary(await frameTimes(page, 2_000));
   const allInViewMarching = await marching.count();
   expect(allInViewMarching).toBeLessThanOrEqual(MARCH_MAX);
 
   await page.getByLabel("Motion").selectOption("off");
-  await expect(svg.locator("[data-march]")).toHaveCount(0);
+  await expect(layer).toHaveCount(0);
   const off = frameSummary(await frameTimes(page, 2_000));
 
   const result = {
@@ -448,4 +460,8 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   await testInfo.attach("marching-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
   console.info(`[ADR-0062 PR 3 frame times] ${JSON.stringify(result)}`);
   for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
+  // The regression bound (desktop): marching at the fitted view costs at most twice Motion Off's p95 plus a frame. Frame times
+  // come in whole vsyncs (16.7 ms), so with Off at one frame this passes at 3 frames (50 ms) and fails at 4 (66.7 ms); the
+  // whole-canvas repaint measured 116.7.
+  if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
 });

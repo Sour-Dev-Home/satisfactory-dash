@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CanvasFlow } from "./canvasScene";
-import { MARCH_MAX, PULSE_DASH, marchCandidates, marchStep, marchingLines, routeBox } from "./marching";
+import { CARD_STACK_OFFSET, MARCH_MAX, PULSE_DASH, marchCandidates, marchHoles, marchStep, marchingLines, routeBox } from "./marching";
 import type { Stage, View } from "./viewport";
 
 // ADR-0062 amendment build PR 3: which lines march, at which step, and which of them the in-view cap keeps.
@@ -119,6 +119,31 @@ describe("marchingLines", () => {
   it("marches nothing with a cap of 0 or no candidates", () => {
     expect(marchingLines(marchCandidates([edge(0, 10, 10)]), AT_REST, STAGE, 0).size).toBe(0);
     expect(marchingLines([], AT_REST, STAGE).size).toBe(0);
+  });
+});
+
+describe("marchHoles", () => {
+  const node = (kind: string, x = 0) => ({ x, y: 10, width: 100, height: 40, card: { kind } });
+  const label = { labelX: 50, labelY: 20, labelWidth: 60, labelHeight: 24 };
+
+  it("cuts every label pill, centred on its label and rounded like it, and every card", () => {
+    expect(marchHoles([node("group")], [label])).toEqual([
+      { x: 20, y: 8, width: 60, height: 24, rx: 12 },
+      { x: 0, y: 10, width: 100, height: 40, rx: 8 },
+    ]);
+  });
+
+  it("also cuts the pile behind a bubble's or a fold's card", () => {
+    for (const kind of ["bubble", "fold"]) {
+      expect(marchHoles([node(kind, 200)], [])).toEqual([
+        { x: 200, y: 10, width: 100, height: 40, rx: 8 },
+        { x: 200 + CARD_STACK_OFFSET, y: 10 + CARD_STACK_OFFSET, width: 100, height: 40, rx: 8 },
+      ]);
+    }
+  });
+
+  it("has no holes for an empty layout", () => {
+    expect(marchHoles([], [])).toEqual([]);
   });
 });
 
