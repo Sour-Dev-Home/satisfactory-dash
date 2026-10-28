@@ -304,12 +304,16 @@ describe("the transport motion", () => {
     Reflect.deleteProperty(document, "visibilityState");
   });
 
-  it("has no motion control on a canvas with no transport", async () => {
+  // ADR-0062 amendment build PR 3: a line with a rate marches too, so a canvas with no transport has the control when its
+  // lines can move (a canvas where nothing can move has none: SiteGraph.marching.test.tsx).
+  it("has the motion control on a canvas with no transport whose lines march", async () => {
     wideScreen(false);
     renderView();
     await overview();
     fireEvent.click(await button(/^Open factory: Iron Rod factory./));
-    await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
-    expect(screen.queryByLabelText("Motion")).not.toBeInTheDocument();
+    const svg = await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
+    expect(svg.querySelector("[data-glyph]")).toBeNull();
+    expect(svg.querySelectorAll("[data-march]").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Motion")).toHaveValue("system");
   });
 });

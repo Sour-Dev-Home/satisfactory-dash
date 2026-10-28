@@ -91,6 +91,14 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   `stroke-surface` inner stroke (`data-mixed-inner`), never extra width. Transports keep 2 (3 mixed). The line stops
   `LINE_UNDER_ARROW` short (`roundedOrthogonalPath`'s `trimEnd`) so it ends inside the arrowhead; see the amendment's
   "Values chosen in build PR 2".
+- Marching dashes (ADR-0062 amendment build PR 3, `marching.ts`): a belt or pipe line with a measured or estimated rate
+  that is not stalled moves source to destination at its `rateStep`, by CSS class only (`animate-flow-*`, timed by
+  `--duration-flow-*`, `data-march` on each animated path). An estimated line's dashes march (a mixed one's inner dashes
+  in step); a measured line stays solid and gets a thin pulse path (`data-march-pulse`) that is invisible except while
+  animating, so the still frame is unchanged. Unknown and stalled lines and transports stay still. Only lines whose
+  route's box meets the settled view (`useSettled`, `MARCH_SETTLE_MS` after the last pan or zoom) march, at most
+  `MARCH_MAX`, fastest step first then edge order. Motion Off and a hidden tab render no class; reduced motion zeroes the
+  tokens and `[data-march]` gets `animation: none`. The Motion control shows when a transport or a marching line exists.
 - Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
   (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
   text ("mixed", "excess" beside it) under the row; links of no known item share one "?" bubble. The box dagre reserves

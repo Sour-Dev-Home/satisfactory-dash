@@ -192,6 +192,23 @@
   --duration-flow-slow: 2.4s;
   --duration-flow-mid: 1.2s;
   --duration-flow-fast: 0.6s;
+  /* The Planner's marching dashes (ADR-0062 amendment build PR 3; planner/graph/marching.ts, SiteGraph.tsx's EdgeLine).
+     One cycle shifts a line's dashes one dash plus gap forward, source to destination: the estimated "8 5", a mixed
+     line's inner "7 6" (which starts half a unit in, as it is drawn still) and a measured line's pulses "3 10" are all
+     `--flow-dash-cycle` long (marching.test.ts keeps them equal). A measured line stays solid: its pulses show only while
+     their animation runs, so a still frame, a screenshot with animations off and reduced motion all draw today's line. */
+  --flow-dash-cycle: 13px;
+  --flow-dash-inner-offset: -0.5px;
+  --opacity-flow-pulse: 0.7;
+  --animate-flow-slow: flow-march var(--duration-flow-slow) linear infinite;
+  --animate-flow-mid: flow-march var(--duration-flow-mid) linear infinite;
+  --animate-flow-fast: flow-march var(--duration-flow-fast) linear infinite;
+  --animate-flow-inner-slow: flow-march-inner var(--duration-flow-slow) linear infinite;
+  --animate-flow-inner-mid: flow-march-inner var(--duration-flow-mid) linear infinite;
+  --animate-flow-inner-fast: flow-march-inner var(--duration-flow-fast) linear infinite;
+  --animate-flow-pulse-slow: flow-pulse var(--duration-flow-slow) linear infinite;
+  --animate-flow-pulse-mid: flow-pulse var(--duration-flow-mid) linear infinite;
+  --animate-flow-pulse-fast: flow-pulse var(--duration-flow-fast) linear infinite;
   /* Loading (#494). A skeleton shows only if its data takes longer than the delay, then stays at
      least the minimum; a page waits for its primary queries up to the budget, then reveals every
      panel at once. Time that gates data, not animation, so reduced motion keeps the delay and the
@@ -219,6 +236,34 @@
   @keyframes graph-in {
     from {
       opacity: var(--opacity-graph-in);
+    }
+  }
+
+  @keyframes flow-march {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: calc(var(--flow-dash-cycle) * -1);
+    }
+  }
+  @keyframes flow-march-inner {
+    from {
+      stroke-dashoffset: var(--flow-dash-inner-offset);
+    }
+    to {
+      stroke-dashoffset: calc(var(--flow-dash-inner-offset) - var(--flow-dash-cycle));
+    }
+  }
+  /* The pulses' own opacity is 0 (`opacity-0`): visible only while this runs. */
+  @keyframes flow-pulse {
+    from {
+      stroke-dashoffset: 0;
+      opacity: var(--opacity-flow-pulse);
+    }
+    to {
+      stroke-dashoffset: calc(var(--flow-dash-cycle) * -1);
+      opacity: var(--opacity-flow-pulse);
     }
   }
 
@@ -480,6 +525,11 @@
       animation-duration: var(--duration-fast) !important;
       animation-iteration-count: 1 !important;
       transition-duration: var(--duration-fast) !important;
+    }
+    /* The Planner's marching lines stop outright, on their still frame (a measured line's pulses hidden), rather than
+       running one 0s cycle. */
+    [data-march] {
+      animation: none !important;
     }
   }
 }

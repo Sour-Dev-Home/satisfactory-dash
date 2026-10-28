@@ -1,4 +1,4 @@
-import { endpoints, ownValue, PlannerDesignationsResponseSchema, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, PlannerDesignationsResponseSchema, ProductionGraphResponseSchema, type Command, type PlannerEdge } from "@satisfactory-dash/shared";
 import {
   errorForbidden,
   errorServiceUnavailable,
@@ -540,6 +540,50 @@ const plannerFactoriesTransports = (() => {
   };
 })();
 
+/**
+ * ADR-0062 amendment build PR 3, the marching dashes' measurement: one site of 160 groups and 210 lines (the measured site's
+ * size, ADR-0055's 160 groups and 204 edges), built from the two-sites fixture. Groups stand in layers of 10, each fed by the
+ * one a layer before and every third also by a neighbour of it. The lines mix every step (slow, mid, fast), measured,
+ * estimated and unknown rates, pipes and mixed belts, so the in-view cap has a real choice to make.
+ */
+export const plannerLarge = (() => {
+  const base = productionGraphTwoSites.data;
+  const GROUPS = 160;
+  const WIDTH = 10;
+  const SITE = "site|0|0";
+  const ITEMS = [
+    ["Desc_IronIngot_C", "Iron Ingot"],
+    ["Desc_IronPlate_C", "Iron Plate"],
+    ["Desc_IronRod_C", "Iron Rod"],
+    ["Desc_IronScrew_C", "Screw"],
+    ["Desc_Wire_C", "Wire"],
+  ] as const;
+  const node = (i: number) => ({
+    ...base.nodes[1],
+    key: `group-${i}`,
+    recipe: `Recipe ${i}`,
+    count: 1 + (i % 9),
+    machineIds: [`Build_SmelterMk1_C_${100 + i}`],
+    stateCounts: { producing: 1 },
+    at: { x: i * 10, y: (i % WIDTH) * 10 },
+    siteKey: SITE,
+  });
+  const nodes = Array.from({ length: GROUPS }, (_, i) => node(i));
+  const edges: PlannerEdge[] = [];
+  const edge = (from: number, to: number) => {
+    const j = edges.length;
+    const pipe = j % 9 === 4;
+    const rate = j % 11 === 5 ? "unknown" : j % 3 === 1 ? "estimated" : "measured";
+    const [itemClassName, itemName] = pipe ? ["Desc_Water_C", "Water"] : ITEMS.at(j % ITEMS.length)!;
+    const ratePerMinute = rate === "unknown" ? null : (pipe ? [100, 400, 700] : [30, 150, 300, 600]).at(j % (pipe ? 3 : 4))!;
+    edges.push({ ...base.edges[0], from: `group-${from}`, to: `group-${to}`, kind: pipe ? "pipe" : "belt", itemClassName, itemName, ratePerMinute, rate, mixed: j % 13 === 7, capacityPerMinute: null, conveyorCount: 1 });
+  };
+  for (let i = WIDTH; i < GROUPS; i++) edge(i - WIDTH, i);
+  for (let i = WIDTH; i < GROUPS && edges.length < 210; i += 2) edge(i - WIDTH + (i % WIDTH === WIDTH - 1 ? -1 : 1), i);
+  const site = { ...base.sites[0], key: SITE, name: "Large site", machineCount: GROUPS * 5, stateCounts: { producing: GROUPS }, nodeKeys: nodes.map((n) => n.key) };
+  return { ...productionGraphTwoSites, data: { ...base, nodes, edges, sites: [site], unconnectedMachineIds: [], beltData: "present" as const } };
+})();
+
 /** ADR-0062 F.5: the mixed factory's five machines twelve times over (60, each its own id), past the table's 50-row cap. */
 const factoryManyMachines = {
   ...factoryMixed,
@@ -845,6 +889,8 @@ export const SCENARIOS = {
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
+  // ADR-0062 amendment build PR 3: a 160-group, 210-line site, for the marching dashes' in-view cap and frame times.
+  "planner-large": { productionGraph: ok(plannerLarge) },
   // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate.
   "planner-designations": plannerDesignated,
   // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and
