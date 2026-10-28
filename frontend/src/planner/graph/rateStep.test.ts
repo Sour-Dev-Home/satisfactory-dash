@@ -40,6 +40,11 @@ describe("rateStep", () => {
     }
   });
 
+  it("moves at the slowest step for the smallest positive rate, in either unit", () => {
+    expect(rateStep(Number.MIN_VALUE, "items/min")).toBe("slow");
+    expect(rateStep(Number.MIN_VALUE, "m3/min")).toBe("slow");
+  });
+
   it("gives no step for a missing or unknown unit, including inherited object keys", () => {
     for (const unit of [null, undefined, "", "items/s", "M3/MIN", "toString", "__proto__", "constructor"]) expect(rateStep(120, unit)).toBeNull();
   });
