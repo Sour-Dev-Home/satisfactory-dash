@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { MARCH_MAX } from "../src/planner/graph/marching";
 import { expect, expectNoAxeViolations, test } from "./fixtures";
 
 // ADR-0050 task 6, the graph's CSP gate: pan, zoom, the item filter and the group panel, all with zero CSP violations
@@ -373,4 +374,78 @@ test("with the item-focus flag on, the keyboard focuses a link's item and Escape
   // Focus does not zoom (owner answer 2); reaching a bubble may only pan it into view.
   expect(/scale\(([\d.e-]+)\)/.exec(await transformOf(svg))?.[1]).toBe(/scale\(([\d.e-]+)\)/.exec(before)?.[1]);
   await expect(svg.locator("[style]")).toHaveCount(0);
+});
+
+/** The page's frame times over `ms`: every requestAnimationFrame delta, the first (partial) one dropped. */
+const frameTimes = (page: Page, ms: number) =>
+  page.evaluate(
+    (span) =>
+      new Promise<number[]>((resolve) => {
+        const deltas: number[] = [];
+        let last = performance.now();
+        const end = last + span;
+        const tick = (t: number) => {
+          deltas.push(t - last);
+          last = t;
+          if (t < end) requestAnimationFrame(tick);
+          else resolve(deltas.slice(1));
+        };
+        requestAnimationFrame(tick);
+      }),
+    ms,
+  );
+const frameSummary = (deltas: number[]) => {
+  const sorted = [...deltas].sort((a, b) => a - b);
+  const at = (q: number) => Math.round(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]! * 10) / 10;
+  return { frames: sorted.length, p50: at(0.5), p95: at(0.95), max: at(1) };
+};
+
+// ADR-0062 amendment build PR 3: marching dashes by CSS class under the production CSP, only lines in view and at most
+// MARCH_MAX, still with Motion Off; and the measurement the cap is set from (owner answer 2, "Lines in view, capped"):
+// frame times on a 160-group, 210-line site with the lines marching (fitted, then zoomed out so every line is in view) and
+// with Motion Off. The numbers are attached and logged, not judged: CI's machines vary, so the only bound is a generous one
+// (more than 10 frames in 2 s). The baseline box's run is recorded in the ADR.
+test("marching dashes stay in view under the cap, stop with Motion Off, and record their frame times (210 lines)", async ({ page, mockApi }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await mockApi("planner-large");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Large site" }).click();
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Large site/ });
+  await expect(svg).toBeVisible({ timeout: 15_000 });
+  const lines = svg.locator('[data-edge-layer="lines"] [data-edge]');
+  expect(await lines.count()).toBeGreaterThan(200);
+  const marching = lines.filter({ has: page.locator("[data-march]") });
+  await expect.poll(() => marching.count()).toBeGreaterThan(0);
+  expect(await marching.count()).toBeLessThanOrEqual(MARCH_MAX);
+  // The dashes run as CSS animations (no script, no inline style): a marching path has one.
+  const names = await svg.locator("[data-march]").first().evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName));
+  expect(names.some((n) => n.startsWith("flow-"))).toBe(true);
+  await expect(svg.locator("[style]")).toHaveCount(0);
+
+  const fitted = frameSummary(await frameTimes(page, 2_000));
+  const fittedMarching = await marching.count();
+  // Zoomed out so every line is in view: the most the canvas repaints, still under the cap.
+  await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Minus");
+  await expect.poll(() => marching.count()).toBeGreaterThan(0);
+  const allInView = frameSummary(await frameTimes(page, 2_000));
+  const allInViewMarching = await marching.count();
+  expect(allInViewMarching).toBeLessThanOrEqual(MARCH_MAX);
+
+  await page.getByLabel("Motion").selectOption("off");
+  await expect(svg.locator("[data-march]")).toHaveCount(0);
+  const off = frameSummary(await frameTimes(page, 2_000));
+
+  const result = {
+    project: testInfo.project.name,
+    lines: await lines.count(),
+    cap: MARCH_MAX,
+    marching: { fitted: fittedMarching, allInView: allInViewMarching },
+    frameMs: { fitted, allInView, off },
+  };
+  await testInfo.attach("marching-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+  console.info(`[ADR-0062 PR 3 frame times] ${JSON.stringify(result)}`);
+  for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
 });

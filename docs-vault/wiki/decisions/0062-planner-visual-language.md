@@ -232,6 +232,54 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
 - **Legend.** The samples stay at the base width; the mixed-belt sample wears the inner stroke so it matches the canvas.
   The width rows are build PR 5's.
 
+### Values chosen in build PR 3 (2026-10-28)
+- **Which lines march** (`planner/graph/marching.ts`, `marchStep`): a belt or pipe line with a measured or estimated rate
+  (an "at least" sum is estimated) whose `rateStep` is not null and that is not stalled. Unknown lines stay static and
+  dotted. A stalled line stays static in marks mode (stop bar) and in words mode too, since motion would claim a flow.
+  Transports do not march (their glyph is build PR 4's).
+- **How a measured line marches.** Estimated already means dashed (ADR-0050 Decision 2), so a measured line never becomes
+  dashed. It stays solid, and pulses ride over it: a thin stroke (half the line's width, or a mixed line's inner width) in
+  `stroke-fg-strong` at `--opacity-flow-pulse` (0.7), dashes `3 10`, trimmed before the arrowhead like the inner stroke.
+  The pulses' own opacity is 0 and only their animation's keyframes make them visible, so a still frame, a screenshot with
+  animations disabled and reduced motion all draw exactly today's line. An estimated line's own `8 5` dashes march; a mixed
+  estimated belt's inner `7 6` dashes march with them in step (same step class, same cycle), so the warn rails and the
+  hollow core stay aligned; a mixed measured belt's pulses run in its core between the rails. Rejected: a long-dash pattern
+  on measured lines while they move (it reads as estimated). **Owner check:** the pulse look is a default; the owner can
+  choose it against "only estimated lines march" when reviewing the demo.
+- **Direction and timing.** Each path runs source to destination (the arrowhead's end), and the keyframes lower
+  `stroke-dashoffset` by `--flow-dash-cycle` (13, the length of `8 5`, `7 6` and `3 10`; `marching.test.ts` keeps them
+  equal) per cycle, so dashes move toward the arrowhead. The inner stroke's keyframes start at its still offset
+  (`--flow-dash-inner-offset`, -0.5). One cycle lasts the step's `--duration-flow-slow|mid|fast` (2.4s, 1.2s, 0.6s),
+  `linear infinite`. Classes `animate-flow-{step}`, `animate-flow-inner-{step}`, `animate-flow-pulse-{step}`, plus
+  `data-march="{step}"` on every animated path.
+- **Motion Off and reduced motion.** Motion Off (or a hidden tab) renders no class and no pulse path at all. Under
+  `prefers-reduced-motion` the flow tokens are 0 and `[data-march] { animation: none !important }` stops the lines outright,
+  on their still frame, rather than running a 0s cycle; this holds with the Motion control on "On" as well, like every
+  CSS motion token. The Motion control now shows whenever something can move: a transport or a line that can march (before,
+  only with a transport).
+- **The in-view cap.** `MARCH_MAX` = **60** lines. Candidates are listed once per layout (`marchCandidates`: fastest step
+  first, then the layout's edge order, so the choice is deterministic and a poll that keeps the layout keeps it); each
+  view takes, in that order, the candidates whose route's bounding box meets the stage (`isInView`, the same test the
+  transport glyphs use) until the cap. Lines out of view or past the cap stay static. The view is the canvas's own pan and
+  zoom state (no observers); the set is chosen from the view once it has been still for `MARCH_SETTLE_MS` (150 ms,
+  `useSettled`), so a drag or pinch does no per-frame work and lines entering the view start once it settles. Why 60 before
+  the measurement: a dash-offset animation is not composited, so every marching line repaints its box each frame; past a
+  few dozen lines spread over the view, the damaged area is most of the canvas and more lines add little, while the
+  per-path paint work keeps growing. 60 is 1.5 times the transport glyphs' `MAX_MOVING` (40), which is cheaper per item.
+- **Measurement** (`e2e/planner-graph.spec.ts`, "marching dashes ... record their frame times (210 lines)", on the
+  `planner-large` scenario: 160 groups and 210 lines built from the shared fixtures, the measured site's size). It records
+  `requestAnimationFrame` deltas over 2 s (frames, p50, p95, max) with the lines marching at the fitted view, zoomed out so
+  every line is in view, and with Motion Off, at 1440 and 390 px; it attaches them as `marching-frame-times.json` and logs
+  them. It asserts only more than 10 frames in 2 s, so CI's varying machines do not flake it.
+  **TODO (owner's box run):** record the numbers here and confirm or change `MARCH_MAX`:
+  - 1440 px: fitted [NEEDS MEASUREMENT], all in view [NEEDS MEASUREMENT], off [NEEDS MEASUREMENT]
+  - 390 px: fitted [NEEDS MEASUREMENT], all in view [NEEDS MEASUREMENT], off [NEEDS MEASUREMENT]
+  Rule for the cap: if "all in view" p95 stays within a frame (about 17 ms) of "off", the cap may rise; if it passes
+  33 ms, lower it (Revisit: animate only the hovered or selected path).
+- **Screenshots.** Planner screenshots run under reduced motion (`e2e/states.spec.ts`) and with animations disabled, so
+  the lines draw their still frame, which is today's. What changes on a canvas with no transport is the toolbar: the
+  Motion control now shows there.
+
 ### Consequences
 - The graph reads rate at a glance by speed and width, with colour left free for carrier and state.
 - Animation cost is bounded by the view and the cap, not the factory's size, once the cap is measured.

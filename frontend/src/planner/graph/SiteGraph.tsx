@@ -58,6 +58,9 @@ import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
 import { motionPathAround, roundedOrthogonalPath } from "./edgeShapes";
 import { lineStroke } from "./lineWidth";
+import { MARCH_SETTLE_MS, PULSE_DASH, marchCandidates, marchingLines } from "./marching";
+import type { RateStep } from "./rateStep";
+import { useSettled } from "./useSettled";
 import {
   BUBBLE_D,
   BUBBLE_ICON,
@@ -162,6 +165,27 @@ const INNER_TRIM_STALLED = 3;
  */
 const innerDash = (dash: string | undefined) => dash?.split(" ").map((n, i) => Number(n) + (i % 2 === 0 ? -1 : 1)).join(" ");
 const INNER_DASH_OFFSET = -0.5;
+/**
+ * Marching dashes (ADR-0062 amendment build PR 3), one class per step, each timed by its `--duration-flow-*` token. An
+ * estimated line's own dashes march (and a mixed one's inner dashes with them, in step). A measured line stays solid: pulses
+ * ride over it, a thin `PULSE_DASH` stroke that is visible only while its animation runs, so a still frame is today's line.
+ * The dash cycles (8 + 5, 7 + 6, 3 + 10) all equal `--flow-dash-cycle`, the distance one animation cycle shifts them.
+ */
+const MARCH_CLASS: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "animate-flow-slow"],
+  ["mid", "animate-flow-mid"],
+  ["fast", "animate-flow-fast"],
+]);
+const MARCH_INNER_CLASS: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "animate-flow-inner-slow"],
+  ["mid", "animate-flow-inner-mid"],
+  ["fast", "animate-flow-inner-fast"],
+]);
+const PULSE_CLASS: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "animate-flow-pulse-slow"],
+  ["mid", "animate-flow-pulse-mid"],
+  ["fast", "animate-flow-pulse-fast"],
+]);
 
 /** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
 const FADES = [
@@ -921,6 +945,16 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     return set;
   }, [animate, visible, transports, viewport, stage, marks]);
 
+  // The lines whose dashes march (ADR-0062 amendment build PR 3): only those in the settled view, at most MARCH_MAX, never
+  // with Motion off (reduced motion zeroes their tokens too) or in a hidden tab. Chosen per layout, then per settled view.
+  const marchable = useMemo(() => marchCandidates(layout.edges), [layout]);
+  const viewNow = useMemo(() => ({ view: viewport, stage }), [viewport, stage]);
+  const settledView = useSettled(viewNow, MARCH_SETTLE_MS);
+  const marching = useMemo(
+    () => (animate && visible ? marchingLines(marchable, settledView.view, settledView.stage) : new Map<number, RateStep>()),
+    [animate, visible, marchable, settledView],
+  );
+
   // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
 
@@ -999,7 +1033,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           onClick={() => setStateStyle(marks ? "words" : "marks")}
           icon={<path d="M4 8h6M4 16h6M14 6v12" />}
         />
-        {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
+        {/* Shown whenever something can move: a transport's glyph or a marching line (ADR-0062 amendment build PR 3). */}
+        {(transports.length > 0 || marchable.length > 0) && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
             also says what focus did; the item filter's words show, focus's are for screen readers. */}
         {(reach !== null || itemFocusOn) && (
@@ -1123,6 +1158,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                           marks={marks}
                           dim={!edgeLit(e)}
                           moving={moving.has(e.index)}
+                          march={marching.get(e.index) ?? null}
                           from={from?.title ?? ""}
                           to={to?.title ?? ""}
                           detail={detail}
@@ -1378,6 +1414,8 @@ type EdgeProps = {
   marks: boolean;
   dim: boolean;
   moving: boolean;
+  /** The line's marching step (in view, under the cap, motion on), or null/absent for a still line. */
+  march?: RateStep | null | undefined;
   from: string;
   to: string;
   detail: BubbleDetail;
@@ -1386,11 +1424,16 @@ type EdgeProps = {
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
  *  in its state's stop bar instead of the arrowhead. Its width is its rate's step (`lineStroke`; a bundle's summed rate),
- *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. */
-function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
+ *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. A marching line (`march`)
+ *  moves from source to destination, the arrowhead's way: an estimated line's dashes (and a mixed one's inner dashes in
+ *  step), or a measured line's pulses over its solid stroke. */
+function EdgeLine({ edge: e, markerId, marks, dim, from, to, march = null }: EdgeProps) {
   const stalled = marks ? e.flow.stalled : undefined;
   const stroke = lineStroke(e.flow);
   const dash = edgeDash(e.flow.rate);
+  // `march` is only ever set on a measured or estimated line: a dash means estimated, none means measured.
+  const dashMarch = march !== null && dash !== undefined ? march : null;
+  const pulse = march !== null && dash === undefined ? march : null;
   return (
     <g data-edge={e.index} data-stalled={stalled} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
@@ -1400,7 +1443,8 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
         strokeWidth={stroke.width}
         strokeDasharray={dash}
         markerEnd={`url(#${stalled === undefined ? markerId : `${markerId}-${stalled}`})`}
-        className={edgeClass(e.flow)}
+        data-march={dashMarch ?? undefined}
+        className={cn(edgeClass(e.flow), dashMarch !== null && MARCH_CLASS.get(dashMarch))}
       />
       {stroke.inner !== null && (
         <path
@@ -1410,7 +1454,19 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
           strokeDasharray={innerDash(dash)}
           strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET}
           data-mixed-inner=""
-          className="stroke-surface"
+          data-march={dashMarch ?? undefined}
+          className={cn("stroke-surface", dashMarch !== null && MARCH_INNER_CLASS.get(dashMarch))}
+        />
+      )}
+      {pulse !== null && (
+        <path
+          d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
+          fill="none"
+          strokeWidth={stroke.inner ?? stroke.width / 2}
+          strokeDasharray={PULSE_DASH}
+          data-march={pulse}
+          data-march-pulse=""
+          className={cn("stroke-fg-strong opacity-0", PULSE_CLASS.get(pulse))}
         />
       )}
     </g>
