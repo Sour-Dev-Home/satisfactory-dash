@@ -36,7 +36,8 @@ describe("stalled cards and flows", () => {
   });
 
   it("has no mark where the words have none: mixed states, unpowered, an unknown state", () => {
-    for (const counts of [{ backedUp: 2, underfed: 2 }, { unpowered: 4 }, { someNewState: 4 }]) {
+    const cases: Record<string, number>[] = [{ backedUp: 2, underfed: 2 }, { unpowered: 4 }, { someNewState: 4 }];
+    for (const counts of cases) {
       const scene = sceneWith(counts);
       const card = smelterCard(scene);
       expect(card.stalled).toBeUndefined();

@@ -127,9 +127,11 @@ const STALLED_KINDS: readonly StalledKind[] = ["backedUp", "underfed", "paused",
 /** A kind's colour as a text class (`stroke-current`/`fill-current` take it): the state's tone, as `StateMark` draws it. */
 const stateMarkTone = (kind: StalledKind): string => machineState(kind)?.tone ?? "text-muted";
 /** A stalled item bubble's corner mark: its centre from the bubble's, the disc behind it, and the glyph's scale. */
-const BUBBLE_MARK_AT = 13;
-const BUBBLE_MARK_R = 7;
-const BUBBLE_MARK_SCALE = 0.45;
+const BUBBLE_MARK_AT = 14;
+const BUBBLE_MARK_R = 8;
+const BUBBLE_MARK_SCALE = 0.6;
+/** A stalled bubble's ring: thinner than the accent focus ring (3), so the two never read alike. */
+const STALLED_RING_W = 2.5;
 /** A stalled card's mark on its note row: the glyph's scale (the row is `LINE_H` tall, the glyph box `GLYPH_BOX`). */
 const CARD_MARK_SCALE = 0.75;
 
@@ -978,7 +980,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           iconOnly
           pressed={marks}
           onClick={() => setStateStyle(marks ? "words" : "marks")}
-          icon={<path d="M4 12h11M18 6v12" />}
+          icon={<path d="M4 8h6M4 16h6M14 6v12" />}
         />
         {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
@@ -1443,7 +1445,7 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
           transform={`translate(${left + at.bubbles[row.items.length - 1] + BUBBLE_MARK_AT} ${cy - BUBBLE_MARK_AT})`}
           className="pointer-events-none"
         >
-          <circle r={BUBBLE_MARK_R} strokeWidth={1} className={cn("fill-surface stroke-current", stateMarkTone(stalled))} />
+          <circle r={BUBBLE_MARK_R} strokeWidth={1.5} className={cn("fill-surface stroke-current", stateMarkTone(stalled))} />
           <g transform={`scale(${BUBBLE_MARK_SCALE})`}>
             <StateMarkGlyph kind={stalled} />
           </g>
@@ -1518,7 +1520,7 @@ function ItemBubble({
         cx={cx}
         cy={cy}
         r={BUBBLE_D / 2}
-        strokeWidth={focused || (stalled !== undefined && !ringed) ? 3 : 1}
+        strokeWidth={focused ? 3 : stalled !== undefined && !ringed ? STALLED_RING_W : 1}
         data-stalled-ring={stalled !== undefined && !focused && !ringed ? stalled : undefined}
         className={cn("fill-icon-chip", focused || ringed ? "stroke-accent" : stalled !== undefined ? cn("stroke-current", stateMarkTone(stalled)) : "stroke-line")}
       />
