@@ -350,14 +350,21 @@ describe("planner designations: hierarchy (additive)", () => {
     expect(list.designations.map((d) => d.parentId)).toEqual([MAIN, MAIN, null]);
     expect(list.designations[2]?.members).toEqual([]);
   });
-  it("empty members only with children: a listed designation without members that no other names as parent is refused", () => {
+  it("the nested fixture keeps the shape rule: every designation without members is named as parent by another", () => {
+    const list = PlannerDesignationsResponseSchema.parse(nested);
+    const parents = new Set(list.designations.flatMap((d) => (d.parentId && d.parentId !== d.id ? [d.parentId] : [])));
+    expect(list.designations.filter((d) => d.members.length === 0 && !parents.has(d.id))).toEqual([]);
+  });
+  it("a read tolerates a breach of the shape rule (the route's 409 on writes): one bad row never fails the list", () => {
     const [line, annex, main] = nested.designations;
-    expect(listOf([line, annex, main]).success).toBe(true);
-    expect(listOf([main]).success).toBe(false);
-    expect(listOf([{ ...line, parentId: null }, { ...annex, parentId: null }, main]).success).toBe(false);
-    const selfParent = listOf([{ ...main, parentId: MAIN }]);
-    expect(selfParent.success).toBe(false);
-    expect(selfParent.error?.issues[0]?.path).toEqual(["designations", 0, "members"]);
+    expect(listOf([main]).success).toBe(true);
+    expect(listOf([{ ...line, parentId: null }, { ...annex, parentId: null }, main]).success).toBe(true);
+    expect(listOf([{ ...main, parentId: MAIN }]).success).toBe(true);
+  });
+  it("a put keeps absent and null parentId apart (update: absent keeps the parent, null moves it to the top level)", () => {
+    const body = (extra: Record<string, unknown>) => ({ expect: [{ id: MAIN, revision: 1 }], put: [{ id: MAIN, name: "Main", members: [member], ...extra }] });
+    expect("parentId" in ReplacePlannerDesignationsRequestSchema.parse(body({})).put[0]!).toBe(false);
+    expect(ReplacePlannerDesignationsRequestSchema.parse(body({ parentId: null })).put[0]?.parentId).toBeNull();
   });
   it("a parent may also own machines (owner answer 2)", () => {
     const [line, annex, main] = nested.designations;

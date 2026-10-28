@@ -66,6 +66,7 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
   /**
    * ADR-0061 build PR 1 loosened the contract (members may be empty on a parent, `parentId` is accepted). Until the nesting
    * route (build PR 2) stores parents, a write that uses either is refused exactly as before the loosening: 400.
+   * TODO(ADR-0061 PR 2): remove this and its rows in designationRoutes.test.ts in the change that stores `parent_id`.
    */
   const refuseNestingUntilServed = (entries: readonly { members: readonly unknown[]; parentId?: string | null }[]): void => {
     if (entries.some((e) => e.members.length === 0 || e.parentId !== undefined)) throw new BadRequestError("The request body is not valid");

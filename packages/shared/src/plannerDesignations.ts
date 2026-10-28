@@ -43,8 +43,8 @@ import { z } from "zod";
  * PLANNER_DESIGNATION_MAX_DEPTH levels deep (a top-level designation is level 1). A parent may own machines itself AND have
  * children; the OVERLAP rule is unchanged at any depth (a building belongs to at most one designation), so a parent's own
  * members and its descendants' are disjoint. `members` may be empty ONLY on a designation with children: create and replace
- * `put` accept 0 members and the route answers 409 `designation_shape` for an empty one without children; a listed set
- * refuses an empty designation no other listed one names as parent. `PUT` (update) never changes the parent and still
+ * `put` accept 0 members and the route answers 409 `designation_shape` for a write that leaves one without children; a
+ * read never refuses a breach (a client draws it as an empty factory). `PUT` (update) never changes the parent and still
  * needs at least one member when it sends members; Move goes through replace. On create and on a `put` insert, an absent
  * or null `parentId` is top level; on a `put` that updates in place, absent keeps the current parent and null moves it to
  * the top level (so an older client's merge never un-nests). Further 409s, from the route: a `parentId` that would make
@@ -125,7 +125,7 @@ export const PlannerDesignationSchema = z.object({
   id: z.uuid(),
   name: PlannerDesignationNameSchema,
   mode: PlannerDesignationModeSchema,
-  // ADR-0061: empty only on a designation with children (checked across the list in PlannerDesignationsResponseSchema).
+  // ADR-0061: empty only on a designation with children; the route enforces it on writes, a read tolerates a breach.
   members: z.array(PlannerDesignationMemberSchema).max(PLANNER_DESIGNATION_MAX_MEMBERS),
   createdAt: IsoTimeSchema,
   updatedAt: IsoTimeSchema,
@@ -176,23 +176,13 @@ export const PlannerDesignationMatchSchema = z.object({
 );
 
 /**
- * GET: the designations, oldest first, with one match entry per designation. The list is the server's whole set, so
- * ADR-0061's shape rule is checked here: a designation without members is named as `parentId` by another listed one.
+ * GET: the designations, oldest first, with one match entry per designation. ADR-0061's shape rule (no members only with
+ * children) is the write side's (409 `designation_shape`); a read tolerates a breach, so one bad row never fails the list.
  */
-export const PlannerDesignationsResponseSchema = z
-  .object({
-    designations: z.array(PlannerDesignationSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
-    matches: z.array(PlannerDesignationMatchSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
-  })
-  .superRefine((body, ctx) => {
-    // A designation naming itself is no child of its own.
-    const parents = new Set(body.designations.flatMap((d) => (typeof d.parentId === "string" && d.parentId !== d.id ? [d.parentId] : [])));
-    body.designations.forEach((d, index) => {
-      if (d.members.length === 0 && !parents.has(d.id)) {
-        ctx.addIssue({ code: "custom", path: ["designations", index, "members"], message: "Only a designation with children may have no members" });
-      }
-    });
-  });
+export const PlannerDesignationsResponseSchema = z.object({
+  designations: z.array(PlannerDesignationSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
+  matches: z.array(PlannerDesignationMatchSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
+});
 
 /** DELETE: 200. */
 export const DeletePlannerDesignationResponseSchema = z.object({ deleted: z.literal(true) });
