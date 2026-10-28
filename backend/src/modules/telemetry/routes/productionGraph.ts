@@ -12,6 +12,7 @@ import { routePath } from "../../../platform/routePath.js";
 import { sendValidated } from "../../../platform/sendValidated.js";
 import { snapshot } from "../../../platform/snapshot.js";
 import { buildProductionGraphWithStats } from "../services/productionGraph.js";
+import type { DesignationRef } from "../services/factoryReduction.js";
 import type { TelemetryScope } from "../telemetryServices.js";
 import type { BottlenecksRouteDeps } from "./bottlenecks.js";
 import { readEdges } from "./bottlenecks.js";
@@ -57,8 +58,8 @@ export async function readDesignated(
   serverId: string,
   buildings: readonly FactoryBuilding[],
   log?: Pick<Logger, "warn">,
-): Promise<Map<string, { id: string; name: string }>> {
-  const out = new Map<string, { id: string; name: string }>();
+): Promise<Map<string, DesignationRef>> {
+  const out = new Map<string, DesignationRef>();
   if (!store) return out;
   try {
     const designations = await store.list(serverId);
@@ -67,7 +68,9 @@ export async function readDesignated(
     for (const m of matchDesignations(designations, toDesignationBuildings(buildings))) {
       const d = byId.get(m.designationId);
       if (!d) continue;
-      for (const id of m.buildingIds) out.set(id, { id: d.id, name: d.name });
+      // ADR-0061: the parent is read through to the factory; matching above never looks at it.
+      const ref: DesignationRef = { id: d.id, name: d.name, parentId: d.parentId ?? null };
+      for (const id of m.buildingIds) out.set(id, ref);
     }
   } catch (err) {
     log?.warn({ serverId, err: err instanceof Error ? err.message : "unknown" }, "designations could not be read; the production graph is fully automatic");

@@ -69,7 +69,17 @@ export interface ReductionInput {
    * designation's factory (one per designation) and never reassigned; they seed it, so shared upstream is still attributed
    * to it by share. Absent or empty = fully automatic.
    */
-  designations?: ReadonlyMap<string, { id: string; name: string }>;
+  designations?: ReadonlyMap<string, DesignationRef>;
+}
+
+/**
+ * The designation a machine belongs to. `parentId` (ADR-0061) is only read through to the factory's `parentDesignationId`;
+ * it never takes part in matching or in the reduction (the graph stays flat: one factory per designation's own members).
+ */
+export interface DesignationRef {
+  id: string;
+  name: string;
+  parentId?: string | null;
 }
 
 export interface NodeAnnotation {
@@ -180,7 +190,7 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
   const ingMax = nodes.map((nd) => maxMap(nd.ingredients));
   const outputTotal = nodes.map((nd) => nd.products.reduce((s, p) => s + p.maxPerMinute, 0));
   const machinesIn = (i: number): number => (isMachine(i) ? nodes[i].count : 0);
-  const desigOf: ({ id: string; name: string } | undefined)[] = nodes.map((nd) => (nd.kind === "machines" ? input.designations?.get(nd.key) : undefined));
+  const desigOf: (DesignationRef | undefined)[] = nodes.map((nd) => (nd.kind === "machines" ? input.designations?.get(nd.key) : undefined));
 
   // ---- roles ----
   const roles: (string | undefined)[] = nodes.map((nd, i) => {
@@ -803,6 +813,8 @@ export function reduceFactories(input: ReductionInput): ReductionResult {
       key: fKey[f],
       name: own,
       designationId: desigF[f]?.id ?? null,
+      // ADR-0061 Contracts 5: null = top level, or an automatic factory.
+      parentDesignationId: desigF[f]?.parentId ?? null,
       products: [...rates.values()]
         .sort((a, b) => b.max - a.max || byString(a.className, b.className))
         .slice(0, PLANNER_MAX_RATES)

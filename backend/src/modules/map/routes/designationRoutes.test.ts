@@ -8,10 +8,14 @@ import { createLogger } from "../../../platform/logger.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
 import { createDesignationRoutes } from "./designationRoutes.js";
 import type { DesignationStore } from "../repositories/designationRepository.js";
+import { checkHierarchy, emptiedAncestors, untouchedBreaches } from "../services/designationHierarchy.js";
+import type { HierarchyNode } from "../services/designationHierarchy.js";
 import { findOverlap } from "../services/designationMatching.js";
 import type { DesignationBuilding } from "../services/designationMatching.js";
 
-/** A store in memory with the database store's rules (cap, overlap), so the routes are tested against real outcomes. */
+const nodeOf = (d: PlannerDesignation): HierarchyNode => ({ id: d.id, parentId: d.parentId ?? null, memberCount: d.members.length });
+
+/** A store in memory with the database store's rules (cap, overlap, hierarchy), so the routes are tested against real outcomes. */
 function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
   const rows: PlannerDesignation[] = [];
   let tick = 0;
@@ -23,8 +27,11 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
       if (rows.length >= PLANNER_DESIGNATIONS_MAX_PER_SERVER) return { kind: "cap" };
       const other = findOverlap(input.members, rows);
       if (other) return { kind: "overlap", other };
+      const parentId = input.parentId ?? null;
+      const breach = checkHierarchy([...rows.map(nodeOf), { id: "", parentId, memberCount: input.members.length }], untouchedBreaches(rows.map(nodeOf), []));
+      if (breach) return breach;
       const at = stamp();
-      const designation: PlannerDesignation = { id: randomUUID(), name: input.name, mode: input.mode, members: input.members, createdAt: at, updatedAt: at, revision: 1 };
+      const designation: PlannerDesignation = { id: randomUUID(), name: input.name, mode: input.mode, members: input.members, createdAt: at, updatedAt: at, revision: 1, parentId };
       rows.push(designation);
       return { kind: "created", designation };
     },
@@ -39,9 +46,11 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
       return { kind: "updated", designation: current };
     },
     remove: async (_server, id) => {
-      const at = rows.findIndex((d) => d.id === id);
-      if (at < 0) return false;
-      rows.splice(at, 1);
+      const target = rows.find((d) => d.id === id);
+      if (!target) return false;
+      const gone = new Set([id, ...emptiedAncestors(rows.map(nodeOf), id)]);
+      for (const child of rows.filter((d) => d.parentId === id)) Object.assign(child, { parentId: target.parentId ?? null, updatedAt: stamp(), revision: (child.revision ?? 1) + 1 });
+      rows.splice(0, rows.length, ...rows.filter((d) => !gone.has(d.id)));
       return true;
     },
     // The database store's replace rules, in memory (its own tests are designationRepository.db.test.ts).
@@ -57,14 +66,21 @@ function memoryStore(): DesignationStore & { rows: PlannerDesignation[] } {
         if (other) return { kind: "overlap", other };
       }
       if (outside.length + input.put.length > PLANNER_DESIGNATIONS_MAX_PER_SERVER) return { kind: "cap" };
+      const planned = input.put.map((p, index) => {
+        const current = p.id !== undefined && expectIds.has(p.id) ? rows.find((d) => d.id === p.id) : undefined;
+        const parentId = current && p.parentId === undefined ? (current.parentId ?? null) : (p.parentId ?? null);
+        return { p, current, parentId, id: p.id ?? `new:${index}` };
+      });
+      const after = [...outside.map(nodeOf), ...planned.map((w) => ({ id: w.id, parentId: w.parentId, memberCount: w.p.members.length }))];
+      const breach = checkHierarchy(after, untouchedBreaches(rows.map(nodeOf), planned.map((w) => w.id)));
+      if (breach) return breach;
       const putIds = new Set(input.put.map((p) => p.id));
       const removedIds = input.expect.filter((e) => !putIds.has(e.id)).map((e) => e.id);
-      const written = input.put.map((p) => {
-        const current = p.id !== undefined && expectIds.has(p.id) ? rows.find((d) => d.id === p.id) : undefined;
+      const written = planned.map(({ p, current, parentId }) => {
         const at = stamp();
         return current
-          ? { ...current, name: p.name, members: p.members, updatedAt: at, revision: (current.revision ?? 1) + 1 }
-          : { id: p.id ?? randomUUID(), name: p.name, mode: "core" as const, members: p.members, createdAt: p.createdAt ?? at, updatedAt: at, revision: 1 };
+          ? { ...current, name: p.name, members: p.members, parentId, updatedAt: at, revision: (current.revision ?? 1) + 1 }
+          : { id: p.id ?? randomUUID(), name: p.name, mode: "core" as const, members: p.members, parentId, createdAt: p.createdAt ?? at, updatedAt: at, revision: 1 };
       });
       const kept = rows.filter((d) => !expectIds.has(d.id));
       rows.splice(0, rows.length, ...[...kept, ...written].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
@@ -165,10 +181,9 @@ describe("designation routes", () => {
     }
   });
 
-  it("400 for a bad body: empty members, invisible characters in the name, unknown keys, empty update", async () => {
+  it("400 for a bad body: invisible characters in the name, unknown keys, empty update", async () => {
     const { app } = build();
     const bad = [
-      { ...body("A"), members: [] },
       body("zero​width"),
       body("new\nline"),
       body("   "),
@@ -176,9 +191,7 @@ describe("designation routes", () => {
       { ...body("A"), mode: "other" },
       body("A", [m("b1", "S", 0.5, 1)]),
       body("A", [m("dup", "S", 1, 1), m("dup", "S", 2, 2)]),
-      // ADR-0061: allowed by the contract, refused by this route until it stores parents (build PR 2).
-      { ...body("A"), parentId: null },
-      { ...body("A"), parentId: randomUUID() },
+      { ...body("A"), parentId: "not-a-uuid" },
     ];
     for (const payload of bad) {
       const res = await request(app).post(path).send(payload);
@@ -334,10 +347,7 @@ describe("designation replace route (ADR-0055 Decision 11)", () => {
       { expect: [{ id: a.id, revision: 1 }, { id: a.id, revision: 1 }], put: [] },
       { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)] }, { name: "Y", members: [m("x1", "S", 5, 5)] }] },
       { expect: [], put: [{ id: randomUUID(), name: "X", members: [m("x1", "S", 5, 5)], createdAt: future }] },
-      // ADR-0061: the contract allows these now; this route refuses them until it stores parents (build PR 2).
-      { expect: [], put: [{ name: "X", members: [] }] },
-      { expect: [{ id: a.id, revision: 1 }], put: [{ id: a.id, name: "Alpha", members: [m("a1", "S", 1, 1)], parentId: null }] },
-      { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)], parentId: a.id }] },
+      { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)], parentId: "not-a-uuid" }] },
     ];
     for (const payload of bad) {
       const res = await request(app).post(replacePath).send(payload);
@@ -361,5 +371,188 @@ describe("designation replace route (ADR-0055 Decision 11)", () => {
     const payload = { expect: [{ id: randomUUID(), revision: 1 }], put: [] };
     expect((await request(build({ noDb: true }).app).post(replacePath).send(payload)).status).toBe(503);
     expect((await request(build().app).post(endpoints.plannerDesignations.replace.path("nope")).send(payload)).status).toBe(404);
+  });
+});
+
+describe("designation nesting (ADR-0061)", () => {
+  const replacePath = endpoints.plannerDesignations.replace.path("default");
+  type App = ReturnType<typeof build>["app"];
+  let n = 0;
+  /** A designation with one fresh building (or none), optionally inside `parentId`. */
+  const make = async (app: App, name: string, parentId?: string | null, members = [m(`b${++n}`, "S", n, n)]) => {
+    const res = await request(app).post(path).send({ ...body(name, members), ...(parentId !== undefined && { parentId }) });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return res.body as PlannerDesignation & { revision: number };
+  };
+  const list = async (app: App) => PlannerDesignationsResponseSchema.parse((await request(app).get(path)).body).designations;
+  const parents = async (app: App) => new Map((await list(app)).map((d) => [d.name, d.parentId ?? null] as const));
+  const replace = (app: App, payload: object) => request(app).post(replacePath).send(payload);
+  const code = (res: { status: number; body: { error?: { code: string } } }) => [res.status, res.body.error?.code];
+  const put = (d: PlannerDesignation & { revision?: number }, extra: object = {}) => ({ id: d.id, name: d.name, members: d.members, ...extra });
+  const expectOf = (...ds: (PlannerDesignation & { revision?: number })[]) => ds.map((d) => ({ id: d.id, revision: d.revision ?? 1 }));
+
+  it("serves what build PR 1 refused: parentId null or a real parent, and an empty put entry with a child", async () => {
+    const { app } = build();
+    const top = await make(app, "Top", null);
+    expect(top.parentId).toBeNull();
+    const child = await make(app, "Child", top.id);
+    expect(child.parentId).toBe(top.id);
+    // An in-place put with parentId null moves it to the top level.
+    const moved = await replace(app, { expect: expectOf(child), put: [put(child, { parentId: null })], intent: "move" });
+    expect(moved.status).toBe(200);
+    expect(ReplacePlannerDesignationsResponseSchema.parse(moved.body).designations[0]).toMatchObject({ id: child.id, parentId: null, revision: 2 });
+    // An insert naming an existing parent.
+    const ins = await replace(app, { expect: [], put: [{ name: "Inserted", members: [m("i1", "S", 50, 50)], parentId: top.id }] });
+    expect([ins.status, ins.body.designations[0].parentId]).toEqual([200, top.id]);
+  });
+
+  it("409 designation_shape: no members and no children, on create and on a put", async () => {
+    const { app } = build();
+    expect(code(await request(app).post(path).send({ ...body("Empty"), members: [] }))).toEqual([409, "designation_shape"]);
+    expect(code(await replace(app, { expect: [], put: [{ name: "Empty", members: [] }] }))).toEqual([409, "designation_shape"]);
+    // Moving the only child out of an empty parent leaves it empty: refused, nothing changes.
+    const group = await replace(app, { expect: [], put: [{ id: randomUUID(), name: "Area", members: [] }] });
+    expect(code(group)).toEqual([409, "designation_shape"]);
+    const area = randomUUID();
+    const a = await make(app, "A");
+    const grouped = await replace(app, { expect: expectOf(a), put: [{ id: area, name: "Area", members: [] }, put(a, { parentId: area })], intent: "group" });
+    expect(grouped.status).toBe(200);
+    const aNow = grouped.body.designations[1];
+    expect(code(await replace(app, { expect: expectOf(aNow), put: [put(aNow, { parentId: null })], intent: "move" }))).toEqual([409, "designation_shape"]);
+    expect(await parents(app)).toEqual(new Map([["Area", null], ["A", area]]));
+  });
+
+  it("409 designation_cycle: a self-parent, and a parent moved under its own child", async () => {
+    const { app } = build();
+    const p = await make(app, "P");
+    const c = await make(app, "C", p.id);
+    expect(code(await replace(app, { expect: expectOf(p), put: [put(p, { parentId: p.id })], intent: "move" }))).toEqual([409, "designation_cycle"]);
+    expect(code(await replace(app, { expect: expectOf(p), put: [put(p, { parentId: c.id })], intent: "move" }))).toEqual([409, "designation_cycle"]);
+    // An insert naming itself as the parent: there is nothing above it, so it is a cycle too.
+    const self = randomUUID();
+    expect(code(await replace(app, { expect: [], put: [{ id: self, name: "Self", members: [m("s1", "S", 70, 70)], parentId: self }] }))).toEqual([409, "designation_cycle"]);
+    expect(await parents(app)).toEqual(new Map([["P", null], ["C", p.id]]));
+  });
+
+  it("409 designation_depth: a fourth level on create, and a move that pushes a subtree past 3", async () => {
+    const { app } = build();
+    const a = await make(app, "A");
+    const b = await make(app, "B", a.id);
+    const c = await make(app, "C", b.id);
+    expect(code(await request(app).post(path).send({ ...body("D", [m("d1", "S", 90, 90)]), parentId: c.id }))).toEqual([409, "designation_depth"]);
+    const other = await make(app, "Other");
+    // Moving A (3 levels tall) under Other would put C at level 4.
+    expect(code(await replace(app, { expect: expectOf(a), put: [put(a, { parentId: other.id })], intent: "move" }))).toEqual([409, "designation_depth"]);
+    // Moving B (2 levels tall) under Other is fine: B at 2, C at 3.
+    const fine = await replace(app, { expect: expectOf(b), put: [put(b, { parentId: other.id })], intent: "move" });
+    expect(fine.status).toBe(200);
+    expect(await parents(app)).toEqual(new Map([["A", null], ["B", other.id], ["C", b.id], ["Other", null]]));
+  });
+
+  it("409 designation_stale: a missing parent on create, a parent this replace removes, and a child left behind", async () => {
+    const { app } = build();
+    expect(code(await request(app).post(path).send({ ...body("X"), parentId: randomUUID() }))).toEqual([409, "designation_stale"]);
+    const p = await make(app, "P");
+    const kid = await make(app, "Kid", p.id);
+    // The same replace removes P and names it as a parent.
+    expect(code(await replace(app, { expect: expectOf(p), put: [{ name: "New", members: [m("n1", "S", 80, 80)], parentId: p.id }] }))).toEqual([409, "designation_stale"]);
+    // Dissolving P without saying where Kid goes (a client that did not know about Kid): Kid would name a parent that is gone.
+    expect(code(await replace(app, { expect: expectOf(p), put: [], intent: "dissolve" }))).toEqual([409, "designation_stale"]);
+    expect(await parents(app)).toEqual(new Map([["P", null], ["Kid", p.id]]));
+    expect(kid.parentId).toBe(p.id);
+  });
+
+  it("a concurrent delete of the parent: the next write naming it is a clean 409 designation_stale, nothing dangles", async () => {
+    const { app } = build();
+    const p = await make(app, "P");
+    const sibling = await make(app, "Sibling");
+    // Another client deletes P between this client's read and its writes.
+    expect((await request(app).delete(endpoints.plannerDesignations.remove.path("default", p.id))).status).toBe(200);
+    expect(code(await request(app).post(path).send({ ...body("Late", [m("l1", "S", 60, 60)]), parentId: p.id }))).toEqual([409, "designation_stale"]);
+    expect(code(await replace(app, { expect: expectOf(sibling), put: [put(sibling, { parentId: p.id })], intent: "move" }))).toEqual([409, "designation_stale"]);
+    expect(await parents(app)).toEqual(new Map([["Sibling", null]]));
+  });
+
+  it("a put in place: absent parentId keeps the parent, null moves to the top level", async () => {
+    const { app } = build();
+    const p = await make(app, "P");
+    const c = await make(app, "C", p.id);
+    const kept = await replace(app, { expect: expectOf(c), put: [{ id: c.id, name: "C renamed", members: c.members }], intent: "merge" });
+    expect([kept.status, kept.body.designations[0].parentId]).toEqual([200, p.id]);
+    const top = await replace(app, { expect: [{ id: c.id, revision: 2 }], put: [{ id: c.id, name: "C", members: c.members, parentId: null }], intent: "move" });
+    expect([top.status, top.body.designations[0].parentId]).toEqual([200, null]);
+    // On an insert, absent is the top level.
+    const ins = await replace(app, { expect: [], put: [{ name: "Fresh", members: [m("f1", "S", 40, 40)] }] });
+    expect(ins.body.designations[0].parentId).toBeNull();
+  });
+
+  it("group (with a parent that owns no machines), then ungroup moves the children up a level", async () => {
+    const { app } = build();
+    const outer = await make(app, "Outer");
+    const a = await make(app, "A", outer.id);
+    const b = await make(app, "B", outer.id);
+    const area = randomUUID();
+    // The new parent comes AFTER the children that name it in `put`: the order does not matter.
+    const grouped = await replace(app, {
+      expect: expectOf(a, b),
+      put: [put(a, { parentId: area }), put(b, { parentId: area }), { id: area, name: "Area", members: [], parentId: outer.id }],
+      intent: "group",
+    });
+    expect(grouped.status, JSON.stringify(grouped.body)).toBe(200);
+    expect(grouped.body.designations.map((d: PlannerDesignation) => d.parentId)).toEqual([area, area, outer.id]);
+    expect(await parents(app)).toEqual(new Map([["Outer", null], ["A", area], ["B", area], ["Area", outer.id]]));
+
+    const [aNow, bNow] = grouped.body.designations as (PlannerDesignation & { revision: number })[];
+    const areaRow = (await list(app)).find((d) => d.id === area)!;
+    const ungrouped = await replace(app, {
+      expect: expectOf(areaRow, aNow!, bNow!),
+      put: [put(aNow!, { parentId: outer.id }), put(bNow!, { parentId: outer.id })],
+      intent: "ungroup",
+    });
+    expect([ungrouped.status, ungrouped.body.removedIds]).toEqual([200, [area]]);
+    expect(await parents(app)).toEqual(new Map([["Outer", null], ["A", outer.id], ["B", outer.id]]));
+  });
+
+  it("DELETE of a parent moves its children to its own parent (a write to each: revision + 1)", async () => {
+    const { app } = build();
+    const g = await make(app, "G");
+    const p = await make(app, "P", g.id);
+    const c1 = await make(app, "C1", p.id);
+    await make(app, "C2", p.id);
+    expect((await request(app).delete(endpoints.plannerDesignations.remove.path("default", p.id))).body).toEqual({ deleted: true });
+    expect(await parents(app)).toEqual(new Map([["G", null], ["C1", g.id], ["C2", g.id]]));
+    expect((await list(app)).find((d) => d.id === c1.id)?.revision).toBe(2);
+    // Deleting the top-level G moves them to the top level.
+    await request(app).delete(endpoints.plannerDesignations.remove.path("default", g.id));
+    expect(await parents(app)).toEqual(new Map([["C1", null], ["C2", null]]));
+  });
+
+  it("DELETE of the last child of a parent that owns no machines deletes the parent too, up the tree", async () => {
+    const { app } = build();
+    const keep = await make(app, "Keep");
+    const outer = randomUUID();
+    const inner = randomUUID();
+    const res = await replace(app, {
+      expect: expectOf(keep),
+      put: [{ id: outer, name: "Outer", members: [] }, { id: inner, name: "Inner", members: [], parentId: outer }, put(keep, { parentId: inner })],
+      intent: "group",
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const other = await make(app, "Owns", inner);
+    await request(app).delete(endpoints.plannerDesignations.remove.path("default", other.id));
+    // Inner still has Keep: nothing else goes.
+    expect([...(await parents(app)).keys()]).toEqual(["Keep", "Outer", "Inner"]);
+    await request(app).delete(endpoints.plannerDesignations.remove.path("default", keep.id));
+    expect(await list(app)).toEqual([]);
+  });
+
+  it("a parent that owns machines stays when its last child is deleted; the cap counts parents", async () => {
+    const { app } = build();
+    const p = await make(app, "P");
+    const c = await make(app, "C", p.id);
+    await request(app).delete(endpoints.plannerDesignations.remove.path("default", c.id));
+    expect(await parents(app)).toEqual(new Map([["P", null]]));
+    for (let i = 1; i < PLANNER_DESIGNATIONS_MAX_PER_SERVER; i++) await make(app, `K${i}`, p.id);
+    expect(code(await request(app).post(path).send(body("Over", [m("ov", "S", -5, -5)])))).toEqual([409, "designation_cap"]);
   });
 });

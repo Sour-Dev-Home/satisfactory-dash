@@ -97,6 +97,14 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
   `move` join `KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS` (additive).
 - Merge offers only siblings (same parent); across parents the button says why, in text. Undo is the existing inverse replace.
 - Deleting a parent's last child leaves the parent if it owns machines; otherwise it is deleted in the same replace.
+- **Note (2026-10-28, build PR 2).** The single `DELETE .../:designationId` follows the same two rules on the server, in one
+  transaction: a deleted designation's children move up to its own parent (as Ungroup), and an ancestor left with no members
+  and no children is deleted too, up the tree. Its response stays `{ deleted: true }`; a client re-reads the list. A
+  **replace** does neither for the client: one that would leave a parent empty is 409 `designation_shape`, and one that
+  removes a parent while a designation outside `expect` still names it is 409 `designation_stale` (the client missed a child).
+  The write order (inserts parents first, then updates in place, then deletes) keeps the `ON DELETE RESTRICT` key whole.
+  Re-parenting is a write to each child (revision + 1), so a client holding the old revision gets `designation_stale` and
+  re-reads. An empty childless parent the previous build left (it ignores `parent_id`) never blocks an unrelated write.
 
 ### 7. Persistent state and the flag
 

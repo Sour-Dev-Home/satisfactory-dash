@@ -3,4 +3,4 @@
  * the build so startup can check the schema without reading the file system. Update it together
  * with every new migration: latestMigration.test.ts fails when the two disagree.
  */
-export const LATEST_MIGRATION = "1792281600000_agent_game_connection";
+export const LATEST_MIGRATION = "1792454400000_planner_designation_empty_parent";
