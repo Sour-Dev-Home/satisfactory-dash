@@ -584,6 +584,16 @@ export const plannerLarge = (() => {
   return { ...productionGraphTwoSites, data: { ...base, nodes, edges, sites: [site], unconnectedMachineIds: [], beltData: "present" as const } };
 })();
 
+/** ADR-0062 F.5: the mixed factory's five machines twelve times over (60, each its own id), past the table's 50-row cap. */
+const factoryManyMachines = {
+  ...factoryMixed,
+  data: {
+    ...factoryMixed.data,
+    buildings: Array.from({ length: 12 }, (_, n) => factoryMixed.data.buildings.map((b) => ({ ...b, id: `${b.id}-${n + 1}` }))).flat(),
+    backedUpCount: factoryMixed.data.backedUpCount * 12,
+  },
+};
+
 /** The factory read with the planner fixture's constructor manifold in it (Build_ConstructorMk1_C_1..8), for the graph's group panel. */
 const factoryWithPlannerManifold = {
   ...factoryMixed,
@@ -837,6 +847,8 @@ export const SCENARIOS = {
   "map-live-error": { mapLive: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
+  // ADR-0062 F.5: more machines than the table's first render shows, so it ends in "Showing 50 of 60" and "Show all".
+  "factory-many-machines": { factory: ok(factoryManyMachines) },
   // ADR-0048 (#349), the Bottlenecks section: an older FRM (item level, update note), connection data over the cap,
   // nothing to report, and a newer backend's unknown step kind and note.
   "bottlenecks-old-frm": { bottlenecks: ok(bottlenecksItemLevelOldFrm) },
