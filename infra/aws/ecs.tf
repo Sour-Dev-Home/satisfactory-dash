@@ -14,6 +14,7 @@ locals {
   backend_optional_secret_keys = [
     "SERVER_SECRETS_KEY", "SERVER_SECRETS_KEY_ID", "SERVER_SECRETS_PREVIOUS_KEYS",
     "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "BOOTSTRAP_OWNER_EMAIL",
+    "METRICS_INGEST_SECRET_SHA256",
   ]
   backend_secret_keys = distinct(concat(local.backend_required_secrets, var.backend_optional_secrets))
   task_secret_keys    = concat(local.backend_secret_keys, ["TUNNEL_TOKEN"])
