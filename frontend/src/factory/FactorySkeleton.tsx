@@ -15,6 +15,8 @@ export function FactorySkeleton() {
       <SinceYesterdaySkeleton />
       <PanelSkeleton label="Loading factory…" rows={0}>
         <Skeleton className="h-5 w-full max-w-64" />
+        {/* The filter bar: nav and search on one row from sm, two on a phone (ADR-0062 F.4), then the filters. */}
+        <Skeleton className="h-touch w-full max-w-64 sm:hidden" />
         <Skeleton className="h-touch w-full max-w-96" />
         <Skeleton className="h-touch w-full max-w-64" />
         {Array.from({ length: 5 }, (_, i) => (
