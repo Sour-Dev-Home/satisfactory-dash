@@ -54,16 +54,17 @@ export const withName = <T extends Pick<PlannerNode, "name" | "className">>(node
 
 /**
  * One product as a card's single line, "Iron Plate · 72/min" (a fluid says "m³/min"), cut to `MAX_SUMMARY_CHARS`; the
- * maximum is in the tooltip. A rate that reads 0 shows its maximum, "Iron Ingot · 0 of 30/min" (#728 step 2).
+ * maximum is in the tooltip. A rate that reads 0 shows its maximum, "Iron Ingot · 0 of 30/min" (#728 step 2). A parent's
+ * floor (ADR-0061 Decision 2, `atLeast`) reads "Iron Plate · at least 72/min".
  */
-export function productSummary(rate: PlannerRate): string {
+export function productSummary(rate: PlannerRate, atLeast = false): string {
   const per = `${rate.unit === "m3/min" ? " m³" : ""}/min`;
   const zero = isZeroRate(rate);
-  const amount = zero && hasMax(rate) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)}` : formatAmount(rate.currentPerMinute);
+  const amount = zero && hasMax(rate) ? `${formatAmount(0)} of ${formatAmount(rate.maxPerMinute)}` : `${atLeast ? "at least " : ""}${formatAmount(rate.currentPerMinute)}`;
   const name = nameOr(rate.name, rate.className);
   const tail = ` · ${amount}${per}`;
-  // A 0 is only honest with its maximum: a long name gives way, the tail is never the part cut off.
-  return zero ? `${cut(name, Math.max(1, MAX_SUMMARY_CHARS - tail.length))}${tail}` : cut(`${name}${tail}`, MAX_SUMMARY_CHARS);
+  // A 0 is only honest with its maximum, and a floor with its "at least": a long name gives way, the tail is never cut.
+  return zero || atLeast ? `${cut(name, Math.max(1, MAX_SUMMARY_CHARS - tail.length))}${tail}` : cut(`${name}${tail}`, MAX_SUMMARY_CHARS);
 }
 
 /**

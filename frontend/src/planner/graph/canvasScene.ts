@@ -19,6 +19,7 @@ import {
   UNKNOWN_FLOW_NOTE,
   type StalledKind,
 } from "../plannerText";
+import { levelOf, levelOwner, type FactoryTree } from "../factoryTree";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
 import {
   INFERRED_FROM_NODE,
@@ -199,6 +200,8 @@ export interface Scene {
   openByDefault: boolean;
   /** The first card kind word for the accessible label: "factories", "groups" or "cards". */
   noun: string;
+  /** ADR-0061 Decision 3, the overview: the path to the parent whose parts it shows (empty, or absent, at the top level). */
+  path?: string[] | undefined;
 }
 
 export interface FactoryView {
@@ -530,6 +533,7 @@ export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
 
 function factoryCard(model: FactoryModel): Card {
   const { factory } = model;
+  const floor = (rate: PlannerRate | undefined) => rate !== undefined && model.atLeast?.has(rate.className) === true;
   const name = nameOr(factory.name, UNNAMED_FACTORY);
   const title = cutTo(nameOr(factoryTitle(factory), UNNAMED_FACTORY), MAX_FACTORY_TITLE_CHARS);
   // The icon is the factory's main machine: the biggest group that makes its first product, else the biggest machine
@@ -547,7 +551,11 @@ function factoryCard(model: FactoryModel): Card {
     nodeKeys: model.nodes.map((n) => n.key),
     title,
     // The name and one product line; where it stands, the other outputs and the ends are in `description`.
-    ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledLine(factory.products[0], model.stateCounts)),
+    ...withMutedNote(
+      [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0], floor(factory.products[0]))],
+      null,
+      stalledLine(factory.products[0], model.stateCounts),
+    ),
     count: countOf(factory.machineCount),
     className: main?.className,
     glyph: main === undefined ? "unknown" : glyphOfGroups(model.nodes, main),
@@ -556,7 +564,7 @@ function factoryCard(model: FactoryModel): Card {
       name,
       factorySitesText(model),
       plural(factory.machineCount, "machine", "machines"),
-      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map((r) => outputLine(r, model.stateCounts))),
+      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map((r) => outputLine(r, model.stateCounts, floor(r)))),
       ...(factory.sharedNodeCount > 0 ? [plural(factory.sharedNodeCount, "shared group", "shared groups")] : []),
       ...model.destinations.map((d) => destinationChipText(d.destination, d.count)),
       ...(model.nodes.some((n) => n.loop === true) ? ["In a loop"] : []),
@@ -565,13 +573,20 @@ function factoryCard(model: FactoryModel): Card {
   };
 }
 
-/** The first level: a card per factory and the flows between them (ADR-0055 Decision 6). */
-export function overviewScene(graph: ProductionGraph, models: readonly FactoryModel[]): Scene {
-  const owner = factoryOfNode(graph);
-  const cards = models.map(factoryCard);
+/**
+ * The first level: a card per factory and the flows between them (ADR-0055 Decision 6). With the factory tree (ADR-0061
+ * Decision 3) it shows the parts of the path's last element, or the top level for an empty path: each group belongs to
+ * its shown ancestor, so flows inside one card vanish and flows between cards are summed. Without a tree, every factory.
+ */
+export function overviewScene(graph: ProductionGraph, models: readonly FactoryModel[], path: readonly string[] = [], tree?: FactoryTree): Scene {
+  const level = tree === undefined ? undefined : levelOf(tree, path);
+  const shown = level === undefined ? models : level.entries.map((n) => n.card);
+  const owner = tree === undefined ? factoryOfNode(graph) : levelOwner(graph, tree, level?.parent?.key ?? null);
+  const cards = shown.map(factoryCard);
   return {
     level: "overview",
-    name: "Factories",
+    name: level?.parent === undefined ? "Factories" : `Factories in ${nameOr(level.parent.name, UNNAMED_FACTORY)}`,
+    path: level?.parent === undefined ? [] : [...path],
     cards,
     frames: [],
     flows: withStalledFlows(cards, aggregateFlows(flowParts(graph), (key) => owner.get(key)).map(canvasFlow)),
@@ -579,7 +594,7 @@ export function overviewScene(graph: ProductionGraph, models: readonly FactoryMo
     foldKeys: [],
     hasStorage: false,
     openByDefault: true,
-    noun: models.length === 1 ? "factory" : "factories",
+    noun: shown.length === 1 ? "factory" : "factories",
   };
 }
 

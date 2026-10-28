@@ -14,34 +14,51 @@ import { missingMembers, placesOf } from "./designationMatch";
 import { canDesignate } from "./designationText";
 import { PlannerPanel, PlannerSkeleton } from "./PlannerPanel";
 
-/** The query parameter that names the opened factory (or site). */
+/** The query parameter that names the opened factory (or site); repeated, root first, for a path (ADR-0061 Decision 4). */
 export const OPEN_PARAM = "open";
 
+/** How a path change reaches the address: `go` (open, Back, a breadcrumb) or `trim` (a bad tail dropped, replacing it). */
+export type PathChange = "go" | "trim";
+
+const sameStart = (short: readonly string[], long: readonly string[]) => short.every((k, i) => long[i] === k);
+
+/** The address for a path, keeping the other parameters (dev:mock's scenario) and the fragment, as on the Factory page. */
+function openSearch(params: URLSearchParams, path: readonly string[]): string {
+  const next = new URLSearchParams(params);
+  next.delete(OPEN_PARAM);
+  for (const key of path) next.append(OPEN_PARAM, key);
+  return next.size > 0 ? `?${next}` : "";
+}
+
 /**
- * The opened factory's (or site's) key, kept in the address (the owner, 2026-10-27: going one level up should be easy).
- * Opening one is a history entry, so the browser's Back, a mouse's back button, Alt+Left or a phone's back swipe return
- * to the overview. Closing steps back through that entry when this page made it; a link straight to a factory has none,
- * so closing replaces the address instead of leaving the page.
+ * The opened path, kept in the address (the owner, 2026-10-27: going one level up should be easy; ADR-0061 Decision 4:
+ * `?open=a&open=b`, so a #776 link with one `open` is a path of one). Opening one level down is a history entry, so the
+ * browser's Back, a mouse's back button, Alt+Left or a phone's back swipe return one level up. Going one level up steps
+ * back through that entry when this page made it; a link straight to a factory has none, so it replaces the address
+ * instead of leaving the page. A breadcrumb jump further up is a plain entry. A trim replaces the address and marks that
+ * entry, so the page says so until the viewer goes somewhere else.
  */
-function useOpened(): [string | null, (key: string | null) => void] {
+function useOpenPath(): [string[], (next: readonly string[], how?: PathChange) => void, boolean] {
   const [params] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const opened = params.get(OPEN_PARAM);
-  const pushedHere = (location.state as { plannerOpened?: boolean } | null)?.plannerOpened === true;
-  const select = (key: string | null) => {
-    if (key === null && pushedHere) {
+  const path = params.getAll(OPEN_PARAM);
+  const state = location.state as { plannerOpened?: boolean; plannerTrimmed?: boolean } | null;
+  const pushedHere = state?.plannerOpened === true;
+  const trimmed = state?.plannerTrimmed === true;
+  const go = (next: readonly string[], how: PathChange = "go") => {
+    const up = next.length === path.length - 1 && sameStart(next, path);
+    const down = next.length === path.length + 1 && sameStart(path, next);
+    if (how === "go" && up && pushedHere) {
       void navigate(-1);
       return;
     }
-    // Other parameters (dev:mock's scenario) and the fragment are kept, as on the Factory page.
-    const next = new URLSearchParams(params);
-    if (key === null) next.delete(OPEN_PARAM);
-    else next.set(OPEN_PARAM, key);
-    const search = next.size > 0 ? `?${next}` : "";
-    void navigate({ search, hash: location.hash }, key === null ? { replace: true } : { state: { plannerOpened: true } });
+    const to = { search: openSearch(params, next), hash: location.hash };
+    if (how === "trim") void navigate(to, { replace: true, state: { plannerTrimmed: true } });
+    else if (up) void navigate(to, { replace: true });
+    else void navigate(to, down ? { state: { plannerOpened: true } } : undefined);
   };
-  return [opened, select];
+  return [path, go, trimmed];
 }
 
 /**
@@ -70,8 +87,8 @@ export function PlannerView() {
   );
   // ADR-0055 Decision 12: merge, split, pop-out, dissolve and their undo, for the roles that may write.
   const changes = useDesignationChangeRunner(canDesignate(server.role) ? writes.replace.mutateAsync : null);
-  // A site's key is its position, so it holds across polls; a site that goes away falls back to the overview.
-  const [selected, setSelected] = useOpened();
+  // A site's key is its position, so it holds across polls; a key that goes away is trimmed off the path, with a note.
+  const [path, setPath, trimmed] = useOpenPath();
   return (
     <Loadable pending={firstLoad} skeleton={<PlannerSkeleton />}>
       {query.data ? (
@@ -82,8 +99,11 @@ export function PlannerView() {
               findings={bottlenecks.data?.data.findings}
               findingsTruncated={bottlenecks.data?.data.truncated === true}
               refetchFailed={query.isRefetchError}
-              selected={selected}
-              onSelect={setSelected}
+              path={path}
+              onPath={setPath}
+              trimmed={trimmed}
+              // A parent with no machines of its own is known only from the list: no trimming until it has answered.
+              pathSettled={!designations.isPending}
             />
           </DesignationChangeContext.Provider>
         </DesignationContext.Provider>

@@ -48,7 +48,7 @@ export function FactoryFacts({
         <ul aria-label={`Products of ${factory.name}`} className="m-0 grid list-none gap-0.5 p-0 text-sm">
           {factory.products.map((rate) => (
             <li key={rate.className} className="break-words">
-              {outputLine(rate, model.stateCounts)}
+              {outputLine(rate, model.stateCounts, model.atLeast?.has(rate.className) === true)}
             </li>
           ))}
         </ul>
@@ -77,11 +77,20 @@ export function FactoryFacts({
  * transports between their groups summed by item and carrier, quality kept as the weakest part. Nothing is drawn when
  * the factories stand alone.
  */
-export function FactoryFlows({ graph, models }: { graph: ProductionGraph; models: readonly FactoryModel[] }) {
+export function FactoryFlows({
+  graph,
+  models,
+  owner,
+}: {
+  graph: ProductionGraph;
+  models: readonly FactoryModel[];
+  /** ADR-0061 Decision 3: each group's card at the shown level of the tree (default: its own factory). */
+  owner?: ReadonlyMap<string, string> | undefined;
+}) {
   const flows = useMemo(() => {
-    const owner = factoryOfNode(graph);
-    return aggregateFlows(flowParts(graph), (key) => owner.get(key));
-  }, [graph]);
+    const cardOf = owner ?? factoryOfNode(graph);
+    return aggregateFlows(flowParts(graph), (key) => cardOf.get(key));
+  }, [graph, owner]);
   const names = useMemo(() => new Map(models.map((m) => [m.factory.key, m.factory.name])), [models]);
   if (flows.length === 0) return null;
   return (

@@ -49,6 +49,23 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
   (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
   `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).
+- Nested factories (ADR-0061 build PR 3), behind `planner.nesting` in `plannerPrefs.ts` (off by default, no control; set
+  it to `on` in localStorage; build PR 6 removes it). `factoryTree.ts` (pure) builds the tree from the designations'
+  `parentId` (the graph's `parentDesignationId` while the list has not answered). A parent with no machines of its own
+  has no graph factory, so it is keyed `factory|designation|<id>` and named from the list. A parent's card is a roll-up
+  (`FactoryModel` with `atLeast`): machine and state counts summed, products its parts' minus the flows between them,
+  clamped at 0, a product used up inside dropped, "at least" where such a flow is estimated or unknown. Its own machines
+  are one more part, "<name> (own machines)", keyed `<key>|own`. Bad data never throws: a missing parent is top level, a
+  cycle is cut at its smallest id, a level past 3 hangs under its level-2 ancestor, and an empty designation is dropped.
+  - The address is the path, root first: `?open=a&open=b` (`getAll`), so a #776 link with one key is a path of one. The
+    longest valid prefix is kept (`resolvePath`); a bad tail is replaced in the address, with "That factory is no longer
+    here." in a `role="status"` line (the entry is marked `plannerTrimmed`). Trimming waits for the designation list.
+  - Opening a card pushes one level; Back ("All factories", or "Back to <parent>") steps back through history when the
+    Planner pushed that entry, else replaces the address with one level up. A breadcrumb (`nav` "Factory path", buttons,
+    `aria-current="page"` on the last) shows once anything nests. A level change focuses the new level's heading.
+  - `overviewScene(graph, models, path, tree)` draws the parent's parts (top level for an empty path), each group owned
+    by its shown card (`levelOwner`), so flows inside one card vanish and flows that leave the parent are not drawn;
+    `Scene.path` and the name "Factories in <parent>". Merge picks only plain factories at the top level until PR 5.
 - A node with `stale: true` (#728 cause 11: built only from conveyor ends that name machines the latest factory read
   lacks) wears the clock glyph and prints only the muted `STALE_NODE_NOTE` (`graphModel.ts`), wrapped to the card's line
   limits; the tooltip, the side panel and the Tables view say the whole sentence.

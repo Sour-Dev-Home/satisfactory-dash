@@ -89,8 +89,13 @@ const zeroRateText = (rate: Pick<PlannerRate, "maxPerMinute" | "unit">): string 
  * "Iron Ingot: 0 of 30 items/min · backed up": the state from `stateCounts` when given (a single machine's line, whose
  * state is printed beside it, passes none).
  */
-export function outputLine(rate: Pick<PlannerRate, "name" | "currentPerMinute" | "maxPerMinute" | "unit">, stateCounts?: Record<string, number>): string {
-  if (!isZeroRate(rate)) return `${rate.name}: ${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit)}`;
+export function outputLine(
+  rate: Pick<PlannerRate, "name" | "currentPerMinute" | "maxPerMinute" | "unit">,
+  stateCounts?: Record<string, number>,
+  /** ADR-0061 Decision 2: a parent's net rate whose internal flows were estimated or unknown is a floor. */
+  atLeast = false,
+): string {
+  if (!isZeroRate(rate)) return `${rate.name}: ${atLeast ? "at least " : ""}${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit)}`;
   const state = stateCounts === undefined ? "" : ` · ${stalledStateText(stateCounts)}`;
   return `${rate.name}: ${zeroRateText(rate)}${state}`;
 }
