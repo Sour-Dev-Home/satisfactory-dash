@@ -255,7 +255,12 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   await mockApi("planner-designations");
   await page.goto("/app/planner");
   const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
-    await page.getByRole(role, { name }).focus();
+    // Visible first: the page reveals at once (PageReveal), and focus() on a still-invisible control lands nowhere, so the
+    // key went to the body (seen on slow desktop and mobile runs).
+    const control = page.getByRole(role, { name });
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
   await press("Open factory: Iron Plate factory");
@@ -285,7 +290,11 @@ test("an owner merges two factories and splits them back from the keyboard", asy
   await mockApi("planner-merge-split");
   await page.goto("/app/planner");
   const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
-    await page.getByRole(role, { name, exact: typeof name === "string" }).focus();
+    // Visible first, as in the designate case above: focus() on a control the page has not revealed yet lands nowhere.
+    const control = page.getByRole(role, { name, exact: typeof name === "string" });
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
   await press("Tables");
@@ -327,7 +336,11 @@ test("with the nesting flag on, an owner groups two factories and undoes it from
   await mockApi("planner-merge-split");
   await page.goto("/app/planner");
   const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
-    await page.getByRole(role, { name, exact: typeof name === "string" }).focus();
+    // Visible first, as in the designate case above: focus() on a control the page has not revealed yet lands nowhere.
+    const control = page.getByRole(role, { name, exact: typeof name === "string" });
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
   await press("Tables");
