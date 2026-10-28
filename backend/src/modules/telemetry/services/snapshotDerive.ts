@@ -1,7 +1,8 @@
-import type { AgentFactory, AgentPower, Factory, FactoryBuilding, Power, PowerCircuit as PowerCircuitResponse } from "@satisfactory-dash/shared";
+import type { AgentFactory, AgentPower, Factory, FactoryBuilding, GeneratorItem, Power, PowerCircuit as PowerCircuitResponse, PowerGenerator } from "@satisfactory-dash/shared";
 import type { PowerCircuit } from "../../gameserver/index.js";
 import { classifyBuilding } from "./classifyBuilding.js";
 import { classifyPowerCircuit } from "./classifyPower.js";
+import type { ProductionUnit } from "../itemForms.js";
 import type { UnitResolver } from "./productionService.js";
 
 /**
@@ -42,6 +43,40 @@ export function derivePower(agent: AgentPower): Power {
     status: classifyPowerCircuit(asAdapterCircuit(circuit)),
   }));
   return { circuits, hasOutage: circuits.some((circuit) => circuit.status === "outage") };
+}
+
+/** A slot holds an amount, not a rate: the catalog's rate unit, per minute dropped. */
+const AMOUNT_UNIT = new Map<ProductionUnit, NonNullable<GeneratorItem["unit"]>>([
+  ["items/min", "items"],
+  ["m3/min", "m3"],
+]);
+
+type AgentGenerator = NonNullable<AgentPower["generators"]>[number];
+type AgentGeneratorItem = NonNullable<AgentGenerator["fuel"]>;
+
+/**
+ * S4-B (ADR-0058): an agent's generator read, with each slot item's `unit` from the backend's catalog (ADR-0015), as a
+ * rate's. Explicit fields, never `...generator`, as for buildings: nothing the agent added survives by any route.
+ */
+export function deriveGenerators(agent: readonly AgentGenerator[], resolveUnit: UnitResolver): PowerGenerator[] {
+  const unitOf = (className: string): GeneratorItem["unit"] => {
+    const rate = resolveUnit(className);
+    return rate === null ? null : (AMOUNT_UNIT.get(rate) ?? null);
+  };
+  const item = (slot: AgentGeneratorItem): GeneratorItem => ({ className: slot.className, name: slot.name, amount: slot.amount, unit: unitOf(slot.className) });
+  return agent.map((generator) => ({
+    id: generator.id,
+    name: generator.name,
+    className: generator.className,
+    ...(generator.location !== undefined ? { location: generator.location } : {}),
+    ...(generator.circuitGroupId !== undefined ? { circuitGroupId: generator.circuitGroupId } : {}),
+    currentMW: generator.currentMW,
+    capacityMW: generator.capacityMW,
+    ...(generator.clockSpeedPercent !== undefined ? { clockSpeedPercent: generator.clockSpeedPercent } : {}),
+    isProducing: generator.isProducing,
+    fuel: generator.fuel === null ? null : item(generator.fuel),
+    ...(generator.supplement !== undefined ? { supplement: generator.supplement === null ? null : item(generator.supplement) } : {}),
+  }));
 }
 
 /** circuitGroupId -> whether that circuit's fuse has tripped, from a derived power reading. */

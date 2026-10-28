@@ -143,6 +143,36 @@ describe("an agent-backed server's live routes", () => {
     expect(t.telemetry.observations!.snapshot().polls.consecutiveFailures).toBe(1);
   });
 
+  it("serve power with the last generator read: generators and generatorsReadAt together, then neither past 3 x factorySeconds (ADR-0058 S4-B)", async () => {
+    const t = setup();
+    const generator = { id: "g1", name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", currentMW: 75, capacityMW: 75, isProducing: true, fuel: null };
+    // A sender's own generatorsReadAt is not trusted: the read time is the snapshot's (normalised) observedAt.
+    t.send({ power: { ...agentSnapshotRequestFull.power, generators: [generator], generatorsReadAt: "2020-01-01T00:00:00.000Z" } });
+    const pairs: [boolean, boolean][] = [];
+    const read = async () => {
+      const res = await get(t, endpoints.power.route);
+      expect(res.status).toBe(200);
+      const body = PowerResponseSchema.parse(res.body);
+      pairs.push(["generators" in res.body.data, "generatorsReadAt" in res.body.data]);
+      return body;
+    };
+    expect((await read()).data).toMatchObject({ generators: [{ id: "g1" }], generatorsReadAt: new Date(T0).toISOString() });
+    for (let i = 1; i <= 18; i++) {
+      t.advance(5000);
+      t.send({}); // power parts without a read
+    }
+    expect((await read()).data.generatorsReadAt).toBe(new Date(T0).toISOString()); // 90 s: still served
+    t.advance(1);
+    t.send({});
+    const aged = await read();
+    expect(aged.stale).toBe(false); // the power part is fresh; only the list aged out
+    expect(pairs).toEqual([
+      [true, true],
+      [true, true],
+      [false, false],
+    ]);
+  });
+
   it("has only the history recorder and the last-snapshot writer as workers (no poller, nothing calls a game server)", () => {
     expect(setup().telemetry.workers).toHaveLength(2);
   });

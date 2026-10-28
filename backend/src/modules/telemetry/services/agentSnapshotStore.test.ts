@@ -208,3 +208,112 @@ describe("LatestSnapshotStore.record: late snapshots and the outage state (ADR-0
     expect(() => store.read("players", { players: [] } as never)).toThrowError(expect.objectContaining({ code: "upstream_unreachable" }));
   });
 });
+
+/** ADR-0058 S4-B "generators once per read": the list is kept apart from the power part, ordered, aged and never persisted. */
+describe("LatestSnapshotStore generators (ADR-0058 S4-B, once per read)", () => {
+  const T0 = Date.parse("2026-10-28T10:00:00.000Z");
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const gen = (id: string) => ({ id, name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", currentMW: 75, capacityMW: 75, isProducing: true, fuel: null });
+  const power = { circuits: [], hasOutage: false };
+  const send = (store: LatestSnapshotStore, at: number, generators?: ReturnType<typeof gen>[]) =>
+    store.record({ reachable: true, observedAtMs: at, receivedAtMs: at, power, ...(generators !== undefined ? { generators } : {}) });
+  const clock = (start: number) => {
+    let ms = start;
+    return { now: () => ms, set: (to: number) => (ms = to) };
+  };
+  const served = (store: LatestSnapshotStore) => store.read("power");
+
+  it("serves the read's list and its read time together, and a power part without generators keeps them", () => {
+    const c = clock(T0);
+    const store = new LatestSnapshotStore(() => CADENCE, c.now);
+    send(store, T0, [gen("a")]);
+    expect(served(store)).toMatchObject({ generators: [{ id: "a" }], generatorsReadAt: iso(T0) });
+    c.set(T0 + 5000);
+    send(store, T0 + 5000);
+    const later = served(store);
+    expect(later.generators?.map((g) => g.id)).toEqual(["a"]);
+    expect(later.generatorsReadAt).toBe(iso(T0)); // the read's time, not the newer power part's
+    expect(snapshot("x", later).observedAt).toBe(iso(T0 + 5000));
+  });
+
+  it("[] replaces the kept list (read, none found) and is served as []", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 5000);
+    send(store, T0, [gen("a")]);
+    send(store, T0 + 5000, []);
+    expect(served(store)).toMatchObject({ generators: [], generatorsReadAt: iso(T0 + 5000) });
+  });
+
+  it("a newer read replaces; an older or equal (late or retried) one does not", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 10_000);
+    send(store, T0 + 5000, [gen("new")]);
+    send(store, T0, [gen("late")]);
+    send(store, T0 + 5000, [gen("retry")]);
+    expect(served(store)).toMatchObject({ generators: [{ id: "new" }], generatorsReadAt: iso(T0 + 5000) });
+    send(store, T0 + 10_000, [gen("newer")]);
+    expect(served(store).generators?.map((g) => g.id)).toEqual(["newer"]);
+  });
+
+  it("omits both fields once the read is older than 3 x factorySeconds, and serves them up to that age", () => {
+    const c = clock(T0 + 90_000);
+    const store = new LatestSnapshotStore(() => CADENCE, c.now);
+    send(store, T0, [gen("a")]);
+    send(store, T0 + 90_000); // a fresh power part, no read
+    expect(served(store)).toHaveProperty("generatorsReadAt", iso(T0)); // exactly 90 s: still served
+    c.set(T0 + 90_001);
+    const aged = served(store);
+    expect(aged).not.toHaveProperty("generators");
+    expect(aged).not.toHaveProperty("generatorsReadAt");
+  });
+
+  it("follows the configured factory cadence", () => {
+    const c = clock(T0 + 61_000);
+    let factorySeconds = 30;
+    const store = new LatestSnapshotStore(() => ({ ...CADENCE, factorySeconds }), c.now);
+    send(store, T0, [gen("a")]);
+    expect(served(store)).toHaveProperty("generators");
+    factorySeconds = 20; // 60 s
+    expect(served(store)).not.toHaveProperty("generators");
+  });
+
+  it("dropGenerators forgets the list; an older read is then refused, a read at or after the drop is taken", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 10_000);
+    send(store, T0, [gen("old")]);
+    store.dropGenerators(T0 + 5000);
+    expect(served(store)).not.toHaveProperty("generators");
+    expect(served(store)).not.toHaveProperty("generatorsReadAt");
+    send(store, T0 + 1000, [gen("old-late")]);
+    expect(served(store)).not.toHaveProperty("generators");
+    send(store, T0 + 5000, [gen("new")]);
+    expect(served(store).generators?.map((g) => g.id)).toEqual(["new"]);
+  });
+
+  it("keeps the list through unreachable snapshots, served stale with the power part, and it still ages", () => {
+    const c = clock(T0 + 5000);
+    const store = new LatestSnapshotStore(() => CADENCE, c.now);
+    send(store, T0, [gen("a")]);
+    store.record({ reachable: false, observedAtMs: T0 + 5000, receivedAtMs: T0 + 5000 });
+    const down = served(store);
+    expect(down).toMatchObject({ generators: [{ id: "a" }], generatorsReadAt: iso(T0) });
+    expect(snapshot("x", down)).toMatchObject({ stale: true, unreachableSince: iso(T0 + 5000) });
+    c.set(T0 + 91_000);
+    expect(served(store)).not.toHaveProperty("generators");
+  });
+
+  it("is never persisted: persistedState has no list and a restored store serves none (ADR-0052)", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 1000);
+    send(store, T0, [gen("a")]);
+    const state = store.persistedState()!;
+    expect(JSON.stringify(state)).not.toContain("generators");
+    const restarted = new LatestSnapshotStore(() => CADENCE, () => T0 + 1000);
+    restarted.restore(state);
+    const after = restarted.read("power");
+    expect(after).not.toHaveProperty("generators");
+    expect(after).not.toHaveProperty("generatorsReadAt");
+  });
+
+  it("does not put the list in the stored power part (the fuse join reads the part alone)", () => {
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0);
+    send(store, T0, [gen("a")]);
+    expect(store.freshPower()).not.toHaveProperty("generators");
+  });
+});

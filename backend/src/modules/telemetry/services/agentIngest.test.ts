@@ -474,3 +474,116 @@ describe("mapLive (ADR-0038 M3, #353): forwarded to the injected sink, never sto
     expect(() => ingest.ingest(agentSnapshotRequestWithMapLive, T0)).not.toThrow();
   });
 });
+
+describe("generators once per read (ADR-0058 S4-B)", () => {
+  const coal = { className: "Desc_Coal_C", name: "Coal", amount: 40 };
+  const generator = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    name: "Coal-Powered Generator",
+    className: "Build_GeneratorCoal_C",
+    circuitGroupId: 0,
+    currentMW: 75,
+    capacityMW: 75,
+    isProducing: true,
+    fuel: coal,
+    supplement: null,
+    ...extra,
+  });
+  const withGenerators = (t: ReturnType<typeof setup>, generators: object[] | undefined, extra: Partial<SnapshotRequest> = {}) =>
+    t.running({ power: { ...agentSnapshotRequestFull.power!, ...(generators !== undefined ? { generators } : {}) } as never, ...extra });
+
+  it("derives the list (the backend's units, explicit fields) and serves it with the power part's later readings", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, [generator("g1", { unit: "m3", sneaky: true, fuel: { ...coal, unit: "m3" } })]), T0);
+    t.advance(5000);
+    t.ingest.ingest(t.running(), T0 + 5000); // a power part without generators keeps the list
+    const power = t.store.read("power");
+    expect(power.generatorsReadAt).toBe(new Date(T0).toISOString());
+    expect(power.generators).toEqual([
+      { id: "g1", name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", circuitGroupId: 0, currentMW: 75, capacityMW: 75, isProducing: true, fuel: { ...coal, unit: "items" }, supplement: null },
+    ]);
+  });
+
+  it("a sender that never sends generators (the FRM agent) leaves both fields out", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    const power = t.store.read("power");
+    expect(power).not.toHaveProperty("generators");
+    expect(power).not.toHaveProperty("generatorsReadAt");
+  });
+
+  it("a new session drops the old list; a read in the session-change snapshot itself is kept", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, [generator("old")]), T0);
+    t.advance(5000);
+    t.ingest.ingest(t.running({ status: { ...statusRunning.data, gamePaused: false, sessionName: "Another save" } }), T0 + 5000);
+    expect(t.store.read("power")).not.toHaveProperty("generators");
+    t.advance(5000);
+    t.ingest.ingest(withGenerators(t, [generator("new")], { status: { ...statusRunning.data, gamePaused: false, sessionName: "Third save" } }), T0 + 10_000);
+    expect(t.store.read("power").generators?.map((g) => g.id)).toEqual(["new"]);
+  });
+
+  it("the game clock going backwards (the power reset) drops the list too", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, [generator("old")], { status: { ...statusRunning.data, gamePaused: false, totalGameDurationSeconds: 1000 } }), T0);
+    t.advance(5000);
+    t.ingest.ingest(t.running({ status: { ...statusRunning.data, gamePaused: false, totalGameDurationSeconds: 10 } }), T0 + 5000);
+    expect(t.store.read("power")).not.toHaveProperty("generators");
+  });
+
+  it("an unreachable snapshot keeps the list", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, []), T0);
+    t.advance(5000);
+    t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(T0 + 5000).toISOString() }, T0 + 5000);
+    expect(t.store.read("power")).toMatchObject({ generators: [], generatorsReadAt: new Date(T0).toISOString() });
+  });
+});
+
+describe("generators once per read: ordering and skew (ADR-0058 S4-B)", () => {
+  const gen = (id: string) => ({ id, name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", currentMW: 75, capacityMW: 75, isProducing: true, fuel: null });
+  const read = (t: ReturnType<typeof setup>, id: string, extra: Partial<SnapshotRequest> = {}) =>
+    t.running({ power: { ...agentSnapshotRequestFull.power!, generators: [gen(id)] } as never, ...extra });
+  const session = (name: string) => ({ status: { ...statusRunning.data, gamePaused: false, sessionName: name } });
+  const ids = (t: ReturnType<typeof setup>) => t.store.read("power").generators?.map((g) => g.id);
+
+  it("a late snapshot of the old session after the new session's read does not wipe or replace the new list", () => {
+    const t = setup();
+    t.ingest.ingest(read(t, "a1", session("A")), T0);
+    t.advance(5000);
+    t.ingest.ingest(read(t, "b1", session("B")), T0 + 5000);
+    const late = { ...read(t, "a-late", session("A")), observedAt: new Date(T0 + 2000).toISOString() };
+    t.ingest.ingest(late, T0 + 5100);
+    expect(ids(t)).toEqual(["b1"]);
+  });
+
+  it("a read stamped ahead of arrival is clamped to arrival, so its read time is never ahead of now", () => {
+    const t = setup();
+    t.ingest.ingest({ ...read(t, "a"), observedAt: new Date(T0 + AGENT_CLOCK_TOLERANCE_MS - 1).toISOString() }, T0);
+    expect(t.store.read("power").generatorsReadAt).toBe(new Date(T0).toISOString());
+  });
+
+  it("a read far outside the clock tolerance is stamped at arrival", () => {
+    const t = setup();
+    t.ingest.ingest({ ...read(t, "a"), observedAt: "2001-01-01T00:00:00.000Z" }, T0);
+    expect(t.store.read("power").generatorsReadAt).toBe(new Date(T0).toISOString());
+  });
+
+  it("a snapshot without status carrying a read replaces the list and does not drop it", () => {
+    const t = setup();
+    t.ingest.ingest(read(t, "a", session("A")), T0);
+    t.advance(5000);
+    t.ingest.ingest(read(t, "b", { status: undefined }), T0 + 5000);
+    expect(ids(t)).toEqual(["b"]);
+  });
+
+  it("restore() then a read: the first read is taken", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    const restarted = new LatestSnapshotStore(() => CADENCE, t.now);
+    restarted.restore(t.store.persistedState()!);
+    expect(restarted.read("power")).not.toHaveProperty("generators");
+    restarted.record({ reachable: true, observedAtMs: T0 + 1, receivedAtMs: T0 + 1, power: powerOk.data, generators: [] });
+    expect(restarted.read("power").generators).toEqual([]);
+  });
+});
