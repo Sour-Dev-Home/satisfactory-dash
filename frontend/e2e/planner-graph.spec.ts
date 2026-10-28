@@ -266,7 +266,8 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   await press("Open factory: Iron Plate factory");
   // The overview has its own Tables button: wait until the factory is open, or "Tables" can land on the overview's
   // (it did on a slow desktop run, and the Smelter tick never appeared).
-  await expect(page.getByRole("img", { name: /^Graph of Iron Plate factory/ })).toBeVisible();
+  // The back button exists only inside an opened factory, at every width (a phone may not open on the graph).
+  await expect(page.getByRole("button", { name: /All factories/ })).toBeVisible();
   await press("Tables");
   await press("Select Smelter", "checkbox", "Space");
   await expect(page.getByText("1 group, 4 machines selected")).toBeVisible();
