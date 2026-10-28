@@ -314,8 +314,9 @@ const CASES: StateCase[] = [
       await page.keyboard.press("Enter");
     },
   },
-  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line, and its side
-  // panel "0 of 160 items/min · backed up".
+  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line (in marks mode,
+  // the default since ADR-0062 build PR 2, the backed-up mark on that row instead), and its side panel "0 of 160 items/min ·
+  // backed up".
   { scenario: "planner-stalled", name: "planner-stalled-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
   {
     scenario: "planner-stalled",
