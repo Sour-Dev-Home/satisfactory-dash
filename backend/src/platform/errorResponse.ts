@@ -83,6 +83,10 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
   designation_cap: 409,
   // ADR-0055 amendment 2026-10-27 (Decision 11): a replace whose expected revision is gone or changed.
   designation_stale: 409,
+  // ADR-0061: nested designations (a cycle, past the depth limit, neither members nor children). No route returns them yet.
+  designation_cycle: 409,
+  designation_depth: 409,
+  designation_shape: 409,
   // ADR-0047: account deletion and leaving a server. 403, not 401, so the client does not read it as "signed out".
   would_orphan: 409,
   reauth_required: 403,

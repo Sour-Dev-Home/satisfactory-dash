@@ -176,6 +176,9 @@ describe("designation routes", () => {
       { ...body("A"), mode: "other" },
       body("A", [m("b1", "S", 0.5, 1)]),
       body("A", [m("dup", "S", 1, 1), m("dup", "S", 2, 2)]),
+      // ADR-0061: allowed by the contract, refused by this route until it stores parents (build PR 2).
+      { ...body("A"), parentId: null },
+      { ...body("A"), parentId: randomUUID() },
     ];
     for (const payload of bad) {
       const res = await request(app).post(path).send(payload);
@@ -331,6 +334,10 @@ describe("designation replace route (ADR-0055 Decision 11)", () => {
       { expect: [{ id: a.id, revision: 1 }, { id: a.id, revision: 1 }], put: [] },
       { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)] }, { name: "Y", members: [m("x1", "S", 5, 5)] }] },
       { expect: [], put: [{ id: randomUUID(), name: "X", members: [m("x1", "S", 5, 5)], createdAt: future }] },
+      // ADR-0061: the contract allows these now; this route refuses them until it stores parents (build PR 2).
+      { expect: [], put: [{ name: "X", members: [] }] },
+      { expect: [{ id: a.id, revision: 1 }], put: [{ id: a.id, name: "Alpha", members: [m("a1", "S", 1, 1)], parentId: null }] },
+      { expect: [], put: [{ name: "X", members: [m("x1", "S", 5, 5)], parentId: a.id }] },
     ];
     for (const payload of bad) {
       const res = await request(app).post(replacePath).send(payload);
