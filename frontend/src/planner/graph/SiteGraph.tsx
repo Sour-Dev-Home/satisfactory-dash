@@ -1231,6 +1231,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               shape={shape}
               fadeIn={animate}
               maskId={`${ids}-march-mask`}
+              height={canvasH}
             />
           )}
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
@@ -1523,6 +1524,7 @@ function MarchLayer({
   shape,
   fadeIn,
   maskId,
+  height,
 }: {
   edges: readonly LaidEdge[];
   marching: ReadonlyMap<number, RateStep>;
@@ -1535,16 +1537,19 @@ function MarchLayer({
   shape: string;
   fadeIn: boolean;
   maskId: string;
+  /** The canvas's own height attribute: the box around it is taller by the inline svg's baseline gap, so `inset-0` would not match. */
+  height: number;
 }) {
   return (
     <svg
       aria-hidden="true"
       data-march-layer=""
       viewBox={`0 0 ${stage.width} ${stage.height}`}
+      height={height}
       preserveAspectRatio="xMidYMid meet"
       // The canvas's 1px border is transparent here, so the two content boxes (and the viewBox in them) are the same; its
       // rounded corners clip the strokes as the canvas's clip its lines.
-      className="pointer-events-none absolute inset-0 size-full rounded-card border border-transparent will-change-transform"
+      className="pointer-events-none absolute top-0 left-0 w-full rounded-card border border-transparent will-change-transform"
     >
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>

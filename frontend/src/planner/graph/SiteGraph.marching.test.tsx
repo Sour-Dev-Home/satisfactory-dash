@@ -194,7 +194,9 @@ describe("marching dashes in the march layer", () => {
     expect(layer.getAttribute("viewBox")).toBe(svg.getAttribute("viewBox"));
     expect(layer.getAttribute("preserveAspectRatio")).toBe(svg.getAttribute("preserveAspectRatio"));
     expect(layer).toHaveAttribute("aria-hidden", "true");
-    expect(layer).toHaveClass("pointer-events-none", "absolute", "inset-0", "size-full", "border", "border-transparent", "will-change-transform");
+    expect(layer).toHaveClass("pointer-events-none", "absolute", "top-0", "left-0", "w-full", "border", "border-transparent", "will-change-transform");
+    // The canvas's own height, not the box's: the box is taller by the inline svg's baseline gap (CI caught 6px).
+    expect(layer.getAttribute("height")).toBe(svg.getAttribute("height"));
     expect(layer.hasAttribute("style")).toBe(false);
     expect(layer.querySelector("[style]")).toBeNull();
     // After the canvas, so it is drawn over it, and inside the same positioned box.
