@@ -992,12 +992,26 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     const viewportEl = viewportRef.current;
     if (fromKeyboard || (viewportEl !== null && active !== null && active !== viewportEl && viewportEl.contains(active))) focusFrame.current = card.key;
   };
+  /**
+   * A group whose panel is open and that a collapse takes off the canvas: its panel closes rather than hiding, or blowing
+   * the card up again would reopen it unasked. `blownUp` is the collapsing card's key, or undefined for all of them.
+   */
+  const closePanelLeaving = (blownUp: string | undefined) => {
+    if (openKey === null) return;
+    const outer = layout.frames.filter((f) => f.expands !== undefined && (blownUp === undefined || f.expands === blownUp)).map((f) => f.key);
+    const leaving = new Set([...outer, ...layout.frames.filter((f) => f.parent !== undefined && outer.includes(f.parent)).map((f) => f.key)]);
+    const frame = layout.nodes.find((n) => n.key === openKey)?.card.frame;
+    if (frame === undefined || !leaving.has(frame)) return;
+    setOpenKey(null);
+    setOpenMachine(null);
+  };
   const collapseBlowUp = (key: string, fromKeyboard = false) => {
     if (dragged.current) return;
     blowGlide.current = { layout, key };
     const next = new Set(expanded);
     next.delete(key);
     setExpanded(next);
+    closePanelLeaving(key);
     if (fromKeyboard) focusAfter.current = key;
   };
   const focusMachine = (n: LaidNode, key: string, i: number) => {
@@ -1119,6 +1133,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const setAllBlownUp = () => {
     if (blowUpTree === undefined || target.kind !== "overview") return;
     blowGlide.current = { layout, key: "" };
+    if (anyBlownUp) closePanelLeaving(undefined);
     setExpanded(anyBlownUp ? new Set() : expandAllKeys(graph, target.models, levelPath, blowUpTree, expanded));
   };
   const canFold = scene.bubbleKeys.length > 0 || anyMachinesOpen;
