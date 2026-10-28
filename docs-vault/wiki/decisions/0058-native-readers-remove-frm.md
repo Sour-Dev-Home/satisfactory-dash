@@ -353,7 +353,12 @@ today 30 s). The contract (`packages/shared/src/agent.ts` `AgentPowerSchema`, `p
    same cycle as the snapshot that carries it.
 3. **Backend.** It keeps the last list per server with that time and serves it with later power responses until the read
    is older than 3 × `factorySeconds` (today 90 s, the same three-interval rule as a stale part, ADR-0022). After that,
-   and after a new session or power reset, the response leaves `generators` out ("not read").
+   and after a new session or power reset, the response leaves `generators` out ("not read"). The list is held apart from
+   the stored power part (each power part replaces that part whole, so a part without `generators` must not erase it). A
+   late or retried snapshot replaces the list only when its read is newer than the kept one's. An unreachable snapshot
+   keeps the list, which still ages by the same rule. The list is **not persisted** (ADR-0052): after a backend restart
+   the response omits it until the next read, at most one factory interval, so a restore can never serve an old list
+   under a fresh time.
 4. **Response.** `PowerSchema.generatorsReadAt` (optional, ISO 8601 UTC, like the envelope's `observedAt`) is the time of
    the read the list came from, so the UI says "read 40 s ago" and never shows an old list as current. It is present
    exactly when `generators` is, and absent from older backends. It is response-only (ADR-0031): a sender's is dropped.

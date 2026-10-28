@@ -20,6 +20,7 @@ import {
   KNOWN_CONNECTION_KINDS,
   FactorySchema,
   KnownErrorCode,
+  PowerResponseSchema,
   PowerSchema,
   SENDER_VERSION_MAX,
   SetAutoPauseParamsSchema,
@@ -267,6 +268,14 @@ describe("agent contract: snapshots", () => {
       expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: "2026-10-28T12:00:40+02:00" }).success).toBe(false);
       expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: "40 s ago" }).success).toBe(false);
       expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: 1_700_000_000_000 }).success).toBe(false);
+    });
+
+    it("S4-B generatorsReadAt from a sender is dropped even when malformed, and survives in a response envelope", () => {
+      const parsed = SnapshotRequestSchema.safeParse({ ...full, power: { circuits: [circuit], generatorsReadAt: "not a date" } });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.power).not.toHaveProperty("generatorsReadAt");
+      const response = { ...fixtures.powerOk, data: { ...fixtures.powerOk.data, generators: [], generatorsReadAt: "2026-10-28T12:00:40Z" } };
+      expect(PowerResponseSchema.parse(response).data.generatorsReadAt).toBe("2026-10-28T12:00:40Z");
     });
 
     it("S4-B extractors: optional, the building shape and bounds, capped at 5000", () => {
