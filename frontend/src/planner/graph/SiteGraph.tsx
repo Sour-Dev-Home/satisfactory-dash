@@ -153,8 +153,15 @@ const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined 
  */
 const ARROW_REF_X = 5;
 const LINE_UNDER_ARROW = 3.2;
-/** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end) and the stop bar (3 short). */
+/** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end), or at a stop bar's back (3 short). */
 const INNER_TRIM = 8;
+const INNER_TRIM_STALLED = 3;
+/**
+ * A dashed or dotted mixed line's inner dashes: each one unit shorter (its gap one longer) and centred in the line's dash by
+ * `INNER_DASH_OFFSET`, so each dash's hole is closed at both ends instead of splitting the dash in two.
+ */
+const innerDash = (dash: string | undefined) => dash?.split(" ").map((n, i) => Number(n) + (i % 2 === 0 ? -1 : 1)).join(" ");
+const INNER_DASH_OFFSET = -0.5;
 
 /** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
 const FADES = [
@@ -1396,7 +1403,15 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
         className={edgeClass(e.flow)}
       />
       {stroke.inner !== null && (
-        <path d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)} fill="none" strokeWidth={stroke.inner} strokeDasharray={dash} data-mixed-inner="" className="stroke-surface" />
+        <path
+          d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? INNER_TRIM : INNER_TRIM_STALLED)}
+          fill="none"
+          strokeWidth={stroke.inner}
+          strokeDasharray={innerDash(dash)}
+          strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET}
+          data-mixed-inner=""
+          className="stroke-surface"
+        />
       )}
     </g>
   );
@@ -1922,7 +1937,9 @@ function LegendLine({ edge }: { edge: EdgeStyle }) {
   return (
     <>
       <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.width} strokeDasharray={dash} className={edgeClass(edge)} />
-      {stroke.inner !== null && <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.inner} strokeDasharray={dash} className="stroke-surface" />}
+      {stroke.inner !== null && (
+        <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.inner} strokeDasharray={innerDash(dash)} strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET} className="stroke-surface" />
+      )}
     </>
   );
 }

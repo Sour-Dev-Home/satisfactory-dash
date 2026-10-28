@@ -13,6 +13,8 @@ export const CORNER_RADIUS = 10;
 export const ARROW_TAIL = 10;
 /** An arc clamped below this is drawn as a square corner instead: two tiny arcs on a short jog read as an S. */
 const MIN_ARC = CORNER_RADIUS / 2;
+/** The least of the last run a `trimEnd` leaves, so a trimmed path still ends along its last leg. */
+const TRIM_STUB = 0.5;
 
 const f1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -92,7 +94,8 @@ export function roundedOrthogonalPath(points: readonly Point[], radius = CORNER_
   if (p.length > 1) {
     const end = p[p.length - 1];
     const run = Math.hypot(end.x - at.x, end.y - at.y);
-    const cut = Math.min(Math.max(trimEnd, 0), run);
+    // Never the whole run: a stub of it stays, so the end marker keeps the last leg's direction.
+    const cut = Math.min(Number.isFinite(trimEnd) ? Math.max(trimEnd, 0) : 0, Math.max(run - TRIM_STUB, 0));
     lineTo(cut > 0 ? along(end, { x: (at.x - end.x) / run, y: (at.y - end.y) / run }, cut) : end);
   }
   return d;

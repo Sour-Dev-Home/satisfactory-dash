@@ -67,7 +67,10 @@ describe("line widths on the canvas", () => {
     expect(Number(m.inner!.getAttribute("stroke-width"))).toBe(MIXED_INNER_W_SLOW);
     expect(m.inner).toHaveClass("stroke-surface");
     expect(m.inner!.getAttribute("marker-end")).toBeNull();
-    expect(m.inner!.getAttribute("stroke-dasharray")).toBe(m.path.getAttribute("stroke-dasharray"));
+    // An unknown rate is dotted ("2 5"): each inner dash is a unit shorter and centred, so every dot's hole is closed.
+    expect(m.path.getAttribute("stroke-dasharray")).toBe("2 5");
+    expect(m.inner!.getAttribute("stroke-dasharray")).toBe("1 6");
+    expect(m.inner!.getAttribute("stroke-dashoffset")).toBe("-0.5");
     expect(m.path.compareDocumentPosition(m.inner!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // No other line has one.
     expect(svg.querySelectorAll("[data-mixed-inner]")).toHaveLength(1);
