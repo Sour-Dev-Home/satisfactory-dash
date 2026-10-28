@@ -51,10 +51,33 @@ export function mergeStateCounts(list: readonly Record<string, number>[]): Recor
  * up", "underfed", "paused", a state this build doesn't know as the backend's word), else "not producing".
  */
 export function stalledStateText(counts: Record<string, number>): string {
-  const present = Object.entries(counts).filter(([, n]) => n > 0);
-  if (present.length !== 1 || present[0][0] === "producing") return NOT_PRODUCING;
-  const [state] = present[0];
+  const state = soleStalledState(counts);
+  if (state === undefined) return NOT_PRODUCING;
   return machineState(state)?.label.toLowerCase() ?? state;
+}
+
+/** The one state all of a group's machines are in, unless that is "producing"; undefined when they differ or none is counted. */
+function soleStalledState(counts: Record<string, number>): string | undefined {
+  const present = Object.entries(counts).filter(([, n]) => n > 0);
+  if (present.length !== 1 || present[0][0] === "producing") return undefined;
+  return present[0][0];
+}
+
+/** The stalled states the canvas draws a `StateMark` for (ADR-0062 Decision 2): machine states (`machineState.ts`) by key. */
+export type StalledKind = "backedUp" | "underfed" | "paused" | "idle";
+
+const STALLED_KINDS: ReadonlySet<string> = new Set<StalledKind>(["backedUp", "underfed", "paused", "idle"]);
+
+const isStalledKind = (state: string): state is StalledKind => STALLED_KINDS.has(state);
+
+/**
+ * The mark for a group whose rate reads 0 (the caller checks the rate, as for `stalledStateText`): the state all its machines
+ * share when it has a mark, else undefined. Undefined is exactly where the words have no mark: "not producing" (mixed, none
+ * counted or all producing), "unpowered", and a state this build doesn't know; the word is drawn as before there.
+ */
+export function stalledOf(counts: Record<string, number>): StalledKind | undefined {
+  const state = soleStalledState(counts);
+  return state !== undefined && isStalledKind(state) ? state : undefined;
 }
 
 /** A rate that reads 0 as "0 of 30 items/min", or "0 items/min" when the max is 0 too. */
