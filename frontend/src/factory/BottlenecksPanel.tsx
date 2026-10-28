@@ -2,6 +2,7 @@ import type { Bottleneck, Bottlenecks } from "@satisfactory-dash/shared";
 import { cn } from "../lib/cn";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { detailSegments, fixLine, isSmallGap, machineLabel, sectionNotes, stateLabel } from "./bottlenecks";
+import { BOTTLENECKS_ANCHOR } from "./bottlenecksRead";
 
 /**
  * "Capped by: Conveyor Belt Mk.1 · 60 items/min · near (−554, −1278)", each segment kept whole so a narrow screen breaks
@@ -56,7 +57,7 @@ function AffectedMachines({ finding }: { finding: Bottleneck }) {
 export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: number }) {
   const notes = sectionNotes(data);
   return (
-    <section aria-labelledby="bottlenecks-heading" className="panel content-start">
+    <section id={BOTTLENECKS_ANCHOR} aria-labelledby="bottlenecks-heading" className="panel content-start">
       <h3 id="bottlenecks-heading">Bottlenecks</h3>
       {data.findings.length === 0 ? (
         <p>No bottlenecks: no machine is underfed or backed up.</p>

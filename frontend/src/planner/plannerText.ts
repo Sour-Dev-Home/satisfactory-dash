@@ -164,10 +164,8 @@ export function siteFindings(nodes: PlannerNode[], findings: readonly Bottleneck
   );
 }
 
-/** "2 bottlenecks" / "1 bottleneck" / "No bottlenecks". */
-export function bottleneckCountText(count: number): string {
-  return count === 0 ? "No bottlenecks" : `${count} ${count === 1 ? "bottleneck" : "bottlenecks"}`;
-}
+/** "2 bottlenecks" / "1 bottleneck" / "No bottlenecks": the Factory page's own words, so its summary and the cards agree. */
+export { bottleneckCountText } from "../factory/bottlenecks";
 
 /** "3 machines are on no conveyor the last read knew of, so they are in no group." */
 export function unconnectedText(count: number): string | null {

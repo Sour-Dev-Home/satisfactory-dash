@@ -1,15 +1,17 @@
 import { PanelSkeleton, Skeleton } from "../ui/Skeleton";
+import { BottleneckSummarySkeleton } from "./BottleneckSummary";
 import { BottlenecksSkeleton } from "./BottlenecksPanel";
 import { SinceYesterdaySkeleton } from "./FactoryHistory";
 
 /**
- * The Factory page while the factory loads (#494): "Since yesterday" in its reserved box, the table's
+ * The Factory page while the factory loads (#494): the bottleneck summary and "Since yesterday" in their reserved boxes, the table's
  * panel (summary, filters, search, a few rows) and the production history's panel (range row, item
  * picker, figures, chart). Each is about the size of the loaded one, so the reveal moves little below it.
  */
 export function FactorySkeleton() {
   return (
     <>
+      <BottleneckSummarySkeleton />
       <SinceYesterdaySkeleton />
       <PanelSkeleton label="Loading factory…" rows={0}>
         <Skeleton className="h-5 w-full max-w-64" />
