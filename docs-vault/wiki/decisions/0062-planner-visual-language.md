@@ -165,7 +165,7 @@ transport uses a different line style."
 2. **One step function, shared.** `rateStep(ratePerMinute, unit)` returns slow, mid or fast. The destination caps (Decision 1)
    use the same function, so a line and its cap agree. It has fixed thresholds per unit (items/min and m³/min), and steps are
    never compared across units: a fast pipe and a fast belt are each fast for their own unit. The threshold values are set in
-   build PR 1 [NEEDS VERIFICATION: no values chosen yet].
+   build PR 1 (see "Values chosen in build PR 1" below).
 3. **Motion tokens.** `--duration-flow-slow`, `--duration-flow-mid` and `--duration-flow-fast` are defined once, by whichever
    PR lands first (this one or the caps PR; they do not exist yet). They are zeroed under reduced motion like the other motion
    tokens, and the Motion control's Off stops them.
@@ -189,6 +189,26 @@ transport uses a different line style."
 | 3 | Marching dashes, the in-view cap, the measurement on a 200+ edge factory | Frame-time measurement recorded; unknown and stalled static; Motion Off |
 | 4 | The transport double line and moving glyph | Baselines; glyph skips the bubble label |
 | 5 | Legend rows and the step word in `<title>` and aria | Axe; `ui-reviewer` |
+
+### Values chosen in build PR 1 (2026-10-27)
+Build PR 1 of the ADR and of this amendment landed as one PR (both add the same tokens to `index.css`).
+- **Thresholds** (`planner/graph/rateStep.ts`, named constants; at or above a threshold is the higher step). Items/min: slow
+  under 120, mid 120 to under 480, fast 480 and up: a full Mk.2 belt and a full Mk.4 belt. m³/min: slow under 300, mid 300
+  to under 600, fast 600 and up: a full Mk.1 pipe and a full Mk.2 pipe. The belt tiers Mk.1-4 (60, 120, 270, 480) and the
+  pipe tiers Mk.1-2 (300, 600) are from `raw-sources/frm-conveyor-gchecks-2026-10-21.md`; Mk.5 and Mk.6 capacities are not
+  in raw-sources [NEEDS VERIFICATION], and no threshold depends on them.
+- **No step** (`null`, the line does not move): a missing, 0, negative, NaN or infinite rate, and a missing or unknown unit.
+  A stalled flow is static whatever its step; that check is the caller's.
+- **Durations.** `--duration-flow-slow` 2.4s, `--duration-flow-mid` 1.2s, `--duration-flow-fast` 0.6s per dash cycle (each
+  step halves the last, so slow reads clearly slower), zeroed under reduced motion with the other motion tokens.
+- **Mark colours.** `StateMark` takes each kind's tone from `factory/machineState.ts` (backed up and underfed `--color-warn`,
+  paused `--color-info`, idle `--color-muted`), so a mark and the Factory page's word agree and no state token was added. This
+  differs from Decision 2's "Tokens" line (`--color-bad` for backed up, `--color-warn` for paused), which conflicts with
+  ADR-0041 (red only for failure, blue only for paused), with `machineState.ts` ("backed up ... a warning, never bad") and
+  with Decision 2's own Rejected line. **[NEEDS OWNER CONFIRMATION]**; flipping it is one line in `StateMark.tsx`. Every
+  tone used clears 3:1 on the canvas, the surface and surface-2 (`StateMark.test.tsx`).
+- **`stalledOf`** (`planner/plannerText.ts`) shares `stalledStateText`'s rule: a mark only when all of a group's machines share
+  one of the four states. "Not producing" (mixed), "unpowered" and unknown states have no mark and keep their word.
 
 ### Consequences
 - The graph reads rate at a glance by speed and width, with colour left free for carrier and state.

@@ -15,6 +15,7 @@ import {
   shareText,
   siteNodes,
   UNKNOWN_FLOW_NOTE,
+  type StalledKind,
 } from "../plannerText";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
 import {
@@ -164,6 +165,8 @@ export interface CanvasFlow {
   quality: FlowQuality;
   /** A bundle (`bundleFlows`): the links it draws as one line, each with its own item and rate. Absent on a single link. */
   parts?: CanvasFlow[] | undefined;
+  /** The source group's stalled state (`stalledOf`, ADR-0062 Decision 2): a stalled line ends in a stop bar and never moves. Not set yet. */
+  stalled?: StalledKind | undefined;
 }
 
 export type SceneLevel = "overview" | "factory" | "site";

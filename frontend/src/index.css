@@ -183,6 +183,12 @@
   --duration-slow: 240ms; /* larger surfaces */
   --duration-glide: 1s; /* a train sliding to its new position between two polls (the map; a canvas layer reads it) */
   --duration-shimmer: 1.8s; /* one slow cycle of a loading skeleton (#494) */
+  /* One cycle of a Planner line's or cap's marching dashes, per rate step (ADR-0062 amendment; planner/graph/rateStep.ts).
+     Each step halves the last, so slow reads clearly slower. Reduced motion zeroes them below; the Motion control's Off
+     leaves the animation class off instead. */
+  --duration-flow-slow: 2.4s;
+  --duration-flow-mid: 1.2s;
+  --duration-flow-fast: 0.6s;
   /* Loading (#494). A skeleton shows only if its data takes longer than the delay, then stays at
      least the minimum; a page waits for its primary queries up to the budget, then reveals every
      panel at once. Time that gates data, not animation, so reduced motion keeps the delay and the
@@ -459,6 +465,9 @@
       --duration-slow: 0s;
       --duration-glide: 0s;
       --duration-shimmer: 0s;
+      --duration-flow-slow: 0s;
+      --duration-flow-mid: 0s;
+      --duration-flow-fast: 0s;
       --duration-skeleton-min: 0s;
     }
     /* Anything not built on the tokens too (Leaflet's zoom, third-party CSS). */
