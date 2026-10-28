@@ -66,6 +66,8 @@ export class AgentIngest implements AgentSnapshotSink {
   private lastFactoryRecordedAt = -Infinity;
   private lastSession: string | undefined;
   private lastGameDuration: number | undefined;
+  /** When the status behind lastSession/lastGameDuration was observed: an older (late) snapshot is no session change. */
+  private lastStatusAtMs = -Infinity;
 
   constructor(private readonly deps: AgentIngestDeps) {}
 
@@ -96,6 +98,7 @@ export class AgentIngest implements AgentSnapshotSink {
     const sessionChanged =
       status !== undefined &&
       this.lastSession !== undefined &&
+      observedAtMs >= this.lastStatusAtMs && // a late snapshot of the old session is not a change back
       (status.sessionName !== this.lastSession || status.totalGameDurationSeconds < (this.lastGameDuration ?? 0));
     // Before recording, so the old session's list goes and a read in this same snapshot (the new session's) is kept.
     if (sessionChanged) store.dropGenerators(observedAtMs);
@@ -123,8 +126,11 @@ export class AgentIngest implements AgentSnapshotSink {
     if (status !== undefined) {
       observations.publishStatus({ observedAt: observedAtMs, intervalMs: cadence.statusSeconds * 1000, paused: paused ?? status.gamePaused, session: status.sessionName });
       if (sessionChanged) powerStore.reset();
-      this.lastSession = status.sessionName;
-      this.lastGameDuration = status.totalGameDurationSeconds;
+      if (observedAtMs >= this.lastStatusAtMs) {
+        this.lastSession = status.sessionName;
+        this.lastGameDuration = status.totalGameDurationSeconds;
+        this.lastStatusAtMs = observedAtMs;
+      }
     }
     if (power !== undefined) {
       observations.publishPower({

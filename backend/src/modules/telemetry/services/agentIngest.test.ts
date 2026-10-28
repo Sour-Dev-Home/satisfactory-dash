@@ -539,3 +539,51 @@ describe("generators once per read (ADR-0058 S4-B)", () => {
     expect(t.store.read("power")).toMatchObject({ generators: [], generatorsReadAt: new Date(T0).toISOString() });
   });
 });
+
+describe("generators once per read: ordering and skew (ADR-0058 S4-B)", () => {
+  const gen = (id: string) => ({ id, name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", currentMW: 75, capacityMW: 75, isProducing: true, fuel: null });
+  const read = (t: ReturnType<typeof setup>, id: string, extra: Partial<SnapshotRequest> = {}) =>
+    t.running({ power: { ...agentSnapshotRequestFull.power!, generators: [gen(id)] } as never, ...extra });
+  const session = (name: string) => ({ status: { ...statusRunning.data, gamePaused: false, sessionName: name } });
+  const ids = (t: ReturnType<typeof setup>) => t.store.read("power").generators?.map((g) => g.id);
+
+  it("a late snapshot of the old session after the new session's read does not wipe or replace the new list", () => {
+    const t = setup();
+    t.ingest.ingest(read(t, "a1", session("A")), T0);
+    t.advance(5000);
+    t.ingest.ingest(read(t, "b1", session("B")), T0 + 5000);
+    const late = { ...read(t, "a-late", session("A")), observedAt: new Date(T0 + 2000).toISOString() };
+    t.ingest.ingest(late, T0 + 5100);
+    expect(ids(t)).toEqual(["b1"]);
+  });
+
+  it("a read stamped ahead of arrival is clamped to arrival, so its read time is never ahead of now", () => {
+    const t = setup();
+    t.ingest.ingest({ ...read(t, "a"), observedAt: new Date(T0 + AGENT_CLOCK_TOLERANCE_MS - 1).toISOString() }, T0);
+    expect(t.store.read("power").generatorsReadAt).toBe(new Date(T0).toISOString());
+  });
+
+  it("a read far outside the clock tolerance is stamped at arrival", () => {
+    const t = setup();
+    t.ingest.ingest({ ...read(t, "a"), observedAt: "2001-01-01T00:00:00.000Z" }, T0);
+    expect(t.store.read("power").generatorsReadAt).toBe(new Date(T0).toISOString());
+  });
+
+  it("a snapshot without status carrying a read replaces the list and does not drop it", () => {
+    const t = setup();
+    t.ingest.ingest(read(t, "a", session("A")), T0);
+    t.advance(5000);
+    t.ingest.ingest(read(t, "b", { status: undefined }), T0 + 5000);
+    expect(ids(t)).toEqual(["b"]);
+  });
+
+  it("restore() then a read: the first read is taken", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    const restarted = new LatestSnapshotStore(() => CADENCE, t.now);
+    restarted.restore(t.store.persistedState()!);
+    expect(restarted.read("power")).not.toHaveProperty("generators");
+    restarted.record({ reachable: true, observedAtMs: T0 + 1, receivedAtMs: T0 + 1, power: powerOk.data, generators: [] });
+    expect(restarted.read("power").generators).toEqual([]);
+  });
+});

@@ -81,7 +81,8 @@ export class LatestSnapshotStore {
    * part replaces that part whole and most carry no generators. Never persisted (ADR-0052): absent after a restart.
    */
   private generatorsRead: { list: PowerGenerator[]; readAtMs: number } | undefined;
-  /** After a drop (new session), a read older than this belongs to the old session and is not taken. */
+  /** After a drop (new session), a read older than this belongs to the old session and is not taken. In normalised
+   *  observation time (not receive time); it only rises, by design. */
   private generatorsFloorMs: number | undefined;
 
   constructor(
