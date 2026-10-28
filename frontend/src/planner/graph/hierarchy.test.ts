@@ -244,9 +244,9 @@ describe("factoryModels", () => {
     expect(rod.remoteSites).toEqual([]);
   });
 
-  it("counts where flows end, leaving out flows that go on to machines", () => {
-    expect(plate.destinations).toEqual([{ destination: "storage", count: 1 }]);
-    expect(rod.destinations).toEqual([{ destination: "sink", count: 1 }]);
+  it("counts where flows end, leaving out flows that go on to machines, with their summed rate (the caps' speed)", () => {
+    expect(plate.destinations).toEqual([{ destination: "storage", count: 1, rates: [{ unit: "items/min", ratePerMinute: 48, quality: "measured" }] }]);
+    expect(rod.destinations).toEqual([{ destination: "sink", count: 1, rates: [{ unit: "items/min", ratePerMinute: 6, quality: "estimated" }] }]);
   });
 
   it("sums states, finds the shared groups, and skips a key no node answers to", () => {

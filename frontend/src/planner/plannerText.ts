@@ -12,6 +12,7 @@ import { sectionNotes } from "../factory/bottlenecks";
 import { machineState } from "../factory/machineState";
 import { formatAmount, formatPerMinute, formatRate, unitLabel } from "../format";
 import type { AggregateFlow, Bubble, BubbleEntry, ConnectionRow, FactoryModel, Remote, ShareSplit } from "./graph/hierarchy";
+import type { DestinationCap } from "./graph/capModel";
 
 /** The Factory page's Bottlenecks section: a finding has no anchor of its own, so the link goes to the section. */
 export const BOTTLENECKS_LINK = "/app/factory#bottlenecks-heading";
@@ -299,6 +300,26 @@ const CHIP_WORD: Record<string, string> = {
 /** A chip for where a factory's flows end: "3 flows to storage", "1 flow to the Depot". */
 export const destinationChipText = (destination: string, count: number): string =>
   `${count} ${count === 1 ? "flow" : "flows"} ${ownValue(CHIP_WORD, destination) ?? `to ${destination}`}`;
+
+/**
+ * A destination cap's words (ADR-0062 Decision 1), its `<title>` and button name, so its speed is never the only carrier
+ * of the rate: "about 120 items/min to storage, 3 flows", "48 items/min to the Sink", "2 flows to power, rate unknown". A
+ * unit with no number makes the others "at least"; a stalled cap says its machines' state.
+ */
+export function capText(cap: Pick<DestinationCap, "destination" | "count" | "rates" | "stalled">): string {
+  const words = ownValue(CHIP_WORD, cap.destination) ?? `to ${cap.destination}`;
+  const known = cap.rates.filter((r) => r.quality !== "unknown" && r.ratePerMinute !== null);
+  const partial = known.length < cap.rates.length;
+  const rate = known.map((r) => aggregateRateText(partial && r.quality !== "atLeast" ? { ...r, quality: "atLeast" } : r)).join(" and ");
+  const head = known.length === 0 ? `${destinationChipText(cap.destination, cap.count)}, rate unknown` : `${rate} ${words}${cap.count === 1 ? "" : `, ${cap.count} flows`}`;
+  return cap.stalled === undefined ? head : `${head}, not moving: ${machineState(cap.stalled)?.label.toLowerCase() ?? cap.stalled}`;
+}
+
+/** A "+k" cap's words: how many more kinds, and where (each kind's own words are in its cap and the detail). */
+export function moreCapsText(more: readonly Pick<DestinationCap, "destination" | "count">[]): string {
+  const total = more.reduce((sum, c) => sum + c.count, 0);
+  return `${more.length} more destinations (${more.map((c) => destinationChipText(c.destination, c.count)).join(", ")}), ${total} ${total === 1 ? "flow" : "flows"}`;
+}
 
 /** "850 m" under a kilometre, else "1.8 km". */
 export function distanceText(metres: number): string {

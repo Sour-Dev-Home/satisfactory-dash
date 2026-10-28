@@ -2,6 +2,7 @@ import dagre from "@dagrejs/dagre";
 import type { PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Frame, type Scene } from "./canvasScene";
 import { buildingIconUrl } from "./buildingIcons";
+import { capSlots } from "./capModel";
 import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { GLYPH_HALO_RADIUS, GLYPH_SIZE } from "./transportModes";
@@ -34,6 +35,26 @@ const BASELINE_UP = 5;
 export const cardLineY = (i: number): number => LINES_TOP + LINE_H * (i + 1) - BASELINE_UP;
 /** The middle of a card's line `i`, where a mark drawn in its row is centred. */
 export const cardLineMid = (i: number): number => LINES_TOP + LINE_H * i + LINE_H / 2;
+/**
+ * ADR-0062 Decision 1, a card's footer row of destination caps: one fixed row under its lines (the card is this much taller,
+ * so dagre and the router see only a bigger card). Each cap is a stub `CAP_STUB` long ending in a disc `CAP_D` across, the
+ * caps `CAP_GAP` apart from `NODE_PAD_X`; the last cap's number badge sticks out right of its disc by up to `CAP_BADGE_OVER`.
+ */
+export const CAP_ROW_H = 28;
+export const CAP_STUB = 14;
+export const CAP_D = 20;
+export const CAP_GAP = 10;
+export const CAP_BADGE_OVER = 12;
+const CAP_SLOT_W = CAP_STUB + CAP_D;
+/** The top of a card's cap row, under its `lines` lines. */
+export const capRowTop = (lines: number): number => LINES_TOP + LINE_H * lines;
+/** How wide a cap row of `slots` caps is, its last badge included. */
+export const capRowWidth = (slots: number): number => (slots <= 0 ? 0 : slots * CAP_SLOT_W + (slots - 1) * CAP_GAP + CAP_BADGE_OVER);
+/** Cap `i`'s stub (from `x0` to the disc's edge at `x1`) and disc centre, in the card's units, under `lines` lines. */
+export function capSlotAt(i: number, lines: number): { x0: number; x1: number; cx: number; cy: number } {
+  const x0 = NODE_PAD_X + i * (CAP_SLOT_W + CAP_GAP);
+  return { x0, x1: x0 + CAP_STUB, cx: x0 + CAP_STUB + CAP_D / 2, cy: capRowTop(lines) + CAP_ROW_H / 2 + 3 };
+}
 /** The width of the "×N" badge for a count. */
 export const countBadgeWidth = (count: number): number => `×${count}`.length * CHAR_W_TITLE + 2 * COUNT_BADGE_PAD;
 export const LABEL_H = 18;
@@ -152,7 +173,9 @@ export function cardSize(card: Card): CardSize {
     return { title: card.title, lines: card.lines, iconUrl, width: frame.width, height: frame.height + reserve };
   }
   const row = BUILDING_ICON_SIZE + (card.count === undefined ? 0 : BUILDING_ICON_GAP + countBadgeWidth(card.count));
-  const text = Math.max(row, ...card.lines.map((l, i) => l.length * (isHeadingLine(card, i) ? CHAR_W_TITLE : CHAR_W_BODY)));
+  // The destination caps' footer row (ADR-0062 Decision 1): as wide as its slots, one fixed row tall.
+  const caps = card.caps === undefined || card.caps.length === 0 ? 0 : capSlots(card.caps).length;
+  const text = Math.max(row, capRowWidth(caps), ...card.lines.map((l, i) => l.length * (isHeadingLine(card, i) ? CHAR_W_TITLE : CHAR_W_BODY)));
   // A card that can open into its machines (or blow up, ADR-0061 Decision 5) keeps room for its Expand pill (at the bottom
   // right) beside the upstream one.
   const expandable = card.machines !== undefined || card.blowUp !== undefined;
@@ -162,7 +185,7 @@ export function cardSize(card: Card): CardSize {
     iconUrl,
     width: Math.max(expandable ? EXPANDABLE_MIN_W : NODE_MIN_W, Math.ceil(text + 2 * NODE_PAD_X)),
     // A card with an upstream (or Expand) pill makes room below its text for the pill's upper half.
-    height: Math.ceil(LINES_TOP + card.lines.length * LINE_H + NODE_PAD_Y + (reserve > 0 || expandable ? PILL_RESERVE : 0)),
+    height: Math.ceil(LINES_TOP + card.lines.length * LINE_H + (caps > 0 ? CAP_ROW_H : 0) + NODE_PAD_Y + (reserve > 0 || expandable ? PILL_RESERVE : 0)),
   };
 }
 

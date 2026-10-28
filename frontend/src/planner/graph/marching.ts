@@ -17,6 +17,13 @@ import { isInView, type Stage, type View } from "./viewport";
  */
 export const MARCH_MAX = 60;
 
+/**
+ * At most this many destination caps move at once (ADR-0062 Decision 1, `capLayout.ts`), in view, fastest first. Their own
+ * budget, beside `MARCH_MAX`, so a cap never takes a line's motion: a cap's stub is 14 units long, a small fraction of a line's
+ * repaint. As many as the transport glyphs' `MAX_MOVING`.
+ */
+export const CAP_MARCH_MAX = 40;
+
 /** The view the march set is chosen for settles this long after the last pan or zoom, so a drag recomputes nothing per frame. */
 export const MARCH_SETTLE_MS = 150;
 
