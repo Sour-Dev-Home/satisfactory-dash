@@ -7,6 +7,7 @@ import type {
   PlannerTransport,
   ProductionGraph,
 } from "@satisfactory-dash/shared";
+import { sumCapRates, type CapRate } from "./capModel";
 
 /**
  * The planner's hierarchy, pure (ADR-0055 Decisions 4 and 6, ADR-0053 Decision 3): factories over groups, groups folded
@@ -337,8 +338,11 @@ export interface FactoryModel {
   /** The other sites it spans, the larger first. */
   remoteSites: PlannerSite[];
   stateCounts: Record<string, number>;
-  /** Flows leaving the factory to somewhere that is not another machine group, by destination. */
-  destinations: { destination: string; count: number }[];
+  /**
+   * Flows leaving the factory to somewhere that is not another machine group, by destination, with their summed rate per
+   * unit (the destination caps' speed, ADR-0062 Decision 1; absent = not known, the cap then stays still).
+   */
+  destinations: { destination: string; count: number; rates?: CapRate[] | undefined }[];
   sharedNodes: PlannerNode[];
   /** ADR-0061 Decision 2, a parent's roll-up: the products (by class) whose net rate is a floor, read "at least". */
   atLeast?: ReadonlySet<string> | undefined;
@@ -400,17 +404,21 @@ function modelOf(graph: ProductionGraph, { byKey, siteByKey, outgoing }: ModelCo
   for (const n of nodes) for (const [state, count] of Object.entries(n.stateCounts)) summed.set(state, (summed.get(state) ?? 0) + count);
   const stateCounts: Record<string, number> = {};
   for (const [state, count] of summed) Object.defineProperty(stateCounts, state, { value: count, enumerable: true, writable: true, configurable: true });
-  const ends = new Map<string, number>();
+  // Each end's flows, for its count and (ADR-0062 Decision 1, the destination caps) its summed rate per unit.
+  const ends = new Map<string, { ratePerMinute: number | null; rate: "measured" | "estimated" | "unknown"; unit: "items/min" | "m3/min" }[]>();
   for (const x of outgoing) {
     if (!inFactory.has(x.from) || x.destination === undefined || ONWARD_DESTINATIONS.has(x.destination)) continue;
-    ends.set(x.destination, (ends.get(x.destination) ?? 0) + 1);
+    const part = { ratePerMinute: x.ratePerMinute, rate: x.rate, unit: "kind" in x && x.kind === "pipe" ? ("m3/min" as const) : ("items/min" as const) };
+    const list = ends.get(x.destination);
+    if (list === undefined) ends.set(x.destination, [part]);
+    else list.push(part);
   }
   const rank = (d: string) => {
     const i = DESTINATION_ORDER.indexOf(d);
     return i < 0 ? DESTINATION_ORDER.length : i;
   };
   const destinations = [...ends]
-    .map(([destination, count]) => ({ destination, count }))
+    .map(([destination, parts]) => ({ destination, count: parts.length, rates: sumCapRates(parts) }))
     .sort((a, b) => rank(a.destination) - rank(b.destination) || (a.destination < b.destination ? -1 : 1));
   return { factory, nodes, home, remoteSites, stateCounts, destinations, sharedNodes: nodes.filter((n) => (n.shares?.length ?? 0) > 0) };
 }

@@ -3,15 +3,8 @@ import { cn } from "../../lib/cn";
 import { bubbleName, itemRateText, type BubbleItem, type BubbleStop, type ItemFocus } from "./bubbleRow";
 import type { CanvasFlow } from "./canvasScene";
 import { itemIconUrl } from "./itemIcons";
+import { nextStop } from "./rovingStop";
 
-/** Where arrow keys and Home/End move from stop `i` of `n`, or null for a key the layer leaves alone. */
-function nextStop(key: string, i: number, n: number): number | null {
-  if (key === "ArrowRight" || key === "ArrowDown") return Math.min(n - 1, i + 1);
-  if (key === "ArrowLeft" || key === "ArrowUp") return Math.max(0, i - 1);
-  if (key === "Home") return 0;
-  if (key === "End") return n - 1;
-  return null;
-}
 
 /**
  * The keyboard's way into the item bubbles (ADR-0060 Decision 5): a visually hidden button per bubble and per "+k" chip,

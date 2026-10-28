@@ -81,6 +81,8 @@ import {
   type ItemFocus,
 } from "./bubbleRow";
 import { BubbleButtons, ItemList } from "./ItemFocusLayer";
+import { CapButtons, CapMarchStroke, CapRow } from "./DestinationCaps";
+import { capCandidates, capStops, marchingCaps, type CapMarch, type CapStop } from "./capLayout";
 import { ItemCard } from "./ItemCard";
 import { CanvasOverlay } from "./CanvasOverlay";
 import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
@@ -468,6 +470,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // The card of a focus just left, while it shrinks back to its bubble.
   const [closingCard, setClosingCard] = useState<ItemFocus | null>(null);
   const bubbleButtons = useRef(new Map<string, HTMLButtonElement>());
+  // The destination caps' keyboard stops (ADR-0062 Decision 1): the one that holds the tab stop, and the one the keyboard is on.
+  const [activeCap, setActiveCap] = useState<string | null>(null);
+  const [keyCap, setKeyCap] = useState<CapStop | null>(null);
+  const capButtons = useRef(new Map<string, HTMLButtonElement>());
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
@@ -1034,6 +1040,31 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setFocusKey(n.key);
     setView((v) => revealRect(v, n, stageRef.current));
   };
+  /**
+   * A destination cap chosen (ADR-0062 Decision 1), drawn or by its button: the card's detail, which lists every destination
+   * in words. A factory opens (its facts list where its flows end), a group's panel opens (its facts, focused), a closed
+   * bubble opens in place into its groups and their caps. Never a pick, even in Select mode: a cap is not the card.
+   */
+  const showCapDetail = (card: Card) => {
+    if (dragged.current) return;
+    if (card.kind === "factory") onOpenFactory?.(card.key);
+    else if (card.kind === "group") {
+      setListKey(null);
+      setOpenKey(card.key);
+      setOpenMachine(null);
+    } else if (card.kind === "bubble" && card.bubbleKey !== undefined) {
+      setFlipped(toggled(flipped, card.bubbleKey));
+      revealFrame.current = card.bubbleKey;
+    }
+  };
+  // The keyboard reaching a cap rings it in the picture and brings its card into view.
+  const focusCap = (stop: CapStop | null) => {
+    setKeyCap(stop);
+    if (stop === null) return;
+    setActiveCap(stop.id);
+    const n = laidByKey.get(stop.nodeKey);
+    if (n !== undefined) setView((v) => revealRect(v, n, stageRef.current));
+  };
   /** "Collapse all" when most are open, "Expand all" otherwise: each flips every bubble to the other state. */
   // A group opened into its machines also makes it "Collapse all", which folds those back too; "Expand all" opens the bubbles
   // only (every group's machines at once would be a wall of cards).
@@ -1115,14 +1146,33 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         : new Map<number, RateStep>(),
     [animate, reduced, visible, ghost, lasso, marchable, settledView],
   );
+  // The destination caps that move (ADR-0062 Decision 1): by the same rules and the same settled view as the lines, in the
+  // same march layer, under their own budget (`CAP_MARCH_MAX`), so a cap never takes a line's place under `MARCH_MAX`.
+  const capMarchable = useMemo(() => capCandidates(layout.nodes), [layout]);
+  const capsMarching = useMemo(
+    () => (animate && !reduced && visible && ghost === null && lasso === null ? marchingCaps(capMarchable, settledView.view, settledView.stage) : []),
+    [animate, reduced, visible, ghost, lasso, capMarchable, settledView],
+  );
+  const capSlotsMarching = useMemo(() => {
+    const byNode = new Map<string, Set<number>>();
+    for (const c of capsMarching) {
+      const set = byNode.get(c.nodeKey);
+      if (set === undefined) byNode.set(c.nodeKey, new Set([c.slot]));
+      else set.add(c.slot);
+    }
+    return byNode;
+  }, [capsMarching]);
+  const caps = useMemo(() => capStops(tabOrder), [tabOrder]);
   // The march layer's mask: every label pill and card (with its badge and pills), and the open or closing item card.
   const cardHoles = useMemo(() => marchHoles(layout.nodes, layout.edges, Math.max(BADGE_H, PILL_H)), [layout]);
   const openEdgeKey = focus?.edgeKey;
   const closingEdgeKey = closingCard?.edgeKey;
-  const holes = useMemo(
-    () => [...cardHoles, ...[openEdgeKey, closingEdgeKey].flatMap((key) => focusCardHole(key === undefined ? undefined : edgeByKey.get(key)))],
-    [cardHoles, openEdgeKey, closingEdgeKey, edgeByKey],
+  // The open or closing item card is drawn over the cards, so it is a hole for the caps too (their own mask: a cap sits in its card).
+  const focusHoles = useMemo(
+    () => [openEdgeKey, closingEdgeKey].flatMap((key) => focusCardHole(key === undefined ? undefined : edgeByKey.get(key))),
+    [openEdgeKey, closingEdgeKey, edgeByKey],
   );
+  const holes = useMemo(() => [...cardHoles, ...focusHoles], [cardHoles, focusHoles]);
 
   // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
@@ -1222,8 +1272,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           onClick={() => setStateStyle(marks ? "words" : "marks")}
           icon={<path d="M4 8h6M4 16h6M14 6v12" />}
         />
-        {/* Shown whenever something can move: a transport's glyph or a marching line (ADR-0062 amendment build PR 3). */}
-        {(transports.length > 0 || marchable.length > 0) && <MotionSelect value={motionPref} onChange={setMotionPref} />}
+        {/* Shown whenever something can move: a transport's glyph, a marching line (ADR-0062 amendment build PR 3) or a
+            destination cap (Decision 1). */}
+        {(transports.length > 0 || marchable.length > 0 || capMarchable.length > 0) && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
             also says what focus did; the item filter's words show, focus's are for screen readers. */}
         {(reach !== null || itemFocusOn) && (
@@ -1373,6 +1424,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   onMachine={(m) => activateMachine(n.card, m)}
                   onToggleMachines={() => toggleMachines(n.card)}
                   onBlowUp={() => expandBlowUp(n.card)}
+                  capsMarching={capSlotsMarching.get(n.key)}
+                  ringedCap={keyCap !== null && keyCap.nodeKey === n.key ? keyCap.slot : null}
+                  onCap={() => showCapDetail(n.card)}
                 />
               ))}
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
@@ -1383,11 +1437,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               )}
             </g>
           </svg>
-          {marching.size > 0 && (
+          {(marching.size > 0 || capsMarching.length > 0) && (
             <MarchLayer
               edges={layout.edges}
               marching={marching}
               dim={(e) => !edgeLit(e)}
+              caps={capsMarching}
+              capDim={(c) => !lit(c.nodeKey)}
+              capHoles={focusHoles}
               holes={holes}
               bounds={{ width: layout.width, height: layout.height }}
               stage={stage}
@@ -1558,6 +1615,18 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             onActivate={activateStop}
             onFocusStop={focusStop}
           />
+          <CapButtons
+            stops={caps}
+            active={activeCap}
+            buttons={capButtons}
+            onActivate={(stop) => {
+              // A key press, not the end of a drag.
+              dragged.current = false;
+              const n = laidByKey.get(stop.nodeKey);
+              if (n !== undefined) showCapDetail(n.card);
+            }}
+            onFocusStop={focusCap}
+          />
           {/* The open card for the keyboard and screen readers: its words, then its two controls (Decision 5). */}
           {openCard !== null && (
             <div role="group" aria-label={`${openCard.item.name ?? "Item unknown"} card`} className="sr-only">
@@ -1720,6 +1789,9 @@ function MarchLayer({
   edges,
   marching,
   dim,
+  caps,
+  capDim,
+  capHoles,
   holes,
   bounds,
   stage,
@@ -1732,6 +1804,13 @@ function MarchLayer({
   edges: readonly LaidEdge[];
   marching: ReadonlyMap<number, RateStep>;
   dim: (e: LaidEdge) => boolean;
+  /**
+   * The destination caps that move (ADR-0062 Decision 1). A cap sits inside its card, which is a hole in the lines' mask, so
+   * the caps have a mask of their own whose only holes are `capHoles` (the item card, drawn over the cards).
+   */
+  caps: readonly CapMarch[];
+  capDim: (c: CapMarch) => boolean;
+  capHoles: readonly MarchHole[];
   holes: readonly MarchHole[];
   bounds: { width: number; height: number };
   stage: Stage;
@@ -1765,6 +1844,14 @@ function MarchLayer({
             <rect key={i} x={h.x} y={h.y} width={h.width} height={h.height} rx={h.rx} className="fill-black" />
           ))}
         </mask>
+        {capHoles.length > 0 && (
+          <mask id={`${maskId}-caps`} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>
+            <rect x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD} className="fill-white" />
+            {capHoles.map((h, i) => (
+              <rect key={i} x={h.x} y={h.y} width={h.width} height={h.height} rx={h.rx} className="fill-black" />
+            ))}
+          </mask>
+        )}
       </defs>
       <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(fadeIn && "animate-graph-in")}>
         <g mask={`url(#${maskId})`}>
@@ -1773,6 +1860,13 @@ function MarchLayer({
             return step === undefined ? null : <MarchLine key={e.index} edge={e} step={step} dim={dim(e)} />;
           })}
         </g>
+        {caps.length > 0 && (
+          <g data-march-caps="" mask={capHoles.length > 0 ? `url(#${maskId}-caps)` : undefined}>
+            {caps.map((c) => (
+              <CapMarchStroke key={c.id} cap={c} dim={capDim(c)} />
+            ))}
+          </g>
+        )}
       </g>
     </svg>
   );
@@ -2035,6 +2129,9 @@ function CardView({
   onMachine,
   onToggleMachines,
   onBlowUp,
+  capsMarching,
+  ringedCap,
+  onCap,
 }: {
   node: LaidNode;
   finding: number;
@@ -2055,6 +2152,12 @@ function CardView({
   onToggleMachines: () => void;
   /** ADR-0061 Decision 5: blow the card up in place (its Expand pill; nothing when the card is past the cap). */
   onBlowUp: () => void;
+  /** ADR-0062 Decision 1: the cap slots the march layer moves now (an estimated one's stub is drawn there, not here). */
+  capsMarching: ReadonlySet<number> | undefined;
+  /** The cap slot whose button the keyboard is on. */
+  ringedCap: number | null;
+  /** A cap chosen: the card's detail. */
+  onCap: () => void;
 }) {
   const card = n.card;
   if (card.machines?.open === true && machines !== undefined) {
@@ -2132,6 +2235,8 @@ function CardView({
           <StateMarkGlyph kind={card.stalled} />
         </g>
       )}
+      {/* ADR-0062 Decision 1: the footer row of destination caps, under the lines (the layout made the card one row taller). */}
+      <CapRow card={card} lines={n.lines.length} marks={marks} marching={capsMarching} ringed={ringedCap} onCap={onCap} />
       {finding > 0 && (
         <g transform={`translate(${n.width - BADGE_W - 8} ${-BADGE_H / 2})`}>
           <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />

@@ -294,7 +294,7 @@ describe("foldStorage", () => {
     const { parts, removed, chips } = foldStorage(nodes, [belt("a", "buf"), belt("buf", "buf2"), belt("buf2", "b"), belt("b", "end")]);
     expect([...removed].sort()).toEqual(["buf", "buf2", "end"]);
     expect(parts.map((p) => `${p.from}>${p.to}`)).toEqual(["a>b"]);
-    expect(chips.get("b")).toBe(1);
+    expect(chips.get("b")?.map((p) => `${p.from}>${p.to}`)).toEqual(["b>end"]);
   });
 
   it("leaves a buffer nothing feeds, drops a self-loop and ignores a station", () => {

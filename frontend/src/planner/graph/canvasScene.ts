@@ -21,6 +21,7 @@ import {
 } from "../plannerText";
 import { levelOf, levelOwner, type FactoryTree, type TreeNode } from "../factoryTree";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
+import { sumCapRates, withCapStalled, type DestinationCap } from "./capModel";
 import {
   INFERRED_FROM_NODE,
   MAX_SUMMARY_CHARS,
@@ -117,6 +118,11 @@ export interface Card {
   machines?: CardMachines | undefined;
   /** ADR-0061 Decision 5, the overview with the `planner.nesting` flag: the card can blow up in place into its parts. */
   blowUp?: CardBlowUp | undefined;
+  /**
+   * ADR-0062 Decision 1: where the card's flows end that no line is drawn to (a factory's ends, a group's folded storage),
+   * one cap per kind in the card's footer row. The words stay in `description` (`destinationChipText`). Absent = none.
+   */
+  caps?: DestinationCap[] | undefined;
 }
 
 /** What a closed card would show blown up (`overviewScene` with `expanded`). */
@@ -575,6 +581,15 @@ function factoryCard(model: FactoryModel): Card {
     biggest(product === undefined ? [] : model.nodes.filter((n) => n.products.some((p) => p.className === product))) ??
     biggest(model.nodes.filter((n) => n.kind === "machines")) ??
     biggest(model.nodes);
+  const text = withMutedNote(
+    [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0], floor(factory.products[0]))],
+    null,
+    stalledLine(factory.products[0], model.stateCounts),
+  );
+  // ADR-0062 Decision 1: a cap per kind of end; a count that is not a positive whole number draws none (its words stay).
+  const caps = model.destinations
+    .filter((d) => Number.isSafeInteger(d.count) && d.count > 0)
+    .map((d): DestinationCap => ({ destination: d.destination, count: d.count, rates: d.rates ?? [] }));
   return {
     ...blank,
     key: factory.key,
@@ -582,11 +597,8 @@ function factoryCard(model: FactoryModel): Card {
     nodeKeys: model.nodes.map((n) => n.key),
     title,
     // The name and one product line; where it stands, the other outputs and the ends are in `description`.
-    ...withMutedNote(
-      [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0], floor(factory.products[0]))],
-      null,
-      stalledLine(factory.products[0], model.stateCounts),
-    ),
+    ...text,
+    ...(caps.length === 0 ? {} : { caps: withCapStalled(caps, text.stalled) }),
     count: countOf(factory.machineCount),
     className: main?.className,
     glyph: main === undefined ? "unknown" : glyphOfGroups(model.nodes, main),
@@ -754,7 +766,8 @@ interface Folded {
   /** The storage nodes folded away. */
   removed: Set<string>;
   /** Flows that ended in a folded terminal storage, by the node they left. */
-  chips: Map<string, number>;
+  /** Each such flow too (its count is the chip's; their rates sum into the group's storage cap, ADR-0062 Decision 1). */
+  chips: Map<string, FlowPart[]>;
 }
 
 /**
@@ -766,14 +779,14 @@ interface Folded {
 export function foldStorage(nodes: readonly PlannerNode[], parts: readonly FlowPart[]): Folded {
   const foldable = new Set(nodes.filter(isFoldableStorage).map((n) => n.key));
   const removed = new Set<string>();
-  const chips = new Map<string, number>();
+  const chips = new Map<string, FlowPart[]>();
   let current = [...parts];
   const into = (list: readonly FlowPart[], key: string) => list.filter((p) => p.to === key && p.from !== key);
   const outOf = (list: readonly FlowPart[], key: string) => list.filter((p) => p.from === key && p.to !== key);
   // Terminal storage first: a container nothing leaves is a chip on whatever fills it.
   for (const key of [...foldable].sort()) {
     if (outOf(current, key).length > 0) continue;
-    for (const p of into(current, key)) if (!foldable.has(p.from)) chips.set(p.from, (chips.get(p.from) ?? 0) + 1);
+    for (const p of into(current, key)) if (!foldable.has(p.from)) chips.set(p.from, [...(chips.get(p.from) ?? []), p]);
     current = current.filter((p) => p.from !== key && p.to !== key);
     removed.add(key);
   }
@@ -881,9 +894,15 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
   const factoryNames = new Map((graph.factories ?? []).map((f) => [f.key, f.name]));
   const remote = remoteInfo(graph, model);
   const rates = minedRates(graph.edges);
+  const chipParts = (keys: readonly string[]): FlowPart[] => keys.flatMap((k) => folded.chips.get(k) ?? []);
   const chipLines = (keys: readonly string[]): string[] => {
-    const n = keys.reduce((sum, k) => sum + (folded.chips.get(k) ?? 0), 0);
+    const n = chipParts(keys).length;
     return n === 0 ? [] : [destinationChipText("storage", n)];
+  };
+  // ADR-0062 Decision 1: the folded storage as the card's one cap (the chip's words stay in its facts and description).
+  const withStorageCap = (card: Card, keys: readonly string[]): Card => {
+    const parts = chipParts(keys);
+    return parts.length === 0 ? card : { ...card, caps: withCapStalled([{ destination: "storage", count: parts.length, rates: sumCapRates(parts) }], card.stalled) };
   };
   const groupWithFacts = (node: PlannerNode): Card => {
     const extra: string[] = [];
@@ -892,7 +911,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     const away = remote.get(node.key);
     if (away !== undefined) extra.push(remoteText(away));
     extra.push(...chipLines([node.key]));
-    const card = groupCard(node, extra, rates);
+    const card = withStorageCap(groupCard(node, extra, rates), [node.key]);
     const machines = groupMachines(node, view.machinesOpen?.has(node.key) === true);
     if (machines === undefined) return card;
     const opened = machines.open ? [`Opened into ${plural(machines.ids.length, "machine card", "machine cards")}${machines.more > 0 ? ` and ${machines.more} more` : ""}`, MACHINES_FRAME_NOTE] : [];
@@ -911,7 +930,8 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     }
     bubbleKeys.push(bubble.key);
     if (!expanded(bubble.key)) {
-      cards.push(bubbleCard(bubble, chipLines(bubble.nodes.map((n) => n.key)), rates));
+      const keys = bubble.nodes.map((n) => n.key);
+      cards.push(withStorageCap(bubbleCard(bubble, chipLines(keys), rates), keys));
       return;
     }
     const frame = `frame|${bubble.key}`;

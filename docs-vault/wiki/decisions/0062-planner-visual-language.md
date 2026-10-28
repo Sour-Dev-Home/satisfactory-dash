@@ -136,6 +136,65 @@ per group.
 | 6 | Demo and review | demo data, e2e, baselines | `ui-reviewer`; the owner reviews |
 | 7-11 | Factory page F1-F5 | `factory/` | One PR each; baselines; the layout-shift budget holds |
 
+### Values chosen in build PR 3 (caps), 2026-10-28
+
+- **Where caps show.** An overview factory card: one cap per kind in `FactoryModel.destinations` (every flow from its groups
+  whose `destination` is not `factory` or `machine`, so the same set its "N flows to ..." words count), ordered as before
+  (storage, Depot, Sink, power, station, unknown, then a newer backend's word). In an opened factory with Storage detail off,
+  a group or closed bubble that fills folded terminal storage gets the storage cap (the old chip; `foldStorage` now keeps the
+  flows, not only their count). No caps on a site scene (an older backend has no destinations), on a fold card, or on a group
+  opened into its machines. The canvas drew no chips before; the words stay where they were: `destinationChipText` in the
+  card's `description` (tooltip and button), the group panel's facts and `FactoryFacts` (the phone's cards and an opened
+  factory's detail). No contract change: the rates come from the flows the client already has.
+- **Shape** (`layoutSite.ts`, `DestinationCaps.tsx`). A footer row `CAP_ROW_H` 28 under the card's lines (the card is that
+  much taller, only when it has caps). Each cap is a stub `CAP_STUB` 14 long ending in a disc `CAP_D` 20 across, `CAP_GAP` 12
+  apart (so a "99+" badge clears the next stub) from the card's left padding. The disc is `fill-icon-chip` with a
+  `stroke-line` ring and the kind's art at 14: the storage container, Dimensional Depot and AWESOME Sink icons
+  (`buildingIcons.ts`), the generic power and station glyphs, and the "?" glyph for an unknown end or a word this build does
+  not know. The glyphs are drawn `stroke-surface` at a heavier stroke (`ui-reviewer`: the cards' default `stroke-fg` on the
+  light chip is about 1.3:1; `CardIcon`'s fallback glyph on a card has the same pairing, left for its own fix). Past one flow a number badge (a 16-tall pill on the
+  disc's top right, "99+" past 99). Past `CAPS_MAX` (4) kinds: the first three and a "+k" disc. The stub wears its line's
+  colour and width: `stroke-muted`, `stroke-info` when every flow is a fluid, `stroke-line` when unknown; 2, 3 or 4 by step
+  (`lineWidth.ts`'s widths); solid measured, `8 5` estimated, `2 5` unknown. A stalled cap in marks mode wears its state's
+  tone as a 2.5 ring, like a stalled bubble; the keyboard's ring is `stroke-accent` 3.
+- **Thresholds reused.** `capStep` is `rateStep` on the cap's summed rate (`sumCapRates`: ADR-0053 Decision 3's rule per
+  unit, "at least" when a part has no number), so a cap and a line of the same rate move alike. A cap of items and fluid
+  moves at the faster of each unit's own step (units are never compared by number). Quality: unknown (still, dotted) when no
+  unit has a number, measured only when every unit is measured, else estimated. Stalled: the card's `stalled` (`stalledOf`)
+  unless the flows were measured above 0, as `withStalledFlows` rules for lines; still in marks and words modes alike.
+- **Layer and cap accounting.** The moving part is never in the canvas: the canvas draws every cap still, and the moving part
+  is drawn in the march layer (`MarchLayer`), in a group after the lines. A measured cap keeps its solid stub in the canvas and
+  the layer's pulses ride over it (invisible except while running); an estimated cap's dashed stub leaves the canvas while it
+  moves and the layer draws it moving in the same place (no cover: a cover in the card's colour would not match a picked or
+  dimmed card). A cap sits inside its card, which is a hole in the lines' mask, so the caps have a mask of their own whose
+  only holes are the open or closing item card. **Caps do not count toward `MARCH_MAX`**: they have their own budget,
+  `CAP_MARCH_MAX` = 40 (`marching.ts`, like the transport glyphs' `MAX_MOVING`), in view, fastest first then card order
+  (`capCandidates`, `marchingCaps` in `capLayout.ts`), chosen from the same settled view. A cap's stub repaints a 14 by 4 box,
+  a small fraction of a line's, so caps sharing the lines' 60 would only take motion from lines. The same rules as lines:
+  nothing moves with Motion Off, under reduced motion (On or System), in a hidden tab, during a glide or a lasso; the
+  `[data-march]` backstop applies. The Motion control also shows when only caps can move.
+- **Text path.** Each cap's `<title>` is `capText`: "about 120 items/min to storage, 3 flows", "48 items/min to the Sink",
+  "2 flows to power, rate unknown", a stalled one adding ", not moving: backed up"; a "+k" cap lists its kinds
+  (`moreCapsText`). Each cap is a button in a list "Where the cards' flows end" after the bubbles' (one tab stop, a roving
+  tabindex; arrows, Home, End), named "<card> sends <capText>"; focusing one rings its cap and brings its card into view.
+  Enter, a click on its button or on the drawn cap shows the card's detail: a factory opens (its facts list every
+  destination), a group's panel opens (focused, its facts list the storage), a closed bubble opens into its groups and their
+  caps. Never a pick, even in Select mode.
+- **Layout time** (vitest on the dev box; medians of five cold layouts, ms). The new A/B in `layoutScene.caps.test.ts`, the
+  48-factory overview of `planner-caps-large` (42 lines): 5 without caps, 4 to 5 with them, every card exactly `CAP_ROW_H`
+  taller, the same lines, no router failure. The existing benchmarks, whose scenes have no caps, main / this branch: ADR-0060
+  overview 42.8 / 44.2-48.9, focused 42.8 / 43.3-46.0; blow-up "Expand all (to the cap)" 46 / 47-52, "one factory of 59
+  groups" 29 / 29-33; `layoutScene.test.ts` "open (150 groups in 15 frames)" 195 / 195-230 (over 100 on main too). Within the
+  box's run-to-run noise: no layout cost.
+- **Frame times.** A new e2e test (`e2e/planner-graph.spec.ts`, "destination caps move in the march layer ...", scenario
+  `planner-caps-large`: 48 factory cards, every one with one to five kinds of end, more than 100 caps) records fitted, all
+  in view and Motion Off frame times as `caps-frame-times.json` and holds the lines' regression bound on desktop (fitted p95
+  at most twice Off's plus 17 ms). CI's numbers **[NEEDS MEASUREMENT]**: to record from the PR's e2e run. A second test
+  reaches a cap by keyboard from the cards' buttons, moves with the arrows, runs axe and opens the factory.
+- **Screenshots.** A factory card with destinations grows one row, so the overview baselines with such cards change (the
+  `planner-factories` cards: storage on Iron Plate, the Sink on Iron Rod), and a factory's canvas with Storage detail off.
+  Screenshots run under reduced motion with animations disabled, so they show the still caps.
+
 ## Consequences
 
 - The canvas reads at a glance by shape and motion, and the words are never lost for a screen reader or a phone.

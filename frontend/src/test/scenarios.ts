@@ -584,6 +584,36 @@ export const plannerLarge = (() => {
   return { ...productionGraphTwoSites, data: { ...base, nodes, edges, sites: [site], unconnectedMachineIds: [], beltData: "present" as const } };
 })();
 
+/**
+ * ADR-0062 Decision 1, the destination caps' measurement: an overview of 48 factories (one group each, built from the
+ * factories fixture) in six chains of eight, so the lines between them march too, and each factory sending to one to five
+ * kinds of end (storage, the Depot, the Sink, power, a station) that belong to no factory, so each kind is a cap and five
+ * kinds are three caps and a "+2". The caps mix every step, measured, estimated and unknown rates, and counts past one.
+ */
+export const plannerCapsLarge = (() => {
+  const base = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
+  const FACTORIES = 48;
+  const CHAIN = 8;
+  const template = base.nodes.find((n) => n.className === "Build_ConstructorMk1_C")!;
+  const edge0 = base.edges.find((e) => e.destination === "storage")!;
+  const KINDS = ["storage", "depot", "sink", "power", "export"] as const;
+  const ends = KINDS.map((kind, k) => ({ ...template, key: `end-${kind}`, kind: "storage", className: "Build_StorageContainerMk1_C", name: kind, recipe: null, count: 1, machineIds: [`end-${k}`], stateCounts: {}, products: [], ingredients: [], at: { x: 9000 + k, y: 0 }, factoryKey: undefined, role: kind }));
+  const groups = Array.from({ length: FACTORIES }, (_, i) => ({ ...template, key: `group-${i}`, recipe: `Recipe ${i}`, machineIds: [`Build_ConstructorMk1_C_${200 + i}`], stateCounts: { producing: 1 }, at: { x: i * 10, y: 0 }, factoryKey: `factory-${i}` }));
+  const edges: PlannerEdge[] = [];
+  for (let i = 0; i < FACTORIES; i++) {
+    if (i % CHAIN !== CHAIN - 1) edges.push({ ...edge0, from: `group-${i}`, to: `group-${i + 1}`, destination: "factory", ratePerMinute: [30, 150, 600].at(i % 3)!, rate: i % 2 === 0 ? "measured" : "estimated" });
+    KINDS.slice(0, 1 + (i % KINDS.length)).forEach((kind, k) => {
+      const j = i + k;
+      const rate = j % 7 === 3 ? "unknown" : j % 3 === 1 ? "estimated" : "measured";
+      const ratePerMinute = rate === "unknown" ? null : [30, 150, 300, 600].at(j % 4)!;
+      // Every third kind gets a second flow, so its cap wears a count badge.
+      for (let n = 0; n < (j % 3 === 0 ? 2 : 1); n++) edges.push({ ...edge0, from: `group-${i}`, to: `end-${kind}`, destination: kind, ratePerMinute, rate });
+    });
+  }
+  const factories = groups.map((g, i) => ({ ...base.factories![0], key: `factory-${i}`, name: `Factory ${i + 1}`, designationId: null, nodeKeys: [g.key], siteKeys: [g.siteKey], machineCount: g.count, sharedNodeCount: 0, sideProducts: [] }));
+  return { ...productionGraphFactories, data: { ...base, nodes: [...groups, ...ends], edges, transports: [], factories, topologyHash: "sha256-planner-caps-large" } };
+})();
+
 /** ADR-0062 F.5: the mixed factory's five machines twelve times over (60, each its own id), past the table's 50-row cap. */
 const factoryManyMachines = {
   ...factoryMixed,
@@ -891,6 +921,8 @@ export const SCENARIOS = {
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
   // ADR-0062 amendment build PR 3: a 160-group, 210-line site, for the marching dashes' in-view cap and frame times.
   "planner-large": { productionGraph: ok(plannerLarge) },
+  // ADR-0062 Decision 1: a 48-factory overview whose every card has destination caps, for their frame times.
+  "planner-caps-large": { productionGraph: ok(plannerCapsLarge) },
   // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate.
   "planner-designations": plannerDesignated,
   // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and
