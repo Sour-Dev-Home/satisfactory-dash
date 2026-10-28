@@ -317,6 +317,47 @@ test("an owner merges two factories and splits them back from the keyboard", asy
   await expect(page.getByRole("heading", { name: "Production planner" })).toBeFocused();
 });
 
+// ADR-0061 build PR 5, behind `planner.nesting`: group a designated and an automatic factory into a new one and undo it, by
+// keyboard alone. One replace designates the automatic factory on the way; the undo offer takes the focus.
+test("with the nesting flag on, an owner groups two factories and undoes it from the keyboard", async ({ page, mockApi }, testInfo) => {
+  await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
+  await mockApi("planner-merge-split");
+  await page.goto("/app/planner");
+  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+    await page.getByRole(role, { name, exact: typeof name === "string" }).focus();
+    await page.keyboard.press(key);
+  };
+  await press("Tables");
+  await press("Select Rod works", "checkbox", "Space");
+  await press("Select Iron Plate factory", "checkbox", "Space");
+  await expect(page.getByText("2 factories selected")).toBeVisible();
+  await press("Group into a new factory");
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const grouped = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.type("Iron area");
+  await page.keyboard.press("Enter");
+  type Put = { id?: string; name: string; members: unknown[]; parentId?: string | null };
+  const groupBody = (await grouped).postDataJSON() as { expect: { id: string; revision: number }[]; put: Put[]; intent: string };
+  expect(groupBody.intent).toBe("group");
+  expect(groupBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 2 }]);
+  const parent = groupBody.put[0]!;
+  expect(parent).toMatchObject({ name: "Iron area", members: [] });
+  expect(groupBody.put).toContainEqual(expect.objectContaining({ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", parentId: parent.id }));
+  expect(groupBody.put).toContainEqual(expect.objectContaining({ name: "Iron Plate factory", parentId: parent.id }));
+
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await expect(undo).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const undone = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.press("Enter");
+  const undoBody = (await undone).postDataJSON() as { expect: { id: string; revision: number }[]; intent: string };
+  expect(undoBody.intent).toBe("undo");
+  // The static mock answers every replace alike (Rod works at revision 3), so that is what the undo expects.
+  expect(undoBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 3 }]);
+  await expect(page.getByText("Undone: the factories are as they were.").first()).toBeVisible();
+});
+
 // ADR-0055 PR 10b: the canvas lasso, by pointer, under the production CSP.
 test("an owner lassos a factory's cards on the canvas and designates them", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");

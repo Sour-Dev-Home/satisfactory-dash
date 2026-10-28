@@ -2,8 +2,9 @@ import type { PlannerDesignation, PlannerDesignationMatch, PlannerDesignationMem
 import { isStaleDesignation } from "../api/plannerWrites";
 import { factoriesConnected, partsOf } from "./connectivity";
 import { listedInPart, membersOf, type Place } from "./designationMatch";
-import { MERGE_MAX, TOO_FEW_TO_MERGE, TOO_MANY_TO_MERGE, mergeRequest } from "./designationOps";
+import { MERGE_MAX, TOO_FEW_TO_MERGE, TOO_MANY_TO_MERGE, mergeRequest, type HierarchyPick } from "./designationOps";
 import { NOT_CONNECTED_TEXT } from "./designationText";
+import type { TreeNode } from "./factoryTree";
 import type { FactoryModel } from "./graph/hierarchy";
 
 /**
@@ -48,6 +49,41 @@ export function mergeSources(
   const trial = mergeRequest({ designations: chosen, suggested, name: "Merged" });
   if (!trial.ok) return trial;
   return { ok: true, designations: chosen, suggested, names: picked.map((m) => ({ name: m.factory.name, machineCount: m.factory.machineCount })) };
+}
+
+export type HierarchyPicks = { ok: true; picks: HierarchyPick[] } | { ok: false; reason: string };
+
+export const OWN_MACHINES_PICKED = "A factory's own machines move with it; pick the factory itself.";
+/** ADR-0061: Merge joins machines; a factory with factories inside it is grouped or moved instead. */
+export const PARENTS_DO_NOT_MERGE = "Only factories with no factories inside them merge.";
+
+/**
+ * ADR-0061 Decision 6: the picked cards of one level as Group and Move take them. A designated factory or a parent is its
+ * designation as read; an automatic factory is its machines, found again in the Factory read (designated as it goes); a
+ * parent's own-machines card is not a factory of its own, so it says why.
+ */
+export function hierarchyPicks(
+  picked: readonly TreeNode[],
+  designations: readonly PlannerDesignation[] | undefined,
+  places: ReadonlyMap<string, Place> | undefined,
+): HierarchyPicks {
+  const picks: HierarchyPick[] = [];
+  for (const node of picked) {
+    if (node.kind === "own") return { ok: false, reason: OWN_MACHINES_PICKED };
+    const id = node.designationId;
+    if (id !== null) {
+      if (designations === undefined) return { ok: false, reason: "The designated factories are still loading." };
+      const d = designations.find((x) => x.id === id);
+      if (d === undefined) return { ok: false, reason: `${node.name} is no longer designated; select again.` };
+      picks.push({ designation: d });
+    } else {
+      if (places === undefined) return { ok: false, reason: "Machine positions are still loading." };
+      const made = membersOf(node.card.nodes, places);
+      if (!made.ok) return { ok: false, reason: made.reason };
+      picks.push({ automatic: { name: node.name, members: made.members } });
+    }
+  }
+  return { ok: true, picks };
 }
 
 /** The designation behind an opened factory, when this backend can split it (revisions and member-to-building ids). */

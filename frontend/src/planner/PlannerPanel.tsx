@@ -7,7 +7,7 @@ import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
 import { FactoryFacts, FactoryFlows } from "./FactoryParts";
 import { useDesignationChanges } from "./designationChanges";
-import { DesignateBar, DesignatedControls, DesignatedMarker, ErrorLine } from "./DesignationParts";
+import { DesignateBar, DesignatedControls, DesignatedMarker, ErrorLine, ParentControls } from "./DesignationParts";
 import { useDesignations } from "./DesignationContext";
 import { STALE_TEXT } from "./designationText";
 import { buildFactoryTree, levelOf, levelOwner, pathBelow, resolvePath, type FactoryTree, type TreeNodeKind } from "./factoryTree";
@@ -85,12 +85,12 @@ function SiteCard({
 }
 
 /**
- * A designated factory is the player's own (Decision 5); an automatic one has no controls of its own. A parent and its own
- * machines only say so here: editing the tree is ADR-0061 build PR 5.
+ * A designated factory is the player's own (Decision 5); an automatic one has no controls of its own. A parent has Ungroup
+ * (ADR-0061 Decision 6); its own-machines card only says it is designated.
  */
-function FactoryStanding({ model, kind = "leaf" }: { model: FactoryModel; kind?: TreeNodeKind }) {
+function FactoryStanding({ model, kind = "leaf", onGone }: { model: FactoryModel; kind?: TreeNodeKind; onGone?: () => void }) {
   if (model.factory.designationId === null) return null;
-  return kind === "leaf" ? <DesignatedControls model={model} /> : <DesignatedMarker />;
+  return kind === "leaf" ? <DesignatedControls model={model} /> : kind === "parent" ? <ParentControls model={model} onGone={onGone} /> : <DesignatedMarker />;
 }
 
 function FactoryCard({
@@ -142,6 +142,7 @@ function FactoryOverview({
   findings,
   onOpen,
   blowUp = false,
+  nesting = false,
   viewMode: [view, setMode],
 }: {
   graph: Graph;
@@ -153,6 +154,8 @@ function FactoryOverview({
   onOpen: (keys: readonly string[]) => void;
   /** ADR-0061 Decision 5 (the `planner.nesting` flag): the canvas's cards can blow up in place. */
   blowUp?: boolean;
+  /** ADR-0061 Decision 6 (the same flag): picks at any level, parents too, and the bar groups and moves them. */
+  nesting?: boolean;
   /** Held by the page, so coming back from a factory shows the same view. */
   viewMode: [ViewMode, (mode: ViewMode) => void];
 }) {
@@ -161,14 +164,22 @@ function FactoryOverview({
   const models = useMemo(() => entries.map((e) => e.card), [entries]);
   const owner = useMemo(() => levelOwner(graph, tree, parent?.key ?? null), [graph, tree, parent]);
   // ADR-0055 Decision 12: factories picked to merge (canvas Shift- or Ctrl-click, or the cards' ticks). A pick a poll took
-  // away is dropped from what the bar sees. Only plain factories at the top level merge for now: moving and grouping in
-  // the tree is ADR-0061 build PR 5.
+  // away is dropped from what the bar sees. Without the nesting flag only plain factories at the top level are picked; with
+  // it (ADR-0061 Decision 6) the cards of any level, parents too, to merge (siblings only), group or move. A parent's
+  // own-machines card is never picked: those machines move with the parent.
   const changes = useDesignationChanges();
-  const canMerge = canWrite && writes !== null && changes !== null && parent === undefined;
-  const mergeable = useMemo(() => new Set(entries.filter((e) => e.kind === "leaf").map((e) => e.key)), [entries]);
+  const canMerge = canWrite && writes !== null && changes !== null && (parent === undefined || nesting);
+  const mergeable = useMemo(
+    () => new Set(entries.filter((e) => e.kind === "leaf" || (nesting && e.kind === "parent")).map((e) => e.key)),
+    [entries, nesting],
+  );
   const [picks, setPicks] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const picked = useMemo(() => models.filter((m) => picks.has(m.factory.key) && mergeable.has(m.factory.key)), [models, picks, mergeable]);
+  const hierarchy = useMemo(
+    () => (nesting ? { picked: entries.filter((e) => picks.has(e.key) && mergeable.has(e.key)), levelId: parent?.designationId ?? null } : undefined),
+    [nesting, entries, picks, mergeable, parent],
+  );
   const machines = parent === undefined ? totalMachines(graph.sites) : parent.card.factory.machineCount;
   const groups = parent === undefined ? graph.nodes.length : parent.card.nodes.length;
   const pickNow = useCallback((next: ReadonlySet<string>) => {
@@ -190,6 +201,7 @@ function FactoryOverview({
           onCanvas={view === "graph"}
           graph={graph}
           picked={picked}
+          hierarchy={hierarchy}
           onClear={() => pickNow(new Set())}
           onStale={() => {
             setPicks(new Set());
@@ -560,6 +572,8 @@ export function PlannerPanel({
   useEffect(() => {
     if (shownKey.current === viewKey) return;
     shownKey.current = viewKey;
+    // A change that stepped out of a removed level (Ungroup) offers its undo, which keeps the focus.
+    if (document.activeElement?.closest("[data-undo-toast]") != null) return;
     if (!open) (nestedLevel ? levelHeading : overviewHeading).current?.focus();
   }, [viewKey, open, nestedLevel]);
   const back = () => go(valid.slice(0, -1));
@@ -611,7 +625,8 @@ export function PlannerPanel({
               </h4>
               <div className="grid content-start gap-2">
                 <FactoryFacts model={levelParent.card} findings={findings} detail />
-                <FactoryStanding model={levelParent.card} kind="parent" />
+                {/* Ungrouping a parent that owns no machines removes it: step up out of it (the undo offer keeps the focus). */}
+                <FactoryStanding model={levelParent.card} kind="parent" onGone={back} />
               </div>
             </div>
           )}
@@ -623,6 +638,7 @@ export function PlannerPanel({
             findings={findings}
             viewMode={overviewMode}
             blowUp={nesting}
+            nesting={nesting}
             onOpen={(keys) => go([...valid, ...keys])}
           />
         </>
