@@ -170,6 +170,10 @@ const kindByCode = {
   designation_cap: "unknown",
   // ADR-0055 amendment 2026-10-27: the replace UI (its frontend PR) words this itself; anywhere else, generically.
   designation_stale: "unknown",
+  // ADR-0061: nested designations. The editing UI (its build PR 5) words these itself; anywhere else, generically.
+  designation_cycle: "unknown",
+  designation_depth: "unknown",
+  designation_shape: "unknown",
   // ADR-0047: account deletion and leaving a server. The change would leave a server without an owner (its `reason`
   // says which: last_owner, operator_servers), and the action needs a sign-in from the last 10 minutes. The account
   // screens (src/account/) word each reason; anywhere else ErrorNotice says them generically. reauth_required is a 403

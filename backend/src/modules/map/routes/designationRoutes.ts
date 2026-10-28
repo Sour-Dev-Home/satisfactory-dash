@@ -63,6 +63,13 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     if (!parsed.success) throw new BadRequestError("The request body is not valid");
     return parsed.data;
   };
+  /**
+   * ADR-0061 build PR 1 loosened the contract (members may be empty on a parent, `parentId` is accepted). Until the nesting
+   * route (build PR 2) stores parents, a write that uses either is refused exactly as before the loosening: 400.
+   */
+  const refuseNestingUntilServed = (entries: readonly { members: readonly unknown[]; parentId?: string | null }[]): void => {
+    if (entries.some((e) => e.members.length === 0 || e.parentId !== undefined)) throw new BadRequestError("The request body is not valid");
+  };
 
   router.get(routePath(endpoints.plannerDesignations.list.route), async (req, res) => {
     const { serverId } = resolveServer(directory, req);
@@ -78,6 +85,7 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     const { serverId } = resolveServer(directory, req);
     if (!deps) throw new ServiceUnavailableError();
     const body = parseBody(CreatePlannerDesignationRequestSchema, req.body);
+    refuseNestingUntilServed([body]);
     const outcome = await deps.store.create(serverId, { userId: userIdOf(res), name: body.name, mode: body.mode, members: body.members });
     if (outcome.kind === "no_server") throw new ServerNotFoundError();
     if (outcome.kind === "cap") throw new ApiFailure("designation_cap", "This server already has the most designations allowed");
@@ -93,6 +101,7 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     const { serverId } = resolveServer(directory, req);
     if (!deps) throw new ServiceUnavailableError();
     const body = parseBody(ReplacePlannerDesignationsRequestSchema, req.body);
+    refuseNestingUntilServed(body.put);
     const outcome = await deps.store.replace(serverId, {
       userId: userIdOf(res),
       expect: body.expect,

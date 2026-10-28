@@ -128,6 +128,57 @@ export const plannerDesignationStaleError = {
   },
 };
 
+const MAIN_BASE_ID = "3d9b7c42-1e6a-4f85-8b20-5a4c1e7d9f63";
+
+/**
+ * ADR-0061: GET from a backend with nesting. "Main base" owns no machines itself and has both iron designations as
+ * children; the Iron line keeps its original members and the annex drops the building the line holds.
+ */
+export const plannerDesignationListNested = {
+  designations: [
+    { ...plannerDesignationIronLine, revision: 2, parentId: MAIN_BASE_ID },
+    { ...plannerDesignationIronAnnex, members: plannerDesignationIronAnnex.members.slice(1), revision: 2, parentId: MAIN_BASE_ID },
+    {
+      id: MAIN_BASE_ID,
+      name: "Main base",
+      mode: "core" as const,
+      members: [],
+      createdAt: "2026-10-27T12:00:00.000Z",
+      updatedAt: "2026-10-27T12:00:00.000Z",
+      revision: 1,
+      parentId: null,
+    },
+  ],
+  matches: [
+    { designationId: IRON_LINE_ID, matched: 3, missing: 0 },
+    { designationId: IRON_ANNEX_ID, matched: 1, missing: 1 },
+    { designationId: MAIN_BASE_ID, matched: 0, missing: 0 },
+  ],
+};
+
+/** POST .../replace: "Group into a new factory", the two iron designations under a new parent without members. */
+export const plannerDesignationReplaceRequestGroup = {
+  expect: [
+    { id: IRON_LINE_ID, revision: 1 },
+    { id: IRON_ANNEX_ID, revision: 1 },
+  ],
+  put: [
+    { id: MAIN_BASE_ID, name: "Main base", members: [] },
+    { id: IRON_LINE_ID, name: "Iron line", members: plannerDesignationIronLine.members, parentId: MAIN_BASE_ID },
+    { id: IRON_ANNEX_ID, name: "Iron annex", members: plannerDesignationIronAnnex.members.slice(1), parentId: MAIN_BASE_ID },
+  ],
+  intent: "group",
+};
+
+/** 409 when a write would leave a designation with neither members nor children. */
+export const plannerDesignationShapeError = {
+  error: {
+    code: "designation_shape" as const,
+    message: "A factory needs machines or factories inside it.",
+    requestId: "req-designation-shape-1",
+  },
+};
+
 /** 409 when a write names a building another designation holds. */
 export const plannerDesignationOverlapError = {
   error: {

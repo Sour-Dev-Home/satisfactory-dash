@@ -117,7 +117,10 @@ export const PlannerTransportSchema = z.object({
   destination: z.string().max(20).optional(),
 });
 
-/** ADR-0055 Decision 4: a logical factory, derived every read (or named by a designation, later PR). */
+/**
+ * ADR-0055 Decision 4: a logical factory, derived every read (or named by a designation). ADR-0061: a designation that
+ * owns no machines itself (a parent with only child designations) has no factory here; the client rolls parents up.
+ */
 export const PlannerFactorySchema = z.object({
   key: Key,
   name: Name,
@@ -128,6 +131,13 @@ export const PlannerFactorySchema = z.object({
   siteKeys: z.array(Key).max(PLANNER_MAX_SITES),
   machineCount: z.number().int().min(0),
   sharedNodeCount: z.number().int().min(0),
+  // ADR-0061 Contracts 5 (additive, optional): the designation's `parentId`, read through, so a client without the
+  // designation list can still build the tree. The graph itself stays flat: one factory per designation's own members.
+  parentDesignationId: z
+    .uuid()
+    .nullable()
+    .optional()
+    .describe("The parent of this factory's designation; null = top level or automatic; absent = an older backend"),
 });
 
 /** Decision 8: computed every read (components merged within a distance), named by default, keyed for UI state only. */

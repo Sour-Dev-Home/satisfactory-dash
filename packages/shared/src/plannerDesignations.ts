@@ -38,6 +38,19 @@ import { z } from "zod";
  * resulting count above PLANNER_DESIGNATIONS_MAX_PER_SERVER is its 409 `designation_cap`. `intent` is an audit hint only.
  * `revision` (on every designation) and `memberBuildingIds` (on every match) are optional: absent = an older backend.
  * A replace response's designations always carry `revision`.
+ *
+ * HIERARCHY (ADR-0061, additive): a designation may name a parent, `parentId`, and so nest at most
+ * PLANNER_DESIGNATION_MAX_DEPTH levels deep (a top-level designation is level 1). A parent may own machines itself AND have
+ * children; the OVERLAP rule is unchanged at any depth (a building belongs to at most one designation), so a parent's own
+ * members and its descendants' are disjoint. `members` may be empty ONLY on a designation with children: create and replace
+ * `put` accept 0 members and the route answers 409 `designation_shape` for an empty one without children; a listed set
+ * refuses an empty designation no other listed one names as parent. `PUT` (update) never changes the parent and still
+ * needs at least one member when it sends members; Move goes through replace. On create and on a `put` insert, an absent
+ * or null `parentId` is top level; on a `put` that updates in place, absent keeps the current parent and null moves it to
+ * the top level (so an older client's merge never un-nests). Further 409s, from the route: a `parentId` that would make
+ * a designation its own ancestor is `designation_cycle`; one that would nest deeper than the limit is `designation_depth`;
+ * one naming a designation that does not exist (after the replace) is `designation_stale`. The per-server cap counts
+ * parents too. `parentId` is absent from an older backend, which means top level.
  */
 
 export const PLANNER_DESIGNATIONS_MAX_PER_SERVER = 50;
@@ -53,9 +66,11 @@ export const PLANNER_DESIGNATIONS_REPLACE_MAX_PUT = 10;
 export const PLANNER_DESIGNATIONS_REPLACE_MAX_TOTAL_MEMBERS = 2000;
 export const PLANNER_DESIGNATIONS_REPLACE_INTENT_MAX = 20;
 /** The intents clients send today. A hint for the audit event only: any short lower-case word is accepted. */
-export const KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS = ["merge", "split", "pop_out", "dissolve", "undo"] as const;
+export const KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS = ["merge", "split", "pop_out", "dissolve", "undo", "group", "ungroup", "move"] as const;
 /** The row's concurrency token is a Postgres integer: positive, at most 2^31 - 1. */
 export const PLANNER_DESIGNATION_REVISION_MAX = 2_147_483_647;
+/** ADR-0061 Decision 1: a factory in a factory in a factory. Enforced by the route (409 `designation_depth`). */
+export const PLANNER_DESIGNATION_MAX_DEPTH = 3;
 
 /** `core` is the only mode today. Kept an enum so another can be added additively; a client treats an unknown one as `core`. */
 export const KNOWN_PLANNER_DESIGNATION_MODES = ["core"] as const;
@@ -86,14 +101,23 @@ export const PlannerDesignationMemberSchema = z.strictObject({
   y: Coordinate.describe("Metres, whole number"),
 });
 
-const MembersSchema = z
-  .array(PlannerDesignationMemberSchema)
-  .min(1)
-  .max(PLANNER_DESIGNATION_MAX_MEMBERS)
-  .refine((members) => {
-    const ids = members.flatMap((m) => (m.id === null ? [] : [m.id]));
-    return new Set(ids).size === ids.length;
-  }, "A building id appears once");
+const membersSchema = (min: 0 | 1) =>
+  z
+    .array(PlannerDesignationMemberSchema)
+    .min(min)
+    .max(PLANNER_DESIGNATION_MAX_MEMBERS)
+    .refine((members) => {
+      const ids = members.flatMap((m) => (m.id === null ? [] : [m.id]));
+      return new Set(ids).size === ids.length;
+    }, "A building id appears once");
+
+/** Create and replace `put` (ADR-0061 Contracts 3): 0 members is allowed here; the route needs members or children. */
+const MembersSchema = membersSchema(0);
+/** PUT (update) is unchanged: when it sends members, at least one. */
+const UpdateMembersSchema = membersSchema(1);
+
+/** ADR-0061 (additive, optional): the parent designation; null or absent = top level. */
+const ParentIdSchema = z.uuid().nullable().optional();
 
 export const PlannerDesignationRevisionSchema = z.number().int().min(1).max(PLANNER_DESIGNATION_REVISION_MAX);
 
@@ -101,11 +125,14 @@ export const PlannerDesignationSchema = z.object({
   id: z.uuid(),
   name: PlannerDesignationNameSchema,
   mode: PlannerDesignationModeSchema,
-  members: z.array(PlannerDesignationMemberSchema).min(1).max(PLANNER_DESIGNATION_MAX_MEMBERS),
+  // ADR-0061: empty only on a designation with children (checked across the list in PlannerDesignationsResponseSchema).
+  members: z.array(PlannerDesignationMemberSchema).max(PLANNER_DESIGNATION_MAX_MEMBERS),
   createdAt: IsoTimeSchema,
   updatedAt: IsoTimeSchema,
   // ADR-0055 Decision 11 (additive, optional): bumped by every write to the row; a replace's `expect` names it.
   revision: PlannerDesignationRevisionSchema.optional().describe("Concurrency token; absent from an older backend"),
+  // ADR-0061 Contracts 1 (additive, optional).
+  parentId: ParentIdSchema.describe("The parent designation; null = top level; absent = top level, or an older backend"),
 });
 
 /** POST: a member of the server with write rights. 201 with the new designation. */
@@ -113,13 +140,14 @@ export const CreatePlannerDesignationRequestSchema = z.strictObject({
   name: PlannerDesignationNameSchema,
   mode: PlannerDesignationModeSchema,
   members: MembersSchema,
+  parentId: ParentIdSchema.describe("ADR-0061: the parent designation; absent or null = top level"),
 });
 
-/** PUT: name and/or members (at least one); the mode does not change. 200 with the designation. */
+/** PUT: name and/or members (at least one); the mode and the parent do not change. 200 with the designation. */
 export const UpdatePlannerDesignationRequestSchema = z
   .strictObject({
     name: PlannerDesignationNameSchema.optional(),
-    members: MembersSchema.optional(),
+    members: UpdateMembersSchema.optional(),
   })
   .refine((v) => v.name !== undefined || v.members !== undefined, "Send a name, members, or both");
 
@@ -147,11 +175,24 @@ export const PlannerDesignationMatchSchema = z.object({
   "memberBuildingIds has one entry per member (matched + missing)",
 );
 
-/** GET: the designations, oldest first, with one match entry per designation. */
-export const PlannerDesignationsResponseSchema = z.object({
-  designations: z.array(PlannerDesignationSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
-  matches: z.array(PlannerDesignationMatchSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
-});
+/**
+ * GET: the designations, oldest first, with one match entry per designation. The list is the server's whole set, so
+ * ADR-0061's shape rule is checked here: a designation without members is named as `parentId` by another listed one.
+ */
+export const PlannerDesignationsResponseSchema = z
+  .object({
+    designations: z.array(PlannerDesignationSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
+    matches: z.array(PlannerDesignationMatchSchema).max(PLANNER_DESIGNATIONS_MAX_PER_SERVER),
+  })
+  .superRefine((body, ctx) => {
+    // A designation naming itself is no child of its own.
+    const parents = new Set(body.designations.flatMap((d) => (typeof d.parentId === "string" && d.parentId !== d.id ? [d.parentId] : [])));
+    body.designations.forEach((d, index) => {
+      if (d.members.length === 0 && !parents.has(d.id)) {
+        ctx.addIssue({ code: "custom", path: ["designations", index, "members"], message: "Only a designation with children may have no members" });
+      }
+    });
+  });
 
 /** DELETE: 200. */
 export const DeletePlannerDesignationResponseSchema = z.object({ deleted: z.literal(true) });
@@ -168,6 +209,8 @@ export const PlannerDesignationPutSchema = z.strictObject({
   name: PlannerDesignationNameSchema,
   members: MembersSchema,
   createdAt: IsoTimeSchema.optional().describe("Only an undo restoring an original sends it; never in the future"),
+  // ADR-0061 Contracts 2 (additive, optional). Move is a put that changes this.
+  parentId: ParentIdSchema.describe("The parent designation. Insert: absent or null = top level. Update: absent = unchanged, null = top level"),
 });
 
 const memberKey = (m: PlannerDesignationMember): string => `${m.c}\u0000${m.x}\u0000${m.y}`;
@@ -183,7 +226,7 @@ export const ReplacePlannerDesignationsRequestSchema = z
       .max(PLANNER_DESIGNATIONS_REPLACE_INTENT_MAX)
       .regex(/^[a-z][a-z_]*$/, "A lower-case word")
       .optional()
-      .describe("Audit hint only (merge, split, pop_out, dissolve, undo); behaviour never depends on it"),
+      .describe(`Audit hint only (${KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS.join(", ")}); behaviour never depends on it`),
   })
   .superRefine((body, ctx) => {
     if (body.expect.length === 0 && body.put.length === 0) {

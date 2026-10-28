@@ -18,6 +18,7 @@ import {
   PLANNER_DESIGNATIONS_REPLACE_MAX_TOTAL_MEMBERS,
   PLANNER_DESIGNATION_REVISION_MAX,
   PLANNER_DESIGNATION_MATCH_RADIUS_METRES,
+  PLANNER_DESIGNATION_MAX_DEPTH,
   KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS,
   endpoints,
 } from "../src/index";
@@ -51,11 +52,15 @@ describe("planner designations: names", () => {
 });
 
 describe("planner designations: members", () => {
-  it("allows 1 to 1000 members and refuses 0 and 1001", () => {
+  it("allows up to 1000 members and refuses 1001; 0 is the route's call (ADR-0061: members or children)", () => {
     const many = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `b-${i}`, c: "Build_X_C", x: i, y: 0 }));
     expect(CreatePlannerDesignationRequestSchema.safeParse(create({ members: many(PLANNER_DESIGNATION_MAX_MEMBERS) })).success).toBe(true);
     expect(CreatePlannerDesignationRequestSchema.safeParse(create({ members: many(PLANNER_DESIGNATION_MAX_MEMBERS + 1) })).success).toBe(false);
-    expect(CreatePlannerDesignationRequestSchema.safeParse(create({ members: [] })).success).toBe(false);
+    expect(CreatePlannerDesignationRequestSchema.safeParse(create({ members: [] })).success).toBe(true);
+  });
+  it("update still needs at least one member when it sends members", () => {
+    expect(UpdatePlannerDesignationRequestSchema.safeParse({ members: [] }).success).toBe(false);
+    expect(UpdatePlannerDesignationRequestSchema.safeParse({ members: [member] }).success).toBe(true);
   });
   it("accepts a missing building id as null, but not an absent or empty one", () => {
     expect(CreatePlannerDesignationRequestSchema.safeParse(create({ members: [{ ...member, id: null }] })).success).toBe(true);
@@ -273,7 +278,8 @@ describe("planner designations: replace request", () => {
     ["a put createdAt that is not a time", { expect: [], put: [{ name: "A", members: [{ id: "b", c: "C", x: 0, y: 0 }], createdAt: "yesterday" }] }],
     ["a put with a mode", { expect: [], put: [{ name: "A", mode: "core", members: [{ id: "b", c: "C", x: 0, y: 0 }] }] }],
     ["a put with a bad name", { expect: [], put: [{ name: "a\nb", members: [{ id: "b", c: "C", x: 0, y: 0 }] }] }],
-    ["a put without members", { expect: [], put: [{ name: "A", members: [] }] }],
+    // ADR-0061 Contracts 3: `members: []` is now allowed (the route checks members or children); the key is still required.
+    ["a put without a members key", { expect: [], put: [{ name: "A" }] }],
     ["a put repeating a building id", { expect: [], put: [{ name: "A", members: [{ id: "b", c: "C", x: 0, y: 0 }, { id: "b", c: "C", x: 1, y: 0 }] }] }],
     ["an unknown body key", { expect: [], put: [{ name: "A", members: [{ id: "b", c: "C", x: 0, y: 0 }] }], force: true }],
   ])("refuses %s", (_label, body) => {
@@ -320,5 +326,74 @@ describe("planner designations: replace response and the stale error", () => {
     const olderCodes = KnownErrorCode.exclude(["designation_stale"]);
     expect(olderCodes.safeParse("designation_stale").success).toBe(false);
     expect(ApiErrorResponseSchema.safeParse({ error: { ...fixtures.plannerDesignationStaleError.error, code: "designation_from_the_future" } }).success).toBe(true);
+  });
+});
+
+// ADR-0061: nested designations (build PR 1, the contract).
+describe("planner designations: hierarchy (additive)", () => {
+  const MAIN = "3d9b7c42-1e6a-4f85-8b20-5a4c1e7d9f63";
+  const nested = fixtures.plannerDesignationListNested;
+  const listOf = (designations: unknown[]) => PlannerDesignationsResponseSchema.safeParse({ designations, matches: [] });
+
+  it("every older payload, without parentId, still parses and reads as top level", () => {
+    for (const list of [fixtures.plannerDesignationList, fixtures.plannerDesignationListRevised]) {
+      expect(PlannerDesignationsResponseSchema.parse(list).designations.every((d) => d.parentId === undefined)).toBe(true);
+    }
+    expect(CreatePlannerDesignationRequestSchema.safeParse(fixtures.plannerDesignationCreateRequest).success).toBe(true);
+    expect(UpdatePlannerDesignationRequestSchema.safeParse(fixtures.plannerDesignationUpdateRequest).success).toBe(true);
+    expect(ReplacePlannerDesignationsRequestSchema.safeParse(fixtures.plannerDesignationReplaceRequestMerge).success).toBe(true);
+    expect(ReplacePlannerDesignationsRequestSchema.safeParse(fixtures.plannerDesignationReplaceRequestUndo).success).toBe(true);
+    expect(ReplacePlannerDesignationsResponseSchema.safeParse(fixtures.plannerDesignationReplaceResponse).success).toBe(true);
+  });
+  it("the nested list parses: a parent without members, named as parent by its children", () => {
+    const list = PlannerDesignationsResponseSchema.parse(nested);
+    expect(list.designations.map((d) => d.parentId)).toEqual([MAIN, MAIN, null]);
+    expect(list.designations[2]?.members).toEqual([]);
+  });
+  it("empty members only with children: a listed designation without members that no other names as parent is refused", () => {
+    const [line, annex, main] = nested.designations;
+    expect(listOf([line, annex, main]).success).toBe(true);
+    expect(listOf([main]).success).toBe(false);
+    expect(listOf([{ ...line, parentId: null }, { ...annex, parentId: null }, main]).success).toBe(false);
+    const selfParent = listOf([{ ...main, parentId: MAIN }]);
+    expect(selfParent.success).toBe(false);
+    expect(selfParent.error?.issues[0]?.path).toEqual(["designations", 0, "members"]);
+  });
+  it("a parent may also own machines (owner answer 2)", () => {
+    const [line, annex, main] = nested.designations;
+    const withOwn = { ...main, members: [{ id: "b-own-1", c: "Build_SmelterMk1_C", x: 0, y: 0 }] };
+    expect(listOf([line, annex, withOwn]).success).toBe(true);
+  });
+  it("parentId is a uuid, null or absent, on a designation, a create and a put", () => {
+    const base = fixtures.plannerDesignationIronLine;
+    for (const parentId of [MAIN, null, undefined]) {
+      expect(PlannerDesignationSchema.safeParse({ ...base, parentId }).success).toBe(true);
+      expect(CreatePlannerDesignationRequestSchema.safeParse(create({ parentId })).success).toBe(true);
+      expect(ReplacePlannerDesignationsRequestSchema.safeParse({ expect: [], put: [{ name: "Iron", members: [member], parentId }] }).success).toBe(true);
+    }
+    for (const parentId of ["not-a-uuid", "", 1]) {
+      expect(PlannerDesignationSchema.safeParse({ ...base, parentId }).success).toBe(false);
+      expect(CreatePlannerDesignationRequestSchema.safeParse(create({ parentId })).success).toBe(false);
+      expect(ReplacePlannerDesignationsRequestSchema.safeParse({ expect: [], put: [{ name: "Iron", members: [member], parentId }] }).success).toBe(false);
+    }
+  });
+  it("PUT (update) never changes the parent: parentId is an unknown key there", () => {
+    expect(UpdatePlannerDesignationRequestSchema.safeParse({ name: "Iron", parentId: MAIN }).success).toBe(false);
+  });
+  it("the group fixture parses: a put without members, and the group, ungroup and move intents are known", () => {
+    const group = ReplacePlannerDesignationsRequestSchema.parse(fixtures.plannerDesignationReplaceRequestGroup);
+    expect(group.put[0]?.members).toEqual([]);
+    expect(KNOWN_PLANNER_DESIGNATIONS_REPLACE_INTENTS).toEqual(expect.arrayContaining(["group", "ungroup", "move"]));
+  });
+  it("a replace response may carry a written parent without members (its children may be outside the replace)", () => {
+    const main = nested.designations[2];
+    expect(ReplacePlannerDesignationsResponseSchema.safeParse({ designations: [main], removedIds: [] }).success).toBe(true);
+  });
+  it("the depth limit is 3", () => {
+    expect(PLANNER_DESIGNATION_MAX_DEPTH).toBe(3);
+  });
+  it("registers designation_cycle, designation_depth and designation_shape; the shape error parses in the envelope", () => {
+    expect(KnownErrorCode.options).toEqual(expect.arrayContaining(["designation_cycle", "designation_depth", "designation_shape"]));
+    expect(ApiErrorResponseSchema.parse(fixtures.plannerDesignationShapeError)).toEqual(fixtures.plannerDesignationShapeError);
   });
 });
