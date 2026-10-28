@@ -1,4 +1,4 @@
-import type { PlannerEdge, PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import type { PlannerEdge, PlannerNode, PlannerRate, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import {
   aggregateRateText,
   bubbleTitle,
@@ -14,6 +14,8 @@ import {
   remoteText,
   shareText,
   siteNodes,
+  stalledOf,
+  stalledStateText,
   UNKNOWN_FLOW_NOTE,
   type StalledKind,
 } from "../plannerText";
@@ -85,6 +87,12 @@ export interface Card {
   lines: string[];
   /** Lines from this index on are a muted note (an extractor's "(inferred from the node)"); absent = none. */
   mutedFrom?: number;
+  /**
+   * The muted note is the machines' stalled state and it has a mark (`stalledOf`, ADR-0062 Decision 2): in marks mode the
+   * canvas draws that `StateMark` on the note's row instead of its word. The word stays in `lines` (the layout's size and
+   * the words mode) and in `description`. Absent = no mark.
+   */
+  stalled?: StalledKind | undefined;
   /** The "×N" machine count badge, when the card stands for machines. */
   count: number | undefined;
   /** The building class whose icon the card shows, when it stands for one class. */
@@ -165,7 +173,11 @@ export interface CanvasFlow {
   quality: FlowQuality;
   /** A bundle (`bundleFlows`): the links it draws as one line, each with its own item and rate. Absent on a single link. */
   parts?: CanvasFlow[] | undefined;
-  /** The source group's stalled state (`stalledOf`, ADR-0062 Decision 2): a stalled line ends in a stop bar and never moves. Not set yet. */
+  /**
+   * The source card's stalled state (its `Card.stalled`, from `stalledOf`; ADR-0062 Decision 2): in marks mode a stalled line
+   * ends in a stop bar and never moves, and its item bubbles wear the state's ring. A link with a measured rate above 0 is
+   * never stalled (it is moving); a bundle is stalled only when every part is. Absent = not stalled.
+   */
   stalled?: StalledKind | undefined;
 }
 
@@ -323,21 +335,28 @@ function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
     unit,
     quality,
     parts: [...parts],
+    // One source card, so one kind: stalled only when no part was measured moving.
+    ...(parts.every((p) => p.stalled !== undefined) ? { stalled: head.stalled } : {}),
   };
 }
 
 /** How sure an edge's rate is, in the tables' words. */
 export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.rate === "measured" ? "measured" : flow.rate === "estimated" ? "estimated" : "rate unknown");
 
+/** A stalled line's words: "The source is backed up" (the state's word from `machineState.ts`, as on the card). */
+export const stalledSourceText = (kind: StalledKind): string => `The source is ${stalledStateText({ [kind]: 1 })}`;
+
 /**
- * A flow's tooltip and accessible words: "Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
+ * A flow's tooltip and accessible words:"Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
  * lists every link it draws, each with its own rate: "A to B, 2 links: Iron Ingot · 30 items/min (measured); Steel Pipe
  * (rate unknown)".
  */
 export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const by = flow.carrier === "belt" || flow.carrier === "pipe" ? "" : `${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}: `;
   const bundle = flow.parts !== undefined && flow.parts.length > 1 ? flow.parts : null;
-  const why = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
+  const unknownWhy = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
+  // The stop bar's words (ADR-0062 Decision 2), in both state styles: a mark is never the only carrier.
+  const why = `${flow.stalled === undefined ? "" : `. ${stalledSourceText(flow.stalled)}`}${unknownWhy}`;
   if (bundle !== null) {
     return `${by}${from} to ${to}, ${bundle.length} links: ${bundle.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}${why}`;
   }
@@ -360,10 +379,33 @@ const sentences = (parts: readonly string[]): string => parts.filter((p) => p !=
  * A card's lines, plus a muted note under them (#728): "(inferred from the node)" under an extractor's guessed resource,
  * or the machines' state under a product that reads 0. An extractor guesses only when it has no product, so never both.
  */
-const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, stalled: string | null = null): Pick<Card, "lines" | "mutedFrom"> => {
-  const note = mined?.inferred === true ? INFERRED_FROM_NODE : stalled;
-  return note === null ? { lines } : { lines: [...lines, note], mutedFrom: lines.length };
+const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, stalled: StalledLine | null = null): Pick<Card, "lines" | "mutedFrom" | "stalled"> => {
+  if (mined?.inferred === true) return { lines: [...lines, INFERRED_FROM_NODE], mutedFrom: lines.length };
+  if (stalled === null) return { lines };
+  return { lines: [...lines, stalled.note], mutedFrom: lines.length, ...(stalled.kind === undefined ? {} : { stalled: stalled.kind }) };
 };
+
+type StalledLine = { note: string; kind: StalledKind | undefined };
+
+/** The stalled note under a product that reads 0 (`stalledNote`) and its mark, when its state has one; null for a running card. */
+function stalledLine(rate: PlannerRate | undefined, stateCounts: Record<string, number>): StalledLine | null {
+  const note = stalledNote(rate, stateCounts);
+  return note === null ? null : { note, kind: stalledOf(stateCounts) };
+}
+
+/**
+ * The flows' `stalled`, from the cards they leave (ADR-0062 Decision 2): a line out of a stalled card is stalled, unless the
+ * game measured it moving (a rate above 0), which the line then shows instead.
+ */
+function withStalledFlows(cards: readonly Card[], flows: readonly CanvasFlow[]): CanvasFlow[] {
+  const kinds = new Map<string, StalledKind>();
+  for (const c of cards) if (c.stalled !== undefined) kinds.set(c.key, c.stalled);
+  return flows.map((f) => {
+    const kind = kinds.get(f.from);
+    const moving = f.quality === "measured" && f.ratePerMinute !== null && f.ratePerMinute > 0;
+    return kind === undefined || moving ? f : { ...f, stalled: kind };
+  });
+}
 
 /** The glyph of a card for several groups: the clock only when every group is stale, else the first group's own glyph. */
 const glyphOfGroups = (nodes: readonly PlannerNode[], first: PlannerNode): GlyphKind =>
@@ -388,7 +430,7 @@ export function groupCard(node: PlannerNode, facts: string[] = [], rates?: Reado
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    ...(isStaleNode(node) ? staleCardLines() : withMutedNote(summary === null ? [] : [summary], extractorOutput(node), stalledNote(node.products[0], node.stateCounts))),
+    ...(isStaleNode(node) ? staleCardLines() : withMutedNote(summary === null ? [] : [summary], extractorOutput(node), stalledLine(node.products[0], node.stateCounts))),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -428,7 +470,7 @@ function bubbleCard(bubble: Bubble, chips: string[], rates: ReadonlyMap<string, 
       : withMutedNote(
           [mined !== null ? minedSummary(mined) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
           mined,
-          stalledNote(bubble.products[0], states),
+          stalledLine(bubble.products[0], states),
         )),
     count: countOf(bubble.machineCount),
     className: first.className,
@@ -471,12 +513,13 @@ export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
   const nodes = siteNodes(graph, site);
   const keys = new Set(nodes.map((n) => n.key));
   const rates = minedRates(graph.edges);
+  const cards = nodes.map((n) => groupCard(n, [], rates));
   return {
     level: "site",
     name: site.name,
-    cards: nodes.map((n) => groupCard(n, [], rates)),
+    cards,
     frames: [],
-    flows: graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)).map(edgeFlow),
+    flows: withStalledFlows(cards, graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)).map(edgeFlow)),
     bubbleKeys: [],
     foldKeys: [],
     hasStorage: false,
@@ -504,7 +547,7 @@ function factoryCard(model: FactoryModel): Card {
     nodeKeys: model.nodes.map((n) => n.key),
     title,
     // The name and one product line; where it stands, the other outputs and the ends are in `description`.
-    ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledNote(factory.products[0], model.stateCounts)),
+    ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledLine(factory.products[0], model.stateCounts)),
     count: countOf(factory.machineCount),
     className: main?.className,
     glyph: main === undefined ? "unknown" : glyphOfGroups(model.nodes, main),
@@ -525,12 +568,13 @@ function factoryCard(model: FactoryModel): Card {
 /** The first level: a card per factory and the flows between them (ADR-0055 Decision 6). */
 export function overviewScene(graph: ProductionGraph, models: readonly FactoryModel[]): Scene {
   const owner = factoryOfNode(graph);
+  const cards = models.map(factoryCard);
   return {
     level: "overview",
     name: "Factories",
-    cards: models.map(factoryCard),
+    cards,
     frames: [],
-    flows: aggregateFlows(flowParts(graph), (key) => owner.get(key)).map(canvasFlow),
+    flows: withStalledFlows(cards, aggregateFlows(flowParts(graph), (key) => owner.get(key)).map(canvasFlow)),
     bubbleKeys: [],
     foldKeys: [],
     hasStorage: false,
@@ -741,7 +785,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     return cardKeys.length === 0 ? [] : [{ ...f, cardKeys }];
   });
 
-  const flows = aggregateFlows(folded.parts, (key) => cardOf.get(key)).map(canvasFlow);
+  const flows = withStalledFlows(withUpstream, aggregateFlows(folded.parts, (key) => cardOf.get(key)).map(canvasFlow));
   const allGroups = withUpstream.every((c) => c.kind === "group");
   return {
     level: "factory",

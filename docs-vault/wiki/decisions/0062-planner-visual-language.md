@@ -65,8 +65,9 @@ every line shows its rate; see "Amendment, 2026-10-27" at the end.**
   - **Item bubble** (ADR-0060): a ring in the state's colour plus a corner glyph (stop bar for backed up, half ring for underfed,
     pause bars for paused, dash for idle). The shapes differ, so it reads without colour.
   - **Card product line:** the glyph replaces the "· backed up" suffix.
-- **Tokens.** `--color-bad` for backed up, `--color-warn` for underfed and paused; at least 3:1 against the card (WCAG 1.4.11). Any
-  new token is added to `@theme` in build PR 1.
+- **Tokens (owner decision 2026-10-27, "amber").** `--color-warn` (amber) for backed up and underfed, `--color-info` for paused,
+  `--color-muted` for idle: each state's tone in `factory/machineState.ts`, consistent with ADR-0041 (red only for failure) and
+  with `machineState.ts` ("backed up ... a warning, never bad"). At least 3:1 against the card (WCAG 1.4.11). No new state token.
 - **Toggle (owner answer 1).** `planner.stateStyle`: `"marks"` (default) or `"words"`, in `plannerPrefs.ts` (validated; works
   without localStorage). Words mode draws today's canvas text and no marks. One toolbar control.
 - **Never toggled off:** `<title>`, `aria-label`, the live region and the outline always carry the words.
@@ -202,11 +203,9 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
 - **Durations.** `--duration-flow-slow` 2.4s, `--duration-flow-mid` 1.2s, `--duration-flow-fast` 0.6s per dash cycle (each
   step halves the last, so slow reads clearly slower), zeroed under reduced motion with the other motion tokens.
 - **Mark colours.** `StateMark` takes each kind's tone from `factory/machineState.ts` (backed up and underfed `--color-warn`,
-  paused `--color-info`, idle `--color-muted`), so a mark and the Factory page's word agree and no state token was added. This
-  differs from Decision 2's "Tokens" line (`--color-bad` for backed up, `--color-warn` for paused), which conflicts with
-  ADR-0041 (red only for failure, blue only for paused), with `machineState.ts` ("backed up ... a warning, never bad") and
-  with Decision 2's own Rejected line. **[NEEDS OWNER CONFIRMATION]**; flipping it is one line in `StateMark.tsx`. Every
-  tone used clears 3:1 on the canvas, the surface and surface-2 (`StateMark.test.tsx`).
+  paused `--color-info`, idle `--color-muted`), so a mark and the Factory page's word agree and no state token was added. The
+  owner confirmed these on 2026-10-27 ("amber"), and Decision 2's "Tokens" line now says the same. Every tone used clears 3:1
+  on the canvas, the surface and surface-2 (`StateMark.test.tsx`).
 - **`stalledOf`** (`planner/plannerText.ts`) shares `stalledStateText`'s rule: a mark only when all of a group's machines share
   one of the four states. "Not producing" (mixed), "unpowered" and unknown states have no mark and keep their word.
 

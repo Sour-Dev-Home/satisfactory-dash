@@ -51,6 +51,22 @@ export function readMotion(): MotionPref {
 export const writeMotion = (pref: MotionPref): void => write(MOTION_KEY, pref);
 
 /**
+ * How the canvas shows a stalled group (ADR-0062 Decision 2, owner answer 1): `marks` (the default) draws a `StateMark` (a
+ * stop bar on its lines, a ring on their item bubbles, the glyph in place of the card's "Backed up" note); `words` draws
+ * today's canvas, the words and no marks. Either way the words stay in every `<title>`, `aria-label` and live region.
+ */
+export const STATE_STYLE_KEY = "planner.stateStyle";
+export type StateStylePref = "marks" | "words";
+export const DEFAULT_STATE_STYLE: StateStylePref = "marks";
+
+export function readStateStyle(): StateStylePref {
+  const raw = read(STATE_STYLE_KEY);
+  return raw === "marks" || raw === "words" ? raw : DEFAULT_STATE_STYLE;
+}
+
+export const writeStateStyle = (pref: StateStylePref): void => write(STATE_STYLE_KEY, pref);
+
+/**
  * The item-focus feature flag (ADR-0060 Decision 2, owner answer 6): focusing a link's item bubble, with keyboard and
  * pointer, ships off until the owner reviews it on the demo (build PR 6), which then removes this flag. Only "on" turns it
  * on; there is no control for it in the UI.
@@ -94,6 +110,7 @@ function usePref<T>(readValue: () => T, writeValue: (value: T) => void): [T, (va
 
 export const useStorageDetail = () => usePref(readStorageDetail, writeStorageDetail);
 export const useMotionPref = () => usePref(readMotion, writeMotion);
+export const useStateStyle = () => usePref(readStateStyle, writeStateStyle);
 export const useCollapsedUpstream = () => usePref<ReadonlySet<string>>(readCollapsed, writeCollapsed);
 
 /** Whether the transport glyphs move: an explicit choice wins, and System follows the operator's reduced-motion setting. */
