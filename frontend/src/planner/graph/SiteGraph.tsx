@@ -5,6 +5,7 @@ import { queries } from "../../api/queries";
 import { cn } from "../../lib/cn";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { useReducedMotion } from "../../overview/reducedMotion";
+import type { FactoryTree } from "../factoryTree";
 import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
@@ -207,8 +208,11 @@ const usePageVisible = () =>
     () => true,
   );
 
-/** What the canvas shows: one site (an older backend), the factory overview, or one opened factory. */
-export type GraphTarget = { kind: "site"; site: PlannerSite } | { kind: "overview"; models: readonly FactoryModel[] } | { kind: "factory"; model: FactoryModel };
+/** What the canvas shows: one site (an older backend), the factory overview (one level of the tree, ADR-0061), or one opened factory. */
+export type GraphTarget =
+  | { kind: "site"; site: PlannerSite }
+  | { kind: "overview"; models: readonly FactoryModel[]; tree?: FactoryTree | undefined; path?: readonly string[] | undefined }
+  | { kind: "factory"; model: FactoryModel };
 
 /** The groups picked to designate (ADR-0055 Decision 5), shared with the Groups table's ticks. */
 export interface CanvasSelection {
@@ -276,7 +280,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail, machinesOpen }), [flipped, unfolded, collapsed, storageDetail, machinesOpen]);
   const scene: Scene = useMemo(
-    () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models) : factoryScene(graph, target.model, view)),
+    () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models, target.path, target.tree) : factoryScene(graph, target.model, view)),
     [target, graph, view],
   );
   const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);

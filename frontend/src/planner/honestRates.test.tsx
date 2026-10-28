@@ -154,7 +154,7 @@ describe("Tables view (the text path)", () => {
     const parsed = ProductionGraphResponseSchema.parse(productionGraphTwoSites);
     render(
       <MemoryRouter>
-        <PlannerPanel snapshot={parsed} selected={parsed.data.sites[0].key} onSelect={() => {}} />
+        <PlannerPanel snapshot={parsed} path={[parsed.data.sites[0].key]} onPath={() => {}} />
       </MemoryRouter>,
     );
     const tablesButton = screen.queryByRole("button", { name: "Tables" });
@@ -167,7 +167,7 @@ describe("Tables view (the text path)", () => {
     const parsed = ProductionGraphResponseSchema.parse(productionGraphTwoSites);
     render(
       <MemoryRouter>
-        <PlannerPanel snapshot={parsed} selected={parsed.data.sites[1].key} onSelect={() => {}} />
+        <PlannerPanel snapshot={parsed} path={[parsed.data.sites[1].key]} onPath={() => {}} />
       </MemoryRouter>,
     );
     const tablesButton = screen.queryByRole("button", { name: "Tables" });

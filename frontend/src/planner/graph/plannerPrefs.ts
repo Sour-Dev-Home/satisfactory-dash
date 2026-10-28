@@ -75,6 +75,15 @@ export const ITEM_FOCUS_KEY = "planner.itemFocus";
 
 export const readItemFocus = (): boolean => read(ITEM_FOCUS_KEY) === "on";
 
+/**
+ * The nesting feature flag (ADR-0061 Decision 7): the factory tree, its levels and the breadcrumb ship off until the owner
+ * reviews them on the demo (build PR 6), which then removes this flag. Off, every factory is top level, as before. Only
+ * "on" turns it on; there is no control for it in the UI. A path in the address is read either way.
+ */
+export const NESTING_KEY = "planner.nesting";
+
+export const readNesting = (): boolean => read(NESTING_KEY) === "on";
+
 export const COLLAPSED_KEY = "planner.collapsed";
 /** At most this many collapsed cards are kept, each key at most this long: a hand-edited value cannot grow without bound. */
 export const MAX_COLLAPSED = 200;

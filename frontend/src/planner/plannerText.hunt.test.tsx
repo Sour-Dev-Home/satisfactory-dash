@@ -77,14 +77,14 @@ describe("the bottleneck join", () => {
 const renderPanel = (snapshot: ProductionGraphResponse, props: Partial<Parameters<typeof PlannerPanel>[0]> = {}) =>
   render(
     <MemoryRouter>
-      <PlannerPanel snapshot={snapshot} selected={null} onSelect={() => {}} {...props} />
+      <PlannerPanel snapshot={snapshot} path={[]} onPath={() => {}} {...props} />
     </MemoryRouter>,
   );
 const parsed = ProductionGraphResponseSchema.parse(productionGraphTwoSites);
 
 describe("PlannerPanel", () => {
   it("falls back to the overview when the selected site is gone after a refetch", () => {
-    renderPanel(parsed, { selected: "site-that-vanished" });
+    renderPanel(parsed, { path: ["site-that-vanished"] });
     expect(screen.getByRole("list", { name: "Sites" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "All sites" })).not.toBeInTheDocument();
   });
