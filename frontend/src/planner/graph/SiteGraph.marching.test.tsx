@@ -9,7 +9,7 @@ import { renderWithClient } from "../../test/render";
 import { plannerLarge } from "../../test/scenarios";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
-import { MARCH_MAX, MARCH_SETTLE_MS, PULSE_DASH } from "./marching";
+import { MARCH_MAX, MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W } from "./marching";
 
 // ADR-0062 amendment build PR 3: marching dashes by class, at each line's step; unknown and stalled lines still; Motion Off
 // and reduced motion still; only lines in the settled view, at most MARCH_MAX.
@@ -100,14 +100,16 @@ describe("marching dashes on the canvas", () => {
     expect(mixed.pulse).toBeNull();
   });
 
-  it("pulses a mixed measured belt inside its rails, at the inner stroke's width", async () => {
+  it("pulses a mixed measured belt in its core, at the inner stroke's width or the floor", async () => {
     const edges = DATA.edges.map((e) => (e.mixed ? { ...e, ratePerMinute: 150, rate: "measured" as const } : e));
     const svg = await openGraph({ ...productionGraphTwoSites, data: { ...DATA, edges } });
     const [mixed] = lines(svg).filter((l) => l.inner !== null);
     expect(animated(mixed.path)).toEqual([]);
     expect(animated(mixed.inner)).toEqual([]);
     expect(animated(mixed.pulse)).toEqual(["animate-flow-pulse-mid"]);
-    expect(mixed.pulse!.getAttribute("stroke-width")).toBe(mixed.inner!.getAttribute("stroke-width"));
+    // Mid: the inner stroke is 1, under the floor, so the pulse is the floor's width.
+    expect(Number(mixed.pulse!.getAttribute("stroke-width"))).toBe(Math.max(PULSE_MIN_W, Number(mixed.inner!.getAttribute("stroke-width"))));
+    expect(Number(mixed.pulse!.getAttribute("stroke-width"))).toBe(PULSE_MIN_W);
   });
 
   it("keeps a stalled line still, in marks and in words", async () => {

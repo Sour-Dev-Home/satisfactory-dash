@@ -23,6 +23,8 @@ export const MARCH_SETTLE_MS = 150;
  * dash's (8 + 5) and `--flow-dash-cycle` in index.css, so every marching line moves the same distance per cycle.
  */
 export const PULSE_DASH = "3 10";
+/** A pulse is half its line's width (a mixed line's inner width), but never thinner than this, so a slow line's beads show. */
+export const PULSE_MIN_W = 1.25;
 
 /** The carriers whose lines march; a transport's glyph moves instead (build PR 4's double line). */
 const MARCH_CARRIERS: ReadonlySet<string> = new Set(["belt", "pipe"]);

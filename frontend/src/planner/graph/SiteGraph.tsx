@@ -58,7 +58,7 @@ import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
 import { motionPathAround, roundedOrthogonalPath } from "./edgeShapes";
 import { lineStroke } from "./lineWidth";
-import { MARCH_SETTLE_MS, PULSE_DASH, marchCandidates, marchingLines } from "./marching";
+import { MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W, marchCandidates, marchingLines } from "./marching";
 import type { RateStep } from "./rateStep";
 import { useSettled } from "./useSettled";
 import {
@@ -1462,7 +1462,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to, march = null }: Edg
         <path
           d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
           fill="none"
-          strokeWidth={stroke.inner ?? stroke.width / 2}
+          strokeWidth={Math.max(PULSE_MIN_W, stroke.inner ?? stroke.width / 2)}
           strokeDasharray={PULSE_DASH}
           data-march={pulse}
           data-march-pulse=""

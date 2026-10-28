@@ -238,7 +238,8 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   dotted. A stalled line stays static in marks mode (stop bar) and in words mode too, since motion would claim a flow.
   Transports do not march (their glyph is build PR 4's).
 - **How a measured line marches.** Estimated already means dashed (ADR-0050 Decision 2), so a measured line never becomes
-  dashed. It stays solid, and pulses ride over it: a thin stroke (half the line's width, or a mixed line's inner width) in
+  dashed. It stays solid, and pulses ride over it: a thin stroke (half the line's width, or a mixed line's inner width, at
+  least `PULSE_MIN_W` 1.25 so a slow line's beads show; `ui-reviewer`, to check live on the demo) in
   `stroke-fg-strong` at `--opacity-flow-pulse` (0.7), dashes `3 10`, trimmed before the arrowhead like the inner stroke.
   The pulses' own opacity is 0 and only their animation's keyframes make them visible, so a still frame, a screenshot with
   animations disabled and reduced motion all draw exactly today's line. An estimated line's own `8 5` dashes march; a mixed
