@@ -59,7 +59,7 @@ import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
 import { motionPathAround, roundedOrthogonalPath } from "./edgeShapes";
 import { lineStroke } from "./lineWidth";
-import { MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W, marchCandidates, marchingLines } from "./marching";
+import { CARD_STACK_OFFSET, MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W, marchCandidates, marchHoles, marchingLines, type MarchHole } from "./marching";
 import type { RateStep } from "./rateStep";
 import { useSettled } from "./useSettled";
 import {
@@ -84,7 +84,7 @@ import { ItemCard } from "./ItemCard";
 import { CanvasOverlay } from "./CanvasOverlay";
 import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
 import { useLargeScreen } from "./useWideScreen";
-import { bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
+import { CARD_RX, bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
 import {
@@ -187,6 +187,15 @@ const PULSE_CLASS: ReadonlyMap<RateStep, string> = new Map([
   ["mid", "animate-flow-pulse-mid"],
   ["fast", "animate-flow-pulse-fast"],
 ]);
+/**
+ * The march layer (`MarchLayer`) draws an estimated line's moving dashes over the canvas's still ones, so first it covers
+ * them with a canvas-coloured stroke this much wider than the line (its antialiased edge included). It and the dashes stop at
+ * the arrowhead's base (`LINE_UNDER_ARROW` plus half the head's 8), so they never paint over the canvas's arrowhead.
+ */
+const MARCH_COVER_PAD = 1;
+const MARCH_TRIM = LINE_UNDER_ARROW + 4;
+/** The march layer's mask reaches this far past the layout's box, so a route that bends just outside it is not cut. */
+const MARCH_MASK_PAD = 50;
 
 /** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
 const FADES = [
@@ -950,13 +959,26 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   }, [animate, visible, transports, viewport, stage, marks]);
 
   // The lines whose dashes march (ADR-0062 amendment build PR 3): only those in the settled view, at most MARCH_MAX, never
-  // with Motion off (reduced motion zeroes their tokens too) or in a hidden tab. Chosen per layout, then per settled view.
+  // with Motion off, under reduced motion (even with Motion on, as its CSS would stop them anyway), in a hidden tab, or during
+  // a make-room glide (the march layer does not follow the gliding cards). Chosen per layout, then per settled view. They are
+  // drawn by `MarchLayer`, not the canvas, so their repaint each frame is the layer's alone.
   const marchable = useMemo(() => marchCandidates(layout.edges), [layout]);
   const viewNow = useMemo(() => ({ view: viewport, stage }), [viewport, stage]);
   const settledView = useSettled(viewNow, MARCH_SETTLE_MS);
   const marching = useMemo(
-    () => (animate && visible ? marchingLines(marchable, settledView.view, settledView.stage) : new Map<number, RateStep>()),
-    [animate, visible, marchable, settledView],
+    () =>
+      animate && !reduced && visible && ghost === null && lasso === null
+        ? marchingLines(marchable, settledView.view, settledView.stage)
+        : new Map<number, RateStep>(),
+    [animate, reduced, visible, ghost, lasso, marchable, settledView],
+  );
+  // The march layer's mask: every label pill and card (with its badge and pills), and the open or closing item card.
+  const cardHoles = useMemo(() => marchHoles(layout.nodes, layout.edges, Math.max(BADGE_H, PILL_H)), [layout]);
+  const openEdgeKey = focus?.edgeKey;
+  const closingEdgeKey = closingCard?.edgeKey;
+  const holes = useMemo(
+    () => [...cardHoles, ...[openEdgeKey, closingEdgeKey].flatMap((key) => focusCardHole(key === undefined ? undefined : edgeByKey.get(key)))],
+    [cardHoles, openEdgeKey, closingEdgeKey, edgeByKey],
   );
 
   // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
@@ -1162,7 +1184,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                           marks={marks}
                           dim={!edgeLit(e)}
                           moving={moving.has(e.index)}
-                          march={marching.get(e.index) ?? null}
                           from={from?.title ?? ""}
                           to={to?.title ?? ""}
                           detail={detail}
@@ -1198,6 +1219,21 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               )}
             </g>
           </svg>
+          {marching.size > 0 && (
+            <MarchLayer
+              edges={layout.edges}
+              marching={marching}
+              dim={(e) => !edgeLit(e)}
+              holes={holes}
+              bounds={{ width: layout.width, height: layout.height }}
+              stage={stage}
+              viewport={viewport}
+              shape={shape}
+              fadeIn={animate}
+              maskId={`${ids}-march-mask`}
+              height={canvasH}
+            />
+          )}
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
           {FADES.map((f) => (
             <div
@@ -1418,8 +1454,6 @@ type EdgeProps = {
   marks: boolean;
   dim: boolean;
   moving: boolean;
-  /** The line's marching step (in view, under the cap, motion on), or null/absent for a still line. */
-  march?: RateStep | null | undefined;
   from: string;
   to: string;
   detail: BubbleDetail;
@@ -1428,16 +1462,12 @@ type EdgeProps = {
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
  *  in its state's stop bar instead of the arrowhead. Its width is its rate's step (`lineStroke`; a bundle's summed rate),
- *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. A marching line (`march`)
- *  moves from source to destination, the arrowhead's way: an estimated line's dashes (and a mixed one's inner dashes in
- *  step), or a measured line's pulses over its solid stroke. */
-function EdgeLine({ edge: e, markerId, marks, dim, from, to, march = null }: EdgeProps) {
+ *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. It is always still: a
+ *  marching line's motion is drawn over it by `MarchLayer`. */
+function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
   const stalled = marks ? e.flow.stalled : undefined;
   const stroke = lineStroke(e.flow);
   const dash = edgeDash(e.flow.rate);
-  // `march` is only ever set on a measured or estimated line: a dash means estimated, none means measured.
-  const dashMarch = march !== null && dash !== undefined ? march : null;
-  const pulse = march !== null && dash === undefined ? march : null;
   return (
     <g data-edge={e.index} data-stalled={stalled} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
@@ -1447,8 +1477,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to, march = null }: Edg
         strokeWidth={stroke.width}
         strokeDasharray={dash}
         markerEnd={`url(#${stalled === undefined ? markerId : `${markerId}-${stalled}`})`}
-        data-march={dashMarch ?? undefined}
-        className={cn(edgeClass(e.flow), dashMarch !== null && MARCH_CLASS.get(dashMarch))}
+        className={edgeClass(e.flow)}
       />
       {stroke.inner !== null && (
         <path
@@ -1458,21 +1487,132 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to, march = null }: Edg
           strokeDasharray={innerDash(dash)}
           strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET}
           data-mixed-inner=""
-          data-march={dashMarch ?? undefined}
-          className={cn("stroke-surface", dashMarch !== null && MARCH_INNER_CLASS.get(dashMarch))}
+          className="stroke-surface"
         />
       )}
-      {pulse !== null && (
-        <path
-          d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
-          fill="none"
-          strokeWidth={Math.max(PULSE_MIN_W, stroke.inner ?? stroke.width / 2)}
-          strokeDasharray={PULSE_DASH}
-          data-march={pulse}
-          data-march-pulse=""
-          className={cn("stroke-fg-strong opacity-0", PULSE_CLASS.get(pulse))}
-        />
-      )}
+    </g>
+  );
+}
+
+/** The open (or closing) item card's box, at its full size, as a hole in the march layer's mask. */
+function focusCardHole(edge: LaidEdge | undefined): MarchHole[] {
+  if (edge === undefined) return [];
+  return [{ x: edge.labelX - FOCUS_CARD_W / 2, y: edge.labelY - FOCUS_CARD_H / 2, width: FOCUS_CARD_W, height: FOCUS_CARD_H, rx: CARD_RX }];
+}
+
+/**
+ * The marching lines (ADR-0062 amendment build PR 3), in their own `<svg>` stacked over the canvas: the same box, viewBox and
+ * pan and zoom, so each stroke lies exactly on its still line. A `stroke-dashoffset` animation inside the canvas repainted the
+ * whole canvas every frame (CI, 210 lines: p95 117 ms with only 4 lines marching, against 17 with Motion Off); here it
+ * repaints this layer, which holds only the marching strokes, and `will-change-transform` gives the layer its own compositing
+ * layer, so the canvas under it is not repainted at all.
+ *
+ * The canvas still draws every line, still, so a frame without this layer is the same picture. Over it, an estimated line's
+ * dashes march (first covering its still dashes with a canvas-coloured stroke, `MARCH_COVER_PAD` wider), a mixed one's inner
+ * dashes in step; a measured line keeps its solid stroke and pulses ride over it, invisible except while they run. Everything
+ * the canvas draws over its lines (labels, cards, the item card) is a hole in the layer's mask, so a marching stroke never
+ * shows over them. Decorative (`aria-hidden`) and pointer-transparent: the canvas keeps the tooltips and the pointer.
+ */
+function MarchLayer({
+  edges,
+  marching,
+  dim,
+  holes,
+  bounds,
+  stage,
+  viewport,
+  shape,
+  fadeIn,
+  maskId,
+  height,
+}: {
+  edges: readonly LaidEdge[];
+  marching: ReadonlyMap<number, RateStep>;
+  dim: (e: LaidEdge) => boolean;
+  holes: readonly MarchHole[];
+  bounds: { width: number; height: number };
+  stage: Stage;
+  viewport: View;
+  /** The canvas drawing's key: the layer eases in with it when the picture's shape changes. */
+  shape: string;
+  fadeIn: boolean;
+  maskId: string;
+  /**
+   * The canvas's own height attribute. With the canvas's own height limits (`max-h-map min-h-graph-min`) it sizes the layer
+   * exactly as the canvas is sized: the box around the canvas is taller by the inline svg's baseline gap, so `inset-0` would not match.
+   */
+  height: number;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      data-march-layer=""
+      viewBox={`0 0 ${stage.width} ${stage.height}`}
+      height={height}
+      preserveAspectRatio="xMidYMid meet"
+      // The canvas's 1px border is transparent here, so the two content boxes (and the viewBox in them) are the same; its
+      // rounded corners clip the strokes as the canvas's clip its lines.
+      className="pointer-events-none absolute top-0 left-0 max-h-map min-h-graph-min w-full rounded-card border border-transparent will-change-transform"
+    >
+      <defs>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>
+          {/* A luminance mask: white shows, black hides. Not colours of the picture, so no theme token. */}
+          <rect x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD} className="fill-white" />
+          {holes.map((h, i) => (
+            <rect key={i} x={h.x} y={h.y} width={h.width} height={h.height} rx={h.rx} className="fill-black" />
+          ))}
+        </mask>
+      </defs>
+      <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(fadeIn && "animate-graph-in")}>
+        <g mask={`url(#${maskId})`}>
+          {edges.map((e) => {
+            const step = marching.get(e.index);
+            return step === undefined ? null : <MarchLine key={e.index} edge={e} step={step} dim={dim(e)} />;
+          })}
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+/** One marching line in the march layer: an estimated line's dashes (and a mixed one's inner dashes), or a measured line's
+ *  pulses, moving from source to destination, the arrowhead's way. Only ever a measured or estimated, unstalled line
+ *  (`marchStep`): a dash means estimated, none means measured. */
+function MarchLine({ edge: e, step, dim }: { edge: LaidEdge; step: RateStep; dim: boolean }) {
+  const stroke = lineStroke(e.flow);
+  const dash = edgeDash(e.flow.rate);
+  const d = roundedOrthogonalPath(e.points, undefined, MARCH_TRIM);
+  return (
+    <g data-march-edge={e.index} data-march-step={step}>
+      {dash !== undefined && <path d={d} fill="none" strokeWidth={stroke.width + MARCH_COVER_PAD} data-march-cover="" className="stroke-surface" />}
+      <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+        {dash !== undefined && (
+          <path d={d} fill="none" strokeWidth={stroke.width} strokeDasharray={dash} data-march={step} className={cn(edgeClass(e.flow), MARCH_CLASS.get(step))} />
+        )}
+        {dash !== undefined && stroke.inner !== null && (
+          <path
+            d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
+            fill="none"
+            strokeWidth={stroke.inner}
+            strokeDasharray={innerDash(dash)}
+            strokeDashoffset={INNER_DASH_OFFSET}
+            data-mixed-inner=""
+            data-march={step}
+            className={cn("stroke-surface", MARCH_INNER_CLASS.get(step))}
+          />
+        )}
+        {dash === undefined && (
+          <path
+            d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
+            fill="none"
+            strokeWidth={Math.max(PULSE_MIN_W, stroke.inner ?? stroke.width / 2)}
+            strokeDasharray={PULSE_DASH}
+            data-march={step}
+            data-march-pulse=""
+            className={cn("stroke-fg-strong opacity-0", PULSE_CLASS.get(step))}
+          />
+        )}
+      </g>
     </g>
   );
 }
@@ -1742,7 +1882,7 @@ function CardView({
     >
       <title>{card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
-      {stacked && <rect x={5} y={5} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
+      {stacked && <rect x={CARD_STACK_OFFSET} y={CARD_STACK_OFFSET} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
       <rect
         width={n.width}
         height={n.height}

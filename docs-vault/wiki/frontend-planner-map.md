@@ -97,8 +97,18 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   in step); a measured line stays solid and gets a thin pulse path (`data-march-pulse`) that is invisible except while
   animating, so the still frame is unchanged. Unknown and stalled lines and transports stay still. Only lines whose
   route's box meets the settled view (`useSettled`, `MARCH_SETTLE_MS` after the last pan or zoom) march, at most
-  `MARCH_MAX`, fastest step first then edge order. Motion Off and a hidden tab render no class; reduced motion zeroes the
-  tokens and `[data-march]` gets `animation: none`. The Motion control shows when a transport or a marching line exists.
+  `MARCH_MAX`, fastest step first then edge order. Motion Off, reduced motion (even with Motion on), a hidden tab and a
+  make-room glide march nothing; reduced motion also zeroes the tokens and `[data-march]` gets `animation: none` as a
+  backstop. The Motion control shows when a transport or a marching line exists.
+  The marching strokes are not in the canvas: `MarchLayer` (SiteGraph.tsx) is a second `<svg>` after the canvas in the
+  viewport box, with the canvas's viewBox, fit, transparent 1px border and pan/zoom transform, `aria-hidden`,
+  `pointer-events-none` and `will-change-transform` (its own compositing layer), rendered only while something marches.
+  An animated path inside the canvas repainted the whole canvas every frame; in the layer it repaints only the layer. The
+  canvas draws every line still, always; the layer draws over it an estimated line's moving dashes (over a `stroke-surface`
+  cover, `data-march-cover`, that hides the still dashes) or a measured line's pulses, each in `[data-march-edge]`. Its
+  luminance mask has a hole for every label pill, card (its edge badge and pills, a bubble's or fold's pile) and the open
+  item card (`marchHoles`), so a stroke never shows over them; nothing marches while a lasso is drawn. Each stroke stops at the arrowhead's base (`MARCH_TRIM`), so the canvas's
+  arrowhead is never painted over.
 - Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
   (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
   text ("mixed", "excess" beside it) under the row; links of no known item share one "?" bubble. The box dagre reserves

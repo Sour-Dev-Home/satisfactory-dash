@@ -5,7 +5,9 @@ import { isInView, type Stage, type View } from "./viewport";
 /**
  * Marching dashes (ADR-0062 amendment Decision 1, build PR 3): a belt or pipe line with a measured or estimated rate that is
  * not stalled marches at its rate's step, by a CSS class (`animate-flow-*` in index.css); no per-edge JS, no inline styles.
- * Only lines in view march, at most `MARCH_MAX` of them, so the cost is bounded by the view, not the factory's size.
+ * Only lines in view march, at most `MARCH_MAX` of them, so the cost is bounded by the view, not the factory's size. They are
+ * drawn in SiteGraph's `MarchLayer`, an `<svg>` of their own over the canvas, so their per-frame repaint is the layer's (the
+ * marching strokes) and not the whole canvas's; `marchHoles` keeps them from showing over the labels and cards.
  */
 
 /**
@@ -98,6 +100,47 @@ export function marchingLines(candidates: readonly MarchCandidate[], view: View,
   for (const c of candidates) {
     if (out.size >= cap) break;
     if (isInView(view, stage, c.box)) out.set(c.index, c.step);
+  }
+  return out;
+}
+
+/** A bubble's or a fold's card has a pile behind it: a second card this far right and down (SiteGraph's `CardView`). */
+export const CARD_STACK_OFFSET = 5;
+/** A card's corner (an open group's is 10; a line never meets a corner, so one radius serves the mask). */
+const CARD_RX = 8;
+/** A card's badge and pills sit at least this far in from its sides (SiteGraph's `CardView`: 8). */
+export const CARD_DECOR_INSET = 8;
+
+/** Something the canvas draws over its lines, as a box with a corner radius: a hole in the march layer's mask. */
+export interface MarchHole extends Box {
+  rx: number;
+}
+
+/**
+ * What the canvas draws over its lines (SiteGraph's labels layer and cards), which the march layer must not draw over: every
+ * line's label pill, every card, and the pile behind a bubble's or a fold's card. The march layer is its own `<svg>` over the
+ * whole canvas, so without these holes a marching line would show through a label or a card it runs under. Per layout.
+ */
+export function marchHoles(
+  nodes: readonly { x: number; y: number; width: number; height: number; card: { kind: string } }[],
+  edges: readonly { labelX: number; labelY: number; labelWidth: number; labelHeight: number }[],
+  /** How tall the controls are that a card centres on its top and bottom edges (its warn badge, its pills): half of it sticks
+   *  out above and below. Those stand `CARD_DECOR_INSET` in from the sides, so the hole for them leaves the sides, where lines
+   *  meet the card, alone. */
+  decor = 0,
+): MarchHole[] {
+  const out: MarchHole[] = [];
+  for (const e of edges) {
+    out.push({ x: e.labelX - e.labelWidth / 2, y: e.labelY - e.labelHeight / 2, width: e.labelWidth, height: e.labelHeight, rx: Math.min(e.labelHeight, e.labelWidth) / 2 });
+  }
+  for (const n of nodes) {
+    out.push({ x: n.x, y: n.y, width: n.width, height: n.height, rx: CARD_RX });
+    if (decor > 0 && n.width > 2 * CARD_DECOR_INSET) {
+      out.push({ x: n.x + CARD_DECOR_INSET, y: n.y - decor / 2, width: n.width - 2 * CARD_DECOR_INSET, height: n.height + decor, rx: 0 });
+    }
+    if (n.card.kind === "bubble" || n.card.kind === "fold") {
+      out.push({ x: n.x + CARD_STACK_OFFSET, y: n.y + CARD_STACK_OFFSET, width: n.width, height: n.height, rx: CARD_RX });
+    }
   }
   return out;
 }
